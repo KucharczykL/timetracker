@@ -26,9 +26,9 @@ from common.components import (
     PageHeading,
     Select,
     SettingFieldState,
-    SettingSourceBadge,
     SettingsFieldColumns,
     SettingsFieldLayout,
+    SettingSourceBadge,
     SettingsScaffold,
     SettingsSection,
 )

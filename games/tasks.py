@@ -1,7 +1,9 @@
+import contextlib
 import logging
 
 import requests
 from django.db import models
+
 from games.models import ExchangeRate, Purchase
 from timetracker.settings_resolver import resolve_str
 
@@ -93,9 +95,9 @@ def calculate_price_per_game():
     This task is deprecated because price_per_game is now a GeneratedField.
     It is kept here to prevent errors from lingering scheduled tasks.
     """
-    try:
+    # Best-effort by design: whatever state the scheduler tables are in,
+    # a lingering schedule for the retired task must never break anything.
+    with contextlib.suppress(Exception):
         from django_q.models import Schedule
 
         Schedule.objects.filter(func="games.tasks.calculate_price_per_game").delete()
-    except Exception:
-        pass

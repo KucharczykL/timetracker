@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -44,20 +44,20 @@ def _make_session(**overrides):
         overrides["game"] = Game.objects.create(name="Hades", platform=platform)
     if "device" not in overrides:
         overrides["device"] = Device.objects.create(name="Deck", type="h")
-    fields = dict(
-        timestamp_start=datetime(2026, 6, 24, 18, 0, tzinfo=dt_timezone.utc),
-        timestamp_end=None,
-        duration_manual=timedelta(0),
-        note="",
-        emulated=False,
-    )
+    fields = {
+        "timestamp_start": datetime(2026, 6, 24, 18, 0, tzinfo=UTC),
+        "timestamp_end": None,
+        "duration_manual": timedelta(0),
+        "note": "",
+        "emulated": False,
+    }
     fields.update(overrides)
     return Session.objects.create(**fields)
 
 
 def test_session_detail_shape(auth_client):
     session = _make_session(
-        timestamp_end=datetime(2026, 6, 24, 19, 0, tzinfo=dt_timezone.utc),
+        timestamp_end=datetime(2026, 6, 24, 19, 0, tzinfo=UTC),
         duration_manual=timedelta(minutes=30),
     )
     response = auth_client.get(f"/api/session/{session.id}")
@@ -140,8 +140,8 @@ def test_session_list_pagination(auth_client):
 
 
 def test_session_list_sort_parity(auth_client):
-    older = _make_session(timestamp_start=datetime(2020, 1, 1, tzinfo=dt_timezone.utc))
-    newer = _make_session(timestamp_start=datetime(2026, 1, 1, tzinfo=dt_timezone.utc))
+    older = _make_session(timestamp_start=datetime(2020, 1, 1, tzinfo=UTC))
+    newer = _make_session(timestamp_start=datetime(2026, 1, 1, tzinfo=UTC))
     ascending = auth_client.get("/api/session/?sort=date").json()["items"]
     ids = [row["id"] for row in ascending]
     assert ids.index(older.id) < ids.index(newer.id)
@@ -271,7 +271,7 @@ def test_session_patch_finish_sets_end(auth_client):
     assert response.status_code == 200
     assert response.json()["timestamp_end"] == "2026-06-24T19:00:00Z"
     session.refresh_from_db()
-    assert session.timestamp_end == datetime(2026, 6, 24, 19, 0, tzinfo=dt_timezone.utc)
+    assert session.timestamp_end == datetime(2026, 6, 24, 19, 0, tzinfo=UTC)
 
 
 def test_session_patch_reset_start_keeps_end_null(auth_client):
@@ -285,9 +285,7 @@ def test_session_patch_reset_start_keeps_end_null(auth_client):
     assert body["timestamp_start"] == "2026-06-24T20:00:00Z"
     assert body["timestamp_end"] is None
     session.refresh_from_db()
-    assert session.timestamp_start == datetime(
-        2026, 6, 24, 20, 0, tzinfo=dt_timezone.utc
-    )
+    assert session.timestamp_start == datetime(2026, 6, 24, 20, 0, tzinfo=UTC)
 
 
 def test_session_patch_end_before_start_rejected(auth_client):

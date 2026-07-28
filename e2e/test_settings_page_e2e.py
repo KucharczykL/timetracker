@@ -199,16 +199,18 @@ def test_presentation_preferences_reload_with_the_updated_contract(
     page.goto(f"{live_server.url}{reverse('games:settings')}")
     _wait_for_live_settings(page)
 
-    with page.expect_navigation(wait_until="load"):
-        with page.expect_response(
+    with (
+        page.expect_navigation(wait_until="load"),
+        page.expect_response(
             lambda response: (
                 "/api/settings/user/DISPLAY_TIME_ZONE" in response.url
                 and response.request.method == "PATCH"
             )
-        ) as time_zone_saved:
-            page.locator('select[name="display_time_zone"]').select_option(
-                "Pacific/Kiritimati"
-            )
+        ) as time_zone_saved,
+    ):
+        page.locator('select[name="display_time_zone"]').select_option(
+            "Pacific/Kiritimati"
+        )
     assert time_zone_saved.value.status == 200
     _wait_for_live_settings(page)
     page.wait_for_function(
@@ -218,14 +220,16 @@ def test_presentation_preferences_reload_with_the_updated_contract(
         "Pacific/Kiritimati"
     )
 
-    with page.expect_navigation(wait_until="load"):
-        with page.expect_response(
+    with (
+        page.expect_navigation(wait_until="load"),
+        page.expect_response(
             lambda response: (
                 "/api/settings/user/DATE_FORMAT_LOCALE" in response.url
                 and response.request.method == "PATCH"
             )
-        ) as locale_saved:
-            page.locator('select[name="date_format_locale"]').select_option("cs")
+        ) as locale_saved,
+    ):
+        page.locator('select[name="date_format_locale"]').select_option("cs")
     assert locale_saved.value.status == 200
     _wait_for_live_settings(page)
     page.wait_for_function(
@@ -237,14 +241,16 @@ def test_presentation_preferences_reload_with_the_updated_contract(
     assert contract["time_zone"] == "Pacific/Kiritimati"
     assert contract["locale"] == "cs"
 
-    with page.expect_navigation(wait_until="load"):
-        with page.expect_response(
+    with (
+        page.expect_navigation(wait_until="load"),
+        page.expect_response(
             lambda response: (
                 "/api/settings/user/DATETIME_FORMAT" in response.url
                 and response.request.method == "PATCH"
             )
-        ) as format_saved:
-            page.locator('select[name="datetime_format"]').select_option("mdy_12h")
+        ) as format_saved,
+    ):
+        page.locator('select[name="datetime_format"]').select_option("mdy_12h")
     assert format_saved.value.status == 200
     _wait_for_live_settings(page)
     page.wait_for_function(

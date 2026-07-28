@@ -9,40 +9,41 @@ from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 
 from common.components import (
-    PageHeading,
+    ICON_BUTTON_SIZE_CLASS,
     A,
     AddForm,
     ButtonGroup,
     Column,
     ContentContainer,
+    ControlButton,
     Div,
     Fragment,
     GameStatus,
     GameStatusSelector,
-    ICON_BUTTON_SIZE_CLASS,
     Icon,
     LinkedPurchase,
     ModuleScript,
     NameWithIcon,
     Node,
+    PageHeading,
     Popover,
     PurchasePrice,
     QuickFilterBar,
-    parse_filter_dict,
     Safe,
-    ControlButton,
     StyledTable,
     TableData,
     Ul,
     make_row,
     paginated_table_content,
+    parse_filter_dict,
 )
 from common.components.primitives import Li, Span
-from common.layout import render_page
 from common.date_time_presentation import (
     DateTimePresentation,
     date_time_presentation_for_request,
 )
+from common.layout import render_page
+from common.returns import OriginUrl, action_url
 from common.time import format_duration
 from common.utils import paginate, safe_division
 from games.filters import (
@@ -63,7 +64,6 @@ from games.views.filtering import (
     warn_unknown_sort,
 )
 from games.views.playevent import create_playevent_tabledata
-from common.returns import OriginUrl, action_url
 from games.views.returns import origin_from, return_url
 
 

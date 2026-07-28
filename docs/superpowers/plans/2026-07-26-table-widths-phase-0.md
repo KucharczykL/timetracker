@@ -111,72 +111,76 @@ Note: `.claude/launch.json` may carry an uncommitted `DEV_PORT=9999` change and 
 Replace `test_first_column_class_reaches_header_and_body_cell` (`tests/test_components.py:1809`) and `test_direct_table_row_keeps_columns_optional` (1871) with these four tests. Keep them in the same class, in this order:
 
 ```python
-    def test_first_column_class_reaches_header_and_body_cell(self):
-        result = str(
-            components.StyledTable(
-                columns=[
-                    components.Column("Name", class_="w-64"),
-                    components.Column("Actions"),
-                ],
-                rows=[components.make_row("Game", "Edit")],
-            )
+def test_first_column_class_reaches_header_and_body_cell(self):
+    result = str(
+        components.StyledTable(
+            columns=[
+                components.Column("Name", class_="w-64"),
+                components.Column("Actions"),
+            ],
+            rows=[components.make_row("Game", "Edit")],
         )
-        self.assertIn('class="px-2 sm:px-3 lg:px-6 py-3 w-64"', result)
-        tbody = self._tbody(result)
-        self.assertIn("w-64", tbody)
+    )
+    self.assertIn('class="px-2 sm:px-3 lg:px-6 py-3 w-64"', result)
+    tbody = self._tbody(result)
+    self.assertIn("w-64", tbody)
 
-    def test_shrinkable_column_reaches_header_and_body_cell(self):
-        from common.components.primitives import SHRINKABLE_COLUMN_CLASS
 
-        result = str(
-            components.StyledTable(
-                columns=[
-                    components.Column("Name", shrinkable=True),
-                    components.Column("Actions"),
-                ],
-                rows=[components.make_row("Game", "Edit")],
-            )
+def test_shrinkable_column_reaches_header_and_body_cell(self):
+    from common.components.primitives import SHRINKABLE_COLUMN_CLASS
+
+    result = str(
+        components.StyledTable(
+            columns=[
+                components.Column("Name", shrinkable=True),
+                components.Column("Actions"),
+            ],
+            rows=[components.make_row("Game", "Edit")],
         )
-        # Assert against each section separately: the whole-document form is
-        # satisfied by the body cell alone, so it cannot prove the header
-        # emitted anything.
-        self.assertIn(SHRINKABLE_COLUMN_CLASS, self._thead(result))
-        self.assertIn(SHRINKABLE_COLUMN_CLASS, self._tbody(result))
+    )
+    # Assert against each section separately: the whole-document form is
+    # satisfied by the body cell alone, so it cannot prove the header
+    # emitted anything.
+    self.assertIn(SHRINKABLE_COLUMN_CLASS, self._thead(result))
+    self.assertIn(SHRINKABLE_COLUMN_CLASS, self._tbody(result))
 
-    def test_shrinkable_classes_are_mobile_only(self):
-        """Above md the column must carry no width constraint at all: an
-        unprefixed w-full or max-w-0 would reintroduce the desktop dead space."""
-        result = str(
-            components.StyledTable(
-                columns=[
-                    components.Column("Name", shrinkable=True),
-                    components.Column("Actions"),
-                ],
-                rows=[components.make_row("Game", "Edit")],
-            )
+
+def test_shrinkable_classes_are_mobile_only(self):
+    """Above md the column must carry no width constraint at all: an
+    unprefixed w-full or max-w-0 would reintroduce the desktop dead space."""
+    result = str(
+        components.StyledTable(
+            columns=[
+                components.Column("Name", shrinkable=True),
+                components.Column("Actions"),
+            ],
+            rows=[components.make_row("Game", "Edit")],
         )
-        for token in re.findall(r'<(?:th|td)\b[^>]*class="([^"]*)"', result):
-            for css_class in token.split():
-                if css_class in {"w-full", "max-w-0"}:
-                    self.fail(f"unprefixed {css_class} found in: {token}")
+    )
+    for token in re.findall(r'<(?:th|td)\b[^>]*class="([^"]*)"', result):
+        for css_class in token.split():
+            if css_class in {"w-full", "max-w-0"}:
+                self.fail(f"unprefixed {css_class} found in: {token}")
 
-    def test_non_shrinkable_column_emits_no_width_classes(self):
-        result = str(
-            components.StyledTable(
-                columns=[
-                    components.Column("Name"),
-                    components.Column("Actions"),
-                ],
-                rows=[components.make_row("Game", "Edit")],
-            )
+
+def test_non_shrinkable_column_emits_no_width_classes(self):
+    result = str(
+        components.StyledTable(
+            columns=[
+                components.Column("Name"),
+                components.Column("Actions"),
+            ],
+            rows=[components.make_row("Game", "Edit")],
         )
-        self.assertNotIn("max-md:w-full", result)
-        self.assertNotIn("max-md:max-w-0", result)
+    )
+    self.assertNotIn("max-md:w-full", result)
+    self.assertNotIn("max-md:max-w-0", result)
 
-    def test_direct_table_row_keeps_columns_optional(self):
-        result = str(components.TableRow(components.make_row("Game", "Edit")))
-        self.assertIn('th scope="row"', result)
-        self.assertNotIn("max-md:w-full", result)
+
+def test_direct_table_row_keeps_columns_optional(self):
+    result = str(components.TableRow(components.make_row("Game", "Edit")))
+    self.assertIn('th scope="row"', result)
+    self.assertNotIn("max-md:w-full", result)
 ```
 
 `re` is already imported at the top of `tests/test_components.py`. If it is not, add `import re`.
@@ -288,7 +292,7 @@ Expected: exactly four hits, in `games/views/session.py`, `games/views/game.py` 
 `games/views/session.py:97`, `games/views/game.py:112`, `games/views/purchase.py:116` each become:
 
 ```python
-            Column("Name", "name", shrinkable=True),
+(Column("Name", "name", shrinkable=True),)
 ```
 
 - [x] **Step 3: Convert the static Name column**
@@ -296,7 +300,7 @@ Expected: exactly four hits, in `games/views/session.py`, `games/views/game.py` 
 `games/views/game.py:635` (the game-detail purchases table, which has no sort key) becomes:
 
 ```python
-            Column("Name", shrinkable=True),
+(Column("Name", shrinkable=True),)
 ```
 
 - [x] **Step 4: Verify the literal is gone**
@@ -358,46 +362,44 @@ def _name_cell_dead_space(page: Page) -> float:
 Replace the body of `test_table_constraints_hold_at_mobile_and_intermediate_widths` from `for width in (390, 640, 768):` to the end of the function:
 
 ```python
-    for width in (390, 640, 768):
-        page.set_viewport_size({"width": width, "height": 844})
-        _wait_for_fonts(page)
-        host = _host(page, LONG_NAME)
-        wrapper = host.locator(
-            "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), "
-            "' overflow-x-auto ')][1]"
-        )
-        dimensions = wrapper.evaluate(
-            "element => ({client: element.clientWidth, scroll: element.scrollWidth})"
-        )
-        row = host.locator("xpath=ancestor::tr[1]")
-        action_cell = row.locator("td").last
-        expect(action_cell).to_be_visible()
+for width in (390, 640, 768):
+    page.set_viewport_size({"width": width, "height": 844})
+    _wait_for_fonts(page)
+    host = _host(page, LONG_NAME)
+    wrapper = host.locator(
+        "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), "
+        "' overflow-x-auto ')][1]"
+    )
+    dimensions = wrapper.evaluate(
+        "element => ({client: element.clientWidth, scroll: element.scrollWidth})"
+    )
+    row = host.locator("xpath=ancestor::tr[1]")
+    action_cell = row.locator("td").last
+    expect(action_cell).to_be_visible()
 
-        if width == 768:
-            # At exactly md the shrink allowance is already off and every
-            # column is back, so the table is wider than its wrapper. The
-            # wrapper scrolls; what must not happen is the name being crushed
-            # to the platform icon to avoid it.
-            assert (
-                host.evaluate("element => element.getBoundingClientRect().width") >= 200
-            )
-            expect(row.locator("td").first).to_be_visible()
-            continue
+    if width == 768:
+        # At exactly md the shrink allowance is already off and every
+        # column is back, so the table is wider than its wrapper. The
+        # wrapper scrolls; what must not happen is the name being crushed
+        # to the platform icon to avoid it.
+        assert host.evaluate("element => element.getBoundingClientRect().width") >= 200
+        expect(row.locator("td").first).to_be_visible()
+        continue
 
-        assert dimensions["scroll"] <= dimensions["client"]
-        if width == 390:
-            assert (
-                host.locator("[data-truncated-clip]").evaluate(
-                    "element => element.clientWidth"
-                )
-                < 256
+    assert dimensions["scroll"] <= dimensions["client"]
+    if width == 390:
+        assert (
+            host.locator("[data-truncated-clip]").evaluate(
+                "element => element.clientWidth"
             )
-            host_box = host.bounding_box()
-            action_box = action_cell.bounding_box()
-            assert host_box is not None and action_box is not None
-            assert host_box["x"] + host_box["width"] <= action_box["x"]
-        else:
-            expect(row.locator("td").first).to_be_hidden()
+            < 256
+        )
+        host_box = host.bounding_box()
+        action_box = action_cell.bounding_box()
+        assert host_box is not None and action_box is not None
+        assert host_box["x"] + host_box["width"] <= action_box["x"]
+    else:
+        expect(row.locator("td").first).to_be_hidden()
 ```
 
 The `>= 200` floor discriminates the fix from the bug: on this fixture the name cell measured 148px before the change and 280px after.

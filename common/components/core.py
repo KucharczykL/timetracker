@@ -21,7 +21,6 @@ from typing import Self
 from django.utils.html import escape
 from django.utils.safestring import SafeText, mark_safe
 
-
 HTMLAttribute = tuple[str, str | int | bool]
 
 
@@ -73,7 +72,7 @@ class Media:
         self.js = tuple(js)
         self.js_external = tuple(js_external)
 
-    def __add__(self, other: "Media | None") -> "Media":
+    def __add__(self, other: Media | None) -> Media:
         if not other:
             return self
         return Media(
@@ -81,7 +80,7 @@ class Media:
             _dedup(self.js_external, other.js_external),
         )
 
-    def __radd__(self, other: "Media | None") -> "Media":
+    def __radd__(self, other: Media | None) -> Media:
         # Supports ``sum(medias, Media())`` and ``0 + media``.
         if not other or other == 0:
             return self
@@ -169,7 +168,7 @@ def as_children(children: Children) -> list[Child]:
     return list(children)
 
 
-def as_attributes(attributes: "Attributes | None") -> list[HTMLAttribute]:
+def as_attributes(attributes: Attributes | None) -> list[HTMLAttribute]:
     """Normalise an ``attributes`` argument to a mutable ``list[HTMLAttribute]``.
 
     Builders take a covariant ``Attributes`` (so callers can pass a
@@ -185,7 +184,7 @@ def as_attributes(attributes: "Attributes | None") -> list[HTMLAttribute]:
 _ACCUMULATING_ATTRS: dict[str, str] = {"class": " ", "style": "; "}
 
 
-def normalize_attributes(attributes: "Attributes") -> list[HTMLAttribute]:
+def normalize_attributes(attributes: Attributes) -> list[HTMLAttribute]:
     """Collapse an attribute list into canonical, render-ready form.
 
     The single source of truth for how attribute contributions merge:
@@ -326,7 +325,7 @@ class Element(Node):
         self,
         tag_name: str,
         attributes: Attributes | None = None,
-        children: "Children | Node" = None,
+        children: Children | Node = None,
     ) -> None:
         if not tag_name:
             raise ValueError("tag_name is required.")
@@ -338,7 +337,7 @@ class Element(Node):
             children = [children]
         self.children = children
 
-    def __getitem__(self, children: "Children | Node") -> "Element":
+    def __getitem__(self, children: Children | Node) -> Element:
         """htpy-style children: ``Div(class_="x")[child1, child2]``.
 
         Returns an Element with the same tag/attributes/media and these
@@ -453,21 +452,21 @@ class BaseComponent(Node):
         return self.media + self._tree().collect_media()
 
 
-def render(node: "Node | str") -> SafeText:
+def render(node: Node | str) -> SafeText:
     """Render a node (or pass a string through) to safe HTML."""
     if isinstance(node, Node):
         return mark_safe(node._render())
     return mark_safe(str(node))
 
 
-def collect_media(node: "Node | str") -> Media:
+def collect_media(node: Node | str) -> Media:
     """Collect the media of a node tree (empty for a bare string)."""
     if isinstance(node, Node):
         return node.collect_media()
     return Media()
 
 
-def assert_unique_element_ids(node: "Node | str") -> None:
+def assert_unique_element_ids(node: Node | str) -> None:
     """Raise in DEBUG page assembly when an Element tree repeats a DOM id.
 
     ``<template>`` content is skipped: it parses into an inert DocumentFragment

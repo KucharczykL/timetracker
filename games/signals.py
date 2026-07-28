@@ -1,6 +1,7 @@
 import logging
 from datetime import timedelta
 
+from django.db import transaction
 from django.db.models import F, Sum
 from django.db.models.signals import (
     m2m_changed,
@@ -9,7 +10,6 @@ from django.db.models.signals import (
     pre_delete,
     pre_save,
 )
-from django.db import transaction
 from django.dispatch import receiver
 from django.utils.timezone import now
 
@@ -53,12 +53,15 @@ def store_purchase_price_snapshot(sender, instance, **kwargs):
 @receiver(post_save, sender=Purchase)
 def mark_needs_price_update(sender, instance, created, **kwargs):
     """Mark purchase for price update if price or currency changed."""
-    if not created and hasattr(instance, "_old_price"):
-        if (
+    if (
+        not created
+        and hasattr(instance, "_old_price")
+        and (
             instance.price != instance._old_price
             or instance.price_currency != instance._old_currency
-        ):
-            sender.objects.filter(pk=instance.pk).update(needs_price_update=True)
+        )
+    ):
+        sender.objects.filter(pk=instance.pk).update(needs_price_update=True)
 
 
 @receiver(m2m_changed, sender=Purchase.games.through)
@@ -119,9 +122,7 @@ def game_status_changed(sender, instance, **kwargs):
 
     if old_status != instance.status:
         logger.info(
-            "[game_status_changed]: Status changed from {} to {}".format(
-                old_status, instance.status
-            )
+            f"[game_status_changed]: Status changed from {old_status} to {instance.status}"
         )
         GameStatusChange.objects.create(
             game=instance,

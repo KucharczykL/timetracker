@@ -5,9 +5,10 @@ gate + reachable-model registry the nested builder renders from, the
 FilterGroup template emission, and the mode->list-URL table.
 """
 
+from zoneinfo import ZoneInfo
+
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
-from zoneinfo import ZoneInfo
 
 from common.components import (
     FilterBuilder,

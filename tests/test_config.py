@@ -173,20 +173,15 @@ def test_deprecated_prod_var_implies_production(monkeypatch):
 
 def test_env_parser_quotes_comments_and_export(env_file):
     env_file(
-        "\n".join(
-            [
-                "# a comment line",
-                "PLAIN=value",
-                "export EXPORTED=exported-value",
-                'DOUBLE="quoted value"',
-                "SINGLE='single quoted'",
-                "INLINE=value  # trailing comment",
-                'HASH_IN_QUOTES="a # b"',
-                "EMPTY=",
-                'QUOTED_THEN_COMMENT="keep" # drop',
-            ]
-        )
-        + "\n"
+        "# a comment line\n"
+        "PLAIN=value\n"
+        "export EXPORTED=exported-value\n"
+        'DOUBLE="quoted value"\n'
+        "SINGLE='single quoted'\n"
+        "INLINE=value  # trailing comment\n"
+        'HASH_IN_QUOTES="a # b"\n'
+        "EMPTY=\n"
+        'QUOTED_THEN_COMMENT="keep" # drop\n'
     )
     assert config("PLAIN") == "value"
     assert config("EXPORTED") == "exported-value"

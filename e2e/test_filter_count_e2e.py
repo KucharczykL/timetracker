@@ -18,7 +18,6 @@ from playwright.sync_api import Page, expect
 
 from common.components import FilterCount, FilterGroup
 from common.components.core import Document
-from common.date_time_presentation import date_time_presentation_for_request
 from common.components.primitives import (
     Body,
     Div,
@@ -29,6 +28,7 @@ from common.components.primitives import (
     Script,
     Title,
 )
+from common.date_time_presentation import date_time_presentation_for_request
 from games.models import Game, Platform
 from timetracker.urls import urlpatterns as base_urlpatterns
 

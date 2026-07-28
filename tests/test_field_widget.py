@@ -6,11 +6,14 @@ flat bars consume it and #192's nested leaf row clones it, so these tests pin th
 acceptance cases from the issue plus the dispatch, prefill, and guard behaviour.
 """
 
-import pytest
 from zoneinfo import ZoneInfo
+
+import pytest
 
 from common.components.filters import (
     field_widget as _field_widget,
+)
+from common.components.filters import (
     field_widget_templates as _field_widget_templates,
 )
 from common.date_time_presentation import (

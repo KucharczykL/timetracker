@@ -19,8 +19,8 @@ from games.models import (
     Device,
     Game,
     GameStatusChange,
-    PlayEvent,
     Platform,
+    PlayEvent,
     Purchase,
     Session,
 )
@@ -55,7 +55,7 @@ def _caption_text(html: str, caption_id: str) -> str | None:
     match = re.search(
         rf'<caption[^>]*\bid="{re.escape(caption_id)}"[^>]*>(.*?)</caption>',
         html,
-        re.S,
+        re.DOTALL,
     )
     return match.group(1).strip() if match else None
 

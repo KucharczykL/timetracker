@@ -207,17 +207,13 @@ assert nav.evaluate("element => element.scrollWidth <= element.clientWidth")
 
 first_link = primary_links.first
 first_link.focus()
-assert "inset" in first_link.evaluate(
-    "element => getComputedStyle(element).boxShadow"
-)
+assert "inset" in first_link.evaluate("element => getComputedStyle(element).boxShadow")
 
 initial = nav_host.bounding_box()
 assert initial
 assert initial["y"] > 66
 target = initial["y"] + 100
-max_scroll = page.evaluate(
-    "document.documentElement.scrollHeight - window.innerHeight"
-)
+max_scroll = page.evaluate("document.documentElement.scrollHeight - window.innerHeight")
 assert target <= max_scroll
 page.evaluate("target => window.scrollTo(0, target)", target)
 page.wait_for_function("target => window.scrollY >= target - 1", target)
@@ -229,9 +225,7 @@ after_scaffold = page.locator("[data-settings-after-scaffold]")
 after_document_y = after_scaffold.evaluate(
     "element => element.getBoundingClientRect().top + window.scrollY"
 )
-max_scroll = page.evaluate(
-    "document.documentElement.scrollHeight - window.innerHeight"
-)
+max_scroll = page.evaluate("document.documentElement.scrollHeight - window.innerHeight")
 assert after_document_y <= max_scroll
 page.evaluate("target => window.scrollTo(0, target)", after_document_y)
 page.wait_for_function(

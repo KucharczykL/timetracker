@@ -12,15 +12,17 @@ from django.test import SimpleTestCase, TestCase
 from common.components import (
     QUICK_FACET_KINDS,
     QUICK_FACETS,
-    QuickFilterBar as _QuickFilterBar,
     is_quick_editable,
 )
+from common.components import (
+    QuickFilterBar as _QuickFilterBar,
+)
+from common.components.custom_elements import FILTER_MODE_MODELS, list_url_for
+from common.criteria import field_metadata
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
 )
-from common.components.custom_elements import FILTER_MODE_MODELS, list_url_for
-from common.criteria import field_metadata
 from games.filters import MODE_PARSERS, filter_for_model
 from games.views.filtering import BUILDER_MODES, builder_url_for
 

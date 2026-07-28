@@ -3,10 +3,10 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
-from django.test import TestCase, Client
+from django.contrib.auth.models import User
+from django.test import Client, TestCase
 
 from games.models import Device, Game, Platform, Purchase, Session
-from django.contrib.auth.models import User
 
 
 class MiddlewareIntegrationTest(TestCase):

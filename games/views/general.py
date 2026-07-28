@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any
 
 from django.apps import apps
@@ -28,8 +28,8 @@ from common.components.custom_elements import (
     DropdownLinkItem,
 )
 from common.components.primitives import ContentContainer, PageHeading, Span
-from common.layout import render_page
 from common.date_time_presentation import date_time_presentation_for_request
+from common.layout import render_page
 from common.time import format_duration
 from games.filters import SessionFilter, filter_url, model_field_registry
 from games.models import Device, Game, Platform, Purchase, Session
@@ -87,7 +87,7 @@ def model_counts(request: HttpRequest) -> dict[str, Any]:
 
 
 def global_current_year(request: HttpRequest) -> dict[str, int]:
-    return {"global_current_year": datetime.now().year}
+    return {"global_current_year": localdate().year}
 
 
 @login_required

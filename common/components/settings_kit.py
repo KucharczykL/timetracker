@@ -22,12 +22,12 @@ from common.components.core import (
 )
 from common.components.custom_elements import BottomSheet
 from common.components.primitives import (
+    FORM_MAX_WIDTH_CLASS,
     A,
     Badge,
     ContentContainer,
     ControlButton,
     Div,
-    FORM_MAX_WIDTH_CLASS,
     FormFieldGroup,
     FormFieldPresentation,
     FormFields,
@@ -292,8 +292,10 @@ def _section_panel(section: SettingsSection) -> Node:
             ("data-settings-section", ""),
             (
                 "class",
-                "scroll-mt-24 @4xl:scroll-mt-4 flex flex-col gap-6 rounded-base border "
-                "border-default bg-neutral-primary-medium p-4 @container",
+                (
+                    "scroll-mt-24 @4xl:scroll-mt-4 flex flex-col gap-6 rounded-base "
+                    "border border-default bg-neutral-primary-medium p-4 @container"
+                ),
             ),
         ],
     )[

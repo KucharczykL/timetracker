@@ -11,17 +11,19 @@ with AND/OR/NOT composition and typed criterion fields.
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Type  # noqa: UP035 — see _comparison_model below
+from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
     from games.models import (
         Device,
         Game,
-        PlayEvent,
         Platform,
+        PlayEvent,
         Purchase,
         Session,
     )
+
+import builtins
 
 from django.db.models import Q
 from django.urls import reverse
@@ -37,9 +39,9 @@ from common.criteria import (
     FilterField,
     FloatCriterion,
     IntCriterion,
-    Modifier,
     ModelFieldBundle,
     ModelKey,
+    Modifier,
     MultiCriterion,
     OperatorFilter,
     StringCriterion,
@@ -129,7 +131,12 @@ class GameFilter(OperatorFilter):
 
     # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
     # reviewable diff (AND-composition makes the order semantically irrelevant).
-    fields = {
+    # TODO(py3.15, ~Oct 2026): these read-only ClassVar dict tables (here and in
+    # forms.py Meta) exist to satisfy RUF012; once the project moves to 3.15,
+    # consider the builtin ``frozendict`` (PEP 814) instead — but verify first
+    # that RUF012 treats it as immutable and that each consumer accepts a
+    # non-dict Mapping (frozendict does not subclass dict).
+    fields: ClassVar[dict[str, FilterField]] = {
         "name": FilterField(),
         "sort_name": FilterField(),
         "year_released": FilterField(),
@@ -146,13 +153,13 @@ class GameFilter(OperatorFilter):
         ),
     }
 
-    # Uppercase ``Type[...]`` (not the modern ``type[...]``) is deliberate: two
-    # filters below (PurchaseFilter, DeviceFilter) declare a field named ``type``
-    # that shadows the builtin in annotation scope, so ``type[Purchase]`` fails
-    # mypy ("Variable ... .type is not valid as a type"). Uniform ``Type`` keeps
-    # all six overrides consistent.
+    # Two overrides below (PurchaseFilter, DeviceFilter) spell this return type
+    # ``builtins.type[...]``: those filters declare a field named ``type`` that
+    # shadows the builtin in annotation scope, so a bare ``type[Purchase]`` fails
+    # mypy ("Variable ... .type is not valid as a type"). The unshadowed filters
+    # use the plain builtin.
     @classmethod
-    def _comparison_model(cls) -> Type[Game]:
+    def _comparison_model(cls) -> type[Game]:
         from games.models import Game
 
         return Game
@@ -234,7 +241,7 @@ class SessionFilter(OperatorFilter):
 
     # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
     # reviewable diff (AND-composition makes the order semantically irrelevant).
-    fields = {
+    fields: ClassVar[dict[str, FilterField]] = {
         "game": FilterField("game_id", search_url="/api/games/search"),
         "device": FilterField("device_id", search_url="/api/devices/search"),
         "emulated": FilterField(),
@@ -259,7 +266,7 @@ class SessionFilter(OperatorFilter):
     }
 
     @classmethod
-    def _comparison_model(cls) -> Type[Session]:
+    def _comparison_model(cls) -> type[Session]:
         from games.models import Session
 
         return Session
@@ -347,7 +354,7 @@ class PurchaseFilter(OperatorFilter):
     # ``to_q`` skips it — its Q is built imperatively by ``_games_to_q`` in
     # ``_extra_q`` (INCLUDES_ALL/_ONLY need chained subqueries). ``search`` stays
     # out of the table entirely (the free-text box, not a pickable field).
-    fields = {
+    fields: ClassVar[dict[str, FilterField]] = {
         "name": FilterField(),
         "platform": FilterField("platform_id", search_url="/api/platforms/search"),
         "games": FilterField(
@@ -374,10 +381,10 @@ class PurchaseFilter(OperatorFilter):
         "converted_currency": FilterField(),
     }
 
-    _IMPERATIVE_CRITERIA = {"search"}
+    _IMPERATIVE_CRITERIA: ClassVar[set[str]] = {"search"}
 
     @classmethod
-    def _comparison_model(cls) -> Type[Purchase]:
+    def _comparison_model(cls) -> builtins.type[Purchase]:
         from games.models import Purchase
 
         return Purchase
@@ -515,14 +522,14 @@ class DeviceFilter(OperatorFilter):
 
     # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
     # reviewable diff (AND-composition makes the order semantically irrelevant).
-    fields = {
+    fields: ClassVar[dict[str, FilterField]] = {
         "name": FilterField(),
         "type": FilterField(),
         "created_at": FilterField("created_at__date"),
     }
 
     @classmethod
-    def _comparison_model(cls) -> Type[Device]:
+    def _comparison_model(cls) -> builtins.type[Device]:
         from games.models import Device
 
         return Device
@@ -572,7 +579,7 @@ class PlatformFilter(OperatorFilter):
 
     # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
     # reviewable diff (AND-composition makes the order semantically irrelevant).
-    fields = {
+    fields: ClassVar[dict[str, FilterField]] = {
         "name": FilterField(),
         "group": FilterField(),
         "icon": FilterField(),
@@ -580,7 +587,7 @@ class PlatformFilter(OperatorFilter):
     }
 
     @classmethod
-    def _comparison_model(cls) -> Type[Platform]:
+    def _comparison_model(cls) -> type[Platform]:
         from games.models import Platform
 
         return Platform
@@ -638,7 +645,7 @@ class PlayEventFilter(OperatorFilter):
 
     # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
     # reviewable diff (AND-composition makes the order semantically irrelevant).
-    fields = {
+    fields: ClassVar[dict[str, FilterField]] = {
         "game": FilterField("game_id", search_url="/api/games/search"),
         "started": FilterField(),
         "ended": FilterField(),
@@ -648,7 +655,7 @@ class PlayEventFilter(OperatorFilter):
     }
 
     @classmethod
-    def _comparison_model(cls) -> Type[PlayEvent]:
+    def _comparison_model(cls) -> type[PlayEvent]:
         from games.models import PlayEvent
 
         return PlayEvent

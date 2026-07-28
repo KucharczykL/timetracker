@@ -8,9 +8,6 @@ import django.test
 from django.utils.safestring import SafeText
 
 from common.components import (
-    searchselect_selected,
-)
-from common.components import (
     ComboboxDropdown,
     Div,
     FilterSelect,
@@ -18,6 +15,7 @@ from common.components import (
     Pill,
     PresetSelect,
     SearchSelect,
+    searchselect_selected,
 )
 from common.components.core import collect_media
 from games.models import Game, Platform
@@ -323,7 +321,7 @@ class FilterSelectFieldHostTest(unittest.TestCase):
 
 
 class FilterSelectComponentTest(unittest.TestCase):
-    MODIFIERS = [("NOT_NULL", "(Any)"), ("IS_NULL", "(None)")]
+    MODIFIERS = (("NOT_NULL", "(Any)"), ("IS_NULL", "(None)"))
 
     def test_returns_safetext(self):
         self.assertIsInstance(str(FilterSelect(field_name="type")), SafeText)
@@ -429,10 +427,10 @@ class FilterSelectComponentTest(unittest.TestCase):
         self.assertIn(">Obscure Game</span>", html)
         self.assertIn('data-value="4172"', html)
 
-    M2M_MODIFIERS = [
+    M2M_MODIFIERS = (
         ("INCLUDES_ALL", "(All)"),
         ("INCLUDES_ONLY", "(Only)"),
-    ]
+    )
 
     def test_m2m_modifiers_render_as_option_rows(self):
         """M2M modifiers (All)/(Only) render as modifier-option rows in the

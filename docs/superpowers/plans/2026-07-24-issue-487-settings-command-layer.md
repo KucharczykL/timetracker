@@ -20,12 +20,13 @@ class SettingOperation(StrEnum):
     SET = "set"
     CLEAR = "clear"
 
+
 class SettingMutation(NamedTuple):
-    effective: ResolvedSetting    # resolved state after the write
-    operation: SettingOperation   # SET (value given) | CLEAR (value is None)
-    changed: bool                 # storage actually mutated
-    stored: object | None         # normalized value now stored...
-    stored_present: bool          # ...vs cleared/absent (disambiguates a stored None)
+    effective: ResolvedSetting  # resolved state after the write
+    operation: SettingOperation  # SET (value given) | CLEAR (value is None)
+    changed: bool  # storage actually mutated
+    stored: object | None  # normalized value now stored...
+    stored_present: bool  # ...vs cleared/absent (disambiguates a stored None)
 ```
 
 `(operation, changed, stored_present)` distinguishes all four cases:

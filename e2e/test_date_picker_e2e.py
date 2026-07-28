@@ -17,7 +17,6 @@ from common.components.primitives import CsrfInput
 from common.date_time_presentation import date_time_presentation_for_request
 from games.models import Game, Platform, Purchase, UserPreferences
 
-
 # ── Real-app tests: add/edit Purchase and PlayEvent ─────────────────────────
 
 

@@ -27,7 +27,8 @@ register_element("session-actions", "SessionActions", SessionActionsProps)
 # CUSTOM_ELEMENT_MEDIA["session-actions"] = Media(js=("dist/elements/...",))
 
 # usage (domain.py) — no builder import needed
-Element("session-actions",
+Element(
+    "session-actions",
     [("class", "flex justify-end"), ("session-id", str(session.pk))],
     children=[...],
 )

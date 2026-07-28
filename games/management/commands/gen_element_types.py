@@ -7,15 +7,14 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 
 # Importing the components package triggers element registration at import time.
-import common.components  # noqa: F401
+import common.components
 import common.criteria
+from common.components.custom_elements import render_props_module
 from common.components.date_range_picker import (
     CALENDAR_DAY_CLASSES,
     CALENDAR_TRACK_CLASSES,
     CALENDAR_WEEKDAY_CLASS,
 )
-from common.date_time_presentation import DateTimePresentationConfig
-from common.components.custom_elements import render_props_module
 from common.components.ts_codegen import (
     ChoiceVocab,
     TsConstant,
@@ -30,6 +29,7 @@ from common.criteria import (
     Modifier,
     ModifierToken,
 )
+from common.date_time_presentation import DateTimePresentationConfig
 from timetracker.config import SETTING_SOURCE_CHOICES
 from timetracker.settings_commands import SETTING_NAMESPACE_CHOICES
 from timetracker.settings_registry import THEME_CHOICES

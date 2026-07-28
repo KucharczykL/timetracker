@@ -1,5 +1,5 @@
-from html.parser import HTMLParser
 import re
+from html.parser import HTMLParser
 
 import pytest
 from django import forms
@@ -104,7 +104,7 @@ def _theme_toggle_markup(html: str) -> tuple[str, str]:
 
 
 class _NavbarAccountActions(HTMLParser):
-    _VOID_ELEMENTS = {"input"}
+    _VOID_ELEMENTS = frozenset({"input"})
 
     def __init__(self) -> None:
         super().__init__()

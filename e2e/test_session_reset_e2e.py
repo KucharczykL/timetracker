@@ -31,7 +31,7 @@ def _make_running_session() -> Session:
     game = Game.objects.create(name="Reset Game", platform=platform)
     return Session.objects.create(
         game=game,
-        timestamp_start=dt.datetime(2020, 1, 1, 10, 0, tzinfo=dt.timezone.utc),
+        timestamp_start=dt.datetime(2020, 1, 1, 10, 0, tzinfo=dt.UTC),
     )
 
 
@@ -85,6 +85,4 @@ def test_reset_cancel_leaves_start_unchanged(authenticated_page: Page, live_serv
     # The start time is untouched.
     expect(row).to_contain_text("2020")
     session.refresh_from_db()
-    assert session.timestamp_start == dt.datetime(
-        2020, 1, 1, 10, 0, tzinfo=dt.timezone.utc
-    )
+    assert session.timestamp_start == dt.datetime(2020, 1, 1, 10, 0, tzinfo=dt.UTC)

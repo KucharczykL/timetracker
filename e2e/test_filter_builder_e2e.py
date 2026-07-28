@@ -24,14 +24,13 @@ Prefill behavior note:
 import json
 import re
 import urllib.parse
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 
 from games.models import FilterPreset, Game, Platform, PlayEvent, Purchase
-
 
 # ── auth helpers (no shared authenticated_page fixture exists in conftest.py) ──
 
@@ -486,15 +485,15 @@ def test_nested_relation_prefill_renders_full_tree(
     done_game = Game.objects.create(name="DoneGame", platform=platform, status="f")
     other_game = Game.objects.create(name="OtherGame", platform=platform, status="p")
     PlayEvent.objects.create(
-        game=done_game, ended=datetime(2026, 3, 1, 12, 0, tzinfo=timezone.utc)
+        game=done_game, ended=datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
     )
     matching_purchase = Purchase.objects.create(
-        date_purchased=datetime(2026, 1, 5, 12, 0, tzinfo=timezone.utc),
+        date_purchased=datetime(2026, 1, 5, 12, 0, tzinfo=UTC),
         type=Purchase.GAME,
     )
     matching_purchase.games.set([done_game])
     non_matching_purchase = Purchase.objects.create(
-        date_purchased=datetime(2026, 2, 5, 12, 0, tzinfo=timezone.utc),
+        date_purchased=datetime(2026, 2, 5, 12, 0, tzinfo=UTC),
         type=Purchase.GAME,
     )
     non_matching_purchase.games.set([other_game])
@@ -570,7 +569,7 @@ def test_scoped_aggregate_prefill_hydrates_scope_and_counts(
     desktop = Device.objects.create(name="Desktop", type="PC")
     deck_game = Game.objects.create(name="DeckGame", platform=platform)
     desktop_game = Game.objects.create(name="DeskGame", platform=platform)
-    first_start = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
+    first_start = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
     for index, (game, device) in enumerate(
         [
             (deck_game, deck),
@@ -642,7 +641,7 @@ def test_scoped_aggregate_narrows_game_list(
     desktop = Device.objects.create(name="Desktop", type="PC")
     deck_game = Game.objects.create(name="DeckGame", platform=platform)
     desktop_game = Game.objects.create(name="DeskGame", platform=platform)
-    first_start = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
+    first_start = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
     for index, (game, device) in enumerate(
         [
             (deck_game, deck),
@@ -708,14 +707,14 @@ def test_cross_model_year_comparison_filters_sessions(
         name="MissGame", platform=platform, year_released=2020
     )
 
-    match_start = datetime(2020, 6, 15, 10, 0, tzinfo=timezone.utc)
+    match_start = datetime(2020, 6, 15, 10, 0, tzinfo=UTC)
     Session.objects.create(
         game=match_game,
         timestamp_start=match_start,
         timestamp_end=match_start + timedelta(hours=2),
     )
 
-    miss_start = datetime(2021, 3, 10, 14, 0, tzinfo=timezone.utc)
+    miss_start = datetime(2021, 3, 10, 14, 0, tzinfo=UTC)
     Session.objects.create(
         game=miss_game,
         timestamp_start=miss_start,

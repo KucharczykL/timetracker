@@ -1,6 +1,7 @@
+from zoneinfo import ZoneInfo
+
 import pytest
 from django.utils import timezone
-from zoneinfo import ZoneInfo
 
 from common.components import TableRow
 from common.date_time_presentation import (

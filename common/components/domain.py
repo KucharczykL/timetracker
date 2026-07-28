@@ -338,7 +338,7 @@ def SessionDeviceSelector(session, session_devices, csrf_token: str) -> Node:
     )
 
 
-def SessionActions(session, csrf_token: str, origin: "OriginUrl | None") -> Node:
+def SessionActions(session, csrf_token: str, origin: OriginUrl | None) -> Node:
     """Row actions for a session: Finish + Reset (only while the session is open),
     Edit, Delete. The finish/reset buttons drive ``PATCH /api/session/<id>`` and
     swap the row client-side; reset opens an inline confirm modal. Edit/Delete stay

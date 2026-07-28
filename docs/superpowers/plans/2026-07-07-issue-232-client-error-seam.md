@@ -99,17 +99,13 @@ def _payload(**overrides) -> dict:
 
 def test_anonymous_is_rejected(db):
     anonymous = Client()
-    response = anonymous.post(
-        _url(), _payload(), content_type="application/json"
-    )
+    response = anonymous.post(_url(), _payload(), content_type="application/json")
     assert response.status_code == 401
 
 
 def test_valid_report_returns_204_and_logs(auth_client, capture_client_errors_logger):
     with capture_client_errors_logger() as caplog:
-        response = auth_client.post(
-            _url(), _payload(), content_type="application/json"
-        )
+        response = auth_client.post(_url(), _payload(), content_type="application/json")
     assert response.status_code == 204
     records = [r for r in caplog.records if r.name == "client_errors"]
     assert len(records) == 1

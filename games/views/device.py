@@ -4,11 +4,11 @@ from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 
 from common.components import (
+    ICON_BUTTON_SIZE_CLASS,
     AddForm,
     ButtonGroup,
     Column,
     ContentContainer,
-    ICON_BUTTON_SIZE_CLASS,
     Icon,
     Li,
     QuickFilterBar,
@@ -21,23 +21,23 @@ from common.components import (
 )
 from common.date_time_presentation import date_time_presentation_for_request
 from common.layout import render_page
+from common.returns import action_url
 from common.utils import paginate
+from games.filters import parse_device_filter
+from games.forms import DeviceForm
+from games.models import Device
 from games.sorting import (
     DEVICE_DEFAULT_SORT,
     DEVICE_SORTS,
     apply_sort,
     parse_find_filter,
 )
-from games.filters import parse_device_filter
-from games.forms import DeviceForm
 from games.views.deletion import confirm_and_delete
 from games.views.filtering import (
     apply_structured_filter,
     builder_url_for,
     warn_unknown_sort,
 )
-from common.returns import action_url
-from games.models import Device
 from games.views.returns import return_url
 
 

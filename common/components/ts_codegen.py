@@ -77,7 +77,7 @@ def _render_choice_vocabulary_block(vocab: ChoiceVocab) -> str:
         if value in seen:
             raise ValueError(f"ts_codegen: duplicate choice value {value!r}")
         if not isinstance(label, str):
-            raise ValueError("ts_codegen: choice labels must be strings")
+            raise TypeError("ts_codegen: choice labels must be strings")
         seen.add(value)
         values.append(value)
         labels.append(label)
@@ -231,11 +231,7 @@ def render_filter_metadata_module(
         # allow_nan=False: NaN/Infinity are valid TS `number` expressions but
         # not JSON — reject rather than emit a not-actually-JSON constant.
         try:
-            return "export const {name}: {ts_type} = {value};".format(
-                name=constant.name,
-                ts_type=ts_type(constant.python_type),
-                value=json.dumps(_jsonable(constant.value), indent=2, allow_nan=False),
-            )
+            return f"export const {constant.name}: {ts_type(constant.python_type)} = {json.dumps(_jsonable(constant.value), indent=2, allow_nan=False)};"
         except (TypeError, ValueError) as error:
             raise TypeError(
                 f"ts_codegen: constant {constant.name!r}: {error}"

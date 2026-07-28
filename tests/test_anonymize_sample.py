@@ -1,5 +1,5 @@
 import gzip
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -7,7 +7,7 @@ import yaml
 from django.core.management import call_command
 from django.test import TestCase
 
-from games.models import Device, Game, PlayEvent, Platform, Purchase, Session
+from games.models import Device, Game, Platform, PlayEvent, Purchase, Session
 
 GENERATED_KEYS = {
     "price_per_game",
@@ -45,21 +45,21 @@ def _build_dataset():
     # Session tied to a game, a session with game=None, and one with NULL manual.
     Session.objects.create(
         game=games[1],
-        timestamp_start=datetime(2021, 6, 1, 20, 0, tzinfo=timezone.utc),
-        timestamp_end=datetime(2021, 6, 1, 22, 0, tzinfo=timezone.utc),
+        timestamp_start=datetime(2021, 6, 1, 20, 0, tzinfo=UTC),
+        timestamp_end=datetime(2021, 6, 1, 22, 0, tzinfo=UTC),
         device=device,
         note="played after dinner",
     )
     Session.objects.create(
         game=None,
-        timestamp_start=datetime(2021, 7, 1, 10, 0, tzinfo=timezone.utc),
+        timestamp_start=datetime(2021, 7, 1, 10, 0, tzinfo=UTC),
         timestamp_end=None,
         note="gameless",
     )
     Session.objects.create(
         game=games[2],
-        timestamp_start=datetime(2021, 8, 1, 12, 0, tzinfo=timezone.utc),
-        timestamp_end=datetime(2021, 8, 1, 13, 0, tzinfo=timezone.utc),
+        timestamp_start=datetime(2021, 8, 1, 12, 0, tzinfo=UTC),
+        timestamp_end=datetime(2021, 8, 1, 13, 0, tzinfo=UTC),
         duration_manual=None,
     )
 

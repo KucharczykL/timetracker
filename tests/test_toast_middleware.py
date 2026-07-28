@@ -1,4 +1,5 @@
 import json
+
 from django.contrib.messages import constants as message_constants
 from django.contrib.messages.storage.fallback import FallbackStorage
 from django.http import HttpRequest, HttpResponse

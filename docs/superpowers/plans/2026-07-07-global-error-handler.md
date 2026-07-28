@@ -520,11 +520,11 @@ Load the compiled module first in the `Page()` head so listeners register before
 In `common/layout.py`, insert one line immediately **before** the existing `Script(src=static("js/htmx.min.js")),` (currently line 526), so the block reads:
 
 ```python
-                        Safe(str(ModuleScript("dist/global-error-handler.js"))),
-                        Script(src=static("js/htmx.min.js")),
-                        Script(src=static("js/flowbite.min.js")),
-                        Script(src=static("js/dist/htmx-redirect-toast.js")),
-                        Script(src=static("js/dist/toast.js")),
+(Safe(str(ModuleScript("dist/global-error-handler.js"))),)
+(Script(src=static("js/htmx.min.js")),)
+(Script(src=static("js/flowbite.min.js")),)
+(Script(src=static("js/dist/htmx-redirect-toast.js")),)
+(Script(src=static("js/dist/toast.js")),)
 ```
 
 Use `ModuleScript` (not `Script`) because the compiled module has a top-level `import`; a classic `<script>` throws `SyntaxError` at parse and registers no listeners. `<script type="module">` is implicitly deferred, so the handler registers after the classic vendor scripts and after HTML parse — the accepted trade-off for an ES module that imports the shared seam.

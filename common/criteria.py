@@ -10,13 +10,15 @@ import json
 import re
 import types
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass, field
+from dataclasses import fields as dc_fields
 from datetime import date
+from enum import Enum
 
 # Private stdlib regex AST modules (typeshed doesn't expose them); used only for the
 # ReDoS nested-quantifier check, safe because CLAUDE.md pins CPython 3.14.
-from re import _constants as re_constants, _parser as re_parser  # type: ignore[attr-defined]
-from dataclasses import dataclass, field, fields as dc_fields
-from enum import Enum
+from re import _constants as re_constants  # type: ignore[attr-defined]
+from re import _parser as re_parser  # type: ignore[attr-defined]
 from typing import (
     Any,
     ClassVar,
@@ -830,7 +832,7 @@ class AggregateCriterion(_ScalarCriterion):
     # an init field would recreate the mis-typed dead field #139/#144 removed.
     # Beware: ``dataclasses.replace()`` re-defaults ``init=False`` fields, so a
     # replaced criterion silently loses its scope — mutate the attribute instead.
-    scope: "OperatorFilter | None" = field(default=None, init=False)
+    scope: OperatorFilter | None = field(default=None, init=False)
     # Aggregates compare numerically; coerce so a wrong-typed bound is caught at
     # parse rather than surfacing as a query-execution 500 (the eager build can't
     # catch it: ``aggregate_to_q`` feeds the value straight into Q). ``_coerce_number``
@@ -1330,7 +1332,7 @@ class AggregateSpec:
 
     reducer: Reducer
     accessor: RelationAccessor
-    scope_filter: "type[OperatorFilter]"
+    scope_filter: type[OperatorFilter]
     source: AttrName | None = None  # summed/averaged related column; None for count
     unit: DurationUnit | None = None
 
@@ -1804,14 +1806,11 @@ class OperatorFilter:
             if f.name in _OPERATOR_FIELDS:
                 if v:
                     result[f.name] = [sub.to_json() for sub in v]
-            elif isinstance(v, _Criterion):
-                j = v.to_json()
-                if j:
-                    result[f.name] = j
-            # Cross-entity sub-filter field (game_filter, playevent_filter, …).
-            # AND/OR/NOT already matched the first branch; the name guard is
-            # belt-and-suspenders against a future reordering of these branches.
-            elif isinstance(v, OperatorFilter) and f.name not in _OPERATOR_FIELDS:
+            elif (
+                isinstance(v, _Criterion)
+                or isinstance(v, OperatorFilter)
+                and f.name not in _OPERATOR_FIELDS
+            ):
                 j = v.to_json()
                 if j:
                     result[f.name] = j

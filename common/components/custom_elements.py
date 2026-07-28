@@ -257,7 +257,7 @@ _INCOMPLETE_BADGE_CLASS = (
 
 
 def FilterGroup(
-    *, presentation: "DateTimePresentation", model: str, filter: str = ""
+    *, presentation: DateTimePresentation, model: str, filter: str = ""
 ) -> Node:
     """The recursive nested-filter group shell (issue #189, phase 2c of #168).
 
@@ -872,7 +872,7 @@ class DropdownActionItem(BaseComponent):
         self.disabled = disabled
         self._attrs = attrs
 
-    def __getitem__(self, children: Children) -> "DropdownActionItem":
+    def __getitem__(self, children: Children) -> DropdownActionItem:
         return DropdownActionItem(
             as_children(children), disabled=self.disabled, **self._attrs
         )
@@ -1166,8 +1166,10 @@ def SplitButtonDropdown(
             [
                 (
                     "class",
-                    "rounded-e-base rounded-s-none border-l border-l-white/30 "
-                    f"{caret_focus}",
+                    (
+                        "rounded-e-base rounded-s-none border-l border-l-white/30 "
+                        f"{caret_focus}"
+                    ),
                 )
             ],
             color=caret_color,

@@ -1,17 +1,14 @@
-from datetime import datetime
+from datetime import UTC, date, datetime
 
 import requests
 
 url = "https://data.kurzy.cz/json/meny/b[6]den[{0}].json"
 date_format = "%Y%m%d"
-years = range(2000, datetime.now().year + 1)
-dates = [
-    datetime.strftime(datetime(day=1, month=1, year=year), format=date_format)
-    for year in years
-]
-for date in dates:
-    final_url = url.format(date)
-    year = date[:4]
+years = range(2000, datetime.now(tz=UTC).year + 1)
+dates = [date(year, 1, 1).strftime(date_format) for year in years]
+for date_string in dates:
+    final_url = url.format(date_string)
+    year = date_string[:4]
     response = requests.get(final_url)
     response.raise_for_status()
     data = response.json()

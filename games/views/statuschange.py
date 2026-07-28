@@ -1,6 +1,7 @@
 from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect
+
 from common.components import (
     AddForm,
     Column,
@@ -11,12 +12,12 @@ from common.components import (
     make_row,
     paginated_table_content,
 )
-from common.layout import render_page
 from common.date_time_presentation import date_time_presentation_for_request
+from common.layout import render_page
 from common.utils import paginate
-from games.sorting import parse_find_filter
 from games.forms import GameStatusChangeForm
 from games.models import GameStatusChange
+from games.sorting import parse_find_filter
 from games.views.deletion import confirm_and_delete
 from games.views.returns import return_url
 

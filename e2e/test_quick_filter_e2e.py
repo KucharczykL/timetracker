@@ -5,6 +5,7 @@ the bar cannot round-trip."""
 
 import json
 import urllib.parse
+from datetime import UTC
 
 import pytest
 from django.urls import reverse
@@ -84,13 +85,13 @@ def test_quick_facet_apply_filters_the_list(authenticated_page: Page, live_serve
 def test_quick_scalar_facet_filters_sessions(authenticated_page: Page, live_server):
     """The sessions quick bar's Duration number facet serializes a flat
     numeric criterion on Apply and the list is filtered by it."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from games.models import Session
 
     platform = Platform.objects.create(name="PC", icon="pc")
     game = Game.objects.create(name="Timed Game", platform=platform)
-    start = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+    start = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
     long_session = Session.objects.create(
         game=game, timestamp_start=start, timestamp_end=start + timedelta(hours=3)
     )
@@ -154,14 +155,14 @@ def test_dropdown_facet_full_flow(authenticated_page: Page, live_server):
     include a game, remove a pill (the panel must stay open — the composedPath
     close-guard fix), Apply, and round-trip back into an editable bar with the
     pill inside the reopened panel."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from games.models import Session
 
     platform = Platform.objects.create(name="PC", icon="pc")
     picked = Game.objects.create(name="Picked Game", platform=platform)
     other = Game.objects.create(name="Other Game", platform=platform)
-    start = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+    start = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
     picked_session = Session.objects.create(
         game=picked, timestamp_start=start, timestamp_end=start + timedelta(hours=1)
     )
@@ -225,17 +226,17 @@ def test_date_dropdown_facet_preset_flow(authenticated_page: Page, live_server):
     """The Started facet as a dropdown: a ghost "Started ▾" trigger
     opening a static always-visible calendar (no toggle, no Cancel/Select);
     picking the Today preset and applying serializes a BETWEEN criterion."""
-    from datetime import date, datetime, timedelta, timezone
+    from datetime import date, datetime, timedelta
 
     from games.models import Session
 
     platform = Platform.objects.create(name="PC", icon="pc")
     game = Game.objects.create(name="Doom", platform=platform)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     today_session = Session.objects.create(
         game=game, timestamp_start=now, timestamp_end=now + timedelta(hours=1)
     )
-    old_start = datetime(2020, 1, 1, 12, 0, tzinfo=timezone.utc)
+    old_start = datetime(2020, 1, 1, 12, 0, tzinfo=UTC)
     old_session = Session.objects.create(
         game=game,
         timestamp_start=old_start,
@@ -285,13 +286,13 @@ def test_priority_plus_overflow_collapses_and_restores(
     """Priority-plus: narrowing the viewport moves rightmost facets into
     the "⋯" overflow menu (ResizeObserver, no breakpoints); facets keep
     working from inside it; widening moves them back and hides the menu."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from games.models import Session
 
     platform = Platform.objects.create(name="PC", icon="pc")
     game = Game.objects.create(name="Doom", platform=platform)
-    start = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+    start = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
     long_session = Session.objects.create(
         game=game, timestamp_start=start, timestamp_end=start + timedelta(hours=3)
     )

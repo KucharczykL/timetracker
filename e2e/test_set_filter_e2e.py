@@ -25,7 +25,6 @@ from django.urls import path
 from common.components import QuickFilterBar
 from common.date_time_presentation import date_time_presentation_for_request
 
-
 _PAGE_TEMPLATE = """<!DOCTYPE html>
 <html>
 <head>

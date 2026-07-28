@@ -9,7 +9,7 @@
 """
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -26,7 +26,7 @@ from games.models import Device, Game, Platform, Purchase, Session
 
 
 def _dt(year=2024, month=6, day=1):
-    return datetime(year, month, day, 12, 0, tzinfo=timezone.utc)
+    return datetime(year, month, day, 12, 0, tzinfo=UTC)
 
 
 def _ids(filter_obj):

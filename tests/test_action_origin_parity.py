@@ -8,7 +8,7 @@ the single most important URL in the mechanism.
 
 import html
 import re
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -31,7 +31,7 @@ def world(db):
     purchase.games.set([game])
     Session.objects.create(
         game=game,
-        timestamp_start=datetime(2024, 6, 1, 12, tzinfo=timezone.utc),
+        timestamp_start=datetime(2024, 6, 1, 12, tzinfo=UTC),
         device=Device.objects.create(name="Desk"),
     )
     PlayEvent.objects.create(game=game)

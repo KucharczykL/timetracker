@@ -22,13 +22,14 @@ from common.components import (
     make_row,
     paginated_table_content,
 )
-from common.layout import render_page
 from common.date_time_presentation import (
     DateTimePresentation,
     date_time_presentation_for_request,
 )
-from games.formatting import session_time_range
+from common.layout import render_page
+from common.returns import OriginUrl
 from common.utils import paginate
+from games.formatting import session_time_range
 from games.forms import SessionForm
 from games.models import Device, Game, Session
 from games.sorting import (
@@ -40,7 +41,6 @@ from games.sorting import (
 from games.views.deletion import confirm_and_delete
 from games.views.filtering import warn_unknown_sort
 from games.views.returns import return_url
-from common.returns import OriginUrl
 from timetracker.settings_resolver import resolve_for_user
 
 

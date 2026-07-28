@@ -6,33 +6,35 @@ import logging
 import operator
 from dataclasses import dataclass
 from dataclasses import field as dc_field
+from datetime import UTC
 from functools import reduce
+from typing import ClassVar
 
 import pytest
 from django.db.models import F, Q
 
 from common.criteria import (
+    MAX_FIELD_COMPARISONS,
+    MAX_FILTER_BREADTH,
+    MAX_FILTER_DEPTH,
+    MAX_REGEX_PATTERN_LENGTH,
+    MAX_SET_VALUES,
     AggregateCriterion,
     BoolCriterion,
     ChoiceCriterion,
     ComparisonGranularity,
     DateCriterion,
     FieldComparisonCriterion,
+    FieldMeta,
     FilterError,
     FilterField,
     FloatCriterion,
-    MAX_FIELD_COMPARISONS,
-    MAX_FILTER_BREADTH,
-    MAX_FILTER_DEPTH,
-    MAX_REGEX_PATTERN_LENGTH,
-    MAX_SET_VALUES,
     IntCriterion,
     Modifier,
     MultiCriterion,
     OperatorFilter,
     RelationMatch,
     StringCriterion,
-    _ScalarCriterion,
     _allowed_comparison_modifiers,
     _comparison_group_for,
     _comparison_operand_info,
@@ -41,11 +43,11 @@ from common.criteria import (
     _filter_class_for,
     _maybe_group_for,
     _resolve_model_field,
+    _ScalarCriterion,
     bool_isnull_handler,
     bool_nonzero_duration_handler,
     comparable_columns,
     duration_hours_handler,
-    FieldMeta,
     field_metadata,
     filter_from_json,
     filter_to_json,
@@ -943,9 +945,10 @@ class TestPurchaseNumPurchasesAgainstDB:
 @pytest.mark.django_db
 class TestExpandedFiltersAgainstDB:
     def _setup_entities(self):
-        from games.models import Game, Platform, Device, Session, Purchase, PlayEvent
         import datetime
         from datetime import timedelta
+
+        from games.models import Device, Game, Platform, PlayEvent, Purchase, Session
 
         # 1. Platform & Game
         plat, _ = Platform.objects.get_or_create(
@@ -966,11 +969,9 @@ class TestExpandedFiltersAgainstDB:
             game=game,
             device=dev,
             timestamp_start=datetime.datetime(
-                2026, 6, 1, 12, 0, 0, tzinfo=datetime.timezone.utc
+                2026, 6, 1, 12, 0, 0, tzinfo=datetime.UTC
             ),
-            timestamp_end=datetime.datetime(
-                2026, 6, 1, 15, 0, 0, tzinfo=datetime.timezone.utc
-            ),
+            timestamp_end=datetime.datetime(2026, 6, 1, 15, 0, 0, tzinfo=datetime.UTC),
             duration_manual=timedelta(hours=1),
         )
 
@@ -1807,7 +1808,7 @@ class TestFilterErrorLogging:
         request.user = AnonymousUser()
         # apply_structured_filter queues messages.warning, which needs storage.
         # CookieStorage needs no session middleware (FallbackStorage would).
-        setattr(request, "_messages", CookieStorage(request))
+        request._messages = CookieStorage(request)
         return request
 
     def test_invalid_filter_logs_warning_and_fails_open(self, capture_games_logger):
@@ -1890,7 +1891,7 @@ class TestUnknownSortLogging:
 
         request = RequestFactory().get(path)
         request.user = AnonymousUser()
-        setattr(request, "_messages", CookieStorage(request))
+        request._messages = CookieStorage(request)
         return request
 
     def test_unknown_sort_logs_warning_and_toasts(self, capture_games_logger):
@@ -2881,9 +2882,8 @@ class TestComparableColumns:
     def test_operators_match_allowed_comparison_modifiers(self):
         """Each column carries the server-derived operator list (#152) so the TS
         widget renders it directly instead of re-deriving group->operators."""
-        from games.models import Game
-
         from common.criteria import _allowed_comparison_modifiers
+        from games.models import Game
 
         columns = self._by_value(Game)
         # string adds containment; number is ordered-only; bool is equality-only.
@@ -2899,9 +2899,8 @@ class TestComparableColumns:
     def test_operators_for_datetime_and_date_groups(self):
         """Close the group matrix: datetime (Session) and date (Purchase) carry
         the ordered-only operator set, like number."""
-        from games.models import Purchase, Session
-
         from common.criteria import _allowed_comparison_modifiers
+        from games.models import Purchase, Session
 
         ordered = [
             modifier.value for modifier in _allowed_comparison_modifiers("number")
@@ -3456,12 +3455,12 @@ class TestFilterComparisonModels:
         from games.filters import (
             DeviceFilter,
             GameFilter,
-            PlayEventFilter,
             PlatformFilter,
+            PlayEventFilter,
             PurchaseFilter,
             SessionFilter,
         )
-        from games.models import Device, Game, PlayEvent, Platform, Purchase, Session
+        from games.models import Device, Game, Platform, PlayEvent, Purchase, Session
 
         assert GameFilter()._comparison_model() is Game
         assert SessionFilter()._comparison_model() is Session
@@ -3734,21 +3733,17 @@ class TestFieldComparisonEndToEnd:
         session_x = Session.objects.create(
             game=game,
             timestamp_start=datetime.datetime(
-                2024, 6, 1, 23, 0, 0, tzinfo=datetime.timezone.utc
+                2024, 6, 1, 23, 0, 0, tzinfo=datetime.UTC
             ),
-            timestamp_end=datetime.datetime(
-                2024, 6, 1, 22, 0, 0, tzinfo=datetime.timezone.utc
-            ),
+            timestamp_end=datetime.datetime(2024, 6, 1, 22, 0, 0, tzinfo=datetime.UTC),
         )
         # Y: normal session (end after start) — must NOT be returned
         Session.objects.create(
             game=game,
             timestamp_start=datetime.datetime(
-                2024, 6, 2, 10, 0, 0, tzinfo=datetime.timezone.utc
+                2024, 6, 2, 10, 0, 0, tzinfo=datetime.UTC
             ),
-            timestamp_end=datetime.datetime(
-                2024, 6, 2, 12, 0, 0, tzinfo=datetime.timezone.utc
-            ),
+            timestamp_end=datetime.datetime(2024, 6, 2, 12, 0, 0, tzinfo=datetime.UTC),
         )
 
         session_filter = SessionFilter(
@@ -3780,20 +3775,16 @@ class TestFieldComparisonEndToEnd:
         same = Session.objects.create(
             game=game,
             timestamp_start=datetime.datetime(
-                2024, 6, 1, 10, 0, 0, tzinfo=datetime.timezone.utc
+                2024, 6, 1, 10, 0, 0, tzinfo=datetime.UTC
             ),
-            timestamp_end=datetime.datetime(
-                2024, 6, 1, 14, 0, 0, tzinfo=datetime.timezone.utc
-            ),
+            timestamp_end=datetime.datetime(2024, 6, 1, 14, 0, 0, tzinfo=datetime.UTC),
         )
         cross = Session.objects.create(
             game=game,
             timestamp_start=datetime.datetime(
-                2024, 6, 1, 10, 0, 0, tzinfo=datetime.timezone.utc
+                2024, 6, 1, 10, 0, 0, tzinfo=datetime.UTC
             ),
-            timestamp_end=datetime.datetime(
-                2024, 6, 3, 10, 0, 0, tzinfo=datetime.timezone.utc
-            ),
+            timestamp_end=datetime.datetime(2024, 6, 3, 10, 0, 0, tzinfo=datetime.UTC),
         )
 
         def run(modifier: Modifier, granularity: ComparisonGranularity) -> set:
@@ -3837,18 +3828,16 @@ class TestFieldComparisonEndToEnd:
         session_p = Session.objects.create(
             game=game,
             timestamp_start=datetime.datetime(
-                2024, 7, 1, 10, 0, 0, tzinfo=datetime.timezone.utc
+                2024, 7, 1, 10, 0, 0, tzinfo=datetime.UTC
             ),
-            timestamp_end=datetime.datetime(
-                2024, 7, 1, 11, 0, 0, tzinfo=datetime.timezone.utc
-            ),
+            timestamp_end=datetime.datetime(2024, 7, 1, 11, 0, 0, tzinfo=datetime.UTC),
             duration_manual=timedelta(0),
         )
         # Q: no timestamp_end (calculated=0), 2h manual → duration_total=2h == duration_manual=2h
         Session.objects.create(
             game=game,
             timestamp_start=datetime.datetime(
-                2024, 7, 2, 10, 0, 0, tzinfo=datetime.timezone.utc
+                2024, 7, 2, 10, 0, 0, tzinfo=datetime.UTC
             ),
             duration_manual=timedelta(hours=2),
         )
@@ -3938,7 +3927,7 @@ class TestFieldComparisonEndToEnd:
         import datetime
 
         from games.filters import PlayEventFilter
-        from games.models import Game, PlayEvent, Platform
+        from games.models import Game, Platform, PlayEvent
 
         platform, _ = Platform.objects.get_or_create(name="PESym", icon="pesym")
         game = Game.objects.create(name="PESymGame", platform=platform)
@@ -4221,9 +4210,9 @@ class TestStrictNullSemantics:
 
     @pytest.fixture
     def session_without_game(self, db):
-        from games.models import Session
-
         from django.utils import timezone
+
+        from games.models import Session
 
         return Session.objects.create(
             timestamp_start=timezone.now(),
@@ -4264,9 +4253,9 @@ class TestStrictNullSemantics:
         assert session_without_game not in Session.objects.filter(q)
 
     def test_not_equals_is_side_symmetric(self, db, game, session_without_game):
-        from games.models import Session
-
         from django.utils import timezone
+
+        from games.models import Session
 
         Session.objects.create(
             timestamp_start=timezone.now(),
@@ -4293,9 +4282,9 @@ class TestStrictNullSemantics:
 
     def test_same_model_not_equals_now_excludes_null_rows(self, db):
         # Behavior change pinned: previously included (NULL counted as "not equal").
-        from games.models import Session
-
         from django.utils import timezone
+
+        from games.models import Session
 
         session = Session.objects.create(
             timestamp_start=timezone.now(),
@@ -4508,14 +4497,14 @@ class TestFilterFieldDescriptors:
     silently fall through (and thus be ignored by ``to_q``).
     """
 
-    ALL_FILTERS = [
+    ALL_FILTERS = (
         GameFilter,
         SessionFilter,
         PurchaseFilter,
         DeviceFilter,
         PlatformFilter,
         PlayEventFilter,
-    ]
+    )
 
     @staticmethod
     def _declared_criterion_fields(filter_cls) -> set[str]:
@@ -4766,7 +4755,7 @@ class TestPerFilterSearchColumns:
     """
 
     # filter class → the icontains columns its ``search`` OR's over, in order.
-    SEARCH_COLUMNS = {
+    SEARCH_COLUMNS: ClassVar[dict[type[OperatorFilter], tuple[str, ...]]] = {
         GameFilter: ("name", "sort_name", "platform__name"),
         SessionFilter: (
             "game__name",
@@ -4830,14 +4819,14 @@ class TestValueTypeBoundaryIntegration:
         # The temporal StringCriterion → DateCriterion + __date reclass must match
         # a non-midnight created_at datetime by its calendar date (a regression
         # dropping __date would make equality silently never match).
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         from games.models import Game, Platform
 
         platform = Platform.objects.create(name="PC")
         game = Game.objects.create(name="Hades", platform=platform)
         # auto_now_add can't be set on create; stamp an afternoon time directly.
-        moment = datetime(2024, 3, 14, 15, 9, 0, tzinfo=timezone.utc)
+        moment = datetime(2024, 3, 14, 15, 9, 0, tzinfo=UTC)
         Game.objects.filter(pk=game.pk).update(created_at=moment)
 
         good = json.dumps({"created_at": {"modifier": "EQUALS", "value": "2024-03-14"}})
@@ -5131,8 +5120,10 @@ class _LabelStub(OperatorFilter):
     name: StringCriterion | None = None
     mastered: BoolCriterion | None = None
 
-    fields = {"name": FilterField(label="Explicit Name")}
-    labels = {"mastered": "Override Mastered"}
+    fields: ClassVar[dict[str, FilterField]] = {
+        "name": FilterField(label="Explicit Name")
+    }
+    labels: ClassVar[dict[str, str]] = {"mastered": "Override Mastered"}
 
     @classmethod
     def _comparison_model(cls):
@@ -5151,7 +5142,9 @@ class _BadLookupStub(OperatorFilter):
     NOT: list[_BadLookupStub] = dc_field(default_factory=list)
     year_released: IntCriterion | None = None
 
-    fields = {"year_released": FilterField("yeer_released")}
+    fields: ClassVar[dict[str, FilterField]] = {
+        "year_released": FilterField("yeer_released")
+    }
 
     @classmethod
     def _comparison_model(cls):
@@ -5175,8 +5168,8 @@ class TestStringCriterionIsNullAgainstDB:
             name="Test Game", defaults={"platform": platform, "status": "u"}
         )
         device, _ = Device.objects.get_or_create(name="Test Device", type="PC")
-        start = datetime.datetime(2025, 1, 1, 10, 0, 0, tzinfo=datetime.timezone.utc)
-        end = datetime.datetime(2025, 1, 1, 11, 0, 0, tzinfo=datetime.timezone.utc)
+        start = datetime.datetime(2025, 1, 1, 10, 0, 0, tzinfo=datetime.UTC)
+        end = datetime.datetime(2025, 1, 1, 11, 0, 0, tzinfo=datetime.UTC)
 
         empty_note_session_1 = Session.objects.create(
             game=game, device=device, timestamp_start=start, timestamp_end=end, note=""
@@ -5896,7 +5889,7 @@ class TestMultivaluedComparison:
     def _dt(year, month=1, day=1):
         import datetime as dt
 
-        return dt.datetime(year, month, day, 12, 0, tzinfo=dt.timezone.utc)
+        return dt.datetime(year, month, day, 12, 0, tzinfo=dt.UTC)
 
     def _seed(self):
         import datetime as dt
@@ -6003,9 +5996,9 @@ class TestMultivaluedComparison:
 
     def test_raw_space_multivalued_string_contains(self, db):
         # Raw string space, multi operand on the right (Purchase.games M2M).
-        from games.models import Game, Purchase
-
         import datetime as dt
+
+        from games.models import Game, Purchase
 
         purchased = dt.date(2024, 1, 1)
         game_match = Game.objects.create(name="Zelda")
@@ -6074,7 +6067,7 @@ class TestMultivaluedComparison:
             PlayEvent.objects.create(game=game, ended=ended)
             Session.objects.create(
                 game=game,
-                timestamp_start=dt.datetime(2000, 1, 1, tzinfo=dt.timezone.utc),
+                timestamp_start=dt.datetime(2000, 1, 1, tzinfo=dt.UTC),
                 timestamp_end=session_end,
             )
             return game
@@ -6082,12 +6075,12 @@ class TestMultivaluedComparison:
         hit = game_with(
             "later-session",
             dt.date(2020, 1, 1),
-            dt.datetime(2021, 1, 1, tzinfo=dt.timezone.utc),
+            dt.datetime(2021, 1, 1, tzinfo=dt.UTC),
         )
         miss = game_with(
             "earlier-session",
             dt.date(2022, 1, 1),
-            dt.datetime(2021, 1, 1, tzinfo=dt.timezone.utc),
+            dt.datetime(2021, 1, 1, tzinfo=dt.UTC),
         )
         query = GameFilter(
             field_comparisons=[

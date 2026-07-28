@@ -17,13 +17,13 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from common.components import QUICK_FACETS, QuickFilterBar
-from common.date_time_presentation import (
-    DEFAULT_DATE_TIME_FORMAT_PROFILE,
-    DateTimePresentation,
-)
 from common.criteria import (
     OperatorFilter,
     resolve_path_kind,
+)
+from common.date_time_presentation import (
+    DEFAULT_DATE_TIME_FORMAT_PROFILE,
+    DateTimePresentation,
 )
 from games.filters import (
     DeviceFilter,

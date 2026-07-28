@@ -1,5 +1,7 @@
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
+
+from django.utils import timezone
 
 from common.utils import generate_split_ranges
 
@@ -7,7 +9,7 @@ durationformat: str = "%2.1H hours"
 durationformat_manual: str = "%H hours"
 
 
-def _safe_timedelta(duration: timedelta | int | float | None):
+def _safe_timedelta(duration: timedelta | float | None):
     if duration is None:
         return timedelta(0)
     elif isinstance(duration, (int, float)):
@@ -17,7 +19,7 @@ def _safe_timedelta(duration: timedelta | int | float | None):
 
 
 def format_duration(
-    duration: timedelta | int | float | None, format_string: str = "%H hours"
+    duration: timedelta | float | None, format_string: str = "%H hours"
 ) -> str:
     """
     Format timedelta into the specified format_string.
@@ -40,8 +42,7 @@ def format_duration(
     # we don't need float
     seconds_total = int(safe_duration.total_seconds())
     # timestamps where end is before start
-    if seconds_total < 0:
-        seconds_total = 0
+    seconds_total = max(seconds_total, 0)
     days = hours_float = minutes = seconds = 0
     hours: float = 0
     remainder = seconds = seconds_total
@@ -96,10 +97,10 @@ def streak(datelist: list[date]) -> dict[str, int | tuple[date, date]]:
     else:
         print(f"Processing {len(datelist)} dates.")
         missing = sorted(
-            set(
+            {
                 datelist[0] + timedelta(x)
                 for x in range((datelist[-1] - datelist[0]).days)
-            )
+            }
             - set(datelist)
         )
         print(f"{len(missing)} days missing.")
@@ -158,4 +159,4 @@ def streak_bruteforce(datelist: list[date]) -> dict[str, int | tuple[date, date]
 
 
 def available_stats_year_range():
-    return range(datetime.now().year, 1999, -1)
+    return range(timezone.localdate().year, 1999, -1)

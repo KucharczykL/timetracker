@@ -123,10 +123,10 @@ handling a POST.
 buckets:
 
 ```python
-READ_ONLY: frozenset[UrlName]      # renders a page; the only valid origins
-ORIGIN_AWARE: frozenset[UrlName]   # mutates, then redirects; consumes an origin
-CONFIRMATION: frozenset[UrlName]   # GET; renders a confirm modal, forwards the origin
-IN_PLACE: frozenset[UrlName]       # mutates, answers with a partial swap
+READ_ONLY: frozenset[UrlName]  # renders a page; the only valid origins
+ORIGIN_AWARE: frozenset[UrlName]  # mutates, then redirects; consumes an origin
+CONFIRMATION: frozenset[UrlName]  # GET; renders a confirm modal, forwards the origin
+IN_PLACE: frozenset[UrlName]  # mutates, answers with a partial swap
 ```
 
 The guard test asserts the union covers every routed name. An earlier draft

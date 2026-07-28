@@ -50,7 +50,6 @@ user types.
 from collections.abc import Callable, Iterable, Sequence
 from typing import Literal, NamedTuple, TypedDict
 
-
 from common.components.core import Attributes, HTMLAttribute, Node
 from common.components.custom_elements import (
     Dropdown,

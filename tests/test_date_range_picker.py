@@ -14,15 +14,15 @@ from zoneinfo import ZoneInfo
 
 from django.test import SimpleTestCase, TestCase
 
-from common.date_time_presentation import (
-    DEFAULT_DATE_TIME_FORMAT_PROFILE,
-    build_format_profile,
-    DateTimePresentation,
-)
 from common.components import (
     DateRangeCalendar,
     DateRangeField,
     DateRangePicker,
+)
+from common.date_time_presentation import (
+    DEFAULT_DATE_TIME_FORMAT_PROFILE,
+    DateTimePresentation,
+    build_format_profile,
 )
 
 _ESCAPED_TAG_MARKERS = ["&lt;div", "&lt;span", "&lt;button", "&lt;input"]
@@ -219,7 +219,7 @@ class CalendarControlButtonTest(SimpleTestCase):
         leftovers = [
             name
             for name in vars(module)
-            if name.endswith("_BUTTON_CLASS") or name.endswith("_PRESET_BUTTON_CLASS")
+            if name.endswith(("_BUTTON_CLASS", "_PRESET_BUTTON_CLASS"))
         ]
         self.assertEqual(leftovers, [])
 

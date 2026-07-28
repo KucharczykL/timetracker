@@ -117,7 +117,9 @@ In `e2e/test_search_select_e2e.py`, after the `e2e_test_view` function (before `
 
 ```python
 def anchor_test_view(request):
-    options = [{"value": str(i), "label": f"Option {i:02d}", "data": {}} for i in range(15)]
+    options = [
+        {"value": str(i), "label": f"Option {i:02d}", "data": {}} for i in range(15)
+    ]
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -149,7 +151,7 @@ def anchor_test_view(request):
 Then add the route to `urlpatterns` (alongside the existing `path("test-search-select/", ...)`):
 
 ```python
-    path("test-anchor/", anchor_test_view),
+(path("test-anchor/", anchor_test_view),)
 ```
 
 - [ ] **Step 2: Add the regression test**

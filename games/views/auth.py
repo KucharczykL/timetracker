@@ -6,13 +6,13 @@ from django.http import HttpResponse
 
 from common.components import (
     FORM_MAX_WIDTH_CLASS,
+    ControlButton,
     CsrfInput,
     Div,
     Form,
     FormFields,
     Node,
     PageHeading,
-    ControlButton,
 )
 from common.layout import render_page
 from games.dev_login import prefill_credentials

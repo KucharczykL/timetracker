@@ -207,6 +207,7 @@ def test_change_site_setting_rejects_infra_key(db):
 
 def test_change_site_setting_rejects_invalid_and_writes_nothing(db):
     from django.core.exceptions import ValidationError
+
     from games.models import SiteSetting
 
     with pytest.raises(ValidationError):
@@ -288,6 +289,7 @@ def test_no_db_module_loaded_during_settings_import(monkeypatch):
         env=env,
         capture_output=True,
         text=True,
+        check=False,
     )
     assert result.returncode == 0, result.stderr
     assert "ok" in result.stdout

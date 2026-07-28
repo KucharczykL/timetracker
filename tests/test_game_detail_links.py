@@ -1,25 +1,25 @@
 """Rendering tests: game-detail sections wire "View all" links to filtered lists (#66)."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 import pytest
 from django.urls import reverse
 from django.utils.html import escape
 
+from common.date_time_presentation import (
+    DEFAULT_DATE_TIME_FORMAT_PROFILE,
+    DateTimePresentation,
+)
 from games.filters import (
     PlayEventFilter,
     PurchaseFilter,
     SessionFilter,
     filter_url,
 )
+from games.formatting import session_time_range
 from games.models import Game, Platform, PlayEvent, Purchase, Session
 from games.views.game import view_game
-from games.formatting import session_time_range
-from common.date_time_presentation import (
-    DEFAULT_DATE_TIME_FORMAT_PROFILE,
-    DateTimePresentation,
-)
 
 _PRESENTATION = DateTimePresentation(
     DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("Europe/Prague")
@@ -27,7 +27,7 @@ _PRESENTATION = DateTimePresentation(
 
 
 def _dt(day, hour=12):
-    return datetime(2024, 6, day, hour, 0, tzinfo=timezone.utc)
+    return datetime(2024, 6, day, hour, 0, tzinfo=UTC)
 
 
 @pytest.fixture

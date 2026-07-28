@@ -99,7 +99,7 @@ class NavbarLogButtonRenderTest(TestCase):
             "games:list_purchases",
         ):
             html = self.client.get(reverse(url_name), follow=True).content.decode()
-            captions = re.findall(r"<caption\b[^>]*>(.*?)</caption>", html, re.S)
+            captions = re.findall(r"<caption\b[^>]*>(.*?)</caption>", html, re.DOTALL)
             self.assertEqual(len(captions), 1, f"one caption expected on {url_name}")
             for tag in re.findall(r"<caption\b[^>]*>", html):
                 self.assertIn("sr-only", tag, f"visible caption on {url_name}")

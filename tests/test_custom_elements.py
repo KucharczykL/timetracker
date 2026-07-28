@@ -96,6 +96,7 @@ class RegistryTest(unittest.TestCase):
 class GameStatusSelectorRenderTest(unittest.TestCase):
     def test_emits_listbox_and_patch_config(self):
         from types import SimpleNamespace
+
         from common.components import GameStatusSelector, render
 
         game = SimpleNamespace(id=7, status="f", get_status_display=lambda: "Finished")
@@ -112,8 +113,12 @@ class GameStatusSelectorRenderTest(unittest.TestCase):
 
 class ContractStampingTest(unittest.TestCase):
     def test_core_stamps_trigger_and_target_contracts(self):
-        from common.components import Dropdown, DropdownLinkItem, DropdownMenuPanel
-        from common.components import render
+        from common.components import (
+            Dropdown,
+            DropdownLinkItem,
+            DropdownMenuPanel,
+            render,
+        )
         from common.components.core import Element
 
         trigger = Element("button", [("class", "look")], ["Open"])
@@ -135,8 +140,8 @@ class ContractStampingTest(unittest.TestCase):
 
     def test_reserved_attr_conflict_warns(self):
         from common.components import DropdownContractWarning, render
-        from common.components.custom_elements import _stamp_trigger_contract
         from common.components.core import Element
+        from common.components.custom_elements import _stamp_trigger_contract
 
         trigger = Element("button", [("aria-expanded", "true"), ("class", "c")])
         with self.assertWarns(DropdownContractWarning):
@@ -269,8 +274,8 @@ class DropdownWrapperTest(unittest.TestCase):
         from common.components import (
             DropdownActionItem,
             DropdownLinkItem,
-            SplitButtonDropdown,
             Span,
+            SplitButtonDropdown,
             render,
         )
 
@@ -372,6 +377,7 @@ class DropdownSubmenuTest(unittest.TestCase):
 class SessionDeviceSelectorRenderTest(unittest.TestCase):
     def test_emits_listbox_and_numeric_patch(self):
         from types import SimpleNamespace
+
         from common.components import SessionDeviceSelector, render
 
         session = SimpleNamespace(id=4, device=SimpleNamespace(id=2, name="Deck"))
@@ -388,6 +394,7 @@ class SessionDeviceSelectorRenderTest(unittest.TestCase):
 
     def test_clear_option_present(self):
         from types import SimpleNamespace
+
         from common.components import SessionDeviceSelector, render
 
         session = SimpleNamespace(id=4, device=SimpleNamespace(id=2, name="Deck"))
@@ -399,6 +406,7 @@ class SessionDeviceSelectorRenderTest(unittest.TestCase):
 
     def test_null_device_selects_clear_option_and_labels_no_device(self):
         from types import SimpleNamespace
+
         from common.components import SessionDeviceSelector, render
 
         session = SimpleNamespace(id=4, device=None)

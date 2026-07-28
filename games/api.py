@@ -1,7 +1,7 @@
 import json
 import logging
 from datetime import date, datetime
-from typing import Any, List, NoReturn
+from typing import Any, NoReturn
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
@@ -21,23 +21,6 @@ from games.filters import (
 )
 from games.forms import game_option_data
 from games.models import Device, FilterPreset, Game, Platform, PlayEvent, Session
-from timetracker.settings_registry import (
-    SETTINGS_REGISTRY,
-    SettingKey,
-    SettingScope,
-    UnregisteredSettingError,
-    get_definition,
-)
-from timetracker.settings_commands import (
-    SettingLockedError,
-    SettingNamespace,
-    change_site_setting,
-    change_user_setting,
-)
-from timetracker.settings_resolver import (
-    resolve_for_user_with_origin,
-    resolve_with_origin,
-)
 from games.sorting import (
     MODE_SORTS,
     SESSION_DEFAULT_SORT,
@@ -45,6 +28,23 @@ from games.sorting import (
     apply_sort,
     parse_find_filter,
     parse_per_page_override,
+)
+from timetracker.settings_commands import (
+    SettingLockedError,
+    SettingNamespace,
+    change_site_setting,
+    change_user_setting,
+)
+from timetracker.settings_registry import (
+    SETTINGS_REGISTRY,
+    SettingKey,
+    SettingScope,
+    UnregisteredSettingError,
+    get_definition,
+)
+from timetracker.settings_resolver import (
+    resolve_for_user_with_origin,
+    resolve_with_origin,
 )
 
 logger = logging.getLogger("games")
@@ -74,7 +74,7 @@ class PlayEventIn(Schema):
 class AutoPlayEventIn(ModelSchema):
     class Meta:
         model = PlayEvent
-        fields = ["game", "started", "ended", "note"]
+        fields = ("game", "started", "ended", "note")
 
 
 class UpdatePlayEventIn(Schema):
@@ -124,13 +124,13 @@ def search_games(request, q: str = "", limit: int = 10):
 @game_router.patch("/{game_id}/status", response={204: None})
 def partial_update_game(request, game_id: int, payload: GameStatusUpdate):
     game = get_object_or_404(Game, id=game_id)
-    setattr(game, "status", payload.status)
+    game.status = payload.status
     game.save()
     messages.success(request, "Status updated")
     return Status(204, None)
 
 
-@playevent_router.get("/", response=List[PlayEventOut])
+@playevent_router.get("/", response=list[PlayEventOut])
 def list_playevents(request):
     return PlayEvent.objects.all()
 

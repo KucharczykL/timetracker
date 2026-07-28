@@ -6,14 +6,14 @@ login form renders normally in production.
 """
 
 import logging
-from functools import lru_cache
+from functools import cache
 
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
 
-@lru_cache(maxsize=None)
+@cache
 def _parse(raw: str) -> tuple[str, str] | None:
     """Parse the raw DEV_LOGIN_PREFILL value once per distinct value (so the
     malformed-warning logs once at startup in production, where the value is

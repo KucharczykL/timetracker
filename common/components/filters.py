@@ -5,7 +5,6 @@ and the nested builder render every leaf field through."""
 import json
 from typing import Literal, NamedTuple
 
-from common.date_time_presentation import DateTimePresentation
 from common.components.core import Node
 from common.components.date_range_picker import DateRangePanel, DateRangePicker
 from common.components.primitives import (
@@ -20,15 +19,6 @@ from common.components.primitives import (
     Template,
     filter_widget_attributes,
 )
-from common.criteria import (
-    AttrName,
-    ComparableColumn,
-    ComparisonGranularity,
-    FieldMeta,
-    FieldMetaKind,
-    OperatorFilter,
-    field_metadata,
-)
 from common.components.search_select import (
     DEFAULT_PREFETCH,
     FilterSelect,
@@ -38,6 +28,16 @@ from common.components.search_select import (
     SearchSelect,
     SearchSelectOption,
 )
+from common.criteria import (
+    AttrName,
+    ComparableColumn,
+    ComparisonGranularity,
+    FieldMeta,
+    FieldMetaKind,
+    OperatorFilter,
+    field_metadata,
+)
+from common.date_time_presentation import DateTimePresentation
 
 
 class FilterChoice(NamedTuple):
