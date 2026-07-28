@@ -39,22 +39,25 @@ def test_setting_is_registered_as_a_user_select():
     )
 
 
-def test_default_resolves_to_account(user):
-    assert (
-        settings_resolver.resolve_str_for_user(user, "SESSION_TIME_ZONE_DISPLAY")
-        == "account"
-    )
-
-
-def test_change_persists_own_through_the_bag(user):
-    change_user_setting(user, "SESSION_TIME_ZONE_DISPLAY", "own")
-    settings_resolver.clear_cache()
+def test_default_resolves_to_own(user):
+    """Own-zone is the sensible default: an account-zone projection of a
+    session logged abroad reads as a nonsensical time (a 21:00 session
+    showing as 08:37) unless the user opts into it deliberately."""
     assert (
         settings_resolver.resolve_str_for_user(user, "SESSION_TIME_ZONE_DISPLAY")
         == "own"
     )
+
+
+def test_change_persists_account_through_the_bag(user):
+    change_user_setting(user, "SESSION_TIME_ZONE_DISPLAY", "account")
+    settings_resolver.clear_cache()
+    assert (
+        settings_resolver.resolve_str_for_user(user, "SESSION_TIME_ZONE_DISPLAY")
+        == "account"
+    )
     preferences = UserPreferences.objects.get(user=user)
-    assert preferences.extra_preferences["SESSION_TIME_ZONE_DISPLAY"] == "own"
+    assert preferences.extra_preferences["SESSION_TIME_ZONE_DISPLAY"] == "account"
 
 
 def test_invalid_value_is_rejected(user):

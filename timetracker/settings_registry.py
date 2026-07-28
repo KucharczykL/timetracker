@@ -375,7 +375,7 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
                 "Show each session in your current time zone, or in the zone "
                 "it was logged in (the zone is labelled when it differs)."
             ),
-            default_factory=lambda: "account",
+            default_factory=lambda: "own",
             validator=_validate_session_time_zone_display,
             widget=SettingWidget.SELECT,
             choices=SESSION_TIME_ZONE_DISPLAY_CHOICES,
