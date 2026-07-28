@@ -307,6 +307,7 @@ def test_client_config_is_exact_and_versioned() -> None:
                 "hour_cycle": "h23",
             },
             "day_periods": {"am": "AM", "pm": "PM"},
+            "session_time_zone_display": "account",
         }
     )
 
@@ -347,8 +348,11 @@ def test_request_factory_uses_personal_datetime_format() -> None:
 
 
 def test_request_factory_uses_environment_datetime_format(
-    monkeypatch, tmp_path: Path
+    monkeypatch, tmp_path: Path, db
 ) -> None:
+    # DATETIME_FORMAT resolves from the env var below without touching the DB,
+    # but SESSION_TIME_ZONE_DISPLAY has no such override here, so resolving the
+    # full presentation still needs the site-settings DB layer underneath it.
     monkeypatch.setenv("DATETIME_FORMAT", "dmy_24h")
     monkeypatch.setenv("ENV_FILE", str(tmp_path / "missing.env"))
     monkeypatch.setenv("INI_FILE", str(tmp_path / "missing.ini"))
