@@ -2,6 +2,10 @@ import { readSessionActionsProps } from "../generated/props.js";
 import { nowISOUTC, bindPopupDismiss } from "../utils.js";
 import { renderSessionRow } from "../session-row.js";
 
+function browserTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
 // Row actions for a session. Finish/reset drive PATCH /api/session/<id> with the
 // client's own "now"; on success the API returns the updated SessionOut and the
 // row is rebuilt in place (renderSessionRow). Reset is destructive (it overwrites
@@ -16,7 +20,10 @@ class SessionActionsElement extends HTMLElement {
     this.modal = this.querySelector<HTMLElement>("[data-reset-modal]");
 
     this.querySelector<HTMLElement>("[data-finish]")?.addEventListener("click", () => {
-      this.patch(props.apiUrl, props.csrf, { timestamp_end: nowISOUTC() });
+      this.patch(props.apiUrl, props.csrf, {
+        timestamp_end: nowISOUTC(),
+        timestamp_end_timezone: browserTimeZone(),
+      });
     });
 
     this.querySelector<HTMLElement>("[data-reset]")?.addEventListener("click", () => {
@@ -27,7 +34,10 @@ class SessionActionsElement extends HTMLElement {
     });
     this.querySelector<HTMLElement>("[data-reset-confirm]")?.addEventListener("click", () => {
       this.closeModal();
-      this.patch(props.apiUrl, props.csrf, { timestamp_start: nowISOUTC() });
+      this.patch(props.apiUrl, props.csrf, {
+        timestamp_start: nowISOUTC(),
+        timestamp_start_timezone: browserTimeZone(),
+      });
     });
 
     if (this.modal) {

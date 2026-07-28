@@ -40,12 +40,29 @@ export interface Segment {
   segmented: Affixes;
 }
 
+export type SessionTimeZoneDisplay = "account" | "own";
+
+/**
+ * One session endpoint's zone: the raw IANA name the wall clock is projected
+ * into, plus the display label the *server* computed for it (`null` = nothing
+ * to label). The label is never derived here — Intl's short name for
+ * Asia/Tokyo is "GMT+9" where the server's `tzname()` says "JST", and the two
+ * renderings share one table.
+ */
+export interface SessionEndpointZone {
+  zone: string | null;
+  label: string | null;
+}
+
+const NO_ENDPOINT_ZONE: SessionEndpointZone = { zone: null, label: null };
+
 interface CompiledPresentation {
   locale: string;
   timeZone: string;
   segments: Segment[];
   hourCycle: HourCycle;
   dayPeriods: { am: string; pm: string };
+  sessionTimeZoneDisplay: SessionTimeZoneDisplay;
   dateTimeFormatter: Intl.DateTimeFormat;
   calendarMonthYearFormatter: Intl.DateTimeFormat;
   calendarWeekdayFormatter: Intl.DateTimeFormat;
@@ -217,12 +234,16 @@ function compilePresentation(raw: unknown): CompiledPresentation {
     );
   }
 
+  const sessionTimeZoneDisplay: SessionTimeZoneDisplay =
+    config.session_time_zone_display === "own" ? "own" : "account";
+
   return {
     locale,
     timeZone,
     segments,
     hourCycle,
     dayPeriods: { am, pm },
+    sessionTimeZoneDisplay,
     dateTimeFormatter,
     calendarMonthYearFormatter,
     calendarWeekdayFormatter,
@@ -294,9 +315,10 @@ function formatDateTime(
   iso: string,
   presentation: CompiledPresentation,
   runs: readonly SegmentRun[],
+  timeZoneOverride: string | null = null,
 ): string {
   const value = Temporal.Instant.from(iso)
-    .toZonedDateTimeISO(presentation.timeZone)
+    .toZonedDateTimeISO(timeZoneOverride ?? presentation.timeZone)
     .toPlainDateTime();
   const parts = numericParts(presentation.dateTimeFormatter, value);
   let rendered = "";
@@ -387,35 +409,109 @@ export function presentationClock(): { timeZone: string; hourCycle: HourCycle } 
 }
 
 /**
- * The current wall clock in the contract's zone, shaped for a `datetime-local`
- * input. `null` when the contract is unusable, so callers can degrade to the
- * browser's clock rather than losing the button entirely.
+ * The current wall clock in the contract's zone — or in `timeZoneOverride`
+ * when the caller's field follows a session zone — shaped for a
+ * `datetime-local` input. `null` when the contract or override is unusable,
+ * so callers can degrade to the browser's clock rather than losing the
+ * button entirely.
  */
-export function nowInPresentationZone(): string | null {
+export function nowInPresentationZone(
+  timeZoneOverride: string | null = null,
+): string | null {
   const presentation = getPresentation();
   if (!presentation) return null;
 
   try {
-    return Temporal.Now.plainDateTimeISO(presentation.timeZone).toString({
+    return Temporal.Now.plainDateTimeISO(
+      timeZoneOverride ?? presentation.timeZone,
+    ).toString({
       smallestUnit: "minute",
     });
   } catch (error) {
-    reportClientError("date-time-presentation", errorDetail(error), { toast: false });
+    // With an override there is a "Now" click waiting on this: returning null
+    // makes the button do visibly nothing, so say so. Without one nothing
+    // interactive is blocked, and the quiet degrade stands.
+    reportClientError("date-time-presentation", errorDetail(error), {
+      toast: timeZoneOverride !== null,
+    });
     return null;
   }
 }
 
+/** The zone an endpoint actually projects into: its own stored zone under the
+ * "own" preference, else the account zone (matching the base "account" path
+ * so date comparisons stay meaningful in both modes). */
+function effectiveEndpointZone(
+  presentation: CompiledPresentation,
+  endpoint: SessionEndpointZone,
+): string {
+  return presentation.sessionTimeZoneDisplay === "own" && endpoint.zone !== null
+    ? endpoint.zone
+    : presentation.timeZone;
+}
+
+function formatEndpoint(
+  iso: string,
+  presentation: CompiledPresentation,
+  runs: readonly SegmentRun[],
+  endpoint: SessionEndpointZone,
+  showLabel: boolean,
+): string {
+  if (presentation.sessionTimeZoneDisplay !== "own" || endpoint.zone === null) {
+    return formatDateTime(iso, presentation, runs);
+  }
+  const text = formatDateTime(iso, presentation, runs, endpoint.zone);
+  return showLabel && endpoint.label !== null ? `${text} ${endpoint.label}` : text;
+}
+
 /** Format a session range with the server-provided browser presentation contract. */
-export function formatSessionTimeRange(startISO: string, endISO: string | null): string | null {
+export function formatSessionTimeRange(
+  startISO: string,
+  endISO: string | null,
+  startEndpoint: SessionEndpointZone = NO_ENDPOINT_ZONE,
+  endEndpoint: SessionEndpointZone = NO_ENDPOINT_ZONE,
+): string | null {
   const presentation = getPresentation();
   if (!presentation) return null;
 
   try {
-    const start = formatDateTime(startISO, presentation, ["date", "time"]);
-    return endISO === null
-      ? start
-      : `${start} — ${formatDateTime(endISO, presentation, ["time"])}`;
+    const startZone = effectiveEndpointZone(presentation, startEndpoint);
+    const endZone = effectiveEndpointZone(presentation, endEndpoint);
+    const startDiffers = startZone !== presentation.timeZone;
+    const endDiffers = endZone !== presentation.timeZone;
+    const sameZone = startZone === endZone;
+    // Without a label at all a sorted list lies: a 21:00 session can be
+    // genuinely earlier than the 14:00 one after it. But when both endpoints
+    // share one zone, saying so twice ("22:37 JST — 23:14 JST") repeats
+    // information that hasn't changed — one label, on the end, reads the
+    // same way "9am – 5pm PST" does.
+    const startLabel = startDiffers && !(sameZone && endDiffers);
+
+    const start = formatEndpoint(
+      startISO,
+      presentation,
+      ["date", "time"],
+      startEndpoint,
+      startLabel,
+    );
+    if (endISO === null) return start;
+    // The end only needs its own date when it actually differs from the
+    // start's — not merely because it carries a zone label. Two endpoints in
+    // the same far-away zone on the same calendar day (the common case) must
+    // not print that date twice for no reason; a genuine date-line crossing
+    // ("06:00 JST" the morning after a 20:00 start) still needs it spelled out.
+    const startDate = Temporal.Instant.from(startISO)
+      .toZonedDateTimeISO(startZone)
+      .toPlainDate();
+    const endDate = Temporal.Instant.from(endISO).toZonedDateTimeISO(endZone).toPlainDate();
+    const endRuns: readonly SegmentRun[] = startDate.equals(endDate)
+      ? ["time"]
+      : ["date", "time"];
+    const end = formatEndpoint(endISO, presentation, endRuns, endEndpoint, endDiffers);
+    return `${start} — ${end}`;
   } catch (error) {
+    // Includes a zone name this runtime's tzdata does not know: reporting and
+    // returning null leaves the server-rendered cell in place, which is right.
     reportClientError("date-time-presentation", errorDetail(error), { toast: false });
     return null;
   }

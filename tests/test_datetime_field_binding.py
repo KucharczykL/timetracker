@@ -19,6 +19,7 @@ from django.utils import timezone
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
+    zone_or_none,
 )
 from common.middleware import TimezoneActivationMiddleware
 from games.forms import DateTimeFieldWidget, GameStatusChangeForm, SessionForm
@@ -159,3 +160,142 @@ def test_an_ambiguous_stored_timestamp_survives_an_untouched_edit(db):
             )
             assert resubmitted.is_valid(), resubmitted.errors
             assert resubmitted.cleaned_data["timestamp_start"] == stored
+
+
+def test_zone_or_none_parses_valid_zones_and_rejects_junk():
+    assert zone_or_none("Asia/Tokyo") == ZoneInfo("Asia/Tokyo")
+    assert zone_or_none(None) is None
+    assert zone_or_none("") is None
+    assert zone_or_none("Not/AZone") is None
+
+
+def test_edit_form_renders_the_wall_clock_in_the_sessions_own_zone(db):
+    """A Tokyo-tagged 06:37 UTC start must render as Tokyo's 15:37+09:00, not
+    the account's 08:37+02:00 — the digits shown are the digits that were
+    typed against that zone."""
+    game = Game.objects.create(name="Hades")
+    session = Session.objects.create(
+        game=game,
+        timestamp_start=datetime(2026, 7, 28, 6, 37, tzinfo=UTC),
+        timestamp_start_timezone="Asia/Tokyo",
+    )
+    rendered = str(
+        SessionForm(instance=session, presentation=_presentation("Europe/Prague"))[
+            "timestamp_start"
+        ]
+    )
+    hidden = re.search(r'name="timestamp_start" value="([^"]*)"', rendered)
+    assert hidden is not None
+    assert hidden.group(1) == "2026-07-28T15:37:00+09:00"
+
+
+def test_an_unusable_stored_zone_falls_back_to_the_display_zone(db):
+    game = Game.objects.create(name="Hades")
+    session = Session.objects.create(
+        game=game,
+        timestamp_start=datetime(2026, 7, 28, 6, 37, tzinfo=UTC),
+        timestamp_start_timezone="Not/AZone",
+    )
+    rendered = str(
+        SessionForm(instance=session, presentation=_presentation("Europe/Prague"))[
+            "timestamp_start"
+        ]
+    )
+    hidden = re.search(r'name="timestamp_start" value="([^"]*)"', rendered)
+    assert hidden is not None
+    assert hidden.group(1) == "2026-07-28T08:37:00+02:00"
+
+
+def test_session_datetime_widgets_name_their_paired_zone_row(db):
+    form = SessionForm(presentation=_presentation("Europe/Prague"))
+    assert 'zone-field-name="timestamp_start_timezone"' in str(form["timestamp_start"])
+    assert 'zone-field-name="timestamp_end_timezone"' in str(form["timestamp_end"])
+    # The GameStatusChange form has no zone rows: its widget stays unpaired.
+    status_form = GameStatusChangeForm(presentation=_presentation("Europe/Prague"))
+    assert 'zone-field-name=""' in str(status_form["timestamp"])
+
+
+def test_naive_input_is_interpreted_in_the_selected_zone(db):
+    """A DST-gap submission posts the bare wall clock; the digits were typed
+    against the *picked* zone, so that is the zone they bind in."""
+    user = get_user_model().objects.create_user(username="tester", password="pw")
+    game = Game.objects.create(name="Hades")
+    UserPreferences.objects.create(user=user, display_time_zone="Europe/Prague")
+    settings_resolver.clear_cache()
+    captured: dict[str, object] = {}
+
+    def response(request):
+        form = SessionForm(
+            data={
+                **_session_form_data(game, "2026-07-28T15:37"),
+                "timestamp_start_timezone": "Asia/Tokyo",
+            },
+            presentation=_presentation("Europe/Prague"),
+        )
+        assert form.is_valid(), form.errors
+        captured["timestamp_start"] = form.cleaned_data["timestamp_start"]
+        return HttpResponse()
+
+    request = RequestFactory().post("/tracker/session/add")
+    request.user = user
+    TimezoneActivationMiddleware(response)(request)
+
+    assert captured["timestamp_start"] == datetime(2026, 7, 28, 6, 37, tzinfo=UTC)
+
+
+def test_naive_gap_in_the_selected_zone_is_rejected_naming_it(db):
+    """2026-03-08 02:30 does not exist in America/New_York. The account zone
+    (Tokyo, no DST) would accept it happily — the rejection must come from the
+    selected zone, and name it."""
+    user = get_user_model().objects.create_user(username="tester", password="pw")
+    game = Game.objects.create(name="Hades")
+    UserPreferences.objects.create(user=user, display_time_zone="Asia/Tokyo")
+    settings_resolver.clear_cache()
+    captured: dict[str, object] = {}
+
+    def response(request):
+        form = SessionForm(
+            data={
+                **_session_form_data(game, "2026-03-08T02:30"),
+                "timestamp_start_timezone": "America/New_York",
+            },
+            presentation=_presentation("Asia/Tokyo"),
+        )
+        captured["errors"] = form.errors.as_text()
+        return HttpResponse()
+
+    request = RequestFactory().post("/tracker/session/add")
+    request.user = user
+    TimezoneActivationMiddleware(response)(request)
+
+    assert "couldn’t be interpreted in time zone America/New_York" in str(
+        captured["errors"]
+    )
+
+
+def test_naive_value_valid_in_the_selected_zone_survives_an_account_zone_gap(db):
+    """The mirror case: 02:30 on 2026-03-08 is the account zone's spring-forward
+    gap, but a perfectly ordinary Tokyo wall clock — it must bind, not error."""
+    user = get_user_model().objects.create_user(username="tester", password="pw")
+    game = Game.objects.create(name="Hades")
+    UserPreferences.objects.create(user=user, display_time_zone="America/New_York")
+    settings_resolver.clear_cache()
+    captured: dict[str, object] = {}
+
+    def response(request):
+        form = SessionForm(
+            data={
+                **_session_form_data(game, "2026-03-08T02:30"),
+                "timestamp_start_timezone": "Asia/Tokyo",
+            },
+            presentation=_presentation("America/New_York"),
+        )
+        assert form.is_valid(), form.errors
+        captured["timestamp_start"] = form.cleaned_data["timestamp_start"]
+        return HttpResponse()
+
+    request = RequestFactory().post("/tracker/session/add")
+    request.user = user
+    TimezoneActivationMiddleware(response)(request)
+
+    assert captured["timestamp_start"] == datetime(2026, 3, 7, 17, 30, tzinfo=UTC)

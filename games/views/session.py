@@ -12,6 +12,7 @@ from django.views.decorators.http import require_POST
 from common.components import (
     AddForm,
     Column,
+    FormFields,
     Fragment,
     ModuleScript,
     NameWithIcon,
@@ -30,7 +31,7 @@ from common.layout import render_page
 from common.returns import OriginUrl
 from common.utils import paginate
 from games.formatting import session_time_range
-from games.forms import SessionForm
+from games.forms import SESSION_TIMEZONE_EMBEDS, SessionForm
 from games.models import Device, Game, Session
 from games.sorting import (
     SESSION_DEFAULT_SORT,
@@ -188,11 +189,17 @@ def add_session(request: HttpRequest, game_id: int = 0) -> HttpResponse:
     # TODO: re-add custom buttons #91
     return render_page(
         request,
-        AddForm(form, request=request, submit_class=""),
+        AddForm(
+            form,
+            request=request,
+            submit_class="",
+            fields=FormFields(form, embedded=SESSION_TIMEZONE_EMBEDS),
+        ),
         title="Add New Session",
         scripts=Fragment(
             ModuleScript("dist/elements/search-select.js"),
             ModuleScript("dist/elements/date-time-field.js"),
+            ModuleScript("dist/elements/time-zone-row.js"),
         ),
     )
 
@@ -216,11 +223,17 @@ def edit_session(request: HttpRequest, session_id: int) -> HttpResponse:
         return redirect(return_url(request, fallback="games:list_sessions"))
     return render_page(
         request,
-        AddForm(form, request=request, submit_class=""),
+        AddForm(
+            form,
+            request=request,
+            submit_class="",
+            fields=FormFields(form, embedded=SESSION_TIMEZONE_EMBEDS),
+        ),
         title="Edit Session",
         scripts=Fragment(
             ModuleScript("dist/elements/search-select.js"),
             ModuleScript("dist/elements/date-time-field.js"),
+            ModuleScript("dist/elements/time-zone-row.js"),
         ),
     )
 
@@ -231,6 +244,10 @@ def clone_session_by_id(session_id: int) -> Session:
     clone.pk = None
     clone.timestamp_start = timezone.now()
     clone.timestamp_end = None
+    # The clone's start is server-stamped now; a browser zone does not exist
+    # here, and NULL already means "assume the display zone".
+    clone.timestamp_start_timezone = None
+    clone.timestamp_end_timezone = None
     clone.note = ""
     clone.save()
     return clone

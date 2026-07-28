@@ -5,7 +5,9 @@ const formatCalendarMonthYear = vi.hoisted(() => vi.fn(() => "Contract month"));
 const calendarWeekdayLabels = vi.hoisted(() =>
   vi.fn(() => ["M1", "T2", "W3", "T4", "F5", "S6", "S7"]),
 );
-const nowInPresentationZone = vi.hoisted(() => vi.fn<() => string | null>());
+const nowInPresentationZone = vi.hoisted(() =>
+  vi.fn<(timeZoneOverride?: string | null) => string | null>(),
+);
 const segmentRules = vi.hoisted(() => {
   const rules: Record<string, unknown> = {
     year: { kind: "numeric", run: "date", minimumValue: 1, maximumValue: 9999 },
@@ -27,6 +29,8 @@ vi.mock("../date-time-presentation.js", () => ({
 }));
 
 import "./date-time-field.js";
+import { TIME_ZONE_ROW_CHANGE_EVENT } from "./time-zone-row-events.js";
+import "./time-zone-row.js";
 
 // The server renders each segment's value alongside the hidden one; the engine
 // adopts them as typed buffers on upgrade. The fixture has to do the same, or
@@ -65,11 +69,16 @@ class FakeDropDown extends HTMLElement {
 }
 if (!customElements.get("drop-down")) customElements.define("drop-down", FakeDropDown);
 
-function markup(fieldName: string, copyTo: string, value = ""): string {
+function markup(
+  fieldName: string,
+  copyTo: string,
+  value = "",
+  zoneFieldName = "",
+): string {
   const shown = renderedSegments(value);
   return `
     <drop-down>
-      <date-time-field field-name="${fieldName}">
+      <date-time-field field-name="${fieldName}" zone-field-name="${zoneFieldName}">
         <div data-date-picker-field>
           <input type="hidden" name="${fieldName}" value="${value}" data-date-time-hidden />
           ${segment("year", 4, "YYYY", shown.year)}${segment("month", 2, "MM", shown.month)}${segment("day", 2, "DD", shown.day)}
@@ -98,6 +107,58 @@ function mount(value = ""): { start: HTMLElement; end: HTMLElement } {
     document.querySelectorAll<HTMLElement>("date-time-field"),
   );
   return { start, end };
+}
+
+function zoneRowMarkup(
+  fieldName: string,
+  displayZone: string,
+  value: string,
+  captureDefault = false,
+): string {
+  return `
+    <time-zone-row field-name="${fieldName}" stored-zone="${value}"
+        display-zone="${displayZone}" capture-default="${captureDefault}">
+      <input type="hidden" name="${fieldName}" value="${value}" data-time-zone-value />
+      <button type="button" aria-haspopup="dialog">Start time zone: ${
+        value || `${displayZone} (display zone)`
+      }<svg></svg></button>
+    </time-zone-row>`;
+}
+
+function mountWithZoneRow(zoneValue: string): { start: HTMLElement; end: HTMLElement } {
+  document.body.replaceChildren();
+  document.body.innerHTML =
+    markup("timestamp_start", "timestamp_end", "", "timestamp_start_timezone") +
+    zoneRowMarkup("timestamp_start_timezone", "Europe/Prague", zoneValue) +
+    markup("timestamp_end", "timestamp_start");
+  const [start, end] = Array.from(
+    document.querySelectorAll<HTMLElement>("date-time-field"),
+  );
+  return { start, end };
+}
+
+function changeZone(fieldName: string, zone: string): void {
+  const row = document.querySelector<HTMLElement>(
+    `time-zone-row[field-name="${fieldName}"]`,
+  )!;
+  row.querySelector<HTMLInputElement>("[data-time-zone-value]")!.value = zone;
+  row.dispatchEvent(
+    new CustomEvent(TIME_ZONE_ROW_CHANGE_EVENT, {
+      bubbles: true,
+      detail: { fieldName, zone },
+    }),
+  );
+}
+
+const REAL_DATE_TIME_FORMAT = Intl.DateTimeFormat;
+
+function stubBrowserZone(timeZone: string) {
+  return vi.spyOn(Intl, "DateTimeFormat").mockImplementation((...formatArguments) => {
+    const formatter = new REAL_DATE_TIME_FORMAT(...formatArguments);
+    const realResolvedOptions = formatter.resolvedOptions.bind(formatter);
+    formatter.resolvedOptions = () => ({ ...realResolvedOptions(), timeZone });
+    return formatter;
+  });
 }
 
 const hidden = (field: HTMLElement) =>
@@ -274,5 +335,97 @@ describe("date-time-field", () => {
     // duration_calculated is a generated column over both timestamps.
     typeInto(start, "minute", "45");
     expect(hidden(start).value).toBe("2026-07-27T14:45:41.123456+02:00");
+  });
+
+  it("encodes typed digits against the zone the paired row has selected", () => {
+    const { start } = mountWithZoneRow("Asia/Tokyo");
+
+    fillWholeField(start);
+
+    expect(hidden(start).value).toBe("2026-07-27T14:30:00.000000+09:00");
+  });
+
+  it("reinterprets on zone change: same digits, new offset, no reprojection", () => {
+    // The crux of decision B. An empty row value means the display zone.
+    const { start } = mountWithZoneRow("");
+    fillWholeField(start);
+    expect(hidden(start).value).toBe("2026-07-27T14:30:00.000000+02:00");
+
+    changeZone("timestamp_start_timezone", "Asia/Tokyo");
+
+    expect(partInput(start, "day").value).toBe("27");
+    expect(partInput(start, "hour").value).toBe("14");
+    expect(partInput(start, "minute").value).toBe("30");
+    expect(hidden(start).value).toBe("2026-07-27T14:30:00.000000+09:00");
+  });
+
+  it("a zone change on an empty field commits nothing", () => {
+    const { start } = mountWithZoneRow("");
+
+    changeZone("timestamp_start_timezone", "Asia/Tokyo");
+
+    expect(hidden(start).value).toBe("");
+  });
+
+  it("asks Now for the selected zone's wall clock", () => {
+    const { start } = mountWithZoneRow("Asia/Tokyo");
+
+    openCalendar(start);
+    start.querySelector<HTMLElement>("[data-date-range-now]")!.click();
+
+    expect(nowInPresentationZone).toHaveBeenCalledWith("Asia/Tokyo");
+  });
+
+  it("copies digits verbatim; each field's own zone gives them meaning", () => {
+    // Start follows Tokyo; end has no paired row, so the contract zone
+    // (Europe/Prague) applies. Same wall clock, different offsets — two
+    // different instants, exactly what decision B's copy semantics say.
+    const { start, end } = mountWithZoneRow("Asia/Tokyo");
+    fillWholeField(start);
+    expect(hidden(start).value).toBe("2026-07-27T14:30:00.000000+09:00");
+
+    start.querySelector<HTMLElement>("[data-date-time-copy]")!.click();
+
+    expect(partInput(end, "hour").value).toBe("14");
+    expect(hidden(end).value).toBe("2026-07-27T14:30:00.000000+02:00");
+  });
+
+  it("follows the capture default with no user interaction at all", () => {
+    // The load-bearing path, end to end inside jsdom: the row stamps the
+    // browser zone during its own connectedCallback and announces it, and a
+    // field rendered against the account zone re-encodes to the captured one
+    // without anybody touching the picker. The field's markup comes first so
+    // it upgrades — and subscribes — before the row does, which is the
+    // ordering the neutral event module preserves in a real browser.
+    const zoneSpy = stubBrowserZone("Asia/Tokyo");
+    try {
+      document.body.replaceChildren();
+      document.body.innerHTML =
+        markup(
+          "timestamp_start",
+          "timestamp_end",
+          "2026-07-27T14:30:00.000000+02:00",
+          "timestamp_start_timezone",
+        ) + zoneRowMarkup("timestamp_start_timezone", "Europe/Prague", "", true);
+      const start = document.querySelector<HTMLElement>("date-time-field")!;
+
+      expect(partInput(start, "hour").value).toBe("14");
+      expect(hidden(start).value).toBe("2026-07-27T14:30:00.000000+09:00");
+    } finally {
+      zoneSpy.mockRestore();
+    }
+  });
+
+  it("stops following its row once it leaves the document", () => {
+    // A detached field that still listens would keep rewriting its orphaned
+    // hidden input from a replacement row's zone changes.
+    const { start } = mountWithZoneRow("");
+    fillWholeField(start);
+    start.remove();
+    const valueAfterRemoval = hidden(start).value;
+
+    changeZone("timestamp_start_timezone", "Asia/Tokyo");
+
+    expect(hidden(start).value).toBe(valueAfterRemoval);
   });
 });

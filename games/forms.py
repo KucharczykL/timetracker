@@ -1,6 +1,8 @@
 import datetime
-from collections.abc import Mapping
-from typing import ClassVar, cast
+from collections.abc import Callable, Mapping
+from functools import partial
+from typing import ClassVar, Final, cast
+from zoneinfo import ZoneInfo
 
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm
@@ -15,11 +17,12 @@ from common.components import (
     DateTimePicker,
     SearchSelect,
     SearchSelectOption,
+    TimeZoneRow,
     render,
     searchselect_selected,
 )
 from common.components.primitives import Checkbox
-from common.date_time_presentation import DateTimePresentation
+from common.date_time_presentation import DateTimePresentation, zone_or_none
 from games.dev_login import prefill_credentials
 from games.models import (
     Device,
@@ -30,6 +33,7 @@ from games.models import (
     Purchase,
     Session,
 )
+from timetracker.settings_registry import DISPLAY_TIME_ZONE_CHOICES
 
 autofocus_input_widget = forms.TextInput(attrs={"autofocus": "autofocus"})
 
@@ -108,7 +112,13 @@ def apply_primitive_widget_classes(fields: Mapping[str, forms.Field]) -> None:
         # SearchSelect/DatePicker/DateTimeField are self-styled composite
         # components; never stamp the native-control classes onto them.
         if isinstance(
-            widget, (SearchSelectWidget, DatePickerWidget, DateTimeFieldWidget)
+            widget,
+            (
+                SearchSelectWidget,
+                DatePickerWidget,
+                DateTimeFieldWidget,
+                TimeZoneRowWidget,
+            ),
         ):
             continue
         if isinstance(widget, forms.Select):
@@ -304,10 +314,26 @@ class AwareDateTimeField(forms.DateTimeField):
     all. Keeping it aware lets the widget emit the offset alongside the wall
     clock, which is exactly what the client commits, so the round-trip is
     lossless for every instant.
+
+    ``zone_resolver`` (set by ``SessionForm``) is the paired zone picker's
+    current zone. The offset-qualified value the widget normally submits binds
+    the same under any active zone; the *naive* fallback shape (a DST-gap
+    submission) must be interpreted — and gap/ambiguity-checked — in the zone
+    the digits were typed against, not the account zone.
     """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.zone_resolver: Callable[[], ZoneInfo] | None = None
 
     def prepare_value(self, value):
         return value
+
+    def to_python(self, value):
+        if self.zone_resolver is None:
+            return super().to_python(value)
+        with timezone.override(self.zone_resolver()):
+            return super().to_python(value)
 
 
 class DateTimeFieldWidget(forms.Widget):
@@ -329,12 +355,16 @@ class DateTimeFieldWidget(forms.Widget):
         presentation: DateTimePresentation,
         label: str,
         copy_target: DateTimeCopyTarget | None = None,
+        zone_field_name: str = "",
+        zone_resolver: Callable[[], ZoneInfo] | None = None,
         attrs=None,
     ):
         super().__init__(attrs)
         self.presentation = presentation
         self.label = label
         self.copy_target = copy_target
+        self.zone_field_name = zone_field_name
+        self.zone_resolver = zone_resolver
 
     def _wire_value(self, value) -> str:
         if value in (None, ""):
@@ -347,7 +377,12 @@ class DateTimeFieldWidget(forms.Widget):
             # DISPLAY_TIME_ZONE). localtime() is for the aware value a caller
             # can still hand a widget directly.
             if timezone.is_aware(value):
-                value = timezone.localtime(value, self.presentation.timezone)
+                zone = (
+                    self.zone_resolver()
+                    if self.zone_resolver
+                    else self.presentation.timezone
+                )
+                value = timezone.localtime(value, zone)
             return value.isoformat()
         return str(value)
 
@@ -363,6 +398,41 @@ class DateTimeFieldWidget(forms.Widget):
                 required=bool(final_attrs.get("required")),
                 invalid=final_attrs.get("aria-invalid") == "true",
                 copy_target=self.copy_target,
+                zone_field_name=self.zone_field_name,
+            )
+        )
+
+    def value_from_datadict(self, data, files, name):
+        return data.get(name)
+
+
+class TimeZoneRowWidget(forms.Widget):
+    """Thin Django adapter that renders a `TimeZoneRow()` component for a
+    per-timestamp zone field. The row's picker trigger is always visible; the
+    hidden input inside the component is the submitted channel this widget
+    reads back."""
+
+    def __init__(
+        self,
+        *,
+        label: str,
+        display_zone: str,
+        capture_default: bool,
+        attrs=None,
+    ):
+        super().__init__(attrs)
+        self.label = label
+        self.display_zone = display_zone
+        self.capture_default = capture_default
+
+    def render(self, name, value, attrs=None, renderer=None):
+        return render(
+            TimeZoneRow(
+                field_name=name,
+                label=self.label,
+                stored_zone=str(value) if value else "",
+                display_zone=self.display_zone,
+                capture_default=self.capture_default,
             )
         )
 
@@ -380,17 +450,72 @@ _TIMESTAMP_COPY_TARGETS = {
         "timestamp_start", "Copy end value to start", "↑"
     ),
 }
+_TIME_ZONE_FORM_CHOICES: Final[tuple[tuple[str, str], ...]] = (
+    ("", "Account display zone"),
+    *DISPLAY_TIME_ZONE_CHOICES,
+)
+_TIMESTAMP_TIMEZONE_LABELS: Final[dict[str, str]] = {
+    "timestamp_start_timezone": "Start time zone",
+    "timestamp_end_timezone": "End time zone",
+}
+# The FormFields `embedded` mapping: each zone picker renders inside its
+# timestamp's row, not as a labelled row of its own.
+SESSION_TIMEZONE_EMBEDS: Final[dict[str, str]] = {
+    "timestamp_start_timezone": "timestamp_start",
+    "timestamp_end_timezone": "timestamp_end",
+}
+# Host timestamp → its zone field: the inverse view the datetime widgets need.
+_TIMESTAMP_ZONE_FIELDS: Final[dict[str, str]] = {
+    host_name: zone_name for zone_name, host_name in SESSION_TIMEZONE_EMBEDS.items()
+}
 
 
 class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
     def __init__(self, *args, presentation: DateTimePresentation, **kwargs):
         super().__init__(*args, **kwargs)
+        self._presentation = presentation
         for field_name, copy_target in _TIMESTAMP_COPY_TARGETS.items():
+            zone_field_name = _TIMESTAMP_ZONE_FIELDS[field_name]
+            zone_resolver = partial(self._resolved_field_zone, zone_field_name)
             self.fields[field_name].widget = DateTimeFieldWidget(
                 presentation=presentation,
                 label=str(self.fields[field_name].label or field_name),
                 copy_target=copy_target,
+                zone_field_name=zone_field_name,
+                zone_resolver=zone_resolver,
             )
+            timestamp_field = self.fields[field_name]
+            assert isinstance(timestamp_field, AwareDateTimeField)
+            timestamp_field.zone_resolver = zone_resolver
+        is_new_record = self.instance.pk is None
+        # The end zone is only meaningful once an end timestamp exists: an open
+        # session stamped at creation would carry that zone into a finish that
+        # happens elsewhere, hours later. The start is always about to be
+        # committed on a new record, so it captures unconditionally.
+        end_timestamp_supplied = bool(
+            self.initial.get("timestamp_end")
+            or (self.is_bound and self.data.get("timestamp_end"))
+        )
+        captures_by_field = {
+            "timestamp_start_timezone": is_new_record,
+            "timestamp_end_timezone": is_new_record and end_timestamp_supplied,
+        }
+        for field_name, zone_label in _TIMESTAMP_TIMEZONE_LABELS.items():
+            self.fields[field_name].widget = TimeZoneRowWidget(
+                label=zone_label,
+                display_zone=presentation.timezone.key,
+                capture_default=captures_by_field[field_name],
+            )
+
+    def _resolved_field_zone(self, zone_field_name: str) -> ZoneInfo:
+        """The zone this timestamp's digits are meant in: the paired zone
+        picker's current value when usable, else the account display zone."""
+        if self.is_bound:
+            raw_zone = self.data.get(zone_field_name)
+        else:
+            raw_zone = self.initial.get(zone_field_name)
+        zone = zone_or_none(raw_zone if isinstance(raw_zone, str) else None)
+        return zone or self._presentation.timezone
 
     game = SingleGameChoiceField(
         queryset=Game.objects.order_by("sort_name"),
@@ -422,6 +547,13 @@ class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
         label="Set game status to Played if Unplayed",
     )
 
+    timestamp_start_timezone = forms.TypedChoiceField(
+        required=False, choices=_TIME_ZONE_FORM_CHOICES, empty_value=None
+    )
+    timestamp_end_timezone = forms.TypedChoiceField(
+        required=False, choices=_TIME_ZONE_FORM_CHOICES, empty_value=None
+    )
+
     class Meta:
         # timestamp_start/timestamp_end get DateTimeFieldWidget in __init__
         # (needs the per-request presentation, unavailable to a class body);
@@ -437,7 +569,9 @@ class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
         fields = (
             "game",
             "timestamp_start",
+            "timestamp_start_timezone",
             "timestamp_end",
+            "timestamp_end_timezone",
             "duration_manual",
             "emulated",
             "device",

@@ -10,7 +10,7 @@ from datetime import date, datetime
 from functools import cache
 from types import MappingProxyType
 from typing import Literal, TypedDict
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.conf import settings
 from django.http import HttpRequest
@@ -111,12 +111,16 @@ class DateTimeFormatProfileConfig(TypedDict):
     hour_cycle: HourCycle
 
 
+type SessionTimeZoneDisplayMode = Literal["account", "own"]  # e.g. "own"
+
+
 class DateTimePresentationConfig(TypedDict):
     version: Literal[2]
     locale: str
     time_zone: str
     profile: DateTimeFormatProfileConfig
     day_periods: DayPeriodsConfig
+    session_time_zone_display: SessionTimeZoneDisplayMode
 
 
 _DATE_PART_SHAPES: dict[SegmentName, tuple[str, int, int, int]] = {
@@ -309,6 +313,7 @@ class DateTimePresentation:
     profile: DateTimeFormatProfile
     locale: str
     timezone: ZoneInfo
+    session_time_zone_display: SessionTimeZoneDisplayMode = "account"
 
     def _localized(self, value: date | datetime) -> date | datetime:
         if not isinstance(value, datetime):
@@ -385,6 +390,7 @@ class DateTimePresentation:
             "version": 2,
             "locale": self.locale,
             "time_zone": self.timezone.key,
+            "session_time_zone_display": self.session_time_zone_display,
             "profile": {
                 "segments": [
                     {
@@ -413,6 +419,18 @@ class DateTimePresentation:
         }
 
 
+def zone_or_none(zone_name: str | None) -> ZoneInfo | None:
+    """``ZoneInfo`` for a stored zone name, or ``None`` when the name is
+    missing or unusable (e.g. removed from tzdata) — every caller falls back
+    to the account display zone rather than crashing on a stale row."""
+    if not zone_name:
+        return None
+    try:
+        return ZoneInfo(zone_name)
+    except ZoneInfoNotFoundError, ValueError:
+        return None
+
+
 _REQUEST_CACHE_ATTRIBUTE = "_date_time_presentation"
 
 
@@ -431,12 +449,16 @@ def date_time_presentation_for_request(request: HttpRequest) -> DateTimePresenta
     )
     locale = getattr(request, "_date_format_locale", None)
     profile_id = resolve_str_for_user(getattr(request, "user", None), "DATETIME_FORMAT")
+    display_mode_raw = resolve_str_for_user(
+        getattr(request, "user", None), "SESSION_TIME_ZONE_DISPLAY"
+    )
     presentation = DateTimePresentation(
         profile=date_time_format_profile(profile_id),
         locale=locale
         if isinstance(locale, str)
         else get_language() or settings.LANGUAGE_CODE,
         timezone=zone,
+        session_time_zone_display="own" if display_mode_raw == "own" else "account",
     )
     setattr(request, _REQUEST_CACHE_ATTRIBUTE, presentation)
     return presentation

@@ -203,6 +203,7 @@ def DateTimePicker(
     required: bool = False,
     invalid: bool = False,
     copy_target: DateTimeCopyTarget | None = None,
+    zone_field_name: str = "",
 ) -> Node:
     """A presentation-aware datetime widget: segmented manual entry plus a
     calendar popup, submitting an offset-qualified wall clock under ``name``.
@@ -211,7 +212,9 @@ def DateTimePicker(
     copy control addresses the *widget* it writes into, and only the element
     knows how to re-derive its segments from a value."""
 
-    field = _DateTimeField(class_="relative", field_name=name)[
+    field = _DateTimeField(
+        class_="relative", field_name=name, zone_field_name=zone_field_name
+    )[
         DateTimeField(
             presentation=presentation,
             label=label,

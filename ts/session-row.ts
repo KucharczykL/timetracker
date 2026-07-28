@@ -11,7 +11,7 @@
 // and means the cloned <drop-down> device selector re-wires via its own
 // connectedCallback when the new row is inserted.
 //
-import { formatSessionTimeRange } from "./date-time-presentation.js";
+import { formatSessionTimeRange, type SessionEndpointZone } from "./date-time-presentation.js";
 
 interface SessionOut {
   id: number;
@@ -19,6 +19,11 @@ interface SessionOut {
   timestamp_end: string | null;
   duration_manual_seconds: number;
   is_manual: boolean;
+  timestamp_start_timezone?: string | null;
+  timestamp_end_timezone?: string | null;
+  // Server-computed display labels ("JST"); null when there is nothing to label.
+  timestamp_start_timezone_label?: string | null;
+  timestamp_end_timezone_label?: string | null;
 }
 
 /**
@@ -59,9 +64,19 @@ function renderSessionRow(session: SessionOut, oldRow: HTMLTableRowElement): HTM
   const newRow = oldRow.cloneNode(true) as HTMLTableRowElement;
   const cells = newRow.children; // [name(th), timeRange, duration, device, created, actions]
 
+  const startEndpoint: SessionEndpointZone = {
+    zone: session.timestamp_start_timezone ?? null,
+    label: session.timestamp_start_timezone_label ?? null,
+  };
+  const endEndpoint: SessionEndpointZone = {
+    zone: session.timestamp_end_timezone ?? null,
+    label: session.timestamp_end_timezone_label ?? null,
+  };
   const formattedTimeRange = formatSessionTimeRange(
     session.timestamp_start,
     session.timestamp_end,
+    startEndpoint,
+    endEndpoint,
   );
   const timeRangeCell = cells[1];
   if (timeRangeCell && formattedTimeRange !== null) {

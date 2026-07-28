@@ -81,6 +81,7 @@ function configWith(
     locale: "en-US",
     time_zone: "Europe/Prague",
     day_periods: { am: "AM", pm: "PM" },
+    session_time_zone_display: "account",
     profile: {
       segments: [
         ...dateSegments(order, dateSeparator),
@@ -396,6 +397,135 @@ describe("formatSessionTimeRange", () => {
       { toast: false },
     );
   });
+
+  it("ignores endpoint zones under the account preference", async () => {
+    installConfig(
+      alteredConfig((config) => {
+        config.session_time_zone_display = "account";
+      }),
+    );
+    const { formatSessionTimeRange } = await importFormatter();
+
+    expect(
+      formatSessionTimeRange(
+        "2026-07-01T12:00:00Z",
+        "2026-07-01T13:00:00Z",
+        { zone: "Asia/Tokyo", label: "JST" },
+        { zone: "Asia/Tokyo", label: "JST" },
+      ),
+    ).toBe("2026-07-01 14:00 — 15:00");
+  });
+
+  it("renders the session's own zone with the server's label under the own preference", async () => {
+    installConfig(
+      alteredConfig((config) => {
+        config.session_time_zone_display = "own";
+      }),
+    );
+    const { formatSessionTimeRange } = await importFormatter();
+
+    // The label is the server's string, verbatim — Intl's own "short" name for
+    // Asia/Tokyo is "GMT+9", which would silently disagree with the
+    // server-rendered rows in the same table. Both endpoints share one zone
+    // on one calendar day, so neither the date nor the label belongs on both
+    // ends: one of each, on the end, reads the way "9am – 5pm PST" does.
+    expect(
+      formatSessionTimeRange(
+        "2026-07-01T12:00:00Z",
+        "2026-07-01T13:00:00Z",
+        { zone: "Asia/Tokyo", label: "JST" },
+        { zone: "Asia/Tokyo", label: "JST" },
+      ),
+    ).toBe("2026-07-01 21:00 — 22:00 JST");
+  });
+
+  it("labels only the endpoint the server labelled", async () => {
+    installConfig(
+      alteredConfig((config) => {
+        config.session_time_zone_display = "own";
+      }),
+    );
+    const { formatSessionTimeRange } = await importFormatter();
+
+    // Same calendar day in both zones (2026-07-01), so the end still doesn't
+    // need its own date despite being labelled.
+    expect(
+      formatSessionTimeRange(
+        "2026-07-01T12:00:00Z",
+        "2026-07-01T13:00:00Z",
+        { zone: "Europe/Prague", label: null },
+        { zone: "Asia/Tokyo", label: "JST" },
+      ),
+    ).toBe("2026-07-01 14:00 — 22:00 JST");
+  });
+
+  it("gives a labelled end its own date across the date line", async () => {
+    installConfig(
+      alteredConfig((config) => {
+        config.session_time_zone_display = "own";
+      }),
+    );
+    const { formatSessionTimeRange } = await importFormatter();
+
+    // 21:00 UTC is 06:00 the next day in Tokyo; a bare "06:00 JST" after a
+    // 14:00 start reads as the same evening.
+    expect(
+      formatSessionTimeRange(
+        "2026-07-01T12:00:00Z",
+        "2026-07-01T21:00:00Z",
+        { zone: null, label: null },
+        { zone: "Asia/Tokyo", label: "JST" },
+      ),
+    ).toBe("2026-07-01 14:00 — 2026-07-02 06:00 JST");
+  });
+
+  it("renders the account zone when the server sent no label", async () => {
+    installConfig(
+      alteredConfig((config) => {
+        config.session_time_zone_display = "own";
+      }),
+    );
+    const { formatSessionTimeRange } = await importFormatter();
+
+    expect(
+      formatSessionTimeRange("2026-07-01T12:00:00Z", null, { zone: null, label: null }),
+    ).toBe("2026-07-01 14:00");
+  });
+
+  it("treats a contract without the display key as account", async () => {
+    installConfig(
+      alteredConfig((config) => {
+        delete (config as Partial<DateTimePresentationConfig>).session_time_zone_display;
+      }),
+    );
+    const { formatSessionTimeRange } = await importFormatter();
+
+    expect(
+      formatSessionTimeRange("2026-07-01T12:00:00Z", null, {
+        zone: "Asia/Tokyo",
+        label: "JST",
+      }),
+    ).toBe("2026-07-01 14:00");
+  });
+
+  it("returns null when the runtime does not know the stored zone", async () => {
+    installConfig(
+      alteredConfig((config) => {
+        config.session_time_zone_display = "own";
+      }),
+    );
+    const { formatSessionTimeRange } = await importFormatter();
+
+    // Null leaves session-row.ts's server-rendered cell untouched, which is
+    // the correct value — better than a client guess with a wrong wall clock.
+    expect(
+      formatSessionTimeRange("2026-07-01T12:00:00Z", null, {
+        zone: "Not/AZone",
+        label: "XXX",
+      }),
+    ).toBeNull();
+    expect(reportClientError).toHaveBeenCalled();
+  });
 });
 
 describe("nowInPresentationZone", () => {
@@ -436,6 +566,39 @@ describe("nowInPresentationZone", () => {
 
     expect(nowInPresentationZone()).toBeNull();
     expect(reportClientError).toHaveBeenCalledTimes(1);
+  });
+
+  it("projects into an override zone when one is named", async () => {
+    installConfig(
+      alteredConfig((config) => {
+        // The contract says +14 year-round; the override says +09. Reading
+        // back +09 is only possible if the override won.
+        config.time_zone = "Pacific/Kiritimati";
+      }),
+    );
+    const { nowInPresentationZone } = await importFormatter();
+
+    const value = nowInPresentationZone("Asia/Tokyo");
+    expect(value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+
+    const minutesAheadOfUTC = Temporal.PlainDateTime.from(value!)
+      .since(Temporal.Now.plainDateTimeISO("UTC"))
+      .total({ unit: "minute" });
+    expect(Math.abs(minutesAheadOfUTC - 9 * 60)).toBeLessThan(2);
+    expect(reportClientError).not.toHaveBeenCalled();
+  });
+
+  it("toasts and returns null for an override zone tzdata does not know", async () => {
+    installConfig(validConfig());
+    const { nowInPresentationZone } = await importFormatter();
+
+    expect(nowInPresentationZone("Not/AZone")).toBeNull();
+    // A click is waiting on this one, unlike the contract-zone failures.
+    expect(reportClientError).toHaveBeenCalledWith(
+      "date-time-presentation",
+      expect.any(String),
+      { toast: true },
+    );
   });
 });
 

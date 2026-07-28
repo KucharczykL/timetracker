@@ -408,8 +408,15 @@ def SearchSelect(
     host_dropdown: bool = False,
     dynamic_options: bool = False,
     committed_marker: bool = True,
+    panel: bool = False,
 ) -> Node:
     """Render the search-select widget. See module docstring for the contract.
+
+    ``panel=True`` is the panel-hosted personality: an always-visible widget
+    using the module's static panel classes, for content placed inside a
+    :func:`ComboboxDropdown` dialog (which owns open/close/dismiss). The same
+    composition :func:`PresetSelect` and a panel-layout :func:`FilterSelect`
+    build by hand — the hosting dialog, not the widget, is the disclosure.
 
     ``host_dropdown`` (issue #348) wraps the widget in
     ``<drop-down behavior="inline-combobox">`` so its panel opens/closes/positions/
@@ -441,6 +448,8 @@ def SearchSelect(
     correctly so for the preset picker, whose pick is a command and whose box
     clears by design.
     """
+    if panel:
+        always_visible = True
     if options and option_groups:
         raise ValueError("SearchSelect takes options or option_groups, not both")
     selected = [_normalize_option(option) for option in (selected or [])]
@@ -477,7 +486,7 @@ def SearchSelect(
         ("data-search-select-search", ""),
         ("placeholder", placeholder),
         ("autocomplete", "off"),
-        ("class", _SEARCH_CLASS),
+        ("class", _PANEL_SEARCH_CLASS if panel else _SEARCH_CLASS),
     ]
     if id:
         search_attrs.append(("id", id))
@@ -549,7 +558,9 @@ def SearchSelect(
         items_visible=items_visible,
         multi_select=multi_select,
         templates=templates,
-        options_class=_INLINE_OPTIONS_CLASS if host_dropdown else None,
+        options_class=_PANEL_OPTIONS_CLASS
+        if panel
+        else (_INLINE_OPTIONS_CLASS if host_dropdown else None),
         menu_target=host_dropdown,
         marker=marker,
     )
@@ -566,9 +577,13 @@ def SearchSelect(
         always_visible="true" if always_visible else "false",
         prefetch=prefetch,
         sync_url="true" if sync_url else "false",
-        class_=f"{_CONTAINER_CLASS} {_UNCOMMITTED_CONTAINER_CLASS}"
-        if show_marker
-        else _CONTAINER_CLASS,
+        class_=_PANEL_CONTAINER_CLASS
+        if panel
+        else (
+            f"{_CONTAINER_CLASS} {_UNCOMMITTED_CONTAINER_CLASS}"
+            if show_marker
+            else _CONTAINER_CLASS
+        ),
     )[*children]
     if not host_dropdown:
         return widget
