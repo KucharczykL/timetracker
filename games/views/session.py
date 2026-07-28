@@ -231,6 +231,10 @@ def clone_session_by_id(session_id: int) -> Session:
     clone.pk = None
     clone.timestamp_start = timezone.now()
     clone.timestamp_end = None
+    # The clone's start is server-stamped now; a browser zone does not exist
+    # here, and NULL already means "assume the display zone".
+    clone.timestamp_start_timezone = None
+    clone.timestamp_end_timezone = None
     clone.note = ""
     clone.save()
     return clone

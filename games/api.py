@@ -1,7 +1,9 @@
 import json
 import logging
+from collections.abc import Mapping
 from datetime import date, datetime
 from typing import Any, Final, NoReturn
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
@@ -14,12 +16,14 @@ from ninja.errors import HttpError
 from ninja.security import django_auth
 
 from common.criteria import FilterError, filter_from_json
+from common.date_time_presentation import date_time_presentation_for_request
 from games.filters import (
     MODE_PARSERS,
     filter_for_model,
     parse_session_filter,
 )
 from games.forms import game_option_data
+from games.formatting import zone_label
 from games.models import Device, FilterPreset, Game, Platform, PlayEvent, Session
 from games.sorting import (
     MODE_SORTS,
@@ -248,12 +252,41 @@ class DeviceOut(Schema):
     type: str
 
 
+def _endpoint_zone_label(
+    value: datetime | None,
+    zone_name: str | None,
+    context: Mapping[str, Any] | None,
+) -> str | None:
+    """The label the client appends verbatim, or ``None`` when there is nothing
+    to label: no stored zone, an unusable one (dropped from tzdata — must not
+    500 a list page), or one that equals this request's account display zone.
+
+    Computed here rather than in the browser because ``tzname()`` says "JST"
+    where Intl's ``timeZoneName: "short"`` says "GMT+9"; server-rendered and
+    client-rebuilt rows share one table and must read identically.
+    """
+    request = context.get("request") if context else None
+    if request is None or value is None or not zone_name:
+        return None
+    try:
+        zone = ZoneInfo(zone_name)
+    except (ZoneInfoNotFoundError, ValueError):
+        return None
+    if zone.key == date_time_presentation_for_request(request).timezone.key:
+        return None
+    return zone_label(value, zone)
+
+
 class SessionOut(Schema):
     id: int
     game: GameOut | None = None
     device: DeviceOut | None = None
     timestamp_start: datetime
     timestamp_end: datetime | None = None
+    timestamp_start_timezone: str | None = None
+    timestamp_end_timezone: str | None = None
+    timestamp_start_timezone_label: str | None = None
+    timestamp_end_timezone_label: str | None = None
     duration_manual_seconds: int
     is_manual: bool
     note: str
@@ -268,6 +301,18 @@ class SessionOut(Schema):
     @staticmethod
     def resolve_is_manual(obj: Session) -> bool:
         return obj.is_manual()
+
+    @staticmethod
+    def resolve_timestamp_start_timezone_label(obj: Session, context) -> str | None:
+        return _endpoint_zone_label(
+            obj.timestamp_start, obj.timestamp_start_timezone, context
+        )
+
+    @staticmethod
+    def resolve_timestamp_end_timezone_label(obj: Session, context) -> str | None:
+        return _endpoint_zone_label(
+            obj.timestamp_end, obj.timestamp_end_timezone, context
+        )
 
 
 class SessionListOut(Schema):
@@ -358,6 +403,10 @@ class SessionUpdate(Schema):
     # unwriteable.
     timestamp_start: datetime | None = None
     timestamp_end: datetime | None = None
+    # IANA zone each timestamp was committed in; present-null clears to NULL
+    # ("assume the display zone").
+    timestamp_start_timezone: str | None = None
+    timestamp_end_timezone: str | None = None
 
 
 @session_router.patch("/{session_id}", response={200: SessionOut})
@@ -368,6 +417,14 @@ def partial_update_session(request, session_id: int, payload: SessionUpdate):
         id=session_id,
     )
     data = payload.dict(exclude_unset=True)  # omitted fields are left untouched
+    for zone_field in ("timestamp_start_timezone", "timestamp_end_timezone"):
+        if zone_field in data and data[zone_field] is not None:
+            try:
+                data[zone_field] = ZoneInfo(data[zone_field]).key
+            except (ZoneInfoNotFoundError, ValueError) as exc:
+                raise HttpError(
+                    422, f"{zone_field} must be an IANA time zone name"
+                ) from exc
     new_start = data.get("timestamp_start", session.timestamp_start)
     new_end = data.get("timestamp_end", session.timestamp_end)
     if new_start is not None and new_end is not None and new_end < new_start:

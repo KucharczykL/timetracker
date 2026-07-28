@@ -462,3 +462,90 @@ def test_filter_count_invalid_filter_semantics_rejected(auth_client):
 def test_filter_count_requires_auth():
     response = Client().get(COUNT_URL, {"model": "game"})
     assert response.status_code == 401
+
+
+def test_session_out_includes_zone_fields(auth_client):
+    session = _make_session(timestamp_end=None)
+    session.timestamp_start_timezone = "Asia/Tokyo"
+    session.save()
+    response = auth_client.get(f"/api/session/{session.pk}")
+    payload = response.json()
+    assert payload["timestamp_start_timezone"] == "Asia/Tokyo"
+    assert payload["timestamp_end_timezone"] is None
+
+
+def test_session_out_ships_the_server_computed_zone_label(auth_client):
+    """The label travels as data so a client-rebuilt row cannot word it
+    differently from a server-rendered one (tzname "JST" vs Intl "GMT+9")."""
+    session = _make_session(timestamp_end=None)
+    session.timestamp_start_timezone = "Asia/Tokyo"
+    session.save()
+    payload = auth_client.get(f"/api/session/{session.pk}").json()
+    assert payload["timestamp_start_timezone_label"] == "JST"
+    assert payload["timestamp_end_timezone_label"] is None
+
+
+def test_a_zone_matching_the_account_zone_gets_no_label(auth_client):
+    # DISPLAY_TIME_ZONE's registry default is "UTC" for a fresh user with no
+    # preference set (settings_registry.py) — not the process's active
+    # timezone, which is why this pins the literal rather than reading
+    # django_timezone.get_current_timezone_name().
+    session = _make_session(timestamp_end=None)
+    session.timestamp_start_timezone = "UTC"
+    session.save()
+    payload = auth_client.get(f"/api/session/{session.pk}").json()
+    assert payload["timestamp_start_timezone"] is not None
+    assert payload["timestamp_start_timezone_label"] is None
+
+
+def test_an_unusable_stored_zone_gets_no_label(auth_client):
+    """A zone dropped from tzdata must not 500 a list page."""
+    session = _make_session(timestamp_end=None)
+    Session.objects.filter(pk=session.pk).update(timestamp_start_timezone="Not/AZone")
+    payload = auth_client.get(f"/api/session/{session.pk}").json()
+    assert payload["timestamp_start_timezone"] == "Not/AZone"
+    assert payload["timestamp_start_timezone_label"] is None
+
+
+def test_patch_finish_stores_the_end_zone(auth_client):
+    session = _make_session(timestamp_end=None)
+    response = auth_client.patch(
+        f"/api/session/{session.pk}",
+        json.dumps(
+            {
+                "timestamp_end": "2026-07-01T13:00:00Z",
+                "timestamp_end_timezone": "Asia/Tokyo",
+            }
+        ),
+        content_type="application/json",
+    )
+    assert response.status_code == 200
+    session.refresh_from_db()
+    assert session.timestamp_end_timezone == "Asia/Tokyo"
+    assert session.timestamp_start_timezone is None  # untouched
+
+
+def test_patch_rejects_a_non_iana_zone(auth_client):
+    session = _make_session(timestamp_end=None)
+    response = auth_client.patch(
+        f"/api/session/{session.pk}",
+        json.dumps({"timestamp_end_timezone": "Not/AZone"}),
+        content_type="application/json",
+    )
+    assert response.status_code == 422
+    session.refresh_from_db()
+    assert session.timestamp_end_timezone is None
+
+
+def test_patch_null_clears_a_stored_zone(auth_client):
+    session = _make_session(timestamp_end=None)
+    session.timestamp_start_timezone = "Asia/Tokyo"
+    session.save()
+    response = auth_client.patch(
+        f"/api/session/{session.pk}",
+        json.dumps({"timestamp_start_timezone": None}),
+        content_type="application/json",
+    )
+    assert response.status_code == 200
+    session.refresh_from_db()
+    assert session.timestamp_start_timezone is None
