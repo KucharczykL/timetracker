@@ -25,7 +25,6 @@
 import {
   bindSegmentField,
   dateCodec,
-  isoFromDate,
   readSideParts,
   segmentsForSide,
   setSegmentBuffer,
@@ -40,13 +39,8 @@ import {
 import { readDateTimeFieldProps } from "../generated/props.js";
 import { nowInPresentationZone, segmentRules } from "../date-time-presentation.js";
 import {
-  bindCalendarNav,
-  bindCalendarPopupHost,
-  dayVariantClass,
-  renderMonthCalendar,
-  todayView,
-  viewFromIso,
-  type MonthCalendarView,
+  bindSingleSelectCalendar,
+  type SingleSelectCalendar,
 } from "./date-calendar-core.js";
 import {
   TIME_ZONE_ROW_CHANGE_EVENT,
@@ -201,7 +195,7 @@ class DateTimeFieldElement extends HTMLElement {
       field,
       resolveHidden: () => resolveHidden(this),
       onCommit: () => this.announceChange(),
-      onFocus: () => this.calendarState?.refreshFromField(),
+      onFocus: () => this.calendar?.refreshFromField(),
       codec: this.codec,
       parsePaste: (text, _partNames, current) => {
         const pasted = parsePastedWallClock(text, datePartNames(this));
@@ -223,89 +217,23 @@ class DateTimeFieldElement extends HTMLElement {
     });
   }
 
-  private calendarState?: {
-    view: MonthCalendarView;
-    selectedIso: string;
-    refreshFromField: () => void;
-  };
+  private calendar?: SingleSelectCalendar;
 
   private initCalendar(): void {
-    // The calendar shell reuses DateRangePicker's data-date-range-* hooks
-    // (documented shared contract, not a range-specific naming leak).
-    const popup = this.querySelector<HTMLElement>("[data-date-range-calendar]")!;
-    const grid = popup.querySelector<HTMLElement>("[data-date-range-grid]")!;
-    const monthLabel = popup.querySelector<HTMLElement>("[data-date-range-month-label]")!;
-    const dayTemplate = popup.querySelector<HTMLTemplateElement>(
-      '[data-date-range-template="day"]',
-    );
-    const toggleButton = this.querySelector<HTMLElement>(
-      "[data-date-picker-calendar-toggle]",
-    );
-
-    const state = {
-      view: todayView(),
-      selectedIso: "",
-      refreshFromField: () => {
-        if (host.isOpen()) return;
-        state.selectedIso = selectedIsoFrom(this);
-      },
-    };
-    this.calendarState = state;
-
-    const todayIso = isoFromDate(new Date());
-
-    const dayCellClass = (isoString: string, inViewMonth: boolean): string => {
-      if (isoString === state.selectedIso) return dayVariantClass("selected");
-      return dayVariantClass(inViewMonth ? "default" : "adjacent");
-    };
-
-    const dayCellAria = (isoString: string, inViewMonth: boolean) => ({
-      label: `${isoString}${inViewMonth ? "" : " (adjacent month)"}`,
-      selected: isoString === state.selectedIso,
-      current: isoString === todayIso,
-    });
-
-    const render = (): void => {
-      renderMonthCalendar(state.view, {
-        grid,
-        monthLabel,
-        dayTemplate,
-        dayCellClass,
-        dayCellAria,
-      });
-    };
-
-    const host = bindCalendarPopupHost({
+    const calendar = bindSingleSelectCalendar({
       picker: this,
-      popup,
-      toggleButton,
       idPrefix: "date-time-calendar",
-      beforeOpen: () => {
-        state.selectedIso = selectedIsoFrom(this);
-        state.view = state.selectedIso ? viewFromIso(state.selectedIso) : todayView();
+      selectedIso: () => selectedIsoFrom(this),
+      onPickDay: (isoString) => {
+        // Only the date segments move: the time is the user's, typed or not.
+        const parts = { ...readSideParts(this, SIDE).values };
+        Object.assign(parts, dateCodec.decode(isoString));
+        if (!parts.hour) Object.assign(parts, midnightParts(hasDayPeriod(this)));
+        if (!parts.minute) parts.minute = "00";
+        this.writeParts(parts);
       },
-      render,
-    });
-
-    grid.addEventListener("click", (event) => {
-      const dayButton = (event.target as Element).closest("button[data-date]");
-      if (!dayButton) return;
-      const isoString = dayButton.getAttribute("data-date") ?? "";
-      state.selectedIso = isoString;
-      // Only the date segments move: the time is the user's, typed or not.
-      const parts = { ...readSideParts(this, SIDE).values };
-      Object.assign(parts, dateCodec.decode(isoString));
-      if (!parts.hour) Object.assign(parts, midnightParts(hasDayPeriod(this)));
-      if (!parts.minute) parts.minute = "00";
-      this.writeParts(parts);
-      host.close();
-    });
-
-    bindCalendarNav(popup, state, render);
-
-    popup
-      .querySelector<HTMLElement>("[data-date-range-now]")
-      ?.addEventListener("click", () => {
+      onClear: () => this.setValue(""),
+      onNow: () => {
         // The wall clock of whichever zone this field currently follows —
         // paired row's selection, else the account's — never the browser's
         // raw clock: the pair of these digits and that zone's offset is what
@@ -313,18 +241,10 @@ class DateTimeFieldElement extends HTMLElement {
         const now = nowInPresentationZone(this.selectedZone());
         if (!now) return;
         this.setValue(now);
-        state.selectedIso = selectedIsoFrom(this);
-        state.view = viewFromIso(state.selectedIso);
-        render();
-      });
-
-    popup
-      .querySelector<HTMLElement>("[data-date-range-clear]")!
-      .addEventListener("click", () => {
-        state.selectedIso = "";
-        this.setValue("");
-        render();
-      });
+        calendar.syncFromValue();
+      },
+    });
+    this.calendar = calendar;
   }
 
   private initCopyControl(): void {
