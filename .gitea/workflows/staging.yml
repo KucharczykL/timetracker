@@ -147,4 +147,4 @@ jobs:
           SLUG=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-//; s/-$//' | cut -c1-40)
           docker rm -f "timetracker-staging-${SLUG}" 2>/dev/null || true
           docker volume rm "timetracker-staging-${SLUG}" 2>/dev/null || true
-          docker rmi "timetracker:staging-${SLUG}" 2>/dev/null || true
+          docker rmi "localhost/timetracker:staging-${SLUG}" 2>/dev/null || true
