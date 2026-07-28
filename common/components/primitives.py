@@ -9,7 +9,7 @@ Everything returns a :class:`Node`; string-built widgets return :class:`Safe`.
 
 import json
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal, NamedTuple, NotRequired, TypedDict
 
 from django.conf import settings
@@ -1496,6 +1496,7 @@ def FormFields(
     *,
     presentations: Mapping[str, FormFieldPresentation] | None = None,
     groups: Sequence[FormFieldGroup] | None = None,
+    embedded: Mapping[str, str] | None = None,
 ) -> Node:
     """Render a Django form's fields as self-styled component rows.
 
@@ -1510,12 +1511,57 @@ def FormFields(
     hidden controls, and presentation content keep the exact same path. Unknown
     or duplicate field names raise instead of producing a partially-rendered
     settings form.
+
+    ``embedded`` maps a field name to the *host* field whose row renders it —
+    the embedded field's full widget markup (plus its own errors) is appended
+    after the host's control instead of getting a labelled row of its own.
+    For self-labelling controls that belong visually to another field.
     """
     presentations = presentations or {}
     unknown_presentations = set(presentations) - set(form.fields)
     if unknown_presentations:
         unknown = min(unknown_presentations)
         raise ValueError(f"FormFields presentation names unknown field {unknown!r}.")
+
+    embedded = dict(embedded or {})
+    if embedded and groups is not None:
+        raise ValueError("FormFields embedded is not supported with groups.")
+    for embedded_name, host_name in embedded.items():
+        if embedded_name not in form.fields:
+            raise ValueError(
+                f"FormFields embedded names unknown field {embedded_name!r}."
+            )
+        if host_name not in form.fields:
+            raise ValueError(
+                f"FormFields embedded names unknown host field {host_name!r}."
+            )
+
+    embedded_by_host: dict[str, list[Node]] = {}
+    for embedded_name, host_name in embedded.items():
+        embedded_field = form[embedded_name]
+        embed_parts: list[Node] = [Safe(str(embedded_field))]
+        embed_errors = _field_errors(embedded_field.errors)
+        if embed_errors:
+            embed_parts.append(embed_errors)
+        embedded_by_host.setdefault(host_name, []).extend(embed_parts)
+
+    def _presentation_with_embeds(
+        field_name: str,
+    ) -> FormFieldPresentation | None:
+        presentation = presentations.get(field_name)
+        embeds = embedded_by_host.get(field_name)
+        if not embeds:
+            return presentation
+        extra: Node = Fragment(*embeds)
+        if presentation is None:
+            return FormFieldPresentation(after_control=extra)
+        combined = (
+            Fragment(presentation.after_control, extra)
+            if presentation.after_control is not None
+            else extra
+        )
+        return replace(presentation, after_control=combined)
+
     rows: list[Node] = []
 
     non_field = _field_errors(form.non_field_errors())
@@ -1530,10 +1576,12 @@ def FormFields(
         if field.is_hidden:
             rows.append(Safe(str(field)))
             continue
+        if field.name in embedded:
+            continue
         rows.append(
             _form_field_row(
                 field,
-                presentations.get(field.name),
+                _presentation_with_embeds(field.name),
             )
         )
 

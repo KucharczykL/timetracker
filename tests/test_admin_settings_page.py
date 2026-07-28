@@ -29,6 +29,7 @@ SITE_SETTING_KEYS = (
     "DEFAULT_PAGE_SIZE",
     "THEME",
     "DISPLAY_TIME_ZONE",
+    "SESSION_TIME_ZONE_DISPLAY",
     "DATE_FORMAT_LOCALE",
     "DATETIME_FORMAT",
 )
@@ -320,7 +321,10 @@ def test_admin_page_lists_device_rows_and_select_options(
 
     html = superuser_client.get(reverse("games:admin_settings")).content.decode()
 
-    assert html.count(">Use configured default</option>") == 7
+    # One per USER-scope SELECT setting: default_landing_page, default_page_size,
+    # theme, display_time_zone, session_time_zone_display, date_format_locale,
+    # datetime_format (default_currency/default_device are not SELECT widgets).
+    assert html.count(">Use configured default</option>") == 8
     assert html.index(
         f'<option value="{desktop.pk}">Desktop (PC)</option>'
     ) < html.index(">Steam Deck (Handheld)</option>")

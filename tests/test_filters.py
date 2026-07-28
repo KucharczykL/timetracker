@@ -5262,6 +5262,13 @@ class TestStringFieldNullConvention:
             "UserPreferences.display_time_zone",
             "UserPreferences.date_format_locale",
             "UserPreferences.datetime_format",
+            # NULL means "assume the account's display zone" — a distinct
+            # semantic from "", and not exposed through any StringCriterion
+            # filter (games/filters.py has no zone-field criterion), so the
+            # IS_NULL/NOT_NULL ambiguity the convention guards against does
+            # not apply here.
+            "Session.timestamp_start_timezone",
+            "Session.timestamp_end_timezone",
         }
     )
 

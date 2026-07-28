@@ -1,6 +1,6 @@
 import datetime
 from collections.abc import Mapping
-from typing import ClassVar, cast
+from typing import ClassVar, Final, cast
 
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm
@@ -15,6 +15,7 @@ from common.components import (
     DateTimePicker,
     SearchSelect,
     SearchSelectOption,
+    TimeZoneRow,
     render,
     searchselect_selected,
 )
@@ -30,6 +31,7 @@ from games.models import (
     Purchase,
     Session,
 )
+from timetracker.settings_registry import DISPLAY_TIME_ZONE_CHOICES
 
 autofocus_input_widget = forms.TextInput(attrs={"autofocus": "autofocus"})
 
@@ -108,7 +110,13 @@ def apply_primitive_widget_classes(fields: Mapping[str, forms.Field]) -> None:
         # SearchSelect/DatePicker/DateTimeField are self-styled composite
         # components; never stamp the native-control classes onto them.
         if isinstance(
-            widget, (SearchSelectWidget, DatePickerWidget, DateTimeFieldWidget)
+            widget,
+            (
+                SearchSelectWidget,
+                DatePickerWidget,
+                DateTimeFieldWidget,
+                TimeZoneRowWidget,
+            ),
         ):
             continue
         if isinstance(widget, forms.Select):
@@ -370,6 +378,40 @@ class DateTimeFieldWidget(forms.Widget):
         return data.get(name)
 
 
+class TimeZoneRowWidget(forms.Widget):
+    """Thin Django adapter that renders a `TimeZoneRow()` component for a
+    per-timestamp zone field. The row's picker trigger is always visible; the
+    hidden input inside the component is the submitted channel this widget
+    reads back."""
+
+    def __init__(
+        self,
+        *,
+        label: str,
+        display_zone: str,
+        capture_default: bool,
+        attrs=None,
+    ):
+        super().__init__(attrs)
+        self.label = label
+        self.display_zone = display_zone
+        self.capture_default = capture_default
+
+    def render(self, name, value, attrs=None, renderer=None):
+        return render(
+            TimeZoneRow(
+                field_name=name,
+                label=self.label,
+                stored_zone=str(value) if value else "",
+                display_zone=self.display_zone,
+                capture_default=self.capture_default,
+            )
+        )
+
+    def value_from_datadict(self, data, files, name):
+        return data.get(name)
+
+
 # Each session timestamp can copy itself into the other one. The arrow points
 # the way the target sits in the form, so the control reads as a direction.
 _TIMESTAMP_COPY_TARGETS = {
@@ -379,6 +421,20 @@ _TIMESTAMP_COPY_TARGETS = {
     "timestamp_end": DateTimeCopyTarget(
         "timestamp_start", "Copy end value to start", "↑"
     ),
+}
+_TIME_ZONE_FORM_CHOICES: Final[tuple[tuple[str, str], ...]] = (
+    ("", "Account display zone"),
+    *DISPLAY_TIME_ZONE_CHOICES,
+)
+_TIMESTAMP_TIMEZONE_LABELS: Final[dict[str, str]] = {
+    "timestamp_start_timezone": "Start time zone",
+    "timestamp_end_timezone": "End time zone",
+}
+# The FormFields `embedded` mapping: each zone picker renders inside its
+# timestamp's row, not as a labelled row of its own.
+SESSION_TIMEZONE_EMBEDS: Final[dict[str, str]] = {
+    "timestamp_start_timezone": "timestamp_start",
+    "timestamp_end_timezone": "timestamp_end",
 }
 
 
@@ -390,6 +446,25 @@ class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
                 presentation=presentation,
                 label=str(self.fields[field_name].label or field_name),
                 copy_target=copy_target,
+            )
+        is_new_record = self.instance.pk is None
+        # The end zone is only meaningful once an end timestamp exists: an open
+        # session stamped at creation would carry that zone into a finish that
+        # happens elsewhere, hours later. The start is always about to be
+        # committed on a new record, so it captures unconditionally.
+        end_timestamp_supplied = bool(
+            self.initial.get("timestamp_end")
+            or (self.is_bound and self.data.get("timestamp_end"))
+        )
+        captures_by_field = {
+            "timestamp_start_timezone": is_new_record,
+            "timestamp_end_timezone": is_new_record and end_timestamp_supplied,
+        }
+        for field_name, zone_label in _TIMESTAMP_TIMEZONE_LABELS.items():
+            self.fields[field_name].widget = TimeZoneRowWidget(
+                label=zone_label,
+                display_zone=presentation.timezone.key,
+                capture_default=captures_by_field[field_name],
             )
 
     game = SingleGameChoiceField(
@@ -422,6 +497,13 @@ class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
         label="Set game status to Played if Unplayed",
     )
 
+    timestamp_start_timezone = forms.TypedChoiceField(
+        required=False, choices=_TIME_ZONE_FORM_CHOICES, empty_value=None
+    )
+    timestamp_end_timezone = forms.TypedChoiceField(
+        required=False, choices=_TIME_ZONE_FORM_CHOICES, empty_value=None
+    )
+
     class Meta:
         # timestamp_start/timestamp_end get DateTimeFieldWidget in __init__
         # (needs the per-request presentation, unavailable to a class body);
@@ -437,7 +519,9 @@ class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
         fields = (
             "game",
             "timestamp_start",
+            "timestamp_start_timezone",
             "timestamp_end",
+            "timestamp_end_timezone",
             "duration_manual",
             "emulated",
             "device",
