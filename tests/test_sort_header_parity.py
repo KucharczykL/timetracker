@@ -17,7 +17,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from games.models import Device, Game, PlayEvent, Platform, Purchase
+from games.models import Device, Game, Platform, PlayEvent, Purchase
 from games.sorting import (
     DEVICE_SORTS,
     GAME_SORTS,

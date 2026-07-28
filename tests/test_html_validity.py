@@ -8,8 +8,8 @@ another — the safety net that lets popover triggers default to tappable withou
 a per-component guard a caller-supplied wrapper could defeat.
 """
 
-from datetime import date, datetime
 from collections import Counter
+from datetime import date, datetime
 from html.parser import HTMLParser
 from zoneinfo import ZoneInfo
 
@@ -18,7 +18,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from games.models import Device, Game, PlayEvent, Platform, Purchase, Session
+from games.models import Device, Game, Platform, PlayEvent, Purchase, Session
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 

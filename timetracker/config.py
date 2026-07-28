@@ -37,10 +37,11 @@ unaffected.
 """
 
 import os
+from collections.abc import Callable
 from configparser import ConfigParser
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Callable, NamedTuple
+from typing import Any, NamedTuple
 from urllib.parse import urlparse
 
 from django.core.exceptions import ImproperlyConfigured

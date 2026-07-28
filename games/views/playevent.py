@@ -11,13 +11,13 @@ from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 
 from common.components import (
+    ICON_BUTTON_SIZE_CLASS,
     AddForm,
     ButtonGroup,
     Cell,
     Column,
     ContentContainer,
     Fragment,
-    ICON_BUTTON_SIZE_CLASS,
     Icon,
     ModuleScript,
     QuickFilterBar,
@@ -27,13 +27,17 @@ from common.components import (
     paginated_table_content,
     parse_filter_dict,
 )
-from common.layout import render_page
 from common.date_time_presentation import (
     DateTimePresentation,
     date_time_presentation_for_request,
 )
+from common.layout import render_page
+from common.returns import OriginUrl, action_url
 from common.time import format_duration
 from common.utils import paginate
+from games.filters import parse_playevent_filter
+from games.forms import PlayEventForm
+from games.models import Game, PlayEvent, Session
 from games.sorting import (
     PLAYEVENT_DEFAULT_SORT,
     PLAYEVENT_SORTS,
@@ -41,16 +45,12 @@ from games.sorting import (
     apply_sort,
     parse_find_filter,
 )
-from games.filters import parse_playevent_filter
-from games.forms import PlayEventForm
 from games.views.deletion import confirm_and_delete
 from games.views.filtering import (
     apply_structured_filter,
     builder_url_for,
     warn_unknown_sort,
 )
-from common.returns import OriginUrl, action_url
-from games.models import Game, PlayEvent, Session
 from games.views.returns import return_url
 
 logger = logging.getLogger("games")
@@ -59,7 +59,7 @@ logger = logging.getLogger("games")
 def create_playevent_tabledata(
     playevents: list[PlayEvent] | BaseManager[PlayEvent] | QuerySet[PlayEvent],
     presentation: DateTimePresentation,
-    exclude_columns: list[str] = [],
+    exclude_columns: Sequence[str] = (),
     request: HttpRequest | None = None,
     sort_terms: Sequence[SortTerm] = (),
     *,

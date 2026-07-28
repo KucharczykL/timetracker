@@ -1,20 +1,20 @@
 """Rendering tests: stats page wires rows/counts to filtered-list links (#65)."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
 from django.utils.html import escape
 
+from common.date_time_presentation import (
+    DEFAULT_DATE_TIME_FORMAT_PROFILE,
+    DateTimePresentation,
+)
 from games.filters import filter_url
 from games.models import Game, Platform, PlayEvent, Purchase, Session
 from games.views import stats_links
 from games.views.stats_content import stats_content as _stats_content
 from games.views.stats_data import compute_stats
-from common.date_time_presentation import (
-    DEFAULT_DATE_TIME_FORMAT_PROFILE,
-    DateTimePresentation,
-)
 
 YEAR = 2024
 _PRESENTATION = DateTimePresentation(
@@ -27,7 +27,7 @@ def stats_content(ctx):
 
 
 def _dt(month, day, hour=12):
-    return datetime(YEAR, month, day, hour, 0, tzinfo=timezone.utc)
+    return datetime(YEAR, month, day, hour, 0, tzinfo=UTC)
 
 
 @pytest.fixture

@@ -13,7 +13,7 @@ parent's n-ary ``AND`` list. This module asserts:
 """
 
 import json
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -34,7 +34,7 @@ def _session_ids(filter_json: str) -> set[int]:
 
 
 def _dt(year=2024, month=6, day=1):
-    return datetime(year, month, day, 12, 0, tzinfo=timezone.utc)
+    return datetime(year, month, day, 12, 0, tzinfo=UTC)
 
 
 def _game_ids(filter_json: str) -> set[int]:

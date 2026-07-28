@@ -23,7 +23,6 @@ next apply, and Clear always discards the *whole* filter.
 from collections.abc import Collection
 from typing import NamedTuple
 
-from common.date_time_presentation import DateTimePresentation
 from common.components.core import BaseComponent, Node
 from common.components.custom_elements import (
     FILTER_MODE_MODELS,
@@ -49,6 +48,7 @@ from common.components.primitives import (
 )
 from common.components.search_select import ComboboxDropdown, LoadPresetDropdown
 from common.criteria import AttrName
+from common.date_time_presentation import DateTimePresentation
 
 
 class QuickFacet(NamedTuple):

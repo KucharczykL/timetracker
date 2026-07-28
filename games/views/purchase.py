@@ -1,11 +1,11 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db import transaction
+from django.db.models import QuerySet
 from django.http import (
     HttpRequest,
     HttpResponse,
 )
-from django.db import transaction
-from django.db.models import QuerySet
 from django.shortcuts import get_object_or_404, redirect
 from django.template.defaultfilters import floatformat, pluralize
 from django.urls import reverse
@@ -13,12 +13,14 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from common.components import (
+    ICON_BUTTON_SIZE_CLASS,
     A,
     AddForm,
     ButtonGroup,
     Checkbox,
     Column,
     ContentContainer,
+    ControlButton,
     CsrfInput,
     DialogTitle,
     Div,
@@ -26,7 +28,6 @@ from common.components import (
     FormFields,
     Fragment,
     GameLink,
-    ICON_BUTTON_SIZE_CLASS,
     Icon,
     Input,
     LinkedPurchase,
@@ -36,7 +37,6 @@ from common.components import (
     PriceConverted,
     PurchasePrice,
     SelectionFields,
-    ControlButton,
     TableData,
     TableRow,
     TableRowData,
@@ -44,11 +44,12 @@ from common.components import (
     paginated_table_content,
 )
 from common.components.primitives import Li, P, Ul
-from common.layout import render_page
 from common.date_time_presentation import (
     DateTimePresentation,
     date_time_presentation_for_request,
 )
+from common.layout import render_page
+from common.returns import OriginUrl, action_url
 from common.utils import label_with_details, paginate
 from games.forms import PurchaseForm
 from games.models import Game, PlayEvent, Purchase
@@ -60,7 +61,6 @@ from games.sorting import (
 )
 from games.views.deletion import confirm_and_delete
 from games.views.filtering import warn_unknown_sort
-from common.returns import OriginUrl, action_url
 from games.views.returns import origin_from, return_url
 from timetracker.settings_resolver import resolve_str_for_user
 
@@ -137,9 +137,8 @@ def _render_purchase_row(
             game__in=purchase.games.all(),
             ended__isnull=False,
         ).latest("ended")
-        if latest_play_event:
-            if latest_play_event.ended:
-                date_finished = presentation.format(latest_play_event.ended, "date")
+        if latest_play_event and latest_play_event.ended:
+            date_finished = presentation.format(latest_play_event.ended, "date")
     except PlayEvent.DoesNotExist:
         pass
     return make_row(

@@ -6,8 +6,8 @@ module of ``Element`` trees, so the runtime never parses XML. Run it after
 adding or editing an icon: ``make gen-icons`` (CI guards drift via ``--check``).
 """
 
-import xml.etree.ElementTree as ElementTree
 from pathlib import Path
+from xml.etree import ElementTree
 
 from django.conf import settings
 from django.core.management.base import BaseCommand

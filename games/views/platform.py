@@ -20,23 +20,23 @@ from common.components import (
 )
 from common.date_time_presentation import date_time_presentation_for_request
 from common.layout import render_page
+from common.returns import action_url
 from common.utils import paginate
+from games.filters import parse_platform_filter
+from games.forms import PlatformForm
+from games.models import Platform
 from games.sorting import (
     PLATFORM_DEFAULT_SORT,
     PLATFORM_SORTS,
     apply_sort,
     parse_find_filter,
 )
-from games.filters import parse_platform_filter
-from games.forms import PlatformForm
 from games.views.deletion import confirm_and_delete
 from games.views.filtering import (
     apply_structured_filter,
     builder_url_for,
     warn_unknown_sort,
 )
-from common.returns import action_url
-from games.models import Platform
 from games.views.returns import return_url
 
 

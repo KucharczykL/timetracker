@@ -184,13 +184,13 @@ def test_display_time_zone_save_reloads_presentation_contract(
     page.goto(f"{live_server.url}{reverse('games:admin_settings')}")
     _wait_for_live_settings(page)
 
-    with page.expect_navigation(wait_until="load"):
-        with page.expect_response(
+    with (
+        page.expect_navigation(wait_until="load"),
+        page.expect_response(
             lambda response: _site_patch(response, "DISPLAY_TIME_ZONE")
-        ) as saved:
-            page.get_by_label("Time zone", exact=True).select_option(
-                "Pacific/Kiritimati"
-            )
+        ) as saved,
+    ):
+        page.get_by_label("Time zone", exact=True).select_option("Pacific/Kiritimati")
     assert saved.value.status == 200
     _wait_for_live_settings(page)
 

@@ -6,8 +6,8 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
-from django.core.management import call_command
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.http import HttpRequest
 from django.test import Client, RequestFactory, override_settings
 from django.urls import reverse

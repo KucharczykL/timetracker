@@ -1,6 +1,7 @@
 import unicodedata
+from collections.abc import Generator
 from datetime import date
-from typing import TYPE_CHECKING, Any, Generator, NamedTuple, TypeVar
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from django.core.paginator import Page, Paginator
 
@@ -10,7 +11,7 @@ if TYPE_CHECKING:
     from games.filters import FindFilter
 
 
-def paginate(queryset, find: "FindFilter"):
+def paginate(queryset, find: FindFilter):
     """Standard list-view pagination, driven by a resolved ``FindFilter``.
 
     Slices ``queryset`` to ``find.page`` / ``find.per_page`` and returns
@@ -31,7 +32,7 @@ def paginate(queryset, find: "FindFilter"):
     return object_list, page_obj, elided_page_range
 
 
-def safe_division(numerator: int | float, denominator: int | float) -> int | float:
+def safe_division(numerator: float, denominator: float) -> int | float:
     """
     Divides without triggering division by zero exception.
     Returns 0 if denominator is 0.
@@ -114,13 +115,10 @@ def truncate_info(
     return Truncation(display, was_truncated=display != f"{input_string}{endpart}")
 
 
-T = TypeVar("T", str, int, date)
-
-
-def generate_split_ranges(
+def generate_split_ranges[T: (str, int, date)](
     value_list: list[T], split_points: list[T]
-) -> Generator[tuple[T, T], None, None]:
-    for x in range(0, len(split_points) + 1):
+) -> Generator[tuple[T, T]]:
+    for x in range(len(split_points) + 1):
         if x == 0:
             start = 0
         elif x >= len(split_points):
@@ -134,7 +132,7 @@ def generate_split_ranges(
         yield (value_list[start], value_list[end - 1])
 
 
-def format_float_or_int(number: int | float):
+def format_float_or_int(number: float):
     return int(number) if float(number).is_integer() else f"{number:03.2f}"
 
 

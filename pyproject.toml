@@ -70,12 +70,16 @@ extend-exclude = [
     "common/components/icons_generated.py",
 ]
 
-[tool.ruff.lint]
-# ruff 0.16 expanded the default rule set from ~59 to 413 rules, which flags
-# ~380 sites here (RUF012, I001, UP017, DTZ*, …) — some needing real behavior
-# changes, not mechanical fixes. Pin the pre-0.16 default selection so the
-# version bump stays behavior-neutral; widening the rule set is follow-up work.
-select = ["E4", "E7", "E9", "F"]
+[tool.ruff.lint.per-file-ignores]
+# Migrations are `makemigrations` output: their `dependencies`/`operations`
+# lists are the generator's idiom, and hand-annotating ClassVar there would
+# fight every future regeneration.
+"games/migrations/*" = ["RUF012"]
+# Tests construct naive datetimes/dates as deliberate fixture values (the
+# code under test owns the tz semantics); e2e additionally compares against
+# the browser's local "today".
+"tests/*" = ["DTZ"]
+"e2e/*" = ["DTZ"]
 
 [tool.mypy]
 plugins = ["mypy_django_plugin.main"]

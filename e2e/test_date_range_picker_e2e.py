@@ -20,18 +20,18 @@ from zoneinfo import ZoneInfo
 import pytest
 from django.http import HttpResponse
 from django.test import override_settings
+from django.urls import path
 from playwright.sync_api import expect
 
 from common.components import parse_filter_dict
 from common.components.filters import field_widget
 from common.date_time_presentation import (
-    build_format_profile,
     DateTimePresentation,
+    build_format_profile,
     date_time_format_profile,
     date_time_presentation_for_request,
 )
 from games.filters import PurchaseFilter
-from django.urls import path
 
 
 def _bar_page(presentation, filter_json: str = "", apply_url: str = "") -> str:

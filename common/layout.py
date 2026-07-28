@@ -10,8 +10,8 @@ it hoists shared `<head>` content (the `_HEADERS` block, analogous to
 import json
 from typing import TYPE_CHECKING
 
-from django.contrib.messages import get_messages
 from django.conf import settings
+from django.contrib.messages import get_messages
 from django.http import HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from django.templatetags.static import static
@@ -171,7 +171,7 @@ def NavbarPlaytime(
     today_url: str | None = None,
     last_7_url: str | None = None,
     oob: bool = False,
-) -> "Node":
+) -> Node:
     """The navbar 'Today · Last 7 days' totals. Carries a stable id so
     htmx endpoints can refresh it out-of-band after a session change.
 
@@ -216,9 +216,9 @@ def NavbarMenu(
     authenticated: bool = False,
     is_superuser: bool = False,
     is_settings_page: bool = False,
-    recent_resumes: list["Session"] | None = None,
-    origin: "OriginUrl | None" = None,
-) -> "Node":
+    recent_resumes: list[Session] | None = None,
+    origin: OriginUrl | None = None,
+) -> Node:
     """The responsive ``#navbar-dropdown`` collapse menu, built from components."""
     from common.components import (
         A,
@@ -350,7 +350,7 @@ def NavbarMenu(
     ]
 
 
-def recent_session_resumes(request: HttpRequest, limit: int = 5) -> list["Session"]:
+def recent_session_resumes(request: HttpRequest, limit: int = 5) -> list[Session]:
     """The most-recent session per distinct played game, newest first (up to
     ``limit``). Each is a resume target for the navbar log dropdown: cloning it
     starts a fresh session carrying the prior device/emulated flags.
@@ -381,12 +381,12 @@ def recent_session_resumes(request: HttpRequest, limit: int = 5) -> list["Sessio
 
 
 def NavbarLogButton(
-    recent_resumes: list["Session"],
+    recent_resumes: list[Session],
     *,
     id: str = "navbar-log",
     csrf_token: str = "",
-    origin: "OriginUrl | None" = None,
-) -> "Node":
+    origin: OriginUrl | None = None,
+) -> Node:
     """The always-visible split button: primary opens the general add-session form,
     the caret dropdown one-click-resumes each recent game. ``id`` disambiguates the
     two breakpoint instances (mobile beside the hamburger, desktop inside the menu)."""
@@ -455,9 +455,9 @@ def Navbar(
     authenticated: bool = False,
     is_superuser: bool = False,
     is_settings_page: bool = False,
-    recent_resumes: list["Session"] | None = None,
-    origin: "OriginUrl | None" = None,
-) -> "Node":
+    recent_resumes: list[Session] | None = None,
+    origin: OriginUrl | None = None,
+) -> Node:
     """Top navigation bar, assembled from components (logo + hamburger + menu)."""
     from common.components import A, Div, Icon, Span
 
@@ -521,11 +521,11 @@ def Navbar(
 
 
 def TimetrackerDocument(
-    content: "Node | SafeText | str",
+    content: Node | SafeText | str,
     *,
     request: HttpRequest,
     title: str = "",
-    scripts: "Node | SafeText | str" = "",
+    scripts: Node | SafeText | str = "",
     mastered: bool = False,
     is_settings_page: bool = False,
 ) -> Document:
@@ -732,10 +732,10 @@ def TimetrackerDocument(
 
 def render_page(
     request: HttpRequest,
-    content: "Node | SafeText | str",
+    content: Node | SafeText | str,
     *,
     title: str = "",
-    scripts: "Node | SafeText | str" = "",
+    scripts: Node | SafeText | str = "",
     mastered: bool = False,
     is_settings_page: bool = False,
     status: int = 200,

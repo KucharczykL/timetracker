@@ -10,7 +10,7 @@ match the stats queries' M2M traversal exactly.
 """
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -22,7 +22,7 @@ YEAR = 2024
 
 
 def _dt(year, month=6, day=1):
-    return datetime(year, month, day, 12, 0, tzinfo=timezone.utc)
+    return datetime(year, month, day, 12, 0, tzinfo=UTC)
 
 
 @pytest.fixture

@@ -15,8 +15,8 @@ from games.filters import FindFilter
 from games.models import (
     Device,
     Game,
-    PlayEvent,
     Platform,
+    PlayEvent,
     Purchase,
     Session,
     UserPreferences,
@@ -141,7 +141,7 @@ class TestApplySortGames:
         )
         # two sessions on alpha must not duplicate the alpha row
         assert result.queryset.count() == 2
-        assert list(result.queryset)[0] == alpha  # most playtime first
+        assert next(iter(result.queryset)) == alpha  # most playtime first
 
 
 class TestParseFindFilter:
@@ -261,7 +261,7 @@ def logged_client(client, django_user_model):
 
 class TestListGamesSort:
     def test_sort_param_orders_rows(self, logged_client, two_games):
-        alpha, beta = two_games
+        _alpha, _beta = two_games
         response = logged_client.get(reverse("games:list_games"), {"sort": "-name"})
         assert response.status_code == 200
         body = response.content.decode()
@@ -407,7 +407,7 @@ class TestDefaultOrderUnchanged:
     """The default sort strings must reproduce the pre-#68 hardcoded order."""
 
     def test_games_default_is_created_descending(self, logged_client, two_games):
-        alpha, beta = two_games  # beta newer
+        _alpha, _beta = two_games  # beta newer
         response = logged_client.get(reverse("games:list_games"))
         body = response.content.decode()
         tbody_match = re.search(r"<tbody[^>]*>(.*?)</tbody>", body, re.DOTALL)

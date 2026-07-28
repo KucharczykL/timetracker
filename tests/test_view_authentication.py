@@ -4,7 +4,7 @@ The Ninja API is covered separately by ``NinjaAPI(auth=django_auth)``
 (games/api.py:52) and is not routed from games/urls.py.
 """
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 import pytest
 from django.conf import settings
@@ -34,7 +34,7 @@ def world(db):
         "game_id": game.id,
         "purchase_id": purchase.id,
         "session_id": Session.objects.create(
-            game=game, timestamp_start=datetime(2024, 6, 1, 12, tzinfo=timezone.utc)
+            game=game, timestamp_start=datetime(2024, 6, 1, 12, tzinfo=UTC)
         ).id,
         "playevent_id": PlayEvent.objects.create(game=game).id,
         "statuschange_id": GameStatusChange.objects.create(

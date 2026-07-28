@@ -289,8 +289,10 @@ def day_periods_for_locale(locale: str) -> DayPeriodsConfig:
 
     with override(locale):
         return {
-            "am": date_format(datetime(2000, 1, 1, 0), "A"),
-            "pm": date_format(datetime(2000, 1, 1, 12), "A"),
+            # Naive on purpose: synthetic wall-clock probes whose only job is
+            # to render the locale's AM/PM text — tz semantics never apply.
+            "am": date_format(datetime(2000, 1, 1, 0), "A"),  # noqa: DTZ001
+            "pm": date_format(datetime(2000, 1, 1, 12), "A"),  # noqa: DTZ001
         }
 
 

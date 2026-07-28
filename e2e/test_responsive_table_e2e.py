@@ -19,8 +19,8 @@ from games.models import (
     Device,
     Game,
     GameStatusChange,
-    PlayEvent,
     Platform,
+    PlayEvent,
     Purchase,
     Session,
 )

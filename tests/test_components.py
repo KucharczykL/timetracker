@@ -317,9 +317,7 @@ class SessionActionsTest(unittest.TestCase):
         from common.components.domain import SessionActions
 
         ended = self._session(
-            timestamp_end=datetime.datetime(
-                2026, 6, 24, 19, 0, tzinfo=datetime.timezone.utc
-            )
+            timestamp_end=datetime.datetime(2026, 6, 24, 19, 0, tzinfo=datetime.UTC)
         )
         html = str(SessionActions(ended, "tok123", None))
         self.assertIn("<session-actions", html)
@@ -629,7 +627,7 @@ class IconCodegenFaithfulnessTest(unittest.TestCase):
         )
 
     def test_every_icon_node_matches_its_source(self):
-        import xml.etree.ElementTree as ElementTree
+        from xml.etree import ElementTree
 
         from common.components.primitives import get_icon_node
         from common.icons import iter_icon_sources
@@ -2733,9 +2731,7 @@ class BadgeTokenTest(SimpleTestCase):
         for tone, classes in _BADGE_TONE_CLASSES.items():
             for token in classes.split():
                 is_palette = (
-                    token.startswith("bg-")
-                    or token == "text-heading"
-                    or token.startswith("text-fg-")
+                    token.startswith(("bg-", "text-fg-")) or token == "text-heading"
                 )
                 self.assertTrue(
                     is_palette,

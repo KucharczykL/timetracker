@@ -1,6 +1,6 @@
 import datetime
 from collections.abc import Mapping
-from typing import cast
+from typing import ClassVar, cast
 
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm
@@ -426,12 +426,12 @@ class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
         # timestamp_start/timestamp_end get DateTimeFieldWidget in __init__
         # (needs the per-request presentation, unavailable to a class body);
         # the field class is declarative because it depends on nothing.
-        field_classes = {
+        field_classes: ClassVar[dict[str, type[forms.Field]]] = {
             "timestamp_start": AwareDateTimeField,
             "timestamp_end": AwareDateTimeField,
         }
         model = Session
-        fields = [
+        fields = (
             "game",
             "timestamp_start",
             "timestamp_end",
@@ -440,7 +440,7 @@ class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
             "device",
             "note",
             "mark_as_played",
-        ]
+        )
 
     def save(self, commit=True):
         session = super().save(commit=False)
@@ -521,7 +521,7 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
         # date_purchased/date_refunded get DatePickerWidget in __init__
         # (needs the per-request presentation, unavailable to a class body).
         model = Purchase
-        fields = [
+        fields = (
             "games",
             "platform",
             "date_purchased",
@@ -533,7 +533,7 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
             "type",
             "related_game",
             "name",
-        ]
+        )
 
     def clean(self):
         cleaned_data = super().clean()
@@ -590,7 +590,7 @@ class GameForm(PrimitiveWidgetsMixin, forms.ModelForm):
 
     class Meta:
         model = Game
-        fields = [
+        fields = (
             "name",
             "sort_name",
             "platform",
@@ -599,26 +599,26 @@ class GameForm(PrimitiveWidgetsMixin, forms.ModelForm):
             "status",
             "mastered",
             "wikidata",
-        ]
-        widgets = {"name": autofocus_input_widget}
+        )
+        widgets: ClassVar[dict[str, forms.Widget]] = {"name": autofocus_input_widget}
 
 
 class PlatformForm(PrimitiveWidgetsMixin, forms.ModelForm):
     class Meta:
         model = Platform
-        fields = [
+        fields = (
             "name",
             "icon",
             "group",
-        ]
-        widgets = {"name": autofocus_input_widget}
+        )
+        widgets: ClassVar[dict[str, forms.Widget]] = {"name": autofocus_input_widget}
 
 
 class DeviceForm(PrimitiveWidgetsMixin, forms.ModelForm):
     class Meta:
         model = Device
-        fields = ["name", "type"]
-        widgets = {"name": autofocus_input_widget}
+        fields = ("name", "type")
+        widgets: ClassVar[dict[str, forms.Widget]] = {"name": autofocus_input_widget}
 
 
 class PlayEventForm(PrimitiveWidgetsMixin, forms.ModelForm):
@@ -649,7 +649,7 @@ class PlayEventForm(PrimitiveWidgetsMixin, forms.ModelForm):
         # started/ended get DatePickerWidget in __init__ (needs the
         # per-request presentation, unavailable to a class body).
         model = PlayEvent
-        fields = ["game", "started", "ended", "note", "mark_as_finished"]
+        fields = ("game", "started", "ended", "note", "mark_as_finished")
 
     def save(self, commit=True):
         with transaction.atomic():
@@ -674,14 +674,16 @@ class GameStatusChangeForm(PrimitiveWidgetsMixin, forms.ModelForm):
         # timestamp gets DateTimeFieldWidget in __init__ (needs the
         # per-request presentation, unavailable to a class body); the field
         # class is declarative because it depends on nothing.
-        field_classes = {"timestamp": AwareDateTimeField}
+        field_classes: ClassVar[dict[str, type[forms.Field]]] = {
+            "timestamp": AwareDateTimeField
+        }
         model = GameStatusChange
-        fields = [
+        fields = (
             "game",
             "old_status",
             "new_status",
             "timestamp",
-        ]
+        )
 
 
 class LoginForm(PrimitiveWidgetsMixin, AuthenticationForm):

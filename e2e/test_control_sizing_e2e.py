@@ -34,7 +34,7 @@ def _make_session() -> Session:
     # running (no end) so the row shows the finish/reset icon actions
     return Session.objects.create(
         game=game,
-        timestamp_start=dt.datetime(2020, 1, 1, 10, 0, tzinfo=dt.timezone.utc),
+        timestamp_start=dt.datetime(2020, 1, 1, 10, 0, tzinfo=dt.UTC),
     )
 
 

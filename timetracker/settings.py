@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/4.1/ref/settings/
 import os
 import warnings
 from pathlib import Path
+
 from timetracker.config import config, derive_hosts_and_origins
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.

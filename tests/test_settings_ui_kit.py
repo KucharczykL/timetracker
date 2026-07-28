@@ -16,9 +16,9 @@ from common.components import (
     LiveSettingFields,
     MaskedSecretField,
     SettingFieldState,
-    SettingSourceBadge,
     SettingsFieldColumns,
     SettingsFieldLayout,
+    SettingSourceBadge,
     SettingsPageHeader,
     SettingsScaffold,
     SettingsSection,
@@ -40,7 +40,7 @@ class KitForm(PrimitiveWidgetsMixin, forms.Form):
 
 
 class GroupedFormFieldsTest(SimpleTestCase):
-    groups = [
+    groups = (
         FormFieldGroup(
             "Behavior",
             ("enabled", "destination"),
@@ -48,7 +48,7 @@ class GroupedFormFieldsTest(SimpleTestCase):
             "behavior-fields",
         ),
         FormFieldGroup("Limits", ("limit",)),
-    ]
+    )
 
     def test_groups_extend_the_existing_renderer(self):
         html = str(FormFields(KitForm(), groups=self.groups))
@@ -635,14 +635,14 @@ class ReadonlySettingFieldTest(SimpleTestCase):
         Passing a real-looking secret as `value` proves the component drops it
         (the documented contract), not merely that the view passes value="".
         """
-        SECRET = "super-secret-key-value-that-must-never-appear"  # noqa: N806
+        SECRET = "super-secret-key-value-that-must-never-appear"
         html = str(self._make(value=SECRET, secret_present=True))
         assert "••••••••" in html
         assert SECRET not in html
         assert "<input" not in html
 
     def test_secret_present_false_drops_value_and_renders_blank(self):
-        SECRET = "another-secret-that-must-not-appear"  # noqa: N806
+        SECRET = "another-secret-that-must-not-appear"
         html = str(self._make(value=SECRET, secret_present=False))
         assert SECRET not in html
         assert "••••••••" not in html

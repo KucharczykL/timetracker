@@ -1,7 +1,7 @@
+import re
 from datetime import UTC, date, datetime
 from html.parser import HTMLParser
 from pathlib import Path
-import re
 
 import pytest
 from django.urls import reverse

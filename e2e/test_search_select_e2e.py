@@ -1,8 +1,9 @@
 import pytest
-from django.urls import path
 from django.http import HttpResponse
 from django.test import override_settings
+from django.urls import path
 from playwright.sync_api import expect
+
 from common.components import SearchSelect
 
 

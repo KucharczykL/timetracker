@@ -12,10 +12,11 @@ Excluded on purpose:
 before the chain exists) and the deprecated ``PROD`` alias.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Final, cast
+from typing import TYPE_CHECKING, Any, Final, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from django.conf import settings
@@ -190,7 +191,7 @@ def _require_existing_device(value: object) -> None:
         raise ValidationError(f"No device with id {value!r}.")
 
 
-def _device_queryset() -> "QuerySet[Any]":
+def _device_queryset() -> QuerySet[Any]:
     """Options for the default-device control. The models import happens on call,
     never at module import, so settings.py can import this module."""
     from games.models import Device

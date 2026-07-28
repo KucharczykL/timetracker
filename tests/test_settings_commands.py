@@ -365,6 +365,7 @@ def test_rolled_back_command_returns_canonical_without_caching_uncommitted_data(
     clean_site_setting_sources,
 ):
     from django.db import transaction
+
     from games.models import SiteSetting
     from timetracker.settings_commands import change_site_setting
     from timetracker.settings_resolver import resolve_with_origin
@@ -495,8 +496,8 @@ def test_fallthrough_uncached_skip_db_uses_env_normalized(monkeypatch):
 
 @pytest.mark.django_db
 def test_fallthrough_uncached_degrades_malformed_locked_env_to_default(monkeypatch):
-    from timetracker.settings_resolver import resolve_fallthrough_uncached
     from timetracker.settings_registry import get_definition
+    from timetracker.settings_resolver import resolve_fallthrough_uncached
 
     monkeypatch.setenv("DEFAULT_PAGE_SIZE", "not-a-number")
     resolved = resolve_fallthrough_uncached("DEFAULT_PAGE_SIZE", skip_db=True)

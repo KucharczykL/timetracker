@@ -1,6 +1,6 @@
 import logging
 from datetime import timedelta
-from typing import Final
+from typing import ClassVar, Final
 
 import requests
 from django.conf import settings
@@ -22,17 +22,17 @@ logger = logging.getLogger("games")
 
 class Game(models.Model):
     class Meta:
-        unique_together = [["name", "platform", "year_released"]]
-        constraints = [
+        unique_together = (("name", "platform", "year_released"),)
+        constraints = (
             # unique_together never bites for platformless games (SQLite treats
             # NULLs as pairwise distinct), so this keeps the dedup guarantee the
             # sentinel platform used to provide.
             models.UniqueConstraint(
-                fields=["name", "year_released"],
+                fields=("name", "year_released"),
                 condition=Q(platform__isnull=True),
                 name="unique_platformless_game_name_year",
-            )
-        ]
+            ),
+        )
 
     name = models.CharField(max_length=255)
     sort_name = models.CharField(max_length=255, blank=True, default="")
@@ -154,7 +154,7 @@ class Purchase(models.Model):
     TRIAL = "tr"
     DEMO = "de"
     PIRATED = "pi"
-    OWNERSHIP_TYPES = [
+    OWNERSHIP_TYPES = (
         (PHYSICAL, "Physical"),
         (DIGITAL, "Digital"),
         (DIGITALUPGRADE, "Digital Upgrade"),
@@ -163,17 +163,17 @@ class Purchase(models.Model):
         (TRIAL, "Trial"),
         (DEMO, "Demo"),
         (PIRATED, "Pirated"),
-    ]
+    )
     GAME = "game"
     DLC = "dlc"
     SEASONPASS = "season_pass"
     BATTLEPASS = "battle_pass"
-    TYPES = [
+    TYPES = (
         (GAME, "Game"),
         (DLC, "DLC"),
         (SEASONPASS, "Season Pass"),
         (BATTLEPASS, "Battle Pass"),
-    ]
+    )
 
     objects = PurchaseQueryset().as_manager()
 
@@ -340,7 +340,7 @@ class Session(models.Model):
 
     def __str__(self):
         mark = "*" if self.is_manual() else ""
-        return f"{str(self.game)} {str(self.timestamp_start.date())} ({self.duration_formatted()}{mark})"
+        return f"{self.game!s} {self.timestamp_start.date()!s} ({self.duration_formatted()}{mark})"
 
     def finish_now(self):
         self.timestamp_end = timezone.now()
@@ -354,12 +354,12 @@ class Session(models.Model):
         return f"{self.duration_formatted()}{mark}"
 
     def is_manual(self) -> bool:
-        return not self.duration_manual == timedelta(0)
+        return self.duration_manual != timedelta(0)
 
     def save(self, *args, **kwargs) -> None:
         if not isinstance(self.duration_manual, timedelta):
             self.duration_manual = timedelta(0)
-        super(Session, self).save(*args, **kwargs)
+        super().save(*args, **kwargs)
 
 
 class Device(models.Model):
@@ -369,14 +369,14 @@ class Device(models.Model):
     MOBILE = "Mobile"
     SBC = "Single-board computer"
     UNKNOWN = "Unknown"
-    DEVICE_TYPES = [
+    DEVICE_TYPES = (
         (PC, "PC"),
         (CONSOLE, "Console"),
         (HANDHELD, "Handheld"),
         (MOBILE, "Mobile"),
         (SBC, "Single-board computer"),
         (UNKNOWN, "Unknown"),
-    ]
+    )
     name = models.CharField(max_length=255)
     type = models.CharField(max_length=255, choices=DEVICE_TYPES, default=UNKNOWN)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -491,7 +491,7 @@ class GameStatusChange(models.Model):
         return f"{self.game.name}: {self.old_status or 'None'} -> {self.new_status} at {self.timestamp}"
 
     class Meta:
-        ordering = ["-timestamp"]
+        ordering: ClassVar[list[str]] = ["-timestamp"]
 
 
 class FilterPreset(models.Model):
@@ -502,22 +502,22 @@ class FilterPreset(models.Model):
     """
 
     class Meta:
-        ordering = ["name"]
-        constraints = [
+        ordering: ClassVar[list[str]] = ["name"]
+        constraints = (
             models.UniqueConstraint(
-                fields=["user", "mode", "name"],
+                fields=("user", "mode", "name"),
                 name="unique_user_mode_name_preset",
-            )
-        ]
+            ),
+        )
 
-    MODE_CHOICES = [
+    MODE_CHOICES = (
         ("games", "Games"),
         ("sessions", "Sessions"),
         ("purchases", "Purchases"),
         ("playevents", "Play Events"),
         ("devices", "Devices"),
         ("platforms", "Platforms"),
-    ]
+    )
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -547,7 +547,7 @@ class SiteSetting(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["key"]
+        ordering: ClassVar[list[str]] = ["key"]
 
     def __str__(self):
         return f"{self.key} = {self.value!r}"
@@ -621,7 +621,7 @@ class UserPreferences(models.Model):
         return f"Preferences for {self.user}"
 
     @classmethod
-    def get_for_user(cls, user) -> "UserPreferences":
+    def get_for_user(cls, user) -> UserPreferences:
         """The user's row, created on first access. Write path only — the resolver
         reads a snapshot, never this."""
         preferences, _ = cls.objects.get_or_create(user=user)

@@ -26,7 +26,7 @@ from common.criteria import (
 # Module-level so get_type_hints can resolve the "Tree" forward reference.
 class Tree(TypedDict):
     label: str
-    children: list["Tree"]  # self-referential -> exercises the recursion guard
+    children: list[Tree]  # self-referential -> exercises the recursion guard
 
 
 class Shared(TypedDict):

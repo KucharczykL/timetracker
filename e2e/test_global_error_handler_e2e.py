@@ -10,10 +10,9 @@ directly and never exercises the real <script>-tag load semantics.
    /api/client-error/.
 """
 
+import pytest
 from django.urls import reverse
 from playwright.sync_api import Page
-
-import pytest
 
 
 def _login(page: Page, live_server) -> None:

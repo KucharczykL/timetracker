@@ -1,6 +1,6 @@
 """Deletes confirm on GET, act on POST, and return to where they started."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from django.urls import reverse
@@ -22,7 +22,7 @@ def game(db):
         name="Test Game", platform=Platform.objects.create(name="PC")
     )
     Session.objects.create(
-        game=game, timestamp_start=datetime(2024, 6, 1, 12, tzinfo=timezone.utc)
+        game=game, timestamp_start=datetime(2024, 6, 1, 12, tzinfo=UTC)
     )
     return game
 
@@ -70,7 +70,7 @@ def deletables(db):
     return {
         "game": owned,
         "session": Session.objects.create(
-            game=owned, timestamp_start=datetime(2024, 6, 1, 12, tzinfo=timezone.utc)
+            game=owned, timestamp_start=datetime(2024, 6, 1, 12, tzinfo=UTC)
         ),
         "purchase": purchase,
         "platform": Platform.objects.create(name="Doomed"),

@@ -19,10 +19,10 @@ import pytest
 
 from common.components import render
 from common.components.primitives import (
+    DIALOG_TITLE_CLASS,
     H1,
     H2,
     H3,
-    DIALOG_TITLE_CLASS,
     DialogTitle,
     PageHeading,
 )

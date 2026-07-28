@@ -1,7 +1,7 @@
 import gzip
 import random
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import yaml
@@ -9,7 +9,7 @@ from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from games.models import Device, Game, PlayEvent, Platform, Purchase, Session
+from games.models import Device, Game, Platform, PlayEvent, Purchase, Session
 
 # DB-computed columns: the serializer emits them, loaddata discards them.
 # Stripped to keep the fixture clean.
@@ -30,7 +30,7 @@ DUMP_LABELS = [
 ]
 
 # Deterministic stand-in for audit timestamps with no natural date to derive from.
-FIXED_EPOCH = datetime(2020, 1, 1, tzinfo=timezone.utc)
+FIXED_EPOCH = datetime(2020, 1, 1, tzinfo=UTC)
 
 MAX_GAMES_PER_PURCHASE = 10
 JITTER_DAYS = 365
@@ -44,9 +44,7 @@ DEFAULT_NAME_OVERRIDES = (
 
 
 def _midnight(date_value):
-    return datetime(
-        date_value.year, date_value.month, date_value.day, tzinfo=timezone.utc
-    )
+    return datetime(date_value.year, date_value.month, date_value.day, tzinfo=UTC)
 
 
 class Command(BaseCommand):

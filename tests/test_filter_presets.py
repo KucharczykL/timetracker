@@ -515,6 +515,5 @@ def test_case_differing_names_are_distinct(auth_client):
 
 def test_unique_constraint_enforced_at_db(user):
     FilterPreset.objects.create(user=user, name="Dup", mode="games")
-    with pytest.raises(IntegrityError):
-        with transaction.atomic():
-            FilterPreset.objects.create(user=user, name="Dup", mode="games")
+    with pytest.raises(IntegrityError), transaction.atomic():
+        FilterPreset.objects.create(user=user, name="Dup", mode="games")

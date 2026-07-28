@@ -2,9 +2,9 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
+from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from django.urls import reverse
-from django.contrib.auth.models import User
 
 from games.models import Game, Platform, Purchase
 

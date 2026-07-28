@@ -296,8 +296,8 @@ def resolve_str_for_user(user: object, key: SettingKey) -> str:
 
 
 __all__ = [
-    "ResolvedSetting",
     "SITE_SETTINGS_TTL_SECONDS",
+    "ResolvedSetting",
     "ValidationError",
     "clear_cache",
     "normalize_setting_value",

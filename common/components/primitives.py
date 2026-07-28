@@ -155,7 +155,7 @@ def _attrs_from_kwargs(attrs: dict[str, object]) -> list[HTMLAttribute]:
     return result
 
 
-def _coerce_attrs(attrs: "AttrsArg | None") -> list[HTMLAttribute]:
+def _coerce_attrs(attrs: AttrsArg | None) -> list[HTMLAttribute]:
     """Normalise a dynamic-attributes argument to ``list[HTMLAttribute]``.
 
     Accepts an ``Attributes`` sequence of ``(name, value)`` pairs **or** a
@@ -193,7 +193,7 @@ def _html_element(tag_name: str, media: Media | None = None, default_class: str 
     """
 
     def element(
-        attrs: "AttrsArg | None" = None,
+        attrs: AttrsArg | None = None,
         **kwargs: object,
     ) -> Element:
         # Merge order is priority order — first contributor wins per the node
@@ -317,12 +317,12 @@ def _popover_html(
     popover_content: Child,
     wrapped_content: str = "",
     wrapped_classes: str = "",
-    slot: "Node | str" = "",
+    slot: Node | str = "",
     *,
     tap: bool = True,
     trigger_label: str = "",
     trigger_disabled: bool = False,
-    preface: "Node | str" = "",
+    preface: Node | str = "",
     selectable_text: bool = False,
 ) -> Node:
     """Generate popover HTML. Single source of truth for popover structure.
@@ -377,9 +377,11 @@ def _popover_html(
                 ("aria-describedby", id),
                 (
                     "class",
-                    "inline-flex rounded-base cursor-not-allowed "
-                    "focus:outline-hidden focus:ring-4 "
-                    "focus:ring-neutral-tertiary-medium",
+                    (
+                        "inline-flex rounded-base cursor-not-allowed "
+                        "focus:outline-hidden focus:ring-4 "
+                        "focus:ring-neutral-tertiary-medium"
+                    ),
                 ),
             ]
             if trigger_label:
@@ -438,7 +440,7 @@ def Popover(
     tap: bool = True,
     trigger_label: str = "",
     trigger_disabled: bool = False,
-    preface: "Node | str" = "",
+    preface: Node | str = "",
     selectable_text: bool = False,
 ) -> Node:
     children = as_children(children)
@@ -506,21 +508,19 @@ SHRINKABLE_COLUMN_CLASS = "max-md:w-full max-md:max-w-0"
 # scroll on the narrow viewports the allowance exists to protect. The two are
 # mutually exclusive, and a pinned column has nothing to hold still on a
 # viewport where the table has already been cut to two columns.
-PINNED_COLUMN_CLASS = " ".join(
-    [
-        "md:sticky md:start-0 md:z-[2] md:bg-inherit",
-        "md:has-[[data-pop-over-panel]:not([hidden])]:z-[3]",
-        "md:has-[[data-menu]:not([hidden])]:z-[3]",
-        # A box-shadow, never a filter: a filtered cell becomes the containing
-        # block for the fixed panels it hosts. Scoped to a region that actually
-        # has something scrolled behind the column, so a table that fits shows
-        # no seam. The offset is physical where the trigger and the pin are
-        # logical, so the direction is mirrored explicitly — otherwise the seam
-        # paints into the table's own edge under rtl instead of over the
-        # content sliding beneath it.
-        "md:[@container_scroll-state(scrollable:inline-start)]:shadow-[6px_0_8px_-2px_rgb(0_0_0/0.28)]",
-        "md:rtl:[@container_scroll-state(scrollable:inline-start)]:shadow-[-6px_0_8px_-2px_rgb(0_0_0/0.28)]",
-    ]
+PINNED_COLUMN_CLASS = (
+    "md:sticky md:start-0 md:z-[2] md:bg-inherit "
+    "md:has-[[data-pop-over-panel]:not([hidden])]:z-[3] "
+    "md:has-[[data-menu]:not([hidden])]:z-[3] "
+    # A box-shadow, never a filter: a filtered cell becomes the containing
+    # block for the fixed panels it hosts. Scoped to a region that actually
+    # has something scrolled behind the column, so a table that fits shows
+    # no seam. The offset is physical where the trigger and the pin are
+    # logical, so the direction is mirrored explicitly — otherwise the seam
+    # paints into the table's own edge under rtl instead of over the
+    # content sliding beneath it.
+    "md:[@container_scroll-state(scrollable:inline-start)]:shadow-[6px_0_8px_-2px_rgb(0_0_0/0.28)] "
+    "md:rtl:[@container_scroll-state(scrollable:inline-start)]:shadow-[-6px_0_8px_-2px_rgb(0_0_0/0.28)]"
 )
 NAME_MAX_WIDTH_CLASS = "max-w-[16rem]"
 _TRUNCATED_CLIP_CLASS = (
@@ -837,7 +837,7 @@ class ControlButton(BaseComponent):
 
     def __init__(
         self,
-        attrs: "AttrsArg | None" = None,
+        attrs: AttrsArg | None = None,
         *,
         color: ButtonColor = "blue",
         variant: ButtonVariant = "filled",
@@ -865,7 +865,7 @@ class ControlButton(BaseComponent):
         self._type = type
         self._children = as_children(_children)
 
-    def __getitem__(self, children: Children) -> "ControlButton":
+    def __getitem__(self, children: Children) -> ControlButton:
         # A new instance, never a mutation: `_tree()` memoizes the rendered
         # subtree, so mutating self after a render would serve a stale tree.
         clone = ControlButton.__new__(ControlButton)
@@ -998,7 +998,7 @@ def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
 
 
 def Input(
-    attrs: "AttrsArg | None" = None,
+    attrs: AttrsArg | None = None,
     *,
     type: str = "text",
     **kwargs: object,
@@ -1012,7 +1012,7 @@ def Input(
 
 
 def Checkbox(
-    attrs: "AttrsArg | None" = None,
+    attrs: AttrsArg | None = None,
     *,
     name: str,
     label: str | None = None,
@@ -1026,8 +1026,10 @@ def Checkbox(
         ("value", value),
         (
             "class",
-            "shrink-0 rounded border-default-medium bg-neutral-secondary-medium "
-            f"text-brand focus:ring-brand {DISABLED_CONTROL_CLASS}",
+            (
+                "shrink-0 rounded border-default-medium bg-neutral-secondary-medium "
+                f"text-brand focus:ring-brand {DISABLED_CONTROL_CLASS}"
+            ),
         ),
     ]
     if checked:
@@ -1044,7 +1046,7 @@ def Checkbox(
 
 
 def Radio(
-    attrs: "AttrsArg | None" = None,
+    attrs: AttrsArg | None = None,
     *,
     name: str,
     label: str | None = None,
@@ -1085,7 +1087,7 @@ _PILL_REMOVE_CLASS = "ml-1 text-body hover:text-heading font-bold cursor-pointer
 
 
 def Pill(
-    attrs: "AttrsArg | None" = None,
+    attrs: AttrsArg | None = None,
     *,
     label: str = "",
     value: str = "",
@@ -1114,10 +1116,10 @@ def Pill(
         baked.append(("data-value", str(value)))
     pill_attrs = baked + _coerce_attrs(attrs) + _attrs_from_kwargs(kwargs)
 
-    label_child: "Node | str" = (
+    label_child: Node | str = (
         Span(data_search_select_label="")[label] if label_slot else label
     )
-    children: list["Node | str"] = [label_child]
+    children: list[Node | str] = [label_child]
     if removable:
         children.append(
             Button(
@@ -1272,8 +1274,10 @@ def YearPicker(
                 ("data-year-picker-toggle", ""),
                 (
                     "class",
-                    f"inline-flex items-center rounded-base {CONTROL_SIZE_CLASS} "
-                    f"text-type-body font-medium {classes}",
+                    (
+                        f"inline-flex items-center rounded-base {CONTROL_SIZE_CLASS} "
+                        f"text-type-body font-medium {classes}"
+                    ),
                 ),
             ]
         )[label, _YEAR_PICKER_CHEVRON],
@@ -1510,7 +1514,7 @@ def FormFields(
     presentations = presentations or {}
     unknown_presentations = set(presentations) - set(form.fields)
     if unknown_presentations:
-        unknown = sorted(unknown_presentations)[0]
+        unknown = min(unknown_presentations)
         raise ValueError(f"FormFields presentation names unknown field {unknown!r}.")
     rows: list[Node] = []
 
@@ -1642,7 +1646,7 @@ class Modal(BaseComponent):
         self._children = as_children(_children)
         self.self_dismiss = self_dismiss
 
-    def __getitem__(self, children: Children) -> "Modal":
+    def __getitem__(self, children: Children) -> Modal:
         return Modal(
             self.modal_id, as_children(children), self_dismiss=self.self_dismiss
         )
@@ -2131,7 +2135,7 @@ def _sort_indicator(position: int, descending: bool, total: int) -> Node:
 
 
 def _header_cell(
-    column: "Column",
+    column: Column,
     sort_terms: Sequence[SortTerm],
     request,
     *,
@@ -2414,7 +2418,7 @@ def StyledTable(
     ]
 
 
-def ContentContainer(attrs: "AttrsArg | None" = None, **kwargs: object) -> Element:
+def ContentContainer(attrs: AttrsArg | None = None, **kwargs: object) -> Element:
     """The page-body content container: fills #main-container's flex column
     (``w-full``), caps at ``CONTENT_MAX_WIDTH_CLASS`` and centres itself
     (``self-center``). Page bodies only — the navbar and popovers apply the

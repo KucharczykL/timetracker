@@ -1,9 +1,8 @@
 import csv
-from typing import TypeAlias
 
 from games.models import Game
 
-DataList: TypeAlias = list[dict[str, str]] | None
+type DataList = list[dict[str, str]] | None
 
 
 def read_csv(filename: str) -> DataList:

@@ -11,6 +11,7 @@ from django.utils.html import conditional_escape
 
 from common.components import (
     CONTROL_SIZE_CLASS,
+    ICON_BUTTON_SIZE_CLASS,
     A,
     Column,
     ContentContainer,
@@ -19,7 +20,6 @@ from common.components import (
     Element,
     Fragment,
     GameLink,
-    ICON_BUTTON_SIZE_CLASS,
     Icon,
     Node,
     PageHeading,

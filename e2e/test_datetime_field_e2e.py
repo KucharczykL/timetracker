@@ -84,9 +84,7 @@ def test_typed_session_timestamp_persists_as_the_instant_it_shows(
 
     session = Session.objects.get()
     # 14:30 in Prague on 2026-03-15 is CET (+01:00).
-    assert session.timestamp_start == dt.datetime(
-        2026, 3, 15, 13, 30, tzinfo=dt.timezone.utc
-    )
+    assert session.timestamp_start == dt.datetime(2026, 3, 15, 13, 30, tzinfo=dt.UTC)
 
 
 def test_a_12_hour_account_gets_a_day_period_segment(authenticated_page, live_server):
@@ -194,7 +192,7 @@ def test_editing_a_session_without_touching_it_keeps_its_microseconds(
     The segments only go down to minutes; the residual rides along."""
     page, _user = authenticated_page
     game = Game.objects.create(name="Alpha Game")
-    started = dt.datetime(2026, 3, 15, 13, 30, 41, 123456, tzinfo=dt.timezone.utc)
+    started = dt.datetime(2026, 3, 15, 13, 30, 41, 123456, tzinfo=dt.UTC)
     session = Session.objects.create(
         game=game,
         timestamp_start=started,
@@ -215,7 +213,7 @@ def test_editing_a_session_without_touching_it_keeps_its_microseconds(
 def test_a_typed_edit_keeps_the_stored_microseconds(authenticated_page, live_server):
     page, _user = authenticated_page
     game = Game.objects.create(name="Alpha Game")
-    started = dt.datetime(2026, 3, 15, 13, 30, 41, 123456, tzinfo=dt.timezone.utc)
+    started = dt.datetime(2026, 3, 15, 13, 30, 41, 123456, tzinfo=dt.UTC)
     session = Session.objects.create(game=game, timestamp_start=started)
 
     page.goto(f"{live_server.url}{reverse('games:edit_session', args=[session.id])}")
