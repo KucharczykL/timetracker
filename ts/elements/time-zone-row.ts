@@ -1,5 +1,9 @@
 import { readTimeZoneRowProps } from "../generated/props.js";
 import type { SearchSelectChangeDetail } from "./search-select.js";
+import {
+  TIME_ZONE_ROW_CHANGE_EVENT,
+  type TimeZoneRowChangeDetail,
+} from "./time-zone-row-events.js";
 
 // The per-timestamp "Time zone" row: one hidden input (the only submitted
 // channel) and one always-visible picker trigger. Nothing here hides or
@@ -14,8 +18,11 @@ function browserTimeZone(): string {
 
 class TimeZoneRowElement extends HTMLElement {
   private labelPrefix = "";
+  private initialized = false;
 
   connectedCallback(): void {
+    if (this.initialized) return;
+    this.initialized = true;
     const props = readTimeZoneRowProps(this);
     const valueInput = this.querySelector<HTMLInputElement>("[data-time-zone-value]");
     const trigger = this.querySelector<HTMLElement>('button[aria-haspopup="dialog"]');
@@ -33,13 +40,12 @@ class TimeZoneRowElement extends HTMLElement {
       // stays NULL (that IS today's behaviour) unless the user picks a zone.
       valueInput.value = detectedZone;
       this.updateTriggerLabel(trigger, detectedZone);
+      this.announceZone(props.fieldName, detectedZone);
     }
     const effectiveZone = valueInput.value || props.displayZone;
-    if (effectiveZone !== detectedZone) {
-      // The zone this row will submit is not the zone this browser is in —
-      // worth a look. Emphasis only: the trigger already names the value.
-      trigger.classList.add(EMPHASIS_CLASS);
-    }
+    // The zone this row will submit is not necessarily the zone this browser
+    // is in — worth a look. Emphasis only: the trigger already names the value.
+    this.updateEmphasis(trigger, effectiveZone);
 
     this.addEventListener("search-select:change", (event) => {
       const detail = (event as CustomEvent<SearchSelectChangeDetail>).detail;
@@ -47,12 +53,32 @@ class TimeZoneRowElement extends HTMLElement {
       // The API's pinned "" option is an explicit clear back to NULL.
       valueInput.value = detail.last.value;
       this.updateTriggerLabel(trigger, detail.last.value || fallbackLabel);
+      const pickedZone = detail.last.value || props.displayZone;
+      this.updateEmphasis(trigger, pickedZone);
+      this.announceZone(props.fieldName, pickedZone);
     });
   }
 
   private updateTriggerLabel(trigger: HTMLElement, zoneName: string): void {
     const textNode = trigger.childNodes[0];
     if (textNode) textNode.textContent = `${this.labelPrefix}: ${zoneName}`;
+  }
+
+  private announceZone(fieldName: string, zone: string): void {
+    this.dispatchEvent(
+      new CustomEvent<TimeZoneRowChangeDetail>(TIME_ZONE_ROW_CHANGE_EVENT, {
+        bubbles: true,
+        detail: { fieldName, zone },
+      }),
+    );
+  }
+
+  /** Emphasis tracks the *current* effective zone, so a manual pick can both
+   * light it up and put it out — it is a live "not the zone you are in" cue,
+   * not a fact about page load. */
+  private updateEmphasis(trigger: HTMLElement, effectiveZone: string): void {
+    const detectedZone = browserTimeZone();
+    trigger.classList.toggle(EMPHASIS_CLASS, effectiveZone !== detectedZone);
   }
 }
 

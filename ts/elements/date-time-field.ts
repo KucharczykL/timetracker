@@ -37,6 +37,7 @@ import {
   parsePastedWallClock,
   type DateTimeCodec,
 } from "./date-time-codec.js";
+import { readDateTimeFieldProps } from "../generated/props.js";
 import { nowInPresentationZone, segmentRules } from "../date-time-presentation.js";
 import {
   bindCalendarNav,
@@ -47,6 +48,10 @@ import {
   viewFromIso,
   type MonthCalendarView,
 } from "./date-calendar-core.js";
+import {
+  TIME_ZONE_ROW_CHANGE_EVENT,
+  type TimeZoneRowChangeDetail,
+} from "./time-zone-row-events.js";
 
 export const DATE_TIME_FIELD_CHANGE_EVENT = "date-time-field:change";
 
@@ -93,16 +98,60 @@ function midnightParts(twelveHour: boolean): PartValues {
 class DateTimeFieldElement extends HTMLElement {
   private initialized = false;
   private codec!: DateTimeCodec;
+  private zoneFieldName = "";
+  private handleZoneRowChange: ((event: Event) => void) | null = null;
 
   connectedCallback(): void {
     if (this.initialized) return;
     this.initialized = true;
+    this.zoneFieldName = readDateTimeFieldProps(this).zoneFieldName;
     // The residual (seconds, microseconds) is read from the value the field was
     // rendered with, so the codec has to be built before anything writes.
-    this.codec = createDateTimeCodec(resolveHidden(this)?.value ?? "");
+    this.codec = createDateTimeCodec(resolveHidden(this)?.value ?? "", () =>
+      this.selectedZone(),
+    );
+    if (this.zoneFieldName) {
+      this.handleZoneRowChange = (event) => {
+        const detail = (event as CustomEvent<TimeZoneRowChangeDetail>).detail;
+        if (!detail || detail.fieldName !== this.zoneFieldName) return;
+        // The digits are the user's; only their meaning moved. Re-encoding
+        // the same segment buffers swaps the committed offset — nothing
+        // visible in this field changes.
+        syncHiddenFromSegments(
+          this,
+          SIDE,
+          () => resolveHidden(this),
+          () => this.announceChange(),
+          this.codec,
+        );
+      };
+      document.addEventListener(TIME_ZONE_ROW_CHANGE_EVENT, this.handleZoneRowChange);
+    }
     this.initCalendar();
     this.initField();
     this.initCopyControl();
+  }
+
+  disconnectedCallback(): void {
+    // A document-level listener outlives its element unless removed here: a
+    // replaced field would keep re-encoding its detached hidden input from the
+    // new row's zone changes.
+    if (this.handleZoneRowChange) {
+      document.removeEventListener(TIME_ZONE_ROW_CHANGE_EVENT, this.handleZoneRowChange);
+      this.handleZoneRowChange = null;
+    }
+  }
+
+  /** The zone the paired time-zone-row currently means, or null without one —
+   * the codec then falls back to the account display zone. */
+  private selectedZone(): string | null {
+    if (!this.zoneFieldName) return null;
+    const row = document.querySelector<HTMLElement>(
+      `time-zone-row[field-name="${this.zoneFieldName}"]`,
+    );
+    if (!row) return null;
+    const selected = row.querySelector<HTMLInputElement>("[data-time-zone-value]")?.value;
+    return selected || row.getAttribute("display-zone") || null;
   }
 
   /**
@@ -257,10 +306,11 @@ class DateTimeFieldElement extends HTMLElement {
     popup
       .querySelector<HTMLElement>("[data-date-range-now]")
       ?.addEventListener("click", () => {
-        // The account's wall clock, never the browser's: the server reads this
-        // field in the account's zone, so the two differing would store an
-        // instant the user never picked.
-        const now = nowInPresentationZone();
+        // The wall clock of whichever zone this field currently follows —
+        // paired row's selection, else the account's — never the browser's
+        // raw clock: the pair of these digits and that zone's offset is what
+        // names the true current instant.
+        const now = nowInPresentationZone(this.selectedZone());
         if (!now) return;
         this.setValue(now);
         state.selectedIso = selectedIsoFrom(this);

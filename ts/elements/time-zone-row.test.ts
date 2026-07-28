@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "./time-zone-row.js";
+import { TIME_ZONE_ROW_CHANGE_EVENT } from "./time-zone-row-events.js";
 
 const REAL_DATE_TIME_FORMAT = Intl.DateTimeFormat;
 
@@ -124,5 +125,115 @@ describe("time-zone-row", () => {
     expect(trigger(host).textContent).toContain(
       "Start time zone: Europe/Prague (display zone)",
     );
+  });
+
+  it("announces the picked zone", () => {
+    stubBrowserZone("Europe/Prague");
+    const host = mount({ storedZone: "Europe/Prague", captureDefault: false });
+    const events: Array<{ fieldName: string; zone: string }> = [];
+    document.addEventListener(TIME_ZONE_ROW_CHANGE_EVENT, (event) => {
+      events.push((event as CustomEvent).detail);
+    });
+
+    host.dispatchEvent(
+      new CustomEvent("search-select:change", {
+        bubbles: true,
+        detail: { last: { value: "Asia/Tokyo", label: "Asia/Tokyo", data: {} } },
+      }),
+    );
+
+    expect(events).toEqual([
+      { fieldName: "timestamp_start_timezone", zone: "Asia/Tokyo" },
+    ]);
+  });
+
+  it("announces the display zone when the selection is cleared", () => {
+    stubBrowserZone("Europe/Prague");
+    const host = mount({ storedZone: "Asia/Tokyo", captureDefault: false });
+    const events: Array<{ fieldName: string; zone: string }> = [];
+    document.addEventListener(TIME_ZONE_ROW_CHANGE_EVENT, (event) => {
+      events.push((event as CustomEvent).detail);
+    });
+
+    host.dispatchEvent(
+      new CustomEvent("search-select:change", {
+        bubbles: true,
+        detail: { last: { value: "", label: "Use account display zone", data: {} } },
+      }),
+    );
+
+    expect(events).toEqual([
+      { fieldName: "timestamp_start_timezone", zone: "Europe/Prague" },
+    ]);
+  });
+
+  it("announces the capture-default stamp", () => {
+    stubBrowserZone("Asia/Tokyo");
+    const events: Array<{ fieldName: string; zone: string }> = [];
+    // The stamp happens during connectedCallback, so the listener must be
+    // registered before the element is inserted (mount()'s innerHTML write).
+    document.addEventListener(TIME_ZONE_ROW_CHANGE_EVENT, (event) => {
+      events.push((event as CustomEvent).detail);
+    });
+
+    mount({ captureDefault: true });
+
+    expect(events).toEqual([
+      { fieldName: "timestamp_start_timezone", zone: "Asia/Tokyo" },
+    ]);
+  });
+
+  it("announces once per pick however often it has been reconnected", () => {
+    // Without a re-entry guard every reconnect stacks another
+    // search-select:change listener, and one pick fans out into N announces —
+    // N re-encodes in every field following this row.
+    stubBrowserZone("Europe/Prague");
+    const host = mount({ storedZone: "Europe/Prague", captureDefault: false });
+    const parent = host.parentElement!;
+    host.remove();
+    parent.append(host);
+
+    const events: Array<{ fieldName: string; zone: string }> = [];
+    document.addEventListener(TIME_ZONE_ROW_CHANGE_EVENT, (event) => {
+      events.push((event as CustomEvent).detail);
+    });
+    host.dispatchEvent(
+      new CustomEvent("search-select:change", {
+        bubbles: true,
+        detail: { last: { value: "Asia/Tokyo", label: "Asia/Tokyo", data: {} } },
+      }),
+    );
+
+    expect(events).toHaveLength(1);
+  });
+
+  it("drops the emphasis when the user picks the browser's own zone", () => {
+    stubBrowserZone("Asia/Tokyo");
+    const host = mount({ storedZone: "Europe/Prague", captureDefault: false });
+    expect(trigger(host).classList.contains("font-semibold")).toBe(true);
+
+    host.dispatchEvent(
+      new CustomEvent("search-select:change", {
+        bubbles: true,
+        detail: { last: { value: "Asia/Tokyo", label: "Asia/Tokyo", data: {} } },
+      }),
+    );
+
+    expect(trigger(host).classList.contains("font-semibold")).toBe(false);
+  });
+
+  it("adds the emphasis when the user picks a zone the browser is not in", () => {
+    stubBrowserZone("Europe/Prague");
+    const host = mount({ storedZone: "Europe/Prague", captureDefault: false });
+    expect(trigger(host).classList.contains("font-semibold")).toBe(false);
+
+    host.dispatchEvent(
+      new CustomEvent("search-select:change", {
+        bubbles: true,
+        detail: { last: { value: "Asia/Tokyo", label: "Asia/Tokyo", data: {} } },
+      }),
+    );
+
+    expect(trigger(host).classList.contains("font-semibold")).toBe(true);
   });
 });
