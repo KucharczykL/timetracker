@@ -1,7 +1,7 @@
 import json
 import logging
 from datetime import date, datetime
-from typing import Any, NoReturn
+from typing import Any, Final, NoReturn
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
@@ -36,6 +36,7 @@ from timetracker.settings_commands import (
     change_user_setting,
 )
 from timetracker.settings_registry import (
+    DISPLAY_TIME_ZONE_CHOICES,
     SETTINGS_REGISTRY,
     SettingKey,
     SettingScope,
@@ -189,10 +190,43 @@ def search_platform_groups(request, q: str = "", limit: int = 10):
     return [{"value": group, "label": group, "data": {}} for group in groups[:limit]]
 
 
+timezone_router = Router()
+
+# The pinned clear-to-NULL row: "" posts as the form's empty choice, which
+# cleans to None ("assume the account display zone"). Browse-all only — a
+# filtered query is asking for zones, not for the clear action.
+_ACCOUNT_ZONE_OPTION: Final[dict[str, object]] = {
+    "value": "",
+    "label": "Use account display zone",
+    "data": {},
+}
+
+
+@timezone_router.get("/search", response=list[StringOption])
+def search_timezones(request, q: str = "", limit: int = 10):
+    """IANA zone options for the session time-zone picker, shaped like
+    /api/platforms/groups (the existing list[StringOption] feed) so the
+    SearchSelect client needs nothing new. DISPLAY_TIME_ZONE_CHOICES is already
+    the sorted tzdata list."""
+    zone_names = [zone_name for zone_name, _label in DISPLAY_TIME_ZONE_CHOICES]
+    if q:
+        query = q.lower()
+        matches = [name for name in zone_names if query in name.lower()]
+        return [{"value": name, "label": name, "data": {}} for name in matches[:limit]]
+    return [
+        _ACCOUNT_ZONE_OPTION,
+        *(
+            {"value": name, "label": name, "data": {}}
+            for name in zone_names[: max(limit - 1, 0)]
+        ),
+    ]
+
+
 api.add_router("/playevent", playevent_router)
 api.add_router("/games", game_router)
 api.add_router("/devices", device_router)
 api.add_router("/platforms", platform_router)
+api.add_router("/timezones", timezone_router)
 
 session_router = Router()
 
