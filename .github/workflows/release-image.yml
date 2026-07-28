@@ -1,0 +1,25 @@
+name: Release image
+
+# Tag filter lives in its own workflow: adding tags: to a push trigger
+# without a branches: filter disables branch runs for that workflow.
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+
+jobs:
+  tag-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Retag the commit's existing main-<sha> image; never rebuilds. Fails
+      # if the main build hasn't pushed yet — rerun after it lands.
+      - name: Retag as release
+        run: |
+          SHORT_SHA=$(git rev-parse --short=7 HEAD)
+          docker buildx imagetools create \
+            --tag "registry.kucharczyk.xyz/timetracker:${GITHUB_REF_NAME}" \
+            "registry.kucharczyk.xyz/timetracker:main-${SHORT_SHA}"

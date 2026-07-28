@@ -1,10 +1,37 @@
-"""Request-scoped presentation preferences."""
+"""Project middleware: health probes and request-scoped presentation preferences."""
 
 from zoneinfo import ZoneInfo
 
+from django.db import DatabaseError, connection
+from django.http import HttpResponse
 from django.utils import timezone
 
 from timetracker.settings_resolver import resolve_for_user
+
+
+class HealthCheckMiddleware:
+    """Answer container health probes.
+
+    Must sit first in MIDDLEWARE: probes hit 127.0.0.1, which
+    CommonMiddleware's ALLOWED_HOSTS check would reject.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        if request.path == "/health":
+            return HttpResponse("ok", content_type="text/plain")
+        if request.path == "/health/ready":
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT 1")
+            except DatabaseError:
+                return HttpResponse(
+                    "unavailable", status=503, content_type="text/plain"
+                )
+            return HttpResponse("ok", content_type="text/plain")
+        return self.get_response(request)
 
 
 class TimezoneActivationMiddleware:
