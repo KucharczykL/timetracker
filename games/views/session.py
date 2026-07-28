@@ -199,6 +199,7 @@ def add_session(request: HttpRequest, game_id: int = 0) -> HttpResponse:
         scripts=Fragment(
             ModuleScript("dist/elements/search-select.js"),
             ModuleScript("dist/elements/date-time-field.js"),
+            ModuleScript("dist/elements/time-zone-row.js"),
         ),
     )
 
@@ -232,6 +233,7 @@ def edit_session(request: HttpRequest, session_id: int) -> HttpResponse:
         scripts=Fragment(
             ModuleScript("dist/elements/search-select.js"),
             ModuleScript("dist/elements/date-time-field.js"),
+            ModuleScript("dist/elements/time-zone-row.js"),
         ),
     )
 
