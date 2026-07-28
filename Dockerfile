@@ -12,6 +12,18 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --no-dev
 
 COPY . .
+
+# A checkout without LFS substitutes pointer files for the fonts, icons and the
+# sample fixture. Nothing downstream errors on that — the image just serves
+# 130-byte text files as woff2, and every webfont dies in the browser's font
+# sanitizer. Fail the build instead.
+RUN pointers="$(grep -rlI 'https://git-lfs.github.com/spec/v1' . || true)"; \
+    if [ -n "$pointers" ]; then \
+        echo "Git LFS pointer files in the build context (checkout needs lfs: true):" >&2; \
+        echo "$pointers" >&2; \
+        exit 1; \
+    fi
+
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 

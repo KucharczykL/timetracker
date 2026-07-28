@@ -1,4 +1,15 @@
-## Unreleased
+## 1.8.1 / 2026-07-28
+
+### Fixed
+
+* Release images no longer ship Git LFS pointer files in place of the fonts,
+  static icons, and the sample fixture. The release workflow checked out without
+  LFS, so v1.8.0 served 130-byte text files as `woff2`, every webfont was
+  rejected by the browser's font sanitizer, and the UI fell back to system
+  fonts. The Docker build now fails outright when a pointer file reaches the
+  build context, so an LFS-less checkout cannot ship again.
+
+## 1.8.0 / 2026-07-28
 
 ### New
 * Single-select comboboxes (all six form fields, the filter builder's field
