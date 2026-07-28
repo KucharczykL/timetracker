@@ -314,10 +314,26 @@ class AwareDateTimeField(forms.DateTimeField):
     all. Keeping it aware lets the widget emit the offset alongside the wall
     clock, which is exactly what the client commits, so the round-trip is
     lossless for every instant.
+
+    ``zone_resolver`` (set by ``SessionForm``) is the paired zone picker's
+    current zone. The offset-qualified value the widget normally submits binds
+    the same under any active zone; the *naive* fallback shape (a DST-gap
+    submission) must be interpreted — and gap/ambiguity-checked — in the zone
+    the digits were typed against, not the account zone.
     """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.zone_resolver: Callable[[], ZoneInfo] | None = None
 
     def prepare_value(self, value):
         return value
+
+    def to_python(self, value):
+        if self.zone_resolver is None:
+            return super().to_python(value)
+        with timezone.override(self.zone_resolver()):
+            return super().to_python(value)
 
 
 class DateTimeFieldWidget(forms.Widget):
@@ -468,6 +484,9 @@ class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
                 zone_field_name=zone_field_name,
                 zone_resolver=zone_resolver,
             )
+            timestamp_field = self.fields[field_name]
+            assert isinstance(timestamp_field, AwareDateTimeField)
+            timestamp_field.zone_resolver = zone_resolver
         is_new_record = self.instance.pk is None
         # The end zone is only meaningful once an end timestamp exists: an open
         # session stamped at creation would carry that zone into a finish that

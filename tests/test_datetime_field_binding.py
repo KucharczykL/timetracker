@@ -213,3 +213,89 @@ def test_session_datetime_widgets_name_their_paired_zone_row(db):
     # The GameStatusChange form has no zone rows: its widget stays unpaired.
     status_form = GameStatusChangeForm(presentation=_presentation("Europe/Prague"))
     assert 'zone-field-name=""' in str(status_form["timestamp"])
+
+
+def test_naive_input_is_interpreted_in_the_selected_zone(db):
+    """A DST-gap submission posts the bare wall clock; the digits were typed
+    against the *picked* zone, so that is the zone they bind in."""
+    user = get_user_model().objects.create_user(username="tester", password="pw")
+    game = Game.objects.create(name="Hades")
+    UserPreferences.objects.create(user=user, display_time_zone="Europe/Prague")
+    settings_resolver.clear_cache()
+    captured: dict[str, object] = {}
+
+    def response(request):
+        form = SessionForm(
+            data={
+                **_session_form_data(game, "2026-07-28T15:37"),
+                "timestamp_start_timezone": "Asia/Tokyo",
+            },
+            presentation=_presentation("Europe/Prague"),
+        )
+        assert form.is_valid(), form.errors
+        captured["timestamp_start"] = form.cleaned_data["timestamp_start"]
+        return HttpResponse()
+
+    request = RequestFactory().post("/tracker/session/add")
+    request.user = user
+    TimezoneActivationMiddleware(response)(request)
+
+    assert captured["timestamp_start"] == datetime(2026, 7, 28, 6, 37, tzinfo=UTC)
+
+
+def test_naive_gap_in_the_selected_zone_is_rejected_naming_it(db):
+    """2026-03-08 02:30 does not exist in America/New_York. The account zone
+    (Tokyo, no DST) would accept it happily — the rejection must come from the
+    selected zone, and name it."""
+    user = get_user_model().objects.create_user(username="tester", password="pw")
+    game = Game.objects.create(name="Hades")
+    UserPreferences.objects.create(user=user, display_time_zone="Asia/Tokyo")
+    settings_resolver.clear_cache()
+    captured: dict[str, object] = {}
+
+    def response(request):
+        form = SessionForm(
+            data={
+                **_session_form_data(game, "2026-03-08T02:30"),
+                "timestamp_start_timezone": "America/New_York",
+            },
+            presentation=_presentation("Asia/Tokyo"),
+        )
+        captured["errors"] = form.errors.as_text()
+        return HttpResponse()
+
+    request = RequestFactory().post("/tracker/session/add")
+    request.user = user
+    TimezoneActivationMiddleware(response)(request)
+
+    assert "couldn’t be interpreted in time zone America/New_York" in str(
+        captured["errors"]
+    )
+
+
+def test_naive_value_valid_in_the_selected_zone_survives_an_account_zone_gap(db):
+    """The mirror case: 02:30 on 2026-03-08 is the account zone's spring-forward
+    gap, but a perfectly ordinary Tokyo wall clock — it must bind, not error."""
+    user = get_user_model().objects.create_user(username="tester", password="pw")
+    game = Game.objects.create(name="Hades")
+    UserPreferences.objects.create(user=user, display_time_zone="America/New_York")
+    settings_resolver.clear_cache()
+    captured: dict[str, object] = {}
+
+    def response(request):
+        form = SessionForm(
+            data={
+                **_session_form_data(game, "2026-03-08T02:30"),
+                "timestamp_start_timezone": "Asia/Tokyo",
+            },
+            presentation=_presentation("America/New_York"),
+        )
+        assert form.is_valid(), form.errors
+        captured["timestamp_start"] = form.cleaned_data["timestamp_start"]
+        return HttpResponse()
+
+    request = RequestFactory().post("/tracker/session/add")
+    request.user = user
+    TimezoneActivationMiddleware(response)(request)
+
+    assert captured["timestamp_start"] == datetime(2026, 3, 7, 17, 30, tzinfo=UTC)
