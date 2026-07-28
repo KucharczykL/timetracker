@@ -39,16 +39,10 @@ def _endpoint_text(
     value: datetime,
     style: DateTimeStyle,
     endpoint_presentation: DateTimePresentation,
-    account_presentation: DateTimePresentation,
+    show_label: bool,
 ) -> str:
-    labelled = endpoint_presentation.timezone.key != account_presentation.timezone.key
-    # A labelled endpoint always carries its date: projecting into another zone
-    # can move the wall clock across midnight, and "06:00 JST" after a 20:00
-    # start reads as the same evening unless the date is spelled out.
-    text = endpoint_presentation.format(value, "datetime" if labelled else style)
-    if labelled:
-        # Without the label a sorted list lies: a 21:00 session can be
-        # genuinely earlier than the 14:00 one after it.
+    text = endpoint_presentation.format(value, style)
+    if show_label:
         text = f"{text} {zone_label(value, endpoint_presentation.timezone)}"
     return text
 
@@ -69,10 +63,31 @@ def session_time_range(session: Session, presentation: DateTimePresentation) -> 
             _presentation_in_zone(presentation, session.timestamp_end_timezone)
             or presentation
         )
+
+    start_differs = start_presentation.timezone.key != presentation.timezone.key
+    end_differs = end_presentation.timezone.key != presentation.timezone.key
+    same_zone = start_presentation.timezone.key == end_presentation.timezone.key
+    # Without a label at all a sorted list lies: a 21:00 session can be
+    # genuinely earlier than the 14:00 one after it. But when both endpoints
+    # share one zone, saying so twice ("22:37 JST — 23:14 JST") repeats
+    # information that hasn't changed — one label, on the end, reads the same
+    # way "9am – 5pm PST" does.
+    start_label = start_differs and not (same_zone and end_differs)
+
     start = _endpoint_text(
-        session.timestamp_start, "datetime", start_presentation, presentation
+        session.timestamp_start, "datetime", start_presentation, start_label
     )
     if session.timestamp_end is None:
         return start
-    end = _endpoint_text(session.timestamp_end, "time", end_presentation, presentation)
+    # The end only needs its own date when it actually differs from the
+    # start's — not merely because it carries a zone label. Two endpoints in
+    # the same far-away zone on the same calendar day (the common case) must
+    # not print that date twice for no reason; a genuine date-line crossing
+    # ("06:00 JST" the morning after a 20:00 start) still needs it spelled out.
+    start_date = session.timestamp_start.astimezone(start_presentation.timezone).date()
+    end_date = session.timestamp_end.astimezone(end_presentation.timezone).date()
+    end_style: DateTimeStyle = "datetime" if end_date != start_date else "time"
+    end = _endpoint_text(
+        session.timestamp_end, end_style, end_presentation, end_differs
+    )
     return f"{start} — {end}"

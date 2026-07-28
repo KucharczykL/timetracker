@@ -60,8 +60,21 @@ def test_own_preference_renders_zone_and_label():
         timestamp_end_timezone="Asia/Tokyo",
     )
     rendered = session_time_range(session, _OWN_PRESENTATION)
-    assert "21:00 JST" in rendered
     assert "22:00 JST" in rendered
+
+
+def test_same_zone_same_day_gets_one_label_on_the_end_no_repeated_date():
+    """Both endpoints land in the same zone on the same calendar day — the
+    common case. Neither the date nor the zone label belongs on both ends:
+    '22:37 JST — 23:14 JST' repeats a zone that never changed, and
+    '22:37 JST — 22/09/2025 23:14 JST' would repeat a date that was never in
+    question. One label, on the end, reads the way '9am – 5pm PST' does."""
+    session = _session(
+        timestamp_start_timezone="Asia/Tokyo",
+        timestamp_end_timezone="Asia/Tokyo",
+    )
+    rendered = session_time_range(session, _OWN_PRESENTATION)
+    assert rendered == "2026-07-01 21:00 — 22:00 JST"
 
 
 def test_a_labelled_end_carries_its_own_date_across_the_date_line():

@@ -426,7 +426,9 @@ describe("formatSessionTimeRange", () => {
 
     // The label is the server's string, verbatim — Intl's own "short" name for
     // Asia/Tokyo is "GMT+9", which would silently disagree with the
-    // server-rendered rows in the same table.
+    // server-rendered rows in the same table. Both endpoints share one zone
+    // on one calendar day, so neither the date nor the label belongs on both
+    // ends: one of each, on the end, reads the way "9am – 5pm PST" does.
     expect(
       formatSessionTimeRange(
         "2026-07-01T12:00:00Z",
@@ -434,7 +436,7 @@ describe("formatSessionTimeRange", () => {
         { zone: "Asia/Tokyo", label: "JST" },
         { zone: "Asia/Tokyo", label: "JST" },
       ),
-    ).toBe("2026-07-01 21:00 JST — 2026-07-01 22:00 JST");
+    ).toBe("2026-07-01 21:00 — 22:00 JST");
   });
 
   it("labels only the endpoint the server labelled", async () => {
@@ -445,6 +447,8 @@ describe("formatSessionTimeRange", () => {
     );
     const { formatSessionTimeRange } = await importFormatter();
 
+    // Same calendar day in both zones (2026-07-01), so the end still doesn't
+    // need its own date despite being labelled.
     expect(
       formatSessionTimeRange(
         "2026-07-01T12:00:00Z",
@@ -452,7 +456,7 @@ describe("formatSessionTimeRange", () => {
         { zone: "Europe/Prague", label: null },
         { zone: "Asia/Tokyo", label: "JST" },
       ),
-    ).toBe("2026-07-01 14:00 — 2026-07-01 22:00 JST");
+    ).toBe("2026-07-01 14:00 — 22:00 JST");
   });
 
   it("gives a labelled end its own date across the date line", async () => {
