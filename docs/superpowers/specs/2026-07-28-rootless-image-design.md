@@ -56,17 +56,19 @@ Applies to **both** `.github/workflows/build-docker.yml` and
 - Per main merge: push `latest` + immutable `main-<short-sha>` (rollback/pin
   target). Delete the `VERSION_NUMBER` tag push and the "Set Version" step.
 - New tag-triggered job, semver tags only (`on: push: tags:
-  ['[0-9]+.[0-9]+.[0-9]+']` — matches the repo's bare `1.3.0` style, ignores
-  any other tag): retag the already-built
-  `main-<short-sha>` of the tagged commit as `timetracker:<tag>` via
+  ['v[0-9]+.[0-9]+.[0-9]+']` — releases switch to `vX.Y.Z` naming from here
+  on; historical bare tags `1.1.0`–`1.3.0` stay as-is and never trigger it):
+  retag the already-built
+  `main-<short-sha>` of the tagged commit as `timetracker:<tag>` (verbatim,
+  e.g. `timetracker:v1.8.0` — no prefix-stripping logic) via
   `docker buildx imagetools create` (or equivalent) — no rebuild, version tag
   minted exactly once → immutable. If the tag is pushed before the main-merge
   build finished, the retag fails; rerun the job (acceptable — releases are
   cut from already-built main commits).
 - Release process (manual, when ready): bump version in `pyproject.toml` +
-  Dockerfile `ENV VERSION_NUMBER`, merge, `git tag X.Y.Z && git push origin
-  X.Y.Z`, `gh release create X.Y.Z --generate-notes` (GitHub) / `tea release
-  create --tag X.Y.Z` (Gitea).
+  Dockerfile `ENV VERSION_NUMBER`, merge, `git tag vX.Y.Z && git push origin
+  vX.Y.Z`, `gh release create vX.Y.Z --generate-notes` (GitHub) / `tea
+  release create --tag vX.Y.Z` (Gitea).
 
 ## 4. README
 
@@ -77,7 +79,7 @@ New "Running the image" section:
 - Rootless Podman: quadlet snippet with `UserNS=keep-id:uid=1000` (no
   `User=` needed — image default user is non-root).
 - Health endpoints (`/health`, `/health/ready`) and tag scheme (`latest`
-  moves, `main-<sha>` immutable, `X.Y.Z` minted on release tags).
+  moves, `main-<sha>` immutable, `vX.Y.Z` minted on release tags).
 
 ## 5. Deployment rollout (post-merge, other repo)
 
