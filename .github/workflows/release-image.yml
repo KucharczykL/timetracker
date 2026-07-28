@@ -10,7 +10,11 @@ jobs:
   build-release:
     runs-on: ubuntu-latest
     steps:
+      # Fonts, icons and the sample fixture are LFS objects: without this the
+      # image ships their pointer files and every webfont fails to load.
       - uses: actions/checkout@v4
+        with:
+          lfs: true
 
       # The tag is the version's source of truth for the image; pyproject
       # must agree so the packaged metadata isn't lying.
