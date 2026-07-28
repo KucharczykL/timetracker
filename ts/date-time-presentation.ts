@@ -40,12 +40,29 @@ export interface Segment {
   segmented: Affixes;
 }
 
+export type SessionTimeZoneDisplay = "account" | "own";
+
+/**
+ * One session endpoint's zone: the raw IANA name the wall clock is projected
+ * into, plus the display label the *server* computed for it (`null` = nothing
+ * to label). The label is never derived here — Intl's short name for
+ * Asia/Tokyo is "GMT+9" where the server's `tzname()` says "JST", and the two
+ * renderings share one table.
+ */
+export interface SessionEndpointZone {
+  zone: string | null;
+  label: string | null;
+}
+
+const NO_ENDPOINT_ZONE: SessionEndpointZone = { zone: null, label: null };
+
 interface CompiledPresentation {
   locale: string;
   timeZone: string;
   segments: Segment[];
   hourCycle: HourCycle;
   dayPeriods: { am: string; pm: string };
+  sessionTimeZoneDisplay: SessionTimeZoneDisplay;
   dateTimeFormatter: Intl.DateTimeFormat;
   calendarMonthYearFormatter: Intl.DateTimeFormat;
   calendarWeekdayFormatter: Intl.DateTimeFormat;
@@ -217,12 +234,16 @@ function compilePresentation(raw: unknown): CompiledPresentation {
     );
   }
 
+  const sessionTimeZoneDisplay: SessionTimeZoneDisplay =
+    config.session_time_zone_display === "own" ? "own" : "account";
+
   return {
     locale,
     timeZone,
     segments,
     hourCycle,
     dayPeriods: { am, pm },
+    sessionTimeZoneDisplay,
     dateTimeFormatter,
     calendarMonthYearFormatter,
     calendarWeekdayFormatter,
@@ -294,9 +315,10 @@ function formatDateTime(
   iso: string,
   presentation: CompiledPresentation,
   runs: readonly SegmentRun[],
+  timeZoneOverride: string | null = null,
 ): string {
   const value = Temporal.Instant.from(iso)
-    .toZonedDateTimeISO(presentation.timeZone)
+    .toZonedDateTimeISO(timeZoneOverride ?? presentation.timeZone)
     .toPlainDateTime();
   const parts = numericParts(presentation.dateTimeFormatter, value);
   let rendered = "";
@@ -405,17 +427,49 @@ export function nowInPresentationZone(): string | null {
   }
 }
 
+function formatEndpoint(
+  iso: string,
+  presentation: CompiledPresentation,
+  runs: readonly SegmentRun[],
+  endpoint: SessionEndpointZone,
+): string {
+  if (presentation.sessionTimeZoneDisplay !== "own" || endpoint.zone === null) {
+    return formatDateTime(iso, presentation, runs);
+  }
+  // The label's presence IS the server's "this endpoint is elsewhere" verdict;
+  // the zone comparison only guards a payload that predates a zone change.
+  const labelled = endpoint.label !== null && endpoint.zone !== presentation.timeZone;
+  const text = formatDateTime(
+    iso,
+    presentation,
+    // A labelled endpoint carries its date: projection can move the wall clock
+    // across midnight, and "06:00 JST" after 20:00 reads as the same evening.
+    labelled ? ["date", "time"] : runs,
+    endpoint.zone,
+  );
+  // Without the label a sorted list lies: a 21:00 session can be genuinely
+  // earlier than the 14:00 one after it.
+  return labelled ? `${text} ${endpoint.label}` : text;
+}
+
 /** Format a session range with the server-provided browser presentation contract. */
-export function formatSessionTimeRange(startISO: string, endISO: string | null): string | null {
+export function formatSessionTimeRange(
+  startISO: string,
+  endISO: string | null,
+  startEndpoint: SessionEndpointZone = NO_ENDPOINT_ZONE,
+  endEndpoint: SessionEndpointZone = NO_ENDPOINT_ZONE,
+): string | null {
   const presentation = getPresentation();
   if (!presentation) return null;
 
   try {
-    const start = formatDateTime(startISO, presentation, ["date", "time"]);
+    const start = formatEndpoint(startISO, presentation, ["date", "time"], startEndpoint);
     return endISO === null
       ? start
-      : `${start} — ${formatDateTime(endISO, presentation, ["time"])}`;
+      : `${start} — ${formatEndpoint(endISO, presentation, ["time"], endEndpoint)}`;
   } catch (error) {
+    // Includes a zone name this runtime's tzdata does not know: reporting and
+    // returning null leaves the server-rendered cell in place, which is right.
     reportClientError("date-time-presentation", errorDetail(error), { toast: false });
     return null;
   }

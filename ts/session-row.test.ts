@@ -64,8 +64,36 @@ describe("renderSessionRow", () => {
     expect(formatSessionTimeRange).toHaveBeenCalledWith(
       "2026-07-02T17:05:00Z",
       "2026-07-02T19:35:00Z",
+      { zone: null, label: null },
+      { zone: null, label: null },
     );
     expectFinishedActionCleanup(newRow);
+  });
+
+  it("passes each endpoint's stored zone and server-computed label through", () => {
+    formatSessionTimeRange.mockReturnValue("2026-07-01 21:00 JST — 22:00 JST");
+    const oldRow = serverRenderedRow();
+    const session = {
+      id: 1,
+      timestamp_start: "2026-07-01T12:00:00Z",
+      timestamp_end: "2026-07-01T13:00:00Z",
+      duration_manual_seconds: 0,
+      is_manual: false,
+      timestamp_start_timezone: "Asia/Tokyo",
+      timestamp_end_timezone: "Asia/Tokyo",
+      timestamp_start_timezone_label: "JST",
+      timestamp_end_timezone_label: "JST",
+    };
+
+    const newRow = renderSessionRow(session, oldRow);
+
+    expect(newRow.children[1]?.textContent).toBe("2026-07-01 21:00 JST — 22:00 JST");
+    expect(formatSessionTimeRange).toHaveBeenCalledWith(
+      "2026-07-01T12:00:00Z",
+      "2026-07-01T13:00:00Z",
+      { zone: "Asia/Tokyo", label: "JST" },
+      { zone: "Asia/Tokyo", label: "JST" },
+    );
   });
 
   it("keeps server-rendered time when the presentation formatter returns null", () => {
