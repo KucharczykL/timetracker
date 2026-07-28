@@ -3,9 +3,13 @@ view can import it without a view→view dependency."""
 
 from dataclasses import replace
 from datetime import datetime
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo
 
-from common.date_time_presentation import DateTimePresentation, DateTimeStyle
+from common.date_time_presentation import (
+    DateTimePresentation,
+    DateTimeStyle,
+    zone_or_none,
+)
 from games.models import Session
 
 
@@ -13,15 +17,10 @@ def _presentation_in_zone(
     presentation: DateTimePresentation, zone_name: str | None
 ) -> DateTimePresentation | None:
     """``presentation`` re-aimed at a session's own zone, or ``None`` when the
-    stored name is missing or unusable (e.g. removed from tzdata) — the caller
-    falls back to the account zone rather than crashing a list page."""
-    if not zone_name:
-        return None
-    try:
-        zone = ZoneInfo(zone_name)
-    except ZoneInfoNotFoundError, ValueError:
-        return None
-    return replace(presentation, timezone=zone)
+    stored name is missing or unusable — the caller falls back to the account
+    zone rather than crashing a list page."""
+    zone = zone_or_none(zone_name)
+    return None if zone is None else replace(presentation, timezone=zone)
 
 
 def zone_label(value: datetime, zone: ZoneInfo) -> str:

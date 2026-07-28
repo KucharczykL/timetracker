@@ -19,6 +19,7 @@ from django.utils import timezone
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
+    zone_or_none,
 )
 from common.middleware import TimezoneActivationMiddleware
 from games.forms import DateTimeFieldWidget, GameStatusChangeForm, SessionForm
@@ -159,3 +160,10 @@ def test_an_ambiguous_stored_timestamp_survives_an_untouched_edit(db):
             )
             assert resubmitted.is_valid(), resubmitted.errors
             assert resubmitted.cleaned_data["timestamp_start"] == stored
+
+
+def test_zone_or_none_parses_valid_zones_and_rejects_junk():
+    assert zone_or_none("Asia/Tokyo") == ZoneInfo("Asia/Tokyo")
+    assert zone_or_none(None) is None
+    assert zone_or_none("") is None
+    assert zone_or_none("Not/AZone") is None

@@ -10,7 +10,7 @@ from datetime import date, datetime
 from functools import cache
 from types import MappingProxyType
 from typing import Literal, TypedDict
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.conf import settings
 from django.http import HttpRequest
@@ -417,6 +417,18 @@ class DateTimePresentation:
             },
             "day_periods": day_periods_for_locale(self.locale),
         }
+
+
+def zone_or_none(zone_name: str | None) -> ZoneInfo | None:
+    """``ZoneInfo`` for a stored zone name, or ``None`` when the name is
+    missing or unusable (e.g. removed from tzdata) — every caller falls back
+    to the account display zone rather than crashing on a stale row."""
+    if not zone_name:
+        return None
+    try:
+        return ZoneInfo(zone_name)
+    except ZoneInfoNotFoundError, ValueError:
+        return None
 
 
 _REQUEST_CACHE_ATTRIBUTE = "_date_time_presentation"
