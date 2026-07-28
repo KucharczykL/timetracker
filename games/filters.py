@@ -148,11 +148,11 @@ class GameFilter(OperatorFilter):
         ),
     }
 
-    # Uppercase ``Type[...]`` (not the modern ``type[...]``) is deliberate: two
-    # filters below (PurchaseFilter, DeviceFilter) declare a field named ``type``
-    # that shadows the builtin in annotation scope, so ``type[Purchase]`` fails
-    # mypy ("Variable ... .type is not valid as a type"). Uniform ``Type`` keeps
-    # all six overrides consistent.
+    # Two overrides below (PurchaseFilter, DeviceFilter) spell this return type
+    # ``builtins.type[...]``: those filters declare a field named ``type`` that
+    # shadows the builtin in annotation scope, so a bare ``type[Purchase]`` fails
+    # mypy ("Variable ... .type is not valid as a type"). The unshadowed filters
+    # use the plain builtin.
     @classmethod
     def _comparison_model(cls) -> type[Game]:
         from games.models import Game
