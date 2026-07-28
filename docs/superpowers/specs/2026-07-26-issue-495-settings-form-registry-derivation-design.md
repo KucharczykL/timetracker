@@ -53,7 +53,7 @@ key list edit, no label-kwarg threading.
 import-time reference to `games.models`. It gains:
 
 ```python
-type SettingOption = tuple[object, str]          # e.g. ("cs", "Čeština"), (25, "25")
+type SettingOption = tuple[object, str]  # e.g. ("cs", "Čeština"), (25, "25")
 type QuerysetFactory = Callable[[], "QuerySet"]  # lazy; imports models when called
 ```
 

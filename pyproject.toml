@@ -56,10 +56,6 @@ requires = ["uv_build>=0.9.26,<0.10.0"]
 build-backend = "uv_build"
 [tool.ruff]
 extend-exclude = [
-    # ruff 0.16 started formatting/linting Python code blocks inside Markdown
-    # by default. Our docs/ plans and specs hold illustrative snippets whose
-    # exact shape is part of the prose; keep ruff off them (pre-0.16 behavior).
-    "*.md",
     # TODO: remove this exclusion once the streak feature is actually
     # implemented. streak_bruteforce.py is a throwaway exploration script
     # (it runs django.setup() before importing models, which trips E402);

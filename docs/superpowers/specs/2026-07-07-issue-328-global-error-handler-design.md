@@ -169,7 +169,7 @@ Add one line to the `Page()` head script list **first**, before
 `ModuleScript` (the repo's ES-module loader helper):
 
 ```python
-Safe(str(ModuleScript("dist/global-error-handler.js"))),
+(Safe(str(ModuleScript("dist/global-error-handler.js"))),)
 ```
 
 This emits `<script type="module" src="…/dist/global-error-handler.js">`. The

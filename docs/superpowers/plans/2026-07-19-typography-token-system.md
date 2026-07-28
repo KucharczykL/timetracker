@@ -64,6 +64,7 @@ Create `tests/test_typography_tokens.py`:
 
 ```python
 """Guards for the typography token system (docs/superpowers/specs/2026-07-19-typography-token-system-design.md)."""
+
 from pathlib import Path
 
 import pytest
@@ -71,9 +72,15 @@ import pytest
 BASE_CSS = Path(__file__).resolve().parent.parent / "games" / "static" / "base.css"
 
 TOKENS = [
-    "text-type-title", "text-type-heading", "text-type-dialog",
-    "text-type-subheading", "text-type-section", "text-type-body",
-    "text-type-label", "text-type-micro", "text-type-micro-caps",
+    "text-type-title",
+    "text-type-heading",
+    "text-type-dialog",
+    "text-type-subheading",
+    "text-type-section",
+    "text-type-body",
+    "text-type-label",
+    "text-type-micro",
+    "text-type-micro-caps",
     "text-type-input",
 ]
 
@@ -86,7 +93,9 @@ def test_token_utility_is_generated(token):
     """
     assert BASE_CSS.exists(), "run `make css` first"
     css = BASE_CSS.read_text()
-    assert f".{token}" in css, f"{token} missing from base.css — is it used anywhere / defined in @theme?"
+    assert f".{token}" in css, (
+        f"{token} missing from base.css — is it used anywhere / defined in @theme?"
+    )
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -185,7 +194,11 @@ Add to `tests/test_typography_tokens.py`:
 ```python
 from common.components import render
 from common.components.primitives import (
-    H1, H2, H3, DIALOG_TITLE_CLASS, MICRO_LABEL_CLASS,
+    H1,
+    H2,
+    H3,
+    DIALOG_TITLE_CLASS,
+    MICRO_LABEL_CLASS,
 )
 
 
@@ -231,7 +244,9 @@ DIALOG_TITLE_CLASS = "text-type-dialog text-heading text-center"
 
 ```python
 _LABEL_CLASS = "mb-2.5 text-type-label text-heading"
-_FIELD_ERROR_CLASS = "mt-4 mb-1 pl-3 py-2 solid-danger w-full text-type-body rounded-base"
+_FIELD_ERROR_CLASS = (
+    "mt-4 mb-1 pl-3 py-2 solid-danger w-full text-type-body rounded-base"
+)
 ```
 
 In `PageHeading` (`heading_class`, ~1087):
@@ -272,9 +287,7 @@ git commit -m "feat(type): repoint heading builders + constants at tokens (P0)"
 
 In `tests/test_rendered_pages.py`, the #427 login test asserts `text-base sm:text-sm`. Change it to:
 ```python
-        self.assertRegex(
-            html, r'name="username"[^>]*class="[^"]*\btext-type-input\b'
-        )
+self.assertRegex(html, r'name="username"[^>]*class="[^"]*\btext-type-input\b')
 ```
 
 - [ ] **Step 2: Run to verify it fails**
@@ -346,9 +359,7 @@ _CONTROL_SIZE_CLASS = "px-3 py-2 @md:px-5 @md:py-2.5"
 ```
 Add the size token where buttons compose their classes. Find where `_CONTROL_SIZE_CLASS` and `_CONTROL_BASE_CLASS` combine (the `ControlButton` builder) and ensure `text-type-body` is in the class list; `_CONTROL_BASE_CLASS` already carries `font-medium` — leave it. If `_CONTROL_BASE_CLASS` needs the size, add `text-type-body` to it:
 ```python
-_CONTROL_BASE_CLASS = (
-    "... existing ... font-medium text-type-body ..."  # keep font-medium; add size token
-)
+_CONTROL_BASE_CLASS = "... existing ... font-medium text-type-body ..."  # keep font-medium; add size token
 ```
 
 - [ ] **Step 4: Rebuild + run**
@@ -429,6 +440,7 @@ git commit -m "feat(type): sweep components onto text-type-body/micro/section (P
 def test_badge_sizes_use_tokens():
     from common.components import render
     from common.components.primitives import Badge
+
     assert "text-type-micro" in render(Badge("x", size="sm"))
     assert "text-type-body" in render(Badge("x", size="base"))
     assert "text-type-heading" in render(Badge("x", size="lg"))
@@ -533,7 +545,7 @@ GUARDED = [
 # Raw font-size utilities (with optional variant prefixes like sm: @md:) —
 # the type system owns size via text-type-*. font-* weights stay legal.
 RAW_SIZE = re.compile(
-    r'(?<![\w-])(?:[a-z@\[\]:.-]+:)?text-(?:xs|sm|base|lg|xl|\dxl|\[[^\]]+\])(?![\w-])'
+    r"(?<![\w-])(?:[a-z@\[\]:.-]+:)?text-(?:xs|sm|base|lg|xl|\dxl|\[[^\]]+\])(?![\w-])"
 )
 
 
@@ -553,7 +565,10 @@ def test_no_raw_size_utilities_in_components():
                 continue
             if RAW_SIZE.search(line):
                 offenders.append(f"{f.relative_to(REPO)}:{i}: {line.strip()}")
-    assert not offenders, "raw size utilities — use text-type-* (or add `# type-ok: reason`):\n" + "\n".join(offenders)
+    assert not offenders, (
+        "raw size utilities — use text-type-* (or add `# type-ok: reason`):\n"
+        + "\n".join(offenders)
+    )
 ```
 
 - [ ] **Step 2: Run — expect real offenders or clean**

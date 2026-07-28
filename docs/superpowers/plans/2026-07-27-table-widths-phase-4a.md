@@ -121,62 +121,68 @@ Expected: the `docs(specs): fix phase 4a's occlusion in CSS and cut phase 1` com
 Append to `DataTableWidthPolicyTest` in `tests/test_components.py`:
 
 ```python
-    @staticmethod
-    def _first_header_cell(thead):
-        return thead.split("<th")[1].split(">")[0]
+@staticmethod
+def _first_header_cell(thead):
+    return thead.split("<th")[1].split(">")[0]
 
-    @staticmethod
-    def _row_header_cell(tbody):
-        return tbody.split("<th")[1].split(">")[0]
 
-    def test_data_table_pins_the_header_and_row_header_of_the_first_column(self):
-        result = self._data_table(
-            [components.Column("Name"), components.Column("Date")],
-            [components.make_row("Game", "2025-01-01")],
-        )
-        for cell in (
-            self._first_header_cell(self._thead(result)),
-            self._row_header_cell(self._tbody(result)),
-        ):
-            self.assertIn("sticky", cell)
-            self.assertIn("start-0", cell)
-            self.assertIn("bg-inherit", cell)
+@staticmethod
+def _row_header_cell(tbody):
+    return tbody.split("<th")[1].split(">")[0]
 
-    def test_only_the_first_column_is_pinned(self):
-        result = self._data_table(
-            [components.Column("Name"), components.Column("Date")],
-            [components.make_row("Game", "2025-01-01")],
-        )
-        self.assertEqual(self._thead(result).count("sticky"), 1)
-        self.assertEqual(self._tbody(result).count("sticky"), 1)
 
-    def test_non_data_table_pins_nothing(self):
-        result = self._render(
-            [components.Column("Name"), components.Column("Value")],
-            [components.make_row("Total", "5")],
-        )
-        self.assertNotIn("sticky", result)
+def test_data_table_pins_the_header_and_row_header_of_the_first_column(self):
+    result = self._data_table(
+        [components.Column("Name"), components.Column("Date")],
+        [components.make_row("Game", "2025-01-01")],
+    )
+    for cell in (
+        self._first_header_cell(self._thead(result)),
+        self._row_header_cell(self._tbody(result)),
+    ):
+        self.assertIn("sticky", cell)
+        self.assertIn("start-0", cell)
+        self.assertIn("bg-inherit", cell)
 
-    def test_an_open_panel_raises_the_pinned_cell_above_its_siblings(self):
-        """A panel nested in a sticky cell is trapped in that cell's stacking
-        context, so a later row would paint over it unless the host cell
-        outranks its siblings while the panel is open."""
-        result = self._data_table(
-            [components.Column("Name")], [components.make_row("Game")]
-        )
-        cell = self._row_header_cell(self._tbody(result))
-        self.assertIn("has-[[data-pop-over-panel]:not([hidden])]:z-[3]", cell)
-        self.assertIn("has-[[data-menu]:not([hidden])]:z-[3]", cell)
 
-    def test_the_pinned_cell_never_outranks_the_panel_strata(self):
-        """Popovers sit at z-10 and dropdown panels at z-20. A pinned cell that
-        reached either would cover the panels of *other* rows: measured, a cell
-        at z-30 hides an overlapping open menu at 15 of 24 sample points."""
-        from common.components.primitives import PINNED_COLUMN_CLASS
+def test_only_the_first_column_is_pinned(self):
+    result = self._data_table(
+        [components.Column("Name"), components.Column("Date")],
+        [components.make_row("Game", "2025-01-01")],
+    )
+    self.assertEqual(self._thead(result).count("sticky"), 1)
+    self.assertEqual(self._tbody(result).count("sticky"), 1)
 
-        levels = [int(value) for value in re.findall(r"z-\[(\d+)\]", PINNED_COLUMN_CLASS)]
-        self.assertTrue(levels, "the pinned class declares no z-index")
-        self.assertLess(max(levels), 10)
+
+def test_non_data_table_pins_nothing(self):
+    result = self._render(
+        [components.Column("Name"), components.Column("Value")],
+        [components.make_row("Total", "5")],
+    )
+    self.assertNotIn("sticky", result)
+
+
+def test_an_open_panel_raises_the_pinned_cell_above_its_siblings(self):
+    """A panel nested in a sticky cell is trapped in that cell's stacking
+    context, so a later row would paint over it unless the host cell
+    outranks its siblings while the panel is open."""
+    result = self._data_table(
+        [components.Column("Name")], [components.make_row("Game")]
+    )
+    cell = self._row_header_cell(self._tbody(result))
+    self.assertIn("has-[[data-pop-over-panel]:not([hidden])]:z-[3]", cell)
+    self.assertIn("has-[[data-menu]:not([hidden])]:z-[3]", cell)
+
+
+def test_the_pinned_cell_never_outranks_the_panel_strata(self):
+    """Popovers sit at z-10 and dropdown panels at z-20. A pinned cell that
+    reached either would cover the panels of *other* rows: measured, a cell
+    at z-30 hides an overlapping open menu at 15 of 24 sample points."""
+    from common.components.primitives import PINNED_COLUMN_CLASS
+
+    levels = [int(value) for value in re.findall(r"z-\[(\d+)\]", PINNED_COLUMN_CLASS)]
+    self.assertTrue(levels, "the pinned class declares no z-index")
+    self.assertLess(max(levels), 10)
 ```
 
 `re` is already imported at the top of `tests/test_components.py`.
@@ -379,36 +385,39 @@ Priority-plus (#532) makes most tables fit at most widths, so an unconditional s
 Add to `DataTableWidthPolicyTest`:
 
 ```python
-    def test_the_scroll_region_is_a_scroll_state_container(self):
-        result = self._data_table(
-            [components.Column("Name")], [components.make_row("Game")]
-        )
-        region = result.split('role="region"')[0].split("<div")[-1]
-        self.assertIn("[container-type:scroll-state]", region)
+def test_the_scroll_region_is_a_scroll_state_container(self):
+    result = self._data_table(
+        [components.Column("Name")], [components.make_row("Game")]
+    )
+    region = result.split('role="region"')[0].split("<div")[-1]
+    self.assertIn("[container-type:scroll-state]", region)
 
-    def test_the_pinned_shadow_is_scoped_to_a_scrolled_region(self):
-        """An unconditional shadow would draw a seam down every table that fits,
-        which after priority-plus is most of them at most widths."""
-        from common.components.primitives import PINNED_COLUMN_CLASS
 
-        self.assertIn(
-            "[@container_scroll-state(scrollable:inline-start)]:shadow-",
-            PINNED_COLUMN_CLASS,
-        )
+def test_the_pinned_shadow_is_scoped_to_a_scrolled_region(self):
+    """An unconditional shadow would draw a seam down every table that fits,
+    which after priority-plus is most of them at most widths."""
+    from common.components.primitives import PINNED_COLUMN_CLASS
 
-    def test_the_pinned_cell_casts_no_filter_shadow(self):
-        """`filter` would make the cell a containing block for the fixed panels
-        it hosts; `box-shadow` has no such side effect."""
-        from common.components.primitives import PINNED_COLUMN_CLASS
+    self.assertIn(
+        "[@container_scroll-state(scrollable:inline-start)]:shadow-",
+        PINNED_COLUMN_CLASS,
+    )
 
-        self.assertNotIn("drop-shadow", PINNED_COLUMN_CLASS)
 
-    def test_non_data_table_gets_no_scroll_state_container(self):
-        result = self._render(
-            [components.Column("Name"), components.Column("Value")],
-            [components.make_row("Total", "5")],
-        )
-        self.assertNotIn("container-type", result)
+def test_the_pinned_cell_casts_no_filter_shadow(self):
+    """`filter` would make the cell a containing block for the fixed panels
+    it hosts; `box-shadow` has no such side effect."""
+    from common.components.primitives import PINNED_COLUMN_CLASS
+
+    self.assertNotIn("drop-shadow", PINNED_COLUMN_CLASS)
+
+
+def test_non_data_table_gets_no_scroll_state_container(self):
+    result = self._render(
+        [components.Column("Name"), components.Column("Value")],
+        [components.make_row("Total", "5")],
+    )
+    self.assertNotIn("container-type", result)
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -943,20 +952,21 @@ For the cell-border fix:
 For the `border-separate` fix:
 
 ```python
-    def test_a_data_table_separates_its_borders(self):
-        """Collapsed borders live in the table's own layer, where the pinned
-        cell's background paints over them."""
-        result = self._data_table(
-            [components.Column("Name")], [components.make_row("Game")]
-        )
-        self.assertIn("border-separate border-spacing-0", result)
+def test_a_data_table_separates_its_borders(self):
+    """Collapsed borders live in the table's own layer, where the pinned
+    cell's background paints over them."""
+    result = self._data_table(
+        [components.Column("Name")], [components.make_row("Game")]
+    )
+    self.assertIn("border-separate border-spacing-0", result)
 
-    def test_a_plain_table_keeps_collapsed_borders(self):
-        result = self._render(
-            [components.Column("Name"), components.Column("Value")],
-            [components.make_row("Total", "5")],
-        )
-        self.assertNotIn("border-separate", result)
+
+def test_a_plain_table_keeps_collapsed_borders(self):
+    result = self._render(
+        [components.Column("Name"), components.Column("Value")],
+        [components.make_row("Total", "5")],
+    )
+    self.assertNotIn("border-separate", result)
 ```
 
 Run: `make test ARGS="tests/test_components.py -v"`

@@ -65,9 +65,7 @@ After the `Source` tooltip definition, append a status definition only for unloc
 
 ```python
 if not locked:
-    status_attributes: list[tuple[str, str]] = [
-        ("data-setting-source-status", "")
-    ]
+    status_attributes: list[tuple[str, str]] = [("data-setting-source-status", "")]
     if source_value == "default":
         status_attributes.append(("hidden", ""))
     tooltip_definitions.append(
@@ -152,9 +150,7 @@ In `_save_select`, after the Personal badge assertions, verify the tooltip DOM e
 
 ```python
 status = badge.locator("xpath=ancestor::pop-over//*[@data-setting-source-status]")
-expect(status).to_contain_text(
-    "Non-default source (default source: “Default”)"
-)
+expect(status).to_contain_text("Non-default source (default source: “Default”)")
 ```
 
 - [ ] **Step 5: Run targeted server, frontend, and browser tests**

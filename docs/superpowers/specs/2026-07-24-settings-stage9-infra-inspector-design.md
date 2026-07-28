@@ -157,7 +157,7 @@ the existing "Site defaults" section:
 ```python
 def _infra_fields() -> list[Node]:
     rows: list[Node] = []
-    for definition in SETTINGS_REGISTRY.values():          # registry order
+    for definition in SETTINGS_REGISTRY.values():  # registry order
         if definition.scope is not SettingScope.INFRA:
             continue
         resolved = resolve_with_origin(definition.key)

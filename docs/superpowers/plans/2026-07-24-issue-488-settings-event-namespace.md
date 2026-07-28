@@ -990,16 +990,16 @@ from timetracker.settings_commands import SettingNamespace
 Find the `LiveSettingFields(form, states=states, patch_url_template=patch_url, csrf=get_token(request), presentations={...})` call inside `user_settings()` and add `namespace=SettingNamespace.USER`:
 
 ```python
-            LiveSettingFields(
-                form,
-                states=states,
-                patch_url_template=patch_url,
-                csrf=get_token(request),
-                namespace=SettingNamespace.USER,
-                presentations={
-                    "theme": FormFieldPresentation(decorate_control=ThemeSetting)
-                },
-            ),
+(
+    LiveSettingFields(
+        form,
+        states=states,
+        patch_url_template=patch_url,
+        csrf=get_token(request),
+        namespace=SettingNamespace.USER,
+        presentations={"theme": FormFieldPresentation(decorate_control=ThemeSetting)},
+    ),
+)
 ```
 
 - [ ] **Step 3: Pass `namespace` in `admin_settings()`**
@@ -1007,13 +1007,15 @@ Find the `LiveSettingFields(form, states=states, patch_url_template=patch_url, c
 Find the `LiveSettingFields(form, states=states, patch_url_template=patch_url, csrf=get_token(request))` call inside `admin_settings()` and add `namespace=SettingNamespace.SITE`:
 
 ```python
-            LiveSettingFields(
-                form,
-                states=states,
-                patch_url_template=patch_url,
-                csrf=get_token(request),
-                namespace=SettingNamespace.SITE,
-            ),
+(
+    LiveSettingFields(
+        form,
+        states=states,
+        patch_url_template=patch_url,
+        csrf=get_token(request),
+        namespace=SettingNamespace.SITE,
+    ),
+)
 ```
 
 - [ ] **Step 4: Verify**

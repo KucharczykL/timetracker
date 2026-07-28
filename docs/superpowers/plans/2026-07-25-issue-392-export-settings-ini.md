@@ -129,9 +129,7 @@ def test_page_size_round_trips_through_cast_and_validator(db, clean_ini_env):
     assert resolved.value == 50
 
 
-def test_percent_bearing_value_round_trips_through_the_real_reader(
-    db, clean_ini_env
-):
+def test_percent_bearing_value_round_trips_through_the_real_reader(db, clean_ini_env):
     """Acceptance criterion from #392: a value containing `%` must re-import
     to the identical value through the actual production reader, not a
     reimplementation of it."""
@@ -151,7 +149,9 @@ def test_exported_values_are_never_quoted(db):
 
     text = export_site_settings_ini()
 
-    line = next(line for line in text.splitlines() if line.startswith("DEFAULT_CURRENCY"))
+    line = next(
+        line for line in text.splitlines() if line.startswith("DEFAULT_CURRENCY")
+    )
     assert '"' not in line
     assert "'" not in line
 ```
@@ -357,21 +357,25 @@ __all__ = [
 In `games/urls.py`, the existing `admin-settings` path (unchanged) is:
 
 ```python
+(
     path(
         "admin-settings",
         settings_views.admin_settings,
         name="admin_settings",
     ),
+)
 ```
 
 Insert this new entry directly after it (do not duplicate the existing one above — only add the new `path(...)` call):
 
 ```python
+(
     path(
         "admin-settings/export",
         settings_views.export_admin_settings_ini,
         name="export_admin_settings_ini",
     ),
+)
 ```
 
 - [ ] **Step 5: Add the download button to the admin-settings page**
@@ -393,24 +397,23 @@ In `admin_settings()` (`games/views/settings.py`), the page header currently is:
 Add a `ControlButton` import (extend the existing `common.components` import list in this file to include `ControlButton`), then change the header block to:
 
 ```python
-    content = Div(class_="flex flex-col")[
-        ContentContainer(class_="mb-6 flex flex-col gap-2")[
-            Div(class_="flex flex-wrap items-start justify-between gap-4")[
-                Div(class_="flex flex-col gap-2")[
-                    PageHeading(["Admin settings"]),
-                    P(class_="text-type-body text-body")[
-                        "Defaults inherited by users who have not saved "
-                        "personal overrides."
-                    ],
+content = Div(class_="flex flex-col")[
+    ContentContainer(class_="mb-6 flex flex-col gap-2")[
+        Div(class_="flex flex-wrap items-start justify-between gap-4")[
+            Div(class_="flex flex-col gap-2")[
+                PageHeading(["Admin settings"]),
+                P(class_="text-type-body text-body")[
+                    "Defaults inherited by users who have not saved personal overrides."
                 ],
-                ControlButton(
-                    href=reverse("games:export_admin_settings_ini"),
-                    color="gray",
-                )["Download settings.ini"],
             ],
+            ControlButton(
+                href=reverse("games:export_admin_settings_ini"),
+                color="gray",
+            )["Download settings.ini"],
         ],
-        SettingsScaffold(sections),
-    ]
+    ],
+    SettingsScaffold(sections),
+]
 ```
 
 (`reverse` is already imported in this file.)
@@ -455,9 +458,7 @@ git commit -m "feat(settings): add superuser settings.ini download on /admin-set
 Add to `e2e/test_admin_settings_page_e2e.py`, following the file's existing style (`superuser_page` fixture, `reverse()` for URLs):
 
 ```python
-def test_export_button_downloads_settings_ini(
-    live_server, superuser_page: Page
-):
+def test_export_button_downloads_settings_ini(live_server, superuser_page: Page):
     page = superuser_page
     page.goto(f"{live_server.url}{reverse('games:admin_settings')}")
 

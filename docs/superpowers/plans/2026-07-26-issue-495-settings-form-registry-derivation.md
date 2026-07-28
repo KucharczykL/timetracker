@@ -215,23 +215,20 @@ Change the `widget` annotation and add the four fields:
 Append to `__post_init__`, after the existing INFRA/RESTART check:
 
 ```python
-        if self.scope is SettingScope.USER and self.widget is None:
-            raise ValueError(f"{self.key}: user-scoped settings must declare a widget.")
-        if (self.widget is SettingWidget.SELECT) != (self.choices is not None):
-            raise ValueError(
-                f"{self.key}: a SELECT widget needs choices, and choices need a "
-                "SELECT widget."
-            )
-        if (self.widget is SettingWidget.MODEL) != (self.model_queryset is not None):
-            raise ValueError(
-                f"{self.key}: a MODEL widget needs model_queryset, and "
-                "model_queryset needs a MODEL widget."
-            )
-        # A restart-only value cannot be fixed by reloading the page.
-        if self.reload_after_save and self.apply_timing is not ApplyTiming.LIVE:
-            raise ValueError(
-                f"{self.key}: reload_after_save requires apply_timing=LIVE."
-            )
+if self.scope is SettingScope.USER and self.widget is None:
+    raise ValueError(f"{self.key}: user-scoped settings must declare a widget.")
+if (self.widget is SettingWidget.SELECT) != (self.choices is not None):
+    raise ValueError(
+        f"{self.key}: a SELECT widget needs choices, and choices need a SELECT widget."
+    )
+if (self.widget is SettingWidget.MODEL) != (self.model_queryset is not None):
+    raise ValueError(
+        f"{self.key}: a MODEL widget needs model_queryset, and "
+        "model_queryset needs a MODEL widget."
+    )
+# A restart-only value cannot be fixed by reloading the page.
+if self.reload_after_save and self.apply_timing is not ApplyTiming.LIVE:
+    raise ValueError(f"{self.key}: reload_after_save requires apply_timing=LIVE.")
 ```
 
 - [ ] **Step 7: Update the eight user-scoped definitions**
@@ -273,10 +270,10 @@ In `_build_registry()`, replace each `widget="..."` string with the enum member 
 and for `THEME`, `DISPLAY_TIME_ZONE`, `DATE_FORMAT_LOCALE`, `DATETIME_FORMAT`:
 
 ```python
-            widget=SettingWidget.SELECT,
-            choices=THEME_CHOICES,          # DISPLAY_TIME_ZONE_CHOICES /
-            reload_after_save=True,         # FORMAT_LOCALE_CHOICES /
-                                            # DATETIME_FORMAT_CHOICES respectively
+widget = (SettingWidget.SELECT,)
+choices = (THEME_CHOICES,)  # DISPLAY_TIME_ZONE_CHOICES /
+reload_after_save = (True,)  # FORMAT_LOCALE_CHOICES /
+# DATETIME_FORMAT_CHOICES respectively
 ```
 
 `DEFAULT_LANDING_PAGE` moving from `"text"` to `SELECT` is the drift fix — it has rendered as a `ChoiceField` on both pages all along.
@@ -502,7 +499,10 @@ def test_the_site_page_uses_the_static_empty_label():
 def test_the_user_page_names_the_inherited_site_value():
     fields = UserSettingsForm().fields
 
-    assert fields["default_landing_page"].choices[0] == ("", "Use site default (Sessions)")
+    assert fields["default_landing_page"].choices[0] == (
+        "",
+        "Use site default (Sessions)",
+    )
     assert fields["default_page_size"].choices[0] == ("", "Use site default (25)")
     assert fields["default_device"].empty_label == "Use site default (No device)"
     assert (
@@ -938,7 +938,12 @@ def test_a_cosmetic_presentation_keeps_the_field_live_saving():
 def test_the_site_page_stamps_every_display_setting_for_reload():
     page = settings_page_data(SiteSettingsForm)
 
-    for field_name in ("theme", "display_time_zone", "date_format_locale", "datetime_format"):
+    for field_name in (
+        "theme",
+        "display_time_zone",
+        "date_format_locale",
+        "datetime_format",
+    ):
         assert "data-reload-after-save" in page.form.fields[field_name].widget.attrs
     for field_name in ("default_currency", "default_device", "default_page_size"):
         assert "data-reload-after-save" not in page.form.fields[field_name].widget.attrs
