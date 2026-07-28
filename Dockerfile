@@ -45,12 +45,11 @@ ENV PROD=1 \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
-    libcap2-bin \
     supervisor \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -m --uid 1000 timetracker \
-    && mkdir -p /var/log/supervisor /etc/supervisor/conf.d /home/timetracker/data \
-    && chown timetracker:timetracker /var/log/supervisor /home/timetracker/data
+    && mkdir -p /etc/supervisor/conf.d /home/timetracker/app/data \
+    && chown -R timetracker:timetracker /home/timetracker/app
 
 ARG CADDY_VERSION=2.9.1
 RUN curl -sL "https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_linux_amd64.tar.gz" \
@@ -75,6 +74,11 @@ RUN caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile \
     && chmod +x /entrypoint.sh
 
 ENV VERSION_NUMBER=1.7.0
+
+USER timetracker
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=5 \
+    CMD curl -sf http://127.0.0.1:8000/health || exit 1
 
 EXPOSE 8000
 ENTRYPOINT ["/entrypoint.sh"]

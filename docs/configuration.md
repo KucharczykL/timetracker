@@ -319,11 +319,13 @@ config — moving them there would buy nothing and force a bash↔Python bridge.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `PUID` / `PGID` | `1000` / `100` | uid/gid the container process runs as. |
 | `DATA_DIR` | `/home/timetracker/app/data` | Database directory. Shared with Django via the same env var + matching default. |
 | `CREATE_DEFAULT_SUPERUSER` | `false` | Create an `admin`/`admin` superuser on first start. |
 | `STAGING` | `false` | Scrub copied sessions / django-q schedule on staging. |
 | `LOAD_SAMPLE_DATA` | `false` | Seed sample fixtures when the database is empty. |
+
+The container runs as uid 1000 — mounted data directories must be writable
+by that uid.
 
 ## Migrating from the old config
 
