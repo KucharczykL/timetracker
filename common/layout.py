@@ -344,12 +344,9 @@ def NavbarMenu(
             "md:flex-row md:mt-0 md:border-0 md:bg-neutral-primary-soft"
         )[
             theme_toggle,
-            NavbarPlaytime(
-                today_played,
-                last_7_played,
-                today_url=today_url,
-                last_7_url=last_7_url,
-            ),
+            # No url arguments: each Duration owns its own link, because a
+            # popover trigger may not sit inside one.
+            NavbarPlaytime(today_played, last_7_played),
             desktop_log,
             home,
             entity_menu,

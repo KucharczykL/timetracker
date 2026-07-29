@@ -377,6 +377,7 @@ def Duration(
     *,
     id_scope: str,
     manual: bool = False,
+    link: str | None = None,
 ) -> Node:
     """One elapsed duration, with the same value under the other profiles on hover.
 
@@ -393,16 +394,31 @@ def Duration(
     ``manual`` appends the "*" mark that flags a hand-entered session. It sits
     inside the trigger with the value and is spoken as ", manual"; it qualifies
     the value, not its formatting, so it never appears among the alternates.
+
+    ``link`` makes the value a link to ``link`` and moves the popover onto a
+    separate info glyph beside it. A popover trigger is a ``<button>`` and may
+    not nest inside an ``<a>``, so this is the only way a duration can both
+    navigate and offer its alternates — at the cost of one extra glyph.
     """
     from common.components.primitives import Popover
 
+    text = DurationText(duration, presentation, manual=manual)
+    if link is None:
+        return Popover(
+            popover_content=DurationAlternates(duration, presentation),
+            children=[text],
+            wrapped_classes="tabular-nums underline decoration-dotted",
+            id=f"duration-{id_scope}",
+            describedby=False,
+            selectable_text=True,
+        )
     return Popover(
         popover_content=DurationAlternates(duration, presentation),
-        children=[DurationText(duration, presentation, manual=manual)],
-        wrapped_classes="tabular-nums underline decoration-dotted",
+        preface=A(href=link, class_="hover:underline tabular-nums")[text],
+        children=[Icon("info", [("class", "w-3 h-3 opacity-60")])],
+        trigger_label="Other duration formats",
         id=f"duration-{id_scope}",
         describedby=False,
-        selectable_text=True,
     )
 
 

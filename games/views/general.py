@@ -17,7 +17,7 @@ from django.utils.timezone import now as timezone_now
 from common.components import (
     CsrfInput,
     Div,
-    DurationText,
+    Duration,
     FilterBuilder,
     FilterCount,
     FilterGroup,
@@ -82,12 +82,12 @@ def model_counts(request: HttpRequest) -> dict[str, Any]:
         "platform_available": Platform.objects.exists(),
         "purchase_available": Purchase.objects.exists(),
         "session_count": Session.objects.exists(),
-        # Each total already links to its filtered session list, and a popover
-        # trigger is a <button> — nesting one inside that link is invalid HTML.
-        # The navbar shows the value and its spoken form; the alternate formats
-        # live on the pages the links lead to.
-        "today_played": DurationText(today_played, durations),
-        "last_7_played": DurationText(last_7_played, durations),
+        "today_played": Duration(
+            today_played, durations, id_scope="navbar-today", link=today_url
+        ),
+        "last_7_played": Duration(
+            last_7_played, durations, id_scope="navbar-last-7", link=last_7_url
+        ),
         "today_url": today_url,
         "last_7_url": last_7_url,
     }
