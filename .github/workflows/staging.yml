@@ -4,7 +4,8 @@ on:
   push:
     branches-ignore: [main]
   pull_request:
-    types: [opened, reopened]
+    # labeled/unlabeled so a staging:* label takes effect without an empty push.
+    types: [opened, reopened, labeled, unlabeled]
   delete:
 
 concurrency:
@@ -13,15 +14,28 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.event_name == 'push'
+    # A label change redeploys too, since the labels decide what the machine
+    # runs. Fork PRs are excluded: they cannot see FLY_API_TOKEN, so the job
+    # would only fail at the first flyctl call.
+    if: |
+      github.event_name == 'push' ||
+      ((github.event.action == 'labeled' || github.event.action == 'unlabeled') &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     env:
-      BRANCH: ${{ github.ref_name }}
+      BRANCH: ${{ github.head_ref || github.ref_name }}
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
           lfs: true
+          # The branch head, not the merge commit a pull_request event checks
+          # out by default — a label-triggered redeploy must ship what the push
+          # would have shipped.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Compute staging name
         # "github" → "gh": Fly's abuse filter rejects app names containing
@@ -53,6 +67,25 @@ jobs:
             "SECRET_KEY=${SECRET_KEY}" \
             "APP_URL=https://${HOST}"
 
+      - name: Apply staging labels
+        # `staging:qcluster` runs the django-q cluster on this branch's box —
+        # fly.staging.toml keeps it off, because a staging database is reseeded
+        # every boot and schedules nothing, and the cluster is ~260mb of the
+        # machine. A secret shadows the [env] value and is re-applied on every
+        # deploy, so it survives later pushes; removing the label unsets it.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          labels=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" \
+            --state open --json labels --jq '.[0].labels[].name' || true)
+          if printf '%s\n' "$labels" | grep -qxF 'staging:qcluster'; then
+            echo "staging:qcluster -> django-q cluster on"
+            flyctl secrets set --app "$APP" --stage RUN_QCLUSTER=true
+          elif flyctl secrets list --app "$APP" --json | grep -q '"RUN_QCLUSTER"'; then
+            echo "no staging:qcluster label -> django-q cluster off"
+            flyctl secrets unset --app "$APP" --stage RUN_QCLUSTER
+          fi
+
       - name: Deploy
         # --ha=false so Fly provisions a single machine. Staging stores sessions
         # in machine-local SQLite (no shared volume), so a second machine would
@@ -61,6 +94,28 @@ jobs:
         run: |
           flyctl deploy --app "$APP" --config fly.staging.toml --remote-only --yes --ha=false
           flyctl scale count 1 --app "$APP" --yes
+
+      - name: Smoke check
+        # `flyctl deploy` reports success once the machine starts, which it does
+        # even when the app dies seconds later — a crash-looping entrypoint and a
+        # machine that starved itself both shipped green and were found in a
+        # browser days later. /health proves Caddy and gunicorn; / proves Django
+        # can render, which is the part collectstatic and settings breakage hits.
+        run: |
+          check() {
+            for attempt in $(seq 1 10); do
+              code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 60 "https://${HOST}$1" || true)
+              case "$code" in
+                200|302) echo "$1 -> $code"; return 0 ;;
+              esac
+              echo "$1 -> ${code} (attempt ${attempt})"
+              sleep 10
+            done
+            echo "::error::https://${HOST}$1 never answered after the deploy"
+            return 1
+          }
+          check /health
+          check /
 
       - name: Summary
         run: echo "Deployed to https://${HOST}" >> "$GITHUB_STEP_SUMMARY"

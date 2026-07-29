@@ -1,10 +1,15 @@
-from datetime import datetime
+import json
+import tempfile
+from datetime import datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
+from django.core import serializers
+from django.core.management import call_command
 from django.test import TestCase
 
-from games.models import Game, Session
+from games.models import Game, GameStatusChange, Session
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 
@@ -32,3 +37,53 @@ class SignalsTest(TestCase):
         # After deletion, the Game should be gone and no sessions remain
         self.assertFalse(Game.objects.filter(pk=g.pk).exists())
         self.assertEqual(Session.objects.filter(pk=s.pk).count(), 0)
+
+
+class RawFixtureLoadTest(TestCase):
+    """A fixture is authoritative: loading one must not trigger the recomputes.
+
+    Django flags fixture saves with ``raw=True`` for exactly this. Without the
+    guards, seeding a container replays the whole signal stack per row — an
+    extra query and write each — which dominates a cold container's startup.
+    """
+
+    def setUp(self):
+        self.fixture_dir = self.enterContext(tempfile.TemporaryDirectory())
+
+    def _write_fixture(self, objects) -> str:
+        path = Path(self.fixture_dir) / "fixture.json"
+        path.write_text(serializers.serialize("json", objects))
+        return str(path)
+
+    def test_playtime_from_the_fixture_survives_the_load(self):
+        game = Game.objects.create(name="Fixture Game")
+        Session.objects.create(
+            game=game,
+            timestamp_start=datetime(2022, 9, 26, 14, 0, tzinfo=ZONEINFO),
+            timestamp_end=datetime(2022, 9, 26, 15, 0, tzinfo=ZONEINFO),
+        )
+        # The dump carries a playtime the sessions do not add up to, which is what
+        # a recompute would silently overwrite.
+        Game.objects.filter(pk=game.pk).update(playtime=timedelta(hours=5))
+        fixture = self._write_fixture(
+            [Game.objects.get(pk=game.pk), *Session.objects.all()]
+        )
+
+        Session.objects.all().delete()
+        Game.objects.all().delete()
+        call_command("loaddata", fixture, verbosity=0)
+
+        self.assertEqual(Game.objects.get(pk=game.pk).playtime, timedelta(hours=5))
+
+    def test_status_in_a_fixture_is_not_an_audited_transition(self):
+        game = Game.objects.create(name="Fixture Game", status="u")
+        fixture = self._write_fixture([game])
+        loaded = json.loads(Path(fixture).read_text())
+        loaded[0]["fields"]["status"] = "f"
+        Path(fixture).write_text(json.dumps(loaded))
+
+        GameStatusChange.objects.all().delete()
+        call_command("loaddata", fixture, verbosity=0)
+
+        self.assertEqual(Game.objects.get(pk=game.pk).status, "f")
+        self.assertEqual(GameStatusChange.objects.count(), 0)

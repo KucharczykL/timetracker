@@ -316,6 +316,9 @@ See [`.env.example`](../.env.example) and
 These are consumed by [`entrypoint.sh`](../entrypoint.sh) during container
 bootstrap, **not** by Django. They are intentionally not part of the Python
 config — moving them there would buy nothing and force a bash↔Python bridge.
+The entrypoint reads them, translates them into flags for a single
+`manage.py bootstrap_container` call, and starts supervisor; static files are
+collected into the image at build time rather than on each boot.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
@@ -323,6 +326,27 @@ config — moving them there would buy nothing and force a bash↔Python bridge.
 | `CREATE_DEFAULT_SUPERUSER` | `false` | Create an `admin`/`admin` superuser on first start. |
 | `STAGING` | `false` | Scrub copied sessions / django-q schedule on staging. |
 | `LOAD_SAMPLE_DATA` | `false` | Seed sample fixtures when the database is empty. |
+| `RUN_QCLUSTER` | `true` | Run the django-q cluster. `false` saves its ~260 MB where nothing schedules work; the image sets the default because supervisord cannot parse its config with this unset. |
+
+`fly.staging.toml` sets `RUN_QCLUSTER=false`, since a staging box reseeds its
+database on every boot and schedules nothing. To turn it back on for one branch —
+a PR that touches background tasks, say — **label the PR `staging:qcluster`**.
+The label change redeploys on its own, and removing it turns the cluster back
+off; the state is visible on the PR rather than living in someone's shell
+history.
+
+For a branch with no PR, the same thing by hand:
+
+```
+flyctl secrets set RUN_QCLUSTER=true -a timetracker-staging-<slug>
+flyctl secrets unset RUN_QCLUSTER -a timetracker-staging-<slug>   # back to off
+```
+
+Both routes use a secret because a secret shadows the `[env]` value and is
+re-applied on every deploy, so it outlives further pushes to the branch.
+`flyctl machine update --env` does not — the next deploy re-renders the machine
+config from `fly.staging.toml`. Note the workflow reconciles the label on every
+deploy, so a hand-set secret is removed by the next push unless the label is on.
 
 The container runs as uid 1000 — mounted data directories must be writable
 by that uid.

@@ -17,14 +17,42 @@ primary_region = "ams"
   LOAD_SAMPLE_DATA = "true"
   CREATE_DEFAULT_SUPERUSER = "true"
   DEV_LOGIN_PREFILL = "admin:admin"
+  # Nothing here schedules background work — the database is seeded fresh on
+  # every boot — and the cluster is the container's largest process group.
+  RUN_QCLUSTER = "false"
 
 [http_service]
   internal_port = 8000
   force_https = true
-  auto_stop_machines = "stop"
+  # "suspend", not "stop": a stopped machine re-runs the whole entrypoint on the
+  # next request — migrate, collectstatic, seed, ~60-90s before Caddy listens —
+  # and the Fly proxy gives up around 40s, so the first visit after an idle
+  # period answered 502/503. Suspend snapshots the running machine instead, so a
+  # resume comes back already warm.
+  auto_stop_machines = "suspend"
   auto_start_machines = true
   min_machines_running = 0
 
+  # One gunicorn worker serves this app, and what turned a slow boot into a dead
+  # machine was the proxy stacking retry after retry onto it. A hard limit sheds
+  # the surplus as 503s instead, which is recoverable; a queue in front of a
+  # single worker is not.
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 10
+    hard_limit = 20
+
+  # No [[http_service.checks]] on purpose: the proxy marks a machine unhealthy on
+  # the first probe it misses during boot (grace_period does not prevent this)
+  # and answers 503, where with no check it holds the request open until the app
+  # listens. Measured on one image, machine stopped before each request: no check
+  # 200 in 41s, check 503 in 35-46s.
+
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "512mb"
+  # 512mb did not fit caddy + gunicorn + the django-q cluster: the machine ran at
+  # MemAvailable ~7mb, evicting its own page cache, and every request faulted
+  # code back off disk until the worker timed out. RUN_QCLUSTER=false above frees
+  # most of what it was short of; this keeps the rest as headroom rather than
+  # sitting one process away from the same cliff again.
+  memory = "1024mb"

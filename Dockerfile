@@ -53,6 +53,9 @@ FROM python:3.14-slim-bookworm
 ENV PROD=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/home/timetracker/app/.venv/bin:$PATH" \
+    # Read by supervisor.conf, which cannot be parsed with it unset. Deployments
+    # that schedule nothing (staging) set false and save the cluster's ~260mb.
+    RUN_QCLUSTER=true \
     # Django's in-code default is BASE_DIR; pin the image default so the
     # database lands inside the expected volume even without -e DATA_DIR.
     DATA_DIR=/home/timetracker/app/data
@@ -81,6 +84,14 @@ COPY --from=builder --chown=timetracker:timetracker /home/timetracker/app /home/
 # Built front-end assets from the Node stage (Tailwind CSS + compiled TS).
 COPY --from=assets --chown=timetracker:timetracker /app/games/static/base.css /home/timetracker/app/games/static/base.css
 COPY --from=assets --chown=timetracker:timetracker /app/games/static/js/dist /home/timetracker/app/games/static/js/dist
+
+# Collect static here rather than in the entrypoint: the output is a pure
+# function of the image's own files, and hashing them takes a Django startup
+# plus a dozen post-process passes that every container start would otherwise
+# repeat while the first request waits. SECRET_KEY is only needed because the
+# runtime stage sets PROD=1; it is scoped to this layer and never in the image.
+RUN SECRET_KEY=collectstatic-build python manage.py collectstatic --no-input \
+    && chown -R timetracker:timetracker /home/timetracker/app/static
 
 COPY --chown=timetracker:timetracker Caddyfile /etc/caddy/Caddyfile
 COPY --chown=timetracker:timetracker supervisor.conf /etc/supervisor/conf.d/supervisor.conf
