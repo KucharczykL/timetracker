@@ -53,6 +53,25 @@ def _center_x(locator: Locator) -> float:
     return box["x"] + box["width"] / 2
 
 
+def _gap_after_text(host: Locator) -> float:
+    """Pixels between the end of the visible text and the reveal button.
+
+    The button sits in normal flow beside the text, so this stays at the flex
+    gap however wide the column is. Pinned to the host's edge instead, a short
+    name in a wide column would strand it hundreds of pixels away.
+    """
+    return host.evaluate(
+        """element => {
+            const clip = element.querySelector('[data-truncated-clip]');
+            const button = element.querySelector('[data-truncated-reveal]');
+            const range = document.createRange();
+            range.selectNodeContents(clip);
+            const textEnd = range.getBoundingClientRect().right;
+            return button.getBoundingClientRect().left - textEnd;
+        }"""
+    )
+
+
 def _name_cell_dead_space(page: Page) -> float:
     """Pixels the first body cell is wider than the truncated-text inside it.
 
@@ -143,12 +162,7 @@ def test_different_sort_name_moves_into_the_name_tooltip(touch_page: Page, live_
     expect(name_host).to_have_attribute("reveal", "always")
     expect(name_button).to_have_attribute("data-truncated-reveal", "info")
     expect(name_button).to_be_visible()
-    assert (
-        name_host.locator("[data-truncated-clip]").evaluate(
-            "element => getComputedStyle(element).paddingInlineEnd"
-        )
-        == "24px"
-    )
+    assert _gap_after_text(name_host) < 12
     name_button.tap()
     expect(name_panel).to_be_visible()
     name_arrow = name_panel.locator("[data-pop-over-arrow]")
@@ -362,12 +376,7 @@ def test_informative_reveal_is_visible_and_clear_of_the_name_on_desktop(
     button = host.locator("[data-truncated-reveal]")
     expect(button).to_have_attribute("data-truncated-reveal", "info")
     expect(button).to_be_visible()
-    assert (
-        host.locator("[data-truncated-clip]").evaluate(
-            "element => getComputedStyle(element).paddingInlineEnd"
-        )
-        == "24px"
-    )
+    assert _gap_after_text(host) < 12
 
 
 def test_fallback_font_is_measured_when_webfonts_are_blocked(

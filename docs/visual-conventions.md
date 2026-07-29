@@ -239,6 +239,16 @@ scrollspy (#401). Calls recorded so #384 and later consumers do not relitigate i
   `TruncatedText` follows the same rule for its `info` reveal, and deliberately does not for
   its `ellipsis` one: the fade already says the text is clipped, so nothing there is hidden and
   the glyph is only a touch stand-in.
+
+  The two also position differently, for the same reason. The **ellipsis** is pinned to the
+  host's edge (`absolute inset-y-0 right-0`) because it overlays the fade at the truncation
+  point, and it only ever shows while the text is clipped — so that edge *is* where the text
+  ends. The **info** reveal shows regardless, so pinning it would strand it at the far edge of
+  a wide column beside a short name; it sits in normal flow instead, and the link wrapper is
+  `min-w-0 max-w-full` rather than `w-full` so it shrinks to its text. Keep the shrink: the
+  overflow measurement is `scrollWidth > clientWidth` on the clip, which needs flex to be free
+  to squeeze it below its content width. A content-sized clip never overflows and nothing
+  truncates.
 - **Tooltip definition lists are cross-app UI.** Use `TooltipDefinitionList` for informative
   term/value content such as game `Name` / `Sort name` and setting `Source` / `Locked`.
   It owns semantic `<dl>` markup, an 8px item rhythm, micro muted terms, and medium-weight

@@ -277,12 +277,13 @@ class TruncatedTextRevealTest(unittest.TestCase):
         self.assertIn('data-truncated-reveal="info"', html)
         self.assertNotIn("[@media(hover:none)]:inline-flex", html)
 
-    def test_informative_clip_reserves_room_unconditionally(self):
-        # The button is always there now, so the 24px it occupies must always
-        # be reserved — otherwise the name paints underneath it on desktop.
+    def test_informative_reveal_sits_in_normal_flow(self):
+        # In flow it follows the text and flex reserves its width. Pinned to
+        # the host edge (as the overflow ellipsis is) it would strand itself
+        # far from a short name in a wide column.
         html = self._informative()
-        self.assertIn("pe-6", html)
-        self.assertNotIn("[@media(hover:none)]:pe-6", html)
+        self.assertNotIn("absolute", html.split("data-pop-over-panel")[0])
+        self.assertNotIn("pe-6", html)
 
     def test_overflow_reveal_stays_touch_only(self):
         # Nothing is hidden here: the fade already says the text is clipped,
@@ -1280,7 +1281,6 @@ class TruncatedTextTest(unittest.TestCase):
         self.assertRegex(panel_id.group(1), r"^[0-9a-f]{10}$")
         self.assertEqual(html.count(f'aria-describedby="{panel_id.group(1)}"'), 2)
         self.assertIn('data-truncated-reveal="info"', html)
-        self.assertIn("pe-6", html)
         self.assertIn('role="tooltip"', html)
         self.assertNotIn('aria-hidden="true"', html)
 

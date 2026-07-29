@@ -599,9 +599,13 @@ _TRUNCATED_CLIP_CLASS = (
 # overriding it would leave both on the element, where the winner is decided by
 # stylesheet order rather than by the class list.
 _TRUNCATED_REVEAL_CLASS = (
-    "absolute inset-y-0 right-0 my-auto size-6 items-center justify-center "
+    "size-6 items-center justify-center "
     "text-subtle hover:text-heading hover:cursor-pointer rounded-base shrink-0"
 )
+# The overflow ellipsis overlays the fade at the truncation point, so it is
+# pinned to the host's edge. Only ever shown while the text is clipped, which
+# is exactly when that edge is where the text ends.
+_TRUNCATED_ELLIPSIS_POSITION_CLASS = "absolute inset-y-0 right-0 my-auto"
 
 
 def TruncatedText(
@@ -634,14 +638,12 @@ def TruncatedText(
         randomid(content=f"truncated-text:{instance_key}:{text}") if informative else ""
     )
     describedby = [("aria-describedby", panel_id)] if informative else []
-    # The info button is present on every device, so reserve its 24px on every
-    # device too — before measuring, so a name that only stops fitting because
-    # of the button is correctly faded rather than painted underneath it.
-    # Overflow-only ellipses stay out of layout; their touch mask instead
-    # becomes fully transparent under the button.
+    # The info button sits in normal flow beside the text, so flex reserves its
+    # width for it — no manual padding, and it follows the text instead of
+    # stranding itself at the far edge of a wide column. Overflow-only ellipses
+    # stay out of layout; their touch mask instead becomes fully transparent
+    # under the button.
     clip_class = _TRUNCATED_CLIP_CLASS
-    if informative and tap:
-        clip_class = f"{clip_class} pe-6"
     clip_attributes: list[HTMLAttribute] = [
         ("data-truncated-clip", ""),
         ("class", clip_class),
@@ -651,10 +653,14 @@ def TruncatedText(
     clip = Span(clip_attributes)[text]
 
     if link is not None:
+        # Not `w-full`: the link shrinks to its text so the reveal button lands
+        # beside it rather than at the far edge of a wide column. `min-w-0`
+        # keeps flex free to shrink it below its content, which is what
+        # constrains the clip and lets the overflow measurement fire at all.
         visible: Node = A(
             [
                 ("href", link),
-                ("class", "inline-flex w-full min-w-0 items-center gap-2"),
+                ("class", "inline-flex min-w-0 max-w-full items-center gap-2"),
                 *describedby,
             ]
         )[leading or "", clip]
@@ -667,6 +673,7 @@ def TruncatedText(
         # announces itself on every device — nothing else says the extra
         # content exists. An overflow ellipsis is only a touch stand-in for
         # the fade, which already says the text is clipped.
+        position = "" if informative else f"{_TRUNCATED_ELLIPSIS_POSITION_CLASS} "
         visibility = (
             "inline-flex"
             if informative
@@ -677,7 +684,7 @@ def TruncatedText(
             ("type", "button"),
             ("data-truncated-reveal", reveal_icon),
             ("aria-label", reveal_label),
-            ("class", f"{_TRUNCATED_REVEAL_CLASS} {visibility}"),
+            ("class", f"{_TRUNCATED_REVEAL_CLASS} {position}{visibility}"),
             *describedby,
         ]
         children.append(
