@@ -56,8 +56,7 @@ def session_row_data(
     origin: OriginUrl | None,
 ) -> TableRowData:
     """Canonical session-list row, the single source of truth for the list
-    table. Finish/reset are driven by the <session-actions> custom element
-    (PATCH /api/session/<id> + client-side row swap); Edit/Delete stay links."""
+    table."""
     return make_row(
         NameWithIcon(session=session),
         session_time_range(session, presentation),

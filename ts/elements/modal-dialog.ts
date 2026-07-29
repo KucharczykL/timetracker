@@ -5,10 +5,6 @@
  * contract: Escape + a backdrop click (bindPopupDismiss, anchored on the inner
  * panel so any click outside it counts) + any `[data-modal-dismiss]` control.
  * Dismissing removes the throwaway overlay.
- *
- * `data-manage="false"` keeps the element inert — the session-reset confirm is
- * wrapped in <session-actions>, which owns its open/close and its own
- * bindPopupDismiss; a second engine on the inner overlay would fight it.
  */
 import { bindPopupDismiss } from "../utils.js";
 
@@ -16,7 +12,6 @@ class ModalDialogElement extends HTMLElement {
   private cleanup: (() => void) | null = null;
 
   connectedCallback(): void {
-    if (this.getAttribute("data-manage") === "false") return;
     // Anchor the outside-click dismiss on the panel, not the overlay: a click
     // on the backdrop is "outside" the panel (but inside the overlay), so
     // bindPopupDismiss closes it; a click inside the panel does not. The Modal

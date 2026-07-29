@@ -847,6 +847,7 @@ class ControlButton(BaseComponent):
         method: str = "",
         action: str = "",
         csrf_token: str = "",
+        hidden_fields: Children = None,
         type: str = "button",
         _children: Children = None,
         **kwargs: object,
@@ -863,6 +864,7 @@ class ControlButton(BaseComponent):
         self._method = method
         self._action = action
         self._csrf_token = csrf_token
+        self._hidden_fields = as_children(hidden_fields)
         self._type = type
         self._children = as_children(_children)
 
@@ -891,7 +893,7 @@ class ControlButton(BaseComponent):
             submit = Button([("type", "submit"), *self._merged_attributes])[
                 *self._children
             ]
-            form_children: list[Node] = []
+            form_children: list[Node | str] = []
             if self._csrf_token:
                 form_children.append(
                     Safe(
@@ -899,6 +901,7 @@ class ControlButton(BaseComponent):
                         f'value="{self._csrf_token}">'
                     )
                 )
+            form_children.extend(self._hidden_fields)
             form_children.append(submit)
             return Form(
                 method="post",
@@ -921,6 +924,7 @@ class ButtonGroupMember(TypedDict, total=False):
     method: str
     action: str
     csrf_token: str
+    hidden_fields: Children
     button_attributes: list[HTMLAttribute]
     # The <button type>: "submit" makes a bare-button member submit its
     # ancestor form (the quick bar's Apply). Only meaningful with
@@ -973,6 +977,7 @@ def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
                 method="" if is_plain_button else member.get("method", ""),
                 action=member.get("action", ""),
                 csrf_token=member.get("csrf_token", ""),
+                hidden_fields=member.get("hidden_fields"),
                 type=member.get("type", "button"),
             )[slot]
         )
@@ -1675,34 +1680,24 @@ class Modal(BaseComponent):
     backdrop click, and any ``[data-modal-dismiss]`` control (via
     ``bindPopupDismiss``) — and carries ``role="dialog"``/``aria-modal``.
     Dismissing removes the overlay from the DOM.
-
-    ``self_dismiss=False`` renders the same markup but keeps the element inert,
-    for overlays managed by another element (the session-reset confirm, wrapped
-    in ``<session-actions>``); a second dismiss engine would fight that owner.
     """
 
     def __init__(
         self,
         modal_id: str,
         _children: Children = None,
-        *,
-        self_dismiss: bool = True,
     ) -> None:
         self.modal_id = modal_id
         self._children = as_children(_children)
-        self.self_dismiss = self_dismiss
 
     def __getitem__(self, children: Children) -> Modal:
-        return Modal(
-            self.modal_id, as_children(children), self_dismiss=self.self_dismiss
-        )
+        return Modal(self.modal_id, as_children(children))
 
     def render(self) -> Node:
         return _ModalDialog(
             id_=self.modal_id,
             role="dialog",
             aria_modal="true",
-            data_manage="true" if self.self_dismiss else "false",
             # z-40: above in-page positioned UI (popovers z-10, dropdown
             # panels z-20) so the overlay dims and covers them, but below the
             # toast container (z-50). Matters for modals rendered inline in a

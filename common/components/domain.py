@@ -10,7 +10,6 @@ from common.components.primitives import (
     ICON_BUTTON_SIZE_CLASS,
     NAME_MAX_WIDTH_CLASS,
     A,
-    Div,
     Icon,
     Input,
     Li,
@@ -359,17 +358,14 @@ def BrowserTimeZoneInput(field_name: str = BROWSER_TIME_ZONE_FIELD) -> Node:
 
 def SessionActions(session, csrf_token: str, origin: OriginUrl | None) -> Node:
     """Row actions for a session: Finish + Reset (only while the session is open),
-    Edit, Delete. The finish/reset buttons drive ``PATCH /api/session/<id>`` and
-    swap the row client-side; reset opens an inline confirm modal. Edit/Delete stay
-    plain navigation links. Behavior lives in ``ts/elements/session-actions.ts``;
-    this server-renders the full light DOM so the row works on first paint."""
-    from common.components.custom_elements import _SessionActions
-    from common.components.primitives import ButtonGroup, ControlButton, Modal
+    Edit, Delete. Finish posts and the page reloads; reset confirms on its own
+    page first, because it overwrites the original start time. Edit and Delete
+    stay plain navigation links, so the whole group works without JavaScript
+    beyond the browser-zone stamp the finish form carries."""
+    from common.components.primitives import ButtonGroup
     from common.returns import action_url
 
     is_open = session.timestamp_end is None
-    game_name = session.game.name if session.game else "this session"
-    modal_id = f"session-{session.pk}-reset-modal"
 
     actions = ButtonGroup(
         [
@@ -377,15 +373,18 @@ def SessionActions(session, csrf_token: str, origin: OriginUrl | None) -> Node:
                 "slot": Icon("end", size=ICON_BUTTON_SIZE_CLASS),
                 "title": "Finish session now",
                 "color": "green",
-                "button_attributes": [("data-finish", "")],
+                "method": "post",
+                "action": action_url("games:finish_session", session.pk, origin=origin),
+                "csrf_token": csrf_token,
+                "hidden_fields": BrowserTimeZoneInput(),
             }
             if is_open
             else {},
             {
+                "href": action_url("games:reset_session", session.pk, origin=origin),
                 "slot": Icon("reset", size=ICON_BUTTON_SIZE_CLASS),
                 "title": "Reset start to now",
                 "color": "gray",
-                "button_attributes": [("data-reset", "")],
             }
             if is_open
             else {},
@@ -403,39 +402,4 @@ def SessionActions(session, csrf_token: str, origin: OriginUrl | None) -> Node:
         ]
     )
 
-    children: list[Node] = [actions]
-    if is_open:
-        children.append(
-            Div(data_reset_modal="", hidden="")[
-                # self_dismiss=False: <session-actions> owns this overlay's
-                # open/close and its own bindPopupDismiss.
-                Modal(modal_id, self_dismiss=False)[
-                    Div(class_="text-center")[
-                        "Reset the start time of ",
-                        Span(class_="font-medium")[game_name],
-                        " to now?",
-                    ],
-                    Div(class_="flex gap-2 mt-6 justify-center")[
-                        # Reset overwrites the original start time (only
-                        # recoverable via Edit) -> red destructive confirm,
-                        # gray secondary cancel.
-                        ControlButton(
-                            color="red",
-                            data_reset_confirm="",
-                        )["Reset to now"],
-                        ControlButton(
-                            color="gray",
-                            data_reset_cancel="",
-                        )["Cancel"],
-                    ],
-                ]
-            ]
-        )
-
-    return _SessionActions(
-        session_id=session.pk,
-        api_url=f"/api/session/{session.pk}",
-        csrf=csrf_token,
-        game_name=game_name,
-        is_open="true" if is_open else "false",
-    )[children]
+    return actions

@@ -287,8 +287,8 @@ class ComponentReturnTypeTest(unittest.TestCase):
 
 
 class SessionActionsTest(unittest.TestCase):
-    """The <session-actions> custom element: finish/reset only for an open
-    session, plus the hidden reset-confirm modal. Edit/Delete always present."""
+    """Session row actions: finish posts and reset links to its confirmation,
+    both only while the session is open. Edit/Delete always present."""
 
     def _session(self, *, pk=7, timestamp_end=None, game_name="Hades"):
         from types import SimpleNamespace
@@ -299,19 +299,20 @@ class SessionActionsTest(unittest.TestCase):
             game=SimpleNamespace(name=game_name),
         )
 
-    def test_open_session_renders_finish_reset_csrf_and_modal(self):
+    def test_open_session_posts_to_finish_and_links_to_reset(self):
         from common.components.domain import SessionActions
 
         html = str(SessionActions(self._session(), "tok123", None))
-        self.assertIn("<session-actions", html)
-        self.assertIn('api-url="/api/session/7"', html)
-        self.assertIn('csrf="tok123"', html)
-        self.assertIn("data-finish", html)
-        self.assertIn("data-reset", html)
-        self.assertIn("data-reset-modal", html)
-        self.assertIn("Hades", html)  # modal copy names the game
+        self.assertIn('method="post"', html)
+        self.assertIn("/session/7/finish", html)
+        self.assertIn('value="tok123"', html)
+        self.assertIn("/session/7/reset", html)
+        # The zone the browser is in is submitted with the finish, so a
+        # travelling user's end timestamp is not labelled with their account
+        # zone.
+        self.assertIn('name="browser_time_zone"', html)
 
-    def test_closed_session_hides_finish_reset_and_modal(self):
+    def test_closed_session_hides_finish_and_reset(self):
         import datetime
 
         from common.components.domain import SessionActions
@@ -320,10 +321,8 @@ class SessionActionsTest(unittest.TestCase):
             timestamp_end=datetime.datetime(2026, 6, 24, 19, 0, tzinfo=datetime.UTC)
         )
         html = str(SessionActions(ended, "tok123", None))
-        self.assertIn("<session-actions", html)
-        self.assertNotIn("data-finish", html)
-        self.assertNotIn("data-reset", html)
-        self.assertNotIn("data-reset-modal", html)
+        self.assertNotIn("/session/7/finish", html)
+        self.assertNotIn("/session/7/reset", html)
         self.assertIn("/session/7/edit", html)  # edit link still present
 
 
@@ -1078,17 +1077,10 @@ class ModalContractTest(SimpleTestCase):
         self.assertIn('role="dialog"', html)
         self.assertIn('aria-modal="true"', html)
         self.assertIn("data-modal-panel", html)
-        # Self-managing by default; the element wires Escape/backdrop dismiss.
-        self.assertIn('data-manage="true"', html)
         self.assertIn(
             "dist/elements/modal-dialog.js",
             components.collect_media(components.Modal("m3")).js,
         )
-
-    def test_self_dismiss_false_marks_element_inert(self):
-        # The session-reset overlay opts out — <session-actions> manages it.
-        html = str(components.Modal("m4", self_dismiss=False)[components.Div()["x"]])
-        self.assertIn('data-manage="false"', html)
 
 
 class DropdownActionItemContractTest(SimpleTestCase):
