@@ -279,7 +279,12 @@ def TooltipDefinitionList(
     list_class = f"flex flex-col gap-2 {class_}".strip()
     items = [
         Div(definition.attributes)[
-            Dt(class_="text-type-micro text-body")[definition.term],
+            # font-medium on the term as well as the value: the term set no
+            # weight, so it inherited one from wherever the tooltip was
+            # mounted — 500 on an ordinary page but 400 inside a data table,
+            # which made the same tooltip look different per surface. Term and
+            # value are separated by size and color, not weight.
+            Dt(class_="text-type-micro text-body font-medium")[definition.term],
             Dd(class_="font-medium")[definition.description],
         ]
         for definition in definitions

@@ -195,7 +195,9 @@ class TooltipDefinitionListTest(unittest.TestCase):
         self.assertIn("<dl", html)
         self.assertIn('data-tooltip-definition-list=""', html)
         self.assertIn("flex flex-col gap-2 max-w-sm", html)
-        self.assertEqual(html.count('<dt class="text-type-micro text-body">'), 2)
+        self.assertEqual(
+            html.count('<dt class="text-type-micro text-body font-medium">'), 2
+        )
         self.assertEqual(html.count('<dd class="font-medium">'), 2)
         self.assertIn(">Name</dt>", html)
         self.assertIn(">The Display Name</dd>", html)
@@ -2797,6 +2799,15 @@ class TooltipPanelFontTest(unittest.TestCase):
     """A tooltip panel is a descendant of whatever it annotates, so it must
     state its own font family — otherwise one mounted inside a data table or a
     TruncatedText host renders condensed while every other tooltip does not."""
+
+    def test_definition_terms_state_their_own_weight(self):
+        html = str(
+            components.TooltipDefinitionList(
+                [components.TooltipDefinition("Term", "Value")]
+            )
+        )
+        term_class = html.split("<dt")[1].split('class="')[1].split('"')[0]
+        self.assertIn("font-medium", term_class)
 
     def test_panel_states_its_font_family(self):
         html = str(
