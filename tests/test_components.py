@@ -2755,3 +2755,39 @@ def test_confirm_page_renders_details_outside_the_message_paragraph():
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PopoverDescribedbyTest(unittest.TestCase):
+    """A popover whose panel only restates the trigger can drop the
+    description, so a screen reader does not read the value twice."""
+
+    def test_popover_omits_describedby_when_disabled(self):
+        html = str(
+            components.Popover(
+                popover_content="1 h 12 m",
+                wrapped_content="1.2 h",
+                id="duration-1",
+                describedby=False,
+            )
+        )
+        self.assertNotIn("aria-describedby", html)
+
+    def test_panel_keeps_its_id_and_tooltip_role_when_describedby_is_off(self):
+        html = str(
+            components.Popover(
+                popover_content="1 h 12 m",
+                wrapped_content="1.2 h",
+                id="duration-2",
+                describedby=False,
+            )
+        )
+        self.assertIn('id="duration-2"', html)
+        self.assertIn('role="tooltip"', html)
+
+    def test_describedby_is_present_by_default(self):
+        html = str(
+            components.Popover(
+                popover_content="original", wrapped_content="converted", id="price-1"
+            )
+        )
+        self.assertIn('aria-describedby="price-1"', html)

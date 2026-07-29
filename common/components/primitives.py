@@ -325,6 +325,7 @@ def _popover_html(
     trigger_disabled: bool = False,
     preface: Node | str = "",
     selectable_text: bool = False,
+    describedby: bool = True,
 ) -> Node:
     """Generate popover HTML. Single source of truth for popover structure.
 
@@ -391,19 +392,18 @@ def _popover_html(
                 Button(control_attributes)[*trigger_children]
             ]
         else:
-            control_attributes.append(("aria-describedby", id))
+            if describedby:
+                control_attributes.append(("aria-describedby", id))
             if trigger_label:
                 control_attributes.append(("aria-label", trigger_label))
             control_attributes.append(("data-pop-over-trigger", ""))
             trigger = Button(control_attributes)[*trigger_children]
     else:
-        trigger = Span(
-            [
-                ("data-pop-over-trigger", ""),
-                ("aria-describedby", id),
-                ("class", wrapped_classes),
-            ]
-        )[*trigger_children]
+        span_attributes: list[HTMLAttribute] = [("data-pop-over-trigger", "")]
+        if describedby:
+            span_attributes.append(("aria-describedby", id))
+        span_attributes.append(("class", wrapped_classes))
+        trigger = Span(span_attributes)[*trigger_children]
 
     # No positioning class — the element sets `position: fixed` + coords on show
     # and clears them on hide; the `hidden` attribute owns the closed state.
@@ -443,6 +443,7 @@ def Popover(
     trigger_disabled: bool = False,
     preface: Node | str = "",
     selectable_text: bool = False,
+    describedby: bool = True,
 ) -> Node:
     children = as_children(children)
     if not wrapped_content and not children:
@@ -462,6 +463,7 @@ def Popover(
         trigger_disabled=trigger_disabled,
         preface=preface,
         selectable_text=selectable_text,
+        describedby=describedby,
     )
 
 
