@@ -125,8 +125,8 @@ the *other* profiles, labelled:
   title is a word every screen reader reads before the data, for no information.
 - **Values get `tabular-nums`**, as does the visible cell, which today gets its
   fixed width from the `%02.1H` pattern being deleted.
-- **`tap=False`** — the trigger is the hover/focus-only `<span>`. See
-  Accessibility for what this costs.
+- **`tap=True`** (the default) — the trigger is a real `<button>`, operable by
+  mouse, touch, and keyboard. See Accessibility.
 
 **Every popover needs a caller-supplied DOM id.** `Popover()` otherwise derives
 one by hashing its own content (`primitives.py:450`), so two rows with the same
@@ -166,16 +166,17 @@ read the same number three ways on every row. This is safe for the element's JS:
 `[data-pop-over-trigger]` and never reads `aria-describedby`, and no existing
 test asserts it is unconditionally present.
 
-**`tap=False` makes the panel mouse-only, not merely touch-less.** The
-`tap=False` trigger is a `<span>` with no `tabindex` (`primitives.py:399`), and
-`attachTooltip` binds `focusin`/`focusout` on the host
-(`ts/elements/tooltip-behavior.ts:167`). Existing `tap=False` call sites work
-only because they wrap an already-focusable element (a link). Plain duration text
-has none, so keyboard users cannot reach the alternates either. Accepted on the
-grounds that the `sr-only` text carries the full value and the panel is
-redundant convenience — but it is a broader cost than "touch users lose a
-convenience", and it is the one decision worth revisiting if the Orca pass goes
-badly.
+**The trigger stays a real `<button>` (`tap=True`).** Both alternatives
+considered — `tap=False`, and a `<span>` carrying the tap bindings — reach the
+panel by pointer but not by keyboard, which fails WCAG 2.1.1 for a sighted
+keyboard-only user: they would see one format where a mouse user sees four. The
+"it exposes no unique information" defence is too thin to rest on.
+
+The cost is one tab stop per duration. That is ordinary: `DEFAULT_PAGE_SIZE` is
+25, and a session row already carries a game link, a device dropdown, Edit, and
+Delete, so this is roughly a 20% increase in a row's tab stops rather than a new
+class of problem. A user who selects the 1000-row page size has opted into a
+dense page in which every existing per-row control multiplies identically.
 
 Verify with a real Orca pass on a session list before merge.
 
