@@ -208,6 +208,25 @@ Changes save immediately against the account through `/api/settings/user`:
 - **Formatting locale** (`DATE_FORMAT_LOCALE`) selects the locale used for month
   names, weekday names, and localized AM/PM labels. It is never activated as a
   translation, so application copy is unaffected.
+- **Duration format** controls how elapsed playtime is displayed. Supported
+  profiles are:
+
+  | Value | 45 minutes | 1 h 12 m | 83 h 12 m |
+  |-------|-----------|----------|-----------|
+  | `decimal_hours` | `0.8 h` | `1.2 h` | `83.2 h` |
+  | `hours_minutes` | `45 m` | `1 h 12 m` | `83 h 12 m` |
+  | `whole_hours` | `1 hour` | `1 hour` | `83 hours` |
+  | `adaptive` | `45 m` | `1 h 12 m` | `3 d 11 h` |
+
+  `decimal_hours` is the built-in default. Every profile rounds to its own
+  resolution rather than truncating, so a 45-minute session reads as `1 hour`
+  under `whole_hours`, never `0 hours`. Only `adaptive` rolls hours into days,
+  weeks, and years; the others keep counting hours, because hours are this
+  application's unit of account (the filter facets are `playtime_hours` and
+  `duration_total_hours`). Grouping and the decimal separator come from the
+  formatting locale, so 1234 hours reads `1,234` under `en-us` and `1 234`
+  under `cs`. The preference is display only: stored values, the API, filtering,
+  and sorting are unaffected.
 - **Date/time format** controls numeric date order, visible date separators, and
   the 12- or 24-hour clock used throughout the rendered application. Supported
   profiles are:

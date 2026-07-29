@@ -1,3 +1,27 @@
+## Unreleased
+
+### New
+
+* Elapsed durations follow a per-user **Duration format** preference, replacing
+  six ad-hoc format strings that had drifted apart across the session list, game
+  pages, the navbar, and statistics. Four profiles: decimal hours (`1.2 h`, the
+  default and what most surfaces already showed), hours and minutes
+  (`1 h 12 m`), whole hours (`1 hour`), and adaptive units, which climbs from
+  minutes through years (`3 d 11 h`). Every profile rounds rather than
+  truncates, so 59 minutes no longer reads as "0 hours". Grouping and the
+  decimal separator follow the formatting locale.
+* Every duration offers the same value under the other profiles on hover, so a
+  rounded rendering is never a dead end. Screen readers get the value in words
+  ("1 hour 12 minutes") instead of the abbreviation.
+
+### Changed
+
+* Finishing or resetting a session posts and reloads the page instead of
+  patching the row in place. The client-side row rebuild is gone, and with it a
+  TypeScript re-implementation of the server's session time-range rules.
+* Resetting a session's start time confirms on its own page rather than in an
+  inline modal.
+
 ## 1.8.1 / 2026-07-28
 
 ### Fixed
