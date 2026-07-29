@@ -125,6 +125,16 @@ urlpatterns = [
     ),
     path("session/<int:session_id>/edit", session.edit_session, name="edit_session"),
     path(
+        "session/<int:session_id>/finish",
+        session.finish_session,
+        name="finish_session",
+    ),
+    path(
+        "session/<int:session_id>/reset",
+        session.reset_session,
+        name="reset_session",
+    ),
+    path(
         "session/<int:session_id>/delete",
         session.delete_session,
         name="delete_session",

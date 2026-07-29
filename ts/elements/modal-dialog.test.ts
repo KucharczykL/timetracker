@@ -3,11 +3,9 @@ import { describe, it, expect, beforeEach } from "vitest";
 import "./modal-dialog.js"; // side effect: customElements.define
 
 // Dismiss contract: Escape, a backdrop click, and a [data-modal-dismiss] control
-// each remove the overlay. data-manage="false" keeps it inert (for overlays a
-// wrapping element manages, e.g. the session-reset confirm).
-function mount(manage = "true"): HTMLElement {
+// each remove the overlay.
+function mount(): HTMLElement {
   const host = document.createElement("modal-dialog");
-  host.setAttribute("data-manage", manage);
   host.innerHTML = `
     <div data-modal-panel>
       <button data-modal-dismiss>Cancel</button>
@@ -46,12 +44,5 @@ describe("<modal-dialog> dismiss contract", () => {
       .querySelector<HTMLElement>("[data-modal-dismiss]")!
       .dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(host.isConnected).toBe(false);
-  });
-
-  it("data-manage=false is inert (session-actions owns the overlay)", () => {
-    const host = mount("false");
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-    host.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-    expect(host.isConnected).toBe(true);
   });
 });

@@ -459,12 +459,13 @@ class RenderedPagesTest(TestCase):
         self.assertIn("Refund", html)
         self.assertNoEscapedTags(html)
 
-    def test_session_list_renders_session_actions_element(self):
-        # Finish/reset are now driven by the <session-actions> custom element
-        # (PATCH /api/session/<id> + client-side row swap), not POST/confirm pages.
+    def test_session_list_actions_do_not_reach_the_api(self):
+        # Finish and reset are ordinary POST routes that reload the page. The
+        # device selector still PATCHes /api/session/<id>/device — that is a
+        # different control and unaffected.
         html = self.get("games:list_sessions").content.decode()
-        self.assertIn("<session-actions", html)
-        self.assertIn(f'api-url="/api/session/{self.session.id}"', html)
+        self.assertNotIn("<session-actions", html)
+        self.assertNotIn(f'"/api/session/{self.session.id}"', html)
         self.assertNoEscapedTags(html)
 
     def test_finish_reset_buttons_only_shown_for_running_sessions(self):
@@ -473,12 +474,10 @@ class RenderedPagesTest(TestCase):
             timestamp_start=datetime(2020, 1, 1, 10, 0, tzinfo=ZONEINFO),
         )
         html = self.get("games:list_sessions").content.decode()
-        # The running session's row exposes finish + reset; the finished
-        # self.session row exposes neither (its <session-actions> is_open=false).
-        self.assertIn("data-reset-modal", html)  # only the running row has one
-        self.assertIn(f'<session-actions session-id="{running.id}"', html)
-        self.assertIn('is-open="true"', html)
-        self.assertIn('is-open="false"', html)
+        self.assertIn(f"/session/{running.id}/finish", html)
+        self.assertIn(f"/session/{running.id}/reset", html)
+        self.assertNotIn(f"/session/{self.session.id}/finish", html)
+        self.assertNotIn(f"/session/{self.session.id}/reset", html)
 
     # --- statuschange --------------------------------------------------------
 

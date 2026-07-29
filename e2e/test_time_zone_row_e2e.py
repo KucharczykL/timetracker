@@ -106,10 +106,11 @@ def test_finish_stamps_the_end_zone(tokyo_page, live_server):
     )
     tokyo_page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
     row = tokyo_page.locator(f"#session-row-{session.pk}")
-    row.locator("[data-finish]").click()
-    # The row is rebuilt from the server response after the write commits, so
-    # waiting for the finish button to vanish is a server-state assertion.
-    expect(row.locator("[data-finish]")).to_have_count(0)
+    row.locator('form[action*="/finish"] button[type="submit"]').click()
+    # The list re-renders after the write commits, so waiting for the finish
+    # control to vanish is a server-state assertion.
+    row = tokyo_page.locator(f"#session-row-{session.pk}")
+    expect(row.locator('form[action*="/finish"]')).to_have_count(0)
 
     session.refresh_from_db()
     assert session.timestamp_end_timezone == BROWSER_TIME_ZONE

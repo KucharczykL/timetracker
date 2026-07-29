@@ -63,7 +63,9 @@ ORIGIN_AWARE: frozenset[UrlName] = frozenset(
         "games:edit_purchase",
         "games:edit_session",
         "games:edit_statuschange",
+        "games:finish_session",
         "games:list_sessions_start_session_from_session",
+        "games:reset_session",
         "games:split_purchase",
     }
 )

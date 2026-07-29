@@ -49,7 +49,7 @@ def test_selector_trigger_and_icon_actions_share_height(
     expect(row).to_be_visible()
 
     selector_trigger = row.locator("drop-down [data-toggle]").first
-    reset_button = row.locator("button[data-reset]")
+    reset_button = row.locator('a[href*="/reset"]')
     expect(selector_trigger).to_be_visible()
     expect(reset_button).to_be_visible()
 

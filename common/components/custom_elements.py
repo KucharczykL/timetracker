@@ -173,17 +173,6 @@ class PlayEventRowProps(TypedDict):
 register_element("play-event-row", "PlayEventRow", PlayEventRowProps)
 
 
-class SessionActionsProps(TypedDict):
-    session_id: int
-    api_url: str  # f"/api/session/{pk}"
-    csrf: str
-    game_name: str  # names the game in the reset-confirm modal copy
-    is_open: bool  # timestamp_end is None -> finish + reset are available
-
-
-register_element("session-actions", "SessionActions", SessionActionsProps)
-
-
 class DateTimeFieldProps(TypedDict):
     field_name: str  # the Django field name, e.g. "timestamp_start" — how a
     # copy control on one datetime field addresses another one on the same page
@@ -204,13 +193,20 @@ class TimeZoneRowProps(TypedDict):
 register_element("time-zone-row", "TimeZoneRow", TimeZoneRowProps)
 
 
+class BrowserTimeZoneProps(TypedDict):
+    field_name: str  # the posted field this stamps, e.g. "browser_time_zone"
+
+
+register_element("browser-time-zone", "BrowserTimeZone", BrowserTimeZoneProps)
+
+
 # ── Named tag builders (consistent htpy-style with Div/Span) ─────────────────
 # Underscore-prefixed: used internally by domain wrappers.
 # Public ones (no domain wrapper): exported directly.
 
+_BrowserTimeZone = custom_element_builder("browser-time-zone")
 _DateTimeField = custom_element_builder("date-time-field")
 _PlayEventRow = custom_element_builder("play-event-row")
-_SessionActions = custom_element_builder("session-actions")
 _TimeZoneRow = custom_element_builder("time-zone-row")
 
 
@@ -623,8 +619,8 @@ class ModalDialogProps(TypedDict):
 
 
 # The <modal-dialog> confirm-overlay element. Its builder (_ModalDialog) lives in
-# primitives.py next to the Modal component. It reads only the `data-manage` flag
-# (via getAttribute, not codegen), so the schema is empty.
+# primitives.py next to the Modal component. It takes no props, so the schema is
+# empty.
 register_element("modal-dialog", "ModalDialog", ModalDialogProps)
 
 
