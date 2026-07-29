@@ -10,7 +10,6 @@ from common.components.primitives import (
     ICON_BUTTON_SIZE_CLASS,
     NAME_MAX_WIDTH_CLASS,
     A,
-    Div,
     Icon,
     Input,
     Li,
@@ -359,16 +358,19 @@ def DurationText(
 
 
 def DurationAlternates(duration, presentation: DurationPresentation) -> Node:
-    """The same value under the other profiles, as label/value rows."""
-    return Div(class_="flex flex-col gap-1 text-left")[
-        *[
-            Div(class_="flex justify-between gap-4")[
-                Span(class_="text-neutral-secondary")[label],
-                Span(class_="tabular-nums")[rendering],
-            ]
+    """The same value under the other profiles.
+
+    Rendered with the shared informative-tooltip treatment rather than a local
+    one: profile name and value are a term/description pair, which is what a
+    definition list is for, and the colors come from the design system instead
+    of being chosen here.
+    """
+    return TooltipDefinitionList(
+        [
+            TooltipDefinition(label, rendering, [("class", "tabular-nums")])
             for label, rendering in presentation.alternates(duration)
         ]
-    ]
+    )
 
 
 def Duration(
