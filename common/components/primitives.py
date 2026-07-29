@@ -243,6 +243,34 @@ class TooltipDefinition(NamedTuple):
 # styled/behavioural builders it defines itself below.
 
 
+# Every anchor in the app goes through one of four builders, so "is this a text
+# link?" is answered by the call rather than by remembering a class string.
+# `tests/test_anchor_builders.py` fails the build on a bare `A()` outside them.
+#
+# The underline is the whole signal for "this navigates", which is why the
+# colour is a token of its own rather than `brand` — see input.css. Callers add
+# their own classes freely; the node layer accumulates `class`.
+LINK_CLASS = (
+    "text-fg-link hover:text-fg-link-hover underline underline-offset-4 decoration-2"
+)
+
+# Icon-only links carry no underline: there is no text for it to sit under, and
+# the icon plus its hover shift already reads as interactive.
+ICON_LINK_CLASS = "inline-flex items-center text-body hover:text-heading"
+
+#: An inline text link inside page content.
+Link = element_builder("a", default_class=LINK_CLASS)
+
+#: A link whose entire content is an icon.
+IconLink = element_builder("a", default_class=ICON_LINK_CLASS)
+
+#: Chrome that owns its own appearance — navbar items, pagination, sort
+#: headers, the settings rail, dropdown menu items. Adds nothing at all; it
+#: exists so "deliberately not a text link" is declared and greppable instead
+#: of inferred from the absence of a class.
+ControlLink = element_builder("a")
+
+
 def custom_element_builder(tag_name: str):
     """Create a tag builder for a custom element with auto-attached Media.
 

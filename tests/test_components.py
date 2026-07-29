@@ -258,6 +258,37 @@ class PopoverRevealTest(unittest.TestCase):
         self.assertNotIn("decoration-dotted", html.split("data-pop-over-panel")[0])
 
 
+class AnchorBuilderTest(unittest.TestCase):
+    """Four builders, so the call declares what kind of link this is."""
+
+    def test_link_carries_the_link_token_and_underline(self):
+        html = str(components.Link(href="/game/1")["Hollow Knight"])
+        self.assertIn("text-fg-link", html)
+        self.assertIn("underline", html)
+        self.assertIn("hover:text-fg-link-hover", html)
+
+    def test_link_merges_caller_classes(self):
+        # GameLink keeps font-condensed; TruncatedText keeps its clip layout.
+        html = str(components.Link(href="/game/1", class_="font-condensed")["x"])
+        self.assertIn("text-fg-link", html)
+        self.assertIn("font-condensed", html)
+
+    def test_icon_link_has_no_underline(self):
+        html = str(components.IconLink(href="/sessions")["<icon>"])
+        self.assertNotIn("underline", html)
+        self.assertNotIn("text-fg-link", html)
+
+    def test_control_link_adds_nothing(self):
+        # Chrome owns its own appearance; the builder only declares intent.
+        html = str(components.ControlLink(href="/")["Home"])
+        self.assertEqual(html, '<a href="/">Home</a>')
+
+    def test_control_button_link_is_not_underlined(self):
+        html = str(components.ControlButton(href="/stats", color="gray")["Stats"])
+        self.assertNotIn("underline", html)
+        self.assertNotIn("text-fg-link", html)
+
+
 class TruncatedTextRevealTest(unittest.TestCase):
     """Two reveal glyphs, two visibility policies — deliberately."""
 
