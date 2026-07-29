@@ -12,6 +12,7 @@ from common.components.primitives import (
     A,
     Div,
     Icon,
+    Input,
     Li,
     Popover,
     Span,
@@ -336,6 +337,24 @@ def SessionDeviceSelector(session, session_devices, csrf_token: str) -> Node:
         csrf=csrf_token,
         numeric=True,
     )
+
+
+BROWSER_TIME_ZONE_FIELD = "browser_time_zone"
+
+
+def BrowserTimeZoneInput(field_name: str = BROWSER_TIME_ZONE_FIELD) -> Node:
+    """A hidden input `<browser-time-zone>` fills with the browser's IANA zone.
+
+    Submitted by forms that record *when and where* something happened without
+    a datetime field to hang a picker on — finishing and resetting a session.
+    Empty without JavaScript, which the server treats as "unlabelled endpoint"
+    rather than an error.
+    """
+    from common.components.custom_elements import _BrowserTimeZone
+
+    return _BrowserTimeZone(field_name=field_name)[
+        Input(type="hidden", name=field_name, value="")
+    ]
 
 
 def SessionActions(session, csrf_token: str, origin: OriginUrl | None) -> Node:

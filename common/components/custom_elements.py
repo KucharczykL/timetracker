@@ -204,10 +204,18 @@ class TimeZoneRowProps(TypedDict):
 register_element("time-zone-row", "TimeZoneRow", TimeZoneRowProps)
 
 
+class BrowserTimeZoneProps(TypedDict):
+    field_name: str  # the posted field this stamps, e.g. "browser_time_zone"
+
+
+register_element("browser-time-zone", "BrowserTimeZone", BrowserTimeZoneProps)
+
+
 # ── Named tag builders (consistent htpy-style with Div/Span) ─────────────────
 # Underscore-prefixed: used internally by domain wrappers.
 # Public ones (no domain wrapper): exported directly.
 
+_BrowserTimeZone = custom_element_builder("browser-time-zone")
 _DateTimeField = custom_element_builder("date-time-field")
 _PlayEventRow = custom_element_builder("play-event-row")
 _SessionActions = custom_element_builder("session-actions")

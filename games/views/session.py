@@ -11,6 +11,7 @@ from django.views.decorators.http import require_POST
 
 from common.components import (
     AddForm,
+    BrowserTimeZoneInput,
     Column,
     FormFields,
     Fragment,
@@ -26,6 +27,7 @@ from common.components import (
 from common.date_time_presentation import (
     DateTimePresentation,
     date_time_presentation_for_request,
+    zone_or_none,
 )
 from common.layout import render_page
 from common.returns import OriginUrl
@@ -39,7 +41,7 @@ from games.sorting import (
     apply_sort,
     parse_find_filter,
 )
-from games.views.deletion import confirm_and_delete
+from games.views.deletion import confirm_and_apply, confirm_and_delete
 from games.views.filtering import warn_unknown_sort
 from games.views.returns import return_url
 from timetracker.settings_resolver import resolve_for_user
@@ -260,6 +262,47 @@ def new_session_from_existing_session(
 ) -> HttpResponse:
     clone_session_by_id(session_id)
     return redirect(return_url(request, fallback="games:list_sessions"))
+
+
+def _posted_browser_zone(request: HttpRequest) -> str:
+    """The browser's IANA zone as submitted, or "" when it is missing or
+    unusable. A zone this runtime cannot resolve is not worth failing a save
+    over — the endpoint simply stays unlabelled."""
+    zone = zone_or_none(request.POST.get("browser_time_zone", ""))
+    return zone.key if zone else ""
+
+
+@login_required
+@require_POST
+def finish_session(request: HttpRequest, session_id: int) -> HttpResponse:
+    session = get_object_or_404(Session, id=session_id)
+    session.timestamp_end = timezone.now()
+    session.timestamp_end_timezone = _posted_browser_zone(request)
+    session.save()
+    return redirect(return_url(request, fallback="games:list_sessions"))
+
+
+@login_required
+def reset_session(request: HttpRequest, session_id: int) -> HttpResponse:
+    session = get_object_or_404(Session, id=session_id)
+
+    def reset_start_to_now() -> None:
+        session.timestamp_start = timezone.now()
+        session.timestamp_start_timezone = _posted_browser_zone(request)
+        session.save()
+
+    return confirm_and_apply(
+        request,
+        action=reset_start_to_now,
+        title="Reset start time",
+        message=(
+            f"Reset the start time of this session of {session.game} to now? "
+            "The original start time is only recoverable by editing the session."
+        ),
+        confirm_label="Reset to now",
+        details=BrowserTimeZoneInput(),
+        fallback="games:list_sessions",
+    )
 
 
 @login_required
