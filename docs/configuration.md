@@ -330,16 +330,23 @@ collected into the image at build time rather than on each boot.
 
 `fly.staging.toml` sets `RUN_QCLUSTER=false`, since a staging box reseeds its
 database on every boot and schedules nothing. To turn it back on for one branch —
-a PR that touches background tasks, say — set it as a secret on that app:
+a PR that touches background tasks, say — **label the PR `staging:qcluster`**.
+The label change redeploys on its own, and removing it turns the cluster back
+off; the state is visible on the PR rather than living in someone's shell
+history.
+
+For a branch with no PR, the same thing by hand:
 
 ```
 flyctl secrets set RUN_QCLUSTER=true -a timetracker-staging-<slug>
 flyctl secrets unset RUN_QCLUSTER -a timetracker-staging-<slug>   # back to off
 ```
 
-A secret shadows the `[env]` value and is re-applied on every deploy, so it
-outlives further pushes to the branch. `flyctl machine update --env` does not —
-the next deploy re-renders the machine config from `fly.staging.toml`.
+Both routes use a secret because a secret shadows the `[env]` value and is
+re-applied on every deploy, so it outlives further pushes to the branch.
+`flyctl machine update --env` does not — the next deploy re-renders the machine
+config from `fly.staging.toml`. Note the workflow reconciles the label on every
+deploy, so a hand-set secret is removed by the next push unless the label is on.
 
 The container runs as uid 1000 — mounted data directories must be writable
 by that uid.
