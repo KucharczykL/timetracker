@@ -211,15 +211,44 @@ scrollspy (#401). Calls recorded so #384 and later consumers do not relitigate i
   `<pop-over>` host carries `self-start` so a flex parent can't stretch it to full width —
   `positionAnchored` centres the fixed panel on the host, so a stretched host throws the panel
   far off the trigger (#446). Keep it when reusing popovers in flex rows.
-- **Popover trigger** (`_popover_html`, #445): by default (`tap=True`) the trigger is a real
-  `<button>`, so a tap toggles it on touch (mouse hover unchanged, pointer-type gated); it is a
-  toggletip (`role="tooltip"` + `aria-describedby`, no `aria-expanded`). A popover nested inside
-  a caller's interactive element uses `tap=False` (hover-only `<span>`) so no `<button>` nests
-  in an `<a>` — enforced globally by `tests/test_html_validity.py`. When the popover *this*
-  code wraps in a link needs touch reach, extract the trigger as a sibling ellipsis-icon button
-  (`⋯`, replacing the name's truncation mark) via `preface=` (see `NameWithIcon` /
-  `LinkedPurchase`): the whole host still opens on hover, but only the small button is tappable,
-  keeping the trigger out of the link.
+- **Popover trigger** (`_popover_html`, #445): the visible content stays plain, and a sibling
+  ⓘ button beside it is the trigger — always visible, on every device. It is a toggletip
+  (`role="tooltip"` + `aria-describedby`, no `aria-expanded`); the whole host opens on hover,
+  only the small button is tappable, so the trigger never lands inside a link. Content that
+  must navigate goes through `preface=` (see `Duration(link=…)`).
+
+  **The reveal glyph is the one "there's more" signal.** A dotted underline no longer means it
+  — that decoration belongs to links now. Three shapes suppress the glyph, each structurally:
+  `tap=False` (the host nests inside a caller's interactive element, where any `<button>` would
+  nest illegally — enforced globally by `tests/test_html_validity.py`), `symbol_trigger=True`
+  (content that is already a bare symbol, like the theme toggle's icons or the filter builder's
+  `!` badge, where a second glyph advertises nothing), and a disabled trigger. `symbol_trigger`
+  is caller-declared because content reaches `_popover_html` as an opaque node or a bare
+  string; it defaults off, so a missed call site renders a spare glyph rather than silently
+  losing its affordance.
+
+  **The panel anchors on the trigger, not the host.** The host spans the value and the glyph
+  together, so centring the arrow on it aims at the gap between them — or at empty space once
+  the value wraps. `TruncatedText` already anchored to its reveal button for this reason;
+  `pop-over.ts` passes `anchor: trigger` for the same one.
+
+  **Dial:** `_POPOVER_REVEAL_CLASS` in `primitives.py` owns the visibility. Swapping its
+  leading `inline-flex` for `hidden [@media(hover:none)]:inline-flex` makes every reveal
+  touch-only again, in one edit.
+
+  `TruncatedText` follows the same rule for its `info` reveal, and deliberately does not for
+  its `ellipsis` one: the fade already says the text is clipped, so nothing there is hidden and
+  the glyph is only a touch stand-in.
+
+  The two also position differently, for the same reason. The **ellipsis** is pinned to the
+  host's edge (`absolute inset-y-0 right-0`) because it overlays the fade at the truncation
+  point, and it only ever shows while the text is clipped — so that edge *is* where the text
+  ends. The **info** reveal shows regardless, so pinning it would strand it at the far edge of
+  a wide column beside a short name; it sits in normal flow instead, and the link wrapper is
+  `min-w-0 max-w-full` rather than `w-full` so it shrinks to its text. Keep the shrink: the
+  overflow measurement is `scrollWidth > clientWidth` on the clip, which needs flex to be free
+  to squeeze it below its content width. A content-sized clip never overflows and nothing
+  truncates.
 - **Tooltip definition lists are cross-app UI.** Use `TooltipDefinitionList` for informative
   term/value content such as game `Name` / `Sort name` and setting `Source` / `Locked`.
   It owns semantic `<dl>` markup, an 8px item rhythm, micro muted terms, and medium-weight

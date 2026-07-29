@@ -87,6 +87,9 @@ def ThemeToggle(*, instance_key: str, disabled: bool = False) -> Node:
             id=randomid(seed="theme-tip-", content=instance_key, length=20),
             trigger_label=label,
             trigger_disabled=disabled,
+            # The toggle's own icons are the affordance; a reveal glyph beside
+            # them would advertise nothing.
+            symbol_trigger=True,
             wrapped_classes="p-2 text-body-subtle "
             "hover:bg-neutral-tertiary-medium focus:outline-hidden focus:ring-4 "
             "focus:ring-neutral-tertiary-medium rounded-base text-type-body "

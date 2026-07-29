@@ -102,10 +102,14 @@ describe("<pop-over> tooltip (hover/focus)", () => {
     expect(arrow.style.left).not.toBe("");
   });
 
-  it("continues to use the host as its positioning anchor by default", () => {
+  it("positions against the trigger, not the host", () => {
+    // The host spans the value and the reveal glyph together, so anchoring on
+    // it aims the arrow at the gap between them.
     const { host, panel, trigger } = mount();
+    // Host centre 250, trigger centre 310 — far enough from the viewport edge
+    // that neither result is clamped, so the assertion tells them apart.
     setRect(host, { x: 200, width: 100 });
-    setRect(trigger, { x: 20, width: 20 });
+    setRect(trigger, { x: 300, width: 20 });
     setRect(panel, { x: 0, y: 0, width: 100, height: 40 });
     Object.defineProperties(panel, {
       offsetWidth: { configurable: true, value: 100 },
@@ -115,7 +119,7 @@ describe("<pop-over> tooltip (hover/focus)", () => {
 
     host.dispatchEvent(pointer("pointerenter", "mouse"));
 
-    expect(panel.style.left).toBe("200px");
+    expect(panel.style.left).toBe("260px");
   });
 
   it("shows on focusin and hides on Escape", () => {

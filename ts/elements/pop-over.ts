@@ -16,6 +16,10 @@ class PopOverElement extends HTMLElement {
     this.controller = attachTooltip({
       host: this,
       trigger,
+      // The trigger, not the host: the host spans the value and the reveal
+      // glyph together, so centring on it aims the arrow at the gap between
+      // them — or at empty space when the value wraps.
+      anchor: trigger,
       panel,
       content:
         panel.querySelector<HTMLElement>("[data-pop-over-content]") ?? undefined,
