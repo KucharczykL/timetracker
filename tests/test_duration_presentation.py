@@ -32,8 +32,8 @@ RENDERINGS = [
     (26 * HOUR, "26.0 h", "26 h 00 m", "26 hours", "1 d 02 h"),
     (83 * HOUR + 12 * MINUTE, "83.2 h", "83 h 12 m", "83 hours", "3 d 11 h"),
     (200 * HOUR, "200.0 h", "200 h 00 m", "200 hours", "1 w 1 d"),
-    (1234 * HOUR, "1234.0 h", "1234 h 00 m", "1234 hours", "7 w 2 d"),
-    (9000 * HOUR, "9000.0 h", "9000 h 00 m", "9000 hours", "1 y 2 w"),
+    (1234 * HOUR, "1,234.0 h", "1,234 h 00 m", "1,234 hours", "7 w 2 d"),
+    (9000 * HOUR, "9,000.0 h", "9,000 h 00 m", "9,000 hours", "1 y 2 w"),
 ]
 
 PROFILE_IDS = ("decimal_hours", "hours_minutes", "whole_hours", "adaptive")
@@ -108,3 +108,50 @@ def test_format_decimal_hours_is_preference_independent():
     rendering, not the viewer's profile."""
     assert format_decimal_hours(timedelta(seconds=HOUR + 12 * MINUTE)) == "1.2"
     assert format_decimal_hours(None) == "0.0"
+
+
+# The cs thousand separator is U+00A0, not an ASCII space.
+CZECH_GROUP = "\xa0"
+
+
+@pytest.mark.parametrize(
+    "locale,expected",
+    [("en-us", "1,234 hours"), ("cs", f"1{CZECH_GROUP}234 hours")],
+)
+def test_grouping_follows_the_locale(locale, expected):
+    presentation = DurationPresentation(
+        profile=duration_format_profile("whole_hours"), locale=locale
+    )
+
+    assert presentation.format(timedelta(seconds=1234 * HOUR)) == expected
+
+
+@pytest.mark.parametrize("locale,expected", [("en-us", "1.2 h"), ("cs", "1,2 h")])
+def test_decimal_separator_follows_the_locale(locale, expected):
+    presentation = DurationPresentation(
+        profile=duration_format_profile("decimal_hours"), locale=locale
+    )
+
+    assert presentation.format(timedelta(seconds=HOUR + 12 * MINUTE)) == expected
+
+
+@pytest.mark.parametrize("locale", ["en-us", "cs"])
+def test_small_values_are_not_grouped(locale):
+    presentation = DurationPresentation(
+        profile=duration_format_profile("whole_hours"), locale=locale
+    )
+
+    assert presentation.format(timedelta(seconds=26 * HOUR)) == "26 hours"
+
+
+def test_formatting_does_not_leak_the_active_translation():
+    """The formatting locale must never become the application's language —
+    common/middleware.py keeps them apart deliberately."""
+    from django.utils.translation import get_language
+
+    before = get_language()
+    DurationPresentation(
+        profile=duration_format_profile("whole_hours"), locale="cs"
+    ).format(timedelta(seconds=1234 * HOUR))
+
+    assert get_language() == before

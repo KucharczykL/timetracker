@@ -21,6 +21,8 @@ from types import MappingProxyType
 from typing import Protocol
 
 from django.http import HttpRequest
+from django.utils.formats import number_format
+from django.utils.translation import override
 
 from timetracker.settings_resolver import resolve_str_for_user
 
@@ -192,8 +194,21 @@ class DurationPresentation:
     profile: DurationProfile
     locale: str
 
+    def _numbers(self, value: float, decimals: int) -> str:
+        """Grouping and the decimal separator come from the formatting locale.
+
+        ``force_grouping`` is explicit because ``USE_THOUSAND_SEPARATOR`` is
+        unset project-wide; turning it on globally would retroactively regroup
+        every price on the site. ``override`` is scoped to this call for the
+        same reason ``day_periods_for_locale`` scopes its own — the formatting
+        locale is deliberately never activated request-wide, so it cannot
+        change application copy.
+        """
+        with override(self.locale):
+            return number_format(value, decimals, force_grouping=True)
+
     def format(self, duration: timedelta | float | None) -> str:
-        return self.profile.render(_total_seconds(duration), plain_number)
+        return self.profile.render(_total_seconds(duration), self._numbers)
 
 
 _REQUEST_CACHE_ATTRIBUTE = "_duration_presentation"
