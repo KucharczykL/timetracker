@@ -101,7 +101,10 @@ def global_current_year(request: HttpRequest) -> dict[str, int]:
 def stats_alltime(request: HttpRequest) -> HttpResponse:
     data = compute_stats(None)
     presentation = date_time_presentation_for_request(request)
-    return render_page(request, stats_content(data, presentation), title=data["title"])
+    durations = duration_presentation_for_request(request)
+    return render_page(
+        request, stats_content(data, presentation, durations), title=data["title"]
+    )
 
 
 @login_required
@@ -115,7 +118,10 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
         return HttpResponseRedirect(reverse("games:stats_alltime"))
     data = compute_stats(year)
     presentation = date_time_presentation_for_request(request)
-    return render_page(request, stats_content(data, presentation), title=data["title"])
+    durations = duration_presentation_for_request(request)
+    return render_page(
+        request, stats_content(data, presentation, durations), title=data["title"]
+    )
 
 
 # The lists backed by an OperatorFilter + nested builder. Keys are model keys
