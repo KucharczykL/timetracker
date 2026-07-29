@@ -10,6 +10,7 @@ from common.components.primitives import (
     ICON_BUTTON_SIZE_CLASS,
     NAME_MAX_WIDTH_CLASS,
     A,
+    Div,
     Icon,
     Input,
     Li,
@@ -23,6 +24,7 @@ from common.components.primitives import (
 from games.models import Game, Purchase, Session
 
 if TYPE_CHECKING:
+    from common.duration_presentation import DurationPresentation
     from common.returns import OriginUrl
 
 
@@ -335,6 +337,56 @@ def SessionDeviceSelector(session, session_devices, csrf_token: str) -> Node:
         event="device-changed",
         csrf=csrf_token,
         numeric=True,
+    )
+
+
+def Duration(
+    duration,
+    presentation: DurationPresentation,
+    *,
+    id_scope: str,
+    manual: bool = False,
+) -> Node:
+    """One elapsed duration, with the same value under the other profiles on hover.
+
+    ``id_scope`` is required and must be unique on the page. ``Popover`` derives
+    its DOM id by hashing its own content, so two rows showing the same duration
+    would collide — and ``Game.playtime`` defaults to zero, which makes that the
+    common case on a game list rather than an edge case.
+
+    The visible text is ``aria-hidden`` and a sibling ``sr-only`` span carries
+    the value in words: screen readers read "1.2 h" as "one point two h". For
+    the same reason the panel drops ``aria-describedby`` — it restates what the
+    ``sr-only`` text already said.
+
+    ``manual`` appends the "*" mark that flags a hand-entered session. It sits
+    inside the trigger with the value and is spoken as ", manual"; it qualifies
+    the value, not its formatting, so it never appears among the alternates.
+    """
+    from common.components.primitives import Popover
+
+    visible = presentation.format(duration)
+    alternates = presentation.alternates(duration)
+    rows = [
+        Div(class_="flex justify-between gap-4")[
+            Span(class_="text-neutral-secondary")[label],
+            Span(class_="tabular-nums")[rendering],
+        ]
+        for label, rendering in alternates
+    ]
+
+    trigger = Fragment(
+        Span(aria_hidden="true")[f"{visible}*" if manual else visible],
+        Span(class_="sr-only")[presentation.spoken(duration, manual=manual)],
+    )
+
+    return Popover(
+        popover_content=Div(class_="flex flex-col gap-1 text-left")[*rows],
+        children=[trigger],
+        wrapped_classes="tabular-nums underline decoration-dotted",
+        id=f"duration-{id_scope}",
+        describedby=False,
+        selectable_text=True,
     )
 
 
