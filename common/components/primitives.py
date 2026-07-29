@@ -60,7 +60,6 @@ from common.components.elements import (
     Label,
     Legend,
     Li,
-    Link,
     Meta,
     Nav,
     Noscript,
@@ -243,6 +242,46 @@ class TooltipDefinition(NamedTuple):
 # styled/behavioural builders it defines itself below.
 
 
+# Every anchor in the app goes through one of four builders, so "is this a text
+# link?" is answered by the call rather than by remembering a class string.
+# `tests/test_anchor_builders.py` fails the build on a bare `A()` outside them.
+#
+# The underline is the whole signal for "this navigates", which is why the
+# colour is a token of its own rather than `brand` — see input.css. Callers add
+# their own classes freely; the node layer accumulates `class`.
+# Thickness is em-based, not a fixed `decoration-2`: 2px against the navbar's
+# 12px micro text reads visibly heavier than the same 2px against 14px body
+# text. Expressed as a fraction of the font size it stays proportional wherever
+# a link lands.
+LINK_CLASS = (
+    "text-fg-link hover:text-fg-link-hover font-medium underline underline-offset-4 "
+    "[text-decoration-thickness:0.11em]"
+)
+
+# Icon-only links carry no underline: there is no text for it to sit under, and
+# the icon plus its hover shift already reads as interactive.
+ICON_LINK_CLASS = "inline-flex items-center text-body hover:text-heading"
+
+# A reveal glyph beside a link takes the link's colour: the two are one visual
+# unit, and a grey circle next to purple underlined text reads as unrelated
+# furniture. Beside plain text it stays subtle — the glyph is a button, not a
+# link, so it must not claim the link colour where nothing navigates.
+_REVEAL_LINKED_COLOR_CLASS = "text-fg-link hover:text-fg-link-hover"
+_REVEAL_PLAIN_COLOR_CLASS = "text-subtle hover:text-heading"
+
+#: An inline text link inside page content.
+Link = element_builder("a", default_class=LINK_CLASS)
+
+#: A link whose entire content is an icon.
+IconLink = element_builder("a", default_class=ICON_LINK_CLASS)
+
+#: Chrome that owns its own appearance — navbar items, pagination, sort
+#: headers, the settings rail, dropdown menu items. Adds nothing at all; it
+#: exists so "deliberately not a text link" is declared and greppable instead
+#: of inferred from the absence of a class.
+ControlLink = element_builder("a")
+
+
 def custom_element_builder(tag_name: str):
     """Create a tag builder for a custom element with auto-attached Media.
 
@@ -328,8 +367,7 @@ def _tooltip_panel(
 # reveal touch-only again — the single dial for how loudly popovers announce
 # themselves.
 _POPOVER_REVEAL_CLASS = (
-    "inline-flex items-center shrink-0 rounded-base "
-    "text-subtle hover:text-heading hover:cursor-pointer"
+    "inline-flex items-center shrink-0 rounded-base hover:cursor-pointer"
 )
 _POPOVER_REVEAL_LABEL = "More information"
 
@@ -339,14 +377,16 @@ def _popover_reveal(
     id: str,
     describedby: bool,
     trigger_label: str,
+    linked: bool,
 ) -> Node:
     """The tap target for a popover whose content is not itself a control."""
+    color = _REVEAL_LINKED_COLOR_CLASS if linked else _REVEAL_PLAIN_COLOR_CLASS
     attributes: list[HTMLAttribute] = [
         ("type", "button"),
         ("data-pop-over-control", ""),
         ("data-pop-over-reveal", ""),
         ("aria-label", trigger_label or _POPOVER_REVEAL_LABEL),
-        ("class", _POPOVER_REVEAL_CLASS),
+        ("class", f"{_POPOVER_REVEAL_CLASS} {color}"),
     ]
     if describedby:
         attributes.append(("aria-describedby", id))
@@ -406,7 +446,12 @@ def _popover_html(
             else ""
         )
         reveal = _popover_reveal(
-            id=id, describedby=describedby, trigger_label=trigger_label
+            id=id,
+            describedby=describedby,
+            trigger_label=trigger_label,
+            # `preface` is how a value that navigates reaches the popover, so
+            # its presence is what makes this a link's glyph.
+            linked=bool(preface),
         )
         return _PopOver(tap="true", class_="inline-flex items-center gap-1 self-start")[
             Fragment(
@@ -599,8 +644,7 @@ _TRUNCATED_CLIP_CLASS = (
 # overriding it would leave both on the element, where the winner is decided by
 # stylesheet order rather than by the class list.
 _TRUNCATED_REVEAL_CLASS = (
-    "size-6 items-center justify-center "
-    "text-subtle hover:text-heading hover:cursor-pointer rounded-base shrink-0"
+    "size-6 items-center justify-center hover:cursor-pointer rounded-base shrink-0"
 )
 # The overflow ellipsis overlays the fade at the truncation point, so it is
 # pinned to the host's edge. Only ever shown while the text is clipped, which
@@ -657,7 +701,7 @@ def TruncatedText(
         # beside it rather than at the far edge of a wide column. `min-w-0`
         # keeps flex free to shrink it below its content, which is what
         # constrains the clip and lets the overflow measurement fire at all.
-        visible: Node = A(
+        visible: Node = Link(
             [
                 ("href", link),
                 ("class", "inline-flex min-w-0 max-w-full items-center gap-2"),
@@ -680,11 +724,16 @@ def TruncatedText(
             else "hidden [@media(hover:none)]:group-data-[overflowing]:inline-flex"
         )
         reveal_icon = "info" if informative else "ellipsis"
+        color = (
+            _REVEAL_LINKED_COLOR_CLASS
+            if link is not None
+            else _REVEAL_PLAIN_COLOR_CLASS
+        )
         button_attributes: list[HTMLAttribute] = [
             ("type", "button"),
             ("data-truncated-reveal", reveal_icon),
             ("aria-label", reveal_label),
-            ("class", f"{_TRUNCATED_REVEAL_CLASS} {position}{visibility}"),
+            ("class", f"{_TRUNCATED_REVEAL_CLASS} {color} {position}{visibility}"),
             *describedby,
         ]
         children.append(
@@ -1963,8 +2012,7 @@ def TableRow(
     tr_class = (
         "odd:bg-neutral-primary-soft even:bg-neutral-secondary-medium "
         "border-default-medium hover:bg-neutral-tertiary-medium "
-        "hover:text-heading [&_a]:underline [&_a]:underline-offset-4 "
-        "[&_a]:decoration-2"
+        "hover:text-heading"
     )
     tr_attrs: list[HTMLAttribute] = [("class", tr_class), *data.get("attributes", [])]
 
@@ -2151,29 +2199,33 @@ def _pagination_nav(
     page_items: list[Node] = []
     for page in elided_page_range:
         if page != page_obj.number:
-            link = A(href=_page_url(request, page), class_=page_link_class)[str(page)]
+            link = ControlLink(href=_page_url(request, page), class_=page_link_class)[
+                str(page)
+            ]
         else:
-            link = A(aria_current="page", class_=current_link_class)[str(page)]
+            link = ControlLink(aria_current="page", class_=current_link_class)[
+                str(page)
+            ]
         page_items.append(Li()[link])
 
     if page_obj.has_previous():
-        prev_link = A(
+        prev_link = ControlLink(
             href=_page_url(request, page_obj.previous_page_number()),
             class_=f"{page_link_class} ms-0 rounded-s-base",
         )["Previous"]
     else:
-        prev_link = A(
+        prev_link = ControlLink(
             aria_current="page",
             class_=f"{disabled_link_class} rounded-s-base",
         )["Previous"]
 
     if page_obj.has_next():
-        next_link = A(
+        next_link = ControlLink(
             href=_page_url(request, page_obj.next_page_number()),
             class_=f"{page_link_class} rounded-e-base",
         )["Next"]
     else:
-        next_link = A(
+        next_link = ControlLink(
             aria_current="page",
             class_=f"{disabled_link_class} rounded-e-base",
         )["Next"]
@@ -2304,7 +2356,7 @@ def _header_cell(
         aria_sort = "descending" if term.descending else "ascending"
         indicator = _sort_indicator(index, term.descending, len(sort_terms))
 
-    link = A(
+    link = ControlLink(
         href=_sort_href(request, collapse_sort(sort_terms, column.sort_key)),
         data_shift_href=_sort_href(request, cycle_sort(sort_terms, column.sort_key)),
         class_=_SORT_HEADER_LINK_CLASS,

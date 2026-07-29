@@ -105,7 +105,8 @@ across page / zebra row / hovered row, both themes:
 |---|---|---|
 | `brand` (blue-700 / blue-500) | 2.74 ❌ | Lc 27 |
 | violet-700 / violet-300 | 5.54 ✅ | Lc 58 |
-| **purple-700 / purple-300** | **5.78 ✅** | **Lc 60** |
+| **sky-700 / sky-200 (shipped)** | **5.32 ✅** | **Lc 72** |
+| purple-700 / purple-300 | 5.78 ✅ | Lc 60 |
 | indigo-700 / indigo-300 | 5.13 ✅ | Lc 54 |
 | best single-value (indigo-500) | 2.25 ❌ | Lc 21 |
 | — app baseline: body text | 3.96 ❌ | Lc 41 |
@@ -124,15 +125,34 @@ Three findings:
 3. **Every candidate beats the app's own body text on a dark hovered row** (Lc 58–60 vs Lc 41).
    The dark-hover weakness is pre-existing, not introduced here — see [#590](https://github.com/KucharczykL/timetracker/issues/590).
 
-Chosen: `--color-fg-link` = `purple-700` light / `purple-300` dark. Purple is unused as a token
-today (the `replaying` status dot is purple-500 — a filled dot, a different shape class), and
-it is already the browser's own link vocabulary, so it does not read as alien.
+**Chosen after implementation: `--color-fg-link` = `sky-700` light / `sky-200` dark.**
 
-**Fallback, if it reads garish:** a custom low-chroma pair at roughly half the palette chroma,
-`oklch(45% 0.15 295)` / `oklch(80% 0.10 295)`. Tailwind's purple-700 sits at chroma 0.265 while
-the app's text tokens are near-neutral, so this is the direct lever. Second fallback: color the
-underline only (`decoration-fg-link`) and let the text inherit body color — near-zero page
-rash, weaker signal.
+The purple this section originally chose shipped briefly and was rejected on sight: at
+`purple-700`'s chroma of 0.265 it read garish once every game name in a list carried it, and it
+read as a *visited* link. Halving the chroma to an authored `oklch(45% 0.15 295)` fixed the
+garishness but not the hue association, and made it the one colour in the app sitting off
+Tailwind's own chroma curve — roughly 40% below purple's, which is exactly what makes a colour
+look foreign beside palette hues.
+
+The correction was to pick hue by the **app's colour temperature** rather than in isolation.
+The whole UI is cool-blue: the neutrals are not achromatic (`gray-950` sits at hue 262 with
+chroma 0.028) and brand is 264. Hue distance from that axis:
+
+| candidate | hue | ° from neutral axis | verdict |
+|---|---|---|---|
+| **sky (chosen)** | 242.7 | **17.3** | belongs; 22° of separation from brand still reads as "not a button" |
+| violet (shipped, rejected) | 295.0 | 35.0 | reads as visited; off-curve |
+| cyan | 223.1 | 37.0 | looked like a guest on the real page |
+| teal | 186.4 | 73.6 | ditto, more so; also spoken for by filter chips |
+
+Both ends are palette stops, so the token moves with the palette. They are picked
+*independently* — `sky-800` light read washed out on white (0.110 chroma at that depth goes
+grey) while the same calmness suits the dark page, where chroma reads louder. `sky-600` carries
+more colour and fails AA on the hover surface at 3.65:1. Worst measured case **5.32:1 / Lc 72**.
+
+**Lesson for the next colour decision:** contrast ratios select the *candidates*; the app's
+existing hue axis selects *among* them. Neither settles it alone — every rejection above was
+made by looking at a rendered page, not a number.
 
 APCA note: Lc 58–60 is below APCA's ~Lc 75 target for 14px body text. No non-heading text in
 the app clears that bar today, so holding links alone to it would be a new standard rather than

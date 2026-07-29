@@ -21,6 +21,7 @@ from django.utils.translation import get_language
 from django_htmx.jinja import django_htmx_script
 
 from common.components.core import Document, Safe
+from common.components.elements import LinkTag
 from common.components.primitives import (
     CONTENT_MAX_WIDTH_CLASS,
     PAGE_GUTTER_CLASS,
@@ -30,7 +31,6 @@ from common.components.primitives import (
     Head,
     Html,
     Img,
-    Link,
     Meta,
     Nav,
     Script,
@@ -168,26 +168,17 @@ def NavbarPlaytime(
     today_played: Node | str,
     last_7_played: Node | str,
     *,
-    today_url: str | None = None,
-    last_7_url: str | None = None,
     oob: bool = False,
 ) -> Node:
     """The navbar 'Today · Last 7 days' totals. Carries a stable id so
     htmx endpoints can refresh it out-of-band after a session change.
 
-    When ``today_url`` / ``last_7_url`` are given, each total links to the
-    matching filtered session list.
-
-    A total may be a node rather than text — a ``Duration`` carries its own
-    popover and declares its own ``Media``, which only survives while the
-    navbar stays a node tree.
+    Each total is a ``Duration`` node that owns its own link and popover — the
+    linking cannot happen here, because a popover trigger is a ``<button>`` and
+    may not sit inside an ``<a>``. Passing nodes rather than text is also what
+    keeps their declared ``Media`` reachable.
     """
-    from common.components import A, HTMLAttribute, Li, Span
-
-    def total(value: Node | str, url: str | None) -> Node | str:
-        if not url:
-            return value
-        return A(href=url, class_="hover:underline")[value]
+    from common.components import HTMLAttribute, Li, Span
 
     attributes: list[HTMLAttribute] = [
         ("id", "navbar-playtime"),
@@ -198,9 +189,9 @@ def NavbarPlaytime(
     return Li(attributes)[
         Span(class_="flex uppercase gap-1")["Today", Span()["·"], "Last 7 days"],
         Span(class_="flex items-center gap-1")[
-            total(today_played, today_url),
+            today_played,
             Span()["·"],
-            total(last_7_played, last_7_url),
+            last_7_played,
         ],
     ]
 
@@ -217,8 +208,6 @@ def NavbarMenu(
     *,
     today_played: Node | str,
     last_7_played: Node | str,
-    today_url: str | None,
-    last_7_url: str | None,
     current_year: int,
     csrf_token: str,
     authenticated: bool = False,
@@ -229,7 +218,7 @@ def NavbarMenu(
 ) -> Node:
     """The responsive ``#navbar-dropdown`` collapse menu, built from components."""
     from common.components import (
-        A,
+        ControlLink,
         Div,
         DropdownDivider,
         DropdownLinkItem,
@@ -259,7 +248,7 @@ def NavbarMenu(
     ]
 
     home = Li()[
-        A(
+        ControlLink(
             href=reverse("games:index"),
             class_="block py-2 px-3 bg-brand rounded-base "
             "md:bg-transparent md:p-0 text-fg-on-brand md:text-heading "
@@ -315,7 +304,7 @@ def NavbarMenu(
     ]
 
     stats = Li()[
-        A(
+        ControlLink(
             href=reverse("games:stats_by_year", args=[current_year]),
             class_=_NAV_LINK_CLASS,
         )["Stats"]
@@ -453,8 +442,6 @@ def Navbar(
     *,
     today_played: Node | str,
     last_7_played: Node | str,
-    today_url: str | None = None,
-    last_7_url: str | None = None,
     current_year: int,
     csrf_token: str,
     authenticated: bool = False,
@@ -464,10 +451,10 @@ def Navbar(
     origin: OriginUrl | None = None,
 ) -> Node:
     """Top navigation bar, assembled from components (logo + hamburger + menu)."""
-    from common.components import A, Div, Icon, Span
+    from common.components import ControlLink, Div, Icon, Span
 
     logo = static("icons/tesserae-icon-animated.svg")
-    brand = A(
+    brand = ControlLink(
         href=reverse("games:index"),
         # me-auto hugs the brand to the left edge and pushes every following item
         # (log button, hamburger, menu) to the right — independent of which are
@@ -490,8 +477,6 @@ def Navbar(
     menu = NavbarMenu(
         today_played=today_played,
         last_7_played=last_7_played,
-        today_url=today_url,
-        last_7_url=last_7_url,
         current_year=current_year,
         csrf_token=csrf_token,
         authenticated=authenticated,
@@ -565,8 +550,6 @@ def TimetrackerDocument(
     navbar = Navbar(
         today_played=counts["today_played"],
         last_7_played=counts["last_7_played"],
-        today_url=counts["today_url"],
-        last_7_url=counts["last_7_url"],
         current_year=year,
         csrf_token=csrf_token,
         authenticated=request.user.is_authenticated,
@@ -675,7 +658,7 @@ def TimetrackerDocument(
                             name="viewport",
                             content="width=device-width, initial-scale=1.0",
                         ),
-                        Link(
+                        LinkTag(
                             rel="icon",
                             type="image/svg+xml",
                             href=static("icons/tesserae-favicon.svg"),
@@ -706,7 +689,7 @@ def TimetrackerDocument(
                             messages_json
                         ],
                         Safe(str(django_htmx_script(nonce=None))),
-                        Link(rel="stylesheet", href=static("base.css")),
+                        LinkTag(rel="stylesheet", href=static("base.css")),
                     ]
                 ],
                 Body(hx_indicator="#indicator", class_="bg-neutral-primary text-body")[

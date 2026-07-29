@@ -24,6 +24,14 @@ OKLCH = {
     "gray-900": (0.210, 0.034, 264.665),
     "gray-950": (0.130, 0.028, 261.692),
     "slate-200": (0.929, 0.013, 255.508),
+    # The link token pair. Sky's ramp is naturally low-chroma at the
+    # lightnesses a link needs, so the token stays on the palette curve
+    # instead of authoring a desaturated one-off, and its hue sits near the
+    # app's blue-tinted neutral axis.
+    "fg-link-light": (0.500, 0.134, 242.749),  # sky-700
+    "fg-link-hover-light": (0.443, 0.110, 240.790),  # sky-800
+    "fg-link-dark": (0.901, 0.058, 230.902),  # sky-200
+    "fg-link-hover-dark": (0.951, 0.026, 236.824),  # sky-100
     "slate-300": (0.869, 0.022, 252.894),
     "slate-600": (0.446, 0.043, 257.281),
     "blue-500": (0.623, 0.214, 259.815),
@@ -239,6 +247,42 @@ CASES = [
         4.5,
     ),
     (
+        "text-fg-link on page",
+        "light",
+        "fg-link-light",
+        col("fg-link-light"),
+        "white",
+        col("white"),
+        4.5,
+    ),
+    (
+        "text-fg-link on zebra-even (gray-50)",
+        "light",
+        "fg-link-light",
+        col("fg-link-light"),
+        "gray-50",
+        col("gray-50"),
+        4.5,
+    ),
+    (
+        "text-fg-link on hover surface (gray-100)",
+        "light",
+        "fg-link-light",
+        col("fg-link-light"),
+        "gray-100",
+        col("gray-100"),
+        4.5,
+    ),
+    (
+        "text-fg-link-hover on hover surface (gray-100)",
+        "light",
+        "fg-link-hover-light",
+        col("fg-link-hover-light"),
+        "gray-100",
+        col("gray-100"),
+        4.5,
+    ),
+    (
         "control border vs control bg (default-medium)",
         "light",
         "gray-200",
@@ -334,6 +378,42 @@ CASES = [
         "dark",
         "blue-500",
         col("blue-500"),
+        "gray-700",
+        col("gray-700"),
+        4.5,
+    ),
+    (
+        "text-fg-link on page",
+        "dark",
+        "fg-link-dark",
+        col("fg-link-dark"),
+        "gray-950",
+        col("gray-950"),
+        4.5,
+    ),
+    (
+        "text-fg-link on zebra-even (gray-800)",
+        "dark",
+        "fg-link-dark",
+        col("fg-link-dark"),
+        "gray-800",
+        col("gray-800"),
+        4.5,
+    ),
+    (
+        "text-fg-link on hover surface (gray-700)",
+        "dark",
+        "fg-link-dark",
+        col("fg-link-dark"),
+        "gray-700",
+        col("gray-700"),
+        4.5,
+    ),
+    (
+        "text-fg-link-hover on hover surface (gray-700)",
+        "dark",
+        "fg-link-hover-dark",
+        col("fg-link-hover-dark"),
         "gray-700",
         col("gray-700"),
         4.5,

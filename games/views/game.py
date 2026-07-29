@@ -10,7 +10,6 @@ from django.urls import reverse
 
 from common.components import (
     ICON_BUTTON_SIZE_CLASS,
-    A,
     AddForm,
     ButtonGroup,
     Column,
@@ -24,6 +23,7 @@ from common.components import (
     GameStatus,
     GameStatusSelector,
     Icon,
+    Link,
     LinkedPurchase,
     ModuleScript,
     NameWithIcon,
@@ -410,10 +410,10 @@ def _game_history(
             status=change.new_status,
             children=[change.get_new_status_display()],
         )
-        edit = A(href=action_url("games:edit_statuschange", change.id, origin=origin))[
-            "Edit"
-        ]
-        delete = A(
+        edit = Link(
+            href=action_url("games:edit_statuschange", change.id, origin=origin)
+        )["Edit"]
+        delete = Link(
             href=action_url("games:delete_statuschange", change.id, origin=origin)
         )["Delete"]
         items.append(

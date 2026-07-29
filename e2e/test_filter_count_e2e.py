@@ -18,12 +18,12 @@ from playwright.sync_api import Page, expect
 
 from common.components import FilterCount, FilterGroup
 from common.components.core import Document
+from common.components.elements import LinkTag
 from common.components.primitives import (
     Body,
     Div,
     Head,
     Html,
-    Link,
     Meta,
     Script,
     Title,
@@ -51,7 +51,7 @@ def filter_count_view(request):
             Head()[
                 Title()["filter-count demo"],
                 Meta(charset="utf-8"),
-                Link(rel="stylesheet", href=static("base.css")),
+                LinkTag(rel="stylesheet", href=static("base.css")),
                 Script(type="module", src=static("js/dist/elements/filter-group.js")),
                 Script(type="module", src=static("js/dist/elements/search-select.js")),
                 Script(

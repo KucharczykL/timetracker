@@ -55,6 +55,34 @@
        translucent color used by the frosted panel. */
     --color-surface-overlay: var(--color-white);
 
+    /* Inline text links, and nothing else. Deliberately not `brand`: that hue
+       already fills primary buttons, the current pagination page, focus rings
+       and active states, so links in it would make blue mean nothing in
+       particular. Sky is unspoken for, and 24 degrees of hue off brand — far
+       enough that a link never reads as a stray button, close enough that it
+       belongs.
+
+       That closeness is the point. The app is cool-blue throughout: the
+       neutrals are blue-tinted (gray-950 sits at hue 262, not 0 chroma), brand
+       is 264, so anything far off that axis reads as an import. Sky at 241 is
+       19 degrees from the neutrals; cyan is 37 and teal 74, and both looked
+       like guests. Sky's ramp is also naturally low-chroma where the lightness
+       has to sit (0.110 at 800), so the token can be quiet *and* stay on the
+       curve Tailwind tuned — purple could only manage quiet by leaving that
+       curve at ~40% below its own chroma.
+
+       The two ends are picked separately, because the surfaces are not
+       symmetric: on white, -800 read washed-out (chroma 0.110 at that depth
+       goes grey), so the light end takes -700 for more colour. -600 would carry
+       more still but fails AA on the hover surface at 3.65:1.
+
+       Palette stops, not authored values, so the token moves with the palette
+       if it is ever revisited. Measured worst case 5.32:1 WCAG / Lc 72 across
+       page, zebra row and hovered row in both themes.
+       See scripts/contrast_audit.py. */
+    --color-fg-link: var(--color-sky-700);
+    --color-fg-link-hover: var(--color-sky-800);
+
     /* Foreground text color for each solid fill, chosen by APCA (white or
      black, whichever contrasts more). White on every fill under the current
      palette; a lighter fill would author black here (and, if the pick differed
@@ -111,6 +139,14 @@
 }
 
 .dark {
+    /* The light end of the same ramp: contrast is lightness-driven, so a dark
+       surface needs a light foreground. sky-800 here would measure 2.2:1 on a
+       hovered row. The -200/-100 pair rather than -300/-200 because the darker
+       page makes chroma read louder — the same reason the light end goes deep
+       rather than bright. */
+    --color-fg-link: var(--color-sky-200);
+    --color-fg-link-hover: var(--color-sky-100);
+
     --color-surface-overlay: color-mix(
         in srgb,
         var(--color-gray-800) 40%,
