@@ -259,9 +259,14 @@ def custom_element_builder(tag_name: str):
 _PopOver = custom_element_builder("pop-over")
 _TruncatedText = custom_element_builder("truncated-text")
 
+# font-sans is deliberate, not redundant: the panel is a DOM descendant of
+# whatever it annotates, so a tooltip mounted inside a data table or a
+# TruncatedText host inherits font-condensed and renders in a different
+# typeface from every other tooltip on the site. Stating the family here keeps
+# a tooltip looking like a tooltip wherever it is mounted.
 _TOOLTIP_PANEL_CLASS = (
-    f"z-10 inline-block text-type-body text-heading bg-brand-soft border "
-    f"border-brand/30 rounded-base shadow-xs {CONTENT_MAX_WIDTH_CLASS}"
+    f"z-10 inline-block font-sans text-type-body text-heading bg-brand-soft "
+    f"border border-brand/30 rounded-base shadow-xs {CONTENT_MAX_WIDTH_CLASS}"
 )
 
 

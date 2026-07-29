@@ -2791,3 +2791,18 @@ class PopoverDescribedbyTest(unittest.TestCase):
             )
         )
         self.assertIn('aria-describedby="price-1"', html)
+
+
+class TooltipPanelFontTest(unittest.TestCase):
+    """A tooltip panel is a descendant of whatever it annotates, so it must
+    state its own font family — otherwise one mounted inside a data table or a
+    TruncatedText host renders condensed while every other tooltip does not."""
+
+    def test_panel_states_its_font_family(self):
+        html = str(
+            components.Popover(
+                popover_content="detail", wrapped_content="value", id="font-check"
+            )
+        )
+        panel_class = html.split('data-pop-over-panel=""')[1].split('class="')[1]
+        self.assertIn("font-sans", panel_class.split('"')[0])
