@@ -36,6 +36,11 @@ if [ "${CREATE_DEFAULT_SUPERUSER:-false}" = "true" ]; then
 fi
 
 # Static files are collected into the image at build time, not here.
+bootstrap_started=$SECONDS
 python manage.py bootstrap_container "${bootstrap_args[@]}"
+# Printed because nothing else measures it: a request to a stopped machine waits
+# out this whole span, and a regression here is invisible until it exceeds
+# whatever the fronting proxy is willing to hold.
+echo "Bootstrap finished in $((SECONDS - bootstrap_started))s."
 
 exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisor.conf

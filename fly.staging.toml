@@ -17,6 +17,9 @@ primary_region = "ams"
   LOAD_SAMPLE_DATA = "true"
   CREATE_DEFAULT_SUPERUSER = "true"
   DEV_LOGIN_PREFILL = "admin:admin"
+  # Nothing here schedules background work — the database is seeded fresh on
+  # every boot — and the cluster is the container's largest process group.
+  RUN_QCLUSTER = "false"
 
 [http_service]
   internal_port = 8000
@@ -30,6 +33,15 @@ primary_region = "ams"
   auto_start_machines = true
   min_machines_running = 0
 
+  # One gunicorn worker serves this app, and what turned a slow boot into a dead
+  # machine was the proxy stacking retry after retry onto it. A hard limit sheds
+  # the surplus as 503s instead, which is recoverable; a queue in front of a
+  # single worker is not.
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 10
+    hard_limit = 20
+
   # No [[http_service.checks]] on purpose: the proxy marks a machine unhealthy on
   # the first probe it misses during boot (grace_period does not prevent this)
   # and answers 503, where with no check it holds the request open until the app
@@ -38,8 +50,9 @@ primary_region = "ams"
 
 [[vm]]
   size = "shared-cpu-1x"
-  # 512mb does not fit caddy + gunicorn + the django-q cluster (which forks a
-  # guard, monitor, pusher and worker, ~260mb between them): the machine ran at
+  # 512mb did not fit caddy + gunicorn + the django-q cluster: the machine ran at
   # MemAvailable ~7mb, evicting its own page cache, and every request faulted
-  # code back off disk until the worker timed out.
+  # code back off disk until the worker timed out. RUN_QCLUSTER=false above frees
+  # most of what it was short of; this keeps the rest as headroom rather than
+  # sitting one process away from the same cliff again.
   memory = "1024mb"

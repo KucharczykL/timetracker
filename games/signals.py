@@ -127,14 +127,14 @@ def game_status_changed(sender, instance, **kwargs):
     try:
         old_instance = sender.objects.get(pk=instance.pk)
         old_status = old_instance.status
-        logger.info("[game_status_changed]: Previous status exists.")
+        logger.debug("[game_status_changed]: Previous status exists.")
     except sender.DoesNotExist:
         # Handle the case where the instance was deleted before the signal was sent
-        logger.info("[game_status_changed]: Previous status does not exist.")
+        logger.debug("[game_status_changed]: Previous status does not exist.")
         return
 
     if old_status != instance.status:
-        logger.info(
+        logger.debug(
             f"[game_status_changed]: Status changed from {old_status} to {instance.status}"
         )
         GameStatusChange.objects.create(
@@ -144,4 +144,4 @@ def game_status_changed(sender, instance, **kwargs):
             timestamp=now(),
         )
     else:
-        logger.info("[game_status_changed]: Status has not changed")
+        logger.debug("[game_status_changed]: Status has not changed")

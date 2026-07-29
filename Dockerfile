@@ -53,6 +53,9 @@ FROM python:3.14-slim-bookworm
 ENV PROD=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/home/timetracker/app/.venv/bin:$PATH" \
+    # Read by supervisor.conf, which cannot be parsed with it unset. Deployments
+    # that schedule nothing (staging) set false and save the cluster's ~260mb.
+    RUN_QCLUSTER=true \
     # Django's in-code default is BASE_DIR; pin the image default so the
     # database lands inside the expected volume even without -e DATA_DIR.
     DATA_DIR=/home/timetracker/app/data
