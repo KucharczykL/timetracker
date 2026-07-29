@@ -14,7 +14,7 @@ the `<button>` — tapping works, but nothing says so. When the trigger is a sep
 pointer devices via `[@media(hover:none)]:inline-flex`. Measured on `/tracker/stats/2026`:
 19 of the preface kind, 8 of the trigger-is-content kind, 1 standalone glyph.
 
-**Links.** Six different looks, none of them owned by a component:
+**Links.** Six different looks (five of them live), none owned by a component:
 
 | Look | Site |
 |---|---|
@@ -23,7 +23,7 @@ pointer devices via `[@media(hover:none)]:inline-flex`. Measured on `/tracker/st
 | `hover:underline decoration-dotted` | `_count_link`, stats |
 | `text-brand hover:underline` | quick filter bar |
 | `text-body hover:underline` | quick filter bar |
-| `hover:underline` | `layout.py` |
+| `hover:underline` | `layout.py` — **dead code**, see PR 2 |
 
 Plus `TableRow` force-underlines every descendant `<a>` from the outside
 (`[&_a]:underline [&_a]:underline-offset-4 [&_a]:decoration-2`) — styling-at-a-distance, which
@@ -39,8 +39,14 @@ opt its icon back out.
 > **Underline = navigates. ⓘ = there's more.**
 
 Two orthogonal signals, one meaning each, freely composable: a linked duration is underlined
-text *and* an ⓘ. Dotted underline is retired app-wide — once the ⓘ carries "there's more", it
-has no job left.
+text *and* an ⓘ. Dotted underline is retired from every `Popover` — once the ⓘ carries "there's
+more", it has no job left there.
+
+One documented holdout: `PriceConverted` keeps `decoration-dotted underline`, because it uses a
+native `title=` tooltip rather than a `Popover` and is deliberately deferred (see follow-ups).
+So dotted is retired from the popover algebra, not yet from the app. The `decoration-dotted`
+JIT-safelist hack inside `_tooltip_panel` (a hidden `Span` plus an explanatory comment, present
+only to keep the class compiled) is deleted with that follow-up, not with PR 1.
 
 **Symbol carve-out.** When a popover trigger's entire visible content is a non-text symbol — an
 icon, or a single-character badge like the filter builder's `!` — that symbol *is* the
@@ -110,9 +116,11 @@ Three findings:
 1. **One value for both themes is impossible.** The best single hue lands 4.58 light / 2.25 on
    a dark hovered row — unreadable, not merely sub-AA. One hue, two shades, exactly as every
    other token in the app already works.
-2. **`brand` fails on dark hovered rows.** Pre-existing (it is already in the audit's
-   known-failure list for `text-fg-brand`), but today only the quick filter bar is exposed.
-   Making links brand would spread that failure to every game name in every table.
+2. **`brand` fails on dark hovered rows.** Pre-existing — `scripts/contrast_audit.py` already
+   reports `text-fg-brand` on the dark hover surface among the failures it computes at runtime
+   (there is no curated known-failure list; the script prints them). Today only the quick filter
+   bar is exposed. Making links brand would spread that failure to every game name in every
+   table.
 3. **Every candidate beats the app's own body text on a dark hovered row** (Lc 58–60 vs Lc 41).
    The dark-hover weakness is pre-existing, not introduced here — see [#590](https://github.com/KucharczykL/timetracker/issues/590).
 
@@ -144,12 +152,19 @@ that matters. It passes at 5.78 / Lc 60.
 Underlining the navbar, pagination, or sort headers would read as broken. Controls already
 advertise with fill, border, and hover surface.
 
-The boundary is enforced by *which builder you call*, not by remembering a class:
+The boundary is enforced by *which builder you call*, not by remembering a class. Every anchor
+in the app goes through exactly one of four:
 
 - `Link()` — inline text links inside content (new)
-- `ControlButton(href=…)` — control-shaped links (exists)
+- `ControlButton(href=…)` — control-shaped links that already exist as buttons (exists)
 - `IconLink()` — icon-only links, no underline (new; today these are bare `A` calls carrying
   ad-hoc classes, including the `decoration-transparent` opt-out that PR 2 deletes)
+- `ControlLink()` — the explicit escape hatch: renders a bare `<a>` with no styling of its own,
+  for chrome that owns its appearance (navbar, pagination, sort headers, settings rail,
+  dropdown menu items). It adds no classes; it exists so "deliberately not a text link" is
+  declared and greppable rather than inferred from absence. (new)
+
+`ControlLink` is what makes decision 5's guard enforceable at all — see below.
 
 ### 5. Enforcement is a guard test, not convention
 
@@ -160,11 +175,23 @@ Alternatives:
   renders its href case through the same generated `A` builder, so control-links would inherit
   the underline, and the fix (`no-underline` accumulating alongside `underline`) resolves by
   stylesheet order rather than class order. Fragile.
+- **Guard with a per-file or per-function allowlist.** Rejected: brittle, and it encodes the
+  current call sites rather than the rule.
 
-Chosen: an AST walk over `common/` and `games/` failing on any `A(href=…)` outside `Link`,
-`ControlButton`, and `IconLink`. This matches the repo's existing guard idiom (route
-classification completeness, icon drift) — a new call site fails `make check` rather than
-review.
+Chosen: an AST walk over `common/` and `games/` failing on any anchor construction outside the
+four builders above. This matches the repo's existing guard idiom (route classification
+completeness, icon drift) — a new call site fails `make check` rather than review.
+
+Two implementation constraints the walk must respect, both established by real call sites:
+
+1. **It cannot match on `href=` as a keyword.** Three sites pass attributes positionally —
+   `DropdownLinkItem` builds `A(attributes)` with `("href", url)` inside the list
+   (`custom_elements.py`), as do `TruncatedText` and `ControlButton` internally. A
+   keyword-only walk misses them, so the positional form becomes a silent bypass. The guard
+   flags *any* `A(...)` call outside the builders, regardless of how href is passed.
+2. **The builders themselves call `A`.** The allowlist is by enclosing definition (the four
+   builder functions/classes), not by call shape. Aliased imports of `A` must be resolved or
+   rejected outright.
 
 ### 6. `TruncatedText` keeps two visibility policies, deliberately
 
@@ -190,8 +217,28 @@ dotted still means two things.
 
 ### PR 1 — popover affordance (#589)
 
-`_popover_html` collapses to one anatomy: trigger content plus a sibling ⓘ button, always
-visible. `preface` stops being a special shape.
+The **default** anatomy becomes trigger content plus a sibling ⓘ button, always visible, and
+`preface` stops being a special shape. Three existing shapes survive, and the spec is explicit
+that they do:
+
+- **`tap=False`** — a hover-only `<span>` trigger, used where the host nests inside a caller's
+  interactive element. Live in `NavbarLogButton`, whose `DropdownPostItem` wraps it in a
+  `<button role="menuitem">`; a sibling ⓘ `<button>` there is illegal nesting. **Keeps
+  suppressing the glyph.**
+- **`trigger_disabled`** — the wrapper `<span role="button">` plus disabled inner button, live
+  on every settings page via the theme toggle. Unchanged.
+- **Symbol carve-out** — see below.
+
+This punctures the "a new popover cannot forget" rationale in decision 1: it holds for the
+default path, not for `tap=False`. Accepted, because the alternative is illegal HTML.
+
+**The carve-out is a caller-declared parameter, not an inference.** `_popover_html` cannot
+compute "is this content a symbol": content arrives as `wrapped_content: str` or as an opaque
+node tree — `_stat_popover` passes `Safe(_STAT_SVGS[key])`, raw unparsed SVG, and the
+incomplete badge passes `wrapped_content="!"`, a string indistinguishable from a meaningful
+one-character value like a count. `Popover` gains an explicit flag (`symbol_trigger=True`)
+that suppresses the glyph; the default is glyph-on, so forgetting it fails loud rather than
+silent.
 
 | Call site | Trigger content | ⓘ |
 |---|---|---|
@@ -201,37 +248,66 @@ visible. `preface` stops being a special shape.
 | `games/views/game.py` `_stat_popover` | stat icon + value | yes — text present |
 | `games/views/game.py` release year | year text | yes |
 | `settings_kit.py` source badge | badge text | yes |
-| `theme.py` theme tip | icons only | **no** — symbol carve-out |
-| `custom_elements.py` incomplete `!` badge | single symbol | **no** — symbol carve-out |
+| `theme.py` theme tip | icons only | **no** — `symbol_trigger=True` |
+| `custom_elements.py` incomplete `!` badge | single symbol | **no** — `symbol_trigger=True` |
 
-`TruncatedText`'s `info` glyph becomes always-visible; its `ellipsis` glyph is untouched.
+Also in PR 1, because the new anatomy breaks them:
+
+- **`selectable_text` becomes dead** — it exists only because the price sat *inside* the
+  button. With content demoted to a plain sibling, remove it.
+- **`aria-describedby` must be re-homed.** Today it rides the trigger, and `describedby=False`
+  opts `Duration` out (its `sr-only` text already says the value). Decide once whether the
+  description attaches to the ⓘ button, the content span, or both, and state it.
+- **Centralize glyph construction in `_popover_html`.** `Duration(link=…)` currently hand-rolls
+  the glyph's classes in `domain.py`. The promised single-constant pare-back lever is only real
+  once that markup moves.
+
+`TruncatedText`'s `info` glyph becomes always-visible; its `ellipsis` glyph is untouched. One
+coupled change: the 24px clip reservation (`[@media(hover:none)]:pe-6`) that stops text painting
+under the button is currently touch-gated. For informative instances it must become
+unconditional, or desktop names paint under the always-visible glyph.
 
 ### PR 2 — link unification
 
 - `--color-fg-link` + hover shade in `input.css` `@theme`, following the `--color-brand-soft` /
   `--color-surface-overlay` precedent for custom tokens. Added to `scripts/contrast_audit.py`.
 - `Link()` in `primitives.py`, owning `text-fg-link underline underline-offset-4 decoration-2`
-  plus the hover shade. Exported from `common/components/__init__.py`.
+  plus the hover shade. Exported from `common/components/__init__.py`. **It must accept merged
+  caller classes** — `GameLink` keeps `font-condensed`, and `TruncatedText`'s anchor keeps its
+  `inline-flex w-full min-w-0` clip layout. The node layer's class accumulation makes this work;
+  the builder must not overwrite.
+- `IconLink()` and `ControlLink()`, same module.
 - The AST guard test.
 - **Migrate to `Link()`**: `GameLink`; `_count_link` and `_FILTER_LINK_CLASS` in
-  `stats_content.py`; `layout.py`'s model-count link; both quick-filter-bar links;
-  `purchase.py`'s bare game link; `TruncatedText(link=…)`; `Duration(link=…)`.
-- **Stay control-shaped**: navbar, footer, and brand in `layout.py`; pagination and sort headers
-  in `primitives.py`; the settings rail nav; `_view_all_button`. Stats' "All-time stats" anchor
-  becomes a real `ControlButton` — it already hand-rolls one.
-- **Icon-only links** use `IconLink`: stats' play glyph, the status-change edit and
-  delete links.
+  `stats_content.py`; both quick-filter-bar links; `purchase.py`'s bare game link;
+  `TruncatedText(link=…)`; `Duration(link=…)`; **the status-change Edit and Delete links** in
+  `games/views/game.py` — these are bare text anchors with no classes at all, so `IconLink`
+  would leave them unmarked and break the rule.
+- **Migrate to `ControlLink()`** (no visual change, guard compliance): navbar Home, Stats, and
+  brand in `layout.py`; pagination prev/next/page in `primitives.py`; the sort header;
+  the settings rail nav; `DropdownLinkItem` in `custom_elements.py`. Stats' "All-time stats"
+  anchor instead becomes a real `ControlButton` — it already hand-rolls one.
+- **Icon-only links** use `IconLink`: stats' play glyph.
+- **Delete, don't migrate**: `NavbarPlaytime`'s `total()` url branch in `layout.py` is dead
+  code — its only caller passes no urls, deliberately, because each `Duration` owns its own
+  link (a popover trigger may not sit inside an `<a>`). Reviving it via `Link()` would nest a
+  popover `<button>` inside an anchor. Delete the branch; the six-look table's `layout.py` row
+  is not a live look.
 - **Delete**: `[&_a]:underline [&_a]:underline-offset-4 [&_a]:decoration-2` from `TableRow`, and
-  the `decoration-transparent` opt-out it forces on `_session_link`.
+  the `decoration-transparent` opt-out it forces on `_session_link`. Safe only given the full
+  migration above — every anchor currently relying on the forced underline is covered by it.
 
 ## Testing
 
-- Component tests: `Link()` renders the token classes; `ControlButton(href=…)` renders no
-  underline; the symbol carve-out emits no ⓘ for an icon-only and a single-character trigger,
-  and does emit one for icon+text.
-- The AST guard over `common/` and `games/`.
+- Component tests: `Link()` renders the token classes *and* preserves caller-merged classes
+  (`font-condensed`, the clip layout); `ControlButton(href=…)` and `ControlLink()` render no
+  underline; `symbol_trigger=True` emits no ⓘ while the default does; `tap=False` emits no ⓘ.
+- The AST guard over `common/` and `games/`, with a case covering the positional-attrs form
+  (`A([("href", …)])`) so the bypass is proven closed.
 - E2E: a desktop-viewport popover shows its ⓘ (the regression that touch-only visibility hid);
-  a truncated name still shows no ellipsis button on desktop.
+  a truncated name still shows no ellipsis button on desktop; an informative truncated name does
+  not paint under its always-visible ⓘ; `NavbarLogButton`'s menu item contains no nested
+  `<button>`.
 - `scripts/contrast_audit.py` covers the new token in both themes across page, zebra, and hover
   surfaces.
 - Gate on the full `make check` including `e2e/`.
@@ -245,6 +321,7 @@ pare-back levers. Its existing line — "Accent / focus / links | `brand` family
 ## Follow-ups to file
 
 - `PriceConverted` uses a native `title=` tooltip rather than a `Popover`, so it sits outside
-  this algebra entirely. Deliberately deferred.
+  this algebra entirely. Deliberately deferred. Converting it is what finally retires
+  `decoration-dotted` app-wide and lets the `_tooltip_panel` JIT-safelist hack go.
 - [#590](https://github.com/KucharczykL/timetracker/issues/590) — dark `--color-body`
   gray-400 → gray-300. Already filed.
