@@ -258,6 +258,44 @@ class PopoverRevealTest(unittest.TestCase):
         self.assertNotIn("decoration-dotted", html.split("data-pop-over-panel")[0])
 
 
+class TruncatedTextRevealTest(unittest.TestCase):
+    """Two reveal glyphs, two visibility policies — deliberately."""
+
+    def _informative(self) -> str:
+        return str(
+            components.TruncatedText(
+                "A Very Long Game Name",
+                tooltip_content="Sorts as: Very Long Game Name, A",
+                instance_key="game-1",
+                reveal="always",
+            )
+        )
+
+    def test_informative_reveal_is_always_visible(self):
+        # It stands for a popover, and a popover announces itself everywhere.
+        html = self._informative()
+        self.assertIn('data-truncated-reveal="info"', html)
+        self.assertNotIn("[@media(hover:none)]:inline-flex", html)
+
+    def test_informative_clip_reserves_room_unconditionally(self):
+        # The button is always there now, so the 24px it occupies must always
+        # be reserved — otherwise the name paints underneath it on desktop.
+        html = self._informative()
+        self.assertIn("pe-6", html)
+        self.assertNotIn("[@media(hover:none)]:pe-6", html)
+
+    def test_overflow_reveal_stays_touch_only(self):
+        # Nothing is hidden here: the fade already says the text is clipped,
+        # so the glyph is only a stand-in for devices that cannot hover.
+        html = str(components.TruncatedText("A Very Long Game Name"))
+        self.assertIn('data-truncated-reveal="ellipsis"', html)
+        self.assertIn("[@media(hover:none)]:group-data-[overflowing]:inline-flex", html)
+
+    def test_overflow_reveal_reserves_no_room(self):
+        html = str(components.TruncatedText("A Very Long Game Name"))
+        self.assertNotIn("pe-6", html)
+
+
 class TooltipDefinitionListTest(unittest.TestCase):
     def test_shared_semantic_term_and_value_treatment(self):
         html = str(
@@ -1242,7 +1280,7 @@ class TruncatedTextTest(unittest.TestCase):
         self.assertRegex(panel_id.group(1), r"^[0-9a-f]{10}$")
         self.assertEqual(html.count(f'aria-describedby="{panel_id.group(1)}"'), 2)
         self.assertIn('data-truncated-reveal="info"', html)
-        self.assertIn("[@media(hover:none)]:pe-6", html)
+        self.assertIn("pe-6", html)
         self.assertIn('role="tooltip"', html)
         self.assertNotIn('aria-hidden="true"', html)
 

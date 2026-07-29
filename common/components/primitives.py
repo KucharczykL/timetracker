@@ -594,9 +594,13 @@ _TRUNCATED_CLIP_CLASS = (
     "group-data-[overflowing]:"
     "[mask-image:linear-gradient(to_right,#000_calc(100%-1.5rem),transparent)]"
 )
+# Display is deliberately absent: each caller supplies exactly one display
+# utility (see `visibility` in TruncatedText). Baking `hidden` in here and
+# overriding it would leave both on the element, where the winner is decided by
+# stylesheet order rather than by the class list.
 _TRUNCATED_REVEAL_CLASS = (
-    "absolute inset-y-0 right-0 my-auto hidden size-6 items-center justify-center "
-    "text-subtle hover:text-heading hover:cursor-pointer rounded-base shrink-0 "
+    "absolute inset-y-0 right-0 my-auto size-6 items-center justify-center "
+    "text-subtle hover:text-heading hover:cursor-pointer rounded-base shrink-0"
 )
 
 
@@ -630,14 +634,14 @@ def TruncatedText(
         randomid(content=f"truncated-text:{instance_key}:{text}") if informative else ""
     )
     describedby = [("aria-describedby", panel_id)] if informative else []
-    # Informative content has an always-visible reveal button on no-hover
-    # devices. Reserve that stable 24px before measuring, so a name that only
-    # stops fitting because of the info button is correctly faded rather than
-    # painted underneath it. Overflow-only ellipses stay out of layout; their
-    # touch mask instead becomes fully transparent under the button.
+    # The info button is present on every device, so reserve its 24px on every
+    # device too — before measuring, so a name that only stops fitting because
+    # of the button is correctly faded rather than painted underneath it.
+    # Overflow-only ellipses stay out of layout; their touch mask instead
+    # becomes fully transparent under the button.
     clip_class = _TRUNCATED_CLIP_CLASS
     if informative and tap:
-        clip_class = f"{clip_class} [@media(hover:none)]:pe-6"
+        clip_class = f"{clip_class} pe-6"
     clip_attributes: list[HTMLAttribute] = [
         ("data-truncated-clip", ""),
         ("class", clip_class),
@@ -659,10 +663,14 @@ def TruncatedText(
 
     children: list[Child] = [visible]
     if tap:
+        # An informative reveal stands in for a popover, and a popover
+        # announces itself on every device — nothing else says the extra
+        # content exists. An overflow ellipsis is only a touch stand-in for
+        # the fade, which already says the text is clipped.
         visibility = (
-            "[@media(hover:none)]:inline-flex"
-            if reveal == "always"
-            else "[@media(hover:none)]:group-data-[overflowing]:inline-flex"
+            "inline-flex"
+            if informative
+            else "hidden [@media(hover:none)]:group-data-[overflowing]:inline-flex"
         )
         reveal_icon = "info" if informative else "ellipsis"
         button_attributes: list[HTMLAttribute] = [
