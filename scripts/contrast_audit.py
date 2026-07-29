@@ -24,13 +24,14 @@ OKLCH = {
     "gray-900": (0.210, 0.034, 264.665),
     "gray-950": (0.130, 0.028, 261.692),
     "slate-200": (0.929, 0.013, 255.508),
-    # The link token pair, authored directly in input.css rather than taken
-    # from the palette: half the chroma of Tailwind's purple, which is what
-    # keeps it calm on a page where most text is a link.
-    "fg-link-light": (0.45, 0.15, 295),
-    "fg-link-hover-light": (0.38, 0.15, 295),
-    "fg-link-dark": (0.80, 0.10, 295),
-    "fg-link-hover-dark": (0.88, 0.08, 295),
+    # The link token pair. Sky's ramp is naturally low-chroma at the
+    # lightnesses a link needs, so the token stays on the palette curve
+    # instead of authoring a desaturated one-off, and its hue sits near the
+    # app's blue-tinted neutral axis.
+    "fg-link-light": (0.500, 0.134, 242.749),  # sky-700
+    "fg-link-hover-light": (0.443, 0.110, 240.790),  # sky-800
+    "fg-link-dark": (0.901, 0.058, 230.902),  # sky-200
+    "fg-link-hover-dark": (0.951, 0.026, 236.824),  # sky-100
     "slate-300": (0.869, 0.022, 252.894),
     "slate-600": (0.446, 0.043, 257.281),
     "blue-500": (0.623, 0.214, 259.815),
