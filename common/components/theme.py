@@ -3,8 +3,11 @@
 from common.components.core import Element, Node, randomid
 from common.components.primitives import (
     DISABLED_CONTROL_CLASS,
+    Circle,
+    Path,
     Popover,
     Span,
+    Svg,
     custom_element_builder,
 )
 
@@ -28,16 +31,15 @@ def _icon(
     ]
     if hidden:
         attributes.append(("hidden", "hidden"))
-    return Element("svg", attributes)[*children]
+    return Svg(attributes)[*children]
 
 
 def _theme_icons() -> list[Element]:
     return [
         _icon(
             "system",
-            Element("circle", [("cx", "12"), ("cy", "12"), ("r", "8")]),
-            Element(
-                "path",
+            Circle([("cx", "12"), ("cy", "12"), ("r", "8")]),
+            Path(
                 [
                     ("data-theme-system-half", ""),
                     ("d", "M12 4a8 8 0 0 0 0 16V4Z"),
@@ -48,9 +50,8 @@ def _theme_icons() -> list[Element]:
         ),
         _icon(
             "light",
-            Element("circle", [("cx", "12"), ("cy", "12"), ("r", "4")]),
-            Element(
-                "path",
+            Circle([("cx", "12"), ("cy", "12"), ("r", "4")]),
+            Path(
                 [
                     (
                         "d",
@@ -62,8 +63,7 @@ def _theme_icons() -> list[Element]:
         ),
         _icon(
             "dark",
-            Element(
-                "path",
+            Path(
                 [("d", "M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z")],
             ),
             hidden=True,

@@ -1,10 +1,12 @@
 """Generic HTML primitives (no domain knowledge).
 
 Generic leaf elements (``Div``, ``Span``, ``Td`` …) are *not* hand-written one
-per tag: they are generated from a whitelist via :func:`_html_element`, each a
-thin builder over the single :class:`Element` node class. Only elements that add
-classes or behaviour (``ControlButton``, ``Pill``, ``Checkbox`` …) are written out.
-Everything returns a :class:`Node`; string-built widgets return :class:`Safe`.
+per tag: they are generated from a whitelist in :mod:`common.components.elements`
+via :func:`~common.components.elements.element_builder`, each a thin builder over
+the single :class:`Element` node class, and re-exported here. Only elements that
+add classes or behaviour (``ControlButton``, ``Pill``, ``Checkbox`` …) are
+written out in this module. Everything returns a :class:`Node`; string-built
+widgets return :class:`Safe`.
 """
 
 import json
@@ -34,10 +36,122 @@ from common.components.core import (
     as_children,
     randomid,
 )
+from common.components.elements import (
+    H1,
+    H2,
+    H3,
+    A,
+    Body,
+    Br,
+    Button,
+    Caption,
+    Circle,
+    Dd,
+    Dialog,
+    Div,
+    Dl,
+    Dt,
+    Fieldset,
+    Form,
+    G,
+    Head,
+    Html,
+    Img,
+    Label,
+    Legend,
+    Li,
+    Link,
+    Meta,
+    Nav,
+    Noscript,
+    Optgroup,
+    Option,
+    P,
+    Path,
+    PlainH1,
+    PlainH2,
+    PlainH4,
+    Rect,
+    Script,
+    Section,
+    Select,
+    Span,
+    Strong,
+    Svg,
+    Table,
+    Tbody,
+    Td,
+    Template,
+    Th,
+    Thead,
+    Title,
+    Tr,
+    Ul,
+    _attrs_from_kwargs,
+    _coerce_attrs,
+    element_builder,
+)
 from common.components.icons_generated import ICON_NODES
 from common.criteria import FilterWidgetPath, LeafWidgetKind
 from common.sorting import SortString, SortTerm, collapse_sort, cycle_sort
 from timetracker.settings_registry import PAGE_SIZE_CHOICES
+
+# Not every builder above is called from this module's own function bodies —
+# most exist here purely to be re-exported to callers that import them from
+# `common.components.primitives` (or `common.components`). Listing them marks
+# that re-export as deliberate, so ruff's unused-import check doesn't flag them.
+__all__ = [
+    "H1",
+    "H2",
+    "H3",
+    "A",
+    "Body",
+    "Br",
+    "Button",
+    "Caption",
+    "Circle",
+    "Dd",
+    "Dialog",
+    "Div",
+    "Dl",
+    "Dt",
+    "Fieldset",
+    "Form",
+    "G",
+    "Head",
+    "Html",
+    "Img",
+    "Label",
+    "Legend",
+    "Li",
+    "Link",
+    "Meta",
+    "Nav",
+    "Noscript",
+    "Optgroup",
+    "Option",
+    "P",
+    "Path",
+    "PlainH1",
+    "PlainH2",
+    "PlainH4",
+    "Rect",
+    "Script",
+    "Section",
+    "Select",
+    "Span",
+    "Strong",
+    "Svg",
+    "Table",
+    "Tbody",
+    "Td",
+    "Template",
+    "Th",
+    "Thead",
+    "Title",
+    "Tr",
+    "Ul",
+]
 
 type ButtonColor = Literal["blue", "red", "gray", "green"]  # e.g. "red" (destructive)
 type ButtonVariant = Literal[
@@ -107,9 +221,9 @@ FORM_MAX_WIDTH_CLASS = "max-w-xl"
 # headers. Weight is `font-medium`; callers add a colour token (`text-body`).
 MICRO_LABEL_CLASS = "text-type-micro-caps uppercase"
 
-# The one dialog/confirm-page title spelling. Built on a raw `Element("h1")`
-# (not the `H1` builder) so the baked `text-type-title`/`mb-2` scale does not leak in —
-# accumulation can't down-scale a baked size.
+# The one dialog/confirm-page title spelling. Built on `PlainH1` (not the
+# styled `H1` builder) so the baked `text-type-title`/`mb-2` scale does not
+# leak in — accumulation can't down-scale a baked size.
 DIALOG_TITLE_CLASS = "text-type-dialog text-heading text-center"
 
 
@@ -122,52 +236,11 @@ class TooltipDefinition(NamedTuple):
 
 
 # ── Generic leaf elements ────────────────────────────────────────────────────
-# A whitelist of plain tags, each turned into a builder over `Element`. The
-# tag name is data, not a separate class/function body. Add a tag = one line.
-
-
-# Builder param names that must never arrive as htpy attribute kwargs. After the
-# legacy ``attributes=`` / ``children=`` params are removed, a stray one would be
-# silently swallowed by ``**kwargs`` and rendered as a bogus ``attributes="…"``
-# HTML attribute — so we reject them with a pointer to the htpy form instead.
-_RESERVED_ATTR_KWARGS = frozenset({"attributes", "children"})
-
-
-def _attrs_from_kwargs(attrs: dict[str, object]) -> list[HTMLAttribute]:
-    """Translate htpy-style attribute kwargs to (name, value) pairs.
-
-    ``class_`` -> ``class`` (trailing underscore stripped); ``hx_get`` ->
-    ``hx-get`` (inner underscores to hyphens); ``True`` -> ``name="name"``
-    (boolean-attribute form); ``False`` / ``None`` -> omitted."""
-    for reserved in _RESERVED_ATTR_KWARGS:
-        if reserved in attrs:
-            raise TypeError(
-                f"{reserved!r} is not an htpy attribute kwarg. Pass dynamic "
-                "attributes positionally — Builder(attrs) — and children via "
-                "Builder(...)[...]."
-            )
-    result: list[HTMLAttribute] = []
-    for key, value in attrs.items():
-        if value is None or value is False:
-            continue
-        name = key.rstrip("_").replace("_", "-")
-        result.append((name, name if value is True else value))  # type: ignore[arg-type]
-    return result
-
-
-def _coerce_attrs(attrs: AttrsArg | None) -> list[HTMLAttribute]:
-    """Normalise a dynamic-attributes argument to ``list[HTMLAttribute]``.
-
-    Accepts an ``Attributes`` sequence of ``(name, value)`` pairs **or** a
-    ``Mapping`` (``{"data-x": "y"}``), so callers can build dynamic attributes
-    as whichever is convenient and pass them through the single positional
-    ``attrs`` slot. ``None`` -> empty list.
-    """
-    if attrs is None:
-        return []
-    if isinstance(attrs, Mapping):
-        return list(attrs.items())
-    return list(attrs)
+# Plain HTML/SVG builders (`Div`, `Span`, `H1`, …) and the `element_builder`
+# factory they're generated from live in `elements.py` (core-adjacent, so the
+# icon codegen can import SVG builders without a cycle through this module).
+# This module re-exports them (see the import block above) alongside the
+# styled/behavioural builders it defines itself below.
 
 
 def custom_element_builder(tag_name: str):
@@ -176,78 +249,7 @@ def custom_element_builder(tag_name: str):
     The module path follows the convention ``ts/elements/<tag>.ts`` →
     ``dist/elements/<tag>.js``.
     """
-    return _html_element(tag_name, Media(js=(f"dist/elements/{tag_name}.js",)))
-
-
-def _html_element(tag_name: str, media: Media | None = None, default_class: str = ""):
-    """Build a generic element builder for ``tag_name`` (the whitelist factory).
-
-    If ``media`` is provided, every node created by the builder will carry it
-    (used for custom elements whose compiled JS must be loaded automatically).
-
-    ``default_class`` bakes a base class list onto every node; caller ``class_``
-    accumulates onto it (node-layer class merge). Note accumulation is not
-    override — a caller cannot down-scale a baked size utility (Tailwind sorts
-    ``text-*`` alphabetically), so components wanting a different scale build on
-    a raw ``Element`` instead of the baked builder.
-    """
-
-    def element(
-        attrs: AttrsArg | None = None,
-        **kwargs: object,
-    ) -> Element:
-        # Merge order is priority order — first contributor wins per the node
-        # algebra: baked ``default_class`` first, then positional ``attrs``
-        # (dynamic), then htpy ``kwargs`` (static); ``class`` accumulates across
-        # all three. Children come via ``[]``.
-        merged = _coerce_attrs(attrs) + _attrs_from_kwargs(kwargs)
-        if default_class:
-            merged = [("class", default_class), *merged]
-        node = Element(tag_name, merged)
-        return node.with_media(media) if media else node
-
-    element.__name__ = element.__qualname__ = tag_name[:1].upper() + tag_name[1:]
-    element.__doc__ = f"Builder for the <{tag_name}> element."
-    return element
-
-
-A = _html_element("a")
-Button = _html_element("button")
-Div = _html_element("div")
-P = _html_element("p")
-Ul = _html_element("ul")
-Li = _html_element("li")
-Br = _html_element("br")
-Strong = _html_element("strong")
-Span = _html_element("span")
-Label = _html_element("label")
-Template = _html_element("template")
-Td = _html_element("td")
-Tr = _html_element("tr")
-Th = _html_element("th")
-Table = _html_element("table")
-Thead = _html_element("thead")
-Tbody = _html_element("tbody")
-Caption = _html_element("caption")
-Nav = _html_element("nav")
-Img = _html_element("img")
-Html = _html_element("html")
-Form = _html_element("form")
-Head = _html_element("head")
-Body = _html_element("body")
-Meta = _html_element("meta")
-Title = _html_element("title")
-Script = _html_element("script")
-Link = _html_element("link")
-Select = _html_element("select")
-Option = _html_element("option")
-Optgroup = _html_element("optgroup")
-Noscript = _html_element("noscript")
-# Size token only, no margin: parents own spacing via `gap` (see
-# docs/visual-conventions.md §3), enforced by tests/test_heading_margins.py.
-H1 = _html_element("h1", default_class="text-type-title")
-H2 = _html_element("h2", default_class="text-type-heading")
-H3 = _html_element("h3", default_class="text-type-subheading")
+    return element_builder(tag_name, Media(js=(f"dist/elements/{tag_name}.js",)))
 
 
 # The <pop-over> hover/focus tooltip element (behavior: ts/elements/pop-over.ts).
@@ -272,13 +274,12 @@ def TooltipDefinitionList(
     list_class = f"flex flex-col gap-2 {class_}".strip()
     items = [
         Div(definition.attributes)[
-            Element("dt", [("class", "text-type-micro text-body")])[definition.term],
-            Element("dd", [("class", "font-medium")])[definition.description],
+            Dt(class_="text-type-micro text-body")[definition.term],
+            Dd(class_="font-medium")[definition.description],
         ]
         for definition in definitions
     ]
-    return Element(
-        "dl",
+    return Dl(
         [
             ("data-tooltip-definition-list", ""),
             ("class", list_class),
@@ -1456,10 +1457,7 @@ def _grouped_form_fields(
         if description_id and group.description:
             attributes.append(("aria-describedby", description_id))
         group_children: list[Node] = [
-            Element(
-                "legend",
-                [("class", "text-type-section text-heading")],
-            )[group.legend]
+            Legend(class_="text-type-section text-heading")[group.legend]
         ]
         if group.description:
             description_attributes: list[HTMLAttribute] = [
@@ -1475,7 +1473,7 @@ def _grouped_form_fields(
             )
             for field in group_fields
         )
-        fieldsets.append(Element("fieldset", attributes)[*group_children])
+        fieldsets.append(Fieldset(attributes)[*group_children])
 
     # Hidden controls stay outside fieldsets and render exactly once. Visible
     # fields not named by a group follow the fieldsets in their normal order.
@@ -1655,11 +1653,11 @@ def PageHeading(
 def DialogTitle(children: Children = None) -> Element:
     """The one dialog/confirm-page title — ``<h1>`` in :data:`DIALOG_TITLE_CLASS`.
 
-    Raw ``Element`` (not the ``H1`` builder) because this title has its own size
-    token: ``H1``'s baked ``text-type-title`` would accumulate alongside
+    ``PlainH1`` (not the styled ``H1`` builder) because this title has its own
+    size token: ``H1``'s baked ``text-type-title`` would accumulate alongside
     ``text-type-dialog``, leaving two competing size utilities on one element.
     """
-    return Element("h1", [("class", DIALOG_TITLE_CLASS)])[*as_children(children)]
+    return PlainH1(class_=DIALOG_TITLE_CLASS)[*as_children(children)]
 
 
 # The <modal-dialog> overlay element (behavior: ts/elements/modal-dialog.ts).

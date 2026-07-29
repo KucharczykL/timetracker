@@ -114,14 +114,14 @@ class GameStatusSelectorRenderTest(unittest.TestCase):
 class ContractStampingTest(unittest.TestCase):
     def test_core_stamps_trigger_and_target_contracts(self):
         from common.components import (
+            Button,
             Dropdown,
             DropdownLinkItem,
             DropdownMenuPanel,
             render,
         )
-        from common.components.core import Element
 
-        trigger = Element("button", [("class", "look")], ["Open"])
+        trigger = Button([("class", "look")])["Open"]
         target = DropdownMenuPanel(items=[DropdownLinkItem("/a/", "A")])
         html = render(Dropdown(trigger_element=trigger, target_element=target, id="d"))
         # Behavioral hooks + ARIA wiring stamped by the core.
@@ -139,11 +139,10 @@ class ContractStampingTest(unittest.TestCase):
         self.assertNotIn("aria-haspopup", html.split("<div")[0])  # not on the trigger
 
     def test_reserved_attr_conflict_warns(self):
-        from common.components import DropdownContractWarning, render
-        from common.components.core import Element
+        from common.components import Button, DropdownContractWarning, render
         from common.components.custom_elements import _stamp_trigger_contract
 
-        trigger = Element("button", [("aria-expanded", "true"), ("class", "c")])
+        trigger = Button([("aria-expanded", "true"), ("class", "c")])
         with self.assertWarns(DropdownContractWarning):
             stamped = _stamp_trigger_contract(trigger, "x")
         html = render(stamped)
@@ -166,10 +165,10 @@ class ContractStampingTest(unittest.TestCase):
         self.assertIn('aria-labelledby="pLink"', render(auto))
 
     def test_explicit_labelledby_is_preserved(self):
-        from common.components import Element, render
+        from common.components import Dialog, render
         from common.components.custom_elements import _stamp_target_contract
 
-        target = Element("dialog", [("aria-labelledby", "sheet-title")])
+        target = Dialog([("aria-labelledby", "sheet-title")])
         html = render(_stamp_target_contract(target, "sheet", initially_hidden=False))
         self.assertIn('aria-labelledby="sheet-title"', html)
         self.assertNotIn('aria-labelledby="sheetLink"', html)
@@ -302,16 +301,16 @@ class DropdownWrapperTest(unittest.TestCase):
 class DropdownSubmenuTest(unittest.TestCase):
     def test_submenu_item(self):
         from common.components import (
+            Button,
             Dropdown,
             DropdownLinkItem,
             DropdownMenuPanel,
             DropdownSubmenu,
             render,
         )
-        from common.components.core import Element
 
         node = Dropdown(
-            trigger_element=Element("button", [], ["Menu"]),
+            trigger_element=Button()["Menu"],
             target_element=DropdownMenuPanel(
                 items=[
                     DropdownSubmenu(
