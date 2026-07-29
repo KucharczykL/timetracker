@@ -326,6 +326,20 @@ collected into the image at build time rather than on each boot.
 | `CREATE_DEFAULT_SUPERUSER` | `false` | Create an `admin`/`admin` superuser on first start. |
 | `STAGING` | `false` | Scrub copied sessions / django-q schedule on staging. |
 | `LOAD_SAMPLE_DATA` | `false` | Seed sample fixtures when the database is empty. |
+| `RUN_QCLUSTER` | `true` | Run the django-q cluster. `false` saves its ~260 MB where nothing schedules work; the image sets the default because supervisord cannot parse its config with this unset. |
+
+`fly.staging.toml` sets `RUN_QCLUSTER=false`, since a staging box reseeds its
+database on every boot and schedules nothing. To turn it back on for one branch —
+a PR that touches background tasks, say — set it as a secret on that app:
+
+```
+flyctl secrets set RUN_QCLUSTER=true -a timetracker-staging-<slug>
+flyctl secrets unset RUN_QCLUSTER -a timetracker-staging-<slug>   # back to off
+```
+
+A secret shadows the `[env]` value and is re-applied on every deploy, so it
+outlives further pushes to the branch. `flyctl machine update --env` does not —
+the next deploy re-renders the machine config from `fly.staging.toml`.
 
 The container runs as uid 1000 — mounted data directories must be writable
 by that uid.
