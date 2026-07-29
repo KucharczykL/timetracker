@@ -1,82 +1,8 @@
-import re
 from datetime import date, timedelta
 
 from django.utils import timezone
 
 from common.utils import generate_split_ranges
-
-durationformat: str = "%2.1H hours"
-durationformat_manual: str = "%H hours"
-
-
-def _safe_timedelta(duration: timedelta | float | None):
-    if duration is None:
-        return timedelta(0)
-    elif isinstance(duration, (int, float)):
-        return timedelta(seconds=duration)
-    elif isinstance(duration, timedelta):
-        return duration
-
-
-def format_duration(
-    duration: timedelta | float | None, format_string: str = "%H hours"
-) -> str:
-    """
-    Format timedelta into the specified format_string.
-    Valid format variables:
-    - %H hours
-    - %m minutes
-    - %s seconds
-    - %r total seconds
-    Values don't change into higher units if those units are missing
-    from the formatting string. For example:
-    - 61 seconds as "%s" = 61 seconds
-    - 61 seconds as "%m %s" = 1 minutes 1 seconds"
-    Format specifiers can include width and precision options:
-    - %5.2H: hours formatted with width 5 and 2 decimal places (padded with zeros)
-    """
-    minute_seconds = 60
-    hour_seconds = 60 * minute_seconds
-    day_seconds = 24 * hour_seconds
-    safe_duration = _safe_timedelta(duration)
-    # we don't need float
-    seconds_total = int(safe_duration.total_seconds())
-    # timestamps where end is before start
-    seconds_total = max(seconds_total, 0)
-    days = hours_float = minutes = seconds = 0
-    hours: float = 0
-    remainder = seconds = seconds_total
-    if "%d" in format_string:
-        days, remainder = divmod(seconds_total, day_seconds)
-    if re.search(r"%\d*\.?\d*H", format_string):
-        hours_float, remainder = divmod(remainder, hour_seconds)
-        hours = float(hours_float) + remainder / hour_seconds
-    if re.search(r"%\d*\.?\d*m", format_string):
-        minutes, seconds = divmod(remainder, minute_seconds)
-    literals = {
-        "d": str(days),
-        "H": str(hours) if "m" not in format_string else str(hours_float),
-        "m": str(minutes),
-        "s": str(seconds),
-        "r": str(seconds_total),
-    }
-    formatted_string = format_string
-    for pattern, replacement in literals.items():
-        # Match format specifiers with optional width and precision
-        match = re.search(rf"%(\d*\.?\d*){pattern}", formatted_string)
-        if match:
-            format_spec = match.group(1)
-            if "." in format_spec:
-                # Format the number as float if precision is specified
-                replacement = f"{float(replacement):{format_spec}f}"
-            else:
-                # Format the number as integer if no precision is specified
-                replacement = f"{int(float(replacement)):>{format_spec}}"
-            # Replace the format specifier with the formatted number
-            formatted_string = re.sub(
-                rf"%\d*\.?\d*{pattern}", replacement, formatted_string
-            )
-    return formatted_string
 
 
 def daterange(start: date, end: date, end_inclusive: bool = False) -> list[date]:

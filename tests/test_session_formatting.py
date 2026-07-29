@@ -10,6 +10,10 @@ from common.date_time_presentation import (
     build_format_profile,
     date_time_format_profile,
 )
+from common.duration_presentation import (
+    DurationPresentation,
+    duration_format_profile,
+)
 from games.formatting import session_time_range
 from games.models import Game, Purchase, Session
 
@@ -34,8 +38,10 @@ class FormatDurationTest(TestCase):
         )
         s.save()
         self.assertEqual(
-            s.duration_formatted(),
-            "2.7",
+            DurationPresentation(
+                duration_format_profile("decimal_hours"), "en-us"
+            ).format(s.duration_total),
+            "2.7 h",
         )
 
     def test_session_range_uses_explicit_presentation(self):

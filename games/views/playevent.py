@@ -31,9 +31,12 @@ from common.date_time_presentation import (
     DateTimePresentation,
     date_time_presentation_for_request,
 )
+from common.duration_presentation import (
+    DurationPresentation,
+    duration_format_profile,
+)
 from common.layout import render_page
 from common.returns import OriginUrl, action_url
-from common.time import format_duration
 from common.utils import paginate
 from games.filters import parse_playevent_filter
 from games.forms import PlayEventForm
@@ -163,7 +166,10 @@ def _get_formatted_playtime_for_game_sessions_in_range(
     sessions_in_range = sessions_queryset.filter(
         timestamp_start__gte=actual_start_ts, timestamp_start__lte=actual_end_ts
     )
-    return format_duration(sessions_in_range.total_duration_unformatted(), "%Hh %mm")
+    # This seeds a note the user then saves, so it is stored text rather than
+    # display: a per-viewer duration preference must not leak into it.
+    fixed = DurationPresentation(duration_format_profile("hours_minutes"), "en-us")
+    return fixed.format(sessions_in_range.total_duration_unformatted())
 
 
 @login_required
