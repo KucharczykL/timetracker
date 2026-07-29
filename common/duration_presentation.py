@@ -210,6 +210,48 @@ class DurationPresentation:
     def format(self, duration: timedelta | float | None) -> str:
         return self.profile.render(_total_seconds(duration), self._numbers)
 
+    def alternates(
+        self, duration: timedelta | float | None
+    ) -> tuple[tuple[ProfileLabel, str], ...]:
+        """The same value under the other profiles, in registry order.
+
+        Deduplicated on the *rendered string*, never on profile identity:
+        hours_minutes and adaptive agree below a day but diverge at the carry
+        boundary, so "these two profiles are equivalent" is not a rule that
+        holds.
+        """
+        seconds = _total_seconds(duration)
+        seen = {self.profile.render(seconds, self._numbers)}
+        rows: list[tuple[ProfileLabel, str]] = []
+        for profile in DURATION_FORMAT_PROFILES.values():
+            if profile.id == self.profile.id:
+                continue
+            rendered = profile.render(seconds, self._numbers)
+            if rendered in seen:
+                continue
+            seen.add(rendered)
+            rows.append((profile.label, rendered))
+        return tuple(rows)
+
+    def spoken(
+        self, duration: timedelta | float | None, *, manual: bool = False
+    ) -> str:
+        """The value in full words, independent of the visible profile.
+
+        Screen readers mangle abbreviations — "1.2 h" is read "one point two
+        h", and "3 d 11 h" is worse. Hours and minutes only: no reader is
+        helped by "375 days". Numbers are ungrouped so no separator is voiced.
+        """
+        total_minutes = _round_half_away(_total_seconds(duration) / MINUTE_SECONDS)
+        hours, minutes = divmod(total_minutes, 60)
+        parts = [
+            f"{count} {unit}{'' if count == 1 else 's'}"
+            for count, unit in ((hours, "hour"), (minutes, "minute"))
+            if count
+        ]
+        spoken = " ".join(parts) if parts else "0 hours"
+        return f"{spoken}, manual" if manual else spoken
+
 
 _REQUEST_CACHE_ATTRIBUTE = "_duration_presentation"
 

@@ -155,3 +155,88 @@ def test_formatting_does_not_leak_the_active_translation():
     ).format(timedelta(seconds=1234 * HOUR))
 
     assert get_language() == before
+
+
+def _alternates(profile_id: str, seconds: int):
+    return _presentation(profile_id).alternates(timedelta(seconds=seconds))
+
+
+def test_alternates_exclude_the_visible_rendering():
+    visible = _presentation("decimal_hours").format(
+        timedelta(seconds=HOUR + 12 * MINUTE)
+    )
+
+    renderings = [
+        text for _label, text in _alternates("decimal_hours", HOUR + 12 * MINUTE)
+    ]
+
+    assert visible not in renderings
+
+
+def test_alternates_drop_duplicates_below_24h():
+    """hours_minutes and adaptive agree below a day, so the popover shows the
+    value once, not twice."""
+    renderings = [
+        text for _label, text in _alternates("decimal_hours", HOUR + 12 * MINUTE)
+    ]
+
+    assert renderings == ["1 h 12 m", "1 hour"]
+
+
+def test_alternates_keep_all_three_above_24h():
+    renderings = [
+        text for _label, text in _alternates("decimal_hours", 83 * HOUR + 12 * MINUTE)
+    ]
+
+    assert renderings == ["83 h 12 m", "83 hours", "3 d 11 h"]
+
+
+def test_adaptive_and_hours_minutes_diverge_at_the_carry_boundary():
+    """23 h 59 m 45 s rounds to 24 h 00 m under hours_minutes but re-picks to
+    1 d 00 h under adaptive — which is why dedup compares rendered strings and
+    never profile identity."""
+    renderings = [
+        text
+        for _label, text in _alternates("decimal_hours", 23 * HOUR + 59 * MINUTE + 45)
+    ]
+
+    assert renderings == ["24 h 00 m", "24 hours", "1 d 00 h"]
+
+
+def test_alternates_are_labelled_with_their_profile():
+    labels = [label for label, _text in _alternates("decimal_hours", 83 * HOUR)]
+
+    assert labels == ["Hours and minutes", "Whole hours", "Adaptive units"]
+
+
+@pytest.mark.parametrize(
+    "seconds,expected",
+    [
+        (0, "0 hours"),
+        (45, "1 minute"),
+        (45 * MINUTE, "45 minutes"),
+        (HOUR + 12 * MINUTE, "1 hour 12 minutes"),
+        (2 * HOUR, "2 hours"),
+        (9000 * HOUR, "9000 hours"),
+        # Never days or weeks: "375 days" helps nobody.
+        (9 * DAY, "216 hours"),
+    ],
+)
+def test_spoken_uses_words_and_pluralizes(seconds, expected):
+    assert _presentation("adaptive").spoken(timedelta(seconds=seconds)) == expected
+
+
+def test_spoken_is_the_same_whatever_the_visible_profile():
+    value = timedelta(seconds=HOUR + 12 * MINUTE)
+
+    spoken = {_presentation(profile_id).spoken(value) for profile_id in PROFILE_IDS}
+
+    assert spoken == {"1 hour 12 minutes"}
+
+
+def test_spoken_marks_a_manual_session():
+    spoken = _presentation("decimal_hours").spoken(
+        timedelta(seconds=HOUR + 12 * MINUTE), manual=True
+    )
+
+    assert spoken == "1 hour 12 minutes, manual"
