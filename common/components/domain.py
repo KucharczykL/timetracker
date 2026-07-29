@@ -9,10 +9,10 @@ from common.components.core import Children, Fragment, Node, as_children
 from common.components.primitives import (
     ICON_BUTTON_SIZE_CLASS,
     NAME_MAX_WIDTH_CLASS,
-    A,
     Icon,
     Input,
     Li,
+    Link,
     Popover,
     Span,
     TooltipDefinition,
@@ -39,10 +39,7 @@ def GameLink(
     link = reverse("games:view_game", args=[game_id])
 
     return Span(class_="truncate-container")[
-        A(
-            href=link,
-            class_="font-condensed underline decoration-slate-500 sm:decoration-2",
-        )[*display],
+        Link(href=link, class_="font-condensed")[*display],
     ]
 
 
@@ -378,7 +375,6 @@ def Duration(
     id_scope: str,
     manual: bool = False,
     link: str | None = None,
-    link_class: str = "hover:underline tabular-nums",
 ) -> Node:
     """One elapsed duration, with the same value under the other profiles on hover.
 
@@ -413,7 +409,7 @@ def Duration(
         )
     return Popover(
         popover_content=DurationAlternates(duration, presentation),
-        preface=A(href=link, class_=link_class)[text],
+        preface=Link(href=link, class_="tabular-nums")[text],
         trigger_label="Other duration formats",
         id=f"duration-{id_scope}",
         describedby=False,

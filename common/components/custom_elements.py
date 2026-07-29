@@ -31,10 +31,10 @@ from common.components.core import (
     as_children,
 )
 from common.components.primitives import (
-    A,
     Button,
     ButtonColor,
     ControlButton,
+    ControlLink,
     Dialog,
     Div,
     Form,
@@ -847,7 +847,7 @@ def DropdownLinkItem(url: str, label: Child, *, current: bool = False) -> Node:
     ]
     if current:
         attributes.append(("aria-current", "page"))
-    return Li(role="presentation")[A(attributes)[label]]
+    return Li(role="presentation")[ControlLink(attributes)[label]]
 
 
 def DropdownPostItem(url: str, label: Child, *, csrf_token: str) -> Node:

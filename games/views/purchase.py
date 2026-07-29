@@ -14,7 +14,6 @@ from django.views.decorators.http import require_POST
 
 from common.components import (
     ICON_BUTTON_SIZE_CLASS,
-    A,
     AddForm,
     ButtonGroup,
     Checkbox,
@@ -30,6 +29,7 @@ from common.components import (
     GameLink,
     Icon,
     Input,
+    Link,
     LinkedPurchase,
     Modal,
     ModuleScript,
@@ -433,7 +433,7 @@ def _view_purchase_content(
     title_class = "text-type-title font-serif text-slate-500"
     inner = Div(class_="flex flex-col gap-5 mb-3")[
         Div(class_=title_class)[
-            A(href=reverse("games:view_game", args=[first_game.id]))[first_game.name]
+            Link(href=reverse("games:view_game", args=[first_game.id]))[first_game.name]
         ],
         Div(class_=row_class)[purchase.get_type_display()],
         Div(class_=row_class)[owned],

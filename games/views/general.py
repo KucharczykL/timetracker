@@ -88,8 +88,6 @@ def model_counts(request: HttpRequest) -> dict[str, Any]:
         "last_7_played": Duration(
             last_7_played, durations, id_scope="navbar-last-7", link=last_7_url
         ),
-        "today_url": today_url,
-        "last_7_url": last_7_url,
     }
 
 

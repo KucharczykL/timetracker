@@ -23,10 +23,10 @@ from common.components.core import (
 from common.components.custom_elements import BottomSheet
 from common.components.primitives import (
     FORM_MAX_WIDTH_CLASS,
-    A,
     Badge,
     ContentContainer,
     ControlButton,
+    ControlLink,
     Div,
     FormFieldGroup,
     FormFieldPresentation,
@@ -190,7 +190,7 @@ def _section_link(section: SettingsSection) -> Node:
     return Li(
         data_section_nav_item="",
         class_="w-full",
-    )[A(href=f"#{section.id}", class_=_NAV_LINK_CLASS)[section.label]]
+    )[ControlLink(href=f"#{section.id}", class_=_NAV_LINK_CLASS)[section.label]]
 
 
 def SettingsSectionNav(sections: Sequence[SettingsSection]) -> Node:

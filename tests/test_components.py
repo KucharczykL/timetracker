@@ -283,6 +283,13 @@ class AnchorBuilderTest(unittest.TestCase):
         html = str(components.ControlLink(href="/")["Home"])
         self.assertEqual(html, '<a href="/">Home</a>')
 
+    def test_table_rows_do_not_style_their_anchors(self):
+        # The row used to force `[&_a]:underline` onto every descendant, which
+        # meant an icon link had to opt back out with decoration-transparent.
+        # Links carry their own underline now.
+        row = components.make_row(["cell"], components.TableRow)
+        self.assertNotIn("[&_a]", str(row))
+
     def test_control_button_link_is_not_underlined(self):
         html = str(components.ControlButton(href="/stats", color="gray")["Stats"])
         self.assertNotIn("underline", html)

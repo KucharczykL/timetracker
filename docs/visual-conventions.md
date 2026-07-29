@@ -47,7 +47,8 @@ Core vocabulary:
 | Control border + dividers | `border-default-medium` |
 | Structural rules (bars) | `border-default` |
 | Text | `text-heading` / `text-body` / `text-body-subtle` |
-| Accent / focus / links | `brand` family (`bg-brand`, `text-fg-brand`, `focus:ring-brand`) |
+| Accent / focus | `brand` family (`bg-brand`, `text-fg-brand`, `focus:ring-brand`) |
+| Inline text links | `fg-link` family (`text-fg-link`, `hover:text-fg-link-hover`) — see below |
 | Tinted callout | `bg-brand-soft` |
 
 Decisions folded in:
@@ -211,6 +212,29 @@ scrollspy (#401). Calls recorded so #384 and later consumers do not relitigate i
   `<pop-over>` host carries `self-start` so a flex parent can't stretch it to full width —
   `positionAnchored` centres the fixed panel on the host, so a stretched host throws the panel
   far off the trigger (#446). Keep it when reusing popovers in flex rows.
+- **Links: one look, one meaning.** Underline = navigates. The ⓘ glyph = there's more. Two
+  signals, one meaning each, freely composable — a linked duration is underlined text *and* an
+  ⓘ. Dotted underline is retired from popovers, where it used to mean both.
+
+  **Four builders, so the call declares the kind of link.** `Link` (inline text in page
+  content), `IconLink` (icon-only, no underline), `ControlLink` (chrome that owns its
+  appearance — navbar, pagination, sort headers, settings rail, dropdown items; adds nothing),
+  `ControlButton(href=…)` (a control that navigates). A bare `A()` outside these fails
+  `tests/test_anchor_builders.py`. That guard matches the *call*, not an `href=` keyword,
+  because three sites pass attributes positionally and would otherwise slip through.
+
+  **Colour: `fg-link`, deliberately not `brand`.** Brand already fills primary buttons, the
+  current pagination page, focus rings and active states; links in it would leave blue meaning
+  nothing in particular. Purple is otherwise unused for text and is the browser's own link
+  vocabulary. Light and dark take opposite ends of the ramp (purple-700 / purple-300) because
+  contrast is lightness-driven — no single value clears AA on both a white page and a dark
+  hovered row. Worst measured case 5.78:1 / Lc 60. **Dial:** swap the pair in `input.css` for
+  `oklch(45% 0.15 295)` / `oklch(80% 0.10 295)` if it reads garish.
+
+  **Rows do not style their anchors.** `TableRow` used to force `[&_a]:underline` onto every
+  descendant, so an icon link had to opt back out with `decoration-transparent`. Links carry
+  their own underline; nothing reaches across the DOM to add it.
+
 - **Popover trigger** (`_popover_html`, #445): the visible content stays plain, and a sibling
   ⓘ button beside it is the trigger — always visible, on every device. It is a toggletip
   (`role="tooltip"` + `aria-describedby`, no `aria-expanded`); the whole host opens on hover,

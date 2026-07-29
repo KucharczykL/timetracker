@@ -38,12 +38,12 @@ from common.components.filters import (
     parse_filter_dict,
 )
 from common.components.primitives import (
-    A,
     ButtonGroup,
     ButtonGroupMember,
     ControlButton,
     Div,
     Form,
+    Link,
     Span,
 )
 from common.components.search_select import ComboboxDropdown, LoadPresetDropdown
@@ -365,12 +365,6 @@ class QuickFilterBar(BaseComponent):
         # Modes without a nested-builder page (devices/platforms) pass no
         # builder_url; their pill offers only Clear — an Edit link would 404.
         if self.builder_url:
-            children.append(
-                A(href=self.builder_url, class_="text-brand hover:underline")[
-                    "Edit in builder"
-                ]
-            )
-        children.append(
-            A(href=self._list_url(), class_="text-body hover:underline")["Clear"]
-        )
+            children.append(Link(href=self.builder_url)["Edit in builder"])
+        children.append(Link(href=self._list_url())["Clear"])
         return Div(class_=_QUICK_PILL_CLASS)[children]

@@ -10,9 +10,7 @@ from django.urls import reverse
 from django.utils.html import conditional_escape
 
 from common.components import (
-    CONTROL_SIZE_CLASS,
     ICON_BUTTON_SIZE_CLASS,
-    A,
     Column,
     ContentContainer,
     ControlButton,
@@ -21,6 +19,8 @@ from common.components import (
     Fragment,
     GameLink,
     Icon,
+    IconLink,
+    Link,
     Node,
     PageHeading,
     PlainH2,
@@ -34,9 +34,6 @@ from common.duration_presentation import DurationPresentation
 from games.filters import filter_url
 from games.views import stats_links
 from games.views.stats_data import StatsData
-
-_FILTER_LINK_CLASS = "underline decoration-dotted hover:decoration-solid"
-
 
 # Stats lists are previews: capped to this many rows, with a "View all" link to
 # the full filtered list (#65).
@@ -55,15 +52,15 @@ def _session_link(game_id, year, label: str = "") -> Node:
     ``label`` is the game name, embedded in the filter so the destination bar
     renders a named pill instead of a bare id (#224). ``decoration-transparent``
     opts the play-icon glyph out of the row's forced ``[&_a]:underline``."""
-    return A(
+    return IconLink(
         href=filter_url(stats_links.sessions_for_game(game_id, year, label)),
-        class_="ml-1 inline-block align-middle decoration-transparent hover:text-heading",
+        class_="ml-1 align-middle",
         title="View sessions",
     )[Icon("play", size=ICON_BUTTON_SIZE_CLASS)]
 
 
 def _count_link(value, url: str) -> Node:
-    return A(href=url, class_="hover:underline decoration-dotted")[str(value)]
+    return Link(href=url)[str(value)]
 
 
 def _view_all_button(count: int, url: str) -> Node:
@@ -122,15 +119,12 @@ def _year_nav(year, year_range, url_template) -> Node:
     year_int = year if isinstance(year, int) else None
     is_alltime = year_int is None
 
-    alltime_classes = f"inline-flex items-center rounded-base {CONTROL_SIZE_CLASS} mr-3 text-type-body font-medium "
-    alltime_classes += (
-        "solid-brand hover:bg-brand-strong"
-        if is_alltime
-        else "text-body hover:text-heading underline decoration-dotted"
-    )
-    alltime_btn = A(
+    # Blue while it is the active view, grey otherwise — the same pair every
+    # other pill-shaped control in the app uses.
+    alltime_btn = ControlButton(
         href=reverse("games:stats_alltime"),
-        class_=alltime_classes,
+        color="blue" if is_alltime else "gray",
+        class_="mr-3",
     )["All-time stats"]
     picker = YearPicker(
         year=year_int,
@@ -387,7 +381,6 @@ def stats_content(
                         stats_links.games_in_month(year, m["month"].month),
                         sort="-filtered_playtime",
                     ),
-                    link_class=_FILTER_LINK_CLASS,
                 ),
             )
             for m in months
@@ -429,7 +422,6 @@ def stats_content(
                             item["platform_id"], year, item["platform_name"] or ""
                         )
                     ),
-                    link_class=_FILTER_LINK_CLASS,
                 ),
             ),
         ),

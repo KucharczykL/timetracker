@@ -119,7 +119,9 @@ Body = element_builder("body")
 Meta = element_builder("meta")
 Title = element_builder("title")
 Script = element_builder("script")
-Link = element_builder("link")
+# The <link> head element (stylesheets, icons) — not a hyperlink; see
+# primitives.Link for those.
+LinkTag = element_builder("link")
 Select = element_builder("select")
 Option = element_builder("option")
 Optgroup = element_builder("optgroup")
