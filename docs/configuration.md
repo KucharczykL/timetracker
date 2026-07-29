@@ -74,7 +74,8 @@ the global `SiteSetting` model.
   Non-user keys proxy straight to `resolve_with_origin`.
 - **Scopes.** **user**-scoped settings (`DEFAULT_CURRENCY`, `DEFAULT_DEVICE`,
   `DEFAULT_LANDING_PAGE`, `DEFAULT_PAGE_SIZE`, `THEME`, `DISPLAY_TIME_ZONE`,
-  `DATE_FORMAT_LOCALE`, `DATETIME_FORMAT`) have a personal override layer *and*
+  `SESSION_TIME_ZONE_DISPLAY`, `DATE_FORMAT_LOCALE`, `DATETIME_FORMAT`) have a
+  personal override layer *and*
   a `SiteSetting` site default; a plain **site**-scoped setting has only the
   shared `SiteSetting` default (none exist today). **infra**-scoped settings
   (`DEBUG`, `SECRET_KEY`, `APP_URL`, `DEV_LOGIN_PREFILL`, `ALLOWED_HOSTS`,
@@ -114,7 +115,7 @@ the existing navbar **Menu** dropdown. The page has two sections.
 
 #### Site defaults section
 
-Edits these eight live site defaults:
+Edits these nine live site defaults, in the order the page renders them:
 
 - `DEFAULT_CURRENCY`
 - `DEFAULT_DEVICE`
@@ -122,6 +123,7 @@ Edits these eight live site defaults:
 - `DEFAULT_PAGE_SIZE`
 - `THEME`
 - `DISPLAY_TIME_ZONE`
+- `SESSION_TIME_ZONE_DISPLAY`
 - `DATE_FORMAT_LOCALE`
 - `DATETIME_FORMAT`
 
@@ -195,6 +197,17 @@ Changes save immediately against the account through `/api/settings/user`:
   storage. Anonymous pages use `color-theme` in `localStorage`; it is neither
   migrated into the account nor overwritten at login, so it resumes after
   logout. Theme cookies are not used.
+- **Time zone** (`DISPLAY_TIME_ZONE`) is the IANA zone used for wall-clock
+  display and for interpreting datetimes submitted by forms. It is distinct from
+  boot-only `TZ`; saving it reloads the page so the document presentation
+  contract is rebuilt.
+- **Session time zone display** (`SESSION_TIME_ZONE_DISPLAY`) chooses whether a
+  session reads in your current time zone or in the zone it was logged in. The
+  zone is labelled whenever it differs from the account zone. The built-in
+  default is `own` (the session's own zone).
+- **Formatting locale** (`DATE_FORMAT_LOCALE`) selects the locale used for month
+  names, weekday names, and localized AM/PM labels. It is never activated as a
+  translation, so application copy is unaffected.
 - **Date/time format** controls numeric date order, visible date separators, and
   the 12- or 24-hour clock used throughout the rendered application. Supported
   profiles are:

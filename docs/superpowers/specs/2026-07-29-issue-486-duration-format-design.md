@@ -397,13 +397,13 @@ Database values, `GeneratedField` computation, all filtering and sorting
 
 - #583 — retire the finish/reset row swap. #486 is blocked on it.
 - #486 — design section points here; TypeScript parity moved to out-of-scope.
+- #584 — per-table duration-format explainer, a nice-to-have this design
+  deliberately does not include.
 
-## Open
-
-- `docs/configuration.md` is convention for a new setting but is not
-  drift-tested and is already stale (`SESSION_TIME_ZONE_DISPLAY` missing, a wrong
-  "eight live site defaults" count at `:118`). Decide explicitly whether this
-  work fixes that or only appends.
+`docs/configuration.md` gains a `DURATION_FORMAT` entry alongside the existing
+per-preference bullets. Its prior staleness (a missing
+`SESSION_TIME_ZONE_DISPLAY`, a stale "eight live site defaults" count, three
+undocumented preferences) is already fixed on this branch.
 
 ## Out of scope
 
