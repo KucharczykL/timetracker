@@ -15,6 +15,10 @@ Two details are load-bearing, both learned from real call sites:
 ``A([("href", url), …])`` — so a walk keyed on ``href=`` would miss them and the
 positional form would become a silent bypass.
 
+*Match the attribute form too.* ``components.A(...)`` reaches the same builder
+without ever naming ``A`` in an import, so a walk keyed on bare ``ast.Name``
+leaves the whole module-attribute route open.
+
 *Allow by enclosing definition.* The builders call ``A`` themselves, so the
 exemption belongs to the function or class they live in, not to a call shape.
 """
@@ -23,7 +27,9 @@ import ast
 import pathlib
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-PACKAGES = ("common", "games")
+# e2e/ builds real component pages (the synthetic filter harnesses), so an
+# unscanned e2e module is a real place for an unstyled anchor to hide.
+PACKAGES = ("common", "games", "e2e")
 
 # The definitions permitted to construct an anchor directly.
 ANCHOR_BUILDERS = frozenset({"Link", "IconLink", "ControlLink", "ControlButton"})
@@ -61,12 +67,17 @@ def _anchor_calls(tree: ast.AST) -> list[tuple[int, tuple[str, ...]]]:
             else:
                 scopes[child] = current
 
+    def names_the_raw_builder(func: ast.expr) -> bool:
+        # `A(...)` and `components.A(...)` / `primitives.A(...)` alike: the
+        # module-attribute route reaches the same builder without importing it.
+        if isinstance(func, ast.Name):
+            return func.id == "A"
+        return isinstance(func, ast.Attribute) and func.attr == "A"
+
     return [
         (node.lineno, scopes.get(node, ()))
         for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "A"
+        if isinstance(node, ast.Call) and names_the_raw_builder(node.func)
     ]
 
 

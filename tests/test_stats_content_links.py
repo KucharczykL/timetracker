@@ -166,3 +166,22 @@ def test_generated_links_resolve_to_200(rendered, client, django_user_model):
     ):
         response = client.get(filter_url(builder), follow=True)
         assert response.status_code == 200
+
+
+def test_count_links_carry_the_link_treatment(rendered):
+    """The row hack that used to force underlines from the outside is gone, so
+    a link that stops carrying its own would now render bare — and silently."""
+    assert "text-fg-link" in rendered["html"]
+    assert "underline" in rendered["html"]
+
+
+def test_play_glyph_is_an_icon_link_without_an_underline(rendered):
+    """Its opposite: the play glyph is deliberately unstyled as a text link, and
+    no longer needs decoration-transparent to opt out of an inherited rule."""
+    html = rendered["html"]
+    start = html.index('title="View sessions"')
+    anchor_start = html.rindex("<a", 0, start)
+    anchor = html[anchor_start : html.index(">", start) + 1]
+    assert "underline" not in anchor
+    assert "text-fg-link" not in anchor
+    assert "decoration-transparent" not in anchor

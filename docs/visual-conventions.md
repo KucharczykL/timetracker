@@ -225,10 +225,10 @@ scrollspy (#401). Calls recorded so #384 and later consumers do not relitigate i
 
   **Colour: `fg-link`, deliberately not `brand`.** Brand already fills primary buttons, the
   current pagination page, focus rings and active states; links in it would leave blue meaning
-  nothing in particular. Purple is otherwise unused for text and is the browser's own link
-  vocabulary. Light and dark take opposite ends of the ramp (`sky-700` / `sky-200`) because
-  contrast is lightness-driven — no single value clears AA on both a white page and a dark
-  hovered row.
+  nothing in particular. Sky is unspoken for and sits 22° of hue off brand — far enough that a
+  link never reads as a stray button, close enough that it belongs. Light and dark take
+  opposite ends of the ramp (`sky-700` / `sky-200`) because contrast is lightness-driven — no
+  single value clears AA on both a white page and a dark hovered row.
 
   **Hue is chosen by the app's temperature, not in isolation.** The whole UI is cool-blue: the
   neutrals are blue-tinted (`gray-950` sits at hue 262 with real chroma, not 0), brand is 264,

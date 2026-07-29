@@ -80,6 +80,7 @@ from common.components.domain import (
     SessionDeviceSelector,
     _resolve_name_with_icon,
 )
+from common.components.elements import LinkTag
 from common.components.filters import (
     FilterFieldPicker,
     NumberFilter,
