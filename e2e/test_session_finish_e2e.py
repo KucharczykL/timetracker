@@ -1,9 +1,8 @@
 """Browser test for the session-list "Finish session now" action (issue #53).
 
-Finishing now drives PATCH /api/session/<id> and swaps the row in place via the
-<session-actions> custom element + renderSessionRow — no full-page reload. This
-test asserts the row updates without navigation and the PATCH succeeds (200, not
-403 — the real-browser CSRF path).
+Finishing posts to games:finish_session and the sessions list re-renders, so
+the assertions here are about the server-rendered page after navigation — the
+row loses its finish control and gains an end time.
 """
 
 import datetime as dt
@@ -27,7 +26,13 @@ def authenticated_page(live_server, page: Page, django_user_model) -> Page:
     return page
 
 
-def test_finish_session_swaps_row_in_place(authenticated_page: Page, live_server):
+def _finish_control(row):
+    return row.locator('form[action*="/finish"] button[type="submit"]')
+
+
+def test_finish_session_reloads_the_list_with_the_session_closed(
+    authenticated_page: Page, live_server
+):
     page = authenticated_page
     platform = Platform.objects.create(name="PC", icon="pc", group="PC")
     game = Game.objects.create(name="Tunic", platform=platform)
@@ -40,41 +45,24 @@ def test_finish_session_swaps_row_in_place(authenticated_page: Page, live_server
     row = page.locator(f"#session-row-{session.pk}")
     expect(row).to_be_visible()
 
-    # A sentinel that a full-page reload would wipe — proves the swap is in-place.
-    page.evaluate("window.__noReload = true")
+    _finish_control(row).click()
 
-    with page.expect_response(
-        lambda response: (
-            "/api/session/" in response.url
-            and "/device" not in response.url
-            and response.request.method == "PATCH"
-        )
-    ) as response_info:
-        row.locator("button[data-finish]").click()
-
-    assert response_info.value.status == 200, (
-        f"finish PATCH returned {response_info.value.status}; expected 200 "
-        "(403 would mean CSRF was rejected in the browser)."
-    )
-
-    # The same row (same id) now shows the end time and loses the finish/reset
-    # controls — all without navigating.
+    # The server-rendered row is the signal the write committed; only then is
+    # the database worth reading.
     row = page.locator(f"#session-row-{session.pk}")
     expect(row).to_contain_text("—")
-    expect(row.locator("button[data-finish]")).to_have_count(0)
-    expect(row.locator("button[data-reset]")).to_have_count(0)
-    assert page.evaluate("window.__noReload") is True, (
-        "page reloaded — expected in-place swap"
-    )
+    expect(_finish_control(row)).to_have_count(0)
+    expect(row.locator('a[href*="/reset"]')).to_have_count(0)
 
     session.refresh_from_db()
     assert session.timestamp_end is not None
 
 
-def test_finish_preserves_server_rendered_start_across_browser_timezone(
+def test_finish_stamps_the_browser_zone_not_the_account_zone(
     authenticated_page: Page, browser: Browser, live_server, django_user_model
 ):
-    """The rebuilt row must retain Django's text despite the browser's zone."""
+    """The end zone records where the user was, which is the whole reason each
+    timestamp carries its own zone rather than inheriting the account's."""
     UserPreferences.objects.create(
         user=django_user_model.objects.get(username="tester"),
         display_time_zone="Europe/Prague",
@@ -94,35 +82,15 @@ def test_finish_preserves_server_rendered_start_across_browser_timezone(
         page.fill('input[name="password"]', "secret123")
         page.click('button:has-text("Login")')
         page.wait_for_url(f"{live_server.url}/tracker**")
-        assert (
-            page.evaluate("Intl.DateTimeFormat().resolvedOptions().timeZone")
-            == "Pacific/Honolulu"
-        )
 
         page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
         row = page.locator(f"#session-row-{session.pk}")
-        time_cell = row.locator("td").nth(0)
-        expect(time_cell).to_have_text("2026-01-01 01:30")
-        server_rendered_start = time_cell.inner_text()
+        _finish_control(row).click()
 
-        with page.expect_response(
-            lambda response: (
-                "/api/session/" in response.url
-                and "/device" not in response.url
-                and response.request.method == "PATCH"
-            )
-        ) as response_info:
-            row.locator("button[data-finish]").click()
+        expect(page.locator(f"#session-row-{session.pk}")).to_contain_text("—")
 
-        assert response_info.value.status == 200
-
-        row = page.locator(f"#session-row-{session.pk}")
-        expect(row.locator("button[data-finish]")).to_have_count(0)
-        rendered_start, separator, _ = (
-            row.locator("td").nth(0).inner_text().partition(" — ")
-        )
-        assert separator == " — "
-        assert rendered_start.encode() == server_rendered_start.encode()
+        session.refresh_from_db()
+        assert session.timestamp_end_timezone == "Pacific/Honolulu"
     finally:
         context.close()
 
@@ -130,8 +98,8 @@ def test_finish_preserves_server_rendered_start_across_browser_timezone(
 def test_device_selector_still_works_after_finish(
     authenticated_page: Page, live_server
 ):
-    """Guards the device-node clone: after the row is rebuilt, the cloned
-    <drop-down> must re-wire and its PATCH still succeed (204)."""
+    """The device selector is a separate control on the same row; finishing
+    must not disturb its PATCH."""
     page = authenticated_page
     platform = Platform.objects.create(name="PC", icon="pc", group="PC")
     game = Game.objects.create(name="Tunic", platform=platform)
@@ -143,10 +111,11 @@ def test_device_selector_still_works_after_finish(
 
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
     row = page.locator(f"#session-row-{session.pk}")
-    row.locator("button[data-finish]").click()
-    expect(row).to_contain_text("—")  # wait for the swap to land
+    _finish_control(row).click()
 
-    # Now drive the cloned device selector and assert its PATCH succeeds.
+    row = page.locator(f"#session-row-{session.pk}")
+    expect(row).to_contain_text("—")
+
     host = row.locator('drop-down[behavior="select"]')
     host.wait_for(state="attached")
     host.locator("[data-toggle]").click()
@@ -158,8 +127,7 @@ def test_device_selector_still_works_after_finish(
     ) as response_info:
         host.locator(f'[data-option][data-value="{deck.id}"]').click()
     assert response_info.value.status < 400, (
-        f"device PATCH after finish returned {response_info.value.status}; "
-        "the cloned drop-down did not re-wire."
+        f"device PATCH after finish returned {response_info.value.status}."
     )
     session.refresh_from_db()
     assert session.device_id == deck.id
