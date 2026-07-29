@@ -1,0 +1,242 @@
+"""Every duration profile's exact rendering, including the carry boundaries.
+
+The table mirrors the rendering rules in
+docs/superpowers/specs/2026-07-29-issue-486-duration-format-design.md — it is
+the specification, so a change here is a design change, not a test fix.
+"""
+
+from datetime import timedelta
+
+import pytest
+
+from common.duration_presentation import (
+    DurationPresentation,
+    duration_format_profile,
+    format_decimal_hours,
+)
+
+MINUTE = 60
+HOUR = 60 * MINUTE
+DAY = 24 * HOUR
+
+# (seconds, decimal_hours, hours_minutes, whole_hours, adaptive)
+RENDERINGS = [
+    (0, "0.0 h", "0 h", "0 hours", "0 h"),
+    (45, "0.0 h", "1 m", "0 hours", "1 m"),
+    (29 * MINUTE, "0.5 h", "29 m", "0 hours", "29 m"),
+    (45 * MINUTE, "0.8 h", "45 m", "1 hour", "45 m"),
+    (HOUR + 12 * MINUTE, "1.2 h", "1 h 12 m", "1 hour", "1 h 12 m"),
+    (3 * HOUR + 5 * MINUTE, "3.1 h", "3 h 05 m", "3 hours", "3 h 05 m"),
+    (3 * HOUR + 30 * MINUTE, "3.5 h", "3 h 30 m", "4 hours", "3 h 30 m"),
+    (23 * HOUR + 59 * MINUTE + 45, "24.0 h", "24 h 00 m", "24 hours", "1 d 00 h"),
+    (26 * HOUR, "26.0 h", "26 h 00 m", "26 hours", "1 d 02 h"),
+    (83 * HOUR + 12 * MINUTE, "83.2 h", "83 h 12 m", "83 hours", "3 d 11 h"),
+    (200 * HOUR, "200.0 h", "200 h 00 m", "200 hours", "1 w 1 d"),
+    (1234 * HOUR, "1,234.0 h", "1,234 h 00 m", "1,234 hours", "7 w 2 d"),
+    (9000 * HOUR, "9,000.0 h", "9,000 h 00 m", "9,000 hours", "1 y 2 w"),
+]
+
+PROFILE_IDS = ("decimal_hours", "hours_minutes", "whole_hours", "adaptive")
+
+
+def _presentation(profile_id: str) -> DurationPresentation:
+    return DurationPresentation(
+        profile=duration_format_profile(profile_id), locale="en-us"
+    )
+
+
+@pytest.mark.parametrize("row", RENDERINGS, ids=[str(row[0]) for row in RENDERINGS])
+@pytest.mark.parametrize("index,profile_id", list(enumerate(PROFILE_IDS, start=1)))
+def test_renders_the_specified_value(row, index, profile_id):
+    seconds, *expected_per_profile = row
+
+    rendered = _presentation(profile_id).format(timedelta(seconds=seconds))
+
+    assert rendered == expected_per_profile[index - 1]
+
+
+@pytest.mark.parametrize("profile_id", PROFILE_IDS)
+def test_none_renders_as_zero(profile_id):
+    presentation = _presentation(profile_id)
+
+    assert presentation.format(None) == presentation.format(timedelta(0))
+
+
+@pytest.mark.parametrize("profile_id", PROFILE_IDS)
+def test_negative_clamps_to_zero(profile_id):
+    """timestamp_end before timestamp_start is bad data, not a negative
+    duration."""
+    presentation = _presentation(profile_id)
+
+    assert presentation.format(timedelta(seconds=-500)) == presentation.format(
+        timedelta(0)
+    )
+
+
+@pytest.mark.parametrize(
+    "seconds,expected",
+    [
+        # Rounding a component after the split would give "2 h 60 m".
+        (HOUR + 59 * MINUTE + 45, "2 h 00 m"),
+        (29 * MINUTE + 30, "30 m"),
+    ],
+)
+def test_hours_minutes_rounds_the_total_once(seconds, expected):
+    assert _presentation("hours_minutes").format(timedelta(seconds=seconds)) == expected
+
+
+@pytest.mark.parametrize(
+    "seconds,expected",
+    [
+        # Rounding carries into a higher unit, so the ladder re-picks rather
+        # than rendering "6 d 24 h".
+        (6 * DAY + 23 * HOUR + 40 * MINUTE, "1 w 0 d"),
+        (HOUR + 59 * MINUTE + 45, "2 h 00 m"),
+    ],
+)
+def test_adaptive_repicks_when_rounding_carries(seconds, expected):
+    assert _presentation("adaptive").format(timedelta(seconds=seconds)) == expected
+
+
+def test_unregistered_profile_id_raises():
+    with pytest.raises(ValueError, match="two_hours"):
+        duration_format_profile("two_hours")
+
+
+def test_format_decimal_hours_is_preference_independent():
+    """Session.__str__ and other request-less callers need one fixed
+    rendering, not the viewer's profile."""
+    assert format_decimal_hours(timedelta(seconds=HOUR + 12 * MINUTE)) == "1.2"
+    assert format_decimal_hours(None) == "0.0"
+
+
+# The cs thousand separator is U+00A0, not an ASCII space.
+CZECH_GROUP = "\xa0"
+
+
+@pytest.mark.parametrize(
+    "locale,expected",
+    [("en-us", "1,234 hours"), ("cs", f"1{CZECH_GROUP}234 hours")],
+)
+def test_grouping_follows_the_locale(locale, expected):
+    presentation = DurationPresentation(
+        profile=duration_format_profile("whole_hours"), locale=locale
+    )
+
+    assert presentation.format(timedelta(seconds=1234 * HOUR)) == expected
+
+
+@pytest.mark.parametrize("locale,expected", [("en-us", "1.2 h"), ("cs", "1,2 h")])
+def test_decimal_separator_follows_the_locale(locale, expected):
+    presentation = DurationPresentation(
+        profile=duration_format_profile("decimal_hours"), locale=locale
+    )
+
+    assert presentation.format(timedelta(seconds=HOUR + 12 * MINUTE)) == expected
+
+
+@pytest.mark.parametrize("locale", ["en-us", "cs"])
+def test_small_values_are_not_grouped(locale):
+    presentation = DurationPresentation(
+        profile=duration_format_profile("whole_hours"), locale=locale
+    )
+
+    assert presentation.format(timedelta(seconds=26 * HOUR)) == "26 hours"
+
+
+def test_formatting_does_not_leak_the_active_translation():
+    """The formatting locale must never become the application's language —
+    common/middleware.py keeps them apart deliberately."""
+    from django.utils.translation import get_language
+
+    before = get_language()
+    DurationPresentation(
+        profile=duration_format_profile("whole_hours"), locale="cs"
+    ).format(timedelta(seconds=1234 * HOUR))
+
+    assert get_language() == before
+
+
+def _alternates(profile_id: str, seconds: int):
+    return _presentation(profile_id).alternates(timedelta(seconds=seconds))
+
+
+def test_alternates_exclude_the_visible_rendering():
+    visible = _presentation("decimal_hours").format(
+        timedelta(seconds=HOUR + 12 * MINUTE)
+    )
+
+    renderings = [
+        text for _label, text in _alternates("decimal_hours", HOUR + 12 * MINUTE)
+    ]
+
+    assert visible not in renderings
+
+
+def test_alternates_drop_duplicates_below_24h():
+    """hours_minutes and adaptive agree below a day, so the popover shows the
+    value once, not twice."""
+    renderings = [
+        text for _label, text in _alternates("decimal_hours", HOUR + 12 * MINUTE)
+    ]
+
+    assert renderings == ["1 h 12 m", "1 hour"]
+
+
+def test_alternates_keep_all_three_above_24h():
+    renderings = [
+        text for _label, text in _alternates("decimal_hours", 83 * HOUR + 12 * MINUTE)
+    ]
+
+    assert renderings == ["83 h 12 m", "83 hours", "3 d 11 h"]
+
+
+def test_adaptive_and_hours_minutes_diverge_at_the_carry_boundary():
+    """23 h 59 m 45 s rounds to 24 h 00 m under hours_minutes but re-picks to
+    1 d 00 h under adaptive — which is why dedup compares rendered strings and
+    never profile identity."""
+    renderings = [
+        text
+        for _label, text in _alternates("decimal_hours", 23 * HOUR + 59 * MINUTE + 45)
+    ]
+
+    assert renderings == ["24 h 00 m", "24 hours", "1 d 00 h"]
+
+
+def test_alternates_are_labelled_with_their_profile():
+    labels = [label for label, _text in _alternates("decimal_hours", 83 * HOUR)]
+
+    assert labels == ["Hours and minutes", "Whole hours", "Adaptive units"]
+
+
+@pytest.mark.parametrize(
+    "seconds,expected",
+    [
+        (0, "0 hours"),
+        (45, "1 minute"),
+        (45 * MINUTE, "45 minutes"),
+        (HOUR + 12 * MINUTE, "1 hour 12 minutes"),
+        (2 * HOUR, "2 hours"),
+        (9000 * HOUR, "9000 hours"),
+        # Never days or weeks: "375 days" helps nobody.
+        (9 * DAY, "216 hours"),
+    ],
+)
+def test_spoken_uses_words_and_pluralizes(seconds, expected):
+    assert _presentation("adaptive").spoken(timedelta(seconds=seconds)) == expected
+
+
+def test_spoken_is_the_same_whatever_the_visible_profile():
+    value = timedelta(seconds=HOUR + 12 * MINUTE)
+
+    spoken = {_presentation(profile_id).spoken(value) for profile_id in PROFILE_IDS}
+
+    assert spoken == {"1 hour 12 minutes"}
+
+
+def test_spoken_marks_a_manual_session():
+    spoken = _presentation("decimal_hours").spoken(
+        timedelta(seconds=HOUR + 12 * MINUTE), manual=True
+    )
+
+    assert spoken == "1 hour 12 minutes, manual"

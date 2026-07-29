@@ -17,6 +17,7 @@ from django.utils.timezone import now as timezone_now
 from common.components import (
     CsrfInput,
     Div,
+    Duration,
     FilterBuilder,
     FilterCount,
     FilterGroup,
@@ -29,8 +30,8 @@ from common.components.custom_elements import (
 )
 from common.components.primitives import ContentContainer, PageHeading, Span
 from common.date_time_presentation import date_time_presentation_for_request
+from common.duration_presentation import duration_presentation_for_request
 from common.layout import render_page
-from common.time import format_duration
 from games.filters import SessionFilter, filter_url, model_field_registry
 from games.models import Device, Game, Platform, Purchase, Session
 from games.sorting import parse_per_page_override
@@ -63,6 +64,8 @@ def model_counts(request: HttpRequest) -> dict[str, Any]:
         timestamp_start__lt=start_of_tomorrow,
     ).aggregate(time=Sum(F("duration_total")))["time"]
 
+    durations = duration_presentation_for_request(request)
+
     today_iso = today.isoformat()
     today_url = filter_url(SessionFilter.where(timestamp_start=today_iso))
     last_7_url = filter_url(
@@ -79,8 +82,12 @@ def model_counts(request: HttpRequest) -> dict[str, Any]:
         "platform_available": Platform.objects.exists(),
         "purchase_available": Purchase.objects.exists(),
         "session_count": Session.objects.exists(),
-        "today_played": format_duration(today_played, "%H h %m m"),
-        "last_7_played": format_duration(last_7_played, "%H h %m m"),
+        "today_played": Duration(
+            today_played, durations, id_scope="navbar-today", link=today_url
+        ),
+        "last_7_played": Duration(
+            last_7_played, durations, id_scope="navbar-last-7", link=last_7_url
+        ),
         "today_url": today_url,
         "last_7_url": last_7_url,
     }
@@ -94,7 +101,10 @@ def global_current_year(request: HttpRequest) -> dict[str, int]:
 def stats_alltime(request: HttpRequest) -> HttpResponse:
     data = compute_stats(None)
     presentation = date_time_presentation_for_request(request)
-    return render_page(request, stats_content(data, presentation), title=data["title"])
+    durations = duration_presentation_for_request(request)
+    return render_page(
+        request, stats_content(data, presentation, durations), title=data["title"]
+    )
 
 
 @login_required
@@ -108,7 +118,10 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
         return HttpResponseRedirect(reverse("games:stats_alltime"))
     data = compute_stats(year)
     presentation = date_time_presentation_for_request(request)
-    return render_page(request, stats_content(data, presentation), title=data["title"])
+    durations = duration_presentation_for_request(request)
+    return render_page(
+        request, stats_content(data, presentation, durations), title=data["title"]
+    )
 
 
 # The lists backed by an OperatorFilter + nested builder. Keys are model keys

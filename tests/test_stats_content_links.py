@@ -10,6 +10,10 @@ from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
 )
+from common.duration_presentation import (
+    DEFAULT_DURATION_FORMAT_PROFILE,
+    DurationPresentation,
+)
 from games.filters import filter_url
 from games.models import Game, Platform, PlayEvent, Purchase, Session
 from games.views import stats_links
@@ -22,8 +26,11 @@ _PRESENTATION = DateTimePresentation(
 )
 
 
+_DURATIONS = DurationPresentation(DEFAULT_DURATION_FORMAT_PROFILE, "en-us")
+
+
 def stats_content(ctx):
-    return _stats_content(ctx, _PRESENTATION)
+    return _stats_content(ctx, _PRESENTATION, _DURATIONS)
 
 
 def _dt(month, day, hour=12):

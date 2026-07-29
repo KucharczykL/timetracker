@@ -13,7 +13,7 @@ from django.db.models.functions import Coalesce
 from django.template.defaultfilters import floatformat, pluralize, slugify
 from django.utils import timezone
 
-from common.time import format_duration
+from common.duration_presentation import format_decimal_hours
 from common.utils import label_with_details
 from timetracker.settings_registry import THEME_CHOICES, SettingKey
 
@@ -101,9 +101,6 @@ class Game(models.Model):
 
     def unplayed(self):
         return self.status == self.Status.UNPLAYED
-
-    def playtime_formatted(self):
-        return format_duration(self.playtime, "%2.1H")
 
 
 class Platform(models.Model):
@@ -270,17 +267,11 @@ class Purchase(models.Model):
 
 
 class SessionQuerySet(models.QuerySet):
-    def total_duration_formatted(self):
-        return format_duration(self.total_duration_unformatted())
-
     def total_duration_unformatted(self):
         result = self.aggregate(
             duration=Sum(F("duration_calculated") + F("duration_manual"))
         )
         return result["duration"]
-
-    def calculated_duration_formatted(self):
-        return format_duration(self.calculated_duration_unformatted())
 
     def calculated_duration_unformatted(self):
         result = self.aggregate(duration=Sum(F("duration_calculated")))
@@ -351,18 +342,13 @@ class Session(models.Model):
 
     def __str__(self):
         mark = "*" if self.is_manual() else ""
-        return f"{self.game!s} {self.timestamp_start.date()!s} ({self.duration_formatted()}{mark})"
+        return (
+            f"{self.game!s} {self.timestamp_start.date()!s} "
+            f"({format_decimal_hours(self.duration_total)}{mark})"
+        )
 
     def finish_now(self):
         self.timestamp_end = timezone.now()
-
-    def duration_formatted(self) -> str:
-        result = format_duration(self.duration_total, "%02.1H")
-        return result
-
-    def duration_formatted_with_mark(self) -> str:
-        mark = "*" if self.is_manual() else ""
-        return f"{self.duration_formatted()}{mark}"
 
     def is_manual(self) -> bool:
         return self.duration_manual != timedelta(0)

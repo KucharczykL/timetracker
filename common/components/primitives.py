@@ -259,9 +259,14 @@ def custom_element_builder(tag_name: str):
 _PopOver = custom_element_builder("pop-over")
 _TruncatedText = custom_element_builder("truncated-text")
 
+# font-sans is deliberate, not redundant: the panel is a DOM descendant of
+# whatever it annotates, so a tooltip mounted inside a data table or a
+# TruncatedText host inherits font-condensed and renders in a different
+# typeface from every other tooltip on the site. Stating the family here keeps
+# a tooltip looking like a tooltip wherever it is mounted.
 _TOOLTIP_PANEL_CLASS = (
-    f"z-10 inline-block text-type-body text-heading bg-brand-soft border "
-    f"border-brand/30 rounded-base shadow-xs {CONTENT_MAX_WIDTH_CLASS}"
+    f"z-10 inline-block font-sans text-type-body text-heading bg-brand-soft "
+    f"border border-brand/30 rounded-base shadow-xs {CONTENT_MAX_WIDTH_CLASS}"
 )
 
 
@@ -274,7 +279,12 @@ def TooltipDefinitionList(
     list_class = f"flex flex-col gap-2 {class_}".strip()
     items = [
         Div(definition.attributes)[
-            Dt(class_="text-type-micro text-body")[definition.term],
+            # font-medium on the term as well as the value: the term set no
+            # weight, so it inherited one from wherever the tooltip was
+            # mounted — 500 on an ordinary page but 400 inside a data table,
+            # which made the same tooltip look different per surface. Term and
+            # value are separated by size and color, not weight.
+            Dt(class_="text-type-micro text-body font-medium")[definition.term],
             Dd(class_="font-medium")[definition.description],
         ]
         for definition in definitions
@@ -325,6 +335,7 @@ def _popover_html(
     trigger_disabled: bool = False,
     preface: Node | str = "",
     selectable_text: bool = False,
+    describedby: bool = True,
 ) -> Node:
     """Generate popover HTML. Single source of truth for popover structure.
 
@@ -391,19 +402,18 @@ def _popover_html(
                 Button(control_attributes)[*trigger_children]
             ]
         else:
-            control_attributes.append(("aria-describedby", id))
+            if describedby:
+                control_attributes.append(("aria-describedby", id))
             if trigger_label:
                 control_attributes.append(("aria-label", trigger_label))
             control_attributes.append(("data-pop-over-trigger", ""))
             trigger = Button(control_attributes)[*trigger_children]
     else:
-        trigger = Span(
-            [
-                ("data-pop-over-trigger", ""),
-                ("aria-describedby", id),
-                ("class", wrapped_classes),
-            ]
-        )[*trigger_children]
+        span_attributes: list[HTMLAttribute] = [("data-pop-over-trigger", "")]
+        if describedby:
+            span_attributes.append(("aria-describedby", id))
+        span_attributes.append(("class", wrapped_classes))
+        trigger = Span(span_attributes)[*trigger_children]
 
     # No positioning class — the element sets `position: fixed` + coords on show
     # and clears them on hide; the `hidden` attribute owns the closed state.
@@ -443,6 +453,7 @@ def Popover(
     trigger_disabled: bool = False,
     preface: Node | str = "",
     selectable_text: bool = False,
+    describedby: bool = True,
 ) -> Node:
     children = as_children(children)
     if not wrapped_content and not children:
@@ -462,6 +473,7 @@ def Popover(
         trigger_disabled=trigger_disabled,
         preface=preface,
         selectable_text=selectable_text,
+        describedby=describedby,
     )
 
 

@@ -71,6 +71,15 @@ DATETIME_FORMAT_CHOICES: Final[tuple[tuple[str, str], ...]] = (
 _DATETIME_FORMAT_VALUES: Final[frozenset[str]] = frozenset(
     value for value, _label in DATETIME_FORMAT_CHOICES
 )
+DURATION_FORMAT_CHOICES: Final[tuple[tuple[str, str], ...]] = (
+    ("decimal_hours", "Decimal hours (1.2 h)"),
+    ("hours_minutes", "Hours and minutes (1 h 12 m)"),
+    ("whole_hours", "Whole hours (1 hour)"),
+    ("adaptive", "Adaptive units (3 d 11 h)"),
+)
+_DURATION_FORMAT_VALUES: Final[frozenset[str]] = frozenset(
+    value for value, _label in DURATION_FORMAT_CHOICES
+)
 DISPLAY_TIME_ZONE_CHOICES: Final[tuple[tuple[str, str], ...]] = tuple(
     (time_zone, time_zone) for time_zone in sorted(available_timezones())
 )
@@ -263,6 +272,16 @@ def _validate_datetime_format(value: object) -> str:
     return normalized
 
 
+def _validate_duration_format(value: object) -> str:
+    normalized = value.strip().lower() if isinstance(value, str) else value
+    if not isinstance(normalized, str) or normalized not in _DURATION_FORMAT_VALUES:
+        choices = ", ".join(sorted(_DURATION_FORMAT_VALUES))
+        raise ValidationError(
+            f"Duration format must be one of {choices} (got {value!r})."
+        )
+    return normalized
+
+
 def _validate_session_time_zone_display(value: object) -> str:
     normalized = value.strip().lower() if isinstance(value, str) else value
     if (
@@ -406,6 +425,21 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
             validator=_validate_datetime_format,
             widget=SettingWidget.SELECT,
             choices=DATETIME_FORMAT_CHOICES,
+            reload_after_save=True,
+        ),
+        SettingDefinition(
+            "DURATION_FORMAT",
+            scope=SettingScope.USER,
+            apply_timing=ApplyTiming.LIVE,
+            label="Duration format",
+            help_text=(
+                "How elapsed playtime is displayed. Every duration also offers "
+                "the other formats on hover."
+            ),
+            default_factory=lambda: "decimal_hours",
+            validator=_validate_duration_format,
+            widget=SettingWidget.SELECT,
+            choices=DURATION_FORMAT_CHOICES,
             reload_after_save=True,
         ),
         SettingDefinition(

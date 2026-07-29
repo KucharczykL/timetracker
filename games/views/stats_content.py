@@ -17,6 +17,7 @@ from common.components import (
     ContentContainer,
     ControlButton,
     Div,
+    Duration,
     Fragment,
     GameLink,
     Icon,
@@ -29,7 +30,7 @@ from common.components import (
     make_row,
 )
 from common.date_time_presentation import DateTimePresentation
-from common.time import durationformat, format_duration
+from common.duration_presentation import DurationPresentation
 from games.filters import filter_url
 from games.views import stats_links
 from games.views.stats_data import StatsData
@@ -101,10 +102,6 @@ def _card(title: str, body: Node) -> Node:
     return Div(class_="min-w-0")[_card_title(title), body]
 
 
-def _dur(value) -> str:
-    return format_duration(value, durationformat)
-
-
 def _purchase_name(purchase) -> Node:
     """Mirror of the `purchase-name` partial in the old template."""
     game_name = getattr(purchase, "game_name", None)
@@ -143,10 +140,15 @@ def _year_nav(year, year_range, url_template) -> Node:
     return Div(class_="flex justify-center items-center mb-12")[alltime_btn, picker]
 
 
-def _playtime_table(ctx, presentation: DateTimePresentation) -> Node:
+def _playtime_table(
+    ctx, presentation: DateTimePresentation, durations: DurationPresentation
+) -> Node:
     year = ctx.get("year")
     rows = [
-        make_row("Hours", _cell(ctx.get("total_hours"))),
+        make_row(
+            "Hours",
+            Duration(ctx.get("total_hours"), durations, id_scope="stats-total-hours"),
+        ),
         make_row(
             "Sessions",
             _count_link(
@@ -185,7 +187,7 @@ def _playtime_table(ctx, presentation: DateTimePresentation) -> Node:
         return make_row(
             label,
             Fragment(
-                _cell(value),
+                value if isinstance(value, Node) else _cell(value),
                 " (",
                 GameLink(game.id, game.name),
                 ")",
@@ -196,7 +198,15 @@ def _playtime_table(ctx, presentation: DateTimePresentation) -> Node:
     longest_game = ctx.get("longest_session_game")
     if longest_game and longest_game.id:
         rows.append(
-            _game_row("Longest session", ctx.get("longest_session_time"), longest_game)
+            _game_row(
+                "Longest session",
+                Duration(
+                    ctx.get("longest_session_time"),
+                    durations,
+                    id_scope="stats-longest-session",
+                ),
+                longest_game,
+            )
         )
     most_sessions_game = ctx.get("highest_session_count_game")
     if most_sessions_game and most_sessions_game.id:
@@ -209,7 +219,13 @@ def _playtime_table(ctx, presentation: DateTimePresentation) -> Node:
     if avg_game and avg_game.id:
         rows.append(
             _game_row(
-                "Highest session average", ctx.get("highest_session_average"), avg_game
+                "Highest session average",
+                Duration(
+                    ctx.get("highest_session_average"),
+                    durations,
+                    id_scope="stats-session-average",
+                ),
+                avg_game,
             )
         )
     first_game = ctx.get("first_play_game")
@@ -340,7 +356,11 @@ def _priced_table(purchases, currency, view_all_url=None, total=None) -> Node:
     return table
 
 
-def stats_content(ctx: StatsData, presentation: DateTimePresentation) -> Node:
+def stats_content(
+    ctx: StatsData,
+    presentation: DateTimePresentation,
+    durations: DurationPresentation,
+) -> Node:
     year = ctx["year"]
     currency = ctx.get("total_spent_currency")
     # Build a navigation URL with an `__year__` placeholder the picker's JS
@@ -351,7 +371,7 @@ def stats_content(ctx: StatsData, presentation: DateTimePresentation) -> Node:
     )
     # Each stats section is one card in the grid: a title above its table.
     cards: list[Node] = [
-        _card("Playtime", _playtime_table(ctx, presentation)),
+        _card("Playtime", _playtime_table(ctx, presentation, durations)),
     ]
 
     months = list(ctx.get("month_playtimes") or [])
@@ -359,13 +379,16 @@ def stats_content(ctx: StatsData, presentation: DateTimePresentation) -> Node:
         month_rows = [
             make_row(
                 presentation.format(m["month"], "month"),
-                A(
-                    href=filter_url(
+                Duration(
+                    m["playtime"],
+                    durations,
+                    id_scope=f"stats-month-{m['month'].month}",
+                    link=filter_url(
                         stats_links.games_in_month(year, m["month"].month),
                         sort="-filtered_playtime",
                     ),
-                    class_=_FILTER_LINK_CLASS,
-                )[_dur(m["playtime"])],
+                    link_class=_FILTER_LINK_CLASS,
+                ),
             )
             for m in months
         ]
@@ -381,7 +404,11 @@ def stats_content(ctx: StatsData, presentation: DateTimePresentation) -> Node:
                 lambda g: Fragment(
                     GameLink(g.id, g.name), _session_link(g.id, year, g.name)
                 ),
-                lambda g: _dur(g.total_playtime),
+                lambda g: Duration(
+                    g.total_playtime,
+                    durations,
+                    id_scope=f"stats-game-{g.id}-playtime",
+                ),
                 view_all_url=filter_url(
                     stats_links.games_played(year), sort="-filtered_playtime"
                 ),
@@ -393,14 +420,17 @@ def stats_content(ctx: StatsData, presentation: DateTimePresentation) -> Node:
                 "Platform",
                 ctx.get("total_playtime_per_platform") or [],
                 lambda item: item["platform_name"] or "Unspecified",
-                lambda item: A(
-                    href=filter_url(
+                lambda item: Duration(
+                    item["playtime"],
+                    durations,
+                    id_scope=f"stats-platform-{item['platform_id'] or 'none'}",
+                    link=filter_url(
                         stats_links.sessions_for_platform(
                             item["platform_id"], year, item["platform_name"] or ""
                         )
                     ),
-                    class_=_FILTER_LINK_CLASS,
-                )[_dur(item["playtime"])],
+                    link_class=_FILTER_LINK_CLASS,
+                ),
             ),
         ),
     ]

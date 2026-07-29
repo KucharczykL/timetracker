@@ -17,6 +17,9 @@ from common.components import (
     ContentContainer,
     ControlButton,
     Div,
+    Duration,
+    DurationAlternates,
+    DurationText,
     Fragment,
     GameStatus,
     GameStatusSelector,
@@ -42,9 +45,12 @@ from common.date_time_presentation import (
     DateTimePresentation,
     date_time_presentation_for_request,
 )
+from common.duration_presentation import (
+    DurationPresentation,
+    duration_presentation_for_request,
+)
 from common.layout import render_page
 from common.returns import OriginUrl, action_url
-from common.time import format_duration
 from common.utils import paginate, safe_division
 from games.filters import (
     PlayEventFilter,
@@ -70,6 +76,7 @@ from games.views.returns import origin_from, return_url
 @login_required
 def list_games(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
+    durations = duration_presentation_for_request(request)
     origin = request.get_full_path()
     games = Game.objects.select_related("platform")
 
@@ -121,7 +128,11 @@ def list_games(request: HttpRequest) -> HttpResponse:
             make_row(
                 NameWithIcon(game=game, include_sort_name=True),
                 str(game.year_released),
-                format_duration(game.filtered_playtime or timedelta(0), "%2.1H"),
+                Duration(
+                    game.filtered_playtime or timedelta(0),
+                    durations,
+                    id_scope=f"game-{game.pk}-playtime",
+                ),
                 GameStatusSelector(game, Game.Status.choices, get_token(request)),
                 game.wikidata,
                 presentation.format(game.created_at, "date"),
@@ -317,12 +328,26 @@ def _played_row(game: Game, request: HttpRequest, origin: OriginUrl | None) -> N
     ]
 
 
-def _stat_popover(popover_id: str, tooltip: str, svg_key: str, value: str) -> Node:
+def _stat_popover(
+    popover_id: str,
+    tooltip: str,
+    svg_key: str,
+    value: Node | str,
+    details: Node | None = None,
+) -> Node:
+    """One header stat. ``details`` adds rows beneath the tooltip line — the
+    playtime stat puts its alternate formats there rather than nesting a second
+    popover inside this one."""
+    content: Node | str = (
+        tooltip
+        if details is None
+        else Div(class_="flex flex-col gap-1")[tooltip, details]
+    )
     return Popover(
-        popover_content=tooltip,
+        popover_content=content,
         wrapped_classes="flex gap-2 items-center",
         id=popover_id,
-        children=[Safe(_STAT_SVGS[svg_key]), str(value)],
+        children=[Safe(_STAT_SVGS[svg_key]), value],
     )
 
 
@@ -447,9 +472,8 @@ def _game_overview_metrics(game: Game) -> dict[str, Any]:
     playrange_start = sessions.earliest().timestamp_start if sessions.exists() else None
     playrange_end = sessions.latest().timestamp_start if sessions.exists() else None
 
-    total_hours_without_manual = float(
-        format_duration(sessions.calculated_duration_unformatted(), "%2.1H")
-    )
+    calculated_total = sessions.calculated_duration_unformatted() or timedelta(0)
+    total_hours_without_manual = calculated_total.total_seconds() / 3600
     session_average_without_manual = round(
         safe_division(total_hours_without_manual, int(session_count_without_manual)), 1
     )
@@ -466,6 +490,7 @@ def _game_header(
     request: HttpRequest,
     metrics: dict[str, Any],
     presentation: DateTimePresentation,
+    durations: DurationPresentation,
     origin: OriginUrl | None,
 ) -> Node:
     playrange_start = metrics["playrange_start"]
@@ -502,7 +527,8 @@ def _game_header(
             "popover-hours",
             "Total hours played",
             "hours",
-            game.playtime_formatted(),
+            DurationText(game.playtime, durations),
+            DurationAlternates(game.playtime, durations),
         ),
         _stat_popover(
             "popover-sessions",
@@ -603,13 +629,22 @@ def _purchases_section(
     )
 
 
-def _sessions_section(game: Game, presentation: DateTimePresentation) -> Node:
+def _sessions_section(
+    game: Game,
+    presentation: DateTimePresentation,
+    durations: DurationPresentation,
+) -> Node:
     sessions = game.sessions.select_related("device").order_by("-timestamp_start")
     session_count = sessions.count()
     rows = [
         make_row(
             session_time_range(session, presentation),
-            session.duration_formatted_with_mark(),
+            Duration(
+                session.duration_total,
+                durations,
+                id_scope=f"game-session-{session.pk}",
+                manual=session.is_manual(),
+            ),
             session.device.name if session.device else "No device",
         )
         for session in sessions[:5]
@@ -691,11 +726,19 @@ def _history_section(
 def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
     game = Game.objects.get(id=game_id)
     presentation = date_time_presentation_for_request(request)
+    durations = duration_presentation_for_request(request)
     origin = request.get_full_path()
     content = ContentContainer(class_="dark:text-white")[
-        _game_header(game, request, _game_overview_metrics(game), presentation, origin),
+        _game_header(
+            game,
+            request,
+            _game_overview_metrics(game),
+            presentation,
+            durations,
+            origin,
+        ),
         _purchases_section(game, presentation, origin),
-        _sessions_section(game, presentation),
+        _sessions_section(game, presentation, durations),
         _playevents_section(game, presentation, origin),
         _history_section(game, presentation, origin),
     ]

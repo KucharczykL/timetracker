@@ -195,7 +195,9 @@ class TooltipDefinitionListTest(unittest.TestCase):
         self.assertIn("<dl", html)
         self.assertIn('data-tooltip-definition-list=""', html)
         self.assertIn("flex flex-col gap-2 max-w-sm", html)
-        self.assertEqual(html.count('<dt class="text-type-micro text-body">'), 2)
+        self.assertEqual(
+            html.count('<dt class="text-type-micro text-body font-medium">'), 2
+        )
         self.assertEqual(html.count('<dd class="font-medium">'), 2)
         self.assertIn(">Name</dt>", html)
         self.assertIn(">The Display Name</dd>", html)
@@ -2755,3 +2757,63 @@ def test_confirm_page_renders_details_outside_the_message_paragraph():
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PopoverDescribedbyTest(unittest.TestCase):
+    """A popover whose panel only restates the trigger can drop the
+    description, so a screen reader does not read the value twice."""
+
+    def test_popover_omits_describedby_when_disabled(self):
+        html = str(
+            components.Popover(
+                popover_content="1 h 12 m",
+                wrapped_content="1.2 h",
+                id="duration-1",
+                describedby=False,
+            )
+        )
+        self.assertNotIn("aria-describedby", html)
+
+    def test_panel_keeps_its_id_and_tooltip_role_when_describedby_is_off(self):
+        html = str(
+            components.Popover(
+                popover_content="1 h 12 m",
+                wrapped_content="1.2 h",
+                id="duration-2",
+                describedby=False,
+            )
+        )
+        self.assertIn('id="duration-2"', html)
+        self.assertIn('role="tooltip"', html)
+
+    def test_describedby_is_present_by_default(self):
+        html = str(
+            components.Popover(
+                popover_content="original", wrapped_content="converted", id="price-1"
+            )
+        )
+        self.assertIn('aria-describedby="price-1"', html)
+
+
+class TooltipPanelFontTest(unittest.TestCase):
+    """A tooltip panel is a descendant of whatever it annotates, so it must
+    state its own font family — otherwise one mounted inside a data table or a
+    TruncatedText host renders condensed while every other tooltip does not."""
+
+    def test_definition_terms_state_their_own_weight(self):
+        html = str(
+            components.TooltipDefinitionList(
+                [components.TooltipDefinition("Term", "Value")]
+            )
+        )
+        term_class = html.split("<dt")[1].split('class="')[1].split('"')[0]
+        self.assertIn("font-medium", term_class)
+
+    def test_panel_states_its_font_family(self):
+        html = str(
+            components.Popover(
+                popover_content="detail", wrapped_content="value", id="font-check"
+            )
+        )
+        panel_class = html.split('data-pop-over-panel=""')[1].split('class="')[1]
+        self.assertIn("font-sans", panel_class.split('"')[0])

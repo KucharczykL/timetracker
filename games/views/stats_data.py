@@ -27,7 +27,7 @@ from django.db.models import (
 )
 from django.db.models.functions import TruncDate, TruncMonth
 
-from common.time import available_stats_year_range, format_duration
+from common.time import available_stats_year_range
 from common.utils import safe_division
 from games.models import Game, Purchase, Session
 
@@ -36,7 +36,7 @@ class StatsData(TypedDict):
     # --- always present (both scopes) ---
     year: Any  # int for a year, "Alltime" for all-time
     title: str
-    total_hours: str
+    total_hours: timedelta
     total_sessions: int
     unique_days: int
     unique_days_percent: int
@@ -56,11 +56,11 @@ class StatsData(TypedDict):
     purchased_unfinished_count: int
     unfinished_purchases_percent: int
     backlog_decrease_count: int
-    longest_session_time: Any
+    longest_session_time: timedelta | None
     longest_session_game: Any
     highest_session_count: int
     highest_session_count_game: Any
-    highest_session_average: Any
+    highest_session_average: timedelta | None
     highest_session_average_game: Any
     first_play_game: Any
     first_play_date: datetime | None
@@ -276,7 +276,7 @@ def compute_stats(year: int | None = None) -> StatsData:
     data: StatsData = {
         "year": year_label,
         "title": f"{year_label} Stats",
-        "total_hours": format_duration(sessions.total_duration_unformatted(), "%2.0H"),
+        "total_hours": sessions.total_duration_unformatted() or timedelta(0),
         "total_sessions": sessions.count(),
         "unique_days": unique_days,
         "unique_days_percent": unique_days_percent,
@@ -302,11 +302,7 @@ def compute_stats(year: int | None = None) -> StatsData:
             safe_division(unfinished_count, without_refunded_count) * 100
         ),
         "backlog_decrease_count": backlog_decrease_count,
-        "longest_session_time": (
-            format_duration(longest_session.duration, "%2.0Hh %2.0mm")
-            if longest_session
-            else 0
-        ),
+        "longest_session_time": longest_session.duration if longest_session else None,
         "longest_session_game": longest_session.game if longest_session else None,
         "highest_session_count": (
             highest_session_count_game.session_count
@@ -315,11 +311,9 @@ def compute_stats(year: int | None = None) -> StatsData:
         ),
         "highest_session_count_game": highest_session_count_game,
         "highest_session_average": (
-            format_duration(
-                highest_session_average_game.session_average, "%2.0Hh %2.0mm"
-            )
+            highest_session_average_game.session_average
             if highest_session_average_game
-            else 0
+            else None
         ),
         "highest_session_average_game": highest_session_average_game,
         "first_play_game": first_play_game,

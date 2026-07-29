@@ -23,6 +23,7 @@ from common.components.primitives import (
 from games.models import Game, Purchase, Session
 
 if TYPE_CHECKING:
+    from common.duration_presentation import DurationPresentation
     from common.returns import OriginUrl
 
 
@@ -335,6 +336,100 @@ def SessionDeviceSelector(session, session_devices, csrf_token: str) -> Node:
         event="device-changed",
         csrf=csrf_token,
         numeric=True,
+    )
+
+
+def DurationText(
+    duration,
+    presentation: DurationPresentation,
+    *,
+    manual: bool = False,
+) -> Node:
+    """The value itself: visible text plus its ``sr-only`` spoken form.
+
+    Split out of :func:`Duration` so a surface that already owns a popover can
+    show a duration without nesting one popover inside another.
+    """
+    visible = presentation.format(duration)
+    return Fragment(
+        Span(aria_hidden="true")[f"{visible}*" if manual else visible],
+        Span(class_="sr-only")[presentation.spoken(duration, manual=manual)],
+    )
+
+
+def DurationAlternates(duration, presentation: DurationPresentation) -> Node:
+    """The same value under the other profiles.
+
+    Rendered with the shared informative-tooltip treatment rather than a local
+    one: profile name and value are a term/description pair, which is what a
+    definition list is for, and the colors come from the design system instead
+    of being chosen here.
+    """
+    return TooltipDefinitionList(
+        [
+            TooltipDefinition(label, rendering, [("class", "tabular-nums")])
+            for label, rendering in presentation.alternates(duration)
+        ]
+    )
+
+
+def Duration(
+    duration,
+    presentation: DurationPresentation,
+    *,
+    id_scope: str,
+    manual: bool = False,
+    link: str | None = None,
+    link_class: str = "hover:underline tabular-nums",
+) -> Node:
+    """One elapsed duration, with the same value under the other profiles on hover.
+
+    ``id_scope`` is required and must be unique on the page. ``Popover`` derives
+    its DOM id by hashing its own content, so two rows showing the same duration
+    would collide — and ``Game.playtime`` defaults to zero, which makes that the
+    common case on a game list rather than an edge case.
+
+    The visible text is ``aria-hidden`` and a sibling ``sr-only`` span carries
+    the value in words: screen readers read "1.2 h" as "one point two h". For
+    the same reason the panel drops ``aria-describedby`` — it restates what the
+    ``sr-only`` text already said.
+
+    ``manual`` appends the "*" mark that flags a hand-entered session. It sits
+    inside the trigger with the value and is spoken as ", manual"; it qualifies
+    the value, not its formatting, so it never appears among the alternates.
+
+    ``link`` makes the value a link to ``link`` and moves the popover onto a
+    separate info glyph beside it. A popover trigger is a ``<button>`` and may
+    not nest inside an ``<a>``, so this is the only way a duration can both
+    navigate and offer its alternates — at the cost of one extra glyph.
+    """
+    from common.components.primitives import Popover
+
+    text = DurationText(duration, presentation, manual=manual)
+    if link is None:
+        return Popover(
+            popover_content=DurationAlternates(duration, presentation),
+            children=[text],
+            wrapped_classes="tabular-nums underline decoration-dotted",
+            id=f"duration-{id_scope}",
+            describedby=False,
+            selectable_text=True,
+        )
+    return Popover(
+        popover_content=DurationAlternates(duration, presentation),
+        preface=A(href=link, class_=link_class)[text],
+        children=[Icon("info", size="size-[1.1em]")],
+        # Same treatment as TruncatedText's reveal button: the glyph exists for
+        # devices that cannot hover, where the host's own hover-to-open is
+        # unavailable. On a pointer device it stays out of the way and hovering
+        # the total opens the panel.
+        wrapped_classes=(
+            "hidden [@media(hover:none)]:inline-flex items-center "
+            "text-subtle hover:text-heading hover:cursor-pointer"
+        ),
+        trigger_label="Other duration formats",
+        id=f"duration-{id_scope}",
+        describedby=False,
     )
 
 
