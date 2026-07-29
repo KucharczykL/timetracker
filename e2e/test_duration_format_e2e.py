@@ -78,6 +78,34 @@ def test_popover_lists_the_other_profiles(
     expect(panel).not_to_contain_text("1.2 h")
 
 
+def test_reveal_glyph_is_visible_without_hovering(
+    authenticated_page: Page, live_server, session
+):
+    """A pointer device can hover the value to open the panel, but nothing
+    tells it the panel exists — so the glyph stays visible there too."""
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
+
+    reveal = _duration_cell(page, session).locator("[data-pop-over-reveal]")
+    expect(reveal).to_be_visible()
+    expect(page.locator(f"#duration-session-{session.pk}")).to_be_hidden()
+
+    reveal.click()
+    expect(page.locator(f"#duration-session-{session.pk}")).to_be_visible()
+
+
+def test_hovering_the_value_still_opens_the_panel(
+    authenticated_page: Page, live_server, session
+):
+    """The glyph is the tap target; the whole host remains the hover target."""
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
+
+    _duration_cell(page, session).locator("pop-over").hover()
+
+    expect(page.locator(f"#duration-session-{session.pk}")).to_be_visible()
+
+
 def test_screen_reader_text_spells_the_value_out(
     authenticated_page: Page, live_server, session
 ):

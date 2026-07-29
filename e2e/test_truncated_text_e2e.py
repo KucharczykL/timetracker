@@ -343,6 +343,33 @@ def test_multi_game_purchase_has_one_always_available_informational_tooltip(
     expect(button).to_have_attribute("aria-describedby", panel_id)
 
 
+def test_informative_reveal_is_visible_and_clear_of_the_name_on_desktop(
+    authenticated_page: Page, live_server
+):
+    """The info reveal stands in for a popover, so it shows on a pointer
+    device too — which means its 24px must be reserved there, or the name
+    paints underneath it."""
+    page = authenticated_page
+    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
+    Game.objects.create(
+        name=LONG_NAME, sort_name="Extraordinary Game Name, A", platform=platform
+    )
+
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    settle_layout(page)
+
+    host = _host(page, LONG_NAME)
+    button = host.locator("[data-truncated-reveal]")
+    expect(button).to_have_attribute("data-truncated-reveal", "info")
+    expect(button).to_be_visible()
+    assert (
+        host.locator("[data-truncated-clip]").evaluate(
+            "element => getComputedStyle(element).paddingInlineEnd"
+        )
+        == "24px"
+    )
+
+
 def test_fallback_font_is_measured_when_webfonts_are_blocked(
     live_server, browser, django_user_model
 ):
