@@ -21,16 +21,20 @@ primary_region = "ams"
 [http_service]
   internal_port = 8000
   force_https = true
-  auto_stop_machines = "stop"
+  # "suspend", not "stop": a stopped machine re-runs the whole entrypoint on the
+  # next request — migrate, collectstatic, seed, ~60-90s before Caddy listens —
+  # and the Fly proxy gives up around 40s, so the first visit after an idle
+  # period answered 502/503. Suspend snapshots the running machine instead, so a
+  # resume comes back already warm.
+  auto_stop_machines = "suspend"
   auto_start_machines = true
   min_machines_running = 0
 
-  # No [[http_service.checks]] on purpose. These machines auto-stop, and a cold
-  # start runs the whole entrypoint (migrate, collectstatic, seed) before Caddy
-  # listens — ~40s. With no check the proxy holds the request open for that boot
-  # and then serves it; with one it marks the machine unhealthy on the first
-  # probe (grace_period does not prevent this) and answers 503 instead. Measured
-  # on the same image: no check 200 in 41s, check 503 in 35-46s.
+  # No [[http_service.checks]] on purpose: the proxy marks a machine unhealthy on
+  # the first probe it misses during boot (grace_period does not prevent this)
+  # and answers 503, where with no check it holds the request open until the app
+  # listens. Measured on one image, machine stopped before each request: no check
+  # 200 in 41s, check 503 in 35-46s.
 
 [[vm]]
   size = "shared-cpu-1x"
