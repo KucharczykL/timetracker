@@ -65,6 +65,8 @@ from common.components.date_time_picker import (
 from common.components.domain import (
     BrowserTimeZoneInput,
     Duration,
+    DurationAlternates,
+    DurationText,
     GameLink,
     GameStatus,
     GameStatusSelector,
@@ -275,6 +277,8 @@ __all__ = [
     "DropdownPostItem",
     "DropdownSubmenu",
     "Duration",
+    "DurationAlternates",
+    "DurationText",
     "Element",
     "ExternalScript",
     "FilterBuilder",

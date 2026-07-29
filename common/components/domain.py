@@ -340,6 +340,37 @@ def SessionDeviceSelector(session, session_devices, csrf_token: str) -> Node:
     )
 
 
+def DurationText(
+    duration,
+    presentation: DurationPresentation,
+    *,
+    manual: bool = False,
+) -> Node:
+    """The value itself: visible text plus its ``sr-only`` spoken form.
+
+    Split out of :func:`Duration` so a surface that already owns a popover can
+    show a duration without nesting one popover inside another.
+    """
+    visible = presentation.format(duration)
+    return Fragment(
+        Span(aria_hidden="true")[f"{visible}*" if manual else visible],
+        Span(class_="sr-only")[presentation.spoken(duration, manual=manual)],
+    )
+
+
+def DurationAlternates(duration, presentation: DurationPresentation) -> Node:
+    """The same value under the other profiles, as label/value rows."""
+    return Div(class_="flex flex-col gap-1 text-left")[
+        *[
+            Div(class_="flex justify-between gap-4")[
+                Span(class_="text-neutral-secondary")[label],
+                Span(class_="tabular-nums")[rendering],
+            ]
+            for label, rendering in presentation.alternates(duration)
+        ]
+    ]
+
+
 def Duration(
     duration,
     presentation: DurationPresentation,
@@ -365,24 +396,9 @@ def Duration(
     """
     from common.components.primitives import Popover
 
-    visible = presentation.format(duration)
-    alternates = presentation.alternates(duration)
-    rows = [
-        Div(class_="flex justify-between gap-4")[
-            Span(class_="text-neutral-secondary")[label],
-            Span(class_="tabular-nums")[rendering],
-        ]
-        for label, rendering in alternates
-    ]
-
-    trigger = Fragment(
-        Span(aria_hidden="true")[f"{visible}*" if manual else visible],
-        Span(class_="sr-only")[presentation.spoken(duration, manual=manual)],
-    )
-
     return Popover(
-        popover_content=Div(class_="flex flex-col gap-1 text-left")[*rows],
-        children=[trigger],
+        popover_content=DurationAlternates(duration, presentation),
+        children=[DurationText(duration, presentation, manual=manual)],
         wrapped_classes="tabular-nums underline decoration-dotted",
         id=f"duration-{id_scope}",
         describedby=False,

@@ -165,8 +165,8 @@ def _main_script(mastered: bool) -> str:
 
 
 def NavbarPlaytime(
-    today_played: str,
-    last_7_played: str,
+    today_played: Node | str,
+    last_7_played: Node | str,
     *,
     today_url: str | None = None,
     last_7_url: str | None = None,
@@ -176,25 +176,33 @@ def NavbarPlaytime(
     htmx endpoints can refresh it out-of-band after a session change.
 
     When ``today_url`` / ``last_7_url`` are given, each total links to the
-    matching filtered session list."""
-    from common.components import Safe
+    matching filtered session list.
 
-    def total(text: str, url: str | None) -> str:
+    A total may be a node rather than text — a ``Duration`` carries its own
+    popover and declares its own ``Media``, which only survives while the
+    navbar stays a node tree.
+    """
+    from common.components import A, HTMLAttribute, Li, Span
+
+    def total(value: Node | str, url: str | None) -> Node | str:
         if not url:
-            return text
-        return f'<a href="{url}" class="hover:underline">{text}</a>'
+            return value
+        return A(href=url, class_="hover:underline")[value]
 
-    oob_attr = ' hx-swap-oob="true"' if oob else ""
-    return Safe(
-        f'<li id="navbar-playtime"{oob_attr} '
-        'class="flex flex-col items-center text-type-micro">'
-        '<span class="flex uppercase gap-1">Today'
-        '<span class="">·</span>Last 7 days</span>'
-        '<span class="flex items-center gap-1">'
-        f"{total(today_played, today_url)}"
-        '<span class="">·</span>'
-        f"{total(last_7_played, last_7_url)}</span></li>"
-    )
+    attributes: list[HTMLAttribute] = [
+        ("id", "navbar-playtime"),
+        ("class", "flex flex-col items-center text-type-micro"),
+    ]
+    if oob:
+        attributes.append(("hx-swap-oob", "true"))
+    return Li(attributes)[
+        Span(class_="flex uppercase gap-1")["Today", Span()["·"], "Last 7 days"],
+        Span(class_="flex items-center gap-1")[
+            total(today_played, today_url),
+            Span()["·"],
+            total(last_7_played, last_7_url),
+        ],
+    ]
 
 
 # Shared classes for the plain navbar entries (Home/Stats/Log out).
@@ -207,8 +215,8 @@ _NAV_LINK_CLASS = (
 
 def NavbarMenu(
     *,
-    today_played: str,
-    last_7_played: str,
+    today_played: Node | str,
+    last_7_played: Node | str,
     today_url: str | None,
     last_7_url: str | None,
     current_year: int,
@@ -446,8 +454,8 @@ def NavbarLogButton(
 
 def Navbar(
     *,
-    today_played: str,
-    last_7_played: str,
+    today_played: Node | str,
+    last_7_played: Node | str,
     today_url: str | None = None,
     last_7_url: str | None = None,
     current_year: int,

@@ -13,6 +13,7 @@ from common.components import (
     AddForm,
     BrowserTimeZoneInput,
     Column,
+    Duration,
     FormFields,
     Fragment,
     ModuleScript,
@@ -28,6 +29,10 @@ from common.date_time_presentation import (
     DateTimePresentation,
     date_time_presentation_for_request,
     zone_or_none,
+)
+from common.duration_presentation import (
+    DurationPresentation,
+    duration_presentation_for_request,
 )
 from common.layout import render_page
 from common.returns import OriginUrl
@@ -52,6 +57,7 @@ def session_row_data(
     device_list,
     csrf_token: str,
     presentation: DateTimePresentation,
+    durations: DurationPresentation,
     *,
     origin: OriginUrl | None,
 ) -> TableRowData:
@@ -60,7 +66,12 @@ def session_row_data(
     return make_row(
         NameWithIcon(session=session),
         session_time_range(session, presentation),
-        session.duration_formatted_with_mark(),
+        Duration(
+            session.duration_total,
+            durations,
+            id_scope=f"session-{session.pk}",
+            manual=session.is_manual(),
+        ),
         SessionDeviceSelector(session, device_list, csrf_token),
         presentation.format(session.created_at, "date"),
         SessionActions(session, csrf_token, origin),
@@ -71,6 +82,7 @@ def session_row_data(
 @login_required
 def list_sessions(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
+    durations = duration_presentation_for_request(request)
     origin = request.get_full_path()
     sessions: QuerySet[Session] = Session.objects.select_related(
         "game", "game__platform", "device"
@@ -108,7 +120,12 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
         "sort_terms": sort.terms,
         "rows": [
             session_row_data(
-                session, device_list, csrf_token, presentation, origin=origin
+                session,
+                device_list,
+                csrf_token,
+                presentation,
+                durations,
+                origin=origin,
             )
             for session in sessions
         ],
