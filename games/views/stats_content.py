@@ -17,12 +17,12 @@ from common.components import (
     ContentContainer,
     ControlButton,
     Div,
-    Element,
     Fragment,
     GameLink,
     Icon,
     Node,
     PageHeading,
+    PlainH2,
     Safe,
     StyledTable,
     YearPicker,
@@ -91,7 +91,7 @@ def _kv_table(rows: list) -> Node:
 def _card_title(text: str) -> Node:
     """A per-card section heading (h2, subheading size). Not PageHeading —
     the page carries a single PageHeading h1; cards sit under it."""
-    return Element("h2", [("class", "text-type-subheading text-heading mb-3")])[text]
+    return PlainH2(class_="text-type-subheading text-heading mb-3")[text]
 
 
 def _card(title: str, body: Node) -> Node:

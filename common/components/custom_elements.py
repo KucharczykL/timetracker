@@ -35,6 +35,7 @@ from common.components.primitives import (
     Button,
     ButtonColor,
     ControlButton,
+    Dialog,
     Div,
     Form,
     Icon,
@@ -42,6 +43,7 @@ from common.components.primitives import (
     Label,
     Li,
     P,
+    PlainH2,
     Popover,
     Span,
     Template,
@@ -1028,8 +1030,7 @@ def BottomSheet(
         ],
         variant="ghost",
     )[Span(aria_hidden="true", class_="text-type-section leading-none")["×"]]
-    target = Element(
-        "dialog",
+    target = Dialog(
         [
             ("data-bottom-sheet", ""),
             ("aria-labelledby", title_id),
@@ -1049,8 +1050,7 @@ def BottomSheet(
                     "border-b border-default-medium bg-surface-overlay px-4 py-3"
                 )
             )[
-                Element(
-                    "h2",
+                PlainH2(
                     [("id", title_id), ("class", "text-type-section text-heading")],
                 )[title],
                 close_button,

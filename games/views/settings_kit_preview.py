@@ -16,7 +16,6 @@ from common.components import (
     Checkbox,
     ContentContainer,
     Div,
-    Element,
     FormFieldGroup,
     Input,
     Label,
@@ -32,7 +31,7 @@ from common.components import (
     SettingsScaffold,
     SettingsSection,
 )
-from common.components.primitives import P
+from common.components.primitives import P, PlainH4
 from common.layout import render_page
 from games.forms import INPUT_CLASS, SELECT_CLASS, PrimitiveWidgetsMixin
 from timetracker.settings_commands import SettingNamespace
@@ -267,7 +266,7 @@ def _supported_form_layout(
     )[
         Div(class_="flex flex-wrap items-center gap-2")[
             Badge(label, tone="brand"),
-            Element("h4", [("class", "text-type-section text-heading")])[name],
+            PlainH4(class_="text-type-section text-heading")[name],
         ],
         P(class_="text-type-body text-body")[explanation],
         Div(class_="rounded-base border border-default p-4")[

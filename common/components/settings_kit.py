@@ -35,9 +35,12 @@ from common.components.primitives import (
     Input,
     Label,
     Li,
+    Nav,
     P,
     PageHeading,
+    PlainH2,
     Popover,
+    Section,
     Span,
     TooltipDefinition,
     TooltipDefinitionList,
@@ -222,8 +225,7 @@ def SettingsSectionNav(sections: Sequence[SettingsSection]) -> Node:
             ),
         ]
     ].as_element()
-    sheet_destination = Element(
-        "nav",
+    sheet_destination = Nav(
         [
             ("data-section-nav-sheet-destination", ""),
             ("aria-labelledby", f"{sheet_id}-title"),
@@ -241,8 +243,7 @@ def SettingsSectionNav(sections: Sequence[SettingsSection]) -> Node:
     return _SettingsSectionNav(
         class_=("sticky top-4 z-10 block min-w-0 self-start @4xl:z-auto")
     )[
-        Element(
-            "nav",
+        Nav(
             [
                 ("aria-label", "Settings sections"),
                 ("data-section-nav-rail", ""),
@@ -270,8 +271,7 @@ def SettingsSectionNav(sections: Sequence[SettingsSection]) -> Node:
 def _section_panel(section: SettingsSection) -> Node:
     heading_id = f"{section.id}-heading"
     header_children: list[Node] = [
-        Element(
-            "h2",
+        PlainH2(
             [
                 ("id", heading_id),
                 ("tabindex", "-1"),
@@ -284,8 +284,7 @@ def _section_panel(section: SettingsSection) -> Node:
         header_children.append(
             P(class_="text-type-body text-body")[section.description]
         )
-    return Element(
-        "section",
+    return Section(
         [
             ("id", section.id),
             ("aria-labelledby", heading_id),
