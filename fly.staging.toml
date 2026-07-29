@@ -25,6 +25,20 @@ primary_region = "ams"
   auto_start_machines = true
   min_machines_running = 0
 
+  # Without a check the proxy routes into a machine the moment it is "started",
+  # i.e. while the entrypoint is still migrating and seeding, and answers the
+  # resulting refusals with 502s.
+  [[http_service.checks]]
+    grace_period = "60s"
+    interval = "15s"
+    timeout = "10s"
+    method = "GET"
+    path = "/health/ready"
+
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "512mb"
+  # 512mb does not fit caddy + gunicorn + the django-q cluster (which forks a
+  # guard, monitor, pusher and worker, ~260mb between them): the machine ran at
+  # MemAvailable ~7mb, evicting its own page cache, and every request faulted
+  # code back off disk until the worker timed out.
+  memory = "1024mb"
