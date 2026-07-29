@@ -41,6 +41,8 @@ def invalidate_settings_cache(sender, instance, **kwargs):
 @receiver(pre_save, sender=Purchase)
 def store_purchase_price_snapshot(sender, instance, **kwargs):
     """Store old price values before save so we can detect changes."""
+    if kwargs.get("raw"):
+        return
     if instance.pk is not None:
         try:
             old_instance = sender.objects.get(pk=instance.pk)
@@ -53,6 +55,8 @@ def store_purchase_price_snapshot(sender, instance, **kwargs):
 @receiver(post_save, sender=Purchase)
 def mark_needs_price_update(sender, instance, created, **kwargs):
     """Mark purchase for price update if price or currency changed."""
+    if kwargs.get("raw"):
+        return
     if (
         not created
         and hasattr(instance, "_old_price")
@@ -90,6 +94,11 @@ def update_purchase_counts_on_game_delete(sender, instance, **kwargs):
 
 @receiver([post_save, post_delete], sender=Session)
 def update_game_playtime(sender, instance, **kwargs):
+    # A fixture carries its own playtime; recomputing it per loaded row costs an
+    # aggregate and a write each, which is most of what a container's seed step
+    # spends its time on.
+    if kwargs.get("raw"):
+        return
     # During cascade deletes the related Game may already have been removed.
     # Use the FK id to look up the Game safely and bail out if it no longer exists.
     game_pk = getattr(instance, "game_id", None)
@@ -111,6 +120,10 @@ def game_status_changed(sender, instance, **kwargs):
     """
     Signal handler to create a GameStatusChange record whenever a Game's status is updated.
     """
+    # A fixture ships its own GameStatusChange rows; loading one is not a status
+    # transition, and the lookup below would query once per row.
+    if kwargs.get("raw"):
+        return
     try:
         old_instance = sender.objects.get(pk=instance.pk)
         old_status = old_instance.status

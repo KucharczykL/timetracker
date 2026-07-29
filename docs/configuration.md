@@ -316,6 +316,9 @@ See [`.env.example`](../.env.example) and
 These are consumed by [`entrypoint.sh`](../entrypoint.sh) during container
 bootstrap, **not** by Django. They are intentionally not part of the Python
 config — moving them there would buy nothing and force a bash↔Python bridge.
+The entrypoint reads them, translates them into flags for a single
+`manage.py bootstrap_container` call, and starts supervisor; static files are
+collected into the image at build time rather than on each boot.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|

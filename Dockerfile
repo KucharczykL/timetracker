@@ -82,6 +82,14 @@ COPY --from=builder --chown=timetracker:timetracker /home/timetracker/app /home/
 COPY --from=assets --chown=timetracker:timetracker /app/games/static/base.css /home/timetracker/app/games/static/base.css
 COPY --from=assets --chown=timetracker:timetracker /app/games/static/js/dist /home/timetracker/app/games/static/js/dist
 
+# Collect static here rather than in the entrypoint: the output is a pure
+# function of the image's own files, and hashing them takes a Django startup
+# plus a dozen post-process passes that every container start would otherwise
+# repeat while the first request waits. SECRET_KEY is only needed because the
+# runtime stage sets PROD=1; it is scoped to this layer and never in the image.
+RUN SECRET_KEY=collectstatic-build python manage.py collectstatic --no-input \
+    && chown -R timetracker:timetracker /home/timetracker/app/static
+
 COPY --chown=timetracker:timetracker Caddyfile /etc/caddy/Caddyfile
 COPY --chown=timetracker:timetracker supervisor.conf /etc/supervisor/conf.d/supervisor.conf
 COPY --chown=timetracker:timetracker entrypoint.sh /
