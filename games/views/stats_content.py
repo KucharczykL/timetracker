@@ -50,8 +50,7 @@ def _session_link(game_id, year, label: str = "") -> Node:
     Sits next to the existing GameLink (which goes to the game detail page).
 
     ``label`` is the game name, embedded in the filter so the destination bar
-    renders a named pill instead of a bare id (#224). ``decoration-transparent``
-    opts the play-icon glyph out of the row's forced ``[&_a]:underline``."""
+    renders a named pill instead of a bare id (#224)."""
     return IconLink(
         href=filter_url(stats_links.sessions_for_game(game_id, year, label)),
         class_="ml-1 align-middle",

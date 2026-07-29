@@ -254,7 +254,7 @@ class TooltipDefinition(NamedTuple):
 # text. Expressed as a fraction of the font size it stays proportional wherever
 # a link lands.
 LINK_CLASS = (
-    "text-fg-link hover:text-fg-link-hover underline underline-offset-4 "
+    "text-fg-link hover:text-fg-link-hover font-medium underline underline-offset-4 "
     "[text-decoration-thickness:0.11em]"
 )
 

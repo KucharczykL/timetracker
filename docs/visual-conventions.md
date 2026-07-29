@@ -235,6 +235,12 @@ scrollspy (#401). Calls recorded so #384 and later consumers do not relitigate i
   5.37:1 / Lc 56. Chroma is the dial for how loud links are; the hue is what makes them read
   as links at all.
 
+  **Weight is part of the look.** `LINK_CLASS` carries `font-medium`, because link weight was
+  itself inconsistent — 500 inside list tables, 400 on the stats page — and a fixed underline
+  under lighter glyph stems reads visibly heavier. Thickness is em-based (`0.11em`) rather
+  than a fixed `decoration-2` for the same reason at a different scale: 2px against the
+  navbar's 12px micro text was heavier than 2px against 14px body text.
+
   **Rows do not style their anchors.** `TableRow` used to force `[&_a]:underline` onto every
   descendant, so an icon link had to opt back out with `decoration-transparent`. Links carry
   their own underline; nothing reaches across the DOM to add it.
