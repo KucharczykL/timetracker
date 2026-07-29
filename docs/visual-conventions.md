@@ -226,10 +226,14 @@ scrollspy (#401). Calls recorded so #384 and later consumers do not relitigate i
   **Colour: `fg-link`, deliberately not `brand`.** Brand already fills primary buttons, the
   current pagination page, focus rings and active states; links in it would leave blue meaning
   nothing in particular. Purple is otherwise unused for text and is the browser's own link
-  vocabulary. Light and dark take opposite ends of the ramp (purple-700 / purple-300) because
-  contrast is lightness-driven — no single value clears AA on both a white page and a dark
-  hovered row. Worst measured case 5.78:1 / Lc 60. **Dial:** swap the pair in `input.css` for
-  `oklch(45% 0.15 295)` / `oklch(80% 0.10 295)` if it reads garish.
+  vocabulary. Light and dark take opposite ends of the ramp because contrast is
+  lightness-driven — no single value clears AA on both a white page and a dark hovered row.
+
+  The pair is authored directly (`oklch(45% 0.15 295)` / `oklch(80% 0.10 295)`) rather than
+  taken from the palette: at Tailwind purple-700's chroma of 0.265 it read garish once every
+  game name in a list carried it, so the token sits at roughly half that. Worst measured case
+  5.37:1 / Lc 56. Chroma is the dial for how loud links are; the hue is what makes them read
+  as links at all.
 
   **Rows do not style their anchors.** `TableRow` used to force `[&_a]:underline` onto every
   descendant, so an icon link had to opt back out with `decoration-transparent`. Links carry

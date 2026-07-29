@@ -60,13 +60,13 @@
        and active states, so links in it would make blue mean nothing in
        particular. Purple is otherwise unused (the `replaying` status dot is a
        filled shape, not text) and is the browser's own link vocabulary.
-       Measured worst case 5.78:1 WCAG / Lc 60 APCA across page, zebra row and
-       hovered row in both themes — see scripts/contrast_audit.py. If it reads
-       garish, the low-chroma swap is oklch(45% 0.15 295) / oklch(80% 0.10 295);
-       Tailwind's purple-700 sits at chroma 0.265 where the text tokens are
-       near-neutral. */
-    --color-fg-link: var(--color-purple-700);
-    --color-fg-link-hover: var(--color-purple-800);
+       Chroma is roughly half Tailwind's purple-700 (0.15 against 0.265), which
+       is what keeps it calm at the density a link-heavy list page reaches; the
+       palette shade read garish once every game name carried it. Measured
+       worst case 5.37:1 WCAG / Lc 56 across page, zebra row and hovered row in
+       both themes — see scripts/contrast_audit.py. */
+    --color-fg-link: oklch(45% 0.15 295);
+    --color-fg-link-hover: oklch(38% 0.15 295);
 
     /* Foreground text color for each solid fill, chosen by APCA (white or
      black, whichever contrasts more). White on every fill under the current
@@ -124,11 +124,11 @@
 }
 
 .dark {
-    /* The light shade of the same hue: contrast is lightness-driven, so a dark
-       surface needs the light end of the ramp. purple-700 here would measure
-       2.7:1 on a hovered row. */
-    --color-fg-link: var(--color-purple-300);
-    --color-fg-link-hover: var(--color-purple-200);
+    /* The light end of the same hue: contrast is lightness-driven, so a dark
+       surface needs a light foreground. The 45% lightness used above would
+       measure 2.7:1 on a hovered row here. */
+    --color-fg-link: oklch(80% 0.10 295);
+    --color-fg-link-hover: oklch(88% 0.08 295);
 
     --color-surface-overlay: color-mix(
         in srgb,
