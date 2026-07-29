@@ -380,6 +380,7 @@ def Duration(
     id_scope: str,
     manual: bool = False,
     link: str | None = None,
+    link_class: str = "hover:underline tabular-nums",
 ) -> Node:
     """One elapsed duration, with the same value under the other profiles on hover.
 
@@ -416,8 +417,16 @@ def Duration(
         )
     return Popover(
         popover_content=DurationAlternates(duration, presentation),
-        preface=A(href=link, class_="hover:underline tabular-nums")[text],
-        children=[Icon("info", [("class", "w-3 h-3 opacity-60")])],
+        preface=A(href=link, class_=link_class)[text],
+        children=[Icon("info", size="size-[1.1em]")],
+        # Same treatment as TruncatedText's reveal button: the glyph exists for
+        # devices that cannot hover, where the host's own hover-to-open is
+        # unavailable. On a pointer device it stays out of the way and hovering
+        # the total opens the panel.
+        wrapped_classes=(
+            "hidden [@media(hover:none)]:inline-flex items-center "
+            "text-subtle hover:text-heading hover:cursor-pointer"
+        ),
         trigger_label="Other duration formats",
         id=f"duration-{id_scope}",
         describedby=False,

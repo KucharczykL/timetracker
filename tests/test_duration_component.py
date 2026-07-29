@@ -84,3 +84,21 @@ def test_two_equal_durations_get_distinct_ids():
 def test_id_scope_is_required():
     with pytest.raises(TypeError):
         Duration(timedelta(0), _presentation())  # type: ignore[call-arg]
+
+
+def test_linked_duration_hides_its_glyph_on_pointer_devices():
+    """The info glyph exists for devices that cannot hover, matching
+    TruncatedText's reveal button. On a pointer device the panel opens by
+    hovering the total itself, so the glyph would be noise."""
+    html = str(
+        Duration(
+            timedelta(seconds=HOUR),
+            _presentation(),
+            id_scope="navbar-today",
+            link="/tracker/session/list",
+        )
+    )
+
+    assert "hidden [@media(hover:none)]:inline-flex" in html
+    assert 'href="/tracker/session/list"' in html
+    assert 'aria-label="Other duration formats"' in html

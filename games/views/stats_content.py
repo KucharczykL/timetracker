@@ -18,7 +18,6 @@ from common.components import (
     ControlButton,
     Div,
     Duration,
-    DurationText,
     Fragment,
     GameLink,
     Icon,
@@ -101,12 +100,6 @@ def _card(title: str, body: Node) -> Node:
     cell shrink so a wide table scrolls inside its own box instead of blowing out
     the grid column."""
     return Div(class_="min-w-0")[_card_title(title), body]
-
-
-def _duration_text(value, durations: DurationPresentation) -> Node:
-    """A duration inside a link cell. No popover: the trigger is a <button>,
-    which may not nest inside the surrounding <a>."""
-    return DurationText(value, durations)
 
 
 def _purchase_name(purchase) -> Node:
@@ -386,13 +379,16 @@ def stats_content(
         month_rows = [
             make_row(
                 presentation.format(m["month"], "month"),
-                A(
-                    href=filter_url(
+                Duration(
+                    m["playtime"],
+                    durations,
+                    id_scope=f"stats-month-{m['month'].month}",
+                    link=filter_url(
                         stats_links.games_in_month(year, m["month"].month),
                         sort="-filtered_playtime",
                     ),
-                    class_=_FILTER_LINK_CLASS,
-                )[_duration_text(m["playtime"], durations)],
+                    link_class=_FILTER_LINK_CLASS,
+                ),
             )
             for m in months
         ]
@@ -424,14 +420,17 @@ def stats_content(
                 "Platform",
                 ctx.get("total_playtime_per_platform") or [],
                 lambda item: item["platform_name"] or "Unspecified",
-                lambda item: A(
-                    href=filter_url(
+                lambda item: Duration(
+                    item["playtime"],
+                    durations,
+                    id_scope=f"stats-platform-{item['platform_id'] or 'none'}",
+                    link=filter_url(
                         stats_links.sessions_for_platform(
                             item["platform_id"], year, item["platform_name"] or ""
                         )
                     ),
-                    class_=_FILTER_LINK_CLASS,
-                )[_duration_text(item["playtime"], durations)],
+                    link_class=_FILTER_LINK_CLASS,
+                ),
             ),
         ),
     ]
