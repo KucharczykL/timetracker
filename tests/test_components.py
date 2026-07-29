@@ -176,6 +176,88 @@ class PopoverDeterministicTest(unittest.TestCase):
         self.assertEqual(r1.encode(), r2.encode())
 
 
+class PopoverRevealTest(unittest.TestCase):
+    """The reveal glyph: every text popover advertises itself, on every device."""
+
+    def test_text_trigger_renders_a_reveal_glyph(self):
+        html = str(components.Popover("explanation", wrapped_content="12.50 EUR"))
+        self.assertIn("data-pop-over-reveal", html)
+        self.assertIn("</svg>", html)
+
+    def test_reveal_is_visible_without_hover(self):
+        # The pare-back lever: a touch-only reveal would carry the media query.
+        html = str(components.Popover("explanation", wrapped_content="12.50 EUR"))
+        self.assertNotIn("[@media(hover:none)]", html)
+
+    def test_reveal_is_the_tap_trigger_not_the_content(self):
+        html = str(components.Popover("explanation", wrapped_content="12.50 EUR"))
+        trigger = re.search(r"<(\w+)\b[^>]*\bdata-pop-over-trigger\b", html)
+        assert trigger is not None
+        self.assertEqual(trigger.group(1), "button")
+        # The value itself is no longer a control.
+        self.assertEqual(html.count("<button"), 1)
+
+    def test_symbol_trigger_suppresses_the_glyph(self):
+        html = str(
+            components.Popover("explanation", wrapped_content="!", symbol_trigger=True)
+        )
+        self.assertNotIn("data-pop-over-reveal", html)
+        # Falls back to the trigger-is-content button.
+        self.assertIn("data-pop-over-control", html)
+
+    def test_untappable_popover_has_no_glyph(self):
+        # tap=False exists because the host nests inside a caller's <button>;
+        # a sibling <button> glyph there would be illegal nesting.
+        html = str(components.Popover("explanation", wrapped_content="name", tap=False))
+        self.assertNotIn("data-pop-over-reveal", html)
+        self.assertNotIn("<button", html)
+
+    def test_disabled_trigger_keeps_its_wrapper_anatomy(self):
+        html = str(
+            components.Popover(
+                "explanation",
+                wrapped_content="theme",
+                symbol_trigger=True,
+                trigger_disabled=True,
+            )
+        )
+        self.assertIn('role="button"', html)
+        self.assertIn('aria-disabled="true"', html)
+
+    def test_description_points_at_the_panel_once(self):
+        html = str(
+            components.Popover("explanation", wrapped_content="12.50 EUR", id="pid")
+        )
+        self.assertEqual(html.count('aria-describedby="pid"'), 1)
+        describedby = re.search(r"<button\b[^>]*\baria-describedby=\"pid\"", html)
+        self.assertIsNotNone(describedby)
+
+    def test_describedby_false_suppresses_the_relationship(self):
+        html = str(
+            components.Popover(
+                "explanation",
+                wrapped_content="1.2 h",
+                id="pid",
+                describedby=False,
+            )
+        )
+        self.assertNotIn("aria-describedby", html)
+
+    def test_reveal_carries_an_accessible_name(self):
+        html = str(components.Popover("explanation", wrapped_content="12.50 EUR"))
+        self.assertIn("aria-label=", html)
+
+    def test_no_popover_renders_a_dotted_underline(self):
+        html = str(
+            components.Popover(
+                "explanation",
+                wrapped_content="12.50 EUR",
+                wrapped_classes="tabular-nums",
+            )
+        )
+        self.assertNotIn("decoration-dotted", html.split("data-pop-over-panel")[0])
+
+
 class TooltipDefinitionListTest(unittest.TestCase):
     def test_shared_semantic_term_and_value_treatment(self):
         html = str(
@@ -1301,13 +1383,11 @@ class PopOverContractTest(unittest.TestCase):
         )
         self.assertIn('aria-label="Show details"', html)
 
-    def test_selectable_text_reenables_selection_on_button(self):
-        html = str(
-            components.Popover(
-                "tip", wrapped_content="19.99", selectable_text=True, id="pid"
-            )
-        )
-        self.assertIn("select-text", html)
+    def test_value_text_stays_outside_the_control(self):
+        # The value is plain text beside the reveal, so it selects and aligns
+        # like any other text — no button-specific opt-outs needed.
+        html = str(components.Popover("tip", wrapped_content="19.99", id="pid"))
+        self.assertIn("<span>19.99</span>", html)
 
     def test_preface_renders_before_trigger_in_host(self):
         # The host-wraps case: a preface node (a link) sits before the glyph

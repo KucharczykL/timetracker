@@ -86,10 +86,10 @@ def test_id_scope_is_required():
         Duration(timedelta(0), _presentation())  # type: ignore[call-arg]
 
 
-def test_linked_duration_hides_its_glyph_on_pointer_devices():
-    """The info glyph exists for devices that cannot hover, matching
-    TruncatedText's reveal button. On a pointer device the panel opens by
-    hovering the total itself, so the glyph would be noise."""
+def test_linked_duration_shows_its_glyph_on_every_device():
+    """The reveal glyph is how a popover announces itself. A pointer device can
+    hover the value to open the panel, but nothing tells it the panel exists —
+    so the glyph stays visible there too."""
     html = str(
         Duration(
             timedelta(seconds=HOUR),
@@ -99,6 +99,7 @@ def test_linked_duration_hides_its_glyph_on_pointer_devices():
         )
     )
 
-    assert "hidden [@media(hover:none)]:inline-flex" in html
+    assert "[@media(hover:none)]" not in html
+    assert "data-pop-over-reveal" in html
     assert 'href="/tracker/session/list"' in html
     assert 'aria-label="Other duration formats"' in html

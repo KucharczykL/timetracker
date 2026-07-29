@@ -348,6 +348,8 @@ def FilterGroup(
                 ),
                 wrapped_content="!",
                 wrapped_classes=_INCOMPLETE_BADGE_CLASS,
+                # The badge is already a bare symbol.
+                symbol_trigger=True,
                 id="incomplete-badge",
             )
         ]

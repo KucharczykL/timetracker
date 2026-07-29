@@ -277,8 +277,6 @@ def PurchasePrice(purchase) -> Node:
     return Popover(
         popover_content=f"{floatformat(purchase.price)} {purchase.price_currency}",
         wrapped_content=f"{floatformat(purchase.converted_price)} {purchase.converted_currency}",
-        wrapped_classes="underline decoration-dotted",
-        selectable_text=True,
         # Without this, Popover derives its id from its own content, so any two
         # purchases sharing both the original and the converted price collide —
         # a DEBUG-only 500 on every list that renders more than one purchase.
@@ -398,10 +396,9 @@ def Duration(
     inside the trigger with the value and is spoken as ", manual"; it qualifies
     the value, not its formatting, so it never appears among the alternates.
 
-    ``link`` makes the value a link to ``link`` and moves the popover onto a
-    separate info glyph beside it. A popover trigger is a ``<button>`` and may
-    not nest inside an ``<a>``, so this is the only way a duration can both
-    navigate and offer its alternates — at the cost of one extra glyph.
+    ``link`` makes the value a link to ``link``. The popover's reveal glyph
+    then sits beside the link rather than wrapping it — a popover trigger is a
+    ``<button>``, which may not nest inside an ``<a>``.
     """
     from common.components.primitives import Popover
 
@@ -410,23 +407,13 @@ def Duration(
         return Popover(
             popover_content=DurationAlternates(duration, presentation),
             children=[text],
-            wrapped_classes="tabular-nums underline decoration-dotted",
+            wrapped_classes="tabular-nums",
             id=f"duration-{id_scope}",
             describedby=False,
-            selectable_text=True,
         )
     return Popover(
         popover_content=DurationAlternates(duration, presentation),
         preface=A(href=link, class_=link_class)[text],
-        children=[Icon("info", size="size-[1.1em]")],
-        # Same treatment as TruncatedText's reveal button: the glyph exists for
-        # devices that cannot hover, where the host's own hover-to-open is
-        # unavailable. On a pointer device it stays out of the way and hovering
-        # the total opens the panel.
-        wrapped_classes=(
-            "hidden [@media(hover:none)]:inline-flex items-center "
-            "text-subtle hover:text-heading hover:cursor-pointer"
-        ),
         trigger_label="Other duration formats",
         id=f"duration-{id_scope}",
         describedby=False,

@@ -163,7 +163,9 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
         html = str(node)
         assert "Environment file" in html
         assert html.count('data-setting-origin="env_file"') == 1
-        assert html.count("<svg") == 1
+        # The lock icon inside the badge, plus the popover's own reveal glyph.
+        assert html.count("<svg") == 2
+        assert html.count("data-pop-over-reveal") == 1
         assert 'data-setting-origin="env_file"' in html
         assert 'data-setting-locked=""' in html
         assert 'aria-label="Environment file source, locked"' in html

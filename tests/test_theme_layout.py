@@ -23,6 +23,12 @@ def _theme_toggle_markup(html: str) -> tuple[str, str]:
     return markup, button.group()
 
 
+def test_theme_tip_has_no_reveal_glyph():
+    # The toggle's own icons are already the affordance; a second glyph beside
+    # them would advertise nothing.
+    assert "data-pop-over-reveal" not in str(ThemeToggle(instance_key="navbar"))
+
+
 def test_anonymous_document_has_browser_theme_configuration(db):
     html = Client().get(reverse("login")).content.decode()
     root = _root_tag(html)

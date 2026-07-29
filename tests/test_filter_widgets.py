@@ -225,6 +225,16 @@ class FilterGroupComparisonTest(TestCase):
         self.assertIn("timestamp_start", html)
         self.assertIn("timestamp_end", html)
 
+    def test_incomplete_badge_has_no_reveal_glyph(self):
+        # The "!" badge is already a bare symbol — a reveal glyph beside it
+        # would advertise nothing.
+        from common.components import FilterGroup
+
+        html = str(FilterGroup(presentation=_PRESENTATION, model="game"))
+        start = html.index("data-incomplete-badge-template")
+        template = html[start : html.index("</template>", start)]
+        self.assertNotIn("data-pop-over-reveal", template)
+
     def test_emits_model_namespaced_templates_for_each_reachable_model(self):
         from common.components import FilterGroup
 

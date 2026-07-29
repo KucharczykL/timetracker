@@ -323,6 +323,37 @@ def _tooltip_panel(
     ]
 
 
+# The reveal glyph beside a popover's content. Swapping the leading
+# `inline-flex` for `hidden [@media(hover:none)]:inline-flex` makes every
+# reveal touch-only again — the single dial for how loudly popovers announce
+# themselves.
+_POPOVER_REVEAL_CLASS = (
+    "inline-flex items-center shrink-0 rounded-base "
+    "text-subtle hover:text-heading hover:cursor-pointer"
+)
+_POPOVER_REVEAL_LABEL = "More information"
+
+
+def _popover_reveal(
+    *,
+    id: str,
+    describedby: bool,
+    trigger_label: str,
+) -> Node:
+    """The tap target for a popover whose content is not itself a control."""
+    attributes: list[HTMLAttribute] = [
+        ("type", "button"),
+        ("data-pop-over-control", ""),
+        ("data-pop-over-reveal", ""),
+        ("aria-label", trigger_label or _POPOVER_REVEAL_LABEL),
+        ("class", _POPOVER_REVEAL_CLASS),
+    ]
+    if describedby:
+        attributes.append(("aria-describedby", id))
+    attributes.append(("data-pop-over-trigger", ""))
+    return Button(attributes)[Icon("info", size="size-[1.1em]")]
+
+
 def _popover_html(
     id: str,
     popover_content: Child,
@@ -334,7 +365,7 @@ def _popover_html(
     trigger_label: str = "",
     trigger_disabled: bool = False,
     preface: Node | str = "",
-    selectable_text: bool = False,
+    symbol_trigger: bool = False,
     describedby: bool = True,
 ) -> Node:
     """Generate popover HTML. Single source of truth for popover structure.
@@ -344,31 +375,53 @@ def _popover_html(
     pointing at the ``role="tooltip"`` panel; the element owns show/hide and
     viewport-aware ``position: fixed`` placement.
 
-    ``tap`` (default) renders the trigger as a real ``<button>`` so a tap on a
-    touch device toggles the panel; ``tap=False`` keeps the hover/focus-only
-    ``<span>`` (used where the popover sits inside a caller's interactive
-    element, so a ``<button>`` would nest illegally). A disabled tap control
-    remains a native disabled button while a focusable wrapper becomes the
-    tooltip trigger, preserving pointer and keyboard access to its explanation.
-    ``preface`` renders a node (e.g. a link) as a sibling *before* the trigger
-    inside the host — the whole host still opens on hover, but only the small
-    ``<button>`` trigger is tappable, keeping the trigger out of the preface
-    link. ``trigger_label`` sets the button's ``aria-label`` when its visible
-    content is a bare glyph; ``selectable_text`` re-enables text selection +
-    left alignment on button triggers whose content is meaningful text (e.g. a
-    price).
+    By default the visible content stays plain text and a small ⓘ button
+    beside it is the tap target, so a popover announces itself on a device that
+    cannot hover. Three shapes opt out, each for a structural reason:
+    ``tap=False`` keeps the hover/focus-only ``<span>`` (the popover sits
+    inside a caller's interactive element, so any ``<button>`` would nest
+    illegally); ``symbol_trigger`` marks content that is already a bare symbol
+    (an icon, a one-character badge), where a second glyph says nothing; and a
+    disabled control keeps its native disabled button under a focusable
+    wrapper, preserving pointer and keyboard access to the explanation. Those
+    three render the older anatomy, where the content itself is the trigger.
+
+    ``preface`` renders a node (e.g. a link) as the visible content, for values
+    that must navigate — a ``<button>`` may not nest inside an ``<a>``, so the
+    reveal has to be its sibling. ``trigger_label`` names the tap target for
+    screen readers.
     """
     display_content = wrapped_content if wrapped_content else slot
     trigger_children = [display_content] if display_content else []
+    # The content carries no control of its own only when the reveal glyph is
+    # there to be one.
+    content_is_trigger = symbol_trigger or trigger_disabled or not tap
+
+    if tap and not content_is_trigger:
+        visible: Node | str = (
+            preface
+            if preface
+            else Span(class_=wrapped_classes)[*trigger_children]
+            if trigger_children
+            else ""
+        )
+        reveal = _popover_reveal(
+            id=id, describedby=describedby, trigger_label=trigger_label
+        )
+        return _PopOver(tap="true", class_="inline-flex items-center gap-1 self-start")[
+            Fragment(
+                visible,
+                reveal,
+                _tooltip_panel(popover_content, id=id),
+                separator="\n",
+            )
+        ]
 
     if tap:
-        button_classes = wrapped_classes
-        if selectable_text:
-            button_classes = f"{button_classes} select-text text-start".strip()
         control_attributes = [
             ("type", "button"),
             ("data-pop-over-control", ""),
-            ("class", button_classes),
+            ("class", wrapped_classes),
         ]
         if trigger_disabled:
             # The wrapper span is the interaction and accessibility surface for
@@ -452,12 +505,12 @@ def Popover(
     trigger_label: str = "",
     trigger_disabled: bool = False,
     preface: Node | str = "",
-    selectable_text: bool = False,
+    symbol_trigger: bool = False,
     describedby: bool = True,
 ) -> Node:
     children = as_children(children)
-    if not wrapped_content and not children:
-        raise ValueError("One of wrapped_content or children is required.")
+    if not wrapped_content and not children and not preface:
+        raise ValueError("One of wrapped_content, children or preface is required.")
     if not id:
         id = randomid(content=f"{wrapped_content}:{popover_content}:{wrapped_classes}")
 
@@ -472,7 +525,7 @@ def Popover(
         trigger_label=trigger_label,
         trigger_disabled=trigger_disabled,
         preface=preface,
-        selectable_text=selectable_text,
+        symbol_trigger=symbol_trigger,
         describedby=describedby,
     )
 
