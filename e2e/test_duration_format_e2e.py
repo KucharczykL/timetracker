@@ -4,7 +4,7 @@ import datetime as dt
 
 import pytest
 from django.urls import reverse
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Locator, Page, expect
 
 from games.models import Game, Platform, Session
 from timetracker.settings_commands import change_user_setting
@@ -35,6 +35,12 @@ def session(db) -> Session:
 
 def _duration_cell(page: Page, session: Session):
     return page.locator(f"#session-row-{session.pk} td").nth(1)
+
+
+def _center_x(locator: Locator) -> float:
+    box = locator.bounding_box()
+    assert box is not None
+    return box["x"] + box["width"] / 2
 
 
 def test_default_profile_renders_decimal_hours(
@@ -92,6 +98,25 @@ def test_reveal_glyph_is_visible_without_hovering(
 
     reveal.click()
     expect(page.locator(f"#duration-session-{session.pk}")).to_be_visible()
+
+
+def test_panel_arrow_points_at_the_reveal_glyph(
+    authenticated_page: Page, live_server, session
+):
+    """The glyph is the control, so the arrow aims there — not at the centre of
+    the value-plus-glyph group, which lands in the gap between them (or in
+    empty space once the value wraps)."""
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
+
+    reveal = _duration_cell(page, session).locator("[data-pop-over-reveal]")
+    reveal.click()
+    panel = page.locator(f"#duration-session-{session.pk}")
+    expect(panel).to_be_visible()
+
+    assert (
+        abs(_center_x(reveal) - _center_x(panel.locator("[data-pop-over-arrow]"))) < 1
+    )
 
 
 def test_hovering_the_value_still_opens_the_panel(

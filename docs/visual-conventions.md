@@ -227,6 +227,11 @@ scrollspy (#401). Calls recorded so #384 and later consumers do not relitigate i
   string; it defaults off, so a missed call site renders a spare glyph rather than silently
   losing its affordance.
 
+  **The panel anchors on the trigger, not the host.** The host spans the value and the glyph
+  together, so centring the arrow on it aims at the gap between them — or at empty space once
+  the value wraps. `TruncatedText` already anchored to its reveal button for this reason;
+  `pop-over.ts` passes `anchor: trigger` for the same one.
+
   **Dial:** `_POPOVER_REVEAL_CLASS` in `primitives.py` owns the visibility. Swapping its
   leading `inline-flex` for `hidden [@media(hover:none)]:inline-flex` makes every reveal
   touch-only again, in one edit.
