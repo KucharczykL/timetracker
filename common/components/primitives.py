@@ -1214,8 +1214,12 @@ def Radio(
 # Pill's inline utilities. Client-side pills clone this server <template>
 # (search-select.ts never names a pill class), so this is the single source of
 # pill markup — no byte-for-byte JS contract to keep in sync.
+# A pill is a token *inside* a control, not a row-control: it must stay shorter
+# than the 42px field it sits in (min-h-control here made it fill the field edge
+# to edge) and share the field's font (font-condensed here read as squashed next
+# to the un-condensed search box).
 _PILL_CLASS = (
-    "font-condensed inline-flex items-center min-h-control gap-1 px-2 py-0.5 text-type-body rounded-base "
+    "inline-flex items-center gap-1 px-2 py-0.5 text-type-body rounded-base "
     "bg-brand-soft text-heading"
 )
 _PILL_REMOVE_CLASS = "ml-1 text-body hover:text-heading font-bold cursor-pointer"

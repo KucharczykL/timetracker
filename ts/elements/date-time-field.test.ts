@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 
 const formatCalendarMonthYear = vi.hoisted(() => vi.fn(() => "Contract month"));
 const calendarWeekdayLabels = vi.hoisted(() =>
@@ -197,8 +197,18 @@ function pickDay(field: HTMLElement, isoString: string): void {
   field.querySelector<HTMLElement>(`button[data-date="${isoString}"]`)!.click();
 }
 
+// An empty field's calendar opens on `todayView()`, which reads the real system
+// clock — the mocked presentation clock never reaches it. Without a pinned Date
+// the July cells these tests click only exist during July 2026. Only Date is
+// faked; the widgets' timers stay real.
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date(2026, 6, 27, 14, 30));
   nowInPresentationZone.mockReturnValue("2026-07-27T14:30");
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("date-time-field", () => {

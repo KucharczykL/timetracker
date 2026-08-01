@@ -153,12 +153,13 @@ inputs, dropdown triggers, `YearPicker` — floors to **one shared height**:
   button base or native input/select centering, so height is independent of font
   (`text-type-input` 16px vs `text-type-body` 14px) *and* of any `@container` ancestor. A
   control is 42px in every row — the old cross-row 38-vs-42 inconsistency is gone.
-- **Adopted at 42 too:** pagination page links, the NOT-AND connective chips, and `Pill`
-  — they read as row-controls in their contexts, so they floor to the same height. (Their
+- **Adopted at 42 too:** pagination page links and the NOT-AND connective chips — they read
+  as row-controls in their contexts, so they floor to the same height. (Their
   `rounded-full` / `rounded` corners still differ from the `rounded-base` controls — a
   radius concern for #411, not a height one.)
-- **Exceptions** (deliberately smaller, not row-controls): textarea (multiline) and the
-  heading `Badge` sizes.
+- **Exceptions** (deliberately smaller, not row-controls): textarea (multiline), the
+  heading `Badge` sizes, and `Pill` — a pill is a token *inside* a `SearchSelect`, so at 42
+  it filled its own field edge to edge; it stays compact (`py-0.5`, ~24px).
 - Guarded by `tests/test_control_height.py` (token generated, size constants carry
   `min-h-control`, `py-2.5` can't creep back onto a control).
 
@@ -430,7 +431,8 @@ guard). The **color guard is `ts/`-only**: `common/` still carries raw palette m
 - **`font-condensed`** (`IBM Plex Sans Condensed`) is the dense-UI font family used by
   Badge and dense list surfaces (names, `tbody`). It is separate from the `text-type-*` size
   tokens; apply it alongside the appropriate size token where space is tight and text is
-  scannable.
+  scannable. **Not inside a form control** — a condensed `Pill` beside an un-condensed search
+  box reads as squashed rather than dense; a widget's parts share one family.
 - Leave alone: `font-serif` name accents, `font-alien` wordmark.
 - `font-mono` for tabular figures (stats values, date-picker field) is a style choice, not a
   column-alignment mechanism — Plex sans/condensed digits are already tabular.
