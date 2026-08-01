@@ -62,6 +62,14 @@ class PillTest(unittest.TestCase):
         html = str(Pill([("data-platform", "3")], label="hi"))
         self.assertIn('data-platform="3"', html)
 
+    def test_pill_is_a_token_not_a_row_control(self):
+        # A pill sits inside the 42px SearchSelect field and shares its font.
+        # min-h-control made it fill the field edge to edge; font-condensed
+        # made it read as squashed next to the un-condensed search box.
+        html = str(Pill(label="hi"))
+        self.assertNotIn("min-h-control", html)
+        self.assertNotIn("font-condensed", html)
+
 
 class SearchSelectComponentTest(unittest.TestCase):
     def test_returns_safetext(self):
