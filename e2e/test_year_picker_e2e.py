@@ -99,4 +99,6 @@ def test_stats_year_picker_activates_a_year_with_native_keyboard(
     year_button.focus()
     with page.expect_navigation():
         page.keyboard.press("Space")
-    expect(page).to_have_url(f"{live_server.url}{reverse('games:stats_by_year', args=[2024])}")
+    expect(page).to_have_url(
+        f"{live_server.url}{reverse('games:stats_by_year', args=[2024])}"
+    )

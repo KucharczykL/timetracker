@@ -1499,7 +1499,7 @@ def YearPicker(
                     class_=_YEAR_CELL_GEOMETRY_CLASS,
                 )
             ],
-        ]
+        ],
     ]
     return _Dropdown(
         class_="relative inline-block",

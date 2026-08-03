@@ -205,6 +205,17 @@ describe("attachMenu keepOpenOnTab", () => {
     expect(controller.isOpen()).toBe(false);
   });
 
+  it("stays open when a focused control is detached during its own update", () => {
+    const { menu, controller } = mountKeepOpenOnTab();
+    const first = menu.querySelector("[data-first]") as HTMLElement;
+    controller.open();
+    first.addEventListener("focusout", () => first.remove());
+    first.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    first.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    first.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(controller.isOpen()).toBe(true);
+  });
+
   it("keeps the default Tab-close behavior when the option is absent", () => {
     const { menu, controller } = mount();
     controller.open();

@@ -46,11 +46,15 @@ class YearPickerTest(SimpleTestCase):
             self.assertIn("min-h-control", classes, variant)
             self.assertIn("rounded-base", classes, variant)
 
-        self.assertIn(control_button_class(variant="ghost"), YEAR_PICKER_CLASSES["default"])
+        self.assertIn(
+            control_button_class(variant="ghost"), YEAR_PICKER_CLASSES["default"]
+        )
         self.assertIn(
             control_button_class(color="blue", variant="filled"),
             YEAR_PICKER_CLASSES["selected"],
         )
         for variant in ("adjacent", "disabled", "adjacent-disabled"):
-            self.assertIn(control_button_class(variant="ghost"), YEAR_PICKER_CLASSES[variant])
+            self.assertIn(
+                control_button_class(variant="ghost"), YEAR_PICKER_CLASSES[variant]
+            )
             self.assertIn("opacity-40", YEAR_PICKER_CLASSES[variant])

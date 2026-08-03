@@ -40,6 +40,7 @@ from games.views.stats_content import stats_content
 from games.views.stats_data import compute_stats
 from timetracker.settings_resolver import resolve_for_user
 
+
 def model_counts(request: HttpRequest) -> dict[str, Any]:
     now = timezone_now()
     # Use a contiguous [midnight, next midnight) range in the active timezone

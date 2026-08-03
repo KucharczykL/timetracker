@@ -364,7 +364,29 @@ export function attachMenu(
   });
 
   if (keepOpenOnTab) {
+    // A calendar rerenders its grid in response to an in-panel click. The
+    // browser moves focus to the body before that click handler replaces the
+    // focused day button, so focusout briefly looks like focus left the panel.
+    // Remember the in-panel activation until its click bubbles; real Tab/
+    // Shift+Tab focus transitions do not set this guard.
+    let internalActivation = false;
+    menu.addEventListener("pointerdown", (event) => {
+      if (event.button === 0) internalActivation = true;
+    });
+    menu.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") internalActivation = true;
+    });
+    menu.addEventListener("click", () => {
+      internalActivation = false;
+    });
+    menu.addEventListener("pointercancel", () => {
+      internalActivation = false;
+    });
     menu.addEventListener("focusout", (event) => {
+      // Calendar grids rerender their focused day button after a click. The
+      // resulting focusout is a DOM-update artifact, not focus leaving the
+      // panel; a live target still represents a real focus transition.
+      if (internalActivation || !(event.target as HTMLElement).isConnected) return;
       const relatedTarget = event.relatedTarget as Node | null;
       if (!relatedTarget || !menu.contains(relatedTarget)) close();
     });

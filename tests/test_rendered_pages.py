@@ -138,9 +138,7 @@ class RenderedPagesTest(TestCase):
     def test_stats_page_does_not_load_datepicker_bundle(self):
         """The in-house YearPicker needs no vendored datepicker bundle."""
         html = self.get("games:stats_alltime").content.decode()
-        self.assertNotIn(
-            "js/" + "date" + "picker" + "." + "umd" + "." + "js", html
-        )
+        self.assertNotIn("js/" + "date" + "picker" + "." + "umd" + "." + "js", html)
 
     # --- layout wrapper ------------------------------------------------------
 
@@ -527,7 +525,7 @@ class RenderedPagesTest(TestCase):
     def test_stats_alltime(self):
         html = self.get("games:stats_alltime").content.decode()
         for marker in [
-            '<drop-down',
+            "<drop-down",
             'data-year-picker-grid=""',
             'data-year-picker-template="year"',
             'aria-expanded="false"',
