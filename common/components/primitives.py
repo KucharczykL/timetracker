@@ -1431,7 +1431,7 @@ def YearPicker(
         "absolute z-20 overflow-x-hidden overflow-y-auto rounded-base p-2 "
         f"{OVERLAY_SURFACE_CLASS} w-56 shadow-sm border border-default-medium"
     )
-    return _YearPicker(
+    picker = _YearPicker(
         [
             ("selected-year", selected),
             ("available-years", years_csv),
@@ -1439,75 +1439,74 @@ def YearPicker(
             ("class", "inline-block"),
         ]
     )[
-        _Dropdown(
-            class_="relative inline-block",
-            placement="bottom-end",
-            submenu="false",
-            behavior="date-calendar",
-        )[
-            Button(
-                [
-                    ("type", "button"),
-                    ("data-toggle", ""),
-                    ("data-year-picker-toggle", ""),
-                    ("aria-controls", popup_id),
-                    ("aria-expanded", "false"),
-                    ("aria-haspopup", "dialog"),
+        Button(
+            [
+                ("type", "button"),
+                ("data-toggle", ""),
+                ("data-year-picker-toggle", ""),
+                ("aria-controls", popup_id),
+                ("aria-expanded", "false"),
+                ("aria-haspopup", "dialog"),
+                (
+                    "class",
                     (
-                        "class",
-                        (
-                            f"inline-flex items-center rounded-base {CONTROL_SIZE_CLASS} "
-                            f"text-type-body font-medium {classes}"
-                        ),
+                        f"inline-flex items-center rounded-base {CONTROL_SIZE_CLASS} "
+                        f"text-type-body font-medium {classes}"
                     ),
-                ]
-            )[label, _YEAR_PICKER_CHEVRON],
-            Div(
-                [
-                    ("data-menu", ""),
-                    ("data-year-picker-popup", ""),
-                    ("id", popup_id),
-                    ("hidden", ""),
-                    ("role", "group"),
-                    ("aria-labelledby", period_id),
-                    ("class", popup_class),
-                ]
-            )[
-                Div(class_="flex items-center justify-between gap-2")[
-                    ControlButton(
-                        [("data-year-picker-prev", "")],
-                        variant="ghost",
-                        aria_label="Previous decade",
-                        class_=_YEAR_CELL_GEOMETRY_CLASS,
-                    )["‹"],
-                    Span(
-                        [
-                            ("id", period_id),
-                            ("data-year-picker-period", ""),
-                            ("class", "text-type-body font-medium text-heading"),
-                        ]
-                    ),
-                    ControlButton(
-                        [("data-year-picker-next", "")],
-                        variant="ghost",
-                        aria_label="Next decade",
-                        class_=_YEAR_CELL_GEOMETRY_CLASS,
-                    )["›"],
-                ],
-                Div(
-                    class_="grid grid-cols-4 gap-y-0.5 mt-1 w-56",
-                    data_year_picker_grid="",
                 ),
-                Template(data_year_picker_template="year")[
-                    ControlButton(
-                        [("data-year", "")],
-                        variant="ghost",
-                        class_=_YEAR_CELL_GEOMETRY_CLASS,
-                    )
-                ],
+            ]
+        )[label, _YEAR_PICKER_CHEVRON],
+        Div(
+            [
+                ("data-menu", ""),
+                ("data-year-picker-popup", ""),
+                ("id", popup_id),
+                ("hidden", ""),
+                ("role", "group"),
+                ("aria-labelledby", period_id),
+                ("class", popup_class),
+            ]
+        )[
+            Div(class_="flex items-center justify-between gap-2")[
+                ControlButton(
+                    [("data-year-picker-prev", "")],
+                    variant="ghost",
+                    aria_label="Previous decade",
+                    class_=_YEAR_CELL_GEOMETRY_CLASS,
+                )["‹"],
+                Span(
+                    [
+                        ("id", period_id),
+                        ("data-year-picker-period", ""),
+                        ("class", "text-type-body font-medium text-heading"),
+                    ]
+                ),
+                ControlButton(
+                    [("data-year-picker-next", "")],
+                    variant="ghost",
+                    aria_label="Next decade",
+                    class_=_YEAR_CELL_GEOMETRY_CLASS,
+                )["›"],
+            ],
+            Div(
+                class_="grid grid-cols-4 gap-y-0.5 mt-1 w-56",
+                data_year_picker_grid="",
+            ),
+            Template(data_year_picker_template="year")[
+                ControlButton(
+                    [("data-year", "")],
+                    variant="ghost",
+                    class_=_YEAR_CELL_GEOMETRY_CLASS,
+                )
             ],
         ]
     ]
+    return _Dropdown(
+        class_="relative inline-block",
+        placement="bottom-end",
+        submenu="false",
+        behavior="date-calendar",
+    )[picker]
 
 
 # Form-field rendering. The element classes (label/error/checkbox-row + the
