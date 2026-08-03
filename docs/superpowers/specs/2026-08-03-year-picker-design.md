@@ -55,7 +55,7 @@ around the `<year-picker>` element. The YearPicker contains:
 - a hidden `[data-menu]` popup with the shared overlay surface styling;
 - previous/next decade buttons;
 - a decade-period label;
-- a three-row, four-column year grid;
+- a four-column year grid;
 - a server-rendered `ControlButton` template cloned by TypeScript for each
   year cell.
 
@@ -71,7 +71,7 @@ Escape, Tab, and single-open coordination remain centralized.
 ### Client lifecycle
 
 `year-picker.ts` reads the existing props, finds the toggle, popup, navigation
-buttons, period label, year rows, and year-grid template, then calls
+buttons, period label, and year-grid template, then calls
 `bindCalendarPopupHost()` from `date-calendar-core.ts`.
 
 The popup host's `beforeOpen` callback synchronizes the view from the selected
@@ -84,11 +84,13 @@ dropdown item roving, the YearPicker supplies only the small trigger behavior
 that the generic host cannot provide: ArrowDown opens the popup from the
 trigger, and Escape closes it when focus remains on the trigger. The year cells
 remain ordinary buttons, matching the existing date-calendar implementation;
-native Tab/Enter/Space behavior is sufficient for cell navigation and
-selection. The shared host owns popup geometry, outside-click dismissal,
-Escape/Tab handling while focus is in the popup, and single-open coordination.
-On binding, the shared helper initializes the trigger's `aria-expanded` state
-to `false`.
+native Enter/Space behavior is sufficient for selection. A small shared
+`keepOpenOnTab` option for `date-calendar` lets Tab and Shift+Tab move through
+all popup controls; a shared focus-leave handler closes the popup when focus
+actually exits it. The shared host owns popup geometry, outside-click
+dismissal, Escape/focus-leave handling, and single-open coordination. The
+trigger renders `aria-expanded="false"` server-side and the helper updates it
+when the popup opens or closes.
 
 The element owns only year-specific behavior:
 
@@ -145,18 +147,23 @@ all-time view remains the separate All-time stats button.
 
 The trigger's `aria-controls` and `aria-expanded` are managed by
 `bindCalendarPopupHost()`, as with the existing date calendars. The initial
-state is explicitly `aria-expanded="false"`. The grid follows the existing
-date-calendar convention: a labelled container containing real year buttons,
-with `aria-selected` on the selected button and native `disabled` semantics on
-unavailable buttons. No custom `role="grid"`/roving-tabindex framework is
-introduced.
+state is rendered as `aria-expanded="false"`. The grid follows the existing
+date-calendar convention: a labelled `role="group"` container whose
+`aria-labelledby` points at the decade label, real year buttons, and
+`aria-selected` plus `aria-current="page"` on the selected button. Unavailable
+buttons use native `disabled` semantics, and previous/next buttons have
+explicit accessible names. No custom `role="grid"`/roving-tabindex framework
+is introduced.
 
-The dropdown continues to own Escape, Tab, and outside-click dismissal while
-focus is in the popup. Native button activation handles Enter/Space on the
-trigger and year cells. The YearPicker adds ArrowDown on the trigger to open
-the popup and Escape on the trigger to close it; these are the only keyboard
-gaps not already supplied by the shared machinery. Reopening resets the view
-to the selected year, or the current year for the all-time view.
+The dropdown continues to own Escape, outside-click, and focus-leave dismissal
+while focus is in the popup. Its shared `keepOpenOnTab` option allows Tab and
+Shift+Tab to traverse the popup before closing when focus leaves. Native
+button activation handles Enter/Space on the trigger and year cells. The
+YearPicker adds ArrowDown on the trigger to open the popup and Escape on the
+trigger to close it; these are the only keyboard gaps not already supplied by
+the shared machinery. ArrowDown leaves focus on the trigger, so the next Tab
+enters the first popup control. Reopening resets the view to the selected year,
+or the current year for the all-time view.
 
 ## Testing and verification
 
@@ -174,8 +181,8 @@ pattern as the existing date-picker tests. Cover:
 - selected and muted cell state;
 - complete state-class precedence;
 - trigger ArrowDown/Escape behavior and native button activation;
-- initial and updated `aria-expanded`, `aria-controls`, and date-calendar-style
-  button semantics;
+- initial and updated `aria-expanded`, `aria-controls`, group labelling, and
+  date-calendar-style button semantics;
 - immediate URL navigation for an enabled year;
 - no navigation for a disabled year;
 - no navigation when `url_template` is empty.
@@ -194,11 +201,16 @@ more precise than a full-page assertion.
 ### Browser tests
 
 Add a stats-page Playwright test that logs in, opens the YearPicker, verifies
-the visible four-column decade grid, navigates a decade, exercises keyboard
-opening/activation, and selects an enabled year while asserting the resulting
+the visible four-column decade grid, navigates a decade, tabs through more
+than one popup control, uses keyboard activation, verifies that focus leaving
+the panel closes it, and selects an enabled year while asserting the resulting
 stats URL. Keep sparse `available_years` behavior in deterministic
 TypeScript/unit coverage because production stats data normally supplies a
 contiguous year range.
+
+Add shared menu-behavior coverage for `keepOpenOnTab`: Tab and Shift+Tab stay
+open while focus moves between controls inside a date-calendar panel and close
+when focus leaves the panel.
 
 ### Cleanup and checks
 
@@ -213,8 +225,8 @@ reference.
 ## Acceptance criteria
 
 1. The stats YearPicker opens and dismisses through the shared dropdown host,
-   including the small ArrowDown/Escape trigger behavior and native button
-   activation.
+   including the small ArrowDown/Escape trigger behavior, native button
+   activation, and shared focus-leave handling.
 2. It presents the same twelve-cell decade layout and immediate-navigation
    behavior as the current picker.
 3. The grid has the exact four-column ordering and bounded decade
@@ -222,8 +234,10 @@ reference.
 4. Bounds and `available_years` disable exactly the same years as before.
 5. The existing date-calendar button semantics and the small added keyboard
    gaps are covered by tests.
-6. `games/static/js/datepicker.umd.js` is deleted.
-7. The YearPicker no longer declares or loads datepicker media.
-8. Stats rendering tests pass without expecting the removed asset.
-9. No source, test, runtime-asset, or product-documentation reference to
+6. Tab and Shift+Tab can traverse the YearPicker popup controls and close the
+   popup when focus leaves it.
+7. `games/static/js/datepicker.umd.js` is deleted.
+8. The YearPicker no longer declares or loads datepicker media.
+9. Stats rendering tests pass without expecting the removed asset.
+10. No source, test, runtime-asset, or product-documentation reference to
    `datepicker.umd.js` remains.
