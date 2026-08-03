@@ -54,6 +54,12 @@ def test_stats_year_picker_renders_and_keeps_tab_focus_inside(
     expect(popup).to_be_visible()
     expect(grid.locator("button[data-year]")).to_have_count(12)
     assert "grid-cols-4" in (grid.get_attribute("class") or "")
+    popup_box = popup.bounding_box()
+    grid_box = grid.bounding_box()
+    assert popup_box is not None
+    assert grid_box is not None
+    assert grid_box["x"] >= popup_box["x"]
+    assert grid_box["x"] + grid_box["width"] <= popup_box["x"] + popup_box["width"]
     expect(picker.locator("[data-year-picker-period]")).to_have_text("2020-2029")
     expect(picker.locator("[data-year-picker-prev]")).to_have_accessible_name(
         "Previous decade"

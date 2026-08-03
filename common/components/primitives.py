@@ -1429,7 +1429,7 @@ def YearPicker(
     period_id = "year-picker-period"
     popup_class = (
         "absolute z-20 overflow-x-hidden overflow-y-auto rounded-base p-2 "
-        f"{OVERLAY_SURFACE_CLASS} w-56 shadow-sm border border-default-medium"
+        f"{OVERLAY_SURFACE_CLASS} w-64 shadow-sm border border-default-medium"
     )
     picker = _YearPicker(
         [
