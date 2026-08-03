@@ -14,8 +14,9 @@ import { registerBehavior } from "../dropdown-behaviors.js";
 //   search input;
 // - a match-nothing `itemSelector`, so attachMenu's roving/typeahead stays
 //   off entirely (the calendar's own day-grid click handling and the
-//   segments' own Arrow/Backspace grammar are unaffected; Escape and Tab
-//   still close via attachMenu's menu keydown handler);
+//   segments' own Arrow/Backspace grammar are unaffected; Escape still closes
+//   via attachMenu while its shared focus-leave handler closes after focus
+//   exits the panel);
 // - no `matchToggleWidth`: unlike a value-select panel, the calendar has its
 //   own intrinsic width (the month grid), not the field's width.
 // - a small `gap` so the popup doesn't sit flush against the field it opens
@@ -30,6 +31,7 @@ registerBehavior("date-calendar", {
   menuOptions: () => ({
     itemSelector: "[data-date-calendar-no-items]",
     inlineTrigger: true,
+    keepOpenOnTab: true,
     gap: 4,
   }),
 });

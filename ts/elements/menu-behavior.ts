@@ -51,6 +51,9 @@ export interface MenuOptions {
   // every menu/select/combobox dropdown). A date-calendar popup wants visible
   // separation from the field it anchors to.
   gap?: number;
+  // Keep the panel open while Tab moves between its native controls. The
+  // focus-leave listener closes it once focus exits the panel.
+  keepOpenOnTab?: boolean;
 }
 
 export interface MenuController {
@@ -102,6 +105,7 @@ export function attachMenu(
   const isSubmenu = options.submenu ?? false;
   const horizontalAnchor = options.horizontalAnchor ?? toggle;
   const inlineTrigger = options.inlineTrigger ?? false;
+  const keepOpenOnTab = options.keepOpenOnTab ?? false;
 
   // Items of *this* menu only — never those of a nested submenu (whose closest
   // [data-menu] is its own panel, not ours). Keeps roving/typeahead from
@@ -341,7 +345,7 @@ export function attachMenu(
         toggle.focus();
         break;
       case "Tab":
-        close();
+        if (!keepOpenOnTab) close();
         break;
       case "Enter":
       case " ": {
@@ -358,6 +362,13 @@ export function attachMenu(
         }
     }
   });
+
+  if (keepOpenOnTab) {
+    menu.addEventListener("focusout", (event) => {
+      const relatedTarget = event.relatedTarget as Node | null;
+      if (!relatedTarget || !menu.contains(relatedTarget)) close();
+    });
+  }
 
   // Mouse hover drives the active item, so the highlight follows the cursor and
   // only one item is ever highlighted (own items only — not a nested submenu's).
