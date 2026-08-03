@@ -15,6 +15,7 @@ from common.components.date_range_picker import (
     CALENDAR_TRACK_CLASSES,
     CALENDAR_WEEKDAY_CLASS,
 )
+from common.components.primitives import YEAR_PICKER_CLASSES
 from common.components.ts_codegen import (
     ChoiceVocab,
     TsConstant,
@@ -104,6 +105,9 @@ class Command(BaseCommand):
                         "CALENDAR_TRACK_CLASSES", dict[str, str], CALENDAR_TRACK_CLASSES
                     ),
                     TsConstant("CALENDAR_WEEKDAY_CLASS", str, CALENDAR_WEEKDAY_CLASS),
+                    TsConstant(
+                        "YEAR_PICKER_CLASSES", dict[str, str], YEAR_PICKER_CLASSES
+                    ),
                 ],
             ),
         }

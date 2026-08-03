@@ -135,11 +135,10 @@ class RenderedPagesTest(TestCase):
         self.assertIn("js/dist/elements/search-select.js", html)
         self.assertIn("js/dist/elements/drop-down.js", html)
 
-    def test_stats_page_auto_loads_datepicker(self):
-        """YearPicker declares the datepicker UMD bundle as media; the stats
-        view no longer hoists it by hand."""
+    def test_stats_page_does_not_load_datepicker_bundle(self):
+        """The in-house YearPicker needs no vendored datepicker bundle."""
         html = self.get("games:stats_alltime").content.decode()
-        self.assertIn("js/datepicker.umd.js", html)
+        self.assertNotIn("js/datepicker.umd.js", html)
 
     # --- layout wrapper ------------------------------------------------------
 
@@ -526,7 +525,10 @@ class RenderedPagesTest(TestCase):
     def test_stats_alltime(self):
         html = self.get("games:stats_alltime").content.decode()
         for marker in [
-            'id="year-picker-input"',
+            '<drop-down',
+            'data-year-picker-grid=""',
+            'data-year-picker-template="year"',
+            'aria-expanded="false"',
             "All-time stats",
             "Playtime",
             "Purchases",
