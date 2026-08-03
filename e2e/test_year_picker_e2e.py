@@ -182,6 +182,77 @@ def test_stats_year_picker_keeps_open_while_clicking_decade_navigation(
     expect(picker.locator("[data-year-picker-period]")).to_have_text("2020-2029")
 
 
+def test_stats_selected_year_picker_keeps_open_while_clicking_decade_navigation(
+    authenticated_page: Page, live_server, stats_data
+):
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:stats_by_year', args=[2024])}")
+    picker = page.locator("year-picker")
+    toggle = picker.locator("[data-year-picker-toggle]")
+    popup = picker.locator("[data-year-picker-popup]")
+    previous = picker.locator("[data-year-picker-prev]")
+    next_decade = picker.locator("[data-year-picker-next]")
+
+    toggle.click()
+    expect(popup).to_be_visible()
+    previous.click()
+    expect(popup).to_be_visible()
+    expect(picker.locator("[data-year-picker-period]")).to_have_text("2010-2019")
+    next_decade.click()
+    expect(popup).to_be_visible()
+    expect(picker.locator("[data-year-picker-period]")).to_have_text("2020-2029")
+
+
+def test_stats_year_picker_stays_open_for_repeated_previous_clicks(
+    authenticated_page: Page, live_server, stats_data
+):
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:stats_by_year', args=[2024])}")
+    picker = page.locator("year-picker")
+    toggle = picker.locator("[data-year-picker-toggle]")
+    popup = picker.locator("[data-year-picker-popup]")
+    previous = picker.locator("[data-year-picker-prev]")
+
+    toggle.click()
+    for expected_period in ("2010-2019", "2000-2009", "1990-1999"):
+        previous.click()
+        page.wait_for_timeout(100)
+        expect(popup).to_be_visible()
+        expect(picker.locator("[data-year-picker-period]")).to_have_text(
+            expected_period
+        )
+
+
+def test_stats_year_picker_narrow_viewport_pointer_navigation(
+    authenticated_page: Page, live_server, stats_data
+):
+    page = authenticated_page
+    page.set_viewport_size({"width": 360, "height": 800})
+    page.goto(f"{live_server.url}{reverse('games:stats_by_year', args=[2024])}")
+    picker = page.locator("year-picker")
+    toggle = picker.locator("[data-year-picker-toggle]")
+    popup = picker.locator("[data-year-picker-popup]")
+    previous = picker.locator("[data-year-picker-prev]")
+    next_decade = picker.locator("[data-year-picker-next]")
+
+    toggle.click()
+    for control, expected_period in (
+        (previous, "2010-2019"),
+        (next_decade, "2020-2029"),
+        (previous, "2010-2019"),
+    ):
+        before = control.bounding_box()
+        control.click()
+        page.wait_for_timeout(100)
+        after = control.bounding_box()
+        expect(popup).to_be_visible()
+        expect(picker.locator("[data-year-picker-period]")).to_have_text(
+            expected_period
+        )
+        assert before is not None
+        assert after is not None
+
+
 def test_stats_year_picker_activates_a_year_with_native_keyboard(
     authenticated_page: Page, live_server, stats_data
 ):

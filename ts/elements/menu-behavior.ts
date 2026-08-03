@@ -392,6 +392,16 @@ export function attachMenu(
         if (!menu.contains(relatedTarget)) close();
         return;
       }
+      // An in-panel action can disable the control that was just activated
+      // (calendar decade navigation does this at the current/minimum boundary).
+      // Browsers then blur that control with no relatedTarget; it is still an
+      // internal update, not focus leaving the popup.
+      if (
+        (event.target as HTMLElement).hasAttribute("disabled") ||
+        (event.target as HTMLElement).getAttribute("aria-disabled") === "true"
+      ) {
+        return;
+      }
       // Some browsers omit relatedTarget during a pointer focus transfer. The
       // active element is reliable after the focus event settles, so defer
       // only this ambiguous case and keep the panel open for an in-panel move.

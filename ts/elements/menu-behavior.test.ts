@@ -218,6 +218,21 @@ describe("attachMenu keepOpenOnTab", () => {
     expect(controller.isOpen()).toBe(true);
   });
 
+  it("stays open when an activated control becomes disabled during its update", async () => {
+    const { menu, controller } = mountKeepOpenOnTab();
+    const first = menu.querySelector("[data-first]") as HTMLButtonElement;
+    const outside = document.querySelector("#outside") as HTMLElement;
+    controller.open();
+    first.focus();
+    first.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0 }));
+    outside.focus();
+    first.click();
+    first.disabled = true;
+    first.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    await Promise.resolve();
+    expect(controller.isOpen()).toBe(true);
+  });
+
   it("stays open when a focused control is detached during its own update", () => {
     const { menu, controller } = mountKeepOpenOnTab();
     const first = menu.querySelector("[data-first]") as HTMLElement;
