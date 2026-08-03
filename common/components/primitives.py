@@ -1428,8 +1428,8 @@ def YearPicker(
     popup_id = "year-picker-popup"
     period_id = "year-picker-period"
     popup_class = (
-        "absolute z-20 overflow-x-hidden overflow-y-auto rounded-base p-2 "
-        f"{OVERLAY_SURFACE_CLASS} w-64 shadow-sm border border-default-medium"
+        "absolute z-20 flex w-auto overflow-x-hidden overflow-y-auto rounded-base "
+        f"{OVERLAY_SURFACE_CLASS} shadow-sm border border-default-medium"
     )
     picker = _YearPicker(
         [
@@ -1467,38 +1467,40 @@ def YearPicker(
                 ("class", popup_class),
             ]
         )[
-            Div(class_="flex items-center justify-between gap-2")[
-                ControlButton(
-                    [("data-year-picker-prev", "")],
-                    variant="ghost",
-                    aria_label="Previous decade",
-                    class_=_YEAR_CELL_GEOMETRY_CLASS,
-                )["‹"],
-                Span(
-                    [
-                        ("id", period_id),
-                        ("data-year-picker-period", ""),
-                        ("class", "text-type-body font-medium text-heading"),
-                    ]
+            Div(data_year_picker_body="", class_="p-2")[
+                Div(class_="flex items-center justify-between gap-2")[
+                    ControlButton(
+                        [("data-year-picker-prev", "")],
+                        variant="ghost",
+                        aria_label="Previous decade",
+                        class_=_YEAR_CELL_GEOMETRY_CLASS,
+                    )["‹"],
+                    Span(
+                        [
+                            ("id", period_id),
+                            ("data-year-picker-period", ""),
+                            ("class", "text-type-body font-medium text-heading"),
+                        ]
+                    ),
+                    ControlButton(
+                        [("data-year-picker-next", "")],
+                        variant="ghost",
+                        aria_label="Next decade",
+                        class_=_YEAR_CELL_GEOMETRY_CLASS,
+                    )["›"],
+                ],
+                Div(
+                    class_="grid grid-cols-4 gap-y-0.5 mt-1 w-56",
+                    data_year_picker_grid="",
                 ),
-                ControlButton(
-                    [("data-year-picker-next", "")],
-                    variant="ghost",
-                    aria_label="Next decade",
-                    class_=_YEAR_CELL_GEOMETRY_CLASS,
-                )["›"],
-            ],
-            Div(
-                class_="grid grid-cols-4 gap-y-0.5 mt-1 w-56",
-                data_year_picker_grid="",
-            ),
-            Template(data_year_picker_template="year")[
-                ControlButton(
-                    [("data-year", "")],
-                    variant="ghost",
-                    class_=_YEAR_CELL_GEOMETRY_CLASS,
-                )
-            ],
+                Template(data_year_picker_template="year")[
+                    ControlButton(
+                        [("data-year", "")],
+                        variant="ghost",
+                        class_=_YEAR_CELL_GEOMETRY_CLASS,
+                    )
+                ],
+            ]
         ],
     ]
     return _Dropdown(

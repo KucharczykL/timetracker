@@ -54,12 +54,7 @@ def test_stats_year_picker_renders_and_keeps_tab_focus_inside(
     expect(popup).to_be_visible()
     expect(grid.locator("button[data-year]")).to_have_count(12)
     assert "grid-cols-4" in (grid.get_attribute("class") or "")
-    popup_box = popup.bounding_box()
-    grid_box = grid.bounding_box()
-    assert popup_box is not None
-    assert grid_box is not None
-    assert grid_box["x"] >= popup_box["x"]
-    assert grid_box["x"] + grid_box["width"] <= popup_box["x"] + popup_box["width"]
+    _assert_year_picker_geometry(page, popup, grid)
     expect(picker.locator("[data-year-picker-period]")).to_have_text("2020-2029")
     expect(picker.locator("[data-year-picker-prev]")).to_have_accessible_name(
         "Previous decade"
@@ -91,6 +86,79 @@ def test_stats_year_picker_renders_and_keeps_tab_focus_inside(
     last_enabled_year.focus()
     page.keyboard.press("Tab")
     expect(popup).to_be_hidden()
+
+
+def _assert_year_picker_geometry(page, popup, grid):
+    popup_box = popup.bounding_box()
+    grid_box = grid.bounding_box()
+    assert popup_box is not None
+    assert grid_box is not None
+    left_gap = grid_box["x"] - popup_box["x"]
+    right_gap = (
+        popup_box["x"] + popup_box["width"] - (grid_box["x"] + grid_box["width"])
+    )
+    assert abs(left_gap - right_gap) <= 1
+
+    cells = grid.locator("button[data-year]").evaluate_all(
+        """
+        (elements) => elements.map((element) => {
+          const box = element.getBoundingClientRect();
+          return { x: box.x, y: box.y, width: box.width };
+        })
+        """
+    )
+    widths = [cell["width"] for cell in cells]
+    assert max(widths) - min(widths) <= 1
+
+    rows: list[list[dict[str, float]]] = []
+    for cell in cells:
+        row = next(
+            (
+                candidate
+                for candidate in rows
+                if abs(candidate[0]["y"] - cell["y"]) <= 1
+            ),
+            None,
+        )
+        if row is None:
+            rows.append([cell])
+        else:
+            row.append(cell)
+    assert len(rows) == 3
+    for row in rows:
+        row.sort(key=lambda cell: cell["x"])
+        assert len(row) == 4
+    for column in range(4):
+        positions = [row[column]["x"] for row in rows]
+        assert max(positions) - min(positions) <= 1
+
+
+def test_stats_year_picker_geometry_scales_and_clamps(
+    authenticated_page: Page, live_server, stats_data
+):
+    page = authenticated_page
+    page.set_viewport_size({"width": 600, "height": 800})
+    page.goto(f"{live_server.url}{reverse('games:stats_alltime')}")
+    picker = page.locator("year-picker")
+    toggle = picker.locator("[data-year-picker-toggle]")
+    popup = picker.locator("[data-year-picker-popup]")
+    grid = picker.locator("[data-year-picker-grid]")
+    toggle.click()
+
+    for font_size in ("12px", "16px", "24px"):
+        page.locator("html").evaluate(
+            "(element, value) => element.style.fontSize = value", font_size
+        )
+        page.wait_for_timeout(50)
+        _assert_year_picker_geometry(page, popup, grid)
+
+    page.set_viewport_size({"width": 360, "height": 800})
+    page.locator("html").evaluate("(element) => element.style.fontSize = '16px'")
+    page.wait_for_timeout(50)
+    popup_box = popup.bounding_box()
+    assert popup_box is not None
+    assert popup_box["x"] >= 8
+    assert popup_box["x"] + popup_box["width"] <= 360 - 8
 
 
 def test_stats_year_picker_activates_a_year_with_native_keyboard(
