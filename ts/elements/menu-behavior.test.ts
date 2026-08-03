@@ -190,7 +190,7 @@ describe("attachMenu keepOpenOnTab", () => {
     expect(controller.isOpen()).toBe(true);
   });
 
-  it("closes when focus leaves the panel or has no destination", () => {
+  it("closes when focus leaves the panel or has no destination", async () => {
     const { menu, controller } = mountKeepOpenOnTab();
     const first = menu.querySelector("[data-first]") as HTMLElement;
     const outside = document.querySelector("#outside") as HTMLElement;
@@ -202,7 +202,20 @@ describe("attachMenu keepOpenOnTab", () => {
 
     controller.open();
     first.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    await Promise.resolve();
     expect(controller.isOpen()).toBe(false);
+  });
+
+  it("does not close when a browser omits relatedTarget for an in-panel move", async () => {
+    const { menu, controller } = mountKeepOpenOnTab();
+    const first = menu.querySelector("[data-first]") as HTMLElement;
+    const second = menu.querySelector("[data-second]") as HTMLElement;
+    controller.open();
+    first.focus();
+    second.focus();
+    first.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    await Promise.resolve();
+    expect(controller.isOpen()).toBe(true);
   });
 
   it("stays open when a focused control is detached during its own update", () => {

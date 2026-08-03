@@ -161,6 +161,27 @@ def test_stats_year_picker_geometry_scales_and_clamps(
     assert popup_box["x"] + popup_box["width"] <= 360 - 8
 
 
+def test_stats_year_picker_keeps_open_while_clicking_decade_navigation(
+    authenticated_page: Page, live_server, stats_data
+):
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:stats_alltime')}")
+    picker = page.locator("year-picker")
+    toggle = picker.locator("[data-year-picker-toggle]")
+    popup = picker.locator("[data-year-picker-popup]")
+    previous = picker.locator("[data-year-picker-prev]")
+    next_decade = picker.locator("[data-year-picker-next]")
+
+    toggle.click()
+    expect(popup).to_be_visible()
+    previous.click()
+    expect(popup).to_be_visible()
+    expect(picker.locator("[data-year-picker-period]")).to_have_text("2010-2019")
+    next_decade.click()
+    expect(popup).to_be_visible()
+    expect(picker.locator("[data-year-picker-period]")).to_have_text("2020-2029")
+
+
 def test_stats_year_picker_activates_a_year_with_native_keyboard(
     authenticated_page: Page, live_server, stats_data
 ):

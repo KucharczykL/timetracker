@@ -388,7 +388,18 @@ export function attachMenu(
       // panel; a live target still represents a real focus transition.
       if (internalActivation || !(event.target as HTMLElement).isConnected) return;
       const relatedTarget = event.relatedTarget as Node | null;
-      if (!relatedTarget || !menu.contains(relatedTarget)) close();
+      if (relatedTarget) {
+        if (!menu.contains(relatedTarget)) close();
+        return;
+      }
+      // Some browsers omit relatedTarget during a pointer focus transfer. The
+      // active element is reliable after the focus event settles, so defer
+      // only this ambiguous case and keep the panel open for an in-panel move.
+      queueMicrotask(() => {
+        if (internalActivation) return;
+        const activeElement = document.activeElement;
+        if (!activeElement || !menu.contains(activeElement)) close();
+      });
     });
   }
 
