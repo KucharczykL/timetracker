@@ -1356,12 +1356,10 @@ def StaticScript(filename: str) -> Node:
     return Script(src=static("js/" + filename))
 
 
-# The <year-picker> custom element wraps the Flowbite-datepicker year grid.
-# The builder auto-attaches dist/elements/year-picker.js; the vendored UMD
-# bundle (classic script, runs during parse) is merged in via with_media so
-# Datepicker is defined by the time the deferred element module executes.
+# The <year-picker> custom element renders the stats year grid in TypeScript.
+# The builder auto-attaches dist/elements/year-picker.js; its popup is hosted by
+# the same date-calendar <drop-down> machinery as the date pickers.
 _YearPicker = custom_element_builder("year-picker")
-_DATEPICKER_MEDIA = Media(js_external=("datepicker.umd.js",))
 
 # The down-chevron rendered inside the YearPicker button. Trusted static SVG.
 _YEAR_PICKER_CHEVRON = Safe(
@@ -1372,12 +1370,37 @@ _YEAR_PICKER_CHEVRON = Safe(
 )
 
 
+# Every year cell is a ControlButton with a fixed width so the four columns stay
+# aligned regardless of the label. The complete state classes are generated to
+# TypeScript because the client clones the template twelve times.
+_YEAR_CELL_GEOMETRY_CLASS = "w-14 shrink-0"
+YEAR_PICKER_CLASSES: dict[str, str] = {
+    "default": f"{control_button_class(variant='ghost')} {_YEAR_CELL_GEOMETRY_CLASS}",
+    "selected": (
+        f"{control_button_class(color='blue', variant='filled')} "
+        f"{_YEAR_CELL_GEOMETRY_CLASS}"
+    ),
+    "adjacent": (
+        f"{control_button_class(variant='ghost')} "
+        f"{_YEAR_CELL_GEOMETRY_CLASS} opacity-40"
+    ),
+    "disabled": (
+        f"{control_button_class(variant='ghost')} "
+        f"{_YEAR_CELL_GEOMETRY_CLASS} opacity-40"
+    ),
+    "adjacent-disabled": (
+        f"{control_button_class(variant='ghost')} "
+        f"{_YEAR_CELL_GEOMETRY_CLASS} opacity-40"
+    ),
+}
+
+
 def YearPicker(
     year: int | None = None,
     available_years: tuple[int, ...] = (),
     url_template: str = "",
 ) -> Node:
-    """A Flowbite-datepicker year picker.
+    """An in-house four-column stats year picker.
 
     `year` is the selected year, or ``None`` for the all-time view (the empty
     state). `available_years` are the years to enable in the popup grid.
@@ -1385,11 +1408,14 @@ def YearPicker(
     placeholder, substituted with the chosen year in JS (keeps this component
     decoupled from the project's URL names).
 
-    Behavior lives in ``ts/elements/year-picker.ts``; this renders the light
-    DOM (toggle button + hidden datepicker input). The element module and the
-    Flowbite UMD bundle are declared as ``media`` on the node, so ``TimetrackerDocument()``
-    loads both automatically.
+    Behavior lives in ``ts/elements/year-picker.ts``; this renders the toggle,
+    date-calendar dropdown shell, accessible popup structure, and a native
+    ControlButton template for the twelve year cells.
     """
+    # custom_elements imports this module, so the dropdown builder and its
+    # shared overlay surface are imported lazily after module initialization.
+    from common.components.custom_elements import OVERLAY_SURFACE_CLASS, _Dropdown
+
     label = str(year) if year is not None else "Choose a year"
     selected = str(year) if year is not None else ""
     classes = (
@@ -1399,18 +1425,28 @@ def YearPicker(
         "hover:bg-neutral-tertiary-medium focus:ring-4 focus:ring-brand-medium"
     )
     years_csv = ",".join(str(y) for y in available_years)
-    return _YearPicker(
+    popup_id = "year-picker-popup"
+    period_id = "year-picker-period"
+    popup_class = (
+        "absolute z-20 flex w-auto overflow-x-hidden overflow-y-auto rounded-base "
+        f"{OVERLAY_SURFACE_CLASS} shadow-sm border border-default-medium"
+    )
+    picker = _YearPicker(
         [
             ("selected-year", selected),
             ("available-years", years_csv),
             ("url-template", url_template),
-            ("class", "relative inline-block"),
+            ("class", "inline-block"),
         ]
     )[
         Button(
             [
                 ("type", "button"),
+                ("data-toggle", ""),
                 ("data-year-picker-toggle", ""),
+                ("aria-controls", popup_id),
+                ("aria-expanded", "false"),
+                ("aria-haspopup", "dialog"),
                 (
                     "class",
                     (
@@ -1420,15 +1456,59 @@ def YearPicker(
                 ),
             ]
         )[label, _YEAR_PICKER_CHEVRON],
-        Input(
-            id_="year-picker-input",
-            class_="absolute opacity-0 pointer-events-none",
-            style=(
-                "width: 1px; height: 1px; padding: 0; margin: -1px; "
-                "overflow: hidden; clip: rect(0,0,0,0); border: 0;"
-            ),
-        ),
-    ].with_media(_DATEPICKER_MEDIA)
+        Div(
+            [
+                ("data-menu", ""),
+                ("data-year-picker-popup", ""),
+                ("id", popup_id),
+                ("hidden", ""),
+                ("role", "group"),
+                ("aria-labelledby", period_id),
+                ("class", popup_class),
+            ]
+        )[
+            Div(data_year_picker_body="", class_="p-2")[
+                Div(class_="flex items-center justify-between gap-2")[
+                    ControlButton(
+                        [("data-year-picker-prev", "")],
+                        variant="ghost",
+                        aria_label="Previous decade",
+                        class_=_YEAR_CELL_GEOMETRY_CLASS,
+                    )["‹"],
+                    Span(
+                        [
+                            ("id", period_id),
+                            ("data-year-picker-period", ""),
+                            ("class", "text-type-body font-medium text-heading"),
+                        ]
+                    ),
+                    ControlButton(
+                        [("data-year-picker-next", "")],
+                        variant="ghost",
+                        aria_label="Next decade",
+                        class_=_YEAR_CELL_GEOMETRY_CLASS,
+                    )["›"],
+                ],
+                Div(
+                    class_="grid grid-cols-4 gap-y-0.5 mt-1 w-56",
+                    data_year_picker_grid="",
+                ),
+                Template(data_year_picker_template="year")[
+                    ControlButton(
+                        [("data-year", "")],
+                        variant="ghost",
+                        class_=_YEAR_CELL_GEOMETRY_CLASS,
+                    )
+                ],
+            ]
+        ],
+    ]
+    return _Dropdown(
+        class_="relative inline-block",
+        placement="bottom-end",
+        submenu="false",
+        behavior="date-calendar",
+    )[picker]
 
 
 # Form-field rendering. The element classes (label/error/checkbox-row + the

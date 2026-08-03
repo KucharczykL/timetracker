@@ -51,6 +51,9 @@ export interface MenuOptions {
   // every menu/select/combobox dropdown). A date-calendar popup wants visible
   // separation from the field it anchors to.
   gap?: number;
+  // Keep the panel open while Tab moves between its native controls. The
+  // focus-leave listener closes it once focus exits the panel.
+  keepOpenOnTab?: boolean;
 }
 
 export interface MenuController {
@@ -102,6 +105,7 @@ export function attachMenu(
   const isSubmenu = options.submenu ?? false;
   const horizontalAnchor = options.horizontalAnchor ?? toggle;
   const inlineTrigger = options.inlineTrigger ?? false;
+  const keepOpenOnTab = options.keepOpenOnTab ?? false;
 
   // Items of *this* menu only — never those of a nested submenu (whose closest
   // [data-menu] is its own panel, not ours). Keeps roving/typeahead from
@@ -341,7 +345,7 @@ export function attachMenu(
         toggle.focus();
         break;
       case "Tab":
-        close();
+        if (!keepOpenOnTab) close();
         break;
       case "Enter":
       case " ": {
@@ -358,6 +362,56 @@ export function attachMenu(
         }
     }
   });
+
+  if (keepOpenOnTab) {
+    // A calendar rerenders its grid in response to an in-panel click. The
+    // browser moves focus to the body before that click handler replaces the
+    // focused day button, so focusout briefly looks like focus left the panel.
+    // Remember the in-panel activation until its click bubbles; real Tab/
+    // Shift+Tab focus transitions do not set this guard.
+    let internalActivation = false;
+    menu.addEventListener("pointerdown", (event) => {
+      if (event.button === 0) internalActivation = true;
+    });
+    menu.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") internalActivation = true;
+    });
+    menu.addEventListener("click", () => {
+      internalActivation = false;
+    });
+    menu.addEventListener("pointercancel", () => {
+      internalActivation = false;
+    });
+    menu.addEventListener("focusout", (event) => {
+      // Calendar grids rerender their focused day button after a click. The
+      // resulting focusout is a DOM-update artifact, not focus leaving the
+      // panel; a live target still represents a real focus transition.
+      if (internalActivation || !(event.target as HTMLElement).isConnected) return;
+      const relatedTarget = event.relatedTarget as Node | null;
+      if (relatedTarget) {
+        if (!menu.contains(relatedTarget)) close();
+        return;
+      }
+      // An in-panel action can disable the control that was just activated
+      // (calendar decade navigation does this at the current/minimum boundary).
+      // Browsers then blur that control with no relatedTarget; it is still an
+      // internal update, not focus leaving the popup.
+      if (
+        (event.target as HTMLElement).hasAttribute("disabled") ||
+        (event.target as HTMLElement).getAttribute("aria-disabled") === "true"
+      ) {
+        return;
+      }
+      // Some browsers omit relatedTarget during a pointer focus transfer. The
+      // active element is reliable after the focus event settles, so defer
+      // only this ambiguous case and keep the panel open for an in-panel move.
+      queueMicrotask(() => {
+        if (internalActivation) return;
+        const activeElement = document.activeElement;
+        if (!activeElement || !menu.contains(activeElement)) close();
+      });
+    });
+  }
 
   // Mouse hover drives the active item, so the highlight follows the cursor and
   // only one item is ever highlighted (own items only — not a nested submenu's).

@@ -23,6 +23,30 @@ function mount(): {
   return { host, menu, controller };
 }
 
+function mountKeepOpenOnTab(): {
+  menu: HTMLElement;
+  controller: MenuController;
+} {
+  document.body.innerHTML = `
+    <div id="host">
+      <button data-toggle type="button">Open</button>
+      <div data-menu hidden>
+        <button data-first type="button">first</button>
+        <button data-second type="button">second</button>
+      </div>
+    </div>
+    <button id="outside" type="button">elsewhere</button>`;
+  const host = document.querySelector<HTMLElement>("#host") as HTMLElement;
+  const toggle = host.querySelector<HTMLElement>("[data-toggle]") as HTMLElement;
+  const menu = host.querySelector<HTMLElement>("[data-menu]") as HTMLElement;
+  const controller = attachMenu(host, toggle, menu, {
+    inlineTrigger: true,
+    keepOpenOnTab: true,
+  });
+  controller.bindDocument();
+  return { menu, controller };
+}
+
 function click(element: HTMLElement): void {
   element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 }
@@ -148,6 +172,84 @@ describe("attachMenu inlineTrigger (issue #348)", () => {
     const { controller } = mountInline();
     controller.open();
     click(document.querySelector("#outside") as HTMLElement);
+    expect(controller.isOpen()).toBe(false);
+  });
+});
+
+describe("attachMenu keepOpenOnTab", () => {
+  it("keeps an itemless panel open while focus moves inside it", () => {
+    const { menu, controller } = mountKeepOpenOnTab();
+    const first = menu.querySelector("[data-first]") as HTMLElement;
+    const second = menu.querySelector("[data-second]") as HTMLElement;
+    controller.open();
+    first.focus();
+    first.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+    first.dispatchEvent(
+      new FocusEvent("focusout", { bubbles: true, relatedTarget: second }),
+    );
+    expect(controller.isOpen()).toBe(true);
+  });
+
+  it("closes when focus leaves the panel or has no destination", async () => {
+    const { menu, controller } = mountKeepOpenOnTab();
+    const first = menu.querySelector("[data-first]") as HTMLElement;
+    const outside = document.querySelector("#outside") as HTMLElement;
+    controller.open();
+    first.dispatchEvent(
+      new FocusEvent("focusout", { bubbles: true, relatedTarget: outside }),
+    );
+    expect(controller.isOpen()).toBe(false);
+
+    controller.open();
+    first.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    await Promise.resolve();
+    expect(controller.isOpen()).toBe(false);
+  });
+
+  it("does not close when a browser omits relatedTarget for an in-panel move", async () => {
+    const { menu, controller } = mountKeepOpenOnTab();
+    const first = menu.querySelector("[data-first]") as HTMLElement;
+    const second = menu.querySelector("[data-second]") as HTMLElement;
+    controller.open();
+    first.focus();
+    second.focus();
+    first.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    await Promise.resolve();
+    expect(controller.isOpen()).toBe(true);
+  });
+
+  it("stays open when an activated control becomes disabled during its update", async () => {
+    const { menu, controller } = mountKeepOpenOnTab();
+    const first = menu.querySelector("[data-first]") as HTMLButtonElement;
+    const outside = document.querySelector("#outside") as HTMLElement;
+    controller.open();
+    first.focus();
+    first.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0 }));
+    outside.focus();
+    first.click();
+    first.disabled = true;
+    first.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    await Promise.resolve();
+    expect(controller.isOpen()).toBe(true);
+  });
+
+  it("stays open when a focused control is detached during its own update", () => {
+    const { menu, controller } = mountKeepOpenOnTab();
+    const first = menu.querySelector("[data-first]") as HTMLElement;
+    controller.open();
+    first.addEventListener("focusout", () => first.remove());
+    first.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    first.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    first.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(controller.isOpen()).toBe(true);
+  });
+
+  it("keeps the default Tab-close behavior when the option is absent", () => {
+    const { menu, controller } = mount();
+    controller.open();
+    const inside = menu.querySelector("[data-inside]") as HTMLElement;
+    inside.focus();
+    inside.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
     expect(controller.isOpen()).toBe(false);
   });
 });

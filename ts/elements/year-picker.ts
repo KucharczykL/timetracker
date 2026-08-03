@@ -1,80 +1,152 @@
 /**
- * YearPicker — custom element wrapping the Flowbite-datepicker year grid behind
- * the YearPicker component (common/components/primitives.py).
+ * YearPicker — an in-house stats year grid hosted by the shared date-calendar
+ * dropdown machinery.
  *
- * The component renders a toggle <button> plus a hidden #year-picker-input and
- * carries selected-year / available-years / url-template as typed props. This
- * turns the input into a year-level Datepicker, toggles it from the button, and
- * navigates to the chosen year's URL. Datepicker comes from the vendored UMD
- * bundle (datepicker.umd.js), a classic script loaded before this module runs.
- *
- * The Datepicker popup is appended to document.body, so its built-in
- * outside-click handler is bypassed (it only fires when the input is focused,
- * and our input is unfocusable). bindPopupDismiss handles Escape + outside
- * click instead, treating the body-mounted popup as "inside".
+ * The server renders the toggle, popup structure, and a ControlButton template;
+ * this element only supplies decade state, year-cell state, and navigation.
+ * Enabled years navigate immediately to the URL template supplied by Django.
  */
+import { YEAR_PICKER_CLASSES } from "../generated/calendar-classes.js";
 import { readYearPickerProps } from "../generated/props.js";
-import { bindPopupDismiss } from "../utils.js";
+import { bindCalendarPopupHost } from "./date-calendar-core.js";
 
-declare const Datepicker: any;
+export const YEAR_PICKER_MIN_YEAR = 1999;
 
-class YearPickerElement extends HTMLElement {
-  private cleanup: (() => void) | null = null;
+export function decadeStartFor(year: number): number {
+  return Math.floor(year / 10) * 10;
+}
 
-  connectedCallback(): void {
-    const { selectedYear, availableYears, urlTemplate } = readYearPickerProps(this);
-    const input = this.querySelector<HTMLInputElement>("#year-picker-input");
-    const toggle = this.querySelector<HTMLElement>("[data-year-picker-toggle]");
-    if (!input || !toggle) return;
+export function visibleYears(decadeStart: number): number[] {
+  return Array.from({ length: 12 }, (_, index) => decadeStart - 1 + index);
+}
 
-    const currentYear = new Date().getFullYear();
-    const enabledYears = new Set(
-      availableYears
-        .split(",")
-        .map((part) => parseInt(part.trim(), 10))
-        .filter((year) => !isNaN(year))
-    );
+export function buildYearUrl(urlTemplate: string, year: number): string | null {
+  if (!urlTemplate) return null;
+  return urlTemplate.replace("__year__", String(year));
+}
 
-    const picker = new Datepicker(input, {
-      pickLevel: 2,
-      format: "yyyy",
-      minDate: new Date(1999, 0, 1),
-      maxDate: new Date(currentYear, 11, 31),
-      autohide: false,
-      orientation: "bottom end",
-      showOnClick: false,
-      showOnFocus: false,
-      beforeShowYear: (date: Date) => ({ enabled: enabledYears.has(date.getFullYear()) }),
-    });
+type YearVariant = keyof typeof YEAR_PICKER_CLASSES;
 
-    picker.element.addEventListener("changeDate", (event: Event) => {
-      const year = (event as CustomEvent).detail.date?.getFullYear();
-      if (year && urlTemplate) {
-        window.location.href = urlTemplate.replace("__year__", String(year));
-      }
-    });
+function parseYear(value: string): number | null {
+  const year = Number.parseInt(value, 10);
+  return Number.isFinite(year) ? year : null;
+}
 
-    if (selectedYear) {
-      picker.dates = [new Date(parseInt(selectedYear, 10), 0, 1)];
-      picker.update();
-    }
-
-    toggle.addEventListener("click", () => {
-      if (picker.active) picker.hide();
-      else picker.show();
-    });
-
-    this.cleanup = bindPopupDismiss({
-      host: this,
-      isOpen: () => picker.active,
-      close: () => picker.hide(),
-      extraInside: () => [picker.picker?.element],
-    });
+function initYearPicker(picker: HTMLElement): boolean {
+  const { selectedYear, availableYears, urlTemplate } = readYearPickerProps(picker);
+  const toggle = picker.querySelector<HTMLElement>("[data-year-picker-toggle]");
+  const popup = picker.querySelector<HTMLElement>("[data-year-picker-popup]");
+  const period = picker.querySelector<HTMLElement>("[data-year-picker-period]");
+  const grid = picker.querySelector<HTMLElement>("[data-year-picker-grid]");
+  const template = picker.querySelector<HTMLTemplateElement>(
+    '[data-year-picker-template="year"]',
+  );
+  const previous = picker.querySelector<HTMLButtonElement>("[data-year-picker-prev]");
+  const next = picker.querySelector<HTMLButtonElement>("[data-year-picker-next]");
+  if (!toggle || !popup || !period || !grid || !template || !previous || !next) {
+    return false;
   }
 
-  disconnectedCallback(): void {
-    this.cleanup?.();
-    this.cleanup = null;
+  const currentYear = new Date().getFullYear();
+  const enabledYears = new Set(
+    availableYears
+      .split(",")
+      .map((part) => parseYear(part.trim()))
+      .filter((year): year is number => year !== null),
+  );
+  let selected = parseYear(selectedYear);
+  let decadeStart = decadeStartFor(selected ?? currentYear);
+
+  const isSelectable = (year: number): boolean =>
+    year >= YEAR_PICKER_MIN_YEAR && year <= currentYear && enabledYears.has(year);
+
+  const render = (): void => {
+    period.textContent = `${decadeStart}-${decadeStart + 9}`;
+    previous.disabled = decadeStart <= YEAR_PICKER_MIN_YEAR;
+    next.disabled = decadeStart + 9 >= currentYear;
+    grid.replaceChildren();
+
+    const prototype = template.content.firstElementChild;
+    if (!prototype) return;
+    for (const year of visibleYears(decadeStart)) {
+      const button = prototype.cloneNode(true) as HTMLButtonElement;
+      const adjacent = year < decadeStart || year > decadeStart + 9;
+      const selectable = isSelectable(year);
+      let variant: YearVariant;
+      if (!selectable) {
+        variant = adjacent ? "adjacent-disabled" : "disabled";
+      } else if (year === selected) {
+        variant = "selected";
+      } else {
+        variant = adjacent ? "adjacent" : "default";
+      }
+      button.className = YEAR_PICKER_CLASSES[variant];
+      button.textContent = String(year);
+      button.setAttribute("data-year", String(year));
+      button.setAttribute("aria-label", String(year));
+      if (year === selected) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+      button.disabled = !selectable;
+      grid.appendChild(button);
+    }
+  };
+
+  const beforeOpen = (): void => {
+    selected = parseYear(readYearPickerProps(picker).selectedYear);
+    decadeStart = decadeStartFor(selected ?? currentYear);
+  };
+
+  const host = bindCalendarPopupHost({
+    picker,
+    popup,
+    toggleButton: toggle,
+    idPrefix: "year-picker",
+    beforeOpen,
+    render,
+  });
+
+  previous.addEventListener("click", () => {
+    if (previous.disabled) return;
+    decadeStart -= 10;
+    render();
+  });
+  next.addEventListener("click", () => {
+    if (next.disabled) return;
+    decadeStart += 10;
+    render();
+  });
+
+  toggle.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      host.open();
+    } else if (event.key === "Escape" && host.isOpen()) {
+      event.preventDefault();
+      host.close();
+    }
+  });
+
+  grid.addEventListener("click", (event) => {
+    const button = (event.target as Element).closest<HTMLButtonElement>(
+      "button[data-year]",
+    );
+    if (!button || button.disabled) return;
+    const year = parseYear(button.dataset.year ?? "");
+    if (year === null) return;
+    const url = buildYearUrl(urlTemplate, year);
+    host.close();
+    if (url !== null) window.location.href = url;
+  });
+
+  return true;
+}
+
+class YearPickerElement extends HTMLElement {
+  private initialized = false;
+
+  connectedCallback(): void {
+    if (this.initialized) return;
+    this.initialized = initYearPicker(this);
   }
 }
 

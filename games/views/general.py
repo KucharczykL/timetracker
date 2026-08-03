@@ -40,9 +40,6 @@ from games.views.stats_content import stats_content
 from games.views.stats_data import compute_stats
 from timetracker.settings_resolver import resolve_for_user
 
-# The Flowbite-datepicker UMD bundle is declared as media on the YearPicker
-# component, so TimetrackerDocument() loads it automatically on the stats pages.
-
 
 def model_counts(request: HttpRequest) -> dict[str, Any]:
     now = timezone_now()
