@@ -29,9 +29,7 @@ Extend the YearPicker browser coverage with helpers that assert:
 
 ```python
 left_gap = grid_box["x"] - popup_box["x"]
-right_gap = popup_box["x"] + popup_box["width"] - (
-    grid_box["x"] + grid_box["width"]
-)
+right_gap = popup_box["x"] + popup_box["width"] - (grid_box["x"] + grid_box["width"])
 assert abs(left_gap - right_gap) <= 1
 ```
 
