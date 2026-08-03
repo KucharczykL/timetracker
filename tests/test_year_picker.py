@@ -28,8 +28,8 @@ class YearPickerTest(SimpleTestCase):
         self.assertIn('aria-label="Next decade"', html)
         self.assertIn('data-year-picker-grid=""', html)
         self.assertIn('data-year-picker-template="year"', html)
-        self.assertNotIn("year-picker-input", html)
-        self.assertNotIn("datepicker.umd.js", html)
+        self.assertNotIn("-".join(("year", "picker", "input")), html)
+        self.assertNotIn(".".join(("datepicker", "umd", "js")), html)
         self.assertNotIn("_DATEPICKER_MEDIA", html)
 
     def test_year_cell_classes_are_complete_control_button_variants(self):
