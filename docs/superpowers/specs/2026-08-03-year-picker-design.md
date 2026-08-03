@@ -124,12 +124,12 @@ enabled only if it is within those bounds and its year occurs in
 `available_years`. An empty `available_years` list therefore keeps every year
 disabled, preserving the current behavior.
 
-The selected year receives selected styling and `aria-selected="true"`.
-Years outside the active decade are visually muted. Disabled cells use native
-button `disabled` semantics. Previous is disabled when the active decade's
-start is less than or equal to `1999`; next is disabled when the active
-decade's last year is greater than or equal to the current maximum. This
-keeps navigation bounded while retaining the current visible range.
+The selected year receives selected styling and `aria-current="page"`. Years
+outside the active decade are visually muted. Disabled cells use native button
+`disabled` semantics. Previous is disabled when the active decade's start is
+less than or equal to `1999`; next is disabled when the active decade's last
+year is greater than or equal to the current maximum. This keeps navigation
+bounded while retaining the current visible range.
 
 Cell state is selected from complete Python-generated class variants, not by
 appending competing Tailwind classes in TypeScript. The variants cover
@@ -150,10 +150,9 @@ The trigger's `aria-controls` and `aria-expanded` are managed by
 state is rendered as `aria-expanded="false"`. The grid follows the existing
 date-calendar convention: a labelled `role="group"` container whose
 `aria-labelledby` points at the decade label, real year buttons, and
-`aria-selected` plus `aria-current="page"` on the selected button. Unavailable
-buttons use native `disabled` semantics, and previous/next buttons have
-explicit accessible names. No custom `role="grid"`/roving-tabindex framework
-is introduced.
+`aria-current="page"` on the selected button. Unavailable buttons use native
+`disabled` semantics, and previous/next buttons have explicit accessible
+names. No custom `role="grid"`/roving-tabindex framework is introduced.
 
 The dropdown continues to own Escape, outside-click, and focus-leave dismissal
 while focus is in the popup. Its shared `keepOpenOnTab` option allows Tab and
