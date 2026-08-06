@@ -35,8 +35,12 @@
 def test_device_search_blank_query_orders_by_most_recent_session(auth_client):
     desktop = Device.objects.create(name="Desktop")
     deck = Device.objects.create(name="Steam Deck")
-    _make_session(device=desktop, timestamp_start=datetime(2025, 1, 1, tzinfo=dt_timezone.utc))
-    _make_session(device=deck, timestamp_start=datetime(2026, 1, 1, tzinfo=dt_timezone.utc))
+    _make_session(
+        device=desktop, timestamp_start=datetime(2025, 1, 1, tzinfo=dt_timezone.utc)
+    )
+    _make_session(
+        device=deck, timestamp_start=datetime(2026, 1, 1, tzinfo=dt_timezone.utc)
+    )
     rows = auth_client.get("/api/devices/search", {"limit": 10}).json()
     assert [row["value"] for row in rows][:2] == [deck.id, desktop.id]
 
@@ -61,8 +65,12 @@ def test_platform_search_blank_query_uses_newest_game_or_purchase(auth_client):
 def test_device_search_typed_query_remains_alphabetical(auth_client):
     alpha = Device.objects.create(name="Alpha")
     alpine = Device.objects.create(name="Alpine")
-    _make_session(device=alpha, timestamp_start=datetime(2026, 1, 1, tzinfo=dt_timezone.utc))
-    _make_session(device=alpine, timestamp_start=datetime(2025, 1, 1, tzinfo=dt_timezone.utc))
+    _make_session(
+        device=alpha, timestamp_start=datetime(2026, 1, 1, tzinfo=dt_timezone.utc)
+    )
+    _make_session(
+        device=alpine, timestamp_start=datetime(2025, 1, 1, tzinfo=dt_timezone.utc)
+    )
     rows = auth_client.get("/api/devices/search", {"q": "Al", "limit": 10}).json()
     assert [row["value"] for row in rows] == [alpha.id, alpine.id]
 ```
@@ -106,23 +114,27 @@ Add `Case`, `DateTimeField`, `F`, `Max`, `Value`, `When`, `Coalesce`, and
 blank-query branch as:
 
 ```python
-qs = Platform.objects.annotate(
-    last_game_use=Max("game__updated_at"),
-    last_purchase_use=Max("purchase__updated_at"),
-).annotate(
-    last_used=Case(
-        When(
-            last_game_use__isnull=True,
-            last_purchase_use__isnull=True,
-            then=Value(None, output_field=DateTimeField()),
-        ),
-        default=Greatest(
-            Coalesce("last_game_use", Value(EPOCH)),
-            Coalesce("last_purchase_use", Value(EPOCH)),
-        ),
-        output_field=DateTimeField(),
+qs = (
+    Platform.objects.annotate(
+        last_game_use=Max("game__updated_at"),
+        last_purchase_use=Max("purchase__updated_at"),
     )
-).order_by(F("last_used").desc(nulls_last=True), "-created_at", "name")
+    .annotate(
+        last_used=Case(
+            When(
+                last_game_use__isnull=True,
+                last_purchase_use__isnull=True,
+                then=Value(None, output_field=DateTimeField()),
+            ),
+            default=Greatest(
+                Coalesce("last_game_use", Value(EPOCH)),
+                Coalesce("last_purchase_use", Value(EPOCH)),
+            ),
+            output_field=DateTimeField(),
+        )
+    )
+    .order_by(F("last_used").desc(nulls_last=True), "-created_at", "name")
+)
 ```
 
 Import `Purchase` from `games.models`. This explicit null branch avoids the
