@@ -233,6 +233,8 @@ ARGS ?=
 # and `-x` stops only the worker that hit the failure.
 ifneq ($(CI),)
 PYTEST_WORKERS ?= 0
+else ifeq ($(OS),Windows_NT)
+PYTEST_WORKERS ?= $(shell powershell -NoProfile -Command "[Math]::Max(1, [Math]::Min(16, [int]([Environment]::ProcessorCount / 2)))")
 else
 PYTEST_WORKERS ?= $(shell cores=$$(nproc 2>/dev/null || echo 2); \
 	workers=$$((cores / 2)); \
