@@ -29,7 +29,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # Codegen the TypeScript prop contracts (needs Django); tsc compiles them in
 # the assets stage below.
-RUN uv run python manage.py gen_element_types
+RUN uv run --frozen python manage.py gen_element_types
 
 
 # Front-end assets: Tailwind CSS + the TypeScript custom elements. Built here so
