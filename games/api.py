@@ -1,14 +1,15 @@
 import json
 import logging
 from collections.abc import Mapping
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Any, Final, NoReturn
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
-from django.db.models import Q
+from django.db.models import Case, DateTimeField, F, Max, Q, Value, When
+from django.db.models.functions import Coalesce, Greatest
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now as django_timezone_now
 from ninja import Field, ModelSchema, NinjaAPI, Router, Schema, Status
@@ -171,17 +172,42 @@ def delete_playevent(request, playevent_id: int):
 
 @device_router.get("/search", response=list[GameOption])
 def search_devices(request, q: str = "", limit: int = 10):
-    qs = Device.objects.order_by("name")
     if q:
-        qs = qs.filter(name__icontains=q)
+        qs = Device.objects.filter(name__icontains=q).order_by("name")
+    else:
+        qs = Device.objects.annotate(
+            last_used=Max("session__timestamp_start")
+        ).order_by(F("last_used").desc(nulls_last=True), "-created_at", "name")
     return [{"value": d.id, "label": d.name, "data": {}} for d in qs[:limit]]
 
 
 @platform_router.get("/search", response=list[GameOption])
 def search_platforms(request, q: str = "", limit: int = 10):
-    qs = Platform.objects.order_by("name")
     if q:
-        qs = qs.filter(name__icontains=q)
+        qs = Platform.objects.filter(name__icontains=q).order_by("name")
+    else:
+        epoch = Value(datetime(1970, 1, 1, tzinfo=UTC))
+        qs = (
+            Platform.objects.annotate(
+                last_game_use=Max("game__updated_at"),
+                last_purchase_use=Max("purchase__updated_at"),
+            )
+            .annotate(
+                last_used=Case(
+                    When(
+                        last_game_use__isnull=True,
+                        last_purchase_use__isnull=True,
+                        then=Value(None, output_field=DateTimeField()),
+                    ),
+                    default=Greatest(
+                        Coalesce("last_game_use", epoch),
+                        Coalesce("last_purchase_use", epoch),
+                    ),
+                    output_field=DateTimeField(),
+                )
+            )
+            .order_by(F("last_used").desc(nulls_last=True), "-created_at", "name")
+        )
     return [{"value": p.id, "label": p.name, "data": {}} for p in qs[:limit]]
 
 
