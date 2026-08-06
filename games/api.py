@@ -8,7 +8,17 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
-from django.db.models import Case, DateTimeField, F, Max, Q, Value, When
+from django.db.models import (
+    Case,
+    DateTimeField,
+    F,
+    Max,
+    OuterRef,
+    Q,
+    Subquery,
+    Value,
+    When,
+)
 from django.db.models.functions import Coalesce, Greatest
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now as django_timezone_now
@@ -25,7 +35,15 @@ from games.filters import (
 )
 from games.formatting import zone_label
 from games.forms import game_option_data
-from games.models import Device, FilterPreset, Game, Platform, PlayEvent, Session
+from games.models import (
+    Device,
+    FilterPreset,
+    Game,
+    Platform,
+    PlayEvent,
+    Purchase,
+    Session,
+)
 from games.sorting import (
     MODE_SORTS,
     SESSION_DEFAULT_SORT,
@@ -189,8 +207,18 @@ def search_platforms(request, q: str = "", limit: int = 10):
         epoch = Value(datetime(1970, 1, 1, tzinfo=UTC))
         qs = (
             Platform.objects.annotate(
-                last_game_use=Max("game__updated_at"),
-                last_purchase_use=Max("purchase__updated_at"),
+                last_game_use=Subquery(
+                    Game.objects.filter(platform=OuterRef("pk"))
+                    .order_by("-updated_at")
+                    .values("updated_at")[:1],
+                    output_field=DateTimeField(),
+                ),
+                last_purchase_use=Subquery(
+                    Purchase.objects.filter(platform=OuterRef("pk"))
+                    .order_by("-updated_at")
+                    .values("updated_at")[:1],
+                    output_field=DateTimeField(),
+                ),
             )
             .annotate(
                 last_used=Case(

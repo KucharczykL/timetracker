@@ -153,7 +153,7 @@ dev: ensure-python ensure-node gen-element-types
 # dev login) to everything that can reach the port — including any VPN subnet
 # the host is on, not just the LAN. Run it while you need it, not permanently.
 ifeq ($(OS),Windows_NT)
-LAN_HOST ?= $(shell powershell -NoProfile -Command "(Get-NetIPConfiguration | Where-Object { $$_.IPv4DefaultGateway } | Select-Object -First 1).IPv4Address.IPAddress")
+LAN_HOST ?= $(shell powershell -NoProfile -Command "Find-NetRoute -RemoteIPAddress 1.1.1.1 | Where-Object { $$_.IPAddress } | Select-Object -First 1 -ExpandProperty IPAddress")
 LAN_HOST_CHECK = powershell -NoProfile -Command "if (-not '$(LAN_HOST)') { Write-Host '==> Could not detect a LAN address; pass LAN_HOST=<ip>.'; exit 1 }"
 else
 LAN_HOST ?= $(shell ip -4 -o route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[\d.]+')
