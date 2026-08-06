@@ -21,7 +21,13 @@ DEV_PORT ?= 8000
 # goes through pnpm, which is what makes one switch enough.
 NODE_VERSION = 26.4.0
 NODE_MAJOR_VERSION = 26
+# Do not redirect this probe on Windows: GNU make can use either cmd.exe or
+# Git-Bash there, and their null-device paths are incompatible.
+ifeq ($(OS),Windows_NT)
+PATH_NODE_SUPPORTED := $(shell node -e "process.exit(+process.versions.node.split('.')[0] >= $(NODE_MAJOR_VERSION) ? 0 : 1)" && echo yes || echo no)
+else
 PATH_NODE_SUPPORTED := $(shell node -e "process.exit(+process.versions.node.split('.')[0] >= $(NODE_MAJOR_VERSION) ? 0 : 1)" 2>/dev/null && echo yes || echo no)
+endif
 ifneq ($(PATH_NODE_SUPPORTED),yes)
 export npm_config_use_node_version = $(NODE_VERSION)
 endif
@@ -61,6 +67,10 @@ endif
 # happens, so it also fails here (with a reason) rather than deep inside vitest.
 # node itself does the comparison and sets the exit status, keeping the recipe
 # free of shell-specific arithmetic for the Windows cmd.exe case.
+ifeq ($(OS),Windows_NT)
+ensure-node:
+	@pnpm exec node -e "process.exit(+process.versions.node.split('.')[0] >= $(NODE_MAJOR_VERSION) ? 0 : 1)" || powershell -NoProfile -Command "Write-Host '==> Could not get Node >= $(NODE_MAJOR_VERSION) for the JS toolchain. pnpm could not supply $(NODE_VERSION); the first fetch needs network access.'; exit 1"
+else
 ensure-node:
 	@pnpm exec node -e "process.exit(+process.versions.node.split('.')[0] >= $(NODE_MAJOR_VERSION) ? 0 : 1)" || \
 	( \
@@ -72,6 +82,7 @@ ensure-node:
 		echo "    Offline? Run from the Nix dev shell instead: nix-shell --run 'make $(MAKECMDGOALS)'"; \
 		exit 1 \
 	)
+endif
 
 npm: ensure-node
 	pnpm install
@@ -141,7 +152,13 @@ dev: ensure-python ensure-node gen-element-types
 # NB: this serves a DEBUG=True server (tracebacks, settings, the admin/admin
 # dev login) to everything that can reach the port — including any VPN subnet
 # the host is on, not just the LAN. Run it while you need it, not permanently.
+ifeq ($(OS),Windows_NT)
+LAN_HOST ?= $(shell powershell -NoProfile -Command "(Get-NetIPConfiguration | Where-Object { $$_.IPv4DefaultGateway } | Select-Object -First 1).IPv4Address.IPAddress")
+LAN_HOST_CHECK = powershell -NoProfile -Command "if (-not '$(LAN_HOST)') { Write-Host '==> Could not detect a LAN address; pass LAN_HOST=<ip>.'; exit 1 }"
+else
 LAN_HOST ?= $(shell ip -4 -o route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[\d.]+')
+LAN_HOST_CHECK = test -n "$(LAN_HOST)" || { echo "==> Could not detect a LAN address; pass LAN_HOST=<ip>."; exit 1; }
+endif
 
 dev-lan: export DEV_LOGIN_PREFILL := admin:admin
 # Both origins: APP_URL alone REPLACES the derived hosts, so listing only the
@@ -149,7 +166,7 @@ dev-lan: export DEV_LOGIN_PREFILL := admin:admin
 # machine running the server (and the browser preview with it).
 dev-lan: export APP_URL = http://$(LAN_HOST):$(DEV_PORT),http://localhost:$(DEV_PORT)
 dev-lan: ensure-python ensure-node gen-element-types
-	@test -n "$(LAN_HOST)" || { echo "==> Could not detect a LAN address; pass LAN_HOST=<ip>."; exit 1; }
+	@$(LAN_HOST_CHECK)
 	@echo "==> Open http://$(LAN_HOST):$(DEV_PORT) on your phone (login admin/admin)."
 	@pnpm concurrently \
 		--names "Django,Tailwind,TS" \
