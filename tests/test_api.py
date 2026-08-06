@@ -1,13 +1,13 @@
 import json
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import Client
 
 from games.filters import parse_game_filter
-from games.models import Device, Game, Platform, Session
+from games.models import Device, Game, Platform, Purchase, Session
 
 pytestmark = pytest.mark.django_db
 
@@ -33,6 +33,59 @@ def test_existing_endpoint_requires_auth():
 def test_existing_endpoint_allows_logged_in(auth_client):
     response = auth_client.get("/api/platforms/groups")
     assert response.status_code == 200
+
+
+def test_device_search_blank_query_orders_by_most_recent_session(auth_client):
+    desktop = Device.objects.create(name="Desktop")
+    deck = Device.objects.create(name="Steam Deck")
+    _make_session(
+        device=desktop,
+        timestamp_start=datetime(2025, 1, 1, tzinfo=UTC),
+    )
+    _make_session(
+        device=deck,
+        timestamp_start=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+    rows = auth_client.get("/api/devices/search", {"limit": 10}).json()
+
+    assert [row["value"] for row in rows][:2] == [deck.id, desktop.id]
+
+
+def test_platform_search_blank_query_uses_newest_game_or_purchase(auth_client):
+    atari = Platform.objects.create(name="Atari")
+    switch = Platform.objects.create(name="Switch")
+    old_game = Game.objects.create(name="Old game", platform=atari)
+    recent_purchase = Purchase.objects.create(
+        platform=switch, date_purchased=date(2026, 1, 1)
+    )
+    Game.objects.filter(pk=old_game.pk).update(
+        updated_at=datetime(2025, 1, 1, tzinfo=UTC)
+    )
+    Purchase.objects.filter(pk=recent_purchase.pk).update(
+        updated_at=datetime(2026, 1, 1, tzinfo=UTC)
+    )
+
+    rows = auth_client.get("/api/platforms/search", {"limit": 10}).json()
+
+    assert [row["value"] for row in rows][:2] == [switch.id, atari.id]
+
+
+def test_device_search_typed_query_remains_alphabetical(auth_client):
+    alpha = Device.objects.create(name="Alpha")
+    alpine = Device.objects.create(name="Alpine")
+    _make_session(
+        device=alpha,
+        timestamp_start=datetime(2025, 1, 1, tzinfo=UTC),
+    )
+    _make_session(
+        device=alpine,
+        timestamp_start=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+    rows = auth_client.get("/api/devices/search", {"q": "Al", "limit": 10}).json()
+
+    assert [row["value"] for row in rows] == [alpha.id, alpine.id]
 
 
 def _make_session(**overrides):
