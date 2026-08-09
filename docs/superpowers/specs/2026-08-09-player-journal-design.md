@@ -3,11 +3,12 @@
 Date: 2026-08-09
 Issue: https://github.com/KucharczykL/timetracker/issues/37
 
-> **Architecture note:** The approved visual references and interaction shape in
-> this document remain valid. Domain details involving statuses, PlayEvents,
-> bundles, associations, and live source queries are superseded by
-> [Player history architecture design](2026-08-09-player-history-architecture-design.md).
-> Reconcile this document with that foundation before Journal implementation.
+> **Architecture foundation:** This document is reconciled with the
+> [Timetracker overhaul design](2026-08-09-timetracker-overhaul-design.md).
+> Its event-sourced player history, PlayerGame statuses, Playthroughs,
+> single-item Purchases, temporal precision, and Journal projections are the
+> domain source of truth. The visual references below remain layout references;
+> superseded words in the original user wireframe are not requirements.
 
 ## Problem
 
@@ -18,7 +19,8 @@ player’s progress through the game.
 
 The Player’s Journal is a compact daily digest of recorded play activity. It
 surfaces notes as prose while retaining the surrounding context: sessions,
-play events, status changes, and purchases.
+playthrough lifecycle facts, status changes, exact-day historical playtime, and
+purchases.
 
 ## Approved visual references
 
@@ -39,14 +41,15 @@ The main journal is ordered by day, newest first. A day has two kinds of
 entries:
 
 1. **Game-day entries**, grouped secondarily by game. A group is present when
-   that game has a session, play event, or status change on the day. It is
-   present even when no session was recorded, such as a day on which five games
-   are marked Abandoned.
-2. **Purchase-day entries**, one per `Purchase`, so a multi-game bundle is not
-   falsely duplicated across every game it contains.
+   that game has a Session or day-precision playthrough, status, or Historical
+   Playtime fact. It is present even when no Session was recorded, such as a day
+   on which five games are marked Abandoned.
+2. **Purchase-day entries**, one per single-item `Purchase`.
 
-The full Game Journal is the same journal history filtered to one game. A
+The full Game Journal contains the same daily history filtered to one game plus
+an **Approximate history** section for month/year/decade/range/unknown facts. A
 `See all N notes` link opens that game journal positioned at the selected day.
+Approximate history never appears in the global Player's Journal.
 
 ### Game-day entry
 
@@ -55,73 +58,79 @@ The game header contains, when present:
 - `GameLink`;
 - a summary of that day’s sessions: count, total duration, and number of
   distinct non-null devices;
-- status and play-event facts, using the rules below.
+- status and playthrough facts, using the rules below.
 
-The narrative area contains session-note excerpts and any qualifying play-event
-note. It has a **shared four rendered-line budget** for the entire game/day
-group. Complete notes remain complete when they fit; only true overflow is
-clipped. The `See all N notes` link appears only when the budget clips content.
-`N` counts every non-empty narrative note for that group: `Session.note` plus
-the attached `PlayEvent.note`, if any.
+The narrative area contains Session-note excerpts and qualifying playthrough or
+Historical Playtime notes. It has a **shared four rendered-line budget** for the
+entire game/day group. Complete notes remain complete when they fit; only true
+overflow is clipped. The `See all N notes` link appears only when the budget
+clips content. `N` counts every non-empty narrative note for that group.
 
 Empty narrative content leaves no blank placeholder or link.
 
-### Status and play-event facts
+### Status and playthrough facts
 
-`Game.Status` labels are authoritative: Unplayed, Played, Finished, Retired,
-and Abandoned. In particular, the implementation must display **Finished**,
-not “Completed.”
+`PlayerGame` status labels are authoritative: Unplayed, Played, Completed,
+Retired, Shelved, and Abandoned. The Journal delegates their dot colours and
+labels to the shared `GameStatus` component.
 
-- A matching same-game, same-calendar-day `PlayEvent.started` plus
-  `GameStatusChange` to Played is rendered once as `GameStatus(Played)`.
-- A matching `PlayEvent.ended` plus status change to Finished is rendered once
-  as `GameStatus(Finished)`.
-- The matching PlayEvent is not given a second “Started” or “Finished” state
-  label. Its `days_to_finish` and its note remain visible as narrative support.
-- A PlayEvent without a matching status change remains a neutral Started or
-  Finished fact; it must not be coloured as a status.
-- A finish PlayEvent with `days_to_finish` renders a narrative bullet in this
-  form: `Finished in 12 days with a note: “…”`. The number is omitted when the
-  model’s generated value is zero. A same-day playthrough is `1 day`, per the
-  existing generated-field behaviour.
-- A standalone `GameStatusChange` renders with the existing `GameStatus` dot
-  and label. It never receives an invented progress colour.
+- Correlated `PlaythroughStarted` and status change to Played render once as
+  `GameStatus(Played)`.
+- Correlated `PlaythroughCompleted` and status change to Completed render once
+  as `GameStatus(Completed)`.
+- The matched lifecycle event receives no second Started/Completed heading. Its
+  duration-to-completion and note remain visible as narrative support.
+- An uncorrelated PlaythroughStarted or PlaythroughCompleted remains a neutral
+  lifecycle fact and is not coloured as a PlayerGame status.
+- A day-precision completion with a duration and note renders the approved
+  narrative form: `Finished in 12 days with a note: “…”`. “Finished” is prose;
+  the authoritative status label remains Completed. The duration is omitted
+  when it is unknown. A same-day playthrough displays `1 day`.
+- A standalone PlayerGame status change renders with the shared `GameStatus`
+  dot and label. It never receives an invented progress colour.
 
-`PlayEvent.started` and `.ended` are `DateField`s, not timestamped events. The
-daily layout intentionally does not imply an exact intra-day order for them.
+Day-precision lifecycle facts do not imply an exact intra-day order. Correlation
+identity—not same game/day coincidence—is the only basis for collapsing facts.
 
 ### Purchases
 
-Purchases are enabled by default in the Player’s Journal. Add a per-user
+Purchases are enabled by default in the Player’s Journal. Add a per-library
 setting, **Show purchases in Player’s Journal**, default `True`.
 
 When enabled, each purchase appears on `Purchase.date_purchased` as a separate
-`JournalPurchaseDayEntry`, including its own purchase details and all linked
-games. The Game Journal may show purchases that include its game. When the
+`JournalPurchaseDayEntry`, including its item and associated Game/Release when
+present. The Game Journal may show purchases associated with its Game. When the
 setting is disabled, only Player’s Journal purchase entries are hidden; no
 purchase data or game-level purchase history changes.
 
 ## Data and date rules
 
-The view builds typed journal data before rendering; components never query
-models. The query layer gathers and merges the existing models:
+The Journal is a read projection, never another writable source of truth.
+Synchronous event projectors maintain the status/lifecycle/purchase facts needed
+for Journal queries, while current Session and Historical Playtime projections
+provide their summaries and notes. Corrections, deletion, restoration, and
+correlated commands update these read models in the same transaction as their
+events. The view builds typed journal data before rendering; components never
+query models.
 
-| Source | Journal day | Content |
+| Read-model fact | Player Journal day | Content |
 | --- | --- | --- |
-| `Session` | request-local date of `timestamp_start` | session summary and non-empty note |
-| `GameStatusChange` | request-local date of `timestamp` | status fact |
-| `PlayEvent` | `started` and/or `ended` date | start/finish fact, days-to-finish, optional note |
-| `Purchase` | `date_purchased` | one purchase entry, never cloned per game |
+| Session projection | request-local date of exact `timestamp_start` | session summary and non-empty note |
+| PlayerGame status fact | effective date, only at day precision | status fact |
+| Playthrough lifecycle fact | effective date, only at day precision | start/completion fact, duration-to-completion, optional note |
+| Historical Playtime projection | effective date, only at day precision | duration, provenance, optional note; never counted as a Session |
+| Purchase fact | effective purchase date, only at day precision | one single-item purchase entry |
 
-For a `PlayEvent` with both dates, the start fact belongs to `started` and the
-finish fact (including the note and days-to-finish) belongs to `ended`. A
-note-only PlayEvent with neither date falls back to its `created_at` local day,
-so existing records such as a “wishlist” note are not silently lost.
+No fact falls back from unknown `effective_time` to `recorded_at`. Month-,
+year-, decade-, range-, and unknown-date facts go to the corresponding Game
+Journal's **Approximate history** section. Known temporal bounds sort newest
+first; unknown facts follow in stable `recorded_at` order. The section has
+independent fact-count pagination with 25 facts by default and does not consume
+the daily timeline's seven-populated-day page budget.
 
-`GameStatusChange.timestamp` is nullable. Dated changes participate in the
-daily Player’s Journal. Undated manual history remains visible in an **Undated
-activity** section at the bottom of the corresponding Game Journal; it is not
-placed arbitrarily in the global daily timeline.
+Legacy PlayEvents become Playthrough lifecycle facts during migration. Their
+notes and known dates retain the same meaning; an undated note remains an
+unknown-date fact rather than being assigned its migration or creation day.
 
 ## Components
 
@@ -137,10 +146,16 @@ JournalTimeline
     │   │   └── GameStatus (existing)
     │   └── JournalNarrativePreview
     │       ├── Session-note items
-    │       ├── Play-event summary item
+    │       ├── Playthrough summary item
+    │       ├── Historical-playtime item
     │       └── See-all-notes link
     └── JournalPurchaseDayEntry
         └── timeline marker (private layout detail)
+
+GameJournal
+├── JournalTimeline
+└── ApproximateHistory
+    └── ApproximateHistoryFact
 ```
 
 `JournalTimeline` is deliberately domain-specific, rather than a generic
@@ -148,9 +163,9 @@ JournalTimeline
 public component. The dot means “this game/purchase has journal activity on
 this day,” not “a session happened.”
 
-Use typed `JournalDayData`, `JournalGameDayEntryData`, and
-`JournalPurchaseDayEntryData` view-data structures as the seam between query
-and presentation.
+Use typed `JournalDayData`, `JournalGameDayEntryData`,
+`JournalPurchaseDayEntryData`, and `ApproximateHistoryFactData` view-data
+structures as the seam between query and presentation.
 
 ## Responsive layout and colour
 
@@ -161,13 +176,20 @@ Mobile stacks the date above its entries. The selected stacked header shows
 the game name first, then session metadata, then a status fact; it avoids a
 dense wrapped metadata line.
 
+In the Game Journal, `ApproximateHistory` follows the daily timeline under its
+own heading. It does not continue the day timeline's vertical rule or reuse its
+day markers, because those would imply false day precision. Desktop places the
+honest temporal label (for example `2000s, approximate`) beside the fact; mobile
+stacks that label above the fact. Both use the same neutral typography and
+spacing as Journal narrative items.
+
 No Journal-specific colour palette is introduced:
 
 - game links, prose, summaries, dividers, and the see-all link use current
   neutral/link treatments;
-- only `GameStatus` uses the established colours: gray (Unplayed), orange
-  (Played), green (Finished), red (Abandoned), purple (Retired);
-- PlayEvent facts with no status change remain neutral.
+- only the shared `GameStatus` component owns status colours; the Journal does
+  not duplicate or override its mapping;
+- playthrough lifecycle facts with no status change remain neutral.
 
 ## Error handling and empty states
 
@@ -175,8 +197,9 @@ No Journal-specific colour palette is introduced:
 - A game-day entry with no notes has no empty prose area or see-all link.
 - Missing device values are excluded from the distinct-device count and never
   require a sentinel record.
-- A malformed/undated history record is retained in Game Journal’s Undated
-  activity rather than silently discarded or given a fabricated date.
+- An imprecise or undated history record is retained in Game Journal's
+  Approximate history rather than silently discarded or given a fabricated
+  date.
 - The purchase preference hides only purchase timeline entries and does not
   affect filters, stats, or any database data.
 
@@ -187,17 +210,21 @@ Automated coverage should pin:
 1. day and game grouping, session count, duration, and distinct-device
    aggregation;
 2. status-only days, including five separate abandoned games;
-3. duplicate suppression for matching Started/Played and Finished/Finished
-   source records;
-4. date-only PlayEvent placement, generated same-day `days_to_finish`, and
-   PlayEvent note rendering/counting;
+3. correlation-only duplicate suppression for PlaythroughStarted/Played and
+   PlaythroughCompleted/Completed facts;
+4. day-precision Playthrough placement, same-day completion duration, and
+   playthrough note rendering/counting;
 5. empty, short, and overflowing narrative previews, including the exact
    visibility and target of `See all N notes`;
-6. multi-game purchase rendering as one Player’s Journal entry and the
-   default-enabled preference toggle;
+6. single-item purchase rendering and the default-enabled per-library
+   preference toggle;
 7. desktop and mobile rendered structure, including stacked mobile game
    headers;
-8. request timezone handling and undated status-history fallback.
+8. request timezone handling;
+9. exclusion of every non-day temporal precision from Player's Journal;
+10. month/year/decade/range/unknown Game Journal placement, ordering, and
+    independent pagination;
+11. replay parity after corrections, deletion, and restoration.
 
 Before delivery, run the repository gate: `make check`.
 
