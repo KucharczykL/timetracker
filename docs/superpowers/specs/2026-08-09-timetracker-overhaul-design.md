@@ -44,6 +44,15 @@ overhaul remains authoritative for future domain changes.
    an explicit, verified, non-destructive migration path before the overhaul
    changes their domain representation.
 
+This is a deliberate product and operating-model choice, not a technical claim
+that a personal event stream is impossible on SQLite. Timetracker is intended
+to support both personal self-hosting and later hosted multi-user operation
+without maintaining two database implementations. PostgreSQL gives both paths
+the same row-locking, constraint, timeout, JSON/index, backup, and operational
+behavior. Paying the migration cost once, before the domain overhaul, is less
+risky than porting the redesigned event/projection system later or carrying a
+permanent backend compatibility matrix.
+
 ## Domain overview
 
 ```mermaid
@@ -80,9 +89,9 @@ purchases, and statistics.
 
 ## PostgreSQL foundation
 
-PostgreSQL migration is Phase 0 and completes before user ownership, event
-sourcing, catalog normalization, or other domain changes. SQLite is not retained
-as a supported runtime backend.
+PostgreSQL migration is the foundation workstream and completes before user
+ownership, event sourcing, catalog normalization, or other domain changes.
+SQLite is not retained as a supported runtime backend.
 
 ### Runtime and development contract
 
@@ -90,8 +99,26 @@ as a supported runtime backend.
   resolved through the existing configuration system.
 - Production/self-host deployment ships an app-plus-PostgreSQL Compose path with
   separate persistent volumes and documented backup/restore operations.
-- Local development and `make check` run against PostgreSQL as well; CI provisions
-  the same major version explicitly.
+- Local development and `make check` run against PostgreSQL 17 as well; CI and
+  deployment images provision that major version explicitly. A PostgreSQL major
+  upgrade is a separate tested operational change.
+- The Makefile retains its one-command developer contract. `make init`,
+  `make dev`, and `make check` depend on an `ensure-postgres` target that first
+  uses an explicitly configured server, then a compatible PostgreSQL 17 local
+  installation with the builtin locale provider, and otherwise provisions a
+  pinned development distribution and disposable
+  cluster in the project tool cache. Docker is supported but is not mandatory
+  on Windows, macOS, or Linux. The target reports the server version and actual
+  test connection before Django runs.
+- pytest-django continues to isolate xdist workers. The PostgreSQL test harness
+  creates/reuses one database per worker, caps workers against the configured
+  connection budget, and reserves connections for each worker's live-server
+  threads. CI runs the same topology at its lower worker count. The foundation
+  issue records SQLite and PostgreSQL `make check` medians plus the worker count
+  actually used for each run on the maintainer's machine; the PostgreSQL median
+  must remain within 25% at the same worker count before cutover. A connection-
+  limited lower worker count is reported separately rather than hidden inside
+  that comparison.
 - SQLite WAL, `IMMEDIATE` transaction mode, path-derived database settings, and
   SQLite-only date expressions are removed from runtime code.
 - Event stream sequencing later uses PostgreSQL row locking and a unique
@@ -99,16 +126,52 @@ as a supported runtime backend.
 - PostgreSQL-specific capabilities may be used deliberately—JSONB/indexes,
   partial constraints, full-text catalog search—but domain behavior remains in
   tested application/projector code rather than opaque database triggers.
+- Deployment initializes UTF-8 databases with PostgreSQL 17's platform-
+  independent `builtin` locale provider and builtin locale `C.UTF-8`. Startup
+  verifies the server major, encoding, provider, and locale; an operating-system
+  libc locale with the same spelling is not considered compatible. Every
+  nullable application sort states its NULL policy explicitly; list sorting
+  uses NULLS LAST in both directions unless a field documents another rule.
 
 ### Current-schema portability
 
 Before moving data, the current schema and application must run on PostgreSQL.
-The work audits every migration, GeneratedField, RawSQL expression, duration,
-timestamp/timezone, JSON field, conditional uniqueness rule, case-insensitive
-query, sequence, and deletion behavior. Historical migrations that cannot build
-a fresh PostgreSQL database are replaced by a verified PostgreSQL-compatible
-squashed baseline; already-migrated SQLite databases are unaffected because
-they are read only by the transfer tool.
+The portability issue includes these already-known corrections:
+
+- `Session.duration_total` remains a generated compatibility column for this
+  phase, but its expression repeats the elapsed-time expression instead of
+  referencing generated `duration_calculated`, which PostgreSQL forbids;
+- `Purchase.price_per_game` divides by `NULLIF(num_purchases, 0)`, so the row
+  can be inserted before its M2M links update the count;
+- `PlayEvent.days_to_finish` uses portable typed date subtraction plus the
+  existing same-day-is-one rule, with cross-database fixtures proving parity;
+- nullable sorts use explicit `OrderBy` NULL placement and deterministic
+  tiebreakers, rather than inheriting opposite SQLite/PostgreSQL defaults; and
+- the database collation is part of the deployment contract, not an operator
+  default.
+
+The work also audits every migration, remaining GeneratedField and RawSQL
+expression, duration, timestamp/timezone, JSON field, conditional uniqueness
+rule, case-insensitive query, sequence, and deletion behavior. Historical
+migrations that cannot build a fresh PostgreSQL database are replaced by a
+verified PostgreSQL-compatible squashed baseline; already-migrated SQLite
+databases are unaffected because they are read only by the transfer tool.
+
+Regex filtering is explicitly migrated rather than silently changing dialect.
+SQLite evaluates Django `__regex` with Python syntax; PostgreSQL uses POSIX ARE.
+The supported post-cutover regex language is a documented reject-by-default
+portable subset: literals; escaped regex punctuation; `.`, `^`, and `$`;
+ordinary bracket classes/ranges; grouping; alternation; and greedy `*`, `+`,
+`?`, and bounded `{m,n}` quantifiers. It excludes shorthand/backslash character
+classes and anchors, POSIX named classes, lookaround, backreferences, named or
+conditional groups, inline flags, lazy/possessive quantifiers, and engine-
+specific extensions. A whitelist parser—not successful compilation—decides
+whether a saved pattern belongs to the subset; compiling it on PostgreSQL is a
+secondary sanity check. Rejected patterns retain their JSON but are disabled
+with a precise repair message. Existing length/complexity guards stay, their
+SQLite-specific rationale is removed, and user-filter queries receive a bounded
+transaction-local PostgreSQL `statement_timeout`. Timeout is reported as an
+invalid/too-expensive filter rather than a generic server failure.
 
 ### One-time SQLite transfer
 
@@ -123,6 +186,10 @@ make migrate-sqlite-to-postgres \
 The transfer:
 
 - requires an empty migrated PostgreSQL target;
+- requires the read-only source's `django_migrations` state to equal the pinned
+  final SQLite bridge release; older installations must first upgrade to that
+  release, run its SQLite migrations, verify it, and then perform the PostgreSQL
+  transfer as a documented two-hop upgrade;
 - opens the SQLite source read-only and never deletes or edits it;
 - copies auth/users, settings, Games, Platforms, Devices, Sessions, Purchases,
   M2M links, PlayEvents, status changes, filters, and sequence state in foreign-
@@ -141,11 +208,20 @@ reference. Once that migration commits, the integer IDs and temporary mapping
 are removed. There are no legacy integer URLs, redirects, or permanent alias
 tables after cutover.
 
+The two cutovers remain separate deliberately. PostgreSQL portability changes
+expressions and runtime behavior while preserving every identity; UUID cutover
+changes every identity/reference while running on the already-proven database.
+Combining them would make a reconciliation mismatch unable to distinguish a
+database-semantic defect from an identity-map defect and would couple their
+rollback points. The extra verified pass is accepted for auditability.
+
 The source file remains the rollback artifact until the operator explicitly
 archives it. Automatic startup transfer is prohibited. After the supported
-upgrade window, an explicit Phase 13 cleanup sub-issue removes the transfer
-command and SQLite compatibility dependencies; exported native backups remain
-the long-term portable format.
+upgrade window, an explicit compatibility-cleanup issue removes the transfer
+command and SQLite compatibility dependencies. Documented `pg_dump`/`pg_restore`
+backups are the portable format until the deferred native archive feature ships;
+native archives replace that user-facing role later rather than being a
+prerequisite hidden in the cleanup phase.
 
 ## Bounded event sourcing
 
@@ -193,13 +269,51 @@ flowchart LR
 - A compound user action shares a correlation ID. This lets the Journal render
   one meaningful entry while Audit History exposes all underlying changes.
 
+Each PlayerLibrary owns exactly one append stream with a stable stream UUID and
+one lockable head row containing its current sequence. Events identify their
+domain aggregate separately in the payload/envelope; a Session is not a second
+stream. A command starts a transaction and locks the library head before reading
+mutable projections or validating an optional expected library sequence. It
+then appends all events for the human action contiguously, advances the head,
+and updates synchronous projections in that transaction. Compound and bulk
+commands therefore never acquire multiple stream-head locks or need a cross-
+stream lock order. Different libraries remain independently writable.
+
+A unique `(stream_id, sequence)` constraint is the final guard. PostgreSQL
+serialization failures, deadlocks involving non-stream rows, and sequence
+constraint collisions are retried at most three times with bounded jitter; an
+exhausted retry returns a visible conflict asking the user to retry instead of
+discarding either write. Repeating a completed `(library, idempotency_key)`
+returns the original command result and its assigned sequence range. Reusing a
+key with different canonical command input is rejected. A complete or partial
+library replay always follows stream sequence; `recorded_at` and UUIDv7 are
+presentation/audit tiebreakers, never an alternative event order.
+
+Projection rebuild writes to shadow tables while normal reads continue. Writes
+for the affected library are paused only for final validation and the atomic
+projection swap; a failed rebuild leaves the old projection active. Operator
+output includes event count, elapsed time, unresolved references, and parity
+results. At 100,000 representative events, a complete library rebuild should
+finish within 60 seconds on the documented development machine, a Journal page
+query within 200 ms server-side at p95, and an ordinary synchronous command
+within 100 ms at p95 excluding network time. A phase may revise a number only
+with a recorded benchmark and an explicit design review.
+
+Every phase that attaches another synchronous projector family re-measures
+ordinary and representative bulk commands against the 100 ms budget and records
+the number of rows written. Passing the first slice does not permanently exempt
+later write amplification. Bulk operations that cannot fit the transaction and
+latency budgets are explicitly chunked under one correlation ID, with partial
+progress and retry semantics defined by that command rather than by the stream.
+
 ### Event envelope
 
 Every event has stable, portable metadata independent of projection table IDs:
 
 - event UUIDv7;
 - immutable owning-library UUID, separate from the actor who issued the command;
-- stream UUIDv7 and monotonically increasing stream sequence;
+- the owning library's one-to-one stream UUIDv7 and monotonically increasing
+  library-stream sequence;
 - event type and payload schema version;
 - exact UTC `recorded_at` timestamp;
 - effective temporal value, when the event describes a real-world time;
@@ -228,11 +342,18 @@ purge. Replay validates that every non-snapshotted reference can be resolved
 before replacing live projections; a missing reference fails the rebuild with a
 specific reconciliation report rather than silently nulling history.
 
-The first production vertical slice is intentionally narrow: create, correct,
-delete, and restore Sessions; rebuild the current Session/playtime projections;
-and rebuild one yearly statistics projection. It proves transactionality,
-idempotency, replay, and parity before later domains move, but it is not a gate
-for reconsidering event sourcing. The overhaul is complete only when all
+PlayerGame status and Playthrough lifecycle are the first production evented
+domain because Sessions require their final identities. Their cutover has its
+own empty-replay, current-state parity, idempotency, and migration-correlation
+gate. The following Session slice is the first domain with the complete create,
+correct, delete, restore, aggregate-playtime, and yearly-statistics surface. It
+proves the richer command/projector tooling and the budgets above before the
+event boundary expands beyond PlayerGame, Playthrough, and Session.
+
+If either gate misses a budget or reveals excessive implementation complexity,
+the next phase must correct the event/projector tooling and issue boundaries
+before expanding the boundary; it does not silently relax consistency or
+maintain two write architectures. The overhaul is complete only when all
 mutable player-history domains use commands, events, and projections.
 
 ## User ownership and isolation
@@ -283,9 +404,13 @@ rewrites event ownership or merges libraries.
 Presentation/account preferences such as theme, display time zone, date format,
 and default landing page remain owned by the User. Library-behavior preferences
 such as default Device, default currency, and Journal purchase visibility move
-to PlayerLibrary. This replaces the current mixed `UserPreferences` row with two
-explicit boundaries and lets a restored library carry its domain defaults
-without overwriting the receiving account's presentation choices.
+to a one-to-one `PlayerLibraryPreferences` record. This is conventional
+library-owned data, not a fourth layer in the general USER/SITE/INFRA settings
+registry. It replaces the current mixed `UserPreferences` row with two explicit
+boundaries and lets a restored library carry its domain defaults without
+overwriting the receiving account's presentation choices. Commands and forms
+for these preferences are library-scoped directly; the existing registry keeps
+its three scopes.
 
 Every command accepts a PlayerLibrary context and rejects cross-library
 references. Projection rows and relevant uniqueness constraints include the
@@ -355,6 +480,15 @@ For a known day without a known clock time, an optional categorical `day_part`
 may be Morning, Afternoon, Evening, Night, or Unknown. It is never converted to
 a fabricated hour. It controls display and within-day ordering only and is not
 available for month-, year-, or decade-precision facts.
+
+Every timeline query has a stable total order. Within a day, facts with exact
+timestamps sort first by their local instant. Facts without a clock follow in
+the ordered day-part buckets Morning, Afternoon, Evening, Night, then Unknown;
+no fabricated clock boundary is needed to interleave the two precision levels.
+Inside the same instant or bucket, `recorded_at` and finally event UUIDv7 are
+ascending stable tiebreakers. Product-specific grouping may collect facts under
+a Game, but it must preserve this order within each group. Pagination keys
+include the same tiebreakers so facts cannot move or repeat between pages.
 
 Statistics respect the recorded precision. A decade fact may contribute to a
 decade or all-time total, but never to an invented year, month, day, or streak.
@@ -492,7 +626,11 @@ record before normalization:
    the default for personal self-hosting.
 2. **Dump mirror mode (optional):** download selected endpoint CSV dumps,
    validate their advertised schema version, and build a locally indexed
-   catalog. This is intended for hosted or larger installations.
+   catalog. This is intended for hosted or larger installations. Before an
+   operator enables it, the UI estimates required download, temporary, database,
+   and index space from the dump manifests and refuses when configured free-space
+   headroom would be violated. Raw archives are deleted after a successful
+   atomic activation unless retention is explicitly enabled.
 
 ```text
 IGDB API response ─┐
@@ -529,6 +667,11 @@ and opens reconciliation; it never cascades into deletion of a tracked Game.
 Partial IGDB release dates map into the same precision-aware temporal value
 used elsewhere rather than being expanded into fake days. Images are cached
 because IGDB documents that replaced images remain available only temporarily.
+The cache is content-addressed, reports its size, and has a configurable default
+2 GiB quota for personal installations. Unreferenced least-recently-used images
+are evicted first; images referenced by tracked Games are retained unless the
+operator explicitly runs a cache-prune command. Dump and image issues include
+fixtures proving quota enforcement and recovery from interrupted cleanup.
 
 ### User workflows
 
@@ -574,13 +717,25 @@ Playing/Backlog/Wishlist toggles. Related changes are explicit:
 - the compact status selector remains immediate, followed by an optional action
   such as “Record undated playthrough” or “Mark current playthrough completed.”
 
+Retired remains directly available in that immediate status selector for an
+endless/no-ending Game. It is not inferred from stopping a Session, ending
+access, or an uncompleted playthrough, and needs no artificial companion action.
+
 `PlayerGame` also has one advanced, explicitly user-controlled preference:
 **Exclude from unfinished games**. It affects unfinished-game lists and
 completion-backlog statistics only. It is not a status, is never inferred from
 genre or catalog metadata, and does not change automatically when status or
-playthrough facts change. Existing `Purchase.infinite=True` values migrate to
-this preference for every affected Game, preserving their current statistical
-meaning while moving the field off the unrelated Purchase model.
+playthrough facts change.
+
+The unrelated `Purchase.infinite` field remains authoritative until Purchase
+migration. At that cutover, any Game linked to at least one
+`Purchase.infinite=True` row receives **Exclude from unfinished games=True**;
+the Purchase field, quick facet, saved presets, and purchase-based statistics
+switch together, so there is no dual-write interval. This intentionally changes
+mixed-purchase semantics: a Game with both infinite and normal purchases becomes
+excluded at Game level. Preflight and the post-upgrade notice list every affected
+mixed-purchase Game plus the old/new backlog counts for explicit review; the
+change is not described as numerically identical preservation.
 
 ### Mandatory, quiet playthroughs
 
@@ -611,11 +766,24 @@ and the physical Device used.
 
 ### Existing Session reconciliation
 
-Each existing PlayEvent becomes a Playthrough. A legacy Session is assigned
-automatically only when its date belongs unambiguously to one PlayEvent's exact
-date interval. Ambiguous Sessions are preserved in a system-created **Imported
-history—needs sorting** playthrough rather than assigned to a guessed journey.
-The migration reports how many Sessions require review.
+Existing PlayEvents become the numbered playthroughs for their Game, ordered
+ascending by known start bound NULLS LAST, known completion bound NULLS LAST,
+creation time, then legacy primary key. The earliest displays as `Playthrough
+1`; migration does not create an additional empty default. A Game with no
+PlayEvents receives the ordinary default `Playthrough 1`, and all its Sessions
+belong to it.
+
+For one or more PlayEvents, each known endpoint defines an open or closed
+interval: missing start means no lower bound and missing completion means no
+upper bound. A legacy Session is assigned automatically only when its effective
+date—the recorded start date in its original timezone—belongs to exactly one
+interval. This includes the sole PlayEvent when its
+one interval contains the Session. A Session outside the only interval, inside
+overlapping intervals, or matching none of several intervals is preserved in a
+system-created **Imported history—needs sorting** playthrough rather than
+assigned to a guessed journey. The imported-history bucket is a named system
+bucket and does not consume a `Playthrough N` display number. Migration reports
+zero-event defaults, automatic assignments, and every reason requiring review.
 
 The mandatory-playthrough migration includes a proper **Organize sessions** UI;
 it is not deferred to Library Health. From a Game's Playthrough section, the
@@ -695,12 +863,20 @@ Historical Playtime Record contains:
 - a duration;
 - provenance such as Estimated, Externally measured, or Manually entered;
 - an effective temporal value;
-- one or more Playthroughs;
+- one or more Playthroughs belonging to the same PlayerGame;
+- an optional single Release and optional single Device, each meaning the
+  entire recorded duration is known to belong to that dimension;
 - an optional note and source reference.
 
 If a player records “two playthroughs in the 2000s, about 100 hours total,” the
 system creates two playthroughs and one record linked collectively to both. It
 does not invent 50 hours per playthrough.
+
+A record never spans multiple Games. “About 200 hours across these three games”
+must remain an import observation or be entered as separate player-known facts;
+it cannot contribute to per-Game totals without an allocation the player did
+not provide. Likewise, an absent or mixed Release/Device dimension contributes
+to overall and per-Game totals but not to platform/device totals.
 
 Totals visibly retain provenance, for example `242h total — 142h tracked ·
 ~100h estimated`. Historical records may contribute only at temporal
@@ -750,10 +926,18 @@ replay rebuilds Purchase facts first and recalculates valuations separately.
 Exchange rates are also stored as decimals.
 
 Multi-game bundles are removed. Existing bundles migrate into one Purchase per
-game with the price divided evenly as an editable starting point. This is an
-accepted one-time simplification for the handful of existing bundles: their
-former grouping is not retained as provenance or as a new domain concept.
-Refund never changes Game status; at most it ends the associated access.
+game with the price divided as evenly as the target decimal scale permits. The
+migration works in integer units of the target field's smallest stored decimal
+unit: every Game receives the quotient and the remaining units go one each to
+Games ordered by legacy primary key. Each legacy float is first converted
+through its stable decimal string and quantized once to the documented target
+field scale; reconciliation reports any quantization delta. Original price and
+each seeded converted valuation are then split independently by the same rule,
+so every quantized pre/post total remains exactly equal. This is an accepted
+one-time simplification for
+the existing bundles: their former grouping is not retained as provenance or as
+a new domain concept. Refund never changes Game status; at most it ends the
+associated access.
 
 DLC and expansion purchases point to the DLC/expansion Game or Release, not to
 the base Game. Non-playable season passes, battle passes, and upgrades remain
@@ -775,7 +959,12 @@ timing mode. An ended legacy Session with both elapsed and manual time becomes
 a Corrected Session whose final duration equals the old total; the migration
 event also retains the old elapsed/manual components as legacy evidence. A
 manual-only Session becomes Duration-only, and an elapsed-only Session remains
-Timed. Before Session cutover, a preflight reports every running legacy Session
+Timed. A row with equal start/end timestamps and non-zero manual duration also
+becomes Duration-only: its effective day comes from `timestamp_start` in the
+recorded start timezone, while both original timestamps remain migration
+evidence. A negative elapsed interval blocks cutover for explicit repair rather
+than being classified. Before Session cutover, a preflight reports every running
+legacy Session
 with a non-zero manual addition and blocks the cutover. The player must either
 finish it, explicitly correct it to a final duration, or remove the manual
 addition and retain it as a running Timed Session. No indefinite compatibility
@@ -783,12 +972,53 @@ write path remains after cutover. PlayEvent dates/notes and every status
 transition—including undated transitions—are preserved as migration-sourced
 history; generated days-to-finish is derived from migrated playthrough facts.
 
+A non-null legacy `GameStatusChange.timestamp` is the effective transition
+time, not merely a migration recording time: live signals wrote the moment of
+the player's action, while the original data migration deliberately used the
+earliest Session, refund/drop date, or PlayEvent completion date. It therefore
+enters the daily Journal using the library owner's configured display timezone.
+A null status timestamp
+remains unknown and enters only the Game Journal's Approximate history.
+PlayEvent `started` and `ended` are day-precision effective values; a missing
+endpoint stays unknown.
+
+Legacy PlayEvent lifecycle facts and legacy status facts receive one migration
+correlation ID only when an unambiguous pair exists: same Game, compatible
+started/Played or ended/Completed meaning, and the same effective local day.
+Exactly one fact on each side is required. Ambiguous or unmatched facts retain
+separate correlation IDs and render separately; migration never collapses them
+by a broader “probably the same action” guess. The reconciliation report lists
+the paired, ambiguous, and unmatched counts.
+
 Saved FilterPresets carry a schema version and pass through a deterministic
 migration registry. Supported fields and enum values are rewritten explicitly.
 An unrepresentable preset retains its original JSON, is disabled, and displays
 the exact unsupported criterion plus Edit/Delete actions; it is never silently
 reinterpreted or discarded. Ephemeral bookmarked query URLs receive no
 compatibility promise after the documented cutovers.
+
+## Filters and list contracts
+
+Every domain-field change is also a filter-system change. The owning issue must
+update together:
+
+- the typed criterion and `to_q()` mapping;
+- the corresponding Game/Session/Purchase/PlayEvent filter dataclass;
+- `QUICK_FACETS` and quick-editability/degrade behavior;
+- advanced filter field metadata;
+- the TypeScript filter-tree serializer and fixtures;
+- the Python/TypeScript semantic contract tests; and
+- the versioned FilterPreset migration described above.
+
+Precision-aware temporal filters use interval-overlap semantics without
+pretending an approximate fact occurred on a particular day. A fact matches a
+range when its stored possible lower/upper bounds overlap that range. The UI
+labels this operator **could overlap**. Exact **occurred between** remains
+available only for day- or timestamp-precision facts wholly contained in the
+range. Precision and approximate/uncertain qualifiers are independently
+filterable. For example, “2000s, approximate” can match `could overlap
+2000-01-01…2009-12-31`, but it cannot match an exact calendar-day criterion or
+contribute to a day-scoped count.
 
 ## Soft deletion and archival
 
@@ -811,6 +1041,13 @@ must explicitly account for inactive rows. Audit History remains capable of
 showing prior user-authored text after ordinary deletion; permanent event-text
 redaction is not supported.
 
+Until the unified Trash UI follow-up ships, each event-sourced delete response
+offers an immediate **Undo** action and an authenticated operator command can
+list and restore deleted records by library, type, and UUID. The Django admin is
+not the recovery contract. Whole-library purge is the supported erasure path:
+it permanently removes that library's events and private text. Selective
+per-event text redaction is not supported.
+
 ## Audit History and Player's Journal
 
 Audit History and the Journal are two projections of the same events:
@@ -828,14 +1065,36 @@ Purchases. Days containing only status changes still appear. Only facts whose
 effective temporal value has day precision enter this global daily timeline;
 `recorded_at` is never substituted for an unknown or imprecise effective date.
 
+`JournalDayProjection` materializes the distinct populated local dates per
+library, and `JournalFactProjection` stores each day-eligible fact's library,
+local date in the projection's recorded display-timezone version,
+Game/purchase grouping identity, kind, effective ordering keys,
+narrative data, and source identity. Projectors update both in the same
+transaction as their source projections. A day row exists only while at least
+one structurally visible fact references it and carries separate purchase and
+non-purchase fact counts. Player Journal day selection uses those counts to skip
+purchase-only days when purchases are hidden, then loads all eligible facts for
+seven stable day keys in bounded queries; it never performs a five-source UNION
+during a page request. Game Journal derives its populated days from the indexed
+fact projection filtered by Game rather than from library-wide day rows, plus
+its independently paginated approximate-fact projection. Replay and correction
+tests prove that materialized day counts cannot drift.
+Changing the owning User's display timezone or attaching a restored library to
+a User with a different timezone rebuilds Journal day/fact projections through
+the shadow-table path before swapping them active; day-precision facts retain
+their written calendar day, while exact Session/status timestamps are regrouped.
+
 A correlated PlaythroughStarted + status change to Played renders one Played
 fact. A correlated PlaythroughCompleted + status change to Completed renders
 one Completed fact. Uncorrelated facts remain separate; same-day timing alone
 never proves they are the same action.
 
 Session and playthrough notes share the approved preview budget. `See all N
-notes` remains and opens the complete Game Journal at the relevant day. The
-Journal is a projection/query surface, never another writable source of truth.
+notes` remains and opens the complete Game Journal at the relevant day through
+the day-addressable `?day=YYYY-MM-DD#day-YYYY-MM-DD` contract. The server resolves
+the page containing that Game/day; a stale key falls back visibly rather than
+anchoring another day. The Journal is a projection/query surface, never another
+writable source of truth.
 
 The full Game Journal adds an **Approximate history** section below its daily
 timeline. Month-, year-, decade-, range-, and unknown-date status, playthrough,
@@ -843,9 +1102,11 @@ Historical Playtime, and migrated facts appear there with honest temporal
 labels; they never receive an invented day and never enter the global Player
 Journal. The section is independently paginated by fact count, with 25 facts by
 default, and does not consume the daily timeline's seven-populated-day page
-budget. Known bounds sort newest first; unknown-date facts follow them in stable
-recorded order. Audit History remains the place to inspect exact recording and
-correction chronology.
+budget. Known bounds sort by upper bound descending, lower bound descending,
+the fixed day > month > year > decade > range specificity rank, `recorded_at`,
+then event UUIDv7. Unknown-date facts
+follow in descending recorded/UUID order. Audit History remains the place to
+inspect exact recording and correction chronology.
 
 ## Statistics
 
@@ -862,6 +1123,26 @@ Exact, manual, corrected, externally measured, and estimated durations remain
 distinguishable. The UI may combine justified contributions into a total but
 must always make estimated duration visible and must not allocate imprecise time
 to unsupported periods.
+
+The first statistics migration uses this contribution policy:
+
+| Statistic family | Sessions | Historical Playtime |
+| --- | --- | --- |
+| All-time playtime and per-Game totals | yes | yes, visibly estimated |
+| Decade/year/month totals | yes | only when the fact's precision is wholly within that bucket |
+| Day totals, unique days, streaks, first/last play | yes | day precision only |
+| Session count, averages, longest Session, sessions-per-Game | yes | never |
+| Device/platform playtime | yes when linked | only with an explicit recorded Release/device dimension; never inferred |
+| Completion, backlog, purchase, refund, and spending statistics | through their own facts | no duration effect |
+
+Every concrete field in `StatsData` receives an entry in a subordinate
+statistics-classification specification before its read path changes. A value
+that includes Historical Playtime renders an inline tracked/estimated breakdown
+until that subordinate specification names and designs a concrete aggregate-
+history destination; no unnamed generic view is implied here. It must not link
+to a Session filter whose rows cannot reproduce the value. Existing
+`stats_links.py` parity tests remain mandatory for Session-only and purchase-only
+values, with equivalent projection parity tests for combined totals.
 
 ## Import and export foundation
 
@@ -899,48 +1180,75 @@ ImportBatch models, matching, or Import Inbox UI.
 
 The architecture is delivered as small additive slices, not one replacement
 migration or one giant pull request. Event sourcing is the committed
-destination; the early Session slice reduces delivery risk rather than deciding
-whether the remaining migration happens:
+destination; the early Session slice reduces delivery risk and validates the
+tooling and budgets before the boundary expands:
 
-1. Port the current schema/application/test suite to PostgreSQL, ship the
-   verified SQLite transfer tool, migrate deployments, and make PostgreSQL the
-   sole runtime backend.
-2. Add owner boundaries and complete the temporary legacy-library ownership
+1. Make the current schema PostgreSQL-compatible: fix the three known generated/
+   date-expression blockers, NULL ordering, collation, regex behavior, and fresh
+   migration baseline.
+2. Deliver the PostgreSQL runtime/developer harness: configuration, Compose,
+   `ensure-postgres`, test-database/xdist strategy, backups, CI service, and
+   measured `make check` budget.
+3. Build and verify the non-destructive SQLite-to-PostgreSQL transfer command,
+   then migrate deployments and make PostgreSQL the sole runtime backend.
+4. Add owner boundaries and complete the temporary legacy-library ownership
    migration before any event backfill.
-3. Cut all domain/catalog identities over to UUIDv7, remove the temporary
+5. Cut all domain/catalog identities over to UUIDv7, remove the temporary
    integer mapping, and introduce shared/private catalog identity plus external
    references without merging existing Games.
-4. Establish the library-scoped event envelope, temporal-value primitives, and
-   command/projector boundary.
-5. Introduce event-sourced PlayerGame and mandatory default Playthroughs;
+6. Establish the library-scoped event envelope, temporal-value primitives,
+   one-stream-per-library sequence/idempotency policy, shadow rebuild tooling,
+   and command/projector boundary.
+7. Introduce event-sourced PlayerGame and mandatory default Playthroughs;
    backfill their baseline events and convert each existing PlayEvent into a
-   playthrough before Session events can reference final playthrough identities.
-6. Deliver the first production Session slice with the final timing modes:
+   playthrough, including explicit legacy effective-time and correlation rules,
+   before Session events can reference final playthrough identities. Ship only
+   after its independent empty-replay/current-state/idempotency parity gate.
+8. Deliver the first production Session slice with the final timing modes:
    current state, playtime, delete/restore, one yearly statistic, idempotency,
-   and empty-replay parity.
-7. Add Historical Playtime Records on the proven temporal/event boundary.
-8. Add selectable-table and bulk-action infrastructure, then prove it with
+   empty-replay parity, interim Undo/operator restore, and benchmark gates.
+9. Add Historical Playtime Records on the proven temporal/event boundary and
+   publish the complete per-statistic contribution classification.
+10. Add selectable-table and bulk-action infrastructure, then prove it with
    Session organization before retiring row Actions columns incrementally.
-9. Reconcile ambiguous imported Sessions through the organizer and complete
+11. Reconcile ambiguous imported Sessions through the organizer and complete
    migration of legacy status history.
-10. Introduce LibraryEntry and one-item Purchases, then migrate bundles and
-   add-ons.
-11. Move every remaining mutable player-history write to commands/events in
+12. Introduce LibraryEntry and one-item Purchases, then migrate bundles, add-ons,
+   `Purchase.infinite`, its quick facet/presets, and affected backlog statistics
+   in one visible cutover.
+13. Move every remaining mutable player-history write to commands/events in
    bounded groups.
-12. Implement the reconciled Player's Journal projection/query layer, Game
-   Journal Approximate history, and approved responsive UI.
-13. Remove superseded fields and compatibility write paths only after parity
-   checks are green.
-14. Deliver IGDB authentication/client/cache, on-demand search/add,
+14. Implement materialized Journal day/fact projections, populated-day
+   pagination, Game Journal Approximate history, and query/replay benchmarks.
+15. Deliver the approved responsive Journal UI against typed view data.
+16. Run the final cross-language audit of filter definitions, quick facets,
+   TypeScript contracts, saved presets, and statistics links after each owning
+   domain issue has already migrated its fields; this is a parity gate, not a
+   deferred functional migration.
+17. Switch each read surface to its final projection in independently testable
+   groups and prove old/new parity before the next switch.
+18. Remove superseded fields and compatibility write paths by domain group only
+   after its read/write parity checks are green.
+19. After the supported upgrade window, remove the temporary SQLite transfer,
+   ownership-claim machinery, old migration baseline, and their dependencies in
+   separately reversible cleanup issues.
+20. Deliver IGDB authentication/client/cache, on-demand search/add,
    normalization, reconciliation, refresh, images/attribution, and external-ID
    integration as separate vertical issues.
-15. Add optional dump-mirror ingestion on the already proven normalization
+21. Add optional dump-mirror ingestion on the already proven normalization
    boundary.
 
 The implementation plan must divide each numbered step further into issues that
 produce one independently testable outcome. Schema additions, backfills, parity
 checks, read-path switches, and old-field removal are separate work where doing
 so reduces rollback risk.
+
+This document remains the architectural charter. Implementation planning is
+split into subordinate specifications rather than expanding this file with
+call-site-level steps: (1) PostgreSQL and identity foundation, (2) event-sourced
+player domains and migration, and (3) Journal/read models, cleanup, and IGDB.
+Each subordinate specification owns its benchmarks, migration tables, affected
+filter/stat surfaces, rollback point, and dependency-ordered GitHub issues.
 
 ## Required follow-up issues
 
@@ -985,9 +1293,9 @@ The design intentionally does not include:
 - fabricated Sessions or distributed guessed hours;
 - raw EDTF entry;
 - permanent event-text redaction;
-- event-sourcing IGDB/reference metadata, settings, or exchange rates.
+- event-sourcing IGDB/reference metadata, settings, or exchange rates;
 - shared/household libraries or cross-user access to private player history;
-- IGDB webhooks in the first catalog integration.
+- IGDB webhooks in the first catalog integration;
 - SQLite as an application runtime backend after the transfer release.
 
 ## Design verification requirements
@@ -996,9 +1304,10 @@ Before implementation planning, review this document against the existing
 models and Player's Journal mockups for:
 
 1. a lossless migration path for every current Game, Session, PlayEvent, and
-   GameStatusChange field, plus the explicitly accepted equal-split migration
-   for multi-game Purchases;
-2. stable command/event boundaries and synchronous transaction behavior;
+   GameStatusChange field, plus the explicitly accepted deterministic-
+   remainder migration for multi-game Purchases;
+2. stable command/event boundaries, one stream per PlayerLibrary, strict
+   library-sequence replay, and synchronous transaction behavior;
 3. replay parity for current state, playtime, soft deletion, and one statistic;
 4. no fabricated temporal precision or double-counted aggregate time;
 5. explicit user control over compound status/playthrough changes;
@@ -1007,7 +1316,8 @@ models and Player's Journal mockups for:
    export, and event stream;
 8. API- and dump-sourced IGDB records normalizing through the same contract;
 9. fresh PostgreSQL schema creation plus verified transfer parity from a
-   representative SQLite library;
+   representative SQLite library at the pinned bridge-release migration state,
+   including refusal of an older source;
 10. complete integer-to-UUID migration with no remaining integer routes or
     permanent compatibility aliases;
 11. every deferred feature appearing in the follow-up register;
@@ -1015,15 +1325,44 @@ models and Player's Journal mockups for:
     been archived, including preservation of historical display snapshots;
 13. native restore preserving the PlayerLibrary UUID, refusing collisions and
     non-empty targets, and leaving User presentation preferences unchanged;
-14. exact decimal Purchase/event round-trips and independently rebuildable
-    `PurchaseValuation` parity under currency refresh;
+14. exact decimal Purchase/event round-trips, bundle remainder allocation, and
+    independently rebuildable `PurchaseValuation` parity under currency refresh;
 15. private-to-shared catalog reconciliation followed by empty-database replay
     through the permanent identity redirect without event mutation;
 16. deterministic shared/private classification of both built-in and custom
     legacy Platforms with two-library isolation;
 17. IGDB rate and concurrency limits under simultaneous web-worker and Django-Q
     requests, including lease expiry after a simulated worker crash;
-18. Session cutover refusal for unresolved running/manual rows and deterministic
-    migration or visible disabling of every saved FilterPreset;
+18. Session cutover refusal for unresolved running/manual or negative-elapsed
+    rows, zero-elapsed/manual classification, and deterministic migration or
+    visible disabling of every saved FilterPreset;
 19. strict exclusion of imprecise facts from Player Journal days and complete
-    placement in the Game Journal's independently paginated Approximate history.
+    placement in the Game Journal's independently paginated Approximate history;
+20. PostgreSQL 17 parity for generated durations, zero-link Purchase insertion,
+    days-to-finish, nullable sorting, builtin `C.UTF-8`, and every regex accepted
+    by the portable whitelist, including bounded timeout behavior;
+21. one-command PostgreSQL development/test provisioning on supported desktop
+    platforms, xdist/live-server connection isolation, recorded worker counts,
+    and the like-for-like `make check` regression budget;
+22. retryable PostgreSQL failures, sequence-collision and idempotency replay/
+    mismatch behavior, shadow rebuild failure, atomic swap, and re-measurement
+    of write amplification/budgets after every new projector family;
+23. explicit effective-time classification of every legacy status/PlayEvent,
+    zero-/one-/many-PlayEvent Session assignment, stable playthrough numbering,
+    and correlation of only unambiguous lifecycle/status pairs;
+24. synchronized Python criteria, domain filters, quick facets, TypeScript
+    serialization fixtures, cross-language contracts, and preset migrations for
+    every renamed/removed field;
+25. a complete `StatsData` contribution classification and inline reproducible
+    breakdowns for values that include Historical Playtime, including rejection
+    of cross-Game aggregate allocation;
+26. materialized preference-aware seven-populated-day Journal pagination,
+    timed/running/duration-only placement, stable day/approximate ordering,
+    day-addressable Game Journal links, visible display-timezone rebuild/swap,
+    and removal of empty day rows;
+27. immediate Undo plus operator list/restore throughout the pre-Trash interval,
+    and verified whole-library purge as the supported erasure path;
+28. IGDB dump-space preflight, raw-archive cleanup, image-cache quota/eviction,
+    and interrupted-cleanup recovery; and
+29. one-step `Purchase.infinite`/PlayerGame exclusion/filter/preset/statistics
+    cutover with visible mixed-purchase semantic changes and old/new counts.

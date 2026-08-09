@@ -48,7 +48,11 @@ entries:
 
 The full Game Journal contains the same daily history filtered to one game plus
 an **Approximate history** section for month/year/decade/range/unknown facts. A
-`See all N notes` link opens that game journal positioned at the selected day.
+`See all N notes` link targets the canonical Game Journal URL with
+`?day=YYYY-MM-DD#day-YYYY-MM-DD`. The server resolves which seven-day page
+contains that Game/day key before rendering it. A stale day key that no longer
+exists opens the newest page with a visible “That journal day has changed”
+notice rather than silently landing on an unrelated anchor.
 Approximate history never appears in the global Player's Journal.
 
 ### Game-day entry
@@ -57,14 +61,21 @@ The game header contains, when present:
 
 - `GameLink`;
 - a summary of that day’s sessions: count, total duration, and number of
-  distinct non-null devices;
+  distinct non-null devices; running Sessions are included in the count with an
+  in-progress qualifier but excluded from total finalized duration;
 - status and playthrough facts, using the rules below.
 
 The narrative area contains Session-note excerpts and qualifying playthrough or
-Historical Playtime notes. It has a **shared four rendered-line budget** for the
-entire game/day group. Complete notes remain complete when they fit; only true
-overflow is clipped. The `See all N notes` link appears only when the budget
-clips content. `N` counts every non-empty narrative note for that group.
+Historical Playtime notes. Its preview uses deterministic server-side limits:
+at most four note items and at most 240 Unicode code points after whitespace
+normalization, shared across those items. Notes are considered in the entry's
+stable timeline order. A note remains complete when it fits the remaining
+character budget; the final
+visible note is clipped with an ellipsis when it does not. Thus four notes of 30
+characters each display completely on every viewport. The `See all N notes`
+link appears when either limit omits or clips content. `N` counts every non-empty
+narrative note for that group. Layout may wrap the retained content but performs
+no additional clipping or client-side measurement.
 
 Empty narrative content leaves no blank placeholder or link.
 
@@ -95,10 +106,13 @@ identity—not same game/day coincidence—is the only basis for collapsing fact
 ### Purchases
 
 Purchases are enabled by default in the Player’s Journal. Add a per-library
-setting, **Show purchases in Player’s Journal**, default `True`.
+preference, **Show purchases in Player’s Journal**, default `True`, on the
+conventional one-to-one `PlayerLibraryPreferences` record. It does not add a
+LIBRARY layer to the USER/SITE/INFRA settings registry.
 
-When enabled, each purchase appears on `Purchase.date_purchased` as a separate
-`JournalPurchaseDayEntry`, including its item and associated Game/Release when
+When enabled, each purchase whose precision-aware effective purchase date has
+day precision appears as a separate `JournalPurchaseDayEntry`, including its
+item and associated Game/Release when
 present. The Game Journal may show purchases associated with its Game. When the
 setting is disabled, only Player’s Journal purchase entries are hidden; no
 purchase data or game-level purchase history changes.
@@ -106,31 +120,75 @@ purchase data or game-level purchase history changes.
 ## Data and date rules
 
 The Journal is a read projection, never another writable source of truth.
-Synchronous event projectors maintain the status/lifecycle/purchase facts needed
-for Journal queries, while current Session and Historical Playtime projections
-provide their summaries and notes. Corrections, deletion, restoration, and
-correlated commands update these read models in the same transaction as their
-events. The view builds typed journal data before rendering; components never
-query models.
+Synchronous projectors maintain `JournalDayProjection` and
+`JournalFactProjection` alongside the current Session, status, lifecycle,
+Historical Playtime, and purchase projections. Each visible day-precision source
+fact produces a materialized Journal fact containing its library, local date,
+Game/purchase group, kind, source identity, stable ordering keys, summary, and
+narrative data. A day projection exists only while at least one structurally
+visible fact references it and stores separate purchase-fact and non-purchase-
+fact counts. Corrections, deletion, restoration, timezone changes, and
+correlated commands update these models. Event-driven changes occur in the same
+transaction as their events. A display-timezone preference change rebuilds
+shadow Journal projections and swaps them active only after validation; exact
+timestamps regroup while day-precision calendar facts retain their written day.
+The setting UI reports **Updating journal dates…** while the old projection
+remains readable. Ordinary writes continue during the rebuild and pause only for
+the final atomic swap. Failure keeps the old Journal timezone active, displays a
+retryable error, and never exposes a partially regrouped timeline.
+
+A Player Journal page selects seven `JournalDayProjection` keys, newest first,
+using both counts when purchases are shown and `non_purchase_fact_count > 0`
+when they are hidden, then loads the eligible facts for those days in bounded
+queries. Purchase-only dates therefore consume no page slot while hidden, and
+changing the preference rewrites no Journal facts. It never discovers a page by
+UNIONing heterogeneous source projections during the request. Game Journal does
+not use the library-wide day rows: it obtains distinct populated days from the
+indexed `JournalFactProjection` filtered by Game, then loads that Game's facts.
+The view builds typed journal data before rendering; components never query
+models.
 
 | Read-model fact | Player Journal day | Content |
 | --- | --- | --- |
-| Session projection | request-local date of exact `timestamp_start` | session summary and non-empty note |
+| Completed timed/corrected Session | configured display-timezone date of exact `timestamp_start` | finalized session summary and non-empty note |
+| Running timed Session | configured display-timezone date of exact `timestamp_start` | count/device and note; “In progress,” with no finalized-duration contribution |
+| Duration-only Session | written effective calendar day, without timezone conversion | entered duration, optional day part/device, and non-empty note |
 | PlayerGame status fact | effective date, only at day precision | status fact |
 | Playthrough lifecycle fact | effective date, only at day precision | start/completion fact, duration-to-completion, optional note |
 | Historical Playtime projection | effective date, only at day precision | duration, provenance, optional note; never counted as a Session |
 | Purchase fact | effective purchase date, only at day precision | one single-item purchase entry |
 
+Running timed Sessions appear from their start command and remain grouped on
+their start day if they cross midnight. Their changing wall-clock elapsed time
+is shown only by the existing running-session controls; the Journal summary does
+not continuously rewrite or count it as finalized duration. Finishing the
+Session replaces the in-progress Journal fact in the same transaction.
+
 No fact falls back from unknown `effective_time` to `recorded_at`. Month-,
 year-, decade-, range-, and unknown-date facts go to the corresponding Game
 Journal's **Approximate history** section. Known temporal bounds sort newest
-first; unknown facts follow in stable `recorded_at` order. The section has
-independent fact-count pagination with 25 facts by default and does not consume
-the daily timeline's seven-populated-day page budget.
+first by upper bound descending, then lower bound descending, then more specific
+precision using the fixed day > month > year > decade > range rank, then
+`recorded_at` and event UUIDv7. Thus 2000s sorts before 2004–2006, which sorts
+before 2005 because their upper bounds are 2009, 2006, and 2005. Unknown facts
+follow in descending `recorded_at` and UUIDv7 order. The section has independent
+fact-count pagination with 25 facts by default and does not consume the daily
+timeline's seven-populated-day page budget.
 
 Legacy PlayEvents become Playthrough lifecycle facts during migration. Their
 notes and known dates retain the same meaning; an undated note remains an
 unknown-date fact rather than being assigned its migration or creation day.
+Non-null legacy `GameStatusChange.timestamp` values are effective transition
+times and enter the daily Journal using the library owner's configured display
+timezone; null values remain unknown. A legacy lifecycle/status pair shares a
+correlation ID only when the same Game, compatible meaning, and effective day
+form exactly one unambiguous match. Ambiguous or unmatched facts stay separate
+and are reported by migration rather than guessed together.
+
+Within one day, exact timestamps sort first by local instant. Non-clock facts
+follow in Morning, Afternoon, Evening, Night, then Unknown order. `recorded_at`
+and event UUIDv7 break all remaining ties. Game grouping preserves that stable
+order inside each group, and the same keys are used for pagination.
 
 ## Components
 
@@ -201,30 +259,41 @@ No Journal-specific colour palette is introduced:
   Approximate history rather than silently discarded or given a fabricated
   date.
 - The purchase preference hides only purchase timeline entries and does not
-  affect filters, stats, or any database data.
+  affect filters or stats and does not rewrite Journal facts/day counts.
 
 ## Verification
 
 Automated coverage should pin:
 
-1. day and game grouping, session count, duration, and distinct-device
-   aggregation;
+1. day and game grouping for completed timed, corrected, duration-only, and
+   running Sessions, including finalized-duration and distinct-device rules;
 2. status-only days, including five separate abandoned games;
 3. correlation-only duplicate suppression for PlaythroughStarted/Played and
-   PlaythroughCompleted/Completed facts;
+   PlaythroughCompleted/Completed facts, including unambiguous legacy pairing
+   and preservation of ambiguous pairs;
 4. day-precision Playthrough placement, same-day completion duration, and
    playthrough note rendering/counting;
-5. empty, short, and overflowing narrative previews, including the exact
-   visibility and target of `See all N notes`;
-6. single-item purchase rendering and the default-enabled per-library
-   preference toggle;
+5. empty, short, four-by-30-character, note-count-overflow, and shared-character-
+   overflow previews, including deterministic clipping and the exact visibility
+   and target of `See all N notes` without client measurement;
+6. single-item purchase rendering and the default-enabled per-library preference
+   toggle, including seven full non-purchase days when purchase-only days are
+   hidden;
 7. desktop and mobile rendered structure, including stacked mobile game
    headers;
-8. request timezone handling;
+8. configured-display-timezone grouping, visible rebuild state, atomic swap,
+   and failure retaining the previous active Journal timezone;
 9. exclusion of every non-day temporal precision from Player's Journal;
 10. month/year/decade/range/unknown Game Journal placement, ordering, and
     independent pagination;
-11. replay parity after corrections, deletion, and restoration.
+11. replay parity after corrections, deletion, and restoration, including exact
+    purchase/non-purchase counts and removal of empty materialized days;
+12. stable within-day and approximate-bound ordering and pagination with tied
+    facts;
+13. seven-populated-day query bounds and the overhaul's 100,000-fact/200 ms p95
+    Journal benchmark;
+14. day-addressable Game Journal page resolution, exact anchor target, and stale-
+    day fallback.
 
 Before delivery, run the repository gate: `make check`.
 
