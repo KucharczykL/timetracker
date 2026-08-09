@@ -8,7 +8,7 @@ docs/superpowers/specs/2026-06-21-list-view-sort-param-design.md.
 from dataclasses import dataclass
 from typing import NamedTuple, cast
 
-from django.db.models import Aggregate, Max, Min, QuerySet, Sum
+from django.db.models import Aggregate, F, Max, Min, QuerySet, Sum
 from django.http import HttpRequest
 
 # The pure sort-string core lives in common.sorting; this module is the ORM
@@ -175,12 +175,18 @@ def apply_sort(
         # default_sort is trusted developer config — ignore any "unknown" from it
         terms, _ = parse_sort_terms(default_sort, sort_map)
     annotations: Annotations = {}
-    order_by: list[OrderField] = []
+    order_by = []
     for term in terms:
         spec = sort_map[term.key]
         if spec.annotate:
             annotations.update(spec.annotate)
-        order_by.append(("-" if term.descending else "") + spec.expression)
+        expression = F(spec.expression)
+        order_by.append(
+            expression.desc(nulls_last=True)
+            if term.descending
+            else expression.asc(nulls_last=True)
+        )
+    order_by.append(F("pk").asc())
     if annotations:
         queryset = queryset.annotate(**annotations)
     return SortResult(queryset.order_by(*order_by), terms, unknown)
