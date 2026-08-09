@@ -2,7 +2,7 @@
 
 import logging
 import re
-from datetime import datetime
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -109,6 +109,62 @@ class TestApplySortGames:
             Game.objects.all(), _find("-name"), GAME_SORTS, GAME_DEFAULT_SORT
         )
         assert list(result.queryset) == [beta, alpha]
+
+    def test_nullable_direct_sort_keeps_null_last_in_both_directions(self, db):
+        """Changing explicit NULLS LAST ordering would break this contract."""
+        platform = Platform.objects.create(name="P", icon="p")
+        unknown = Game.objects.create(name="Unknown", platform=platform)
+        early = Game.objects.create(name="Early", platform=platform, year_released=1990)
+        late = Game.objects.create(name="Late", platform=platform, year_released=2000)
+
+        ascending = apply_sort(
+            Game.objects.all(), _find("year"), GAME_SORTS, GAME_DEFAULT_SORT
+        )
+        descending = apply_sort(
+            Game.objects.all(), _find("-year"), GAME_SORTS, GAME_DEFAULT_SORT
+        )
+
+        assert list(ascending.queryset) == [early, late, unknown]
+        assert list(descending.queryset) == [late, early, unknown]
+
+    def test_equal_sort_values_use_primary_key_tiebreaker(self, db):
+        """Removing the stable secondary ordering would break this contract."""
+        platform = Platform.objects.create(name="P", icon="p")
+        first = Game.objects.create(name="First", platform=platform)
+        second = Game.objects.create(name="Second", platform=platform)
+
+        result = apply_sort(
+            Game.objects.filter(pk__in=[second.pk, first.pk]),
+            _find("status"),
+            GAME_SORTS,
+            GAME_DEFAULT_SORT,
+        )
+
+        assert list(result.queryset) == [first, second]
+        assert result.terms == [SortTerm("status", False)]
+
+    def test_nullable_aggregate_sort_keeps_null_last_in_both_directions(self, db):
+        """Changing aggregate NULL ordering would break this contract."""
+        platform = Platform.objects.create(name="P", icon="p")
+        unfinished = Game.objects.create(name="Unfinished", platform=platform)
+        early = Game.objects.create(name="Early", platform=platform)
+        late = Game.objects.create(name="Late", platform=platform)
+        PlayEvent.objects.create(
+            game=early, started=date(2024, 1, 1), ended=date(2024, 1, 1)
+        )
+        PlayEvent.objects.create(
+            game=late, started=date(2024, 1, 1), ended=date(2024, 1, 2)
+        )
+
+        ascending = apply_sort(
+            Game.objects.all(), _find("finished"), GAME_SORTS, GAME_DEFAULT_SORT
+        )
+        descending = apply_sort(
+            Game.objects.all(), _find("-finished"), GAME_SORTS, GAME_DEFAULT_SORT
+        )
+
+        assert list(ascending.queryset) == [early, late, unfinished]
+        assert list(descending.queryset) == [late, early, unfinished]
 
     def test_default_sort_when_absent_is_created_desc(self, two_games):
         alpha, beta = two_games  # beta created after alpha
