@@ -15,6 +15,7 @@ from django.utils import timezone
 
 from common.duration_presentation import format_decimal_hours
 from common.utils import label_with_details
+from games.expressions import DatabaseDurationSum
 from timetracker.settings_registry import THEME_CHOICES, SettingKey
 
 logger = logging.getLogger("games")
@@ -320,7 +321,10 @@ class Session(models.Model):
         editable=False,
     )
     duration_total = GeneratedField(
-        expression=F("duration_calculated") + F("duration_manual"),
+        expression=DatabaseDurationSum(
+            Coalesce(F("timestamp_end") - F("timestamp_start"), 0),
+            F("duration_manual"),
+        ),
         output_field=models.DurationField(),
         db_persist=True,
         editable=False,

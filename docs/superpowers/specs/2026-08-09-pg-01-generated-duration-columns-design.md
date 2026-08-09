@@ -30,28 +30,39 @@ Coalesce(F("timestamp_end") - F("timestamp_start"), 0)
 ```
 
 `Session.duration_total` remains a persisted `GeneratedField`, but its
-expression no longer references `duration_calculated`. It instead repeats the
-elapsed-time expression and adds the manual duration:
+expression no longer references `duration_calculated`. It uses a small,
+serializable database-aware expression that repeats the elapsed-time expression
+and adds the manual duration:
 
 ```python
 Coalesce(F("timestamp_end") - F("timestamp_start"), 0) + F("duration_manual")
 ```
 
-PostgreSQL prohibits a generated column from depending on another generated
-column. Inlining the equivalent source-column expression satisfies that rule
-while retaining both compatibility columns and every existing consumer.
+PostgreSQL compiles that expression as interval addition. SQLite emits the
+timestamp difference as integer microseconds, and its generic duration-addition
+helper returns a text duration, so the expression's SQLite compiler directly
+adds the two integer source values instead. PostgreSQL prohibits a generated
+column from depending on another generated column; both compiler paths use only
+source columns and retain every existing consumer.
+
+The SQLite compiler branch is temporary. PG-26 (remove SQLite runtime
+configuration and transaction behavior) owns its deletion after PostgreSQL is
+the sole supported runtime and the legacy migration baseline has been retired.
 
 ## Migration and reversibility
 
-Create a normal Django `AlterField` migration for `Session.duration_total`.
-The database recomputes the stored generated value from each row's existing
-source columns; no data migration, backfill, or reconciliation report is
-required.
+Create a Django migration that removes `Session.duration_total` and adds it
+back with the new generated expression. Django 6 does not support `AlterField`
+for a changed `GeneratedField`; remove-and-add is its required schema pattern.
+The database recalculates the replacement stored generated column from each
+row's existing source columns, so no data migration, backfill, or
+reconciliation report is required.
 
-The migration is reversible through Django's reverse `AlterField`: it restores
-the preceding generated expression. That reverse remains suitable only for the
-current SQLite-compatible state; once a later issue establishes a PostgreSQL
-baseline, this issue's forward migration is the supported direction.
+The ordered operations reverse automatically: Django removes the replacement
+field and restores the preceding field definition. That reverse remains
+suitable only for the current SQLite-compatible state; once a later issue
+establishes a PostgreSQL baseline, this issue's forward migration is the
+supported direction.
 
 ## Verification
 
@@ -79,5 +90,6 @@ cross-backend migration evidence.
 - PostgreSQL-compatible generated duration columns: the `duration_total`
   expression has no generated-column dependency.
 - No behavioral regression: the three focused cases preserve current values.
-- Reversibility: the migration is an `AlterField` with Django's reverse path.
+- Reversibility: Django reverses the remove-and-add operations to restore the
+  preceding field definition.
 - Full project quality gate: `make check` passes.

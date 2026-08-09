@@ -4,7 +4,7 @@
 
 **Goal:** Make `Session.duration_total` a PostgreSQL-valid persisted generated column without changing the calculated duration values exposed by the application.
 
-**Architecture:** Retain `Session.duration_calculated` as the existing generated elapsed-duration column. Change only `duration_total` so its persisted `GeneratedField` repeats the timestamp subtraction and `Coalesce` directly, then adds `duration_manual`; it must never reference `duration_calculated`. A normal `AlterField` migration updates the database schema and automatically recalculates stored generated values from existing source data.
+**Architecture:** Retain `Session.duration_calculated` as the existing generated elapsed-duration column. Add a serializable `DatabaseDurationSum` expression that uses direct integer-microsecond addition on SQLite and native interval addition on PostgreSQL. `duration_total` uses it with the repeated timestamp subtraction and `duration_manual`, never `duration_calculated`; a Django remove-and-add migration replaces the generated column and recalculates its stored values from existing source data.
 
 **Tech Stack:** Python 3.14, Django 6 `GeneratedField`, Django migrations, pytest-django, GNU Make.
 
@@ -20,19 +20,21 @@
 ## File structure
 
 - Create `tests/test_generated_duration_columns.py`: database-backed semantic and model-schema regression coverage for the two generated Session durations.
+- Create `games/expressions.py`: the database-aware, serializable two-duration sum used by the generated column.
 - Modify `games/models.py`: replace only the `Session.duration_total` generated expression.
-- Create `games/migrations/0034_alter_session_duration_total.py`: Django-generated `AlterField` migration for the changed persisted expression.
+- Create `games/migrations/0034_alter_session_duration_total.py`: Django remove-and-add migration for the changed persisted expression.
 
 ### Task 1: Define and implement the PostgreSQL-safe duration expression
 
 **Files:**
 - Create: `tests/test_generated_duration_columns.py`
+- Create: `games/expressions.py`
 - Modify: `games/models.py:322-326`
 - Create: `games/migrations/0034_alter_session_duration_total.py`
 
 **Interfaces:**
 - Consumes: `games.models.Session`, whose persisted generated fields are refreshed with `Session.refresh_from_db()` after inserts.
-- Produces: `Session.duration_total: timedelta`, calculated as elapsed timestamp duration (or zero for a missing end) plus `duration_manual`; `Session.duration_calculated: timedelta` remains elapsed timestamp duration (or zero).
+- Produces: `DatabaseDurationSum(lhs, rhs)`, which adds two duration expressions as integer microseconds on SQLite and native duration values on PostgreSQL; `Session.duration_total: timedelta` is elapsed timestamp duration (or zero) plus `duration_manual`, while `Session.duration_calculated` remains elapsed timestamp duration (or zero).
 
 - [ ] **Step 1: Write the failing semantic and schema tests**
 
@@ -53,9 +55,19 @@ pytestmark = pytest.mark.django_db
 @pytest.mark.parametrize(
     ("timestamp_end", "duration_manual", "expected_calculated", "expected_total"),
     [
-        (datetime(2026, 1, 1, 12, tzinfo=UTC), timedelta(0), timedelta(hours=2), timedelta(hours=2)),
+        (
+            datetime(2026, 1, 1, 12, tzinfo=UTC),
+            timedelta(0),
+            timedelta(hours=2),
+            timedelta(hours=2),
+        ),
         (None, timedelta(hours=3), timedelta(0), timedelta(hours=3)),
-        (datetime(2026, 1, 1, 12, tzinfo=UTC), timedelta(minutes=30), timedelta(hours=2), timedelta(hours=2, minutes=30)),
+        (
+            datetime(2026, 1, 1, 12, tzinfo=UTC),
+            timedelta(minutes=30),
+            timedelta(hours=2),
+            timedelta(hours=2, minutes=30),
+        ),
     ],
 )
 def test_generated_duration_values(
@@ -90,14 +102,21 @@ Run: `make test ARGS="tests/test_generated_duration_columns.py -x"`
 
 Expected: the schema test fails because `references` contains `"duration_calculated"` instead of the timestamp source fields. The value cases may pass on SQLite; the schema assertion is the regression guard for PostgreSQL compatibility.
 
-- [ ] **Step 3: Inline the elapsed expression in the model**
+- [ ] **Step 3: Add the portable duration-sum expression and use it in the model**
 
-In `games/models.py`, replace the existing `duration_total` expression with the following exact expression. Do not alter `duration_calculated`.
+Create `games/expressions.py` with a serializable two-operand expression. Its
+default compiler must emit `(<lhs> + <rhs>)` for PostgreSQL interval addition;
+its `as_sqlite()` compiler must emit that same direct SQL addition, bypassing
+Django's `django_format_dtdelta()` helper so SQLite returns integer microseconds.
+Then import `DatabaseDurationSum` in `games/models.py` and replace the existing
+`duration_total` expression. Do not alter `duration_calculated`.
 
 ```python
 duration_total = GeneratedField(
-    expression=Coalesce(F("timestamp_end") - F("timestamp_start"), 0)
-    + F("duration_manual"),
+    expression=DatabaseDurationSum(
+        Coalesce(F("timestamp_end") - F("timestamp_start"), 0),
+        F("duration_manual"),
+    ),
     output_field=models.DurationField(),
     db_persist=True,
     editable=False,
@@ -108,7 +127,7 @@ duration_total = GeneratedField(
 
 Run: `make makemigrations`
 
-Expected: Django creates `games/migrations/0034_alter_session_duration_total.py` containing one `AlterField` for `Session.duration_total`, with the same inline `Coalesce(timestamp_end - timestamp_start, 0) + duration_manual` expression. Confirm it depends on `("games", "0033_session_timestamp_end_timezone_and_more")` and contains no data operation.
+Expected: Django initially creates an `AlterField` migration. Replace that unsupported operation with `RemoveField(model_name="session", name="duration_total")` followed by `AddField` for the new `GeneratedField`. Confirm the migration depends on `("games", "0033_session_timestamp_end_timezone_and_more")`, has no data operation, and its added field uses `DatabaseDurationSum(Coalesce(timestamp_end - timestamp_start, 0), duration_manual)`.
 
 - [ ] **Step 5: Run focused tests to verify behavior and schema pass**
 
@@ -125,6 +144,6 @@ Expected: PASS, including lint, formatting, mypy, TypeScript checks/tests, and t
 - [ ] **Step 7: Commit the implementation**
 
 ```bash
-git add games/models.py games/migrations/0034_alter_session_duration_total.py tests/test_generated_duration_columns.py
+git add games/expressions.py games/models.py games/migrations/0034_alter_session_duration_total.py tests/test_generated_duration_columns.py
 git commit -m "fix: make generated durations PostgreSQL-compatible"
 ```
