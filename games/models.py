@@ -279,10 +279,10 @@ class SessionQuerySet(models.QuerySet):
         return result["duration"]
 
     def without_manual(self):
-        return self.exclude(duration_calculated__iexact=0)
+        return self.exclude(duration_calculated=timedelta(0))
 
     def only_manual(self):
-        return self.filter(duration_calculated__iexact=0)
+        return self.filter(duration_calculated=timedelta(0))
 
 
 class Session(models.Model):

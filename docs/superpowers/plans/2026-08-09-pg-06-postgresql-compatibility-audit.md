@@ -95,9 +95,10 @@ Expected: FAIL on the current duration_calculated__iexact lookup, which attempts
 
 - [ ] **Step 1: Replace both case-insensitive lookups**
 
-Import already exists at games/models.py:2. Replace the two method bodies exactly:
+Import already exists at games/models.py:2. Within `SessionQuerySet`, replace the two methods exactly:
 
 ~~~python
+class SessionQuerySet(models.QuerySet):
     def without_manual(self):
         return self.exclude(duration_calculated=timedelta(0))
 
@@ -190,4 +191,3 @@ Expected: clean worktree and the Task 2 implementation commit at HEAD. The PR bo
 - Task 2 replaces the only runtime compatibility defect without changing a schema or data.
 - Task 3 records and enforces the audit handoff for timestamps, generated durations, JSON, constraints, RawSQL, and cursors.
 - No data reconciliation is necessary because this issue changes no persisted values.
-
