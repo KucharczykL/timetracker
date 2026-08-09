@@ -6,8 +6,7 @@ import requests
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import F, Q, Sum
-from django.db.models.expressions import RawSQL
+from django.db.models import Case, F, Q, Sum, Value, When
 from django.db.models.fields.generated import GeneratedField
 from django.db.models.functions import Coalesce, NullIf
 from django.template.defaultfilters import floatformat, pluralize, slugify
@@ -15,7 +14,7 @@ from django.utils import timezone
 
 from common.duration_presentation import format_decimal_hours
 from common.utils import label_with_details
-from games.expressions import DatabaseDurationSum
+from games.expressions import DatabaseDateDifference, DatabaseDurationSum
 from timetracker.settings_registry import THEME_CHOICES, SettingKey
 
 logger = logging.getLogger("games")
@@ -443,19 +442,13 @@ class PlayEvent(models.Model):
     started = models.DateField(null=True, blank=True)
     ended = models.DateField(null=True, blank=True)
     days_to_finish = GeneratedField(
-        # special cases:
-        # missing ended, started, or both = 0
-        # same day = 1 day to finish
-        expression=RawSQL(
-            """
-            COALESCE(
-                CASE 
-                    WHEN date(ended) = date(started) THEN 1
-                    ELSE julianday(ended) - julianday(started)
-                END, 0
-            )
-            """,
-            [],
+        expression=Coalesce(
+            Case(
+                When(ended=F("started"), then=Value(1)),
+                default=DatabaseDateDifference(F("ended"), F("started")),
+                output_field=models.IntegerField(),
+            ),
+            Value(0),
         ),
         output_field=models.IntegerField(),
         db_persist=True,
