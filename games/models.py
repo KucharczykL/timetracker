@@ -9,7 +9,7 @@ from django.db import models
 from django.db.models import F, Q, Sum
 from django.db.models.expressions import RawSQL
 from django.db.models.fields.generated import GeneratedField
-from django.db.models.functions import Coalesce
+from django.db.models.functions import Coalesce, NullIf
 from django.template.defaultfilters import floatformat, pluralize, slugify
 from django.utils import timezone
 
@@ -192,7 +192,8 @@ class Purchase(models.Model):
     converted_currency = models.CharField(max_length=3, blank=True, default="")
     needs_price_update = models.BooleanField(default=True, db_index=True)
     price_per_game = GeneratedField(
-        expression=Coalesce(F("converted_price"), F("price"), 0) / F("num_purchases"),
+        expression=Coalesce(F("converted_price"), F("price"), 0)
+        / NullIf(F("num_purchases"), 0),
         output_field=models.FloatField(),
         db_persist=True,
         editable=False,
