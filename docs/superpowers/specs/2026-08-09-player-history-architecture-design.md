@@ -278,6 +278,36 @@ human action while retaining each Session's correction. Moving a Session does
 not change its time, duration, Device, note, or Game and does not appear as new
 play activity in the Player's Journal.
 
+### Selectable tables and bulk actions
+
+Session organization is the first demanding consumer of shared selectable-table
+infrastructure, not a bespoke selection implementation. `StyledTable` gains an
+optional selectable personality used by Games, Sessions, Purchases, Devices,
+Platforms, and later Playthroughs:
+
+- the checkbox is integrated into the pinned identity cell, preserving that
+  cell's `<th scope="row">` semantics and responsive behavior;
+- a header checkbox selects the visible page, followed by an explicit “Select
+  all N matching” action based on the active filter;
+- a shared toolbar displays the selected count, clear action, and domain-owned
+  mass actions;
+- one selected row exposes single-record actions such as Edit; multiple rows
+  expose only actions valid for the whole selection;
+- action endpoints revalidate the resolved objects and record the exact IDs
+  changed, including when selection began as “all matching”;
+- destructive operations summarize their scope and require confirmation;
+- on mobile the identity cell stacks the essential row summary beside its
+  checkbox while lower-priority columns continue to drop;
+- only the checkbox selects a row, because rows already contain links and
+  direct field controls.
+
+The current trailing Actions columns are retired. Their Edit/Delete and
+domain-specific operations move into the shared selection toolbar. Meaningful
+identity links and deliberately immediate field controls, such as the compact
+Game-status selector, are not classified as Actions-column buttons and may
+remain inline. Each bulk action declares its allowed selection cardinality and
+is implemented separately from the selection framework.
+
 The current `PlayEvent` becomes playthrough start/completion history. The
 current `GameStatusChange` becomes projected event history rather than a second
 independent source of truth.
@@ -478,14 +508,16 @@ migration or one giant pull request:
 3. Add temporal-value and Historical Playtime primitives.
 4. Introduce canonical catalog identity and external references without merging
    existing Games.
-5. Introduce PlayerGame and mandatory default Playthroughs, then migrate
-   PlayEvents/status history.
-6. Introduce LibraryEntry and one-item Purchases, then migrate bundles and
+5. Add selectable-table and bulk-action infrastructure, then prove it with one
+   non-destructive action before retiring row Actions columns incrementally.
+6. Introduce PlayerGame and mandatory default Playthroughs, including bulk
+   Session organization, then migrate PlayEvents/status history.
+7. Introduce LibraryEntry and one-item Purchases, then migrate bundles and
    add-ons.
-7. Move remaining player-history writes to commands/events in bounded groups.
-8. Reconcile the Player's Journal spec and implement its projection/query layer
+8. Move remaining player-history writes to commands/events in bounded groups.
+9. Reconcile the Player's Journal spec and implement its projection/query layer
    and approved responsive UI.
-9. Remove superseded fields and compatibility write paths only after parity
+10. Remove superseded fields and compatibility write paths only after parity
    checks are green.
 
 The implementation plan must divide each numbered step further into issues that
@@ -517,6 +549,10 @@ named issues rather than left floating:
    aggregate-playtime reconciliation, and repeat-safe manual synchronization.
 9. **Scheduled Steam synchronization** — automation built on the proven manual
    sync path.
+10. **Responsive multi-column sort editor** — an always-available Sort control
+    backed by the existing ordered `sort=` state; mobile bottom sheet with
+    ranked fields, direction, accessible move controls, Reset/Apply, and desktop
+    header sorting retained as a synchronized shortcut.
 
 ## Explicit non-goals
 
