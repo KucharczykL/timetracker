@@ -3,6 +3,12 @@
 Date: 2026-08-09
 Issue: https://github.com/KucharczykL/timetracker/issues/37
 
+> **Architecture note:** The approved visual references and interaction shape in
+> this document remain valid. Domain details involving statuses, PlayEvents,
+> bundles, associations, and live source queries are superseded by
+> [Player history architecture design](2026-08-09-player-history-architecture-design.md).
+> Reconcile this document with that foundation before Journal implementation.
+
 ## Problem
 
 `Session.note` is editable and filterable but is not rendered on the sessions
