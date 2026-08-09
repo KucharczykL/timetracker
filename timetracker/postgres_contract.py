@@ -90,8 +90,7 @@ def validate_postgres_collation_contract(
             contract.locale_provider, repr(contract.locale_provider)
         )
         raise PostgresContractViolation(
-            "PostgreSQL collation contract requires provider builtin, "
-            f"got {provider}."
+            f"PostgreSQL collation contract requires provider builtin, got {provider}."
         )
     if contract.locale != REQUIRED_BUILTIN_LOCALE:
         raise PostgresContractViolation(
