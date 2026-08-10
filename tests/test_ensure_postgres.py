@@ -108,7 +108,7 @@ def test_path_tools_require_postgresql_17(harness, monkeypatch):
 
     tools = harness.path_tools()
 
-    assert tools.initdb == Path("/tools/initdb")
+    assert tools.initdb == Path("/tools") / harness.executable_name("initdb")
     assert seen == [tools.postgres]
 
 
@@ -139,11 +139,11 @@ def test_fallback_tools_reuse_an_extracted_nested_bin_directory(
     )
     nested_bin.mkdir(parents=True)
     for name in harness.TOOL_NAMES:
-        (nested_bin / name).touch()
+        (nested_bin / harness.executable_name(name)).touch()
 
     tools = harness.fallback_tools(tmp_path)
 
-    assert tools.initdb == nested_bin / "initdb"
+    assert tools.initdb == nested_bin / harness.executable_name("initdb")
 
 
 def test_redacted_url_hides_a_password(harness):
