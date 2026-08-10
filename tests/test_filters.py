@@ -17,7 +17,6 @@ from common.criteria import (
     MAX_FIELD_COMPARISONS,
     MAX_FILTER_BREADTH,
     MAX_FILTER_DEPTH,
-    MAX_REGEX_PATTERN_LENGTH,
     MAX_SET_VALUES,
     AggregateCriterion,
     BoolCriterion,
@@ -52,6 +51,12 @@ from common.criteria import (
     filter_from_json,
     filter_to_json,
     search_q,
+)
+from common.filter_execution import contains_regex_modifier
+from common.regex_patterns import (
+    MAX_REGEX_PATTERN_LENGTH,
+    RegexPatternError,
+    validate_regex_pattern,
 )
 from games.filters import (
     DeviceFilter,
@@ -139,6 +144,56 @@ class TestStringCriterion:
         restored = StringCriterion.from_json(original.to_json())
         assert restored == original
         assert restored.to_q("note") == Q(note__isnull=True) | Q(note__exact="")
+
+
+class TestPortableRegexPatterns:
+    @pytest.mark.parametrize(
+        "pattern",
+        [
+            "zelda",
+            r"game\+one",
+            "(zelda|mario)",
+            "[a-zA-Z0-9_-]{1,32}",
+            "(ha)+",
+        ],
+    )
+    def test_accepts_the_portable_subset(self, pattern):
+        validate_regex_pattern(pattern)
+
+    @pytest.mark.parametrize(
+        "pattern",
+        [
+            ".",
+            "^zelda",
+            "zelda$",
+            r"\d+",
+            "[[:alpha:]]",
+            "(?=zelda)",
+            r"(zelda)\1",
+            "(?:zelda)",
+            "zelda+?",
+            "zelda{1,}",
+            "zelda|",
+            "[a-b-c]+",
+            "[unclosed",
+        ],
+    )
+    def test_rejects_nonportable_or_ambiguous_syntax(self, pattern):
+        with pytest.raises(RegexPatternError):
+            validate_regex_pattern(pattern)
+
+
+class TestRegexFilterDetection:
+    def test_finds_regex_modifier_in_nested_filter_json(self):
+        assert contains_regex_modifier(
+            json.dumps({"session_filter": {"name": {"modifier": "MATCHES_REGEX"}}})
+        )
+
+    def test_ignores_empty_and_non_regex_filter_json(self):
+        assert not contains_regex_modifier("{}")
+        assert not contains_regex_modifier(
+            json.dumps({"name": {"modifier": "INCLUDES"}})
+        )
 
 
 class TestIntCriterion:
@@ -1624,9 +1679,9 @@ class TestFilterErrorBoundary:
             parse_purchase_filter(bad)
 
     def test_valid_regex_pattern_parses(self):
-        """A well-formed regex is unaffected by the parse-time compile check."""
+        """A bounded portable regex continues to parse."""
         good = json.dumps(
-            {"name": {"modifier": "MATCHES_REGEX", "value": "[a-z]{12,}"}}
+            {"name": {"modifier": "MATCHES_REGEX", "value": "[a-z]{12,24}"}}
         )
         parsed = parse_game_filter(good)
         assert parsed is not None
@@ -1750,17 +1805,15 @@ class TestFilterErrorBoundary:
             parse_game_filter(bad)
 
     def test_redos_nested_quantifier(self):
-        """The classic catastrophic-backtracking signature ``(a+)+$`` is rejected at
-        parse — otherwise SQLite's per-row REGEXP would hang a worker."""
+        """Nested unbounded repeats remain rejected before query execution."""
         bad = json.dumps({"name": {"modifier": "MATCHES_REGEX", "value": "(a+)+$"}})
-        with pytest.raises(FilterError, match="too complex"):
+        with pytest.raises(FilterError, match="invalid regex pattern"):
             parse_game_filter(bad)
 
     def test_redos_nested_lazy_quantifier(self):
-        """A lazy inner repeat (MIN_REPEAT) is caught too — backtracking is just as
-        catastrophic."""
+        """Lazy quantifiers are outside the portable subset."""
         bad = json.dumps({"name": {"modifier": "MATCHES_REGEX", "value": "(a+?)+"}})
-        with pytest.raises(FilterError, match="too complex"):
+        with pytest.raises(FilterError, match="invalid regex pattern"):
             parse_game_filter(bad)
 
     def test_redos_guard_applies_to_not_matches_regex(self):

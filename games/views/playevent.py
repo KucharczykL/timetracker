@@ -35,6 +35,7 @@ from common.duration_presentation import (
     DurationPresentation,
     duration_format_profile,
 )
+from common.filter_execution import regex_timeout_view
 from common.layout import render_page
 from common.returns import OriginUrl, action_url
 from common.utils import paginate
@@ -173,6 +174,7 @@ def _get_formatted_playtime_for_game_sessions_in_range(
 
 
 @login_required
+@regex_timeout_view
 def list_playevents(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
     origin = request.get_full_path()

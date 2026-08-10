@@ -48,6 +48,7 @@ from common.date_time_presentation import (
     DateTimePresentation,
     date_time_presentation_for_request,
 )
+from common.filter_execution import regex_timeout_view
 from common.layout import render_page
 from common.returns import OriginUrl, action_url
 from common.utils import label_with_details, paginate
@@ -165,6 +166,7 @@ def _render_purchase_row(
 
 
 @login_required
+@regex_timeout_view
 def list_purchases(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
     origin = request.get_full_path()

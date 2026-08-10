@@ -1,5 +1,15 @@
 # Configuration
 
+## Regex filters
+
+Regex filters deliberately support only syntax with a documented shared meaning
+on Python and PostgreSQL: literal text, escaped regex punctuation, capturing
+groups, non-empty alternatives, ASCII character classes/ranges, greedy
+`*`/`+`/`?`, and bounded repetitions (`{m}` or `{m,n}`, with bounds up to 255).
+Patterns are limited to 200 characters. Anchors, dot, shorthand classes,
+lookaround, backreferences, flags, lazy/possessive quantifiers, open-ended
+brace repetitions, and other engine extensions are rejected as invalid filters.
+
 All configurable Django settings are read through a single helper,
 `config()` in [`timetracker/config.py`](../timetracker/config.py). It resolves
 each value from a fixed chain of sources so the same setting can come from an

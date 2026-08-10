@@ -49,6 +49,7 @@ from common.duration_presentation import (
     DurationPresentation,
     duration_presentation_for_request,
 )
+from common.filter_execution import regex_timeout_view
 from common.layout import render_page
 from common.returns import OriginUrl, action_url
 from common.utils import paginate, safe_division
@@ -74,6 +75,7 @@ from games.views.returns import origin_from, return_url
 
 
 @login_required
+@regex_timeout_view
 def list_games(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
     durations = duration_presentation_for_request(request)

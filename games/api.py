@@ -28,6 +28,7 @@ from ninja.security import django_auth
 
 from common.criteria import FilterError, filter_from_json
 from common.date_time_presentation import date_time_presentation_for_request
+from common.filter_execution import regex_timeout_api
 from games.filters import (
     MODE_PARSERS,
     filter_for_model,
@@ -378,6 +379,7 @@ class SessionListOut(Schema):
 
 
 @session_router.get("/", response=SessionListOut)
+@regex_timeout_api
 def list_sessions_api(request, filter: str = "", sort: str = "", page: int = 1):
     sessions = Session.objects.select_related("game", "game__platform", "device")
     if filter:
@@ -501,6 +503,7 @@ class FilterCountOut(Schema):
 
 
 @filter_router.get("/count", response=FilterCountOut)
+@regex_timeout_api
 def filter_count(request, model: str, filter: str = ""):
     """Live result count for the nested filter builder (#195).
 
