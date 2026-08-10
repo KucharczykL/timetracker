@@ -98,11 +98,18 @@ def test_managed_database_url_yields_to_a_new_dotenv_url(
 
 def test_path_tools_require_postgresql_17(harness, monkeypatch):
     monkeypatch.setattr(harness.shutil, "which", lambda name: f"/tools/{name}")
-    monkeypatch.setattr(harness, "postgres_major", lambda postgres: 17)
+    seen: list[Path] = []
+
+    def required_major(postgres: Path) -> int:
+        seen.append(postgres)
+        return 17
+
+    monkeypatch.setattr(harness, "postgres_major", required_major)
 
     tools = harness.path_tools()
 
     assert tools.initdb == Path("/tools/initdb")
+    assert seen == [tools.postgres]
 
 
 def test_path_tools_reject_wrong_major(harness, monkeypatch):
