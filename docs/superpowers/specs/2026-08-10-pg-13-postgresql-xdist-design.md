@@ -34,23 +34,31 @@ and the ignored loopback PostgreSQL cluster remains the developer server
 established by PG-12. Django creates, migrates, and tears down the worker
 databases rather than addressing the development database itself.
 
-Pytest-xdist supplies a run-wide `testrun_uid` to every worker and exposes the
-same value as `PYTEST_XDIST_TESTRUNUID`. Pytest-django exposes
-`django_db_modify_db_settings_xdist_suffix` as its supported customization
-point for xdist database settings. The project overrides that fixture to set
-each worker's `TEST["NAME"]` from the configured database name, the shared
-run UID, and the worker ID. The resulting names are conceptually:
+Pytest-xdist supplies a run-wide `testrun_uid` and a `worker_id` fixture to
+every worker. Pytest-django exposes `django_db_modify_db_settings_xdist_suffix`
+as its supported customization point for xdist database settings. The project
+defines that fixture in the importable `timetracker.pytest_topology` plugin and
+loads the plugin from repository-root `conftest.py`; it therefore applies to
+both `tests/` and `e2e/`. The test probe loads that same plugin rather than
+copying or evaluating its source.
+
+The fixture explicitly depends on pytest-django's tox suffix fixture before it
+constructs the bounded name, so tox-parallel naming cannot be appended after
+the PostgreSQL length check. It confirms actual xdist-worker context with
+`request.config.workerinput`, then sets each worker's `TEST["NAME"]` from a
+bounded ASCII representation of the configured base test name, the shared run
+UID, and the worker ID. The resulting names are conceptually:
 
 ```
-test_timetracker_<testrun_uid>_gw0
-test_timetracker_<testrun_uid>_gw1
+test_<base-name-hash>_<128-bit-run-hash>_<worker-id-hash>
 ```
 
-Two runs therefore receive disjoint database namespaces even though their
-worker IDs are both `gw0`, `gw1`, and so on. The override uses only the
-framework's public fixture and settings APIs. It introduces no launcher,
-Makefile-generated identifier, schema router, service, migration, or Compose
-change.
+Hashing the base test name as well as the run UID prevents two long or
+multibyte PostgreSQL names from being truncated into the same identifier. The
+128-bit run token makes accidental collision between independent xdist runs
+negligible. The override uses only the framework's public fixture and settings
+APIs. It introduces no launcher, Makefile-generated identifier, schema router,
+service, migration, or Compose change.
 
 The Makefile keeps its existing local worker-count policy, including the
 Windows-specific default.  `make test`, `make test-fast`, and `make test-e2e`
@@ -66,7 +74,8 @@ PostgreSQL server:
 - the configured test connection is PostgreSQL, not SQLite;
 - a parallel xdist invocation gives every worker a distinct test database;
 - workers in one invocation share one xdist run UID, while distinct run UIDs
-  generate non-overlapping database names;
+  generate distinct bounded ASCII database names;
+- the global plugin applies to both `tests/` and `e2e/` collection trees;
 - worker databases are derived test databases and are never the configured
   development database;
 - the existing live-server concurrency coverage continues to run safely with
