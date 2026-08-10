@@ -8,7 +8,7 @@ DEBUG = false
 SECRET_KEY = change-me-to-a-long-random-string
 APP_URL = https://tracker.kucharczyk.xyz
 TZ = Europe/Prague
-DATA_DIR = /var/lib/timetracker
+DATABASE_URL = postgresql://timetracker:change-me@db.example:5432/timetracker
 
 # Optional explicit overrides (comma-separated); win over APP_URL when set.
 # ALLOWED_HOSTS = *

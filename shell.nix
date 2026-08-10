@@ -6,6 +6,7 @@ pkgs.mkShell {
   buildInputs = with pkgs; [
     nodejs_26
     python3
+    postgresql_17
     uv
     ruff
     pnpm_10

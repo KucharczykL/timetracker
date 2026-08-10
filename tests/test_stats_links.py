@@ -174,7 +174,7 @@ def test_games_in_month_matches_that_month(world):
         )
     ).count()
     assert expected == 2
-    assert _count(stats_links.games_in_month(YEAR, 6), Session) == expected
+    assert _count(stats_links.games_in_month(YEAR, 6), Game) == expected
 
 
 def test_all_sessions_matches_total_sessions(world):

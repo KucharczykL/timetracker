@@ -8,7 +8,7 @@
 
 At the outset of this epic, Timetracker had **no runtime-configurable settings and almost no per-user preferences**.
 All 9 config values (`DEBUG`, `SECRET_KEY`, `APP_URL`, `DEV_LOGIN_PREFILL`, `ALLOWED_HOSTS`,
-`DATA_DIR`, `TZ`, `DEFAULT_CURRENCY`, `HASHED_STATIC`) resolve **once at boot** via `config()`
+`DATABASE_URL`, `TZ`, `DEFAULT_CURRENCY`, `HASHED_STATIC`) resolve **once at boot** via `config()`
 (env → `.env` → `settings.ini` → default) in [timetracker/config.py](timetracker/config.py) /
 [timetracker/settings.py](timetracker/settings.py). The only per-user DB state is `FilterPreset`
 ([games/models.py:487](games/models.py)); even dark/light theme was browser-`localStorage`-only

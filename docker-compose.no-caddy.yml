@@ -14,7 +14,6 @@ services:
       - APP_URL=https://tracker.kucharczyk.xyz
     user: "1000"
     # volumes:
-    #   - "db:/home/timetracker/app/src/timetracker/db.sqlite3"
     ports:
       - "8000:8000"
     restart: unless-stopped

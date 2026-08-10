@@ -4,14 +4,18 @@ A simple game catalogue and play session tracker.
 
 # Development
 
-The project uses `uv` to manage Python versions and dependencies.
-Simply run:
+Nix is the supported development environment: it supplies PostgreSQL 17,
+Python, Node, and the other project tools. Enter it with `nix-shell` (or
+direnv), then run:
 
 ```
 make init
 ```
 
-This installs the correct Python version, syncs all dependencies, and installs npm packages.
+This initializes an ignored, loopback-only PostgreSQL 17 cluster under `.cache/`,
+syncs dependencies, and installs npm packages. `make` automatically reuses that
+cluster. Outside Nix, `make` uses a checksum-pinned PostgreSQL 17 binary fallback
+for supported platforms; alternatively set `DATABASE_URL` to an existing database.
 Afterwards, you can start the development server using `make dev` or `make server`
 (without the Tailwind watcher). Both targets accept `DEV_HOST` and `DEV_PORT`, for
 example `make dev DEV_HOST=0.0.0.0 DEV_PORT=9999`.

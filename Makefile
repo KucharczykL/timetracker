@@ -1,4 +1,15 @@
-all: css migrate
+POSTGRES_MK = .cache/postgres.mk
+include $(POSTGRES_MK)
+
+$(POSTGRES_MK): scripts/ensure_postgres.py FORCE
+	@mkdir -p .cache
+	uv run --frozen python scripts/ensure_postgres.py --makefile $@
+
+.PHONY: FORCE ensure-postgres
+FORCE:
+ensure-postgres: $(POSTGRES_MK)
+
+all: ensure-postgres css migrate
 
 initialize: npm css migrate loadplatforms
 
@@ -90,42 +101,42 @@ npm: ensure-node
 css: ensure-node common/input.css
 	pnpm tailwindcss -i ./common/input.css -o  ./games/static/base.css
 
-makemigrations:
+makemigrations: ensure-postgres
 	uv run --frozen python manage.py makemigrations
 
 # Drift guard for the aggregates. Bare `makemigrations` is not a substitute: on
 # drift it writes a new migration and exits 0, so an un-regenerated model change
 # reaches CI as a passing run.
-check-migrations:
+check-migrations: ensure-postgres
 	uv run --frozen python manage.py makemigrations --check --dry-run
 
-migrate: makemigrations
+migrate: ensure-postgres makemigrations
 	uv run --frozen python manage.py migrate
 
 devlogin: migrate
 	uv run --frozen python manage.py devlogin
 
-init: ensure-python
+init: ensure-python ensure-postgres
 	uv sync --frozen
 	pnpm install
 	$(MAKE) migrate
 	$(MAKE) loadplatforms
 	$(MAKE) gen-icons
 
-server: ensure-node gen-element-types
+server: ensure-postgres ensure-node gen-element-types
 	@pnpm concurrently \
 		--names "Django,TS" \
 		--prefix-colors "blue,green" \
 		"uv run --frozen python -Wa manage.py runserver $(DEV_HOST):$(DEV_PORT)" \
 		"pnpm exec tsc --watch"
 
-gen-element-types:
+gen-element-types: ensure-postgres
 	uv run --frozen python manage.py gen_element_types
 
-gen-icons:
+gen-icons: ensure-postgres
 	uv run --frozen python manage.py gen_icons
 
-check-icons:
+check-icons: ensure-postgres
 	uv run --frozen python manage.py gen_icons --check
 
 ts: ensure-node gen-element-types
@@ -140,7 +151,7 @@ test-ts: ts
 	pnpm test:ts
 
 dev: export DEV_LOGIN_PREFILL := admin:admin
-dev: ensure-python ensure-node gen-element-types
+dev: ensure-postgres ensure-python ensure-node gen-element-types
 	@pnpm concurrently \
 		--names "Django,Tailwind,TS" \
 		--prefix-colors "blue,green,magenta" \
@@ -185,7 +196,7 @@ dev-lan: ensure-python ensure-node gen-element-types
 caddy:
 	caddy run --watch
 
-dev-prod: ensure-node migrate collectstatic
+dev-prod: ensure-postgres ensure-node migrate collectstatic
 	@pnpm concurrently \
 		--names "Caddy,Django,Django-Q" \
 		"caddy run --config Caddyfile.dev" \
@@ -197,35 +208,35 @@ dev-prod: ensure-node migrate collectstatic
 # two lines: the `... : export PROD := 1` line attaches a target-specific env var,
 # the following `... :` line is the rule + recipe. Make merges them — not a redefinition.
 gunicorn-prod: export PROD := 1
-gunicorn-prod:
+gunicorn-prod: ensure-postgres
 	uv run --frozen python -m gunicorn --bind 0.0.0.0:8001 timetracker.asgi:application -k uvicorn.workers.UvicornWorker
 
 qcluster-prod: export PROD := 1
-qcluster-prod:
+qcluster-prod: ensure-postgres
 	uv run --frozen manage.py qcluster
 
-dumpgames:
+dumpgames: ensure-postgres
 	uv run --frozen python manage.py dumpdata --format yaml games --output tracker_fixture.yaml
 
-loadplatforms:
+loadplatforms: ensure-postgres
 	uv run --frozen python manage.py loadplatforms
 
-loadall:
+loadall: ensure-postgres
 	uv run --frozen python manage.py loaddata data.yaml
 
-loadsample:
+loadsample: ensure-postgres
 	uv run --frozen python manage.py loaddata sample.yaml.gz
 
-anonymize-sample:
+anonymize-sample: ensure-postgres
 	uv run --frozen python manage.py anonymize_sample --seed 42 --force
 
-createsuperuser:
+createsuperuser: ensure-postgres
 	uv run --frozen python manage.py createsuperuser
 
-shell:
+shell: ensure-postgres
 	uv run --frozen python manage.py shell
 
-collectstatic:
+collectstatic: ensure-postgres
 	uv run --frozen python manage.py collectstatic --clear --no-input
 
 uv.lock: pyproject.toml
@@ -268,15 +279,15 @@ endif
 
 # base.css (Tailwind) and js/dist (TS) are build artifacts, gitignored and not
 # tracked — build both before tests so e2e/static serving has fresh assets.
-test: ensure-python uv.lock css ts test-ts
+test: ensure-postgres ensure-python uv.lock css ts test-ts
 	uv run --frozen --with pytest-django pytest -n $(PYTEST_WORKERS) $(ARGS)
 
 # The iteration counterpart to `test`: everything except e2e/, which is 83% of
 # the suite's wall time (269 browser tests ~ 306s, against 2238 others ~ 64s).
-test-fast: ensure-python uv.lock css ts test-ts
+test-fast: ensure-postgres ensure-python uv.lock css ts test-ts
 	uv run --frozen --with pytest-django pytest tests/ -n $(PYTEST_WORKERS) $(ARGS)
 
-test-e2e: uv.lock css ts
+test-e2e: ensure-postgres uv.lock css ts
 	uv run --frozen pytest e2e/ -n $(PYTEST_WORKERS) $(ARGS)
 
 lint:

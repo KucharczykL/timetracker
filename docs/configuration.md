@@ -41,7 +41,7 @@ remove that and `settings.ini` wins; remove that and the code default applies.
 | `TZ` | str | `Europe/Prague` (dev) / `UTC` (prod) | no | Boot-time Django/server time zone. Requires a restart and is not editable on Admin settings. |
 | `DEFAULT_CURRENCY` | str | `CZK` | no | Site-wide fallback for purchases saved without request/user context and the FX conversion/reporting target. Purchase-entry views resolve the current user's preference instead. |
 | `DEFAULT_PAGE_SIZE` | int | `25` | no | Default rows shown on list pages. Valid preference/site values: `10`, `25`, `50`, `100`, `500`, `1000`. |
-| `DATA_DIR` | path | project root | no | Directory holding the SQLite database. Also read by `entrypoint.sh`. |
+| `DATABASE_URL` | PostgreSQL URL | required | no | Required PostgreSQL connection URL. The database must be PostgreSQL 17, UTF8, `builtin`, and `C.UTF-8`. |
 | `DEV_LOGIN_PREFILL` | str (`user:pass`) | `""` (off) | no | **Dev/staging only — never set in production.** When set to `username:password`, the login page prefills those credentials (one click to log in) and sends `X-Robots-Tag: noindex`. Login is not bypassed. `make dev` sets it to `admin:admin`; `make devlogin` provisions that superuser. |
 
 `cast` understands `bool` (`true/1/yes/on` → `True`), `list` (comma-separated,
@@ -79,7 +79,8 @@ the global `SiteSetting` model.
   a `SiteSetting` site default; a plain **site**-scoped setting has only the
   shared `SiteSetting` default (none exist today). **infra**-scoped settings
   (`DEBUG`, `SECRET_KEY`, `APP_URL`, `DEV_LOGIN_PREFILL`, `ALLOWED_HOSTS`,
-  `DATA_DIR`, `TZ`, `HASHED_STATIC`) are boot-only and never read from the DB.
+  `TZ`, `HASHED_STATIC`) are boot-only and never read from the DB. `DATABASE_URL`
+  is intentionally not shown in the settings UI because it can contain credentials.
 - **`TZ` is infrastructure configuration.** `TIME_ZONE` is frozen when
   `settings.py` imports, so a DB value could never take effect. Change it via
   the environment, `.env`, or `settings.ini` and restart. It is shown
@@ -164,7 +165,6 @@ Settings shown:
 - `APP_URL` — application URL
 - `DEV_LOGIN_PREFILL` — dev login prefill
 - `ALLOWED_HOSTS` — allowed hosts
-- `DATA_DIR` — data directory
 - `HASHED_STATIC` — hashed static assets
 
 The navbar theme switcher is unavailable on both personal and Admin settings
@@ -354,7 +354,6 @@ collected into the image at build time rather than on each boot.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `DATA_DIR` | `/home/timetracker/app/data` | Database directory. Shared with Django via the same env var + matching default. |
 | `CREATE_DEFAULT_SUPERUSER` | `false` | Create an `admin`/`admin` superuser on first start. |
 | `STAGING` | `false` | Scrub copied sessions / django-q schedule on staging. |
 | `LOAD_SAMPLE_DATA` | `false` | Seed sample fixtures when the database is empty. |

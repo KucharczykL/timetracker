@@ -39,7 +39,6 @@ EXPECTED_KEYS = {
     "APP_URL",
     "DEV_LOGIN_PREFILL",
     "ALLOWED_HOSTS",
-    "DATA_DIR",
     "HASHED_STATIC",
 }
 

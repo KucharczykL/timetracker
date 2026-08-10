@@ -41,3 +41,6 @@ games/fixtures/name_overrides.yaml
 
 # Session-local scratch state (subagent-driven-development ledger/briefs/reports)
 /.superpowers/
+
+# Disposable local PostgreSQL cluster and generated Make include.
+/.cache/

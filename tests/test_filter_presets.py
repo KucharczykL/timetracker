@@ -391,7 +391,11 @@ def test_list_shape_round_trips_object_filter(auth_client):
         {
             "value": preset.id,
             "label": "Shape",
-            "data": {"filter": json.dumps(stored), "sort": "", "per_page": ""},
+            "data": {
+                "filter": json.dumps(stored, sort_keys=True),
+                "sort": "",
+                "per_page": "",
+            },
         }
     ]
 

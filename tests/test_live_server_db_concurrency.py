@@ -60,7 +60,7 @@ def _csrf_token(session_key: str, live_server) -> str:
 
 
 @pytest.mark.django_db(transaction=True)
-def test_test_database_is_on_disk():
+def test_test_database_uses_postgresql():
     """The structural half of the bug: an in-memory test database is what makes
     both failure modes possible, so assert it directly. ``live_server`` is not
     requested here — whether it shares the test thread's connection depends on
@@ -69,7 +69,7 @@ def test_test_database_is_on_disk():
     from django.db import connections
 
     connection = connections["default"]
-    assert not connection.is_in_memory_db(), connection.settings_dict["NAME"]
+    assert connection.vendor == "postgresql"
 
 
 @pytest.mark.django_db(transaction=True)

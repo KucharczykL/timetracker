@@ -265,7 +265,7 @@ def test_infra_resolve_hits_no_db(db, monkeypatch, django_assert_num_queries):
 # --- no DB access at settings import --------------------------------------
 
 
-def test_no_db_module_loaded_during_settings_import(monkeypatch):
+def test_database_configuration_loaded_without_resolver_or_models(monkeypatch):
     """Importing timetracker.settings must not pull the resolver or the ORM
     models (the only modules that could issue a query at settings-eval time).
 
@@ -282,6 +282,7 @@ def test_no_db_module_loaded_during_settings_import(monkeypatch):
     env = {
         "PATH": __import__("os").environ.get("PATH", ""),
         "DJANGO_SETTINGS_MODULE": "timetracker.settings",
+        "DATABASE_URL": "postgresql://127.0.0.1/timetracker",
     }
     result = subprocess.run(
         [sys.executable, "-c", script],
