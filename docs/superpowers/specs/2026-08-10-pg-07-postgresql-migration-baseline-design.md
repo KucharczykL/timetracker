@@ -36,7 +36,8 @@ migration — a fresh database replays the historical text:
 - 0014 declares `Session.duration_total` as a generated column referencing the
   generated column `duration_calculated`, which PostgreSQL forbids; and
 - 0012 declares `Session.duration_calculated` as `Coalesce(<interval>, 0)`,
-  which PostgreSQL rejects as an unmatched type pair.
+  which PostgreSQL rejects as an unmatched type pair. 0034 repeats the same
+  construct for `duration_total`, so this defect is present twice.
 
 A fourth defect survives DDL and fails later: 0011 divides by `num_purchases`
 without the `NULLIF` guard, so a Purchase inserted before its M2M links update
@@ -47,9 +48,14 @@ the models and is repaired by this issue; see below.
 
 ## Baseline construction
 
-Delete the 36 migration files and regenerate a single `0001_initial` from the
-current models with `makemigrations`, then hand-add a `replaces` list naming all
-36. Regeneration rather than `squashmigrations` is deliberate: the seven
+Delete the 36 migration files and regenerate a single baseline from the current
+models with `makemigrations`, then hand-add a `replaces` list naming all 36. The
+baseline is named `0001_squashed_0036_alter_playevent_days_to_finish`, never
+`0001_initial`: a squashed migration whose `replaces` list contains its own key
+is a cycle, and Django aborts `build_graph()` with `Cyclical squash replacement
+found`, disabling every migration command and test-database build.
+
+Regeneration rather than `squashmigrations` is deliberate: the seven
 `RunPython`/`RunSQL` migrations are optimizer barriers, so a squash retains the
 julianday RawSQL and the generated-on-generated column as historical text and
 then requires hand surgery on generated output to remove them. Regenerating from
@@ -97,28 +103,62 @@ premise of this issue. Equivalence is therefore established on SQLite, by
 comparing `sqlite_master` between a database built from the 36 originals and one
 built from the baseline, and is captured before the originals are deleted.
 
-Observed result: no missing or extra tables, indexes, or constraints, and six
-tables differing by column order alone — every column name, type, nullability,
-foreign-key clause, `CHECK`, and generated expression identical.
+Observed during planning, by building both databases and diffing them: no
+missing or extra tables, indexes, or constraints, and six tables differing by
+column order alone — `games_game`, `games_platform`, `games_playevent`,
+`games_purchase`, `games_session`, `games_userpreferences` — with every column
+name, type, nullability, foreign-key clause, `CHECK`, and generated expression
+identical. Implementation re-runs the comparison and records it against the
+committed baseline.
 
 Column order is a real difference with one consequence: the SQLite-to-PostgreSQL
 transfer tool must copy by column name, never by ordinal position. That
 constraint belongs to the transfer issues and is filed against them.
 
+## One test retires with the history
+
+`tests/test_migration_sentinel_removal.py` pins two migration module names and
+drives `MigrationExecutor.migrate()` between them to round-trip migration 0024's
+sentinel removal. All three migrations are retired here, so the test raises
+`KeyError` on a name that no longer exists.
+
+It is deleted rather than repaired. Its subject is a historical data migration
+that ceases to exist, and there is no surviving migration to round-trip. The
+invariant it guarded — no sentinel Platform or Device rows — is structural
+today: both foreign keys are nullable and no code creates a sentinel.
+
 ## Static portability guard
 
 A test walks `games/migrations/` and rejects `RawSQL`/`RunSQL`, a
-`GeneratedField` whose expression references another generated column, and
-SQLite-only function names. It runs on SQLite and needs no PostgreSQL, so it
-guards the three defect classes this issue removes during the interval before
-PG-13 supplies a real harness. It closes PG-06's static-audit line permanently.
+`GeneratedField` whose expression reads another generated column, and
+SQLite-only function names in migration source. It runs on SQLite and needs no
+PostgreSQL, so it guards the three defect classes this issue removes during the
+interval before PG-13 supplies a real harness.
+
+It makes PG-06's static-audit line repeatable rather than closing it. Two
+constructs stay out of reach by design: `RunSQL` nested inside
+`SeparateDatabaseAndState`, and a lookup inside a `Q` object, whose left-hand
+side `Q.flatten()` discards. Nor does a source scan see
+`DatabaseDateDifference.as_sqlite`, which still emits `julianday(` into SQLite
+DDL — correctly, as the dialect-aware rendering the baseline imports rather than
+literal SQL written into a migration. The PostgreSQL build is what covers those.
+
+Migration drift gets a permanent home at the same time: `make check` never
+verified it, so a new `check-migrations` target runs `makemigrations --check
+--dry-run` and joins both aggregates. Bare `makemigrations` is not a substitute
+— on drift it writes a new migration instead of failing.
 
 ## Reversibility
 
 Reverting the change restores the 36 files. An installation that recorded the
-baseline carries one extra `django_migrations` row, which the restored history
-ignores. No row is written, altered, or deleted in either direction, and no
-operator action is required.
+baseline carries one extra `django_migrations` row — `MigrationExecutor.
+check_replacements` records the squashed migration itself once all replaced keys
+are applied — which the restored history ignores. No application row is written,
+altered, or deleted in either direction, and no operator action is required.
+
+That extra row is the mechanism, not a side effect: it is what makes an upgrade
+on an existing 0036 database report no work rather than attempt to create live
+tables.
 
 ## Verification
 
@@ -128,9 +168,13 @@ operator action is required.
 - An ORM smoke test on that database proves all four generated columns compute,
   not merely parse: elapsed, manual-only, and mixed Sessions; a multi-day, a
   same-day, and an open PlayEvent; and a Purchase with and without linked games.
-- `sqlite_master` diff between history-built and baseline-built SQLite
-  databases, captured before deletion.
-- `makemigrations --check` is clean, proving the baseline equals the model state.
+- `sqlite_master` comparison between history-built and baseline-built SQLite
+  databases, captured before deletion. Generated-column clauses are extracted
+  and compared as a set; whole `CREATE TABLE` statements are not comparable,
+  since both statement order and column order legitimately differ.
+- An upgrade run against a database already at 0036 reports no work and leaves
+  the schema untouched, evidencing the zero-action upgrade claim directly.
+- `make check-migrations` is clean, proving the baseline equals the model state.
 - The static portability guard passes.
 - The full `make check` gate passes; its test database is built from the
   baseline, so the existing suite exercises it throughout.
@@ -149,12 +193,16 @@ verification routine.
 - No runtime configuration, database dependency, test topology, transfer, regex,
   data, preset, statistics, API, or user-isolation work is absorbed.
 
-## Follow-up issues to file
+## Follow-up issues
 
-- Remove the `replaces` list once the PostgreSQL cutover retires the SQLite
-  lineage (charter step 19).
-- Constrain the SQLite-to-PostgreSQL transfer tool to copy by column name rather
-  than ordinal position.
-- Re-verify PG-01 through PG-06 against a real PostgreSQL server once PG-13's
-  harness exists. Their outcomes were reasoned, and the first execution against
-  PostgreSQL found a defect in PG-01's.
+Filed and slotted into the phase tracker by dependency, not by origin — none
+belongs in the PostgreSQL compatibility group, since each is blocked on work
+that group precedes.
+
+- #809: remove the `replaces` list once the PostgreSQL cutover retires the
+  SQLite lineage (charter step 19). SQLite transfer and cutover group.
+- #810: constrain the SQLite-to-PostgreSQL transfer to copy by column name
+  rather than ordinal position. SQLite transfer and cutover group.
+- #811: re-verify PG-01 through PG-06 against a real PostgreSQL server once
+  PG-13's harness exists. Their outcomes were reasoned, and the first execution
+  against PostgreSQL found a defect in PG-01's. PostgreSQL runtime group.
