@@ -38,9 +38,9 @@ Pytest-xdist supplies a run-wide `testrun_uid` and a `worker_id` fixture to
 every worker. Pytest-django exposes `django_db_modify_db_settings_xdist_suffix`
 as its supported customization point for xdist database settings. The project
 defines that fixture in the importable `timetracker.pytest_topology` plugin and
-loads the plugin from repository-root `conftest.py`; it therefore applies to
-both `tests/` and `e2e/`. The test probe loads that same plugin rather than
-copying or evaluating its source.
+loads the plugin from pytest's repository configuration in `pyproject.toml`;
+it therefore applies to both `tests/` and `e2e/`. The test probe loads that
+same plugin rather than copying or evaluating its source.
 
 The fixture explicitly depends on pytest-django's tox suffix fixture before it
 constructs the bounded name, so tox-parallel naming cannot be appended after
@@ -95,11 +95,11 @@ test databases, which can be removed with normal PostgreSQL administration.
 
 ## Implementation evidence
 
-`timetracker.pytest_topology` is loaded by repository-root `conftest.py`, so
-the same fixture applies to `tests/` and `e2e/`. It uses xdist's `testrun_uid`
-and `worker_id` fixtures, with explicit tox-suffix ordering, to construct a
-bounded ASCII PostgreSQL test database name. The two-worker child probe loads
-the actual plugin and records separate PostgreSQL database names for `gw0` and
+`timetracker.pytest_topology` is loaded from `pyproject.toml`, so the same
+fixture applies to `tests/` and `e2e/`. It uses xdist's `testrun_uid` and
+`worker_id` fixtures, with explicit tox-suffix ordering, to construct a bounded
+ASCII PostgreSQL test database name. The two-worker child probe loads the
+actual plugin and records separate PostgreSQL database names for `gw0` and
 `gw1` under one supplied run UID. The existing live-server concurrency
 regression also passes with the normal local worker policy. CI remains serial
 because `CI` selects `PYTEST_WORKERS=0`; #616 owns its PostgreSQL migration.
