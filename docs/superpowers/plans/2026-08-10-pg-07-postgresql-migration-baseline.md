@@ -191,9 +191,7 @@ class Migration(migrations.Migration):
         ("games", "0036_alter_playevent_days_to_finish"),
     ]
 
-    dependencies = [
-        ...
-    ]
+    dependencies = [...]
 ```
 
 Keep `initial = True`. Without `replaces`, Django would attempt `CREATE TABLE` against live tables on any existing installation.
