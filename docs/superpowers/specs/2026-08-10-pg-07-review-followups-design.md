@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-10
 
-**Status:** Draft for written-spec review
+**Status:** Approved
 
 ## Outcome
 

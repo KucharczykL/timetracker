@@ -4,7 +4,7 @@
 
 **Goal:** Replace the 36 historical `games` migrations with one regenerated squashed baseline that builds a complete database on PostgreSQL 17, proven equivalent to the history it retires.
 
-**Architecture:** Repair the one model expression PostgreSQL rejects (`Session.duration_calculated` coalescing an interval against integer `0`), then delete the 36 migrations and regenerate a single squashed baseline from the repaired models, hand-adding a `replaces` list so existing SQLite installations record it as applied instead of recreating live tables. A static test guards the three defect classes being removed, and a new `make` target keeps migration drift out of the tree. PostgreSQL verification is a one-shot throwaway container whose output is pasted into the pull request; PG-13 (#615) owns making it routine.
+**Architecture:** Repair the one model expression PostgreSQL rejects (`Session.duration_calculated` coalescing an interval against integer `0`), then delete the 36 migrations and regenerate a single squashed baseline from the repaired models, hand-adding a `replaces` list so the sole production database at main commit `a62da2c`, with all 36 predecessors recorded, marks it applied instead of recreating live tables. A static test guards the three defect classes being removed, and a new `make` target keeps migration drift out of the tree. PostgreSQL verification is a one-shot throwaway container whose output is pasted into the pull request; PG-13 (#615) owns making it routine.
 
 **Tech Stack:** Python 3.14, Django 6 migrations and `GeneratedField`, pytest-django, ruff, podman, PostgreSQL 17, GNU Make.
 
@@ -124,7 +124,7 @@ Do not commit yet; Task 2 carries this edit.
 
 **Interfaces:**
 - Consumes: `games/models.py` as repaired in Task 1.
-- Produces: `games.migrations.0001_squashed_0036_alter_playevent_days_to_finish` with `initial = True` and `replaces = [("games", "0001_initial"), … 36 entries]`, which Django records as applied on any database where all 36 originals are recorded.
+- Produces: `games.migrations.0001_squashed_0036_alter_playevent_days_to_finish` with `initial = True` and `replaces = [("games", "0001_initial"), … 36 entries]`, which Django records as applied on the sole production database, where all 36 originals are recorded.
 
 - [ ] **Step 1: Capture the retiring history's full schema**
 
@@ -194,7 +194,12 @@ class Migration(migrations.Migration):
     dependencies = [...]
 ```
 
-Keep `initial = True`. Without `replaces`, Django would attempt `CREATE TABLE` against live tables on any existing installation.
+Keep `initial = True`. Without `replaces`, Django would attempt `CREATE TABLE`
+against the sole production database's live tables. A fresh database has none
+of the replaced migrations recorded and selects the baseline normally. A
+partially applied 0001-0036 history is unsupported after the originals are
+deleted because Django can select a replacement only when all or none of its
+targets are applied.
 
 - [ ] **Step 6: Format and lint the generated file**
 

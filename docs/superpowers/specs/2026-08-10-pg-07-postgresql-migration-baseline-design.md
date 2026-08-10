@@ -62,11 +62,15 @@ then requires hand surgery on generated output to remove them. Regenerating from
 the models produces the repaired expressions by construction, and
 `makemigrations --check` proves the result equals the model state.
 
-`replaces` is retained even though the originals are deleted. It is what makes
-an existing SQLite installation at 0036 record the baseline as applied instead
-of attempting to create live tables. The list becomes dead weight after the
-PostgreSQL cutover and is removed in a follow-up cleanup issue, per charter
-step 19.
+`replaces` is retained even though the originals are deleted. The
+deleted-history deployment supports the two database states that exist for this
+project: a fresh database with none of the replaced migrations recorded, and
+the sole production database at main commit `a62da2c` with all 36 recorded.
+Django substitutes the baseline in both states. A partially applied 0001-0036
+history is unsupported after the originals are deleted because Django can use a
+replacement only when all or none of its targets are applied. The list becomes
+dead weight after the PostgreSQL cutover and is removed in a follow-up cleanup
+issue, per charter step 19.
 
 The nine data operations across the seven `RunPython`/`RunSQL` migrations are
 not carried over. Each is a backfill or cleanup over rows that already exist —
@@ -150,15 +154,17 @@ verified it, so a new `check-migrations` target runs `makemigrations --check
 
 ## Reversibility
 
-Reverting the change restores the 36 files. An installation that recorded the
-baseline carries one extra `django_migrations` row — `MigrationExecutor.
-check_replacements` records the squashed migration itself once all replaced keys
-are applied — which the restored history ignores. No application row is written,
-altered, or deleted in either direction, and no operator action is required.
+Reverting the change restores the 36 files. The sole production database at
+main commit `a62da2c` carries one extra `django_migrations` row after its first
+`migrate` — `MigrationExecutor.check_replacements` records the squashed
+migration itself once all 36 replaced keys are applied — which the restored
+history ignores. No application row is written, altered, or deleted in either
+direction, and no operator action is required for either supported state.
 
 That extra row is the mechanism, not a side effect: it is what makes an upgrade
-on an existing 0036 database report no work rather than attempt to create live
-tables.
+of the production 0036 database report no work rather than attempt to create
+live tables. A partially applied history is outside the deployment contract and
+would not select the replacement.
 
 ## Verification
 
@@ -172,8 +178,9 @@ tables.
   databases, captured before deletion. Generated-column clauses are extracted
   and compared as a set; whole `CREATE TABLE` statements are not comparable,
   since both statement order and column order legitimately differ.
-- An upgrade run against a database already at 0036 reports no work and leaves
-  the schema untouched, evidencing the zero-action upgrade claim directly.
+- An upgrade run against the production database state at 0036 reports no work
+  and leaves the schema untouched, evidencing the zero-action upgrade claim
+  directly.
 - `make check-migrations` is clean, proving the baseline equals the model state.
 - The static portability guard passes.
 - The full `make check` gate passes; its test database is built from the
