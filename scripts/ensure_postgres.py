@@ -87,11 +87,11 @@ def run(args: list[str], *, capture: bool = False) -> subprocess.CompletedProces
     return subprocess.run(args, check=True, text=True, capture_output=capture)
 
 
-def tool_major(executable: Path) -> int:
-    result = run([str(executable), "--version"], capture=True)
+def postgres_major(postgres: Path) -> int:
+    result = run([str(postgres), "--version"], capture=True)
     match = re.search(r"PostgreSQL\)?\s+(\d+)", result.stdout)
     if not match:
-        raise HarnessError(f"Could not determine PostgreSQL version from {executable}.")
+        raise HarnessError(f"Could not determine PostgreSQL version from {postgres}.")
     return int(match.group(1))
 
 
@@ -100,7 +100,14 @@ def _tools_from_directory(directory: Path) -> Tools | None:
     if not all(path.is_file() for path in paths):
         return None
     tools = Tools(*paths)
-    return tools if tool_major(tools.initdb) == REQUIRED_MAJOR else None
+    return tools if postgres_major(tools.postgres) == REQUIRED_MAJOR else None
+
+
+def _tools_from_fallback_destination(destination: Path) -> Tools | None:
+    if tools := _tools_from_directory(destination / "bin"):
+        return tools
+    candidates = list(destination.glob("*/bin"))
+    return _tools_from_directory(candidates[0]) if len(candidates) == 1 else None
 
 
 def path_tools() -> Tools | None:
@@ -108,7 +115,7 @@ def path_tools() -> Tools | None:
     if any(path is None for path in paths):
         return None
     tools = Tools(*(Path(path) for path in paths if path is not None))
-    return tools if tool_major(tools.initdb) == REQUIRED_MAJOR else None
+    return tools if postgres_major(tools.postgres) == REQUIRED_MAJOR else None
 
 
 def verify_checksum(archive: Path, expected: str) -> None:
@@ -130,7 +137,7 @@ def fallback_tools(cache: Path) -> Tools:
             "Use the Nix development shell or set DATABASE_URL."
         ) from exc
     destination = cache / "postgres-binaries" / FALLBACK_VERSION
-    existing = _tools_from_directory(destination / "bin")
+    existing = _tools_from_fallback_destination(destination)
     if existing:
         return existing
     destination.mkdir(parents=True, exist_ok=True)
@@ -158,10 +165,7 @@ def fallback_tools(cache: Path) -> Tools:
             if not (root / member.name).resolve().is_relative_to(root):
                 raise HarnessError("Fallback archive contains an unsafe path.")
         tar.extractall(destination, filter="data")
-    tools = _tools_from_directory(destination / "bin")
-    if tools is None:
-        candidates = list(destination.glob("*/bin"))
-        tools = _tools_from_directory(candidates[0]) if len(candidates) == 1 else None
+    tools = _tools_from_fallback_destination(destination)
     if tools is None:
         raise HarnessError(
             "Pinned PostgreSQL archive did not contain PostgreSQL 17 tools."

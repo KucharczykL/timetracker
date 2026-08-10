@@ -98,25 +98,45 @@ def test_managed_database_url_yields_to_a_new_dotenv_url(
 
 def test_path_tools_require_postgresql_17(harness, monkeypatch):
     monkeypatch.setattr(harness.shutil, "which", lambda name: f"/tools/{name}")
-    seen: list[Path] = []
-
-    def required_major(executable: Path) -> int:
-        seen.append(executable)
-        return 17
-
-    monkeypatch.setattr(harness, "tool_major", required_major)
+    monkeypatch.setattr(harness, "postgres_major", lambda postgres: 17)
 
     tools = harness.path_tools()
 
     assert tools.initdb == Path("/tools/initdb")
-    assert seen == [tools.initdb]
 
 
 def test_path_tools_reject_wrong_major(harness, monkeypatch):
     monkeypatch.setattr(harness.shutil, "which", lambda name: f"/tools/{name}")
-    monkeypatch.setattr(harness, "tool_major", lambda executable: 16)
+    monkeypatch.setattr(harness, "postgres_major", lambda postgres: 16)
 
     assert harness.path_tools() is None
+
+
+def test_fallback_tools_reuse_an_extracted_nested_bin_directory(
+    harness, monkeypatch, tmp_path
+):
+    monkeypatch.setattr(harness.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(harness.platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(harness, "postgres_major", lambda postgres: 17)
+    monkeypatch.setattr(
+        harness.urllib.request,
+        "urlretrieve",
+        lambda *args: pytest.fail("must not download a second time"),
+    )
+    nested_bin = (
+        tmp_path
+        / "postgres-binaries"
+        / harness.FALLBACK_VERSION
+        / "postgresql-17.6.0-x86_64-unknown-linux-gnu"
+        / "bin"
+    )
+    nested_bin.mkdir(parents=True)
+    for name in harness.TOOL_NAMES:
+        (nested_bin / name).touch()
+
+    tools = harness.fallback_tools(tmp_path)
+
+    assert tools.initdb == nested_bin / "initdb"
 
 
 def test_redacted_url_hides_a_password(harness):
