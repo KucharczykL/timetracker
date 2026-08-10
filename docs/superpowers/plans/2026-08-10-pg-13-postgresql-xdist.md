@@ -26,7 +26,7 @@
 
 - [ ] **Step 1: Add failing pure name-contract tests**
 
-Test `test_database_name(base_name, run_uid, worker_id)` with literal invariants: output is ASCII and 59 characters; same inputs are deterministic; changing any input changes the name; two long Unicode base names do not create a name longer than 63 bytes. Assert `test_` prefix and the three fixed-size hash components, rather than duplicating the hash implementation in the expectation.
+Test `xdist_database_name(base_name, run_uid, worker_id)` with literal invariants: output is ASCII and 59 characters; same inputs are deterministic; changing any input changes the name; two long Unicode base names do not create a name longer than 63 bytes. Assert `test_` prefix and the three fixed-size hash components, rather than duplicating the hash implementation in the expectation.
 
 - [ ] **Step 2: Replace the child probe with the real plugin**
 

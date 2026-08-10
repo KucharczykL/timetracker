@@ -93,6 +93,17 @@ runner behavior.  Django-created test databases are disposable and are cleaned
 up by the test lifecycle; a failed interrupted run may leave only disposable
 test databases, which can be removed with normal PostgreSQL administration.
 
+## Implementation evidence
+
+`timetracker.pytest_topology` is loaded by repository-root `conftest.py`, so
+the same fixture applies to `tests/` and `e2e/`. It uses xdist's `testrun_uid`
+and `worker_id` fixtures, with explicit tox-suffix ordering, to construct a
+bounded ASCII PostgreSQL test database name. The two-worker child probe loads
+the actual plugin and records separate PostgreSQL database names for `gw0` and
+`gw1` under one supplied run UID. The existing live-server concurrency
+regression also passes with the normal local worker policy. CI remains serial
+because `CI` selects `PYTEST_WORKERS=0`; #616 owns its PostgreSQL migration.
+
 ## Non-goals
 
 - Switching CI to PostgreSQL or enabling CI xdist (#616).
