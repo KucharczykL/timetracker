@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from typing import Any, cast
 
 import pytest
 from django.conf import settings
@@ -19,7 +20,7 @@ def xdist_database_name(base_name: str, run_uid: str, worker_id: str) -> str:
 @pytest.fixture(scope="session")
 def django_db_modify_db_settings_xdist_suffix(
     request: pytest.FixtureRequest,
-    django_db_modify_db_settings_tox_suffix: None,  # noqa: ARG001
+    django_db_modify_db_settings_tox_suffix: None,
     testrun_uid: str,
     worker_id: str,
 ) -> None:
@@ -27,7 +28,8 @@ def django_db_modify_db_settings_xdist_suffix(
     if not hasattr(request.config, "workerinput"):
         return
 
-    for database in settings.DATABASES.values():
+    for configured_database in settings.DATABASES.values():
+        database = cast(dict[str, Any], configured_database)
         if database["ENGINE"] == "django.db.backends.sqlite3":
             continue
         test_name = database.setdefault("TEST", {}).get("NAME")

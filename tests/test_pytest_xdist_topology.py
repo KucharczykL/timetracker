@@ -2,7 +2,6 @@
 
 import json
 import os
-from pathlib import Path
 
 import pytest
 
@@ -19,9 +18,7 @@ pytest_plugins = ("pytester",)
         ("test_" + "ž" * 80, "run-b", "gw0"),
     ],
 )
-def test_database_name_is_bounded_ascii(
-    base_name: str, run_uid: str, worker_id: str
-):
+def test_database_name_is_bounded_ascii(base_name: str, run_uid: str, worker_id: str):
     name = xdist_database_name(base_name, run_uid, worker_id)
 
     assert name.startswith("test_")
