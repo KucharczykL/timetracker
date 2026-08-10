@@ -5,7 +5,10 @@ from datetime import UTC, date, datetime, timedelta
 import pytest
 from django.db import connection
 
-from games.models import Game, PlayEvent, Purchase, Session
+from games.filters import FindFilter
+from games.models import Game, Platform, PlayEvent, Purchase, Session
+from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort
+from timetracker.postgres_contract import validate_postgres_collation_contract
 
 pytestmark = pytest.mark.django_db
 
@@ -110,3 +113,67 @@ def test_postgresql_generated_days_to_finish(started, ended, expected_days):
     event.refresh_from_db()
 
     assert event.days_to_finish == expected_days
+
+
+def test_postgresql_nullable_sorting_is_null_last_and_tie_stable():
+    """PG-04's direct and aggregate ordering contract runs on PostgreSQL."""
+    assert_postgresql()
+    platform = Platform.objects.create(name="P", icon="p")
+    unknown = Game.objects.create(name="Unknown", platform=platform)
+    early = Game.objects.create(name="Early", platform=platform, year_released=1990)
+    late = Game.objects.create(name="Late", platform=platform, year_released=2000)
+    first = Game.objects.create(name="First", platform=platform)
+    second = Game.objects.create(name="Second", platform=platform)
+
+    ascending = apply_sort(
+        Game.objects.all(), FindFilter(sort="year"), GAME_SORTS, GAME_DEFAULT_SORT
+    )
+    descending = apply_sort(
+        Game.objects.all(), FindFilter(sort="-year"), GAME_SORTS, GAME_DEFAULT_SORT
+    )
+
+    assert list(ascending.queryset) == [early, late, unknown, first, second]
+    assert list(descending.queryset) == [late, early, unknown, first, second]
+
+    tied = apply_sort(
+        Game.objects.filter(pk__in=[second.pk, first.pk]),
+        FindFilter(sort="status"),
+        GAME_SORTS,
+        GAME_DEFAULT_SORT,
+    )
+
+    assert list(tied.queryset) == [first, second]
+
+    PlayEvent.objects.create(
+        game=early, started=date(2026, 1, 1), ended=date(2026, 1, 1)
+    )
+    PlayEvent.objects.create(
+        game=late, started=date(2026, 1, 1), ended=date(2026, 1, 2)
+    )
+    finished_ascending = apply_sort(
+        Game.objects.all(), FindFilter(sort="finished"), GAME_SORTS, GAME_DEFAULT_SORT
+    )
+    finished_descending = apply_sort(
+        Game.objects.all(),
+        FindFilter(sort="-finished"),
+        GAME_SORTS,
+        GAME_DEFAULT_SORT,
+    )
+
+    assert list(finished_ascending.queryset) == [early, late, unknown, first, second]
+    assert list(finished_descending.queryset) == [late, early, unknown, first, second]
+
+
+def test_postgresql_connection_satisfies_collation_contract():
+    """PG-05 validates the actual PostgreSQL test database."""
+    assert_postgresql()
+    connection.ensure_connection()
+    raw_connection = connection.connection
+    assert raw_connection is not None
+
+    contract = validate_postgres_collation_contract(raw_connection)
+
+    assert contract.server_version_num // 10_000 == 17
+    assert contract.encoding == "UTF8"
+    assert contract.locale_provider == "b"
+    assert contract.locale == "C.UTF-8"
