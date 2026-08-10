@@ -346,7 +346,7 @@ function mountWithPicker(): {
       <form>
         <div data-quick-row>
           <div data-preset-picker>
-            <search-select name="preset"></search-select>
+            <search-select name="preset" search-url="/api/presets/?mode=games"></search-select>
           </div>
         </div>
       </form>
@@ -374,6 +374,25 @@ function mountWithPicker(): {
 }
 
 describe("quick-filter-bar preset pick", () => {
+  it("wires the preset delete action to confirm, DELETE, and refetch", async () => {
+    const { bar } = mountWithPicker();
+    const widget = bar.querySelector("search-select") as HTMLElement & { refetchOptions: () => void };
+    const refetchOptions = vi.fn();
+    widget.refetchOptions = refetchOptions;
+    const confirm = vi.fn(() => true);
+    const fetch = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })));
+    vi.stubGlobal("confirm", confirm);
+    vi.stubGlobal("fetch", fetch);
+    widget.dispatchEvent(new CustomEvent("search-select:action", {
+      bubbles: true,
+      detail: { name: "preset", action: "delete", option: { value: "3", label: "Owned", data: {} } },
+    }));
+    await Promise.resolve();
+    expect(confirm).toHaveBeenCalledWith('Delete preset "Owned"?');
+    expect(fetch).toHaveBeenCalledWith("/api/presets/3", expect.objectContaining({ method: "DELETE" }));
+    expect(refetchOptions).toHaveBeenCalledOnce();
+  });
+
   it("navigates to the list with the preset's filter JSON", () => {
     const { navigate, pick } = mountWithPicker();
     const filter = { game: { value: [{ id: "1", label: "X" }], modifier: "INCLUDES" } };

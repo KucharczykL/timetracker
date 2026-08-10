@@ -7,18 +7,12 @@ filtering from *how* you're comparing, and makes filter serialization trivial.
 """
 
 import json
-import re
 import types
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from dataclasses import fields as dc_fields
 from datetime import date
 from enum import Enum
-
-# Private stdlib regex AST modules (typeshed doesn't expose them); used only for the
-# ReDoS nested-quantifier check, safe because CLAUDE.md pins CPython 3.14.
-from re import _constants as re_constants  # type: ignore[attr-defined]
-from re import _parser as re_parser  # type: ignore[attr-defined]
 from typing import (
     Any,
     ClassVar,
@@ -34,9 +28,11 @@ from typing import (
 )
 
 from django.core.exceptions import FieldDoesNotExist
-from django.db import models
+from django.db import DataError, connection, models
 from django.db.models import F, Q
 from django.db.models.functions import ExtractYear, TruncDate
+
+from common.filter_execution import FilterQueryTimeout, run_with_statement_timeout
 
 # ── Errors ─────────────────────────────────────────────────────────────────
 
@@ -56,6 +52,31 @@ class FilterError(ValueError):
     real bug still surfaces as a 500 rather than being masked as bad user input
     by ``filter_from_json``'s eager-validation catch.
     """
+
+
+MAX_REGEX_PATTERN_LENGTH = 200
+
+
+def _validate_postgresql_regex(pattern: Any) -> None:
+    if not isinstance(pattern, str):
+        raise FilterError(f"expected a regex string, got {pattern!r}")
+    if len(pattern) > MAX_REGEX_PATTERN_LENGTH:
+        raise FilterError(
+            f"regex pattern too long (max {MAX_REGEX_PATTERN_LENGTH} chars)"
+        )
+    try:
+
+        def validate() -> None:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT '' ~ %s", [pattern])
+
+        run_with_statement_timeout(validate)
+    except DataError as exc:
+        if getattr(exc.__cause__, "sqlstate", None) == "2201B":
+            raise FilterError("invalid regex pattern") from exc
+        raise
+    except FilterQueryTimeout as exc:
+        raise FilterError("regex validation took too long") from exc
 
 
 # ── Modifier ──────────────────────────────────────────────────────────────
@@ -222,99 +243,6 @@ def _coerce_date(raw: Any) -> str:
     return raw
 
 
-# ── Regex-pattern safety (ReDoS guard) ───────────────────────────────────────
-# MATCHES_REGEX/NOT_MATCHES_REGEX compile to a ``__regex`` lookup that SQLite runs
-# as Python ``re.search`` per row, with no timeout. The pattern is attacker-supplied
-# via ``?filter=``, so a valid-but-pathological regex would hang a worker.
-# ``StringCriterion.from_json`` validates it here so a bad pattern raises
-# ``FilterError`` at parse (graceful warn/400), like the MAX_FILTER_* / MAX_SET_VALUES
-# ``?filter=`` caps further down, instead of reaching the query.
-#
-# PARTIAL protection, by design (issue chose a heuristic over a runtime bound): the
-# length cap + nested-unbounded-quantifier check stop the ``(a+)+`` family, but NOT
-# alternation-overlap (``(a|a)*``) or polynomial (``a*a*``) catastrophic patterns —
-# those are short (under the length cap) yet still backtrack exponentially against an
-# attacker-created long column value. Closing that class needs a runtime bound (a
-# per-query timeout or a linear engine like re2); this only raises the bar.
-
-MAX_REGEX_PATTERN_LENGTH = 200  # regex chars; sibling of the MAX_FILTER_* caps below
-
-# One parsed-regex token sequence — a ``re._parser`` SubPattern of ``(opcode, args)`` nodes.
-type RegexTokens = Iterable[Any]
-
-# Repeat opcodes; each is ``(min, max, subpattern)`` and unbounded when max is MAXREPEAT.
-_REPEAT_OPS = (re_constants.MAX_REPEAT, re_constants.MIN_REPEAT)
-
-
-def _sub_sequences(opcode: Any, args: Any) -> Iterable[RegexTokens]:
-    """Yield the child token sequences nested inside one parsed regex node.
-
-    Covers every ``re._parser`` opcode that carries a subpattern; leaf ops
-    (LITERAL, IN, ANY, AT, …) carry none and yield nothing. Arg shapes are verified
-    against the pinned CPython 3.14 parser."""
-    if opcode in _REPEAT_OPS:
-        yield args[2]
-    elif opcode is re_constants.SUBPATTERN:
-        yield args[3]
-    elif opcode is re_constants.BRANCH:
-        yield from args[1]
-    elif opcode in (re_constants.ASSERT, re_constants.ASSERT_NOT):
-        yield args[1]
-    elif opcode is re_constants.ATOMIC_GROUP:
-        yield args
-
-
-def _contains_unbounded_repeat(tokens: RegexTokens) -> bool:
-    """True if any node in ``tokens`` (recursively) is an unbounded ``*``/``+`` repeat."""
-    for opcode, args in tokens:
-        if opcode in _REPEAT_OPS and args[1] == re_constants.MAXREPEAT:
-            return True
-        for child in _sub_sequences(opcode, args):
-            if _contains_unbounded_repeat(child):
-                return True
-    return False
-
-
-def _has_nested_unbounded_repeat(tokens: RegexTokens) -> bool:
-    """True if an unbounded repeat wraps a subpattern that itself contains one —
-    the ``(a+)+`` / ``(a*)*`` / ``(.*)+`` catastrophic-backtracking signature."""
-    for opcode, args in tokens:
-        if (
-            opcode in _REPEAT_OPS
-            and args[1] == re_constants.MAXREPEAT
-            and _contains_unbounded_repeat(args[2])
-        ):
-            return True
-        for child in _sub_sequences(opcode, args):
-            if _has_nested_unbounded_repeat(child):
-                return True
-    return False
-
-
-def _validate_regex(pattern: Any) -> None:
-    """Reject an attacker-supplied regex that is invalid or a likely ReDoS.
-
-    Raises ``FilterError`` (caught by the ``?filter=`` boundary → warn/400) when the
-    pattern is not a string, is over-long, fails to compile, or nests unbounded
-    quantifiers. The nested-quantifier check is a heuristic over the stdlib AST
-    (``re._parser`` — a private module, relied on only because CLAUDE.md pins CPython
-    3.14); it catches the ``(a+)+`` family only — see the module comment above for the
-    alternation-overlap / polynomial classes it deliberately does NOT catch."""
-    if not isinstance(pattern, str):
-        raise FilterError(f"expected a regex string, got {pattern!r}")
-    if len(pattern) > MAX_REGEX_PATTERN_LENGTH:
-        raise FilterError(
-            f"regex pattern too long (max {MAX_REGEX_PATTERN_LENGTH} chars)"
-        )
-    try:
-        re.compile(pattern)
-        parsed = re_parser.parse(pattern)
-    except re.error as exc:
-        raise FilterError(f"invalid regex pattern: {exc}") from exc
-    if _has_nested_unbounded_repeat(parsed):
-        raise FilterError("regex pattern is too complex (nested quantifiers)")
-
-
 # ── Base criterion ─────────────────────────────────────────────────────────
 
 T = TypeVar("T")
@@ -447,7 +375,7 @@ class StringCriterion(_Criterion):
             Modifier.MATCHES_REGEX,
             Modifier.NOT_MATCHES_REGEX,
         ):
-            _validate_regex(result.value)
+            _validate_postgresql_regex(result.value)
         return result
 
     def to_q(self, field_name: str) -> Q:

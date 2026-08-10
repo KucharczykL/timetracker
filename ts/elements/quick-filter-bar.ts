@@ -12,6 +12,7 @@
 import type { LeafWidgetKind } from "../generated/filter-metadata.js";
 import { readQuickFilterBarProps } from "../generated/props.js";
 import { applyUrl } from "./filter-url.js";
+import { wirePresetDelete } from "./presets.js";
 import {
   readLeafWidget,
   setupDeselectableRadios,
@@ -51,6 +52,7 @@ class QuickFilterBarElement extends HTMLElement {
   private reservedWidth = 0;
   private resizeObserver: ResizeObserver | null = null;
   private layoutQueued = false;
+  private disposePresetDelete: (() => void) | null = null;
 
   connectedCallback(): void {
     const props = readQuickFilterBarProps(this);
@@ -62,12 +64,18 @@ class QuickFilterBarElement extends HTMLElement {
     setupDeselectableRadios(this);
     this.querySelector("form")?.addEventListener("submit", this.onSubmit);
     this.addEventListener("search-select:change", this.onPresetPick);
+    const picker = this.querySelector<HTMLElement>("[data-preset-picker]");
+    const select = picker?.querySelector<HTMLElement>("search-select");
+    const presetApiUrl = select?.getAttribute("search-url")?.split("?")[0];
+    if (presetApiUrl) this.disposePresetDelete = wirePresetDelete(this, presetApiUrl);
     this.setupOverflow();
   }
 
   disconnectedCallback(): void {
     this.querySelector("form")?.removeEventListener("submit", this.onSubmit);
     this.removeEventListener("search-select:change", this.onPresetPick);
+    this.disposePresetDelete?.();
+    this.disposePresetDelete = null;
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
   }

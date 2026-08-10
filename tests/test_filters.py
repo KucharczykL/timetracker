@@ -53,6 +53,7 @@ from common.criteria import (
     filter_to_json,
     search_q,
 )
+from common.filter_execution import contains_regex_modifier
 from games.filters import (
     DeviceFilter,
     GameFilter,
@@ -139,6 +140,19 @@ class TestStringCriterion:
         restored = StringCriterion.from_json(original.to_json())
         assert restored == original
         assert restored.to_q("note") == Q(note__isnull=True) | Q(note__exact="")
+
+
+class TestRegexFilterDetection:
+    def test_finds_regex_modifier_in_nested_filter_json(self):
+        assert contains_regex_modifier(
+            json.dumps({"session_filter": {"name": {"modifier": "MATCHES_REGEX"}}})
+        )
+
+    def test_ignores_empty_and_non_regex_filter_json(self):
+        assert not contains_regex_modifier("{}")
+        assert not contains_regex_modifier(
+            json.dumps({"name": {"modifier": "INCLUDES"}})
+        )
 
 
 class TestIntCriterion:
@@ -1562,6 +1576,7 @@ class TestPlayEventFilterDates:
         assert out["started"]["modifier"] == Modifier.GREATER_THAN
 
 
+@pytest.mark.django_db
 class TestFilterErrorBoundary:
     """Issue #131: a parseable-but-invalid ``?filter=`` must raise FilterError
     (a catchable user-input error) at parse time, never escape as an uncaught
@@ -1607,9 +1622,10 @@ class TestFilterErrorBoundary:
             parse_game_filter(bad)
 
     def test_invalid_regex_pattern_raises(self):
-        """A malformed regex would raise at query-execution time (the DB's REGEXP
-        compiles it with ``re``) — past the error boundary, a 500. Validate it at
-        parse instead. ``.*{12,}`` (multiple repeat) is the reported case."""
+        """PostgreSQL rejects malformed syntax at validation, before a list query.
+
+        ``.*{12,}`` (multiple repeat) is the reported case.
+        """
         bad = json.dumps({"name": {"modifier": "MATCHES_REGEX", "value": ".*{12,}"}})
         with pytest.raises(FilterError, match="invalid regex pattern"):
             parse_game_filter(bad)
@@ -1624,9 +1640,16 @@ class TestFilterErrorBoundary:
             parse_purchase_filter(bad)
 
     def test_valid_regex_pattern_parses(self):
-        """A well-formed regex is unaffected by the parse-time compile check."""
+        """A valid PostgreSQL regex continues to parse."""
         good = json.dumps(
-            {"name": {"modifier": "MATCHES_REGEX", "value": "[a-z]{12,}"}}
+            {"name": {"modifier": "MATCHES_REGEX", "value": "[a-z]{12,24}"}}
+        )
+        parsed = parse_game_filter(good)
+        assert parsed is not None
+
+    def test_postgresql_native_regex_pattern_parses(self):
+        good = json.dumps(
+            {"name": {"modifier": "MATCHES_REGEX", "value": "(?i)^zelda$"}}
         )
         parsed = parse_game_filter(good)
         assert parsed is not None
@@ -1749,26 +1772,6 @@ class TestFilterErrorBoundary:
         with pytest.raises(FilterError, match="regex pattern too long"):
             parse_game_filter(bad)
 
-    def test_redos_nested_quantifier(self):
-        """The classic catastrophic-backtracking signature ``(a+)+$`` is rejected at
-        parse — otherwise SQLite's per-row REGEXP would hang a worker."""
-        bad = json.dumps({"name": {"modifier": "MATCHES_REGEX", "value": "(a+)+$"}})
-        with pytest.raises(FilterError, match="too complex"):
-            parse_game_filter(bad)
-
-    def test_redos_nested_lazy_quantifier(self):
-        """A lazy inner repeat (MIN_REPEAT) is caught too — backtracking is just as
-        catastrophic."""
-        bad = json.dumps({"name": {"modifier": "MATCHES_REGEX", "value": "(a+?)+"}})
-        with pytest.raises(FilterError, match="too complex"):
-            parse_game_filter(bad)
-
-    def test_redos_guard_applies_to_not_matches_regex(self):
-        """NOT_MATCHES_REGEX runs the same per-row engine, so it is guarded too."""
-        bad = json.dumps({"name": {"modifier": "NOT_MATCHES_REGEX", "value": "(a*)*"}})
-        with pytest.raises(FilterError, match="too complex"):
-            parse_game_filter(bad)
-
     def test_non_string_regex_value(self):
         """A hand-edited non-string regex value must raise FilterError, not a
         TypeError from len()/re.compile escaping the boundary."""
@@ -1785,9 +1788,8 @@ class TestFilterErrorBoundary:
         assert result is not None
         result.to_q()  # does not raise
 
-    def test_redos_lookalike_value_allowed_for_non_regex_modifier(self):
-        """The guard is scoped to the regex modifiers: a ``(a+)+`` value under
-        INCLUDES is a literal substring match, never compiled, so it is accepted."""
+    def test_regex_looking_value_allowed_for_non_regex_modifier(self):
+        """Regex syntax under INCLUDES is a literal substring value."""
         good = json.dumps({"name": {"modifier": "INCLUDES", "value": "(a+)+"}})
         result = parse_game_filter(good)
         assert result is not None
@@ -4806,6 +4808,15 @@ class TestValueTypeBoundaryIntegration:
         bad = json.dumps({"year_released": {"modifier": "EQUALS", "value": "nope"}})
         response = auth_client.get(reverse("games:list_games"), {"filter": bad})
         # Boundary warns and ignores → the page still renders, never a 500.
+        assert response.status_code == 200
+
+    @pytest.mark.django_db
+    def test_web_list_view_ignores_postgresql_invalid_regex(self, auth_client):
+        from django.urls import reverse
+
+        bad = json.dumps({"name": {"modifier": "MATCHES_REGEX", "value": "(a"}})
+        response = auth_client.get(reverse("games:list_games"), {"filter": bad})
+
         assert response.status_code == 200
 
     @pytest.mark.django_db

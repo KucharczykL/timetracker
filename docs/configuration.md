@@ -1,5 +1,13 @@
 # Configuration
 
+## Regex filters
+
+Regex filters use PostgreSQL's regular-expression syntax. Patterns are limited
+to 200 characters and validated by PostgreSQL before a filter or preset is
+accepted. Regex queries have a one-second transaction-local statement timeout;
+when it expires, list pages remove the filter and show a warning, while APIs
+return a 400 response.
+
 All configurable Django settings are read through a single helper,
 `config()` in [`timetracker/config.py`](../timetracker/config.py). It resolves
 each value from a fixed chain of sources so the same setting can come from an

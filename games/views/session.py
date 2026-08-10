@@ -34,6 +34,7 @@ from common.duration_presentation import (
     DurationPresentation,
     duration_presentation_for_request,
 )
+from common.filter_execution import regex_timeout_view
 from common.layout import render_page
 from common.returns import OriginUrl
 from common.utils import paginate
@@ -80,6 +81,7 @@ def session_row_data(
 
 
 @login_required
+@regex_timeout_view
 def list_sessions(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
     durations = duration_presentation_for_request(request)
