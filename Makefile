@@ -93,6 +93,12 @@ css: ensure-node common/input.css
 makemigrations:
 	uv run --frozen python manage.py makemigrations
 
+# Drift guard for the aggregates. Bare `makemigrations` is not a substitute: on
+# drift it writes a new migration and exits 0, so an un-regenerated model change
+# reaches CI as a passing run.
+check-migrations:
+	uv run --frozen python manage.py makemigrations --check --dry-run
+
 migrate: makemigrations
 	uv run --frozen python manage.py migrate
 
@@ -288,12 +294,12 @@ format-check:
 typecheck:
 	uv run --frozen mypy .
 
-check: ensure-python lint format-check typecheck ts-check check-icons test-ts test
+check: ensure-python lint format-check typecheck ts-check check-icons check-migrations test-ts test
 
 # Same gate minus the browser suite, for iterating. NOT the verification gate:
 # `check` is, and only it can catch e2e breakage. Run this while working, `check`
 # before pushing.
-check-fast: ensure-python lint format-check typecheck ts-check check-icons test-ts test-fast
+check-fast: ensure-python lint format-check typecheck ts-check check-icons check-migrations test-ts test-fast
 
 date:
 	uv run --frozen python scripts/print_local_time.py
