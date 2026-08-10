@@ -315,14 +315,14 @@ class Session(models.Model):
         blank=True, null=True, default=timedelta(0), verbose_name="Manual duration"
     )
     duration_calculated = GeneratedField(
-        expression=Coalesce(F("timestamp_end") - F("timestamp_start"), 0),
+        expression=Coalesce(F("timestamp_end") - F("timestamp_start"), timedelta(0)),
         output_field=models.DurationField(),
         db_persist=True,
         editable=False,
     )
     duration_total = GeneratedField(
         expression=DatabaseDurationSum(
-            Coalesce(F("timestamp_end") - F("timestamp_start"), 0),
+            Coalesce(F("timestamp_end") - F("timestamp_start"), timedelta(0)),
             F("duration_manual"),
         ),
         output_field=models.DurationField(),
