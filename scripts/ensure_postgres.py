@@ -103,6 +103,13 @@ def _tools_from_directory(directory: Path) -> Tools | None:
     return tools if postgres_major(tools.postgres) == REQUIRED_MAJOR else None
 
 
+def _tools_from_fallback_destination(destination: Path) -> Tools | None:
+    if tools := _tools_from_directory(destination / "bin"):
+        return tools
+    candidates = list(destination.glob("*/bin"))
+    return _tools_from_directory(candidates[0]) if len(candidates) == 1 else None
+
+
 def path_tools() -> Tools | None:
     paths = [shutil.which(executable_name(name)) for name in TOOL_NAMES]
     if any(path is None for path in paths):
@@ -130,7 +137,7 @@ def fallback_tools(cache: Path) -> Tools:
             "Use the Nix development shell or set DATABASE_URL."
         ) from exc
     destination = cache / "postgres-binaries" / FALLBACK_VERSION
-    existing = _tools_from_directory(destination / "bin")
+    existing = _tools_from_fallback_destination(destination)
     if existing:
         return existing
     destination.mkdir(parents=True, exist_ok=True)
@@ -158,10 +165,7 @@ def fallback_tools(cache: Path) -> Tools:
             if not (root / member.name).resolve().is_relative_to(root):
                 raise HarnessError("Fallback archive contains an unsafe path.")
         tar.extractall(destination, filter="data")
-    tools = _tools_from_directory(destination / "bin")
-    if tools is None:
-        candidates = list(destination.glob("*/bin"))
-        tools = _tools_from_directory(candidates[0]) if len(candidates) == 1 else None
+    tools = _tools_from_fallback_destination(destination)
     if tools is None:
         raise HarnessError(
             "Pinned PostgreSQL archive did not contain PostgreSQL 17 tools."

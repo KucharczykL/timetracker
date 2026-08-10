@@ -28,8 +28,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
 # Codegen the TypeScript prop contracts (needs Django); tsc compiles them in
-# the assets stage below.
-RUN uv run --frozen python manage.py gen_element_types
+# the assets stage below. It does not connect to the database, but Django
+# settings require a PostgreSQL URL during import.
+RUN DATABASE_URL=postgresql://build@127.0.0.1:5432/build \
+    uv run --frozen python manage.py gen_element_types
 
 
 # Front-end assets: Tailwind CSS + the TypeScript custom elements. Built here so
@@ -85,9 +87,11 @@ COPY --from=assets --chown=timetracker:timetracker /app/games/static/js/dist /ho
 # Collect static here rather than in the entrypoint: the output is a pure
 # function of the image's own files, and hashing them takes a Django startup
 # plus a dozen post-process passes that every container start would otherwise
-# repeat while the first request waits. SECRET_KEY is only needed because the
-# runtime stage sets PROD=1; it is scoped to this layer and never in the image.
-RUN SECRET_KEY=collectstatic-build python manage.py collectstatic --no-input \
+# repeat while the first request waits. SECRET_KEY and DATABASE_URL are only
+# needed for this Django command; both are scoped to this layer and never in
+# the image.
+RUN DATABASE_URL=postgresql://build@127.0.0.1:5432/build \
+    SECRET_KEY=collectstatic-build python manage.py collectstatic --no-input \
     && chown -R timetracker:timetracker /home/timetracker/app/static
 
 COPY --chown=timetracker:timetracker Caddyfile /etc/caddy/Caddyfile

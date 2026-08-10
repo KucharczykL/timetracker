@@ -1,12 +1,9 @@
 name: Staging deployment
 
 on:
-  push:
-    branches-ignore: [main]
-  pull_request:
-    # labeled/unlabeled so a staging:* label takes effect without an empty push.
-    types: [opened, reopened, labeled, unlabeled]
-  delete:
+  # Per-branch staging is paused until its PostgreSQL lifecycle is designed.
+  # Retain this manual escape hatch for an explicitly requested deployment.
+  workflow_dispatch:
 
 concurrency:
   group: staging-${{ github.event.pull_request.head.ref || github.event.ref }}
@@ -14,13 +11,7 @@ concurrency:
 
 jobs:
   deploy:
-    # A label change redeploys too, since the labels decide what the machine
-    # runs. Fork PRs are excluded: they cannot see FLY_API_TOKEN, so the job
-    # would only fail at the first flyctl call.
-    if: |
-      github.event_name == 'push' ||
-      ((github.event.action == 'labeled' || github.event.action == 'unlabeled') &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -127,10 +118,7 @@ jobs:
   # by body, so the two paths never double-post.
   comment:
     needs: [deploy]
-    if: |
-      always() &&
-      (github.event_name == 'pull_request' ||
-       (github.event_name == 'push' && needs.deploy.result == 'success'))
+    if: github.event_name == 'workflow_dispatch' && needs.deploy.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
