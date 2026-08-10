@@ -210,17 +210,17 @@ _cast_value = cast_value  # existing call sites still use the private name
 
 
 def resolve_raw_with_source(
-    name: str, *, allow_file: bool = False
+    name: str, *, allow_file: bool = False, include_environment: bool = True
 ) -> RawConfigValue | None:
     """Like :func:`config`'s lookup but tagged with the source, and no cast/default
     — returns ``None`` when no boot-frozen source has the setting. No DB access."""
-    if allow_file:
+    if include_environment and allow_file:
         file_pointer = os.environ.get(f"{name}__FILE")
         if file_pointer:
             return RawConfigValue(
                 Path(file_pointer).read_text().strip(), SettingSource.ENV_FILE
             )
-    if name in os.environ:
+    if include_environment and name in os.environ:
         return RawConfigValue(os.environ[name], SettingSource.ENV)
     env_file = _load_env_file()
     if name in env_file:
@@ -231,9 +231,13 @@ def resolve_raw_with_source(
     return None
 
 
-def _resolve_raw(name: str, allow_file: bool) -> str | None:
+def _resolve_raw(
+    name: str, allow_file: bool, *, include_environment: bool = True
+) -> str | None:
     """Return the first raw string from the source chain, or ``None``."""
-    result = resolve_raw_with_source(name, allow_file=allow_file)
+    result = resolve_raw_with_source(
+        name, allow_file=allow_file, include_environment=include_environment
+    )
     return result.raw if result is not None else None
 
 
@@ -257,6 +261,7 @@ def config(
     cast: Callable[[str], Any] | None = None,
     allow_file: bool = False,
     required_in_prod: bool = False,
+    include_environment: bool = True,
 ) -> Any:
     """Resolve a configuration value from the source chain.
 
@@ -271,8 +276,12 @@ def config(
         required_in_prod: When ``True``, a missing value raises in production
             (DEBUG off) even if a ``default`` is given, so insecure development
             defaults never leak into a deployment.
+        include_environment: Whether environment variables (including
+            ``NAME__FILE``) take precedence over project configuration files.
     """
-    raw = _resolve_raw(name, allow_file=allow_file)
+    raw = _resolve_raw(
+        name, allow_file=allow_file, include_environment=include_environment
+    )
     if raw is None:
         if required_in_prod and not _debug_enabled():
             raise ImproperlyConfigured(

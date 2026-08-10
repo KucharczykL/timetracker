@@ -13,7 +13,6 @@ primary_region = "ams"
 [env]
   DEBUG = "false"
   TZ = "Europe/Prague"
-  DATA_DIR = "/home/timetracker/app/data"
   LOAD_SAMPLE_DATA = "true"
   CREATE_DEFAULT_SUPERUSER = "true"
   DEV_LOGIN_PREFILL = "admin:admin"

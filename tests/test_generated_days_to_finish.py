@@ -45,4 +45,4 @@ def test_days_to_finish_uses_typed_source_columns():
     assert isinstance(field.output_field, models.IntegerField)
     assert not isinstance(field.expression, RawSQL)
     assert references == {"started", "ended"}
-    assert "JULIANDAY" in sql.upper()
+    assert '"ENDED" -' in sql.upper()

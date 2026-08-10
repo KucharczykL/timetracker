@@ -675,7 +675,7 @@ class ReadonlySettingFieldTest(SimpleTestCase):
         document = Fragment(
             self._make(name="DEBUG", setting_key="DEBUG", source="env", locked=True),
             self._make(
-                name="DATA_DIR", setting_key="DATA_DIR", source="env", locked=True
+                name="APP_URL", setting_key="APP_URL", source="env", locked=True
             ),
         )
         # Raises ValueError on a duplicate id; no assertion form needed.

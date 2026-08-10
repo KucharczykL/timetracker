@@ -252,7 +252,6 @@ def test_admin_page_renders_exact_site_setting_slice_in_stable_order(
         "APP_URL",
         "DEV_LOGIN_PREFILL",
         "ALLOWED_HOSTS",
-        "DATA_DIR",
         "HASHED_STATIC",
     }.intersection(rendered_keys)
 
@@ -480,7 +479,6 @@ INFRA_SETTING_KEYS = (
     "APP_URL",
     "DEV_LOGIN_PREFILL",
     "ALLOWED_HOSTS",
-    "DATA_DIR",
     "HASHED_STATIC",
 )
 
@@ -568,7 +566,7 @@ def test_admin_settings_renders_when_infra_settings_share_a_source(
     """Regression: several infra settings resolving to the SAME source/locked
     produce byte-identical source badges. Their tooltip Popover ids must stay
     unique per setting, or the whole document fails assert_unique_element_ids
-    and the page 500s (seen with real prod data — env-locked DEBUG/DATA_DIR/…).
+    and the page 500s (seen with real prod data — env-locked DEBUG/APP_URL/…).
 
     Needs the debug_page_rendering fixture: the id check runs only under DEBUG,
     so without it this passes vacuously even with a live collision.

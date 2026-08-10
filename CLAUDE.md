@@ -267,7 +267,7 @@ Docker-based: multi-stage Dockerfile (uv builder → Node assets stage → slim 
 
 ### Database
 
-SQLite with WAL journal mode, `IMMEDIATE` transactions, and a 20s connection timeout. `IMMEDIATE` is load-bearing for concurrency: a deferred transaction that upgrades from read to write gets an instant `SQLITE_BUSY` that the timeout cannot wait out, so concurrent writers (Django-Q plus a web request, two Gunicorn workers) would error rather than queue. The `DATA_DIR` setting controls the database file location and is read consistently by both `settings.py` and `entrypoint.sh` (same env var + matching default). Migrations live in `games/migrations/`. There are `GeneratedField`s on the models — these are computed by the database engine and cannot be written from application code.
+PostgreSQL 17 is required. Development uses `make ensure-postgres` (normally through the Nix shell) to provision an ignored loopback-only cluster; deployments supply `DATABASE_URL`. Every connection must use UTF-8, the `builtin` locale provider, and `C.UTF-8`. Migrations live in `games/migrations/`. There are `GeneratedField`s on the models — these are computed by the database engine and cannot be written from application code.
 
 ### Configuration
 
@@ -286,7 +286,7 @@ All configurable Django settings are read through `config()` in `timetracker/con
 
 ### Testing
 
-**`games/fixtures/sample.yaml.gz`** (dev seed for `make loadsample`) is a **generated, anonymized production snapshot** — gzip-compressed (loaddata reads `.gz` natively; ~147 KB vs 1.6 MB raw), do not hand-edit. Regenerate it with `make anonymize-sample` (the `anonymize_sample` management command): copy a prod DB into `$DATA_DIR/db.sqlite3`, `make migrate`, then run the command. It randomizes prices, game↔purchase links, and dates (per-game offset), clears free-text notes/names, and sanitizes audit timestamps — all inside a rolled-back transaction so the source DB is untouched. Output is a **byte-deterministic** gzip per `--seed` (gzip `mtime=0`, no embedded filename → stable git blob). The fixture keeps prod pks, so load it into an empty dev DB.
+**`games/fixtures/sample.yaml.gz`** (dev seed for `make loadsample`) is a **generated, anonymized production snapshot** — gzip-compressed (loaddata reads `.gz` natively; ~147 KB vs 1.6 MB raw), do not hand-edit. Regenerate it with `make anonymize-sample` against a dedicated restored production PostgreSQL database, then run `make migrate` and the command. It randomizes prices, game↔purchase links, and dates (per-game offset), clears free-text notes/names, and sanitizes audit timestamps — all inside a rolled-back transaction so the source DB is untouched. Output is a **byte-deterministic** gzip per `--seed` (gzip `mtime=0`, no embedded filename → stable git blob). The fixture keeps prod pks, so load it into an empty dev DB.
 
 Tests live in `tests/`. Run with `make test` or `uv run --with pytest-django pytest`. Key test files:
 
@@ -304,7 +304,7 @@ Tests live in `tests/`. Run with `make test` or `uv run --with pytest-django pyt
 
 Pytest settings are in `pyproject.toml` under `[tool.pytest.ini_options]` (`DJANGO_SETTINGS_MODULE = "timetracker.settings"`).
 
-**The test database is a file** (`test_db.sqlite3`, gitignored), set via `DATABASES["default"]["TEST"]["NAME"]` — not Django's `:memory:` default. In memory it is a *shared-cache* database that locks at table granularity between connections, and the e2e suite hits it from many threads at once (`live_server` serves each request on its own thread), so tests failed intermittently with `database table is locked`, `IndexError` inside `apply_converters`, and browsers that silently lost their session (#476). Keep it on disk; `tests/test_live_server_db_concurrency.py` guards both the setting and the concurrent behaviour.
+**Tests use PostgreSQL databases created by Django from `DATABASE_URL`.** Pytest-xdist gives each worker its own test database, so the normal parallel test topology remains safe.
 
 **A UI assertion is not a database assertion.** Several custom elements update the DOM optimistically before their POST lands (`play-event-row.ts` bumps the play count on click). Before reading the ORM in an e2e test, wait on something *server-rendered* — the htmx section that swaps in after the write commits.
 

@@ -340,7 +340,7 @@ def test_poison_user_value_degrades_to_shared_chain(
     # An invalid value can only reach the column via raw update() bypassing
     # normalize; it must not crash resolve — degrade to the site/default layers.
     UserPreferences.objects.create(user=user)
-    UserPreferences.objects.filter(user=user).update(default_currency="EURO")
+    UserPreferences.objects.filter(user=user).update(default_currency="12!")
     settings_resolver.clear_cache()
     with capture_games_logger():
         result = resolve_for_user_with_origin(user, "DEFAULT_CURRENCY")

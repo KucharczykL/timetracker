@@ -15,7 +15,6 @@ before the chain exists) and the deprecated ``PROD`` alias.
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
@@ -508,15 +507,6 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
                 "env value is empty, so the effective value can differ from the "
                 "resolver's reported env origin on an empty list."
             ),
-        ),
-        SettingDefinition(
-            "DATA_DIR",
-            scope=SettingScope.INFRA,
-            apply_timing=ApplyTiming.RESTART,
-            label="Data directory",
-            cast=Path,
-            # DATA_DIR is not a settings attribute; reconstruct it from the DB path.
-            default_factory=lambda: Path(settings.DATABASES["default"]["NAME"]).parent,
         ),
         SettingDefinition(
             "HASHED_STATIC",

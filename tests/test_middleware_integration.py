@@ -36,7 +36,7 @@ class MiddlewareIntegrationTest(TestCase):
         """
         response = self.client.patch(
             f"/api/games/{self.game.id}/status",
-            data=json.dumps({"status": "played"}),
+            data=json.dumps({"status": "p"}),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 204)

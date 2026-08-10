@@ -2,7 +2,10 @@
 
 from django.apps import AppConfig
 from django.core.management import call_command
+from django.db.backends.signals import connection_created
 from django.db.models.signals import post_migrate
+
+from timetracker.database import validate_default_connection
 
 # from django.utils.timezone import now
 
@@ -14,6 +17,10 @@ class GamesConfig(AppConfig):
     def ready(self):
         import games.signals  # noqa: F401
 
+        connection_created.connect(
+            validate_default_connection,
+            dispatch_uid="timetracker.validate_postgres_contract",
+        )
         post_migrate.connect(schedule_tasks, sender=self)
 
 

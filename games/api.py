@@ -608,7 +608,7 @@ def list_presets(request, mode: str = "games", q: str = "", limit: int = 100):
             "value": preset.id,
             "label": preset.name,
             "data": {
-                "filter": json.dumps(preset.object_filter or {}),
+                "filter": json.dumps(preset.object_filter or {}, sort_keys=True),
                 "sort": (preset.find_filter or {}).get("sort", ""),
                 "per_page": _stored_per_page(preset.find_filter),
             },

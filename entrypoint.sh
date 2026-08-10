@@ -3,8 +3,6 @@ set -euo pipefail
 
 # Container-bootstrap configuration. These variables are consumed only by this
 # entrypoint, NOT by Django (see timetracker/config.py for the app settings):
-#   DATA_DIR                 — writable dir for the SQLite database (kept in
-#                              sync with Django via the same env var + default)
 #   CREATE_DEFAULT_SUPERUSER — create an admin/admin user on first start
 #   STAGING / LOAD_SAMPLE_DATA — staging-only data bootstrap (see below)
 #
@@ -18,10 +16,6 @@ set -euo pipefail
 # session cookies nor independently runs scheduled tasks (see issue #20).
 # LOAD_SAMPLE_DATA=true instead seeds demo data into a fresh public staging
 # database (e.g. Fly.io), and only while the games table is empty.
-DATA_DIR=${DATA_DIR:-/home/timetracker/app/data}
-
-mkdir -p "$DATA_DIR"
-
 # if, not `[ … ] && …`: under `set -e` a false test as the last statement of the
 # script's flow would exit 1.
 bootstrap_args=()

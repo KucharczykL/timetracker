@@ -15,6 +15,7 @@ import warnings
 from pathlib import Path
 
 from timetracker.config import config, derive_hosts_and_origins
+from timetracker.database import required_database_settings
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -142,43 +143,7 @@ WSGI_APPLICATION = "timetracker.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/4.1/ref/settings/#databases
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": config("DATA_DIR", default=BASE_DIR, cast=Path) / "db.sqlite3",
-        "OPTIONS": {
-            "timeout": 20,
-            "init_command": "PRAGMA synchronous=FULL; PRAGMA journal_mode=WAL;",
-            # Take the write lock at BEGIN instead of on the first write.
-            # SQLite answers a deferred transaction's read->write upgrade with
-            # an immediate SQLITE_BUSY — it cannot run the busy handler there,
-            # since waiting would deadlock against the other writer — so
-            # ``timeout`` above does nothing for that case and concurrent
-            # writers fail outright. Under IMMEDIATE the contention happens at
-            # BEGIN, where the busy handler does apply.
-            "transaction_mode": "IMMEDIATE",
-        },
-        # An on-disk test database, not Django's ":memory:" default (#476).
-        # In memory, Django names the test database
-        # ``file:memorydb_default?mode=memory&cache=shared``, and every
-        # connection to it shares one SQLite page cache. The e2e suite drives
-        # that database from several threads at once — pytest-django's
-        # ``live_server`` runs a ``ThreadedWSGIServer``, one thread per request,
-        # alongside the test thread's own ORM calls — and shared-cache mode
-        # locks at table granularity between connections, raising SQLITE_LOCKED
-        # ("database table is locked"), which ``timeout`` cannot wait out
-        # because the busy handler is never invoked for it. Worse, whenever
-        # ``live_server`` happens to be built after the test database exists,
-        # pytest-django detects the in-memory name and hands the test thread's
-        # *connection object* to the server thread, so request threads then
-        # interleave statements and transactions on a single connection.
-        # A file gives every thread its own connection and WAL-mode locking,
-        # where contention is plain SQLITE_BUSY and ``timeout`` applies.
-        "TEST": {
-            "NAME": str(BASE_DIR / "test_db.sqlite3"),
-        },
-    }
-}
+DATABASES = {"default": required_database_settings()}
 
 
 # Password validation

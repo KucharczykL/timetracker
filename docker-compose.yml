@@ -12,12 +12,9 @@ services:
       - TZ=${TZ:-Europe/Prague}
       # APP_URL drives ALLOWED_HOSTS and CSRF_TRUSTED_ORIGINS unless overridden.
       - APP_URL=${APP_URL:-http://localhost:8000}
-      - DATA_DIR=${DATA_DIR:-/home/timetracker/app/data}
       - CREATE_DEFAULT_SUPERUSER=${CREATE_DEFAULT_SUPERUSER:-false}
     ports:
       - "${TIMETRACKER_EXTERNAL_PORT:-8000}:8000"
     volumes:
-      - "./data:/home/timetracker/app/data"
       - "${DOCKER_STORAGE_PATH:-/tmp}/timetracker/backups:/home/timetracker/app/games/fixtures/backups"
     restart: unless-stopped
-
