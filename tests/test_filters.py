@@ -1622,9 +1622,10 @@ class TestFilterErrorBoundary:
             parse_game_filter(bad)
 
     def test_invalid_regex_pattern_raises(self):
-        """A malformed regex would raise at query-execution time (the DB's REGEXP
-        compiles it with ``re``) — past the error boundary, a 500. Validate it at
-        parse instead. ``.*{12,}`` (multiple repeat) is the reported case."""
+        """PostgreSQL rejects malformed syntax at validation, before a list query.
+
+        ``.*{12,}`` (multiple repeat) is the reported case.
+        """
         bad = json.dumps({"name": {"modifier": "MATCHES_REGEX", "value": ".*{12,}"}})
         with pytest.raises(FilterError, match="invalid regex pattern"):
             parse_game_filter(bad)
@@ -1639,7 +1640,7 @@ class TestFilterErrorBoundary:
             parse_purchase_filter(bad)
 
     def test_valid_regex_pattern_parses(self):
-        """A bounded portable regex continues to parse."""
+        """A valid PostgreSQL regex continues to parse."""
         good = json.dumps(
             {"name": {"modifier": "MATCHES_REGEX", "value": "[a-z]{12,24}"}}
         )
