@@ -28,11 +28,11 @@ from typing import (
 )
 
 from django.core.exceptions import FieldDoesNotExist
-from django.db import models
+from django.db import DataError, connection, models
 from django.db.models import F, Q
 from django.db.models.functions import ExtractYear, TruncDate
 
-from common.regex_patterns import RegexPatternError, validate_regex_pattern
+from common.filter_execution import FilterQueryTimeout, run_with_statement_timeout
 
 # ── Errors ─────────────────────────────────────────────────────────────────
 
@@ -52,6 +52,31 @@ class FilterError(ValueError):
     real bug still surfaces as a 500 rather than being masked as bad user input
     by ``filter_from_json``'s eager-validation catch.
     """
+
+
+MAX_REGEX_PATTERN_LENGTH = 200
+
+
+def _validate_postgresql_regex(pattern: Any) -> None:
+    if not isinstance(pattern, str):
+        raise FilterError(f"expected a regex string, got {pattern!r}")
+    if len(pattern) > MAX_REGEX_PATTERN_LENGTH:
+        raise FilterError(
+            f"regex pattern too long (max {MAX_REGEX_PATTERN_LENGTH} chars)"
+        )
+    try:
+
+        def validate() -> None:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT '' ~ %s", [pattern])
+
+        run_with_statement_timeout(validate)
+    except DataError as exc:
+        if getattr(exc.__cause__, "sqlstate", None) == "2201B":
+            raise FilterError("invalid regex pattern") from exc
+        raise
+    except FilterQueryTimeout as exc:
+        raise FilterError("regex validation took too long") from exc
 
 
 # ── Modifier ──────────────────────────────────────────────────────────────
@@ -350,10 +375,7 @@ class StringCriterion(_Criterion):
             Modifier.MATCHES_REGEX,
             Modifier.NOT_MATCHES_REGEX,
         ):
-            try:
-                validate_regex_pattern(result.value)
-            except RegexPatternError as exc:
-                raise FilterError(f"invalid regex pattern: {exc}") from exc
+            _validate_postgresql_regex(result.value)
         return result
 
     def to_q(self, field_name: str) -> Q:

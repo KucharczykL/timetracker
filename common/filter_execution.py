@@ -43,9 +43,7 @@ def _is_statement_timeout(exc: BaseException) -> bool:
     return False
 
 
-def run_with_regex_timeout[R](filter_json: str, callback: Callable[[], R]) -> R:
-    if not contains_regex_modifier(filter_json):
-        return callback()
+def run_with_statement_timeout[R](callback: Callable[[], R]) -> R:
     try:
         with transaction.atomic():
             with connection.cursor() as cursor:
@@ -58,6 +56,12 @@ def run_with_regex_timeout[R](filter_json: str, callback: Callable[[], R]) -> R:
         if _is_statement_timeout(exc):
             raise FilterQueryTimeout from exc
         raise
+
+
+def run_with_regex_timeout[R](filter_json: str, callback: Callable[[], R]) -> R:
+    if not contains_regex_modifier(filter_json):
+        return callback()
+    return run_with_statement_timeout(callback)
 
 
 def regex_timeout_view[**P](

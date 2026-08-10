@@ -1,5 +1,3 @@
-import re
-
 import pytest
 from django.contrib.messages.storage.fallback import FallbackStorage
 from django.db import connection
@@ -85,16 +83,13 @@ def test_api_timeout_becomes_a_bad_request(monkeypatch):
     [
         ("zelda", {"zelda"}),
         ("(mario|zelda)", {"mario", "zelda"}),
-        ("[a-z]{1,5}", {"mario", "metroid", "zelda"}),
-        ("[a-z-]+", {"mario", "metroid", "zelda"}),
+        ("(?i)^ZELDA$", {"zelda"}),
     ],
 )
-def test_portable_patterns_match_the_postgresql_orm(pattern, expected):
+def test_postgresql_patterns_match_the_postgresql_orm(pattern, expected):
     Game.objects.bulk_create(
         [Game(name="zelda"), Game(name="mario"), Game(name="metroid")]
     )
-    names = {"zelda", "mario", "metroid"}
-    assert {name for name in names if re.search(pattern, name)} == expected
     assert (
         set(Game.objects.filter(name__regex=pattern).values_list("name", flat=True))
         == expected

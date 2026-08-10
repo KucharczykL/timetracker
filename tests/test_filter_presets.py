@@ -154,6 +154,15 @@ def test_semantically_invalid_filter_rejected(auth_client, capture_games_logger)
     assert "Invalid filter" in response.json()["detail"]
 
 
+def test_postgresql_invalid_regex_is_rejected_without_persisting(auth_client):
+    invalid_regex = {"name": {"modifier": "MATCHES_REGEX", "value": "(a"}}
+
+    response = _save(auth_client, name="Bad regex", filter=invalid_regex)
+
+    assert response.status_code == 400
+    assert not FilterPreset.objects.exists()
+
+
 @pytest.mark.parametrize("payload", [[1, 2], 5, "text"])
 def test_non_object_filter_rejected_by_schema(auth_client, payload):
     # PresetIn declares `filter: dict | None`, so Ninja rejects scalars/arrays
