@@ -4,10 +4,11 @@
 
 ## Outcome
 
-Developers can run the ordinary parallel pytest topology against the local
-PostgreSQL 17 server provisioned by `make ensure-postgres`.  Each xdist worker
-uses a Django-created disposable test database; no worker can run against the
-development database or share a test database with another worker.
+Developers can run concurrent ordinary parallel pytest topologies against the
+local PostgreSQL 17 server provisioned by `make ensure-postgres`. Each xdist
+worker uses a Django-created disposable test database; no worker can run
+against the development database, share a test database with another worker in
+the same run, or collide with a concurrent run.
 
 ## Scope and boundaries
 
@@ -28,17 +29,28 @@ plan, commit, and review boundary.
 ## Design
 
 The implementation uses Django and pytest-django's native test-database
-handling.  `DATABASE_URL` remains the connection source established by PG-11
+handling. `DATABASE_URL` remains the connection source established by PG-11
 and the ignored loopback PostgreSQL cluster remains the developer server
-established by PG-12.  Pytest-xdist derives a distinct test database identity
-for every worker from Django's configured default database; Django creates,
-migrates, and tears down those databases rather than addressing the development
-database itself.
+established by PG-12. Django creates, migrates, and tears down the worker
+databases rather than addressing the development database itself.
 
-No application-owned database naming hook, schema router, or external
-per-worker service is introduced.  Such a layer would duplicate the test
-framework's lifecycle and add cleanup and collision rules with no additional
-guarantee.
+Pytest-xdist supplies a run-wide `testrun_uid` to every worker and exposes the
+same value as `PYTEST_XDIST_TESTRUNUID`. Pytest-django exposes
+`django_db_modify_db_settings_xdist_suffix` as its supported customization
+point for xdist database settings. The project overrides that fixture to set
+each worker's `TEST["NAME"]` from the configured database name, the shared
+run UID, and the worker ID. The resulting names are conceptually:
+
+```
+test_timetracker_<testrun_uid>_gw0
+test_timetracker_<testrun_uid>_gw1
+```
+
+Two runs therefore receive disjoint database namespaces even though their
+worker IDs are both `gw0`, `gw1`, and so on. The override uses only the
+framework's public fixture and settings APIs. It introduces no launcher,
+Makefile-generated identifier, schema router, service, migration, or Compose
+change.
 
 The Makefile keeps its existing local worker-count policy, including the
 Windows-specific default.  `make test`, `make test-fast`, and `make test-e2e`
@@ -52,7 +64,9 @@ Focused regression coverage must prove all of the following against a real
 PostgreSQL server:
 
 - the configured test connection is PostgreSQL, not SQLite;
-- a parallel xdist invocation creates distinct worker test databases;
+- a parallel xdist invocation gives every worker a distinct test database;
+- workers in one invocation share one xdist run UID, while distinct run UIDs
+  generate non-overlapping database names;
 - worker databases are derived test databases and are never the configured
   development database;
 - the existing live-server concurrency coverage continues to run safely with
