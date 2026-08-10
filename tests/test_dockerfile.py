@@ -8,7 +8,10 @@ from django.conf import settings
 def test_codegen_uses_the_locked_python_environment():
     dockerfile = (Path(settings.BASE_DIR) / "Dockerfile").read_text()
 
-    assert "RUN uv run --frozen python manage.py gen_element_types" in dockerfile
+    assert (
+        "RUN DATABASE_URL=postgresql://build@127.0.0.1:5432/build "
+        "\\\n    uv run --frozen python manage.py gen_element_types"
+    ) in dockerfile
 
 
 def test_windows_lan_detection_uses_the_default_route():

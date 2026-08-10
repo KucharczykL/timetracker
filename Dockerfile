@@ -28,8 +28,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
 # Codegen the TypeScript prop contracts (needs Django); tsc compiles them in
-# the assets stage below.
-RUN uv run --frozen python manage.py gen_element_types
+# the assets stage below. It does not connect to the database, but Django
+# settings require a PostgreSQL URL during import.
+RUN DATABASE_URL=postgresql://build@127.0.0.1:5432/build \
+    uv run --frozen python manage.py gen_element_types
 
 
 # Front-end assets: Tailwind CSS + the TypeScript custom elements. Built here so

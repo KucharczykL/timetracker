@@ -87,11 +87,11 @@ def run(args: list[str], *, capture: bool = False) -> subprocess.CompletedProces
     return subprocess.run(args, check=True, text=True, capture_output=capture)
 
 
-def postgres_major(postgres: Path) -> int:
-    result = run([str(postgres), "--version"], capture=True)
+def tool_major(executable: Path) -> int:
+    result = run([str(executable), "--version"], capture=True)
     match = re.search(r"PostgreSQL\)?\s+(\d+)", result.stdout)
     if not match:
-        raise HarnessError(f"Could not determine PostgreSQL version from {postgres}.")
+        raise HarnessError(f"Could not determine PostgreSQL version from {executable}.")
     return int(match.group(1))
 
 
@@ -100,7 +100,7 @@ def _tools_from_directory(directory: Path) -> Tools | None:
     if not all(path.is_file() for path in paths):
         return None
     tools = Tools(*paths)
-    return tools if postgres_major(tools.postgres) == REQUIRED_MAJOR else None
+    return tools if tool_major(tools.initdb) == REQUIRED_MAJOR else None
 
 
 def path_tools() -> Tools | None:
@@ -108,7 +108,7 @@ def path_tools() -> Tools | None:
     if any(path is None for path in paths):
         return None
     tools = Tools(*(Path(path) for path in paths if path is not None))
-    return tools if postgres_major(tools.postgres) == REQUIRED_MAJOR else None
+    return tools if tool_major(tools.initdb) == REQUIRED_MAJOR else None
 
 
 def verify_checksum(archive: Path, expected: str) -> None:
