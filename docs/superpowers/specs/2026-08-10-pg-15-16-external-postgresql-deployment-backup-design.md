@@ -13,8 +13,9 @@ ship, start, configure, or persist a PostgreSQL server.
 - PostgreSQL is external to Timetracker's Compose and Quadlet definitions.
   Operators own the server image and version, storage, server lifecycle,
   upgrades, network, roles, database creation, and PostgreSQL-level policy.
-- Timetracker's only database interface is `DATABASE_URL`. PostgreSQL 17 or
-  newer is the documented server baseline.
+- Timetracker's only database interface is `DATABASE_URL`. PostgreSQL majors
+  17 and 18 are supported. A later major stays rejected until it has explicit
+  compatibility coverage; support is not an unbounded `17+` promise.
 - `DATABASE_URL__FILE` is a supported secret-delivery form. It uses the
   existing file-setting precedence: when both variables are supplied, the
   file's trimmed contents win.
@@ -110,8 +111,9 @@ the routine verification recipe.
 - The restore procedure is tested with a disposable PostgreSQL database or
   container. It restores a custom-format dump, validates the resulting
   Timetracker database read-only, and never addresses a shared/live instance.
-- Documentation identifies PostgreSQL 17+ as the baseline and makes the
-  external-PostgreSQL boundary and #597 scheduling exclusion explicit.
+- Runtime and integration tests accept PostgreSQL 17 and 18 while rejecting a
+  later unverified major. Documentation names those two supported majors and
+  makes the external-PostgreSQL boundary and #597 scheduling exclusion explicit.
 
 ## Non-goals
 
