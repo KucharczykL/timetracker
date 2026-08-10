@@ -2,7 +2,6 @@ POSTGRES_MK = .cache/postgres.mk
 include $(POSTGRES_MK)
 
 $(POSTGRES_MK): scripts/ensure_postgres.py FORCE
-	@mkdir -p .cache
 	uv run --frozen python scripts/ensure_postgres.py --makefile $@
 
 .PHONY: FORCE ensure-postgres
