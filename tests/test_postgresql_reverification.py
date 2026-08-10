@@ -3,10 +3,11 @@
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
-from django.db import connection
+from django.contrib.auth import get_user_model
+from django.db import IntegrityError, connection, transaction
 
 from games.filters import FindFilter
-from games.models import Game, Platform, PlayEvent, Purchase, Session
+from games.models import FilterPreset, Game, Platform, PlayEvent, Purchase, Session
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort
 from timetracker.postgres_contract import validate_postgres_collation_contract
 
@@ -177,3 +178,51 @@ def test_postgresql_connection_satisfies_collation_contract():
     assert contract.encoding == "UTF8"
     assert contract.locale_provider == "b"
     assert contract.locale == "C.UTF-8"
+
+
+def test_postgresql_interval_querysets_partition_sessions():
+    """PG-06's interval equality paths execute against PostgreSQL intervals."""
+    assert_postgresql()
+    game = Game.objects.create(name="Interval game")
+    manual_only = Session.objects.create(
+        game=game,
+        timestamp_start=datetime(2026, 1, 1, 12, tzinfo=UTC),
+        timestamp_end=datetime(2026, 1, 1, 12, tzinfo=UTC),
+        duration_manual=timedelta(minutes=30),
+    )
+    elapsed = Session.objects.create(
+        game=game,
+        timestamp_start=datetime(2026, 1, 2, 12, tzinfo=UTC),
+        timestamp_end=datetime(2026, 1, 2, 13, tzinfo=UTC),
+    )
+
+    assert list(Session.objects.only_manual()) == [manual_only]
+    assert list(Session.objects.without_manual()) == [elapsed]
+
+
+def test_postgresql_json_persistence_and_preset_constraint():
+    """PG-06 JSON persistence and declarative constraints execute on PostgreSQL."""
+    assert_postgresql()
+    user = get_user_model().objects.create_user(
+        username="postgres-reverify", password="pw"
+    )
+    find_filter = {"sort": "-year"}
+    object_filter = {"year": {"modifier": "EQUALS", "value": 2026}}
+    ui_options = {"per_page": 50}
+    preset = FilterPreset.objects.create(
+        user=user,
+        name="PostgreSQL",
+        mode="games",
+        find_filter=find_filter,
+        object_filter=object_filter,
+        ui_options=ui_options,
+    )
+
+    preset.refresh_from_db()
+
+    assert preset.find_filter == find_filter
+    assert preset.object_filter == object_filter
+    assert preset.ui_options == ui_options
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        FilterPreset.objects.create(user=user, name="PostgreSQL", mode="games")
