@@ -71,9 +71,19 @@
   duration_manual, expected_calculated, expected_total)` and exactly cover:
 
   ```python
-  (datetime(2026, 1, 1, 12, tzinfo=UTC), timedelta(0), timedelta(hours=2), timedelta(hours=2))
+  (
+      datetime(2026, 1, 1, 12, tzinfo=UTC),
+      timedelta(0),
+      timedelta(hours=2),
+      timedelta(hours=2),
+  )
   (None, timedelta(hours=3), timedelta(0), timedelta(hours=3))
-  (datetime(2026, 1, 1, 12, tzinfo=UTC), timedelta(minutes=30), timedelta(hours=2), timedelta(hours=2, minutes=30))
+  (
+      datetime(2026, 1, 1, 12, tzinfo=UTC),
+      timedelta(minutes=30),
+      timedelta(hours=2),
+      timedelta(hours=2, minutes=30),
+  )
   ```
 
   Each case calls `assert_postgresql()`, creates a `Game` and `Session` with a
@@ -92,10 +102,12 @@
   assert purchase.num_purchases == 0
   assert purchase.price_per_game is None
 
-  purchase.games.set([
-      Game.objects.create(name="Celeste"),
-      Game.objects.create(name="Hades"),
-  ])
+  purchase.games.set(
+      [
+          Game.objects.create(name="Celeste"),
+          Game.objects.create(name="Hades"),
+      ]
+  )
   purchase.refresh_from_db()
   assert (purchase.num_purchases, purchase.price_per_game) == (2, 6)
   ```
