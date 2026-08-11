@@ -1,14 +1,12 @@
 # External PostgreSQL deployment
 
-Timetracker connects to an operator-managed PostgreSQL 18.x database. The
-database must use UTF8 encoding, the `builtin` locale provider, and `C.UTF-8`.
-Timetracker does not provide or manage a PostgreSQL service, storage, roles,
-initialization, lifecycle, networking, or upgrades.
+Timetracker connects to an operator-managed PostgreSQL database. It must use
+UTF8 encoding, the `builtin` locale provider, and `C.UTF-8`. Timetracker does
+not manage the database service, storage, roles, networking, or upgrades.
 
-The application receives one complete connection URL through
-`DATABASE_URL__FILE`. A dedicated role and database are recommended but not
-required. The hostname in these examples, `postgres`, is an example network
-alias; use the hostname or managed-service address appropriate for your setup.
+Provide the connection URL through `DATABASE_URL__FILE`. The hostname
+`postgres` below is only an example; use the address appropriate for your
+network.
 
 ## Docker Compose
 
@@ -27,21 +25,18 @@ export TIMETRACKER_DATABASE_URL_FILE=/absolute/path/to/timetracker_database_url
 docker compose up -d
 ```
 
-The Compose files mount the file at
-`/run/secrets/timetracker_database_url` and set
-`DATABASE_URL__FILE=/run/secrets/timetracker_database_url`. They intentionally
-declare no PostgreSQL service, volume, initialization, or server credentials.
+Compose mounts the file at `/run/secrets/timetracker_database_url` and sets
+`DATABASE_URL__FILE` accordingly. It intentionally declares no PostgreSQL
+service, volume, or credentials.
 
-The image runs as uid 1000. Ensure the file-backed secret remains readable by
-that user in the container; Compose `mode: 0400` does not change the host file
-owner for a file-backed secret.
+The image runs as uid 1000. The host secret must be readable by that user;
+Compose `mode: 0400` does not change a file-backed secret's owner.
 
 ## Rootless Podman Quadlet
 
-Attach the application to the operator-managed backend network and mount the
-same URL secret read-only. With rootless `keep-id`, `%U:%G` maps the host user's
-uid and gid into the container, so a secret owned and readable by that host user
-is readable by the image's uid 1000 process.
+Attach the application to the database network and mount the URL secret
+read-only. With rootless `keep-id`, `%U:%G` maps the host user's uid and gid
+into the container, so the uid 1000 process can read a host-owned secret.
 
 `~/.config/containers/systemd/timetracker.container`:
 
@@ -58,33 +53,26 @@ Volume=%h/docker-compose-templates/secrets/timetracker_database_url:/run/secrets
 WantedBy=default.target
 ```
 
-This is an application-only unit. The independently managed PostgreSQL
-container may expose `postgres` as its `backend.network` alias, but that alias
-is not a Timetracker requirement. Keep PostgreSQL image selection, server
-configuration, storage, roles, and lifecycle in the operator's database unit.
+This is an application-only unit. Keep database configuration, storage, and
+lifecycle in the database unit.
 
 ## Manual backup
 
-Use a PostgreSQL-18-compatible `pg_dump` client and provide the database URL
-through your existing operator secret mechanism. A custom-format dump is
-database-only: `--no-owner` and `--no-privileges` prevent restore from changing
-cluster role ownership or grants.
+Use a `pg_dump` client compatible with your server. The flags prevent a restore
+from changing cluster role ownership or grants.
 
 ```bash
 pg_dump "$DATABASE_URL" --format=custom --no-owner --no-privileges \
   --file=/path/to/protected/timetracker-$(date +%F).dump
 ```
 
-Store the dump in protected, operator-selected storage and maintain an off-host
-copy appropriate to your recovery requirements. Scheduling, retention,
-monitoring, alerting, and off-host transport automation remain [#597](https://github.com/KucharczykL/timetracker/issues/597).
+Store dumps in protected storage and keep an off-host copy. Scheduling,
+retention, monitoring, and transport are operator responsibilities.
 
 ## Isolated restore verification
 
-Verify a selected dump only in a deliberately named empty database. Use an
-administrator-capable operator connection; the Timetracker application role
-does not need permission to create or drop databases. Substitute your own
-protected URLs and dump path below:
+Verify a dump only in an empty database. Use an administrator connection to
+create and drop it:
 
 ```bash
 createdb --maintenance-db='postgresql://<admin>@<host>/postgres' \
@@ -98,7 +86,5 @@ dropdb --maintenance-db='postgresql://<admin>@<host>/postgres' \
   timetracker_restore_verify
 ```
 
-Run `dropdb` only after every preceding command succeeds. If the dump, restore,
-or migration check fails, leave `timetracker_restore_verify` intact for
-inspection. Never drop, recreate, or restore into the live Timetracker
-database; production disaster recovery is a separate deliberate procedure.
+Run `dropdb` only after every preceding command succeeds. On failure, leave the
+verification database for inspection. Never restore into the live database.

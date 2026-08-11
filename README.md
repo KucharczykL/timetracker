@@ -4,21 +4,18 @@ A simple game catalogue and play session tracker.
 
 # Development
 
-Nix is the supported development environment: it supplies PostgreSQL 18,
-Python, Node, and the other project tools. Enter it with `nix-shell` (or
+Nix is the supported development environment. Enter it with `nix-shell` (or
 direnv), then run:
 
 ```
 make init
 ```
 
-This initializes an ignored, loopback-only PostgreSQL 18 cluster under `.cache/`,
+This initializes an ignored, loopback-only PostgreSQL cluster under `.cache/`,
 syncs dependencies, and installs npm packages. `make` automatically reuses that
-cluster. Outside Nix, `make` uses a checksum-pinned PostgreSQL 18.4 binary fallback
-for supported platforms; alternatively set `DATABASE_URL` to an existing database.
-If you previously ran the PostgreSQL 17 harness, stop it, remove only
-`.cache/postgres/data`, then run `make` again. The local cluster is disposable;
-do not start its PostgreSQL 17 data directory with PostgreSQL 18.
+cluster. Outside Nix, it downloads the project-pinned PostgreSQL binary for
+supported platforms; alternatively set `DATABASE_URL` to an existing database.
+The local cluster is disposable.
 Afterwards, you can start the development server using `make dev` or `make server`
 (without the Tailwind watcher). Both targets accept `DEV_HOST` and `DEV_PORT`, for
 example `make dev DEV_HOST=0.0.0.0 DEV_PORT=9999`.
