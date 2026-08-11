@@ -11,7 +11,7 @@
     "@tailwindcss/typography": "^0.5.13",
     "@types/node": "^26.0.1",
     "concurrently": "^8.2.2",
-    "jsdom": "^29.1.1",
+    "jsdom": "^30.0.1",
     "npm-check-updates": "^22.2.9",
     "tailwindcss": "^4.1.18",
     "temporal-polyfill": "^1.0.1",
@@ -20,6 +20,6 @@
   },
   "dependencies": {
     "@tailwindcss/cli": "^4.1.18",
-    "flowbite": "^4.0.1"
+    "flowbite": "^4.0.2"
   }
 }
