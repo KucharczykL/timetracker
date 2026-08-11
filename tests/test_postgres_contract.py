@@ -30,11 +30,12 @@ class RecordingConnection:
         return RecordingCursor(self.row, self.queries)
 
 
-def test_validate_postgres_collation_contract_returns_matching_snapshot():
-    connection = RecordingConnection((170004, "UTF8", "b", "C.UTF-8"), [])
+@pytest.mark.parametrize("version", [170004, 180004])
+def test_validate_postgres_collation_contract_accepts_supported_majors(version):
+    connection = RecordingConnection((version, "UTF8", "b", "C.UTF-8"), [])
 
     assert validate_postgres_collation_contract(connection) == PostgresContract(
-        170004, "UTF8", "b", "C.UTF-8"
+        version, "UTF8", "b", "C.UTF-8"
     )
     assert connection.queries == [CATALOG_QUERY]
 
@@ -42,7 +43,8 @@ def test_validate_postgres_collation_contract_returns_matching_snapshot():
 @pytest.mark.parametrize(
     ("row", "message"),
     [
-        ((160010, "UTF8", "b", "C.UTF-8"), "major version 17, got 16"),
+        ((160010, "UTF8", "b", "C.UTF-8"), "major version 17 or 18, got 16"),
+        ((190000, "UTF8", "b", "C.UTF-8"), "major version 17 or 18, got 19"),
         ((170004, "LATIN1", "b", "C.UTF-8"), "encoding UTF8, got LATIN1"),
         ((170004, "UTF8", "c", "C.UTF-8"), "provider builtin, got libc"),
         ((170004, "UTF8", "i", "C.UTF-8"), "provider builtin, got icu"),

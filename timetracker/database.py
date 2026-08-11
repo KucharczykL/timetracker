@@ -58,9 +58,9 @@ def required_database_settings() -> dict[str, object]:
         if os.environ.get("TIMETRACKER_MANAGED_DATABASE_URL") == "1":
             url = config(
                 "DATABASE_URL", default=None, include_environment=False
-            ) or config("DATABASE_URL")
+            ) or config("DATABASE_URL", allow_file=True)
         else:
-            url = config("DATABASE_URL")
+            url = config("DATABASE_URL", allow_file=True)
     except ImproperlyConfigured as exc:
         raise ImproperlyConfigured(
             "DATABASE_URL is required. Run make init (or make ensure-postgres) "
@@ -72,7 +72,7 @@ def required_database_settings() -> dict[str, object]:
 def validate_default_connection(
     *, sender: object, connection: object, **_: object
 ) -> None:
-    """Reject an opened default connection outside the PostgreSQL 17 contract."""
+    """Reject an opened default connection outside the supported PostgreSQL contract."""
     if getattr(connection, "alias", None) != "default":
         return
     try:
