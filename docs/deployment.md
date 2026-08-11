@@ -63,7 +63,42 @@ container may expose `postgres` as its `backend.network` alias, but that alias
 is not a Timetracker requirement. Keep PostgreSQL image selection, server
 configuration, storage, roles, and lifecycle in the operator's database unit.
 
-## Database backup automation
+## Manual backup
 
-This guide covers connection and deployment only. Backup scheduling, retention,
-monitoring, alerting, and off-host transport remain [#597](https://github.com/KucharczykL/timetracker/issues/597).
+Use a PostgreSQL-18-compatible `pg_dump` client and provide the database URL
+through your existing operator secret mechanism. A custom-format dump is
+database-only: `--no-owner` and `--no-privileges` prevent restore from changing
+cluster role ownership or grants.
+
+```bash
+pg_dump "$DATABASE_URL" --format=custom --no-owner --no-privileges \
+  --file=/path/to/protected/timetracker-$(date +%F).dump
+```
+
+Store the dump in protected, operator-selected storage and maintain an off-host
+copy appropriate to your recovery requirements. Scheduling, retention,
+monitoring, alerting, and off-host transport automation remain [#597](https://github.com/KucharczykL/timetracker/issues/597).
+
+## Isolated restore verification
+
+Verify a selected dump only in a deliberately named empty database. Use an
+administrator-capable operator connection; the Timetracker application role
+does not need permission to create or drop databases. Substitute your own
+protected URLs and dump path below:
+
+```bash
+createdb --maintenance-db='postgresql://<admin>@<host>/postgres' \
+  timetracker_restore_verify
+pg_restore --exit-on-error --no-owner --no-privileges \
+  --dbname='postgresql://<admin>@<host>/timetracker_restore_verify' \
+  /path/to/protected/timetracker.dump
+DATABASE_URL='postgresql://<app-role>@<host>/timetracker_restore_verify' \
+  python manage.py migrate --check
+dropdb --maintenance-db='postgresql://<admin>@<host>/postgres' \
+  timetracker_restore_verify
+```
+
+Run `dropdb` only after every preceding command succeeds. If the dump, restore,
+or migration check fails, leave `timetracker_restore_verify` intact for
+inspection. Never drop, recreate, or restore into the live Timetracker
+database; production disaster recovery is a separate deliberate procedure.
