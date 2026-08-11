@@ -14,7 +14,7 @@ jobs:
       DATABASE_URL: postgresql://timetracker:timetracker@127.0.0.1:5432/timetracker
     services:
       postgres:
-        image: postgres:17
+        image: postgres:18.4
         env:
           POSTGRES_DB: timetracker
           POSTGRES_USER: timetracker
@@ -54,6 +54,20 @@ jobs:
 
       - name: Run checks
         run: make check
+
+      - name: Smoke test database URL secret
+        run: |
+          secret_file="$(mktemp)"
+          trap 'rm -f "$secret_file"' EXIT
+          printf '%s\n' 'postgresql://timetracker@example.invalid/timetracker' > "$secret_file"
+          chmod 0444 "$secret_file"
+          docker build --tag timetracker:secret-smoke .
+          docker run --rm --user 1000:1000 \
+            --entrypoint python \
+            -e DATABASE_URL__FILE=/run/secrets/timetracker_database_url \
+            --mount type=bind,src="$secret_file",dst=/run/secrets/timetracker_database_url,readonly \
+            timetracker:secret-smoke \
+            -c 'from timetracker.database import required_database_settings; assert required_database_settings()["HOST"] == "example.invalid"'
 
   build-and-push:
     needs: test

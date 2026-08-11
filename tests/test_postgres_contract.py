@@ -30,8 +30,8 @@ class RecordingConnection:
         return RecordingCursor(self.row, self.queries)
 
 
-@pytest.mark.parametrize("version", [170004, 180004])
-def test_validate_postgres_collation_contract_accepts_supported_majors(version):
+def test_validate_postgres_collation_contract_accepts_postgresql_18():
+    version = 180004
     connection = RecordingConnection((version, "UTF8", "b", "C.UTF-8"), [])
 
     assert validate_postgres_collation_contract(connection) == PostgresContract(
@@ -43,12 +43,12 @@ def test_validate_postgres_collation_contract_accepts_supported_majors(version):
 @pytest.mark.parametrize(
     ("row", "message"),
     [
-        ((160010, "UTF8", "b", "C.UTF-8"), "major version 17 or 18, got 16"),
-        ((190000, "UTF8", "b", "C.UTF-8"), "major version 17 or 18, got 19"),
-        ((170004, "LATIN1", "b", "C.UTF-8"), "encoding UTF8, got LATIN1"),
-        ((170004, "UTF8", "c", "C.UTF-8"), "provider builtin, got libc"),
-        ((170004, "UTF8", "i", "C.UTF-8"), "provider builtin, got icu"),
-        ((170004, "UTF8", "b", "C"), "builtin locale C.UTF-8, got C"),
+        ((170004, "UTF8", "b", "C.UTF-8"), "major version 18, got 17"),
+        ((190000, "UTF8", "b", "C.UTF-8"), "major version 18, got 19"),
+        ((180004, "LATIN1", "b", "C.UTF-8"), "encoding UTF8, got LATIN1"),
+        ((180004, "UTF8", "c", "C.UTF-8"), "provider builtin, got libc"),
+        ((180004, "UTF8", "i", "C.UTF-8"), "provider builtin, got icu"),
+        ((180004, "UTF8", "b", "C"), "builtin locale C.UTF-8, got C"),
     ],
 )
 def test_validate_postgres_collation_contract_rejects_mismatches(

@@ -1,5 +1,10 @@
 # PG-15/PG-16 External PostgreSQL Deployment and Backup Implementation Plan
 
+> **Superseded for PostgreSQL versioning:** Keep this plan's external-database,
+> `DATABASE_URL__FILE`, and manual restore boundaries. Its dual-major tasks are
+> superseded by the PostgreSQL 18-only baseline in
+> [`2026-08-11-postgresql-18-baseline.md`](2026-08-11-postgresql-18-baseline.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Support an externally managed PostgreSQL 17 or 18 database through a

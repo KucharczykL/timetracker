@@ -96,13 +96,13 @@ def test_managed_database_url_yields_to_a_new_dotenv_url(
         config_module.reset_caches()
 
 
-def test_path_tools_require_postgresql_17(harness, monkeypatch):
+def test_path_tools_require_postgresql_18(harness, monkeypatch):
     monkeypatch.setattr(harness.shutil, "which", lambda name: f"/tools/{name}")
     seen: list[Path] = []
 
     def required_major(postgres: Path) -> int:
         seen.append(postgres)
-        return 17
+        return 18
 
     monkeypatch.setattr(harness, "postgres_major", required_major)
 
@@ -119,12 +119,35 @@ def test_path_tools_reject_wrong_major(harness, monkeypatch):
     assert harness.path_tools() is None
 
 
+def test_fallback_assets_pin_postgresql_18_4(harness):
+    assert harness.REQUIRED_MAJOR == 18
+    assert harness.FALLBACK_VERSION == "18.4.0"
+    assert harness.FALLBACKS == {
+        ("Linux", "x86_64"): (
+            "postgresql-18.4.0-x86_64-unknown-linux-gnu.tar.gz",
+            "65c06cf318b9a57525d842d658d6d18cd461d12b3a89b57d6d8ed7cccbe2db53",
+        ),
+        ("Darwin", "arm64"): (
+            "postgresql-18.4.0-aarch64-apple-darwin.tar.gz",
+            "1b68828f524b638a24918e258b173d0f16773547a0d3b83d9ba74473b61649f2",
+        ),
+        ("Darwin", "x86_64"): (
+            "postgresql-18.4.0-x86_64-apple-darwin.tar.gz",
+            "cbc38067a795d10bbddc730e61c835df0b351c36a7bd2544d388790fcf50aa4d",
+        ),
+        ("Windows", "AMD64"): (
+            "postgresql-18.4.0-x86_64-pc-windows-msvc.tar.gz",
+            "4099dcf71c74bed82736e17928d07591df0efee8f802449533b9557d99ae7988",
+        ),
+    }
+
+
 def test_fallback_tools_reuse_an_extracted_nested_bin_directory(
     harness, monkeypatch, tmp_path
 ):
     monkeypatch.setattr(harness.platform, "system", lambda: "Linux")
     monkeypatch.setattr(harness.platform, "machine", lambda: "x86_64")
-    monkeypatch.setattr(harness, "postgres_major", lambda postgres: 17)
+    monkeypatch.setattr(harness, "postgres_major", lambda postgres: 18)
     monkeypatch.setattr(
         harness.urllib.request,
         "urlretrieve",
@@ -134,7 +157,7 @@ def test_fallback_tools_reuse_an_extracted_nested_bin_directory(
         tmp_path
         / "postgres-binaries"
         / harness.FALLBACK_VERSION
-        / "postgresql-17.6.0-x86_64-unknown-linux-gnu"
+        / "postgresql-18.4.0-x86_64-unknown-linux-gnu"
         / "bin"
     )
     nested_bin.mkdir(parents=True)
@@ -253,7 +276,7 @@ def test_verify_contract_reads_the_provisioned_database_catalog(
         return subprocess.CompletedProcess(
             args,
             0,
-            stdout="170010|UTF8|b|C.UTF-8\n",
+            stdout="180010|UTF8|b|C.UTF-8\n",
             stderr="",
         )
 
@@ -290,5 +313,5 @@ def test_verify_contract_rejects_wrong_catalog_metadata(harness, monkeypatch, tm
         ),
     )
 
-    with pytest.raises(harness.HarnessError, match="major version 17"):
+    with pytest.raises(harness.HarnessError, match="major version 18"):
         harness.verify_contract(tools, 5432)

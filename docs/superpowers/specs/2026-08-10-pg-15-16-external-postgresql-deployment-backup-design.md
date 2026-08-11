@@ -1,5 +1,11 @@
 # PG-15/PG-16: External PostgreSQL deployment and backup design
 
+> **Superseded for PostgreSQL versioning:** The external deployment and manual
+> backup boundaries below remain the accepted design, but PostgreSQL 18 is now
+> the sole supported runtime major. See
+> [`2026-08-11-postgresql-18-baseline-design.md`](2026-08-11-postgresql-18-baseline-design.md)
+> for the current version contract, 18.4 fallback pin, and CI pin.
+
 ## Purpose
 
 Plan issues #617 and #618 as one deployment boundary: Timetracker consumes an

@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Protocol
 
-SUPPORTED_POSTGRES_MAJORS = frozenset({17, 18})
+REQUIRED_POSTGRES_MAJOR = 18
 REQUIRED_ENCODING = "UTF8"
 REQUIRED_LOCALE_PROVIDER = "b"
 REQUIRED_BUILTIN_LOCALE = "C.UTF-8"
@@ -74,9 +74,9 @@ def validate_postgres_collation_contract(
     """Return the matching connected-database contract or raise a clear error."""
     contract = _read_contract(connection.cursor())
     actual_major = contract.server_version_num // 10_000
-    if actual_major not in SUPPORTED_POSTGRES_MAJORS:
+    if actual_major != REQUIRED_POSTGRES_MAJOR:
         raise PostgresContractViolation(
-            "PostgreSQL collation contract requires major version 17 or 18, "
+            "PostgreSQL collation contract requires major version 18, "
             f"got {actual_major} "
             f"(server_version_num={contract.server_version_num})."
         )
