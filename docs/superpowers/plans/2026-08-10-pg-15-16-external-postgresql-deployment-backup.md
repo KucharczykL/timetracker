@@ -84,9 +84,12 @@ Docker Compose, rootless Podman Quadlets, PostgreSQL 17 and 18 client tools.
   ```python
   @pytest.mark.parametrize("version", [170004, 180004])
   def test_validate_postgres_collation_contract_accepts_supported_majors(version):
-      assert validate_postgres_collation_contract(
-          RecordingConnection((version, "UTF8", "b", "C.UTF-8"), [])
-      ).server_version_num == version
+      assert (
+          validate_postgres_collation_contract(
+              RecordingConnection((version, "UTF8", "b", "C.UTF-8"), [])
+          ).server_version_num
+          == version
+      )
 
 
   def test_file_database_url_wins_over_plain_environment(monkeypatch, tmp_path):
@@ -176,13 +179,21 @@ Docker Compose, rootless Podman Quadlets, PostgreSQL 17 and 18 client tools.
   assert no service or top-level volume is named `postgres`.
 
   ```python
-  @pytest.mark.parametrize("filename", ["docker-compose.yml", "docker-compose.no-caddy.yml"])
+  @pytest.mark.parametrize(
+      "filename", ["docker-compose.yml", "docker-compose.no-caddy.yml"]
+  )
   def test_compose_uses_only_an_external_database_secret(filename):
       compose = yaml.safe_load((REPO / filename).read_text())
       assert set(compose["services"]) == {"timetracker"}
       service = compose["services"]["timetracker"]
-      assert "DATABASE_URL__FILE=/run/secrets/timetracker_database_url" in service["environment"]
-      assert compose["secrets"]["timetracker_database_url"]["file"] == "${TIMETRACKER_DATABASE_URL_FILE:?set TIMETRACKER_DATABASE_URL_FILE}"
+      assert (
+          "DATABASE_URL__FILE=/run/secrets/timetracker_database_url"
+          in service["environment"]
+      )
+      assert (
+          compose["secrets"]["timetracker_database_url"]["file"]
+          == "${TIMETRACKER_DATABASE_URL_FILE:?set TIMETRACKER_DATABASE_URL_FILE}"
+      )
   ```
 
 - [ ] **Step 2: Run the new test and confirm it fails**
@@ -268,7 +279,11 @@ Docker Compose, rootless Podman Quadlets, PostgreSQL 17 and 18 client tools.
   ```python
   assert test_job["strategy"]["matrix"]["postgres_major"] == [17, 18]
   assert postgres["image"] == "postgres:${{ matrix.postgres_major }}"
-  restore_step = next(step for step in test_job["steps"] if step["name"] == "Verify PostgreSQL backup restore")
+  restore_step = next(
+      step
+      for step in test_job["steps"]
+      if step["name"] == "Verify PostgreSQL backup restore"
+  )
   assert "--format=custom" in restore_step["run"]
   assert "timetracker_restore_verify" in restore_step["run"]
   assert "migrate --check" in restore_step["run"]
