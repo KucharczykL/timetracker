@@ -14,13 +14,14 @@ pinning project-controlled development and CI tooling to PostgreSQL 18.4.
   `REQUIRED_POSTGRES_MAJOR = 18`.
 - `scripts/ensure_postgres.py` imports that major constant. Its separate
   `FALLBACK_VERSION = "18.4.0"` identifies exact downloaded archives only.
-- GitHub Actions uses the exact `postgres:18.4` service image. Production
-  operators may use any maintained PostgreSQL 18 minor release.
+- GitHub Actions uses the PostgreSQL patch-version pin `postgres:18.4`.
+  Production operators may use any maintained PostgreSQL 18 minor release.
 
 ## Fallback assets
 
 The checksum-pinned fallback changes to PostgreSQL 18.4.0 for the existing
-platform set:
+platform set. Tests assert the complete mapping, not only the platform that
+executes a given local test run:
 
 | Platform | Archive | SHA-256 |
 | --- | --- | --- |
@@ -32,16 +33,27 @@ platform set:
 ## Reversibility and verification
 
 PostgreSQL 17 developer clusters are disposable cache state and must not be
-started with PostgreSQL 18. Verification uses a fresh worktree/cache, avoiding
-an in-place cluster upgrade or deletion of an existing developer cluster.
+started with PostgreSQL 18. The upgrade note tells developers to stop the local
+harness, remove only `.cache/postgres/data`, and run `make` again; PostgreSQL 18
+then initializes a new cluster. No cache migration, versioned cache path, or
+automatic deletion is introduced.
 
 Unit tests accept a PostgreSQL 18 catalog snapshot and reject 17 and 19.
 Fallback tests pin the exact 18.4.0 archives. CI tests pin `postgres:18.4`.
-A fresh Windows `make check` proves fallback download, cluster initialization,
-runtime contract validation, and the full suite.
+`shell.nix` supplies `postgresql_18`; only the fallback and CI use the 18.4
+patch pin. A fresh Windows `make check` proves fallback download, cluster
+initialization, runtime contract validation, and the full suite.
+
+Both Compose deployments retain the existing app-only `DATABASE_URL__FILE`
+secret contract. Add a non-root container smoke test for that mounted secret,
+or an equivalent test that proves the UID 1000 image user can read it; do not
+assume a file-backed Compose secret applies `mode: 0400` ownership semantics.
 
 ## Scope
 
-Update runtime, fallback harness, CI, tests, and PostgreSQL-version
-documentation. #617's external-PostgreSQL deployment boundary remains intact;
-#618's manual backup/restore scope is unchanged.
+Update runtime, fallback harness, Nix shell, CI, tests, and PostgreSQL-version
+documentation. Amend the existing external-PostgreSQL design and implementation
+plan to replace their dual-major contract and CI matrix with this one-major
+baseline, preserving their `DATABASE_URL__FILE` and app-only Compose work.
+#617's external-PostgreSQL deployment boundary remains intact; #618's manual
+backup/restore scope is unchanged, except its CI proof uses PostgreSQL 18.4.
