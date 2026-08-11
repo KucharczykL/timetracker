@@ -55,6 +55,19 @@ jobs:
       - name: Run checks
         run: make check
 
+      - name: Verify PostgreSQL backup restore
+        run: |
+          set -euo pipefail
+          postgres_id="$(docker ps --filter 'ancestor=postgres:18.4' --format '{{.ID}}' | head -n 1)"
+          test -n "$postgres_id"
+          verification_database=timetracker_restore_verify
+          dump_file=/tmp/timetracker.dump
+          docker exec "$postgres_id" pg_dump -U timetracker --format=custom --no-owner --no-privileges --file="$dump_file" timetracker
+          docker exec "$postgres_id" createdb -U timetracker "$verification_database"
+          docker exec "$postgres_id" pg_restore -U timetracker --exit-on-error --no-owner --no-privileges --dbname="$verification_database" "$dump_file"
+          DATABASE_URL="postgresql://timetracker:timetracker@127.0.0.1:5432/$verification_database" uv run --frozen python manage.py migrate --check
+          docker exec "$postgres_id" dropdb -U timetracker "$verification_database"
+
       - name: Smoke test database URL secret
         run: |
           secret_file="$(mktemp)"

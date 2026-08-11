@@ -40,3 +40,23 @@ def test_test_job_smoke_tests_the_database_url_secret_as_the_image_user():
         "DATABASE_URL__FILE=/run/secrets/timetracker_database_url" in smoke_test["run"]
     )
     assert "required_database_settings" in smoke_test["run"]
+
+
+def test_test_job_verifies_an_isolated_postgresql_backup_restore():
+    workflow = yaml.safe_load(WORKFLOW_PATH.read_text())
+    steps = workflow["jobs"]["test"]["steps"]
+    restore = next(
+        step for step in steps if step.get("name") == "Verify PostgreSQL backup restore"
+    )
+
+    assert "postgres:18.4" in restore["run"]
+    assert "pg_dump" in restore["run"]
+    assert "--format=custom" in restore["run"]
+    assert "--no-owner" in restore["run"]
+    assert "--no-privileges" in restore["run"]
+    assert "timetracker_restore_verify" in restore["run"]
+    assert "pg_restore" in restore["run"]
+    assert "--exit-on-error" in restore["run"]
+    assert "manage.py migrate --check" in restore["run"]
+    assert "dropdb" in restore["run"]
+    assert "trap" not in restore["run"]
