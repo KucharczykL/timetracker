@@ -201,9 +201,7 @@ def test_test_job_verifies_an_isolated_postgresql_backup_restore():
     workflow = yaml.safe_load(WORKFLOW_PATH.read_text())
     steps = workflow["jobs"]["test"]["steps"]
     restore = next(
-        step
-        for step in steps
-        if step.get("name") == "Verify PostgreSQL backup restore"
+        step for step in steps if step.get("name") == "Verify PostgreSQL backup restore"
     )
 
     assert "postgres:18.4" in restore["run"]
