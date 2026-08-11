@@ -49,7 +49,7 @@ remove that and `settings.ini` wins; remove that and the code default applies.
 | `TZ` | str | `Europe/Prague` (dev) / `UTC` (prod) | no | Boot-time Django/server time zone. Requires a restart and is not editable on Admin settings. |
 | `DEFAULT_CURRENCY` | str | `CZK` | no | Site-wide fallback for purchases saved without request/user context and the FX conversion/reporting target. Purchase-entry views resolve the current user's preference instead. |
 | `DEFAULT_PAGE_SIZE` | int | `25` | no | Default rows shown on list pages. Valid preference/site values: `10`, `25`, `50`, `100`, `500`, `1000`. |
-| `DATABASE_URL` | PostgreSQL URL | required | no | Required PostgreSQL connection URL. The database must be PostgreSQL 17, UTF8, `builtin`, and `C.UTF-8`. |
+| `DATABASE_URL` | PostgreSQL URL | required | yes | Required PostgreSQL connection URL. The database must be PostgreSQL 18.x, UTF8, `builtin`, and `C.UTF-8`. |
 | `DEV_LOGIN_PREFILL` | str (`user:pass`) | `""` (off) | no | **Dev/staging only — never set in production.** When set to `username:password`, the login page prefills those credentials (one click to log in) and sends `X-Robots-Tag: noindex`. Login is not bypassed. `make dev` sets it to `admin:admin`; `make devlogin` provisions that superuser. |
 
 `cast` understands `bool` (`true/1/yes/on` → `True`), `list` (comma-separated,
@@ -313,11 +313,13 @@ ALLOWED_HOSTS=*
 ## Secrets and `__FILE`
 
 Secret managers (Docker secrets, Kubernetes) mount secrets as files. For any
-setting that opts in (currently `SECRET_KEY`), point a `*__FILE` variable at
+setting that opts in (currently `SECRET_KEY` and `DATABASE_URL`), point a
+`*__FILE` variable at
 the mounted path:
 
 ```
 SECRET_KEY__FILE=/run/secrets/timetracker_secret_key
+DATABASE_URL__FILE=/run/secrets/timetracker_database_url
 ```
 
 The file contents are read and `.strip()`-ed. The strip matters: editors and
@@ -388,7 +390,10 @@ config from `fly.staging.toml`. Note the workflow reconciles the label on every
 deploy, so a hand-set secret is removed by the next push unless the label is on.
 
 The container runs as uid 1000 — mounted data directories must be writable
-by that uid.
+by that uid. A database URL secret must also be readable by uid 1000. Docker
+Compose's `mode: 0400` does not change a file-backed secret's host ownership,
+so set the host file owner/read permission accordingly; the CI smoke test
+checks that the image user can read the mounted `DATABASE_URL__FILE`.
 
 ## Migrating from the old config
 

@@ -69,6 +69,25 @@ def test_dotenv_database_url_overrides_a_managed_cached_url(monkeypatch, tmp_pat
         config_module.reset_caches()
 
 
+def test_file_database_url_wins_over_plain_environment(monkeypatch, tmp_path):
+    from timetracker import config as config_module
+    from timetracker.database import required_database_settings
+
+    secret = tmp_path / "database_url"
+    secret.write_text("postgresql://file.example/tracker\n")
+    monkeypatch.setenv("DATABASE_URL__FILE", str(secret))
+    monkeypatch.setenv("DATABASE_URL", "postgresql://plain.example/tracker")
+    monkeypatch.delenv("TIMETRACKER_MANAGED_DATABASE_URL", raising=False)
+    monkeypatch.setenv("ENV_FILE", str(tmp_path / "missing.env"))
+    monkeypatch.setenv("INI_FILE", str(tmp_path / "missing.ini"))
+    config_module.reset_caches()
+
+    try:
+        assert required_database_settings()["HOST"] == "file.example"
+    finally:
+        config_module.reset_caches()
+
+
 def test_project_settings_use_required_postgresql_database_configuration():
     from timetracker import settings as project_settings
 

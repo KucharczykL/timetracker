@@ -174,7 +174,7 @@ def test_postgresql_connection_satisfies_collation_contract():
 
     contract = validate_postgres_collation_contract(raw_connection)
 
-    assert contract.server_version_num // 10_000 == 17
+    assert contract.server_version_num // 10_000 == 18
     assert contract.encoding == "UTF8"
     assert contract.locale_provider == "b"
     assert contract.locale == "C.UTF-8"

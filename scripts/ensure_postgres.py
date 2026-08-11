@@ -1,4 +1,4 @@
-"""Provision the ignored PostgreSQL 17 development cluster used by Make."""
+"""Provision the ignored PostgreSQL 18 development cluster used by Make."""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ from timetracker.postgres_contract import (
     PostgresContract,
 )
 
-REQUIRED_MAJOR = 17
+REQUIRED_MAJOR = 18
 TOOL_NAMES = (
     "initdb",
     "pg_ctl",
@@ -43,23 +43,23 @@ TOOL_NAMES = (
     "createdb",
     "postgres",
 )
-FALLBACK_VERSION = "17.6.0"
+FALLBACK_VERSION = "18.4.0"
 FALLBACKS = {
     ("Linux", "x86_64"): (
-        "postgresql-17.6.0-x86_64-unknown-linux-gnu.tar.gz",
-        "19dbf09f0fc33255ff7596fc3ceb7696647286dd15fdf60f3f65c583aae6ad5d",
+        "postgresql-18.4.0-x86_64-unknown-linux-gnu.tar.gz",
+        "65c06cf318b9a57525d842d658d6d18cd461d12b3a89b57d6d8ed7cccbe2db53",
     ),
     ("Darwin", "arm64"): (
-        "postgresql-17.6.0-aarch64-apple-darwin.tar.gz",
-        "4d39534c9359ce04a6b1781111579e425d95c7ae2c8abe3ddfd6808b6ad19a5b",
+        "postgresql-18.4.0-aarch64-apple-darwin.tar.gz",
+        "1b68828f524b638a24918e258b173d0f16773547a0d3b83d9ba74473b61649f2",
     ),
     ("Darwin", "x86_64"): (
-        "postgresql-17.6.0-x86_64-apple-darwin.tar.gz",
-        "3ec4c5e8887d21e3cb7e899a27a0d64811feda90b946c2571a457d00dd8ee752",
+        "postgresql-18.4.0-x86_64-apple-darwin.tar.gz",
+        "cbc38067a795d10bbddc730e61c835df0b351c36a7bd2544d388790fcf50aa4d",
     ),
     ("Windows", "AMD64"): (
-        "postgresql-17.6.0-x86_64-pc-windows-msvc.tar.gz",
-        "92d8de275fa9b5f831280fb6124401cdfe8137ff34002dfc352f2cf4126805ef",
+        "postgresql-18.4.0-x86_64-pc-windows-msvc.tar.gz",
+        "4099dcf71c74bed82736e17928d07591df0efee8f802449533b9557d99ae7988",
     ),
 }
 
@@ -133,7 +133,7 @@ def fallback_tools(cache: Path) -> Tools:
         filename, checksum = FALLBACKS[key]
     except KeyError as exc:
         raise HarnessError(
-            f"No checksum-pinned PostgreSQL 17 fallback is available for {key[0]} {key[1]}. "
+            f"No checksum-pinned PostgreSQL 18 fallback is available for {key[0]} {key[1]}. "
             "Use the Nix development shell or set DATABASE_URL."
         ) from exc
     destination = cache / "postgres-binaries" / FALLBACK_VERSION
@@ -168,7 +168,7 @@ def fallback_tools(cache: Path) -> Tools:
     tools = _tools_from_fallback_destination(destination)
     if tools is None:
         raise HarnessError(
-            "Pinned PostgreSQL archive did not contain PostgreSQL 17 tools."
+            "Pinned PostgreSQL archive did not contain PostgreSQL 18 tools."
         )
     return tools
 
@@ -386,7 +386,7 @@ def ensure(cache: Path) -> str:
     verify_contract(tools, port)
     url = f"postgresql://timetracker@127.0.0.1:{port}/timetracker"
     print(
-        f"==> PostgreSQL 17 ready: {redact_url(url)} (UTF8, builtin, C.UTF-8)",
+        f"==> PostgreSQL 18 ready: {redact_url(url)} (UTF8, builtin, C.UTF-8)",
         file=sys.stderr,
     )
     return url
