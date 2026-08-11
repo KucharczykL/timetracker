@@ -58,8 +58,7 @@ jobs:
       - name: Verify PostgreSQL backup restore
         run: |
           set -euo pipefail
-          postgres_id="$(docker ps --filter 'ancestor=postgres:18.4' --format '{{.ID}}' | head -n 1)"
-          test -n "$postgres_id"
+          postgres_id='${{ job.services.postgres.id }}'
           verification_database=timetracker_restore_verify
           dump_file=/tmp/timetracker.dump
           docker exec "$postgres_id" pg_dump -U timetracker --format=custom --no-owner --no-privileges --file="$dump_file" timetracker

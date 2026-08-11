@@ -49,7 +49,8 @@ def test_test_job_verifies_an_isolated_postgresql_backup_restore():
         step for step in steps if step.get("name") == "Verify PostgreSQL backup restore"
     )
 
-    assert "postgres:18.4" in restore["run"]
+    assert "${{ job.services.postgres.id }}" in restore["run"]
+    assert "docker ps" not in restore["run"]
     assert "pg_dump" in restore["run"]
     assert "--format=custom" in restore["run"]
     assert "--no-owner" in restore["run"]
