@@ -58,6 +58,7 @@ def test_test_job_verifies_an_isolated_postgresql_backup_restore():
     assert "timetracker_restore_verify" in restore["run"]
     assert "pg_restore" in restore["run"]
     assert "--exit-on-error" in restore["run"]
+    assert "uv run --frozen python manage.py migrate\n" in restore["run"]
     assert "manage.py migrate --check" in restore["run"]
     assert "dropdb" in restore["run"]
     assert "trap" not in restore["run"]

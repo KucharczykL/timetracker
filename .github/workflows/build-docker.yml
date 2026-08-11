@@ -57,10 +57,11 @@ jobs:
 
       - name: Verify PostgreSQL backup restore
         run: |
-          set -euxo pipefail
+          set -euo pipefail
           postgres_id='${{ job.services.postgres.id }}'
           verification_database=timetracker_restore_verify
           dump_file=/tmp/timetracker.dump
+          uv run --frozen python manage.py migrate
           docker exec "$postgres_id" pg_dump -U timetracker --format=custom --no-owner --no-privileges --file="$dump_file" timetracker
           docker exec "$postgres_id" createdb -U timetracker "$verification_database"
           docker exec "$postgres_id" pg_restore -U timetracker --exit-on-error --no-owner --no-privileges --dbname="$verification_database" "$dump_file"
