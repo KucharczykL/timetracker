@@ -31,34 +31,8 @@ example `make dev DEV_HOST=0.0.0.0 DEV_PORT=9999`.
 The container runs as uid 1000. Mounted data directories must be writable
 by that uid.
 
-## Docker
-
-```
-docker run -d --name timetracker \
-  -e SECRET_KEY=change-me \
-  -e APP_URL=http://localhost:8000 \
-  -v ./data:/home/timetracker/app/data \
-  -p 8000:8000 \
-  registry.kucharczyk.xyz/timetracker:latest
-```
-
-## Rootless Podman (quadlet)
-
-`~/.config/containers/systemd/timetracker.container`:
-
-```ini
-[Container]
-Image=registry.kucharczyk.xyz/timetracker:latest
-PublishPort=8000:8000
-Environment=SECRET_KEY=change-me
-Environment=APP_URL=http://localhost:8000
-Volume=%h/timetracker/data:/home/timetracker/app/data
-# keep-id maps the host uid onto the container user (overrides image USER)
-UserNS=keep-id:uid=1000
-
-[Install]
-WantedBy=default.target
-```
+For Docker Compose and rootless Podman Quadlet deployments with an
+operator-managed PostgreSQL 18 database, see [Deployment](docs/deployment.md).
 
 Health probes: `/health` (liveness), `/health/ready` (adds a database
 check). Both answer without auth or a Host header.
