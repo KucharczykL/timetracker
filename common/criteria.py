@@ -366,10 +366,9 @@ class StringCriterion(_Criterion):
 
     @classmethod
     def from_json(cls, data: dict | None) -> Self | None:
-        # A regex modifier's value is compiled and run per-row by SQLite's REGEXP;
-        # validate it at parse so an invalid or pathological (ReDoS) pattern raises
-        # FilterError here instead of 500-ing or hanging a worker at query time. The
-        # other modifiers (EQUALS/INCLUDES/…) never compile their value, so skip them.
+        # Validate regexes before database execution so an invalid or pathological
+        # (ReDoS) pattern raises FilterError instead of 500-ing or tying up a worker.
+        # Other modifiers (EQUALS/INCLUDES/…) never compile their value, so skip them.
         result = super().from_json(data)
         if result is not None and result.modifier in (
             Modifier.MATCHES_REGEX,

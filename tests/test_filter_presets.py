@@ -154,7 +154,7 @@ def test_semantically_invalid_filter_rejected(auth_client, capture_games_logger)
     assert "Invalid filter" in response.json()["detail"]
 
 
-def test_postgresql_invalid_regex_is_rejected_without_persisting(auth_client):
+def test_invalid_regex_is_rejected_without_persisting(auth_client):
     invalid_regex = {"name": {"modifier": "MATCHES_REGEX", "value": "(a"}}
 
     response = _save(auth_client, name="Bad regex", filter=invalid_regex)
@@ -518,8 +518,8 @@ def test_same_name_different_mode_is_separate_row(auth_client):
 
 
 def test_case_differing_names_are_distinct(auth_client):
-    # The constraint uses SQLite's default (case-sensitive) collation, so these
-    # are two presets — mirrored by the case-sensitive client-side warning.
+    # The configured collation is case-sensitive, so these are two presets —
+    # mirrored by the case-sensitive client-side warning.
     _save(auth_client, name="Backlog", filter=None)
     response = _save(auth_client, name="backlog", filter=None)
     assert response.status_code == 201
