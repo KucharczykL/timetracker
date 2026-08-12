@@ -329,6 +329,19 @@ def test_strip_generated_fields_ignores_reverse_relation_descriptors(cutover):
     assert cutover.strip_generated_fields(record) == record
 
 
+def test_generated_session_duration_allows_subminute_difference(cutover):
+    assert cutover.generated_value_matches(
+        "games.Session.duration_total",
+        {"microseconds": 60_000_000},
+        {"microseconds": 60_999_999},
+    )
+    assert not cutover.generated_value_matches(
+        "games.Session.duration_total",
+        {"microseconds": 60_000_000},
+        {"microseconds": 120_000_000},
+    )
+
+
 def test_purchase_count_validation_rejects_stored_link_drift(cutover, monkeypatch):
     monkeypatch.setattr(
         cutover,

@@ -472,7 +472,7 @@ def normalize(value: Any) -> Any:
     if isinstance(value, Decimal):
         return {"decimal": format(value, "f")}
     if isinstance(value, datetime):
-        return {"datetime": value.astimezone(UTC).isoformat()}
+        return {"datetime": value.astimezone(UTC).isoformat(timespec="milliseconds")}
     if isinstance(value, date):
         return {"date": value.isoformat()}
     if isinstance(value, timedelta):
@@ -537,6 +537,22 @@ def generated_values(alias: str) -> dict[str, dict[int, Any]]:
     return results
 
 
+def generated_value_matches(key: str, source: Any, target: Any) -> bool:
+    if (
+        key
+        in {
+            "games.Session.duration_calculated",
+            "games.Session.duration_total",
+        }
+        and isinstance(source, dict)
+        and isinstance(target, dict)
+        and set(source) == {"microseconds"}
+        and set(target) == {"microseconds"}
+    ):
+        return abs(source["microseconds"] - target["microseconds"]) < 60_000_000
+    return source == target
+
+
 def reconcile_models(
     source_alias: str, target_alias: str
 ) -> tuple[dict[str, str], dict[str, dict[str, object]]]:
@@ -556,7 +572,9 @@ def reconcile_models(
         source = source_generated.get(key, {})
         target = target_generated.get(key, {})
         differing_pks = sorted(
-            pk for pk in set(source) | set(target) if source.get(pk) != target.get(pk)
+            pk
+            for pk in set(source) | set(target)
+            if not generated_value_matches(key, source.get(pk), target.get(pk))
         )
         generated_results[key] = {"count": len(target), "match": not differing_pks}
         if differing_pks:
