@@ -342,6 +342,23 @@ def test_generated_session_duration_allows_subminute_difference(cutover):
     )
 
 
+def test_aggregate_comparison_tolerates_backend_arithmetic(cutover):
+    source = {
+        "count": 10,
+        "duration": {"microseconds": 10_000_000},
+        "price": {"float": float.hex(12345.6789)},
+    }
+    target = {
+        "count": 10,
+        "duration": {"microseconds": 10_500_000},
+        "price": {"float": float.hex(12345.678900000002)},
+    }
+
+    assert cutover.aggregate_evidence_matches(source, target)
+    target["count"] = 11
+    assert not cutover.aggregate_evidence_matches(source, target)
+
+
 def test_purchase_count_validation_rejects_stored_link_drift(cutover, monkeypatch):
     monkeypatch.setattr(
         cutover,

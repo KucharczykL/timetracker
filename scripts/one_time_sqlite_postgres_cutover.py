@@ -4,6 +4,7 @@ import argparse
 import dataclasses
 import hashlib
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -620,6 +621,33 @@ def aggregate_evidence(alias: str) -> dict[str, object]:
     )
 
 
+def aggregate_evidence_matches(source: Any, target: Any) -> bool:
+    if (
+        isinstance(source, dict)
+        and isinstance(target, dict)
+        and set(source) == {"microseconds"}
+        and set(target) == {"microseconds"}
+    ):
+        return abs(source["microseconds"] - target["microseconds"]) < 60_000_000
+    if (
+        isinstance(source, dict)
+        and isinstance(target, dict)
+        and set(source) == {"float"}
+        and set(target) == {"float"}
+    ):
+        return math.isclose(
+            float.fromhex(source["float"]),
+            float.fromhex(target["float"]),
+            rel_tol=1e-12,
+            abs_tol=1e-9,
+        )
+    if isinstance(source, dict) and isinstance(target, dict):
+        return set(source) == set(target) and all(
+            aggregate_evidence_matches(source[key], target[key]) for key in source
+        )
+    return source == target
+
+
 def sequence_evidence(
     connection: BaseDatabaseWrapper, models: tuple[type[Model], ...]
 ) -> dict[str, object]:
@@ -798,7 +826,7 @@ def run_cutover(
         model_digests, generated_results = reconcile_models(SOURCE_ALIAS, "default")
         source_aggregates = aggregate_evidence(SOURCE_ALIAS)
         target_aggregates = aggregate_evidence("default")
-        if source_aggregates != target_aggregates:
+        if not aggregate_evidence_matches(source_aggregates, target_aggregates):
             raise CutoverError("source and target aggregate evidence differ")
         sequence_results = sequence_evidence(target, models)
 
