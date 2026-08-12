@@ -446,3 +446,71 @@ def test_sequence_reset_includes_purchase_through_table(cutover, monkeypatch):
     cutover.reset_transfer_sequences(connection, cutover.transfer_models())
 
     assert "games_purchase_games" in captured["tables"]
+
+
+def test_report_contains_evidence_not_private_values(cutover):
+    report = cutover.build_report(
+        source_archive_sha256="a" * 64,
+        source_members={"db.sqlite3": "b" * 64},
+        git_commit="abc123",
+        script_blob="def456",
+        source_counts={"games_game": 856},
+        discarded_counts={"django_session": 166},
+        model_digests={"games.game": "c" * 64},
+        generated_results={
+            "games.Session.duration_total": {"count": 2767, "match": True}
+        },
+        aggregate_results={"session_count": 2767},
+        sequence_results={"games_game": {"max_pk": 856, "next_pk": 857}},
+        smoke_results={"games:list_games": 200},
+        schedule_result={
+            "name": "Update converted prices",
+            "func": "games.tasks.convert_prices",
+        },
+    )
+    encoded = json.dumps(report)
+    assert "notes" not in encoded
+    assert "password" not in encoded
+    assert report["git"]["script_blob"] == "def456"
+
+
+def test_normalize_orders_dicts_and_tags_database_values(cutover):
+    from datetime import UTC, date, datetime, timedelta
+    from decimal import Decimal
+
+    normalized = cutover.normalize(
+        {
+            "z": None,
+            "a": [
+                1.5,
+                Decimal("2.50"),
+                datetime(2026, 8, 12, 10, tzinfo=UTC),
+                date(2026, 8, 12),
+                timedelta(seconds=3),
+                True,
+            ],
+        }
+    )
+
+    assert list(normalized) == ["a", "z"]
+    assert normalized["a"][0] == {"float": float.hex(1.5)}
+    assert normalized["a"][1] == {"decimal": "2.50"}
+    assert normalized["a"][4] == {"microseconds": 3_000_000}
+
+
+@pytest.mark.django_db
+def test_smoke_checks_cover_migrated_read_surfaces(cutover, django_user_model):
+    django_user_model.objects.create_user(username="cutover-smoke", password="unused")
+    results = cutover.run_smoke_checks()
+    assert set(results) == {
+        "games:index",
+        "games:list_games",
+        "games:list_sessions",
+        "games:list_purchases",
+        "games:list_playevents",
+        "games:list_statuschanges",
+        "games:settings",
+        "games:stats_alltime",
+        "games:game_filter",
+    }
+    assert set(results.values()) == {200}

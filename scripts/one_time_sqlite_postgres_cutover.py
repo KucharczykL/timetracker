@@ -8,6 +8,8 @@ import subprocess
 import zipfile
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
@@ -20,6 +22,8 @@ from django.db import connections, transaction
 from django.db.migrations.loader import MigrationLoader
 from django.db.models import Count, Model
 from django.db.models.signals import m2m_changed
+from django.test import Client
+from django.urls import reverse
 
 if TYPE_CHECKING:
     from django.db.backends.base.base import BaseDatabaseWrapper
@@ -454,6 +458,264 @@ def recreate_schedule(contract: SourceContract) -> dict[str, str]:
             f"scheduled task does not exactly match the source contract: {schedules!r}"
         )
     return schedules[0]
+
+
+def normalize(value: Any) -> Any:
+    if value is None or isinstance(value, (bool, int, str)):
+        return value
+    if isinstance(value, float):
+        return {"float": value.hex()}
+    if isinstance(value, Decimal):
+        return {"decimal": format(value, "f")}
+    if isinstance(value, datetime):
+        return {"datetime": value.astimezone(UTC).isoformat()}
+    if isinstance(value, date):
+        return {"date": value.isoformat()}
+    if isinstance(value, timedelta):
+        return {"microseconds": value // timedelta(microseconds=1)}
+    if isinstance(value, dict):
+        return {key: normalize(value[key]) for key in sorted(value)}
+    if isinstance(value, (list, tuple)):
+        return [normalize(item) for item in value]
+    raise TypeError(f"Unsupported cutover value type: {type(value).__name__}")
+
+
+def _canonical_model_records(
+    model: type[Model], alias: str, *, exclude_generated: bool
+) -> list[dict[str, Any]]:
+    fields = sorted(
+        (
+            field
+            for field in model._meta.concrete_fields
+            if not exclude_generated or not field.generated
+        ),
+        key=lambda field: field.name,
+    )
+    m2m_fields = sorted(model._meta.local_many_to_many, key=lambda field: field.name)
+    records: list[dict[str, Any]] = []
+    for instance in model._base_manager.using(alias).order_by(model._meta.pk.attname):
+        values = {
+            field.name: normalize(getattr(instance, field.attname)) for field in fields
+        }
+        for field in m2m_fields:
+            values[field.name] = sorted(
+                getattr(instance, field.name)
+                .using(alias)
+                .values_list(field.remote_field.model._meta.pk.attname, flat=True)
+            )
+        records.append({"pk": normalize(instance.pk), "fields": values})
+    return records
+
+
+def model_digest(
+    model: type[Model], alias: str, *, exclude_generated: bool = True
+) -> str:
+    return canonical_sha256(
+        _canonical_model_records(model, alias, exclude_generated=exclude_generated)
+    )
+
+
+def generated_values(alias: str) -> dict[str, dict[int, Any]]:
+    results: dict[str, dict[int, Any]] = {}
+    for model in transfer_models():
+        generated = sorted(
+            (field for field in model._meta.concrete_fields if field.generated),
+            key=lambda field: field.name,
+        )
+        for field in generated:
+            key = f"{model._meta.label}.{field.name}"
+            results[key] = {
+                pk: normalize(value)
+                for pk, value in model._base_manager.using(alias)
+                .order_by(model._meta.pk.attname)
+                .values_list(model._meta.pk.attname, field.attname)
+            }
+    return results
+
+
+def reconcile_models(
+    source_alias: str, target_alias: str
+) -> tuple[dict[str, str], dict[str, dict[str, object]]]:
+    mismatches: list[str] = []
+    digests: dict[str, str] = {}
+    for model in transfer_models():
+        label = model._meta.label_lower
+        source_digest = model_digest(model, source_alias)
+        target_digest = model_digest(model, target_alias)
+        digests[label] = target_digest
+        if source_digest != target_digest:
+            mismatches.append(f"{label}: nongenerated records differ")
+    source_generated = generated_values(source_alias)
+    target_generated = generated_values(target_alias)
+    generated_results: dict[str, dict[str, object]] = {}
+    for key in sorted(set(source_generated) | set(target_generated)):
+        source = source_generated.get(key, {})
+        target = target_generated.get(key, {})
+        differing_pks = sorted(
+            pk for pk in set(source) | set(target) if source.get(pk) != target.get(pk)
+        )
+        generated_results[key] = {"count": len(target), "match": not differing_pks}
+        if differing_pks:
+            mismatches.append(f"{key}: differing PKs {differing_pks}")
+    if mismatches:
+        raise CutoverError("reconciliation failed:\n- " + "\n- ".join(mismatches))
+    return digests, generated_results
+
+
+def aggregate_evidence(alias: str) -> dict[str, object]:
+    from django.db.models import Sum
+
+    game = apps.get_model("games.game")
+    purchase = apps.get_model("games.purchase")
+    session = apps.get_model("games.session")
+    status_change = apps.get_model("games.gamestatuschange")
+    user = apps.get_model("auth.user")
+    filter_preset = apps.get_model("games.filterpreset")
+    site_setting = apps.get_model("games.sitesetting")
+    duration_sums = session._base_manager.using(alias).aggregate(
+        calculated=Sum("duration_calculated"),
+        manual=Sum("duration_manual"),
+        total=Sum("duration_total"),
+    )
+    purchase_sums = purchase._base_manager.using(alias).aggregate(
+        price=Sum("price"), converted_price=Sum("converted_price")
+    )
+    return normalize(
+        {
+            "session_count": session._base_manager.using(alias).count(),
+            "session_duration_sums": duration_sums,
+            "game_playtime_digest": model_digest(game, alias),
+            "purchase_count": purchase._base_manager.using(alias).count(),
+            "purchase_sums": purchase_sums,
+            "purchase_link_count": purchase.games.through._base_manager.using(
+                alias
+            ).count(),
+            "status_history_count": status_change._base_manager.using(alias).count(),
+            "user_count": user._base_manager.using(alias).count(),
+            "filter_preset_count": filter_preset._base_manager.using(alias).count(),
+            "site_setting_count": site_setting._base_manager.using(alias).count(),
+        }
+    )
+
+
+def sequence_evidence(
+    connection: BaseDatabaseWrapper, models: tuple[type[Model], ...]
+) -> dict[str, object]:
+    purchase = apps.get_model("games.purchase")
+    results: dict[str, object] = {}
+    for model in [*models, purchase.games.through]:
+        table = model._meta.db_table
+        pk_column = model._meta.pk.column
+        quoted_table = connection.ops.quote_name(table)
+        quoted_pk = connection.ops.quote_name(pk_column)
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT pg_get_serial_sequence(%s, %s)", [table, pk_column])
+            sequence_row = cursor.fetchone()
+            if sequence_row is None or sequence_row[0] is None:
+                continue
+            sequence = sequence_row[0]
+            cursor.execute(f"SELECT MAX({quoted_pk}) FROM {quoted_table}")
+            maximum = cursor.fetchone()[0] or 0
+            cursor.execute(
+                f"SELECT last_value, is_called FROM {connection.ops.quote_name(sequence)}"
+            )
+            last_value, is_called = cursor.fetchone()
+        next_pk = last_value + 1 if is_called else last_value
+        if next_pk <= maximum:
+            raise CutoverError(
+                f"sequence for {table} is behind data: max={maximum}, next={next_pk}"
+            )
+        results[table] = {"max_pk": maximum, "next_pk": next_pk}
+    return results
+
+
+def run_smoke_checks() -> dict[str, int]:
+    user_model = apps.get_model("auth.user")
+    user = user_model._base_manager.order_by(user_model._meta.pk.attname).first()
+    if user is None:
+        raise CutoverError("cannot run smoke checks without a transferred user")
+    paths = {
+        "games:index": reverse("games:index"),
+        "games:list_games": reverse("games:list_games"),
+        "games:list_sessions": reverse("games:list_sessions"),
+        "games:list_purchases": reverse("games:list_purchases"),
+        "games:list_playevents": reverse("games:list_playevents"),
+        "games:list_statuschanges": reverse("games:list_statuschanges"),
+        "games:settings": reverse("games:settings"),
+        "games:stats_alltime": reverse("games:stats_alltime"),
+        "games:game_filter": reverse("games:filter_builder", args=["game"]),
+    }
+    client = Client(HTTP_HOST="localhost")
+    client.force_login(user)
+    try:
+        results = {
+            name: client.get(path, follow=True).status_code
+            for name, path in paths.items()
+        }
+    finally:
+        client.logout()
+    failures = {name: status for name, status in results.items() if status != 200}
+    if failures:
+        raise CutoverError(f"smoke checks failed: {failures}")
+    return results
+
+
+def verify_git_identity() -> tuple[str, str]:
+    repository = Path(__file__).resolve().parents[1]
+    script_relative = "scripts/one_time_sqlite_postgres_cutover.py"
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    expected_blob = subprocess.run(
+        ["git", "rev-parse", f"HEAD:{script_relative}"],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    actual_blob = subprocess.run(
+        ["git", "hash-object", script_relative],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    if actual_blob != expected_blob:
+        raise CutoverError("cutover script differs from the committed Git blob")
+    return commit, actual_blob
+
+
+def build_report(**evidence: Any) -> dict[str, object]:
+    return {
+        "source": {
+            "archive_sha256": evidence["source_archive_sha256"],
+            "members": evidence["source_members"],
+            "counts": evidence["source_counts"],
+            "discarded_counts": evidence["discarded_counts"],
+        },
+        "git": {
+            "commit": evidence["git_commit"],
+            "script_blob": evidence["script_blob"],
+        },
+        "model_digests": evidence["model_digests"],
+        "generated": evidence["generated_results"],
+        "aggregates": evidence["aggregate_results"],
+        "sequences": evidence["sequence_results"],
+        "smoke": evidence["smoke_results"],
+        "schedule": evidence["schedule_result"],
+    }
+
+
+def write_report(report: dict[str, object], path: Path) -> None:
+    require_git_ignored_workspace(path.parent)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
 
 
 def validate_source(
