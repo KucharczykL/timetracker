@@ -132,13 +132,23 @@ duration_total = GeneratedField(
 )
 ```
 
-For `PlayEvent.days_to_finish`, replace only the `default` expression:
+For `PlayEvent.days_to_finish`, use a typed built-in `Func` so Django emits
+native date subtraction instead of resolving `DateField - DateField` to an
+interval:
 
 ```python
-default=ExpressionWrapper(
-    F("ended") - F("started"),
+Case(
+    When(ended=F("started"), then=Value(1)),
+    default=Func(
+        F("ended"),
+        F("started"),
+        function="",
+        template="(%(expressions)s)",
+        arg_joiner=" - ",
+        output_field=models.IntegerField(),
+    ),
     output_field=models.IntegerField(),
-),
+)
 ```
 
 Also rewrite the `Game.Meta` comment so it states the current invariant without SQLite history:
@@ -172,14 +182,16 @@ models.ExpressionWrapper(
 )
 ```
 
-4. Replace `DatabaseDateDifference(...)` with:
+4. Replace `DatabaseDateDifference(...)` with Django's serializer form:
 
 ```python
-models.ExpressionWrapper(
-    django.db.models.expressions.CombinedExpression(
-        models.F("ended"), "-", models.F("started")
-    ),
+models.Func(
+    models.F("ended"),
+    models.F("started"),
+    arg_joiner=" - ",
+    function="",
     output_field=models.IntegerField(),
+    template="(%(expressions)s)",
 )
 ```
 
@@ -391,9 +403,7 @@ for configured_database in settings.DATABASES.values():
     test_name = database.setdefault("TEST", {}).get("NAME")
     if not test_name:
         test_name = f"test_{database['NAME']}"
-    database["TEST"]["NAME"] = xdist_database_name(
-        test_name, testrun_uid, worker_id
-    )
+    database["TEST"]["NAME"] = xdist_database_name(test_name, testrun_uid, worker_id)
 ```
 
 There is no SQLite skip and no `:memory:` branch.
