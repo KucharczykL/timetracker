@@ -549,17 +549,25 @@ def test_normalize_orders_dicts_and_tags_database_values(cutover):
     assert normalized["a"][4] == {"microseconds": 3_000_000}
 
 
-def test_git_identity_rejects_any_tracked_change(cutover, monkeypatch, tmp_path):
+@pytest.mark.parametrize("dirty_command", ["diff", "status"])
+def test_git_identity_rejects_any_checkout_change(
+    cutover, monkeypatch, tmp_path, dirty_command
+):
     monkeypatch.setattr(cutover, "__file__", str(tmp_path / "scripts" / "cutover.py"))
 
     def run(command, **kwargs):
         if command[:2] == ["git", "diff"]:
-            return SimpleNamespace(returncode=1)
+            return SimpleNamespace(returncode=int(dirty_command == "diff"))
+        if command[:2] == ["git", "status"]:
+            return SimpleNamespace(stdout="?? games/migrations/9999_surprise.py\n")
         raise AssertionError(command)
 
     monkeypatch.setattr(cutover.subprocess, "run", run)
 
-    with pytest.raises(cutover.CutoverError, match="tracked checkout differs"):
+    expected = (
+        "tracked checkout differs" if dirty_command == "diff" else "untracked files"
+    )
+    with pytest.raises(cutover.CutoverError, match=expected):
         cutover.verify_git_identity()
 
 

@@ -742,6 +742,15 @@ def verify_git_identity() -> tuple[str, str, str]:
         result = subprocess.run(command, cwd=repository, check=False)
         if result.returncode != 0:
             raise CutoverError("tracked checkout differs from the recorded Git commit")
+    untracked = subprocess.run(
+        ["git", "status", "--porcelain=v1", "--untracked-files=all", "--ignored=no"],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    if untracked:
+        raise CutoverError("checkout contains untracked files: " + untracked)
     commit = subprocess.run(
         ["git", "rev-parse", "HEAD"],
         cwd=repository,
