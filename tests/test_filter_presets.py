@@ -526,6 +526,26 @@ def test_case_differing_names_are_distinct(auth_client):
     assert FilterPreset.objects.filter(mode="games").count() == 2
 
 
+def test_json_fields_round_trip(user):
+    find_filter = {"sort": "-year"}
+    object_filter = {"year": {"modifier": "EQUALS", "value": 2026}}
+    ui_options = {"per_page": 50}
+    preset = FilterPreset.objects.create(
+        user=user,
+        name="JSON fields",
+        mode="games",
+        find_filter=find_filter,
+        object_filter=object_filter,
+        ui_options=ui_options,
+    )
+
+    preset.refresh_from_db()
+
+    assert preset.find_filter == find_filter
+    assert preset.object_filter == object_filter
+    assert preset.ui_options == ui_options
+
+
 def test_unique_constraint_enforced_at_db(user):
     FilterPreset.objects.create(user=user, name="Dup", mode="games")
     with pytest.raises(IntegrityError), transaction.atomic():
