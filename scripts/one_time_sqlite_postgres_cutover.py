@@ -12,8 +12,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
+from django.apps import apps
+from django.core import serializers
 from django.db import connections
 from django.db.migrations.loader import MigrationLoader
+from django.db.models import Count, Model
 
 if TYPE_CHECKING:
     from django.db.backends.base.base import BaseDatabaseWrapper
@@ -80,6 +83,27 @@ DURABLE_SNAPSHOT_MEMBERS = {
     "db.sqlite3-wal",
     "db.sqlite3-journal",
 }
+TRANSFER_MODEL_LABELS = (
+    "auth.user",
+    "games.platform",
+    "games.device",
+    "games.game",
+    "games.exchangerate",
+    "games.gamestatuschange",
+    "games.playevent",
+    "games.purchase",
+    "games.session",
+    "games.filterpreset",
+    "games.sitesetting",
+    "games.userpreferences",
+)
+
+
+@dataclasses.dataclass(frozen=True)
+class FixtureEvidence:
+    path: Path
+    sha256: str
+    model_counts: dict[str, int]
 
 
 def canonical_sha256(value: Any) -> str:
@@ -236,6 +260,85 @@ def source_table_counts(
                 raise CutoverError(f"could not count source table: {table}")
             counts[table] = int(row[0])
     return counts
+
+
+def transfer_models() -> tuple[type[Model], ...]:
+    models: list[type[Model]] = []
+    for label in TRANSFER_MODEL_LABELS:
+        model = apps.get_model(label)
+        if model is None:
+            raise CutoverError(f"unknown transfer model: {label}")
+        models.append(model)
+    return tuple(models)
+
+
+def validate_required_empty_tables(
+    connection: BaseDatabaseWrapper, contract: SourceContract
+) -> None:
+    counts = source_table_counts(connection, set(contract.required_empty_tables))
+    nonempty = {table: count for table, count in counts.items() if count}
+    if nonempty:
+        details = ", ".join(
+            f"{table}={count}" for table, count in sorted(nonempty.items())
+        )
+        raise CutoverError(f"required-empty source tables contain rows: {details}")
+
+
+def purchase_count_mismatches(alias: str) -> list[tuple[int, int, int]]:
+    purchase = apps.get_model("games.purchase")
+    return [
+        (pk, stored, links)
+        for pk, stored, links in purchase._base_manager.using(alias)
+        .annotate(link_count=Count("games"))
+        .values_list("pk", "num_purchases", "link_count")
+        if stored != links
+    ]
+
+
+def validate_purchase_link_counts(alias: str) -> None:
+    mismatches = purchase_count_mismatches(alias)
+    if mismatches:
+        details = ", ".join(
+            f"Purchase {pk}: stored={stored}, links={links}"
+            for pk, stored, links in mismatches
+        )
+        raise CutoverError(f"purchase link-count mismatch: {details}")
+
+
+def strip_generated_fields(record: dict[str, Any]) -> dict[str, Any]:
+    model = apps.get_model(record["model"])
+    if model is None:
+        raise CutoverError(f"unknown fixture model: {record['model']}")
+    generated_names = {
+        field.name for field in model._meta.concrete_fields if field.generated
+    }
+    fields = dict(record["fields"])
+    for name in generated_names:
+        fields.pop(name, None)
+    return {**record, "fields": fields}
+
+
+def write_transfer_fixture(alias: str, path: Path) -> FixtureEvidence:
+    records: list[dict[str, Any]] = []
+    model_counts: dict[str, int] = {}
+    for model in transfer_models():
+        label = model._meta.label_lower
+        queryset = model._base_manager.using(alias).order_by(model._meta.pk.attname)
+        serialized = serializers.serialize("json", queryset)
+        model_records = [
+            strip_generated_fields(record) for record in json.loads(serialized)
+        ]
+        records.extend(model_records)
+        model_counts[label] = len(model_records)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(records, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    return FixtureEvidence(
+        path=path,
+        sha256=sha256_file(path),
+        model_counts=model_counts,
+    )
 
 
 def validate_source(

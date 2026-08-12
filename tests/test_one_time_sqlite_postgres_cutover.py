@@ -272,3 +272,89 @@ def test_open_source_rejects_durable_file_changes(cutover, monkeypatch, tmp_path
     ):
         assert prepared.snapshot.wal
         prepared.snapshot.wal.write_bytes(b"changed durable state")
+
+
+def test_transfer_models_match_the_approved_table_disposition(cutover):
+    contract = cutover.load_source_contract(CONTRACT)
+    assert {model._meta.db_table for model in cutover.transfer_models()} == {
+        table
+        for table, disposition in contract.table_dispositions.items()
+        if disposition == "transfer" and table != "games_purchase_games"
+    }
+
+
+def test_transfer_models_exclude_regenerated_and_discarded_tables(cutover):
+    denied = {
+        "auth_permission",
+        "django_content_type",
+        "django_session",
+        "django_admin_log",
+        "django_q_task",
+        "django_q_ormq",
+        "django_q_schedule",
+    }
+    assert denied.isdisjoint(
+        model._meta.db_table for model in cutover.transfer_models()
+    )
+
+
+def test_strip_generated_fields_removes_only_generated_values(cutover):
+    record = {
+        "model": "games.session",
+        "pk": 7,
+        "fields": {
+            "timestamp_start": "2026-01-01T10:00:00Z",
+            "duration_manual": "01:00:00",
+            "duration_calculated": "02:00:00",
+            "duration_total": "03:00:00",
+        },
+    }
+
+    assert cutover.strip_generated_fields(record) == {
+        "model": "games.session",
+        "pk": 7,
+        "fields": {
+            "timestamp_start": "2026-01-01T10:00:00Z",
+            "duration_manual": "01:00:00",
+        },
+    }
+
+
+def test_strip_generated_fields_ignores_reverse_relation_descriptors(cutover):
+    record = {"model": "games.game", "pk": 1, "fields": {"name": "Example"}}
+
+    assert cutover.strip_generated_fields(record) == record
+
+
+def test_purchase_count_validation_rejects_stored_link_drift(cutover, monkeypatch):
+    monkeypatch.setattr(
+        cutover,
+        "purchase_count_mismatches",
+        lambda alias: [(42, 3, 2)],
+    )
+    with pytest.raises(cutover.CutoverError, match=r"Purchase 42.*stored=3.*links=2"):
+        cutover.validate_purchase_link_counts("sqlite_source")
+
+
+def test_required_empty_validation_accumulates_all_nonempty_tables(
+    cutover, monkeypatch
+):
+    contract = cutover.SourceContract(
+        migrations=(),
+        table_columns={name: ("id",) for name in ("a", "b", "c", "d")},
+        table_dispositions={name: "require_empty" for name in ("a", "b", "c", "d")},
+        required_empty_tables=("a", "b", "c", "d"),
+        schedule={},
+    )
+    monkeypatch.setattr(
+        cutover,
+        "source_table_counts",
+        lambda connection, tables: {
+            name: index for index, name in enumerate(sorted(tables), 1)
+        },
+    )
+
+    with pytest.raises(cutover.CutoverError) as exc_info:
+        cutover.validate_required_empty_tables(SimpleNamespace(), contract)
+
+    assert all(name in str(exc_info.value) for name in contract.required_empty_tables)
