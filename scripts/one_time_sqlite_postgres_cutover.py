@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import argparse
 import dataclasses
 import hashlib
 import json
 import shutil
 import subprocess
+import sys
 import zipfile
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -716,6 +718,118 @@ def write_report(report: dict[str, object], path: Path) -> None:
     path.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
+
+
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="One-time offline SQLite to PostgreSQL production cutover"
+    )
+    parser.add_argument("--source-archive", type=Path, required=True)
+    parser.add_argument("--workspace", type=Path, required=True)
+    parser.add_argument("--report", type=Path, required=True)
+    return parser.parse_args(argv)
+
+
+def _stage(message: str) -> None:
+    print(f"==> {message}", flush=True)
+
+
+def run_cutover(
+    source_archive: Path, workspace: Path, report_path: Path
+) -> dict[str, object]:
+    _stage("Verify committed script identity and private paths")
+    git_identity = verify_git_identity()
+    require_git_ignored_workspace(workspace)
+    require_git_ignored_workspace(report_path.parent)
+    contract = load_source_contract(
+        Path(__file__).with_name("sqlite_postgres_source_contract.json")
+    )
+
+    _stage("Extract and validate the read-only SQLite source")
+    with open_validated_source(source_archive, workspace, contract) as prepared:
+        target = connections["default"]
+        require_initially_empty_target(target)
+        git_commit, script_blob = git_identity
+
+        _stage("Validate source dispositions and Purchase links")
+        validate_required_empty_tables(prepared.connection, contract)
+        validate_purchase_link_counts(SOURCE_ALIAS)
+
+        _stage("Write the bounded private transfer fixture")
+        fixture = write_transfer_fixture(
+            SOURCE_ALIAS, workspace / "transfer-fixture.json"
+        )
+
+        _stage("Migrate the empty PostgreSQL target")
+        migrate_target()
+
+        _stage("Clear only seeded transfer targets")
+        models = transfer_models()
+        clear_transfer_targets(target, models)
+
+        _stage("Load transferred records without mutating Purchase fields")
+        load_transfer_fixture(fixture.path)
+
+        _stage("Reset sequences and recreate the durable schedule")
+        reset_transfer_sequences(target, models)
+        schedule_result = recreate_schedule(contract)
+
+        _stage("Reconcile records, generated values, aggregates, and sequences")
+        model_digests, generated_results = reconcile_models(SOURCE_ALIAS, "default")
+        source_aggregates = aggregate_evidence(SOURCE_ALIAS)
+        target_aggregates = aggregate_evidence("default")
+        if source_aggregates != target_aggregates:
+            raise CutoverError("source and target aggregate evidence differ")
+        sequence_results = sequence_evidence(target, models)
+
+        _stage("Run authenticated read-surface smoke checks")
+        smoke_results = run_smoke_checks()
+
+        discarded_counts = {
+            table: prepared.evidence.table_counts[table]
+            for table, disposition in contract.table_dispositions.items()
+            if disposition in {"discard", "recreate", "regenerate"}
+        }
+        report = build_report(
+            source_archive_sha256=prepared.snapshot.archive_sha256,
+            source_members=prepared.snapshot.durable_member_sha256,
+            git_commit=git_commit,
+            script_blob=script_blob,
+            source_counts=prepared.evidence.table_counts,
+            discarded_counts=discarded_counts,
+            model_digests=model_digests,
+            generated_results=generated_results,
+            aggregate_results=target_aggregates,
+            sequence_results=sequence_results,
+            smoke_results=smoke_results,
+            schedule_result=schedule_result,
+        )
+        _stage("Write the private evidence report")
+        write_report(report, report_path)
+
+    print(
+        "PASS "
+        f"report={report_path} "
+        f"source={prepared.snapshot.archive_sha256} "
+        f"commit={git_commit} "
+        f"script={script_blob}",
+        flush=True,
+    )
+    return report
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = parse_args(argv)
+    try:
+        run_cutover(args.source_archive, args.workspace, args.report)
+    except CutoverError as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
 
 
 def validate_source(

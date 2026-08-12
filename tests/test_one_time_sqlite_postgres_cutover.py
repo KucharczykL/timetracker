@@ -3,10 +3,12 @@ import json
 import sqlite3
 import sys
 import zipfile
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from django.core.serializers.base import DeserializationError
 
 SCRIPT = Path(__file__).parents[1] / "scripts" / "one_time_sqlite_postgres_cutover.py"
 CONTRACT = (
@@ -417,7 +419,7 @@ def test_fixture_load_reconnects_receiver_after_failure(cutover, tmp_path):
     fixture = tmp_path / "bad.json"
     fixture.write_text("not json", encoding="utf-8")
 
-    with pytest.raises(json.JSONDecodeError):
+    with pytest.raises(DeserializationError):
         cutover.load_transfer_fixture(fixture)
 
     assert m2m_changed.disconnect(update_num_purchases, sender=Purchase.games.through)
@@ -514,3 +516,46 @@ def test_smoke_checks_cover_migrated_read_surfaces(cutover, django_user_model):
         "games:game_filter",
     }
     assert set(results.values()) == {200}
+
+
+def test_cli_requires_explicit_archive_workspace_and_report(cutover):
+    with pytest.raises(SystemExit):
+        cutover.parse_args([])
+
+    args = cutover.parse_args(
+        [
+            "--source-archive",
+            "snapshot.zip",
+            "--workspace",
+            ".cache/sqlite-postgres-cutover/rehearsal-1",
+            "--report",
+            ".cache/sqlite-postgres-cutover/rehearsal-1/report.json",
+        ]
+    )
+    assert args.source_archive == Path("snapshot.zip")
+
+
+def test_orchestration_checks_empty_target_before_migrate(
+    cutover, monkeypatch, tmp_path
+):
+    calls = []
+    monkeypatch.setattr(cutover, "verify_git_identity", lambda: calls.append("git"))
+    monkeypatch.setattr(cutover, "require_git_ignored_workspace", lambda *args: None)
+
+    @contextmanager
+    def source(*args):
+        calls.append("source")
+        yield SimpleNamespace(connection=object())
+
+    monkeypatch.setattr(cutover, "open_validated_source", source)
+    monkeypatch.setattr(
+        cutover,
+        "require_initially_empty_target",
+        lambda *args: (_ for _ in ()).throw(cutover.CutoverError("nonempty")),
+    )
+    monkeypatch.setattr(cutover, "migrate_target", lambda: calls.append("migrate"))
+
+    with pytest.raises(cutover.CutoverError, match="nonempty"):
+        cutover.run_cutover(Path("snapshot.zip"), tmp_path, tmp_path / "report.json")
+
+    assert calls == ["git", "source"]
