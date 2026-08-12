@@ -828,10 +828,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 0
 
 
-if __name__ == "__main__":
-    raise SystemExit(main())
-
-
 def validate_source(
     connection: BaseDatabaseWrapper, contract: SourceContract
 ) -> SourceEvidence:
@@ -959,3 +955,7 @@ def validate_source_structure(
 
     if mismatches:
         raise CutoverError("source structure mismatch:\n- " + "\n- ".join(mismatches))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

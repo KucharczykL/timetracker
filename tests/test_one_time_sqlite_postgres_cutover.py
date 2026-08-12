@@ -535,6 +535,12 @@ def test_cli_requires_explicit_archive_workspace_and_report(cutover):
     assert args.source_archive == Path("snapshot.zip")
 
 
+def test_script_entrypoint_runs_after_all_function_definitions():
+    source = SCRIPT.read_text(encoding="utf-8")
+
+    assert source.rfind('if __name__ == "__main__":') > source.rfind("\ndef ")
+
+
 def test_orchestration_checks_empty_target_before_migrate(
     cutover, monkeypatch, tmp_path
 ):
