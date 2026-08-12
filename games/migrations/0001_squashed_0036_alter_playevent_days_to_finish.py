@@ -8,50 +8,9 @@ import django.db.models.functions.comparison
 from django.conf import settings
 from django.db import migrations, models
 
-import games.expressions
-
 
 class Migration(migrations.Migration):
     initial = True
-
-    replaces = [
-        ("games", "0001_initial"),
-        ("games", "0002_purchase_price_per_game"),
-        ("games", "0003_purchase_updated_at"),
-        ("games", "0004_purchase_num_purchases"),
-        ("games", "0005_game_mastered_game_status"),
-        ("games", "0006_alter_game_sort_name_alter_game_wikidata_and_more"),
-        ("games", "0007_game_updated_at"),
-        ("games", "0008_game_original_year_released_gamestatuschange_and_more"),
-        ("games", "0009_remove_purchase_date_dropped_and_more"),
-        ("games", "0010_remove_purchase_price_per_game"),
-        ("games", "0011_purchase_price_per_game"),
-        ("games", "0012_alter_session_duration_calculated"),
-        ("games", "0013_game_playtime"),
-        ("games", "0014_session_duration_total"),
-        ("games", "0015_alter_purchase_date_purchased_and_more"),
-        ("games", "0016_add_needs_price_update"),
-        ("games", "0017_add_filter_preset"),
-        ("games", "0018_alter_session_timestamp_start"),
-        ("games", "0019_alter_filterpreset_mode"),
-        ("games", "0020_remove_purchase_related_purchase_and_more"),
-        ("games", "0021_filterpreset_user"),
-        ("games", "0022_filterpreset_unique_user_mode_name_preset"),
-        ("games", "0023_alter_game_platform_alter_purchase_platform_and_more"),
-        ("games", "0024_remove_sentinel_platform_and_device"),
-        ("games", "0025_game_unique_platformless_game_name_year"),
-        ("games", "0026_alter_purchase_related_game"),
-        ("games", "0027_alter_session_timestamp_end_and_more"),
-        ("games", "0028_sitesetting_alter_purchase_price_currency"),
-        ("games", "0029_userpreferences"),
-        ("games", "0030_userpreferences_theme"),
-        ("games", "0031_userpreferences_presentation_preferences"),
-        ("games", "0032_userpreferences_datetime_format"),
-        ("games", "0033_session_timestamp_end_timezone_and_more"),
-        ("games", "0034_alter_session_duration_total"),
-        ("games", "0035_alter_purchase_price_per_game"),
-        ("games", "0036_alter_playevent_days_to_finish"),
-    ]
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
@@ -284,8 +243,13 @@ class Migration(migrations.Migration):
                                 models.When(
                                     ended=models.F("started"), then=models.Value(1)
                                 ),
-                                default=games.expressions.DatabaseDateDifference(
-                                    models.F("ended"), models.F("started")
+                                default=models.Func(
+                                    models.F("ended"),
+                                    models.F("started"),
+                                    arg_joiner=" - ",
+                                    function="",
+                                    output_field=models.IntegerField(),
+                                    template="(%(expressions)s)",
                                 ),
                                 output_field=models.IntegerField(),
                             ),
@@ -479,16 +443,20 @@ class Migration(migrations.Migration):
                     "duration_total",
                     models.GeneratedField(
                         db_persist=True,
-                        expression=games.expressions.DatabaseDurationSum(
-                            django.db.models.functions.comparison.Coalesce(
-                                django.db.models.expressions.CombinedExpression(
-                                    models.F("timestamp_end"),
-                                    "-",
-                                    models.F("timestamp_start"),
+                        expression=models.ExpressionWrapper(
+                            django.db.models.expressions.CombinedExpression(
+                                django.db.models.functions.comparison.Coalesce(
+                                    django.db.models.expressions.CombinedExpression(
+                                        models.F("timestamp_end"),
+                                        "-",
+                                        models.F("timestamp_start"),
+                                    ),
+                                    datetime.timedelta(0),
                                 ),
-                                datetime.timedelta(0),
+                                "+",
+                                models.F("duration_manual"),
                             ),
-                            models.F("duration_manual"),
+                            output_field=models.DurationField(),
                         ),
                         output_field=models.DurationField(),
                     ),
