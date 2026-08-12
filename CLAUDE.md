@@ -267,7 +267,7 @@ Docker-based: multi-stage Dockerfile (uv builder → Node assets stage → slim 
 
 ### Database
 
-PostgreSQL 17 is required. Development uses `make ensure-postgres` (normally through the Nix shell) to provision an ignored loopback-only cluster; deployments supply `DATABASE_URL`. Every connection must use UTF-8, the `builtin` locale provider, and `C.UTF-8`. Migrations live in `games/migrations/`. There are `GeneratedField`s on the models — these are computed by the database engine and cannot be written from application code.
+PostgreSQL 18 is required. Development uses `make ensure-postgres` (normally through the Nix shell) to provision an ignored loopback-only cluster; deployments supply `DATABASE_URL`. Every connection must use UTF-8, the `builtin` locale provider, and `C.UTF-8`; the full contract is in [Database contract](docs/database.md). Migrations live in `games/migrations/`. There are `GeneratedField`s on the models — these are computed by the database engine and cannot be written from application code.
 
 ### Configuration
 

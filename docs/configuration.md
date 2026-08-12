@@ -49,7 +49,7 @@ remove that and `settings.ini` wins; remove that and the code default applies.
 | `TZ` | str | `Europe/Prague` (dev) / `UTC` (prod) | no | Boot-time Django/server time zone. Requires a restart and is not editable on Admin settings. |
 | `DEFAULT_CURRENCY` | str | `CZK` | no | Site-wide fallback for purchases saved without request/user context and the FX conversion/reporting target. Purchase-entry views resolve the current user's preference instead. |
 | `DEFAULT_PAGE_SIZE` | int | `25` | no | Default rows shown on list pages. Valid preference/site values: `10`, `25`, `50`, `100`, `500`, `1000`. |
-| `DATABASE_URL` | PostgreSQL URL | required | yes | Required PostgreSQL connection URL. The database must be PostgreSQL 18.x, UTF8, `builtin`, and `C.UTF-8`. |
+| `DATABASE_URL` | PostgreSQL URL | required | yes | Required PostgreSQL connection URL. The database must satisfy the [database contract](database.md): PostgreSQL 18.x, UTF8, `builtin`, and `C.UTF-8`. |
 | `DEV_LOGIN_PREFILL` | str (`user:pass`) | `""` (off) | no | **Dev/staging only — never set in production.** When set to `username:password`, the login page prefills those credentials (one click to log in) and sends `X-Robots-Tag: noindex`. Login is not bypassed. `make dev` sets it to `admin:admin`; `make devlogin` provisions that superuser. |
 
 `cast` understands `bool` (`true/1/yes/on` → `True`), `list` (comma-separated,
