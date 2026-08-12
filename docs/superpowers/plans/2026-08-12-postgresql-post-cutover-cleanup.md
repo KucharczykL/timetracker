@@ -49,6 +49,9 @@
 
 **Current-language and concurrency cleanup**
 
+- Delete `.gitea/workflows/staging.yml` and `.github/workflows/staging.yml` — neither provisions the required PostgreSQL database configuration.
+- Delete `fly.staging.toml` and remove its current operator/developer guidance.
+- Modify `.env.example`, `.dockerignore`, and `.gitignore` — remove retired local SQLite settings and artifacts.
 - Modify `common/criteria.py`.
 - Modify `games/models.py`.
 - Modify `tests/test_filter_presets.py`.
@@ -437,6 +440,14 @@ git commit -m "test: remove database-transition scaffolding"
 
 **Files:**
 
+- Delete: `.gitea/workflows/staging.yml`
+- Delete: `.github/workflows/staging.yml`
+- Delete: `fly.staging.toml`
+- Modify: `.env.example`
+- Modify: `.dockerignore`
+- Modify: `.gitignore`
+- Modify: `CLAUDE.md`
+- Modify: `docs/configuration.md`
 - Modify: `common/criteria.py:367-372`
 - Modify: `tests/test_filter_presets.py:519-524`
 - Modify: `tests/test_sentinel_removal.py:1-5`
@@ -510,12 +521,20 @@ Then run the affected browser paths three times, each through a hidden process, 
 
 Expected: the threaded test passes and all three E2E runs pass with normal pytest-django teardown.
 
-- [ ] **Step 5: Audit current code and guidance, classifying historical matches**
+- [ ] **Step 5: Remove unusable SQLite-backed staging paths**
+
+Delete both staging workflows and `fly.staging.toml`. Remove the Fly-specific
+staging instructions from `CLAUDE.md` and `docs/configuration.md`, the obsolete
+`DATA_DIR` example from `.env.example`, and SQLite database entries from
+`.dockerignore` and `.gitignore`. Do not design replacement PostgreSQL staging
+in this issue.
+
+- [ ] **Step 6: Audit current code and guidance, classifying historical matches**
 
 Current-facing code outside dated historical documents must have no SQLite matches:
 
 ```powershell
-rg -n -i "sqlite|julianday|django_format_dtdelta|django\.db\.backends\.sqlite3" . --glob '!CHANGELOG.md' --glob '!docs/superpowers/plans/**' --glob '!docs/superpowers/specs/**'
+rg --hidden -n -i "sqlite|julianday|django_format_dtdelta|django\.db\.backends\.sqlite3" . --glob '!.git/**' --glob '!CHANGELOG.md' --glob '!docs/superpowers/plans/**' --glob '!docs/superpowers/specs/**'
 ```
 
 Expected: exit 1 with no matches.
@@ -528,11 +547,11 @@ rg -n -i "sqlite" CHANGELOG.md docs/superpowers/plans docs/superpowers/specs
 
 Expected: matches are dated historical records or the approved #628 design/plan. Do not mechanically rewrite them. Stop and fix a passage only if it presents itself as current setup, deployment, runtime, or operator guidance.
 
-- [ ] **Step 6: Commit current-language and concurrency cleanup**
+- [ ] **Step 7: Commit current-language and concurrency cleanup**
 
 ```powershell
-git add common/criteria.py tests/test_filter_presets.py tests/test_sentinel_removal.py tests/test_live_server_db_concurrency.py e2e/test_filter_count_e2e.py e2e/test_purchase_e2e.py e2e/conftest.py
-git add -u e2e/test_teardown_quiescence_e2e.py
+git add .env.example .dockerignore .gitignore CLAUDE.md docs/configuration.md common/criteria.py games/views/auth.py tests/test_filter_presets.py tests/test_sentinel_removal.py tests/test_live_server_db_concurrency.py e2e/test_filter_count_e2e.py e2e/test_purchase_e2e.py e2e/conftest.py
+git add -u .gitea/workflows/staging.yml .github/workflows/staging.yml fly.staging.toml e2e/test_teardown_quiescence_e2e.py
 git diff --cached --check
 git commit -m "chore: remove current SQLite assumptions"
 ```
@@ -565,7 +584,7 @@ Expected: only the files in this plan changed, no whitespace errors, and no unre
 
 ```powershell
 make check-migrations
-rg -n -i "sqlite|julianday|django_format_dtdelta|django\.db\.backends\.sqlite3" . --glob '!CHANGELOG.md' --glob '!docs/superpowers/plans/**' --glob '!docs/superpowers/specs/**'
+rg --hidden -n -i "sqlite|julianday|django_format_dtdelta|django\.db\.backends\.sqlite3" . --glob '!.git/**' --glob '!CHANGELOG.md' --glob '!docs/superpowers/plans/**' --glob '!docs/superpowers/specs/**'
 ```
 
 Expected: no migration drift and no current-facing matches. `rg` exit 1 is the expected no-match result.

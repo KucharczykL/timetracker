@@ -56,6 +56,6 @@ class LoginView(auth_views.LoginView):
         )
         if prefill_credentials():
             # Credentials are visible in the page HTML; keep the prefilled login
-            # page out of search indexes on the public staging box.
+            # page out of search indexes on non-production deployments.
             response["X-Robots-Tag"] = "noindex"
         return response

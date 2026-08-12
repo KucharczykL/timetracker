@@ -142,6 +142,13 @@ audit input, not a mandate to delete every matching line: each reference is
 classified by the current-versus-historical rule and by whether it protects real
 behavior.
 
+The audit also covers hidden tracked configuration. The existing Gitea and
+GitHub staging workflows cannot boot the PostgreSQL-only application because
+they provision no PostgreSQL database or `DATABASE_URL`; one still seeds a
+SQLite volume and the other retains a nonfunctional manual escape hatch. Remove
+both workflows and their Fly-specific configuration and guidance. Designing a
+new PostgreSQL staging lifecycle is separate work, not part of this cleanup.
+
 ## Documentation and code-language audit
 
 After the known removals, search the full tracked repository case-insensitively

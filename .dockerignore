@@ -10,7 +10,6 @@ static
 .editorconfig
 .gitignore
 CHANGELOG.md
-db.sqlite3
 docker-compose*
 Dockerfile
 Makefile
