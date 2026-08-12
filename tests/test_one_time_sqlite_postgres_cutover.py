@@ -480,6 +480,17 @@ def test_sequence_reset_includes_purchase_through_table(cutover, monkeypatch):
     assert "games_purchase_games" in captured["tables"]
 
 
+def test_qualified_sequence_name_quotes_schema_and_identifier(cutover):
+    connection = SimpleNamespace(
+        ops=SimpleNamespace(quote_name=lambda value: f'"{value}"')
+    )
+
+    assert (
+        cutover.quote_qualified_name(connection, "public.games_game_id_seq")
+        == '"public"."games_game_id_seq"'
+    )
+
+
 def test_report_contains_evidence_not_private_values(cutover):
     report = cutover.build_report(
         source_archive_sha256="a" * 64,

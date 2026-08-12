@@ -667,7 +667,8 @@ def sequence_evidence(
             cursor.execute(f"SELECT MAX({quoted_pk}) FROM {quoted_table}")
             maximum = cursor.fetchone()[0] or 0
             cursor.execute(
-                f"SELECT last_value, is_called FROM {connection.ops.quote_name(sequence)}"
+                f"SELECT last_value, is_called FROM "
+                f"{quote_qualified_name(connection, sequence)}"
             )
             last_value, is_called = cursor.fetchone()
         next_pk = last_value + 1 if is_called else last_value
@@ -677,6 +678,13 @@ def sequence_evidence(
             )
         results[table] = {"max_pk": maximum, "next_pk": next_pk}
     return results
+
+
+def quote_qualified_name(connection: BaseDatabaseWrapper, value: str) -> str:
+    schema, separator, name = value.rpartition(".")
+    if not separator:
+        return connection.ops.quote_name(value)
+    return f"{connection.ops.quote_name(schema)}.{connection.ops.quote_name(name)}"
 
 
 def run_smoke_checks() -> dict[str, int]:
