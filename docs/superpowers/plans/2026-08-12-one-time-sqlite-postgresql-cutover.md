@@ -55,12 +55,16 @@ from pathlib import Path
 import pytest
 
 SCRIPT = Path(__file__).parents[1] / "scripts" / "one_time_sqlite_postgres_cutover.py"
-CONTRACT = Path(__file__).parents[1] / "scripts" / "sqlite_postgres_source_contract.json"
+CONTRACT = (
+    Path(__file__).parents[1] / "scripts" / "sqlite_postgres_source_contract.json"
+)
 
 
 @pytest.fixture(scope="module")
 def cutover():
-    spec = importlib.util.spec_from_file_location("one_time_sqlite_postgres_cutover", SCRIPT)
+    spec = importlib.util.spec_from_file_location(
+        "one_time_sqlite_postgres_cutover", SCRIPT
+    )
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
@@ -88,7 +92,10 @@ def test_source_contract_reports_added_and_missing_structure(cutover):
         table_columns={"games_game": ("id", "name")},
         table_dispositions={"games_game": "transfer"},
         required_empty_tables=(),
-        schedule={"name": "Update converted prices", "func": "games.tasks.convert_prices"},
+        schedule={
+            "name": "Update converted prices",
+            "func": "games.tasks.convert_prices",
+        },
     )
     actual = cutover.SourceStructure(
         migrations=(("games", "0001_initial"), ("games", "9999_unknown")),
@@ -124,9 +131,7 @@ import pathlib
 import sqlite3
 
 
-database = pathlib.Path(
-    ".cache/sqlite-cutover-review-20260811/db.sqlite3"
-).resolve()
+database = pathlib.Path(".cache/sqlite-cutover-review-20260811/db.sqlite3").resolve()
 connection = sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True)
 migrations = connection.execute(
     "SELECT app, name FROM django_migrations ORDER BY app, name"
@@ -240,7 +245,9 @@ def load_source_contract(path: Path) -> SourceContract:
     raw = json.loads(path.read_text(encoding="utf-8"))
     return SourceContract(
         migrations=tuple(tuple(item) for item in raw["migrations"]),
-        table_columns={key: tuple(value) for key, value in raw["table_columns"].items()},
+        table_columns={
+            key: tuple(value) for key, value in raw["table_columns"].items()
+        },
         table_dispositions=dict(raw["table_dispositions"]),
         required_empty_tables=tuple(raw["required_empty_tables"]),
         schedule=dict(raw["schedule"]),
@@ -658,11 +665,16 @@ def test_report_contains_evidence_not_private_values(cutover):
         source_counts={"games_game": 856},
         discarded_counts={"django_session": 166},
         model_digests={"games.game": "c" * 64},
-        generated_results={"games.Session.duration_total": {"count": 2767, "match": True}},
+        generated_results={
+            "games.Session.duration_total": {"count": 2767, "match": True}
+        },
         aggregate_results={"session_count": 2767},
         sequence_results={"games_game": {"max_pk": 856, "next_pk": 857}},
         smoke_results={"games:list_games": 200},
-        schedule_result={"name": "Update converted prices", "func": "games.tasks.convert_prices"},
+        schedule_result={
+            "name": "Update converted prices",
+            "func": "games.tasks.convert_prices",
+        },
     )
     encoded = json.dumps(report)
     assert "notes" not in encoded
@@ -788,15 +800,20 @@ def test_cli_requires_explicit_archive_workspace_and_report(cutover):
 
     args = cutover.parse_args(
         [
-            "--source-archive", "snapshot.zip",
-            "--workspace", ".cache/sqlite-postgres-cutover/rehearsal-1",
-            "--report", ".cache/sqlite-postgres-cutover/rehearsal-1/report.json",
+            "--source-archive",
+            "snapshot.zip",
+            "--workspace",
+            ".cache/sqlite-postgres-cutover/rehearsal-1",
+            "--report",
+            ".cache/sqlite-postgres-cutover/rehearsal-1/report.json",
         ]
     )
     assert args.source_archive == Path("snapshot.zip")
 
 
-def test_orchestration_checks_empty_target_before_migrate(cutover, monkeypatch, tmp_path):
+def test_orchestration_checks_empty_target_before_migrate(
+    cutover, monkeypatch, tmp_path
+):
     from contextlib import contextmanager
 
     calls = []
@@ -809,7 +826,11 @@ def test_orchestration_checks_empty_target_before_migrate(cutover, monkeypatch, 
         yield object()
 
     monkeypatch.setattr(cutover, "open_validated_source", source)
-    monkeypatch.setattr(cutover, "require_initially_empty_target", lambda *args: (_ for _ in ()).throw(cutover.CutoverError("nonempty")))
+    monkeypatch.setattr(
+        cutover,
+        "require_initially_empty_target",
+        lambda *args: (_ for _ in ()).throw(cutover.CutoverError("nonempty")),
+    )
     monkeypatch.setattr(cutover, "migrate_target", lambda: calls.append("migrate"))
 
     with pytest.raises(cutover.CutoverError, match="nonempty"):
