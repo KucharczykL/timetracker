@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import sqlite3
 import sys
 import zipfile
@@ -358,3 +359,90 @@ def test_required_empty_validation_accumulates_all_nonempty_tables(
         cutover.validate_required_empty_tables(SimpleNamespace(), contract)
 
     assert all(name in str(exc_info.value) for name in contract.required_empty_tables)
+
+
+def test_nonempty_target_is_rejected_before_mutation(cutover, monkeypatch):
+    connection = object()
+    monkeypatch.setattr(cutover, "target_table_names", lambda _: ["valuable_table"])
+
+    with pytest.raises(cutover.CutoverError, match="valuable_table"):
+        cutover.require_initially_empty_target(connection)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_fixture_load_preserves_purchase_count_and_updated_at(cutover, tmp_path):
+    from datetime import date
+
+    from django.core import serializers
+    from django.db.models.signals import m2m_changed
+
+    from games.models import Game, Purchase
+    from games.signals import update_num_purchases
+
+    game = Game.objects.create(name="Cutover fixture")
+    purchase = Purchase.objects.create(
+        date_purchased=date(2026, 8, 12),
+        price=10,
+        price_currency="EUR",
+        num_purchases=1,
+    )
+    purchase.games.add(game)
+    purchase.refresh_from_db()
+    purchase.updated_at = purchase.updated_at.replace(
+        microsecond=(purchase.updated_at.microsecond // 1000) * 1000
+    )
+    Purchase.objects.filter(pk=purchase.pk).update(updated_at=purchase.updated_at)
+    purchase_pk = purchase.pk
+    original_updated_at = purchase.updated_at
+    fixture = tmp_path / "fixture.json"
+    fixture.write_text(serializers.serialize("json", [purchase]), encoding="utf-8")
+    purchase.delete()
+
+    cutover.load_transfer_fixture(fixture)
+
+    restored = Purchase.objects.get(pk=purchase_pk)
+    assert restored.num_purchases == 1
+    assert restored.updated_at == original_updated_at
+    assert m2m_changed.disconnect(update_num_purchases, sender=Purchase.games.through)
+    m2m_changed.connect(update_num_purchases, sender=Purchase.games.through)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_fixture_load_reconnects_receiver_after_failure(cutover, tmp_path):
+    from django.db.models.signals import m2m_changed
+
+    from games.models import Purchase
+    from games.signals import update_num_purchases
+
+    fixture = tmp_path / "bad.json"
+    fixture.write_text("not json", encoding="utf-8")
+
+    with pytest.raises(json.JSONDecodeError):
+        cutover.load_transfer_fixture(fixture)
+
+    assert m2m_changed.disconnect(update_num_purchases, sender=Purchase.games.through)
+    m2m_changed.connect(update_num_purchases, sender=Purchase.games.through)
+
+
+def test_clear_order_excludes_generated_target_tables(cutover):
+    assert "django_content_type" not in cutover.TRANSFER_CLEAR_ORDER
+    assert "auth_permission" not in cutover.TRANSFER_CLEAR_ORDER
+    assert "django_migrations" not in cutover.TRANSFER_CLEAR_ORDER
+    assert "games_purchase_games" in cutover.TRANSFER_CLEAR_ORDER
+
+
+def test_sequence_reset_includes_purchase_through_table(cutover, monkeypatch):
+    captured = {}
+
+    def sequence_reset_sql(style, models):
+        captured["tables"] = [model._meta.db_table for model in models]
+        return []
+
+    connection = SimpleNamespace(
+        ops=SimpleNamespace(sequence_reset_sql=sequence_reset_sql),
+        cursor=lambda: pytest.fail("no SQL expected from fake sequence backend"),
+    )
+
+    cutover.reset_transfer_sequences(connection, cutover.transfer_models())
+
+    assert "games_purchase_games" in captured["tables"]

@@ -14,9 +14,12 @@ from urllib.parse import quote
 
 from django.apps import apps
 from django.core import serializers
-from django.db import connections
+from django.core.management import call_command
+from django.core.management.color import no_style
+from django.db import connections, transaction
 from django.db.migrations.loader import MigrationLoader
 from django.db.models import Count, Model
+from django.db.models.signals import m2m_changed
 
 if TYPE_CHECKING:
     from django.db.backends.base.base import BaseDatabaseWrapper
@@ -97,6 +100,27 @@ TRANSFER_MODEL_LABELS = (
     "games.sitesetting",
     "games.userpreferences",
 )
+TRANSFER_CLEAR_ORDER = (
+    "games_userpreferences",
+    "games_sitesetting",
+    "games_filterpreset",
+    "games_session",
+    "games_purchase_games",
+    "games_purchase",
+    "games_playevent",
+    "games_gamestatuschange",
+    "games_game",
+    "games_exchangerate",
+    "games_device",
+    "games_platform",
+    "auth_user",
+)
+MIGRATED_TARGET_TABLES = {
+    "django_migrations",
+    "django_content_type",
+    "auth_permission",
+    "games_exchangerate",
+}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -339,6 +363,97 @@ def write_transfer_fixture(alias: str, path: Path) -> FixtureEvidence:
         sha256=sha256_file(path),
         model_counts=model_counts,
     )
+
+
+def target_table_names(connection: BaseDatabaseWrapper) -> list[str]:
+    with connection.cursor() as cursor:
+        return sorted(connection.introspection.table_names(cursor))
+
+
+def require_initially_empty_target(connection: BaseDatabaseWrapper) -> None:
+    tables = target_table_names(connection)
+    if tables:
+        raise CutoverError("target database is not empty: " + ", ".join(tables))
+
+
+def migrate_target() -> None:
+    call_command("migrate", database="default", interactive=False, verbosity=1)
+    tables = set(target_table_names(connections["default"]))
+    missing = sorted(MIGRATED_TARGET_TABLES - tables)
+    if missing:
+        raise CutoverError("migrated target is missing tables: " + ", ".join(missing))
+
+
+def clear_transfer_targets(
+    connection: BaseDatabaseWrapper, models: tuple[type[Model], ...]
+) -> None:
+    expected = {model._meta.db_table for model in models}
+    purchase = apps.get_model("games.purchase")
+    expected.add(purchase.games.through._meta.db_table)
+    if expected != set(TRANSFER_CLEAR_ORDER):
+        raise CutoverError("transfer clear order does not match the transfer models")
+    with transaction.atomic(using="default"), connection.cursor() as cursor:
+        for table in TRANSFER_CLEAR_ORDER:
+            cursor.execute(f"DELETE FROM {connection.ops.quote_name(table)}")
+        connection.check_constraints()
+
+
+def load_transfer_fixture(fixture_path: Path) -> None:
+    from games.models import Purchase
+    from games.signals import update_num_purchases
+
+    disconnected = m2m_changed.disconnect(
+        update_num_purchases,
+        sender=Purchase.games.through,
+    )
+    if not disconnected:
+        raise CutoverError("Purchase M2M receiver was not connected before load")
+    connection = connections["default"]
+    try:
+        with (
+            transaction.atomic(using="default"),
+            connection.constraint_checks_disabled(),
+            fixture_path.open(encoding="utf-8") as fixture,
+        ):
+            for deserialized in serializers.deserialize(
+                "json", fixture, using="default"
+            ):
+                deserialized.save(save_m2m=True, using="default")
+            connection.check_constraints()
+    finally:
+        m2m_changed.connect(
+            update_num_purchases,
+            sender=Purchase.games.through,
+        )
+
+
+def reset_transfer_sequences(
+    connection: BaseDatabaseWrapper, models: tuple[type[Model], ...]
+) -> None:
+    purchase = apps.get_model("games.purchase")
+    sql = connection.ops.sequence_reset_sql(
+        no_style(), [*models, purchase.games.through]
+    )
+    if not sql:
+        return
+    with connection.cursor() as cursor:
+        for statement in sql:
+            cursor.execute(statement)
+
+
+def recreate_schedule(contract: SourceContract) -> dict[str, str]:
+    schedule_model = apps.get_model("django_q.schedule")
+    call_command("schedule_convert_prices")
+    schedules = list(
+        schedule_model._base_manager.filter(name=contract.schedule["name"]).values(
+            "name", "func"
+        )
+    )
+    if schedules != [contract.schedule]:
+        raise CutoverError(
+            f"scheduled task does not exactly match the source contract: {schedules!r}"
+        )
+    return schedules[0]
 
 
 def validate_source(
