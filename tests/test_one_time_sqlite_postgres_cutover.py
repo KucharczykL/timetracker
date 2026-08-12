@@ -403,9 +403,8 @@ def test_nonempty_target_is_rejected_before_mutation(cutover, monkeypatch):
 
 @pytest.mark.django_db(transaction=True)
 def test_fixture_load_preserves_purchase_count_and_updated_at(cutover, tmp_path):
-    from datetime import date
+    from datetime import UTC, date, datetime
 
-    from django.core import serializers
     from django.db.models.signals import m2m_changed
 
     from games.models import Game, Purchase
@@ -419,15 +418,20 @@ def test_fixture_load_preserves_purchase_count_and_updated_at(cutover, tmp_path)
         num_purchases=1,
     )
     purchase.games.add(game)
-    purchase.refresh_from_db()
-    purchase.updated_at = purchase.updated_at.replace(
-        microsecond=(purchase.updated_at.microsecond // 1000) * 1000
-    )
+    purchase.updated_at = datetime(2026, 8, 12, 10, 11, 12, 123456, tzinfo=UTC)
     Purchase.objects.filter(pk=purchase.pk).update(updated_at=purchase.updated_at)
     purchase_pk = purchase.pk
     original_updated_at = purchase.updated_at
-    fixture = tmp_path / "fixture.json"
-    fixture.write_text(serializers.serialize("json", [purchase]), encoding="utf-8")
+    complete_fixture = tmp_path / "complete-fixture.json"
+    cutover.write_transfer_fixture("default", complete_fixture)
+    purchase_record = next(
+        record
+        for record in json.loads(complete_fixture.read_text(encoding="utf-8"))
+        if record["model"] == "games.purchase" and record["pk"] == purchase_pk
+    )
+    assert purchase_record["fields"]["updated_at"].endswith(".123456Z")
+    fixture = tmp_path / "purchase-fixture.json"
+    fixture.write_text(json.dumps([purchase_record]), encoding="utf-8")
     purchase.delete()
 
     cutover.load_transfer_fixture(fixture)
@@ -497,6 +501,7 @@ def test_report_contains_evidence_not_private_values(cutover):
         source_members={"db.sqlite3": "b" * 64},
         git_commit="abc123",
         script_blob="def456",
+        contract_blob="abc789",
         source_counts={"games_game": 856},
         discarded_counts={"django_session": 166},
         model_digests={"games.game": "c" * 64},
@@ -515,6 +520,8 @@ def test_report_contains_evidence_not_private_values(cutover):
     assert "notes" not in encoded
     assert "password" not in encoded
     assert report["git"]["script_blob"] == "def456"
+    assert report["git"]["contract_blob"] == "abc789"
+    assert report["status"] == "PASS"
 
 
 def test_normalize_orders_dicts_and_tags_database_values(cutover):
@@ -527,7 +534,7 @@ def test_normalize_orders_dicts_and_tags_database_values(cutover):
             "a": [
                 1.5,
                 Decimal("2.50"),
-                datetime(2026, 8, 12, 10, tzinfo=UTC),
+                datetime(2026, 8, 12, 10, 0, 0, 123456, tzinfo=UTC),
                 date(2026, 8, 12),
                 timedelta(seconds=3),
                 True,
@@ -538,7 +545,90 @@ def test_normalize_orders_dicts_and_tags_database_values(cutover):
     assert list(normalized) == ["a", "z"]
     assert normalized["a"][0] == {"float": float.hex(1.5)}
     assert normalized["a"][1] == {"decimal": "2.50"}
+    assert normalized["a"][2] == {"datetime": "2026-08-12T10:00:00.123456+00:00"}
     assert normalized["a"][4] == {"microseconds": 3_000_000}
+
+
+def test_git_identity_rejects_any_tracked_change(cutover, monkeypatch, tmp_path):
+    monkeypatch.setattr(cutover, "__file__", str(tmp_path / "scripts" / "cutover.py"))
+
+    def run(command, **kwargs):
+        if command[:2] == ["git", "diff"]:
+            return SimpleNamespace(returncode=1)
+        raise AssertionError(command)
+
+    monkeypatch.setattr(cutover.subprocess, "run", run)
+
+    with pytest.raises(cutover.CutoverError, match="tracked checkout differs"):
+        cutover.verify_git_identity()
+
+
+@pytest.mark.parametrize("context_fails", [False, True])
+def test_report_is_written_only_after_source_context_closes(
+    cutover, monkeypatch, tmp_path, context_fails
+):
+    calls = []
+    prepared = SimpleNamespace(
+        connection=object(),
+        snapshot=SimpleNamespace(archive_sha256="a" * 64, durable_member_sha256={}),
+        evidence=SimpleNamespace(table_counts={}),
+    )
+
+    @contextmanager
+    def source(*args):
+        calls.append("source-open")
+        yield prepared
+        calls.append("source-validated")
+        if context_fails:
+            raise cutover.CutoverError("source changed")
+
+    monkeypatch.setattr(
+        cutover, "verify_git_identity", lambda: ("head", "script", "contract")
+    )
+    monkeypatch.setattr(cutover, "require_git_ignored_workspace", lambda *args: None)
+    monkeypatch.setattr(cutover, "require_report_path_available", lambda *args: None)
+    monkeypatch.setattr(
+        cutover,
+        "load_source_contract",
+        lambda *args: SimpleNamespace(table_dispositions={}, schedule={}),
+    )
+    monkeypatch.setattr(cutover, "open_validated_source", source)
+    monkeypatch.setattr(cutover, "require_initially_empty_target", lambda *args: None)
+    monkeypatch.setattr(cutover, "validate_required_empty_tables", lambda *args: None)
+    monkeypatch.setattr(cutover, "validate_purchase_link_counts", lambda *args: None)
+    monkeypatch.setattr(
+        cutover,
+        "write_transfer_fixture",
+        lambda *args: SimpleNamespace(path=Path("fixture")),
+    )
+    monkeypatch.setattr(cutover, "migrate_target", lambda: None)
+    monkeypatch.setattr(cutover, "transfer_models", list)
+    monkeypatch.setattr(cutover, "clear_transfer_targets", lambda *args: None)
+    monkeypatch.setattr(cutover, "load_transfer_fixture", lambda *args: None)
+    monkeypatch.setattr(cutover, "reset_transfer_sequences", lambda *args: None)
+    monkeypatch.setattr(cutover, "recreate_schedule", lambda *args: {})
+    monkeypatch.setattr(cutover, "reconcile_models", lambda *args: ({}, {}))
+    monkeypatch.setattr(cutover, "aggregate_evidence", lambda *args: {})
+    monkeypatch.setattr(cutover, "aggregate_evidence_matches", lambda *args: True)
+    monkeypatch.setattr(cutover, "sequence_evidence", lambda *args: {})
+    monkeypatch.setattr(cutover, "run_smoke_checks", dict)
+    monkeypatch.setattr(
+        cutover,
+        "write_report",
+        lambda *args: calls.append("report-written"),
+    )
+
+    if context_fails:
+        with pytest.raises(cutover.CutoverError, match="source changed"):
+            cutover.run_cutover(
+                Path("snapshot.zip"), tmp_path, tmp_path / "report.json"
+            )
+        assert calls == ["source-open", "source-validated"]
+        return
+
+    cutover.run_cutover(Path("snapshot.zip"), tmp_path, tmp_path / "report.json")
+
+    assert calls == ["source-open", "source-validated", "report-written"]
 
 
 @pytest.mark.django_db

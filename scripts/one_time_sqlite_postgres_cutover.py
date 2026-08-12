@@ -23,6 +23,7 @@ from django.apps import apps
 from django.core import serializers
 from django.core.management import call_command
 from django.core.management.color import no_style
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import connections, transaction
 from django.db.migrations.loader import MigrationLoader
 from django.db.models import Count, Model
@@ -36,6 +37,16 @@ if TYPE_CHECKING:
 
 class CutoverError(RuntimeError):
     pass
+
+
+class PreciseDjangoJSONEncoder(DjangoJSONEncoder):
+    def default(self, value: Any) -> Any:
+        if isinstance(value, datetime):
+            encoded = value.isoformat(timespec="microseconds")
+            if encoded.endswith("+00:00"):
+                encoded = encoded[:-6] + "Z"
+            return encoded
+        return super().default(value)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -357,7 +368,9 @@ def write_transfer_fixture(alias: str, path: Path) -> FixtureEvidence:
     for model in transfer_models():
         label = model._meta.label_lower
         queryset = model._base_manager.using(alias).order_by(model._meta.pk.attname)
-        serialized = serializers.serialize("json", queryset)
+        serialized = serializers.serialize(
+            "json", queryset, cls=PreciseDjangoJSONEncoder
+        )
         model_records = [
             strip_generated_fields(record) for record in json.loads(serialized)
         ]
@@ -473,7 +486,7 @@ def normalize(value: Any) -> Any:
     if isinstance(value, Decimal):
         return {"decimal": format(value, "f")}
     if isinstance(value, datetime):
-        return {"datetime": value.astimezone(UTC).isoformat(timespec="milliseconds")}
+        return {"datetime": value.astimezone(UTC).isoformat(timespec="microseconds")}
     if isinstance(value, date):
         return {"date": value.isoformat()}
     if isinstance(value, timedelta):
@@ -718,9 +731,17 @@ def run_smoke_checks() -> dict[str, int]:
     return results
 
 
-def verify_git_identity() -> tuple[str, str]:
+def verify_git_identity() -> tuple[str, str, str]:
     repository = Path(__file__).resolve().parents[1]
     script_relative = "scripts/one_time_sqlite_postgres_cutover.py"
+    contract_relative = "scripts/sqlite_postgres_source_contract.json"
+    for command in (
+        ["git", "diff", "--quiet", "HEAD", "--"],
+        ["git", "diff", "--cached", "--quiet", "HEAD", "--"],
+    ):
+        result = subprocess.run(command, cwd=repository, check=False)
+        if result.returncode != 0:
+            raise CutoverError("tracked checkout differs from the recorded Git commit")
     commit = subprocess.run(
         ["git", "rev-parse", "HEAD"],
         cwd=repository,
@@ -744,11 +765,28 @@ def verify_git_identity() -> tuple[str, str]:
     ).stdout.strip()
     if actual_blob != expected_blob:
         raise CutoverError("cutover script differs from the committed Git blob")
-    return commit, actual_blob
+    expected_contract_blob = subprocess.run(
+        ["git", "rev-parse", f"HEAD:{contract_relative}"],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    actual_contract_blob = subprocess.run(
+        ["git", "hash-object", contract_relative],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    if actual_contract_blob != expected_contract_blob:
+        raise CutoverError("source contract differs from the committed Git blob")
+    return commit, actual_blob, actual_contract_blob
 
 
 def build_report(**evidence: Any) -> dict[str, object]:
     return {
+        "status": "PASS",
         "source": {
             "archive_sha256": evidence["source_archive_sha256"],
             "members": evidence["source_members"],
@@ -758,6 +796,7 @@ def build_report(**evidence: Any) -> dict[str, object]:
         "git": {
             "commit": evidence["git_commit"],
             "script_blob": evidence["script_blob"],
+            "contract_blob": evidence["contract_blob"],
         },
         "model_digests": evidence["model_digests"],
         "generated": evidence["generated_results"],
@@ -768,12 +807,21 @@ def build_report(**evidence: Any) -> dict[str, object]:
     }
 
 
+def require_report_path_available(path: Path) -> None:
+    temporary = path.with_name(f".{path.name}.tmp")
+    if path.exists() or temporary.exists():
+        raise CutoverError(f"report path already exists: {path}")
+
+
 def write_report(report: dict[str, object], path: Path) -> None:
     require_git_ignored_workspace(path.parent)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
+    temporary = path.with_name(f".{path.name}.tmp")
+    with temporary.open("x", encoding="utf-8") as stream:
+        stream.write(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -797,6 +845,7 @@ def run_cutover(
     git_identity = verify_git_identity()
     require_git_ignored_workspace(workspace)
     require_git_ignored_workspace(report_path.parent)
+    require_report_path_available(report_path)
     contract = load_source_contract(
         Path(__file__).with_name("sqlite_postgres_source_contract.json")
     )
@@ -805,7 +854,7 @@ def run_cutover(
     with open_validated_source(source_archive, workspace, contract) as prepared:
         target = connections["default"]
         require_initially_empty_target(target)
-        git_commit, script_blob = git_identity
+        git_commit, script_blob, contract_blob = git_identity
 
         _stage("Validate source dispositions and Purchase links")
         validate_required_empty_tables(prepared.connection, contract)
@@ -851,6 +900,7 @@ def run_cutover(
             source_members=prepared.snapshot.durable_member_sha256,
             git_commit=git_commit,
             script_blob=script_blob,
+            contract_blob=contract_blob,
             source_counts=prepared.evidence.table_counts,
             discarded_counts=discarded_counts,
             model_digests=model_digests,
@@ -860,9 +910,8 @@ def run_cutover(
             smoke_results=smoke_results,
             schedule_result=schedule_result,
         )
-        _stage("Write the private evidence report")
-        write_report(report, report_path)
-
+    _stage("Write the private PASS evidence report")
+    write_report(report, report_path)
     print(
         "PASS "
         f"report={report_path} "
