@@ -4,6 +4,7 @@ import argparse
 import dataclasses
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -16,6 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
+import django
 from django.apps import apps
 from django.core import serializers
 from django.core.management import call_command
@@ -820,6 +822,8 @@ def run_cutover(
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "timetracker.settings")
+    django.setup()
     try:
         run_cutover(args.source_archive, args.workspace, args.report)
     except CutoverError as error:

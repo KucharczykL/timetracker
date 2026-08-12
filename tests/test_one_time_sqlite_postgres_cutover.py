@@ -565,3 +565,18 @@ def test_orchestration_checks_empty_target_before_migrate(
         cutover.run_cutover(Path("snapshot.zip"), tmp_path, tmp_path / "report.json")
 
     assert calls == ["git", "source"]
+
+
+def test_main_configures_django_before_orchestration(cutover, monkeypatch):
+    calls = []
+    args = SimpleNamespace(
+        source_archive=Path("snapshot.zip"),
+        workspace=Path("workspace"),
+        report=Path("report.json"),
+    )
+    monkeypatch.setattr(cutover, "parse_args", lambda argv: args)
+    monkeypatch.setattr(cutover.django, "setup", lambda: calls.append("setup"))
+    monkeypatch.setattr(cutover, "run_cutover", lambda *args: calls.append("run"))
+
+    assert cutover.main([]) == 0
+    assert calls == ["setup", "run"]
