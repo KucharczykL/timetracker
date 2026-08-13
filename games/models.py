@@ -24,9 +24,8 @@ class Game(models.Model):
     class Meta:
         unique_together = (("name", "platform", "year_released"),)
         constraints = (
-            # unique_together never bites for platformless games (SQLite treats
-            # NULLs as pairwise distinct), so this keeps the dedup guarantee the
-            # sentinel platform used to provide.
+            # SQL NULLs are distinct under an ordinary unique constraint, so this
+            # preserves uniqueness for games whose platform is absent.
             models.UniqueConstraint(
                 fields=("name", "year_released"),
                 condition=Q(platform__isnull=True),
