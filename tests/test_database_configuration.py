@@ -94,7 +94,7 @@ def test_connection_validation_rejects_a_contract_violation(monkeypatch):
         alias = "default"
 
     monkeypatch.setattr(
-        "timetracker.database.validate_postgres_collation_contract",
+        "timetracker.database.observe_valid_postgres_connection",
         lambda connection: (_ for _ in ()).throw(PostgresContractViolation("wrong")),
     )
 
@@ -109,7 +109,7 @@ def test_connection_validation_ignores_non_default_connections(monkeypatch):
         alias = "replica"
 
     monkeypatch.setattr(
-        "timetracker.database.validate_postgres_collation_contract",
+        "timetracker.database.observe_valid_postgres_connection",
         lambda connection: pytest.fail("should not validate replica"),
     )
 

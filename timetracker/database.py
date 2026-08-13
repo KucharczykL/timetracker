@@ -1,7 +1,11 @@
 """PostgreSQL database configuration and connection validation."""
 
+import logging
 import os
+import time
 from collections.abc import Mapping
+from dataclasses import dataclass
+from threading import Lock
 from urllib.parse import parse_qsl, unquote, urlsplit
 
 from django.core.exceptions import ImproperlyConfigured
@@ -9,8 +13,55 @@ from django.core.exceptions import ImproperlyConfigured
 from timetracker.config import config
 from timetracker.postgres_contract import (
     PostgresContractViolation,
-    validate_postgres_collation_contract,
+    observe_valid_postgres_connection,
 )
+
+CLOCK_SKEW_TOLERANCE_MS = 1_000
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ClockSkewMeasurement:
+    estimated_skew_ms: float
+    round_trip_ms: float
+    outside_tolerance: bool
+
+
+def measure_clock_skew(
+    database_time_ms: float,
+    started_wall_ms: float,
+    finished_wall_ms: float,
+    round_trip_ms: float,
+) -> ClockSkewMeasurement:
+    """Compare a database timestamp with the wall-clock interval around its query."""
+    lower = min(started_wall_ms, finished_wall_ms) - CLOCK_SKEW_TOLERANCE_MS
+    upper = max(started_wall_ms, finished_wall_ms) + CLOCK_SKEW_TOLERANCE_MS
+    midpoint = (started_wall_ms + finished_wall_ms) / 2
+    return ClockSkewMeasurement(
+        estimated_skew_ms=database_time_ms - midpoint,
+        round_trip_ms=round_trip_ms,
+        outside_tolerance=not lower <= database_time_ms <= upper,
+    )
+
+
+class ClockSkewWarningState:
+    def __init__(self) -> None:
+        self._active = False
+        self._lock = Lock()
+
+    def observe(self, is_skewed: bool) -> bool:
+        """Return whether a new skew episode should emit a warning."""
+        with self._lock:
+            if not is_skewed:
+                self._active = False
+                return False
+            if self._active:
+                return False
+            self._active = True
+            return True
+
+
+_clock_skew_warnings = ClockSkewWarningState()
 
 
 def _invalid_database_url(detail: str) -> ImproperlyConfigured:
@@ -75,9 +126,29 @@ def validate_default_connection(
     """Reject an opened default connection outside the supported PostgreSQL contract."""
     if getattr(connection, "alias", None) != "default":
         return
+
+    started_wall_ms = time.time_ns() / 1_000_000
+    started_monotonic_ns = time.monotonic_ns()
     try:
-        validate_postgres_collation_contract(connection)  # type: ignore[arg-type]
+        observation = observe_valid_postgres_connection(connection)  # type: ignore[arg-type]
     except PostgresContractViolation as exc:
         raise ImproperlyConfigured(
             f"PostgreSQL database contract violation: {exc}"
         ) from exc
+    finished_wall_ms = time.time_ns() / 1_000_000
+    round_trip_ms = (time.monotonic_ns() - started_monotonic_ns) / 1_000_000
+
+    measurement = measure_clock_skew(
+        observation.database_time_ms,
+        started_wall_ms,
+        finished_wall_ms,
+        round_trip_ms,
+    )
+    if _clock_skew_warnings.observe(measurement.outside_tolerance):
+        logger.warning(
+            "PostgreSQL clock skew exceeds tolerance: "
+            "estimated_skew_ms=%+.1f round_trip_ms=%.1f tolerance_ms=%d",
+            measurement.estimated_skew_ms,
+            measurement.round_trip_ms,
+            CLOCK_SKEW_TOLERANCE_MS,
+        )

@@ -88,3 +88,14 @@ dropdb --maintenance-db='postgresql://<admin>@<host>/postgres' \
 
 Run `dropdb` only after every preceding command succeeds. On failure, leave the
 verification database for inspection. Never restore into the live database.
+
+## UUIDv7
+
+Identity columns use the `uuid_v7` domain over PostgreSQL's `uuid` type. Tools
+that report it as `USER-DEFINED` can use `identifier::uuid`.
+
+Python defaults use the application host clock; database defaults use the
+PostgreSQL host clock. Timetracker warns on new connections when database time
+falls more than one second outside the latency-adjusted application interval.
+The warning does not affect `/health` or `/health/ready`; keep both hosts
+time-synchronized.
