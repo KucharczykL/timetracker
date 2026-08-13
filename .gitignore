@@ -4,10 +4,7 @@ __pycache__
 .venv/
 node_modules
 package-lock.json
-db.sqlite3
-db.sqlite3-shm
-db.sqlite3-wal
-test_db.sqlite3*
+*.sqlite3*
 data/
 /static/
 dist/
