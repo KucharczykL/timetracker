@@ -45,7 +45,10 @@ and an updated timestamp are absent.
 ```python
 response = client.get(reverse("games:library"))
 html = response.content.decode()
-assert "Your games, play history, purchases, and customizations belong to this library" in html
+assert (
+    "Your games, play history, purchases, and customizations belong to this library"
+    in html
+)
 assert str(user.library.pk) in html
 assert 'data-copy-value="' + str(user.library.pk) + '"' in html
 ```
@@ -113,10 +116,26 @@ Expected: FAIL.
 
 ```python
 overview_cards = StatisticGrid(
-    StatisticCard("Games", Game.objects.for_library(library).count(), href=reverse("games:list_games")),
-    StatisticCard("Sessions", Session.objects.for_library(library).count(), href=reverse("games:list_sessions")),
-    StatisticCard("Purchases", Purchase.objects.for_library(library).count(), href=reverse("games:list_purchases")),
-    StatisticCard("Devices", Device.objects.for_library(library).count(), href=reverse("games:list_devices")),
+    StatisticCard(
+        "Games",
+        Game.objects.for_library(library).count(),
+        href=reverse("games:list_games"),
+    ),
+    StatisticCard(
+        "Sessions",
+        Session.objects.for_library(library).count(),
+        href=reverse("games:list_sessions"),
+    ),
+    StatisticCard(
+        "Purchases",
+        Purchase.objects.for_library(library).count(),
+        href=reverse("games:list_purchases"),
+    ),
+    StatisticCard(
+        "Devices",
+        Device.objects.for_library(library).count(),
+        href=reverse("games:list_devices"),
+    ),
 )
 ```
 

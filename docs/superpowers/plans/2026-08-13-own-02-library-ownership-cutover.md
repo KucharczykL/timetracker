@@ -180,7 +180,9 @@ Implement:
 ```python
 class UserLibraryPreferences(models.Model):
     library = models.OneToOneField(
-        UserLibrary, primary_key=True, on_delete=models.CASCADE,
+        UserLibrary,
+        primary_key=True,
+        on_delete=models.CASCADE,
         related_name="preferences",
     )
     default_device = models.ForeignKey(
@@ -465,6 +467,7 @@ calling `model.objects.all()` internally. Use:
 def execute_filter(filter_object, queryset):
     return filter_object.apply(queryset)
 
+
 def compute_stats(library: UserLibrary, year: int | None = None) -> StatsData:
     sessions = Session.objects.for_library(library)
     purchases = Purchase.objects.for_library(library)
@@ -536,9 +539,13 @@ def request_conversion(library, target_currency):
     state.requested_currency = target_currency
     state.status = PurchaseConversionState.Status.PENDING
     state.save(update_fields=["requested_version", "requested_currency", "status"])
-    transaction.on_commit(lambda: async_task(
-        "games.tasks.convert_library_prices", str(library.pk), state.requested_version
-    ))
+    transaction.on_commit(
+        lambda: async_task(
+            "games.tasks.convert_library_prices",
+            str(library.pk),
+            state.requested_version,
+        )
+    )
     return state.requested_version
 ```
 
