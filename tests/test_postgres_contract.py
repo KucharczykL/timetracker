@@ -4,7 +4,10 @@ import pytest
 
 from timetracker.postgres_contract import (
     CATALOG_QUERY,
+    CONNECTION_OBSERVATION_QUERY,
+    PostgresConnectionObservation,
     PostgresContract,
+    observe_valid_postgres_connection,
     validate_postgres_collation_contract,
 )
 
@@ -38,6 +41,28 @@ def test_validate_postgres_collation_contract_accepts_postgresql_18():
         version, "UTF8", "b", "C.UTF-8"
     )
     assert connection.queries == [CATALOG_QUERY]
+
+
+def test_observe_valid_postgres_connection_returns_contract_and_clock():
+    version = 180004
+    connection = RecordingConnection(
+        (version, "UTF8", "b", "C.UTF-8", 1_786_647_600_123), []
+    )
+
+    assert observe_valid_postgres_connection(connection) == (
+        PostgresConnectionObservation(
+            contract=PostgresContract(version, "UTF8", "b", "C.UTF-8"),
+            database_time_ms=1_786_647_600_123,
+        )
+    )
+    assert connection.queries == [CONNECTION_OBSERVATION_QUERY]
+
+
+def test_observe_valid_postgres_connection_rejects_a_non_integer_clock():
+    connection = RecordingConnection((180004, "UTF8", "b", "C.UTF-8", "bad"), [])
+
+    with pytest.raises(ValueError, match="database clock"):
+        observe_valid_postgres_connection(connection)
 
 
 @pytest.mark.parametrize(
