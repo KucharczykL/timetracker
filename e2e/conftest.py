@@ -1,11 +1,9 @@
 import os
 import shutil
 import sys
-import time
 from pathlib import Path
 
 import pytest
-from playwright.sync_api import Request
 
 from timetracker import config as config_module
 from timetracker import settings_resolver
@@ -25,60 +23,6 @@ def _reset_settings_caches():
     yield
     config_module.reset_caches()
     settings_resolver.clear_cache()
-
-
-@pytest.fixture(autouse=True)
-def _flush_waits_for_inflight_requests(request: pytest.FixtureRequest):
-    """Wait for browser network quiescence before the post-test DB flush (#277).
-
-    pytest-django's teardown flush of the SQLite test database contends with
-    a live_server request that is still mid-read: the request's open SELECT
-    holds a read lock that the flush's DELETEs have to wait out. On the
-    shared-cache in-memory database this failed outright with "database table
-    is locked" (#476 moved the test database on disk, where the same overlap
-    is a waitable SQLITE_BUSY instead). Tests legitimately end with
-    fire-and-forget requests (htmx refreshes like the play-added /
-    status-changed section reloads, filter-count GETs), so before the DB
-    teardown runs we wait until no request is in flight and none starts for a
-    short settle window (covering htmx chains that fetch again after a swap).
-    """
-    if "page" not in request.fixturenames or "live_server" not in request.fixturenames:
-        yield
-        return
-
-    # Instantiate the DB fixture before this one so its teardown (the flush)
-    # runs after ours (the wait). live_server tests always get transactional_db.
-    request.getfixturevalue("transactional_db")
-    page = request.getfixturevalue("page")
-
-    inflight_requests: set[Request] = set()
-
-    def track_request_start(started_request: Request) -> None:
-        inflight_requests.add(started_request)
-
-    def track_request_end(ended_request: Request) -> None:
-        inflight_requests.discard(ended_request)
-
-    context = page.context
-    context.on("request", track_request_start)
-    context.on("requestfinished", track_request_end)
-    context.on("requestfailed", track_request_end)
-
-    yield
-
-    deadline = time.monotonic() + 10.0
-    quiet_since: float | None = None
-    while not page.is_closed() and time.monotonic() < deadline:
-        if inflight_requests:
-            quiet_since = None
-        else:
-            if quiet_since is None:
-                quiet_since = time.monotonic()
-            if time.monotonic() - quiet_since >= 0.1:
-                break
-        # Blocking playwright call: pumps the event loop so the request
-        # events above keep being delivered while we wait.
-        page.wait_for_timeout(25)
 
 
 def _find_system_chrome() -> str | None:
