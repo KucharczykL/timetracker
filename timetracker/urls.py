@@ -16,11 +16,14 @@ Including another URLconf
 
 from django.conf import settings
 from django.contrib.auth import views as auth_views
-from django.urls import include, path
+from django.urls import include, path, register_converter
 from django.views.generic import RedirectView
 
 from games.api import api
 from games.views.auth import LoginView
+from timetracker.uuidv7 import UUIDv7Converter
+
+register_converter(UUIDv7Converter, "uuidv7")
 
 urlpatterns = [
     path("", RedirectView.as_view(url="/tracker")),
