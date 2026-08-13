@@ -88,3 +88,18 @@ dropdb --maintenance-db='postgresql://<admin>@<host>/postgres' \
 
 Run `dropdb` only after every preceding command succeeds. On failure, leave the
 verification database for inspection. Never restore into the live database.
+
+## UUIDv7 storage and clocks
+
+Timetracker identity columns use the PostgreSQL `uuid_v7` domain over the
+built-in `uuid` type. Native PostgreSQL backup and restore tools preserve the
+domain and its dependencies. A generic schema or analytics client that reports
+the column as `USER-DEFINED` can expose it as built-in UUID with
+`identifier::uuid`; Timetracker does not customize Django `inspectdb` mappings.
+
+Python-created identifiers use the application host clock and database-default
+identifiers use the PostgreSQL host clock. On each new physical application
+connection, Timetracker warns when database time falls more than one second
+outside the latency-adjusted application interval. The warning does not change
+`/health` or `/health/ready`; keep both hosts synchronized through normal NTP
+and infrastructure monitoring.
