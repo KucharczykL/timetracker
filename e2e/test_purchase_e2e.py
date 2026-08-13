@@ -172,8 +172,8 @@ def test_split_purchase_action(authenticated_page: Page, live_server):
     modal.locator('button[type="submit"]', has_text="Split").click()
 
     page.wait_for_url(f"{live_server.url}{reverse('games:list_purchases')}**")
-    # Assert the split through its public UI outcome rather than duplicating the
-    # implementation with an ORM assertion.
+    # The UI must observe the completed operation: the bundle row is gone and
+    # replaced by two per-game rows.
     expect(page.locator(f"#purchase-row-{bundle.id}")).to_have_count(0)
     expect(page.locator('[id^="purchase-row-"]')).to_have_count(2)
 

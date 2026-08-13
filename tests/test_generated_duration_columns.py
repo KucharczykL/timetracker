@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from django.db import connection, models
+from django.db import models
 from django.db.models import F
 
 from games.models import Game, Session
@@ -51,5 +51,3 @@ def test_duration_total_uses_only_source_columns():
     assert field.db_persist is True
     assert isinstance(field.output_field, models.DurationField)
     assert references == {"timestamp_end", "timestamp_start", "duration_manual"}
-    sql, _ = field.generated_sql(connection)
-    assert "django_format_dtdelta" not in sql

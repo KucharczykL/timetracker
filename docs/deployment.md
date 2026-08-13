@@ -1,8 +1,8 @@
 # External PostgreSQL deployment
 
-Timetracker connects to an operator-managed PostgreSQL database. It must use
-UTF8 encoding, the `builtin` locale provider, and `C.UTF-8`. Timetracker does
-not manage the database service, storage, roles, networking, or upgrades.
+Timetracker connects to an operator-managed PostgreSQL database that satisfies
+the [database contract](database.md). Timetracker does not manage the database
+service, storage, roles, networking, or upgrades.
 
 Provide the connection URL through `DATABASE_URL__FILE`. The hostname
 `postgres` below is only an example; use the address appropriate for your

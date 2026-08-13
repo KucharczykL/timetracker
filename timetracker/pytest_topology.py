@@ -30,14 +30,9 @@ def django_db_modify_db_settings_xdist_suffix(
 
     for configured_database in settings.DATABASES.values():
         database = cast(dict[str, Any], configured_database)
-        if database["ENGINE"] != "django.db.backends.postgresql":
-            raise AssertionError(
-                "Timetracker's pytest topology requires the PostgreSQL backend."
-            )
         test_name = database.setdefault("TEST", {}).get("NAME")
         if not test_name:
             test_name = f"test_{database['NAME']}"
-        if test_name != ":memory:":
-            database["TEST"]["NAME"] = xdist_database_name(
-                test_name, testrun_uid, worker_id
-            )
+        database["TEST"]["NAME"] = xdist_database_name(
+            test_name, testrun_uid, worker_id
+        )

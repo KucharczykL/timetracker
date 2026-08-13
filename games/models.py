@@ -6,7 +6,7 @@ import requests
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import Case, F, Q, Sum, Value, When
+from django.db.models import Case, ExpressionWrapper, F, Func, Q, Sum, Value, When
 from django.db.models.fields.generated import GeneratedField
 from django.db.models.functions import Coalesce, NullIf
 from django.template.defaultfilters import floatformat, pluralize, slugify
@@ -14,7 +14,6 @@ from django.utils import timezone
 
 from common.duration_presentation import format_decimal_hours
 from common.utils import label_with_details
-from games.expressions import DatabaseDateDifference, DatabaseDurationSum
 from timetracker.settings_registry import THEME_CHOICES, SettingKey
 
 logger = logging.getLogger("games")
@@ -24,8 +23,8 @@ class Game(models.Model):
     class Meta:
         unique_together = (("name", "platform", "year_released"),)
         constraints = (
-            # SQL NULLs are distinct under an ordinary unique constraint, so this
-            # preserves uniqueness for games whose platform is absent.
+            # A normal unique constraint permits multiple rows when platform is
+            # NULL; this preserves the platformless-game deduplication guarantee.
             models.UniqueConstraint(
                 fields=("name", "year_released"),
                 condition=Q(platform__isnull=True),
@@ -320,9 +319,10 @@ class Session(models.Model):
         editable=False,
     )
     duration_total = GeneratedField(
-        expression=DatabaseDurationSum(
-            Coalesce(F("timestamp_end") - F("timestamp_start"), timedelta(0)),
-            F("duration_manual"),
+        expression=ExpressionWrapper(
+            Coalesce(F("timestamp_end") - F("timestamp_start"), timedelta(0))
+            + F("duration_manual"),
+            output_field=models.DurationField(),
         ),
         output_field=models.DurationField(),
         db_persist=True,
@@ -444,7 +444,14 @@ class PlayEvent(models.Model):
         expression=Coalesce(
             Case(
                 When(ended=F("started"), then=Value(1)),
-                default=DatabaseDateDifference(F("ended"), F("started")),
+                default=Func(
+                    F("ended"),
+                    F("started"),
+                    function="",
+                    template="(%(expressions)s)",
+                    arg_joiner=" - ",
+                    output_field=models.IntegerField(),
+                ),
                 output_field=models.IntegerField(),
             ),
             Value(0),

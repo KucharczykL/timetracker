@@ -154,7 +154,7 @@ def test_semantically_invalid_filter_rejected(auth_client, capture_games_logger)
     assert "Invalid filter" in response.json()["detail"]
 
 
-def test_postgresql_invalid_regex_is_rejected_without_persisting(auth_client):
+def test_invalid_regex_is_rejected_without_persisting(auth_client):
     invalid_regex = {"name": {"modifier": "MATCHES_REGEX", "value": "(a"}}
 
     response = _save(auth_client, name="Bad regex", filter=invalid_regex)
@@ -518,12 +518,32 @@ def test_same_name_different_mode_is_separate_row(auth_client):
 
 
 def test_case_differing_names_are_distinct(auth_client):
-    # The required PostgreSQL C.UTF-8 collation compares these names as distinct,
-    # matching the case-sensitive client-side warning.
+    # The configured collation is case-sensitive, so these are two presets —
+    # mirrored by the case-sensitive client-side warning.
     _save(auth_client, name="Backlog", filter=None)
     response = _save(auth_client, name="backlog", filter=None)
     assert response.status_code == 201
     assert FilterPreset.objects.filter(mode="games").count() == 2
+
+
+def test_json_fields_round_trip(user):
+    find_filter = {"sort": "-year"}
+    object_filter = {"year": {"modifier": "EQUALS", "value": 2026}}
+    ui_options = {"per_page": 50}
+    preset = FilterPreset.objects.create(
+        user=user,
+        name="JSON fields",
+        mode="games",
+        find_filter=find_filter,
+        object_filter=object_filter,
+        ui_options=ui_options,
+    )
+
+    preset.refresh_from_db()
+
+    assert preset.find_filter == find_filter
+    assert preset.object_filter == object_filter
+    assert preset.ui_options == ui_options
 
 
 def test_unique_constraint_enforced_at_db(user):

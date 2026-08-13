@@ -38,8 +38,12 @@ COUNT_ENDPOINT = "/api/filter/count"
 def filter_count_view(request):
     from django.templatetags.static import static
 
-    # Exactly one <filter-count> belongs on the page; each badge fetches its count
-    # on load. The query-string model lets one view cover success and error states.
+    # Exactly ONE <filter-count> per page. Each badge auto-fetches the count on
+    # load, so two badges would issue duplicate concurrent authenticated requests.
+    # The badge's model comes from the query string so a single view serves both
+    # the valid-count and the unknown-model (error-state) cases; the <filter-group>
+    # stays "game" (it needs a real model for its field metadata) while the badge's
+    # own model is what the endpoint receives.
     badge_model = request.GET.get("model", "game")
     page = Document(
         Html(lang="en")[
