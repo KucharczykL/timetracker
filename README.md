@@ -20,17 +20,11 @@ Afterwards, you can start the development server using `make dev` or `make serve
 (without the Tailwind watcher). Both targets accept `DEV_HOST` and `DEV_PORT`, for
 example `make dev DEV_HOST=0.0.0.0 DEV_PORT=9999`.
 
-## Identifier convention
+## Identifiers
 
-New Timetracker domain/catalog identities use `timetracker.uuidv7.UUIDv7Field`.
-It assigns Python's `uuid.uuid7()` before save and maps to PostgreSQL's
-`uuid_v7` domain, whose column fallback is `uuidv7()`. Use the
-`<uuidv7:identifier>` route converter for untrusted URL identifiers.
-Django-owned framework tables retain their existing key types.
-
-UUID order is approximately chronological. The embedded time is diagnostic
-metadata and never replaces an explicit creation time, business date, or event
-sequence.
+Use `timetracker.uuidv7.UUIDv7Field` for new Timetracker identifiers and
+`<uuidv7:identifier>` for URL parameters. UUIDv7 time and ordering are
+diagnostic metadata, not creation times, business dates, or event sequences.
 
 # Running the image
 
