@@ -6,7 +6,7 @@
 
 **Architecture:** One migration adds final ownership fields, validates the one known production shape, assigns the production library, splits preferences, and installs final constraints without a temporary claim state. Runtime code resolves `request.user.library`, passes it explicitly, and uses thin queryset helpers. A per-library `PurchaseConversionState` provides atomic transitional FX publication until #728 replaces it.
 
-**Tech Stack:** Django 6, PostgreSQL 17, Django Ninja, Django-Q2, htpy server components, pytest/pytest-django, Vitest/TypeScript.
+**Tech Stack:** Django 6, PostgreSQL 18, Django Ninja, Django-Q2, htpy server components, pytest/pytest-django, Vitest/TypeScript.
 
 ## Global Constraints
 
@@ -28,10 +28,10 @@
 
 **Files:**
 - Create: `tests/test_library_cutover_migration.py`
-- Create: `games/migrations/0003_user_library_ownership_cutover.py`
+- Create: `games/migrations/0004_user_library_ownership_cutover.py`
 
 **Interfaces:**
-- Consumes: migration state `0002_user_library`.
+- Consumes: migration state `0003_userlibrary`.
 - Produces: reusable `MigrationExecutor` fixtures for the success and refusal cases.
 
 - [ ] **Step 1: Write the successful legacy-shape fixture**
@@ -73,7 +73,7 @@ assignment.
 
 Run: `make test-fast ARGS="tests/test_library_cutover_migration.py -x"`
 
-Expected: FAIL because migration `0003_user_library_ownership_cutover` is absent.
+Expected: FAIL because migration `0004_user_library_ownership_cutover` is absent.
 
 - [ ] **Step 4: Add a migration skeleton with named preflight functions**
 
@@ -114,7 +114,7 @@ path is restoring the pre-cutover backup, not synthesizing global ownership.
 - [ ] **Step 5: Commit the executable migration contract**
 
 ```bash
-git add tests/test_library_cutover_migration.py games/migrations/0003_user_library_ownership_cutover.py
+git add tests/test_library_cutover_migration.py games/migrations/0004_user_library_ownership_cutover.py
 git commit -m "test: lock library cutover preconditions (#630)"
 ```
 
@@ -122,7 +122,7 @@ git commit -m "test: lock library cutover preconditions (#630)"
 
 **Files:**
 - Modify: `games/models.py`
-- Modify: `games/migrations/0003_user_library_ownership_cutover.py`
+- Modify: `games/migrations/0004_user_library_ownership_cutover.py`
 - Create: `tests/test_library_models.py`
 
 **Interfaces:**
@@ -211,7 +211,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit final schema**
 
 ```bash
-git add games/models.py games/migrations/0003_user_library_ownership_cutover.py tests/test_library_models.py tests/test_library_cutover_migration.py
+git add games/models.py games/migrations/0004_user_library_ownership_cutover.py tests/test_library_models.py tests/test_library_cutover_migration.py
 git commit -m "feat: add final library ownership schema (#630)"
 ```
 
