@@ -96,9 +96,7 @@ def test_uuid_v7_domain_accepts_v7_and_null():
 
 def test_postgresql_uuidv7_timestamp_tracks_the_database_clock():
     with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT clock_timestamp(), uuid_extract_timestamp(uuidv7())"
-        )
+        cursor.execute("SELECT clock_timestamp(), uuid_extract_timestamp(uuidv7())")
         database_time, embedded_time = cursor.fetchone()
     assert abs(database_time - embedded_time) < timedelta(seconds=1)
 
@@ -799,8 +797,7 @@ def _validate_contract(contract: PostgresContract) -> None:
             contract.locale_provider, repr(contract.locale_provider)
         )
         raise PostgresContractViolation(
-            "PostgreSQL collation contract requires provider builtin, "
-            f"got {provider}."
+            f"PostgreSQL collation contract requires provider builtin, got {provider}."
         )
     if contract.locale != REQUIRED_BUILTIN_LOCALE:
         raise PostgresContractViolation(
@@ -965,13 +962,11 @@ def test_default_connection_warns_for_skew_without_rejecting_it(monkeypatch):
         database.time, "monotonic_ns", lambda: next(monotonic_samples_ns)
     )
     monkeypatch.setattr(database.logger, "warning", warning)
-    monkeypatch.setattr(
-        database, "_clock_skew_warnings", ClockSkewWarningState()
-    )
+    monkeypatch.setattr(database, "_clock_skew_warnings", ClockSkewWarningState())
 
-    assert validate_default_connection(
-        sender=None, connection=DefaultConnection()
-    ) is None
+    assert (
+        validate_default_connection(sender=None, connection=DefaultConnection()) is None
+    )
     warning.assert_called_once()
     assert "estimated_skew_ms" in warning.call_args.args[0]
 ```

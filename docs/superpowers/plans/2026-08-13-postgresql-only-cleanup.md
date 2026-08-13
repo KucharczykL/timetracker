@@ -234,7 +234,7 @@ Delete `tests/test_migration_portability.py` in full. Do not retain a weakened `
 
 In `tests/test_database_configuration.py`, remove only this parametrized value:
 
-```python
+```text
 "sqlite:///tmp/tracker.sqlite3",
 ```
 
