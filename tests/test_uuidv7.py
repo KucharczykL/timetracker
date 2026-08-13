@@ -1,15 +1,24 @@
 import uuid
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 from django.core.exceptions import ValidationError
+from django.db import IntegrityError, NotSupportedError, connection, models, transaction
 from django.http import HttpResponse
 from django.test import Client, override_settings
+from django.test.utils import isolate_apps
 from django.urls import NoReverseMatch, path, reverse
 from django.urls.converters import get_converters
 
 from timetracker import urls as project_urls  # noqa: F401
-from timetracker.uuidv7 import UUIDv7Converter, parse_uuidv7, validate_uuidv7
+from timetracker.uuidv7 import (
+    PostgreSQLUUIDv7,
+    UUIDv7Converter,
+    UUIDv7Field,
+    parse_uuidv7,
+    validate_uuidv7,
+)
 
 
 def uuidv7_probe(request, value):
@@ -78,3 +87,137 @@ def test_uuidv7_route_normalizes_valid_input_and_rejects_other_versions():
 def test_uuidv7_route_refuses_to_generate_a_non_v7_url():
     with pytest.raises(NoReverseMatch):
         reverse("uuidv7-probe", kwargs={"value": uuid.uuid4()})
+
+
+def test_uuidv7_field_declares_stable_defaults_and_migration_path():
+    field = UUIDv7Field(primary_key=True)
+    _, path, args, kwargs = field.deconstruct()
+
+    assert path == "timetracker.uuidv7.UUIDv7Field"
+    assert args == []
+    assert kwargs["primary_key"] is True
+    assert kwargs["default"] is uuid.uuid7
+    assert isinstance(kwargs["db_default"], PostgreSQLUUIDv7)
+
+
+def test_uuidv7_field_allows_explicit_default_overrides():
+    field = UUIDv7Field(default=None, db_default=None)
+    assert field.default is None
+    assert field.db_default is None
+
+
+def test_uuidv7_field_rejects_an_unsupported_backend():
+    with pytest.raises(NotSupportedError, match="PostgreSQL"):
+        UUIDv7Field().db_type(SimpleNamespace(vendor="mysql"))
+
+
+@isolate_apps("games")
+def test_uuidv7_field_assigns_distinct_ids_before_save():
+    class Probe(models.Model):
+        id = UUIDv7Field(primary_key=True)
+
+        class Meta:
+            app_label = "games"
+
+    first = Probe()
+    second = Probe()
+
+    assert first.pk.version == 7
+    assert second.pk.version == 7
+    assert first != second
+    assert hash(first) != hash(second)
+
+
+@pytest.mark.django_db(transaction=True)
+@isolate_apps("games")
+def test_uuidv7_field_round_trips_defaults_constraints_indexes_and_foreign_keys():
+    class Probe(models.Model):
+        id = UUIDv7Field(primary_key=True)
+        label = models.CharField(max_length=32)
+        optional = UUIDv7Field(null=True, default=None, db_default=None)
+
+        class Meta:
+            app_label = "games"
+            db_table = "test_uuidv7_probe"
+
+    class Child(models.Model):
+        probe = models.ForeignKey(Probe, on_delete=models.CASCADE)
+
+        class Meta:
+            app_label = "games"
+            db_table = "test_uuidv7_child"
+
+    with connection.schema_editor() as schema_editor:
+        schema_editor.create_model(Probe)
+        schema_editor.create_model(Child)
+
+    try:
+        python_created = Probe.objects.create(label="python")
+        assert isinstance(python_created.pk, uuid.UUID)
+        assert python_created.pk.version == 7
+        assert python_created.optional is None
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                'INSERT INTO "test_uuidv7_probe" ("label") VALUES (%s) RETURNING "id"',
+                ["database"],
+            )
+            raw_id = uuid.UUID(str(cursor.fetchone()[0]))
+
+        database_created = Probe.objects.get(pk=raw_id)
+        assert isinstance(database_created.pk, uuid.UUID)
+        assert database_created.pk.version == 7
+        assert Child._meta.get_field("probe").db_type(connection) == "uuid_v7"
+        assert Child.objects.create(probe=database_created).probe_id == raw_id
+
+        ordered = list(Probe.objects.order_by("id").values_list("id", flat=True))
+        assert ordered == sorted(ordered)
+
+        with connection.cursor() as cursor:
+            constraints = connection.introspection.get_constraints(
+                cursor, Probe._meta.db_table
+            )
+        assert any(item["primary_key"] for item in constraints.values())
+
+        with (
+            pytest.raises(IntegrityError),
+            transaction.atomic(),
+            connection.cursor() as cursor,
+        ):
+            cursor.execute(
+                'INSERT INTO "test_uuidv7_probe" ("id", "label") VALUES (%s, %s)',
+                [uuid.uuid4(), "invalid"],
+            )
+    finally:
+        with connection.schema_editor() as schema_editor:
+            schema_editor.delete_model(Child)
+            schema_editor.delete_model(Probe)
+
+
+@pytest.mark.parametrize(
+    ("value", "code"),
+    [
+        ("not-a-uuid", "invalid_uuid"),
+        (uuid.uuid4(), "invalid_uuid_version"),
+    ],
+)
+@isolate_apps("games")
+def test_uuidv7_field_full_clean_uses_shared_validation_codes(value, code):
+    class Probe(models.Model):
+        id = UUIDv7Field(primary_key=True)
+
+        class Meta:
+            app_label = "games"
+
+    with pytest.raises(ValidationError) as caught:
+        Probe(id=value).full_clean()
+
+    assert caught.value.error_dict["id"][0].code == code
+
+
+@pytest.mark.django_db
+def test_uuidv7_field_normalizes_a_driver_string():
+    value = uuid.uuid7()
+    normalized = UUIDv7Field().from_db_value(str(value), None, connection)
+    assert normalized == value
+    assert isinstance(normalized, uuid.UUID)

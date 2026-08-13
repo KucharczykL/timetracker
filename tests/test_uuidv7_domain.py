@@ -56,9 +56,12 @@ def test_postgresql_uuidv7_timestamp_tracks_the_database_clock():
     ],
 )
 def test_uuid_v7_domain_rejects_every_non_v7_or_non_rfc_value(value):
-    with pytest.raises(IntegrityError), transaction.atomic():
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT %s::uuid_v7", [value])
+    with (
+        pytest.raises(IntegrityError),
+        transaction.atomic(),
+        connection.cursor() as cursor,
+    ):
+        cursor.execute("SELECT %s::uuid_v7", [value])
 
 
 @pytest.mark.django_db(transaction=True)

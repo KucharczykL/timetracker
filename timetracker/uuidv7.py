@@ -1,6 +1,7 @@
 import uuid
 
 from django.core.exceptions import ValidationError
+from django.db import NotSupportedError, models
 from django.urls.converters import UUIDConverter
 
 INVALID_UUID_CODE = "invalid_uuid"
@@ -45,6 +46,35 @@ def _parse_for_django(value: str | uuid.UUID) -> uuid.UUID:
 
 def validate_uuidv7(value: str | uuid.UUID) -> None:
     _parse_for_django(value)
+
+
+class PostgreSQLUUIDv7(models.Func):
+    function = "uuidv7"
+    output_field = models.UUIDField()
+
+
+class UUIDv7Field(models.UUIDField):
+    default_validators = (validate_uuidv7,)
+
+    def __init__(self, *args, **kwargs) -> None:
+        kwargs.setdefault("default", uuid.uuid7)
+        kwargs.setdefault("db_default", PostgreSQLUUIDv7())
+        super().__init__(*args, **kwargs)
+
+    def db_type(self, connection) -> str:
+        if connection.vendor != "postgresql":
+            raise NotSupportedError("UUIDv7Field requires PostgreSQL.")
+        return "uuid_v7"
+
+    def to_python(self, value):
+        if value is None:
+            return None
+        return _parse_for_django(value)
+
+    def from_db_value(self, value, expression, connection):
+        if value is None:
+            return None
+        return self.to_python(value)
 
 
 class UUIDv7Converter:
