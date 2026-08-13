@@ -15,7 +15,7 @@ pytestmark = pytest.mark.django_db
 
 
 def assert_postgresql() -> None:
-    """Reject SQLite: this module is evidence for the PostgreSQL outcomes."""
+    """Assert the backend required by these PostgreSQL contract tests."""
     assert connection.vendor == "postgresql"
 
 

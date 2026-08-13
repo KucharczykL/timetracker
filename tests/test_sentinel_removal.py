@@ -1,8 +1,8 @@
 """NULL is the single representation of "no platform" / "no device" (issue
 #290): no sentinel rows are auto-created, deletes SET_NULL instead of
-cascading or substituting, and the conditional unique constraint keeps the
-platformless-dedup guarantee unique_together can't provide (SQLite treats
-NULLs as pairwise distinct)."""
+cascading or substituting, and the conditional unique constraint preserves the
+platformless-dedup guarantee that ordinary SQL uniqueness cannot provide when
+a key is NULL."""
 
 from datetime import timedelta
 

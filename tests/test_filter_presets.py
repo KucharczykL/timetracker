@@ -518,8 +518,8 @@ def test_same_name_different_mode_is_separate_row(auth_client):
 
 
 def test_case_differing_names_are_distinct(auth_client):
-    # The constraint uses SQLite's default (case-sensitive) collation, so these
-    # are two presets — mirrored by the case-sensitive client-side warning.
+    # The required PostgreSQL C.UTF-8 collation compares these names as distinct,
+    # matching the case-sensitive client-side warning.
     _save(auth_client, name="Backlog", filter=None)
     response = _save(auth_client, name="backlog", filter=None)
     assert response.status_code == 201

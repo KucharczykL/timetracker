@@ -172,8 +172,8 @@ def test_split_purchase_action(authenticated_page: Page, live_server):
     modal.locator('button[type="submit"]', has_text="Split").click()
 
     page.wait_for_url(f"{live_server.url}{reverse('games:list_purchases')}**")
-    # After: the bundle row is gone, replaced by two per-game rows. Asserted via
-    # the UI (not the ORM) to avoid live_server/SQLite write-read contention.
+    # Assert the split through its public UI outcome rather than duplicating the
+    # implementation with an ORM assertion.
     expect(page.locator(f"#purchase-row-{bundle.id}")).to_have_count(0)
     expect(page.locator('[id^="purchase-row-"]')).to_have_count(2)
 

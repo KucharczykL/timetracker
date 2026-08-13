@@ -23,7 +23,6 @@ def test_postgresql_url_maps_to_django_database_settings():
 @pytest.mark.parametrize(
     "url",
     [
-        "sqlite:///tmp/tracker.sqlite3",
         "mysql://db/tracker",
         "postgresql://db",
         "postgresql:///tracker",
