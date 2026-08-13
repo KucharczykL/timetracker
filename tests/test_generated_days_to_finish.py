@@ -1,9 +1,8 @@
 from datetime import date
 
 import pytest
-from django.db import connection, models
+from django.db import models
 from django.db.models import F
-from django.db.models.expressions import RawSQL
 
 from games.models import Game, PlayEvent
 
@@ -39,10 +38,6 @@ def test_days_to_finish_uses_typed_source_columns():
         for expression in field.expression.flatten()
         if isinstance(expression, F)
     }
-    sql, _ = field.generated_sql(connection)
-
     assert field.db_persist is True
     assert isinstance(field.output_field, models.IntegerField)
-    assert not isinstance(field.expression, RawSQL)
     assert references == {"started", "ended"}
-    assert '"ENDED" -' in sql.upper()

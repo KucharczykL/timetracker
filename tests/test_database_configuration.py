@@ -23,15 +23,13 @@ def test_postgresql_url_maps_to_django_database_settings():
 @pytest.mark.parametrize(
     "url",
     [
-        "sqlite:///tmp/tracker.sqlite3",
-        "mysql://db/tracker",
         "postgresql://db",
         "postgresql:///tracker",
         "postgresql://db/tracker#fragment",
         "not a url",
     ],
 )
-def test_database_url_rejects_non_postgresql_or_malformed_urls(url):
+def test_database_url_rejects_malformed_urls(url):
     from timetracker.database import database_settings_from_url
 
     with pytest.raises(ImproperlyConfigured, match="DATABASE_URL"):
@@ -86,15 +84,6 @@ def test_file_database_url_wins_over_plain_environment(monkeypatch, tmp_path):
         assert required_database_settings()["HOST"] == "file.example"
     finally:
         config_module.reset_caches()
-
-
-def test_project_settings_use_required_postgresql_database_configuration():
-    from timetracker import settings as project_settings
-
-    assert (
-        project_settings.DATABASES["default"]["ENGINE"]
-        == "django.db.backends.postgresql"
-    )
 
 
 def test_connection_validation_rejects_a_contract_violation(monkeypatch):

@@ -49,7 +49,7 @@ remove that and `settings.ini` wins; remove that and the code default applies.
 | `TZ` | str | `Europe/Prague` (dev) / `UTC` (prod) | no | Boot-time Django/server time zone. Requires a restart and is not editable on Admin settings. |
 | `DEFAULT_CURRENCY` | str | `CZK` | no | Site-wide fallback for purchases saved without request/user context and the FX conversion/reporting target. Purchase-entry views resolve the current user's preference instead. |
 | `DEFAULT_PAGE_SIZE` | int | `25` | no | Default rows shown on list pages. Valid preference/site values: `10`, `25`, `50`, `100`, `500`, `1000`. |
-| `DATABASE_URL` | PostgreSQL URL | required | yes | Required PostgreSQL connection URL. The database must be PostgreSQL 18.x, UTF8, `builtin`, and `C.UTF-8`. |
+| `DATABASE_URL` | PostgreSQL URL | required | yes | Required PostgreSQL connection URL. The database must satisfy the [database contract](database.md): PostgreSQL 18.x, UTF8, `builtin`, and `C.UTF-8`. |
 | `DEV_LOGIN_PREFILL` | str (`user:pass`) | `""` (off) | no | **Dev/staging only — never set in production.** When set to `username:password`, the login page prefills those credentials (one click to log in) and sends `X-Robots-Tag: noindex`. Login is not bypassed. `make dev` sets it to `admin:admin`; `make devlogin` provisions that superuser. |
 
 `cast` understands `bool` (`true/1/yes/on` → `True`), `list` (comma-separated,
@@ -368,26 +368,6 @@ collected into the image at build time rather than on each boot.
 | `STAGING` | `false` | Scrub copied sessions / django-q schedule on staging. |
 | `LOAD_SAMPLE_DATA` | `false` | Seed sample fixtures when the database is empty. |
 | `RUN_QCLUSTER` | `true` | Run the django-q cluster. `false` saves its ~260 MB where nothing schedules work; the image sets the default because supervisord cannot parse its config with this unset. |
-
-`fly.staging.toml` sets `RUN_QCLUSTER=false`, since a staging box reseeds its
-database on every boot and schedules nothing. To turn it back on for one branch —
-a PR that touches background tasks, say — **label the PR `staging:qcluster`**.
-The label change redeploys on its own, and removing it turns the cluster back
-off; the state is visible on the PR rather than living in someone's shell
-history.
-
-For a branch with no PR, the same thing by hand:
-
-```
-flyctl secrets set RUN_QCLUSTER=true -a timetracker-staging-<slug>
-flyctl secrets unset RUN_QCLUSTER -a timetracker-staging-<slug>   # back to off
-```
-
-Both routes use a secret because a secret shadows the `[env]` value and is
-re-applied on every deploy, so it outlives further pushes to the branch.
-`flyctl machine update --env` does not — the next deploy re-renders the machine
-config from `fly.staging.toml`. Note the workflow reconciles the label on every
-deploy, so a hand-set secret is removed by the next push unless the label is on.
 
 The container runs as uid 1000 — mounted data directories must be writable
 by that uid. A database URL secret must also be readable by uid 1000. Docker

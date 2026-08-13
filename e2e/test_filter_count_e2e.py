@@ -39,8 +39,7 @@ def filter_count_view(request):
     from django.templatetags.static import static
 
     # Exactly ONE <filter-count> per page. Each badge auto-fetches the count on
-    # load; two badges would fire two concurrent authenticated requests into the
-    # live_server thread and contend on the SQLite connection (InterfaceError).
+    # load, so two badges would issue duplicate concurrent authenticated requests.
     # The badge's model comes from the query string so a single view serves both
     # the valid-count and the unknown-model (error-state) cases; the <filter-group>
     # stays "game" (it needs a real model for its field metadata) while the badge's

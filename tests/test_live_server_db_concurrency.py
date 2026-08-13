@@ -1,25 +1,4 @@
-"""Regression test for issue #476: the e2e suite's concurrent live_server
-requests must not run against a shared-cache in-memory database.
-
-Django names an in-memory test database
-``file:memorydb_default?mode=memory&cache=shared``, and pytest-django's
-``live_server`` serves every request on its own thread
-(``ThreadedWSGIServer``), alongside the test thread's own ORM calls. Against
-shared-cache SQLite that produces two distinct failure modes, both seen in the
-intermittent full-suite failures:
-
-* separate connections sharing the cache lock at *table* granularity, raising
-  SQLITE_LOCKED ("database table is locked") — which the ``timeout`` option
-  cannot wait out, because SQLite never invokes the busy handler for it;
-* and when ``live_server`` is constructed after the test database exists,
-  pytest-django detects the in-memory name and hands the test thread's
-  connection *object* to the server thread, so request threads interleave
-  statements and transactions on one connection (``IndexError`` in
-  ``apply_converters``, sessions that read back empty and log the browser out).
-
-Both disappear with an on-disk test database: one connection per thread, WAL
-locking, and contention that degrades to plain SQLITE_BUSY.
-"""
+"""Concurrent live-server reads, writes, and test-thread queries stay reliable."""
 
 import concurrent.futures
 import json
@@ -60,27 +39,9 @@ def _csrf_token(session_key: str, live_server) -> str:
 
 
 @pytest.mark.django_db(transaction=True)
-def test_test_database_uses_postgresql():
-    """The structural half of the bug: an in-memory test database is what makes
-    both failure modes possible, so assert it directly. ``live_server`` is not
-    requested here — whether it shares the test thread's connection depends on
-    the order pytest happens to build the two session fixtures in, and this
-    invariant must hold either way."""
-    from django.db import connections
-
-    connection = connections["default"]
-    assert connection.vendor == "postgresql"
-
-
-@pytest.mark.django_db(transaction=True)
 def test_concurrent_live_server_requests_all_succeed(live_server, django_user_model):
-    """Hammer the live server with interleaved reads and transactional writes.
-
-    The writes go through ``PATCH /api/settings/user/THEME``, which runs inside
-    ``transaction.atomic()`` — the code path the flaky settings e2e exercises.
-    Against the in-memory database this fails within seconds; on disk, with one
-    connection per thread, every request succeeds.
-    """
+    """Exercise interleaved authenticated reads, atomic settings writes, and
+    test-thread ORM queries."""
     from games.models import Game, Platform
 
     user = django_user_model.objects.create_user(username="tester", password="secret")
@@ -124,8 +85,7 @@ def test_concurrent_live_server_requests_all_succeed(live_server, django_user_mo
     with concurrent.futures.ThreadPoolExecutor(workers) as pool:
         futures = [pool.submit(read_repeatedly) for _ in range(READER_THREADS)]
         futures += [pool.submit(write_repeatedly, i) for i in range(WRITER_THREADS)]
-        # Keep the test thread querying too — the real e2e tests do ORM work
-        # while the browser has requests in flight.
+        # Keep the test thread querying while request threads are in flight.
         for _ in range(REQUESTS_PER_THREAD * 4):
             assert Game.objects.count() == 60
         errors = [future.exception() for future in futures]

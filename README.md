@@ -28,8 +28,9 @@ example `make dev DEV_HOST=0.0.0.0 DEV_PORT=9999`.
 The container runs as uid 1000. Mounted data directories must be writable
 by that uid.
 
-For Docker Compose and rootless Podman Quadlet deployments with an
-operator-managed PostgreSQL 18 database, see [Deployment](docs/deployment.md).
+See the [database contract](docs/database.md) for PostgreSQL requirements and
+[Deployment](docs/deployment.md) for Docker Compose and rootless Podman Quadlet
+examples.
 
 Health probes: `/health` (liveness), `/health/ready` (adds a database
 check). Both answer without auth or a Host header.
