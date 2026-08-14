@@ -28,7 +28,9 @@ def auth_client(db):
 )
 def test_index_redirects_to_selected_landing_page(auth_client, url_name, expected_name):
     client, user = auth_client
-    UserPreferences.objects.create(user=user, default_landing_page=url_name)
+    preferences = UserPreferences.objects.get(user=user)
+    preferences.default_landing_page = url_name
+    preferences.save(update_fields=["default_landing_page", "updated_at"])
 
     response = client.get(reverse("games:index"))
 
@@ -39,10 +41,9 @@ def test_index_redirects_to_selected_landing_page(auth_client, url_name, expecte
 @override_settings(TIME_ZONE="Pacific/Kiritimati")
 def test_index_redirects_to_current_year_stats_in_configured_timezone(db, monkeypatch):
     user = get_user_model().objects.create_user(username="tester", password="pw")
-    UserPreferences.objects.create(
-        user=user,
-        default_landing_page="games:stats_by_year",
-    )
+    preferences = UserPreferences.objects.get(user=user)
+    preferences.default_landing_page = "games:stats_by_year"
+    preferences.save(update_fields=["default_landing_page", "updated_at"])
     monkeypatch.setattr(
         timezone,
         "now",
@@ -59,9 +60,18 @@ def test_index_redirects_to_current_year_stats_in_configured_timezone(db, monkey
 
 def test_index_falls_back_to_sessions_for_poisoned_landing_page(auth_client):
     client, user = auth_client
-    UserPreferences.objects.create(
-        user=user, default_landing_page="https://example.com"
-    )
+    preferences = UserPreferences.objects.get(user=user)
+    preferences.default_landing_page = "https://example.com"
+    preferences.save(update_fields=["default_landing_page", "updated_at"])
+
+    response = client.get(reverse("games:index"))
+
+    assert response.status_code == 302
+    assert response.url == reverse("games:list_sessions")
+
+
+def test_index_falls_back_to_sessions_when_landing_page_is_unset(auth_client):
+    client, _user = auth_client
 
     response = client.get(reverse("games:index"))
 

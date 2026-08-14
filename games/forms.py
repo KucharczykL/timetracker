@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm
+from django.contrib.auth.models import User
 from django.db import transaction
 from django.utils import timezone
 
@@ -32,8 +33,10 @@ from games.models import (
     PlayEvent,
     Purchase,
     Session,
+    UserLibrary,
 )
 from timetracker.settings_registry import DISPLAY_TIME_ZONE_CHOICES
+from timetracker.settings_resolver import resolve_str_for_user
 
 autofocus_input_widget = forms.TextInput(attrs={"autofocus": "autofocus"})
 
@@ -596,20 +599,25 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
     def __init__(
         self,
         *args,
-        default_currency: str,
+        library: UserLibrary,
+        user: User,
         presentation: DateTimePresentation,
         **kwargs,
     ):
-        self.default_currency = default_currency
+        self.library = library
+        self.default_currency = resolve_str_for_user(user, "DEFAULT_PURCHASE_CURRENCY")
         super().__init__(*args, **kwargs)
+        self.instance.library = library
         platform_field = cast(forms.ModelChoiceField, self.fields["platform"])
         platform_field.queryset = Platform.objects.order_by("name")
         # The bundle Price is optional: in price-per-game mode it is hidden and
         # the per-game inputs carry the prices instead. Empty falls back to 0.
         self.fields["price"].required = False
         if not self.initial.get("price_currency"):
-            self.initial["price_currency"] = default_currency
-        self.fields["price_currency"].widget.attrs["placeholder"] = default_currency
+            self.initial["price_currency"] = self.default_currency
+        self.fields["price_currency"].widget.attrs["placeholder"] = (
+            self.default_currency
+        )
         for field_name in ("date_purchased", "date_refunded"):
             self.fields[field_name].widget = DatePickerWidget(
                 presentation=presentation,

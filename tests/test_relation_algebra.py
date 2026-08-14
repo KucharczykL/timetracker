@@ -100,9 +100,11 @@ def test_nested_purchase_refunded_none(db):
     kept = Game.objects.create(name="Kept", platform=pc)
     none = Game.objects.create(name="NoPurchase", platform=pc)
     Purchase.objects.create(
-        date_purchased=_dt(), date_refunded=_dt(2024, 7, 1)
+        price_currency="CZK", date_purchased=_dt(), date_refunded=_dt(2024, 7, 1)
     ).games.set([refunded])
-    Purchase.objects.create(date_purchased=_dt()).games.set([kept])
+    Purchase.objects.create(price_currency="CZK", date_purchased=_dt()).games.set(
+        [kept]
+    )
 
     nested_none = GameFilter(
         purchase_filter=PurchaseFilter(
@@ -213,10 +215,12 @@ def test_aggregate_price_sum(db):
     cheap = Game.objects.create(name="Cheap", platform=pc)
     for amount in (10, 15):
         purchase = Purchase.objects.create(
-            date_purchased=_dt(), converted_price=Decimal(amount)
+            price_currency="CZK", date_purchased=_dt(), converted_price=Decimal(amount)
         )
         purchase.games.set([pricey])
-    purchase = Purchase.objects.create(date_purchased=_dt(), converted_price=Decimal(5))
+    purchase = Purchase.objects.create(
+        price_currency="CZK", date_purchased=_dt(), converted_price=Decimal(5)
+    )
     purchase.games.set([cheap])
 
     over_twenty = GameFilter(
@@ -236,11 +240,11 @@ def test_m2m_relation_none_excludes_partial_bundle(db):
     pc = Platform.objects.create(name="PC")
     hit = Game.objects.create(name="Hit", platform=pc)
     miss = Game.objects.create(name="Miss", platform=pc)
-    bundle = Purchase.objects.create(date_purchased=_dt())
+    bundle = Purchase.objects.create(price_currency="CZK", date_purchased=_dt())
     bundle.games.set([hit, miss])
-    solo = Purchase.objects.create(date_purchased=_dt())
+    solo = Purchase.objects.create(price_currency="CZK", date_purchased=_dt())
     solo.games.set([miss])
-    empty = Purchase.objects.create(date_purchased=_dt())
+    empty = Purchase.objects.create(price_currency="CZK", date_purchased=_dt())
 
     no_hit = PurchaseFilter(
         game_filter=GameFilter(
@@ -377,13 +381,17 @@ def boolean_world(db):
     Session.objects.create(game=neither, timestamp_start=_dt(), emulated=False)
 
     Purchase.objects.create(
-        date_purchased=_dt(), date_refunded=_dt(2024, 7, 1)
+        price_currency="CZK", date_purchased=_dt(), date_refunded=_dt(2024, 7, 1)
     ).games.set([both])
-    Purchase.objects.create(date_purchased=_dt()).games.set([emu_only])
+    Purchase.objects.create(price_currency="CZK", date_purchased=_dt()).games.set(
+        [emu_only]
+    )
     Purchase.objects.create(
-        date_purchased=_dt(), date_refunded=_dt(2024, 7, 1)
+        price_currency="CZK", date_purchased=_dt(), date_refunded=_dt(2024, 7, 1)
     ).games.set([refund_only])
-    Purchase.objects.create(date_purchased=_dt()).games.set([neither])
+    Purchase.objects.create(price_currency="CZK", date_purchased=_dt()).games.set(
+        [neither]
+    )
 
     # split: emulated session and deck session are two different rows.
     split = Game.objects.create(name="Split", platform=pc)

@@ -19,8 +19,8 @@ from timetracker.settings_registry import (
 
 # Keys resolved through the per-user layer (scope USER).
 USER_KEYS = {
-    "DEFAULT_CURRENCY",
-    "DEFAULT_DEVICE",
+    "DEFAULT_PURCHASE_CURRENCY",
+    "DEFAULT_DISPLAY_CURRENCY",
     "DEFAULT_LANDING_PAGE",
     "DEFAULT_PAGE_SIZE",
     "THEME",
@@ -92,8 +92,11 @@ def test_env_name_defaults_to_key():
         assert get_definition(key).env_name == key
 
 
-def test_currency_validator_normalizes():
-    validator = get_definition("DEFAULT_CURRENCY").validator
+@pytest.mark.parametrize(
+    "key", ["DEFAULT_PURCHASE_CURRENCY", "DEFAULT_DISPLAY_CURRENCY"]
+)
+def test_currency_validators_normalize(key):
+    validator = get_definition(key).validator
     assert validator is not None
     assert validator("eur") == "EUR"
     assert validator(" usd ") == "USD"
@@ -165,8 +168,11 @@ def test_datetime_format_validator_rejects_unsupported_values(bad):
 
 
 @pytest.mark.parametrize("bad", ["EU", "EURO", "12$", "e1r", ""])
-def test_currency_validator_rejects(bad):
-    validator = get_definition("DEFAULT_CURRENCY").validator
+@pytest.mark.parametrize(
+    "key", ["DEFAULT_PURCHASE_CURRENCY", "DEFAULT_DISPLAY_CURRENCY"]
+)
+def test_currency_validators_reject(key, bad):
+    validator = get_definition(key).validator
     assert validator is not None
     with pytest.raises(ValidationError):
         validator(bad)
@@ -178,6 +184,7 @@ def test_landing_page_choices_are_the_supported_destinations():
         ("games:list_games", "Games"),
         ("games:list_purchases", "Purchases"),
         ("games:stats_by_year", "Statistics (this year)"),
+        ("games:library", "Library"),
     )
 
 
@@ -188,6 +195,7 @@ def test_landing_page_choices_are_the_supported_destinations():
         "games:list_games",
         "games:list_purchases",
         "games:stats_by_year",
+        "games:library",
     ],
 )
 def test_landing_page_validator_accepts_supported_url_names(url_name):
@@ -278,8 +286,6 @@ def test_model_widget_requires_a_queryset_factory():
 
 
 def test_model_widget_requires_empty_display():
-    device_queryset = get_definition("DEFAULT_DEVICE").model_queryset
-    assert device_queryset is not None
     with pytest.raises(ValueError, match="empty_display"):
         SettingDefinition(
             "SYNTHETIC",
@@ -288,7 +294,7 @@ def test_model_widget_requires_empty_display():
             label="Synthetic",
             default_factory=lambda: None,
             widget=SettingWidget.MODEL,
-            model_queryset=device_queryset,
+            model_queryset=lambda: UserPreferences.objects.all(),
         )
 
 
@@ -318,13 +324,13 @@ def test_reload_after_save_requires_live_apply_timing():
 
 
 def test_registered_user_settings_carry_control_data():
-    currency = get_definition("DEFAULT_CURRENCY")
-    assert currency.widget is SettingWidget.TEXT
-    assert currency.user_help_text.startswith("A personal value affects only")
+    purchase_currency = get_definition("DEFAULT_PURCHASE_CURRENCY")
+    assert purchase_currency.widget is SettingWidget.TEXT
+    assert purchase_currency.user_help_text == "Preselected when adding a purchase."
 
-    device = get_definition("DEFAULT_DEVICE")
-    assert device.widget is SettingWidget.MODEL
-    assert device.model_queryset is not None
+    display_currency = get_definition("DEFAULT_DISPLAY_CURRENCY")
+    assert display_currency.widget is SettingWidget.TEXT
+    assert display_currency.user_help_text == "Converted totals and statistics."
 
     landing_page = get_definition("DEFAULT_LANDING_PAGE")
     assert landing_page.widget is SettingWidget.SELECT
@@ -336,3 +342,9 @@ def test_registered_user_settings_carry_control_data():
 
     for key in ("THEME", "DISPLAY_TIME_ZONE", "DATE_FORMAT_LOCALE", "DATETIME_FORMAT"):
         assert get_definition(key).reload_after_save is True, key
+
+
+def test_currency_preferences_use_distinct_nullable_typed_columns():
+    assert UserPreferences._meta.get_field("default_purchase_currency").null is True
+    assert UserPreferences._meta.get_field("default_display_currency").null is True
+    assert "DEFAULT_DEVICE" not in SETTINGS_REGISTRY

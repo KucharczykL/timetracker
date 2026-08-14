@@ -45,7 +45,7 @@ def test_anonymous_document_has_browser_theme_configuration(db):
 
 def test_account_document_has_complete_authoritative_theme_configuration(db):
     user = get_user_model().objects.create_user(username="theme-user", password="pw")
-    UserPreferences.objects.create(user=user, theme="dark")
+    UserPreferences.objects.filter(user=user).update(theme="dark")
     client = Client()
     client.force_login(user)
 

@@ -25,6 +25,7 @@ def _build_dataset():
 
     base_game = games[0]
     game_purchase = Purchase.objects.create(
+        price_currency="CZK",
         platform=platform,
         date_purchased=date(2021, 5, 1),
         date_refunded=date(2021, 5, 10),
@@ -34,6 +35,7 @@ def _build_dataset():
     game_purchase.games.set([games[1], games[2]])
 
     dlc_purchase = Purchase.objects.create(
+        price_currency="CZK",
         platform=platform,
         date_purchased=date(2022, 3, 3),
         price=9.99,

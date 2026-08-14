@@ -559,7 +559,9 @@ class TestPurchaseGamesIncludesAllAgainstDB:
 
         def make(linked):
             purchase = Purchase.objects.create(
-                platform=platform, date_purchased=datetime.date(2024, 1, 1)
+                price_currency="CZK",
+                platform=platform,
+                date_purchased=datetime.date(2024, 1, 1),
             )
             purchase.games.set(linked)
             return purchase
@@ -677,7 +679,9 @@ class TestPurchaseGamesIncludesOnlyAgainstDB:
 
         def make(linked):
             purchase = Purchase.objects.create(
-                platform=platform, date_purchased=datetime.date(2024, 1, 1)
+                price_currency="CZK",
+                platform=platform,
+                date_purchased=datetime.date(2024, 1, 1),
             )
             purchase.games.set(linked)
             return purchase
@@ -903,17 +907,23 @@ class TestPurchaseNumPurchasesAgainstDB:
         c, _ = Game.objects.get_or_create(name="C", defaults={"platform": platform})
 
         single = Purchase.objects.create(
-            platform=platform, date_purchased=datetime.date(2024, 1, 1)
+            price_currency="CZK",
+            platform=platform,
+            date_purchased=datetime.date(2024, 1, 1),
         )
         single.games.set([a])
 
         double = Purchase.objects.create(
-            platform=platform, date_purchased=datetime.date(2024, 1, 1)
+            price_currency="CZK",
+            platform=platform,
+            date_purchased=datetime.date(2024, 1, 1),
         )
         double.games.set([a, b])
 
         triple = Purchase.objects.create(
-            platform=platform, date_purchased=datetime.date(2024, 1, 1)
+            price_currency="CZK",
+            platform=platform,
+            date_purchased=datetime.date(2024, 1, 1),
         )
         triple.games.set([a, b, c])
 
@@ -1183,7 +1193,9 @@ class TestExpandedFiltersAgainstDB:
 
         data = self._setup_entities()
         gameless = Purchase.objects.create(
-            platform=data["plat"], date_purchased=datetime.date(2026, 2, 1)
+            price_currency="CZK",
+            platform=data["plat"],
+            date_purchased=datetime.date(2026, 2, 1),
         )
         pf = PurchaseFilter.from_json(
             {
@@ -1323,15 +1335,20 @@ class TestPurchaseFilterDates:
 
         platform, _ = Platform.objects.get_or_create(name="Test", icon="test")
         early = Purchase.objects.create(
-            platform=platform, date_purchased=datetime.date(2024, 1, 15)
+            price_currency="CZK",
+            platform=platform,
+            date_purchased=datetime.date(2024, 1, 15),
         )
         mid = Purchase.objects.create(
+            price_currency="CZK",
             platform=platform,
             date_purchased=datetime.date(2024, 6, 15),
             date_refunded=datetime.date(2024, 7, 1),
         )
         late = Purchase.objects.create(
-            platform=platform, date_purchased=datetime.date(2025, 1, 15)
+            price_currency="CZK",
+            platform=platform,
+            date_purchased=datetime.date(2025, 1, 15),
         )
         return {"early": early, "mid": mid, "late": late}
 
@@ -3690,18 +3707,21 @@ class TestFieldComparisonEndToEnd:
 
         # A: refund BEFORE purchase — the data-error case; must be returned
         purchase_a = Purchase.objects.create(
+            price_currency="CZK",
             platform=platform,
             date_purchased=datetime.date(2024, 3, 1),
             date_refunded=datetime.date(2024, 1, 1),
         )
         # B: refund AFTER purchase — normal order; must NOT be returned
         Purchase.objects.create(
+            price_currency="CZK",
             platform=platform,
             date_purchased=datetime.date(2024, 1, 1),
             date_refunded=datetime.date(2024, 3, 1),
         )
         # C: no refund (NULL operand) — SQL comparison against NULL yields no match
         Purchase.objects.create(
+            price_currency="CZK",
             platform=platform,
             date_purchased=datetime.date(2024, 1, 1),
         )
@@ -3891,18 +3911,21 @@ class TestFieldComparisonEndToEnd:
 
         # A: date_refunded differs from date_purchased → returned
         purchase_a = Purchase.objects.create(
+            price_currency="CZK",
             platform=platform,
             date_purchased=datetime.date(2024, 1, 1),
             date_refunded=datetime.date(2024, 3, 1),
         )
         # B: date_refunded equals date_purchased → excluded (NOT FALSE = FALSE)
         Purchase.objects.create(
+            price_currency="CZK",
             platform=platform,
             date_purchased=datetime.date(2024, 2, 1),
             date_refunded=datetime.date(2024, 2, 1),
         )
         # C: date_refunded is NULL → EXCLUDED (strict NULL guard, behavior change from #169)
         Purchase.objects.create(
+            price_currency="CZK",
             platform=platform,
             date_purchased=datetime.date(2024, 1, 1),
         )
@@ -3977,6 +4000,7 @@ class TestFieldComparisonEndToEnd:
 
         # A: refund after purchase AND price > converted_price → returned
         purchase_a = Purchase.objects.create(
+            price_currency="CZK",
             platform=platform,
             date_purchased=datetime.date(2024, 1, 1),
             date_refunded=datetime.date(2024, 3, 1),
@@ -3986,6 +4010,7 @@ class TestFieldComparisonEndToEnd:
         )
         # B: refund after purchase BUT price < converted_price → excluded (fails comparison 2)
         Purchase.objects.create(
+            price_currency="CZK",
             platform=platform,
             date_purchased=datetime.date(2024, 1, 1),
             date_refunded=datetime.date(2024, 3, 1),
@@ -3995,6 +4020,7 @@ class TestFieldComparisonEndToEnd:
         )
         # C: price > converted_price BUT no refund (NULL) → excluded (fails comparison 1)
         Purchase.objects.create(
+            price_currency="CZK",
             platform=platform,
             date_purchased=datetime.date(2024, 1, 1),
             price=50.0,
@@ -4038,18 +4064,21 @@ class TestFieldComparisonEndToEnd:
 
         # A: refund BEFORE purchase — should be returned
         purchase_a = Purchase.objects.create(
+            price_currency="CZK",
             platform=platform,
             date_purchased=datetime.date(2024, 3, 1),
             date_refunded=datetime.date(2024, 1, 1),
         )
         # B: refund AFTER purchase — should NOT be returned
         Purchase.objects.create(
+            price_currency="CZK",
             platform=platform,
             date_purchased=datetime.date(2024, 1, 1),
             date_refunded=datetime.date(2024, 3, 1),
         )
         # C: NULL date_refunded — should NOT be returned
         Purchase.objects.create(
+            price_currency="CZK",
             platform=platform,
             date_purchased=datetime.date(2024, 1, 1),
         )
@@ -5254,7 +5283,8 @@ class TestStringFieldNullConvention:
     Known intentional exceptions (pre-existing nullable string fields not used
     in any filter, listed as "ModelName.field_name"):
     - GameStatusChange.old_status: NULL means "no previous status" (first-time set)
-    - UserPreferences.default_currency / default_landing_page / theme: NULL means
+    - UserPreferences.default_purchase_currency / default_display_currency /
+      default_landing_page / theme: NULL means
       "unset" (fall through to the site/default settings layer); never filtered.
     """
 
@@ -5267,7 +5297,8 @@ class TestStringFieldNullConvention:
             "GameStatusChange.old_status",
             # Per-user settings overrides: NULL is the "unset" sentinel the
             # resolver falls through on, deliberately not the "" convention.
-            "UserPreferences.default_currency",
+            "UserPreferences.default_purchase_currency",
+            "UserPreferences.default_display_currency",
             "UserPreferences.default_landing_page",
             "UserPreferences.theme",
             "UserPreferences.display_time_zone",
@@ -5625,6 +5656,7 @@ class TestScopedAggregateReducers:
 
         def make_purchase(games, ownership_type):
             purchase = Purchase.objects.create(
+                price_currency="CZK",
                 platform=platform,
                 date_purchased=datetime.date(2026, 1, 1),
                 ownership_type=ownership_type,
@@ -5862,6 +5894,7 @@ class TestComparisonOperandPaths:
         )
         game = Game.objects.create(name="Doom", platform=platform)
         dlc = Purchase.objects.create(
+            price_currency="CZK",
             name="Doom: Eternal DLC",
             related_game=game,
             date_purchased=datetime.date(2024, 1, 1),
@@ -6022,12 +6055,12 @@ class TestMultivaluedComparison:
         game_match = Game.objects.create(name="Zelda")
         game_other = Game.objects.create(name="Doom")
         hit = Purchase.objects.create(
-            name="Great Zelda Bundle", date_purchased=purchased
+            price_currency="CZK", name="Great Zelda Bundle", date_purchased=purchased
         )
         hit.games.add(game_match)
         # same name...
         miss = Purchase.objects.create(
-            name="Great Zelda Bundle", date_purchased=purchased
+            price_currency="CZK", name="Great Zelda Bundle", date_purchased=purchased
         )
         miss.games.add(game_other)  # ...but no linked game name it contains
         query = PurchaseFilter(

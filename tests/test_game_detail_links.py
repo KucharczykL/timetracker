@@ -37,7 +37,9 @@ def game(db):
         name="Test Game", platform=platform, status=Game.Status.PLAYED
     )
     Session.objects.create(game=game, timestamp_start=_dt(1), timestamp_end=_dt(1, 13))
-    Purchase.objects.create(date_purchased=_dt(1), type=Purchase.GAME).games.set([game])
+    Purchase.objects.create(
+        price_currency="CZK", date_purchased=_dt(1), type=Purchase.GAME
+    ).games.set([game])
     PlayEvent.objects.create(game=game, ended=_dt(2))
     return game
 
@@ -71,9 +73,9 @@ def test_link_filters_scope_to_game(game):
     game's (parity between the section and the filtered list it links to)."""
     other = Game.objects.create(name="Other", platform=game.platform)
     Session.objects.create(game=other, timestamp_start=_dt(3), timestamp_end=_dt(3, 13))
-    Purchase.objects.create(date_purchased=_dt(3), type=Purchase.GAME).games.set(
-        [other]
-    )
+    Purchase.objects.create(
+        price_currency="CZK", date_purchased=_dt(3), type=Purchase.GAME
+    ).games.set([other])
     PlayEvent.objects.create(game=other, ended=_dt(4))
 
     sessions = Session.objects.filter(SessionFilter.where(game=[game.id]).to_q())

@@ -15,7 +15,7 @@ before the chain exists) and the deprecated ``PROD`` alias.
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Final, cast
+from typing import TYPE_CHECKING, Any, Final
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from django.conf import settings
@@ -24,7 +24,7 @@ from django.core.exceptions import ValidationError
 if TYPE_CHECKING:
     from django.db.models import QuerySet
 
-type SettingKey = str  # e.g. "DEFAULT_CURRENCY"
+type SettingKey = str  # e.g. "DEFAULT_DISPLAY_CURRENCY"
 type Cast = Callable[[str], object]  # coercion applied to raw string sources
 type DefaultFactory = Callable[[], object]  # lazy default, read at resolve time
 type SettingValidator = Callable[[object], object]  # returns normalized or raises
@@ -39,6 +39,7 @@ LANDING_PAGE_CHOICES: Final[tuple[tuple[str, str], ...]] = (
     ("games:list_games", "Games"),
     ("games:list_purchases", "Purchases"),
     ("games:stats_by_year", "Statistics (this year)"),
+    ("games:library", "Library"),
 )
 _LANDING_PAGE_URL_NAMES: Final[frozenset[str]] = frozenset(
     url_name for url_name, _label in LANDING_PAGE_CHOICES
@@ -182,38 +183,6 @@ def _validate_currency(value: object) -> str:
     return text
 
 
-def _validate_optional_device_id(value: object) -> int | None:
-    """Type-only check for the personal default-device pref. ``None`` means unset;
-    existence of the device id is enforced at write time (``change_user_setting``),
-    not here, so a stale registry read never crashes."""
-    if value is None:
-        return None
-    # bool is an int subclass; reject it so a stray ``True`` isn't stored as 1.
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValidationError(f"Device must be an integer id (got {value!r}).")
-    return value
-
-
-def _require_existing_device(value: object) -> None:
-    """Write-time referential check for DEFAULT_DEVICE: the id must name a live
-    Device. Read paths never call this (a dangling stored id degrades to the
-    default instead of raising)."""
-    if value is None:
-        return
-    from games.models import Device
-
-    if not Device.objects.filter(pk=cast(int, value)).exists():
-        raise ValidationError(f"No device with id {value!r}.")
-
-
-def _device_queryset() -> QuerySet[Any]:
-    """Options for the default-device control. The models import happens on call,
-    never at module import, so settings.py can import this module."""
-    from games.models import Device
-
-    return Device.objects.order_by("name")
-
-
 def _validate_optional_landing_page(value: object) -> str | None:
     """Accept only stable, argument-free destinations plus current-year stats."""
     if value is None:
@@ -296,36 +265,24 @@ def _validate_session_time_zone_display(value: object) -> str:
 def _build_registry() -> dict[SettingKey, SettingDefinition]:
     definitions = [
         SettingDefinition(
-            "DEFAULT_CURRENCY",
+            "DEFAULT_PURCHASE_CURRENCY",
             scope=SettingScope.USER,
             apply_timing=ApplyTiming.LIVE,
-            label="Default currency",
-            help_text=(
-                "Used for purchase entry by users without a personal value, "
-                "purchases saved without user context, and the FX/reporting target."
-            ),
-            default_factory=lambda: settings.DEFAULT_CURRENCY,
+            label="Default purchase currency",
+            default_factory=lambda: settings.DEFAULT_PURCHASE_CURRENCY,
             validator=_validate_currency,
             widget=SettingWidget.TEXT,
-            user_help_text=(
-                "A personal value affects only your purchase entry; purchases "
-                "saved without user context and FX/reporting continue to use the "
-                "site value."
-            ),
+            user_help_text="Preselected when adding a purchase.",
         ),
         SettingDefinition(
-            "DEFAULT_DEVICE",
+            "DEFAULT_DISPLAY_CURRENCY",
             scope=SettingScope.USER,
             apply_timing=ApplyTiming.LIVE,
-            label="Default device",
-            help_text="Device pre-selected when logging a new session.",
-            cast=int,
-            default_factory=lambda: None,
-            validator=_validate_optional_device_id,
-            widget=SettingWidget.MODEL,
-            model_queryset=_device_queryset,
-            empty_display="No device",
-            write_validator=_require_existing_device,
+            label="Display currency",
+            default_factory=lambda: settings.DEFAULT_DISPLAY_CURRENCY,
+            validator=_validate_currency,
+            widget=SettingWidget.TEXT,
+            user_help_text="Converted totals and statistics.",
         ),
         SettingDefinition(
             "DEFAULT_LANDING_PAGE",

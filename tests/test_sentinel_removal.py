@@ -32,22 +32,29 @@ def test_session_without_device_stays_null():
     assert Device.objects.count() == 0
 
 
-def test_purchase_without_platform_stays_null_currency_still_defaults():
-    game = Game.objects.create(name="Homebrew")
+def test_purchase_without_platform_stays_null_with_explicit_currency(
+    django_user_model,
+):
+    library = django_user_model.objects.create_user(username="owner").library
+    game = Game.objects.create(library=library, name="Homebrew")
     purchase = Purchase.objects.create(
-        date_purchased=timezone.now().date(), price_currency=""
+        library=library,
+        date_purchased=timezone.now().date(),
+        price_currency="CZK",
     )
     purchase.games.add(game)
     purchase.refresh_from_db()
     assert purchase.platform is None
-    assert purchase.price_currency  # DEFAULT_CURRENCY fallback survives
+    assert purchase.price_currency == "CZK"
 
 
 def test_platform_delete_sets_null_and_keeps_purchases():
     platform = Platform.objects.create(name="Steam")
     game = Game.objects.create(name="Hades", platform=platform)
     purchase = Purchase.objects.create(
-        date_purchased=timezone.now().date(), platform=platform
+        price_currency="CZK",
+        date_purchased=timezone.now().date(),
+        platform=platform,
     )
     purchase.games.add(game)
 

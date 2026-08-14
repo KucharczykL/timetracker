@@ -51,6 +51,7 @@ class SortHeaderParityTest(TestCase):
         self.platform = Platform.objects.create(name="Test Platform", icon="test")
         self.game = Game.objects.create(name="Test Game", platform=self.platform)
         self.purchase = Purchase.objects.create(
+            price_currency="CZK",
             date_purchased=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO),
             platform=self.platform,
         )

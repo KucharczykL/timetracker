@@ -1,7 +1,10 @@
 """Validated mutation boundary for runtime-editable site settings."""
 
 from enum import StrEnum
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
+
+if TYPE_CHECKING:
+    from games.models import Device, UserLibrary
 
 from timetracker.config import (
     LOCKED_SOURCES,
@@ -173,12 +176,28 @@ def change_user_setting(
         return SettingMutation(effective, operation, changed, None, False)
 
 
+def change_library_default_device(library: UserLibrary, device: Device | None) -> bool:
+    """Set a library's optional default Device after enforcing ownership."""
+    if device is not None and getattr(device, "library_id", None) != getattr(
+        library, "pk", None
+    ):
+        from django.core.exceptions import ValidationError
+
+        raise ValidationError("Default device must belong to the same library.")
+
+    from games.models import UserLibraryPreferences
+
+    preferences = UserLibraryPreferences.objects.get(library=library)
+    return preferences.set_default_device(device)
+
+
 __all__ = [
     "SETTING_NAMESPACE_CHOICES",
     "SettingLockedError",
     "SettingMutation",
     "SettingNamespace",
     "SettingOperation",
+    "change_library_default_device",
     "change_site_setting",
     "change_user_setting",
 ]

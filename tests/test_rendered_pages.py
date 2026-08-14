@@ -106,6 +106,7 @@ class RenderedPagesTest(TestCase):
         self.platform = Platform.objects.create(name="Test Platform", icon="test")
         self.game = Game.objects.create(name="Test Game", platform=self.platform)
         self.purchase = Purchase.objects.create(
+            price_currency="CZK",
             date_purchased=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO),
             platform=self.platform,
         )
@@ -600,17 +601,22 @@ class PurchaseListDateFilterTest(TestCase):
         mid_game = Game.objects.create(name="MID-MARKER", platform=self.platform)
         late_game = Game.objects.create(name="LATE-MARKER", platform=self.platform)
         self.early = Purchase.objects.create(
-            platform=self.platform, date_purchased=datetime.date(2024, 1, 15)
+            price_currency="CZK",
+            platform=self.platform,
+            date_purchased=datetime.date(2024, 1, 15),
         )
         self.early.games.add(early_game)
         self.mid = Purchase.objects.create(
+            price_currency="CZK",
             platform=self.platform,
             date_purchased=datetime.date(2024, 6, 15),
             date_refunded=datetime.date(2024, 7, 1),
         )
         self.mid.games.add(mid_game)
         self.late = Purchase.objects.create(
-            platform=self.platform, date_purchased=datetime.date(2025, 1, 15)
+            price_currency="CZK",
+            platform=self.platform,
+            date_purchased=datetime.date(2025, 1, 15),
         )
         self.late.games.add(late_game)
 

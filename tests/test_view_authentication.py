@@ -27,7 +27,7 @@ def world(db):
     platform = Platform.objects.create(name="PC")
     game = Game.objects.create(name="Test Game", platform=platform)
     purchase = Purchase.objects.create(
-        date_purchased=date(2024, 6, 1), type=Purchase.GAME
+        price_currency="CZK", date_purchased=date(2024, 6, 1), type=Purchase.GAME
     )
     purchase.games.set([game])
     return {
@@ -44,7 +44,7 @@ def world(db):
         "platform_id": platform.id,
         "year": 2024,
         "model": "game",
-        "key": "DEFAULT_CURRENCY",
+        "key": "DEFAULT_PURCHASE_CURRENCY",
     }
 
 

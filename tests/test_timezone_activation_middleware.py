@@ -14,8 +14,7 @@ def test_authenticated_request_activates_personal_presentation_and_restores_cont
     from common.middleware import TimezoneActivationMiddleware
 
     user = get_user_model().objects.create_user(username="tester", password="pw")
-    UserPreferences.objects.create(
-        user=user,
+    UserPreferences.objects.filter(user=user).update(
         display_time_zone="Pacific/Kiritimati",
         date_format_locale="cs",
     )

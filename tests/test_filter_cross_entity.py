@@ -95,10 +95,14 @@ def purchase_world(db):
     Game.objects.create(name="NoPurchase", platform=pc)
 
     p1 = Purchase.objects.create(
-        date_purchased=date(2024, 1, 1), type=Purchase.GAME, converted_price=10.0
+        price_currency="CZK",
+        date_purchased=date(2024, 1, 1),
+        type=Purchase.GAME,
+        converted_price=10.0,
     )
     p1.games.set([game_buyer])
     p2 = Purchase.objects.create(
+        price_currency="CZK",
         date_purchased=date(2024, 1, 1),
         type=Purchase.DLC,
         related_game=dlc_buyer,
@@ -123,11 +127,15 @@ def test_purchase_ownership_type_widget_json_selects_games(db):
     Game.objects.create(name="NoPurchase", platform=pc)
 
     physical_purchase = Purchase.objects.create(
-        date_purchased=date(2024, 1, 1), ownership_type=Purchase.PHYSICAL
+        price_currency="CZK",
+        date_purchased=date(2024, 1, 1),
+        ownership_type=Purchase.PHYSICAL,
     )
     physical_purchase.games.set([physical])
     digital_purchase = Purchase.objects.create(
-        date_purchased=date(2024, 1, 1), ownership_type=Purchase.DIGITAL
+        price_currency="CZK",
+        date_purchased=date(2024, 1, 1),
+        ownership_type=Purchase.DIGITAL,
     )
     digital_purchase.games.set([digital])
 
@@ -300,10 +308,12 @@ def test_purchase_refunded_false_matches_none(db):
     kept = Game.objects.create(name="Kept", platform=pc)
     none = Game.objects.create(name="NoPurchase", platform=pc)
     p1 = Purchase.objects.create(
-        date_purchased=date(2024, 1, 1), date_refunded=date(2024, 2, 1)
+        price_currency="CZK",
+        date_purchased=date(2024, 1, 1),
+        date_refunded=date(2024, 2, 1),
     )
     p1.games.set([refunded])
-    p2 = Purchase.objects.create(date_purchased=date(2024, 1, 1))
+    p2 = Purchase.objects.create(price_currency="CZK", date_purchased=date(2024, 1, 1))
     p2.games.set([kept])
 
     filter_json = _relation_bool_json(
@@ -318,9 +328,13 @@ def test_purchase_infinite_true_matches_any(db):
     pc = Platform.objects.create(name="PC")
     infinite = Game.objects.create(name="Infinite", platform=pc)
     finite = Game.objects.create(name="Finite", platform=pc)
-    p1 = Purchase.objects.create(date_purchased=date(2024, 1, 1), infinite=True)
+    p1 = Purchase.objects.create(
+        price_currency="CZK", date_purchased=date(2024, 1, 1), infinite=True
+    )
     p1.games.set([infinite])
-    p2 = Purchase.objects.create(date_purchased=date(2024, 1, 1), infinite=False)
+    p2 = Purchase.objects.create(
+        price_currency="CZK", date_purchased=date(2024, 1, 1), infinite=False
+    )
     p2.games.set([finite])
 
     filter_json = _relation_bool_json(
@@ -338,10 +352,12 @@ def test_purchase_refunded_true_matches_any(db):
     kept = Game.objects.create(name="Kept", platform=pc)
     Game.objects.create(name="NoPurchase", platform=pc)
     p1 = Purchase.objects.create(
-        date_purchased=date(2024, 1, 1), date_refunded=date(2024, 2, 1)
+        price_currency="CZK",
+        date_purchased=date(2024, 1, 1),
+        date_refunded=date(2024, 2, 1),
     )
     p1.games.set([refunded])
-    p2 = Purchase.objects.create(date_purchased=date(2024, 1, 1))
+    p2 = Purchase.objects.create(price_currency="CZK", date_purchased=date(2024, 1, 1))
     p2.games.set([kept])
 
     filter_json = _relation_bool_json(
@@ -358,9 +374,13 @@ def test_purchase_infinite_false_matches_none(db):
     infinite = Game.objects.create(name="Infinite", platform=pc)
     finite = Game.objects.create(name="Finite", platform=pc)
     no_purchase = Game.objects.create(name="NoPurchase", platform=pc)
-    p1 = Purchase.objects.create(date_purchased=date(2024, 1, 1), infinite=True)
+    p1 = Purchase.objects.create(
+        price_currency="CZK", date_purchased=date(2024, 1, 1), infinite=True
+    )
     p1.games.set([infinite])
-    p2 = Purchase.objects.create(date_purchased=date(2024, 1, 1), infinite=False)
+    p2 = Purchase.objects.create(
+        price_currency="CZK", date_purchased=date(2024, 1, 1), infinite=False
+    )
     p2.games.set([finite])
 
     filter_json = _relation_bool_json(
@@ -385,12 +405,14 @@ def two_purchase_world(db):
     combined = Game.objects.create(name="Combined", platform=pc)
 
     game_digital = Purchase.objects.create(
+        price_currency="CZK",
         date_purchased=date(2024, 1, 1),
         type=Purchase.GAME,
         ownership_type=Purchase.DIGITAL,
     )
     game_digital.games.set([split])
     dlc_physical = Purchase.objects.create(
+        price_currency="CZK",
         date_purchased=date(2024, 1, 1),
         type=Purchase.DLC,
         related_game=split,
@@ -400,6 +422,7 @@ def two_purchase_world(db):
 
     # combined: a single purchase that is BOTH type=game AND ownership=physical.
     both = Purchase.objects.create(
+        price_currency="CZK",
         date_purchased=date(2024, 1, 1),
         type=Purchase.GAME,
         ownership_type=Purchase.PHYSICAL,
@@ -458,9 +481,13 @@ def test_purchase_finished_widget_json_selects_purchases(db):
     other_game = Game.objects.create(name="Other", platform=pc)
     PlayEvent.objects.create(game=finished_game, ended=date(2024, 6, 15))
 
-    bought_finished = Purchase.objects.create(date_purchased=date(2024, 1, 1))
+    bought_finished = Purchase.objects.create(
+        price_currency="CZK", date_purchased=date(2024, 1, 1)
+    )
     bought_finished.games.set([finished_game])
-    bought_other = Purchase.objects.create(date_purchased=date(2024, 1, 1))
+    bought_other = Purchase.objects.create(
+        price_currency="CZK", date_purchased=date(2024, 1, 1)
+    )
     bought_other.games.set([other_game])
 
     filter_json = json.dumps(

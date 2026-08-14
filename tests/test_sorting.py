@@ -241,8 +241,8 @@ class TestParseFindFilter:
         from timetracker import settings_resolver
 
         user = django_user_model.objects.create_user(username="pages", password="pw")
-        UserPreferences.objects.create(
-            user=user, extra_preferences={"DEFAULT_PAGE_SIZE": 50}
+        UserPreferences.objects.filter(user=user).update(
+            extra_preferences={"DEFAULT_PAGE_SIZE": 50}
         )
         settings_resolver.clear_cache()
         request = RequestFactory().get("/x")
@@ -261,8 +261,8 @@ class TestParseFindFilter:
         user = django_user_model.objects.create_user(
             username=f"pages-{raw!r}", password="pw"
         )
-        UserPreferences.objects.create(
-            user=user, extra_preferences={"DEFAULT_PAGE_SIZE": 50}
+        UserPreferences.objects.filter(user=user).update(
+            extra_preferences={"DEFAULT_PAGE_SIZE": 50}
         )
         settings_resolver.clear_cache()
         request = RequestFactory().get("/x", {"per_page": raw})
@@ -280,8 +280,8 @@ class TestParseFindFilter:
         from timetracker import settings_resolver
 
         user = django_user_model.objects.create_user(username="equal", password="pw")
-        UserPreferences.objects.create(
-            user=user, extra_preferences={"DEFAULT_PAGE_SIZE": 50}
+        UserPreferences.objects.filter(user=user).update(
+            extra_preferences={"DEFAULT_PAGE_SIZE": 50}
         )
         settings_resolver.clear_cache()
         request = RequestFactory().get("/x", {"per_page": "50"})
@@ -405,6 +405,7 @@ class TestListPurchasesSort:
         # cheap (Alpha, price=10) purchased LATER so default -purchased order would show Alpha first
         # dear (Beta, price=90) purchased EARLIER — so -price must override default order to pass
         dear = Purchase.objects.create(
+            price_currency="CZK",
             date_purchased=datetime(2022, 1, 1, tzinfo=ZONEINFO),
             price=90,
             converted_price=90,
@@ -412,6 +413,7 @@ class TestListPurchasesSort:
         )
         dear.games.add(beta)
         cheap = Purchase.objects.create(
+            price_currency="CZK",
             date_purchased=datetime(2022, 1, 2, tzinfo=ZONEINFO),
             price=10,
             converted_price=10,

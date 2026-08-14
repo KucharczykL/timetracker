@@ -47,7 +47,9 @@ def _session_form_data(game: Game, timestamp_start: str) -> dict[str, str]:
 def test_naive_session_input_is_interpreted_in_the_account_timezone(db):
     user = get_user_model().objects.create_user(username="tester", password="pw")
     game = Game.objects.create(name="Hades")
-    UserPreferences.objects.create(user=user, display_time_zone="Pacific/Kiritimati")
+    UserPreferences.objects.filter(user=user).update(
+        display_time_zone="Pacific/Kiritimati"
+    )
     settings_resolver.clear_cache()
     captured: dict[str, object] = {}
 
@@ -70,7 +72,9 @@ def test_naive_session_input_is_interpreted_in_the_account_timezone(db):
 def test_naive_dst_gap_is_rejected_in_the_account_timezone(db):
     user = get_user_model().objects.create_user(username="tester", password="pw")
     game = Game.objects.create(name="Hades")
-    UserPreferences.objects.create(user=user, display_time_zone="America/New_York")
+    UserPreferences.objects.filter(user=user).update(
+        display_time_zone="America/New_York"
+    )
     settings_resolver.clear_cache()
     captured: dict[str, object] = {}
 
@@ -97,7 +101,9 @@ def test_offset_qualified_input_binds_to_the_instant_it_names(db):
     zone cannot re-interpret it — the instant is the one the segments showed."""
     user = get_user_model().objects.create_user(username="tester", password="pw")
     game = Game.objects.create(name="Hades")
-    UserPreferences.objects.create(user=user, display_time_zone="Pacific/Kiritimati")
+    UserPreferences.objects.filter(user=user).update(
+        display_time_zone="Pacific/Kiritimati"
+    )
     settings_resolver.clear_cache()
     captured: dict[str, object] = {}
 
@@ -220,7 +226,7 @@ def test_naive_input_is_interpreted_in_the_selected_zone(db):
     against the *picked* zone, so that is the zone they bind in."""
     user = get_user_model().objects.create_user(username="tester", password="pw")
     game = Game.objects.create(name="Hades")
-    UserPreferences.objects.create(user=user, display_time_zone="Europe/Prague")
+    UserPreferences.objects.filter(user=user).update(display_time_zone="Europe/Prague")
     settings_resolver.clear_cache()
     captured: dict[str, object] = {}
 
@@ -249,7 +255,7 @@ def test_naive_gap_in_the_selected_zone_is_rejected_naming_it(db):
     selected zone, and name it."""
     user = get_user_model().objects.create_user(username="tester", password="pw")
     game = Game.objects.create(name="Hades")
-    UserPreferences.objects.create(user=user, display_time_zone="Asia/Tokyo")
+    UserPreferences.objects.filter(user=user).update(display_time_zone="Asia/Tokyo")
     settings_resolver.clear_cache()
     captured: dict[str, object] = {}
 
@@ -278,7 +284,9 @@ def test_naive_value_valid_in_the_selected_zone_survives_an_account_zone_gap(db)
     gap, but a perfectly ordinary Tokyo wall clock — it must bind, not error."""
     user = get_user_model().objects.create_user(username="tester", password="pw")
     game = Game.objects.create(name="Hades")
-    UserPreferences.objects.create(user=user, display_time_zone="America/New_York")
+    UserPreferences.objects.filter(user=user).update(
+        display_time_zone="America/New_York"
+    )
     settings_resolver.clear_cache()
     captured: dict[str, object] = {}
 

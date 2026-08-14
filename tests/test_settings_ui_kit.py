@@ -243,7 +243,7 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
         form = KitForm()
         states = {
             "display_name": SettingFieldState(
-                key="DEFAULT_CURRENCY",
+                key="DEFAULT_PURCHASE_CURRENCY",
                 source="database",
                 help_text="Used for purchase entry.",
                 show_source=False,
@@ -261,7 +261,7 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
         assert "<setting-source-badge" not in html
         assert "data-setting-origin" not in html
         # Identity and behaviour are untouched by the badge decision.
-        assert 'data-setting-key="DEFAULT_CURRENCY"' in html
+        assert 'data-setting-key="DEFAULT_PURCHASE_CURRENCY"' in html
         assert 'data-live-setting-control=""' in html
         assert "Used for purchase entry." in html
         assert "<label" in html

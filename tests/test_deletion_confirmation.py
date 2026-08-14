@@ -64,7 +64,7 @@ def deletables(db):
     platform = Platform.objects.create(name="Console")
     owned = Game.objects.create(name="Deletable", platform=platform)
     purchase = Purchase.objects.create(
-        date_purchased=date(2024, 6, 1), type=Purchase.GAME
+        price_currency="CZK", date_purchased=date(2024, 6, 1), type=Purchase.GAME
     )
     purchase.games.set([owned])
     return {

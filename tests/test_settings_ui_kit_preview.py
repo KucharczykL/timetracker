@@ -148,7 +148,7 @@ def test_preview_patch_succeeds_with_toast_without_persistence(
         "message": "Display name saved (preview only)",
         "type": "success",
     }
-    assert not UserPreferences.objects.filter(user=preview_user).exists()
+    assert UserPreferences.objects.get(user=preview_user).extra_preferences == {}
     assert not SiteSetting.objects.exists()
 
 

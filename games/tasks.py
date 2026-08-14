@@ -65,7 +65,7 @@ def _save_converted_price(purchase, converted_price, needs_update, currency_to):
 def convert_prices():
     # Resolved once per run so the whole run is internally consistent even if the
     # site default is edited mid-run (see timetracker.settings_resolver).
-    currency_to = resolve_str("DEFAULT_CURRENCY").upper()
+    currency_to = resolve_str("DEFAULT_DISPLAY_CURRENCY").upper()
     purchases = Purchase.objects.filter(
         models.Q(needs_price_update=True) | models.Q(converted_price__isnull=True)
     ).distinct()

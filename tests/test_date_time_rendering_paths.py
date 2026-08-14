@@ -90,6 +90,7 @@ def test_non_default_presentation_reaches_every_server_display_path(
     device = Device.objects.create(name="Desktop")
     game = Game.objects.create(name="Calendar Game", platform=platform)
     purchase = Purchase.objects.create(
+        price_currency="CZK",
         date_purchased=date(2022, 9, 26),
         date_refunded=date(2022, 9, 27),
         platform=platform,

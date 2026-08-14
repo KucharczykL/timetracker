@@ -79,9 +79,16 @@ def test_superuser_sees_infrastructure_section_on_admin_settings(
 def authenticated_page(
     live_server, page: Page, django_user_model
 ) -> tuple[Page, Device]:
-    django_user_model.objects.create_user(username="tester", password="secret123")
-    preferred = Device.objects.create(name="Steam Deck", type=Device.HANDHELD)
-    Game.objects.bulk_create([Game(name=f"Game {index:02}") for index in range(51)])
+    user = django_user_model.objects.create_user(
+        username="tester", password="secret123"
+    )
+    preferred = Device.objects.create(
+        library=user.library, name="Steam Deck", type=Device.HANDHELD
+    )
+    user.library.preferences.set_default_device(preferred)
+    Game.objects.bulk_create(
+        [Game(library=user.library, name=f"Game {index:02}") for index in range(51)]
+    )
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")
     page.fill('input[name="password"]', "secret123")
@@ -135,22 +142,26 @@ def test_personal_settings_persist_and_drive_consumers(
         expect(trigger).to_be_hidden()
         expect(rail).to_be_visible()
 
-    currency = page.locator('input[name="default_currency"]')
-    currency.fill("EUR")
+    purchase_currency = page.locator('input[name="default_purchase_currency"]')
+    purchase_currency.fill("EUR")
     with page.expect_response(
         lambda response: (
-            "/api/settings/user/DEFAULT_CURRENCY" in response.url
+            "/api/settings/user/DEFAULT_PURCHASE_CURRENCY" in response.url
             and response.request.method == "PATCH"
         )
-    ) as currency_saved:
-        currency.press("Tab")
-    assert currency_saved.value.status == 200
-    _save_select(
-        page,
-        "DEFAULT_DEVICE",
-        "default_device",
-        str(preferred.pk),
-    )
+    ) as purchase_currency_saved:
+        purchase_currency.press("Tab")
+    assert purchase_currency_saved.value.status == 200
+    display_currency = page.locator('input[name="default_display_currency"]')
+    display_currency.fill("USD")
+    with page.expect_response(
+        lambda response: (
+            "/api/settings/user/DEFAULT_DISPLAY_CURRENCY" in response.url
+            and response.request.method == "PATCH"
+        )
+    ) as display_currency_saved:
+        display_currency.press("Tab")
+    assert display_currency_saved.value.status == 200
     _save_select(
         page,
         "DEFAULT_LANDING_PAGE",
@@ -165,10 +176,8 @@ def test_personal_settings_persist_and_drive_consumers(
     )
 
     page.reload()
-    expect(currency).to_have_value("EUR")
-    expect(page.locator('select[name="default_device"]')).to_have_value(
-        str(preferred.pk)
-    )
+    expect(purchase_currency).to_have_value("EUR")
+    expect(display_currency).to_have_value("USD")
     expect(page.locator('select[name="default_landing_page"]')).to_have_value(
         "games:list_games"
     )

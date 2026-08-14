@@ -79,6 +79,7 @@ class MiddlewareIntegrationTest(TestCase):
         swaps it in place without navigating away (preserving URL/query params).
         """
         purchase = Purchase.objects.create(
+            price_currency="CZK",
             date_purchased=datetime(2023, 1, 1),
             platform=self.platform,
         )

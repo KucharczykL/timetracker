@@ -57,18 +57,21 @@ def rendered(db):
     abandoned = Game.objects.create(
         name="Abandoned", platform=pc, status=Game.Status.ABANDONED
     )
-    Purchase.objects.create(date_purchased=_dt(1, 5), type=Purchase.GAME).games.set(
-        [games[0]]
-    )
-    Purchase.objects.create(date_purchased=_dt(2, 5), type=Purchase.GAME).games.set(
-        [abandoned]
-    )  # dropped
     Purchase.objects.create(
-        date_purchased=_dt(3, 5), date_refunded=_dt(4, 5), type=Purchase.GAME
+        price_currency="CZK", date_purchased=_dt(1, 5), type=Purchase.GAME
+    ).games.set([games[0]])
+    Purchase.objects.create(
+        price_currency="CZK", date_purchased=_dt(2, 5), type=Purchase.GAME
+    ).games.set([abandoned])  # dropped
+    Purchase.objects.create(
+        price_currency="CZK",
+        date_purchased=_dt(3, 5),
+        date_refunded=_dt(4, 5),
+        type=Purchase.GAME,
     ).games.set([games[1]])  # refunded
-    Purchase.objects.create(date_purchased=_dt(5, 5), type=Purchase.GAME).games.set(
-        [games[2]]
-    )  # unfinished
+    Purchase.objects.create(
+        price_currency="CZK", date_purchased=_dt(5, 5), type=Purchase.GAME
+    ).games.set([games[2]])  # unfinished
 
     finished_game = games[0]
     PlayEvent.objects.create(game=finished_game, ended=_dt(8, 1))

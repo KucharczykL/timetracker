@@ -835,12 +835,89 @@ def reconcile_cutover(apps, manifest, library):
         "reconciliation.PurchaseConversionState", actual_state, expected_state
     )
 
-    source = manifest["source"]
-    print(
-        "OWN cutover reconciled "
-        f"deployment={source['deployment_version']} "
-        f"dump_sha256={source['dump_sha256']} "
-        f"library={library.pk}"
+
+def new_site_currency(apps, key):
+    boot_value = legacy_boot_config_value(key)
+    if boot_value is not None:
+        value, source = boot_value
+        return normalize_currency(value, key), source, True
+    row = raw_setting_row(apps, key)
+    if row["present"]:
+        try:
+            return normalize_currency(row["value"], f"{key} row"), "database", False
+        except RuntimeError:
+            pass
+    return LEGACY_DEFAULT_CURRENCY, "default", False
+
+
+def split_runtime_preferences(apps, manifest):
+    confirmed = manifest["operator_confirmed_settings"]
+    UserPreferences = apps.get_model("games", "UserPreferences")
+    SiteSetting = apps.get_model("games", "SiteSetting")
+
+    personal_value = (
+        confirmed["effective_purchase_currency"]
+        if confirmed["old_personal_currency"]["source"] == "user"
+        else None
+    )
+    for preferences in UserPreferences.objects.all():
+        preferences.default_purchase_currency = personal_value
+        preferences.default_display_currency = None
+        preferences.save(
+            update_fields=[
+                "default_purchase_currency",
+                "default_display_currency",
+            ]
+        )
+
+    old_site_value = normalize_currency(
+        confirmed["old_site_currency"]["value"],
+        "operator_confirmed_settings.old_site_currency.value",
+    )
+    for key in ("DEFAULT_PURCHASE_CURRENCY", "DEFAULT_DISPLAY_CURRENCY"):
+        SiteSetting.objects.update_or_create(
+            key=key,
+            defaults={"value": old_site_value},
+        )
+    SiteSetting.objects.filter(key__in=("DEFAULT_CURRENCY", "DEFAULT_DEVICE")).delete()
+
+    purchase_site, _purchase_source, _purchase_locked = new_site_currency(
+        apps, "DEFAULT_PURCHASE_CURRENCY"
+    )
+    display_site, _display_source, _display_locked = new_site_currency(
+        apps, "DEFAULT_DISPLAY_CURRENCY"
+    )
+    require_match(
+        "reconciliation.DEFAULT_PURCHASE_CURRENCY.site_value",
+        purchase_site,
+        old_site_value,
+    )
+    require_match(
+        "reconciliation.DEFAULT_DISPLAY_CURRENCY.site_value",
+        display_site,
+        old_site_value,
+    )
+
+    preferences = UserPreferences.objects.get()
+    effective_purchase = (
+        preferences.default_purchase_currency
+        if preferences.default_purchase_currency is not None
+        else purchase_site
+    )
+    effective_display = (
+        preferences.default_display_currency
+        if preferences.default_display_currency is not None
+        else display_site
+    )
+    require_match(
+        "reconciliation.DEFAULT_PURCHASE_CURRENCY.effective_value",
+        effective_purchase,
+        confirmed["effective_purchase_currency"],
+    )
+    require_match(
+        "reconciliation.DEFAULT_DISPLAY_CURRENCY.effective_value",
+        effective_display,
+        confirmed["effective_display_currency"],
     )
 
 
@@ -853,6 +930,14 @@ def run_cutover(apps, schema_editor):
     library = backfill_known_library(apps, manifest)
     backfill_ownership_and_state(apps, manifest, library)
     reconcile_cutover(apps, manifest, library)
+    split_runtime_preferences(apps, manifest)
+    source = manifest["source"]
+    print(
+        "OWN cutover reconciled "
+        f"deployment={source['deployment_version']} "
+        f"dump_sha256={source['dump_sha256']} "
+        f"library={library.pk}"
+    )
 
 
 class Migration(migrations.Migration):
@@ -985,7 +1070,25 @@ class Migration(migrations.Migration):
                 ("last_error", models.TextField(blank=True, default="")),
             ],
         ),
+        migrations.AddField(
+            model_name="userpreferences",
+            name="default_purchase_currency",
+            field=models.CharField(blank=True, default=None, max_length=3, null=True),
+        ),
+        migrations.AddField(
+            model_name="userpreferences",
+            name="default_display_currency",
+            field=models.CharField(blank=True, default=None, max_length=3, null=True),
+        ),
         migrations.RunPython(run_cutover, migrations.RunPython.noop),
+        migrations.RemoveField(
+            model_name="userpreferences",
+            name="default_currency",
+        ),
+        migrations.RemoveField(
+            model_name="userpreferences",
+            name="default_device",
+        ),
         migrations.RunSQL(
             sql="SET CONSTRAINTS ALL IMMEDIATE",
             reverse_sql=migrations.RunSQL.noop,

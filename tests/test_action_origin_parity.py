@@ -26,7 +26,7 @@ def world(db):
     platform = Platform.objects.create(name="PC")
     game = Game.objects.create(name="Test Game", platform=platform)
     purchase = Purchase.objects.create(
-        date_purchased=date(2024, 6, 1), type=Purchase.GAME
+        price_currency="CZK", date_purchased=date(2024, 6, 1), type=Purchase.GAME
     )
     purchase.games.set([game])
     Session.objects.create(

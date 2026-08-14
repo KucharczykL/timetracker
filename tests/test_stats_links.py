@@ -50,23 +50,30 @@ def world(db):
     PlayEvent.objects.create(game=finished_game, ended=_dt(YEAR, 8, 1))
 
     # Purchases (single-game).
-    Purchase.objects.create(  # finished, bought in-year
-        date_purchased=_dt(YEAR, 1, 5), type=Purchase.GAME
+    Purchase.objects.create(
+        price_currency="CZK",  # finished, bought in-year
+        date_purchased=_dt(YEAR, 1, 5),
+        type=Purchase.GAME,
     ).games.set([finished_game])
-    Purchase.objects.create(  # abandoned -> dropped
-        date_purchased=_dt(YEAR, 2, 5), type=Purchase.GAME
+    Purchase.objects.create(
+        price_currency="CZK",  # abandoned -> dropped
+        date_purchased=_dt(YEAR, 2, 5),
+        type=Purchase.GAME,
     ).games.set([abandoned_game])
-    Purchase.objects.create(  # refunded
+    Purchase.objects.create(
+        price_currency="CZK",  # refunded
         date_purchased=_dt(YEAR, 3, 5),
         date_refunded=_dt(YEAR, 4, 5),
         type=Purchase.GAME,
     ).games.set([playing_game])
-    Purchase.objects.create(  # unfinished (playing, not refunded/finished)
-        date_purchased=_dt(YEAR, 5, 5), type=Purchase.GAME
+    Purchase.objects.create(
+        price_currency="CZK",  # unfinished (playing, not refunded/finished)
+        date_purchased=_dt(YEAR, 5, 5),
+        type=Purchase.GAME,
     ).games.set([playing_game])
     # backlog decrease: bought prior year, game finished, ended in-year
     Purchase.objects.create(
-        date_purchased=_dt(YEAR - 1, 5, 5), type=Purchase.GAME
+        price_currency="CZK", date_purchased=_dt(YEAR - 1, 5, 5), type=Purchase.GAME
     ).games.set([finished_game])
 
     return {

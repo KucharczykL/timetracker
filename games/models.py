@@ -278,9 +278,8 @@ class Purchase(models.Model):
     date_refunded = models.DateField(blank=True, null=True, verbose_name="Refunded")
     infinite = models.BooleanField(default=False)
     price = models.FloatField(default=0)
-    # Empty by default: Purchase.save() fills it from the resolved DEFAULT_CURRENCY
-    # (the single source of the default). loaddata bypasses save(), so fixtures
-    # must set price_currency explicitly.
+    # Entry forms preselect a resolved default, but every persisted Purchase
+    # carries its original currency explicitly.
     price_currency = models.CharField(max_length=3, blank=True, default="")
     converted_price = models.FloatField(null=True)
     converted_currency = models.CharField(max_length=3, blank=True, default="")
@@ -367,10 +366,7 @@ class Purchase(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.price_currency:
-            # Local import: the resolver lazily imports this module in turn.
-            from timetracker.settings_resolver import resolve_str
-
-            self.price_currency = resolve_str("DEFAULT_CURRENCY")
+            raise ValidationError({"price_currency": "Purchase currency is required."})
         self.clean()
         if self.type != Purchase.GAME and not self.related_game:
             raise ValidationError(
@@ -527,7 +523,7 @@ class ExchangeRate(models.Model):
 
 def get_or_create_rate(currency_from: str, currency_to: str, year: int) -> float | None:
     # Currently unused. If ever wired up, its currency_to must come from
-    # settings_resolver.resolve_str("DEFAULT_CURRENCY"), not a boot-frozen value.
+    # settings_resolver.resolve_str("DEFAULT_DISPLAY_CURRENCY"), not a boot-frozen value.
     exchange_rate = None
     result = ExchangeRate.objects.filter(
         currency_from=currency_from, currency_to=currency_to, year=year
@@ -695,12 +691,11 @@ class SiteSetting(models.Model):
         return f"{self.key} = {self.value!r}"
 
 
-#: USER-scoped key → the UserPreferences column storing it. DEFAULT_DEVICE maps to
-#: the FK *attname* (``default_device_id``) so reads/writes use the serializable id,
-#: not a Device instance. Keys absent here live in the ``extra_preferences`` bag.
+#: USER-scoped key → the nullable UserPreferences column storing it. Keys absent
+#: here live in the ``extra_preferences`` bag.
 USER_PREFERENCE_FIELD_BY_KEY: Final[dict[SettingKey, str]] = {
-    "DEFAULT_CURRENCY": "default_currency",
-    "DEFAULT_DEVICE": "default_device_id",
+    "DEFAULT_PURCHASE_CURRENCY": "default_purchase_currency",
+    "DEFAULT_DISPLAY_CURRENCY": "default_display_currency",
     "DEFAULT_LANDING_PAGE": "default_landing_page",
     "THEME": "theme",
     "DISPLAY_TIME_ZONE": "display_time_zone",
@@ -793,15 +788,11 @@ class UserPreferences(models.Model):
         on_delete=models.CASCADE,
         related_name="preferences",
     )
-    default_currency = models.CharField(
+    default_purchase_currency = models.CharField(
         max_length=3, null=True, blank=True, default=None
     )
-    default_device = models.ForeignKey(
-        Device,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="+",
+    default_display_currency = models.CharField(
+        max_length=3, null=True, blank=True, default=None
     )
     default_landing_page = models.CharField(
         max_length=100, null=True, blank=True, default=None
@@ -849,7 +840,6 @@ class UserPreferences(models.Model):
         field = USER_PREFERENCE_FIELD_BY_KEY.get(key)
         if field is not None:
             setattr(self, field, value)
-            # save() accepts the FK attname (default_device_id) in update_fields.
             self.save(update_fields=[field, "updated_at"])
             return
         if value is None:

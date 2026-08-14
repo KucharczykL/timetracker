@@ -59,7 +59,7 @@ def test_platform_search_blank_query_uses_newest_game_or_purchase(auth_client):
     switch = Platform.objects.create(name="Switch")
     old_game = Game.objects.create(name="Old game", platform=atari)
     recent_purchase = Purchase.objects.create(
-        platform=switch, date_purchased=date(2026, 1, 1)
+        price_currency="CZK", platform=switch, date_purchased=date(2026, 1, 1)
     )
     Game.objects.filter(pk=old_game.pk).update(
         updated_at=datetime(2025, 1, 1, tzinfo=UTC)
@@ -76,7 +76,9 @@ def test_platform_search_blank_query_uses_newest_game_or_purchase(auth_client):
 def test_platform_search_blank_query_does_not_join_games_to_purchases(auth_client):
     platform = Platform.objects.create(name="PC")
     Game.objects.create(name="One", platform=platform)
-    Purchase.objects.create(platform=platform, date_purchased=date(2026, 1, 1))
+    Purchase.objects.create(
+        price_currency="CZK", platform=platform, date_purchased=date(2026, 1, 1)
+    )
 
     with CaptureQueriesContext(connection) as queries:
         auth_client.get("/api/platforms/search", {"limit": 10})

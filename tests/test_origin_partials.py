@@ -16,7 +16,10 @@ def purchase(db):
     game = Game.objects.create(name="Bundled")
     other = Game.objects.create(name="Also bundled")
     purchase = Purchase.objects.create(
-        date_purchased=date(2024, 6, 1), type=Purchase.GAME, price=10
+        price_currency="CZK",
+        date_purchased=date(2024, 6, 1),
+        type=Purchase.GAME,
+        price=10,
     )
     purchase.games.set([game, other])
     return purchase

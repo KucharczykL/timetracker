@@ -116,11 +116,13 @@ class HtmlValidityTest(TestCase):
 
         # A multi-game bundle: LinkedPurchase renders the games-list popover.
         self.bundle = Purchase.objects.create(
+            price_currency="CZK",
             date_purchased=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO),
             platform=self.platform,
         )
         self.bundle.games.add(self.long_game, self.other_game)
         self.other_bundle = Purchase.objects.create(
+            price_currency="CZK",
             date_purchased=datetime(2022, 9, 27, 14, 58, tzinfo=ZONEINFO),
             platform=self.platform,
             price=1,

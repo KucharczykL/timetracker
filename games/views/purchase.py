@@ -1,5 +1,8 @@
+from typing import cast
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
 from django.db import transaction
 from django.db.models import QuerySet
 from django.http import (
@@ -63,7 +66,6 @@ from games.sorting import (
 from games.views.deletion import confirm_and_delete
 from games.views.filtering import warn_unknown_sort
 from games.views.returns import origin_from, return_url
-from timetracker.settings_resolver import resolve_str_for_user
 
 
 def _render_purchase_buttons(
@@ -290,6 +292,7 @@ def _create_separate_purchases(form: PurchaseForm, post) -> None:
     game is attached."""
     data = form.cleaned_data
     shared = {
+        "library": form.library,
         "platform": data.get("platform"),
         "date_purchased": data["date_purchased"],
         "date_refunded": data.get("date_refunded"),
@@ -313,18 +316,16 @@ def _create_separate_purchases(form: PurchaseForm, post) -> None:
 
 @login_required
 def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
-    default_currency = resolve_str_for_user(request.user, "DEFAULT_CURRENCY")
+    library = cast(User, request.user).library
     presentation = date_time_presentation_for_request(request)
-    initial = {
-        "date_purchased": timezone.now(),
-        "price_currency": default_currency,
-    }
+    initial = {"date_purchased": timezone.now()}
 
     if request.method == "POST":
         form = PurchaseForm(
             request.POST or None,
             initial=initial,
-            default_currency=default_currency,
+            library=library,
+            user=cast(User, request.user),
             presentation=presentation,
         )
         if form.is_valid():
@@ -350,7 +351,8 @@ def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
                     "games": [game],
                     "platform": game.platform,
                 },
-                default_currency=default_currency,
+                library=library,
+                user=cast(User, request.user),
                 presentation=presentation,
             )
             # Chained from add_game: game and platform are pre-filled, so focus
@@ -360,7 +362,8 @@ def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
         else:
             form = PurchaseForm(
                 initial=initial,
-                default_currency=default_currency,
+                library=library,
+                user=cast(User, request.user),
                 presentation=presentation,
             )
 
@@ -384,15 +387,11 @@ def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
 @login_required
 def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     purchase = get_object_or_404(Purchase, id=purchase_id)
-    default_currency = resolve_str_for_user(request.user, "DEFAULT_CURRENCY")
-    initial = (
-        {"price_currency": default_currency} if not purchase.price_currency else None
-    )
     form = PurchaseForm(
         request.POST or None,
         instance=purchase,
-        initial=initial,
-        default_currency=default_currency,
+        library=cast(User, request.user).library,
+        user=cast(User, request.user),
         presentation=date_time_presentation_for_request(request),
     )
     if form.is_valid():
@@ -593,6 +592,7 @@ def split_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
         share = purchase.price / count
         for game in games:
             new_purchase = Purchase(
+                library=purchase.library,
                 price=share,
                 price_currency=purchase.price_currency,
                 date_purchased=purchase.date_purchased,

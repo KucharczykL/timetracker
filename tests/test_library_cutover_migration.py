@@ -320,6 +320,8 @@ def test_known_legacy_shape_backfills_exactly_one_manifest_selected_library(
     Device = new_apps.get_model("games", "Device")
     FilterPreset = new_apps.get_model("games", "FilterPreset")
     preferences = new_apps.get_model("games", "UserLibraryPreferences").objects.get()
+    account_preferences = new_apps.get_model("games", "UserPreferences").objects.get()
+    SiteSetting = new_apps.get_model("games", "SiteSetting")
     state = new_apps.get_model("games", "PurchaseConversionState").objects.get()
     assert {
         Game.objects.get().library_id,
@@ -333,6 +335,21 @@ def test_known_legacy_shape_backfills_exactly_one_manifest_selected_library(
         preferences.library_id == library.pk
         and preferences.default_device_id == ids["device_id"]
     )
+    assert (
+        account_preferences.default_purchase_currency,
+        account_preferences.default_display_currency,
+    ) == ("EUR", None)
+    assert dict(
+        SiteSetting.objects.filter(
+            key__in=("DEFAULT_PURCHASE_CURRENCY", "DEFAULT_DISPLAY_CURRENCY")
+        ).values_list("key", "value")
+    ) == {
+        "DEFAULT_PURCHASE_CURRENCY": "CZK",
+        "DEFAULT_DISPLAY_CURRENCY": "CZK",
+    }
+    assert not SiteSetting.objects.filter(
+        key__in=("DEFAULT_CURRENCY", "DEFAULT_DEVICE")
+    ).exists()
     assert (
         state.requested_version,
         state.requested_currency,
@@ -727,6 +744,74 @@ def test_valid_boot_currency_origins_are_accepted(
 
     UserLibrary = new_apps.get_model("games", "UserLibrary")
     assert UserLibrary.objects.get().user_id == ids["user_id"]
+    account_preferences = new_apps.get_model("games", "UserPreferences").objects.get()
+    assert (
+        account_preferences.default_purchase_currency,
+        account_preferences.default_display_currency,
+    ) == ("EUR", None)
+    SiteSetting = new_apps.get_model("games", "SiteSetting")
+    assert dict(
+        SiteSetting.objects.filter(
+            key__in=("DEFAULT_PURCHASE_CURRENCY", "DEFAULT_DISPLAY_CURRENCY")
+        ).values_list("key", "value")
+    ) == {
+        "DEFAULT_PURCHASE_CURRENCY": "USD",
+        "DEFAULT_DISPLAY_CURRENCY": "USD",
+    }
+
+
+@pytest.mark.parametrize(
+    "new_key", ("DEFAULT_PURCHASE_CURRENCY", "DEFAULT_DISPLAY_CURRENCY")
+)
+def test_cutover_refuses_mismatched_locked_new_currency(
+    cutover_harness, tmp_path, monkeypatch, settings, new_key
+):
+    create_legacy_state(cutover_harness.apps)
+    Purchase = cutover_harness.apps.get_model("games", "Purchase")
+    Purchase.objects.update(converted_currency="USD")
+    settings.DEFAULT_CURRENCY = "USD"
+    monkeypatch.setenv("DEFAULT_CURRENCY", "USD")
+    manifest = build_manifest(cutover_harness.apps)
+    set_path(manifest, "operator_confirmed_settings.old_site_currency.value", "USD")
+    set_path(manifest, "operator_confirmed_settings.old_site_currency.source", "env")
+    set_path(manifest, "operator_confirmed_settings.old_site_currency.locked", True)
+    set_path(manifest, "operator_confirmed_settings.effective_display_currency", "USD")
+    monkeypatch.setenv(new_key, "EUR")
+    cutover_harness.install_manifest(tmp_path, manifest)
+
+    with pytest.raises(RuntimeError, match=rf"reconciliation\.{new_key}"):
+        cutover_harness.migrate()
+
+
+def test_cutover_preserves_personal_purchase_override_with_locked_new_site_keys(
+    cutover_harness, tmp_path, monkeypatch, settings
+):
+    create_legacy_state(cutover_harness.apps)
+    Purchase = cutover_harness.apps.get_model("games", "Purchase")
+    Purchase.objects.update(converted_currency="USD")
+    settings.DEFAULT_CURRENCY = "USD"
+    monkeypatch.setenv("DEFAULT_CURRENCY", "USD")
+    monkeypatch.setenv("DEFAULT_PURCHASE_CURRENCY", "USD")
+    monkeypatch.setenv("DEFAULT_DISPLAY_CURRENCY", "USD")
+    manifest = build_manifest(cutover_harness.apps)
+    set_path(manifest, "operator_confirmed_settings.old_site_currency.value", "USD")
+    set_path(manifest, "operator_confirmed_settings.old_site_currency.source", "env")
+    set_path(manifest, "operator_confirmed_settings.old_site_currency.locked", True)
+    set_path(manifest, "operator_confirmed_settings.effective_display_currency", "USD")
+    cutover_harness.install_manifest(tmp_path, manifest)
+
+    new_apps = cutover_harness.migrate()
+
+    preferences = new_apps.get_model("games", "UserPreferences").objects.get()
+    assert (
+        preferences.default_purchase_currency,
+        preferences.default_display_currency,
+    ) == ("EUR", None)
+    SiteSetting = new_apps.get_model("games", "SiteSetting")
+    assert dict(SiteSetting.objects.values_list("key", "value")) == {
+        "DEFAULT_PURCHASE_CURRENCY": "USD",
+        "DEFAULT_DISPLAY_CURRENCY": "USD",
+    }
 
 
 def test_cutover_replay_does_not_depend_on_runtime_default_currency_setting(

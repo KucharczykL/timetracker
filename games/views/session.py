@@ -1,6 +1,7 @@
-from typing import Any
+from typing import Any, cast
 
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
@@ -50,7 +51,6 @@ from games.sorting import (
 from games.views.deletion import confirm_and_apply, confirm_and_delete
 from games.views.filtering import warn_unknown_sort
 from games.views.returns import return_url
-from timetracker.settings_resolver import resolve_for_user
 
 
 def session_row_data(
@@ -179,7 +179,7 @@ def add_session(request: HttpRequest, game_id: int = 0) -> HttpResponse:
         # shifting a stored session's duration — so seeding the raw instant
         # would attach this page load's microseconds to a hand-typed time.
         "timestamp_start": timezone.now().replace(second=0, microsecond=0),
-        "device": resolve_for_user(request.user, "DEFAULT_DEVICE"),
+        "device": cast(User, request.user).library.preferences.default_device,
     }
 
     if request.method == "POST":
@@ -228,7 +228,7 @@ def add_session(request: HttpRequest, game_id: int = 0) -> HttpResponse:
 def edit_session(request: HttpRequest, session_id: int) -> HttpResponse:
     session = get_object_or_404(Session, id=session_id)
     initial = (
-        {"device": resolve_for_user(request.user, "DEFAULT_DEVICE")}
+        {"device": cast(User, request.user).library.preferences.default_device}
         if session.device_id is None
         else None
     )

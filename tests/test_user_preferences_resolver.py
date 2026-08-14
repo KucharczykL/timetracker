@@ -23,8 +23,8 @@ from timetracker.settings_resolver import (
 
 @pytest.fixture
 def no_currency_env(monkeypatch):
-    monkeypatch.delenv("DEFAULT_CURRENCY", raising=False)
-    monkeypatch.delenv("DEFAULT_CURRENCY__FILE", raising=False)
+    monkeypatch.delenv("DEFAULT_PURCHASE_CURRENCY", raising=False)
+    monkeypatch.delenv("DEFAULT_PURCHASE_CURRENCY__FILE", raising=False)
     config_module.reset_caches()
     settings_resolver.clear_cache()
     yield
@@ -42,7 +42,7 @@ def other_user(db):
 
 def _write_currency_row(django_capture_on_commit_callbacks, value):
     with django_capture_on_commit_callbacks(execute=True):
-        change_site_setting("DEFAULT_CURRENCY", value)
+        change_site_setting("DEFAULT_PURCHASE_CURRENCY", value)
 
 
 def _set_user(django_capture_on_commit_callbacks, user, key, value):
@@ -70,8 +70,10 @@ def test_user_beats_site_beats_default(
     user, no_currency_env, django_capture_on_commit_callbacks
 ):
     _write_currency_row(django_capture_on_commit_callbacks, "USD")
-    _set_user(django_capture_on_commit_callbacks, user, "DEFAULT_CURRENCY", "EUR")
-    result = resolve_for_user_with_origin(user, "DEFAULT_CURRENCY")
+    _set_user(
+        django_capture_on_commit_callbacks, user, "DEFAULT_PURCHASE_CURRENCY", "EUR"
+    )
+    result = resolve_for_user_with_origin(user, "DEFAULT_PURCHASE_CURRENCY")
     assert result.value == "EUR"
     assert result.source is SettingSource.USER
     assert result.locked is False
@@ -81,14 +83,14 @@ def test_unset_user_falls_through_to_site(
     user, no_currency_env, django_capture_on_commit_callbacks
 ):
     _write_currency_row(django_capture_on_commit_callbacks, "USD")
-    result = resolve_for_user_with_origin(user, "DEFAULT_CURRENCY")
+    result = resolve_for_user_with_origin(user, "DEFAULT_PURCHASE_CURRENCY")
     assert result.value == "USD"
     assert result.source is SettingSource.DATABASE
 
 
 def test_unset_everything_falls_through_to_default(user, no_currency_env):
-    result = resolve_for_user_with_origin(user, "DEFAULT_CURRENCY")
-    assert result.value == django_settings.DEFAULT_CURRENCY
+    result = resolve_for_user_with_origin(user, "DEFAULT_PURCHASE_CURRENCY")
+    assert result.value == django_settings.DEFAULT_PURCHASE_CURRENCY
     assert result.source is SettingSource.DEFAULT
 
 
@@ -190,10 +192,12 @@ def test_user_beats_env(
     user, monkeypatch, no_currency_env, django_capture_on_commit_callbacks
 ):
     # Env-locking per-user prefs is deferred, so a personal value wins over env.
-    _set_user(django_capture_on_commit_callbacks, user, "DEFAULT_CURRENCY", "EUR")
-    monkeypatch.setenv("DEFAULT_CURRENCY", "USD")
+    _set_user(
+        django_capture_on_commit_callbacks, user, "DEFAULT_PURCHASE_CURRENCY", "EUR"
+    )
+    monkeypatch.setenv("DEFAULT_PURCHASE_CURRENCY", "USD")
     config_module.reset_caches()
-    result = resolve_for_user_with_origin(user, "DEFAULT_CURRENCY")
+    result = resolve_for_user_with_origin(user, "DEFAULT_PURCHASE_CURRENCY")
     assert result.value == "EUR"
     assert result.source is SettingSource.USER
 
@@ -202,10 +206,14 @@ def test_clearing_reverts_to_site(
     user, no_currency_env, django_capture_on_commit_callbacks
 ):
     _write_currency_row(django_capture_on_commit_callbacks, "USD")
-    _set_user(django_capture_on_commit_callbacks, user, "DEFAULT_CURRENCY", "EUR")
-    assert resolve_for_user(user, "DEFAULT_CURRENCY") == "EUR"
-    _set_user(django_capture_on_commit_callbacks, user, "DEFAULT_CURRENCY", None)
-    result = resolve_for_user_with_origin(user, "DEFAULT_CURRENCY")
+    _set_user(
+        django_capture_on_commit_callbacks, user, "DEFAULT_PURCHASE_CURRENCY", "EUR"
+    )
+    assert resolve_for_user(user, "DEFAULT_PURCHASE_CURRENCY") == "EUR"
+    _set_user(
+        django_capture_on_commit_callbacks, user, "DEFAULT_PURCHASE_CURRENCY", None
+    )
+    result = resolve_for_user_with_origin(user, "DEFAULT_PURCHASE_CURRENCY")
     assert result.value == "USD"
     assert result.source is SettingSource.DATABASE
 
@@ -213,11 +221,13 @@ def test_clearing_reverts_to_site(
 def test_scoping_between_users(
     user, other_user, no_currency_env, django_capture_on_commit_callbacks
 ):
-    _set_user(django_capture_on_commit_callbacks, user, "DEFAULT_CURRENCY", "EUR")
-    assert resolve_for_user(user, "DEFAULT_CURRENCY") == "EUR"
+    _set_user(
+        django_capture_on_commit_callbacks, user, "DEFAULT_PURCHASE_CURRENCY", "EUR"
+    )
+    assert resolve_for_user(user, "DEFAULT_PURCHASE_CURRENCY") == "EUR"
     # other_user has no override, so resolves the default, not EUR.
-    result = resolve_for_user_with_origin(other_user, "DEFAULT_CURRENCY")
-    assert result.value == django_settings.DEFAULT_CURRENCY
+    result = resolve_for_user_with_origin(other_user, "DEFAULT_PURCHASE_CURRENCY")
+    assert result.value == django_settings.DEFAULT_PURCHASE_CURRENCY
     assert result.source is SettingSource.DEFAULT
 
 
@@ -227,7 +237,7 @@ def test_anonymous_user_uses_shared_chain(
     from django.contrib.auth.models import AnonymousUser
 
     _write_currency_row(django_capture_on_commit_callbacks, "USD")
-    result = resolve_for_user_with_origin(AnonymousUser(), "DEFAULT_CURRENCY")
+    result = resolve_for_user_with_origin(AnonymousUser(), "DEFAULT_PURCHASE_CURRENCY")
     assert result.value == "USD"
     assert result.source is SettingSource.DATABASE
 
@@ -243,16 +253,6 @@ def test_non_user_scope_proxies_to_shared_chain(user, monkeypatch):
 
 
 # --- typed columns other than currency ------------------------------------
-
-
-def test_device_pref_round_trips_as_id(user, db, django_capture_on_commit_callbacks):
-    from games.models import Device
-
-    device = Device.objects.create(name="Deck", type=Device.HANDHELD)
-    _set_user(django_capture_on_commit_callbacks, user, "DEFAULT_DEVICE", device.pk)
-    result = resolve_for_user_with_origin(user, "DEFAULT_DEVICE")
-    assert result.value == device.pk
-    assert result.source is SettingSource.USER
 
 
 def test_landing_page_pref_round_trips(user, db, django_capture_on_commit_callbacks):
@@ -309,7 +309,7 @@ def test_datetime_format_rejects_unsupported_values(user, value):
     with pytest.raises(ValidationError):
         change_user_setting(user, "DATETIME_FORMAT", value)
 
-    assert not UserPreferences.objects.filter(user=user).exists()
+    assert UserPreferences.objects.get(user=user).extra_preferences == {}
 
 
 @pytest.mark.parametrize(
@@ -325,7 +325,7 @@ def test_presentation_preferences_reject_unsupported_values(user, key, value):
     with pytest.raises(ValidationError):
         change_user_setting(user, key, value)
 
-    assert not UserPreferences.objects.filter(user=user).exists()
+    assert UserPreferences.objects.get(user=user).extra_preferences == {}
 
 
 # --- poison value / robustness --------------------------------------------
@@ -339,11 +339,10 @@ def test_poison_user_value_degrades_to_shared_chain(
     _write_currency_row(django_capture_on_commit_callbacks, "USD")
     # An invalid value can only reach the column via raw update() bypassing
     # normalize; it must not crash resolve — degrade to the site/default layers.
-    UserPreferences.objects.create(user=user)
-    UserPreferences.objects.filter(user=user).update(default_currency="12!")
+    UserPreferences.objects.filter(user=user).update(default_purchase_currency="12!")
     settings_resolver.clear_cache()
     with capture_games_logger():
-        result = resolve_for_user_with_origin(user, "DEFAULT_CURRENCY")
+        result = resolve_for_user_with_origin(user, "DEFAULT_PURCHASE_CURRENCY")
     assert result.value == "USD"
     assert result.source is SettingSource.DATABASE
 
@@ -360,16 +359,10 @@ def test_change_user_setting_rejects_invalid_and_writes_nothing(user, db):
     from games.models import UserPreferences
 
     with pytest.raises(ValidationError):
-        change_user_setting(user, "DEFAULT_CURRENCY", "EURO")
-    assert not UserPreferences.objects.filter(user=user).exists()
-
-
-def test_change_user_setting_rejects_missing_device(user, db):
-    from games.models import UserPreferences
-
-    with pytest.raises(ValidationError):
-        change_user_setting(user, "DEFAULT_DEVICE", 9999)
-    assert not UserPreferences.objects.filter(user=user).exists()
+        change_user_setting(user, "DEFAULT_PURCHASE_CURRENCY", "EURO")
+    preferences = UserPreferences.objects.get(user=user)
+    assert preferences.default_purchase_currency is None
+    assert preferences.extra_preferences == {}
 
 
 def test_get_for_user_is_idempotent(user, db):
@@ -388,12 +381,14 @@ def test_user_snapshot_invalidated_on_write(
     user, no_currency_env, django_capture_on_commit_callbacks
 ):
     # Warm with the empty (default) state.
-    assert resolve_for_user_with_origin(user, "DEFAULT_CURRENCY").source is (
+    assert resolve_for_user_with_origin(user, "DEFAULT_PURCHASE_CURRENCY").source is (
         SettingSource.DEFAULT
     )
-    _set_user(django_capture_on_commit_callbacks, user, "DEFAULT_CURRENCY", "EUR")
+    _set_user(
+        django_capture_on_commit_callbacks, user, "DEFAULT_PURCHASE_CURRENCY", "EUR"
+    )
     # on_commit invalidation ran → immediate, no TTL wait.
-    result = resolve_for_user_with_origin(user, "DEFAULT_CURRENCY")
+    result = resolve_for_user_with_origin(user, "DEFAULT_PURCHASE_CURRENCY")
     assert result.value == "EUR"
     assert result.source is SettingSource.USER
 
@@ -405,22 +400,26 @@ def test_user_queryset_update_is_invisible_until_ttl(
 
     clock = {"now": 1000.0}
     monkeypatch.setattr(settings_resolver.time, "monotonic", lambda: clock["now"])
-    UserPreferences.objects.create(user=user, default_currency="EUR")
+    UserPreferences.objects.filter(user=user).update(default_purchase_currency="EUR")
     settings_resolver.clear_cache()
-    assert resolve_for_user(user, "DEFAULT_CURRENCY") == "EUR"  # warms at t=1000
+    assert (
+        resolve_for_user(user, "DEFAULT_PURCHASE_CURRENCY") == "EUR"
+    )  # warms at t=1000
     # Raw update bypasses signals; stale until the TTL lapses.
-    UserPreferences.objects.filter(user=user).update(default_currency="GBP")
-    assert resolve_for_user(user, "DEFAULT_CURRENCY") == "EUR"
+    UserPreferences.objects.filter(user=user).update(default_purchase_currency="GBP")
+    assert resolve_for_user(user, "DEFAULT_PURCHASE_CURRENCY") == "EUR"
     clock["now"] += settings_resolver.SITE_SETTINGS_TTL_SECONDS + 1
-    assert resolve_for_user(user, "DEFAULT_CURRENCY") == "GBP"
+    assert resolve_for_user(user, "DEFAULT_PURCHASE_CURRENCY") == "GBP"
 
 
 def test_clear_cache_drops_user_snapshot(user, no_currency_env):
     from games.models import UserPreferences
 
-    UserPreferences.objects.create(user=user, default_currency="EUR")
+    UserPreferences.objects.filter(user=user).update(default_purchase_currency="EUR")
     settings_resolver.clear_cache()
-    assert resolve_for_user(user, "DEFAULT_CURRENCY") == "EUR"  # warms snapshot
-    UserPreferences.objects.filter(user=user).update(default_currency="GBP")
+    assert (
+        resolve_for_user(user, "DEFAULT_PURCHASE_CURRENCY") == "EUR"
+    )  # warms snapshot
+    UserPreferences.objects.filter(user=user).update(default_purchase_currency="GBP")
     settings_resolver.clear_cache()
-    assert resolve_for_user(user, "DEFAULT_CURRENCY") == "GBP"
+    assert resolve_for_user(user, "DEFAULT_PURCHASE_CURRENCY") == "GBP"
