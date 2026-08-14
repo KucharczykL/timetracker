@@ -1,4 +1,7 @@
+import builtins
 import importlib
+import os
+import sys
 
 import pytest
 from django.contrib.auth.models import User
@@ -56,3 +59,22 @@ def test_qcluster_command_module_import_does_not_run_readiness(monkeypatch):
     module = importlib.import_module("games.management.commands.qcluster")
 
     assert module.Command
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("entrypoint", ["timetracker.asgi", "timetracker.wsgi"])
+def test_entrypoint_sets_django_settings_before_importing_readiness(
+    monkeypatch, entrypoint
+):
+    monkeypatch.delenv("DJANGO_SETTINGS_MODULE", raising=False)
+    sys.modules.pop(entrypoint, None)
+    original_import = builtins.__import__
+
+    def import_with_settings_check(name, *args, **kwargs):
+        if name == "games.readiness":
+            assert os.environ["DJANGO_SETTINGS_MODULE"] == "timetracker.settings"
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", import_with_settings_check)
+
+    importlib.import_module(entrypoint)
