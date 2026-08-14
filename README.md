@@ -15,14 +15,11 @@ This initializes an ignored, loopback-only PostgreSQL cluster under `.cache/`,
 syncs dependencies, and installs npm packages. `make` automatically reuses that
 cluster. Outside Nix, it downloads the project-pinned PostgreSQL binary for
 supported platforms; alternatively set `DATABASE_URL` to an existing database.
-The local cluster is disposable.
+The managed local cluster is disposable. Stop it with `make stop-postgres`
+before removing a development worktree.
 Afterwards, you can start the development server using `make dev` or `make server`
 (without the Tailwind watcher). Both targets accept `DEV_HOST` and `DEV_PORT`, for
 example `make dev DEV_HOST=0.0.0.0 DEV_PORT=9999`.
-
-Before removing a development worktree, run `make stop-postgres`. The command
-waits for the worktree-managed PostgreSQL server to stop and succeeds when the
-cluster is already stopped or was never initialized.
 
 ## Identifiers
 
