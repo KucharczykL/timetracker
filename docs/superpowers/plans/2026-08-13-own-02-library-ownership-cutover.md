@@ -4,7 +4,7 @@
 
 **Goal:** Perform the single rehearsed offline cutover from globally scoped private data to a complete one-library-per-user ownership, preference, currency, and isolation boundary.
 
-**Architecture:** One migration adds final ownership fields, validates the one known production shape, assigns the production library, splits preferences, and installs final constraints without a temporary claim state. Runtime code resolves `request.user.library`, passes it explicitly, and uses thin queryset helpers. A per-library `PurchaseConversionState` provides atomic transitional FX publication until #728 replaces it.
+**Architecture:** One migration adds final ownership fields, selects either a pristine zero-User install or the versioned-manifest one-User legacy cutover, assigns the production library only on the legacy path, splits preferences, and installs final constraints without a temporary claim state. Runtime code resolves `request.user.library`, passes it explicitly, and uses thin queryset helpers. A per-library `PurchaseConversionState` provides atomic transitional FX publication until #728 replaces it.
 
 **Tech Stack:** Django 6, PostgreSQL 18, Django Ninja, Django-Q2, htpy server components, pytest/pytest-django, Vitest/TypeScript.
 
@@ -12,7 +12,10 @@
 
 - Read `docs/superpowers/specs/2026-08-13-user-library-ownership-cutover-design.md` before editing.
 - #629 and #639 are hard prerequisites.
-- The only supported legacy database has exactly one User and the inspected global data; abort on every unknown shape.
+- The only supported populated legacy database has exactly one User and the inspected global data; it requires a version-1 manifest at `TIMETRACKER_OWN_CUTOVER_MANIFEST`.
+- A pristine zero-User/zero-legacy-row database migrates without a manifest so fresh installs can apply the complete history; zero Users with orphaned legacy state aborts.
+- Never commit a production dump or manifest. Retain the protected hash-matched pair and reconciliation output together.
+- Abort on every input shape or manifest mismatch not explicitly covered above.
 - No temporary legacy library, owner fallback, claim command/configuration, compatibility mode, or automatic repair.
 - Normal code receives a library explicitly; no thread-local or selected active-library state.
 - Cross-library object identifiers return 404 and staff/superusers have no normal bypass.
@@ -58,16 +61,36 @@ FIRST_COMMIT_AT = datetime.fromisoformat("2022-12-31T14:18:27+01:00")
 Assert after migration that the library timestamp is exact, every direct owner
 is assigned, built-ins are shared, the custom Platform is private, Session Game
 is required, FilterPreset points to the library, and settings have the approved
-split.
+split. Build a complete version-1 manifest in `tmp_path`, point
+`TIMETRACKER_OWN_CUTOVER_MANIFEST` at it, and include every exact field from the
+spec's `source`, `expected_legacy_state`, `observed_setting_state`,
+`operator_confirmed_settings`, and `observed_purchase_state` objects. The
+success case must prove the migration uses the manifest rather than a fixture
+constant by changing a non-default User
+id, username, currency, Device, and representative count.
 
-- [ ] **Step 2: Write refusal matrices before migration code**
+Also add a pristine-install success case with zero Users, every legacy
+private/link/preference/old-setting table empty, and the manifest environment
+variable absent. Assert it creates no `UserLibrary` and reaches the final
+schema so later normal User provisioning remains responsible for creation.
 
-Parameterize independent cases for zero Users, two Users, a null Session Game,
-a saved Session Game-null predicate, duplicate future Game keys, ambiguous
-built-in Platform rows, cross-linked Purchase/Game/Platform data, and an
-incomplete or mixed converted-price cache. Each case must assert a specific
-`RuntimeError` message naming the violated invariant and no partial ownership
-assignment.
+- [ ] **Step 2: Write fresh-install and refusal matrices before migration code**
+
+Parameterize independent data cases for zero Users with one orphan row in each
+legacy private/link/preference/old-setting family, two Users, a null Session
+Game, a saved Session Game-null predicate, duplicate future Game keys,
+ambiguous built-in Platform rows, cross-linked Purchase/Game/Platform data,
+and an incomplete or mixed converted-price cache.
+
+Add manifest cases for an absent path on the one-User branch, missing file,
+invalid JSON, unknown `schema_version`, missing and wrong-typed fields, changed
+User id/username, every row-count mismatch, effective currency/source/lock
+mismatch, raw preference/setting row presence/value drift, changed default
+Device, original-currency distribution drift, and converted-cache
+currency/completeness drift. Each case must assert a specific `RuntimeError`
+naming the violated invariant and no partial ownership
+assignment. A dump hash mismatch is caught by the restore/runbook tooling;
+the migration emits the recorded hash but cannot read the archive itself.
 
 - [ ] **Step 3: Run the migration tests and confirm they fail at the missing migration**
 
@@ -81,32 +104,50 @@ Keep migration helpers inside the migration file so historical execution does
 not import mutable runtime code:
 
 ```python
-def validate_legacy_shape(apps, schema_editor) -> None:
+MANIFEST_ENV = "TIMETRACKER_OWN_CUTOVER_MANIFEST"
+
+
+def select_cutover_input(apps):
     User = apps.get_model("auth", "User")
-    Session = apps.get_model("games", "Session")
-    if User.objects.count() != 1:
-        raise RuntimeError("OWN cutover requires exactly one User")
-    if Session.objects.filter(game_id__isnull=True).exists():
-        raise RuntimeError("OWN cutover requires every Session to have a Game")
+    user_count = User.objects.count()
+    if user_count == 0:
+        if legacy_rows_exist(apps):
+            raise RuntimeError("OWN cutover found orphaned legacy state")
+        return None
+    if user_count != 1:
+        raise RuntimeError("OWN cutover requires zero or exactly one User")
+    return load_and_validate_manifest(apps, os.environ.get(MANIFEST_ENV))
 
 
-def backfill_known_library(apps, schema_editor) -> None:
-    User = apps.get_model("auth", "User")
+def backfill_known_library(apps, manifest) -> None:
     UserLibrary = apps.get_model("games", "UserLibrary")
-    user = User.objects.get()
-    UserLibrary.objects.create(user_id=user.pk, created_at=FIRST_COMMIT_AT)
+    UserLibrary.objects.create(
+        user_id=manifest["expected_legacy_state"]["user_id"],
+        created_at=FIRST_COMMIT_AT,
+    )
 
 
-def reconcile_cutover(apps, schema_editor) -> None:
-    UserLibrary = apps.get_model("games", "UserLibrary")
-    if UserLibrary.objects.count() != 1:
-        raise RuntimeError("OWN cutover did not produce exactly one UserLibrary")
+def run_cutover(apps, schema_editor) -> None:
+    manifest = select_cutover_input(apps)
+    if manifest is None:
+        return
+    validate_legacy_shape(apps, manifest)
+    backfill_known_library(apps, manifest)
+    assign_ownership_and_split_settings(apps, manifest)
+    reconcile_cutover(apps, manifest)
 ```
 
-Extend these named functions with every refusal/reconciliation assertion from
-Steps 1-2. Place `validate_legacy_shape` after additive nullable fields,
-`backfill_known_library` before final non-null alterations, and
-`reconcile_cutover` after ownership assignment and before the migration exits.
+Implement `legacy_rows_exist()` as an explicit enumeration of every legacy
+private, link, preference, and old-setting model/table; do not infer emptiness
+from only Sessions or Purchases. `load_and_validate_manifest()` uses only the
+standard library plus historical models, validates the complete typed v1
+schema before returning, and produces field-specific errors.
+
+Place one `RunPython(run_cutover, migrations.RunPython.noop)` after all additive
+nullable fields and before final non-null/uniqueness constraints. Extend the
+named helpers with every refusal/reconciliation assertion from Steps 1-2. The
+fresh path returns before any data creation but still proceeds through the
+remaining schema operations.
 
 The reverse functions are intentionally no-op because the documented recovery
 path is restoring the pre-cutover backup, not synthesizing global ownership.
@@ -507,29 +548,61 @@ git commit -m "feat: scope APIs filters and stats to libraries (#630)"
 - Modify: `games/signals.py`
 - Modify: `games/api.py`
 - Modify: `games/management/commands/schedule_convert_prices.py`
+- Modify: `common/layout.py`
+- Modify: `ts/globals.d.ts`
+- Modify: `ts/toast.ts`
+- Modify: `ts/toast.test.ts`
+- Create: `ts/library-conversion-status.ts`
+- Create: `ts/library-conversion-status.test.ts`
 - Create: `tests/test_library_conversion.py`
+- Modify: `tests/test_api.py`
+- Modify: `tests/test_rendered_pages.py`
 - Modify: `tests/test_price_update.py`
 - Modify: `tests/test_site_settings_currency.py`
 
 **Interfaces:**
 - Produces: `request_conversion(library, target_currency) -> int`,
   `convert_library_prices(library_id, requested_version) -> None`, and a
-  read-only authenticated conversion-status endpoint.
+  read-only authenticated conversion-status endpoint carrying requested and
+  published versions/currencies, status, retry time, and concise error state.
+- Produces: generic stable-id/no-timer toast operations plus a page-global
+  conversion coordinator that reconstructs server state, owns per-tab
+  dismissal, and observes completion across navigation.
 
-- [ ] **Step 1: Write conversion state-machine tests**
+- [ ] **Step 1: Write backend conversion state-machine tests**
 
 Cover same-currency/zero-price conversion, missing-rate failure, one 15-minute
 retry, daily recovery, five rapid requests coalescing to the last target, an old
 job unable to publish, an intervening Purchase edit invalidating a candidate,
-and one transaction publishing every row and state version together.
+one transaction publishing every row and state version together, and strict
+per-library authorization/response fields on the status endpoint.
 
-- [ ] **Step 2: Run conversion tests against the old row-by-row task**
+- [ ] **Step 2: Write toast and conversion-coordinator tests**
 
-Run: `make test-fast ARGS="tests/test_library_conversion.py tests/test_price_update.py tests/test_site_settings_currency.py -x"`
+First extend `ts/toast.test.ts` for stable string ids, replacement/removal by id,
+and `duration: null` with no timer while preserving the existing five-second
+default and pause/resume behavior.
 
-Expected: FAIL because conversion is global and publishes per row.
+In `ts/library-conversion-status.test.ts`, cover initial server-state
+reconstruction on every authenticated page; persistent running/failure text;
+sessionStorage keys scoped by library, requested version, and phase; dismissal
+surviving navigation in the same tab while polling continues; another tab
+remaining independent; running -> success; running -> failure; waiting until
+`retry_at`; retry as a new phase; a later version bypassing old dismissal; and
+no historical success toast in a tab that never observed the operation.
 
-- [ ] **Step 3: Implement the bridge and single-writer publication**
+Add rendered-page/API assertions that authenticated pages include only their
+library's initial state and status URL, while anonymous pages include neither.
+
+- [ ] **Step 3: Run the focused tests against the old implementation**
+
+Run: `make test-fast ARGS="tests/test_library_conversion.py tests/test_api.py tests/test_rendered_pages.py tests/test_price_update.py tests/test_site_settings_currency.py -x"`
+
+Expected: FAIL because conversion is global, publishes per row, and has no
+status/coordinator contract. The Make prerequisite also runs the TypeScript
+suite, where the new client tests fail.
+
+- [ ] **Step 4: Implement the bridge and single-writer publication**
 
 ```python
 @transaction.atomic
@@ -559,18 +632,38 @@ Schedule only one daily recovery sweep. Remove the `Schedule.MINUTES` behavior.
 On failure, record the concise error and `retry_at`, enqueue one retry for about
 15 minutes, and let the daily sweep recover anything still stale.
 
-- [ ] **Step 4: Pass conversion and scheduler tests**
+- [ ] **Step 5: Implement persistent conversion notification behavior**
+
+Give the generic toast store an optional stable string id and nullable duration;
+replacement clears the previous timer and removal works whether visible or
+dismissed. Keep all conversion-specific decisions out of `toast.ts`.
+
+Render the authenticated User's current conversion state and endpoint URL into
+page-global data in `common/layout.py`, then load
+`library-conversion-status.js`. The coordinator uses one stable toast id, the
+exact approved messages from the spec, and sessionStorage dismissal keyed by
+library/version/phase. Poll only after a tab has observed active state; use a
+bounded active interval, honor `retry_at` after failure, continue completion
+detection after dismissal, and stop when the observed version is published or
+superseded. Completion removes the persistent toast and emits the ordinary
+five-second success toast even when the running notice was dismissed.
+
+- [ ] **Step 6: Pass backend, client, and scheduler tests**
 
 Run: `make test-fast ARGS="tests/test_library_conversion.py tests/test_price_update.py tests/test_site_settings_currency.py tests/test_tasks.py -x"`
 
 Expected: PASS; if `tests/test_tasks.py` does not exist, create it for the daily
 schedule contract rather than dropping the assertion.
 
-- [ ] **Step 5: Commit atomic conversion**
+Then run: `make test-fast ARGS="tests/test_api.py tests/test_rendered_pages.py -x"`
+
+Expected: PASS, including the full TypeScript suite run by the Make target.
+
+- [ ] **Step 7: Commit atomic conversion and notification**
 
 ```bash
-git add games/conversion.py games/tasks.py games/signals.py games/api.py games/management/commands/schedule_convert_prices.py tests
-git commit -m "feat: publish library conversions atomically (#630)"
+git add common/layout.py games/conversion.py games/tasks.py games/signals.py games/api.py games/management/commands/schedule_convert_prices.py ts tests
+git commit -m "feat: publish and report library conversions atomically (#630)"
 ```
 
 ### Task 8: Add explicit operator commands and sample-data ownership
@@ -661,12 +754,23 @@ classified as scoped, shared, or intentionally operator-global.
 
 - [ ] **Step 4: Write the exact production runbook**
 
-Document: take site offline; make fresh backup; record old effective currency
-and default Device; materialize the effective Device as the User's explicit old
-preference if it was inherited; set both new site currency keys to the recorded
-site value; ensure the existing converted cache is complete; run migration;
-retain reconciliation output and new UUID; run audit and representative parity
-checks; bring web/worker up only after all pass.
+Document the exact legacy sequence: query the still-running old app for the
+site and personal `DEFAULT_CURRENCY` value/source/lock state and deployment
+version; take the site and worker offline; create a fresh custom-format
+`--no-owner --no-privileges` dump; restore it into a disposable database; and
+generate the version-1 manifest from that exact restore plus the captured
+runtime values. Verify the dump SHA-256 equals `source.dump_sha256`, and keep
+the dump/manifest outside Git with identical protected retention.
+
+Materialize an inherited effective Device as the User's explicit old
+preference before the final dump. Configure both new site currency keys from
+the recorded old site value, mount the manifest read-only, set
+`TIMETRACKER_OWN_CUTOVER_MANIFEST` only for the migration command, and ensure
+the existing converted cache is complete in the manifest's recorded Display
+currency. Run migration, retain stdout/new UUID with the dump and manifest,
+run the ownership audit and representative parity checks, and bring web/worker
+up only after all pass. Include the pristine-install no-manifest path and an
+explicit warning that a manifest from an earlier dump must never be reused.
 
 - [ ] **Step 5: Commit parity and runbook**
 
@@ -692,9 +796,13 @@ migration-history references are the only expected old-setting matches.
 
 - [ ] **Step 2: Rehearse migration on a restored production copy**
 
-Run the documented preflight, migration, reconciliation, audit, and page/API
-smoke checks. Preserve stdout and assert the production UUID, counts, totals,
-and relationship checks match the preflight record.
+Verify the archive hash first, restore the manifest-matched production dump
+into a new disposable database, and point only that migration process at the
+manifest. Run the documented preflight, migration, reconciliation, audit, and
+page/API smoke checks. Preserve stdout and assert the source deployment/hash,
+production UUID, row/link/original-currency counts, converted-cache state,
+totals, settings split, and relationship checks match the manifest. Separately
+apply the full migration history to an empty database with no manifest.
 
 - [ ] **Step 3: Run the complete gate**
 
