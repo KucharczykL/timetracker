@@ -26,6 +26,12 @@ use an existing server instead. Deployments should provide the URL through
 `DATABASE_URL__FILE` so credentials need not appear in the environment or the
 Compose configuration.
 
+Run `make stop-postgres` before removing a development worktree. It performs a
+fast shutdown of only the cluster under that worktree's
+`.cache/postgres/data`, waits for completion, and is safe to repeat. It does
+not initialize a missing cluster or stop a server supplied through
+`DATABASE_URL`.
+
 ## Schema and migrations
 
 Fresh databases are built from the migration files in `games/migrations/`.
