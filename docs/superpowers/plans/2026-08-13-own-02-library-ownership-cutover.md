@@ -364,7 +364,7 @@ git commit -m "feat: enforce library structure at runtime (#630)"
 - Produces: effective `DEFAULT_PURCHASE_CURRENCY`, effective
   `DEFAULT_DISPLAY_CURRENCY`, and library `default_device` mutation.
 
-- [ ] **Step 1: Replace old-setting assertions with the approved hierarchy**
+- [x] **Step 1: Replace old-setting assertions with the approved hierarchy**
 
 Add tests that both currency keys resolve site -> User, a site Display change
 affects inheriting users only, no-op writes report `changed=False`, Default
@@ -374,13 +374,13 @@ purchase currency preselects a form but never rewrites a Purchase, and missing
 Add `("games:library", "Library")` to landing-page tests and assert unset still
 redirects to Sessions.
 
-- [ ] **Step 2: Run the settings tests and confirm old names fail**
+- [x] **Step 2: Run the settings tests and confirm old names fail**
 
 Run: `make test-fast ARGS="tests/test_settings_registry.py tests/test_settings_resolver.py tests/test_settings_api.py tests/test_purchase_defaults.py tests/test_library_preferences.py -x"`
 
 Expected: FAIL until registry/model/form consumers use the two new names.
 
-- [ ] **Step 3: Implement the settings split**
+- [x] **Step 3: Implement the settings split**
 
 Replace `DEFAULT_CURRENCY` with two definitions using exact copy:
 
@@ -414,14 +414,14 @@ library-preference command that verifies Device ownership. Update
 the initial value. Change `Purchase.save()` to raise when currency is empty;
 every caller and fixture must pass an explicit value.
 
-- [ ] **Step 4: Pass all settings and Purchase-default tests**
+- [x] **Step 4: Pass all settings and Purchase-default tests**
 
 Run: `make test-fast ARGS="tests/test_settings_registry.py tests/test_settings_resolver.py tests/test_settings_api.py tests/test_purchase_defaults.py tests/test_library_preferences.py tests/test_settings_page.py -x"`
 
 Expected: PASS with no runtime reference to `DEFAULT_CURRENCY` or
 `DEFAULT_DEVICE` outside migration history.
 
-- [ ] **Step 5: Commit the preference split**
+- [x] **Step 5: Commit the preference split**
 
 ```bash
 git add timetracker games tests
