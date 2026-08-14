@@ -58,10 +58,11 @@ BUILT_IN_PLATFORMS = {
 FIRST_COMMIT_AT = datetime.fromisoformat("2022-12-31T14:18:27+01:00")
 ```
 
-Assert after migration that the library timestamp is exact, every direct owner
-is assigned, built-ins are shared, the custom Platform is private, Session Game
-is required, FilterPreset points to the library, and settings have the approved
-split. Build a complete version-1 manifest in `tmp_path`, point
+At the Task 1 checkpoint, assert that the manifest-matched User gets exactly
+one `UserLibrary` with the exact timestamp while all legacy rows and settings
+remain otherwise unchanged; Task 2 extends this same fixture with final owner,
+Platform, Session, FilterPreset, constraint, and settings-split assertions when
+those fields exist. Build a complete version-1 manifest in `tmp_path`, point
 `TIMETRACKER_OWN_CUTOVER_MANIFEST` at it, and include every exact field from the
 spec's `source`, `expected_legacy_state`, `observed_setting_state`,
 `operator_confirmed_settings`, and `observed_purchase_state` objects. The
@@ -76,11 +77,19 @@ schema so later normal User provisioning remains responsible for creation.
 
 - [ ] **Step 2: Write fresh-install and refusal matrices before migration code**
 
-Parameterize independent data cases for zero Users with one orphan row in each
-legacy private/link/preference/old-setting family, two Users, a null Session
-Game, a saved Session Game-null predicate, duplicate future Game keys,
-ambiguous built-in Platform rows, cross-linked Purchase/Game/Platform data,
-and an incomplete or mixed converted-price cache.
+Parameterize zero-User orphan cases for every independently representable
+legacy root family and for dependent/link families together with their required
+non-User parents. Keep UserPreferences and FilterPreset in the exhaustive
+`legacy_rows_exist()` enumeration, but exercise them through the one-User
+manifest/count refusal path: their database foreign keys cascade with User, so
+they cannot honestly survive as zero-User rows without disabling constraints.
+Do not create synthetic impossible database states. Also cover two Users, a null Session
+Game, a saved Session Game-null predicate, ambiguous built-in Platform rows,
+and an incomplete or mixed converted-price cache. Do not invent a
+"cross-library" legacy fixture: migration state `0003` has no ownership columns,
+and all valid relationships necessarily resolve to the one selected library.
+Likewise, library-scoped Game uniqueness is a Task 2 final-schema contract, not
+a representable Task 1 preflight failure.
 
 Add manifest cases for an absent path on the one-User branch, missing file,
 invalid JSON, unknown `schema_version`, missing and wrong-typed fields, changed
@@ -133,8 +142,7 @@ def run_cutover(apps, schema_editor) -> None:
         return
     validate_legacy_shape(apps, manifest)
     backfill_known_library(apps, manifest)
-    assign_ownership_and_split_settings(apps, manifest)
-    reconcile_cutover(apps, manifest)
+    reconcile_preflight(apps, manifest)
 ```
 
 Implement `legacy_rows_exist()` as an explicit enumeration of every legacy
@@ -143,16 +151,24 @@ from only Sessions or Purchases. `load_and_validate_manifest()` uses only the
 standard library plus historical models, validates the complete typed v1
 schema before returning, and produces field-specific errors.
 
-Place one `RunPython(run_cutover, migrations.RunPython.noop)` after all additive
-nullable fields and before final non-null/uniqueness constraints. Extend the
-named helpers with every refusal/reconciliation assertion from Steps 1-2. The
-fresh path returns before any data creation but still proceeds through the
-remaining schema operations.
+Task 1's migration checkpoint contains only
+`RunPython(run_cutover, migrations.RunPython.noop)`: complete validation,
+one known-library backfill, and reconciliation that proves the old rows remain
+unchanged. Task 2 adds nullable ownership/preference/conversion fields around
+that operation, extends `run_cutover()` with assignment/settings splitting,
+and installs final constraints. The fresh path returns before any data
+creation and still reaches the migration leaf in both checkpoints.
 
 The reverse functions are intentionally no-op because the documented recovery
 path is restoring the pre-cutover backup, not synthesizing global ownership.
 
-- [ ] **Step 5: Commit the executable migration contract**
+- [ ] **Step 5: Run the focused migration contract to GREEN**
+
+Run: `make test-fast ARGS="tests/test_library_cutover_migration.py -x"`
+
+Expected: PASS for legacy success, pristine success, and every refusal case.
+
+- [ ] **Step 6: Commit the executable migration contract**
 
 ```bash
 git add tests/test_library_cutover_migration.py games/migrations/0004_user_library_ownership_cutover.py
@@ -164,6 +180,7 @@ git commit -m "test: lock library cutover preconditions (#630)"
 **Files:**
 - Modify: `games/models.py`
 - Modify: `games/migrations/0004_user_library_ownership_cutover.py`
+- Modify: `tests/test_library_cutover_migration.py`
 - Create: `tests/test_library_models.py`
 
 **Interfaces:**
@@ -176,6 +193,14 @@ Cover the direct/derived ownership table, `UserLibraryPreferences.library` as
 its primary key, no-op-aware preference timestamp updates, required
 `Session.game`, Game per-library uniqueness, Platform shared/private visibility,
 and case-insensitive trimmed Platform duplicate rejection.
+
+Extend Task 1's successful historical fixture to assert every direct owner,
+built-in/shared and custom/private Platform classification, required Session
+Game, FilterPreset library ownership, final uniqueness constraints, approved
+settings split, and complete `PurchaseConversionState` seeding.
+Exercise cross-library relationship rejection and library-scoped Game
+uniqueness against the final schema in this task and the later scoped-path/audit
+tasks; neither state can be constructed honestly at migration state `0003`.
 
 ```python
 assert Game.objects.for_library(library_a).count() == 1
@@ -244,6 +269,11 @@ Add the conversion-state fields described in the spec: requested version and
 currency, published version and currency, status, retry time, and last error.
 
 - [ ] **Step 4: Complete migration operations and pass model/migration tests**
+
+Add nullable fields before Task 1's `run_cutover()`, extend that function with
+ownership assignment, Platform classification, preference splitting and
+conversion-state seeding, then place final non-null/uniqueness alterations and
+the full reconciliation after it.
 
 Run: `make test-fast ARGS="tests/test_library_models.py tests/test_library_cutover_migration.py -x"`
 
