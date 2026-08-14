@@ -241,7 +241,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
 @login_required
 def delete_game(request: HttpRequest, game_id: int) -> HttpResponse:
     library = cast(User, request.user).library
-    game = owned_or_404(Game.objects.all(), library, id=game_id)
+    game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
     return confirm_and_delete(
         request,
         game,
@@ -266,7 +266,7 @@ def _deleted_with_game(game: Game) -> Node:
 @login_required
 def edit_game(request: HttpRequest, game_id: int) -> HttpResponse:
     library = cast(User, request.user).library
-    game = owned_or_404(Game.objects.all(), library, id=game_id)
+    game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
     form = GameForm(request.POST or None, instance=game, library=library)
     if form.is_valid():
         form.save()
@@ -734,7 +734,7 @@ def _history_section(
 @login_required
 def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
     library = cast(User, request.user).library
-    game = owned_or_404(Game.objects.all(), library, id=game_id)
+    game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
     presentation = date_time_presentation_for_request(request)
     durations = duration_presentation_for_request(request)
     origin = request.get_full_path()

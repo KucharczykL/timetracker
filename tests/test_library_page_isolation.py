@@ -327,3 +327,21 @@ def test_navbar_playtime_is_scoped_to_the_authenticated_library(world):
     assert "1 h 00 m" in last_7_html
     assert "7 h 00 m" not in today_html
     assert "7 h 00 m" not in last_7_html
+
+
+def test_owned_or_404_is_lookup_only_for_an_already_scoped_queryset(world):
+    from django.db.models import QuerySet
+    from django.http import Http404
+
+    from games.ownership import owned_or_404
+
+    scoped_queryset = QuerySet(model=Game, using="default").filter(
+        library=world.owner_library
+    )
+
+    assert (
+        owned_or_404(scoped_queryset, world.owner_library, pk=world.own_game.pk)
+        == world.own_game
+    )
+    with pytest.raises(Http404):
+        owned_or_404(scoped_queryset, world.owner_library, pk=world.foreign_game.pk)

@@ -236,7 +236,7 @@ def add_playevent(request: HttpRequest, game_id: int = 0) -> HttpResponse:
     library = cast(User, request.user).library
     if game_id:
         # coming from add_playevent_for_game url path
-        game = owned_or_404(Game.objects.all(), library, id=game_id)
+        game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
         initial["game"] = game
         try:
             # First, try to get the latest session. If no sessions, then no playtime.
@@ -308,7 +308,9 @@ def add_playevent(request: HttpRequest, game_id: int = 0) -> HttpResponse:
 @login_required
 def edit_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:
     library = cast(User, request.user).library
-    playevent = owned_or_404(PlayEvent.objects.all(), library, id=playevent_id)
+    playevent = owned_or_404(
+        PlayEvent.objects.for_library(library), library, id=playevent_id
+    )
     form = PlayEventForm(
         request.POST or None,
         instance=playevent,
@@ -337,7 +339,9 @@ def edit_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:
 @login_required
 def delete_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:
     library = cast(User, request.user).library
-    playevent = owned_or_404(PlayEvent.objects.all(), library, id=playevent_id)
+    playevent = owned_or_404(
+        PlayEvent.objects.for_library(library), library, id=playevent_id
+    )
     return confirm_and_delete(
         request,
         playevent,

@@ -33,6 +33,10 @@ def _presentation(time_zone: str) -> DateTimePresentation:
     )
 
 
+def _library():
+    return get_user_model().objects.create_user(username="datetime-form-owner").library
+
+
 def _session_form_data(game: Game, timestamp_start: str) -> dict[str, str]:
     return {
         "game": str(game.pk),
@@ -46,7 +50,7 @@ def _session_form_data(game: Game, timestamp_start: str) -> dict[str, str]:
 
 def test_naive_session_input_is_interpreted_in_the_account_timezone(db):
     user = get_user_model().objects.create_user(username="tester", password="pw")
-    game = Game.objects.create(name="Hades")
+    game = Game.objects.create(library=user.library, name="Hades")
     UserPreferences.objects.filter(user=user).update(
         display_time_zone="Pacific/Kiritimati"
     )
@@ -55,6 +59,7 @@ def test_naive_session_input_is_interpreted_in_the_account_timezone(db):
 
     def response(request):
         form = SessionForm(
+            library=user.library,
             data=_session_form_data(game, "2026-01-01T10:30"),
             presentation=_presentation("Pacific/Kiritimati"),
         )
@@ -71,7 +76,7 @@ def test_naive_session_input_is_interpreted_in_the_account_timezone(db):
 
 def test_naive_dst_gap_is_rejected_in_the_account_timezone(db):
     user = get_user_model().objects.create_user(username="tester", password="pw")
-    game = Game.objects.create(name="Hades")
+    game = Game.objects.create(library=user.library, name="Hades")
     UserPreferences.objects.filter(user=user).update(
         display_time_zone="America/New_York"
     )
@@ -80,6 +85,7 @@ def test_naive_dst_gap_is_rejected_in_the_account_timezone(db):
 
     def response(request):
         form = SessionForm(
+            library=user.library,
             data=_session_form_data(game, "2026-03-08T02:30"),
             presentation=_presentation("America/New_York"),
         )
@@ -100,7 +106,7 @@ def test_offset_qualified_input_binds_to_the_instant_it_names(db):
     so ``from_current_timezone`` leaves it alone and the account's own display
     zone cannot re-interpret it — the instant is the one the segments showed."""
     user = get_user_model().objects.create_user(username="tester", password="pw")
-    game = Game.objects.create(name="Hades")
+    game = Game.objects.create(library=user.library, name="Hades")
     UserPreferences.objects.filter(user=user).update(
         display_time_zone="Pacific/Kiritimati"
     )
@@ -109,6 +115,7 @@ def test_offset_qualified_input_binds_to_the_instant_it_names(db):
 
     def response(request):
         form = SessionForm(
+            library=user.library,
             data=_session_form_data(game, "2026-01-01T10:30:00.000000+14:00"),
             presentation=_presentation("Pacific/Kiritimati"),
         )
@@ -126,13 +133,16 @@ def test_offset_qualified_input_binds_to_the_instant_it_names(db):
 def test_session_and_game_status_change_use_the_segmented_datetime_widget(db):
     """Issue #511: these were the last native date/time controls in the app."""
     presentation = _presentation("UTC")
-    session_form = SessionForm(presentation=presentation)
+    library = _library()
+    session_form = SessionForm(library=library, presentation=presentation)
     for field_name in ("timestamp_start", "timestamp_end"):
         assert isinstance(
             session_form.fields[field_name].widget, DateTimeFieldWidget
         ), field_name
 
-    status_change_form = GameStatusChangeForm(presentation=presentation)
+    status_change_form = GameStatusChangeForm(
+        library=library, presentation=presentation
+    )
     assert isinstance(
         status_change_form.fields["timestamp"].widget, DateTimeFieldWidget
     )
@@ -144,7 +154,7 @@ def test_an_ambiguous_stored_timestamp_survives_an_untouched_edit(db):
     ambiguous naive value at all, so re-saving such a session without touching
     it failed outright. AwareDateTimeField keeps the offset in the rendered
     value, so both occurrences round-trip to themselves."""
-    game = Game.objects.create(name="Hades")
+    game = Game.objects.create(library=_library(), name="Hades")
     earlier = datetime(2026, 11, 1, 5, 30, tzinfo=UTC)  # 01:30 EDT (-04:00)
     later = datetime(2026, 11, 1, 6, 30, tzinfo=UTC)  # 01:30 EST (-05:00)
 
@@ -152,7 +162,9 @@ def test_an_ambiguous_stored_timestamp_survives_an_untouched_edit(db):
         for stored in (earlier, later):
             session = Session.objects.create(game=game, timestamp_start=stored)
             rendered = SessionForm(
-                instance=session, presentation=_presentation("America/New_York")
+                library=game.library,
+                instance=session,
+                presentation=_presentation("America/New_York"),
             )["timestamp_start"]
             hidden = re.search(r'name="timestamp_start" value="([^"]*)"', str(rendered))
             assert hidden is not None
@@ -160,6 +172,7 @@ def test_an_ambiguous_stored_timestamp_survives_an_untouched_edit(db):
             assert hidden.group(1).startswith("2026-11-01T01:30:00")
 
             resubmitted = SessionForm(
+                library=game.library,
                 data=_session_form_data(game, hidden.group(1)),
                 instance=session,
                 presentation=_presentation("America/New_York"),
@@ -179,16 +192,18 @@ def test_edit_form_renders_the_wall_clock_in_the_sessions_own_zone(db):
     """A Tokyo-tagged 06:37 UTC start must render as Tokyo's 15:37+09:00, not
     the account's 08:37+02:00 — the digits shown are the digits that were
     typed against that zone."""
-    game = Game.objects.create(name="Hades")
+    game = Game.objects.create(library=_library(), name="Hades")
     session = Session.objects.create(
         game=game,
         timestamp_start=datetime(2026, 7, 28, 6, 37, tzinfo=UTC),
         timestamp_start_timezone="Asia/Tokyo",
     )
     rendered = str(
-        SessionForm(instance=session, presentation=_presentation("Europe/Prague"))[
-            "timestamp_start"
-        ]
+        SessionForm(
+            library=game.library,
+            instance=session,
+            presentation=_presentation("Europe/Prague"),
+        )["timestamp_start"]
     )
     hidden = re.search(r'name="timestamp_start" value="([^"]*)"', rendered)
     assert hidden is not None
@@ -196,16 +211,18 @@ def test_edit_form_renders_the_wall_clock_in_the_sessions_own_zone(db):
 
 
 def test_an_unusable_stored_zone_falls_back_to_the_display_zone(db):
-    game = Game.objects.create(name="Hades")
+    game = Game.objects.create(library=_library(), name="Hades")
     session = Session.objects.create(
         game=game,
         timestamp_start=datetime(2026, 7, 28, 6, 37, tzinfo=UTC),
         timestamp_start_timezone="Not/AZone",
     )
     rendered = str(
-        SessionForm(instance=session, presentation=_presentation("Europe/Prague"))[
-            "timestamp_start"
-        ]
+        SessionForm(
+            library=game.library,
+            instance=session,
+            presentation=_presentation("Europe/Prague"),
+        )["timestamp_start"]
     )
     hidden = re.search(r'name="timestamp_start" value="([^"]*)"', rendered)
     assert hidden is not None
@@ -213,11 +230,14 @@ def test_an_unusable_stored_zone_falls_back_to_the_display_zone(db):
 
 
 def test_session_datetime_widgets_name_their_paired_zone_row(db):
-    form = SessionForm(presentation=_presentation("Europe/Prague"))
+    library = _library()
+    form = SessionForm(library=library, presentation=_presentation("Europe/Prague"))
     assert 'zone-field-name="timestamp_start_timezone"' in str(form["timestamp_start"])
     assert 'zone-field-name="timestamp_end_timezone"' in str(form["timestamp_end"])
     # The GameStatusChange form has no zone rows: its widget stays unpaired.
-    status_form = GameStatusChangeForm(presentation=_presentation("Europe/Prague"))
+    status_form = GameStatusChangeForm(
+        library=library, presentation=_presentation("Europe/Prague")
+    )
     assert 'zone-field-name=""' in str(status_form["timestamp"])
 
 
@@ -225,13 +245,14 @@ def test_naive_input_is_interpreted_in_the_selected_zone(db):
     """A DST-gap submission posts the bare wall clock; the digits were typed
     against the *picked* zone, so that is the zone they bind in."""
     user = get_user_model().objects.create_user(username="tester", password="pw")
-    game = Game.objects.create(name="Hades")
+    game = Game.objects.create(library=user.library, name="Hades")
     UserPreferences.objects.filter(user=user).update(display_time_zone="Europe/Prague")
     settings_resolver.clear_cache()
     captured: dict[str, object] = {}
 
     def response(request):
         form = SessionForm(
+            library=user.library,
             data={
                 **_session_form_data(game, "2026-07-28T15:37"),
                 "timestamp_start_timezone": "Asia/Tokyo",
@@ -254,13 +275,14 @@ def test_naive_gap_in_the_selected_zone_is_rejected_naming_it(db):
     (Tokyo, no DST) would accept it happily — the rejection must come from the
     selected zone, and name it."""
     user = get_user_model().objects.create_user(username="tester", password="pw")
-    game = Game.objects.create(name="Hades")
+    game = Game.objects.create(library=user.library, name="Hades")
     UserPreferences.objects.filter(user=user).update(display_time_zone="Asia/Tokyo")
     settings_resolver.clear_cache()
     captured: dict[str, object] = {}
 
     def response(request):
         form = SessionForm(
+            library=user.library,
             data={
                 **_session_form_data(game, "2026-03-08T02:30"),
                 "timestamp_start_timezone": "America/New_York",
@@ -283,7 +305,7 @@ def test_naive_value_valid_in_the_selected_zone_survives_an_account_zone_gap(db)
     """The mirror case: 02:30 on 2026-03-08 is the account zone's spring-forward
     gap, but a perfectly ordinary Tokyo wall clock — it must bind, not error."""
     user = get_user_model().objects.create_user(username="tester", password="pw")
-    game = Game.objects.create(name="Hades")
+    game = Game.objects.create(library=user.library, name="Hades")
     UserPreferences.objects.filter(user=user).update(
         display_time_zone="America/New_York"
     )
@@ -292,6 +314,7 @@ def test_naive_value_valid_in_the_selected_zone_survives_an_account_zone_gap(db)
 
     def response(request):
         form = SessionForm(
+            library=user.library,
             data={
                 **_session_form_data(game, "2026-03-08T02:30"),
                 "timestamp_start_timezone": "Asia/Tokyo",

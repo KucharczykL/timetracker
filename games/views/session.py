@@ -197,7 +197,7 @@ def add_session(request: HttpRequest, game_id: int = 0) -> HttpResponse:
             return redirect(return_url(request, fallback="games:list_sessions"))
     else:
         if game_id:
-            game = owned_or_404(Game.objects.all(), library, id=game_id)
+            game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
             form = SessionForm(
                 initial={
                     **initial,
@@ -238,7 +238,7 @@ def add_session(request: HttpRequest, game_id: int = 0) -> HttpResponse:
 @login_required
 def edit_session(request: HttpRequest, session_id: int) -> HttpResponse:
     library = cast(User, request.user).library
-    session = owned_or_404(Session.objects.all(), library, id=session_id)
+    session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
     initial = (
         {"device": cast(User, request.user).library.preferences.default_device}
         if session.device_id is None
@@ -272,7 +272,7 @@ def edit_session(request: HttpRequest, session_id: int) -> HttpResponse:
 
 
 def clone_session_by_id(session_id: int, library: UserLibrary) -> Session:
-    session = owned_or_404(Session.objects.all(), library, id=session_id)
+    session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
     clone = session
     clone.pk = None
     clone.timestamp_start = timezone.now()
@@ -308,7 +308,7 @@ def _posted_browser_zone(request: HttpRequest) -> str:
 @require_POST
 def finish_session(request: HttpRequest, session_id: int) -> HttpResponse:
     library = cast(User, request.user).library
-    session = owned_or_404(Session.objects.all(), library, id=session_id)
+    session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
     session.timestamp_end = timezone.now()
     session.timestamp_end_timezone = _posted_browser_zone(request)
     session.save()
@@ -318,7 +318,7 @@ def finish_session(request: HttpRequest, session_id: int) -> HttpResponse:
 @login_required
 def reset_session(request: HttpRequest, session_id: int) -> HttpResponse:
     library = cast(User, request.user).library
-    session = owned_or_404(Session.objects.all(), library, id=session_id)
+    session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
 
     def reset_start_to_now() -> None:
         session.timestamp_start = timezone.now()
@@ -342,7 +342,7 @@ def reset_session(request: HttpRequest, session_id: int) -> HttpResponse:
 @login_required
 def delete_session(request: HttpRequest, session_id: int = 0) -> HttpResponse:
     library = cast(User, request.user).library
-    session = owned_or_404(Session.objects.all(), library, id=session_id)
+    session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
     return confirm_and_delete(
         request,
         session,

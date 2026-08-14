@@ -352,7 +352,7 @@ def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
             return redirect(return_url(request, fallback="games:list_purchases"))
     else:
         if game_id:
-            game = owned_or_404(Game.objects.all(), library, id=game_id)
+            game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
             form = PurchaseForm(
                 initial={
                     **initial,
@@ -395,7 +395,9 @@ def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
 @login_required
 def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     library = cast(User, request.user).library
-    purchase = owned_or_404(Purchase.objects.all(), library, id=purchase_id)
+    purchase = owned_or_404(
+        Purchase.objects.for_library(library), library, id=purchase_id
+    )
     form = PurchaseForm(
         request.POST or None,
         instance=purchase,
@@ -421,7 +423,9 @@ def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
 @login_required
 def delete_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     library = cast(User, request.user).library
-    purchase = owned_or_404(Purchase.objects.all(), library, id=purchase_id)
+    purchase = owned_or_404(
+        Purchase.objects.for_library(library), library, id=purchase_id
+    )
     return confirm_and_delete(
         request,
         purchase,
@@ -474,7 +478,9 @@ def _purchase_page_title(purchase: Purchase, presentation: DateTimePresentation)
 @login_required
 def view_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     library = cast(User, request.user).library
-    purchase = owned_or_404(Purchase.objects.all(), library, id=purchase_id)
+    purchase = owned_or_404(
+        Purchase.objects.for_library(library), library, id=purchase_id
+    )
     presentation = date_time_presentation_for_request(request)
     return render_page(
         request,
@@ -520,7 +526,9 @@ def refund_purchase_confirmation(
     request: HttpRequest, purchase_id: int
 ) -> HttpResponse:
     library = cast(User, request.user).library
-    purchase = owned_or_404(Purchase.objects.all(), library, id=purchase_id)
+    purchase = owned_or_404(
+        Purchase.objects.for_library(library), library, id=purchase_id
+    )
     return HttpResponse(
         _refund_confirmation_modal(purchase.pk, request, origin_from(request))
     )
@@ -530,7 +538,9 @@ def refund_purchase_confirmation(
 @require_POST
 def refund_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     library = cast(User, request.user).library
-    purchase = owned_or_404(Purchase.objects.all(), library, id=purchase_id)
+    purchase = owned_or_404(
+        Purchase.objects.for_library(library), library, id=purchase_id
+    )
 
     for game in purchase.games.all():
         game.status = Game.Status.ABANDONED
@@ -587,7 +597,9 @@ def _split_confirmation_modal(
 @login_required
 def split_purchase_confirmation(request: HttpRequest, purchase_id: int) -> HttpResponse:
     library = cast(User, request.user).library
-    purchase = owned_or_404(Purchase.objects.all(), library, id=purchase_id)
+    purchase = owned_or_404(
+        Purchase.objects.for_library(library), library, id=purchase_id
+    )
     return HttpResponse(
         _split_confirmation_modal(purchase, request, origin_from(request))
     )
@@ -601,7 +613,9 @@ def split_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     purchase per game, splitting the price evenly as a starting point. Each new
     purchase is then independently priceable and refundable."""
     library = cast(User, request.user).library
-    purchase = owned_or_404(Purchase.objects.all(), library, id=purchase_id)
+    purchase = owned_or_404(
+        Purchase.objects.for_library(library), library, id=purchase_id
+    )
     games = list(purchase.games.all())
     count = len(games)
     if count > 1:

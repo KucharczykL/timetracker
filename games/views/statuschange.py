@@ -51,7 +51,7 @@ def add_statuschange(request: HttpRequest) -> HttpResponse:
 def edit_statuschange(request: HttpRequest, statuschange_id: int) -> HttpResponse:
     library = cast(User, request.user).library
     statuschange = owned_or_404(
-        GameStatusChange.objects.all(), library, id=statuschange_id
+        GameStatusChange.objects.for_library(library), library, id=statuschange_id
     )
     form = GameStatusChangeForm(
         request.POST or None,
@@ -116,7 +116,9 @@ def list_statuschanges(request: HttpRequest) -> HttpResponse:
 @login_required
 def delete_statuschange(request: HttpRequest, pk: int) -> HttpResponse:
     library = cast(User, request.user).library
-    statuschange = owned_or_404(GameStatusChange.objects.all(), library, id=pk)
+    statuschange = owned_or_404(
+        GameStatusChange.objects.for_library(library), library, id=pk
+    )
     return confirm_and_delete(
         request,
         statuschange,

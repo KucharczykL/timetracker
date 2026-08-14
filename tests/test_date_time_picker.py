@@ -215,8 +215,16 @@ class DateTimePickerTest(SimpleTestCase):
 class DateTimeFieldWidgetTest(TestCase):
     """The Django adapter, through the real forms."""
 
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+
+        self.user = get_user_model().objects.create_user(username="datetime-widget")
+        self.library = self.user.library
+
     def _session_form(self, **kwargs):
-        return SessionForm(presentation=_ISO_PRESENTATION, **kwargs)
+        return SessionForm(
+            library=self.library, presentation=_ISO_PRESENTATION, **kwargs
+        )
 
     def test_blank_optional_value_renders_empty_segments(self):
         html = str(self._session_form()["timestamp_end"])
@@ -230,6 +238,7 @@ class DateTimeFieldWidgetTest(TestCase):
         # is what makes this assertion mean anything.
         with timezone.override(ZoneInfo("Pacific/Kiritimati")):
             form = SessionForm(
+                library=self.library,
                 presentation=_presentation_in("Pacific/Kiritimati"),
                 initial={"timestamp_start": datetime(2026, 7, 27, 14, 30, tzinfo=UTC)},
             )
@@ -269,27 +278,31 @@ class DateTimeFieldWidgetTest(TestCase):
         # GameStatusChange.timestamp is null=True, so an edit form can be handed
         # None — which must render empty segments rather than the string "None".
         change = GameStatusChange.objects.create(
-            game=Game.objects.create(name="Hades"), new_status="p", timestamp=None
+            game=Game.objects.create(library=self.library, name="Hades"),
+            new_status="p",
+            timestamp=None,
         )
         html = str(
-            GameStatusChangeForm(instance=change, presentation=_ISO_PRESENTATION)[
-                "timestamp"
-            ]
+            GameStatusChangeForm(
+                library=self.library, instance=change, presentation=_ISO_PRESENTATION
+            )["timestamp"]
         )
         self.assertIn('data-date-time-hidden=""', html)
         self.assertNotIn("None", html)
 
     def test_a_stored_status_change_timestamp_round_trips_into_segments(self):
         change = GameStatusChange.objects.create(
-            game=Game.objects.create(name="Hades"),
+            game=Game.objects.create(library=self.library, name="Hades"),
             new_status="p",
             timestamp=datetime(2026, 7, 27, 14, 30, tzinfo=UTC),
         )
         with timezone.override(ZoneInfo("UTC")):
             html = str(
-                GameStatusChangeForm(instance=change, presentation=_ISO_PRESENTATION)[
-                    "timestamp"
-                ]
+                GameStatusChangeForm(
+                    library=self.library,
+                    instance=change,
+                    presentation=_ISO_PRESENTATION,
+                )["timestamp"]
             )
         self.assertIn('value="2026-07-27T14:30:00+00:00"', html)
         self.assertIn('value="14"', html)

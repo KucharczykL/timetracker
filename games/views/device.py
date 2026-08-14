@@ -134,7 +134,7 @@ def list_devices(request: HttpRequest) -> HttpResponse:
 @login_required
 def edit_device(request: HttpRequest, device_id: int = 0) -> HttpResponse:
     library = cast(User, request.user).library
-    device = owned_or_404(Device.objects.all(), library, id=device_id)
+    device = owned_or_404(Device.objects.for_library(library), library, id=device_id)
     form = DeviceForm(request.POST or None, instance=device, library=library)
     if form.is_valid():
         form.save()
@@ -146,7 +146,7 @@ def edit_device(request: HttpRequest, device_id: int = 0) -> HttpResponse:
 @login_required
 def delete_device(request: HttpRequest, device_id: int) -> HttpResponse:
     library = cast(User, request.user).library
-    device = owned_or_404(Device.objects.all(), library, id=device_id)
+    device = owned_or_404(Device.objects.for_library(library), library, id=device_id)
     return confirm_and_delete(
         request,
         device,

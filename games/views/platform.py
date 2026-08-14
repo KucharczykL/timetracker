@@ -135,7 +135,9 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
 @login_required
 def delete_platform(request: HttpRequest, platform_id: int) -> HttpResponse:
     library = cast(User, request.user).library
-    platform = owned_or_404(Platform.objects.all(), library, id=platform_id)
+    platform = owned_or_404(
+        Platform.objects.for_library(library), library, id=platform_id
+    )
     return confirm_and_delete(
         request,
         platform,
@@ -154,7 +156,9 @@ def delete_platform(request: HttpRequest, platform_id: int) -> HttpResponse:
 @login_required
 def edit_platform(request: HttpRequest, platform_id: int) -> HttpResponse:
     library = cast(User, request.user).library
-    platform = owned_or_404(Platform.objects.all(), library, id=platform_id)
+    platform = owned_or_404(
+        Platform.objects.for_library(library), library, id=platform_id
+    )
     form = PlatformForm(request.POST or None, instance=platform, library=library)
     if form.is_valid():
         form.save()

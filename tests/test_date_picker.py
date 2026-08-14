@@ -282,8 +282,11 @@ class DatePickerWidgetFormTest(TestCase):
     def setUp(self):
         from django.contrib.auth import get_user_model
 
+        from games.models import Platform
+
         self.user = get_user_model().objects.create_user(username="date-picker")
         self.library = self.user.library
+        self.platform = Platform.objects.create(name="PC", icon="pc", group="PC")
 
     def _form(self, presentation=DEFAULT_PRESENTATION, **kwargs):
         from games.forms import PurchaseForm
@@ -296,11 +299,10 @@ class DatePickerWidgetFormTest(TestCase):
         )
 
     def _game(self):
-        from games.models import Game, Platform
+        from games.models import Game
 
-        platform = Platform.objects.create(name="PC", icon="pc", group="PC")
         return Game.objects.create(
-            library=self.library, name="Test Game", platform=platform
+            library=self.library, name="Test Game", platform=self.platform
         )
 
     def _valid_data(self, game, **overrides):
@@ -388,7 +390,10 @@ class DatePickerWidgetFormTest(TestCase):
 
         game = self._game()
         purchase = Purchase.objects.create(
-            price_currency="CZK", price=10, date_purchased=date(2025, 6, 1)
+            library=self.library,
+            price_currency="CZK",
+            price=10,
+            date_purchased=date(2025, 6, 1),
         )
         purchase.games.add(game)
 
