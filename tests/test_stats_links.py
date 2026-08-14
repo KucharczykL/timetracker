@@ -13,6 +13,7 @@ import json
 from datetime import UTC, datetime
 
 import pytest
+from django.contrib.auth import get_user_model
 
 from games.models import Game, Platform, PlayEvent, Purchase, Session
 from games.views import stats_links
@@ -27,17 +28,22 @@ def _dt(year, month=6, day=1):
 
 @pytest.fixture
 def world(db):
+    library = get_user_model().objects.create_user(username="stats-links").library
     pc = Platform.objects.create(name="PC")
     switch = Platform.objects.create(name="Switch")
 
     finished_game = Game.objects.create(
-        name="Finished", platform=pc, status=Game.Status.FINISHED, year_released=YEAR
+        library=library,
+        name="Finished",
+        platform=pc,
+        status=Game.Status.FINISHED,
+        year_released=YEAR,
     )
     abandoned_game = Game.objects.create(
-        name="Abandoned", platform=pc, status=Game.Status.ABANDONED
+        library=library, name="Abandoned", platform=pc, status=Game.Status.ABANDONED
     )
     playing_game = Game.objects.create(
-        name="Playing", platform=switch, status=Game.Status.PLAYED
+        library=library, name="Playing", platform=switch, status=Game.Status.PLAYED
     )
 
     # Sessions: in-year on two platforms + one out-of-year (excluded).
@@ -51,37 +57,49 @@ def world(db):
 
     # Purchases (single-game).
     Purchase.objects.create(
+        library=library,
         price_currency="CZK",  # finished, bought in-year
         date_purchased=_dt(YEAR, 1, 5),
         type=Purchase.GAME,
     ).games.set([finished_game])
     Purchase.objects.create(
+        library=library,
         price_currency="CZK",  # abandoned -> dropped
         date_purchased=_dt(YEAR, 2, 5),
         type=Purchase.GAME,
     ).games.set([abandoned_game])
     Purchase.objects.create(
+        library=library,
         price_currency="CZK",  # refunded
         date_purchased=_dt(YEAR, 3, 5),
         date_refunded=_dt(YEAR, 4, 5),
         type=Purchase.GAME,
     ).games.set([playing_game])
     Purchase.objects.create(
+        library=library,
         price_currency="CZK",  # unfinished (playing, not refunded/finished)
         date_purchased=_dt(YEAR, 5, 5),
         type=Purchase.GAME,
     ).games.set([playing_game])
     # backlog decrease: bought prior year, game finished, ended in-year
     Purchase.objects.create(
-        price_currency="CZK", date_purchased=_dt(YEAR - 1, 5, 5), type=Purchase.GAME
+        library=library,
+        price_currency="CZK",
+        date_purchased=_dt(YEAR - 1, 5, 5),
+        type=Purchase.GAME,
     ).games.set([finished_game])
 
     return {
+        "library": library,
         "pc": pc,
         "switch": switch,
         "finished_game": finished_game,
         "playing_game": playing_game,
     }
+
+
+def _stats(world, year):
+    return compute_stats(world["library"], year)
 
 
 def _count(filter_obj, model):
@@ -124,24 +142,21 @@ def test_sessions_for_platform_matches_year_scoped_sessions(world):
 
 def test_sessions_for_platform_null_bucket_matches_stats_grouping(world):
     """The stats "Unspecified" bucket groups by the game__platform LEFT JOIN, so
-    it holds sessions of platformless games AND sessions with no game at all
-    (issue #290). The None link must match exactly that set."""
-    platformless_game = Game.objects.create(name="Homebrew")
+    it holds sessions of platformless games. The None link must match that set."""
+    platformless_game = Game.objects.create(library=world["library"], name="Homebrew")
     Session.objects.create(game=platformless_game, timestamp_start=_dt(YEAR, 6, 5))
-    Session.objects.create(game=None, timestamp_start=_dt(YEAR, 6, 6))
     Session.objects.create(game=platformless_game, timestamp_start=_dt(YEAR - 1, 6, 5))
 
     expected = Session.objects.filter(
         timestamp_start__year=YEAR, game__platform__isnull=True
     ).count()
-    assert expected == 2  # guard: game-less session included, out-of-year excluded
+    assert expected == 1  # guard: the out-of-year session is excluded
     assert _count(stats_links.sessions_for_platform(None, YEAR), Session) == expected
 
 
 def test_sessions_for_platform_null_bucket_survives_json_round_trip(world):
-    platformless_game = Game.objects.create(name="Homebrew")
+    platformless_game = Game.objects.create(library=world["library"], name="Homebrew")
     Session.objects.create(game=platformless_game, timestamp_start=_dt(YEAR, 6, 5))
-    Session.objects.create(game=None, timestamp_start=_dt(YEAR, 6, 6))
 
     link_filter = stats_links.sessions_for_platform(None, YEAR)
     assert _count_via_json(link_filter, Session) == _count(link_filter, Session)
@@ -185,7 +200,7 @@ def test_games_in_month_matches_that_month(world):
 
 
 def test_all_sessions_matches_total_sessions(world):
-    stats = compute_stats(YEAR)
+    stats = _stats(world, YEAR)
     assert _count(stats_links.all_sessions(YEAR), Session) == stats["total_sessions"]
 
 
@@ -193,12 +208,12 @@ def test_all_sessions_matches_total_sessions(world):
 
 
 def test_games_played_matches_total_games(world):
-    stats = compute_stats(YEAR)
+    stats = _stats(world, YEAR)
     assert _count(stats_links.games_played(YEAR), Game) == stats["total_games"]
 
 
 def test_total_purchases_matches_count(world):
-    stats = compute_stats(YEAR)
+    stats = _stats(world, YEAR)
     assert (
         _count(stats_links.purchases_total(YEAR), Purchase)
         == stats["all_purchased_this_year_count"]
@@ -206,7 +221,7 @@ def test_total_purchases_matches_count(world):
 
 
 def test_refunded_purchases_matches_count(world):
-    stats = compute_stats(YEAR)
+    stats = _stats(world, YEAR)
     assert (
         _count(stats_links.purchases_refunded(YEAR), Purchase)
         == stats["all_purchased_refunded_this_year_count"]
@@ -217,7 +232,7 @@ def test_refunded_purchases_matches_count(world):
 
 
 def test_dropped_matches_count(world):
-    stats = compute_stats(YEAR)
+    stats = _stats(world, YEAR)
     assert stats["dropped_count"] == 2  # guard: discriminating, non-zero
     assert (
         _count(stats_links.purchases_dropped(YEAR), Purchase) == stats["dropped_count"]
@@ -225,7 +240,7 @@ def test_dropped_matches_count(world):
 
 
 def test_unfinished_matches_count(world):
-    stats = compute_stats(YEAR)
+    stats = _stats(world, YEAR)
     assert stats["purchased_unfinished_count"] == 1
     assert (
         _count(stats_links.purchases_unfinished(YEAR), Purchase)
@@ -234,7 +249,7 @@ def test_unfinished_matches_count(world):
 
 
 def test_finished_matches_count(world):
-    stats = compute_stats(YEAR)
+    stats = _stats(world, YEAR)
     assert stats["all_finished_this_year_count"] == 2
     assert (
         _count(stats_links.purchases_finished(YEAR), Purchase)
@@ -243,7 +258,7 @@ def test_finished_matches_count(world):
 
 
 def test_finished_released_matches_count(world):
-    stats = compute_stats(YEAR)
+    stats = _stats(world, YEAR)
     assert (
         _count(stats_links.purchases_finished_released(YEAR), Purchase)
         == stats["this_year_finished_this_year_count"]
@@ -251,14 +266,14 @@ def test_finished_released_matches_count(world):
 
 
 def test_bought_and_finished_matches_list(world):
-    stats = compute_stats(YEAR)
+    stats = _stats(world, YEAR)
     expected = stats["purchased_this_year_finished_this_year"].count()
     assert expected == 1
     assert _count(stats_links.purchases_bought_and_finished(YEAR), Purchase) == expected
 
 
 def test_backlog_decrease_matches_count(world):
-    stats = compute_stats(YEAR)
+    stats = _stats(world, YEAR)
     assert stats["backlog_decrease_count"] == 1
     assert (
         _count(stats_links.purchases_backlog_decrease(YEAR), Purchase)
@@ -270,14 +285,14 @@ def test_backlog_decrease_matches_count(world):
 
 
 def test_all_sessions_alltime_matches(world):
-    stats = compute_stats(None)
+    stats = _stats(world, None)
     assert (
         _count(stats_links.all_sessions("Alltime"), Session) == stats["total_sessions"]
     )
 
 
 def test_finished_alltime_matches_backlog(world):
-    stats = compute_stats(None)
+    stats = _stats(world, None)
     # all-time backlog_decrease_count == all-time finished count
     assert (
         _count(stats_links.purchases_backlog_decrease("Alltime"), Purchase)
@@ -333,7 +348,7 @@ def test_nested_builder_survives_json_round_trip(world, name, builder, model):
 
 
 def test_finished_link_round_trips_to_same_count_as_stat(world):
-    stats = compute_stats(YEAR)
+    stats = _stats(world, YEAR)
     assert (
         _count_via_json(stats_links.purchases_finished(YEAR), Purchase)
         == stats["all_finished_this_year_count"]

@@ -1552,6 +1552,13 @@ class OperatorFilter:
         q &= self._extra_q()
         return self._apply_operators(q)
 
+    def apply[M: models.Model](
+        self, queryset: models.QuerySet[M]
+    ) -> models.QuerySet[M]:
+        """Apply this filter to a caller-supplied authorization-scoped queryset."""
+
+        return queryset.filter(self.to_q())
+
     def _extra_q(self) -> Q:
         """Q for criterion fields handled imperatively rather than via ``fields``.
 

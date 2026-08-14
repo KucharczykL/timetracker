@@ -70,6 +70,36 @@ from games.filters import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _library_owned_filter_fixture_defaults(monkeypatch):
+    """Give legacy criterion fixtures the library required by owned models.
+
+    These tests intentionally exercise filter expression semantics through terse
+    model factories. The two-library API matrix separately verifies authorization
+    scoping, so keep this compatibility adapter local to this module.
+    """
+    from django.contrib.auth import get_user_model
+
+    from games.models import LibraryOwnedQuerySet, Platform
+
+    original_create = LibraryOwnedQuerySet.create
+    library = None
+
+    def create(queryset, **kwargs):
+        nonlocal library
+        if queryset.model is not Platform and "library" not in kwargs:
+            if library is None:
+                library = (
+                    get_user_model()
+                    .objects.create_user(username="filter-fixture-owner")
+                    .library
+                )
+            kwargs["library"] = library
+        return original_create(queryset, **kwargs)
+
+    monkeypatch.setattr(LibraryOwnedQuerySet, "create", create)
+
+
 class TestModifier:
     def test_includes_only_in_enum(self):
         assert Modifier.INCLUDES_ONLY == "INCLUDES_ONLY"
@@ -3093,17 +3123,20 @@ class TestComparableColumnsCrossModel:
         assert any(v.startswith("game__playevents__") for v in session_values)
         assert any(v.startswith("related_game__purchases__") for v in purchase_values)
 
-    def test_platform_and_device_have_no_to_one_related_columns(self):
-        # Platform/Device declare no forward FKs, so every *single-valued* column
-        # is own-model (model-sourced). Their reverse relations (Platform.games,
-        # Device.sessions) are enumerated as multi-valued blocks (#282), so allow
-        # those to carry a relation source.
+    def test_platform_and_device_columns_classify_library_owner_relation(self):
+        # Platform/Device now declare the ownership FK. Its columns are a Library
+        # source; other single-valued columns remain model-sourced. Reverse
+        # relations are multi-valued blocks (#282) and may have another source.
         from games.models import Device, Platform
 
         for model in (Platform, Device):
             model_source = str(model._meta.verbose_name).title()
             for column in comparable_columns(model):
-                if not column["multivalued"]:
+                if column["multivalued"]:
+                    continue
+                if column["value"].startswith("library__"):
+                    assert column["source"] == "Library"
+                else:
                     assert column["source"] == model_source
 
 
@@ -4178,51 +4211,50 @@ class TestFieldComparisonEndToEnd:
         rows where both operands are "".
 
         This test pins the behaviour cross-model: Session.note INCLUDES
-        game__wikidata, where the game has wikidata="" (the empty default).
-        - HIT: note is non-empty, game.wikidata is "" → matches (left contains "")
-        - NO_HIT_NULL_GAME: game is None → excluded by the strict NULL guard on
-          game__wikidata.
+        device__name, where the device has an empty name.
+        - HIT: note is non-empty, device.name is "" → matches (left contains "")
+        - NO_HIT_NULL_DEVICE: device is None → excluded by the strict NULL guard
+          on device__name.
         """
         from django.utils import timezone
 
         from games.filters import SessionFilter
-        from games.models import Game, Platform, Session
+        from games.models import Device, Game, Platform, Session
 
         platform, _ = Platform.objects.get_or_create(
             name="CrossModelIncludesTest", icon="crossmodelincludestest"
         )
-        game_with_empty_wikidata = Game.objects.create(
-            name="WikilessGame",
-            platform=platform,
-            wikidata="",  # the default — empty string, not NULL
-        )
+        game = Game.objects.create(name="WikilessGame", platform=platform)
+        device_with_empty_name = Device.objects.create(name="", type=Device.UNKNOWN)
 
-        # HIT: note is non-empty; game.wikidata is "" → "" is substring of note
+        # HIT: note is non-empty; device.name is "" → "" is substring of note
         session_hit = Session.objects.create(
             timestamp_start=timezone.now(),
             note="some note",
-            game=game_with_empty_wikidata,
+            game=game,
+            device=device_with_empty_name,
         )
 
-        # NULL guard: no game → game__wikidata is NULL → excluded
-        session_no_game = Session.objects.create(
+        # NULL guard: no device → device__name is NULL → excluded
+        session_no_device = Session.objects.create(
             timestamp_start=timezone.now(),
             note="also non-empty",
-            game=None,
+            game=game,
+            device=None,
         )
 
         session_filter = SessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
                     left="note",
-                    right="game__wikidata",
+                    right="device__name",
                     modifier=Modifier.INCLUDES,
                 )
             ]
         )
         result = set(Session.objects.filter(session_filter.to_q()))
         assert session_hit in result
-        assert session_no_game not in result
+        assert session_no_device not in result
 
 
 class TestStrictNullSemantics:
@@ -4240,7 +4272,7 @@ class TestStrictNullSemantics:
         return Game.objects.create(name="NullGame", platform=platform)
 
     @pytest.fixture
-    def session_without_game(self, db):
+    def session_without_device(self, db, game):
         from django.utils import timezone
 
         from games.models import Session
@@ -4248,27 +4280,27 @@ class TestStrictNullSemantics:
         return Session.objects.create(
             timestamp_start=timezone.now(),
             note="orphan",
-            game=None,
+            game=game,
         )
 
     def test_not_equals_excludes_null_operand_rows_lookup_side(
-        self, session_without_game
+        self, session_without_device
     ):
         from games.models import Session
 
         q = SessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="game__name",
+                    left="device__name",
                     right="note",
                     modifier=Modifier.NOT_EQUALS,
                 )
             ]
         ).to_q()
-        assert session_without_game not in Session.objects.filter(q)
+        assert session_without_device not in Session.objects.filter(q)
 
     def test_not_equals_excludes_null_operand_rows_expression_side(
-        self, session_without_game
+        self, session_without_device
     ):
         from games.models import Session
 
@@ -4276,14 +4308,14 @@ class TestStrictNullSemantics:
             field_comparisons=[
                 FieldComparisonCriterion(
                     left="note",
-                    right="game__name",
+                    right="device__name",
                     modifier=Modifier.NOT_EQUALS,
                 )
             ]
         ).to_q()
-        assert session_without_game not in Session.objects.filter(q)
+        assert session_without_device not in Session.objects.filter(q)
 
-    def test_not_equals_is_side_symmetric(self, db, game, session_without_game):
+    def test_not_equals_is_side_symmetric(self, db, game, session_without_device):
         from django.utils import timezone
 
         from games.models import Session
@@ -4296,14 +4328,14 @@ class TestStrictNullSemantics:
         left_form = SessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="game__name", right="note", modifier=Modifier.NOT_EQUALS
+                    left="device__name", right="note", modifier=Modifier.NOT_EQUALS
                 )
             ]
         ).to_q()
         right_form = SessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="note", right="game__name", modifier=Modifier.NOT_EQUALS
+                    left="note", right="device__name", modifier=Modifier.NOT_EQUALS
                 )
             ]
         ).to_q()
@@ -4311,13 +4343,14 @@ class TestStrictNullSemantics:
             Session.objects.filter(right_form)
         )
 
-    def test_same_model_not_equals_now_excludes_null_rows(self, db):
+    def test_same_model_not_equals_now_excludes_null_rows(self, db, game):
         # Behavior change pinned: previously included (NULL counted as "not equal").
         from django.utils import timezone
 
         from games.models import Session
 
         session = Session.objects.create(
+            game=game,
             timestamp_start=timezone.now(),
             timestamp_end=None,
         )
@@ -5966,7 +5999,6 @@ class TestMultivaluedComparison:
         rows["null_terminal"] = session(game_b, self._dt(2021))
 
         rows["no_events"] = session(Game.objects.create(name="MV-C"), self._dt(2021))
-        rows["no_game"] = session(None, self._dt(2021))
         return rows
 
     def _matched(self, quantifier, *, left, right):
@@ -5998,8 +6030,8 @@ class TestMultivaluedComparison:
         matched = self._matched(
             RelationMatch.ALL, left="timestamp_end", right="game__playevents__ended"
         )
-        # after_all satisfies both events; no_events + no_game are vacuously true.
-        expected = {"after_all", "no_events", "no_game"}
+        # after_all satisfies both events; no_events is vacuously true.
+        expected = {"after_all", "no_events"}
         assert {k for k, s in rows.items() if s.pk in matched} == expected
 
     def test_none_multi_on_right(self, db):
@@ -6013,7 +6045,6 @@ class TestMultivaluedComparison:
             "null_end",
             "null_terminal",
             "no_events",
-            "no_game",
         }
         assert {k for k, s in rows.items() if s.pk in matched} == expected
 

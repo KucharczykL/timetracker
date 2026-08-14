@@ -7,8 +7,8 @@ personality (#297) and the endpoints moved to Django Ninja:
   old "filter is not an object" hand-rolled guard is subsumed by the PresetIn
   schema (`filter: dict | None`), which 422s scalar/array payloads before the
   handler runs — those framework rejections intentionally log nothing.
-- #212: upsert on (user, mode, name); 201 create vs 200 update.
-- Per-user ownership: presets are scoped to their creator (no IDOR across users).
+- #212: upsert on (library, mode, name); 201 create vs 200 update.
+- Library ownership: presets are scoped to their library (no IDOR across users).
 - Mode validation on list and save (unknown mode -> 400, not 500).
 
 Dead with the classic views (documented casualties):
@@ -125,7 +125,7 @@ def test_valid_filter_creates_preset_and_logs_nothing(
     assert response.status_code == 201
     preset = FilterPreset.objects.get()
     assert preset.object_filter == valid
-    assert preset.user == user  # owner is set
+    assert preset.library == user.library  # owner is set
     assert not [record for record in caplog.records if record.name == "games"]
 
 
@@ -356,7 +356,7 @@ def test_list_emits_persisted_per_page(auth_client):
 @pytest.mark.parametrize("stored", [-5, True, 25.0, "25", "lots"])
 def test_list_degrades_corrupt_stored_per_page_to_inherited(auth_client, user, stored):
     preset = FilterPreset.objects.create(
-        user=user,
+        library=user.library,
         name="Corrupt",
         mode="games",
         object_filter={},
@@ -488,11 +488,11 @@ def test_delete_url_rejects_non_delete_methods(auth_client, method):
     assert FilterPreset.objects.filter(id=preset.id).exists()
 
 
-# --- #212: unique (user, mode, name) + overwrite (upsert) --------------------
+# --- #212: unique (library, mode, name) + overwrite (upsert) -----------------
 
 
 def test_resaving_same_name_overwrites_in_place(auth_client):
-    # Re-saving an existing (user, mode, name) overwrites the stored filter
+    # Re-saving an existing (library, mode, name) overwrites the stored filter
     # rather than creating a duplicate row; 200 (vs 201) tells the client to
     # toast "updated".
     first = {"name": {"modifier": "INCLUDES", "value": "halo"}}
@@ -531,7 +531,7 @@ def test_json_fields_round_trip(user):
     object_filter = {"year": {"modifier": "EQUALS", "value": 2026}}
     ui_options = {"per_page": 50}
     preset = FilterPreset.objects.create(
-        user=user,
+        library=user.library,
         name="JSON fields",
         mode="games",
         find_filter=find_filter,
@@ -547,6 +547,6 @@ def test_json_fields_round_trip(user):
 
 
 def test_unique_constraint_enforced_at_db(user):
-    FilterPreset.objects.create(user=user, name="Dup", mode="games")
+    FilterPreset.objects.create(library=user.library, name="Dup", mode="games")
     with pytest.raises(IntegrityError), transaction.atomic():
-        FilterPreset.objects.create(user=user, name="Dup", mode="games")
+        FilterPreset.objects.create(library=user.library, name="Dup", mode="games")

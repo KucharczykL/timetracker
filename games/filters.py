@@ -21,11 +21,12 @@ if TYPE_CHECKING:
         PlayEvent,
         Purchase,
         Session,
+        UserLibrary,
     )
 
 import builtins
 
-from django.db.models import Q
+from django.db.models import Q, QuerySet
 from django.urls import reverse
 from django.utils.http import urlencode
 
@@ -776,6 +777,18 @@ def filter_for_model(model_name: ModelKey) -> type[OperatorFilter]:
 
     model = apps.get_model("games", model_name)
     return globals()[f"{model.__name__}Filter"]
+
+
+def filter_queryset_for_library(model_name: ModelKey, library: UserLibrary) -> QuerySet:
+    """Return the explicit ownership base for a generic filter model.
+
+    Every model reachable from the filter builder implements ``for_library``;
+    notably, Platform uses the private-management scope here rather than
+    ``visible_to`` because the destination list manages private Platforms only.
+    """
+    from django.apps import apps
+
+    return apps.get_model("games", model_name).objects.for_library(library)
 
 
 def reachable_models(root_model: ModelKey) -> dict[ModelKey, type[OperatorFilter]]:

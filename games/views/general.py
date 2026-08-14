@@ -114,7 +114,8 @@ def global_current_year(request: HttpRequest) -> dict[str, int]:
 
 @login_required
 def stats_alltime(request: HttpRequest) -> HttpResponse:
-    data = compute_stats(None)
+    library = cast(User, request.user).library
+    data = compute_stats(library, None)
     presentation = date_time_presentation_for_request(request)
     durations = duration_presentation_for_request(request)
     return render_page(
@@ -131,7 +132,8 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
         )
     if year == 0:
         return HttpResponseRedirect(reverse("games:stats_alltime"))
-    data = compute_stats(year)
+    library = cast(User, request.user).library
+    data = compute_stats(library, year)
     presentation = date_time_presentation_for_request(request)
     durations = duration_presentation_for_request(request)
     return render_page(

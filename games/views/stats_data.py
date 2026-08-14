@@ -1,6 +1,6 @@
 """Request-free stats computation: the data half of the stats page.
 
-`compute_stats(year)` returns a `StatsData` dict (the documented seam between
+`compute_stats(library, year)` returns a `StatsData` dict (the documented seam between
 *computing* metrics and *rendering* them in `stats_content`). Today it computes
 from the ORM; this is also the function a future materialization job would call,
 and the shape it would populate from a pre-calculated table.
@@ -29,7 +29,14 @@ from django.db.models.functions import TruncDate, TruncMonth
 
 from common.time import available_stats_year_range
 from common.utils import safe_division
-from games.models import Game, Purchase, Session
+from games.models import (
+    Game,
+    Purchase,
+    PurchaseQueryset,
+    Session,
+    SessionQuerySet,
+    UserLibrary,
+)
 
 
 class StatsData(TypedDict):
@@ -91,27 +98,40 @@ def _days_played_percent(unique_days: int, first: date, last: date) -> int:
     return min(int(unique_days / span * 100), 100)
 
 
-def compute_stats(year: int | None = None) -> StatsData:
+def compute_stats(library: UserLibrary, year: int | None = None) -> StatsData:
+    return _compute_stats_from_scoped_querysets(
+        sessions=Session.objects.for_library(library),
+        purchases=Purchase.objects.for_library(library),
+        year=year,
+    )
+
+
+def _compute_stats_from_scoped_querysets(
+    *,
+    sessions: SessionQuerySet,
+    purchases: PurchaseQueryset,
+    year: int | None,
+) -> StatsData:
+    """Compute metrics without selecting a global Session or Purchase base."""
+
+    library_purchases = purchases
     is_alltime = year is None
     currency = "CZK"
 
     # ── Scope ──────────────────────────────────────────────────────────────
     if is_alltime:
-        sessions = Session.objects.all().prefetch_related("game")
-        purchases = Purchase.objects.all()
-        without_refunded = Purchase.objects.filter(date_refunded=None)
-        refunded = Purchase.objects.refunded()
+        sessions = sessions.prefetch_related("game")
+        without_refunded = library_purchases.filter(date_refunded=None)
+        refunded = library_purchases.filter(date_refunded__isnull=False)
         ended_q = Q(games__playevents__ended__isnull=False)
         session_count = Count("sessions")
     else:
-        sessions = Session.objects.filter(timestamp_start__year=year).prefetch_related(
-            "game"
-        )
-        purchases = Purchase.objects.filter(date_purchased__year=year)
-        without_refunded = Purchase.objects.filter(
+        sessions = sessions.filter(timestamp_start__year=year).prefetch_related("game")
+        purchases = library_purchases.filter(date_purchased__year=year)
+        without_refunded = library_purchases.filter(
             date_refunded=None, date_purchased__year=year
         )
-        refunded = Purchase.objects.exclude(date_refunded=None).filter(
+        refunded = library_purchases.exclude(date_refunded=None).filter(
             date_purchased__year=year
         )
         ended_q = Q(games__playevents__ended__year=year)
@@ -201,9 +221,9 @@ def compute_stats(year: int | None = None) -> StatsData:
 
     # ── Finished purchases (scope-divergent) ─────────────────────────────────
     if is_alltime:
-        finished = Purchase.objects.finished().annotate(
+        finished = library_purchases.finished().annotate(
             date_finished=Subquery(
-                Purchase.objects.filter(pk=OuterRef("pk"))
+                library_purchases.filter(pk=OuterRef("pk"))
                 .annotate(max_ended=Max("games__playevents__ended"))
                 .values("max_ended")[:1]
             )
@@ -212,7 +232,7 @@ def compute_stats(year: int | None = None) -> StatsData:
         backlog_decrease_count = finished.count()
     else:
         finished = (
-            Purchase.objects.finished()
+            library_purchases.finished()
             .filter(games__playevents__ended__year=year)
             .annotate(
                 game_name=F("games__name"), date_finished=F("games__playevents__ended")
@@ -229,28 +249,20 @@ def compute_stats(year: int | None = None) -> StatsData:
             .order_by("games__playevents__ended")
         )
         backlog_decrease_count = (
-            Purchase.objects.filter(date_purchased__year__lt=year)
+            library_purchases.filter(date_purchased__year__lt=year)
             .filter(games__status=Game.Status.FINISHED)
             .filter(games__playevents__ended__year=year)
             .count()
         )
 
     # ── Games / platforms by playtime (unified on duration_total) ────────────
-    if is_alltime:
-        games_with_playtime = (
-            Game.objects.filter(sessions__in=sessions)
-            .distinct()
-            .annotate(total_playtime=Sum("sessions__duration_total"))
-            .filter(total_playtime__gt=timedelta(0))
-        )
-        top_games = games_with_playtime.order_by("-total_playtime")
-    else:
-        games_with_playtime = (
-            Game.objects.filter(sessions__timestamp_start__year=year)
-            .annotate(total_playtime=Sum("sessions__duration_total"))
-            .filter(total_playtime__gt=timedelta(0))
-        )
-        top_games = games_with_playtime.order_by("-total_playtime")
+    games_with_playtime = (
+        Game.objects.filter(sessions__in=sessions)
+        .distinct()
+        .annotate(total_playtime=Sum("sessions__duration_total"))
+        .filter(total_playtime__gt=timedelta(0))
+    )
+    top_games = games_with_playtime.order_by("-total_playtime")
 
     # platform_id is carried alongside the name so the stats row can link to a
     # platform-scoped session list (#65).
@@ -265,7 +277,7 @@ def compute_stats(year: int | None = None) -> StatsData:
         .order_by("-playtime")
     )
 
-    played_purchases = Purchase.objects.filter(games__sessions__in=sessions).distinct()
+    played_purchases = library_purchases.filter(games__sessions__in=sessions).distinct()
     total_year_games = (
         played_purchases.count()
         if is_alltime

@@ -9,6 +9,10 @@ from.
 Scope: `year` is an int for a calendar year, or the "Alltime" sentinel (or any
 non-int) for all-time — matching `StatsData["year"]`. For all-time the date
 bounds are omitted, so the links cover every record.
+
+These objects carry row criteria, not authorization. List views must execute them
+against a base queryset already scoped to ``request.user.library``; a stats link
+must never restore a global model-manager fallback.
 """
 
 from calendar import monthrange

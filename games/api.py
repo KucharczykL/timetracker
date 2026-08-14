@@ -2,10 +2,11 @@ import json
 import logging
 from collections.abc import Mapping
 from datetime import UTC, date, datetime
-from typing import Any, Final, NoReturn
+from typing import Any, Final, NoReturn, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.contrib import messages
+from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db.models import (
@@ -20,7 +21,6 @@ from django.db.models import (
     When,
 )
 from django.db.models.functions import Coalesce, Greatest
-from django.shortcuts import get_object_or_404
 from django.utils.timezone import now as django_timezone_now
 from ninja import Field, ModelSchema, NinjaAPI, Router, Schema, Status
 from ninja.errors import HttpError
@@ -28,10 +28,11 @@ from ninja.security import django_auth
 
 from common.criteria import FilterError, filter_from_json
 from common.date_time_presentation import date_time_presentation_for_request
-from common.filter_execution import regex_timeout_api
+from common.filter_execution import execute_filter, regex_timeout_api
 from games.filters import (
     MODE_PARSERS,
     filter_for_model,
+    filter_queryset_for_library,
     parse_session_filter,
 )
 from games.formatting import zone_label
@@ -45,6 +46,7 @@ from games.models import (
     Purchase,
     Session,
 )
+from games.ownership import owned_or_404
 from games.sorting import (
     MODE_SORTS,
     SESSION_DEFAULT_SORT,
@@ -133,7 +135,12 @@ class StringOption(Schema):  # SearchSelectOption with a string value (e.g. grou
 
 @game_router.get("/search", response=list[GameOption])
 def search_games(request, q: str = "", limit: int = 10):
-    qs = Game.objects.select_related("platform").order_by("sort_name")
+    library = cast(User, request.user).library
+    qs = (
+        Game.objects.for_library(library)
+        .select_related("platform")
+        .order_by("sort_name")
+    )
     if q:
         qs = qs.filter(Q(name__icontains=q) | Q(sort_name__icontains=q))
     return [
@@ -148,7 +155,8 @@ def search_games(request, q: str = "", limit: int = 10):
 
 @game_router.patch("/{game_id}/status", response={204: None})
 def partial_update_game(request, game_id: int, payload: GameStatusUpdate):
-    game = get_object_or_404(Game, id=game_id)
+    library = cast(User, request.user).library
+    game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
     game.status = payload.status
     game.save()
     messages.success(request, "Status updated")
@@ -157,25 +165,35 @@ def partial_update_game(request, game_id: int, payload: GameStatusUpdate):
 
 @playevent_router.get("/", response=list[PlayEventOut])
 def list_playevents(request):
-    return PlayEvent.objects.all()
+    library = cast(User, request.user).library
+    return PlayEvent.objects.for_library(library)
 
 
 @playevent_router.post("/", response={201: PlayEventOut})
 def create_playevent(request, payload: PlayEventIn):
-    playevent = PlayEvent.objects.create(**payload.dict())
+    library = cast(User, request.user).library
+    game = owned_or_404(Game.objects.for_library(library), library, id=payload.game_id)
+    values = payload.dict(exclude={"game_id"})
+    playevent = PlayEvent.objects.create(game=game, **values)
     messages.success(request, "Game played!")
     return playevent
 
 
 @playevent_router.get("/{playevent_id}", response=PlayEventOut)
 def get_playevent(request, playevent_id: int):
-    playevent = get_object_or_404(PlayEvent, id=playevent_id)
+    library = cast(User, request.user).library
+    playevent = owned_or_404(
+        PlayEvent.objects.for_library(library), library, id=playevent_id
+    )
     return playevent
 
 
 @playevent_router.patch("/{playevent_id}", response=PlayEventOut)
 def partial_update_playevent(request, playevent_id: int, payload: UpdatePlayEventIn):
-    playevent = get_object_or_404(PlayEvent, id=playevent_id)
+    library = cast(User, request.user).library
+    playevent = owned_or_404(
+        PlayEvent.objects.for_library(library), library, id=playevent_id
+    )
     for attr, value in payload.dict(exclude_unset=True).items():
         setattr(playevent, attr, value)
     playevent.save()
@@ -184,38 +202,47 @@ def partial_update_playevent(request, playevent_id: int, payload: UpdatePlayEven
 
 @playevent_router.delete("/{playevent_id}", response={204: None})
 def delete_playevent(request, playevent_id: int):
-    playevent = get_object_or_404(PlayEvent, id=playevent_id)
+    library = cast(User, request.user).library
+    playevent = owned_or_404(
+        PlayEvent.objects.for_library(library), library, id=playevent_id
+    )
     playevent.delete()
     return Status(204, None)
 
 
 @device_router.get("/search", response=list[GameOption])
 def search_devices(request, q: str = "", limit: int = 10):
+    library = cast(User, request.user).library
+    qs = Device.objects.for_library(library)
     if q:
-        qs = Device.objects.filter(name__icontains=q).order_by("name")
+        qs = qs.filter(name__icontains=q).order_by("name")
     else:
-        qs = Device.objects.annotate(
-            last_used=Max("session__timestamp_start")
-        ).order_by(F("last_used").desc(nulls_last=True), "-created_at", "name")
+        qs = qs.annotate(last_used=Max("session__timestamp_start")).order_by(
+            F("last_used").desc(nulls_last=True), "-created_at", "name"
+        )
     return [{"value": d.id, "label": d.name, "data": {}} for d in qs[:limit]]
 
 
 @platform_router.get("/search", response=list[GameOption])
 def search_platforms(request, q: str = "", limit: int = 10):
+    library = cast(User, request.user).library
+    qs = Platform.objects.visible_to(library)
     if q:
-        qs = Platform.objects.filter(name__icontains=q).order_by("name")
+        qs = qs.filter(name__icontains=q).order_by("name")
     else:
         epoch = Value(datetime(1970, 1, 1, tzinfo=UTC))
         qs = (
-            Platform.objects.annotate(
+            qs.annotate(
                 last_game_use=Subquery(
-                    Game.objects.filter(platform=OuterRef("pk"))
+                    Game.objects.for_library(library)
+                    .filter(platform=OuterRef("pk"))
                     .order_by("-updated_at")
                     .values("updated_at")[:1],
                     output_field=DateTimeField(),
                 ),
                 last_purchase_use=Subquery(
-                    Purchase.objects.filter(platform=OuterRef("pk"))
+                    Purchase.objects.for_library(library)
+                    .filter(platform=OuterRef("pk"))
                     .order_by("-updated_at")
                     .values("updated_at")[:1],
                     output_field=DateTimeField(),
@@ -242,7 +269,8 @@ def search_platforms(request, q: str = "", limit: int = 10):
 
 @platform_router.get("/groups", response=list[StringOption])
 def search_platform_groups(request, q: str = "", limit: int = 10):
-    qs = Platform.objects.exclude(group="")
+    library = cast(User, request.user).library
+    qs = Platform.objects.visible_to(library).exclude(group="")
     if q:
         qs = qs.filter(group__icontains=q)
     groups = qs.values_list("group", flat=True).distinct().order_by("group")
@@ -381,7 +409,10 @@ class SessionListOut(Schema):
 @session_router.get("/", response=SessionListOut)
 @regex_timeout_api
 def list_sessions_api(request, filter: str = "", sort: str = "", page: int = 1):
-    sessions = Session.objects.select_related("game", "game__platform", "device")
+    library = cast(User, request.user).library
+    sessions = Session.objects.for_library(library).select_related(
+        "game", "game__platform", "device"
+    )
     if filter:
         try:
             session_filter = parse_session_filter(filter)
@@ -394,7 +425,7 @@ def list_sessions_api(request, filter: str = "", sort: str = "", page: int = 1):
             )
             raise HttpError(400, f"Invalid filter: {exc}") from exc
         if session_filter is not None:
-            sessions = sessions.filter(session_filter.to_q())
+            sessions = execute_filter(session_filter, sessions)
     # `sort` is read from request.GET by parse_find_filter; declared above so it
     # appears in the OpenAPI schema. Unknown sort keys are rejected (not silently
     # dropped) for parity with the filter rejection above — silently-wrong ordering
@@ -425,8 +456,12 @@ def list_sessions_api(request, filter: str = "", sort: str = "", page: int = 1):
 
 @session_router.get("/{session_id}", response=SessionOut)
 def get_session(request, session_id: int):
-    return get_object_or_404(
-        Session.objects.select_related("game", "game__platform", "device"),
+    library = cast(User, request.user).library
+    return owned_or_404(
+        Session.objects.for_library(library).select_related(
+            "game", "game__platform", "device"
+        ),
+        library,
         id=session_id,
     )
 
@@ -441,11 +476,12 @@ class SessionDeviceUpdate(Schema):
 def partial_update_session_device(
     request, session_id: int, payload: SessionDeviceUpdate
 ):
-    session = get_object_or_404(Session, id=session_id)
+    library = cast(User, request.user).library
+    session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
     if payload.device_id is not None:
         # A stale id (device deleted in another tab) must 404, not surface as
         # an IntegrityError 500 the client's retry toast can never resolve.
-        get_object_or_404(Device, id=payload.device_id)
+        owned_or_404(Device.objects.for_library(library), library, id=payload.device_id)
     session.device_id = payload.device_id
     session.save()
     messages.success(request, "Device updated")
@@ -467,9 +503,12 @@ class SessionUpdate(Schema):
 
 @session_router.patch("/{session_id}", response={200: SessionOut})
 def partial_update_session(request, session_id: int, payload: SessionUpdate):
-    # Single-user app: unscoped by user, like every other endpoint here.
-    session = get_object_or_404(
-        Session.objects.select_related("game", "game__platform", "device"),
+    library = cast(User, request.user).library
+    session = owned_or_404(
+        Session.objects.for_library(library).select_related(
+            "game", "game__platform", "device"
+        ),
+        library,
         id=session_id,
     )
     data = payload.dict(exclude_unset=True)  # omitted fields are left untouched
@@ -509,11 +548,9 @@ def filter_count(request, model: str, filter: str = ""):
 
     Generic across every filterable model: the ``model`` key selects the
     ``OperatorFilter`` subclass (``filter_for_model``) and the Django model
-    (``apps.get_model``). GET is CSRF-safe (read-only); auth is inherited from
+    ownership base. GET is CSRF-safe (read-only); auth is inherited from
     ``NinjaAPI(auth=django_auth)``.
     """
-    from django.apps import apps
-
     try:
         filter_cls = filter_for_model(model)
     except LookupError as exc:
@@ -523,7 +560,8 @@ def filter_count(request, model: str, filter: str = ""):
         # let it propagate to a 500 so it surfaces, per the filter_from_json
         # contract of not masking genuine wiring bugs.
         raise HttpError(400, f"Unknown model: {model!r}") from exc
-    queryset = apps.get_model("games", model).objects.all()
+    library = cast(User, request.user).library
+    queryset = filter_queryset_for_library(model, library)
     if filter:
         # "" -> None (count all); "{}" -> an all-None filter whose to_q() is an
         # empty Q() (also counts all). A present-but-invalid filter -> 400.
@@ -538,7 +576,7 @@ def filter_count(request, model: str, filter: str = ""):
             )
             raise HttpError(400, f"Invalid filter: {exc}") from exc
         if parsed is not None:
-            queryset = queryset.filter(parsed.to_q())
+            queryset = execute_filter(parsed, queryset)
     return {"count": queryset.count()}
 
 
@@ -594,14 +632,17 @@ def _reject_unknown_preset_mode(request, mode: str) -> None:
 
 @preset_router.get("/", response=list[PresetOption])
 def list_presets(request, mode: str = "games", q: str = "", limit: int = 100):
-    """The current user's presets for one mode, shaped for the combobox picker.
+    """The current library's presets for one mode, shaped for the combobox picker.
 
     ``limit=0`` means unbounded — the filter bar's overwrite-collision check
     fetches every name, so a >limit preset collection can't silently miss a
     collision and destroy a preset behind the warning's back (issue #212).
     """
     _reject_unknown_preset_mode(request, mode)
-    presets = FilterPreset.objects.filter(mode=mode, user=request.user).order_by("name")
+    library = cast(User, request.user).library
+    presets = (
+        FilterPreset.objects.for_library(library).filter(mode=mode).order_by("name")
+    )
     if q:
         presets = presets.filter(name__icontains=q)
     if limit > 0:
@@ -624,7 +665,7 @@ def list_presets(request, mode: str = "games", q: str = "", limit: int = 100):
 def save_preset(request, payload: PresetIn):
     """Create or overwrite a preset; 201 on create, 200 on in-place update.
 
-    Upserts on the (user, mode, name) identity (unique at the DB level): re-saving
+    Upserts on the (library, mode, name) identity (unique at the DB level): re-saving
     a name overwrites the stored filter rather than creating a duplicate row; the
     filter bar warns inline before the user confirms an overwrite (issue #212).
     The client derives its "saved"/"updated" toast from the status code.
@@ -657,8 +698,9 @@ def save_preset(request, payload: PresetIn):
     per_page = _preset_per_page(payload.per_page)
     if per_page is not None:
         find_filter["per_page"] = per_page
+    library = cast(User, request.user).library
     _, created = FilterPreset.objects.update_or_create(
-        user=request.user,
+        library=library,
         name=name,
         mode=payload.mode,
         defaults={"object_filter": object_filter, "find_filter": find_filter},
@@ -668,12 +710,15 @@ def save_preset(request, payload: PresetIn):
 
 @preset_router.delete("/{preset_id}", response={204: None})
 def delete_preset(request, preset_id: int):
-    """Delete one of the current user's presets.
+    """Delete one of the current library's presets.
 
-    Scoped to request.user so it cannot touch another user's preset (404
+    Scoped to request.user.library so it cannot touch another library's preset (404
     instead). DELETE-only by routing; CSRF is enforced by django_auth.
     """
-    preset = get_object_or_404(FilterPreset, id=preset_id, user=request.user)
+    library = cast(User, request.user).library
+    preset = owned_or_404(
+        FilterPreset.objects.for_library(library), library, id=preset_id
+    )
     preset.delete()
     return Status(204, None)
 
