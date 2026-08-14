@@ -516,20 +516,20 @@ git commit -m "feat: scope pages and forms to libraries (#630)"
 **Interfaces:**
 - Produces: library-bound search/options, CRUD APIs, filter counts, presets, and `compute_stats(library, year=None)`.
 
-- [ ] **Step 1: Add a two-library API/filter/statistics matrix**
+- [x] **Step 1: Add a two-library API/filter/statistics matrix**
 
 Assert search returns shared Platforms plus own private records, foreign IDs
 404, generic filter counts start from a library-scoped queryset, preset
 uniqueness is per library, saved presets never cross users, and every statistic
 equals the contribution from one library only.
 
-- [ ] **Step 2: Run the matrix and confirm global reads fail**
+- [x] **Step 2: Run the matrix and confirm global reads fail**
 
 Run: `make test-fast ARGS="tests/test_library_api_isolation.py tests/test_filter_presets.py tests/test_stats.py tests/test_stats_links.py -x"`
 
 Expected: FAIL on current global querysets and User-owned presets.
 
-- [ ] **Step 3: Thread library through generic boundaries**
+- [x] **Step 3: Thread library through generic boundaries**
 
 Change generic filter entry points to require a scoped base queryset instead of
 calling `model.objects.all()` internally. Use:
@@ -557,13 +557,13 @@ Scope all Ninja endpoints from `request.user.library`, including search,
 PlayEvent CRUD, Session mutation, filter count, and FilterPreset APIs. Foreign
 private Platform IDs remain undisclosed.
 
-- [ ] **Step 4: Run affected API/filter/statistics suites**
+- [x] **Step 4: Run affected API/filter/statistics suites**
 
 Run: `make test-fast ARGS="tests/test_library_api_isolation.py tests/test_filter_presets.py tests/test_filters.py tests/test_stats.py tests/test_stats_links.py tests/test_stats_content_links.py -x"`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit non-HTML scoping**
+- [x] **Step 5: Commit non-HTML scoping**
 
 ```bash
 git add games/api.py games/filters.py games/views common/criteria.py common/filter_execution.py tests
