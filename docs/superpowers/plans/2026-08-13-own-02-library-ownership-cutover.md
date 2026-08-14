@@ -300,20 +300,20 @@ git commit -m "feat: add final library ownership schema (#630)"
 **Interfaces:**
 - Produces: `assert_library_structure() -> None` and complete three-record User provisioning.
 
-- [ ] **Step 1: Add failing provisioning/readiness tests**
+- [x] **Step 1: Add failing provisioning/readiness tests**
 
 Assert ordinary User creation produces UserLibrary, UserPreferences, and
 UserLibraryPreferences; repeated User saves create nothing new; missing any one
 relationship raises `ImproperlyConfigured` with the affected User/library id;
 and the repair/audit command loader can import without invoking readiness.
 
-- [ ] **Step 2: Run focused tests to prove the missing behavior**
+- [x] **Step 2: Run focused tests to prove the missing behavior**
 
 Run: `make test-fast ARGS="tests/test_user_library.py tests/test_library_readiness.py -x"`
 
 Expected: FAIL on missing companion records/readiness function.
 
-- [ ] **Step 3: Extend the created-only signal atomically**
+- [x] **Step 3: Extend the created-only signal atomically**
 
 ```python
 with transaction.atomic():
@@ -328,13 +328,13 @@ ASGI/WSGI application construction and before the overridden Django-Q2 command
 delegates to its superclass. Do not call it from `AppConfig.ready()`, because
 that would block migration and repair commands.
 
-- [ ] **Step 4: Run readiness tests**
+- [x] **Step 4: Run readiness tests**
 
 Run: `make test-fast ARGS="tests/test_user_library.py tests/test_library_readiness.py -x"`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit provisioning/readiness**
+- [x] **Step 5: Commit provisioning/readiness**
 
 ```bash
 git add games/signals.py games/readiness.py timetracker/asgi.py timetracker/wsgi.py games/management/commands/qcluster.py tests/test_user_library.py tests/test_library_readiness.py
