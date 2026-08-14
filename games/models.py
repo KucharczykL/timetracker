@@ -15,6 +15,7 @@ from django.utils import timezone
 from common.duration_presentation import format_decimal_hours
 from common.utils import label_with_details
 from timetracker.settings_registry import THEME_CHOICES, SettingKey
+from timetracker.uuidv7 import UUIDv7Field
 
 logger = logging.getLogger("games")
 
@@ -566,6 +567,19 @@ USER_PREFERENCE_FIELD_BY_KEY: Final[dict[SettingKey, str]] = {
     "DATE_FORMAT_LOCALE": "date_format_locale",
     "DATETIME_FORMAT": "datetime_format",
 }
+
+
+class UserLibrary(models.Model):
+    id = UUIDv7Field(primary_key=True, editable=False)
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="library",
+    )
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
+
+    def __str__(self) -> str:
+        return str(self.id)
 
 
 class UserPreferences(models.Model):
