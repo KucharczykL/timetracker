@@ -38,6 +38,8 @@ from common.criteria import (
     DateCriterion,
     FilterError,
     FilterField,
+    FilterQueryContext,
+    FilterQueryContextRequired,
     FloatCriterion,
     IntCriterion,
     ModelFieldBundle,
@@ -165,7 +167,7 @@ class GameFilter(OperatorFilter):
 
         return Game
 
-    def _extra_q(self) -> Q:
+    def _extra_q(self, context: FilterQueryContext | None = None) -> Q:
         q = Q()
 
         # ── free-text search (OR across multiple fields) ──
@@ -177,21 +179,30 @@ class GameFilter(OperatorFilter):
             from games.models import Session
 
             q &= relation_to_q(
-                self.session_filter, related_model=Session, related_lookup="game_id"
+                self.session_filter,
+                context=context,
+                related_model=Session,
+                related_lookup="game_id",
             )
 
         if self.purchase_filter is not None:
             from games.models import Purchase
 
             q &= relation_to_q(
-                self.purchase_filter, related_model=Purchase, related_lookup="games__id"
+                self.purchase_filter,
+                context=context,
+                related_model=Purchase,
+                related_lookup="games__id",
             )
 
         if self.playevent_filter is not None:
             from games.models import PlayEvent
 
             q &= relation_to_q(
-                self.playevent_filter, related_model=PlayEvent, related_lookup="game_id"
+                self.playevent_filter,
+                context=context,
+                related_model=PlayEvent,
+                related_lookup="game_id",
             )
 
         if self.platform_filter is not None:
@@ -199,6 +210,7 @@ class GameFilter(OperatorFilter):
 
             q &= relation_to_q(
                 self.platform_filter,
+                context=context,
                 related_model=Platform,
                 related_lookup="id",
                 parent_field="platform_id",
@@ -272,7 +284,7 @@ class SessionFilter(OperatorFilter):
 
         return Session
 
-    def _extra_q(self) -> Q:
+    def _extra_q(self, context: FilterQueryContext | None = None) -> Q:
         q = Q()
 
         # Free-text search
@@ -291,6 +303,7 @@ class SessionFilter(OperatorFilter):
 
             q &= relation_to_q(
                 self.game_filter,
+                context=context,
                 related_model=Game,
                 related_lookup="id",
                 parent_field="game_id",
@@ -301,6 +314,7 @@ class SessionFilter(OperatorFilter):
 
             q &= relation_to_q(
                 self.device_filter,
+                context=context,
                 related_model=Device,
                 related_lookup="id",
                 parent_field="device_id",
@@ -390,14 +404,14 @@ class PurchaseFilter(OperatorFilter):
 
         return Purchase
 
-    def _extra_q(self) -> Q:
+    def _extra_q(self, context: FilterQueryContext | None = None) -> Q:
         q = Q()
 
         # M2M games: chained subqueries for INCLUDES_ALL/_ONLY keep it out of the
         # declarative fields table. AND-composed into the same Q, so its position
         # relative to the simple fields does not affect results.
         if self.games is not None:
-            q &= self._games_to_q(self.games)
+            q &= self._games_to_q(self.games, context)
 
         # Free-text search
         if self.search is not None:
@@ -409,6 +423,7 @@ class PurchaseFilter(OperatorFilter):
 
             q &= relation_to_q(
                 self.game_filter,
+                context=context,
                 related_model=Game,
                 related_lookup="id",
                 parent_field="games__id",
@@ -419,6 +434,7 @@ class PurchaseFilter(OperatorFilter):
 
             q &= relation_to_q(
                 self.platform_filter,
+                context=context,
                 related_model=Platform,
                 related_lookup="id",
                 parent_field="platform_id",
@@ -427,7 +443,9 @@ class PurchaseFilter(OperatorFilter):
         return q
 
     @staticmethod
-    def _games_to_q(criterion: ChoiceCriterion) -> Q:
+    def _games_to_q(
+        criterion: ChoiceCriterion, context: FilterQueryContext | None = None
+    ) -> Q:
         """Build the Q for the many-to-many ``games`` field.
 
         ``INCLUDES_ALL`` ("related to every selected game") and
@@ -472,17 +490,21 @@ class PurchaseFilter(OperatorFilter):
 
         from games.models import Game, Purchase
 
+        if context is None:
+            raise FilterQueryContextRequired(
+                "purchase games filter requires query context"
+            )
+        purchases = context.queryset_for(Purchase)
+        games = context.queryset_for(Game)
+
         if criterion.modifier in (Modifier.INCLUDES_ALL, Modifier.INCLUDES_ONLY):
-            subquery = Purchase.objects.all()
+            subquery = purchases
             for game_id in game_ids:
                 subquery = subquery.filter(games=game_id)
 
             if criterion.modifier == Modifier.INCLUDES_ONLY:
-                extra_ids = Game.objects.exclude(id__in=game_ids).values_list(
-                    "id", flat=True
-                )
-                if extra_ids:
-                    subquery = subquery.exclude(games__in=extra_ids)
+                extra_ids = games.exclude(id__in=game_ids).values_list("id", flat=True)
+                subquery = subquery.exclude(games__in=extra_ids)
 
             q = Q(pk__in=subquery.values("pk"))
             if exclude_ids:
@@ -491,7 +513,7 @@ class PurchaseFilter(OperatorFilter):
 
         if criterion.modifier == Modifier.INCLUDES:
             # Use subquery to avoid duplicate rows from M2M join
-            subquery = Purchase.objects.filter(games__in=game_ids)
+            subquery = purchases.filter(games__in=game_ids)
             q = Q(pk__in=subquery.values("pk"))
             if exclude_ids:
                 q &= ~Q(games__in=exclude_ids)
@@ -535,7 +557,7 @@ class DeviceFilter(OperatorFilter):
 
         return Device
 
-    def _extra_q(self) -> Q:
+    def _extra_q(self, context: FilterQueryContext | None = None) -> Q:
         q = Q()
 
         # Free-text search
@@ -548,6 +570,7 @@ class DeviceFilter(OperatorFilter):
 
             q &= relation_to_q(
                 self.session_filter,
+                context=context,
                 related_model=Session,
                 related_lookup="device_id",
             )
@@ -593,7 +616,7 @@ class PlatformFilter(OperatorFilter):
 
         return Platform
 
-    def _extra_q(self) -> Q:
+    def _extra_q(self, context: FilterQueryContext | None = None) -> Q:
         q = Q()
 
         # Free-text search
@@ -605,7 +628,10 @@ class PlatformFilter(OperatorFilter):
             from games.models import Game
 
             q &= relation_to_q(
-                self.game_filter, related_model=Game, related_lookup="platform_id"
+                self.game_filter,
+                context=context,
+                related_model=Game,
+                related_lookup="platform_id",
             )
 
         if self.purchase_filter is not None:
@@ -613,6 +639,7 @@ class PlatformFilter(OperatorFilter):
 
             q &= relation_to_q(
                 self.purchase_filter,
+                context=context,
                 related_model=Purchase,
                 related_lookup="platform_id",
             )
@@ -661,7 +688,7 @@ class PlayEventFilter(OperatorFilter):
 
         return PlayEvent
 
-    def _extra_q(self) -> Q:
+    def _extra_q(self, context: FilterQueryContext | None = None) -> Q:
         q = Q()
 
         # Free-text search
@@ -674,6 +701,7 @@ class PlayEventFilter(OperatorFilter):
 
             q &= relation_to_q(
                 self.game_filter,
+                context=context,
                 related_model=Game,
                 related_lookup="id",
                 parent_field="game_id",
@@ -789,6 +817,24 @@ def filter_queryset_for_library(model_name: ModelKey, library: UserLibrary) -> Q
     from django.apps import apps
 
     return apps.get_model("games", model_name).objects.for_library(library)
+
+
+def filter_query_context_for_library(library: UserLibrary) -> FilterQueryContext:
+    """Resolve every compiler subquery from the current library's visibility."""
+    from games.models import Device, Game, Platform, PlayEvent, Purchase, Session
+
+    scoped_querysets: dict[builtins.type, QuerySet] = {
+        Game: Game.objects.for_library(library),
+        Session: Session.objects.for_library(library),
+        Purchase: Purchase.objects.for_library(library),
+        PlayEvent: PlayEvent.objects.for_library(library),
+        Device: Device.objects.for_library(library),
+        # Related Platform selection supports the shared catalogue plus this
+        # library's private rows. Top-level Platform management remains the
+        # private-only base returned by filter_queryset_for_library().
+        Platform: Platform.objects.visible_to(library),
+    }
+    return FilterQueryContext(scoped_querysets.__getitem__)
 
 
 def reachable_models(root_model: ModelKey) -> dict[ModelKey, type[OperatorFilter]]:

@@ -5,6 +5,23 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.test import Client
 
+from common.criteria import (
+    AggregateCriterion,
+    ChoiceCriterion,
+    FieldComparisonCriterion,
+    FilterQueryContext,
+    Modifier,
+    RelationMatch,
+    StringCriterion,
+)
+from common.filter_execution import execute_filter
+from games.filters import (
+    GameFilter,
+    PlatformFilter,
+    PurchaseFilter,
+    SessionFilter,
+    filter_query_context_for_library,
+)
 from games.models import (
     Device,
     FilterPreset,
@@ -161,8 +178,17 @@ def test_search_options_are_library_scoped_and_shared_platforms_remain_visible(
     }
     assert device_ids == {world["device_a"].id}
 
-    platform_ids = {row["value"] for row in client.get("/api/platforms/search").json()}
-    assert platform_ids == {world["shared_platform"].id, world["platform_a"].id}
+    Game.objects.filter(pk=world["shared_game_a"].pk).update(
+        updated_at=datetime(2020, 1, 1, tzinfo=UTC)
+    )
+    Game.objects.filter(pk=world["game_a"].pk).update(
+        updated_at=datetime(2021, 1, 1, tzinfo=UTC)
+    )
+    Game.objects.filter(pk=world["shared_game_b"].pk).update(
+        updated_at=datetime(2022, 1, 1, tzinfo=UTC)
+    )
+    platform_ids = [row["value"] for row in client.get("/api/platforms/search").json()]
+    assert platform_ids == [world["platform_a"].id, world["shared_platform"].id]
 
     groups = {row["value"] for row in client.get("/api/platforms/groups").json()}
     assert groups == {"Shared", "Library A"}
@@ -238,20 +264,27 @@ def test_session_reads_and_mutations_are_library_scoped(two_libraries):
 
 
 @pytest.mark.parametrize(
-    ("model", "expected"),
+    ("model", "filter_payload", "expected"),
     [
-        ("game", 2),
-        ("session", 1),
-        ("purchase", 1),
-        ("playevent", 1),
-        ("device", 1),
-        ("platform", 1),
+        ("game", {"name": {"value": "Library A", "modifier": "INCLUDES"}}, 2),
+        (
+            "session",
+            {"game_filter": {"name": {"value": "Library A", "modifier": "INCLUDES"}}},
+            1,
+        ),
+        ("purchase", {"converted_price": {"value": 0, "modifier": "GREATER_THAN"}}, 1),
+        ("playevent", {"note": {"value": "event", "modifier": "INCLUDES"}}, 1),
+        ("device", {"name": {"value": "Device", "modifier": "INCLUDES"}}, 1),
+        ("platform", {"name": {"value": "Platform", "modifier": "INCLUDES"}}, 1),
     ],
 )
 def test_filter_counts_start_from_a_library_scoped_base_queryset(
-    two_libraries, model, expected
+    two_libraries, model, filter_payload, expected
 ):
-    response = two_libraries["client_a"].get("/api/filter/count", {"model": model})
+    response = two_libraries["client_a"].get(
+        "/api/filter/count",
+        {"model": model, "filter": json.dumps(filter_payload)},
+    )
 
     assert response.status_code == 200
     assert response.json() == {"count": expected}
@@ -299,3 +332,102 @@ def test_compute_stats_uses_only_the_requested_library(two_libraries):
         world["platform_a"].id
     }
     assert list(stats["all_purchased_this_year"]) == [world["purchase_a"]]
+
+
+def test_nested_filter_cannot_match_shared_platform_from_foreign_game(two_libraries):
+    world = two_libraries
+    filter_object = PlatformFilter(
+        game_filter=GameFilter(
+            name=StringCriterion(value="Library B", modifier=Modifier.INCLUDES)
+        )
+    )
+
+    matching = execute_filter(
+        filter_object,
+        Platform.objects.visible_to(world["library_a"]),
+        filter_query_context_for_library(world["library_a"]),
+    )
+
+    assert list(matching) == []
+
+
+def test_aggregate_filter_subqueries_are_library_scoped(two_libraries):
+    world = two_libraries
+    criterion = AggregateCriterion(value=1)
+    criterion.scope = SessionFilter(
+        note=StringCriterion(value="Library", modifier=Modifier.INCLUDES)
+    )
+    filter_object = GameFilter(session_count=criterion)
+
+    queryset = execute_filter(
+        filter_object,
+        Game.objects.for_library(world["library_a"]),
+        filter_query_context_for_library(world["library_a"]),
+    )
+
+    assert str(queryset.query).count("library_id") >= 3
+
+
+def test_multivalued_comparison_subquery_is_library_scoped(two_libraries):
+    world = two_libraries
+    filter_object = GameFilter(
+        field_comparisons=[
+            FieldComparisonCriterion(
+                left="sessions__timestamp_end",
+                right="sessions__timestamp_start",
+                modifier=Modifier.GREATER_THAN,
+                quantifier=RelationMatch.ANY,
+            )
+        ]
+    )
+
+    queryset = execute_filter(
+        filter_object,
+        Game.objects.for_library(world["library_a"]),
+        filter_query_context_for_library(world["library_a"]),
+    )
+
+    assert str(queryset.query).count("library_id") >= 3
+
+
+def test_purchase_games_filter_is_scoped_and_lazy(
+    two_libraries,
+    django_assert_num_queries,
+):
+    world = two_libraries
+    filter_object = PurchaseFilter(
+        games=ChoiceCriterion(
+            value=[world["game_a"].id],
+            modifier=Modifier.INCLUDES_ONLY,
+        )
+    )
+
+    with django_assert_num_queries(0):
+        queryset = execute_filter(
+            filter_object,
+            Purchase.objects.for_library(world["library_a"]),
+            filter_query_context_for_library(world["library_a"]),
+        )
+
+    assert str(queryset.query).count("library_id") >= 3
+
+
+def test_filter_execution_rejects_missing_authorization_context(two_libraries):
+    world = two_libraries
+
+    with pytest.raises(TypeError):
+        execute_filter(
+            GameFilter(name=StringCriterion(value="Library A Game")),
+            Game.objects.for_library(world["library_a"]),
+        )
+
+
+def test_filter_execution_rejects_validation_only_context(two_libraries):
+    world = two_libraries
+
+    with pytest.raises(RuntimeError, match="validation-only"):
+        execute_filter(
+            GameFilter(name=StringCriterion(value="Library A Game")),
+            Game.objects.for_library(world["library_a"]),
+            FilterQueryContext.for_validation(),
+        )

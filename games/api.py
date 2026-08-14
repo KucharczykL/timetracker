@@ -32,6 +32,7 @@ from common.filter_execution import execute_filter, regex_timeout_api
 from games.filters import (
     MODE_PARSERS,
     filter_for_model,
+    filter_query_context_for_library,
     filter_queryset_for_library,
     parse_session_filter,
 )
@@ -425,7 +426,11 @@ def list_sessions_api(request, filter: str = "", sort: str = "", page: int = 1):
             )
             raise HttpError(400, f"Invalid filter: {exc}") from exc
         if session_filter is not None:
-            sessions = execute_filter(session_filter, sessions)
+            sessions = execute_filter(
+                session_filter,
+                sessions,
+                filter_query_context_for_library(library),
+            )
     # `sort` is read from request.GET by parse_find_filter; declared above so it
     # appears in the OpenAPI schema. Unknown sort keys are rejected (not silently
     # dropped) for parity with the filter rejection above — silently-wrong ordering
@@ -576,7 +581,11 @@ def filter_count(request, model: str, filter: str = ""):
             )
             raise HttpError(400, f"Invalid filter: {exc}") from exc
         if parsed is not None:
-            queryset = execute_filter(parsed, queryset)
+            queryset = execute_filter(
+                parsed,
+                queryset,
+                filter_query_context_for_library(library),
+            )
     return {"count": queryset.count()}
 
 

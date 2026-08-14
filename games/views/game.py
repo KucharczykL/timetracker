@@ -50,7 +50,7 @@ from common.duration_presentation import (
     DurationPresentation,
     duration_presentation_for_request,
 )
-from common.filter_execution import regex_timeout_view
+from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.returns import OriginUrl, action_url
 from common.utils import paginate, safe_division
@@ -58,6 +58,7 @@ from games.filters import (
     PlayEventFilter,
     PurchaseFilter,
     SessionFilter,
+    filter_query_context_for_library,
     filter_url,
     parse_game_filter,
 )
@@ -95,9 +96,10 @@ def list_games(request: HttpRequest) -> HttpResponse:
     if filter_json:
         game_filter = apply_structured_filter(request, parse_game_filter, filter_json)
         if game_filter is not None:
-            games = games.filter(game_filter.to_q())
+            context = filter_query_context_for_library(library)
+            games = execute_filter(game_filter, games, context)
             if game_filter.session_filter is not None:
-                session_q = game_filter.session_filter.to_q()
+                session_q = game_filter.session_filter.to_q(context)
 
     # Per-game playtime restricted to the session sub-filter, summed in the DB.
     # session_q stays in Session's own field namespace via the correlated

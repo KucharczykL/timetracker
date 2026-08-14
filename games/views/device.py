@@ -23,11 +23,11 @@ from common.components import (
     parse_filter_dict,
 )
 from common.date_time_presentation import date_time_presentation_for_request
-from common.filter_execution import regex_timeout_view
+from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.returns import action_url
 from common.utils import paginate
-from games.filters import parse_device_filter
+from games.filters import filter_query_context_for_library, parse_device_filter
 from games.forms import DeviceForm
 from games.models import Device
 from games.ownership import owned_or_404
@@ -60,7 +60,11 @@ def list_devices(request: HttpRequest) -> HttpResponse:
             request, parse_device_filter, filter_json
         )
         if device_filter is not None:
-            devices = devices.filter(device_filter.to_q())
+            devices = execute_filter(
+                device_filter,
+                devices,
+                filter_query_context_for_library(library),
+            )
 
     find = parse_find_filter(request)
     sort = apply_sort(devices, find, DEVICE_SORTS, DEVICE_DEFAULT_SORT)

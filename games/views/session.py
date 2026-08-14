@@ -35,7 +35,7 @@ from common.duration_presentation import (
     DurationPresentation,
     duration_presentation_for_request,
 )
-from common.filter_execution import regex_timeout_view
+from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.returns import OriginUrl
 from common.utils import paginate
@@ -96,14 +96,18 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
     # ── Structured filter (JSON; free-text search lives here too) ──
     filter_json = request.GET.get("filter", "")
     if filter_json:
-        from games.filters import parse_session_filter
+        from games.filters import filter_query_context_for_library, parse_session_filter
         from games.views.filtering import apply_structured_filter
 
         session_filter = apply_structured_filter(
             request, parse_session_filter, filter_json
         )
         if session_filter is not None:
-            sessions = sessions.filter(session_filter.to_q())
+            sessions = execute_filter(
+                session_filter,
+                sessions,
+                filter_query_context_for_library(library),
+            )
     find = parse_find_filter(request)
     sort = apply_sort(sessions, find, SESSION_SORTS, SESSION_DEFAULT_SORT)
     sessions = sort.queryset

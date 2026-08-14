@@ -15,7 +15,8 @@ from common.duration_presentation import (
     DEFAULT_DURATION_FORMAT_PROFILE,
     DurationPresentation,
 )
-from games.filters import filter_url
+from common.filter_execution import execute_filter
+from games.filters import filter_query_context_for_library, filter_url
 from games.models import Game, Platform, PlayEvent, Purchase, Session
 from games.views import stats_links
 from games.views.stats_content import stats_content as _stats_content
@@ -151,10 +152,18 @@ def test_unspecified_platform_row_links_to_null_bucket_sessions(
     link_filter = stats_links.sessions_for_platform(None, YEAR)
     assert _href(link_filter) in html
 
-    expected = Session.objects.filter(game__platform__isnull=True).count()
-    assert (
-        Session.objects.filter(link_filter.to_q()).distinct().count() == expected == 1
+    scoped_sessions = Session.objects.for_library(user.library)
+    expected = scoped_sessions.filter(game__platform__isnull=True).count()
+    actual = (
+        execute_filter(
+            link_filter,
+            scoped_sessions,
+            filter_query_context_for_library(user.library),
+        )
+        .distinct()
+        .count()
     )
+    assert actual == expected == 1
 
     client.force_login(user)
     response = client.get(filter_url(link_filter), follow=True)

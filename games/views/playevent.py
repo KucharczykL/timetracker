@@ -36,11 +36,11 @@ from common.duration_presentation import (
     DurationPresentation,
     duration_format_profile,
 )
-from common.filter_execution import regex_timeout_view
+from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.returns import OriginUrl, action_url
 from common.utils import paginate
-from games.filters import parse_playevent_filter
+from games.filters import filter_query_context_for_library, parse_playevent_filter
 from games.forms import PlayEventForm
 from games.models import Game, PlayEvent, Session
 from games.ownership import owned_or_404
@@ -189,7 +189,11 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
             request, parse_playevent_filter, filter_json
         )
         if playevent_filter is not None:
-            playevents = playevents.filter(playevent_filter.to_q())
+            playevents = execute_filter(
+                playevent_filter,
+                playevents,
+                filter_query_context_for_library(library),
+            )
 
     find = parse_find_filter(request)
     sort = apply_sort(playevents, find, PLAYEVENT_SORTS, PLAYEVENT_DEFAULT_SORT)

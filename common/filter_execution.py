@@ -12,15 +12,17 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect
 
 if TYPE_CHECKING:
-    from common.criteria import OperatorFilter
+    from common.criteria import FilterQueryContext, OperatorFilter
 
 FILTER_STATEMENT_TIMEOUT_MS = 1000
 
 
 def execute_filter[M: Model](
-    filter_object: OperatorFilter, queryset: QuerySet[M]
+    filter_object: OperatorFilter,
+    queryset: QuerySet[M],
+    context: FilterQueryContext,
 ) -> QuerySet[M]:
-    return filter_object.apply(queryset)
+    return filter_object.apply(queryset, context)
 
 
 class FilterQueryTimeout(Exception):

@@ -22,11 +22,11 @@ from common.components import (
     parse_filter_dict,
 )
 from common.date_time_presentation import date_time_presentation_for_request
-from common.filter_execution import regex_timeout_view
+from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.returns import action_url
 from common.utils import paginate
-from games.filters import parse_platform_filter
+from games.filters import filter_query_context_for_library, parse_platform_filter
 from games.forms import PlatformForm
 from games.models import Platform
 from games.ownership import owned_or_404
@@ -59,7 +59,11 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
             request, parse_platform_filter, filter_json
         )
         if platform_filter is not None:
-            platforms = platforms.filter(platform_filter.to_q())
+            platforms = execute_filter(
+                platform_filter,
+                platforms,
+                filter_query_context_for_library(library),
+            )
 
     find = parse_find_filter(request)
     sort = apply_sort(platforms, find, PLATFORM_SORTS, PLATFORM_DEFAULT_SORT)

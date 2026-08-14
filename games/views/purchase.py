@@ -51,7 +51,7 @@ from common.date_time_presentation import (
     DateTimePresentation,
     date_time_presentation_for_request,
 )
-from common.filter_execution import regex_timeout_view
+from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.returns import OriginUrl, action_url
 from common.utils import label_with_details, paginate
@@ -186,14 +186,21 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
 
     filter_json = request.GET.get("filter", "")
     if filter_json:
-        from games.filters import parse_purchase_filter
+        from games.filters import (
+            filter_query_context_for_library,
+            parse_purchase_filter,
+        )
         from games.views.filtering import apply_structured_filter
 
         purchase_filter = apply_structured_filter(
             request, parse_purchase_filter, filter_json
         )
         if purchase_filter is not None:
-            purchases = purchases.filter(purchase_filter.to_q())
+            purchases = execute_filter(
+                purchase_filter,
+                purchases,
+                filter_query_context_for_library(library),
+            )
 
     find = parse_find_filter(request)
     sort = apply_sort(purchases, find, PURCHASE_SORTS, PURCHASE_DEFAULT_SORT)

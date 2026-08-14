@@ -26,6 +26,25 @@ def auth_client(user):
     return client
 
 
+def _test_library():
+    user = get_user_model().objects.filter(username="tester").first()
+    if user is None:
+        user, _ = get_user_model().objects.get_or_create(username="api-fixture-owner")
+    return user.library
+
+
+def _owned_device(**values):
+    return Device.objects.create(library=_test_library(), **values)
+
+
+def _owned_game(**values):
+    return Game.objects.create(library=_test_library(), **values)
+
+
+def _owned_purchase(**values):
+    return Purchase.objects.create(library=_test_library(), **values)
+
+
 def test_existing_endpoint_requires_auth():
     # Anonymous client hits an existing GET endpoint -> 401 after API-wide auth.
     response = Client().get("/api/platforms/groups")
@@ -38,8 +57,8 @@ def test_existing_endpoint_allows_logged_in(auth_client):
 
 
 def test_device_search_blank_query_orders_by_most_recent_session(auth_client):
-    desktop = Device.objects.create(name="Desktop")
-    deck = Device.objects.create(name="Steam Deck")
+    desktop = _owned_device(name="Desktop")
+    deck = _owned_device(name="Steam Deck")
     _make_session(
         device=desktop,
         timestamp_start=datetime(2025, 1, 1, tzinfo=UTC),
@@ -57,8 +76,8 @@ def test_device_search_blank_query_orders_by_most_recent_session(auth_client):
 def test_platform_search_blank_query_uses_newest_game_or_purchase(auth_client):
     atari = Platform.objects.create(name="Atari")
     switch = Platform.objects.create(name="Switch")
-    old_game = Game.objects.create(name="Old game", platform=atari)
-    recent_purchase = Purchase.objects.create(
+    old_game = _owned_game(name="Old game", platform=atari)
+    recent_purchase = _owned_purchase(
         price_currency="CZK", platform=switch, date_purchased=date(2026, 1, 1)
     )
     Game.objects.filter(pk=old_game.pk).update(
@@ -75,8 +94,8 @@ def test_platform_search_blank_query_uses_newest_game_or_purchase(auth_client):
 
 def test_platform_search_blank_query_does_not_join_games_to_purchases(auth_client):
     platform = Platform.objects.create(name="PC")
-    Game.objects.create(name="One", platform=platform)
-    Purchase.objects.create(
+    _owned_game(name="One", platform=platform)
+    _owned_purchase(
         price_currency="CZK", platform=platform, date_purchased=date(2026, 1, 1)
     )
 
@@ -91,8 +110,8 @@ def test_platform_search_blank_query_does_not_join_games_to_purchases(auth_clien
 
 
 def test_device_search_typed_query_remains_alphabetical(auth_client):
-    alpha = Device.objects.create(name="Alpha")
-    alpine = Device.objects.create(name="Alpine")
+    alpha = _owned_device(name="Alpha")
+    alpine = _owned_device(name="Alpine")
     _make_session(
         device=alpha,
         timestamp_start=datetime(2025, 1, 1, tzinfo=UTC),
@@ -110,7 +129,7 @@ def test_device_search_typed_query_remains_alphabetical(auth_client):
 def test_platform_search_typed_query_remains_alphabetical(auth_client):
     alpha = Platform.objects.create(name="Alpha")
     alpine = Platform.objects.create(name="Alpine")
-    recent_game = Game.objects.create(name="Recent", platform=alpine)
+    recent_game = _owned_game(name="Recent", platform=alpine)
     Game.objects.filter(pk=recent_game.pk).update(
         updated_at=datetime(2026, 1, 1, tzinfo=UTC)
     )
@@ -125,10 +144,10 @@ def _make_session(**overrides):
     # call like _make_session(game=other) doesn't leave a throwaway Game/Platform
     # in the DB that could skew count-based assertions.
     if "game" not in overrides:
-        platform = Platform.objects.create(name="PC")
-        overrides["game"] = Game.objects.create(name="Hades", platform=platform)
+        platform, _ = Platform.objects.get_or_create(name="PC")
+        overrides["game"] = _owned_game(name="Hades", platform=platform)
     if "device" not in overrides:
-        overrides["device"] = Device.objects.create(name="Deck", type="h")
+        overrides["device"] = _owned_device(name="Deck", type="h")
     fields = {
         "timestamp_start": datetime(2026, 6, 24, 18, 0, tzinfo=UTC),
         "timestamp_end": None,
@@ -235,7 +254,7 @@ def test_session_list_sort_parity(auth_client):
 def test_session_list_filter_parity(auth_client):
     keep = _make_session()
     other_platform = Platform.objects.create(name="Switch")
-    other_game = Game.objects.create(name="Celeste", platform=other_platform)
+    other_game = _owned_game(name="Celeste", platform=other_platform)
     _make_session(game=other_game)
     # Structured filter: sessions for the "keep" game only (game MultiCriterion INCLUDES).
     # SessionFilter.game is MultiCriterion — JSON: {"game": {"value": [id], "modifier": "INCLUDES"}}
@@ -427,7 +446,7 @@ def _patch_device(client, session_id, body):
 
 def test_device_patch_assigns_device(auth_client):
     session = _make_session()
-    other_device = Device.objects.create(name="Desktop", type="PC")
+    other_device = _owned_device(name="Desktop", type="PC")
     response = _patch_device(auth_client, session.id, {"device_id": other_device.id})
     assert response.status_code == 204
     session.refresh_from_db()
@@ -467,7 +486,7 @@ COUNT_URL = "/api/filter/count"
 
 def _make_games(*names):
     platform = Platform.objects.create(name="PC")
-    return [Game.objects.create(name=name, platform=platform) for name in names]
+    return [_owned_game(name=name, platform=platform) for name in names]
 
 
 def test_filter_count_empty_filter_counts_all(auth_client):
@@ -506,8 +525,8 @@ def test_filter_count_applies_filter(auth_client):
 def test_filter_count_non_game_model(auth_client):
     # The endpoint's whole point is genericity — prove a non-game model key
     # resolves its own filter class + queryset, not just "game".
-    Device.objects.create(name="Deck", type="h")
-    Device.objects.create(name="Desktop", type="d")
+    _owned_device(name="Deck", type="h")
+    _owned_device(name="Desktop", type="d")
     response = auth_client.get(COUNT_URL, {"model": "device"})
     assert response.status_code == 200
     assert response.json() == {"count": Device.objects.count()}
