@@ -37,7 +37,7 @@
 - Consumes: migration state `0003_userlibrary`.
 - Produces: reusable `MigrationExecutor` fixtures for the success and refusal cases.
 
-- [ ] **Step 1: Write the successful legacy-shape fixture**
+- [x] **Step 1: Write the successful legacy-shape fixture**
 
 Build the pre-migration state with exactly one User, its existing
 UserPreferences, the seven exact built-in Platforms, one unmatched custom
@@ -75,7 +75,7 @@ private/link/preference/old-setting table empty, and the manifest environment
 variable absent. Assert it creates no `UserLibrary` and reaches the final
 schema so later normal User provisioning remains responsible for creation.
 
-- [ ] **Step 2: Write fresh-install and refusal matrices before migration code**
+- [x] **Step 2: Write fresh-install and refusal matrices before migration code**
 
 Parameterize zero-User orphan cases for every independently representable
 legacy root family and for dependent/link families together with their required
@@ -101,13 +101,13 @@ naming the violated invariant and no partial ownership
 assignment. A dump hash mismatch is caught by the restore/runbook tooling;
 the migration emits the recorded hash but cannot read the archive itself.
 
-- [ ] **Step 3: Run the migration tests and confirm they fail at the missing migration**
+- [x] **Step 3: Run the migration tests and confirm they fail at the missing migration**
 
 Run: `make test-fast ARGS="tests/test_library_cutover_migration.py -x"`
 
 Expected: FAIL because migration `0004_user_library_ownership_cutover` is absent.
 
-- [ ] **Step 4: Add a migration skeleton with named preflight functions**
+- [x] **Step 4: Add a migration skeleton with named preflight functions**
 
 Keep migration helpers inside the migration file so historical execution does
 not import mutable runtime code:
@@ -162,13 +162,13 @@ creation and still reaches the migration leaf in both checkpoints.
 The reverse functions are intentionally no-op because the documented recovery
 path is restoring the pre-cutover backup, not synthesizing global ownership.
 
-- [ ] **Step 5: Run the focused migration contract to GREEN**
+- [x] **Step 5: Run the focused migration contract to GREEN**
 
 Run: `make test-fast ARGS="tests/test_library_cutover_migration.py -x"`
 
 Expected: PASS for legacy success, pristine success, and every refusal case.
 
-- [ ] **Step 6: Commit the executable migration contract**
+- [x] **Step 6: Commit the executable migration contract**
 
 ```bash
 git add tests/test_library_cutover_migration.py games/migrations/0004_user_library_ownership_cutover.py
