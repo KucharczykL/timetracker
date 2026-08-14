@@ -48,3 +48,27 @@ def test_user_library_is_one_to_one_and_cascades_with_user():
 
     user.delete()
     assert not UserLibrary.objects.filter(pk=library_id).exists()
+
+
+@pytest.mark.django_db
+def test_new_user_eagerly_gets_exactly_one_library():
+    user = User.objects.create_user("new-user")
+    assert UserLibrary.objects.filter(user=user).count() == 1
+
+
+@pytest.mark.django_db
+def test_saving_existing_user_does_not_replace_library():
+    user = User.objects.create_user("existing")
+    library_id = UserLibrary.objects.get(user=user).pk
+
+    user.email = "new@example.com"
+    user.save(update_fields=["email"])
+
+    assert UserLibrary.objects.get(user=user).pk == library_id
+    assert UserLibrary.objects.filter(user=user).count() == 1
+
+
+@pytest.mark.django_db
+def test_bulk_created_user_has_no_implicit_library():
+    user = User.objects.bulk_create([User(username="bulk")])[0]
+    assert not UserLibrary.objects.filter(user=user).exists()

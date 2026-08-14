@@ -1,6 +1,7 @@
 import logging
 from datetime import timedelta
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import F, Sum
 from django.db.models.signals import (
@@ -19,11 +20,19 @@ from games.models import (
     Purchase,
     Session,
     SiteSetting,
+    UserLibrary,
     UserPreferences,
 )
 from timetracker.settings_resolver import clear_cache as clear_settings_cache
 
 logger = logging.getLogger("games")
+
+
+@receiver(post_save, sender=settings.AUTH_USER_MODEL)
+def provision_user_library(sender, instance, created, raw=False, **kwargs) -> None:
+    if raw or not created:
+        return
+    UserLibrary.objects.get_or_create(user=instance)
 
 
 @receiver([post_save, post_delete], sender=SiteSetting)
