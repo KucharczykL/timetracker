@@ -3,10 +3,15 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.contrib.auth.models import User
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, transaction
+from django.db.migrations.executor import MigrationExecutor
 
 from games.models import UserLibrary
+
+BEFORE_LIBRARY = ("games", "0002_uuid_v7_domain")
+WITH_LIBRARY = ("games", "0003_userlibrary")
 
 
 def create_user_without_signals(username: str) -> User:
@@ -72,3 +77,25 @@ def test_saving_existing_user_does_not_replace_library():
 def test_bulk_created_user_has_no_implicit_library():
     user = User.objects.bulk_create([User(username="bulk")])[0]
     assert not UserLibrary.objects.filter(user=user).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_user_library_migration_does_not_backfill_existing_users():
+    try:
+        executor = MigrationExecutor(connection)
+        executor.migrate([BEFORE_LIBRARY])
+        old_apps = executor.loader.project_state([BEFORE_LIBRARY]).apps
+        LegacyUser = old_apps.get_model("auth", "User")
+        legacy_user = LegacyUser.objects.create(username="legacy")
+        legacy_user_id = legacy_user.pk
+
+        executor = MigrationExecutor(connection)
+        executor.migrate([WITH_LIBRARY])
+        new_apps = executor.loader.project_state([WITH_LIBRARY]).apps
+        HistoricalUserLibrary = new_apps.get_model("games", "UserLibrary")
+        assert not HistoricalUserLibrary.objects.filter(user_id=legacy_user_id).exists()
+
+        runtime_user = get_user_model().objects.create_user("post-deployment")
+        assert UserLibrary.objects.filter(user=runtime_user).count() == 1
+    finally:
+        MigrationExecutor(connection).migrate([WITH_LIBRARY])
