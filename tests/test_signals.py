@@ -5,11 +5,12 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.core import serializers
 from django.core.management import call_command
 from django.test import TestCase
 
-from games.models import Game, GameStatusChange, Session
+from games.models import Game, GameStatusChange, Session, UserLibrary
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 
@@ -87,3 +88,14 @@ class RawFixtureLoadTest(TestCase):
 
         self.assertEqual(Game.objects.get(pk=game.pk).status, "f")
         self.assertEqual(GameStatusChange.objects.count(), 0)
+
+    def test_user_fixture_does_not_provision_a_library(self):
+        user = get_user_model().objects.create_user(username="fixture-user")
+        user_id = user.pk
+        fixture = self._write_fixture([user])
+
+        user.delete()
+        call_command("loaddata", fixture, verbosity=0)
+
+        restored_user = get_user_model().objects.get(pk=user_id)
+        self.assertFalse(UserLibrary.objects.filter(user=restored_user).exists())
