@@ -1,4 +1,10 @@
 POSTGRES_MK = .cache/postgres.mk
+
+ifneq ($(filter stop-postgres,$(MAKECMDGOALS)),)
+ifneq ($(MAKECMDGOALS),stop-postgres)
+$(error stop-postgres must be invoked alone)
+endif
+else
 include $(POSTGRES_MK)
 
 $(POSTGRES_MK): scripts/ensure_postgres.py FORCE
@@ -7,6 +13,12 @@ $(POSTGRES_MK): scripts/ensure_postgres.py FORCE
 .PHONY: FORCE ensure-postgres
 FORCE:
 ensure-postgres: $(POSTGRES_MK)
+endif
+
+.PHONY: stop-postgres
+stop-postgres:
+	uv run --frozen python scripts/ensure_postgres.py --stop
+
 
 all: ensure-postgres css migrate
 
