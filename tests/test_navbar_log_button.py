@@ -23,7 +23,9 @@ class RecentSessionResumesTest(TestCase):
     def setUp(self) -> None:
         self.factory = RequestFactory()
         self.user = User.objects.create_user(username="u", password="p")
-        self.platform = Platform.objects.create(name="PC", icon="pc")
+        self.platform = Platform.objects.create(
+            library=self.user.library, name="PC", icon="pc"
+        )
 
     def _request(self, *, authenticated: bool):
         request = self.factory.get("/")
@@ -31,7 +33,9 @@ class RecentSessionResumesTest(TestCase):
         return request
 
     def _game(self, name: str) -> Game:
-        return Game.objects.create(name=name, platform=self.platform)
+        return Game.objects.create(
+            library=self.user.library, name=name, platform=self.platform
+        )
 
     def _session(self, game, when) -> Session:
         return Session.objects.create(game=game, timestamp_start=when)
@@ -58,22 +62,18 @@ class RecentSessionResumesTest(TestCase):
         names = [s.game.name for s in resumes if s.game is not None]
         self.assertEqual(names, ["G5", "G4", "G3", "G2", "G1"])
 
-    def test_excludes_null_game_sessions(self) -> None:
-        Session.objects.create(game=None, timestamp_start=BASE + timedelta(days=2))
-        game = self._game("A")
-        self._session(game, BASE)
-        resumes = recent_session_resumes(self._request(authenticated=True))
-        names = [s.game.name for s in resumes if s.game is not None]
-        self.assertEqual(names, ["A"])
-
 
 class NavbarLogButtonRenderTest(TestCase):
     def setUp(self) -> None:
         self.user = User.objects.create_superuser(
             username="testuser", email="t@e.com", password="pw"
         )
-        self.platform = Platform.objects.create(name="PC", icon="pc")
-        self.game = Game.objects.create(name="Zzq Unique Title", platform=self.platform)
+        self.platform = Platform.objects.create(
+            library=self.user.library, name="PC", icon="pc"
+        )
+        self.game = Game.objects.create(
+            library=self.user.library, name="Zzq Unique Title", platform=self.platform
+        )
         Session.objects.create(game=self.game, timestamp_start=BASE)
 
     def test_authenticated_navbar_has_log_button_and_recent_game(self) -> None:

@@ -8,9 +8,10 @@ it hoists shared `<head>` content (the `_HEADERS` block, analogous to
 """
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from django.conf import settings
+from django.contrib.auth.models import User
 from django.contrib.messages import get_messages
 from django.http import HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
@@ -359,7 +360,8 @@ def recent_session_resumes(request: HttpRequest, limit: int = 5) -> list[Session
     seen: set[int] = set()
     resumes: list[Session] = []
     for session in (
-        Session.objects.filter(game__isnull=False)
+        Session.objects.for_library(cast(User, request.user).library)
+        .filter(game__isnull=False)
         .select_related("game")
         .order_by("-timestamp_start")
         .iterator()

@@ -1,6 +1,9 @@
+from typing import cast
+
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
 from django.http import HttpRequest, HttpResponse
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import redirect
 
 from common.components import (
     AddForm,
@@ -17,6 +20,7 @@ from common.layout import render_page
 from common.utils import paginate
 from games.forms import GameStatusChangeForm
 from games.models import GameStatusChange
+from games.ownership import owned_or_404
 from games.sorting import parse_find_filter
 from games.views.deletion import confirm_and_delete
 from games.views.returns import return_url
@@ -24,8 +28,10 @@ from games.views.returns import return_url
 
 @login_required
 def add_statuschange(request: HttpRequest) -> HttpResponse:
+    library = cast(User, request.user).library
     form = GameStatusChangeForm(
         request.POST or None,
+        library=library,
         presentation=date_time_presentation_for_request(request),
     )
     if form.is_valid():
@@ -43,10 +49,14 @@ def add_statuschange(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def edit_statuschange(request: HttpRequest, statuschange_id: int) -> HttpResponse:
-    statuschange = get_object_or_404(GameStatusChange, id=statuschange_id)
+    library = cast(User, request.user).library
+    statuschange = owned_or_404(
+        GameStatusChange.objects.all(), library, id=statuschange_id
+    )
     form = GameStatusChangeForm(
         request.POST or None,
         instance=statuschange,
+        library=library,
         presentation=date_time_presentation_for_request(request),
     )
     if form.is_valid():
@@ -66,10 +76,11 @@ def edit_statuschange(request: HttpRequest, statuschange_id: int) -> HttpRespons
 
 @login_required
 def list_statuschanges(request: HttpRequest) -> HttpResponse:
+    library = cast(User, request.user).library
     presentation = date_time_presentation_for_request(request)
     find = parse_find_filter(request)
     statuschanges, page_obj, elided_page_range = paginate(
-        GameStatusChange.objects.select_related("game").all(), find
+        GameStatusChange.objects.for_library(library).select_related("game"), find
     )
 
     data: TableData = {
@@ -104,7 +115,8 @@ def list_statuschanges(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def delete_statuschange(request: HttpRequest, pk: int) -> HttpResponse:
-    statuschange = get_object_or_404(GameStatusChange, id=pk)
+    library = cast(User, request.user).library
+    statuschange = owned_or_404(GameStatusChange.objects.all(), library, id=pk)
     return confirm_and_delete(
         request,
         statuschange,

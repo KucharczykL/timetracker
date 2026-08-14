@@ -1,6 +1,9 @@
+from typing import cast
+
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
 from django.http import HttpRequest, HttpResponse
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import redirect
 from django.urls import reverse
 
 from common.components import (
@@ -26,6 +29,7 @@ from common.utils import paginate
 from games.filters import parse_platform_filter
 from games.forms import PlatformForm
 from games.models import Platform
+from games.ownership import owned_or_404
 from games.sorting import (
     PLATFORM_DEFAULT_SORT,
     PLATFORM_SORTS,
@@ -44,9 +48,10 @@ from games.views.returns import return_url
 @login_required
 @regex_timeout_view
 def list_platforms(request: HttpRequest) -> HttpResponse:
+    library = cast(User, request.user).library
     presentation = date_time_presentation_for_request(request)
     origin = request.get_full_path()
-    platforms = Platform.objects.all()
+    platforms = Platform.objects.for_library(library)
 
     filter_json = request.GET.get("filter", "")
     if filter_json:
@@ -129,7 +134,8 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def delete_platform(request: HttpRequest, platform_id: int) -> HttpResponse:
-    platform = get_object_or_404(Platform, id=platform_id)
+    library = cast(User, request.user).library
+    platform = owned_or_404(Platform.objects.all(), library, id=platform_id)
     return confirm_and_delete(
         request,
         platform,
@@ -147,8 +153,9 @@ def delete_platform(request: HttpRequest, platform_id: int) -> HttpResponse:
 
 @login_required
 def edit_platform(request: HttpRequest, platform_id: int) -> HttpResponse:
-    platform = get_object_or_404(Platform, id=platform_id)
-    form = PlatformForm(request.POST or None, instance=platform)
+    library = cast(User, request.user).library
+    platform = owned_or_404(Platform.objects.all(), library, id=platform_id)
+    form = PlatformForm(request.POST or None, instance=platform, library=library)
     if form.is_valid():
         form.save()
         return redirect(return_url(request, fallback="games:list_platforms"))
@@ -157,7 +164,8 @@ def edit_platform(request: HttpRequest, platform_id: int) -> HttpResponse:
 
 @login_required
 def add_platform(request: HttpRequest) -> HttpResponse:
-    form = PlatformForm(request.POST or None)
+    library = cast(User, request.user).library
+    form = PlatformForm(request.POST or None, library=library)
     if form.is_valid():
         form.save()
         return redirect(return_url(request, fallback="games:list_platforms"))
