@@ -7,7 +7,11 @@ from configparser import Error as ConfigParserError
 from datetime import datetime
 from pathlib import Path
 
-from django.db import migrations
+import django.db.models.deletion
+from django.db import migrations, models
+from django.db.models import F, Q
+from django.db.models.functions import Lower, Trim
+from django.utils import timezone
 
 MANIFEST_ENV = "TIMETRACKER_OWN_CUTOVER_MANIFEST"
 LEGACY_DEFAULT_CURRENCY = "CZK"
@@ -658,24 +662,174 @@ def validate_legacy_shape(apps, manifest):
 
 def backfill_known_library(apps, manifest):
     UserLibrary = apps.get_model("games", "UserLibrary")
-    UserLibrary.objects.create(
+    return UserLibrary.objects.create(
         user_id=manifest["expected_legacy_state"]["user_id"],
         created_at=FIRST_COMMIT_AT,
     )
 
 
-def reconcile_preflight(apps, manifest):
-    validate_legacy_shape(apps, manifest)
-    UserLibrary = apps.get_model("games", "UserLibrary")
-    library = UserLibrary.objects.get(
-        user_id=manifest["expected_legacy_state"]["user_id"]
+def backfill_ownership_and_state(apps, manifest, library):
+    Game = apps.get_model("games", "Game")
+    Platform = apps.get_model("games", "Platform")
+    Purchase = apps.get_model("games", "Purchase")
+    Device = apps.get_model("games", "Device")
+    FilterPreset = apps.get_model("games", "FilterPreset")
+    UserPreferences = apps.get_model("games", "UserPreferences")
+    UserLibraryPreferences = apps.get_model("games", "UserLibraryPreferences")
+    PurchaseConversionState = apps.get_model("games", "PurchaseConversionState")
+
+    Game.objects.update(library_id=library.pk)
+    Purchase.objects.update(library_id=library.pk)
+    Device.objects.update(library_id=library.pk)
+    FilterPreset.objects.update(library_id=library.pk)
+
+    shared_platform_ids = []
+    for name, group in sorted(BUILT_IN_PLATFORMS):
+        shared_platform_ids.append(Platform.objects.get(name=name, group=group).pk)
+    Platform.objects.exclude(pk__in=shared_platform_ids).update(library_id=library.pk)
+
+    preferences = UserPreferences.objects.get()
+    confirmed = manifest["operator_confirmed_settings"]
+    UserLibraryPreferences.objects.create(
+        library_id=library.pk,
+        default_device_id=confirmed["effective_default_device_id"],
+        updated_at=preferences.updated_at,
     )
+    display_currency = confirmed["effective_display_currency"]
+    PurchaseConversionState.objects.create(
+        library_id=library.pk,
+        requested_version=1,
+        requested_currency=display_currency,
+        published_version=1,
+        published_currency=display_currency,
+        status="complete",
+        retry_at=None,
+        last_error="",
+    )
+
+
+def reconcile_cutover(apps, manifest, library):
+    validate_legacy_shape(apps, manifest)
+    expected_counts = manifest["expected_legacy_state"]["row_counts"]
+    Game = apps.get_model("games", "Game")
+    Platform = apps.get_model("games", "Platform")
+    Purchase = apps.get_model("games", "Purchase")
+    Session = apps.get_model("games", "Session")
+    Device = apps.get_model("games", "Device")
+    PlayEvent = apps.get_model("games", "PlayEvent")
+    GameStatusChange = apps.get_model("games", "GameStatusChange")
+    FilterPreset = apps.get_model("games", "FilterPreset")
+    UserLibraryPreferences = apps.get_model("games", "UserLibraryPreferences")
+    PurchaseConversionState = apps.get_model("games", "PurchaseConversionState")
+
     require_match(
         "reconciliation.library.created_at", library.created_at, FIRST_COMMIT_AT
     )
+    for label, model, count_key in (
+        ("Game", Game, "games"),
+        ("Purchase", Purchase, "purchases"),
+        ("Device", Device, "devices"),
+        ("FilterPreset", FilterPreset, "filter_presets"),
+    ):
+        require_match(
+            f"reconciliation.{label}.owned_count",
+            model.objects.filter(library_id=library.pk).count(),
+            expected_counts[count_key],
+        )
+        require_match(
+            f"reconciliation.{label}.unowned_count",
+            model.objects.filter(library_id=None).count(),
+            0,
+        )
+
+    shared_pairs = set(
+        Platform.objects.filter(library_id=None).values_list("name", "group")
+    )
+    require_match(
+        "reconciliation.Platform.shared_pairs", shared_pairs, BUILT_IN_PLATFORMS
+    )
+    require_match(
+        "reconciliation.Platform.private_count",
+        Platform.objects.filter(library_id=library.pk).count(),
+        expected_counts["platforms"] - len(BUILT_IN_PLATFORMS),
+    )
+
+    game_keys = list(
+        Game.objects.values_list("library_id", "name", "platform_id", "year_released")
+    )
+    require_match(
+        "reconciliation.Game.unique_library_identity_count",
+        len(set(game_keys)),
+        len(game_keys),
+    )
+
+    for purchase in Purchase.objects.all():
+        if purchase.library_id != library.pk:
+            raise RuntimeError("OWN cutover reconciliation.Purchase owner mismatch")
+        if purchase.related_game_id is not None:
+            related_library_id = Game.objects.values_list("library_id", flat=True).get(
+                pk=purchase.related_game_id
+            )
+            if related_library_id != library.pk:
+                raise RuntimeError(
+                    "OWN cutover reconciliation.Purchase related Game mismatch"
+                )
+        if purchase.platform_id is not None:
+            platform_library_id = Platform.objects.values_list(
+                "library_id", flat=True
+            ).get(pk=purchase.platform_id)
+            if platform_library_id not in (None, library.pk):
+                raise RuntimeError(
+                    "OWN cutover reconciliation.Purchase Platform mismatch"
+                )
+        if purchase.games.exclude(library_id=library.pk).exists():
+            raise RuntimeError(
+                "OWN cutover reconciliation.Purchase Game relationship mismatch"
+            )
+
+    for session in Session.objects.select_related("game", "device"):
+        if session.game_id is None or session.game.library_id != library.pk:
+            raise RuntimeError("OWN cutover reconciliation.Session Game mismatch")
+        if session.device_id is not None and session.device.library_id != library.pk:
+            raise RuntimeError("OWN cutover reconciliation.Session Device mismatch")
+    if PlayEvent.objects.exclude(game__library_id=library.pk).exists():
+        raise RuntimeError("OWN cutover reconciliation.PlayEvent owner mismatch")
+    if GameStatusChange.objects.exclude(game__library_id=library.pk).exists():
+        raise RuntimeError("OWN cutover reconciliation.GameStatusChange owner mismatch")
+
+    confirmed = manifest["operator_confirmed_settings"]
+    preference = UserLibraryPreferences.objects.get(library_id=library.pk)
+    require_match(
+        "reconciliation.UserLibraryPreferences.default_device_id",
+        preference.default_device_id,
+        confirmed["effective_default_device_id"],
+    )
+    state = PurchaseConversionState.objects.get(library_id=library.pk)
+    expected_state = (
+        1,
+        confirmed["effective_display_currency"],
+        1,
+        confirmed["effective_display_currency"],
+        "complete",
+        None,
+        "",
+    )
+    actual_state = (
+        state.requested_version,
+        state.requested_currency,
+        state.published_version,
+        state.published_currency,
+        state.status,
+        state.retry_at,
+        state.last_error,
+    )
+    require_match(
+        "reconciliation.PurchaseConversionState", actual_state, expected_state
+    )
+
     source = manifest["source"]
     print(
-        "OWN cutover preflight reconciled "
+        "OWN cutover reconciled "
         f"deployment={source['deployment_version']} "
         f"dump_sha256={source['dump_sha256']} "
         f"library={library.pk}"
@@ -688,10 +842,239 @@ def run_cutover(apps, schema_editor):
     if manifest is None:
         return
     validate_legacy_shape(apps, manifest)
-    backfill_known_library(apps, manifest)
-    reconcile_preflight(apps, manifest)
+    library = backfill_known_library(apps, manifest)
+    backfill_ownership_and_state(apps, manifest, library)
+    reconcile_cutover(apps, manifest, library)
 
 
 class Migration(migrations.Migration):
     dependencies = [("games", "0003_userlibrary")]
-    operations = [migrations.RunPython(run_cutover, migrations.RunPython.noop)]
+    operations = [
+        migrations.AddField(
+            model_name="game",
+            name="library",
+            field=models.ForeignKey(
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="games",
+                to="games.userlibrary",
+            ),
+        ),
+        migrations.AddField(
+            model_name="purchase",
+            name="library",
+            field=models.ForeignKey(
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="purchases",
+                to="games.userlibrary",
+            ),
+        ),
+        migrations.AddField(
+            model_name="device",
+            name="library",
+            field=models.ForeignKey(
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="devices",
+                to="games.userlibrary",
+            ),
+        ),
+        migrations.AddField(
+            model_name="filterpreset",
+            name="library",
+            field=models.ForeignKey(
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="filter_presets",
+                to="games.userlibrary",
+            ),
+        ),
+        migrations.AddField(
+            model_name="platform",
+            name="library",
+            field=models.ForeignKey(
+                blank=True,
+                default=None,
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="platforms",
+                to="games.userlibrary",
+            ),
+        ),
+        migrations.CreateModel(
+            name="UserLibraryPreferences",
+            fields=[
+                (
+                    "library",
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        primary_key=True,
+                        related_name="preferences",
+                        serialize=False,
+                        to="games.userlibrary",
+                    ),
+                ),
+                (
+                    "default_device",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="+",
+                        to="games.device",
+                    ),
+                ),
+                ("updated_at", models.DateTimeField(default=timezone.now)),
+            ],
+        ),
+        migrations.CreateModel(
+            name="PurchaseConversionState",
+            fields=[
+                (
+                    "library",
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        primary_key=True,
+                        related_name="purchase_conversion_state",
+                        serialize=False,
+                        to="games.userlibrary",
+                    ),
+                ),
+                (
+                    "requested_version",
+                    models.PositiveBigIntegerField(default=0),
+                ),
+                (
+                    "requested_currency",
+                    models.CharField(blank=True, default="", max_length=3),
+                ),
+                (
+                    "published_version",
+                    models.PositiveBigIntegerField(default=0),
+                ),
+                (
+                    "published_currency",
+                    models.CharField(blank=True, default="", max_length=3),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("pending", "Pending"),
+                            ("running", "Running"),
+                            ("failed", "Failed"),
+                            ("complete", "Complete"),
+                        ],
+                        default="complete",
+                        max_length=10,
+                    ),
+                ),
+                (
+                    "retry_at",
+                    models.DateTimeField(blank=True, default=None, null=True),
+                ),
+                ("last_error", models.TextField(blank=True, default="")),
+            ],
+        ),
+        migrations.RunPython(run_cutover, migrations.RunPython.noop),
+        migrations.RunSQL(
+            sql="SET CONSTRAINTS ALL IMMEDIATE",
+            reverse_sql=migrations.RunSQL.noop,
+        ),
+        migrations.AlterField(
+            model_name="game",
+            name="library",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="games",
+                to="games.userlibrary",
+            ),
+        ),
+        migrations.AlterField(
+            model_name="purchase",
+            name="library",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="purchases",
+                to="games.userlibrary",
+            ),
+        ),
+        migrations.AlterField(
+            model_name="device",
+            name="library",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="devices",
+                to="games.userlibrary",
+            ),
+        ),
+        migrations.AlterField(
+            model_name="filterpreset",
+            name="library",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="filter_presets",
+                to="games.userlibrary",
+            ),
+        ),
+        migrations.AlterField(
+            model_name="session",
+            name="game",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="sessions",
+                to="games.game",
+            ),
+        ),
+        migrations.RemoveConstraint(
+            model_name="game",
+            name="unique_platformless_game_name_year",
+        ),
+        migrations.AlterUniqueTogether(
+            name="game",
+            unique_together={("library", "name", "platform", "year_released")},
+        ),
+        migrations.AddConstraint(
+            model_name="game",
+            constraint=models.UniqueConstraint(
+                condition=Q(platform__isnull=True),
+                fields=("library", "name", "year_released"),
+                name="unique_library_platformless_game_name_year",
+            ),
+        ),
+        migrations.RemoveConstraint(
+            model_name="filterpreset",
+            name="unique_user_mode_name_preset",
+        ),
+        migrations.RemoveField(
+            model_name="filterpreset",
+            name="user",
+        ),
+        migrations.AddConstraint(
+            model_name="filterpreset",
+            constraint=models.UniqueConstraint(
+                fields=("library", "mode", "name"),
+                name="unique_library_mode_name_preset",
+            ),
+        ),
+        migrations.AddConstraint(
+            model_name="platform",
+            constraint=models.UniqueConstraint(
+                Lower(Trim("name")),
+                Lower(Trim("group")),
+                condition=Q(library__isnull=True),
+                name="unique_shared_platform_normalized_name_group",
+            ),
+        ),
+        migrations.AddConstraint(
+            model_name="platform",
+            constraint=models.UniqueConstraint(
+                F("library"),
+                Lower(Trim("name")),
+                Lower(Trim("group")),
+                condition=Q(library__isnull=False),
+                name="unique_private_platform_normalized_name_group",
+            ),
+        ),
+    ]

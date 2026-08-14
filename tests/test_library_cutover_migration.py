@@ -36,19 +36,6 @@ ROW_COUNT_MODELS = {
     "status_changes": ("games", "GameStatusChange"),
     "filter_presets": ("games", "FilterPreset"),
 }
-SNAPSHOT_MODELS = (
-    ("auth", "User"),
-    ("games", "Session"),
-    ("games", "Game"),
-    ("games", "Device"),
-    ("games", "Platform"),
-    ("games", "Purchase"),
-    ("games", "PlayEvent"),
-    ("games", "GameStatusChange"),
-    ("games", "FilterPreset"),
-    ("games", "UserPreferences"),
-    ("games", "SiteSetting"),
-)
 
 
 class CutoverHarness:
@@ -91,9 +78,9 @@ def cutover_harness(monkeypatch, settings, tmp_path):
     yield CutoverHarness(old_apps, monkeypatch)
 
     monkeypatch.delenv(MANIFEST_ENV, raising=False)
+    call_command("flush", interactive=False, verbosity=0)
     executor = MigrationExecutor(connection)
     executor.migrate([BEFORE_CUTOVER])
-    call_command("flush", interactive=False, verbosity=0)
     executor = MigrationExecutor(connection)
     leaf = (
         WITH_CUTOVER if WITH_CUTOVER in executor.loader.graph.nodes else BEFORE_CUTOVER
@@ -293,20 +280,6 @@ def build_manifest(apps) -> dict:
     }
 
 
-def legacy_snapshot(apps) -> dict:
-    snapshot = {}
-    for app_label, model_name in SNAPSHOT_MODELS:
-        model = apps.get_model(app_label, model_name)
-        snapshot[f"{app_label}.{model_name}"] = list(
-            model.objects.order_by("pk").values()
-        )
-    Purchase = apps.get_model("games", "Purchase")
-    snapshot["games.Purchase.games"] = list(
-        Purchase.games.through.objects.order_by("pk").values()
-    )
-    return snapshot
-
-
 def set_path(value: dict, path: str, replacement) -> None:
     parts = path.split(".")
     target = value
@@ -327,7 +300,6 @@ def test_known_legacy_shape_backfills_exactly_one_manifest_selected_library(
     cutover_harness, tmp_path, capsys
 ):
     ids = create_legacy_state(cutover_harness.apps)
-    before = legacy_snapshot(cutover_harness.apps)
     manifest = build_manifest(cutover_harness.apps)
     cutover_harness.install_manifest(tmp_path, manifest)
 
@@ -342,7 +314,34 @@ def test_known_legacy_shape_backfills_exactly_one_manifest_selected_library(
     )
     assert library.created_at == FIRST_COMMIT_AT
     assert UserLibrary.objects.count() == 1
-    assert legacy_snapshot(new_apps) == before
+    Game = new_apps.get_model("games", "Game")
+    Platform = new_apps.get_model("games", "Platform")
+    Purchase = new_apps.get_model("games", "Purchase")
+    Device = new_apps.get_model("games", "Device")
+    FilterPreset = new_apps.get_model("games", "FilterPreset")
+    preferences = new_apps.get_model("games", "UserLibraryPreferences").objects.get()
+    state = new_apps.get_model("games", "PurchaseConversionState").objects.get()
+    assert {
+        Game.objects.get().library_id,
+        Purchase.objects.get().library_id,
+        Device.objects.get().library_id,
+        FilterPreset.objects.get().library_id,
+    } == {library.pk}
+    assert Platform.objects.filter(library_id=None).count() == len(BUILT_IN_PLATFORMS)
+    assert Platform.objects.get(name="Hand-built launcher").library_id == library.pk
+    assert (
+        preferences.library_id == library.pk
+        and preferences.default_device_id == ids["device_id"]
+    )
+    assert (
+        state.requested_version,
+        state.requested_currency,
+        state.published_version,
+        state.published_currency,
+        state.status,
+        state.retry_at,
+        state.last_error,
+    ) == (1, "CZK", 1, "CZK", "complete", None, "")
     output = capsys.readouterr().out
     assert manifest["source"]["deployment_version"] in output
     assert manifest["source"]["dump_sha256"] in output
