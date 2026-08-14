@@ -8,7 +8,7 @@ from django.contrib.auth.models import User
 from django.db import IntegrityError, connection, transaction
 from django.db.migrations.executor import MigrationExecutor
 
-from games.models import UserLibrary
+from games.models import UserLibrary, UserLibraryPreferences, UserPreferences
 
 BEFORE_LIBRARY = ("games", "0002_uuid_v7_domain")
 WITH_LIBRARY = ("games", "0003_userlibrary")
@@ -56,21 +56,33 @@ def test_user_library_is_one_to_one_and_cascades_with_user():
 
 
 @pytest.mark.django_db
-def test_new_user_eagerly_gets_exactly_one_library():
+def test_new_user_eagerly_gets_complete_library_structure():
     user = User.objects.create_user("new-user")
-    assert UserLibrary.objects.filter(user=user).count() == 1
+    library = UserLibrary.objects.get(user=user)
+    assert UserPreferences.objects.filter(user=user).count() == 1
+    assert UserLibraryPreferences.objects.filter(library=library).count() == 1
 
 
 @pytest.mark.django_db
-def test_saving_existing_user_does_not_replace_library():
+def test_saving_existing_user_does_not_replace_provisioned_records():
     user = User.objects.create_user("existing")
-    library_id = UserLibrary.objects.get(user=user).pk
+    library = UserLibrary.objects.get(user=user)
+    library_id = library.pk
+    preferences_id = UserPreferences.objects.get(user=user).pk
+    library_preferences_id = UserLibraryPreferences.objects.get(library=library).pk
 
     user.email = "new@example.com"
     user.save(update_fields=["email"])
 
     assert UserLibrary.objects.get(user=user).pk == library_id
     assert UserLibrary.objects.filter(user=user).count() == 1
+    assert UserPreferences.objects.get(user=user).pk == preferences_id
+    assert UserPreferences.objects.filter(user=user).count() == 1
+    assert (
+        UserLibraryPreferences.objects.get(library_id=library_id).pk
+        == library_preferences_id
+    )
+    assert UserLibraryPreferences.objects.filter(library_id=library_id).count() == 1
 
 
 @pytest.mark.django_db

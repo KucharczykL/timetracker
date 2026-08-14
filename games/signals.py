@@ -22,6 +22,7 @@ from games.models import (
     Session,
     SiteSetting,
     UserLibrary,
+    UserLibraryPreferences,
     UserPreferences,
 )
 from timetracker.settings_resolver import clear_cache as clear_settings_cache
@@ -33,7 +34,10 @@ logger = logging.getLogger("games")
 def provision_user_library(sender, instance, created, raw=False, **kwargs) -> None:
     if raw or not created:
         return
-    UserLibrary.objects.get_or_create(user=instance)
+    with transaction.atomic():
+        library, _ = UserLibrary.objects.get_or_create(user=instance)
+        UserPreferences.objects.get_or_create(user=instance)
+        UserLibraryPreferences.objects.get_or_create(library=library)
 
 
 @receiver([post_save, post_delete], sender=SiteSetting)
