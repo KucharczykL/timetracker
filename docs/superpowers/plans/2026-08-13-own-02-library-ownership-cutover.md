@@ -448,7 +448,7 @@ git commit -m "feat: split library and currency preferences (#630)"
 **Interfaces:**
 - Produces: explicit library-bound forms and `owned_or_404(queryset, library, **lookup)`.
 
-- [ ] **Step 1: Write two-library read/write tests for every HTML path**
+- [x] **Step 1: Write two-library read/write tests for every HTML path**
 
 For each entity, create own and foreign rows. Assert own list/detail/edit/delete
 works, lists omit foreign rows, foreign detail/edit/delete returns 404, and a
@@ -456,13 +456,13 @@ POST containing a foreign Game/Device/Platform is rejected without mutation.
 Assert shared Platforms remain selectable while foreign private Platforms do
 not.
 
-- [ ] **Step 2: Run the isolation tests and observe current leaks**
+- [x] **Step 2: Run the isolation tests and observe current leaks**
 
 Run: `make test-fast ARGS="tests/test_library_page_isolation.py tests/test_library_form_isolation.py -x"`
 
 Expected: FAIL because current querysets are global.
 
-- [ ] **Step 3: Bind every form and view to an explicit library**
+- [x] **Step 3: Bind every form and view to an explicit library**
 
 Use a common constructor contract:
 
@@ -483,13 +483,13 @@ around an already scoped queryset; it never reads the request itself.
 Scope `recent_session_resumes` and all navbar playtime queries by library even
 though the final navbar is delivered later.
 
-- [ ] **Step 4: Pass HTML isolation and existing page tests**
+- [x] **Step 4: Pass HTML isolation and existing page tests**
 
 Run: `make test-fast ARGS="tests/test_library_page_isolation.py tests/test_library_form_isolation.py tests/test_rendered_pages.py tests/test_navbar_playtime.py tests/test_navbar_log_button.py -x"`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit HTML scoping**
+- [x] **Step 5: Commit HTML scoping**
 
 ```bash
 git add games/ownership.py games/forms.py games/views common/layout.py tests
