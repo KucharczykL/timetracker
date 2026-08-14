@@ -187,7 +187,7 @@ git commit -m "test: lock library cutover preconditions (#630)"
 - Produces: `UserLibraryPreferences`, `PurchaseConversionState`, and
   `.for_library()`/`.visible_to()` queryset contracts.
 
-- [ ] **Step 1: Write failing final-model tests**
+- [x] **Step 1: Write failing final-model tests**
 
 Cover the direct/derived ownership table, `UserLibraryPreferences.library` as
 its primary key, no-op-aware preference timestamp updates, required
@@ -210,13 +210,13 @@ assert Platform.objects.visible_to(library_a).contains(private_a)
 assert not Platform.objects.visible_to(library_a).contains(private_b)
 ```
 
-- [ ] **Step 2: Run the model tests and confirm missing fields/helpers**
+- [x] **Step 2: Run the model tests and confirm missing fields/helpers**
 
 Run: `make test-fast ARGS="tests/test_library_models.py -x"`
 
 Expected: FAIL on missing ownership fields and querysets.
 
-- [ ] **Step 3: Implement the model/queryset surface**
+- [x] **Step 3: Implement the model/queryset surface**
 
 Add direct required `library` FKs to Game, Purchase, Device, and FilterPreset;
 add nullable `library` to Platform. Replace FilterPreset's User uniqueness with
@@ -268,7 +268,7 @@ class UserLibraryPreferences(models.Model):
 Add the conversion-state fields described in the spec: requested version and
 currency, published version and currency, status, retry time, and last error.
 
-- [ ] **Step 4: Complete migration operations and pass model/migration tests**
+- [x] **Step 4: Complete migration operations and pass model/migration tests**
 
 Add nullable fields before Task 1's `run_cutover()`, extend that function with
 ownership assignment, Platform classification, preference splitting and
@@ -279,7 +279,7 @@ Run: `make test-fast ARGS="tests/test_library_models.py tests/test_library_cutov
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit final schema**
+- [x] **Step 5: Commit final schema**
 
 ```bash
 git add games/models.py games/migrations/0004_user_library_ownership_cutover.py tests/test_library_models.py tests/test_library_cutover_migration.py
