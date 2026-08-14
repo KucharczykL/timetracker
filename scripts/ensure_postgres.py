@@ -1,4 +1,4 @@
-"""Provision the ignored PostgreSQL 18 development cluster used by Make."""
+"""Manage the ignored PostgreSQL 18 development cluster used by Make."""
 
 from __future__ import annotations
 
@@ -34,6 +34,7 @@ from timetracker.postgres_contract import (
 )
 
 REQUIRED_MAJOR = 18
+PG_CTL_NOT_RUNNING = 3
 TOOL_NAMES = (
     "initdb",
     "pg_ctl",
@@ -173,6 +174,12 @@ def fallback_tools(cache: Path) -> Tools:
     return tools
 
 
+def existing_tools(cache: Path) -> Tools | None:
+    return path_tools() or _tools_from_fallback_destination(
+        cache / "postgres-binaries" / FALLBACK_VERSION
+    )
+
+
 def explicit_database_url() -> str | None:
     try:
         return config(
@@ -233,6 +240,61 @@ def start_cluster(tools: Tools, data_dir: Path, port: int) -> None:
                 "-w",
                 "start",
             ]
+        )
+
+
+def stop_cluster(tools: Tools, data_dir: Path) -> bool:
+    status = subprocess.run(
+        [str(tools.pg_ctl), "status", "-D", str(data_dir)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if status.returncode == PG_CTL_NOT_RUNNING:
+        return False
+    if status.returncode != 0:
+        detail = (status.stderr or status.stdout).strip()
+        message = "Could not determine managed PostgreSQL cluster status"
+        if detail:
+            message += f": {detail}"
+        raise HarnessError(message)
+    run(
+        [
+            str(tools.pg_ctl),
+            "stop",
+            "-D",
+            str(data_dir),
+            "-m",
+            "fast",
+            "-w",
+        ]
+    )
+    return True
+
+
+def stop(cache: Path) -> None:
+    data_dir = cache / "postgres" / "data"
+    if not data_dir.exists():
+        print("==> No worktree-managed PostgreSQL cluster exists.", file=sys.stderr)
+        return
+    if not (data_dir / "postmaster.pid").exists():
+        print(
+            "==> Worktree-managed PostgreSQL cluster is already stopped.",
+            file=sys.stderr,
+        )
+        return
+    tools = existing_tools(cache)
+    if tools is None:
+        raise HarnessError(
+            "PostgreSQL 18 tools are unavailable; cannot stop the managed "
+            "cluster without provisioning them."
+        )
+    if stop_cluster(tools, data_dir):
+        print("==> Worktree-managed PostgreSQL stopped.", file=sys.stderr)
+    else:
+        print(
+            "==> Worktree-managed PostgreSQL cluster is already stopped.",
+            file=sys.stderr,
         )
 
 
@@ -394,16 +456,25 @@ def ensure(cache: Path) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--makefile", type=Path, required=True)
+    operation = parser.add_mutually_exclusive_group(required=True)
+    operation.add_argument("--makefile", type=Path)
+    operation.add_argument("--stop", action="store_true")
     args = parser.parse_args()
+    cache = Path(__file__).parents[1] / ".cache"
     try:
-        url = ensure(Path(__file__).parents[1] / ".cache")
+        if args.stop:
+            stop(cache)
+            return
+        if args.makefile is None:
+            raise HarnessError("No generated Makefile path was supplied.")
+        url = ensure(cache)
         args.makefile.parent.mkdir(parents=True, exist_ok=True)
         contents = makefile_contents(url)
         if not args.makefile.is_file() or args.makefile.read_text() != contents:
             args.makefile.write_text(contents)
     except (HarnessError, subprocess.CalledProcessError, OSError) as exc:
-        raise SystemExit(f"ensure-postgres: {exc}") from exc
+        operation_name = "stop-postgres" if args.stop else "ensure-postgres"
+        raise SystemExit(f"{operation_name}: {exc}") from exc
 
 
 if __name__ == "__main__":
