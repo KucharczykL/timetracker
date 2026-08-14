@@ -639,6 +639,14 @@ def validate_purchase_state(apps, manifest):
     }
     for key, actual_value in actual.items():
         require_match(f"observed_purchase_state.{key}", actual_value, observed[key])
+    display_currency = manifest["operator_confirmed_settings"][
+        "effective_display_currency"
+    ]
+    if actual_currency != display_currency:
+        raise RuntimeError(
+            "OWN cutover Purchase converted cache currency does not match "
+            "effective display currency"
+        )
     if actual["mixed_cache_nullability_count"]:
         raise RuntimeError("OWN cutover Purchase converted cache has mixed nullability")
     if (

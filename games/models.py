@@ -25,6 +25,24 @@ class LibraryOwnedQuerySet(models.QuerySet):
         return self.filter(library=library)
 
 
+def _validate_related_library(
+    owner_library_id, related, field_name: str, *, allow_shared: bool = False
+):
+    if related is None:
+        return
+    related_library_id = related.library_id
+    if allow_shared and related_library_id is None:
+        return
+    if related_library_id != owner_library_id:
+        raise ValidationError(
+            {
+                field_name: (
+                    f"{related._meta.verbose_name.title()} belongs to another library."
+                )
+            }
+        )
+
+
 class Game(models.Model):
     class Meta:
         unique_together = (("library", "name", "platform", "year_released"),)
@@ -79,6 +97,20 @@ class Game(models.Model):
 
     status = models.CharField(max_length=1, choices=Status, default=Status.UNPLAYED)
     mastered = models.BooleanField(default=False)
+
+    def clean(self):
+        super().clean()
+        if self.platform_id is not None:
+            _validate_related_library(
+                self.library_id,
+                self.platform,
+                "platform",
+                allow_shared=True,
+            )
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name
@@ -317,12 +349,29 @@ class Purchase(models.Model):
         self.date_refunded = timezone.now()
         self.save()
 
+    def clean(self):
+        super().clean()
+        if self.platform_id is not None:
+            _validate_related_library(
+                self.library_id,
+                self.platform,
+                "platform",
+                allow_shared=True,
+            )
+        if self.related_game_id is not None:
+            _validate_related_library(
+                self.library_id,
+                self.related_game,
+                "related_game",
+            )
+
     def save(self, *args, **kwargs):
         if not self.price_currency:
             # Local import: the resolver lazily imports this module in turn.
             from timetracker.settings_resolver import resolve_str
 
             self.price_currency = resolve_str("DEFAULT_CURRENCY")
+        self.clean()
         if self.type != Purchase.GAME and not self.related_game:
             raise ValidationError(
                 f"{self.get_type_display()} must have a related game."
@@ -423,6 +472,12 @@ class Session(models.Model):
         return self.duration_manual != timedelta(0)
 
     def save(self, *args, **kwargs) -> None:
+        if self.game_id is not None and self.device_id is not None:
+            _validate_related_library(
+                self.game.library_id,
+                self.device,
+                "device",
+            )
         if not isinstance(self.duration_manual, timedelta):
             self.duration_manual = timedelta(0)
         super().save(*args, **kwargs)
@@ -682,6 +737,19 @@ class UserLibraryPreferences(models.Model):
         related_name="+",
     )
     updated_at = models.DateTimeField(default=timezone.now)
+
+    def clean(self):
+        super().clean()
+        if self.default_device_id is not None:
+            _validate_related_library(
+                self.library_id,
+                self.default_device,
+                "default_device",
+            )
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
 
     def set_default_device(self, device):
         if self.default_device_id == getattr(device, "pk", None):

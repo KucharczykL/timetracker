@@ -633,6 +633,21 @@ def test_every_manifest_purchase_cache_drift_is_refused(
     cutover_harness.assert_refused(f"OWN cutover {path} mismatch")
 
 
+def test_complete_cache_currency_must_match_effective_display_currency(
+    cutover_harness, tmp_path
+):
+    create_legacy_state(cutover_harness.apps)
+    Purchase = cutover_harness.apps.get_model("games", "Purchase")
+    Purchase.objects.update(converted_currency="USD")
+    manifest = build_manifest(cutover_harness.apps)
+    cutover_harness.install_manifest(tmp_path, manifest)
+
+    cutover_harness.assert_refused(
+        "OWN cutover Purchase converted cache currency does not match "
+        "effective display currency"
+    )
+
+
 def test_same_value_boot_currency_source_drift_is_refused(
     cutover_harness, tmp_path, monkeypatch
 ):

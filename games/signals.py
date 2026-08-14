@@ -2,6 +2,7 @@ import logging
 from datetime import timedelta
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import F, Sum
 from django.db.models.signals import (
@@ -75,6 +76,18 @@ def mark_needs_price_update(sender, instance, created, **kwargs):
         )
     ):
         sender.objects.filter(pk=instance.pk).update(needs_price_update=True)
+
+
+@receiver(m2m_changed, sender=Purchase.games.through)
+def validate_purchase_game_ownership(sender, instance, action, model, pk_set, **kwargs):
+    if action != "pre_add" or not pk_set:
+        return
+    if (
+        model.objects.filter(pk__in=pk_set)
+        .exclude(library_id=instance.library_id)
+        .exists()
+    ):
+        raise ValidationError("Purchase and Game must belong to the same library.")
 
 
 @receiver(m2m_changed, sender=Purchase.games.through)

@@ -101,6 +101,108 @@ def test_platform_visibility_and_normalized_duplicate_rejection(libraries):
     Platform.objects.create(library=library_b, name=" a PRIVATE ", group="")
 
 
+def test_game_rejects_another_library_private_platform_and_allows_shared(libraries):
+    library_a, library_b = libraries
+    private_b = Platform.objects.create(library=library_b, name="B platform")
+    shared = Platform.objects.create(name="Shared platform")
+
+    with pytest.raises(ValidationError):
+        Game.objects.create(
+            library=library_a, name="Cross-library platform", platform=private_b
+        )
+
+    assert (
+        Game.objects.create(
+            library=library_a, name="Shared platform game", platform=shared
+        ).platform
+        == shared
+    )
+
+
+def test_purchase_rejects_cross_library_platform_and_related_game(libraries):
+    library_a, library_b = libraries
+    private_b = Platform.objects.create(library=library_b, name="B platform")
+    game_b = Game.objects.create(library=library_b, name="B game")
+
+    with pytest.raises(ValidationError):
+        Purchase.objects.create(
+            library=library_a,
+            date_purchased=datetime(2025, 1, 1, tzinfo=UTC).date(),
+            price_currency="CZK",
+            platform=private_b,
+        )
+    with pytest.raises(ValidationError):
+        Purchase.objects.create(
+            library=library_a,
+            date_purchased=datetime(2025, 1, 1, tzinfo=UTC).date(),
+            price_currency="CZK",
+            type=Purchase.DLC,
+            related_game=game_b,
+        )
+
+
+def test_purchase_allows_shared_platform(libraries):
+    library_a, _ = libraries
+    shared = Platform.objects.create(name="Shared purchase platform")
+
+    assert (
+        Purchase.objects.create(
+            library=library_a,
+            date_purchased=datetime(2025, 1, 1, tzinfo=UTC).date(),
+            price_currency="CZK",
+            platform=shared,
+        ).platform
+        == shared
+    )
+
+
+def test_purchase_games_reject_cross_library_add_in_both_directions(libraries):
+    library_a, library_b = libraries
+    purchase_a = Purchase.objects.create(
+        library=library_a,
+        date_purchased=datetime(2025, 1, 1, tzinfo=UTC).date(),
+        price_currency="CZK",
+    )
+    game_a = Game.objects.create(library=library_a, name="A game")
+    game_b = Game.objects.create(library=library_b, name="B game")
+
+    purchase_a.games.add(game_a)
+    with pytest.raises(ValidationError), transaction.atomic():
+        purchase_a.games.add(game_b)
+    with pytest.raises(ValidationError), transaction.atomic():
+        game_b.purchases.add(purchase_a)
+    assert list(purchase_a.games.all()) == [game_a]
+
+
+def test_session_rejects_another_library_device(libraries):
+    library_a, library_b = libraries
+    game_a = Game.objects.create(library=library_a, name="A game")
+    device_b = Device.objects.create(library=library_b, name="B device")
+
+    with pytest.raises(ValidationError):
+        Session.objects.create(
+            game=game_a,
+            device=device_b,
+            timestamp_start=datetime(2025, 1, 1, tzinfo=UTC),
+        )
+
+
+def test_library_preferences_reject_another_library_default_device(libraries):
+    library_a, library_b = libraries
+    device_b = Device.objects.create(library=library_b, name="B device")
+
+    with pytest.raises(ValidationError):
+        UserLibraryPreferences.objects.create(
+            library=library_a, default_device=device_b
+        )
+
+    preferences = UserLibraryPreferences.objects.create(library=library_a)
+    with pytest.raises(ValidationError):
+        preferences.set_default_device(device_b)
+    preferences.refresh_from_db()
+    assert preferences.default_device is None
+
+
 def test_library_preference_device_changes_only_update_timestamp_on_change(libraries):
     library_a, _ = libraries
     device = Device.objects.create(library=library_a, name="Default")
