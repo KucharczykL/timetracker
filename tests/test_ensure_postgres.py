@@ -169,6 +169,27 @@ def test_fallback_tools_reuse_an_extracted_nested_bin_directory(
     assert tools.initdb == nested_bin / harness.executable_name("initdb")
 
 
+def test_existing_tools_reuse_extracted_fallback_without_provisioning(
+    harness, monkeypatch, tmp_path
+):
+    tools = harness.Tools(*(tmp_path / name for name in harness.TOOL_NAMES))
+    destinations: list[Path] = []
+    monkeypatch.setattr(harness, "path_tools", lambda: None)
+    monkeypatch.setattr(
+        harness,
+        "_tools_from_fallback_destination",
+        lambda destination: destinations.append(destination) or tools,
+    )
+    monkeypatch.setattr(
+        harness,
+        "fallback_tools",
+        lambda cache: pytest.fail("stop must not provision fallback tools"),
+    )
+
+    assert harness.existing_tools(tmp_path) is tools
+    assert destinations == [tmp_path / "postgres-binaries" / harness.FALLBACK_VERSION]
+
+
 def test_redacted_url_hides_a_password(harness):
     assert harness.redact_url("postgresql://user:secret@127.0.0.1:5432/tracker") == (
         "postgresql://user:***@127.0.0.1:5432/tracker"
@@ -221,6 +242,135 @@ def test_start_cluster_removes_stale_process_metadata(harness, monkeypatch, tmp_
     assert commands[0][:3] == [str(tools.pg_ctl), "-D", str(data_dir)]
 
 
+def test_stop_missing_cluster_is_a_noop_without_tool_discovery(
+    harness, monkeypatch, tmp_path, capsys
+):
+    monkeypatch.setattr(
+        harness,
+        "existing_tools",
+        lambda cache: pytest.fail("missing cluster must not discover tools"),
+    )
+
+    harness.stop(tmp_path)
+
+    assert "No worktree-managed PostgreSQL cluster exists" in capsys.readouterr().err
+
+
+def test_stop_initialized_cluster_without_pid_is_a_noop(
+    harness, monkeypatch, tmp_path, capsys
+):
+    (tmp_path / "postgres" / "data").mkdir(parents=True)
+    monkeypatch.setattr(
+        harness,
+        "existing_tools",
+        lambda cache: pytest.fail("stopped cluster must not discover tools"),
+    )
+
+    harness.stop(tmp_path)
+
+    assert "already stopped" in capsys.readouterr().err
+
+
+def test_stop_running_cluster_uses_fast_waiting_pg_ctl(
+    harness, monkeypatch, tmp_path, capsys
+):
+    data_dir = tmp_path / "postgres" / "data"
+    data_dir.mkdir(parents=True)
+    (data_dir / "postmaster.pid").write_text("12345\n")
+    tools = harness.Tools(*(tmp_path / name for name in harness.TOOL_NAMES))
+    status_commands: list[list[str]] = []
+    stop_commands: list[list[str]] = []
+    monkeypatch.setattr(harness, "existing_tools", lambda cache: tools)
+
+    def status(args, **kwargs):
+        status_commands.append(args)
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(harness.subprocess, "run", status)
+    monkeypatch.setattr(
+        harness, "run", lambda args, **kwargs: stop_commands.append(args)
+    )
+
+    harness.stop(tmp_path)
+
+    assert status_commands == [[str(tools.pg_ctl), "status", "-D", str(data_dir)]]
+    assert stop_commands == [
+        [str(tools.pg_ctl), "stop", "-D", str(data_dir), "-m", "fast", "-w"]
+    ]
+    assert "PostgreSQL stopped" in capsys.readouterr().err
+
+
+def test_stop_running_cluster_requires_existing_tools(harness, monkeypatch, tmp_path):
+    data_dir = tmp_path / "postgres" / "data"
+    data_dir.mkdir(parents=True)
+    (data_dir / "postmaster.pid").write_text("12345\n")
+    monkeypatch.setattr(harness, "existing_tools", lambda cache: None)
+    monkeypatch.setattr(
+        harness,
+        "fallback_tools",
+        lambda cache: pytest.fail("stop must not provision fallback tools"),
+    )
+
+    with pytest.raises(harness.HarnessError, match="without provisioning"):
+        harness.stop(tmp_path)
+
+
+def test_stop_cluster_rejects_unexpected_status_failure(harness, monkeypatch, tmp_path):
+    tools = harness.Tools(*(tmp_path / name for name in harness.TOOL_NAMES))
+    monkeypatch.setattr(
+        harness.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args, 1, stdout="", stderr="permission denied"
+        ),
+    )
+
+    with pytest.raises(harness.HarnessError, match="permission denied"):
+        harness.stop_cluster(tools, tmp_path / "data")
+
+
+def test_stop_cluster_propagates_shutdown_failure(harness, monkeypatch, tmp_path):
+    tools = harness.Tools(*(tmp_path / name for name in harness.TOOL_NAMES))
+    monkeypatch.setattr(
+        harness.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args, 0, stdout="", stderr=""
+        ),
+    )
+    failure = subprocess.CalledProcessError(1, [str(tools.pg_ctl), "stop"])
+    monkeypatch.setattr(
+        harness, "run", lambda *args, **kwargs: (_ for _ in ()).throw(failure)
+    )
+
+    with pytest.raises(subprocess.CalledProcessError):
+        harness.stop_cluster(tools, tmp_path / "data")
+
+
+def test_stop_treats_pg_ctl_not_running_as_a_noop(
+    harness, monkeypatch, tmp_path, capsys
+):
+    data_dir = tmp_path / "postgres" / "data"
+    data_dir.mkdir(parents=True)
+    (data_dir / "postmaster.pid").write_text("12345\n")
+    tools = harness.Tools(*(tmp_path / name for name in harness.TOOL_NAMES))
+    monkeypatch.setattr(harness, "existing_tools", lambda cache: tools)
+    monkeypatch.setattr(
+        harness.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args, 3, stdout="", stderr=""
+        ),
+    )
+    monkeypatch.setattr(
+        harness, "run", lambda *args, **kwargs: pytest.fail("must not stop twice")
+    )
+
+    harness.stop(tmp_path)
+
+    assert "already stopped" in capsys.readouterr().err
+
+
 def test_wait_for_ready_retries_until_postgres_accepts_connections(
     harness, monkeypatch, tmp_path
 ):
@@ -263,6 +413,19 @@ def test_ensure_reuses_existing_cluster_metadata(harness, monkeypatch, tmp_path)
         harness.ensure(cache) == "postgresql://timetracker@127.0.0.1:5432/timetracker"
     )
     assert started == [5432]
+
+
+def test_stop_cli_routes_to_shutdown_without_ensuring(harness, monkeypatch):
+    stopped: list[Path] = []
+    monkeypatch.setattr(harness.sys, "argv", [str(HARNESS_PATH), "--stop"])
+    monkeypatch.setattr(harness, "stop", stopped.append)
+    monkeypatch.setattr(
+        harness, "ensure", lambda cache: pytest.fail("stop must not ensure")
+    )
+
+    harness.main()
+
+    assert stopped == [HARNESS_PATH.parents[1] / ".cache"]
 
 
 def test_verify_contract_reads_the_provisioned_database_catalog(
