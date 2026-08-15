@@ -9,7 +9,9 @@ from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.contrib.auth.models import AnonymousUser, User
+from django.db import connection
 from django.test import RequestFactory, TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from common.layout import recent_session_resumes
@@ -59,8 +61,19 @@ class RecentSessionResumesTest(TestCase):
         resumes = recent_session_resumes(self._request(authenticated=True))
         self.assertEqual(len(resumes), 5)
         # Newest first: G5, G4, G3, G2, G1 (G0 falls off the limit).
-        names = [s.game.name for s in resumes if s.game is not None]
+        names = [s.game.name for s in resumes]
         self.assertEqual(names, ["G5", "G4", "G3", "G2", "G1"])
+
+    def test_query_has_no_obsolete_nullable_game_guard(self) -> None:
+        self._session(self._game("Required game"), BASE)
+
+        with CaptureQueriesContext(connection) as queries:
+            recent_session_resumes(self._request(authenticated=True))
+
+        session_query = next(
+            query["sql"] for query in queries if "games_session" in query["sql"]
+        )
+        self.assertNotIn('"games_session"."game_id" IS NOT NULL', session_query)
 
 
 class NavbarLogButtonRenderTest(TestCase):

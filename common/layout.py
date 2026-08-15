@@ -361,13 +361,12 @@ def recent_session_resumes(request: HttpRequest, limit: int = 5) -> list[Session
     resumes: list[Session] = []
     for session in (
         Session.objects.for_library(cast(User, request.user).library)
-        .filter(game__isnull=False)
         .select_related("game")
         .order_by("-timestamp_start")
         .iterator()
     ):
         game_id = session.game_id
-        if game_id is None or game_id in seen:
+        if game_id in seen:
             continue
         seen.add(game_id)
         resumes.append(session)

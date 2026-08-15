@@ -204,6 +204,12 @@ def test_sessions_for_platform_null_bucket_survives_json_round_trip(world):
     Session.objects.create(game=platformless_game, timestamp_start=_dt(YEAR, 6, 5))
 
     link_filter = stats_links.sessions_for_platform(None, YEAR)
+    payload = link_filter.to_json()
+    assert payload["game_filter"]["platform"]["modifier"] == "IS_NULL"
+    assert "game" not in payload
+    assert "AND" not in payload
+    assert "OR" not in payload
+
     assert _count_via_json(link_filter, Session, world["library"]) == _count(
         link_filter, Session, world["library"]
     )

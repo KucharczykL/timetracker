@@ -1046,6 +1046,12 @@ class TestExpandedFiltersAgainstDB:
             needs_price_update=False,
         )
         pur.games.add(game)
+        Purchase.objects.filter(pk=pur.pk).update(
+            converted_price=45.00,
+            converted_currency="USD",
+            needs_price_update=False,
+        )
+        pur.refresh_from_db()
 
         # 4. PlayEvent
         pe = PlayEvent.objects.create(
@@ -5212,6 +5218,15 @@ class TestFieldMetadata:
         assert year["nullable"] is True
         assert Modifier.IS_NULL.value in year["modifiers"]
         assert Modifier.NOT_NULL.value in year["modifiers"]
+
+    def test_required_session_game_drops_presence_modifiers(self):
+        from common.criteria import Modifier
+
+        game = self._by_name(SessionFilter)["game"]
+
+        assert game["nullable"] is False
+        assert Modifier.IS_NULL.value not in game["modifiers"]
+        assert Modifier.NOT_NULL.value not in game["modifiers"]
 
     def test_filterfield_label_and_labels_override_win(self):
         by_name = self._by_name(_LabelStub)
