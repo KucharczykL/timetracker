@@ -66,9 +66,12 @@ class DataTableGateTest(TestCase):
     @classmethod
     def setUpTestData(cls) -> None:
         cls.user = User.objects.create_user(username="tester", password="pw")
-        platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-        device = Device.objects.create(name="Desktop", type="p")
-        game = Game.objects.create(name="A Game", platform=platform)
+        library = cls.user.library
+        platform = Platform.objects.create(
+            library=library, name="PC", icon="pc", group="PC"
+        )
+        device = Device.objects.create(library=library, name="Desktop", type="p")
+        game = Game.objects.create(library=library, name="A Game", platform=platform)
         Session.objects.create(
             game=game,
             device=device,
@@ -76,7 +79,11 @@ class DataTableGateTest(TestCase):
             timestamp_end=BASE + timedelta(hours=2),
         )
         purchase = Purchase.objects.create(
-            platform=platform, date_purchased=BASE, price=10, price_currency="USD"
+            platform=platform,
+            date_purchased=BASE,
+            price=10,
+            price_currency="USD",
+            library=library,
         )
         purchase.games.add(game)
         PlayEvent.objects.create(game=game, started=BASE, note="a note")

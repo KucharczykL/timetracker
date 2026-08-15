@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import django
 from django import forms
+from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, override_settings
 from django.test.client import RequestFactory
 from django.utils.safestring import SafeText, mark_safe
@@ -1478,18 +1479,23 @@ class PopOverContractTest(unittest.TestCase):
 class ModelDependentComponentsTest(django.test.TestCase):
     """Test components that depend on Django models."""
 
+    @classmethod
+    def setUpTestData(cls):
+        cls.library = (
+            get_user_model().objects.create_user(username="components").library
+        )
+
     @staticmethod
     def _create_platform(name="Steam", icon="steam"):
         return Platform.objects.create(name=name, icon=icon)
 
-    @staticmethod
-    def _create_game(platform, name="Test Game"):
-        return Game.objects.create(name=name, platform=platform)
+    def _create_game(self, platform, name="Test Game"):
+        return Game.objects.create(library=self.library, name=name, platform=platform)
 
-    @staticmethod
-    def _create_purchase(games, platform=None, price=19.99):
+    def _create_purchase(self, games, platform=None, price=19.99):
         purchase = Purchase.objects.create(
             platform=platform or (games[0].platform if games else None),
+            library=self.library,
             date_purchased="2025-01-01",
             price=price,
             price_currency="USD",
@@ -1733,7 +1739,10 @@ class NameWithIconPlatformTest(django.test.TestCase):
     def setUpClass(cls):
         super().setUpClass()
         cls.platform = Platform.objects.create(name="Nintendo", icon="nintendo")
-        cls.game = Game.objects.create(name="Zelda", platform=cls.platform)
+        cls.library = get_user_model().objects.create_user(username="name-icon").library
+        cls.game = Game.objects.create(
+            library=cls.library, name="Zelda", platform=cls.platform
+        )
 
     def test_name_with_icon_shows_platform_icon(self):
         result = str(
@@ -1754,7 +1763,7 @@ class NameWithIconPlatformTest(django.test.TestCase):
     def test_name_with_icon_null_platform_shows_unspecified_icon(self):
         # A game without a platform (NULL since issue #290) keeps a badge:
         # the "unspecified" fallback icon.
-        platformless_game = Game.objects.create(name="Homebrew")
+        platformless_game = Game.objects.create(library=self.library, name="Homebrew")
         result = str(components.NameWithIcon(game=platformless_game, linkify=False))
         self.assertIn("<svg", result)
         self.assertIn("Unspecified", result)
