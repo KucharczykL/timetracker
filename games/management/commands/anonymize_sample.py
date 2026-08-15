@@ -5,20 +5,34 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import yaml
+from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from games.models import Device, Game, Platform, PlayEvent, Purchase, Session
+from games.management.commands.load_sample_data import TARGET_LIBRARY_MARKER
+from games.models import (
+    Device,
+    FilterPreset,
+    Game,
+    Platform,
+    PlayEvent,
+    Purchase,
+    Session,
+)
 
 # DB-computed columns: the serializer emits them, loaddata discards them.
 # Stripped to keep the fixture clean.
 GENERATED_FIELDS = frozenset(
     ["price_per_game", "duration_calculated", "duration_total", "days_to_finish"]
 )
+PORTABLE_LIBRARY_MODELS = frozenset(
+    ["games.device", "games.game", "games.purchase", "games.filterpreset"]
+)
 
 # Dumped models, dependencies first (Game before its FK referrers).
-# Omitted: GameStatusChange (regenerated), FilterPreset (User FK).
+# Omitted: GameStatusChange (regenerated) and FilterPreset (sample data does not
+# ship personal saved searches).
 DUMP_LABELS = [
     "games.Platform",
     "games.Device",
@@ -56,15 +70,21 @@ class Command(BaseCommand):
         "mutation happens inside a rolled-back transaction, so the source database is "
         "never modified.\n\n"
         "Workflow: restore a production dump into a dedicated PostgreSQL database, "
-        "set DATABASE_URL to it, run `make migrate`, then run this command.\n\n"
+        "set DATABASE_URL to it, run `make migrate`, then run this command for one "
+        "explicit User.\n\n"
         "Residual (accepted) traits of the output: cross-model dates are incoherent "
         "(a session can predate its game's purchase, dates may be in the future); row "
         "counts, per-platform split, currency multiset, real ExchangeRate rows and "
         "preserved playtimes remain a distributional fingerprint. Fixture keeps prod "
-        "pks, so loading it over a non-empty dev DB overwrites same-pk rows."
+        "pks; load_sample_data rejects collisions instead of overwriting rows."
     )
 
     def add_arguments(self, parser):
+        parser.add_argument(
+            "--user",
+            required=True,
+            help="Existing User whose library is exported.",
+        )
         parser.add_argument(
             "--seed",
             type=int,
@@ -109,8 +129,20 @@ class Command(BaseCommand):
         if options["seed"] is not None:
             random.seed(options["seed"])
 
-        all_game_ids = list(Game.objects.order_by("pk").values_list("pk", flat=True))
-        if not all_game_ids and Purchase.objects.exists():
+        user_model = get_user_model()
+        try:
+            user = user_model.objects.select_related("library").get(
+                username=options["user"]
+            )
+        except user_model.DoesNotExist as error:
+            raise CommandError(f"User {options['user']!r} does not exist.") from error
+        library = user.library
+        all_game_ids = list(
+            Game.objects.for_library(library)
+            .order_by("pk")
+            .values_list("pk", flat=True)
+        )
+        if not all_game_ids and Purchase.objects.for_library(library).exists():
             raise CommandError("Purchases exist but no games to reassign them to.")
 
         name_overrides = self._load_overrides(options["name_overrides"])
@@ -118,6 +150,7 @@ class Command(BaseCommand):
         with tempfile.TemporaryDirectory() as tempdir:
             dump_path = Path(tempdir) / "dump.yaml"
             with transaction.atomic():
+                self._prune_other_libraries(library)
                 counts = self._anonymize(
                     all_game_ids, options["scrub_devices"], name_overrides
                 )
@@ -138,6 +171,17 @@ class Command(BaseCommand):
                 + ", ".join(f"{count} {name}" for name, count in counts.items())
             )
         )
+
+    @staticmethod
+    def _prune_other_libraries(library):
+        """Hide every other library from dumpdata inside the rollback-only copy."""
+        FilterPreset.objects.exclude(library=library).delete()
+        Session.objects.exclude(game__library=library).delete()
+        PlayEvent.objects.exclude(game__library=library).delete()
+        Purchase.objects.exclude(library=library).delete()
+        Game.objects.exclude(library=library).delete()
+        Device.objects.exclude(library=library).delete()
+        Platform.objects.filter(library__isnull=False).exclude(library=library).delete()
 
     def _anonymize(self, all_game_ids, scrub_devices, name_overrides):
         game_offsets = {
@@ -253,8 +297,14 @@ class Command(BaseCommand):
         with dump_path.open() as stream:
             objects = yaml.safe_load(stream) or []
         for item in objects:
+            fields = item.get("fields", {})
             for key in GENERATED_FIELDS:
-                item.get("fields", {}).pop(key, None)
+                fields.pop(key, None)
+            if item.get("model") in PORTABLE_LIBRARY_MODELS or (
+                item.get("model") == "games.platform"
+                and fields.get("library") is not None
+            ):
+                fields["library"] = TARGET_LIBRARY_MARKER
         payload = yaml.safe_dump(
             objects, sort_keys=True, default_flow_style=False
         ).encode()

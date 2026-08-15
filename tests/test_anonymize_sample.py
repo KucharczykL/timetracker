@@ -2,9 +2,12 @@ import gzip
 from datetime import UTC, date, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 import yaml
+from django.contrib.auth import get_user_model
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase
 
 from games.models import Device, Game, Platform, PlayEvent, Purchase, Session
@@ -19,12 +22,20 @@ GENERATED_KEYS = {
 
 def _build_dataset():
     """A small dataset exercising every branch the anonymizer must handle."""
+    owner = get_user_model().objects.create_user(username="sample-source")
     platform = Platform.objects.create(name="Steam", group="PC")
-    device = Device.objects.create(name="Anna's laptop")
-    games = [Game.objects.create(name=f"Game {index}") for index in range(5)]
+    device = Device.objects.create(
+        library=owner.library,
+        name="Anna's laptop",
+    )
+    games = [
+        Game.objects.create(library=owner.library, name=f"Game {index}")
+        for index in range(5)
+    ]
 
     base_game = games[0]
     game_purchase = Purchase.objects.create(
+        library=owner.library,
         price_currency="CZK",
         platform=platform,
         date_purchased=date(2021, 5, 1),
@@ -35,6 +46,7 @@ def _build_dataset():
     game_purchase.games.set([games[1], games[2]])
 
     dlc_purchase = Purchase.objects.create(
+        library=owner.library,
         price_currency="CZK",
         platform=platform,
         date_purchased=date(2022, 3, 3),
@@ -44,7 +56,7 @@ def _build_dataset():
     )
     dlc_purchase.games.set([games[3]])
 
-    # Session tied to a game, a session with game=None, and one with NULL manual.
+    # Sessions include an open row and one with NULL manual duration.
     Session.objects.create(
         game=games[1],
         timestamp_start=datetime(2021, 6, 1, 20, 0, tzinfo=UTC),
@@ -53,10 +65,10 @@ def _build_dataset():
         note="played after dinner",
     )
     Session.objects.create(
-        game=None,
+        game=games[0],
         timestamp_start=datetime(2021, 7, 1, 10, 0, tzinfo=UTC),
         timestamp_end=None,
-        note="gameless",
+        note="open session",
     )
     Session.objects.create(
         game=games[2],
@@ -92,7 +104,10 @@ class AnonymizeSampleTest(TestCase):
 
         with TemporaryDirectory() as tempdir:
             call_command(
-                "anonymize_sample", seed=1, output=Path(tempdir) / "out.yaml.gz"
+                "anonymize_sample",
+                user="sample-source",
+                seed=1,
+                output=Path(tempdir) / "out.yaml.gz",
             )
 
         game_purchase.refresh_from_db()
@@ -107,15 +122,24 @@ class AnonymizeSampleTest(TestCase):
         with TemporaryDirectory() as tempdir:
             first = Path(tempdir) / "first.yaml.gz"
             second = Path(tempdir) / "second.yaml.gz"
-            call_command("anonymize_sample", seed=7, output=first)
-            call_command("anonymize_sample", seed=7, output=second)
+            call_command("anonymize_sample", user="sample-source", seed=7, output=first)
+            call_command(
+                "anonymize_sample", user="sample-source", seed=7, output=second
+            )
             self.assertEqual(first.read_bytes(), second.read_bytes())
+
+    def test_requires_an_explicit_existing_user(self):
+        _build_dataset()
+        with TemporaryDirectory() as tempdir, self.assertRaises(CommandError):
+            call_command("anonymize_sample", output=Path(tempdir) / "out.yaml.gz")
 
     def test_output_invariants(self):
         _build_dataset()
         with TemporaryDirectory() as tempdir:
             output = Path(tempdir) / "out.yaml.gz"
-            call_command("anonymize_sample", seed=3, output=output)
+            call_command(
+                "anonymize_sample", user="sample-source", seed=3, output=output
+            )
             objects = _load_output(output)
 
         by_model = {}
@@ -148,14 +172,23 @@ class AnonymizeSampleTest(TestCase):
             self.assertEqual(event["fields"]["note"], "")
 
     def test_output_reloads_via_loaddata(self):
-        _build_dataset()
+        game_purchase, _ = _build_dataset()
+        source_user = game_purchase.library.user
         with TemporaryDirectory() as tempdir:
             output = Path(tempdir) / "out.yaml.gz"
-            call_command("anonymize_sample", seed=5, output=output)
-            # loaddata over the same pks must parse and apply without error.
-            call_command("loaddata", str(output))
+            call_command(
+                "anonymize_sample", user="sample-source", seed=5, output=output
+            )
+            source_user.delete()
+            target = get_user_model().objects.create_user(username="sample-target")
+            with patch(
+                "games.management.commands.load_sample_data.FIXTURE_PATH",
+                output,
+            ):
+                call_command("load_sample_data", "--user", target.username)
 
         for purchase in Purchase.objects.all():
+            self.assertEqual(purchase.library, target.library)
             self.assertLessEqual(purchase.price, 100)
             self.assertEqual(purchase.name, "")
 
@@ -163,21 +196,34 @@ class AnonymizeSampleTest(TestCase):
         _build_dataset()
         with TemporaryDirectory() as tempdir:
             output = Path(tempdir) / "out.yaml.gz"
-            call_command("anonymize_sample", seed=1, output=output, scrub_devices=True)
+            call_command(
+                "anonymize_sample",
+                user="sample-source",
+                seed=1,
+                output=output,
+                scrub_devices=True,
+            )
             objects = _load_output(output)
 
         for device in [item for item in objects if item["model"] == "games.device"]:
             self.assertRegex(device["fields"]["name"], r"^Device \d+$")
 
     def test_name_overrides_rename_games(self):
-        _build_dataset()
-        secret = Game.objects.create(name="Real Secret Title")
+        game_purchase, _ = _build_dataset()
+        secret = Game.objects.create(
+            library=game_purchase.library,
+            name="Real Secret Title",
+        )
         with TemporaryDirectory() as tempdir:
             overrides = Path(tempdir) / "name_overrides.yaml"
             overrides.write_text("Real Secret Title: Placeholder Title\n")
             output = Path(tempdir) / "out.yaml.gz"
             call_command(
-                "anonymize_sample", seed=1, output=output, name_overrides=overrides
+                "anonymize_sample",
+                user="sample-source",
+                seed=1,
+                output=output,
+                name_overrides=overrides,
             )
             objects = _load_output(output)
 
@@ -189,3 +235,39 @@ class AnonymizeSampleTest(TestCase):
         # Rename keeps the row (and its pk), it is not dropped.
         secret.refresh_from_db()
         self.assertEqual(secret.name, "Real Secret Title")  # source DB untouched
+
+    def test_exports_only_the_selected_library_with_portable_owner_markers(self):
+        _build_dataset()
+        outsider = get_user_model().objects.create_user(username="sample-outsider")
+        Game.objects.create(library=outsider.library, name="FOREIGN SECRET GAME")
+
+        with TemporaryDirectory() as tempdir:
+            output = Path(tempdir) / "out.yaml.gz"
+            call_command(
+                "anonymize_sample",
+                user="sample-source",
+                seed=11,
+                output=output,
+            )
+            objects = _load_output(output)
+
+        game_names = {
+            item["fields"]["name"] for item in objects if item["model"] == "games.game"
+        }
+        self.assertNotIn("FOREIGN SECRET GAME", game_names)
+        for item in objects:
+            if item["model"] in {
+                "games.device",
+                "games.game",
+                "games.purchase",
+                "games.filterpreset",
+            }:
+                self.assertEqual(
+                    item["fields"]["library"],
+                    "__target_library__",
+                )
+            if item["model"] == "games.platform":
+                self.assertIn(
+                    item["fields"].get("library"),
+                    (None, "__target_library__"),
+                )

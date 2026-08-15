@@ -236,10 +236,12 @@ loadall: ensure-postgres
 	uv run --frozen python manage.py loaddata data.yaml
 
 loadsample: ensure-postgres
-	uv run --frozen python manage.py loaddata sample.yaml.gz
+	$(if $(strip $(USER)),,$(error USER is required: make loadsample USER=<username>))
+	uv run --frozen python manage.py load_sample_data --user "$(USER)"
 
 anonymize-sample: ensure-postgres
-	uv run --frozen python manage.py anonymize_sample --seed 42 --force
+	$(if $(strip $(USER)),,$(error USER is required: make anonymize-sample USER=<username>))
+	uv run --frozen python manage.py anonymize_sample --user "$(USER)" --seed 42 --force
 
 createsuperuser: ensure-postgres
 	uv run --frozen python manage.py createsuperuser
