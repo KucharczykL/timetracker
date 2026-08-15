@@ -118,10 +118,15 @@ export class LibraryConversionCoordinator {
     this.activeToastId = null;
     const observedKey = observedVersionKey(state);
     const observedVersion = sessionStorage.getItem(observedKey);
+    const observedRequestedVersion = observedVersion === null
+      ? null
+      : Number(observedVersion);
     if (
       state.status === "complete"
       && state.published_version === state.requested_version
-      && observedVersion === String(state.requested_version)
+      && observedRequestedVersion !== null
+      && Number.isSafeInteger(observedRequestedVersion)
+      && observedRequestedVersion <= state.published_version
     ) {
       sessionStorage.removeItem(observedKey);
       window.toast(SUCCESS_MESSAGE, "success");

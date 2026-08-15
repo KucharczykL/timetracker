@@ -374,7 +374,7 @@ class Purchase(models.Model):
             )
 
         update_fields = kwargs.get("update_fields")
-        conversion_fields = {"price", "price_currency"}
+        conversion_fields = {"date_purchased", "price", "price_currency"}
         may_need_conversion = (
             self._state.adding
             or update_fields is None
@@ -385,7 +385,6 @@ class Purchase(models.Model):
             return
 
         from games.conversion import _request_conversion_for_locked_state
-        from timetracker.settings_resolver import resolve_for_user_with_origin
 
         is_new = self._state.adding
         with transaction.atomic():
@@ -395,12 +394,13 @@ class Purchase(models.Model):
             price_changed = is_new
             if not is_new:
                 previous = (
-                    Purchase.objects.only("price", "price_currency")
+                    Purchase.objects.only("date_purchased", "price", "price_currency")
                     .filter(pk=self.pk)
                     .first()
                 )
-                price_changed = previous is not None and (
-                    previous.price != self.price
+                price_changed = previous is None or (
+                    previous.date_purchased != self.date_purchased
+                    or previous.price != self.price
                     or previous.price_currency != self.price_currency
                 )
 
@@ -413,12 +413,10 @@ class Purchase(models.Model):
 
             super().save(*args, **kwargs)
             if price_changed:
-                target_currency = str(
-                    resolve_for_user_with_origin(
-                        self.library.user, "DEFAULT_DISPLAY_CURRENCY"
-                    ).value
+                _request_conversion_for_locked_state(
+                    conversion_state,
+                    conversion_state.requested_currency,
                 )
-                _request_conversion_for_locked_state(conversion_state, target_currency)
 
 
 class SessionQuerySet(models.QuerySet):

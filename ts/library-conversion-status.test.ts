@@ -106,6 +106,28 @@ describe("LibraryConversionCoordinator", () => {
     laterNavigation.destroy();
   });
 
+  it("announces completion when a newer version finishes during navigation", () => {
+    configure(running);
+    const beforeNavigation = new LibraryConversionCoordinator();
+    beforeNavigation.destroy();
+
+    vi.mocked(window.toast).mockClear();
+    configure({
+      ...running,
+      requested_version: 5,
+      published_version: 5,
+      published_currency: "CZK",
+      status: "complete",
+    });
+    const afterNavigation = new LibraryConversionCoordinator();
+
+    expect(window.toast).toHaveBeenCalledWith(
+      "Prices converted. Totals are now up to date.",
+      "success",
+    );
+    afterNavigation.destroy();
+  });
+
   it("never replays historical success in a tab that saw only complete state", () => {
     configure({
       ...running,

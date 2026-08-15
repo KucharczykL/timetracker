@@ -13,7 +13,12 @@ from django.db import close_old_connections, connection, transaction
 from django.test import Client
 from django.utils import timezone
 
-from games.models import Purchase, PurchaseConversionState, UserLibrary
+from games.models import (
+    Purchase,
+    PurchaseConversionState,
+    UserLibrary,
+    UserPreferences,
+)
 
 
 @pytest.fixture
@@ -679,6 +684,98 @@ def test_purchase_edit_rolls_back_when_conversion_version_cannot_be_saved(
 
     purchase.refresh_from_db()
     assert purchase.price == 10
+
+
+@pytest.mark.django_db(transaction=True)
+def test_purchase_save_preserves_target_committed_by_another_settings_worker(
+    owner, monkeypatch
+):
+    """A stale resolver cache must not supersede the serialized state target."""
+    from games import conversion
+    from timetracker.settings_resolver import resolve_for_user_with_origin
+
+    monkeypatch.setattr(conversion, "async_task", Mock())
+    assert (
+        resolve_for_user_with_origin(owner, "DEFAULT_DISPLAY_CURRENCY").value == "CZK"
+    )
+    UserPreferences.objects.filter(user=owner).update(default_display_currency="EUR")
+    _state(
+        owner,
+        requested_version=1,
+        requested_currency="EUR",
+        published_version=0,
+        published_currency="CZK",
+        status=PurchaseConversionState.Status.PENDING,
+    )
+
+    _purchase(owner)
+
+    state = PurchaseConversionState.objects.get(library=owner.library)
+    assert (state.requested_version, state.requested_currency) == (2, "EUR")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_purchase_date_edit_requests_conversion_for_the_new_rate_year(
+    owner, monkeypatch
+):
+    """Changing the exchange-rate year must invalidate the published conversion."""
+    from games import conversion
+
+    monkeypatch.setattr(conversion, "async_task", Mock())
+    purchase = _purchase(owner)
+    Purchase.objects.filter(pk=purchase.pk).update(needs_price_update=False)
+    _state(
+        owner,
+        requested_version=1,
+        requested_currency="CZK",
+        published_version=1,
+        published_currency="CZK",
+        status=PurchaseConversionState.Status.COMPLETE,
+    )
+    purchase.needs_price_update = False
+    purchase.date_purchased = date(2024, 1, 1)
+
+    purchase.save(update_fields=["date_purchased", "updated_at"])
+
+    purchase.refresh_from_db()
+    state = PurchaseConversionState.objects.get(library=owner.library)
+    assert purchase.needs_price_update is True
+    assert (
+        state.requested_version,
+        state.requested_currency,
+        state.status,
+    ) == (2, "CZK", PurchaseConversionState.Status.PENDING)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_purchase_fallback_insert_requests_conversion(owner, monkeypatch):
+    """A zero-row update fallback must be treated as a new conversion input set."""
+    from games import conversion
+
+    monkeypatch.setattr(conversion, "async_task", Mock())
+    purchase = _purchase(owner)
+    Purchase.objects.filter(pk=purchase.pk).update(needs_price_update=False)
+    _state(
+        owner,
+        requested_version=1,
+        requested_currency="CZK",
+        published_version=1,
+        published_currency="CZK",
+        status=PurchaseConversionState.Status.COMPLETE,
+    )
+    purchase.needs_price_update = False
+    Purchase.objects.filter(pk=purchase.pk).delete()
+
+    purchase.save()
+
+    purchase.refresh_from_db()
+    state = PurchaseConversionState.objects.get(library=owner.library)
+    assert purchase.needs_price_update is True
+    assert (
+        state.requested_version,
+        state.requested_currency,
+        state.status,
+    ) == (2, "CZK", PurchaseConversionState.Status.PENDING)
 
 
 @pytest.mark.django_db(transaction=True)
