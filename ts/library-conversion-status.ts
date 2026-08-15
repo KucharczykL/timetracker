@@ -49,12 +49,15 @@ function dismissalKey(state: ConversionState, phase: ConversionPhase): string {
   return `timetracker:conversion-dismissed:${state.library_id}:${state.requested_version}:${phase}`;
 }
 
+function observedVersionKey(state: ConversionState): string {
+  return `timetracker:conversion-observed:${state.library_id}`;
+}
+
 export class LibraryConversionCoordinator {
   private state: ConversionState | null = null;
   private readonly statusUrl: string | null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private destroyed = false;
-  private observedActiveVersions = new Set<number>();
   private activeToastId: string | null = null;
 
   constructor() {
@@ -71,7 +74,7 @@ export class LibraryConversionCoordinator {
     }
     this.onToastDismissed = this.onToastDismissed.bind(this);
     window.addEventListener("toast-dismissed", this.onToastDismissed);
-    if (this.state) this.applyState(this.state, true);
+    if (this.state) this.applyState(this.state);
   }
 
   destroy(): void {
@@ -88,13 +91,14 @@ export class LibraryConversionCoordinator {
     if (phase) sessionStorage.setItem(dismissalKey(this.state, phase), "1");
   }
 
-  private applyState(state: ConversionState, initial = false): void {
+  private applyState(state: ConversionState): void {
     if (this.destroyed) return;
-    const previous = this.state;
     this.state = state;
     const phase = phaseFor(state);
     if (phase) {
-      this.observedActiveVersions.add(state.requested_version);
+      sessionStorage.setItem(
+        observedVersionKey(state), String(state.requested_version),
+      );
       if (this.activeToastId && this.activeToastId !== toastId(state, phase)) {
         window.removeToast(this.activeToastId);
       }
@@ -112,14 +116,17 @@ export class LibraryConversionCoordinator {
 
     if (this.activeToastId) window.removeToast(this.activeToastId);
     this.activeToastId = null;
+    const observedKey = observedVersionKey(state);
+    const observedVersion = sessionStorage.getItem(observedKey);
     if (
-      !initial
-      && state.status === "complete"
+      state.status === "complete"
       && state.published_version === state.requested_version
-      && this.observedActiveVersions.has(state.requested_version)
-      && previous?.requested_version === state.requested_version
+      && observedVersion === String(state.requested_version)
     ) {
+      sessionStorage.removeItem(observedKey);
       window.toast(SUCCESS_MESSAGE, "success");
+    } else if (state.status === "complete" && observedVersion !== null) {
+      sessionStorage.removeItem(observedKey);
     }
   }
 
@@ -127,7 +134,8 @@ export class LibraryConversionCoordinator {
     if (this.timer) clearTimeout(this.timer);
     let delay = POLL_INTERVAL_MS;
     if (state.status === "failed" && state.retry_at) {
-      delay = Math.max(0, Date.parse(state.retry_at) - Date.now());
+      const remaining = Date.parse(state.retry_at) - Date.now();
+      delay = remaining > 0 ? remaining : POLL_INTERVAL_MS;
     }
     delay = Math.min(Math.max(delay, 0), MAX_WAIT_CHUNK_MS);
     this.timer = setTimeout(() => void this.poll(), delay);

@@ -109,7 +109,7 @@ def compute_stats(library: UserLibrary, year: int | None = None) -> StatsData:
         sessions=Session.objects.for_library(library),
         purchases=Purchase.objects.for_library(library),
         year=year,
-        currency=published_currency,
+        fallback_currency=published_currency,
     )
 
 
@@ -118,7 +118,7 @@ def _compute_stats_from_scoped_querysets(
     sessions: SessionQuerySet,
     purchases: PurchaseQueryset,
     year: int | None,
-    currency: str,
+    fallback_currency: str,
 ) -> StatsData:
     """Compute metrics without selecting a global Session or Purchase base."""
 
@@ -199,9 +199,12 @@ def _compute_stats_from_scoped_querysets(
         unique_days_percent = int(unique_days / 365 * 100)
 
     # ── Spending ─────────────────────────────────────────────────────────────
-    total_spent = (
-        without_refunded.aggregate(total=Sum(F("converted_price")))["total"] or 0
+    spending = without_refunded.aggregate(
+        total=Sum(F("converted_price")),
+        currency=Max("converted_currency", filter=Q(converted_price__isnull=False)),
     )
+    total_spent = spending["total"] or 0
+    currency = spending["currency"] or fallback_currency
     without_refunded_count = without_refunded.count()
 
     # ── Purchase breakdown ───────────────────────────────────────────────────

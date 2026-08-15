@@ -81,6 +81,31 @@ describe("LibraryConversionCoordinator", () => {
     coordinator.destroy();
   });
 
+  it("announces completion observed before navigation exactly once", () => {
+    configure(running);
+    const beforeNavigation = new LibraryConversionCoordinator();
+    beforeNavigation.destroy();
+
+    vi.mocked(window.toast).mockClear();
+    configure({
+      ...running,
+      published_version: 4,
+      published_currency: "CZK",
+      status: "complete",
+    });
+    const afterNavigation = new LibraryConversionCoordinator();
+    expect(window.toast).toHaveBeenCalledWith(
+      "Prices converted. Totals are now up to date.",
+      "success",
+    );
+    afterNavigation.destroy();
+
+    vi.mocked(window.toast).mockClear();
+    const laterNavigation = new LibraryConversionCoordinator();
+    expect(window.toast).not.toHaveBeenCalled();
+    laterNavigation.destroy();
+  });
+
   it("never replays historical success in a tab that saw only complete state", () => {
     configure({
       ...running,
@@ -177,6 +202,40 @@ describe("LibraryConversionCoordinator", () => {
       expect.stringContaining("being converted"),
       "info",
       expect.objectContaining({ duration: null, id: "library-conversion:library-one" }),
+    );
+    coordinator.destroy();
+  });
+
+  it("uses the normal polling interval when retry remains failed after retry_at", async () => {
+    const failed: State = {
+      ...running,
+      status: "failed",
+      retry_at: "2026-08-15T12:00:01Z",
+      last_error: "rate unavailable",
+    };
+    configure(failed);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(response(failed))
+      .mockResolvedValueOnce(response({
+        ...failed,
+        status: "running",
+      }));
+
+    const coordinator = new LibraryConversionCoordinator();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(window.toast).toHaveBeenLastCalledWith(
+      expect.stringContaining("being converted"),
+      "info",
+      expect.objectContaining({
+        duration: null,
+        id: "library-conversion:library-one",
+      }),
     );
     coordinator.destroy();
   });

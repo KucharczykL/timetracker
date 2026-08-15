@@ -65,45 +65,6 @@ def invalidate_settings_cache(sender, instance, **kwargs):
     transaction.on_commit(clear_settings_cache)
 
 
-@receiver(pre_save, sender=Purchase)
-def store_purchase_price_snapshot(sender, instance, **kwargs):
-    """Store old price values before save so we can detect changes."""
-    if kwargs.get("raw"):
-        return
-    if instance.pk is not None:
-        try:
-            old_instance = sender.objects.get(pk=instance.pk)
-            instance._old_price = old_instance.price
-            instance._old_currency = old_instance.price_currency
-        except sender.DoesNotExist:
-            pass
-
-
-@receiver(post_save, sender=Purchase)
-def mark_needs_price_update(sender, instance, created, **kwargs):
-    """Mark purchase for price update if price or currency changed."""
-    if kwargs.get("raw"):
-        return
-    price_changed = (
-        not created
-        and hasattr(instance, "_old_price")
-        and (
-            instance.price != instance._old_price
-            or instance.price_currency != instance._old_currency
-        )
-    )
-    if price_changed:
-        sender.objects.filter(pk=instance.pk).update(needs_price_update=True)
-    if created or price_changed:
-        from games.conversion import request_conversion
-        from timetracker.settings_resolver import resolve_for_user_with_origin
-
-        target = resolve_for_user_with_origin(
-            instance.library.user, "DEFAULT_DISPLAY_CURRENCY"
-        ).value
-        request_conversion(instance.library, str(target))
-
-
 @receiver(m2m_changed, sender=Purchase.games.through)
 def validate_purchase_game_ownership(sender, instance, action, model, pk_set, **kwargs):
     if action != "pre_add" or not pk_set:

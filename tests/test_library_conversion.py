@@ -4,14 +4,16 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
 from importlib.util import find_spec
+from threading import Event, Thread
 from unittest.mock import Mock
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.db import close_old_connections, connection, transaction
 from django.test import Client
 from django.utils import timezone
 
-from games.models import Purchase, PurchaseConversionState
+from games.models import Purchase, PurchaseConversionState, UserLibrary
 
 
 @pytest.fixture
@@ -556,6 +558,293 @@ def test_duplicate_job_exits_when_requested_version_is_already_published(
     assert (purchase.converted_price, purchase.converted_currency) == (111, "EUR")
     assert state.status == PurchaseConversionState.Status.COMPLETE
     rate.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_late_same_version_failure_cannot_replace_published_completion(owner):
+    """A slower duplicate worker must not turn a published version into FAILED."""
+    from games import tasks
+
+    _state(
+        owner,
+        requested_version=2,
+        requested_currency="CZK",
+        published_version=2,
+        published_currency="CZK",
+        status=PurchaseConversionState.Status.COMPLETE,
+    )
+
+    tasks._mark_failed(
+        str(owner.library.pk),
+        2,
+        RuntimeError("slower duplicate failed"),
+        schedule_retry=False,
+    )
+
+    state = PurchaseConversionState.objects.get(library=owner.library)
+    assert (state.status, state.retry_at, state.last_error) == (
+        PurchaseConversionState.Status.COMPLETE,
+        None,
+        "",
+    )
+
+
+@pytest.mark.django_db
+def test_losing_same_version_worker_cannot_republish_after_winner(owner, monkeypatch):
+    """A duplicate already past its start check must not overwrite the winner."""
+    from games import tasks
+
+    purchase = _purchase(owner, price=10)
+    _state(
+        owner,
+        requested_version=2,
+        requested_currency="CZK",
+        published_version=1,
+        published_currency="EUR",
+        status=PurchaseConversionState.Status.PENDING,
+    )
+
+    def publish_winner_while_loser_fetches(*_args):
+        Purchase.objects.filter(pk=purchase.pk).update(
+            converted_price=25,
+            converted_currency="CZK",
+            needs_price_update=False,
+        )
+        PurchaseConversionState.objects.filter(library=owner.library).update(
+            published_version=2,
+            published_currency="CZK",
+            status=PurchaseConversionState.Status.COMPLETE,
+        )
+        return 3
+
+    monkeypatch.setattr(tasks, "_get_exchange_rate", publish_winner_while_loser_fetches)
+
+    tasks.convert_library_prices(str(owner.library.pk), 2)
+
+    purchase.refresh_from_db()
+    state = PurchaseConversionState.objects.get(library=owner.library)
+    assert (purchase.converted_price, purchase.converted_currency) == (25, "CZK")
+    assert (state.published_version, state.status) == (
+        2,
+        PurchaseConversionState.Status.COMPLETE,
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_new_purchase_rolls_back_when_conversion_version_cannot_be_saved(
+    owner, monkeypatch
+):
+    """Original facts must not commit without their matching requested version."""
+    original_save = PurchaseConversionState.save
+
+    def fail_version_increment(state, *args, **kwargs):
+        if state.requested_version > 0:
+            raise RuntimeError("conversion state unavailable")
+        return original_save(state, *args, **kwargs)
+
+    monkeypatch.setattr(PurchaseConversionState, "save", fail_version_increment)
+
+    with pytest.raises(RuntimeError, match="conversion state unavailable"):
+        _purchase(owner)
+
+    assert not Purchase.objects.filter(library=owner.library).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_purchase_edit_rolls_back_when_conversion_version_cannot_be_saved(
+    owner, monkeypatch
+):
+    """An edited original price and its conversion request are one commit."""
+    purchase = _purchase(owner, price=10)
+    _state(
+        owner,
+        requested_version=1,
+        requested_currency="CZK",
+        published_version=1,
+        published_currency="CZK",
+        status=PurchaseConversionState.Status.COMPLETE,
+    )
+    original_save = PurchaseConversionState.save
+
+    def fail_version_increment(state, *args, **kwargs):
+        if state.requested_version > 1:
+            raise RuntimeError("conversion state unavailable")
+        return original_save(state, *args, **kwargs)
+
+    monkeypatch.setattr(PurchaseConversionState, "save", fail_version_increment)
+    purchase.price = 20
+
+    with pytest.raises(RuntimeError, match="conversion state unavailable"):
+        purchase.save(update_fields=["price", "updated_at"])
+
+    purchase.refresh_from_db()
+    assert purchase.price == 10
+
+
+@pytest.mark.django_db(transaction=True)
+def test_purchase_edit_and_publication_lock_state_before_purchase(owner, monkeypatch):
+    """Concurrent edit/publication must complete without a lock-order deadlock."""
+    from games import conversion, tasks
+
+    purchase = _purchase(owner, price=10)
+    _state(
+        owner,
+        requested_version=1,
+        requested_currency="CZK",
+        published_version=0,
+        published_currency="EUR",
+        status=PurchaseConversionState.Status.PENDING,
+    )
+    monkeypatch.setattr(conversion, "async_task", Mock())
+    monkeypatch.setattr(tasks, "_get_exchange_rate", lambda *_args: 2)
+
+    worker_at_publication = Event()
+    editor_at_state_lock = Event()
+    release_worker = Event()
+    errors: list[BaseException] = []
+    original_bulk_update = Purchase.objects.bulk_update
+
+    def hold_publication(objects, fields):
+        worker_at_publication.set()
+        if not release_worker.wait(10):
+            raise TimeoutError("editor never reached the conversion state")
+        return original_bulk_update(objects, fields)
+
+    monkeypatch.setattr(Purchase.objects, "bulk_update", hold_publication)
+
+    def run_worker():
+        close_old_connections()
+        try:
+            tasks.convert_library_prices(str(owner.library.pk), 1)
+        except Exception as error:  # noqa: BLE001 - return thread failures
+            errors.append(error)
+        finally:
+            close_old_connections()
+
+    def run_editor():
+        close_old_connections()
+
+        def observe_state_lock(execute, sql, params, many, context):
+            if "games_purchaseconversionstate" in sql.lower():
+                editor_at_state_lock.set()
+            return execute(sql, params, many, context)
+
+        try:
+            with connection.execute_wrapper(observe_state_lock), transaction.atomic():
+                edited = Purchase.objects.get(pk=purchase.pk)
+                edited.price = 20
+                edited.save(update_fields=["price", "updated_at"])
+        except Exception as error:  # noqa: BLE001 - return thread failures
+            errors.append(error)
+        finally:
+            close_old_connections()
+
+    worker = Thread(target=run_worker, name="conversion-worker")
+    editor = Thread(target=run_editor, name="purchase-editor")
+    worker.start()
+    assert worker_at_publication.wait(10)
+    editor.start()
+    assert editor_at_state_lock.wait(10)
+    release_worker.set()
+    worker.join(10)
+    editor.join(10)
+
+    assert not worker.is_alive()
+    assert not editor.is_alive()
+    assert errors == []
+    purchase.refresh_from_db()
+    state = PurchaseConversionState.objects.get(library=owner.library)
+    assert purchase.price == 20
+    assert (
+        state.requested_version,
+        state.published_version,
+        state.status,
+    ) == (2, 1, PurchaseConversionState.Status.PENDING)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_statistics_never_pair_new_total_with_previous_currency(owner):
+    """One rendered total must come from one complete publication snapshot."""
+    from games.views.stats_data import compute_stats
+
+    purchase = _purchase(
+        owner,
+        price=10,
+        currency="USD",
+        converted=9,
+        converted_currency="EUR",
+    )
+    _state(
+        owner,
+        requested_version=2,
+        requested_currency="CZK",
+        published_version=1,
+        published_currency="EUR",
+        status=PurchaseConversionState.Status.RUNNING,
+    )
+    state_read = Event()
+    publication_done = Event()
+    errors: list[BaseException] = []
+    result: dict[str, object] = {}
+
+    def run_reader():
+        close_old_connections()
+
+        def pause_after_state_read(execute, sql, params, many, context):
+            value = execute(sql, params, many, context)
+            if (
+                sql.lstrip().lower().startswith("select")
+                and "games_purchaseconversionstate" in sql.lower()
+            ):
+                state_read.set()
+                if not publication_done.wait(10):
+                    raise TimeoutError("publication did not complete")
+            return value
+
+        try:
+            with connection.execute_wrapper(pause_after_state_read):
+                library = UserLibrary.objects.get(pk=owner.library.pk)
+                result["stats"] = compute_stats(library, 2025)
+        except Exception as error:  # noqa: BLE001 - return thread failures
+            errors.append(error)
+        finally:
+            close_old_connections()
+
+    reader = Thread(target=run_reader, name="stats-reader")
+    reader.start()
+    assert state_read.wait(10)
+    try:
+        with transaction.atomic():
+            state = PurchaseConversionState.objects.select_for_update().get(
+                library=owner.library
+            )
+            Purchase.objects.filter(pk=purchase.pk).update(
+                converted_price=18,
+                converted_currency="CZK",
+                needs_price_update=False,
+            )
+            state.published_version = 2
+            state.published_currency = "CZK"
+            state.status = PurchaseConversionState.Status.COMPLETE
+            state.save(
+                update_fields=[
+                    "published_version",
+                    "published_currency",
+                    "status",
+                ]
+            )
+    finally:
+        publication_done.set()
+    reader.join(10)
+
+    assert not reader.is_alive()
+    assert errors == []
+    stats = result["stats"]
+    assert isinstance(stats, dict)
+    assert (stats["total_spent"], stats["total_spent_currency"]) in {
+        (9, "EUR"),
+        (18, "CZK"),
+    }
 
 
 @pytest.mark.django_db

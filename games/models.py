@@ -5,7 +5,7 @@ from typing import ClassVar, Final
 import requests
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Case, ExpressionWrapper, F, Func, Q, Sum, Value, When
 from django.db.models.fields.generated import GeneratedField
 from django.db.models.functions import Coalesce, Lower, NullIf, Trim
@@ -372,7 +372,53 @@ class Purchase(models.Model):
             raise ValidationError(
                 f"{self.get_type_display()} must have a related game."
             )
-        super().save(*args, **kwargs)
+
+        update_fields = kwargs.get("update_fields")
+        conversion_fields = {"price", "price_currency"}
+        may_need_conversion = (
+            self._state.adding
+            or update_fields is None
+            or not conversion_fields.isdisjoint(update_fields)
+        )
+        if not may_need_conversion:
+            super().save(*args, **kwargs)
+            return
+
+        from games.conversion import _request_conversion_for_locked_state
+        from timetracker.settings_resolver import resolve_for_user_with_origin
+
+        is_new = self._state.adding
+        with transaction.atomic():
+            conversion_state = PurchaseConversionState.objects.select_for_update().get(
+                library_id=self.library_id
+            )
+            price_changed = is_new
+            if not is_new:
+                previous = (
+                    Purchase.objects.only("price", "price_currency")
+                    .filter(pk=self.pk)
+                    .first()
+                )
+                price_changed = previous is not None and (
+                    previous.price != self.price
+                    or previous.price_currency != self.price_currency
+                )
+
+            if price_changed:
+                self.needs_price_update = True
+                if update_fields is not None:
+                    kwargs["update_fields"] = set(update_fields) | {
+                        "needs_price_update"
+                    }
+
+            super().save(*args, **kwargs)
+            if price_changed:
+                target_currency = str(
+                    resolve_for_user_with_origin(
+                        self.library.user, "DEFAULT_DISPLAY_CURRENCY"
+                    ).value
+                )
+                _request_conversion_for_locked_state(conversion_state, target_currency)
 
 
 class SessionQuerySet(models.QuerySet):

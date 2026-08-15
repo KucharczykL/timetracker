@@ -9,37 +9,43 @@ from django_q.tasks import async_task
 from games.models import PurchaseConversionState, UserLibrary
 
 
-def request_conversion(library: UserLibrary, target_currency: str) -> int:
-    """Publish a new requested version and enqueue its worker after commit."""
+def _request_conversion_for_locked_state(
+    state: PurchaseConversionState, target_currency: str
+) -> int:
+    """Advance a state row already locked by the surrounding transaction."""
     target_currency = target_currency.upper()
     if len(target_currency) != 3:
         raise ValueError("target_currency must be a three-letter currency code")
 
-    with transaction.atomic():
-        locked_library = UserLibrary.objects.select_for_update().get(pk=library.pk)
-        state, _ = PurchaseConversionState.objects.get_or_create(library=locked_library)
-        state.requested_version += 1
-        state.requested_currency = target_currency
-        state.status = PurchaseConversionState.Status.PENDING
-        state.retry_at = None
-        state.last_error = ""
-        state.save(
-            update_fields=[
-                "requested_version",
-                "requested_currency",
-                "status",
-                "retry_at",
-                "last_error",
-            ]
-        )
-        version = state.requested_version
-        library_id = str(locked_library.pk)
-        transaction.on_commit(
-            lambda: async_task(
-                "games.tasks.convert_library_prices", library_id, version
-            )
-        )
+    state.requested_version += 1
+    state.requested_currency = target_currency
+    state.status = PurchaseConversionState.Status.PENDING
+    state.retry_at = None
+    state.last_error = ""
+    state.save(
+        update_fields=[
+            "requested_version",
+            "requested_currency",
+            "status",
+            "retry_at",
+            "last_error",
+        ]
+    )
+    version = state.requested_version
+    library_id = str(state.library_id)
+    transaction.on_commit(
+        lambda: async_task("games.tasks.convert_library_prices", library_id, version)
+    )
     return version
+
+
+def request_conversion(library: UserLibrary, target_currency: str) -> int:
+    """Publish a new requested version and enqueue its worker after commit."""
+    with transaction.atomic():
+        state = PurchaseConversionState.objects.select_for_update().get(
+            library_id=library.pk
+        )
+        return _request_conversion_for_locked_state(state, target_currency)
 
 
 def request_inheriting_library_conversions(target_currency: str) -> None:

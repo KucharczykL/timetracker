@@ -82,7 +82,11 @@ def _mark_failed(
             .filter(library_id=library_pk)
             .first()
         )
-        if state is None or state.requested_version != requested_version:
+        if (
+            state is None
+            or state.requested_version != requested_version
+            or state.published_version >= requested_version
+        ):
             return
         should_schedule = schedule_retry and state.retry_at is None
         state.status = PurchaseConversionState.Status.FAILED
@@ -158,6 +162,7 @@ def convert_library_prices(library_id: str, requested_version: int) -> None:
             if (
                 state.requested_version != requested_version
                 or state.requested_currency.upper() != target_currency
+                or state.published_version >= requested_version
             ):
                 return
             current_snapshot = list(
