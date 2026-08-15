@@ -1,21 +1,28 @@
 from __future__ import annotations
 
+import os
+import subprocess
 from datetime import UTC, date, datetime
 from io import StringIO
+from pathlib import Path
 
 import pytest
+import yaml
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
 from games.models import (
     Device,
+    ExchangeRate,
     Game,
     Platform,
     PlayEvent,
     Purchase,
     PurchaseConversionState,
     Session,
+    UserLibraryPreferences,
 )
 
 
@@ -281,3 +288,266 @@ def test_sample_load_rejects_a_private_row_without_portable_owner_marker(
         call_command("load_sample_data", "--user", owner.username, verbosity=0)
 
     assert not Device.objects.filter(pk=202).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("model", "fields", "target_model"),
+    [
+        ("games.session", {"game": 999}, "Game"),
+        ("games.playevent", {"game": 999}, "Game"),
+        ("games.gamestatuschange", {"game": 999}, "Game"),
+        (
+            "games.purchase",
+            {"library": "__target_library__", "games": [999]},
+            "Game",
+        ),
+        (
+            "games.purchase",
+            {"library": "__target_library__", "related_game": 999},
+            "Game",
+        ),
+    ],
+)
+def test_sample_load_rejects_relationships_outside_the_fixture_graph(
+    owner, monkeypatch, tmp_path, model, fields, target_model
+):
+    from games.management.commands import load_sample_data
+
+    fixture = tmp_path / "sample.yaml"
+    fixture.write_text(yaml.safe_dump([{"model": model, "pk": 301, "fields": fields}]))
+    monkeypatch.setattr(load_sample_data, "FIXTURE_PATH", fixture)
+
+    with pytest.raises(
+        CommandError, match=rf"references {target_model} .*not included"
+    ):
+        call_command("load_sample_data", "--user", owner.username, verbosity=0)
+
+
+@pytest.mark.django_db
+def test_sample_load_rejects_a_session_device_outside_the_fixture_graph(
+    owner, monkeypatch, tmp_path
+):
+    from games.management.commands import load_sample_data
+
+    fixture = tmp_path / "sample.yaml"
+    fixture.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "model": "games.game",
+                    "pk": 301,
+                    "fields": {
+                        "library": "__target_library__",
+                        "name": "Included game",
+                        "platform": None,
+                    },
+                },
+                {
+                    "model": "games.session",
+                    "pk": 302,
+                    "fields": {"game": 301, "device": 999},
+                },
+            ]
+        )
+    )
+    monkeypatch.setattr(load_sample_data, "FIXTURE_PATH", fixture)
+
+    with pytest.raises(CommandError, match=r"references Device 999.*not included"):
+        call_command("load_sample_data", "--user", owner.username, verbosity=0)
+
+
+@pytest.mark.django_db
+def test_sample_load_rejects_duplicate_fixture_primary_keys(
+    owner, monkeypatch, tmp_path
+):
+    from games.management.commands import load_sample_data
+
+    fixture = tmp_path / "sample.yaml"
+    fixture.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "model": "games.device",
+                    "pk": 401,
+                    "fields": {
+                        "library": "__target_library__",
+                        "name": "First",
+                    },
+                },
+                {
+                    "model": "games.device",
+                    "pk": 401,
+                    "fields": {
+                        "library": "__target_library__",
+                        "name": "Second",
+                    },
+                },
+            ]
+        )
+    )
+    monkeypatch.setattr(load_sample_data, "FIXTURE_PATH", fixture)
+
+    with pytest.raises(CommandError, match="duplicate games.device primary key 401"):
+        call_command("load_sample_data", "--user", owner.username, verbosity=0)
+
+    assert not Device.objects.filter(pk=401).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_sample_load_force_inserts_and_rolls_back_a_late_primary_key_collision(
+    owner, monkeypatch, tmp_path
+):
+    from games.management.commands import load_sample_data
+
+    fixture = tmp_path / "sample.yaml"
+    fixture.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "model": "games.platform",
+                    "pk": 501,
+                    "fields": {
+                        "library": None,
+                        "name": "Rollback platform",
+                        "group": "PC",
+                    },
+                },
+                {
+                    "model": "games.exchangerate",
+                    "pk": 502,
+                    "fields": {
+                        "currency_from": "USD",
+                        "currency_to": "EUR",
+                        "year": 2099,
+                        "rate": 0.5,
+                    },
+                },
+                {
+                    "model": "games.device",
+                    "pk": 503,
+                    "fields": {
+                        "library": "__target_library__",
+                        "name": "Fixture device",
+                        "created_at": "2025-01-01 00:00:00+00:00",
+                    },
+                },
+            ]
+        )
+    )
+    monkeypatch.setattr(load_sample_data, "FIXTURE_PATH", fixture)
+    original_check = load_sample_data.Command._reject_primary_key_collisions
+
+    def insert_after_check(records):
+        original_check(records)
+        Device.objects.create(
+            pk=503,
+            library=owner.library,
+            name="Concurrent device",
+        )
+
+    monkeypatch.setattr(
+        load_sample_data.Command,
+        "_reject_primary_key_collisions",
+        staticmethod(insert_after_check),
+    )
+
+    with pytest.raises(CommandError, match="could not be loaded") as error:
+        call_command("load_sample_data", "--user", owner.username, verbosity=0)
+
+    assert "duplicate key" in str(error.value).lower()
+    assert not Platform.objects.filter(name="Rollback platform").exists()
+    assert not Device.objects.filter(pk=503).exists()
+    assert not ExchangeRate.objects.filter(
+        currency_from="USD",
+        currency_to="EUR",
+        year=2099,
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_scoped_audit_reports_incoming_cross_library_links(owner, outsider):
+    owner_platform = Platform.objects.create(
+        library=owner.library,
+        name="Owner private platform",
+        group="Private",
+    )
+    _, owner_device, owner_game, _ = _owned_graph(owner)
+    _, _, outsider_game, outsider_purchase = _owned_graph(outsider)
+    outsider_session = outsider_game.sessions.get()
+
+    Game.objects.filter(pk=outsider_game.pk).update(platform=owner_platform)
+    Purchase.objects.filter(pk=outsider_purchase.pk).update(
+        platform=owner_platform,
+        related_game=owner_game,
+    )
+    Purchase.games.through.objects.create(
+        purchase_id=outsider_purchase.pk,
+        game_id=owner_game.pk,
+    )
+    Session.objects.filter(pk=outsider_session.pk).update(device=owner_device)
+    UserLibraryPreferences.objects.filter(library=outsider.library).update(
+        default_device=owner_device
+    )
+    output = StringIO()
+
+    with pytest.raises(CommandError, match="violation"):
+        call_command(
+            "audit_library_ownership",
+            "--user",
+            owner.username,
+            stdout=output,
+        )
+
+    report = output.getvalue()
+    for relation in (
+        "Game.platform",
+        "Purchase.platform",
+        "Purchase.related_game",
+        "Purchase.games",
+        "Session.device",
+        "UserLibraryPreferences.default_device",
+    ):
+        assert relation in report
+
+
+@pytest.mark.django_db
+def test_all_libraries_audit_reports_a_user_missing_their_library(owner):
+    owner.library.delete()
+    output = StringIO()
+
+    with pytest.raises(CommandError, match="violation"):
+        call_command("audit_library_ownership", "--all-libraries", stdout=output)
+
+    assert f"UserLibrary missing for user {owner.pk}" in output.getvalue()
+
+
+@pytest.mark.parametrize("target", ["loadsample", "anonymize-sample"])
+def test_make_sample_targets_do_not_accept_an_inherited_user(target):
+    environment = {**os.environ, "USER": "inherited-os-user"}
+
+    result = subprocess.run(
+        ["make", "-n", target],
+        cwd=Path(settings.BASE_DIR),
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert f"USER is required: make {target} USER=<username>" in (
+        result.stdout + result.stderr
+    )
+
+    explicit = subprocess.run(
+        ["make", "-n", target, "USER=explicit-app-user"],
+        cwd=Path(settings.BASE_DIR),
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert explicit.returncode == 0
+    assert '--user "explicit-app-user"' in explicit.stdout

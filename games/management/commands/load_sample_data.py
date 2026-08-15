@@ -43,6 +43,21 @@ LOADABLE_MODELS = {
     "games.gamestatuschange": GameStatusChange,
 }
 
+FIXTURE_RELATIONSHIPS = {
+    "games.game": (("platform", "games.platform", False, False),),
+    "games.purchase": (
+        ("platform", "games.platform", False, False),
+        ("related_game", "games.game", False, False),
+        ("games", "games.game", True, False),
+    ),
+    "games.session": (
+        ("game", "games.game", False, True),
+        ("device", "games.device", False, False),
+    ),
+    "games.playevent": (("game", "games.game", False, True),),
+    "games.gamestatuschange": (("game", "games.game", False, True),),
+}
+
 
 class Command(BaseCommand):
     help = (
@@ -81,7 +96,7 @@ class Command(BaseCommand):
                     "yaml",
                     StringIO(yaml.safe_dump(loadable, sort_keys=False)),
                 ):
-                    deserialized.save()
+                    deserialized.save(force_insert=True)
             except (DeserializationError, IntegrityError, ValueError) as error:
                 raise CommandError(
                     f"Sample fixture could not be loaded: {error}"
@@ -126,12 +141,22 @@ class Command(BaseCommand):
         if not isinstance(records, list):
             raise CommandError("Sample fixture root must be a list.")
         supported = set(LOADABLE_MODELS) | {"games.platform", "games.exchangerate"}
+        record_keys = set()
         for record in records:
             if not isinstance(record, dict) or not isinstance(
                 record.get("fields"), dict
             ):
                 raise CommandError("Every sample fixture entry must contain fields.")
             model = record.get("model")
+            primary_key = record.get("pk")
+            if primary_key is None:
+                raise CommandError(f"Sample {model} is missing a primary key.")
+            record_key = (model, str(primary_key))
+            if record_key in record_keys:
+                raise CommandError(
+                    f"Sample fixture has duplicate {model} primary key {primary_key}."
+                )
+            record_keys.add(record_key)
             fields = record["fields"]
             if model not in supported:
                 raise CommandError(f"Unsupported model in sample fixture: {model!r}.")
@@ -147,6 +172,36 @@ class Command(BaseCommand):
                 TARGET_LIBRARY_MARKER,
             ):
                 raise CommandError("Sample Platform has an invalid owner marker.")
+
+        for record in records:
+            model = record["model"]
+            fields = record["fields"]
+            for field, target_model, many, required in FIXTURE_RELATIONSHIPS.get(
+                model, ()
+            ):
+                value = fields.get(field)
+                if value is None:
+                    if required:
+                        raise CommandError(
+                            f"Sample {model} {record['pk']} is missing required "
+                            f"{target_model.rsplit('.', 1)[1].title()} reference {field}."
+                        )
+                    continue
+                if many:
+                    if not isinstance(value, list):
+                        raise CommandError(
+                            f"Sample {model} {record['pk']} field {field} must be a list."
+                        )
+                    references = value
+                else:
+                    references = [value]
+                for reference in references:
+                    if (target_model, str(reference)) not in record_keys:
+                        target_label = target_model.rsplit(".", 1)[1].title()
+                        raise CommandError(
+                            f"Sample {model} {record['pk']} references {target_label} "
+                            f"{reference}, which is not included in the fixture."
+                        )
 
     @staticmethod
     def _load_platforms(records, library):
@@ -174,7 +229,7 @@ class Command(BaseCommand):
                         "Sample Platform has no reusable exact identity: "
                         f"{fields['name']!r} / {fields.get('group', '')!r}."
                     ) from error
-            platform_ids[record.get("pk")] = platform.pk
+            platform_ids[str(record["pk"])] = platform.pk
         return platform_ids
 
     @staticmethod
@@ -204,11 +259,11 @@ class Command(BaseCommand):
             if model in {"games.game", "games.purchase"}:
                 platform_id = fields.get("platform")
                 if platform_id is not None:
-                    if platform_id not in platform_ids:
+                    if str(platform_id) not in platform_ids:
                         raise CommandError(
                             f"Sample {model} references unknown Platform {platform_id}."
                         )
-                    fields["platform"] = platform_ids[platform_id]
+                    fields["platform"] = platform_ids[str(platform_id)]
             prepared.append(copied)
         return prepared
 

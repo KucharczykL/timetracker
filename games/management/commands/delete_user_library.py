@@ -23,25 +23,10 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         username = options["user"]
-        user_model = get_user_model()
-        try:
-            user = user_model.objects.get(username=username)
-        except user_model.DoesNotExist as error:
-            raise CommandError(f"User {username!r} does not exist.") from error
-
-        counts = self._deletion_counts(user)
-        self.stdout.write(
-            self.style.WARNING(
-                "WARNING: deleting this User cascades through their library and "
-                "all private library data."
-            )
-        )
-        self.stdout.write("Deletion scope:")
-        for label, count in sorted(counts.items()):
-            self.stdout.write(f"  {label}: {count}")
-
         confirmation = options["confirm"]
         if confirmation is None:
+            user = self._get_user(username)
+            self._write_deletion_scope(self._deletion_counts(user))
             self.stdout.write(
                 self.style.WARNING(
                     f"DRY RUN: no data deleted. Re-run with --confirm {username}."
@@ -52,10 +37,34 @@ class Command(BaseCommand):
             raise CommandError("--confirm must exactly match --user; nothing deleted.")
 
         with transaction.atomic():
+            user = self._get_user(username, for_update=True)
+            self._write_deletion_scope(self._deletion_counts(user))
             user.delete()
         self.stdout.write(
             self.style.SUCCESS(f"DELETED User {username!r} and the scope above.")
         )
+
+    @staticmethod
+    def _get_user(username, *, for_update=False):
+        user_model = get_user_model()
+        users = user_model.objects
+        if for_update:
+            users = users.select_for_update()
+        try:
+            return users.get(username=username)
+        except user_model.DoesNotExist as error:
+            raise CommandError(f"User {username!r} does not exist.") from error
+
+    def _write_deletion_scope(self, counts):
+        self.stdout.write(
+            self.style.WARNING(
+                "WARNING: deleting this User cascades through their library and "
+                "all private library data."
+            )
+        )
+        self.stdout.write("Deletion scope:")
+        for label, count in sorted(counts.items()):
+            self.stdout.write(f"  {label}: {count}")
 
     @staticmethod
     def _deletion_counts(user):

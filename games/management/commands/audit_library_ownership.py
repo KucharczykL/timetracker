@@ -3,7 +3,7 @@ from __future__ import annotations
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
-from django.db.models import F
+from django.db.models import F, Q
 
 from games.models import (
     Device,
@@ -41,6 +41,13 @@ class Command(BaseCommand):
         library_ids = [library.pk for library in libraries]
         user_ids = [library.user_id for library in libraries]
 
+        missing_library_user_ids = []
+        if options["all_libraries"]:
+            missing_library_user_ids = list(
+                get_user_model()
+                .objects.filter(library__isnull=True)
+                .values_list("pk", flat=True)
+            )
         self.stdout.write(
             "Scope: " + ", ".join(str(library.pk) for library in libraries)
         )
@@ -89,7 +96,10 @@ class Command(BaseCommand):
         for violation in violations:
             self.stdout.write(f"  {violation}")
 
-        preference_violations = []
+        preference_violations = [
+            f"UserLibrary missing for user {user_id}"
+            for user_id in missing_library_user_ids
+        ]
         preference_user_ids = set(
             UserPreferences.objects.filter(user_id__in=user_ids).values_list(
                 "user_id", flat=True
@@ -158,7 +168,7 @@ class Command(BaseCommand):
         violations = []
         for game_id, platform_id in (
             Game.objects.filter(
-                library_id__in=library_ids,
+                Q(library_id__in=library_ids) | Q(platform__library_id__in=library_ids),
                 platform__library__isnull=False,
             )
             .exclude(platform__library_id=F("library_id"))
@@ -167,7 +177,7 @@ class Command(BaseCommand):
             violations.append(f"Game.platform: game {game_id}, platform {platform_id}")
         for purchase_id, platform_id in (
             Purchase.objects.filter(
-                library_id__in=library_ids,
+                Q(library_id__in=library_ids) | Q(platform__library_id__in=library_ids),
                 platform__library__isnull=False,
             )
             .exclude(platform__library_id=F("library_id"))
@@ -178,7 +188,8 @@ class Command(BaseCommand):
             )
         for purchase_id, game_id in (
             Purchase.objects.filter(
-                library_id__in=library_ids,
+                Q(library_id__in=library_ids)
+                | Q(related_game__library_id__in=library_ids),
                 related_game__isnull=False,
             )
             .exclude(related_game__library_id=F("library_id"))
@@ -189,14 +200,18 @@ class Command(BaseCommand):
             )
         through = Purchase.games.through
         for purchase_id, game_id in (
-            through.objects.filter(purchase__library_id__in=library_ids)
+            through.objects.filter(
+                Q(purchase__library_id__in=library_ids)
+                | Q(game__library_id__in=library_ids)
+            )
             .exclude(game__library_id=F("purchase__library_id"))
             .values_list("purchase_id", "game_id")
         ):
             violations.append(f"Purchase.games: purchase {purchase_id}, game {game_id}")
         for session_id, device_id in (
             Session.objects.filter(
-                game__library_id__in=library_ids,
+                Q(game__library_id__in=library_ids)
+                | Q(device__library_id__in=library_ids),
                 device__isnull=False,
             )
             .exclude(device__library_id=F("game__library_id"))
@@ -207,7 +222,8 @@ class Command(BaseCommand):
             )
         for library_id, device_id in (
             UserLibraryPreferences.objects.filter(
-                library_id__in=library_ids,
+                Q(library_id__in=library_ids)
+                | Q(default_device__library_id__in=library_ids),
                 default_device__isnull=False,
             )
             .exclude(default_device__library_id=F("library_id"))
