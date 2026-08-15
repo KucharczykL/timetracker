@@ -1,11 +1,16 @@
 import contextlib
 import logging
+from datetime import timedelta
+from uuid import UUID
 
 import requests
-from django.db import models
+from django.db import transaction
+from django.db.models import F, Q
+from django.utils.timezone import now
+from django_q.models import Schedule
+from django_q.tasks import async_task, schedule
 
-from games.models import ExchangeRate, Purchase
-from timetracker.settings_resolver import resolve_str
+from games.models import ExchangeRate, Purchase, PurchaseConversionState, UserLibrary
 
 logger = logging.getLogger("games")
 
@@ -49,45 +54,182 @@ def _get_exchange_rate(currency_from, currency_to, year):
     return rate
 
 
-def _save_converted_price(purchase, converted_price, needs_update, currency_to):
-    logger.info(
-        f"Setting converted price of {purchase} to {converted_price} {currency_to} (originally {purchase.price} {purchase.price_currency})"
-    )
-    purchase.converted_price = converted_price
-    purchase.converted_currency = currency_to
-    if needs_update:
-        purchase.needs_price_update = False
-    purchase.save(
-        update_fields=["converted_price", "converted_currency", "needs_price_update"]
-    )
+RETRY_DELAY = timedelta(minutes=15)
+MAX_ERROR_LENGTH = 240
 
 
-def convert_prices():
-    # Resolved once per run so the whole run is internally consistent even if the
-    # site default is edited mid-run (see timetracker.settings_resolver).
-    currency_to = resolve_str("DEFAULT_DISPLAY_CURRENCY").upper()
-    purchases = Purchase.objects.filter(
-        models.Q(needs_price_update=True) | models.Q(converted_price__isnull=True)
-    ).distinct()
-    if purchases.count() == 0:
-        logger.info("[convert_prices]: No prices to convert.")
-        return
+class MissingExchangeRate(RuntimeError):
+    pass
 
-    for purchase in purchases:
-        needs_update = purchase.needs_price_update
-        if purchase.price_currency.upper() == currency_to or purchase.price == 0:
-            _save_converted_price(purchase, purchase.price, needs_update, currency_to)
-            continue
-        year = purchase.date_purchased.year
-        currency_from = purchase.price_currency.upper()
-        rate = _get_exchange_rate(currency_from, currency_to, year)
-        if rate:
-            _save_converted_price(
-                purchase,
-                round(purchase.price * rate, 0),
-                needs_update,
-                currency_to,
+
+def _concise_error(error: Exception) -> str:
+    return " ".join(str(error).split())[:MAX_ERROR_LENGTH]
+
+
+def _mark_failed(
+    library_id: str,
+    requested_version: int,
+    error: Exception,
+    *,
+    schedule_retry: bool,
+) -> None:
+    retry_at = now() + RETRY_DELAY
+    library_pk = UUID(library_id)
+    should_schedule = False
+    with transaction.atomic():
+        state = (
+            PurchaseConversionState.objects.select_for_update()
+            .filter(library_id=library_pk)
+            .first()
+        )
+        if state is None or state.requested_version != requested_version:
+            return
+        should_schedule = schedule_retry and state.retry_at is None
+        state.status = PurchaseConversionState.Status.FAILED
+        state.retry_at = retry_at
+        state.last_error = _concise_error(error)
+        state.save(update_fields=["status", "retry_at", "last_error"])
+
+    if should_schedule:
+        schedule(
+            "games.tasks.convert_library_prices",
+            library_id,
+            requested_version,
+            schedule_type=Schedule.ONCE,
+            next_run=retry_at,
+            name=f"Retry price conversion {library_id} v{requested_version}",
+        )
+
+
+def convert_library_prices(library_id: str, requested_version: int) -> None:
+    """Convert one immutable snapshot and publish it atomically if still current."""
+    library_pk = UUID(library_id)
+    with transaction.atomic():
+        state = (
+            PurchaseConversionState.objects.select_for_update()
+            .filter(library_id=library_pk)
+            .first()
+        )
+        if (
+            state is None
+            or state.requested_version != requested_version
+            or state.published_version >= requested_version
+        ):
+            return
+        target_currency = state.requested_currency.upper()
+        schedule_retry = state.retry_at is None
+        state.status = PurchaseConversionState.Status.RUNNING
+        state.last_error = ""
+        state.save(update_fields=["status", "last_error"])
+
+    purchases = list(Purchase.objects.filter(library_id=library_pk).order_by("pk"))
+    snapshot = [
+        (
+            purchase.pk,
+            purchase.price,
+            purchase.price_currency,
+            purchase.date_purchased,
+        )
+        for purchase in purchases
+    ]
+
+    try:
+        for purchase in purchases:
+            source_currency = purchase.price_currency.upper()
+            if source_currency == target_currency or purchase.price == 0:
+                converted_price = purchase.price
+            else:
+                rate = _get_exchange_rate(
+                    source_currency, target_currency, purchase.date_purchased.year
+                )
+                if rate is None:
+                    raise MissingExchangeRate(
+                        f"Exchange rate unavailable: {source_currency} to {target_currency}"
+                    )
+                converted_price = round(purchase.price * rate, 0)
+            purchase.converted_price = converted_price
+            purchase.converted_currency = target_currency
+            purchase.needs_price_update = False
+
+        with transaction.atomic():
+            state = PurchaseConversionState.objects.select_for_update().get(
+                library_id=library_pk
             )
+            if (
+                state.requested_version != requested_version
+                or state.requested_currency.upper() != target_currency
+            ):
+                return
+            current_snapshot = list(
+                Purchase.objects.filter(library_id=library_pk)
+                .order_by("pk")
+                .values_list("pk", "price", "price_currency", "date_purchased")
+            )
+            if current_snapshot != snapshot:
+                return
+            Purchase.objects.bulk_update(
+                purchases,
+                ["converted_price", "converted_currency", "needs_price_update"],
+            )
+            state.published_version = requested_version
+            state.published_currency = target_currency
+            state.status = PurchaseConversionState.Status.COMPLETE
+            state.retry_at = None
+            state.last_error = ""
+            state.save(
+                update_fields=[
+                    "published_version",
+                    "published_currency",
+                    "status",
+                    "retry_at",
+                    "last_error",
+                ]
+            )
+    except Exception as error:
+        logger.exception(
+            "[convert_library_prices]: conversion failed for library %s version %s",
+            library_id,
+            requested_version,
+        )
+        _mark_failed(
+            library_id,
+            requested_version,
+            error,
+            schedule_retry=schedule_retry,
+        )
+
+
+def recover_library_price_conversions() -> None:
+    """Daily recovery for due failed conversions not superseded by a newer publish."""
+    stale = PurchaseConversionState.objects.filter(
+        requested_version__gt=F("published_version")
+    ).filter(
+        Q(
+            status__in=(
+                PurchaseConversionState.Status.PENDING,
+                PurchaseConversionState.Status.RUNNING,
+            )
+        )
+        | Q(status=PurchaseConversionState.Status.FAILED, retry_at__lte=now())
+    )
+    for state in stale:
+        async_task(
+            "games.tasks.convert_library_prices",
+            str(state.library_id),
+            state.requested_version,
+        )
+
+
+def convert_prices() -> None:
+    """Compatibility entry point: request current targets for every library."""
+    from games.conversion import request_conversion
+    from timetracker.settings_resolver import resolve_for_user_with_origin
+
+    for library in UserLibrary.objects.select_related("user"):
+        target = resolve_for_user_with_origin(
+            library.user, "DEFAULT_DISPLAY_CURRENCY"
+        ).value
+        request_conversion(library, str(target))
 
 
 def calculate_price_per_game():

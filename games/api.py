@@ -45,6 +45,7 @@ from games.models import (
     Platform,
     PlayEvent,
     Purchase,
+    PurchaseConversionState,
     Session,
 )
 from games.ownership import owned_or_404
@@ -735,6 +736,36 @@ def delete_preset(request, preset_id: int):
 api.add_router("/presets", preset_router)
 
 settings_router = Router()
+conversion_router = Router()
+
+
+class ConversionStatusOut(Schema):
+    library_id: str
+    requested_version: int
+    requested_currency: str
+    published_version: int
+    published_currency: str
+    status: str
+    retry_at: datetime | None
+    last_error: str
+
+
+@conversion_router.get("/status", response=ConversionStatusOut)
+def conversion_status(request):
+    state = PurchaseConversionState.objects.get(library=request.user.library)
+    return {
+        "library_id": str(state.library_id),
+        "requested_version": state.requested_version,
+        "requested_currency": state.requested_currency,
+        "published_version": state.published_version,
+        "published_currency": state.published_currency,
+        "status": state.status,
+        "retry_at": state.retry_at,
+        "last_error": state.last_error,
+    }
+
+
+api.add_router("/conversion", conversion_router)
 
 
 class SettingOut(Schema):

@@ -1,7 +1,7 @@
 """Validated mutation boundary for runtime-editable site settings."""
 
 from enum import StrEnum
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 if TYPE_CHECKING:
     from games.models import Device, UserLibrary
@@ -64,6 +64,30 @@ class SettingLockedError(Exception):
         super().__init__(f"{key} is locked by {source.value}.")
 
 
+def _request_display_currency_if_changed(
+    *,
+    key: SettingKey,
+    changed: bool,
+    old_effective: object,
+    new_effective: object,
+    user: Any | None = None,
+) -> None:
+    if (
+        not changed
+        or key != "DEFAULT_DISPLAY_CURRENCY"
+        or old_effective == new_effective
+    ):
+        return
+    if user is None:
+        from games.conversion import request_inheriting_library_conversions
+
+        request_inheriting_library_conversions(str(new_effective))
+    else:
+        from games.conversion import request_conversion
+
+        request_conversion(user.library, str(new_effective))
+
+
 def change_site_setting(key: SettingKey, value: object | None) -> SettingMutation:
     """Set or clear a validated site default; return an operation-aware envelope.
 
@@ -83,6 +107,7 @@ def change_site_setting(key: SettingKey, value: object | None) -> SettingMutatio
     from games.models import SiteSetting
 
     with transaction.atomic():
+        old_effective = resolve_fallthrough_uncached(key, skip_db=False).value
         row = SiteSetting.objects.filter(key=key).first()
         stored_present = row is not None
         stored_raw = row.value if row is not None else None
@@ -104,20 +129,34 @@ def change_site_setting(key: SettingKey, value: object | None) -> SettingMutatio
                 SiteSetting.objects.update_or_create(
                     key=key, defaults={"value": normalized}
                 )
-            return SettingMutation(
+            mutation = SettingMutation(
                 ResolvedSetting(normalized, SettingSource.DATABASE, False),
                 operation,
                 changed,
                 normalized,
                 True,
             )
+            _request_display_currency_if_changed(
+                key=key,
+                changed=changed,
+                old_effective=old_effective,
+                new_effective=mutation.effective.value,
+            )
+            return mutation
 
         # CLEAR — never lock-checked.
         changed = stored_present
         if changed:
             SiteSetting.objects.filter(key=key).delete()
         effective = resolve_fallthrough_uncached(key, skip_db=True)
-        return SettingMutation(effective, operation, changed, None, False)
+        mutation = SettingMutation(effective, operation, changed, None, False)
+        _request_display_currency_if_changed(
+            key=key,
+            changed=changed,
+            old_effective=old_effective,
+            new_effective=mutation.effective.value,
+        )
+        return mutation
 
 
 def change_user_setting(
@@ -150,6 +189,11 @@ def change_user_setting(
             bag = row.extra_preferences or {}
             stored_present = key in bag
             stored_raw = bag.get(key)
+        old_effective = (
+            stored_raw
+            if stored_present
+            else resolve_fallthrough_uncached(key, skip_db=False).value
+        )
 
         if operation is SettingOperation.SET:
             normalized = normalize_setting_value(value, definition)
@@ -158,13 +202,21 @@ def change_user_setting(
             changed = (not stored_present) or normalized != stored_raw
             if changed:
                 UserPreferences.get_for_user(user).set_preference_value(key, normalized)
-            return SettingMutation(
+            mutation = SettingMutation(
                 ResolvedSetting(normalized, SettingSource.USER, False),
                 operation,
                 changed,
                 normalized,
                 True,
             )
+            _request_display_currency_if_changed(
+                key=key,
+                changed=changed,
+                old_effective=old_effective,
+                new_effective=mutation.effective.value,
+                user=user,
+            )
+            return mutation
 
         # CLEAR
         changed = stored_present
@@ -173,7 +225,15 @@ def change_user_setting(
         effective = resolve_fallthrough_uncached(key, skip_db=False)._replace(
             locked=False
         )
-        return SettingMutation(effective, operation, changed, None, False)
+        mutation = SettingMutation(effective, operation, changed, None, False)
+        _request_display_currency_if_changed(
+            key=key,
+            changed=changed,
+            old_effective=old_effective,
+            new_effective=mutation.effective.value,
+            user=user,
+        )
+        return mutation
 
 
 def change_library_default_device(library: UserLibrary, device: Device | None) -> bool:

@@ -314,7 +314,7 @@ def test_load_set_field_preset_reflects_field_without_crash(
     # the session's ``game`` field.  This is the exact shape that triggered the
     # Fix-C crash: a ``set`` kind field with an id/label value list.
     FilterPreset.objects.create(
-        user=user,
+        library=user.library,
         mode="sessions",
         name="setpreset",
         object_filter={
@@ -921,8 +921,12 @@ def test_preset_delete_flow_removes_row_and_db_record(
     survive the native confirm() — it stays open with focus in the search box,
     showing the remaining preset."""
     user = django_user_model.objects.get(username="tester")
-    keep = FilterPreset.objects.create(user=user, mode="games", name="keepme")
-    doomed = FilterPreset.objects.create(user=user, mode="games", name="deleteme")
+    keep = FilterPreset.objects.create(
+        library=user.library, mode="games", name="keepme"
+    )
+    doomed = FilterPreset.objects.create(
+        library=user.library, mode="games", name="deleteme"
+    )
 
     page = authenticated_page
     page.on("dialog", lambda dialog: dialog.accept())
@@ -957,7 +961,7 @@ def test_deleting_last_picked_preset_does_not_resurrect(
     renderRows' selected-value preservation (#297 review finding)."""
     user = django_user_model.objects.get(username="tester")
     FilterPreset.objects.create(
-        user=user,
+        library=user.library,
         mode="games",
         name="pickme",
         object_filter={"name": {"modifier": "INCLUDES", "value": "x"}},
@@ -1002,7 +1006,7 @@ def test_preset_keyboard_pick_and_empty_enter(
     free win #297 promised, plus the form-safety guard."""
     user = django_user_model.objects.get(username="tester")
     FilterPreset.objects.create(
-        user=user,
+        library=user.library,
         mode="games",
         name="kbpreset",
         object_filter={"name": {"modifier": "INCLUDES", "value": "x"}},

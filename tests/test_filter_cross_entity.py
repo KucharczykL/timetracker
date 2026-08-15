@@ -16,7 +16,9 @@ import json
 from datetime import UTC, date, datetime
 
 import pytest
+from django.contrib.auth import get_user_model
 
+from common.criteria import FilterQueryContext
 from games.filters import (
     parse_game_filter,
     parse_purchase_filter,
@@ -24,12 +26,35 @@ from games.filters import (
 )
 from games.models import Device, Game, Platform, PlayEvent, Purchase, Session
 
+UNRESTRICTED_FILTER_CONTEXT = FilterQueryContext(
+    lambda model: model._default_manager.all()
+)
+
+
+@pytest.fixture(autouse=True)
+def _single_library_filter_world(db, monkeypatch):
+    """These algebra tests use one explicit owner; isolation is tested elsewhere."""
+    user = get_user_model().objects.create_user(username="cross-entity-owner")
+
+    def owned_create(original):
+        def create(**kwargs):
+            kwargs.setdefault("library", user.library)
+            return original(**kwargs)
+
+        return create
+
+    for model in (Game, Device, Purchase):
+        manager = model.objects
+        monkeypatch.setattr(manager, "create", owned_create(manager.create))
+
 
 def _session_ids(filter_json: str) -> set[int]:
     parsed = parse_session_filter(filter_json)
     assert parsed is not None
     return set(
-        Session.objects.filter(parsed.to_q()).distinct().values_list("id", flat=True)
+        Session.objects.filter(parsed.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        .distinct()
+        .values_list("id", flat=True)
     )
 
 
@@ -41,7 +66,9 @@ def _game_ids(filter_json: str) -> set[int]:
     parsed = parse_game_filter(filter_json)
     assert parsed is not None
     return set(
-        Game.objects.filter(parsed.to_q()).distinct().values_list("id", flat=True)
+        Game.objects.filter(parsed.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        .distinct()
+        .values_list("id", flat=True)
     )
 
 
@@ -510,6 +537,8 @@ def test_purchase_finished_widget_json_selects_purchases(db):
     parsed = parse_purchase_filter(filter_json)
     assert parsed is not None
     purchase_ids = set(
-        Purchase.objects.filter(parsed.to_q()).distinct().values_list("id", flat=True)
+        Purchase.objects.filter(parsed.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        .distinct()
+        .values_list("id", flat=True)
     )
     assert purchase_ids == {bought_finished.id}

@@ -12,10 +12,12 @@ import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from django.contrib.auth import get_user_model
 
 from common.criteria import (
     AggregateCriterion,
     BoolCriterion,
+    FilterQueryContext,
     Modifier,
     MultiCriterion,
     RelationMatch,
@@ -24,6 +26,27 @@ from common.criteria import (
 from games.filters import GameFilter, PurchaseFilter, SessionFilter
 from games.models import Device, Game, Platform, Purchase, Session
 
+UNRESTRICTED_FILTER_CONTEXT = FilterQueryContext(
+    lambda model: model._default_manager.all()
+)
+
+
+@pytest.fixture(autouse=True)
+def _single_library_relation_world(db, monkeypatch):
+    """These algebra tests use one explicit owner; isolation is tested elsewhere."""
+    user = get_user_model().objects.create_user(username="relation-algebra-owner")
+
+    def owned_create(original):
+        def create(**kwargs):
+            kwargs.setdefault("library", user.library)
+            return original(**kwargs)
+
+        return create
+
+    for model in (Game, Device, Purchase):
+        manager = model.objects
+        monkeypatch.setattr(manager, "create", owned_create(manager.create))
+
 
 def _dt(year=2024, month=6, day=1):
     return datetime(year, month, day, 12, 0, tzinfo=UTC)
@@ -31,7 +54,9 @@ def _dt(year=2024, month=6, day=1):
 
 def _ids(filter_obj):
     return set(
-        Game.objects.filter(filter_obj.to_q()).distinct().values_list("id", flat=True)
+        Game.objects.filter(filter_obj.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        .distinct()
+        .values_list("id", flat=True)
     )
 
 
@@ -252,7 +277,9 @@ def test_m2m_relation_none_excludes_partial_bundle(db):
         )
     )
     purchase_ids = set(
-        Purchase.objects.filter(no_hit.to_q()).distinct().values_list("id", flat=True)
+        Purchase.objects.filter(no_hit.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        .distinct()
+        .values_list("id", flat=True)
     )
     assert purchase_ids == {solo.id, empty.id}  # bundle (contains Hit) excluded
 
@@ -272,7 +299,9 @@ def test_relation_none_on_non_game_parent(db):
         )
     )
     session_ids = set(
-        Session.objects.filter(not_hit.to_q()).values_list("id", flat=True)
+        Session.objects.filter(not_hit.to_q(UNRESTRICTED_FILTER_CONTEXT)).values_list(
+            "id", flat=True
+        )
     )
     assert session_ids == {keep.id}
 
@@ -584,7 +613,7 @@ def test_null_operator_normalizes_to_empty_list():
     restored = GameFilter.from_json({"AND": None})
     assert restored is not None
     assert restored.AND == []
-    restored.to_q()  # must not raise
+    restored.to_q(UNRESTRICTED_FILTER_CONTEXT)  # must not raise
 
 
 def test_from_json_drops_null_list_element():

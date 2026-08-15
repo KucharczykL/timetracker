@@ -110,7 +110,8 @@ def test_convert_prices_targets_display_currency(
     clean_currency_env,
     django_capture_on_commit_callbacks,
 ):
-    from games.tasks import convert_prices
+    from games.models import PurchaseConversionState
+    from games.tasks import convert_library_prices
 
     _set_currency(
         django_capture_on_commit_callbacks,
@@ -125,7 +126,8 @@ def test_convert_prices_targets_display_currency(
     )
     purchase.games.add(game)
 
-    convert_prices()
+    state = PurchaseConversionState.objects.get(library=user.library)
+    convert_library_prices(str(user.library.pk), state.requested_version)
 
     purchase.refresh_from_db()
     assert purchase.converted_currency == "EUR"

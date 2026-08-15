@@ -361,7 +361,10 @@ def test_preset_pick_on_builderless_mode(
     user = django_user_model.objects.get(username="tester")
     stored_filter = {"name": {"modifier": "INCLUDES", "value": "deck"}}
     FilterPreset.objects.create(
-        user=user, name="DeckOnly", mode="devices", object_filter=stored_filter
+        library=user.library,
+        name="DeckOnly",
+        mode="devices",
+        object_filter=stored_filter,
     )
 
     page = authenticated_page

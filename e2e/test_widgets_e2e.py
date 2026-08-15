@@ -813,7 +813,7 @@ def test_quick_bar_preset_pick_navigates_to_filtered_list(
     user = django_user_model.objects.get(username="tester")
     stored_filter = {"name": {"modifier": "INCLUDES", "value": "halo"}}
     FilterPreset.objects.create(
-        user=user, name="HaloOnly", mode="games", object_filter=stored_filter
+        library=user.library, name="HaloOnly", mode="games", object_filter=stored_filter
     )
 
     page = authenticated_page

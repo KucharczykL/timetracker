@@ -32,6 +32,7 @@ from common.utils import safe_division
 from games.models import (
     Game,
     Purchase,
+    PurchaseConversionState,
     PurchaseQueryset,
     Session,
     SessionQuerySet,
@@ -99,10 +100,16 @@ def _days_played_percent(unique_days: int, first: date, last: date) -> int:
 
 
 def compute_stats(library: UserLibrary, year: int | None = None) -> StatsData:
+    published_currency = (
+        PurchaseConversionState.objects.only("published_currency")
+        .get(library=library)
+        .published_currency
+    )
     return _compute_stats_from_scoped_querysets(
         sessions=Session.objects.for_library(library),
         purchases=Purchase.objects.for_library(library),
         year=year,
+        currency=published_currency,
     )
 
 
@@ -111,12 +118,12 @@ def _compute_stats_from_scoped_querysets(
     sessions: SessionQuerySet,
     purchases: PurchaseQueryset,
     year: int | None,
+    currency: str,
 ) -> StatsData:
     """Compute metrics without selecting a global Session or Purchase base."""
 
     library_purchases = purchases
     is_alltime = year is None
-    currency = "CZK"
 
     # ── Scope ──────────────────────────────────────────────────────────────
     if is_alltime:

@@ -19,6 +19,7 @@ from games.models import (
     Game,
     GameStatusChange,
     Purchase,
+    PurchaseConversionState,
     Session,
     SiteSetting,
     UserLibrary,
@@ -38,6 +39,18 @@ def provision_user_library(sender, instance, created, raw=False, **kwargs) -> No
         library, _ = UserLibrary.objects.get_or_create(user=instance)
         UserPreferences.objects.get_or_create(user=instance)
         UserLibraryPreferences.objects.get_or_create(library=library)
+        from timetracker.settings_resolver import resolve_for_user_with_origin
+
+        display_currency = str(
+            resolve_for_user_with_origin(instance, "DEFAULT_DISPLAY_CURRENCY").value
+        ).upper()
+        PurchaseConversionState.objects.get_or_create(
+            library=library,
+            defaults={
+                "requested_currency": display_currency,
+                "published_currency": display_currency,
+            },
+        )
 
 
 @receiver([post_save, post_delete], sender=SiteSetting)
@@ -71,15 +84,24 @@ def mark_needs_price_update(sender, instance, created, **kwargs):
     """Mark purchase for price update if price or currency changed."""
     if kwargs.get("raw"):
         return
-    if (
+    price_changed = (
         not created
         and hasattr(instance, "_old_price")
         and (
             instance.price != instance._old_price
             or instance.price_currency != instance._old_currency
         )
-    ):
+    )
+    if price_changed:
         sender.objects.filter(pk=instance.pk).update(needs_price_update=True)
+    if created or price_changed:
+        from games.conversion import request_conversion
+        from timetracker.settings_resolver import resolve_for_user_with_origin
+
+        target = resolve_for_user_with_origin(
+            instance.library.user, "DEFAULT_DISPLAY_CURRENCY"
+        ).value
+        request_conversion(instance.library, str(target))
 
 
 @receiver(m2m_changed, sender=Purchase.games.through)

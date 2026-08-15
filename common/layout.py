@@ -88,7 +88,7 @@ _TOAST_CONTAINER = """<div x-data="toastStore()"
                   }"
                  @click="dismissToast(toast.id)"
                  @mouseenter="$store.toasts.clearToastTimer(toast.id)"
-                 @mouseleave="$store.toasts.resumeToastTimer(toast.id, 5000)"
+                 @mouseleave="$store.toasts.resumeToastTimer(toast.id)"
                  @keydown.escape="dismissToast(toast.id)">
                 <div class="rounded-base shadow-lg p-4 flex items-start gap-3"
                      :class="{
@@ -575,6 +575,8 @@ def TimetrackerDocument(
         [str(ModuleScript(name)) for name in media.js]
         + [str(StaticScript(name)) for name in media.js_external]
     )
+    if request.user.is_authenticated:
+        collected_scripts += str(ModuleScript("dist/library-conversion-status.js"))
     all_scripts = collected_scripts + (str(scripts) if scripts else "")
 
     messages = [
@@ -628,11 +630,37 @@ def TimetrackerDocument(
             ),
         ]
         if request.user.is_authenticated:
+            from games.models import PurchaseConversionState
+
+            conversion = PurchaseConversionState.objects.get(
+                library=request.user.library
+            )
+            conversion_state = json.dumps(
+                {
+                    "library_id": str(conversion.library_id),
+                    "requested_version": conversion.requested_version,
+                    "requested_currency": conversion.requested_currency,
+                    "published_version": conversion.published_version,
+                    "published_currency": conversion.published_currency,
+                    "status": conversion.status,
+                    "retry_at": conversion.retry_at.isoformat().replace("+00:00", "Z")
+                    if conversion.retry_at
+                    else None,
+                    "last_error": conversion.last_error,
+                },
+                separators=(",", ":"),
+            )
+
             resolved = resolve_for_user_with_origin(request.user, "THEME")
             inherited = resolve_with_origin("THEME")
             personal = resolved.value if resolved.source is SettingSource.USER else ""
             theme_attributes.extend(
                 [
+                    ("data-library-conversion-state", conversion_state),
+                    (
+                        "data-library-conversion-status-url",
+                        "/api/conversion/status",
+                    ),
                     ("data-theme-preference", str(resolved.value)),
                     ("data-theme-personal-preference", str(personal)),
                     ("data-theme-inherited-preference", str(inherited.value)),

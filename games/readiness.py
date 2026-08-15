@@ -6,7 +6,12 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ImproperlyConfigured
 from django.db.models import Exists, OuterRef
 
-from games.models import UserLibrary, UserLibraryPreferences, UserPreferences
+from games.models import (
+    PurchaseConversionState,
+    UserLibrary,
+    UserLibraryPreferences,
+    UserPreferences,
+)
 
 logger = logging.getLogger("games")
 
@@ -33,12 +38,21 @@ def assert_library_structure() -> None:
             ~Exists(UserLibraryPreferences.objects.filter(library_id=OuterRef("pk")))
         ).values_list("pk", flat=True)
     )
+    missing_conversion_states = list(
+        UserLibrary.objects.filter(
+            ~Exists(PurchaseConversionState.objects.filter(library_id=OuterRef("pk")))
+        ).values_list("pk", flat=True)
+    )
     missing = [
         *(f"UserLibrary(user={user_id})" for user_id in missing_libraries),
         *(f"UserPreferences(user={user_id})" for user_id in missing_user_preferences),
         *(
             f"UserLibraryPreferences(library={library_id})"
             for library_id in missing_library_preferences
+        ),
+        *(
+            f"PurchaseConversionState(library={library_id})"
+            for library_id in missing_conversion_states
         ),
     ]
     if missing:
