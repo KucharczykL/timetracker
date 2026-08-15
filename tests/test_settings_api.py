@@ -132,8 +132,15 @@ def test_site_endpoints_allowed_for_superuser(superuser_client):
 # --- user scoping ---------------------------------------------------------
 
 
-def test_user_patch_and_get_round_trip(auth_client, no_currency_env):
-    response = _patch(auth_client, _user_patch_url("DEFAULT_PURCHASE_CURRENCY"), "EUR")
+def test_user_patch_and_get_round_trip(
+    auth_client, no_currency_env, django_capture_on_commit_callbacks
+):
+    response = _patch_committed(
+        django_capture_on_commit_callbacks,
+        auth_client,
+        _user_patch_url("DEFAULT_PURCHASE_CURRENCY"),
+        "EUR",
+    )
     assert response.status_code == 200
     assert response.json() == {
         "key": "DEFAULT_PURCHASE_CURRENCY",
@@ -158,26 +165,48 @@ def test_user_patch_emits_saved_success_toast(auth_client, no_currency_env):
 
 
 def test_user_settings_are_scoped_per_user(
-    auth_client, second_auth_client, no_currency_env
+    auth_client, second_auth_client, no_currency_env, django_capture_on_commit_callbacks
 ):
-    _patch(auth_client, _user_patch_url("DEFAULT_PURCHASE_CURRENCY"), "EUR")
+    _patch_committed(
+        django_capture_on_commit_callbacks,
+        auth_client,
+        _user_patch_url("DEFAULT_PURCHASE_CURRENCY"),
+        "EUR",
+    )
     # The second user sees no personal override, so not EUR.
     other_currency = _currency(second_auth_client.get(_user_url()).json())
     assert other_currency["value"] != "EUR"
     assert other_currency["source"] != "user"
     # And the second user's write does not touch the first user's value.
-    _patch(second_auth_client, _user_patch_url("DEFAULT_PURCHASE_CURRENCY"), "GBP")
+    _patch_committed(
+        django_capture_on_commit_callbacks,
+        second_auth_client,
+        _user_patch_url("DEFAULT_PURCHASE_CURRENCY"),
+        "GBP",
+    )
     first_currency = _currency(auth_client.get(_user_url()).json())
     assert first_currency["value"] == "EUR"
 
 
-def test_user_null_clears_back_to_fallback(auth_client, no_currency_env):
+def test_user_null_clears_back_to_fallback(
+    auth_client, no_currency_env, django_capture_on_commit_callbacks
+):
     from games.models import SiteSetting, UserPreferences
 
     SiteSetting.objects.create(key="DEFAULT_PURCHASE_CURRENCY", value="USD")
 
-    _patch(auth_client, _user_patch_url("DEFAULT_PURCHASE_CURRENCY"), "EUR")
-    response = _patch(auth_client, _user_patch_url("DEFAULT_PURCHASE_CURRENCY"), None)
+    _patch_committed(
+        django_capture_on_commit_callbacks,
+        auth_client,
+        _user_patch_url("DEFAULT_PURCHASE_CURRENCY"),
+        "EUR",
+    )
+    response = _patch_committed(
+        django_capture_on_commit_callbacks,
+        auth_client,
+        _user_patch_url("DEFAULT_PURCHASE_CURRENCY"),
+        None,
+    )
     assert response.status_code == 200
     assert response.json() == {
         "key": "DEFAULT_PURCHASE_CURRENCY",
@@ -243,8 +272,15 @@ def test_user_patch_rejects_unsupported_landing_page_and_writes_nothing(auth_cli
     )
 
 
-def test_user_page_size_round_trips_as_int(auth_client):
-    response = _patch(auth_client, _user_patch_url("DEFAULT_PAGE_SIZE"), "50")
+def test_user_page_size_round_trips_as_int(
+    auth_client, django_capture_on_commit_callbacks
+):
+    response = _patch_committed(
+        django_capture_on_commit_callbacks,
+        auth_client,
+        _user_patch_url("DEFAULT_PAGE_SIZE"),
+        "50",
+    )
 
     assert response.status_code == 200
     assert response.json()["value"] == 50
@@ -252,8 +288,15 @@ def test_user_page_size_round_trips_as_int(auth_client):
     assert _page_size(auth_client.get(_user_url()).json())["value"] == 50
 
 
-def test_user_theme_patch_persists_without_browser_cookies(auth_client):
-    response = _patch(auth_client, _user_patch_url("THEME"), "dark")
+def test_user_theme_patch_persists_without_browser_cookies(
+    auth_client, django_capture_on_commit_callbacks
+):
+    response = _patch_committed(
+        django_capture_on_commit_callbacks,
+        auth_client,
+        _user_patch_url("THEME"),
+        "dark",
+    )
 
     assert response.status_code == 200
     assert response.json()["value"] == "dark"

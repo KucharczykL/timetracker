@@ -41,6 +41,7 @@ def test_settings_page_renders_resolved_preferences(auth_client, user):
         theme="dark",
     )
 
+    settings_resolver.clear_cache()
     response = auth_client.get(reverse("games:settings"))
 
     assert response.status_code == 200
@@ -142,6 +143,7 @@ def test_personal_fields_carry_no_source_badge(auth_client):
 
 def test_personal_theme_is_selected(auth_client, user):
     UserPreferences.objects.filter(user=user).update(theme="light")
+    settings_resolver.clear_cache()
 
     html = auth_client.get(reverse("games:settings")).content.decode()
 
@@ -153,6 +155,7 @@ def test_personal_page_size_is_selected(auth_client, user):
     UserPreferences.objects.filter(user=user).update(
         extra_preferences={"DEFAULT_PAGE_SIZE": 50}
     )
+    settings_resolver.clear_cache()
 
     html = auth_client.get(reverse("games:settings")).content.decode()
 
@@ -167,6 +170,7 @@ def test_personal_presentation_preferences_are_selected_and_live_saved(
         date_format_locale="cs",
         datetime_format="mdy_12h",
     )
+    settings_resolver.clear_cache()
 
     html = auth_client.get(reverse("games:settings")).content.decode()
 

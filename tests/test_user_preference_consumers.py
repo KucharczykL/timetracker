@@ -8,6 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from games.models import Device, Game, Platform, Purchase, Session, UserPreferences
+from timetracker import settings_resolver
 
 
 @pytest.fixture
@@ -28,6 +29,11 @@ def game(db, user):
     return Game.objects.create(library=user.library, name="Hades", platform=platform)
 
 
+def _set_purchase_currency(user) -> None:
+    UserPreferences.objects.filter(user=user).update(default_purchase_currency="EUR")
+    settings_resolver.clear_cache()
+
+
 def _tag_with(html: str, **attributes: object) -> str:
     for tag in re.findall(r"<[^>]+>", html):
         if all(f'{name}="{value}"' in tag for name, value in attributes.items()):
@@ -39,7 +45,7 @@ def _tag_with(html: str, **attributes: object) -> str:
     "url_name", ["games:add_purchase", "games:add_purchase_for_game"]
 )
 def test_purchase_add_forms_use_user_currency(auth_client, user, game, url_name):
-    UserPreferences.objects.filter(user=user).update(default_purchase_currency="EUR")
+    _set_purchase_currency(user)
     args = [game.pk] if url_name.endswith("for_game") else []
 
     html = auth_client.get(reverse(url_name, args=args)).content.decode()
@@ -52,7 +58,7 @@ def test_purchase_add_forms_use_user_currency(auth_client, user, game, url_name)
 def test_purchase_edit_uses_user_currency_only_when_existing_value_is_empty(
     auth_client, user, game
 ):
-    UserPreferences.objects.filter(user=user).update(default_purchase_currency="EUR")
+    _set_purchase_currency(user)
     empty = Purchase.objects.create(
         library=user.library, date_purchased=date(2026, 1, 1), price_currency="USD"
     )
@@ -79,7 +85,7 @@ def test_purchase_edit_uses_user_currency_only_when_existing_value_is_empty(
 def test_purchase_edit_blank_currency_falls_back_to_user_currency(
     auth_client, user, game
 ):
-    UserPreferences.objects.filter(user=user).update(default_purchase_currency="EUR")
+    _set_purchase_currency(user)
     purchase = Purchase.objects.create(
         library=user.library, date_purchased=date(2026, 1, 1), price_currency="USD"
     )
@@ -111,7 +117,7 @@ def _purchase_post_data(game_ids: list[int], **overrides: object) -> dict[str, o
 
 
 def test_combined_purchase_save_falls_back_to_user_currency(auth_client, user, game):
-    UserPreferences.objects.filter(user=user).update(default_purchase_currency="EUR")
+    _set_purchase_currency(user)
 
     response = auth_client.post(
         reverse("games:add_purchase"),
@@ -126,7 +132,7 @@ def test_separate_purchase_save_falls_back_to_user_currency(auth_client, user, g
     second = Game.objects.create(
         library=user.library, name="Celeste", platform=game.platform
     )
-    UserPreferences.objects.filter(user=user).update(default_purchase_currency="EUR")
+    _set_purchase_currency(user)
 
     response = auth_client.post(
         reverse("games:add_purchase"),

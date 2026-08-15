@@ -26,11 +26,14 @@ def auth_client(db):
         ("games:list_purchases", "games:list_purchases"),
     ],
 )
-def test_index_redirects_to_selected_landing_page(auth_client, url_name, expected_name):
+def test_index_redirects_to_selected_landing_page(
+    auth_client, url_name, expected_name, django_capture_on_commit_callbacks
+):
     client, user = auth_client
     preferences = UserPreferences.objects.get(user=user)
     preferences.default_landing_page = url_name
-    preferences.save(update_fields=["default_landing_page", "updated_at"])
+    with django_capture_on_commit_callbacks(execute=True):
+        preferences.save(update_fields=["default_landing_page", "updated_at"])
 
     response = client.get(reverse("games:index"))
 
@@ -39,11 +42,14 @@ def test_index_redirects_to_selected_landing_page(auth_client, url_name, expecte
 
 
 @override_settings(TIME_ZONE="Pacific/Kiritimati")
-def test_index_redirects_to_current_year_stats_in_configured_timezone(db, monkeypatch):
+def test_index_redirects_to_current_year_stats_in_configured_timezone(
+    db, monkeypatch, django_capture_on_commit_callbacks
+):
     user = get_user_model().objects.create_user(username="tester", password="pw")
     preferences = UserPreferences.objects.get(user=user)
     preferences.default_landing_page = "games:stats_by_year"
-    preferences.save(update_fields=["default_landing_page", "updated_at"])
+    with django_capture_on_commit_callbacks(execute=True):
+        preferences.save(update_fields=["default_landing_page", "updated_at"])
     monkeypatch.setattr(
         timezone,
         "now",

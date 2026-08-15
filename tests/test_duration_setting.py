@@ -18,18 +18,25 @@ def test_default_is_decimal_hours(user):
     assert resolve_str_for_user(user, "DURATION_FORMAT") == "decimal_hours"
 
 
-def test_personal_value_overrides_the_site_default(user):
-    change_site_setting("DURATION_FORMAT", "whole_hours")
-    change_user_setting(user, "DURATION_FORMAT", "adaptive")
+def test_personal_value_overrides_the_site_default(
+    user, django_capture_on_commit_callbacks
+):
+    with django_capture_on_commit_callbacks(execute=True):
+        change_site_setting("DURATION_FORMAT", "whole_hours")
+        change_user_setting(user, "DURATION_FORMAT", "adaptive")
 
     assert resolve_str_for_user(user, "DURATION_FORMAT") == "adaptive"
 
 
-def test_clearing_the_personal_value_restores_the_site_default(user):
-    change_site_setting("DURATION_FORMAT", "whole_hours")
-    change_user_setting(user, "DURATION_FORMAT", "adaptive")
+def test_clearing_the_personal_value_restores_the_site_default(
+    user, django_capture_on_commit_callbacks
+):
+    with django_capture_on_commit_callbacks(execute=True):
+        change_site_setting("DURATION_FORMAT", "whole_hours")
+        change_user_setting(user, "DURATION_FORMAT", "adaptive")
 
-    change_user_setting(user, "DURATION_FORMAT", None)
+    with django_capture_on_commit_callbacks(execute=True):
+        change_user_setting(user, "DURATION_FORMAT", None)
 
     assert resolve_str_for_user(user, "DURATION_FORMAT") == "whole_hours"
 
@@ -51,8 +58,11 @@ def test_presentation_is_cached_on_the_request(user):
     assert first.profile.id == "decimal_hours"
 
 
-def test_presentation_follows_the_personal_preference(user):
-    change_user_setting(user, "DURATION_FORMAT", "adaptive")
+def test_presentation_follows_the_personal_preference(
+    user, django_capture_on_commit_callbacks
+):
+    with django_capture_on_commit_callbacks(execute=True):
+        change_user_setting(user, "DURATION_FORMAT", "adaptive")
     request = RequestFactory().get("/tracker/session/list")
     request.user = user
 
