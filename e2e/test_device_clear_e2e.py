@@ -13,8 +13,7 @@ from playwright.sync_api import Page
 
 
 @pytest.fixture
-def authenticated_page(live_server, page: Page, django_user_model) -> Page:
-    django_user_model.objects.create_user(username="tester", password="secret123")
+def authenticated_page(live_server, page: Page, e2e_user) -> Page:
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")
     page.fill('input[name="password"]', "secret123")
@@ -23,12 +22,13 @@ def authenticated_page(live_server, page: Page, django_user_model) -> Page:
     return page
 
 
-@pytest.mark.django_db
-def test_no_device_option_clears_device(authenticated_page: Page, live_server):
+def test_no_device_option_clears_device(
+    authenticated_page: Page, live_server, e2e_library
+):
     from games.models import Device, Game, Session
 
-    game = Game.objects.create(name="Test Game")
-    desktop = Device.objects.create(name="Desktop")
+    game = Game.objects.create(library=e2e_library, name="Test Game")
+    desktop = Device.objects.create(library=e2e_library, name="Desktop")
     session = Session.objects.create(
         game=game,
         device=desktop,

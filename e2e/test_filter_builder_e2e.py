@@ -44,8 +44,7 @@ def _login(page: Page, live_server) -> None:
 
 
 @pytest.fixture
-def authenticated_page(live_server, page: Page, django_user_model) -> Page:
-    django_user_model.objects.create_user(username="tester", password="secret123")
+def authenticated_page(live_server, page: Page, e2e_user) -> Page:
     _login(page, live_server)
     return page
 
@@ -62,7 +61,7 @@ def _encode_filter(filter_dict: dict) -> str:
 
 
 def test_builder_page_elements_load_and_initialize(
-    authenticated_page: Page, live_server
+    authenticated_page: Page, live_server, e2e_library
 ) -> None:
     """The builder page loads all four custom elements and the JavaScript
     initializes: the filter-group seeds its tree from the prefilled ?filter=
@@ -70,9 +69,13 @@ def test_builder_page_elements_load_and_initialize(
     Status", and the count badge settles from "Counting…"."""
     page = authenticated_page
 
-    platform = Platform.objects.create(name="PC")
-    Game.objects.create(name="DoneGame", platform=platform, status="f")
-    Game.objects.create(name="PlayGame", platform=platform, status="p")
+    platform = Platform.objects.create(library=e2e_library, name="PC")
+    Game.objects.create(
+        library=e2e_library, name="DoneGame", platform=platform, status="f"
+    )
+    Game.objects.create(
+        library=e2e_library, name="PlayGame", platform=platform, status="p"
+    )
 
     # The filter JSON seeds the filter-group tree AND the leaf's value widget
     # (#263 hydration): status INCLUDES finished ("f").
@@ -124,7 +127,9 @@ def test_builder_page_elements_load_and_initialize(
     expect(relation_match_select).to_have_class(re.compile(r"rounded"))
 
 
-def test_apply_navigates_to_game_list(authenticated_page: Page, live_server) -> None:
+def test_apply_navigates_to_game_list(
+    authenticated_page: Page, live_server, e2e_library
+) -> None:
     """Clicking Apply on the builder page triggers navigation to the game list.
 
     Validates only that the Apply button is present, enabled, and wired to a
@@ -132,9 +137,13 @@ def test_apply_navigates_to_game_list(authenticated_page: Page, live_server) -> 
     by test_prefill_apply_roundtrip_carries_filter."""
     page = authenticated_page
 
-    platform = Platform.objects.create(name="PC")
-    Game.objects.create(name="DoneGame", platform=platform, status="f")
-    Game.objects.create(name="PlayGame", platform=platform, status="p")
+    platform = Platform.objects.create(library=e2e_library, name="PC")
+    Game.objects.create(
+        library=e2e_library, name="DoneGame", platform=platform, status="f"
+    )
+    Game.objects.create(
+        library=e2e_library, name="PlayGame", platform=platform, status="p"
+    )
 
     filter_json = {"status": {"modifier": "INCLUDES", "value": ["f"]}}
     filter_param = _encode_filter(filter_json)
@@ -161,7 +170,7 @@ def test_apply_navigates_to_game_list(authenticated_page: Page, live_server) -> 
 
 
 def test_game_list_filter_narrows_results(
-    authenticated_page: Page, live_server
+    authenticated_page: Page, live_server, e2e_library
 ) -> None:
     """The game list URL with ?filter=<JSON> narrows results end-to-end.
 
@@ -171,9 +180,13 @@ def test_game_list_filter_narrows_results(
     correctly filters the queryset from the URL parameter."""
     page = authenticated_page
 
-    platform = Platform.objects.create(name="PC")
-    Game.objects.create(name="DoneGame", platform=platform, status="f")
-    Game.objects.create(name="PlayGame", platform=platform, status="p")
+    platform = Platform.objects.create(library=e2e_library, name="PC")
+    Game.objects.create(
+        library=e2e_library, name="DoneGame", platform=platform, status="f"
+    )
+    Game.objects.create(
+        library=e2e_library, name="PlayGame", platform=platform, status="p"
+    )
 
     # Navigate directly to the game list with the status=Finished filter.
     # This is the same JSON the builder's Apply would send if the widget were set.
@@ -193,7 +206,7 @@ def test_game_list_filter_narrows_results(
 
 
 def test_prefill_apply_roundtrip_carries_filter(
-    authenticated_page: Page, live_server
+    authenticated_page: Page, live_server, e2e_library
 ) -> None:
     """The full prefill → Apply → filtered-list round-trip (#263).
 
@@ -202,9 +215,13 @@ def test_prefill_apply_roundtrip_carries_filter(
     Apply carries the ?filter= through to the game list, narrowing results."""
     page = authenticated_page
 
-    platform = Platform.objects.create(name="PC")
-    Game.objects.create(name="DoneGame", platform=platform, status="f")
-    Game.objects.create(name="PlayGame", platform=platform, status="p")
+    platform = Platform.objects.create(library=e2e_library, name="PC")
+    Game.objects.create(
+        library=e2e_library, name="DoneGame", platform=platform, status="f"
+    )
+    Game.objects.create(
+        library=e2e_library, name="PlayGame", platform=platform, status="p"
+    )
 
     # Same filter JSON used by the other tests in this file: status INCLUDES "f".
     filter_json = {"status": {"modifier": "INCLUDES", "value": ["f"]}}
@@ -286,7 +303,7 @@ def test_empty_preset_dropdown_shows_readable_placeholder(
 
 
 def test_load_set_field_preset_reflects_field_without_crash(
-    authenticated_page: Page, live_server, django_user_model
+    authenticated_page: Page, live_server, django_user_model, e2e_library
 ) -> None:
     """Loading a preset whose filter contains a set-field criterion (session's
     ``game`` field) must not throw and must reflect the field in the picker.
@@ -304,8 +321,10 @@ def test_load_set_field_preset_reflects_field_without_crash(
     """
     page = authenticated_page
 
-    platform = Platform.objects.create(name="PC")
-    game = Game.objects.create(name="SpyGame", platform=platform, status="p")
+    platform = Platform.objects.create(library=e2e_library, name="PC")
+    game = Game.objects.create(
+        library=e2e_library, name="SpyGame", platform=platform, status="p"
+    )
 
     # Obtain the user created by the authenticated_page fixture (username="tester").
     user = django_user_model.objects.get(username="tester")
@@ -470,7 +489,7 @@ def test_field_layout_value_widget_hosts_on_inline_combobox(
 
 
 def test_nested_relation_prefill_renders_full_tree(
-    authenticated_page: Page, live_server
+    authenticated_page: Page, live_server, e2e_library
 ) -> None:
     """The stats "View all" → Advanced filter URL shape: a purchase filter whose
     only key is a nested relation chain (game_filter → playevent_filter → ended
@@ -481,19 +500,27 @@ def test_nested_relation_prefill_renders_full_tree(
     so the relation swallowed its whole subtree as an opaque criterion payload."""
     page = authenticated_page
 
-    platform = Platform.objects.create(name="PC")
-    done_game = Game.objects.create(name="DoneGame", platform=platform, status="f")
-    other_game = Game.objects.create(name="OtherGame", platform=platform, status="p")
+    platform = Platform.objects.create(library=e2e_library, name="PC")
+    done_game = Game.objects.create(
+        library=e2e_library, name="DoneGame", platform=platform, status="f"
+    )
+    other_game = Game.objects.create(
+        library=e2e_library, name="OtherGame", platform=platform, status="p"
+    )
     PlayEvent.objects.create(
         game=done_game, ended=datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
     )
     matching_purchase = Purchase.objects.create(
+        library=e2e_library,
         date_purchased=datetime(2026, 1, 5, 12, 0, tzinfo=UTC),
+        price_currency="USD",
         type=Purchase.GAME,
     )
     matching_purchase.games.set([done_game])
     non_matching_purchase = Purchase.objects.create(
+        library=e2e_library,
         date_purchased=datetime(2026, 2, 5, 12, 0, tzinfo=UTC),
+        price_currency="USD",
         type=Purchase.GAME,
     )
     non_matching_purchase.games.set([other_game])
@@ -551,7 +578,7 @@ def test_nested_relation_prefill_renders_full_tree(
 
 
 def test_scoped_aggregate_prefill_hydrates_scope_and_counts(
-    authenticated_page: Page, live_server
+    authenticated_page: Page, live_server, e2e_library
 ) -> None:
     """A scoped aggregate in ?filter= (issue #151) hydrates the builder: the
     aggregate leaf renders with its nested scope group (the device leaf shown as
@@ -564,11 +591,17 @@ def test_scoped_aggregate_prefill_hydrates_scope_and_counts(
 
     page = authenticated_page
 
-    platform = Platform.objects.create(name="PC")
-    deck = Device.objects.create(name="Steam Deck", type="Handheld")
-    desktop = Device.objects.create(name="Desktop", type="PC")
-    deck_game = Game.objects.create(name="DeckGame", platform=platform)
-    desktop_game = Game.objects.create(name="DeskGame", platform=platform)
+    platform = Platform.objects.create(library=e2e_library, name="PC")
+    deck = Device.objects.create(
+        library=e2e_library, name="Steam Deck", type="Handheld"
+    )
+    desktop = Device.objects.create(library=e2e_library, name="Desktop", type="PC")
+    deck_game = Game.objects.create(
+        library=e2e_library, name="DeckGame", platform=platform
+    )
+    desktop_game = Game.objects.create(
+        library=e2e_library, name="DeskGame", platform=platform
+    )
     first_start = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
     for index, (game, device) in enumerate(
         [
@@ -626,7 +659,7 @@ def test_scoped_aggregate_prefill_hydrates_scope_and_counts(
 
 
 def test_scoped_aggregate_narrows_game_list(
-    authenticated_page: Page, live_server
+    authenticated_page: Page, live_server, e2e_library
 ) -> None:
     """The list round-trip for a scoped aggregate: ?filter= JSON → GameFilter
     (scope resolved via the aggregates spec) → filtered aggregate queryset."""
@@ -636,11 +669,17 @@ def test_scoped_aggregate_narrows_game_list(
 
     page = authenticated_page
 
-    platform = Platform.objects.create(name="PC")
-    deck = Device.objects.create(name="Steam Deck", type="Handheld")
-    desktop = Device.objects.create(name="Desktop", type="PC")
-    deck_game = Game.objects.create(name="DeckGame", platform=platform)
-    desktop_game = Game.objects.create(name="DeskGame", platform=platform)
+    platform = Platform.objects.create(library=e2e_library, name="PC")
+    deck = Device.objects.create(
+        library=e2e_library, name="Steam Deck", type="Handheld"
+    )
+    desktop = Device.objects.create(library=e2e_library, name="Desktop", type="PC")
+    deck_game = Game.objects.create(
+        library=e2e_library, name="DeckGame", platform=platform
+    )
+    desktop_game = Game.objects.create(
+        library=e2e_library, name="DeskGame", platform=platform
+    )
     first_start = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
     for index, (game, device) in enumerate(
         [
@@ -678,7 +717,7 @@ def test_scoped_aggregate_narrows_game_list(
 
 
 def test_cross_model_year_comparison_filters_sessions(
-    authenticated_page: Page, live_server
+    authenticated_page: Page, live_server, e2e_library
 ) -> None:
     """Cross-model year-space field comparison round-trip (#169).
 
@@ -699,12 +738,12 @@ def test_cross_model_year_comparison_filters_sessions(
 
     page = authenticated_page
 
-    platform = Platform.objects.create(name="PC")
+    platform = Platform.objects.create(library=e2e_library, name="PC")
     match_game = Game.objects.create(
-        name="MatchGame", platform=platform, year_released=2020
+        library=e2e_library, name="MatchGame", platform=platform, year_released=2020
     )
     miss_game = Game.objects.create(
-        name="MissGame", platform=platform, year_released=2020
+        library=e2e_library, name="MissGame", platform=platform, year_released=2020
     )
 
     match_start = datetime(2020, 6, 15, 10, 0, tzinfo=UTC)

@@ -21,16 +21,13 @@ from games.models import Game, Platform, Purchase, UserPreferences
 
 
 @pytest.fixture
-def authenticated_page(live_server, page, django_user_model):
-    user = django_user_model.objects.create_user(
-        username="tester", password="secret123"
-    )
+def authenticated_page(live_server, page, e2e_user):
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")
     page.fill('input[name="password"]', "secret123")
     page.click('button:has-text("Login")')
     page.wait_for_url(f"{live_server.url}/tracker**")
-    return page, user
+    return page, e2e_user
 
 
 def _select_first_game(page):
@@ -50,9 +47,11 @@ def test_add_purchase_date_field_iso_order_and_persists(
 ):
     """Default (ISO) account: segments render year → month → day, and the
     persisted date matches what was typed."""
-    page, _user = authenticated_page
-    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-    Game.objects.create(name="Alpha Game", platform=platform)
+    page, user = authenticated_page
+    platform = Platform.objects.create(
+        library=user.library, name="PC", icon="pc", group="PC"
+    )
+    Game.objects.create(library=user.library, name="Alpha Game", platform=platform)
 
     page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
     field = 'date-picker:has(input[name="date_purchased"]) [data-date-picker-field]'
@@ -78,9 +77,13 @@ def test_add_purchase_date_field_mdy_order_persists_same_iso_date(
     persisted date is the same canonical ISO value regardless of display
     order (issue #485 acceptance criterion)."""
     page, user = authenticated_page
-    UserPreferences.objects.create(user=user, datetime_format="mdy_12h")
-    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-    Game.objects.create(name="Alpha Game", platform=platform)
+    preferences = UserPreferences.objects.get(user=user)
+    preferences.datetime_format = "mdy_12h"
+    preferences.save(update_fields=["datetime_format"])
+    platform = Platform.objects.create(
+        library=user.library, name="PC", icon="pc", group="PC"
+    )
+    Game.objects.create(library=user.library, name="Alpha Game", platform=platform)
 
     page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
     field = 'date-picker:has(input[name="date_purchased"]) [data-date-picker-field]'
@@ -101,10 +104,15 @@ def test_add_purchase_date_field_mdy_order_persists_same_iso_date(
 def test_edit_purchase_date_field_prefills_from_instance(
     authenticated_page, live_server
 ):
-    page, _user = authenticated_page
-    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-    game = Game.objects.create(name="Alpha Game", platform=platform)
+    page, user = authenticated_page
+    platform = Platform.objects.create(
+        library=user.library, name="PC", icon="pc", group="PC"
+    )
+    game = Game.objects.create(
+        library=user.library, name="Alpha Game", platform=platform
+    )
     purchase = Purchase.objects.create(
+        library=user.library,
         price=10,
         price_currency="USD",
         date_purchased="2025-06-01",
@@ -137,7 +145,9 @@ def test_changing_datetime_format_updates_add_purchase_segment_order(
     )
     assert initial_order == ["year", "month", "day"]
 
-    UserPreferences.objects.create(user=user, datetime_format="mdy_12h")
+    preferences = UserPreferences.objects.get(user=user)
+    preferences.datetime_format = "mdy_12h"
+    preferences.save(update_fields=["datetime_format"])
     page.reload()
     updated_order = page.locator(f"{field} input[data-date-part]").evaluate_all(
         "(els) => els.map(e => e.dataset.datePart)"
@@ -150,9 +160,13 @@ def test_add_playevent_date_fields_follow_iso_profile_and_persist(
 ):
     from games.models import PlayEvent
 
-    page, _user = authenticated_page
-    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-    game = Game.objects.create(name="Alpha Game", platform=platform)
+    page, user = authenticated_page
+    platform = Platform.objects.create(
+        library=user.library, name="PC", icon="pc", group="PC"
+    )
+    game = Game.objects.create(
+        library=user.library, name="Alpha Game", platform=platform
+    )
 
     page.goto(f"{live_server.url}{reverse('games:add_playevent')}")
     started_field = 'date-picker:has(input[name="started"]) [data-date-picker-field]'
@@ -171,9 +185,11 @@ def test_add_playevent_date_fields_follow_iso_profile_and_persist(
 
 
 def test_calendar_pick_commits_value_and_closes(authenticated_page, live_server):
-    page, _user = authenticated_page
-    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-    Game.objects.create(name="Alpha Game", platform=platform)
+    page, user = authenticated_page
+    platform = Platform.objects.create(
+        library=user.library, name="PC", icon="pc", group="PC"
+    )
+    Game.objects.create(library=user.library, name="Alpha Game", platform=platform)
 
     page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
     picker = 'date-picker:has(input[name="date_purchased"])'

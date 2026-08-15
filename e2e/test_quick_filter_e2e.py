@@ -23,8 +23,7 @@ def _login(page: Page, live_server) -> None:
 
 
 @pytest.fixture
-def authenticated_page(live_server, page: Page, django_user_model) -> Page:
-    django_user_model.objects.create_user(username="tester", password="secret123")
+def authenticated_page(live_server, page: Page, e2e_user) -> Page:
     _login(page, live_server)
     return page
 
@@ -41,15 +40,23 @@ def _quick_apply(page: Page) -> None:
     page.locator('quick-filter-bar button[type="submit"]').click()
 
 
-def test_quick_facet_apply_filters_the_list(authenticated_page: Page, live_server):
+def test_quick_facet_apply_filters_the_list(
+    authenticated_page: Page, live_server, e2e_library
+):
     """Picking a status in the quick bar and hitting Apply navigates with a
     flat facet-only ?filter= and the list is filtered."""
-    platform = Platform.objects.create(name="PC", icon="pc")
+    platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
     Game.objects.create(
-        name="Finished Game", platform=platform, status=Game.Status.FINISHED
+        library=e2e_library,
+        name="Finished Game",
+        platform=platform,
+        status=Game.Status.FINISHED,
     )
     Game.objects.create(
-        name="Unplayed Game", platform=platform, status=Game.Status.UNPLAYED
+        library=e2e_library,
+        name="Unplayed Game",
+        platform=platform,
+        status=Game.Status.UNPLAYED,
     )
 
     page = authenticated_page
@@ -82,15 +89,19 @@ def test_quick_facet_apply_filters_the_list(authenticated_page: Page, live_serve
     expect(pill).to_contain_text("Finished")
 
 
-def test_quick_scalar_facet_filters_sessions(authenticated_page: Page, live_server):
+def test_quick_scalar_facet_filters_sessions(
+    authenticated_page: Page, live_server, e2e_library
+):
     """The sessions quick bar's Duration number facet serializes a flat
     numeric criterion on Apply and the list is filtered by it."""
     from datetime import datetime, timedelta
 
     from games.models import Session
 
-    platform = Platform.objects.create(name="PC", icon="pc")
-    game = Game.objects.create(name="Timed Game", platform=platform)
+    platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
+    game = Game.objects.create(
+        library=e2e_library, name="Timed Game", platform=platform
+    )
     start = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
     long_session = Session.objects.create(
         game=game, timestamp_start=start, timestamp_end=start + timedelta(hours=3)
@@ -150,7 +161,7 @@ def test_advanced_filter_shows_degraded_pill(authenticated_page: Page, live_serv
     assert _filter_from_url(page.url) == {}
 
 
-def test_dropdown_facet_full_flow(authenticated_page: Page, live_server):
+def test_dropdown_facet_full_flow(authenticated_page: Page, live_server, e2e_library):
     """The dropdown facets on the sessions list: open the Game panel,
     include a game, remove a pill (the panel must stay open — the composedPath
     close-guard fix), Apply, and round-trip back into an editable bar with the
@@ -159,9 +170,13 @@ def test_dropdown_facet_full_flow(authenticated_page: Page, live_server):
 
     from games.models import Session
 
-    platform = Platform.objects.create(name="PC", icon="pc")
-    picked = Game.objects.create(name="Picked Game", platform=platform)
-    other = Game.objects.create(name="Other Game", platform=platform)
+    platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
+    picked = Game.objects.create(
+        library=e2e_library, name="Picked Game", platform=platform
+    )
+    other = Game.objects.create(
+        library=e2e_library, name="Other Game", platform=platform
+    )
     start = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
     picked_session = Session.objects.create(
         game=picked, timestamp_start=start, timestamp_end=start + timedelta(hours=1)
@@ -222,7 +237,9 @@ def test_dropdown_facet_full_flow(authenticated_page: Page, live_server):
     expect(pill).to_contain_text("Picked Game (PC)")
 
 
-def test_date_dropdown_facet_preset_flow(authenticated_page: Page, live_server):
+def test_date_dropdown_facet_preset_flow(
+    authenticated_page: Page, live_server, e2e_library
+):
     """The Started facet as a dropdown: a ghost "Started ▾" trigger
     opening a static always-visible calendar (no toggle, no Cancel/Select);
     picking the Today preset and applying serializes a BETWEEN criterion."""
@@ -230,8 +247,8 @@ def test_date_dropdown_facet_preset_flow(authenticated_page: Page, live_server):
 
     from games.models import Session
 
-    platform = Platform.objects.create(name="PC", icon="pc")
-    game = Game.objects.create(name="Doom", platform=platform)
+    platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
+    game = Game.objects.create(library=e2e_library, name="Doom", platform=platform)
     now = datetime.now(UTC)
     today_session = Session.objects.create(
         game=game, timestamp_start=now, timestamp_end=now + timedelta(hours=1)
@@ -281,7 +298,7 @@ def test_date_dropdown_facet_preset_flow(authenticated_page: Page, live_server):
 
 
 def test_priority_plus_overflow_collapses_and_restores(
-    authenticated_page: Page, live_server
+    authenticated_page: Page, live_server, e2e_library
 ):
     """Priority-plus: narrowing the viewport moves rightmost facets into
     the "⋯" overflow menu (ResizeObserver, no breakpoints); facets keep
@@ -290,8 +307,8 @@ def test_priority_plus_overflow_collapses_and_restores(
 
     from games.models import Session
 
-    platform = Platform.objects.create(name="PC", icon="pc")
-    game = Game.objects.create(name="Doom", platform=platform)
+    platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
+    game = Game.objects.create(library=e2e_library, name="Doom", platform=platform)
     start = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
     long_session = Session.objects.create(
         game=game, timestamp_start=start, timestamp_end=start + timedelta(hours=3)
@@ -349,15 +366,15 @@ def test_priority_plus_overflow_collapses_and_restores(
 
 
 def test_preset_pick_on_builderless_mode(
-    authenticated_page: Page, live_server, django_user_model
+    authenticated_page: Page, live_server, django_user_model, e2e_library
 ):
     """The quick bar's Load-preset picker works on a builderless mode
     (devices): picking navigates with the preset's ?filter=; Enter inside the
     picker's search box never applies the facet form."""
     from games.models import Device, FilterPreset
 
-    Device.objects.create(name="Steam Deck")
-    Device.objects.create(name="Desktop")
+    Device.objects.create(library=e2e_library, name="Steam Deck")
+    Device.objects.create(library=e2e_library, name="Desktop")
     user = django_user_model.objects.get(username="tester")
     stored_filter = {"name": {"modifier": "INCLUDES", "value": "deck"}}
     FilterPreset.objects.create(

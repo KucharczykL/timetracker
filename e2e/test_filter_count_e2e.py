@@ -97,11 +97,10 @@ def _login_and_open(page: Page, live_server, query: str = "") -> None:
 
 
 @override_settings(ROOT_URLCONF="e2e.test_filter_count_e2e")
-def test_badge_shows_total(live_server, page: Page, django_user_model):
-    django_user_model.objects.create_user(username="tester", password="secret123")
-    platform = Platform.objects.create(name="PC")
+def test_badge_shows_total(live_server, page: Page, e2e_user):
+    platform = Platform.objects.create(library=e2e_user.library, name="PC")
     for name in ("Hades", "Celeste", "Braid"):
-        Game.objects.create(name=name, platform=platform)
+        Game.objects.create(library=e2e_user.library, name=name, platform=platform)
 
     _login_and_open(page, live_server)
 
@@ -110,10 +109,9 @@ def test_badge_shows_total(live_server, page: Page, django_user_model):
 
 
 @override_settings(ROOT_URLCONF="e2e.test_filter_count_e2e")
-def test_badge_uses_singular_noun_for_one(live_server, page: Page, django_user_model):
-    django_user_model.objects.create_user(username="tester", password="secret123")
-    platform = Platform.objects.create(name="PC")
-    Game.objects.create(name="Hades", platform=platform)
+def test_badge_uses_singular_noun_for_one(live_server, page: Page, e2e_user):
+    platform = Platform.objects.create(library=e2e_user.library, name="PC")
+    Game.objects.create(library=e2e_user.library, name="Hades", platform=platform)
 
     _login_and_open(page, live_server)
 
@@ -121,10 +119,7 @@ def test_badge_uses_singular_noun_for_one(live_server, page: Page, django_user_m
 
 
 @override_settings(ROOT_URLCONF="e2e.test_filter_count_e2e")
-def test_badge_shows_error_state_on_bad_model(
-    live_server, page: Page, django_user_model
-):
-    django_user_model.objects.create_user(username="tester", password="secret123")
+def test_badge_shows_error_state_on_bad_model(live_server, page: Page, e2e_user):
 
     # The badge's model is unknown → the endpoint 400s → the badge must show an
     # explicit "count unavailable", never a bare 0.

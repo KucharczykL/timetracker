@@ -29,12 +29,16 @@ def _login(page, live_server, username="tester", password="secret123"):
 
 
 @pytest.fixture
-def authenticated_page(live_server, page, django_user_model):
-    user = django_user_model.objects.create_user(
-        username="tester", password="secret123"
-    )
+def authenticated_page(live_server, page, e2e_user):
     _login(page, live_server)
-    return page, user
+    return page, e2e_user
+
+
+def _set_preferences(user, **changes) -> None:
+    preferences = UserPreferences.objects.get(user=user)
+    for field, value in changes.items():
+        setattr(preferences, field, value)
+    preferences.save(update_fields=list(changes))
 
 
 def _select_first_game(page):
@@ -54,8 +58,8 @@ def test_session_timestamps_render_date_and_time_segments(
 ):
     """Default (ISO, 24-hour) account: one flat run of date and time segments,
     and no day period."""
-    page, _user = authenticated_page
-    Game.objects.create(name="Alpha Game")
+    page, user = authenticated_page
+    Game.objects.create(library=user.library, name="Alpha Game")
 
     page.goto(f"{live_server.url}{reverse('games:add_session')}")
     parts = page.locator(f"{START_FIELD} input[data-date-part]")
@@ -64,16 +68,14 @@ def test_session_timestamps_render_date_and_time_segments(
 
 
 def test_typed_wall_clock_means_the_picked_zone(
-    browser: Browser, live_server, django_user_model
+    browser: Browser, live_server, e2e_user
 ):
     """The reverse-engineered check for the reported bug: account zone Prague,
     zone picker flipped to Tokyo, typed 15:37 → the stored instant must be
     06:37 UTC (15:37 Tokyo), not 13:37 UTC (15:37 Prague)."""
-    user = django_user_model.objects.create_user(
-        username="tester", password="secret123"
-    )
-    UserPreferences.objects.create(user=user, display_time_zone="Europe/Prague")
-    Game.objects.create(name="Alpha Game")
+    user = e2e_user
+    _set_preferences(user, display_time_zone="Europe/Prague")
+    Game.objects.create(library=user.library, name="Alpha Game")
     # Browser pinned to the account zone: the capture default stamps Prague,
     # so the flip to Tokyo below is a deliberate user act, as in the report.
     context = browser.new_context(timezone_id="Europe/Prague")
@@ -115,16 +117,14 @@ def test_typed_wall_clock_means_the_picked_zone(
 
 
 def test_capture_default_makes_typed_digits_mean_the_browser_zone(
-    browser: Browser, live_server, django_user_model
+    browser: Browser, live_server, e2e_user
 ):
     """Browser in Tokyo, account in Prague, and the zone picker never touched:
     the capture default alone must make the typed 15:37 a Tokyo wall clock
     (06:37 UTC), not a Prague one (13:37 UTC)."""
-    user = django_user_model.objects.create_user(
-        username="tester", password="secret123"
-    )
-    UserPreferences.objects.create(user=user, display_time_zone="Europe/Prague")
-    Game.objects.create(name="Alpha Game")
+    user = e2e_user
+    _set_preferences(user, display_time_zone="Europe/Prague")
+    Game.objects.create(library=user.library, name="Alpha Game")
     context = browser.new_context(timezone_id="Asia/Tokyo")
     try:
         page = context.new_page()
@@ -155,15 +155,13 @@ def test_capture_default_makes_typed_digits_mean_the_browser_zone(
 
 
 def test_typed_session_timestamp_persists_as_the_instant_it_shows(
-    browser: Browser, live_server, django_user_model
+    browser: Browser, live_server, e2e_user
 ):
     """Browser pinned to the account zone, so the capture default stamps
     Europe/Prague and the typed digits mean exactly what they show."""
-    user = django_user_model.objects.create_user(
-        username="tester", password="secret123"
-    )
-    UserPreferences.objects.create(user=user, display_time_zone="Europe/Prague")
-    Game.objects.create(name="Alpha Game")
+    user = e2e_user
+    _set_preferences(user, display_time_zone="Europe/Prague")
+    Game.objects.create(library=user.library, name="Alpha Game")
     context = browser.new_context(timezone_id="Europe/Prague")
     try:
         page = context.new_page()
@@ -191,8 +189,8 @@ def test_typed_session_timestamp_persists_as_the_instant_it_shows(
 
 def test_a_12_hour_account_gets_a_day_period_segment(authenticated_page, live_server):
     page, user = authenticated_page
-    UserPreferences.objects.create(user=user, datetime_format="mdy_12h")
-    Game.objects.create(name="Alpha Game")
+    _set_preferences(user, datetime_format="mdy_12h")
+    Game.objects.create(library=user.library, name="Alpha Game")
 
     page.goto(f"{live_server.url}{reverse('games:add_session')}")
     parts = page.locator(f"{START_FIELD} input[data-date-part]")
@@ -200,9 +198,7 @@ def test_a_12_hour_account_gets_a_day_period_segment(authenticated_page, live_se
     assert part_names == ["month", "day", "year", "hour", "minute", "day_period"]
 
 
-def test_copy_arrow_fills_the_other_timestamp(
-    browser: Browser, live_server, django_user_model
-):
+def test_copy_arrow_fills_the_other_timestamp(browser: Browser, live_server, e2e_user):
     """The dominant real-world case — filling in one session's start and end
     together — has both endpoints in the same zone: the browser is pinned to
     match the account zone, so the start's capture default and the end's
@@ -212,11 +208,9 @@ def test_copy_arrow_fills_the_other_timestamp(
     vitest suite for that case; two fields landing on different capture
     defaults purely by machine happenstance is not the scenario this test is
     about.)"""
-    user = django_user_model.objects.create_user(
-        username="tester", password="secret123"
-    )
-    UserPreferences.objects.create(user=user, display_time_zone="Europe/Prague")
-    Game.objects.create(name="Alpha Game")
+    user = e2e_user
+    _set_preferences(user, display_time_zone="Europe/Prague")
+    Game.objects.create(library=user.library, name="Alpha Game")
     context = browser.new_context(timezone_id="Europe/Prague")
     try:
         page = context.new_page()
@@ -241,8 +235,8 @@ def test_copy_arrow_fills_the_other_timestamp(
 
 
 def test_picking_a_calendar_day_keeps_the_typed_time(authenticated_page, live_server):
-    page, _user = authenticated_page
-    Game.objects.create(name="Alpha Game")
+    page, user = authenticated_page
+    Game.objects.create(library=user.library, name="Alpha Game")
 
     page.goto(f"{live_server.url}{reverse('games:add_session')}")
     _fill_segments(
@@ -262,11 +256,8 @@ def test_picking_a_calendar_day_keeps_the_typed_time(authenticated_page, live_se
 
 
 @pytest.fixture
-def account_in_kiritimati(django_user_model) -> None:
-    user = django_user_model.objects.create_user(
-        username="tester", password="secret123"
-    )
-    UserPreferences.objects.create(user=user, display_time_zone=ACCOUNT_TIME_ZONE)
+def account_in_kiritimati(e2e_user) -> None:
+    _set_preferences(e2e_user, display_time_zone=ACCOUNT_TIME_ZONE)
 
 
 @pytest.mark.usefixtures("account_in_kiritimati")
@@ -305,8 +296,8 @@ def test_editing_a_session_without_touching_it_keeps_its_microseconds(
     """duration_calculated is a generated column over both timestamps, so an
     untouched edit that dropped sub-minute precision would shift the duration.
     The segments only go down to minutes; the residual rides along."""
-    page, _user = authenticated_page
-    game = Game.objects.create(name="Alpha Game")
+    page, user = authenticated_page
+    game = Game.objects.create(library=user.library, name="Alpha Game")
     started = dt.datetime(2026, 3, 15, 13, 30, 41, 123456, tzinfo=dt.UTC)
     session = Session.objects.create(
         game=game,
@@ -326,8 +317,8 @@ def test_editing_a_session_without_touching_it_keeps_its_microseconds(
 
 
 def test_a_typed_edit_keeps_the_stored_microseconds(authenticated_page, live_server):
-    page, _user = authenticated_page
-    game = Game.objects.create(name="Alpha Game")
+    page, user = authenticated_page
+    game = Game.objects.create(library=user.library, name="Alpha Game")
     started = dt.datetime(2026, 3, 15, 13, 30, 41, 123456, tzinfo=dt.UTC)
     session = Session.objects.create(game=game, timestamp_start=started)
 

@@ -17,8 +17,7 @@ LONG_NAME = (
 
 
 @pytest.fixture
-def authenticated_page(live_server, page: Page, django_user_model) -> Page:
-    django_user_model.objects.create_user(username="tester", password="secret123")
+def authenticated_page(live_server, page: Page, e2e_user) -> Page:
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")
     page.fill('input[name="password"]', "secret123")
@@ -28,8 +27,7 @@ def authenticated_page(live_server, page: Page, django_user_model) -> Page:
 
 
 @pytest.fixture
-def touch_page(live_server, browser, django_user_model):
-    django_user_model.objects.create_user(username="tester", password="secret123")
+def touch_page(live_server, browser, e2e_user):
     context = browser.new_context(
         has_touch=True, is_mobile=True, viewport={"width": 390, "height": 844}
     )
@@ -92,12 +90,14 @@ def _name_cell_dead_space(page: Page) -> float:
 
 
 def test_desktop_overflow_hover_focus_and_short_name_noop(
-    authenticated_page: Page, live_server
+    authenticated_page: Page, live_server, e2e_library
 ):
     page = authenticated_page
-    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-    Game.objects.create(name=LONG_NAME, platform=platform)
-    Game.objects.create(name="Short", platform=platform)
+    platform = Platform.objects.create(
+        name="PC", icon="pc", group="PC", library=e2e_library
+    )
+    Game.objects.create(name=LONG_NAME, platform=platform, library=e2e_library)
+    Game.objects.create(name="Short", platform=platform, library=e2e_library)
 
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
     settle_layout(page)
@@ -139,15 +139,25 @@ def test_desktop_overflow_hover_focus_and_short_name_noop(
     expect(short_panel).to_be_hidden()
 
 
-def test_different_sort_name_moves_into_the_name_tooltip(touch_page: Page, live_server):
+def test_different_sort_name_moves_into_the_name_tooltip(
+    touch_page: Page, live_server, e2e_library
+):
     page = touch_page
-    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
+    platform = Platform.objects.create(
+        name="PC", icon="pc", group="PC", library=e2e_library
+    )
     display_name = "Short Display Name"
     sort_name = "Display Name, Short"
-    Game.objects.create(name=display_name, sort_name=sort_name, platform=platform)
+    Game.objects.create(
+        name=display_name, sort_name=sort_name, platform=platform, library=e2e_library
+    )
     long_sort_name = "Extraordinary Game Name, A Deliberately"
-    Game.objects.create(name=LONG_NAME, sort_name=long_sort_name, platform=platform)
-    Game.objects.create(name="Same Name", sort_name="Same Name", platform=platform)
+    Game.objects.create(
+        name=LONG_NAME, sort_name=long_sort_name, platform=platform, library=e2e_library
+    )
+    Game.objects.create(
+        name="Same Name", sort_name="Same Name", platform=platform, library=e2e_library
+    )
 
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
     settle_layout(page)
@@ -212,11 +222,13 @@ def test_different_sort_name_moves_into_the_name_tooltip(touch_page: Page, live_
 
 
 def test_table_constraints_hold_at_mobile_and_intermediate_widths(
-    authenticated_page: Page, live_server
+    authenticated_page: Page, live_server, e2e_library
 ):
     page = authenticated_page
-    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-    Game.objects.create(name=LONG_NAME, platform=platform)
+    platform = Platform.objects.create(
+        name="PC", icon="pc", group="PC", library=e2e_library
+    )
+    Game.objects.create(name=LONG_NAME, platform=platform, library=e2e_library)
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
 
     for width in (390, 640, 768):
@@ -261,7 +273,7 @@ def test_table_constraints_hold_at_mobile_and_intermediate_widths(
 
 
 def test_desktop_name_column_does_not_absorb_the_tables_slack(
-    authenticated_page: Page, live_server
+    authenticated_page: Page, live_server, e2e_library
 ):
     """The reported bug: the name cell took every spare pixel — 551px of a
     1217px table for 256px of text — starving its neighbours.
@@ -276,9 +288,11 @@ def test_desktop_name_column_does_not_absorb_the_tables_slack(
     regression it exists to catch.
     """
     page = authenticated_page
-    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-    Game.objects.create(name=LONG_NAME, platform=platform)
-    Game.objects.create(name="Short", platform=platform)
+    platform = Platform.objects.create(
+        name="PC", icon="pc", group="PC", library=e2e_library
+    )
+    Game.objects.create(name=LONG_NAME, platform=platform, library=e2e_library)
+    Game.objects.create(name="Short", platform=platform, library=e2e_library)
 
     page.set_viewport_size({"width": 1280, "height": 900})
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
@@ -291,12 +305,14 @@ def test_desktop_name_column_does_not_absorb_the_tables_slack(
 
 
 def test_touch_resize_closes_open_panel_when_text_starts_fitting(
-    touch_page: Page, live_server
+    touch_page: Page, live_server, e2e_library
 ):
     page = touch_page
-    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
+    platform = Platform.objects.create(
+        name="PC", icon="pc", group="PC", library=e2e_library
+    )
     name = "Medium Length Name For Resize"
-    Game.objects.create(name=name, platform=platform)
+    Game.objects.create(name=name, platform=platform, library=e2e_library)
     page.set_viewport_size({"width": 240, "height": 844})
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
     settle_layout(page)
@@ -325,16 +341,24 @@ def test_touch_resize_closes_open_panel_when_text_starts_fitting(
 
 
 def test_multi_game_purchase_has_one_always_available_informational_tooltip(
-    touch_page: Page, live_server
+    touch_page: Page, live_server, e2e_library
 ):
     page = touch_page
-    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-    first = Game.objects.create(name="Bundle Game One", platform=platform)
-    second = Game.objects.create(name="Bundle Game Two", platform=platform)
+    platform = Platform.objects.create(
+        name="PC", icon="pc", group="PC", library=e2e_library
+    )
+    first = Game.objects.create(
+        name="Bundle Game One", platform=platform, library=e2e_library
+    )
+    second = Game.objects.create(
+        name="Bundle Game Two", platform=platform, library=e2e_library
+    )
     bundle = Purchase.objects.create(
         name=LONG_NAME,
         date_purchased=date(2026, 1, 1),
         platform=platform,
+        library=e2e_library,
+        price_currency="USD",
     )
     bundle.games.set([first, second])
 
@@ -358,15 +382,20 @@ def test_multi_game_purchase_has_one_always_available_informational_tooltip(
 
 
 def test_informative_reveal_is_visible_and_clear_of_the_name_on_desktop(
-    authenticated_page: Page, live_server
+    authenticated_page: Page, live_server, e2e_library
 ):
     """The info reveal stands in for a popover, so it shows on a pointer
     device too — which means its 24px must be reserved there, or the name
     paints underneath it."""
     page = authenticated_page
-    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
+    platform = Platform.objects.create(
+        name="PC", icon="pc", group="PC", library=e2e_library
+    )
     Game.objects.create(
-        name=LONG_NAME, sort_name="Extraordinary Game Name, A", platform=platform
+        name=LONG_NAME,
+        sort_name="Extraordinary Game Name, A",
+        platform=platform,
+        library=e2e_library,
     )
 
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
@@ -382,11 +411,15 @@ def test_informative_reveal_is_visible_and_clear_of_the_name_on_desktop(
 def test_fallback_font_is_measured_when_webfonts_are_blocked(
     live_server, browser, django_user_model
 ):
-    django_user_model.objects.create_user(
+    fallback_user = django_user_model.objects.create_user(
         username="fallback-font", password="secret123"
     )
-    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-    Game.objects.create(name=LONG_NAME, platform=platform)
+    platform = Platform.objects.create(
+        name="PC", icon="pc", group="PC", library=fallback_user.library
+    )
+    Game.objects.create(
+        name=LONG_NAME, platform=platform, library=fallback_user.library
+    )
 
     context = browser.new_context(viewport={"width": 1280, "height": 844})
     page = context.new_page()
@@ -414,11 +447,13 @@ def test_fallback_font_is_measured_when_webfonts_are_blocked(
 
 
 def test_navbar_menu_name_is_hover_only_and_has_no_nested_button(
-    authenticated_page: Page, live_server
+    authenticated_page: Page, live_server, e2e_library
 ):
     page = authenticated_page
-    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-    game = Game.objects.create(name=LONG_NAME, platform=platform)
+    platform = Platform.objects.create(
+        name="PC", icon="pc", group="PC", library=e2e_library
+    )
+    game = Game.objects.create(name=LONG_NAME, platform=platform, library=e2e_library)
     Session.objects.create(game=game, timestamp_start=timezone.now())
 
     page.goto(f"{live_server.url}{reverse('games:list_games')}")

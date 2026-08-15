@@ -22,10 +22,9 @@ def _login(page: Page, live_server) -> None:
 
 
 @pytest.fixture
-def tokyo_page(live_server, browser, django_user_model):
+def tokyo_page(live_server, browser, e2e_user):
     """A logged-in page whose browser reports Asia/Tokyo while the account's
     display zone stays the default UTC — a guaranteed mismatch."""
-    django_user_model.objects.create_user(username="tester", password="secret123")
     context = browser.new_context(timezone_id=BROWSER_TIME_ZONE)
     page = context.new_page()
     _login(page, live_server)
@@ -34,10 +33,9 @@ def tokyo_page(live_server, browser, django_user_model):
 
 
 @pytest.fixture
-def matched_zone_page(live_server, browser, django_user_model):
+def matched_zone_page(live_server, browser, e2e_user):
     """The mirror of `tokyo_page`: a browser in the account's own display zone,
     where nothing about the zones is remarkable."""
-    django_user_model.objects.create_user(username="tester", password="secret123")
     context = browser.new_context(timezone_id="UTC")
     page = context.new_page()
     _login(page, live_server)
@@ -45,8 +43,8 @@ def matched_zone_page(live_server, browser, django_user_model):
     context.close()
 
 
-def test_add_form_captures_the_browser_zone(tokyo_page, live_server):
-    Game.objects.create(name="Hades")
+def test_add_form_captures_the_browser_zone(tokyo_page, live_server, e2e_library):
+    Game.objects.create(library=e2e_library, name="Hades")
     tokyo_page.goto(f"{live_server.url}{reverse('games:add_session')}")
 
     start_row = tokyo_page.locator(
@@ -63,8 +61,10 @@ def test_add_form_captures_the_browser_zone(tokyo_page, live_server):
     expect(trigger).to_contain_text(BROWSER_TIME_ZONE)
 
 
-def test_submitting_the_form_persists_the_captured_zone(tokyo_page, live_server):
-    game = Game.objects.create(name="Hades")
+def test_submitting_the_form_persists_the_captured_zone(
+    tokyo_page, live_server, e2e_library
+):
+    game = Game.objects.create(library=e2e_library, name="Hades")
     tokyo_page.goto(f"{live_server.url}{reverse('games:add_session')}")
 
     game_search = tokyo_page.locator("input[data-search-select-search]").first
@@ -79,12 +79,14 @@ def test_submitting_the_form_persists_the_captured_zone(tokyo_page, live_server)
     assert session.timestamp_start_timezone == BROWSER_TIME_ZONE
 
 
-def test_trigger_is_visible_regardless_of_zone_match(matched_zone_page, live_server):
+def test_trigger_is_visible_regardless_of_zone_match(
+    matched_zone_page, live_server, e2e_library
+):
     """Visibility does not depend on a detected mismatch. A browser in the
     account's own display zone still gets the picker — that is the case a
     mismatch check can never surface, and the reason there is no reveal
     mechanic at all."""
-    Game.objects.create(name="Hades")
+    Game.objects.create(library=e2e_library, name="Hades")
     matched_zone_page.goto(f"{live_server.url}{reverse('games:add_session')}")
 
     start_row = matched_zone_page.locator(
@@ -97,8 +99,8 @@ def test_trigger_is_visible_regardless_of_zone_match(matched_zone_page, live_ser
     expect(start_row.locator("input[data-search-select-search]")).to_be_visible()
 
 
-def test_finish_stamps_the_end_zone(tokyo_page, live_server):
-    game = Game.objects.create(name="Hades")
+def test_finish_stamps_the_end_zone(tokyo_page, live_server, e2e_library):
+    game = Game.objects.create(library=e2e_library, name="Hades")
     session = Session.objects.create(
         game=game,
         timestamp_start=datetime(2026, 7, 1, 12, 0, tzinfo=UTC),

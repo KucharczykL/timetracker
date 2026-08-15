@@ -4,8 +4,7 @@ from playwright.sync_api import Page, expect
 
 
 @pytest.fixture
-def authenticated_page(live_server, page: Page, django_user_model) -> Page:
-    django_user_model.objects.create_user(username="tester", password="secret123")
+def authenticated_page(live_server, page: Page, e2e_user) -> Page:
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")
     page.fill('input[name="password"]', "secret123")
@@ -14,12 +13,15 @@ def authenticated_page(live_server, page: Page, django_user_model) -> Page:
     return page
 
 
-@pytest.mark.django_db
-def test_game_status_selector_opens_and_patches(authenticated_page: Page, live_server):
+def test_game_status_selector_opens_and_patches(
+    authenticated_page: Page, live_server, e2e_library
+):
     from games.models import Game, Platform
 
-    platform = Platform.objects.create(name="PC", icon="pc")
-    game = Game.objects.create(name="Test Game", platform=platform, status="u")
+    platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
+    game = Game.objects.create(
+        library=e2e_library, name="Test Game", platform=platform, status="u"
+    )
 
     page = authenticated_page
     game_url = reverse("games:view_game", args=[game.id])
@@ -69,14 +71,15 @@ def test_game_status_selector_opens_and_patches(authenticated_page: Page, live_s
     assert game.status == "f"
 
 
-@pytest.mark.django_db
-def test_session_device_selector_patches(authenticated_page: Page, live_server):
+def test_session_device_selector_patches(
+    authenticated_page: Page, live_server, e2e_library
+):
     from games.models import Device, Game, Platform, Session
 
-    platform = Platform.objects.create(name="PC", icon="pc")
-    game = Game.objects.create(name="Test Game", platform=platform)
-    desktop = Device.objects.create(name="Desktop")
-    deck = Device.objects.create(name="Deck")
+    platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
+    game = Game.objects.create(library=e2e_library, name="Test Game", platform=platform)
+    desktop = Device.objects.create(library=e2e_library, name="Desktop")
+    deck = Device.objects.create(library=e2e_library, name="Deck")
     session = Session.objects.create(
         game=game, device=desktop, timestamp_start="2025-01-01 00:00:00+00:00"
     )
@@ -115,14 +118,17 @@ def test_session_device_selector_patches(authenticated_page: Page, live_server):
     )
 
 
-@pytest.mark.django_db
-def test_status_selector_reverts_on_failed_patch(authenticated_page: Page, live_server):
+def test_status_selector_reverts_on_failed_patch(
+    authenticated_page: Page, live_server, e2e_library
+):
     """A rejected PATCH (mocked 422) reverts the optimistic label + aria-selected
     and surfaces an error toast — the server value never silently diverges."""
     from games.models import Game, Platform
 
-    platform = Platform.objects.create(name="PC", icon="pc")
-    game = Game.objects.create(name="Test Game", platform=platform, status="u")
+    platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
+    game = Game.objects.create(
+        library=e2e_library, name="Test Game", platform=platform, status="u"
+    )
 
     page = authenticated_page
     page.route(
@@ -145,12 +151,11 @@ def test_status_selector_reverts_on_failed_patch(authenticated_page: Page, live_
     assert game.status == "u"  # server unchanged
 
 
-@pytest.mark.django_db
-def test_play_event_row_increments(authenticated_page: Page, live_server):
+def test_play_event_row_increments(authenticated_page: Page, live_server, e2e_library):
     from games.models import Game, Platform
 
-    platform = Platform.objects.create(name="PC", icon="pc")
-    game = Game.objects.create(name="Test Game", platform=platform)
+    platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
+    game = Game.objects.create(library=e2e_library, name="Test Game", platform=platform)
 
     page = authenticated_page
     game_url = reverse("games:view_game", args=[game.id])

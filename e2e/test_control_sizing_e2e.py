@@ -17,8 +17,7 @@ from games.models import Device, Game, Platform, Session
 
 
 @pytest.fixture
-def authenticated_page(live_server, page: Page, django_user_model) -> Page:
-    django_user_model.objects.create_user(username="tester", password="secret123")
+def authenticated_page(live_server, page: Page, e2e_user) -> Page:
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")
     page.fill('input[name="password"]', "secret123")
@@ -27,10 +26,12 @@ def authenticated_page(live_server, page: Page, django_user_model) -> Page:
     return page
 
 
-def _make_session() -> Session:
-    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-    game = Game.objects.create(name="Sized Game", platform=platform)
-    Device.objects.create(name="Handheld", type=Device.HANDHELD)
+def _make_session(library) -> Session:
+    platform = Platform.objects.create(
+        library=library, name="PC", icon="pc", group="PC"
+    )
+    game = Game.objects.create(library=library, name="Sized Game", platform=platform)
+    Device.objects.create(library=library, name="Handheld", type=Device.HANDHELD)
     # running (no end) so the row shows the finish/reset icon actions
     return Session.objects.create(
         game=game,
@@ -39,10 +40,10 @@ def _make_session() -> Session:
 
 
 def test_selector_trigger_and_icon_actions_share_height(
-    authenticated_page: Page, live_server
+    authenticated_page: Page, live_server, e2e_library
 ):
     page = authenticated_page
-    session = _make_session()
+    session = _make_session(e2e_library)
 
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
     row = page.locator(f"#session-row-{session.id}")

@@ -101,8 +101,7 @@ def test_selection_fields_syncs_with_source(live_server, page: Page):
 
 
 @pytest.fixture
-def authenticated_page(live_server, page: Page, django_user_model) -> Page:
-    django_user_model.objects.create_user(username="tester", password="secret123")
+def authenticated_page(live_server, page: Page, e2e_user) -> Page:
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")
     page.fill('input[name="password"]', "secret123")
@@ -121,15 +120,17 @@ def _select_two_games(page: Page) -> None:
 
 
 def test_add_purchase_per_game_toggle_reveals_inputs(
-    authenticated_page: Page, live_server
+    authenticated_page: Page, live_server, e2e_library
 ):
     """The combined/per-game toggle appears only at 2+ games; turning it on
     hides the bundle Price and shows one price input per selected game.
     (Server-side creation of N purchases is covered by the unit tests.)"""
     page = authenticated_page
-    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-    Game.objects.create(name="Alpha Game", platform=platform)
-    Game.objects.create(name="Beta Game", platform=platform)
+    platform = Platform.objects.create(
+        library=e2e_library, name="PC", icon="pc", group="PC"
+    )
+    Game.objects.create(library=e2e_library, name="Alpha Game", platform=platform)
+    Game.objects.create(library=e2e_library, name="Beta Game", platform=platform)
 
     page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
 
@@ -147,12 +148,19 @@ def test_add_purchase_per_game_toggle_reveals_inputs(
     expect(per_game_inputs).to_have_count(2)
 
 
-def test_split_purchase_action(authenticated_page: Page, live_server):
+def test_split_purchase_action(authenticated_page: Page, live_server, e2e_library):
     page = authenticated_page
-    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-    game_a = Game.objects.create(name="Alpha Game", platform=platform)
-    game_b = Game.objects.create(name="Beta Game", platform=platform)
+    platform = Platform.objects.create(
+        library=e2e_library, name="PC", icon="pc", group="PC"
+    )
+    game_a = Game.objects.create(
+        library=e2e_library, name="Alpha Game", platform=platform
+    )
+    game_b = Game.objects.create(
+        library=e2e_library, name="Beta Game", platform=platform
+    )
     bundle = Purchase.objects.create(
+        library=e2e_library,
         price=30.0,
         price_currency="USD",
         date_purchased=date(2025, 1, 1),
@@ -179,15 +187,22 @@ def test_split_purchase_action(authenticated_page: Page, live_server):
 
 
 def test_split_modal_dismisses_on_escape_and_backdrop(
-    authenticated_page: Page, live_server
+    authenticated_page: Page, live_server, e2e_library
 ):
     """The confirm modal is a <modal-dialog>: Escape and a backdrop click close
     it."""
     page = authenticated_page
-    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-    game_a = Game.objects.create(name="Alpha Game", platform=platform)
-    game_b = Game.objects.create(name="Beta Game", platform=platform)
+    platform = Platform.objects.create(
+        library=e2e_library, name="PC", icon="pc", group="PC"
+    )
+    game_a = Game.objects.create(
+        library=e2e_library, name="Alpha Game", platform=platform
+    )
+    game_b = Game.objects.create(
+        library=e2e_library, name="Beta Game", platform=platform
+    )
     bundle = Purchase.objects.create(
+        library=e2e_library,
         price=30.0,
         price_currency="USD",
         date_purchased=date(2025, 1, 1),
@@ -216,11 +231,10 @@ def test_split_modal_dismisses_on_escape_and_backdrop(
 
 
 @pytest.fixture
-def touch_page(live_server, browser, django_user_model):
+def touch_page(live_server, browser, e2e_user):
     """A logged-in page in a touch, no-hover mobile context (so locator.tap()
     works, pointer events report pointerType "touch", and `(hover: none)` matches
     — the reveal button is shown only where the device can't hover)."""
-    django_user_model.objects.create_user(username="tester", password="secret123")
     context = browser.new_context(
         has_touch=True, is_mobile=True, viewport={"width": 390, "height": 844}
     )
@@ -234,13 +248,18 @@ def touch_page(live_server, browser, django_user_model):
     context.close()
 
 
-def test_name_popover_shows_on_hover(authenticated_page: Page, live_server):
+def test_name_popover_shows_on_hover(
+    authenticated_page: Page, live_server, e2e_library
+):
     """On a hover-capable (desktop) device the tap reveal button is hidden, and
     hovering the NAME (the link) opens the tooltip — the whole host opens on
     hover, so the hover surface is the visible name, not a glyph (#445 M1)."""
     page = authenticated_page
-    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
+    platform = Platform.objects.create(
+        library=e2e_library, name="PC", icon="pc", group="PC"
+    )
     Game.objects.create(
+        library=e2e_library,
         name=(
             "A Very Long Game Name That Exceeds Every Practical Desktop Column "
             "Width And Must Be Clipped By The Browser"
@@ -262,13 +281,16 @@ def test_name_popover_shows_on_hover(authenticated_page: Page, live_server):
     expect(panel).to_be_hidden()
 
 
-def test_name_popover_taps_open_on_touch(touch_page: Page, live_server):
+def test_name_popover_taps_open_on_touch(touch_page: Page, live_server, e2e_library):
     """On touch (no hover) a tap on the glyph trigger toggles the tooltip; a tap
     elsewhere dismisses it. The link is a sibling of the trigger, so this reveal
     path never fights the link's own navigation."""
     page = touch_page
-    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
+    platform = Platform.objects.create(
+        library=e2e_library, name="PC", icon="pc", group="PC"
+    )
     Game.objects.create(
+        library=e2e_library,
         name=(
             "A Very Long Game Name That Exceeds Every Practical Mobile Column "
             "Width And Must Be Clipped By The Browser"

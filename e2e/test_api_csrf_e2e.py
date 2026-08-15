@@ -11,8 +11,7 @@ from playwright.sync_api import Page
 
 
 @pytest.fixture
-def authenticated_page(live_server, page: Page, django_user_model) -> Page:
-    django_user_model.objects.create_user(username="tester", password="secret123")
+def authenticated_page(live_server, page: Page, e2e_user) -> Page:
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")
     page.fill('input[name="password"]', "secret123")
@@ -22,7 +21,7 @@ def authenticated_page(live_server, page: Page, django_user_model) -> Page:
 
 
 @pytest.mark.django_db
-def test_device_patch_passes_csrf(authenticated_page: Page, live_server):
+def test_device_patch_passes_csrf(authenticated_page: Page, live_server, e2e_library):
     """Changing the device on a session row must return 204, not 403.
 
     403 would indicate CSRF rejection — i.e. the browser's X-CSRFToken header
@@ -32,10 +31,12 @@ def test_device_patch_passes_csrf(authenticated_page: Page, live_server):
     """
     from games.models import Device, Game, Platform, Session
 
-    platform = Platform.objects.create(name="TestPlatform", icon="pc")
-    game = Game.objects.create(name="Test Game", platform=platform)
-    desktop = Device.objects.create(name="Desktop")
-    deck = Device.objects.create(name="Deck")
+    platform = Platform.objects.create(
+        library=e2e_library, name="TestPlatform", icon="pc"
+    )
+    game = Game.objects.create(library=e2e_library, name="Test Game", platform=platform)
+    desktop = Device.objects.create(library=e2e_library, name="Desktop")
+    deck = Device.objects.create(library=e2e_library, name="Deck")
     session = Session.objects.create(
         game=game,
         device=desktop,

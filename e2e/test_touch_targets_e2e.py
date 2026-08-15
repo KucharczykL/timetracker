@@ -19,8 +19,7 @@ MIN_TOUCH_TARGET = 24
 
 
 @pytest.fixture
-def touch_page(live_server, browser, django_user_model):
-    django_user_model.objects.create_user(username="tester", password="secret123")
+def touch_page(live_server, browser, e2e_user):
     context = browser.new_context(
         has_touch=True, is_mobile=True, viewport={"width": 390, "height": 844}
     )
@@ -34,10 +33,18 @@ def touch_page(live_server, browser, django_user_model):
     context.close()
 
 
-def test_reveal_button_meets_min_touch_target(touch_page: Page, live_server):
+def test_reveal_button_meets_min_touch_target(
+    touch_page: Page, live_server, e2e_library
+):
     page = touch_page
-    platform = Platform.objects.create(name="Steam", icon="steam", group="PC")
+    platform = Platform.objects.create(
+        library=e2e_library,
+        name="Steam",
+        icon="steam",
+        group="PC",
+    )
     Game.objects.create(
+        library=e2e_library,
         name="A Very Long Game Name That Exceeds The Thirty Char Limit",
         platform=platform,
     )

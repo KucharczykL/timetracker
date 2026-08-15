@@ -13,11 +13,11 @@ from django.utils import timezone
 from playwright.sync_api import Browser, Page, expect
 
 from games.models import Device, Game, Platform, Session, UserPreferences
+from timetracker.settings_resolver import resolve_for_user
 
 
 @pytest.fixture
-def authenticated_page(live_server, page: Page, django_user_model) -> Page:
-    django_user_model.objects.create_user(username="tester", password="secret123")
+def authenticated_page(live_server, page: Page, e2e_user) -> Page:
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")
     page.fill('input[name="password"]', "secret123")
@@ -31,12 +31,14 @@ def _finish_control(row):
 
 
 def test_finish_session_reloads_the_list_with_the_session_closed(
-    authenticated_page: Page, live_server
+    authenticated_page: Page, live_server, e2e_library
 ):
     page = authenticated_page
-    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-    game = Game.objects.create(name="Tunic", platform=platform)
-    device = Device.objects.create(name="Desktop")
+    platform = Platform.objects.create(
+        library=e2e_library, name="PC", icon="pc", group="PC"
+    )
+    game = Game.objects.create(library=e2e_library, name="Tunic", platform=platform)
+    device = Device.objects.create(library=e2e_library, name="Desktop")
     session = Session.objects.create(
         game=game, device=device, timestamp_start=timezone.now()
     )
@@ -59,16 +61,20 @@ def test_finish_session_reloads_the_list_with_the_session_closed(
 
 
 def test_finish_stamps_the_browser_zone_not_the_account_zone(
-    authenticated_page: Page, browser: Browser, live_server, django_user_model
+    browser: Browser, live_server, e2e_user
 ):
     """The end zone records where the user was, which is the whole reason each
     timestamp carries its own zone rather than inheriting the account's."""
-    UserPreferences.objects.create(
-        user=django_user_model.objects.get(username="tester"),
-        display_time_zone="Europe/Prague",
+    preferences = UserPreferences.objects.get(user=e2e_user)
+    preferences.display_time_zone = "Europe/Prague"
+    preferences.save(update_fields=["display_time_zone"])
+    assert resolve_for_user(e2e_user, "DISPLAY_TIME_ZONE") == "Europe/Prague"
+    platform = Platform.objects.create(
+        library=e2e_user.library, name="PC", icon="pc", group="PC"
     )
-    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-    game = Game.objects.create(name="Tunic", platform=platform)
+    game = Game.objects.create(
+        library=e2e_user.library, name="Tunic", platform=platform
+    )
     session = Session.objects.create(
         game=game,
         timestamp_start=dt.datetime(2026, 1, 1, 0, 30, tzinfo=dt.UTC),
