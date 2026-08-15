@@ -25,11 +25,17 @@ class PathWorksTest(TestCase):
             username="testuser", email="test@example.com", password="testpass"
         )
         self.client.force_login(self.user)
-        self.platform = Platform.objects.create(name="Test Platform", icon="test")
-        self.game = Game.objects.create(name="Test Game", platform=self.platform)
+        library = self.user.library
+        self.platform = Platform.objects.create(
+            library=library, name="Test Platform", icon="test"
+        )
+        self.game = Game.objects.create(
+            library=library, name="Test Game", platform=self.platform
+        )
         self.purchase = Purchase.objects.create(
             date_purchased=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO),
             platform=self.platform,
+            library=library,
             price=43,
             price_currency="CZK",
             converted_price=14.5,
@@ -44,6 +50,7 @@ class PathWorksTest(TestCase):
         self.same_price_purchase = Purchase.objects.create(
             date_purchased=datetime(2022, 9, 27, 14, 58, tzinfo=ZONEINFO),
             platform=self.platform,
+            library=library,
             price=43,
             price_currency="CZK",
             converted_price=14.5,

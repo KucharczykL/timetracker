@@ -6,17 +6,16 @@ from games.models import Device, Game, Platform, Session
 
 
 @pytest.fixture
-def auth_client(client, django_user_model):
-    user = django_user_model.objects.create_user(username="u", password="p")
-    client.force_login(user)
+def auth_client(client, owned_user):
+    client.force_login(owned_user)
     return client
 
 
 @pytest.fixture
-def running_session(db):
+def running_session(owned_library):
     platform = Platform.objects.create(name="PC")
-    game = Game.objects.create(name="Hades", platform=platform)
-    device = Device.objects.create(name="Deck")
+    game = Game.objects.create(library=owned_library, name="Hades", platform=platform)
+    device = Device.objects.create(library=owned_library, name="Deck")
     return Session.objects.create(
         game=game, device=device, timestamp_start=timezone.now()
     )

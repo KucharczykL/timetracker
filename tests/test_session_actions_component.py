@@ -12,17 +12,21 @@ STARTED_AT = datetime(2024, 6, 1, 12, tzinfo=UTC)
 
 
 @pytest.fixture
-def open_session(db):
+def open_session(owned_library):
     game = Game.objects.create(
-        name="Test Game", platform=Platform.objects.create(name="PC")
+        library=owned_library,
+        name="Test Game",
+        platform=Platform.objects.create(name="PC"),
     )
     return Session.objects.create(game=game, timestamp_start=STARTED_AT)
 
 
 @pytest.fixture
-def finished_session(db):
+def finished_session(owned_library):
     game = Game.objects.create(
-        name="Done Game", platform=Platform.objects.create(name="Console")
+        library=owned_library,
+        name="Done Game",
+        platform=Platform.objects.create(name="Console"),
     )
     return Session.objects.create(
         game=game,

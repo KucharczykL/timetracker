@@ -7,9 +7,9 @@ from games.models import Game, Platform, Session
 pytestmark = pytest.mark.django_db
 
 
-def test_session_duration_querysets_partition_calculated_zero_rows():
+def test_session_duration_querysets_partition_calculated_zero_rows(owned_library):
     platform = Platform.objects.create(name="PC")
-    game = Game.objects.create(name="Hades", platform=platform)
+    game = Game.objects.create(library=owned_library, name="Hades", platform=platform)
     manual_only = Session.objects.create(
         game=game,
         timestamp_start=datetime(2024, 1, 1, 12, tzinfo=UTC),

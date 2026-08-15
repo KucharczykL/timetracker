@@ -100,29 +100,37 @@ class HtmlValidityTest(TestCase):
         )
         self.client.force_login(self.user)
 
-        self.platform = Platform.objects.create(name="Test Platform", icon="test")
-        self.device = Device.objects.create(name="Test Device", type="c")
+        library = self.user.library
+        self.platform = Platform.objects.create(
+            library=library, name="Test Platform", icon="test"
+        )
+        self.device = Device.objects.create(
+            library=library, name="Test Device", type="c"
+        )
 
         # A long display name with a different sort name exercises both the
         # width-based reveal and the game-list tooltip's informative IDREF.
         self.long_game = Game.objects.create(
+            library=library,
             name="A Very Long Game Name That Exceeds Thirty Characters For Sure",
             sort_name="Very Long Game Name, A",
             platform=self.platform,
         )
         self.other_game = Game.objects.create(
-            name="Second Game In The Bundle", platform=self.platform
+            library=library, name="Second Game In The Bundle", platform=self.platform
         )
 
         # A multi-game bundle: LinkedPurchase renders the games-list popover.
         self.bundle = Purchase.objects.create(
             price_currency="CZK",
+            library=library,
             date_purchased=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO),
             platform=self.platform,
         )
         self.bundle.games.add(self.long_game, self.other_game)
         self.other_bundle = Purchase.objects.create(
             price_currency="CZK",
+            library=library,
             date_purchased=datetime(2022, 9, 27, 14, 58, tzinfo=ZONEINFO),
             platform=self.platform,
             price=1,

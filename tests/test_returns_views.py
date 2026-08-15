@@ -10,15 +10,14 @@ GAME_FORM = {"name": "Renamed", "status": "u"}
 
 
 @pytest.fixture
-def logged_in(client, django_user_model, db):
-    user = django_user_model.objects.create_user(username="u", password="p")
-    client.force_login(user)
+def logged_in(client, owned_user):
+    client.force_login(owned_user)
     return client
 
 
 @pytest.fixture
-def game(db):
-    return Game.objects.create(name="Test Game")
+def game(owned_library):
+    return Game.objects.create(library=owned_library, name="Test Game")
 
 
 def test_edit_game_falls_back_to_the_games_list(logged_in, game):
@@ -46,15 +45,14 @@ def test_a_chained_form_forwards_the_origin(logged_in, db):
     )
 
 
-def test_the_origin_survives_the_login_redirect(client, django_user_model, game):
+def test_the_origin_survives_the_login_redirect(client, owned_user, game):
     origin = f"{reverse('games:list_games')}?page=3"
     target = action_url("games:edit_game", game.id, origin=origin)
     anonymous = client.get(target)
     assert anonymous.status_code == 302
     login_url = anonymous["Location"]
 
-    django_user_model.objects.create_user(username="u", password="p")
-    client.post(login_url, {"username": "u", "password": "p"})
+    client.post(login_url, {"username": owned_user.username, "password": "p"})
     assert client.get(target).status_code == 200
     assert client.post(target, GAME_FORM)["Location"] == origin
 

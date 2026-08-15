@@ -1,5 +1,6 @@
 from datetime import date
 
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 
@@ -8,13 +9,21 @@ from games.models import Game, Platform, Purchase
 
 class PurchaseRelatedGameTest(TestCase):
     def setUp(self):
+        self.library = (
+            get_user_model().objects.create_user(username="purchase-related").library
+        )
         self.platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-        self.base_game = Game.objects.create(name="Base Game", platform=self.platform)
-        self.dlc_game = Game.objects.create(name="The DLC", platform=self.platform)
+        self.base_game = Game.objects.create(
+            library=self.library, name="Base Game", platform=self.platform
+        )
+        self.dlc_game = Game.objects.create(
+            library=self.library, name="The DLC", platform=self.platform
+        )
 
     def test_non_game_purchase_requires_related_game(self):
         purchase = Purchase(
             price=10.0,
+            library=self.library,
             price_currency="USD",
             date_purchased=date(2025, 1, 1),
             type=Purchase.SEASONPASS,
@@ -26,6 +35,7 @@ class PurchaseRelatedGameTest(TestCase):
     def test_non_game_purchase_saves_with_related_game(self):
         purchase = Purchase(
             price=10.0,
+            library=self.library,
             price_currency="USD",
             date_purchased=date(2025, 1, 1),
             type=Purchase.SEASONPASS,
@@ -42,6 +52,7 @@ class PurchaseRelatedGameTest(TestCase):
     def test_plain_game_purchase_needs_no_related_game(self):
         purchase = Purchase(
             price=50.0,
+            library=self.library,
             price_currency="USD",
             date_purchased=date(2025, 1, 1),
             type=Purchase.GAME,

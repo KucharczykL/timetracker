@@ -28,10 +28,10 @@ pytestmark = pytest.mark.django_db
     ],
 )
 def test_generated_duration_values(
-    timestamp_end, duration_manual, expected_calculated, expected_total
+    timestamp_end, duration_manual, expected_calculated, expected_total, owned_library
 ):
     session = Session.objects.create(
-        game=Game.objects.create(name="Hades"),
+        game=Game.objects.create(library=owned_library, name="Hades"),
         timestamp_start=datetime(2026, 1, 1, 10, tzinfo=UTC),
         timestamp_end=timestamp_end,
         duration_manual=duration_manual,

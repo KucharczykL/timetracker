@@ -75,9 +75,12 @@ class ActionsColumnPriorityTest(TestCase):
     def setUp(self) -> None:
         user = User.objects.create_superuser(username="tester", password="secret")
         self.client.force_login(user)
-        platform = Platform.objects.create(name="PC", icon="pc")
-        self.game = Game.objects.create(name="A Game", platform=platform)
-        device = Device.objects.create(name="Desktop", type="p")
+        library = user.library
+        platform = Platform.objects.create(library=library, name="PC", icon="pc")
+        self.game = Game.objects.create(
+            library=library, name="A Game", platform=platform
+        )
+        device = Device.objects.create(library=library, name="Desktop", type="p")
         Session.objects.create(
             game=self.game,
             device=device,
@@ -85,7 +88,11 @@ class ActionsColumnPriorityTest(TestCase):
             timestamp_end=BASE.replace(hour=14),
         )
         purchase = Purchase.objects.create(
-            platform=platform, date_purchased=BASE, price=10, price_currency="USD"
+            library=library,
+            platform=platform,
+            date_purchased=BASE,
+            price=10,
+            price_currency="USD",
         )
         purchase.games.add(self.game)
 

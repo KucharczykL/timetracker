@@ -23,11 +23,16 @@ from games.models import (
 
 
 @pytest.fixture
-def world(db):
+def world(owned_library):
     platform = Platform.objects.create(name="PC")
-    game = Game.objects.create(name="Test Game", platform=platform)
+    game = Game.objects.create(
+        library=owned_library, name="Test Game", platform=platform
+    )
     purchase = Purchase.objects.create(
-        price_currency="CZK", date_purchased=date(2024, 6, 1), type=Purchase.GAME
+        library=owned_library,
+        price_currency="CZK",
+        date_purchased=date(2024, 6, 1),
+        type=Purchase.GAME,
     )
     purchase.games.set([game])
     return {
@@ -40,8 +45,10 @@ def world(db):
         "statuschange_id": GameStatusChange.objects.create(
             game=game, new_status="p"
         ).id,
-        "device_id": Device.objects.create(name="Desk").id,
-        "platform_id": platform.id,
+        "device_id": Device.objects.create(library=owned_library, name="Desk").id,
+        "platform_id": Platform.objects.create(
+            library=owned_library, name="Private"
+        ).id,
         "year": 2024,
         "model": "game",
         "key": "DEFAULT_PURCHASE_CURRENCY",

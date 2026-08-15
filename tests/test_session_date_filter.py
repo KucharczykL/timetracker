@@ -14,9 +14,9 @@ from games.models import Game, Platform, Session
 
 
 @pytest.fixture
-def sessions_across_days(db):
+def sessions_across_days(owned_library):
     platform = Platform.objects.create(name="PC")
-    game = Game.objects.create(name="Zelda", platform=platform)
+    game = Game.objects.create(library=owned_library, name="Zelda", platform=platform)
     today = localtime(timezone_now())
     return {
         "today": Session.objects.create(game=game, timestamp_start=today),

@@ -24,9 +24,11 @@ class MiddlewareIntegrationTest(TestCase):
         self.client = Client()
         self.user = self._create_user()
         self.client.force_login(self.user)
-        self.platform = Platform(name="Test Platform")
+        self.platform = Platform(library=self.user.library, name="Test Platform")
         self.platform.save()
-        self.game = Game(name="Test Game", platform=self.platform)
+        self.game = Game(
+            library=self.user.library, name="Test Game", platform=self.platform
+        )
         self.game.save()
 
     def test_non_htmx_request_with_message_gets_hx_trigger(self):
@@ -50,7 +52,7 @@ class MiddlewareIntegrationTest(TestCase):
         Verify the session device API endpoint also produces HX-Trigger.
         This is the exact endpoint used by sessiondevice_selector.html.
         """
-        device = Device(name="Test Device")
+        device = Device(library=self.user.library, name="Test Device")
         device.save()
         zt = ZoneInfo(settings.TIME_ZONE)
         session = Session(
@@ -80,6 +82,7 @@ class MiddlewareIntegrationTest(TestCase):
         """
         purchase = Purchase.objects.create(
             price_currency="CZK",
+            library=self.user.library,
             date_purchased=datetime(2023, 1, 1),
             platform=self.platform,
         )

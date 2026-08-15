@@ -10,16 +10,17 @@ from games.models import Game, GameStatusChange, Platform, PlayEvent, Session
 
 
 @pytest.fixture
-def logged_in(client, django_user_model, db):
-    user = django_user_model.objects.create_user(username="u", password="p")
-    client.force_login(user)
+def logged_in(client, owned_user):
+    client.force_login(owned_user)
     return client
 
 
 @pytest.fixture
-def game(db):
+def game(owned_library):
     game = Game.objects.create(
-        name="Test Game", platform=Platform.objects.create(name="PC")
+        library=owned_library,
+        name="Test Game",
+        platform=Platform.objects.create(name="PC"),
     )
     Session.objects.create(
         game=game, timestamp_start=datetime(2024, 6, 1, 12, tzinfo=UTC)
@@ -56,15 +57,20 @@ def test_the_confirmation_form_keeps_the_origin(logged_in, game):
 
 
 @pytest.fixture
-def deletables(db):
+def deletables(owned_library):
     from datetime import date
 
     from games.models import Device, Purchase
 
     platform = Platform.objects.create(name="Console")
-    owned = Game.objects.create(name="Deletable", platform=platform)
+    owned = Game.objects.create(
+        library=owned_library, name="Deletable", platform=platform
+    )
     purchase = Purchase.objects.create(
-        price_currency="CZK", date_purchased=date(2024, 6, 1), type=Purchase.GAME
+        library=owned_library,
+        price_currency="CZK",
+        date_purchased=date(2024, 6, 1),
+        type=Purchase.GAME,
     )
     purchase.games.set([owned])
     return {
@@ -73,8 +79,8 @@ def deletables(db):
             game=owned, timestamp_start=datetime(2024, 6, 1, 12, tzinfo=UTC)
         ),
         "purchase": purchase,
-        "platform": Platform.objects.create(name="Doomed"),
-        "device": Device.objects.create(name="Doomed"),
+        "platform": Platform.objects.create(library=owned_library, name="Doomed"),
+        "device": Device.objects.create(library=owned_library, name="Doomed"),
         "playevent": PlayEvent.objects.create(game=owned),
         "statuschange": GameStatusChange.objects.create(game=owned, new_status="p"),
     }
