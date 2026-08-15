@@ -152,6 +152,36 @@ def test_shared_platform_is_selectable_but_foreign_private_platform_is_rejected(
     assert world.foreign_platform.name not in str(foreign_form)
 
 
+def test_library_bound_forms_validate_constraints_with_implicit_owner(world):
+    Game.objects.create(
+        library=world.owner_library,
+        name="Platformless duplicate",
+        year_released=1999,
+    )
+    game_form = GameForm(
+        data={
+            "name": "Platformless duplicate",
+            "platform": "",
+            "year_released": 1999,
+            "status": Game.Status.UNPLAYED,
+        },
+        library=world.owner_library,
+    )
+    platform_form = PlatformForm(
+        data={
+            "name": world.own_platform.name,
+            "icon": "",
+            "group": world.own_platform.group,
+        },
+        library=world.owner_library,
+    )
+
+    assert not game_form.is_valid()
+    assert "__all__" in game_form.errors
+    assert not platform_form.is_valid()
+    assert "__all__" in platform_form.errors
+
+
 def test_session_form_rejects_foreign_game_and_device_without_saving(world):
     before = Session.objects.count()
     form = SessionForm(

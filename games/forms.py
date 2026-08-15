@@ -758,7 +758,20 @@ class GameModelChoiceField(forms.ModelChoiceField):
         return obj.sort_name
 
 
-class GameForm(PrimitiveWidgetsMixin, forms.ModelForm):
+class _LibraryBoundConstraintValidationMixin:
+    def _get_validation_exclusions(self):
+        exclusions = super()._get_validation_exclusions()
+        # ``library`` is assigned by the constructor rather than submitted by
+        # the browser. Django otherwise excludes it from model constraint
+        # validation because it is not a form field, allowing a per-library
+        # duplicate to reach the database as an IntegrityError.
+        exclusions.discard("library")
+        return exclusions
+
+
+class GameForm(
+    _LibraryBoundConstraintValidationMixin, PrimitiveWidgetsMixin, forms.ModelForm
+):
     def __init__(self, *args, library: UserLibrary, **kwargs):
         super().__init__(*args, **kwargs)
         self.library = library
@@ -793,7 +806,9 @@ class GameForm(PrimitiveWidgetsMixin, forms.ModelForm):
         widgets: ClassVar[dict[str, forms.Widget]] = {"name": autofocus_input_widget}
 
 
-class PlatformForm(PrimitiveWidgetsMixin, forms.ModelForm):
+class PlatformForm(
+    _LibraryBoundConstraintValidationMixin, PrimitiveWidgetsMixin, forms.ModelForm
+):
     def __init__(self, *args, library: UserLibrary, **kwargs):
         super().__init__(*args, **kwargs)
         self.library = library
