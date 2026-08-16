@@ -89,6 +89,16 @@ from common.components.filters import (
     field_widget_templates,
     parse_filter_dict,
 )
+from common.components.library_kit import (
+    CopyControl,
+    EntitySummaryAction,
+    EntitySummaryList,
+    EntitySummaryRow,
+    FactList,
+    StatisticCard,
+    StatisticGrid,
+)
+from common.components.navigation import AccountMenu
 from common.components.primitives import (
     CONTENT_MAX_WIDTH_CLASS,
     CONTROL_SIZE_CLASS,
@@ -237,6 +247,7 @@ __all__ = [
     "QUICK_FACETS",
     "QUICK_FACET_KINDS",
     "A",
+    "AccountMenu",
     "AddForm",
     "AttrsArg",
     "Badge",
@@ -262,6 +273,7 @@ __all__ = [
     "ContentContainer",
     "ControlButton",
     "ControlLink",
+    "CopyControl",
     "CsrfInput",
     "DatePicker",
     "DatePickerCalendar",
@@ -291,7 +303,11 @@ __all__ = [
     "DurationAlternates",
     "DurationText",
     "Element",
+    "EntitySummaryAction",
+    "EntitySummaryList",
+    "EntitySummaryRow",
     "ExternalScript",
+    "FactList",
     "FilterBuilder",
     "FilterCount",
     "FilterFieldPicker",
@@ -368,6 +384,8 @@ __all__ = [
     "Span",
     "SplitButtonDropdown",
     "StaticScript",
+    "StatisticCard",
+    "StatisticGrid",
     "StringFilter",
     "StyledTable",
     "Table",

@@ -5,7 +5,7 @@ import "./pop-over.js"; // side effect: customElements.define
 // jsdom has no layout engine, so the positioner's coordinates are meaningless
 // here — these tests cover the show/hide state machine (the `hidden` attribute)
 // driven by hover, focus, tap, and Escape.
-function mount(options: { tap?: boolean } = {}): {
+function mount(options: { tap?: boolean; anchor?: boolean } = {}): {
   host: HTMLElement;
   panel: HTMLElement;
   trigger: HTMLElement;
@@ -15,8 +15,11 @@ function mount(options: { tap?: boolean } = {}): {
   host.setAttribute("tap", tap ? "true" : "false");
   const tag = tap ? "button" : "span";
   const triggerAttrs = tap ? 'type="button"' : 'tabindex="0"';
+  const triggerContent = options.anchor
+    ? '<button data-pop-over-anchor>word</button>'
+    : 'word';
   host.innerHTML = `
-    <${tag} data-pop-over-trigger aria-describedby="pid" ${triggerAttrs}>word</${tag}>
+    <${tag} data-pop-over-trigger aria-describedby="pid" ${triggerAttrs}>${triggerContent}</${tag}>
     <div data-pop-over-panel id="pid" role="tooltip" hidden>the full word<div data-pop-over-arrow></div></div>`;
   document.body.appendChild(host); // connectedCallback wires the listeners
   const panel = host.querySelector<HTMLElement>("[data-pop-over-panel]")!;
@@ -120,6 +123,24 @@ describe("<pop-over> tooltip (hover/focus)", () => {
     host.dispatchEvent(pointer("pointerenter", "mouse"));
 
     expect(panel.style.left).toBe("260px");
+  });
+
+  it("positions against an explicit anchor inside the trigger", () => {
+    const { host, panel, trigger } = mount({ anchor: true });
+    const anchor = host.querySelector<HTMLElement>("[data-pop-over-anchor]")!;
+    setRect(trigger, { x: 200, y: 140, width: 100 });
+    setRect(anchor, { x: 300, y: 100, width: 20 });
+    setRect(panel, { x: 0, y: 0, width: 100, height: 40 });
+    Object.defineProperties(panel, {
+      offsetWidth: { configurable: true, value: 100 },
+      offsetHeight: { configurable: true, value: 40 },
+      scrollHeight: { configurable: true, value: 40 },
+    });
+
+    host.dispatchEvent(pointer("pointerenter", "mouse"));
+
+    expect(panel.style.left).toBe("260px");
+    expect(panel.style.top).toBe("52px");
   });
 
   it("shows on focusin and hides on Escape", () => {

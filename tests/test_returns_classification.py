@@ -38,7 +38,7 @@ def test_every_routed_name_is_classified():
 
 def test_classifications_name_only_real_routes():
     classified = set().union(*BUCKETS.values())
-    # The settings-kit preview routes exist only when DEBUG was true at import.
+    # The component-kit preview routes exist only when DEBUG was true at import.
     assert classified - _routed_names() <= DEBUG_ONLY
 
 

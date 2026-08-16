@@ -541,6 +541,13 @@ register_element("quick-filter-bar", "QuickFilterBar", QuickFilterBarProps)
 _QuickFilterBarElement = custom_element_builder("quick-filter-bar")
 
 
+class CopyControlProps(TypedDict):
+    value: str
+
+
+register_element("copy-control", "CopyControl", CopyControlProps)
+
+
 class SectionNavProps(TypedDict):
     pass
 
