@@ -58,10 +58,14 @@ def AccountMenu(
         ]
     )[trigger_content]
     items: list[Node] = [
-        Li(role="presentation", class_="px-4 py-3")[
-            PlainH4(class_="text-type-body font-semibold text-heading break-words")[
-                username
-            ]
+        Li(
+            role="presentation",
+            class_="flex items-start justify-between gap-3 px-4 py-3",
+        )[
+            PlainH4(
+                class_="min-w-0 text-type-body font-semibold text-heading break-words"
+            )[username],
+            ThemeToggle(instance_key=f"{id}-theme", disabled=theme_disabled),
         ],
         _account_value("Today", today_played),
         _account_value("Last 7 days", last_7_played),
@@ -73,10 +77,6 @@ def AccountMenu(
         items.append(DropdownLinkItem(admin_settings_url, "Admin settings"))
     items.extend(
         [
-            DropdownDivider(),
-            Li(role="presentation", class_="px-2 py-1")[
-                ThemeToggle(instance_key=f"{id}-theme", disabled=theme_disabled)
-            ],
             DropdownDivider(),
             DropdownPostItem(logout_url, "Log out", csrf_token=csrf_token),
         ]

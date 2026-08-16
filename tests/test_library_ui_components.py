@@ -16,26 +16,34 @@ from common.components import (
 )
 
 
-def test_statistic_card_links_the_value_with_a_subject_accessible_name():
-    html = str(StatisticCard("Games", 851, href="/tracker/game/list"))
+def test_statistic_card_keeps_values_plain_and_non_interactive():
+    html = str(StatisticCard("Games", 851))
 
     assert 'data-statistic-card=""' in html
-    assert 'href="/tracker/game/list"' in html
-    assert 'aria-label="851 Games"' in html
+    assert "<a" not in html
+    assert "href=" not in html
     assert "Games" in html and ">851<" in html
-    assert "Browse" not in html
 
 
-def test_plain_and_zero_statistics_keep_the_same_card_shape():
+def test_three_statistics_fill_the_wide_grid_and_zero_keeps_the_same_shape():
     plain = str(StatisticCard("Unavailable", "—"))
-    zero = str(StatisticCard("Devices", 0, href="/tracker/device/list"))
+    zero = str(StatisticCard("Devices", 0))
 
     assert "<a" not in plain
-    assert 'aria-label="0 Devices"' in zero
-    assert 'href="/tracker/device/list"' in zero
-    grid = str(StatisticGrid(StatisticCard("Games", 0), StatisticCard("Devices", 0)))
+    assert "<a" not in zero
+    grid = str(
+        StatisticGrid(
+            StatisticCard("Games", 0),
+            StatisticCard("Spent", 0),
+            StatisticCard("Devices", 0),
+        )
+    )
     assert 'data-statistic-grid=""' in grid
-    assert grid.count('data-statistic-card=""') == 2
+    assert grid.count('data-statistic-card=""') == 3
+    assert "grid-cols-2" in grid
+    assert "@xl:grid-cols-3" in grid
+    assert "last:col-span-2" in grid
+    assert " p-4" not in grid
 
 
 def test_fact_list_accepts_arbitrary_value_children():
@@ -81,6 +89,8 @@ def test_copy_control_exposes_value_description_live_label_and_media():
     assert 'data-copy-label=""' in html
     assert 'aria-live="polite"' in html
     assert 'aria-label="Copy Library ID"' in html
+    assert 'data-copy-icon=""' in html
+    assert "sr-only" in html
     assert "dist/elements/copy-control.js" in collect_media(control).js
 
 
@@ -166,6 +176,7 @@ def test_account_menu_has_exact_order_groups_and_circular_trigger():
     assert ">AW<" in trigger
     ordered = [
         "alexandra-with-a-long-name",
+        "theme-toggle",
         "Today",
         "Today value",
         "Last 7 days",
@@ -173,12 +184,11 @@ def test_account_menu_has_exact_order_groups_and_circular_trigger():
         "Stats",
         "Settings",
         "Admin settings",
-        "theme-toggle",
         "Log out",
     ]
     positions = [panel.index(value) for value in ordered]
     assert positions == sorted(positions)
-    assert panel.count('role="separator"') == 3
+    assert panel.count('role="separator"') == 2
     assert 'action="/logout/"' in panel
     assert 'name="csrfmiddlewaretoken" value="token"' in panel
 

@@ -10,6 +10,7 @@ from common.components.custom_elements import (
     DropdownMenuPanel,
 )
 from common.components.primitives import (
+    Button,
     ControlButton,
     Dd,
     Div,
@@ -18,7 +19,10 @@ from common.components.primitives import (
     Icon,
     Link,
     P,
+    Path,
+    Rect,
     Span,
+    Svg,
     custom_element_builder,
 )
 
@@ -28,34 +32,18 @@ _CopyControl = custom_element_builder("copy-control")
 def StatisticGrid(*cards: Child) -> Node:
     return Div(
         data_statistic_grid="",
-        class_="grid grid-cols-2 gap-3 @3xl:grid-cols-4",
+        class_="grid grid-cols-2 gap-6 @xl:grid-cols-3",
     )[*cards]
 
 
-def StatisticCard(
-    label: str,
-    value: str | int,
-    href: str | None = None,
-) -> Node:
+def StatisticCard(label: str, value: str | int) -> Node:
     value_text = str(value)
-    value_node = (
-        Link(
-            href=href,
-            aria_label=f"{value_text} {label}",
-            class_="text-type-title text-heading",
-        )[value_text]
-        if href is not None
-        else Span(class_="text-type-title text-heading")[value_text]
-    )
     return Div(
         data_statistic_card="",
-        class_=(
-            "flex min-w-0 flex-col gap-1 rounded-base border border-default "
-            "bg-neutral-secondary-medium p-4"
-        ),
+        class_="flex min-w-0 flex-col gap-1 last:col-span-2 @xl:last:col-span-1",
     )[
         P(class_="text-type-body text-body")[label],
-        value_node,
+        Span(class_="text-type-title text-heading")[value_text],
     ]
 
 
@@ -81,18 +69,52 @@ def CopyControl(
     description: str = "Copy value to clipboard",
 ) -> Node:
     return _CopyControl(value=value, class_="inline-flex")[
-        ControlButton(
+        Button(
             [
+                ("type", "button"),
                 ("data-copy-control", ""),
                 ("aria-label", description),
-            ],
-            variant="ghost",
+                (
+                    "class",
+                    (
+                        "inline-flex h-8 w-8 shrink-0 items-center justify-center "
+                        "rounded-base text-body hover:bg-neutral-tertiary-medium "
+                        "hover:text-heading focus:outline-hidden focus:ring-2 "
+                        "focus:ring-fg-brand hover:cursor-pointer"
+                    ),
+                ),
+            ]
         )[
+            Svg(
+                [
+                    ("data-copy-icon", ""),
+                    ("class", "h-4 w-4"),
+                    ("viewBox", "0 0 24 24"),
+                    ("fill", "none"),
+                    ("stroke", "currentColor"),
+                    ("stroke-width", "2"),
+                    ("aria-hidden", "true"),
+                ]
+            )[
+                Rect(
+                    [
+                        ("x", "8"),
+                        ("y", "8"),
+                        ("width", "13"),
+                        ("height", "13"),
+                        ("rx", "2"),
+                    ]
+                ),
+                Path(
+                    [("d", "M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3")]
+                ),
+            ],
             Span(
                 data_copy_label="",
+                class_="sr-only",
                 aria_live="polite",
                 aria_atomic="true",
-            )[label]
+            )[label],
         ],
     ]
 

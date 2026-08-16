@@ -36,15 +36,15 @@ def library_kit_preview(request: HttpRequest) -> HttpResponse:
     library_id = "018f0000-0000-7000-8000-000000000000"
     statistics_and_facts = Div(class_="@container flex flex-col gap-6")[
         StatisticGrid(
-            StatisticCard("Games", 851, href=reverse("games:list_games")),
+            StatisticCard("Games", 851),
             StatisticCard("Total spent", "CZK 12,345.67"),
-            StatisticCard("Devices", 0, href=reverse("games:list_devices")),
+            StatisticCard("Devices", 0),
         ),
         FactList(
             [
                 (
                     "Library ID",
-                    Div(class_="flex min-w-0 items-center gap-2")[
+                    Div(class_="flex min-w-0 items-center gap-1")[
                         Span(class_="min-w-0 break-all font-mono")[library_id],
                         CopyControl(library_id, description="Copy Library ID"),
                     ],
