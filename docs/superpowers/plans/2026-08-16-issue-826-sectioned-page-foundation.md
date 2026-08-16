@@ -143,9 +143,7 @@ with pytest.raises(
 ):
     self._scaffold([])
 with pytest.raises(ValueError, match="Invalid sectioned-page section id"):
-    self._scaffold(
-        [SectionedPageSection("not valid", "Bad", Div())]
-    )
+    self._scaffold([SectionedPageSection("not valid", "Bad", Div())])
 with pytest.raises(ValueError, match="Duplicate sectioned-page section id"):
     self._scaffold(
         [
@@ -213,7 +211,7 @@ def SectionNav(
 Use `navigation_label` for the trigger title, bottom-sheet title, and rail `aria-label`; use `jump_label` for the trigger subtitle; and pass this exact close label:
 
 ```python
-close_label=f"Close {navigation_label.lower()}"
+close_label = f"Close {navigation_label.lower()}"
 ```
 
 Use these exact validation messages:
@@ -226,9 +224,7 @@ if not _SECTION_ID.fullmatch(section.id):
         f"Invalid sectioned-page section id {section.id!r}; use an HTML-safe id."
     )
 if section.id in seen:
-    raise ValueError(
-        f"Duplicate sectioned-page section id {section.id!r}."
-    )
+    raise ValueError(f"Duplicate sectioned-page section id {section.id!r}.")
 ```
 
 The scaffold must forward both labels rather than silently choosing them:

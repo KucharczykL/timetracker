@@ -122,9 +122,7 @@ def test_fact_list_accepts_arbitrary_value_children():
 
 def test_fact_list_does_not_reuse_tooltip_presentation():
     fact_html = str(FactList([("Created", "31/12/2022")]))
-    tooltip_html = str(
-        TooltipDefinitionList([TooltipDefinition("Source", "Database")])
-    )
+    tooltip_html = str(TooltipDefinitionList([TooltipDefinition("Source", "Database")]))
 
     assert "data-tooltip-definition-list" not in fact_html
     assert "data-fact-list" not in tooltip_html
@@ -340,9 +338,7 @@ def _entity_action_menu(label: str, actions: Sequence[EntitySummaryAction]) -> N
     return Dropdown(
         trigger_element=trigger,
         target_element=DropdownMenuPanel(
-            items=[
-                DropdownLinkItem(action.href, action.label) for action in actions
-            ],
+            items=[DropdownLinkItem(action.href, action.label) for action in actions],
             aria_label=f"{label} actions",
         ),
         id=menu_id,
@@ -367,9 +363,7 @@ def EntitySummaryRow(
             class_="text-type-subheading text-heading tabular-nums",
         )[count_text]
         if count_href is not None
-        else Span(class_="text-type-subheading text-heading tabular-nums")[
-            count_text
-        ]
+        else Span(class_="text-type-subheading text-heading tabular-nums")[count_text]
     )
     primary_children: list[Child] = [
         Div(class_="flex min-w-0 flex-col gap-1")[
@@ -388,12 +382,7 @@ def EntitySummaryRow(
                 Div(
                     data_entity_summary_wide_actions="",
                     class_="hidden items-center justify-end gap-4 @2xl:flex",
-                )[
-                    *[
-                        Link(href=action.href)[action.label]
-                        for action in actions
-                    ]
-                ],
+                )[*[Link(href=action.href)[action.label] for action in actions]],
             ]
         )
     row_children: list[Child] = [
@@ -816,9 +805,9 @@ def AccountMenu(
 ) -> Node:
     if not initials.strip():
         raise ValueError("AccountMenu initials must not be empty.")
-    trigger_content = Span(
-        aria_hidden="true", class_="text-type-body font-semibold"
-    )[initials]
+    trigger_content = Span(aria_hidden="true", class_="text-type-body font-semibold")[
+        initials
+    ]
     trigger = Button(
         [
             ("type", "button"),
@@ -1403,9 +1392,7 @@ def test_library_kit_responsive_interactions_and_static_toasts(
         "button",
         name="Open account menu for preview-normal-user",
     )
-    user_menu = user_trigger.locator("xpath=ancestor::drop-down").locator(
-        "[data-menu]"
-    )
+    user_menu = user_trigger.locator("xpath=ancestor::drop-down").locator("[data-menu]")
     user_trigger.click()
     expect(user_menu).to_be_visible()
     expect(user_menu.get_by_role("menuitem", name="Admin settings")).to_have_count(0)
