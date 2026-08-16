@@ -5,6 +5,7 @@ from games.views import (
     device,
     game,
     general,
+    library,
     platform,
     playevent,
     purchase,
@@ -17,6 +18,7 @@ app_name = "games"
 
 urlpatterns = [
     path("", general.index, name="index"),
+    path("library", library.library, name="library"),
     path("settings", settings_views.user_settings, name="settings"),
     path(
         "admin-settings",
@@ -188,22 +190,3 @@ def _settings_kit_preview_urlpatterns():
 
 
 urlpatterns += _settings_kit_preview_urlpatterns()
-
-
-def _library_kit_preview_urlpatterns():
-    """Keep the Library component gallery absent from production routing."""
-
-    if not settings.DEBUG:
-        return []
-    from games.views import library_kit_preview
-
-    return [
-        path(
-            "library-kit-preview/",
-            library_kit_preview.library_kit_preview,
-            name="library_kit_preview",
-        )
-    ]
-
-
-urlpatterns += _library_kit_preview_urlpatterns()

@@ -1,5 +1,5 @@
 import datetime
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from functools import partial
 from typing import ClassVar, Final, cast
 from zoneinfo import ZoneInfo
@@ -140,6 +140,33 @@ class PrimitiveWidgetsMixin:
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         apply_primitive_widget_classes(self.fields)
+
+
+class LibraryPreferencesForm(PrimitiveWidgetsMixin, forms.Form):
+    """Library-owned preferences rendered through the shared settings field kit."""
+
+    default_device = forms.ChoiceField(
+        choices=(),
+        label="Default device",
+        required=False,
+    )
+
+    def __init__(
+        self,
+        *,
+        devices: Iterable[Device],
+        default_device: Device | None,
+    ) -> None:
+        super().__init__()
+        default_device_field = self.fields["default_device"]
+        assert isinstance(default_device_field, forms.ChoiceField)
+        default_device_field.choices = [
+            ("", "No default device"),
+            *((str(device.pk), device.name) for device in devices),
+        ]
+        self.initial["default_device"] = (
+            str(default_device.pk) if default_device is not None else ""
+        )
 
 
 class MultipleGameChoiceField(forms.ModelMultipleChoiceField):

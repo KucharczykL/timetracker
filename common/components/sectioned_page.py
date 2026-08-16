@@ -254,8 +254,29 @@ def SectionedPageScaffold(
     ]
 
 
+def SectionedPage(
+    title: str,
+    sections: Sequence[SectionedPageSection],
+    *,
+    description: str = "",
+    actions: Children = None,
+    navigation_label: str,
+    jump_label: str,
+) -> Node:
+    """A complete sectioned page with its header, scaffold, and shared gap."""
+    return Div(data_sectioned_page="", class_="flex flex-col gap-6")[
+        SectionedPageHeader(title, description=description, actions=actions),
+        SectionedPageScaffold(
+            sections,
+            navigation_label=navigation_label,
+            jump_label=jump_label,
+        ),
+    ]
+
+
 __all__ = [
     "SectionNav",
+    "SectionedPage",
     "SectionedPageHeader",
     "SectionedPageScaffold",
     "SectionedPageSection",

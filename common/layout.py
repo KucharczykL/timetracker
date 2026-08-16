@@ -27,7 +27,6 @@ from common.components.primitives import (
     CONTENT_MAX_WIDTH_CLASS,
     PAGE_GUTTER_CLASS,
     Body,
-    Button,
     Div,
     Head,
     Html,
@@ -445,14 +444,17 @@ def Navbar(
     last_7_played: Node | str,
     current_year: int,
     csrf_token: str,
+    username: str = "",
     authenticated: bool = False,
     is_superuser: bool = False,
     is_settings_page: bool = False,
     recent_resumes: list[Session] | None = None,
     origin: OriginUrl | None = None,
 ) -> Node:
-    """Top navigation bar, assembled from components (logo + hamburger + menu)."""
-    from common.components import ControlLink, Div, Icon, Span
+    """Authenticated primary navigation: logo, Log game, Library, account."""
+    import re
+
+    from common.components import AccountMenu, ControlLink, Div, Span
 
     logo = static("icons/tesserae-icon-animated.svg")
     brand = ControlLink(
@@ -464,50 +466,45 @@ def Navbar(
     )[
         Img(src=logo, alt="Timetracker Logo", class_="w-10 h-10"),
         Span(
-            class_="text-lg sm:text-2xl lg:text-4xl text-accent font-alien"  # type-ok: wordmark brand scale
+            class_="hidden sm:inline text-lg sm:text-2xl lg:text-4xl text-accent font-alien"  # type-ok: wordmark brand scale
         )["TIMETRACKER"],
     ]
-    hamburger = Button(
-        data_collapse_toggle="navbar-dropdown",
-        type="button",
-        aria_controls="navbar-dropdown",
-        aria_expanded="false",
-        class_="inline-flex items-center p-2 w-10 h-10 justify-center text-type-body text-body-subtle rounded-base md:hidden hover:bg-neutral-tertiary-medium focus:outline-hidden focus:ring-2 focus:ring-neutral-tertiary-medium",
-    )[Span(class_="sr-only")["Open main menu"], Icon("hamburger")]
-
-    menu = NavbarMenu(
-        today_played=today_played,
-        last_7_played=last_7_played,
-        current_year=current_year,
-        csrf_token=csrf_token,
-        authenticated=authenticated,
-        is_superuser=is_superuser,
-        is_settings_page=is_settings_page,
-        recent_resumes=recent_resumes or [],
-        origin=origin,
-    )
-    # Two breakpoint instances of the log button: the mobile one sits in the top
-    # bar next to the hamburger (`md:hidden`); the desktop one lives inside the
-    # menu row between the playtime counter and Home (rendered by NavbarMenu,
-    # `hidden md:flex`). Each is auth-gated; `me-auto` on the brand right-aligns
-    # the mobile group, and `menu` stays a direct flex child for its mobile wrap.
-    mobile_log = (
-        Div(class_="md:hidden")[
+    controls = ""
+    if authenticated:
+        parts = [part for part in re.split(r"[^A-Za-z0-9]+", username) if part]
+        initials = (
+            "".join(part[0] for part in parts)[:2].upper() or username[:2].upper()
+        )
+        controls = Div(class_="flex items-center gap-4 sm:gap-6")[
             NavbarLogButton(
                 recent_resumes or [],
-                id="navbar-log-mobile",
+                id="navbar-log",
                 csrf_token=csrf_token,
                 origin=origin,
-            )
+            ),
+            ControlLink(href=reverse("games:library"), class_=_NAV_LINK_CLASS)[
+                "Library"
+            ],
+            AccountMenu(
+                username=username,
+                initials=initials,
+                today_played=today_played,
+                last_7_played=last_7_played,
+                stats_url=reverse("games:stats_by_year", args=[current_year]),
+                settings_url=reverse("games:settings"),
+                admin_settings_url=(
+                    reverse("games:admin_settings") if is_superuser else None
+                ),
+                theme_disabled=is_settings_page,
+                logout_url=reverse("logout"),
+                csrf_token=csrf_token,
+            ),
         ]
-        if authenticated
-        else ""
-    )
     return Nav(class_="bg-neutral-primary-soft border-b border-default py-4")[
         Div(
             class_=f"w-full {CONTENT_MAX_WIDTH_CLASS} {PAGE_GUTTER_CLASS} "
-            "flex flex-wrap items-center gap-x-3 mx-auto"
-        )[brand, mobile_log, hamburger, menu]
+            "flex items-center gap-x-3 mx-auto"
+        )[brand, controls]
     ]
 
 
@@ -553,6 +550,7 @@ def TimetrackerDocument(
         last_7_played=counts["last_7_played"],
         current_year=year,
         csrf_token=csrf_token,
+        username=request.user.get_username() if request.user.is_authenticated else "",
         authenticated=request.user.is_authenticated,
         is_superuser=request.user.is_superuser,
         is_settings_page=is_settings_page,

@@ -1,3 +1,4 @@
+import re
 from datetime import timedelta
 from types import SimpleNamespace
 
@@ -19,6 +20,46 @@ from games.models import (
 from games.views.general import model_counts
 
 pytestmark = pytest.mark.django_db
+
+
+def test_library_page_requires_login(client):
+    response = client.get("/tracker/library")
+
+    assert response.status_code == 302
+    assert "/login/" in response["Location"]
+
+
+def test_library_page_shows_only_current_library_records(client, django_user_model):
+    owner = django_user_model.objects.create_user(
+        username="library-owner", password="p"
+    )
+    other = django_user_model.objects.create_user(username="other-owner", password="p")
+    Game.objects.create(library=owner.library, name="Owned game")
+    Game.objects.create(library=other.library, name="Foreign game")
+    Device.objects.create(library=owner.library, name="Owned device")
+    Device.objects.create(library=other.library, name="Foreign device")
+    client.force_login(owner)
+
+    response = client.get("/tracker/library")
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert "Library" in body
+    assert "Activity is coming later" in body
+    assert "Games currently includes every game in your library." in body
+    assert str(owner.library.pk) in body
+    assert "1 Games" in body
+    assert "1 Devices" in body
+    assert 'data-setting-key="default-device"' in body
+    assert 'data-live-setting-control=""' in body
+    assert "Preselected when logging a game." in body
+    add_purchase_links = re.findall(
+        r'<a\b[^>]*href="/tracker/purchase/add"[^>]*>', body
+    )
+    assert len(add_purchase_links) == 2
+    assert all("bg-success" not in link for link in add_purchase_links)
+    assert "Foreign game" not in body
+    assert "Foreign device" not in body
 
 
 @pytest.fixture

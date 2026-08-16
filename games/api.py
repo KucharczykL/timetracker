@@ -83,6 +83,7 @@ playevent_router = Router()
 game_router = Router()
 device_router = Router()
 platform_router = Router()
+library_router = Router()
 
 NOW_FACTORY = django_timezone_now
 PAGE_SIZE = 10
@@ -791,6 +792,10 @@ class SettingValueIn(Schema):
     value: Any = None
 
 
+class DefaultDeviceIn(Schema):
+    value: int | str | None = None
+
+
 def _settings_of_scope(*scopes: SettingScope) -> list[SettingKey]:
     return [
         key
@@ -866,6 +871,35 @@ def update_user_setting(request, key: str, payload: SettingValueIn):
     )
 
 
+@library_router.patch("/default-device", response=SettingOut)
+def update_library_default_device(request, payload: DefaultDeviceIn):
+    """Set the current library's default Device, or clear it with null."""
+    library = request.user.library
+    device = None
+    if payload.value is not None:
+        try:
+            device_id = int(payload.value)
+        except TypeError, ValueError:
+            raise HttpError(400, "Device must be an integer or null.") from None
+        device = Device.objects.for_library(library).filter(pk=device_id).first()
+        if device is None:
+            raise HttpError(404, "Device not found.")
+    from timetracker.settings_commands import change_library_default_device
+
+    change_library_default_device(library, device)
+    messages.success(request, "Default device saved")
+    return {
+        "key": "default-device",
+        "value": device.pk if device is not None else None,
+        # A library preference is persisted as part of the authenticated
+        # account's library. Reuse the established source vocabulary so the
+        # shared live-settings client accepts and publishes the response.
+        "source": "user",
+        "locked": False,
+        "namespace": "library",
+    }
+
+
 @settings_router.get("/site", response=list[SettingOut])
 def list_site_settings(request):
     """Site settings (and the site defaults under user prefs), resolved with
@@ -901,6 +935,7 @@ def update_site_setting(request, key: str, payload: SettingValueIn):
 
 
 api.add_router("/settings", settings_router)
+api.add_router("/library", library_router)
 
 client_error_logger = logging.getLogger("client_errors")
 

@@ -57,3 +57,35 @@ def test_library_default_device_mutation_can_clear(user, db):
 
     assert settings_commands.change_library_default_device(library, None) is True
     assert UserLibraryPreferences.objects.get(library=library).default_device_id is None
+
+
+def test_library_default_device_api_rejects_foreign_and_clears(client, user, user2):
+    own = Device.objects.create(library=user.library, name="Own device")
+    foreign = Device.objects.create(library=user2.library, name="Foreign device")
+    client.force_login(user)
+
+    selected = client.patch(
+        "/api/library/default-device",
+        data={"value": own.pk},
+        content_type="application/json",
+    )
+    rejected = client.patch(
+        "/api/library/default-device",
+        data={"value": foreign.pk},
+        content_type="application/json",
+    )
+    cleared = client.patch(
+        "/api/library/default-device",
+        data={"value": None},
+        content_type="application/json",
+    )
+
+    assert selected.status_code == 200
+    assert selected.json()["source"] == "user"
+    assert selected.json()["namespace"] == "library"
+    assert rejected.status_code == 404
+    assert cleared.status_code == 200
+    assert (
+        UserLibraryPreferences.objects.get(library=user.library).default_device_id
+        is None
+    )

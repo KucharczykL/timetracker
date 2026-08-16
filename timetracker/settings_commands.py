@@ -36,11 +36,13 @@ class SettingNamespace(StrEnum):
 
     USER = "user"
     SITE = "site"
+    LIBRARY = "library"
 
 
 SETTING_NAMESPACE_CHOICES: tuple[tuple[str, str], ...] = (
     ("user", "User"),
     ("site", "Site"),
+    ("library", "Library"),
 )
 
 
