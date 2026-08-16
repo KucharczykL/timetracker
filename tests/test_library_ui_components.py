@@ -1,4 +1,7 @@
+import pytest
+
 from common.components import (
+    AccountMenu,
     CopyControl,
     Div,
     EntitySummaryAction,
@@ -134,3 +137,66 @@ def test_entity_row_with_no_actions_renders_no_empty_overflow_menu():
 
     assert "data-entity-summary-overflow" not in html
     assert "<drop-down" not in html
+
+
+def _account_menu(**overrides):
+    values = {
+        "username": "alexandra-with-a-long-name",
+        "initials": "AW",
+        "today_played": Div()["Today value"],
+        "last_7_played": Div()["Last 7 days value"],
+        "stats_url": "/tracker/stats/2026",
+        "settings_url": "/tracker/settings",
+        "admin_settings_url": "/tracker/admin-settings",
+        "theme_disabled": False,
+        "logout_url": "/logout/",
+        "csrf_token": "token",
+    }
+    values.update(overrides)
+    return AccountMenu(**values)
+
+
+def test_account_menu_has_exact_order_groups_and_circular_trigger():
+    html = str(_account_menu())
+    trigger = html[: html.index("data-menu")]
+    panel = html[html.index("data-menu") :]
+
+    assert 'aria-label="Open account menu for alexandra-with-a-long-name"' in trigger
+    assert "rounded-full" in trigger
+    assert ">AW<" in trigger
+    ordered = [
+        "alexandra-with-a-long-name",
+        "Today",
+        "Today value",
+        "Last 7 days",
+        "Last 7 days value",
+        "Stats",
+        "Settings",
+        "Admin settings",
+        "theme-toggle",
+        "Log out",
+    ]
+    positions = [panel.index(value) for value in ordered]
+    assert positions == sorted(positions)
+    assert panel.count('role="separator"') == 3
+    assert 'action="/logout/"' in panel
+    assert 'name="csrfmiddlewaretoken" value="token"' in panel
+
+
+def test_account_menu_omits_admin_without_changing_the_initials_trigger():
+    html = str(_account_menu(admin_settings_url=None))
+
+    assert "Admin settings" not in html
+    assert ">AW<" in html
+    assert "Open account menu for alexandra-with-a-long-name" in html
+
+
+def test_account_menu_rejects_empty_initials():
+    with pytest.raises(ValueError, match="initials must not be empty"):
+        _account_menu(initials="")
+
+
+def test_account_menu_forwards_the_theme_disabled_state():
+    html = str(_account_menu(theme_disabled=True))
+
+    assert '<theme-toggle disabled="true"' in html
