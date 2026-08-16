@@ -397,6 +397,9 @@ def test_ensure_reuses_existing_cluster_metadata(harness, monkeypatch, tmp_path)
     tools = harness.Tools(*(tmp_path / name for name in harness.TOOL_NAMES))
     started: list[int] = []
     monkeypatch.setattr(harness, "explicit_database_url", lambda: None)
+    # Pinned like every other collaborator here: the reuse path must not depend on
+    # the privileges of whoever runs the suite (containers commonly run as root).
+    monkeypatch.setattr(harness, "running_as_root", lambda: False)
     monkeypatch.setattr(harness, "path_tools", lambda: tools)
     monkeypatch.setattr(
         harness, "initialize_cluster", lambda *args: pytest.fail("init")
@@ -478,3 +481,130 @@ def test_verify_contract_rejects_wrong_catalog_metadata(harness, monkeypatch, tm
 
     with pytest.raises(harness.HarnessError, match="major version 18"):
         harness.verify_contract(tools, 5432)
+
+
+def _pinned_archive(harness, directory: Path) -> tuple[Path, str]:
+    """Build a tarball shaped like the published PostgreSQL fallback."""
+    import tarfile
+
+    extracted = directory / "source" / "postgresql-fallback"
+    (extracted / "bin").mkdir(parents=True)
+    for name in harness.TOOL_NAMES:
+        (extracted / "bin" / harness.executable_name(name)).touch()
+    archive = directory / "pinned.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        tar.add(extracted, arcname="postgresql-fallback")
+    return archive, hashlib.sha256(archive.read_bytes()).hexdigest()
+
+
+def _certificate_failure(harness) -> Exception:
+    return harness.urllib.error.URLError(
+        harness.ssl.SSLCertVerificationError("unable to get local issuer certificate")
+    )
+
+
+def test_certificate_failure_retries_the_download_with_curl(
+    harness, monkeypatch, tmp_path
+):
+    # A proxying sandbox presents a locally trusted MITM CA that OpenSSL 3.5 can
+    # still reject; curl reads the same bundle and accepts it.
+    pinned, checksum = _pinned_archive(harness, tmp_path)
+    monkeypatch.setattr(harness.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(harness.platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(harness, "postgres_major", lambda postgres: 18)
+    monkeypatch.setattr(
+        harness, "FALLBACKS", {("Linux", "x86_64"): (pinned.name, checksum)}
+    )
+
+    def refuse_certificate(url: str, archive: Path) -> None:
+        raise _certificate_failure(harness)
+
+    retried: list[str] = []
+
+    def succeed_with_curl(url: str, archive: Path) -> None:
+        retried.append(url)
+        Path(archive).write_bytes(pinned.read_bytes())
+
+    monkeypatch.setattr(harness.urllib.request, "urlretrieve", refuse_certificate)
+    monkeypatch.setattr(harness, "download_with_curl", succeed_with_curl)
+
+    tools = harness.fallback_tools(tmp_path / "cache")
+
+    expected_url = (
+        "https://github.com/theseus-rs/postgresql-binaries/releases/download/"
+        f"{harness.FALLBACK_VERSION}/{pinned.name}"
+    )
+    assert retried == [expected_url]
+    assert tools.initdb.name == harness.executable_name("initdb")
+
+
+def test_download_failure_that_is_not_a_certificate_error_is_not_retried(
+    harness, monkeypatch, tmp_path
+):
+    monkeypatch.setattr(harness.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(harness.platform, "machine", lambda: "x86_64")
+
+    def refuse_connection(url: str, archive: Path) -> None:
+        raise harness.urllib.error.URLError("connection refused")
+
+    monkeypatch.setattr(harness.urllib.request, "urlretrieve", refuse_connection)
+    monkeypatch.setattr(
+        harness,
+        "download_with_curl",
+        lambda url, archive: pytest.fail("only certificate failures retry with curl"),
+    )
+
+    with pytest.raises(harness.urllib.error.URLError):
+        harness.fallback_tools(tmp_path)
+
+
+def test_curl_retry_without_curl_installed_names_the_ways_out(harness, monkeypatch):
+    monkeypatch.setattr(harness.shutil, "which", lambda name: None)
+
+    with pytest.raises(harness.HarnessError, match="DATABASE_URL"):
+        harness.download_with_curl(
+            "https://example.invalid/pg.tar.gz", Path("pg.tar.gz")
+        )
+
+
+def test_failed_curl_retry_discards_a_truncated_archive(harness, monkeypatch, tmp_path):
+    archive = tmp_path / "postgres.tar.gz"
+    archive.write_bytes(b"truncated")
+    monkeypatch.setattr(harness.shutil, "which", lambda name: "/usr/bin/curl")
+
+    def fail(args: list[str], **kwargs: object) -> None:
+        raise subprocess.CalledProcessError(22, args)
+
+    monkeypatch.setattr(harness, "run", fail)
+
+    with pytest.raises(harness.HarnessError, match="Python or curl"):
+        harness.download_with_curl("https://example.invalid/pg.tar.gz", archive)
+    # A half-written file would otherwise be reused as if it were the real archive.
+    assert not archive.exists()
+
+
+def test_root_cannot_provision_the_managed_cluster(harness, monkeypatch, tmp_path):
+    # initdb and the server both refuse root, several steps and one download apart.
+    monkeypatch.setattr(harness, "explicit_database_url", lambda: None)
+    monkeypatch.setattr(harness, "running_as_root", lambda: True)
+    monkeypatch.setattr(
+        harness,
+        "fallback_tools",
+        lambda cache: pytest.fail("root must fail before downloading anything"),
+    )
+    monkeypatch.setattr(harness, "path_tools", lambda: None)
+
+    with pytest.raises(harness.HarnessError, match="refuses to run as root"):
+        harness.ensure(tmp_path)
+
+
+def test_root_still_uses_an_explicit_database_url(harness, monkeypatch, tmp_path):
+    # A root sandbox can borrow an external server, so the check sits after it.
+    monkeypatch.setattr(harness, "running_as_root", lambda: True)
+    monkeypatch.setattr(
+        harness,
+        "explicit_database_url",
+        lambda: "postgresql://external.example/tracker",
+    )
+
+    assert harness.ensure(tmp_path) == "postgresql://external.example/tracker"
