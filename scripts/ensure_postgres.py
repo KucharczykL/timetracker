@@ -128,6 +128,53 @@ def verify_checksum(archive: Path, expected: str) -> None:
         )
 
 
+def download_with_curl(url: str, archive: Path) -> None:
+    """Retry a download through curl after Python's TLS stack rejects the chain.
+
+    A proxying sandbox (corporate MITM, Claude Code's cloud environment) presents
+    a locally trusted CA that a newer OpenSSL can still refuse: the interpreter uv
+    provisions links OpenSSL 3.5, which rejects a CA certificate carrying no
+    keyUsage extension, so `SSL_CERT_FILE` is set correctly and verification fails
+    anyway. curl reads the same bundle and accepts it, which makes this a second
+    opinion rather than a weaker one — certificate verification stays on in both
+    attempts, and the caller checks the pinned SHA-256 either way.
+    """
+    curl = shutil.which("curl")
+    if curl is None:
+        raise HarnessError(
+            "Could not verify the HTTPS certificate for the PostgreSQL fallback "
+            "download, and curl is not installed to retry it. Use the Nix "
+            "development shell, configure this machine's trusted CA certificates, "
+            "or set DATABASE_URL."
+        )
+    print(
+        "==> Python rejected the download's certificate; retrying with curl",
+        file=sys.stderr,
+    )
+    try:
+        run(
+            [
+                curl,
+                "--fail",
+                "--silent",
+                "--show-error",
+                "--location",
+                "--output",
+                str(archive),
+                url,
+            ]
+        )
+    except subprocess.CalledProcessError as exc:
+        # A failed transfer can leave a truncated file behind, which would be
+        # cached as if it were the real archive on the next run.
+        archive.unlink(missing_ok=True)
+        raise HarnessError(
+            "Could not download the PostgreSQL fallback with Python or curl "
+            f"({exc}). Use the Nix development shell, configure this machine's "
+            "trusted CA certificates, or set DATABASE_URL."
+        ) from exc
+
+
 def fallback_tools(cache: Path) -> Tools:
     key = (platform.system(), platform.machine())
     try:
@@ -152,13 +199,9 @@ def fallback_tools(cache: Path) -> Tools:
         try:
             urllib.request.urlretrieve(url, archive)
         except urllib.error.URLError as exc:
-            if isinstance(exc.reason, ssl.SSLCertVerificationError):
-                raise HarnessError(
-                    "Could not verify the HTTPS certificate for the PostgreSQL fallback "
-                    "download. Use the Nix development shell, configure this machine's "
-                    "trusted CA certificates, or set DATABASE_URL."
-                ) from exc
-            raise
+            if not isinstance(exc.reason, ssl.SSLCertVerificationError):
+                raise
+            download_with_curl(url, archive)
     verify_checksum(archive, checksum)
     with tarfile.open(archive) as tar:
         root = destination.resolve()
@@ -189,6 +232,12 @@ def explicit_database_url() -> str | None:
         )
     except ImproperlyConfigured:
         return None
+
+
+def running_as_root() -> bool:
+    # os.geteuid is POSIX-only; on Windows the question does not arise.
+    geteuid = getattr(os, "geteuid", None)
+    return geteuid is not None and geteuid() == 0
 
 
 def choose_port() -> int:
@@ -434,6 +483,17 @@ def ensure(cache: Path) -> str:
     if url := explicit_database_url():
         print(f"==> Using explicit DATABASE_URL: {redact_url(url)}", file=sys.stderr)
         return url
+    # initdb and the server both refuse to run as root, several steps apart, so
+    # without this the failure arrives as a bare initdb error after a 12 MB
+    # download. Some cloud sandboxes log in as root, where an external server is
+    # the only route — hence the check sits after the DATABASE_URL branch above.
+    if running_as_root():
+        raise HarnessError(
+            "PostgreSQL refuses to run as root, so the managed cluster cannot be "
+            "created here. Run make as an unprivileged user, or set DATABASE_URL "
+            f"to an existing PostgreSQL {REQUIRED_MAJOR} server that satisfies the "
+            "collation contract (see docs/database.md)."
+        )
     tools = path_tools() or fallback_tools(cache)
     data_dir = cache / "postgres" / "data"
     port_file = cache / "postgres" / "port"

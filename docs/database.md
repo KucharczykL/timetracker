@@ -29,6 +29,11 @@ instead; `make stop-postgres` never stops that external server. Deployments
 should provide the URL through `DATABASE_URL__FILE` so credentials need not
 appear in the environment or the Compose configuration.
 
+The managed cluster needs an unprivileged user, because PostgreSQL refuses to
+run as root. Containers and cloud sandboxes that log in as root therefore cannot
+host it, and `make ensure-postgres` says so rather than attempting the download;
+point `DATABASE_URL` at an existing server there.
+
 ## Schema and migrations
 
 Fresh databases are built from the migration files in `games/migrations/`.
