@@ -23,13 +23,13 @@ from common.components import (
     MaskedSecretField,
     Option,
     PageHeading,
+    SectionedPageScaffold,
+    SectionedPageSection,
     Select,
     SettingFieldState,
     SettingsFieldColumns,
     SettingsFieldLayout,
     SettingSourceBadge,
-    SettingsScaffold,
-    SettingsSection,
 )
 from common.components.primitives import P, PlainH4
 from common.layout import render_page
@@ -308,25 +308,25 @@ def settings_kit_preview(request: HttpRequest) -> HttpResponse:
     """Render every reusable settings-kit state without touching stored settings."""
 
     sections = [
-        SettingsSection(
+        SectionedPageSection(
             "supported-form-layouts",
             "Supported form layouts",
             _supported_form_layouts(),
             "The complete one-, two-, and three-column layouts exposed by SettingsFieldLayout.",
         ),
-        SettingsSection(
+        SectionedPageSection(
             "live-settings-fields",
             "Live grouped settings fields",
             _live_fields(request),
             "Successful changes show a toast and stay in client memory until reload.",
         ),
-        SettingsSection(
+        SectionedPageSection(
             "setting-source-and-lock-states",
             "Setting source and lock states",
             _source_gallery(),
             "Every origin label plus the composite locked treatment.",
         ),
-        SettingsSection(
+        SectionedPageSection(
             "masked-secret-values",
             "Masked secret values",
             Div(class_="grid grid-cols-1 gap-6 lg:grid-cols-2")[
@@ -343,13 +343,13 @@ def settings_kit_preview(request: HttpRequest) -> HttpResponse:
             ],
             "Only presence reaches the component; no real secret is accepted or rendered.",
         ),
-        SettingsSection(
+        SectionedPageSection(
             "semantic-badge-tones",
             "Semantic badge tones",
             _badge_gallery(),
             "The shared badge primitive owns all semantic color pairings.",
         ),
-        SettingsSection(
+        SectionedPageSection(
             "responsive-navigation-behavior",
             "Responsive navigation behavior",
             Div(class_="flex min-h-64 flex-col gap-3")[
@@ -375,7 +375,14 @@ def settings_kit_preview(request: HttpRequest) -> HttpResponse:
     ]
     return render_page(
         request,
-        Div(class_="flex flex-col")[intro, SettingsScaffold(sections)],
+        Div(class_="flex flex-col")[
+            intro,
+            SectionedPageScaffold(
+                sections,
+                navigation_label="Settings sections",
+                jump_label="Jump to a section",
+            ),
+        ],
         title="Settings UI kit preview",
         is_settings_page=True,
     )

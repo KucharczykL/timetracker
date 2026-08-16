@@ -15,13 +15,14 @@ from common.components import (
     FormFields,
     LiveSettingFields,
     MaskedSecretField,
+    SectionedPageHeader,
+    SectionedPageScaffold,
+    SectionedPageSection,
+    SectionNav,
     SettingFieldState,
     SettingsFieldColumns,
     SettingsFieldLayout,
     SettingSourceBadge,
-    SettingsPageHeader,
-    SettingsScaffold,
-    SettingsSection,
     assert_unique_element_ids,
     collect_media,
 )
@@ -380,51 +381,51 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
         assert "<theme-setting><select" in html
 
 
-class SettingsPageHeaderTest(SimpleTestCase):
+class SectionedPageHeaderTest(SimpleTestCase):
     def test_title_only_header_has_no_description_or_action_slot(self):
-        html = str(SettingsPageHeader("Settings"))
+        html = str(SectionedPageHeader("Settings"))
 
-        assert 'data-settings-page-header=""' in html
+        assert 'data-sectioned-page-header=""' in html
         assert "<h1" in html and "Settings" in html
         assert "text-type-body text-body" not in html
-        assert "data-settings-page-actions" not in html
+        assert "data-sectioned-page-actions" not in html
 
     def test_description_renders_in_the_shared_body_style(self):
         html = str(
-            SettingsPageHeader("Admin settings", description="Inherited defaults.")
+            SectionedPageHeader("Admin settings", description="Inherited defaults.")
         )
 
         assert "Inherited defaults." in html
         assert "text-type-body text-body" in html
-        assert "data-settings-page-actions" not in html
+        assert "data-sectioned-page-actions" not in html
 
     def test_actions_render_in_a_dedicated_slot_beside_the_title(self):
         html = str(
-            SettingsPageHeader(
+            SectionedPageHeader(
                 "Admin settings",
                 description="Inherited defaults.",
                 actions=ControlButton(href="/export", color="gray")["Download"],
             )
         )
 
-        assert 'data-settings-page-actions=""' in html
+        assert 'data-sectioned-page-actions=""' in html
         assert 'href="/export"' in html
         assert "Download" in html
         # The title/description block and the actions block are siblings in one
         # justified row, so an action never lands inside the heading column.
         assert "justify-between" in html
-        assert html.index('data-settings-page-header=""') < html.index(
-            'data-settings-page-actions=""'
+        assert html.index('data-sectioned-page-header=""') < html.index(
+            'data-sectioned-page-actions=""'
         )
         assert html.index("Inherited defaults.") < html.index(
-            'data-settings-page-actions=""'
+            'data-sectioned-page-actions=""'
         )
 
     def test_header_owns_its_width_container_and_bakes_no_margin(self):
         """Per docs/visual-conventions.md, parents own spacing via `gap` and
         components never bake margins — the page body's gap sets the distance to
         the content below, so a header dropped into any layout cannot double-space."""
-        html = str(SettingsPageHeader("Settings"))
+        html = str(SectionedPageHeader("Settings"))
 
         header_start = html.index("<div")
         outer_tag = html[header_start : html.index(">", header_start) + 1]
@@ -432,22 +433,29 @@ class SettingsPageHeaderTest(SimpleTestCase):
         assert "mb-" not in html[header_start : html.index("<h1")]
 
 
-class SettingsScaffoldTest(SimpleTestCase):
+class SectionedPageScaffoldTest(SimpleTestCase):
     def _sections(self):
         return [
-            SettingsSection("general", "General", Div()["General fields"]),
-            SettingsSection("privacy", "Privacy", Div()["Privacy fields"]),
+            SectionedPageSection("general", "General", Div()["General fields"]),
+            SectionedPageSection("privacy", "Privacy", Div()["Privacy fields"]),
         ]
 
+    def _scaffold(self, sections=None):
+        return SectionedPageScaffold(
+            self._sections() if sections is None else sections,
+            navigation_label="Settings sections",
+            jump_label="Jump to a section",
+        )
+
     def test_same_dom_carries_mobile_sheet_and_desktop_rail_classes(self):
-        scaffold = SettingsScaffold(self._sections())
+        scaffold = self._scaffold()
         html = str(scaffold)
-        assert html.count("<settings-section-nav") == 1
+        assert html.count("<section-nav") == 1
         assert html.count('data-section-nav-item=""') == 2
         assert html.count('data-section-nav-list=""') == 1
         assert 'href="#general"' in html and 'href="#privacy"' in html
         assert "@4xl:grid-cols-[14rem_minmax(0,1fr)]" in html
-        host_start = html.index("<settings-section-nav")
+        host_start = html.index("<section-nav")
         host_tag = html[host_start : html.index(">", host_start) + 1]
         nav_start = html.index('data-section-nav-rail=""', host_start)
         nav_start = html.rfind("<nav", host_start, nav_start)
@@ -469,29 +477,46 @@ class SettingsScaffoldTest(SimpleTestCase):
         assert "hidden" not in dialog_tag
         assert 'role="menu"' not in html
         assert 'role="menuitem"' not in html
-        assert html.count('data-settings-section=""') == 2
-        assert html.count('data-settings-section-header=""') == 2
-        assert html.count('data-settings-section-content=""') == 2
+        assert html.count('data-sectioned-page-section=""') == 2
+        assert html.count('data-sectioned-page-section-header=""') == 2
+        assert html.count('data-sectioned-page-section-content=""') == 2
         assert "scroll-mt-24 @4xl:scroll-mt-4 flex flex-col gap-6" in html
-        assert html.count('data-settings-section-heading=""') == 2
+        assert html.count('data-sectioned-page-section-heading=""') == 2
         assert html.count('tabindex="-1"') == 2
         assert "flex flex-col gap-2" in html
         assert html.count("text-type-subheading text-heading") == 2
 
         media = collect_media(scaffold)
-        assert "dist/elements/settings-section-nav.js" in media.js
+        assert "dist/elements/section-nav.js" in media.js
         assert "dist/elements/drop-down.js" in media.js
 
+    def test_section_nav_uses_caller_supplied_labels(self):
+        html = str(
+            SectionNav(
+                [SectionedPageSection("overview", "Overview", Div())],
+                navigation_label="Library kit sections",
+                jump_label="Jump to a component group",
+            )
+        )
+
+        assert 'aria-label="Library kit sections"' in html
+        assert "Library kit sections" in html
+        assert "Jump to a component group" in html
+        assert 'aria-label="Close library kit sections"' in html
+
     def test_section_ids_are_valid_and_unique(self):
-        with pytest.raises(ValueError, match="at least one"):
-            SettingsScaffold([])
-        with pytest.raises(ValueError, match="Invalid"):
-            SettingsScaffold([SettingsSection("not valid", "Bad", Div())])
-        with pytest.raises(ValueError, match="Duplicate"):
-            SettingsScaffold(
+        with pytest.raises(
+            ValueError,
+            match="SectionedPageScaffold requires at least one section",
+        ):
+            self._scaffold([])
+        with pytest.raises(ValueError, match="Invalid sectioned-page section id"):
+            self._scaffold([SectionedPageSection("not valid", "Bad", Div())])
+        with pytest.raises(ValueError, match="Duplicate sectioned-page section id"):
+            self._scaffold(
                 [
-                    SettingsSection("same", "One", Div()),
-                    SettingsSection("same", "Two", Div()),
+                    SectionedPageSection("same", "One", Div()),
+                    SectionedPageSection("same", "Two", Div()),
                 ]
             )
 

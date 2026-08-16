@@ -47,7 +47,7 @@ def test_settings_page_renders_resolved_preferences(auth_client, user):
     assert response.status_code == 200
     html = response.content.decode()
     assert "Settings" in html
-    assert 'data-settings-scaffold=""' in html
+    assert 'data-sectioned-page-scaffold=""' in html
     assert 'patch-url-template="/api/settings/user/__key__"' in html
     assert 'name="default_purchase_currency" value="EUR"' in html
     assert '<option value="games:list_games" selected>Games</option>' in html

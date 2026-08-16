@@ -66,7 +66,9 @@ function sameDocumentDestination(link: HTMLAnchorElement): PendingNavigation | n
   const destination = document.getElementById(id);
   if (!destination) return null;
   const focusTarget =
-    destination.querySelector<HTMLElement>("[data-settings-section-heading]") ??
+    destination.querySelector<HTMLElement>(
+      "[data-sectioned-page-section-heading]",
+    ) ??
     destination;
   return { hash: url.hash, destination, focusTarget };
 }

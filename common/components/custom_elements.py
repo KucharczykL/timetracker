@@ -541,11 +541,11 @@ register_element("quick-filter-bar", "QuickFilterBar", QuickFilterBarProps)
 _QuickFilterBarElement = custom_element_builder("quick-filter-bar")
 
 
-class SettingsSectionNavProps(TypedDict):
+class SectionNavProps(TypedDict):
     pass
 
 
-register_element("settings-section-nav", "SettingsSectionNav", SettingsSectionNavProps)
+register_element("section-nav", "SectionNav", SectionNavProps)
 
 
 class LiveSettingFieldsProps(TypedDict):

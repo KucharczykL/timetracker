@@ -132,7 +132,7 @@ def test_personal_settings_persist_and_drive_consumers(
     page.goto(f"{live_server.url}{reverse('games:settings')}")
 
     expect(page.get_by_role("heading", name="Settings", exact=True)).to_be_visible()
-    expect(page.locator("[data-settings-scaffold]")).to_be_visible()
+    expect(page.locator("[data-sectioned-page-scaffold]")).to_be_visible()
     trigger = page.locator("[data-section-nav-trigger]")
     rail = page.locator("[data-section-nav-rail]")
     if mobile:

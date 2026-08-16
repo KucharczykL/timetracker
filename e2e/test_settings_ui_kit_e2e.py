@@ -23,9 +23,9 @@ from common.components import (
     LiveSettingFields,
     MaskedSecretField,
     PageHeading,
+    SectionedPageScaffold,
+    SectionedPageSection,
     SettingFieldState,
-    SettingsScaffold,
-    SettingsSection,
 )
 from common.layout import render_page
 from games.forms import PrimitiveWidgetsMixin
@@ -84,28 +84,28 @@ def settings_kit_view(request: HttpRequest) -> HttpResponse:
         groups=groups,
     )
     sections = [
-        SettingsSection(
+        SectionedPageSection(
             "general-preferences",
             "General preferences",
             fields,
             "Common behavior and defaults.",
         ),
-        SettingsSection(
+        SectionedPageSection(
             "appearance-and-formatting",
             "Appearance and formatting",
             Div(class_="h-96")["Appearance controls arrive in a later stage."],
         ),
-        SettingsSection(
+        SectionedPageSection(
             "setting-source-and-lock-states",
             "Setting source and lock states",
             Div(class_="h-96")["Source and lock controls arrive in a later stage."],
         ),
-        SettingsSection(
+        SectionedPageSection(
             "privacy-and-data",
             "Privacy and data",
             Div(class_="h-96")["Privacy controls arrive in a later stage."],
         ),
-        SettingsSection(
+        SectionedPageSection(
             "infrastructure",
             "Infrastructure",
             Div(class_="flex flex-col gap-4 h-96")[
@@ -131,7 +131,11 @@ def settings_kit_view(request: HttpRequest) -> HttpResponse:
         request,
         Div(class_="flex flex-col gap-4")[
             PageHeading(["Settings kit test"]),
-            SettingsScaffold(sections),
+            SectionedPageScaffold(
+                sections,
+                navigation_label="Settings sections",
+                jump_label="Jump to a section",
+            ),
             # Test-only runway proving the sticky host stops with its scaffold.
             Div(data_settings_after_scaffold="", class_="min-h-screen")[
                 "Content after the settings scaffold."
@@ -170,8 +174,8 @@ def test_mobile_scaffold_groups_locked_and_masked_fields(live_server, page: Page
     page.set_viewport_size({"width": 390, "height": 844})
     page.goto(f"{live_server.url}/settings-kit-test/")
 
-    scaffold = page.locator("[data-settings-scaffold]")
-    sections = scaffold.locator("[data-settings-section]")
+    scaffold = page.locator("[data-sectioned-page-scaffold]")
+    sections = scaffold.locator("[data-sectioned-page-section]")
     expect(sections).to_have_count(5)
     first_box = sections.nth(0).bounding_box()
     second_box = sections.nth(1).bounding_box()
@@ -183,10 +187,10 @@ def test_mobile_scaffold_groups_locked_and_masked_fields(live_server, page: Page
     # separated more strongly so the description cannot look attached to it.
     first_section = sections.nth(0)
     expect(first_section).to_have_css("row-gap", "24px")
-    expect(first_section.locator("[data-settings-section-header]")).to_have_css(
+    expect(first_section.locator("[data-sectioned-page-section-header]")).to_have_css(
         "row-gap", "8px"
     )
-    section_heading = first_section.locator("[data-settings-section-header] h2")
+    section_heading = first_section.locator("[data-sectioned-page-section-header] h2")
     group_heading = first_section.locator("fieldset legend").first
     expect(section_heading).to_have_css("font-size", "20px")
     expect(section_heading).to_have_css("font-weight", "700")
@@ -199,7 +203,7 @@ def test_mobile_scaffold_groups_locked_and_masked_fields(live_server, page: Page
     # Enhancement replaces the otherwise-visible inline fallback with one
     # self-explanatory, full-width sheet trigger. The entire same-DOM list is
     # waiting inside the closed dialog; it never gains ARIA-menu semantics.
-    nav_host = page.locator("settings-section-nav")
+    nav_host = page.locator("section-nav")
     trigger = nav_host.locator("[data-section-nav-trigger]")
     rail = nav_host.locator("[data-section-nav-rail]")
     sheet = nav_host.locator("[data-section-nav-sheet]")
@@ -325,10 +329,10 @@ def test_desktop_scaffold_promotes_same_nav_to_sticky_rail(live_server, page: Pa
     page.set_viewport_size({"width": 1280, "height": 800})
     page.goto(f"{live_server.url}/settings-kit-test/")
 
-    nav_host = page.locator("settings-section-nav")
+    nav_host = page.locator("section-nav")
     nav = nav_host.locator("[data-section-nav-rail]")
-    scaffold = page.locator("[data-settings-scaffold]")
-    first_section = page.locator("[data-settings-section]").first
+    scaffold = page.locator("[data-sectioned-page-scaffold]")
+    first_section = page.locator("[data-sectioned-page-section]").first
     expect(nav.locator("[data-section-nav-item]")).to_have_count(5)
     expect(nav_host.locator("[data-section-nav-sheet]")).to_be_hidden()
     expect(nav_host).to_have_css("position", "sticky")
@@ -411,7 +415,7 @@ def test_desktop_section_nav_scrolls_in_short_viewport(live_server, page: Page):
     page.set_viewport_size({"width": 1280, "height": 240})
     page.goto(f"{live_server.url}/settings-kit-test/")
 
-    nav_host = page.locator("settings-section-nav")
+    nav_host = page.locator("section-nav")
     nav = nav_host.locator("[data-section-nav-rail]")
     expect(nav_host).to_have_css("position", "sticky")
     expect(nav).to_have_css("overflow-y", "auto")
@@ -428,7 +432,7 @@ def test_mobile_section_sheet_navigation_and_dismissal(live_server, page: Page):
     page.set_viewport_size({"width": 390, "height": 600})
     page.goto(f"{live_server.url}/settings-kit-test/")
 
-    nav_host = page.locator("settings-section-nav")
+    nav_host = page.locator("section-nav")
     trigger = nav_host.locator("[data-section-nav-trigger]")
     dialog = nav_host.locator("dialog[data-bottom-sheet]")
     panel = dialog.locator("[data-sheet-panel]")
@@ -508,7 +512,7 @@ def test_mobile_section_sheet_navigation_and_dismissal(live_server, page: Page):
     expect(dialog).not_to_have_attribute("open", "")
     expect(page).to_have_url(f"{live_server.url}/settings-kit-test/#privacy-and-data")
     destination = page.locator("#privacy-and-data")
-    destination_heading = destination.locator("[data-settings-section-heading]")
+    destination_heading = destination.locator("[data-sectioned-page-section-heading]")
     expect(destination_heading).to_be_focused()
     destination_box = destination.bounding_box()
     trigger_box = trigger.bounding_box()

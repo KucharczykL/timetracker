@@ -12,10 +12,10 @@ from common.components import (
     LiveSettingFields,
     Node,
     ReadonlySettingField,
+    SectionedPageHeader,
+    SectionedPageScaffold,
+    SectionedPageSection,
     SettingsFieldLayout,
-    SettingsPageHeader,
-    SettingsScaffold,
-    SettingsSection,
     ThemeSetting,
 )
 from common.layout import render_page
@@ -38,7 +38,7 @@ def user_settings(request: HttpRequest) -> HttpResponse:
         kwargs={"key": "__key__"},
     )
     sections = [
-        SettingsSection(
+        SectionedPageSection(
             "preferences",
             "Preferences",
             LiveSettingFields(
@@ -53,8 +53,12 @@ def user_settings(request: HttpRequest) -> HttpResponse:
         )
     ]
     content = Div(class_="flex flex-col gap-6")[
-        SettingsPageHeader("Settings"),
-        SettingsScaffold(sections),
+        SectionedPageHeader("Settings"),
+        SectionedPageScaffold(
+            sections,
+            navigation_label="Settings sections",
+            jump_label="Jump to a section",
+        ),
     ]
     return render_page(request, content, title="Settings", is_settings_page=True)
 
@@ -86,7 +90,7 @@ def _infra_fields() -> list[Node]:
 def admin_settings(request: HttpRequest) -> HttpResponse:
     if not request.user.is_superuser:
         content = Div(class_="flex flex-col")[
-            SettingsPageHeader(
+            SectionedPageHeader(
                 "Admin settings",
                 description="Superuser access is required to manage site defaults.",
             )
@@ -105,7 +109,7 @@ def admin_settings(request: HttpRequest) -> HttpResponse:
         kwargs={"key": "__key__"},
     )
     sections = [
-        SettingsSection(
+        SectionedPageSection(
             "site-defaults",
             "Site defaults",
             LiveSettingFields(
@@ -118,7 +122,7 @@ def admin_settings(request: HttpRequest) -> HttpResponse:
             ),
             "Defaults inherited by users who have not saved personal overrides.",
         ),
-        SettingsSection(
+        SectionedPageSection(
             "infrastructure",
             "Infrastructure",
             SettingsFieldLayout(1)[*_infra_fields()],
@@ -129,7 +133,7 @@ def admin_settings(request: HttpRequest) -> HttpResponse:
         ),
     ]
     content = Div(class_="flex flex-col gap-6")[
-        SettingsPageHeader(
+        SectionedPageHeader(
             "Admin settings",
             description=(
                 "Defaults inherited by users who have not saved personal overrides."
@@ -139,7 +143,11 @@ def admin_settings(request: HttpRequest) -> HttpResponse:
                 color="gray",
             )["Download settings.ini"],
         ),
-        SettingsScaffold(sections),
+        SectionedPageScaffold(
+            sections,
+            navigation_label="Settings sections",
+            jump_label="Jump to a section",
+        ),
     ]
     return render_page(
         request,
