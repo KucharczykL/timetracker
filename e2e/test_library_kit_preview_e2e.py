@@ -121,6 +121,14 @@ def test_library_kit_responsive_interactions_and_static_toasts(
     page.wait_for_timeout(2_100)
     expect(copy_label).to_have_text("Copy")
 
+    copy_popover = copy_button.locator("xpath=ancestor::pop-over")
+    copy_button.hover()
+    copy_panel = copy_popover.locator("[data-pop-over-panel]")
+    expect(copy_panel).to_be_visible()
+    button_box = copy_button.bounding_box()
+    panel_box = copy_panel.bounding_box()
+    assert button_box and panel_box
+    assert panel_box["y"] + panel_box["height"] <= button_box["y"]
     page.evaluate(
         """Object.defineProperty(navigator, 'clipboard', {
             configurable: true,

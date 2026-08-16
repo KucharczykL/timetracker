@@ -72,6 +72,7 @@ def CopyControl(
         ControlButton(
             [
                 ("data-copy-control", ""),
+                ("data-pop-over-anchor", ""),
                 ("aria-label", description),
             ],
             variant="ghost",

@@ -90,6 +90,7 @@ def test_copy_control_exposes_value_description_live_label_and_media():
     assert 'aria-live="polite"' in html
     assert 'aria-label="Copy Library ID"' in html
     assert 'data-copy-icon=""' in html
+    assert 'data-pop-over-anchor=""' in html
     assert "sr-only" in html
     media = collect_media(control)
     assert "<pop-over" in html
