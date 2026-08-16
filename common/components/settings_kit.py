@@ -2,31 +2,23 @@
 
 This module owns layout and settings-specific composition only. Native controls
 still come from Django forms through ``PrimitiveWidgetsMixin`` and
-``FormFields``; the kit adds grouping metadata, origin/lock context, responsive
-navigation, secret masking, and the live-save host around that existing path.
+``FormFields``; the kit adds grouping metadata, origin/lock context, secret
+masking, and the live-save host around that existing path.
 """
 
-import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
 from common.components.core import (
-    Child,
-    Children,
     Element,
     Fragment,
     Node,
-    as_children,
     randomid,
 )
-from common.components.custom_elements import BottomSheet
 from common.components.primitives import (
     FORM_MAX_WIDTH_CLASS,
     Badge,
-    ContentContainer,
-    ControlButton,
-    ControlLink,
     Div,
     FormFieldGroup,
     FormFieldPresentation,
@@ -34,25 +26,17 @@ from common.components.primitives import (
     Icon,
     Input,
     Label,
-    Li,
-    Nav,
     P,
-    PageHeading,
-    PlainH2,
     Popover,
-    Section,
     Span,
     TooltipDefinition,
     TooltipDefinitionList,
-    Ul,
     custom_element_builder,
 )
 
-_SettingsSectionNav = custom_element_builder("settings-section-nav")
 _LiveSettingFields = custom_element_builder("live-setting-fields")
 _SettingSourceBadge = custom_element_builder("setting-source-badge")
 
-_SECTION_ID = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
 type SettingsFieldColumns = Literal[1, 2, 3]
 _SETTINGS_FIELD_LAYOUT_CLASSES: dict[SettingsFieldColumns, str] = {
     1: f"flex w-full {FORM_MAX_WIDTH_CLASS} flex-col gap-6",
@@ -78,23 +62,6 @@ _SOURCE_DESCRIPTIONS = {
     "default": "The built-in default, used because no higher-priority value is set.",
 }
 _NON_DEFAULT_SOURCE_STATUS = "Non-default source (default source: “Default”)"
-
-_NAV_LINK_CLASS = (
-    "inline-flex min-h-control w-full items-center whitespace-nowrap rounded-base px-3 "
-    "text-type-body font-medium text-heading no-underline "
-    "hover:bg-neutral-tertiary-medium focus:outline-hidden focus:ring-4 focus:ring-inset "
-    "focus:ring-brand-medium"
-)
-
-
-@dataclass(frozen=True, slots=True)
-class SettingsSection:
-    """One labeled, anchorable section in :func:`SettingsScaffold`."""
-
-    id: str
-    label: str
-    content: Child
-    description: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,203 +100,6 @@ def SettingsFieldLayout(columns: SettingsFieldColumns = 1) -> Element:
         class_=_SETTINGS_FIELD_LAYOUT_CLASSES[columns],
         data_settings_field_layout=str(columns),
     )
-
-
-def SettingsPageHeader(
-    title: str,
-    *,
-    description: str = "",
-    actions: Children = None,
-) -> Node:
-    """The one header every settings-surface page renders above its content.
-
-    ``actions`` hosts page-level actions — ones that own the whole page, such as
-    the site-settings ini export — which have no other home in the kit: a
-    :class:`SettingsSection` panel is a field container, so an action placed in
-    one reads as belonging to that section's fields.
-
-    Multi-slot (title / description / actions), so it keeps semantic parameters
-    rather than an htpy ``[]`` slot. Bakes no bottom margin — the page body is a
-    ``gap``-spaced flex column that owns the distance to the content below.
-    """
-    heading_children: list[Node] = [PageHeading([title])]
-    if description:
-        heading_children.append(P(class_="text-type-body text-body")[description])
-    header_children: list[Node] = [Div(class_="flex flex-col gap-4")[*heading_children]]
-    action_children = as_children(actions)
-    if action_children:
-        header_children.append(
-            Div(
-                data_settings_page_actions="",
-                class_="flex flex-wrap items-start gap-2",
-            )[*action_children]
-        )
-    return ContentContainer()[
-        Div(
-            data_settings_page_header="",
-            class_="flex flex-wrap items-start justify-between gap-4",
-        )[*header_children]
-    ]
-
-
-def _validate_sections(sections: Sequence[SettingsSection]) -> None:
-    if not sections:
-        raise ValueError("SettingsScaffold requires at least one section.")
-    seen: set[str] = set()
-    for section in sections:
-        if not _SECTION_ID.fullmatch(section.id):
-            raise ValueError(
-                f"Invalid settings section id {section.id!r}; use an HTML-safe id."
-            )
-        if section.id in seen:
-            raise ValueError(f"Duplicate settings section id {section.id!r}.")
-        seen.add(section.id)
-
-
-def _section_link(section: SettingsSection) -> Node:
-    return Li(
-        data_section_nav_item="",
-        class_="w-full",
-    )[ControlLink(href=f"#{section.id}", class_=_NAV_LINK_CLASS)[section.label]]
-
-
-def SettingsSectionNav(sections: Sequence[SettingsSection]) -> Node:
-    """Same-DOM mobile bottom sheet and desktop sticky section rail.
-
-    The server leaves the complete link list visible in the inline rail as the
-    no-JavaScript fallback. After enhancement, narrow containers move that one
-    list into a native-dialog bottom sheet; ``@4xl`` restores it to the rail.
-    """
-    _validate_sections(sections)
-    sheet_id = randomid(
-        seed="settings-nav-",
-        content=":".join(section.id for section in sections),
-        length=20,
-    )
-    trigger = ControlButton(
-        [
-            ("data-section-nav-trigger", ""),
-            ("class", "w-full rounded-base py-2 focus:ring-inset"),
-        ],
-        variant="outline",
-    )[
-        Span(class_="flex w-full items-center justify-between gap-3 text-left")[
-            Span(class_="flex min-w-0 flex-col")[
-                Span(class_="text-type-label text-heading")["Settings sections"],
-                Span(class_="text-type-micro text-body")["Jump to a section"],
-            ],
-            Icon(
-                "arrowdown",
-                [("aria-hidden", "true"), ("class", "shrink-0 rotate-180")],
-                size="h-3 w-3",
-            ),
-        ]
-    ].as_element()
-    sheet_destination = Nav(
-        [
-            ("data-section-nav-sheet-destination", ""),
-            ("aria-labelledby", f"{sheet_id}-title"),
-        ],
-    )
-    sheet = Div(data_section_nav_sheet="", hidden=True)[
-        BottomSheet(
-            trigger_element=trigger,
-            title="Settings sections",
-            children=sheet_destination,
-            id=sheet_id,
-            close_label="Close settings sections",
-        )
-    ]
-    return _SettingsSectionNav(
-        class_=("sticky top-4 z-10 block min-w-0 self-start @4xl:z-auto")
-    )[
-        Nav(
-            [
-                ("aria-label", "Settings sections"),
-                ("data-section-nav-rail", ""),
-                (
-                    "class",
-                    "mb-4 max-h-[calc(100vh-2rem)] overflow-y-auto @4xl:mb-0",
-                ),
-            ],
-        )[
-            Ul(data_section_nav_list="", class_="flex min-w-0 flex-col gap-1")[
-                *[_section_link(section) for section in sections]
-            ]
-        ],
-        sheet,
-        # CSS/container-query truth exposed to the layout behavior without
-        # duplicating the @4xl threshold in matchMedia JavaScript.
-        Span(
-            data_section_nav_wide="",
-            class_="hidden @4xl:block",
-            aria_hidden="true",
-        ),
-    ]
-
-
-def _section_panel(section: SettingsSection) -> Node:
-    heading_id = f"{section.id}-heading"
-    header_children: list[Node] = [
-        PlainH2(
-            [
-                ("id", heading_id),
-                ("tabindex", "-1"),
-                ("data-settings-section-heading", ""),
-                ("class", "text-type-subheading text-heading focus:outline-hidden"),
-            ],
-        )[section.label]
-    ]
-    if section.description:
-        header_children.append(
-            P(class_="text-type-body text-body")[section.description]
-        )
-    return Section(
-        [
-            ("id", section.id),
-            ("aria-labelledby", heading_id),
-            ("data-settings-section", ""),
-            (
-                "class",
-                (
-                    "scroll-mt-24 @4xl:scroll-mt-4 flex flex-col gap-6 rounded-base "
-                    "border border-default bg-neutral-primary-medium p-4 @container"
-                ),
-            ),
-        ],
-    )[
-        Div(
-            data_settings_section_header="",
-            class_="flex flex-col gap-2",
-        )[*header_children],
-        Div(
-            data_settings_section_content="",
-            class_="flex flex-col gap-4",
-        )[section.content],
-    ]
-
-
-def SettingsScaffold(sections: Sequence[SettingsSection]) -> Node:
-    """Responsive settings section-nav + content scaffold.
-
-    The split is container-query driven: a narrow embedding stacks nav/content;
-    a wide embedding promotes the nav to a rail without changing or cloning DOM.
-    """
-    _validate_sections(sections)
-    return ContentContainer(class_="@container")[
-        Div(
-            data_settings_scaffold="",
-            class_=(
-                "grid grid-cols-1 gap-6 "
-                "@4xl:grid-cols-[14rem_minmax(0,1fr)] @4xl:items-start @4xl:gap-8"
-            ),
-        )[
-            SettingsSectionNav(sections),
-            Div(class_="flex min-w-0 flex-col gap-6")[
-                *[_section_panel(section) for section in sections]
-            ],
-        ]
-    ]
 
 
 # Placement rule (#381): a source badge appears only where the control cannot state
@@ -673,9 +443,5 @@ __all__ = [
     "SettingSourceBadge",
     "SettingsFieldColumns",
     "SettingsFieldLayout",
-    "SettingsPageHeader",
-    "SettingsScaffold",
-    "SettingsSection",
-    "SettingsSectionNav",
     "prepare_setting_fields",
 ]

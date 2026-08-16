@@ -70,10 +70,10 @@ def test_preview_renders_the_complete_gallery(preview_client):
     assert "Settings UI kit preview" in body
     assert "DEBUG only" in body
     assert "No persistence" in body
-    assert body.count('data-settings-section=""') == 6
-    assert body.count('data-settings-section-header=""') == 6
-    assert body.count('data-settings-section-content=""') == 6
-    assert body.count("<settings-section-nav") == 1
+    assert body.count('data-sectioned-page-section=""') == 6
+    assert body.count('data-sectioned-page-section-header=""') == 6
+    assert body.count('data-sectioned-page-section-content=""') == 6
+    assert body.count("<section-nav") == 1
     assert body.count("<fieldset") == 2
     assert body.count("data-supported-form-layout=") == 3
     assert body.count("data-settings-field-layout") == 4
@@ -109,7 +109,7 @@ def test_preview_renders_the_complete_gallery(preview_client):
     assert 'value="••••••••"' in body
     assert 'placeholder="Not set"' in body
     assert "super-secret-value" not in body
-    assert "dist/elements/settings-section-nav.js" in body
+    assert "dist/elements/section-nav.js" in body
     assert "dist/elements/live-setting-fields.js" in body
     assert "dist/elements/pop-over.js" in body
     assert _patch_url("__key__") in body

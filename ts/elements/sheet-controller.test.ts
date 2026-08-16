@@ -32,7 +32,7 @@ function mountSheet(): {
       </dialog>
     </drop-down>
     <section id="privacy">
-      <h2 data-settings-section-heading tabindex="-1">Privacy</h2>
+      <h2 data-sectioned-page-section-heading tabindex="-1">Privacy</h2>
     </section>`;
   const host = document.querySelector("drop-down") as DropdownHost;
   const toggle = host.querySelector<HTMLButtonElement>("[data-toggle]")!;

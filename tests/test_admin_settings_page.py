@@ -195,7 +195,7 @@ def test_superuser_receives_admin_settings_page(
     html = response.content.decode()
     assert "Admin settings" in html
     assert "Defaults inherited by users who have not saved personal overrides." in html
-    assert 'data-settings-scaffold=""' in html
+    assert 'data-sectioned-page-scaffold=""' in html
 
 
 def test_admin_settings_page_explains_site_currency_scope(

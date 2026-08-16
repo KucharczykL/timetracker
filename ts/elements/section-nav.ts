@@ -1,17 +1,17 @@
-/** Responsive settings section navigation (issue #384).
+/** Responsive section navigation.
  *
  * The server renders one complete inline list as the no-JavaScript fallback.
  * After <drop-down> upgrades, narrow containers move that exact <ul> into a
  * modal bottom sheet; the @4xl sentinel restores it to the sticky desktop rail.
  * No links are cloned and no ARIA-menu semantics are introduced.
  */
-import { readSettingsSectionNavProps } from "../generated/props.js";
+import { readSectionNavProps } from "../generated/props.js";
 
 interface SheetDropdown extends HTMLElement {
   close?: () => void;
 }
 
-class SettingsSectionNavElement extends HTMLElement {
+class SectionNavElement extends HTMLElement {
   private rail: HTMLElement | null = null;
   private list: HTMLElement | null = null;
   private sheetHost: HTMLElement | null = null;
@@ -25,7 +25,7 @@ class SettingsSectionNavElement extends HTMLElement {
   private waitingForClose = false;
 
   connectedCallback(): void {
-    readSettingsSectionNavProps(this);
+    readSectionNavProps(this);
     this.rail = this.querySelector<HTMLElement>("[data-section-nav-rail]");
     this.list = this.querySelector<HTMLElement>("[data-section-nav-list]");
     this.sheetHost = this.querySelector<HTMLElement>("[data-section-nav-sheet]");
@@ -137,4 +137,4 @@ class SettingsSectionNavElement extends HTMLElement {
   }
 }
 
-customElements.define("settings-section-nav", SettingsSectionNavElement);
+customElements.define("section-nav", SectionNavElement);

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "./drop-down.js";
-import "./settings-section-nav.js";
+import "./section-nav.js";
 
 interface NavFixture {
   nav: HTMLElement & { syncLayout: () => void };
@@ -15,7 +15,7 @@ interface NavFixture {
 
 async function mountNav(): Promise<NavFixture> {
   document.body.innerHTML = `
-    <settings-section-nav>
+    <section-nav>
       <nav data-section-nav-rail aria-label="Settings sections">
         <ul data-section-nav-list>
           <li data-section-nav-item id="one"><a href="#one">General</a></li>
@@ -35,8 +35,8 @@ async function mountNav(): Promise<NavFixture> {
         </drop-down>
       </div>
       <span data-section-nav-wide></span>
-    </settings-section-nav>`;
-  const nav = document.querySelector("settings-section-nav") as NavFixture["nav"];
+    </section-nav>`;
+  const nav = document.querySelector("section-nav") as NavFixture["nav"];
   const rail = nav.querySelector<HTMLElement>("[data-section-nav-rail]")!;
   const list = nav.querySelector<HTMLElement>("[data-section-nav-list]")!;
   const sheetHost = nav.querySelector<HTMLElement>("[data-section-nav-sheet]")!;
@@ -70,7 +70,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("<settings-section-nav> same-DOM sheet/rail layout", () => {
+describe("<section-nav> same-DOM sheet/rail layout", () => {
   it("moves the complete plain-navigation list into the mobile sheet", async () => {
     const fixture = await mountNav();
 

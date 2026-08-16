@@ -197,6 +197,12 @@ from common.components.search_select import (
     SearchSelectOption,
     searchselect_selected,
 )
+from common.components.sectioned_page import (
+    SectionedPageHeader,
+    SectionedPageScaffold,
+    SectionedPageSection,
+    SectionNav,
+)
 from common.components.settings_kit import (
     LiveSettingFields,
     MaskedSecretField,
@@ -205,10 +211,6 @@ from common.components.settings_kit import (
     SettingsFieldColumns,
     SettingsFieldLayout,
     SettingSourceBadge,
-    SettingsPageHeader,
-    SettingsScaffold,
-    SettingsSection,
-    SettingsSectionNav,
     prepare_setting_fields,
 )
 from common.components.theme import ThemeSetting, ThemeToggle
@@ -350,6 +352,10 @@ __all__ = [
     "Safe",
     "SearchSelect",
     "SearchSelectOption",
+    "SectionNav",
+    "SectionedPageHeader",
+    "SectionedPageScaffold",
+    "SectionedPageSection",
     "Select",
     "SelectDropdown",
     "SelectionFields",
@@ -359,10 +365,6 @@ __all__ = [
     "SettingSourceBadge",
     "SettingsFieldColumns",
     "SettingsFieldLayout",
-    "SettingsPageHeader",
-    "SettingsScaffold",
-    "SettingsSection",
-    "SettingsSectionNav",
     "Span",
     "SplitButtonDropdown",
     "StaticScript",
