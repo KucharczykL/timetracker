@@ -1,5 +1,8 @@
 from common.components import (
     Div,
+    EntitySummaryAction,
+    EntitySummaryList,
+    EntitySummaryRow,
     FactList,
     StatisticCard,
     StatisticGrid,
@@ -59,3 +62,58 @@ def test_fact_list_does_not_reuse_tooltip_presentation():
     assert "data-tooltip-definition-list" not in fact_html
     assert "data-fact-list" not in tooltip_html
     assert 'data-tooltip-definition-list=""' in tooltip_html
+
+
+def test_entity_row_renders_both_presentations_from_one_action_source():
+    actions = (
+        EntitySummaryAction("Browse", "/tracker/game/list"),
+        EntitySummaryAction("Add", "/tracker/game/add"),
+    )
+    html = str(
+        EntitySummaryRow(
+            label="Games",
+            subtitle="Games currently tracked in this library.",
+            count=851,
+            count_href="/tracker/game/list",
+            actions=actions,
+        )
+    )
+
+    assert html.count('href="/tracker/game/list"') == 3
+    assert html.count('href="/tracker/game/add"') == 2
+    assert 'data-entity-summary-wide-actions=""' in html
+    assert 'data-entity-summary-overflow=""' in html
+    assert 'aria-label="Games actions"' in html
+    assert 'aria-label="851 Games"' in html
+
+
+def test_entity_list_is_divider_separated_without_a_nested_card_border():
+    html = str(
+        EntitySummaryList(
+            EntitySummaryRow(
+                label="Devices",
+                subtitle="Hardware you use to play.",
+                count=2,
+                detail="Preselected when logging a game.",
+            )
+        )
+    )
+
+    opening = html[: html.index(">")]
+    assert 'data-entity-summary-list=""' in opening
+    assert "divide-y" in opening
+    assert "border" not in opening
+    assert 'data-entity-summary-detail=""' in html
+
+
+def test_entity_row_with_no_actions_renders_no_empty_overflow_menu():
+    html = str(
+        EntitySummaryRow(
+            label="Play events",
+            subtitle="No management surface.",
+            count=0,
+        )
+    )
+
+    assert "data-entity-summary-overflow" not in html
+    assert "<drop-down" not in html
