@@ -7,7 +7,7 @@ from django.contrib.auth import get_user_model
 from django.test import Client
 from django.urls import reverse
 
-from games.models import Device, SiteSetting
+from games.models import SiteSetting
 from timetracker import config as config_module
 from timetracker import settings_resolver
 from timetracker.config import ResolvedSetting, SettingSource
@@ -23,8 +23,8 @@ from timetracker.settings_registry import (
 )
 
 SITE_SETTING_KEYS = (
-    "DEFAULT_CURRENCY",
-    "DEFAULT_DEVICE",
+    "DEFAULT_PURCHASE_CURRENCY",
+    "DEFAULT_DISPLAY_CURRENCY",
     "DEFAULT_LANDING_PAGE",
     "DEFAULT_PAGE_SIZE",
     "THEME",
@@ -204,15 +204,9 @@ def test_admin_settings_page_explains_site_currency_scope(
 ):
     html = superuser_client.get(reverse("games:admin_settings")).content.decode()
 
-    assert (
-        "Used for purchase entry by users without a personal value, purchases "
-        "saved without user context, and the FX/reporting target." in html
-    )
-    assert (
-        "A personal value affects only your purchase entry; purchases saved "
-        "without user context and FX/reporting continue to use the site value."
-        not in html
-    )
+    assert "Default purchase currency" in html
+    assert "Display currency" in html
+    assert "FX/reporting target" not in html
 
 
 def test_admin_settings_page_disables_only_the_navbar_theme_switcher(
@@ -282,8 +276,8 @@ def test_site_settings_form_uses_typed_fields_and_registry_choices(
 
     form = SiteSettingsForm()
 
-    assert isinstance(form.fields["default_currency"], forms.CharField)
-    assert isinstance(form.fields["default_device"], forms.ModelChoiceField)
+    assert isinstance(form.fields["default_purchase_currency"], forms.CharField)
+    assert isinstance(form.fields["default_display_currency"], forms.CharField)
     assert isinstance(form.fields["default_landing_page"], forms.ChoiceField)
     assert isinstance(form.fields["default_page_size"], forms.TypedChoiceField)
     assert isinstance(form.fields["theme"], forms.ChoiceField)
@@ -316,18 +310,12 @@ def test_admin_page_lists_device_rows_and_select_options(
     superuser_client,
     clean_site_setting_sources,
 ):
-    Device.objects.create(name="Steam Deck", type=Device.HANDHELD)
-    desktop = Device.objects.create(name="Desktop", type=Device.PC)
-
     html = superuser_client.get(reverse("games:admin_settings")).content.decode()
 
     # One per USER-scope SELECT setting: default_landing_page, default_page_size,
     # theme, display_time_zone, session_time_zone_display, date_format_locale,
-    # datetime_format, duration_format (default_currency is not a SELECT widget).
-    assert html.count(">Use configured default</option>") == 9
-    assert html.index(
-        f'<option value="{desktop.pk}">Desktop (PC)</option>'
-    ) < html.index(">Steam Deck (Handheld)</option>")
+    # datetime_format, and duration_format. Currency controls are text inputs.
+    assert html.count(">Use configured default</option>") == 8
     for value, label in (
         *LANDING_PAGE_CHOICES,
         *THEME_CHOICES,
@@ -345,15 +333,15 @@ def test_admin_page_renders_database_and_default_values_with_source_badges(
     superuser_client,
     clean_site_setting_sources,
 ):
-    SiteSetting.objects.create(key="DEFAULT_CURRENCY", value="EUR")
+    SiteSetting.objects.create(key="DEFAULT_PURCHASE_CURRENCY", value="EUR")
     settings_resolver.clear_cache()
 
     html = superuser_client.get(reverse("games:admin_settings")).content.decode()
 
-    currency = _opening_control_tag(html, "default_currency")
+    currency = _opening_control_tag(html, "default_purchase_currency")
     assert 'value="EUR"' in currency
     assert 'data-setting-origin="database"' in _field_source_markup(
-        html, "DEFAULT_CURRENCY", "default_currency"
+        html, "DEFAULT_PURCHASE_CURRENCY", "default_purchase_currency"
     )
     page_size = _opening_control_tag(html, "default_page_size")
     assert not _is_disabled(page_size)
@@ -392,32 +380,32 @@ def test_locked_source_renders_effective_value_badge_reason_and_disabled_control
             "resolve_with_origin",
             lambda key: (
                 ResolvedSetting("USD", SettingSource.ENV_FILE, True)
-                if key == "DEFAULT_CURRENCY"
+                if key == "DEFAULT_PURCHASE_CURRENCY"
                 else original_resolve(key)
             ),
         )
     elif source is SettingSource.ENV:
-        monkeypatch.setenv("DEFAULT_CURRENCY", "USD")
+        monkeypatch.setenv("DEFAULT_PURCHASE_CURRENCY", "USD")
     elif source is SettingSource.DOTENV:
         env_path = tmp_path / "settings.env"
-        env_path.write_text("DEFAULT_CURRENCY=USD\n")
+        env_path.write_text("DEFAULT_PURCHASE_CURRENCY=USD\n")
         monkeypatch.setenv("ENV_FILE", str(env_path))
     else:
         ini_path = tmp_path / "settings.ini"
-        ini_path.write_text("[timetracker]\nDEFAULT_CURRENCY = USD\n")
+        ini_path.write_text("[timetracker]\nDEFAULT_PURCHASE_CURRENCY = USD\n")
         monkeypatch.setenv("INI_FILE", str(ini_path))
     config_module.reset_caches()
     settings_resolver.clear_cache()
 
     html = superuser_client.get(reverse("games:admin_settings")).content.decode()
 
-    currency = _opening_control_tag(html, "default_currency")
+    currency = _opening_control_tag(html, "default_purchase_currency")
     assert 'value="USD"' in currency
     assert _is_disabled(currency)
     source_markup = _field_source_markup(
         html,
-        "DEFAULT_CURRENCY",
-        "default_currency",
+        "DEFAULT_PURCHASE_CURRENCY",
+        "default_purchase_currency",
     )
     assert f'data-setting-origin="{source}"' in source_markup
     assert 'data-setting-locked=""' in source_markup
@@ -604,7 +592,7 @@ def test_export_requires_superuser(normal_client):
 def test_export_downloads_ini_with_stored_settings(
     superuser_client, clean_site_setting_sources
 ):
-    SiteSetting.objects.create(key="DEFAULT_CURRENCY", value="EUR")
+    SiteSetting.objects.create(key="DEFAULT_PURCHASE_CURRENCY", value="EUR")
 
     response = superuser_client.get(reverse("games:export_admin_settings_ini"))
 
@@ -612,7 +600,7 @@ def test_export_downloads_ini_with_stored_settings(
     assert response["Content-Disposition"] == 'attachment; filename="settings.ini"'
     content = response.content.decode()
     assert "[timetracker]" in content
-    assert "DEFAULT_CURRENCY = EUR" in content
+    assert "DEFAULT_PURCHASE_CURRENCY = EUR" in content
 
 
 def test_admin_settings_page_shows_export_button(superuser_client):

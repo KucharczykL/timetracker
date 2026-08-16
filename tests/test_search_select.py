@@ -3,8 +3,10 @@ the search API endpoint, and the shared Game.search_label."""
 
 import re
 import unittest
+from types import SimpleNamespace
 
 import django.test
+from django.contrib.auth import get_user_model
 from django.utils.safestring import SafeText
 
 from common.components import (
@@ -644,9 +646,15 @@ class SearchSelectAriaTest(unittest.TestCase):
 class SearchLabelTest(django.test.TestCase):
     @classmethod
     def setUpTestData(cls):
+        cls.user = get_user_model().objects.create_user(username="search-label")
+        cls.library = cls.user.library
         cls.platform = Platform.objects.create(name="Steam", icon="steam")
         cls.game = Game.objects.create(
-            name="Mario", sort_name="Mario", platform=cls.platform, year_released=2020
+            library=cls.library,
+            name="Mario",
+            sort_name="Mario",
+            platform=cls.platform,
+            year_released=2020,
         )
 
     def test_format(self):
@@ -654,39 +662,48 @@ class SearchLabelTest(django.test.TestCase):
 
     def test_format_uses_name_not_sort_name(self):
         game = Game.objects.create(
-            name="Tetris", sort_name="", platform=self.platform, year_released=1984
+            library=self.library,
+            name="Tetris",
+            sort_name="",
+            platform=self.platform,
+            year_released=1984,
         )
         self.assertEqual(game.search_label, "Tetris (Steam, 1984)")
 
     def test_format_omits_missing_year(self):
-        game = Game.objects.create(name="Tetris", platform=self.platform)
+        game = Game.objects.create(
+            library=self.library, name="Tetris", platform=self.platform
+        )
         self.assertEqual(game.search_label, "Tetris (Steam)")
 
     def test_format_coalesces_null_platform(self):
         # A game without a platform stays NULL (issue #290); search_label
         # coalesces to the "Unspecified" display label so the platform part is
         # never a literal "None" and never silently drops out.
-        game = Game.objects.create(name="Tetris", year_released=1984)
+        game = Game.objects.create(
+            library=self.library, name="Tetris", year_released=1984
+        )
         self.assertIsNone(game.platform)
         self.assertEqual(game.search_label, "Tetris (Unspecified, 1984)")
 
     def test_format_with_null_platform_and_no_year(self):
-        game = Game.objects.create(name="Tetris")
+        game = Game.objects.create(library=self.library, name="Tetris")
         self.assertIsNone(game.platform)
         self.assertEqual(game.search_label, "Tetris (Unspecified)")
 
     def test_choice_fields_use_search_label(self):
         from games.forms import MultipleGameChoiceField, SingleGameChoiceField
 
-        multi = MultipleGameChoiceField(queryset=Game.objects.all())
-        single = SingleGameChoiceField(queryset=Game.objects.all())
+        queryset = Game.objects.for_library(self.library)
+        multi = MultipleGameChoiceField(queryset=queryset)
+        single = SingleGameChoiceField(queryset=queryset)
         self.assertEqual(multi.label_from_instance(self.game), self.game.search_label)
         self.assertEqual(single.label_from_instance(self.game), self.game.search_label)
 
     def test_api_uses_search_label(self):
         from games.api import search_games
 
-        results = search_games(None, q="Mario")
+        results = search_games(SimpleNamespace(user=self.user), q="Mario")
         self.assertEqual(results[0]["label"], self.game.search_label)
 
 
@@ -694,21 +711,33 @@ class GameResolverTest(django.test.TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.platform = Platform.objects.create(name="Steam", icon="steam")
-        cls.g1 = Game.objects.create(name="A", sort_name="A", platform=cls.platform)
-        cls.g2 = Game.objects.create(name="B", sort_name="B", platform=cls.platform)
+        cls.library = (
+            get_user_model().objects.create_user(username="game-resolver").library
+        )
+        cls.g1 = Game.objects.create(
+            library=cls.library, name="A", sort_name="A", platform=cls.platform
+        )
+        cls.g2 = Game.objects.create(
+            library=cls.library, name="B", sort_name="B", platform=cls.platform
+        )
 
     def test_resolver_one_query(self):
         from games.forms import _game_options
 
         with self.assertNumQueries(1):
-            options = list(_game_options([self.g1.id, self.g2.id]))
+            options = list(
+                _game_options([self.g1.id, self.g2.id], library=self.library)
+            )
         self.assertEqual(len(options), 2)
         self.assertEqual({o["value"] for o in options}, {self.g1.id, self.g2.id})
 
     def test_searchselect_selected_wraps_resolver(self):
         from games.forms import _game_options
 
-        options = searchselect_selected([self.g1.id], _game_options)
+        options = searchselect_selected(
+            [self.g1.id],
+            lambda values: _game_options(values, library=self.library),
+        )
         self.assertEqual(len(options), 1)
         self.assertEqual(options[0]["value"], self.g1.id)
         self.assertEqual(options[0]["data"]["platform"], str(self.platform.id))
@@ -721,26 +750,33 @@ class GameResolverTest(django.test.TestCase):
 class SearchGamesApiTest(django.test.TestCase):
     @classmethod
     def setUpTestData(cls):
+        cls.user = get_user_model().objects.create_user(username="search-api")
+        cls.library = cls.user.library
         cls.platform = Platform.objects.create(name="Steam", icon="steam")
         for name in ["Mario", "Zelda", "Metroid"]:
-            Game.objects.create(name=name, sort_name=name, platform=cls.platform)
+            Game.objects.create(
+                library=cls.library,
+                name=name,
+                sort_name=name,
+                platform=cls.platform,
+            )
 
     def test_filters_by_q(self):
         from games.api import search_games
 
-        results = search_games(None, q="mar")
+        results = search_games(SimpleNamespace(user=self.user), q="mar")
         self.assertEqual([r["label"].split(" (")[0] for r in results], ["Mario"])
 
     def test_respects_limit(self):
         from games.api import search_games
 
-        results = search_games(None, q="", limit=2)
+        results = search_games(SimpleNamespace(user=self.user), q="", limit=2)
         self.assertEqual(len(results), 2)
 
     def test_data_carries_platform(self):
         from games.api import search_games
 
-        results = search_games(None, q="Zelda")
+        results = search_games(SimpleNamespace(user=self.user), q="Zelda")
         self.assertEqual(results[0]["data"]["platform"], str(self.platform.id))
         self.assertEqual(results[0]["data"]["platform_name"], "Steam")
 

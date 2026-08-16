@@ -1,6 +1,9 @@
+from typing import cast
+
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
 from django.http import HttpRequest, HttpResponse
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import redirect
 from django.urls import reverse
 
 from common.components import (
@@ -19,13 +22,14 @@ from common.components import (
     parse_filter_dict,
 )
 from common.date_time_presentation import date_time_presentation_for_request
-from common.filter_execution import regex_timeout_view
+from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.returns import action_url
 from common.utils import paginate
-from games.filters import parse_platform_filter
+from games.filters import filter_query_context_for_library, parse_platform_filter
 from games.forms import PlatformForm
 from games.models import Platform
+from games.ownership import owned_or_404
 from games.sorting import (
     PLATFORM_DEFAULT_SORT,
     PLATFORM_SORTS,
@@ -44,9 +48,10 @@ from games.views.returns import return_url
 @login_required
 @regex_timeout_view
 def list_platforms(request: HttpRequest) -> HttpResponse:
+    library = cast(User, request.user).library
     presentation = date_time_presentation_for_request(request)
     origin = request.get_full_path()
-    platforms = Platform.objects.all()
+    platforms = Platform.objects.for_library(library)
 
     filter_json = request.GET.get("filter", "")
     if filter_json:
@@ -54,7 +59,11 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
             request, parse_platform_filter, filter_json
         )
         if platform_filter is not None:
-            platforms = platforms.filter(platform_filter.to_q())
+            platforms = execute_filter(
+                platform_filter,
+                platforms,
+                filter_query_context_for_library(library),
+            )
 
     find = parse_find_filter(request)
     sort = apply_sort(platforms, find, PLATFORM_SORTS, PLATFORM_DEFAULT_SORT)
@@ -129,7 +138,10 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def delete_platform(request: HttpRequest, platform_id: int) -> HttpResponse:
-    platform = get_object_or_404(Platform, id=platform_id)
+    library = cast(User, request.user).library
+    platform = owned_or_404(
+        Platform.objects.for_library(library), library, id=platform_id
+    )
     return confirm_and_delete(
         request,
         platform,
@@ -147,8 +159,11 @@ def delete_platform(request: HttpRequest, platform_id: int) -> HttpResponse:
 
 @login_required
 def edit_platform(request: HttpRequest, platform_id: int) -> HttpResponse:
-    platform = get_object_or_404(Platform, id=platform_id)
-    form = PlatformForm(request.POST or None, instance=platform)
+    library = cast(User, request.user).library
+    platform = owned_or_404(
+        Platform.objects.for_library(library), library, id=platform_id
+    )
+    form = PlatformForm(request.POST or None, instance=platform, library=library)
     if form.is_valid():
         form.save()
         return redirect(return_url(request, fallback="games:list_platforms"))
@@ -157,7 +172,8 @@ def edit_platform(request: HttpRequest, platform_id: int) -> HttpResponse:
 
 @login_required
 def add_platform(request: HttpRequest) -> HttpResponse:
-    form = PlatformForm(request.POST or None)
+    library = cast(User, request.user).library
+    form = PlatformForm(request.POST or None, library=library)
     if form.is_valid():
         form.save()
         return redirect(return_url(request, fallback="games:list_platforms"))

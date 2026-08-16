@@ -49,7 +49,7 @@ def user_settings(request: HttpRequest) -> HttpResponse:
                 namespace=SettingNamespace.USER,
                 presentations=page.presentations,
             ),
-            "Defaults used when creating records and opening Timetracker.",
+            "Account, presentation, and purchase-entry preferences.",
         )
     ]
     content = Div(class_="flex flex-col gap-6")[

@@ -27,18 +27,16 @@ def _login(page: Page, live_server) -> None:
 
 
 @pytest.fixture
-def authenticated_page(live_server, page: Page, django_user_model) -> Page:
-    django_user_model.objects.create_user(username="tester", password="secret123")
+def authenticated_page(live_server, page: Page, e2e_user) -> Page:
     _login(page, live_server)
     return page
 
 
 @pytest.fixture
-def touch_page(live_server, browser, django_user_model):
+def touch_page(live_server, browser, e2e_user):
     """A logged-in page in a touch-enabled context (so locator.tap() works and
     pointer events report pointerType "touch"). Desktop-width viewport so the
     navbar menu is visible (md:block) rather than collapsed in the hamburger."""
-    django_user_model.objects.create_user(username="tester", password="secret123")
     context = browser.new_context(has_touch=True)
     page = context.new_page()
     _login(page, live_server)
@@ -197,14 +195,16 @@ def test_searchselect_border_matches_native_input(
 
 
 def test_uncommitted_single_select_shows_draft_cue(
-    authenticated_page: Page, live_server
+    authenticated_page: Page, live_server, e2e_library
 ):
     """Issue #450: box text with no committed value gets the "draft" cue —
     dashed wrapper border, muted-italic text, pencil glyph — at rest only, plus
     the sr-only status announcement. Re-typing a committed label without
     picking is exactly the trap: the text looks committed but saves NULL."""
     page = authenticated_page
-    Device.objects.create(name="Nintendo Switch", type=Device.HANDHELD)
+    Device.objects.create(
+        name="Nintendo Switch", type=Device.HANDHELD, library=e2e_library
+    )
     page.goto(f"{live_server.url}{reverse('games:add_session')}")
 
     wrapper = page.locator("search-select[name='device']")
@@ -658,15 +658,17 @@ def test_sort_header_shift_click_removes_descending_column(
 
 
 def test_add_purchase_game_selection_autofills_platform(
-    authenticated_page: Page, live_server
+    authenticated_page: Page, live_server, e2e_library
 ):
     """Selecting a game in the Games SearchSelect auto-fills the Platform
     SearchSelect with the game's platform: the visible box shows the platform
     *label* and the committed hidden input carries the id. Guards issue #259,
     where the raw platform id was written into the visible search box (and no
     hidden value was committed at all)."""
-    platform = Platform.objects.create(name="Steam")
-    Game.objects.create(name="Crosscode", sort_name="Crosscode", platform=platform)
+    platform = Platform.objects.create(name="Steam", library=e2e_library)
+    Game.objects.create(
+        name="Crosscode", sort_name="Crosscode", platform=platform, library=e2e_library
+    )
 
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
@@ -705,18 +707,23 @@ def _pick_game(page: Page, widget_name: str, query: str) -> None:
 
 
 def test_add_purchase_related_game_autofills_from_games_selection(
-    authenticated_page: Page, live_server
+    authenticated_page: Page, live_server, e2e_library
 ):
     """For add-on types (DLC/Season Pass/Battle Pass) Related game auto-fills
     from the Games selection — re-picking the base game was pure double-entry.
     The auto-fill follows the games selection while the field is empty or holds
     a previous auto-fill, is dropped when the type returns to plain "game"
     (so no stale hidden input submits), and never overwrites a user's own pick."""
-    platform = Platform.objects.create(name="Steam")
+    platform = Platform.objects.create(name="Steam", library=e2e_library)
     base = Game.objects.create(
-        name="Vampire Survivors", sort_name="Vampire Survivors", platform=platform
+        name="Vampire Survivors",
+        sort_name="Vampire Survivors",
+        platform=platform,
+        library=e2e_library,
     )
-    other = Game.objects.create(name="Brotato", sort_name="Brotato", platform=platform)
+    other = Game.objects.create(
+        name="Brotato", sort_name="Brotato", platform=platform, library=e2e_library
+    )
 
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
@@ -761,17 +768,22 @@ def test_add_purchase_related_game_autofills_from_games_selection(
 
 
 def test_add_purchase_related_game_edit_clears_autofill(
-    authenticated_page: Page, live_server
+    authenticated_page: Page, live_server, e2e_library
 ):
     """Editing an auto-filled Related game clears its committed value (a value
     is committed only by a pick) and hands the field to the user: the typed
     text stays, and a later Games change must not overwrite it with a fresh
     auto-fill."""
-    platform = Platform.objects.create(name="Steam")
+    platform = Platform.objects.create(name="Steam", library=e2e_library)
     base = Game.objects.create(
-        name="Vampire Survivors", sort_name="Vampire Survivors", platform=platform
+        name="Vampire Survivors",
+        sort_name="Vampire Survivors",
+        platform=platform,
+        library=e2e_library,
     )
-    Game.objects.create(name="Brotato", sort_name="Brotato", platform=platform)
+    Game.objects.create(
+        name="Brotato", sort_name="Brotato", platform=platform, library=e2e_library
+    )
 
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
@@ -801,19 +813,18 @@ def test_add_purchase_related_game_edit_clears_autofill(
 
 
 def test_quick_bar_preset_pick_navigates_to_filtered_list(
-    authenticated_page: Page, live_server, django_user_model
+    authenticated_page: Page, live_server, e2e_library
 ):
     """Picking a preset in the quick bar's Load-preset combobox navigates to the
     list URL carrying ?filter= — the bar consumer's pick semantics."""
-    from games.models import FilterPreset, Game, Platform
+    from games.models import FilterPreset
 
-    platform = Platform.objects.create(name="PC", icon="pc")
-    Game.objects.create(name="Halo", platform=platform)
-    Game.objects.create(name="Doom", platform=platform)
-    user = django_user_model.objects.get(username="tester")
+    platform = Platform.objects.create(name="PC", icon="pc", library=e2e_library)
+    Game.objects.create(name="Halo", platform=platform, library=e2e_library)
+    Game.objects.create(name="Doom", platform=platform, library=e2e_library)
     stored_filter = {"name": {"modifier": "INCLUDES", "value": "halo"}}
     FilterPreset.objects.create(
-        user=user, name="HaloOnly", mode="games", object_filter=stored_filter
+        library=e2e_library, name="HaloOnly", mode="games", object_filter=stored_filter
     )
 
     page = authenticated_page

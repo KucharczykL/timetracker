@@ -86,9 +86,12 @@ def test_api_timeout_becomes_a_bad_request(monkeypatch):
         ("(?i)^ZELDA$", {"zelda"}),
     ],
 )
-def test_postgresql_patterns_match_the_postgresql_orm(pattern, expected):
+def test_postgresql_patterns_match_the_postgresql_orm(pattern, expected, owned_library):
     Game.objects.bulk_create(
-        [Game(name="zelda"), Game(name="mario"), Game(name="metroid")]
+        [
+            Game(library=owned_library, name=name)
+            for name in ("zelda", "mario", "metroid")
+        ]
     )
     assert (
         set(Game.objects.filter(name__regex=pattern).values_list("name", flat=True))

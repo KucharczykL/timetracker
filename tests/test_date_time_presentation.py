@@ -336,9 +336,12 @@ def test_request_factory_captures_active_language(db) -> None:
 
 
 @pytest.mark.django_db
-def test_request_factory_uses_personal_datetime_format() -> None:
+def test_request_factory_uses_personal_datetime_format(
+    django_capture_on_commit_callbacks,
+) -> None:
     user = get_user_model().objects.create_user(username="profile-user")
-    change_user_setting(user, "DATETIME_FORMAT", "mdy_12h")
+    with django_capture_on_commit_callbacks(execute=True):
+        change_user_setting(user, "DATETIME_FORMAT", "mdy_12h")
     request = RequestFactory().get("/")
     request.user = user
 
@@ -405,9 +408,11 @@ def test_root_document_emits_active_client_contract(db) -> None:
 
 def test_authenticated_root_document_emits_personal_mdy_12h_contract(
     db,
+    django_capture_on_commit_callbacks,
 ) -> None:
     user = get_user_model().objects.create_user(username="root-profile-user")
-    change_user_setting(user, "DATETIME_FORMAT", "mdy_12h")
+    with django_capture_on_commit_callbacks(execute=True):
+        change_user_setting(user, "DATETIME_FORMAT", "mdy_12h")
     client = Client()
     client.force_login(user)
     parser = _RootAttributeParser()

@@ -28,6 +28,7 @@ from common.criteria import (
     FieldMeta,
     FilterError,
     FilterField,
+    FilterQueryContext,
     FloatCriterion,
     IntCriterion,
     Modifier,
@@ -68,6 +69,40 @@ from games.filters import (
     parse_purchase_filter,
     parse_session_filter,
 )
+
+UNRESTRICTED_FILTER_CONTEXT = FilterQueryContext(
+    lambda model: model._default_manager.all()
+)
+
+
+@pytest.fixture(autouse=True)
+def _library_owned_filter_fixture_defaults(monkeypatch):
+    """Give legacy criterion fixtures the library required by owned models.
+
+    These tests intentionally exercise filter expression semantics through terse
+    model factories. The two-library API matrix separately verifies authorization
+    scoping, so keep this compatibility adapter local to this module.
+    """
+    from django.contrib.auth import get_user_model
+
+    from games.models import LibraryOwnedQuerySet, Platform
+
+    original_create = LibraryOwnedQuerySet.create
+    library = None
+
+    def create(queryset, **kwargs):
+        nonlocal library
+        if queryset.model is not Platform and "library" not in kwargs:
+            if library is None:
+                library = (
+                    get_user_model()
+                    .objects.create_user(username="filter-fixture-owner")
+                    .library
+                )
+            kwargs["library"] = library
+        return original_create(queryset, **kwargs)
+
+    monkeypatch.setattr(LibraryOwnedQuerySet, "create", create)
 
 
 class TestModifier:
@@ -559,7 +594,9 @@ class TestPurchaseGamesIncludesAllAgainstDB:
 
         def make(linked):
             purchase = Purchase.objects.create(
-                platform=platform, date_purchased=datetime.date(2024, 1, 1)
+                price_currency="CZK",
+                platform=platform,
+                date_purchased=datetime.date(2024, 1, 1),
             )
             purchase.games.set(linked)
             return purchase
@@ -586,7 +623,7 @@ class TestPurchaseGamesIncludesAllAgainstDB:
                 }
             }
         )
-        result = set(Purchase.objects.filter(pf.to_q()))
+        result = set(Purchase.objects.filter(pf.to_q(UNRESTRICTED_FILTER_CONTEXT)))
         assert result == {seeded["both"], seeded["all_three"]}
 
     @pytest.mark.django_db
@@ -604,7 +641,7 @@ class TestPurchaseGamesIncludesAllAgainstDB:
                 }
             }
         )
-        result = set(Purchase.objects.filter(pf.to_q()))
+        result = set(Purchase.objects.filter(pf.to_q(UNRESTRICTED_FILTER_CONTEXT)))
         assert result == {seeded["both"], seeded["only_a"], seeded["all_three"]}
 
     @pytest.mark.django_db
@@ -629,7 +666,7 @@ class TestPurchaseGamesIncludesAllAgainstDB:
                 }
             }
         )
-        result = list(Purchase.objects.filter(pf.to_q()))
+        result = list(Purchase.objects.filter(pf.to_q(UNRESTRICTED_FILTER_CONTEXT)))
         # Must have 3 distinct purchases, not duplicates
         assert len(result) == 3
         assert set(result) == {seeded["both"], seeded["only_a"], seeded["all_three"]}
@@ -656,7 +693,7 @@ class TestPurchaseGamesIncludesAllAgainstDB:
         assert pf.games is not None
         assert pf.games.modifier == Modifier.INCLUDES_ALL
         assert pf.games.value == [seeded["a"].id, seeded["b"].id]
-        result = set(Purchase.objects.filter(pf.to_q()))
+        result = set(Purchase.objects.filter(pf.to_q(UNRESTRICTED_FILTER_CONTEXT)))
         assert result == {seeded["both"], seeded["all_three"]}
 
 
@@ -677,7 +714,9 @@ class TestPurchaseGamesIncludesOnlyAgainstDB:
 
         def make(linked):
             purchase = Purchase.objects.create(
-                platform=platform, date_purchased=datetime.date(2024, 1, 1)
+                price_currency="CZK",
+                platform=platform,
+                date_purchased=datetime.date(2024, 1, 1),
             )
             purchase.games.set(linked)
             return purchase
@@ -705,7 +744,7 @@ class TestPurchaseGamesIncludesOnlyAgainstDB:
                 }
             }
         )
-        result = set(Purchase.objects.filter(pf.to_q()))
+        result = set(Purchase.objects.filter(pf.to_q(UNRESTRICTED_FILTER_CONTEXT)))
         assert result == {seeded["both"]}
 
     @pytest.mark.django_db
@@ -723,7 +762,7 @@ class TestPurchaseGamesIncludesOnlyAgainstDB:
                 }
             }
         )
-        result = set(Purchase.objects.filter(pf.to_q()))
+        result = set(Purchase.objects.filter(pf.to_q(UNRESTRICTED_FILTER_CONTEXT)))
         assert result == {seeded["only_a"]}
 
     @pytest.mark.django_db
@@ -741,7 +780,7 @@ class TestPurchaseGamesIncludesOnlyAgainstDB:
                 }
             }
         )
-        result = set(Purchase.objects.filter(pf.to_q()))
+        result = set(Purchase.objects.filter(pf.to_q(UNRESTRICTED_FILTER_CONTEXT)))
         # all_three has A, B, C — INCLUDES_ALL would match it, ONLY does not.
         assert seeded["all_three"] not in result
         assert seeded["both"] in result
@@ -903,17 +942,23 @@ class TestPurchaseNumPurchasesAgainstDB:
         c, _ = Game.objects.get_or_create(name="C", defaults={"platform": platform})
 
         single = Purchase.objects.create(
-            platform=platform, date_purchased=datetime.date(2024, 1, 1)
+            price_currency="CZK",
+            platform=platform,
+            date_purchased=datetime.date(2024, 1, 1),
         )
         single.games.set([a])
 
         double = Purchase.objects.create(
-            platform=platform, date_purchased=datetime.date(2024, 1, 1)
+            price_currency="CZK",
+            platform=platform,
+            date_purchased=datetime.date(2024, 1, 1),
         )
         double.games.set([a, b])
 
         triple = Purchase.objects.create(
-            platform=platform, date_purchased=datetime.date(2024, 1, 1)
+            price_currency="CZK",
+            platform=platform,
+            date_purchased=datetime.date(2024, 1, 1),
         )
         triple.games.set([a, b, c])
 
@@ -928,7 +973,7 @@ class TestPurchaseNumPurchasesAgainstDB:
         pf = PurchaseFilter.from_json(
             {"num_purchases": {"value": 2, "value2": 3, "modifier": "BETWEEN"}}
         )
-        result = set(Purchase.objects.filter(pf.to_q()))
+        result = set(Purchase.objects.filter(pf.to_q(UNRESTRICTED_FILTER_CONTEXT)))
         assert result == {seeded["double"], seeded["triple"]}
 
     @pytest.mark.django_db
@@ -940,7 +985,7 @@ class TestPurchaseNumPurchasesAgainstDB:
         pf = PurchaseFilter.from_json(
             {"num_purchases": {"value": 1, "modifier": "GREATER_THAN"}}
         )
-        result = set(Purchase.objects.filter(pf.to_q()))
+        result = set(Purchase.objects.filter(pf.to_q(UNRESTRICTED_FILTER_CONTEXT)))
         assert result == {seeded["double"], seeded["triple"]}
 
     @pytest.mark.django_db
@@ -952,7 +997,7 @@ class TestPurchaseNumPurchasesAgainstDB:
         pf = PurchaseFilter.from_json(
             {"num_purchases": {"value": 1, "modifier": "EQUALS"}}
         )
-        result = set(Purchase.objects.filter(pf.to_q()))
+        result = set(Purchase.objects.filter(pf.to_q(UNRESTRICTED_FILTER_CONTEXT)))
         assert result == {seeded["single"]}
 
 
@@ -1001,6 +1046,12 @@ class TestExpandedFiltersAgainstDB:
             needs_price_update=False,
         )
         pur.games.add(game)
+        Purchase.objects.filter(pk=pur.pk).update(
+            converted_price=45.00,
+            converted_currency="USD",
+            needs_price_update=False,
+        )
+        pur.refresh_from_db()
 
         # 4. PlayEvent
         pe = PlayEvent.objects.create(
@@ -1040,7 +1091,7 @@ class TestExpandedFiltersAgainstDB:
         # single-device fixture (issue #120 false positive).
         assert df.session_filter is not None
         assert df.session_filter.game_filter is not None
-        results = list(Device.objects.filter(df.to_q()))
+        results = list(Device.objects.filter(df.to_q(UNRESTRICTED_FILTER_CONTEXT)))
         assert data["dev"] in results
 
     def test_platform_filter_and_cross_entity(self):
@@ -1052,7 +1103,7 @@ class TestExpandedFiltersAgainstDB:
         pf = PlatformFilter.from_json(
             {"game_filter": {"status": {"value": ["f"], "modifier": "INCLUDES"}}}
         )
-        results = list(Platform.objects.filter(pf.to_q()))
+        results = list(Platform.objects.filter(pf.to_q(UNRESTRICTED_FILTER_CONTEXT)))
         assert data["plat"] in results
 
     def test_session_filter_duration_splits(self):
@@ -1104,14 +1155,20 @@ class TestExpandedFiltersAgainstDB:
         gf_pur = GameFilter.from_json(
             {"purchase_count": {"value": 1, "modifier": "EQUALS"}}
         )
-        assert data["game"] in list(Game.objects.filter(gf_pur.to_q()))
-        assert data["game2"] not in list(Game.objects.filter(gf_pur.to_q()))
+        assert data["game"] in list(
+            Game.objects.filter(gf_pur.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        )
+        assert data["game2"] not in list(
+            Game.objects.filter(gf_pur.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        )
 
         # session_count = 1
         gf_cnt = GameFilter.from_json(
             {"session_count": {"value": 1, "modifier": "EQUALS"}}
         )
-        assert data["game"] in list(Game.objects.filter(gf_cnt.to_q()))
+        assert data["game"] in list(
+            Game.objects.filter(gf_cnt.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        )
 
     def test_game_filter_purchase_count_range(self):
         from games.filters import GameFilter
@@ -1123,7 +1180,7 @@ class TestExpandedFiltersAgainstDB:
         gf = GameFilter.from_json(
             {"purchase_count": {"value": 1, "modifier": "EQUALS"}}
         )
-        results = set(Game.objects.filter(gf.to_q()))
+        results = set(Game.objects.filter(gf.to_q(UNRESTRICTED_FILTER_CONTEXT)))
         assert data["game"] in results
         assert data["game2"] not in results
 
@@ -1135,7 +1192,7 @@ class TestExpandedFiltersAgainstDB:
         gf = GameFilter.from_json(
             {"playevent_count": {"value": 1, "modifier": "EQUALS"}}
         )
-        results = set(Game.objects.filter(gf.to_q()))
+        results = set(Game.objects.filter(gf.to_q(UNRESTRICTED_FILTER_CONTEXT)))
         assert data["game"] in results
         assert data["game2"] not in results
 
@@ -1183,7 +1240,9 @@ class TestExpandedFiltersAgainstDB:
 
         data = self._setup_entities()
         gameless = Purchase.objects.create(
-            platform=data["plat"], date_purchased=datetime.date(2026, 2, 1)
+            price_currency="CZK",
+            platform=data["plat"],
+            date_purchased=datetime.date(2026, 2, 1),
         )
         pf = PurchaseFilter.from_json(
             {
@@ -1213,7 +1272,7 @@ class TestExpandedFiltersAgainstDB:
                 }
             }
         )
-        results = set(Game.objects.filter(gf_total.to_q()))
+        results = set(Game.objects.filter(gf_total.to_q(UNRESTRICTED_FILTER_CONTEXT)))
         assert data["game"] in results
         assert data["game2"] not in results
 
@@ -1226,12 +1285,16 @@ class TestExpandedFiltersAgainstDB:
         gf_manual = GameFilter.from_json(
             {"manual_playtime_hours": {"value": 1, "modifier": "EQUALS"}}
         )
-        assert data["game"] in set(Game.objects.filter(gf_manual.to_q()))
+        assert data["game"] in set(
+            Game.objects.filter(gf_manual.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        )
 
         gf_calc = GameFilter.from_json(
             {"calculated_playtime_hours": {"value": 3, "modifier": "EQUALS"}}
         )
-        assert data["game"] in set(Game.objects.filter(gf_calc.to_q()))
+        assert data["game"] in set(
+            Game.objects.filter(gf_calc.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        )
 
 
 class TestDateCriterion:
@@ -1323,15 +1386,20 @@ class TestPurchaseFilterDates:
 
         platform, _ = Platform.objects.get_or_create(name="Test", icon="test")
         early = Purchase.objects.create(
-            platform=platform, date_purchased=datetime.date(2024, 1, 15)
+            price_currency="CZK",
+            platform=platform,
+            date_purchased=datetime.date(2024, 1, 15),
         )
         mid = Purchase.objects.create(
+            price_currency="CZK",
             platform=platform,
             date_purchased=datetime.date(2024, 6, 15),
             date_refunded=datetime.date(2024, 7, 1),
         )
         late = Purchase.objects.create(
-            platform=platform, date_purchased=datetime.date(2025, 1, 15)
+            price_currency="CZK",
+            platform=platform,
+            date_purchased=datetime.date(2025, 1, 15),
         )
         return {"early": early, "mid": mid, "late": late}
 
@@ -1468,7 +1536,9 @@ class TestPurchaseFilterDates:
         ended = restored.game_filter.playevent_filter.ended
         assert isinstance(ended, DateCriterion)
         assert ended.value2 == "2024-12-31"
-        assert str(restored.to_q()) == str(original.to_q())
+        assert str(restored.to_q(UNRESTRICTED_FILTER_CONTEXT)) == str(
+            original.to_q(UNRESTRICTED_FILTER_CONTEXT)
+        )
 
     def test_empty_subfilter_is_omitted_not_serialized_as_empty(self):
         """An all-None sub-filter contributes no constraint, so to_json omits it
@@ -1751,7 +1821,7 @@ class TestFilterErrorBoundary:
         good = json.dumps({"name": {"modifier": "INCLUDES", "value": "halo"}})
         result = parse_game_filter(good)
         assert result is not None
-        result.to_q()  # does not raise
+        result.to_q(UNRESTRICTED_FILTER_CONTEXT)  # does not raise
 
     def test_invalid_regex_pattern(self):
         """An uncompilable pattern (unbalanced group) is a clean FilterError, not a
@@ -1786,14 +1856,14 @@ class TestFilterErrorBoundary:
         )
         result = parse_game_filter(good)
         assert result is not None
-        result.to_q()  # does not raise
+        result.to_q(UNRESTRICTED_FILTER_CONTEXT)  # does not raise
 
     def test_regex_looking_value_allowed_for_non_regex_modifier(self):
         """Regex syntax under INCLUDES is a literal substring value."""
         good = json.dumps({"name": {"modifier": "INCLUDES", "value": "(a+)+"}})
         result = parse_game_filter(good)
         assert result is not None
-        result.to_q()  # does not raise
+        result.to_q(UNRESTRICTED_FILTER_CONTEXT)  # does not raise
 
 
 class TestFilterErrorLogging:
@@ -2023,20 +2093,20 @@ class TestFilterDepthGuard:
         good = json.dumps(_nest_relation(MAX_FILTER_DEPTH - 1))
         result = parse_game_filter(good)
         assert result is not None
-        result.to_q()  # does not raise
+        result.to_q(UNRESTRICTED_FILTER_CONTEXT)  # does not raise
 
     def test_nesting_at_cap_parses(self):
         """Exactly at the cap is accepted (the guard rejects only *past* the cap)."""
         good = json.dumps(_nest_relation(MAX_FILTER_DEPTH))
         result = parse_game_filter(good)
         assert result is not None
-        result.to_q()  # does not raise
+        result.to_q(UNRESTRICTED_FILTER_CONTEXT)  # does not raise
 
     def test_operator_nesting_within_cap_parses(self):
         good = json.dumps(_nest_operator(MAX_FILTER_DEPTH - 1))
         result = parse_game_filter(good)
         assert result is not None
-        result.to_q()  # does not raise
+        result.to_q(UNRESTRICTED_FILTER_CONTEXT)  # does not raise
 
     def test_mixed_operator_and_relation_share_one_depth_budget(self):
         """Both recursion sites increment the same ``_depth``, so a tree alternating
@@ -2070,9 +2140,9 @@ class TestFilterDepthGuard:
         )
         result = parse_game_filter(good)
         assert result is not None
-        result.to_q()  # does not raise
+        result.to_q(UNRESTRICTED_FILTER_CONTEXT)  # does not raise
         assert result.session_filter is not None
-        result.session_filter.to_q()  # the exact second call game.py makes
+        result.session_filter.to_q(UNRESTRICTED_FILTER_CONTEXT)
 
 
 class TestFilterBreadthGuard:
@@ -2091,7 +2161,7 @@ class TestFilterBreadthGuard:
         good = json.dumps({"AND": [{} for _ in range(MAX_FILTER_BREADTH)]})
         result = parse_game_filter(good)
         assert result is not None
-        result.to_q()  # does not raise
+        result.to_q(UNRESTRICTED_FILTER_CONTEXT)  # does not raise
 
     def test_field_comparisons_past_cap_raises(self):
         entry = {
@@ -2116,7 +2186,7 @@ class TestFilterBreadthGuard:
         )
         result = parse_purchase_filter(good)
         assert result is not None
-        result.to_q()  # does not raise
+        result.to_q(UNRESTRICTED_FILTER_CONTEXT)  # does not raise
 
     def test_set_value_past_cap_raises(self):
         bad = json.dumps(
@@ -2154,7 +2224,7 @@ class TestFilterBreadthGuard:
         )
         result = parse_game_filter(good)
         assert result is not None
-        result.to_q()  # does not raise
+        result.to_q(UNRESTRICTED_FILTER_CONTEXT)  # does not raise
 
     def test_set_excludes_at_cap_parses(self):
         good = json.dumps(
@@ -2168,7 +2238,7 @@ class TestFilterBreadthGuard:
         )
         result = parse_game_filter(good)
         assert result is not None
-        result.to_q()  # does not raise
+        result.to_q(UNRESTRICTED_FILTER_CONTEXT)  # does not raise
 
     def test_set_string_value_rejected_not_char_split(self):
         """A hand-edited *string* value on a ChoiceCriterion field (whose ``_coerce``
@@ -2193,7 +2263,7 @@ class TestFilterBreadthGuard:
         good = json.dumps({"platform": {"value": None, "modifier": "INCLUDES"}})
         result = parse_game_filter(good)
         assert result is not None
-        result.to_q()  # does not raise
+        result.to_q(UNRESTRICTED_FILTER_CONTEXT)  # does not raise
 
 
 # Wrong-typed value per coercible criterion class (issue #157). Criteria whose
@@ -3076,17 +3146,20 @@ class TestComparableColumnsCrossModel:
         assert any(v.startswith("game__playevents__") for v in session_values)
         assert any(v.startswith("related_game__purchases__") for v in purchase_values)
 
-    def test_platform_and_device_have_no_to_one_related_columns(self):
-        # Platform/Device declare no forward FKs, so every *single-valued* column
-        # is own-model (model-sourced). Their reverse relations (Platform.games,
-        # Device.sessions) are enumerated as multi-valued blocks (#282), so allow
-        # those to carry a relation source.
+    def test_platform_and_device_columns_classify_library_owner_relation(self):
+        # Platform/Device now declare the ownership FK. Its columns are a Library
+        # source; other single-valued columns remain model-sourced. Reverse
+        # relations are multi-valued blocks (#282) and may have another source.
         from games.models import Device, Platform
 
         for model in (Platform, Device):
             model_source = str(model._meta.verbose_name).title()
             for column in comparable_columns(model):
-                if not column["multivalued"]:
+                if column["multivalued"]:
+                    continue
+                if column["value"].startswith("library__"):
+                    assert column["source"] == "Library"
+                else:
                     assert column["source"] == model_source
 
 
@@ -3690,18 +3763,21 @@ class TestFieldComparisonEndToEnd:
 
         # A: refund BEFORE purchase — the data-error case; must be returned
         purchase_a = Purchase.objects.create(
+            price_currency="CZK",
             platform=platform,
             date_purchased=datetime.date(2024, 3, 1),
             date_refunded=datetime.date(2024, 1, 1),
         )
         # B: refund AFTER purchase — normal order; must NOT be returned
         Purchase.objects.create(
+            price_currency="CZK",
             platform=platform,
             date_purchased=datetime.date(2024, 1, 1),
             date_refunded=datetime.date(2024, 3, 1),
         )
         # C: no refund (NULL operand) — SQL comparison against NULL yields no match
         Purchase.objects.create(
+            price_currency="CZK",
             platform=platform,
             date_purchased=datetime.date(2024, 1, 1),
         )
@@ -3715,7 +3791,9 @@ class TestFieldComparisonEndToEnd:
                 )
             ]
         )
-        result = set(Purchase.objects.filter(purchase_filter.to_q()))
+        result = set(
+            Purchase.objects.filter(purchase_filter.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        )
         assert result == {purchase_a}
 
     def test_session_end_before_start_same_day(self):
@@ -3757,7 +3835,9 @@ class TestFieldComparisonEndToEnd:
                 )
             ]
         )
-        result = set(Session.objects.filter(session_filter.to_q()))
+        result = set(
+            Session.objects.filter(session_filter.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        )
         assert result == {session_x}
 
     def test_date_granular_same_day_behavior(self):
@@ -3800,7 +3880,9 @@ class TestFieldComparisonEndToEnd:
                     )
                 ]
             )
-            return set(Session.objects.filter(session_filter.to_q()))
+            return set(
+                Session.objects.filter(session_filter.to_q(UNRESTRICTED_FILTER_CONTEXT))
+            )
 
         # date-granular EQUALS: only the same-calendar-day session.
         assert run(Modifier.EQUALS, "date") == {same}
@@ -3853,7 +3935,9 @@ class TestFieldComparisonEndToEnd:
                 )
             ]
         )
-        result = set(Session.objects.filter(session_filter.to_q()))
+        result = set(
+            Session.objects.filter(session_filter.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        )
         assert result == {session_p}
 
     def test_unknown_right_column_raises(self):
@@ -3870,7 +3954,7 @@ class TestFieldComparisonEndToEnd:
             ]
         )
         with pytest.raises(FilterError):
-            purchase_filter.to_q()
+            purchase_filter.to_q(UNRESTRICTED_FILTER_CONTEXT)
 
     def test_not_equals_strict_null_semantics(self):
         """date_refunded NOT_EQUALS date_purchased with strict two-valued NULL semantics (#169):
@@ -3891,18 +3975,21 @@ class TestFieldComparisonEndToEnd:
 
         # A: date_refunded differs from date_purchased → returned
         purchase_a = Purchase.objects.create(
+            price_currency="CZK",
             platform=platform,
             date_purchased=datetime.date(2024, 1, 1),
             date_refunded=datetime.date(2024, 3, 1),
         )
         # B: date_refunded equals date_purchased → excluded (NOT FALSE = FALSE)
         Purchase.objects.create(
+            price_currency="CZK",
             platform=platform,
             date_purchased=datetime.date(2024, 2, 1),
             date_refunded=datetime.date(2024, 2, 1),
         )
         # C: date_refunded is NULL → EXCLUDED (strict NULL guard, behavior change from #169)
         Purchase.objects.create(
+            price_currency="CZK",
             platform=platform,
             date_purchased=datetime.date(2024, 1, 1),
         )
@@ -3916,7 +4003,9 @@ class TestFieldComparisonEndToEnd:
                 )
             ]
         )
-        result = set(Purchase.objects.filter(purchase_filter.to_q()))
+        result = set(
+            Purchase.objects.filter(purchase_filter.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        )
         assert result == {purchase_a}
 
     def test_not_equals_strict_null_symmetric(self):
@@ -3958,7 +4047,9 @@ class TestFieldComparisonEndToEnd:
                 )
             ]
         )
-        result = set(PlayEvent.objects.filter(play_filter.to_q()))
+        result = set(
+            PlayEvent.objects.filter(play_filter.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        )
         assert result == {differ}
 
     def test_two_comparisons_both_must_hold(self):
@@ -3977,6 +4068,7 @@ class TestFieldComparisonEndToEnd:
 
         # A: refund after purchase AND price > converted_price → returned
         purchase_a = Purchase.objects.create(
+            price_currency="CZK",
             platform=platform,
             date_purchased=datetime.date(2024, 1, 1),
             date_refunded=datetime.date(2024, 3, 1),
@@ -3986,6 +4078,7 @@ class TestFieldComparisonEndToEnd:
         )
         # B: refund after purchase BUT price < converted_price → excluded (fails comparison 2)
         Purchase.objects.create(
+            price_currency="CZK",
             platform=platform,
             date_purchased=datetime.date(2024, 1, 1),
             date_refunded=datetime.date(2024, 3, 1),
@@ -3995,6 +4088,7 @@ class TestFieldComparisonEndToEnd:
         )
         # C: price > converted_price BUT no refund (NULL) → excluded (fails comparison 1)
         Purchase.objects.create(
+            price_currency="CZK",
             platform=platform,
             date_purchased=datetime.date(2024, 1, 1),
             price=50.0,
@@ -4016,7 +4110,9 @@ class TestFieldComparisonEndToEnd:
                 ),
             ]
         )
-        result = set(Purchase.objects.filter(purchase_filter.to_q()))
+        result = set(
+            Purchase.objects.filter(purchase_filter.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        )
         assert result == {purchase_a}
 
     def test_json_round_trip_purchase_comparison(self):
@@ -4038,18 +4134,21 @@ class TestFieldComparisonEndToEnd:
 
         # A: refund BEFORE purchase — should be returned
         purchase_a = Purchase.objects.create(
+            price_currency="CZK",
             platform=platform,
             date_purchased=datetime.date(2024, 3, 1),
             date_refunded=datetime.date(2024, 1, 1),
         )
         # B: refund AFTER purchase — should NOT be returned
         Purchase.objects.create(
+            price_currency="CZK",
             platform=platform,
             date_purchased=datetime.date(2024, 1, 1),
             date_refunded=datetime.date(2024, 3, 1),
         )
         # C: NULL date_refunded — should NOT be returned
         Purchase.objects.create(
+            price_currency="CZK",
             platform=platform,
             date_purchased=datetime.date(2024, 1, 1),
         )
@@ -4066,7 +4165,9 @@ class TestFieldComparisonEndToEnd:
         json_string = filter_to_json(purchase_filter)
         parsed_filter = parse_purchase_filter(json_string)
         assert parsed_filter is not None
-        result = set(Purchase.objects.filter(parsed_filter.to_q()))
+        result = set(
+            Purchase.objects.filter(parsed_filter.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        )
         assert result == {purchase_a}
 
     def test_string_includes_excludes_end_to_end(self):
@@ -4138,7 +4239,9 @@ class TestFieldComparisonEndToEnd:
         )
         parsed_filter = parse_game_filter(filter_to_json(game_filter))
         assert parsed_filter is not None
-        assert set(Game.objects.filter(parsed_filter.to_q())) == {match}
+        assert set(
+            Game.objects.filter(parsed_filter.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        ) == {match}
 
     def test_cross_model_includes_empty_string_right_operand(self):
         """INCLUDES where the right operand is a cross-model column with value "".
@@ -4149,51 +4252,52 @@ class TestFieldComparisonEndToEnd:
         rows where both operands are "".
 
         This test pins the behaviour cross-model: Session.note INCLUDES
-        game__wikidata, where the game has wikidata="" (the empty default).
-        - HIT: note is non-empty, game.wikidata is "" → matches (left contains "")
-        - NO_HIT_NULL_GAME: game is None → excluded by the strict NULL guard on
-          game__wikidata.
+        device__name, where the device has an empty name.
+        - HIT: note is non-empty, device.name is "" → matches (left contains "")
+        - NO_HIT_NULL_DEVICE: device is None → excluded by the strict NULL guard
+          on device__name.
         """
         from django.utils import timezone
 
         from games.filters import SessionFilter
-        from games.models import Game, Platform, Session
+        from games.models import Device, Game, Platform, Session
 
         platform, _ = Platform.objects.get_or_create(
             name="CrossModelIncludesTest", icon="crossmodelincludestest"
         )
-        game_with_empty_wikidata = Game.objects.create(
-            name="WikilessGame",
-            platform=platform,
-            wikidata="",  # the default — empty string, not NULL
-        )
+        game = Game.objects.create(name="WikilessGame", platform=platform)
+        device_with_empty_name = Device.objects.create(name="", type=Device.UNKNOWN)
 
-        # HIT: note is non-empty; game.wikidata is "" → "" is substring of note
+        # HIT: note is non-empty; device.name is "" → "" is substring of note
         session_hit = Session.objects.create(
             timestamp_start=timezone.now(),
             note="some note",
-            game=game_with_empty_wikidata,
+            game=game,
+            device=device_with_empty_name,
         )
 
-        # NULL guard: no game → game__wikidata is NULL → excluded
-        session_no_game = Session.objects.create(
+        # NULL guard: no device → device__name is NULL → excluded
+        session_no_device = Session.objects.create(
             timestamp_start=timezone.now(),
             note="also non-empty",
-            game=None,
+            game=game,
+            device=None,
         )
 
         session_filter = SessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
                     left="note",
-                    right="game__wikidata",
+                    right="device__name",
                     modifier=Modifier.INCLUDES,
                 )
             ]
         )
-        result = set(Session.objects.filter(session_filter.to_q()))
+        result = set(
+            Session.objects.filter(session_filter.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        )
         assert session_hit in result
-        assert session_no_game not in result
+        assert session_no_device not in result
 
 
 class TestStrictNullSemantics:
@@ -4211,7 +4315,7 @@ class TestStrictNullSemantics:
         return Game.objects.create(name="NullGame", platform=platform)
 
     @pytest.fixture
-    def session_without_game(self, db):
+    def session_without_device(self, db, game):
         from django.utils import timezone
 
         from games.models import Session
@@ -4219,27 +4323,27 @@ class TestStrictNullSemantics:
         return Session.objects.create(
             timestamp_start=timezone.now(),
             note="orphan",
-            game=None,
+            game=game,
         )
 
     def test_not_equals_excludes_null_operand_rows_lookup_side(
-        self, session_without_game
+        self, session_without_device
     ):
         from games.models import Session
 
         q = SessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="game__name",
+                    left="device__name",
                     right="note",
                     modifier=Modifier.NOT_EQUALS,
                 )
             ]
         ).to_q()
-        assert session_without_game not in Session.objects.filter(q)
+        assert session_without_device not in Session.objects.filter(q)
 
     def test_not_equals_excludes_null_operand_rows_expression_side(
-        self, session_without_game
+        self, session_without_device
     ):
         from games.models import Session
 
@@ -4247,48 +4351,50 @@ class TestStrictNullSemantics:
             field_comparisons=[
                 FieldComparisonCriterion(
                     left="note",
-                    right="game__name",
+                    right="device__name",
                     modifier=Modifier.NOT_EQUALS,
                 )
             ]
         ).to_q()
-        assert session_without_game not in Session.objects.filter(q)
+        assert session_without_device not in Session.objects.filter(q)
 
-    def test_not_equals_is_side_symmetric(self, db, game, session_without_game):
+    def test_not_equals_is_side_symmetric(self, db, game, session_without_device):
         from django.utils import timezone
 
-        from games.models import Session
+        from games.models import Device, Session
 
-        Session.objects.create(
+        device = Device.objects.create(library=game.library, name="Owned Device")
+        expected = Session.objects.create(
             timestamp_start=timezone.now(),
             note="differs",
             game=game,
+            device=device,
         )
         left_form = SessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="game__name", right="note", modifier=Modifier.NOT_EQUALS
+                    left="device__name", right="note", modifier=Modifier.NOT_EQUALS
                 )
             ]
         ).to_q()
         right_form = SessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="note", right="game__name", modifier=Modifier.NOT_EQUALS
+                    left="note", right="device__name", modifier=Modifier.NOT_EQUALS
                 )
             ]
         ).to_q()
-        assert list(Session.objects.filter(left_form)) == list(
-            Session.objects.filter(right_form)
-        )
+        assert list(Session.objects.filter(left_form)) == [expected]
+        assert list(Session.objects.filter(right_form)) == [expected]
 
-    def test_same_model_not_equals_now_excludes_null_rows(self, db):
+    def test_same_model_not_equals_now_excludes_null_rows(self, db, game):
         # Behavior change pinned: previously included (NULL counted as "not equal").
         from django.utils import timezone
 
         from games.models import Session
 
         session = Session.objects.create(
+            game=game,
             timestamp_start=timezone.now(),
             timestamp_end=None,
         )
@@ -4603,8 +4709,14 @@ class TestFilterFieldDescriptors:
             {"games": {"value": [1, 2], "modifier": "INCLUDES"}}
         )
         assert pf is not None
-        assert len(pf.to_q().children) == len(pf._extra_q().children) == 1
-        assert str(pf.to_q()) == str(pf._extra_q())
+        assert (
+            len(pf.to_q(UNRESTRICTED_FILTER_CONTEXT).children)
+            == len(pf._extra_q(UNRESTRICTED_FILTER_CONTEXT).children)
+            == 1
+        )
+        assert str(pf.to_q(UNRESTRICTED_FILTER_CONTEXT)) == str(
+            pf._extra_q(UNRESTRICTED_FILTER_CONTEXT)
+        )
 
 
 # ── FilterField handlers (issue #161) ────────────────────────────────────────
@@ -5107,6 +5219,15 @@ class TestFieldMetadata:
         assert Modifier.IS_NULL.value in year["modifiers"]
         assert Modifier.NOT_NULL.value in year["modifiers"]
 
+    def test_required_session_game_drops_presence_modifiers(self):
+        from common.criteria import Modifier
+
+        game = self._by_name(SessionFilter)["game"]
+
+        assert game["nullable"] is False
+        assert Modifier.IS_NULL.value not in game["modifiers"]
+        assert Modifier.NOT_NULL.value not in game["modifiers"]
+
     def test_filterfield_label_and_labels_override_win(self):
         by_name = self._by_name(_LabelStub)
         # FilterField.label (highest precedence) surfaces for an in-`fields` field
@@ -5254,7 +5375,8 @@ class TestStringFieldNullConvention:
     Known intentional exceptions (pre-existing nullable string fields not used
     in any filter, listed as "ModelName.field_name"):
     - GameStatusChange.old_status: NULL means "no previous status" (first-time set)
-    - UserPreferences.default_currency / default_landing_page / theme: NULL means
+    - UserPreferences.default_purchase_currency / default_display_currency /
+      default_landing_page / theme: NULL means
       "unset" (fall through to the site/default settings layer); never filtered.
     """
 
@@ -5267,7 +5389,8 @@ class TestStringFieldNullConvention:
             "GameStatusChange.old_status",
             # Per-user settings overrides: NULL is the "unset" sentinel the
             # resolver falls through on, deliberately not the "" convention.
-            "UserPreferences.default_currency",
+            "UserPreferences.default_purchase_currency",
+            "UserPreferences.default_display_currency",
             "UserPreferences.default_landing_page",
             "UserPreferences.theme",
             "UserPreferences.display_time_zone",
@@ -5369,7 +5492,7 @@ class TestScopedAggregatesAgainstDB:
 
         game_filter = GameFilter.from_json(filter_json)
         assert game_filter is not None
-        return set(Game.objects.filter(game_filter.to_q()))
+        return set(Game.objects.filter(game_filter.to_q(UNRESTRICTED_FILTER_CONTEXT)))
 
     def test_session_count_scoped_to_device(self):
         data = self._seed_sessions()
@@ -5625,6 +5748,7 @@ class TestScopedAggregateReducers:
 
         def make_purchase(games, ownership_type):
             purchase = Purchase.objects.create(
+                price_currency="CZK",
                 platform=platform,
                 date_purchased=datetime.date(2026, 1, 1),
                 ownership_type=ownership_type,
@@ -5650,7 +5774,9 @@ class TestScopedAggregateReducers:
                 }
             }
         )
-        assert set(Game.objects.filter(game_filter.to_q())) == {first_game}
+        assert set(
+            Game.objects.filter(game_filter.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        ) == {first_game}
         one_physical = GameFilter.from_json(
             {
                 "purchase_count": {
@@ -5665,7 +5791,9 @@ class TestScopedAggregateReducers:
                 }
             }
         )
-        assert set(Game.objects.filter(one_physical.to_q())) == {second_game}
+        assert set(
+            Game.objects.filter(one_physical.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        ) == {second_game}
 
     def _seed_two_device_games(self):
         import datetime
@@ -5708,7 +5836,7 @@ class TestScopedAggregateReducers:
 
         game_filter = GameFilter.from_json(filter_json)
         assert game_filter is not None
-        return set(Game.objects.filter(game_filter.to_q()))
+        return set(Game.objects.filter(game_filter.to_q(UNRESTRICTED_FILTER_CONTEXT)))
 
     def test_scoped_average_executes_against_the_db(self):
         """The avg reducer with a scope: only the deck sessions feed the mean.
@@ -5862,6 +5990,7 @@ class TestComparisonOperandPaths:
         )
         game = Game.objects.create(name="Doom", platform=platform)
         dlc = Purchase.objects.create(
+            price_currency="CZK",
             name="Doom: Eternal DLC",
             related_game=game,
             date_purchased=datetime.date(2024, 1, 1),
@@ -5933,7 +6062,6 @@ class TestMultivaluedComparison:
         rows["null_terminal"] = session(game_b, self._dt(2021))
 
         rows["no_events"] = session(Game.objects.create(name="MV-C"), self._dt(2021))
-        rows["no_game"] = session(None, self._dt(2021))
         return rows
 
     def _matched(self, quantifier, *, left, right):
@@ -5949,7 +6077,7 @@ class TestMultivaluedComparison:
                     quantifier=quantifier,
                 )
             ]
-        ).to_q()
+        ).to_q(UNRESTRICTED_FILTER_CONTEXT)
         return set(Session.objects.filter(query).values_list("pk", flat=True))
 
     def test_any_multi_on_right(self, db):
@@ -5965,8 +6093,8 @@ class TestMultivaluedComparison:
         matched = self._matched(
             RelationMatch.ALL, left="timestamp_end", right="game__playevents__ended"
         )
-        # after_all satisfies both events; no_events + no_game are vacuously true.
-        expected = {"after_all", "no_events", "no_game"}
+        # after_all satisfies both events; no_events is vacuously true.
+        expected = {"after_all", "no_events"}
         assert {k for k, s in rows.items() if s.pk in matched} == expected
 
     def test_none_multi_on_right(self, db):
@@ -5980,7 +6108,6 @@ class TestMultivaluedComparison:
             "null_end",
             "null_terminal",
             "no_events",
-            "no_game",
         }
         assert {k for k, s in rows.items() if s.pk in matched} == expected
 
@@ -6005,7 +6132,7 @@ class TestMultivaluedComparison:
                     quantifier=RelationMatch.ANY,
                 )
             ]
-        ).to_q()
+        ).to_q(UNRESTRICTED_FILTER_CONTEXT)
         matched = set(Session.objects.filter(query).values_list("pk", flat=True))
         assert {k for k, s in rows.items() if s.pk in matched} == {
             "after_all",
@@ -6022,12 +6149,12 @@ class TestMultivaluedComparison:
         game_match = Game.objects.create(name="Zelda")
         game_other = Game.objects.create(name="Doom")
         hit = Purchase.objects.create(
-            name="Great Zelda Bundle", date_purchased=purchased
+            price_currency="CZK", name="Great Zelda Bundle", date_purchased=purchased
         )
         hit.games.add(game_match)
         # same name...
         miss = Purchase.objects.create(
-            name="Great Zelda Bundle", date_purchased=purchased
+            price_currency="CZK", name="Great Zelda Bundle", date_purchased=purchased
         )
         miss.games.add(game_other)  # ...but no linked game name it contains
         query = PurchaseFilter(
@@ -6039,7 +6166,7 @@ class TestMultivaluedComparison:
                     quantifier=RelationMatch.ANY,
                 )
             ]
-        ).to_q()
+        ).to_q(UNRESTRICTED_FILTER_CONTEXT)
         matched = set(Purchase.objects.filter(query).values_list("pk", flat=True))
         assert hit.pk in matched
         assert miss.pk not in matched
@@ -6068,7 +6195,7 @@ class TestMultivaluedComparison:
                     quantifier=RelationMatch.ANY,
                 )
             ]
-        ).to_q()
+        ).to_q(UNRESTRICTED_FILTER_CONTEXT)
         matched = set(Game.objects.filter(query).values_list("pk", flat=True))
         assert bad.pk in matched
         assert clean.pk not in matched
@@ -6110,7 +6237,7 @@ class TestMultivaluedComparison:
                     quantifier=RelationMatch.ANY,
                 )
             ]
-        ).to_q()
+        ).to_q(UNRESTRICTED_FILTER_CONTEXT)
         matched = set(Game.objects.filter(query).values_list("pk", flat=True))
         assert hit.pk in matched
         assert miss.pk not in matched

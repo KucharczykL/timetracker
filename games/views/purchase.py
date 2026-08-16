@@ -1,12 +1,15 @@
+from typing import cast
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
 from django.db import transaction
 from django.db.models import QuerySet
 from django.http import (
     HttpRequest,
     HttpResponse,
 )
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import redirect
 from django.template.defaultfilters import floatformat, pluralize
 from django.urls import reverse
 from django.utils import timezone
@@ -48,12 +51,13 @@ from common.date_time_presentation import (
     DateTimePresentation,
     date_time_presentation_for_request,
 )
-from common.filter_execution import regex_timeout_view
+from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.returns import OriginUrl, action_url
 from common.utils import label_with_details, paginate
 from games.forms import PurchaseForm
 from games.models import Game, PlayEvent, Purchase
+from games.ownership import owned_or_404
 from games.sorting import (
     PURCHASE_DEFAULT_SORT,
     PURCHASE_SORTS,
@@ -63,7 +67,6 @@ from games.sorting import (
 from games.views.deletion import confirm_and_delete
 from games.views.filtering import warn_unknown_sort
 from games.views.returns import origin_from, return_url
-from timetracker.settings_resolver import resolve_str_for_user
 
 
 def _render_purchase_buttons(
@@ -134,10 +137,14 @@ def _render_purchase_row(
     # TODO: simplify if multiple purchases are no longer allowed
     date_finished = "-"
     try:
-        latest_play_event = PlayEvent.objects.filter(
-            game__in=purchase.games.all(),
-            ended__isnull=False,
-        ).latest("ended")
+        latest_play_event = (
+            PlayEvent.objects.for_library(purchase.library)
+            .filter(
+                game__in=purchase.games.all(),
+                ended__isnull=False,
+            )
+            .latest("ended")
+        )
         if latest_play_event and latest_play_event.ended:
             date_finished = presentation.format(latest_play_event.ended, "date")
     except PlayEvent.DoesNotExist:
@@ -169,21 +176,31 @@ def _render_purchase_row(
 @regex_timeout_view
 def list_purchases(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
+    library = cast(User, request.user).library
     origin = request.get_full_path()
-    purchases: QuerySet[Purchase] = Purchase.objects.select_related(
-        "platform"
-    ).prefetch_related("games", "games__platform")
+    purchases: QuerySet[Purchase] = (
+        Purchase.objects.for_library(library)
+        .select_related("platform")
+        .prefetch_related("games", "games__platform")
+    )
 
     filter_json = request.GET.get("filter", "")
     if filter_json:
-        from games.filters import parse_purchase_filter
+        from games.filters import (
+            filter_query_context_for_library,
+            parse_purchase_filter,
+        )
         from games.views.filtering import apply_structured_filter
 
         purchase_filter = apply_structured_filter(
             request, parse_purchase_filter, filter_json
         )
         if purchase_filter is not None:
-            purchases = purchases.filter(purchase_filter.to_q())
+            purchases = execute_filter(
+                purchase_filter,
+                purchases,
+                filter_query_context_for_library(library),
+            )
 
     find = parse_find_filter(request)
     sort = apply_sort(purchases, find, PURCHASE_SORTS, PURCHASE_DEFAULT_SORT)
@@ -290,6 +307,7 @@ def _create_separate_purchases(form: PurchaseForm, post) -> None:
     game is attached."""
     data = form.cleaned_data
     shared = {
+        "library": form.library,
         "platform": data.get("platform"),
         "date_purchased": data["date_purchased"],
         "date_refunded": data.get("date_refunded"),
@@ -313,18 +331,16 @@ def _create_separate_purchases(form: PurchaseForm, post) -> None:
 
 @login_required
 def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
-    default_currency = resolve_str_for_user(request.user, "DEFAULT_CURRENCY")
+    library = cast(User, request.user).library
     presentation = date_time_presentation_for_request(request)
-    initial = {
-        "date_purchased": timezone.now(),
-        "price_currency": default_currency,
-    }
+    initial = {"date_purchased": timezone.now()}
 
     if request.method == "POST":
         form = PurchaseForm(
             request.POST or None,
             initial=initial,
-            default_currency=default_currency,
+            library=library,
+            user=cast(User, request.user),
             presentation=presentation,
         )
         if form.is_valid():
@@ -343,14 +359,15 @@ def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
             return redirect(return_url(request, fallback="games:list_purchases"))
     else:
         if game_id:
-            game = Game.objects.get(id=game_id)
+            game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
             form = PurchaseForm(
                 initial={
                     **initial,
                     "games": [game],
                     "platform": game.platform,
                 },
-                default_currency=default_currency,
+                library=library,
+                user=cast(User, request.user),
                 presentation=presentation,
             )
             # Chained from add_game: game and platform are pre-filled, so focus
@@ -360,7 +377,8 @@ def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
         else:
             form = PurchaseForm(
                 initial=initial,
-                default_currency=default_currency,
+                library=library,
+                user=cast(User, request.user),
                 presentation=presentation,
             )
 
@@ -383,16 +401,15 @@ def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
 
 @login_required
 def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
-    purchase = get_object_or_404(Purchase, id=purchase_id)
-    default_currency = resolve_str_for_user(request.user, "DEFAULT_CURRENCY")
-    initial = (
-        {"price_currency": default_currency} if not purchase.price_currency else None
+    library = cast(User, request.user).library
+    purchase = owned_or_404(
+        Purchase.objects.for_library(library), library, id=purchase_id
     )
     form = PurchaseForm(
         request.POST or None,
         instance=purchase,
-        initial=initial,
-        default_currency=default_currency,
+        library=library,
+        user=cast(User, request.user),
         presentation=date_time_presentation_for_request(request),
     )
     if form.is_valid():
@@ -412,7 +429,10 @@ def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
 
 @login_required
 def delete_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
-    purchase = get_object_or_404(Purchase, id=purchase_id)
+    library = cast(User, request.user).library
+    purchase = owned_or_404(
+        Purchase.objects.for_library(library), library, id=purchase_id
+    )
     return confirm_and_delete(
         request,
         purchase,
@@ -464,7 +484,10 @@ def _purchase_page_title(purchase: Purchase, presentation: DateTimePresentation)
 
 @login_required
 def view_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
-    purchase = get_object_or_404(Purchase, id=purchase_id)
+    library = cast(User, request.user).library
+    purchase = owned_or_404(
+        Purchase.objects.for_library(library), library, id=purchase_id
+    )
     presentation = date_time_presentation_for_request(request)
     return render_page(
         request,
@@ -509,15 +532,22 @@ def _refund_confirmation_modal(
 def refund_purchase_confirmation(
     request: HttpRequest, purchase_id: int
 ) -> HttpResponse:
+    library = cast(User, request.user).library
+    purchase = owned_or_404(
+        Purchase.objects.for_library(library), library, id=purchase_id
+    )
     return HttpResponse(
-        _refund_confirmation_modal(purchase_id, request, origin_from(request))
+        _refund_confirmation_modal(purchase.pk, request, origin_from(request))
     )
 
 
 @login_required
 @require_POST
 def refund_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
-    purchase = get_object_or_404(Purchase, id=purchase_id)
+    library = cast(User, request.user).library
+    purchase = owned_or_404(
+        Purchase.objects.for_library(library), library, id=purchase_id
+    )
 
     for game in purchase.games.all():
         game.status = Game.Status.ABANDONED
@@ -573,7 +603,10 @@ def _split_confirmation_modal(
 
 @login_required
 def split_purchase_confirmation(request: HttpRequest, purchase_id: int) -> HttpResponse:
-    purchase = get_object_or_404(Purchase, id=purchase_id)
+    library = cast(User, request.user).library
+    purchase = owned_or_404(
+        Purchase.objects.for_library(library), library, id=purchase_id
+    )
     return HttpResponse(
         _split_confirmation_modal(purchase, request, origin_from(request))
     )
@@ -586,13 +619,17 @@ def split_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     """Replace one multi-game (unsplittable-style) purchase with one single-game
     purchase per game, splitting the price evenly as a starting point. Each new
     purchase is then independently priceable and refundable."""
-    purchase = get_object_or_404(Purchase, id=purchase_id)
+    library = cast(User, request.user).library
+    purchase = owned_or_404(
+        Purchase.objects.for_library(library), library, id=purchase_id
+    )
     games = list(purchase.games.all())
     count = len(games)
     if count > 1:
         share = purchase.price / count
         for game in games:
             new_purchase = Purchase(
+                library=purchase.library,
                 price=share,
                 price_currency=purchase.price_currency,
                 date_purchased=purchase.date_purchased,

@@ -172,9 +172,10 @@ LANGUAGE_CODE = "en-us"
 
 TIME_ZONE = config("TZ", default="Europe/Prague" if DEBUG else "UTC")
 
-# Default currency for new purchases when none is entered, and FX conversion
-# target for background price conversion (issues #88/#89).
-DEFAULT_CURRENCY = config("DEFAULT_CURRENCY", default="CZK")
+# Purchase entry and converted reporting intentionally have independent
+# defaults. Runtime consumers resolve their site/User hierarchy lazily.
+DEFAULT_PURCHASE_CURRENCY = config("DEFAULT_PURCHASE_CURRENCY", default="CZK")
+DEFAULT_DISPLAY_CURRENCY = config("DEFAULT_DISPLAY_CURRENCY", default="CZK")
 
 USE_I18N = True
 

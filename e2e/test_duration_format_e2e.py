@@ -11,8 +11,7 @@ from timetracker.settings_commands import change_user_setting
 
 
 @pytest.fixture
-def authenticated_page(live_server, page: Page, django_user_model) -> Page:
-    django_user_model.objects.create_user(username="tester", password="secret123")
+def authenticated_page(live_server, page: Page, e2e_user) -> Page:
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")
     page.fill('input[name="password"]', "secret123")
@@ -22,9 +21,11 @@ def authenticated_page(live_server, page: Page, django_user_model) -> Page:
 
 
 @pytest.fixture
-def session(db) -> Session:
+def session(e2e_library) -> Session:
     game = Game.objects.create(
-        name="Duration Game", platform=Platform.objects.create(name="PC")
+        library=e2e_library,
+        name="Duration Game",
+        platform=Platform.objects.create(library=e2e_library, name="PC"),
     )
     return Session.objects.create(
         game=game,

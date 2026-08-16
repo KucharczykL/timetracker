@@ -7,7 +7,7 @@ from django.urls import reverse
 
 from common.components import FormFieldPresentation, Span
 from games.forms import INPUT_CLASS, SELECT_CLASS, apply_primitive_widget_classes
-from games.models import Device, Platform, SiteSetting
+from games.models import Platform, SiteSetting
 from games.settings_forms import (
     SiteSettingsForm,
     UserSettingsForm,
@@ -92,7 +92,7 @@ def test_currency_keeps_its_mask_and_length_while_a_plain_text_setting_would_not
     settings_resolver.clear_cache()
 
     fields = UserSettingsForm().fields
-    currency = fields["default_currency"]
+    currency = fields["default_purchase_currency"]
     plain_text = fields[synthetic_key.lower()]
 
     assert currency.max_length == 3
@@ -119,10 +119,10 @@ def test_the_site_page_uses_the_static_empty_label():
 
 @pytest.mark.django_db
 def test_the_user_page_names_the_inherited_site_value():
-    # A value that differs from DEFAULT_CURRENCY's built-in default, so the
+    # A value that differs from DEFAULT_PURCHASE_CURRENCY's built-in default, so the
     # assertion below can only pass by reading the DATABASE layer through
-    # resolve_with_origin — not by taking a shortcut to settings.DEFAULT_CURRENCY.
-    SiteSetting.objects.create(key="DEFAULT_CURRENCY", value="EUR")
+    # resolve_with_origin — not by taking a shortcut to settings.DEFAULT_PURCHASE_CURRENCY.
+    SiteSetting.objects.create(key="DEFAULT_PURCHASE_CURRENCY", value="EUR")
     settings_resolver.clear_cache()
 
     fields = UserSettingsForm().fields
@@ -132,8 +132,7 @@ def test_the_user_page_names_the_inherited_site_value():
         "Use site default (Sessions)",
     )
     assert fields["default_page_size"].choices[0] == ("", "Use site default (25)")
-    assert fields["default_device"].empty_label == "Use site default (No device)"
-    assert fields["default_currency"].widget.attrs["placeholder"] == (
+    assert fields["default_purchase_currency"].widget.attrs["placeholder"] == (
         "Use site default (EUR)"
     )
 
@@ -164,16 +163,6 @@ def test_display_label_names_the_unset_landing_page_regardless_of_choice_order()
     assert reordered_choices is not None
     assert reordered_choices[0][1] != "Sessions"
     assert display_label(reordered, None) == "Sessions"
-
-
-@pytest.mark.django_db
-def test_display_label_names_the_device_or_reports_none():
-    device = Device.objects.create(name="Desktop", type="pc")
-    definition = get_definition("DEFAULT_DEVICE")
-
-    assert display_label(definition, device.pk) == str(device)
-    assert display_label(definition, None) == "No device"
-    assert display_label(definition, device.pk + 1000) == "No device"
 
 
 @pytest.fixture
@@ -343,14 +332,18 @@ def test_the_site_page_stamps_every_display_setting_for_reload():
         "datetime_format",
     ):
         assert "data-reload-after-save" in page.form.fields[field_name].widget.attrs
-    for field_name in ("default_currency", "default_device", "default_page_size"):
+    for field_name in (
+        "default_purchase_currency",
+        "default_display_currency",
+        "default_page_size",
+    ):
         assert "data-reload-after-save" not in page.form.fields[field_name].widget.attrs
 
 
 @pytest.mark.django_db
 def test_every_user_scoped_field_label_matches_its_definition_on_both_forms():
     """Django's auto-generated label from a field name coincidentally matches
-    a definition's label for some settings (e.g. "default_currency" ->
+    a definition's label for some settings (e.g. "default_purchase_currency" ->
     "Default currency") but not others (e.g. "default_page_size" ->
     "Default page size" vs. the registry's "Default rows per page"), so this
     must compare every field against its definition, not spot-check a few."""

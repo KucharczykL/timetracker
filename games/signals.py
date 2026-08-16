@@ -2,6 +2,7 @@ import logging
 from datetime import timedelta
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import F, Sum
 from django.db.models.signals import (
@@ -18,9 +19,11 @@ from games.models import (
     Game,
     GameStatusChange,
     Purchase,
+    PurchaseConversionState,
     Session,
     SiteSetting,
     UserLibrary,
+    UserLibraryPreferences,
     UserPreferences,
 )
 from timetracker.settings_resolver import clear_cache as clear_settings_cache
@@ -32,7 +35,22 @@ logger = logging.getLogger("games")
 def provision_user_library(sender, instance, created, raw=False, **kwargs) -> None:
     if raw or not created:
         return
-    UserLibrary.objects.get_or_create(user=instance)
+    with transaction.atomic():
+        library, _ = UserLibrary.objects.get_or_create(user=instance)
+        UserPreferences.objects.get_or_create(user=instance)
+        UserLibraryPreferences.objects.get_or_create(library=library)
+        from timetracker.settings_resolver import resolve_for_user_with_origin
+
+        display_currency = str(
+            resolve_for_user_with_origin(instance, "DEFAULT_DISPLAY_CURRENCY").value
+        ).upper()
+        PurchaseConversionState.objects.get_or_create(
+            library=library,
+            defaults={
+                "requested_currency": display_currency,
+                "published_currency": display_currency,
+            },
+        )
 
 
 @receiver([post_save, post_delete], sender=SiteSetting)
@@ -47,34 +65,16 @@ def invalidate_settings_cache(sender, instance, **kwargs):
     transaction.on_commit(clear_settings_cache)
 
 
-@receiver(pre_save, sender=Purchase)
-def store_purchase_price_snapshot(sender, instance, **kwargs):
-    """Store old price values before save so we can detect changes."""
-    if kwargs.get("raw"):
-        return
-    if instance.pk is not None:
-        try:
-            old_instance = sender.objects.get(pk=instance.pk)
-            instance._old_price = old_instance.price
-            instance._old_currency = old_instance.price_currency
-        except sender.DoesNotExist:
-            pass
-
-
-@receiver(post_save, sender=Purchase)
-def mark_needs_price_update(sender, instance, created, **kwargs):
-    """Mark purchase for price update if price or currency changed."""
-    if kwargs.get("raw"):
+@receiver(m2m_changed, sender=Purchase.games.through)
+def validate_purchase_game_ownership(sender, instance, action, model, pk_set, **kwargs):
+    if action != "pre_add" or not pk_set:
         return
     if (
-        not created
-        and hasattr(instance, "_old_price")
-        and (
-            instance.price != instance._old_price
-            or instance.price_currency != instance._old_currency
-        )
+        model.objects.filter(pk__in=pk_set)
+        .exclude(library_id=instance.library_id)
+        .exists()
     ):
-        sender.objects.filter(pk=instance.pk).update(needs_price_update=True)
+        raise ValidationError("Purchase and Game must belong to the same library.")
 
 
 @receiver(m2m_changed, sender=Purchase.games.through)

@@ -48,9 +48,16 @@ class SortHeaderParityTest(TestCase):
             username="testuser", email="test@example.com", password="testpass"
         )
         self.client.force_login(self.user)
-        self.platform = Platform.objects.create(name="Test Platform", icon="test")
-        self.game = Game.objects.create(name="Test Game", platform=self.platform)
+        library = self.user.library
+        self.platform = Platform.objects.create(
+            library=library, name="Test Platform", icon="test"
+        )
+        self.game = Game.objects.create(
+            library=library, name="Test Game", platform=self.platform
+        )
         self.purchase = Purchase.objects.create(
+            library=library,
+            price_currency="CZK",
             date_purchased=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO),
             platform=self.platform,
         )
@@ -78,7 +85,7 @@ class SortHeaderParityTest(TestCase):
         self._assert_parity("games:list_playevents", PLAYEVENT_SORTS)
 
     def test_devices_headers_match_map(self):
-        Device.objects.create(name="Test Device")
+        Device.objects.create(library=self.user.library, name="Test Device")
         self._assert_parity("games:list_devices", DEVICE_SORTS)
 
     def test_platforms_headers_match_map(self):

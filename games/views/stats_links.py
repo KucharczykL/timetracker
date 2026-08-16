@@ -9,6 +9,10 @@ from.
 Scope: `year` is an int for a calendar year, or the "Alltime" sentinel (or any
 non-int) for all-time — matching `StatsData["year"]`. For all-time the date
 bounds are omitted, so the links cover every record.
+
+These objects carry row criteria, not authorization. List views must execute them
+against a base queryset already scoped to ``request.user.library``; a stats link
+must never restore a global model-manager fallback.
 """
 
 from calendar import monthrange
@@ -76,23 +80,10 @@ def sessions_for_platform(
     session_filter = SessionFilter.where(**_session_bounds(year))
     if platform_id is None:
         # The stats "Unspecified" bucket groups by the game__platform LEFT JOIN,
-        # so it holds both sessions of platformless games AND sessions with no
-        # game at all. The cross-entity game_filter compiles to game_id__in
-        # (subquery) — which a NULL game_id never matches — so the game-less
-        # half needs its own IS_NULL arm, OR-composed under a single AND child
-        # (OR at the top node would swallow the year bounds).
-        session_filter.AND = [
-            SessionFilter(
-                OR=[
-                    SessionFilter(game=MultiCriterion(modifier=Modifier.IS_NULL)),
-                    SessionFilter(
-                        game_filter=GameFilter(
-                            platform=MultiCriterion(modifier=Modifier.IS_NULL)
-                        )
-                    ),
-                ]
-            )
-        ]
+        # which now means exactly sessions whose required Game is platformless.
+        session_filter.game_filter = GameFilter(
+            platform=MultiCriterion(modifier=Modifier.IS_NULL)
+        )
         return session_filter
     session_filter.game_filter = GameFilter(
         platform=MultiCriterion(

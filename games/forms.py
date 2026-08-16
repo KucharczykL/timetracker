@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm
+from django.contrib.auth.models import User
 from django.db import transaction
 from django.utils import timezone
 
@@ -32,8 +33,10 @@ from games.models import (
     PlayEvent,
     Purchase,
     Session,
+    UserLibrary,
 )
 from timetracker.settings_registry import DISPLAY_TIME_ZONE_CHOICES
+from timetracker.settings_resolver import resolve_str_for_user
 
 autofocus_input_widget = forms.TextInput(attrs={"autofocus": "autofocus"})
 
@@ -159,7 +162,7 @@ def game_option_data(game: Game) -> dict[str, str]:
     }
 
 
-def _game_options(values) -> list[SearchSelectOption]:
+def _game_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
     """Resolve game ids (or instances) to SearchSelectOptions via one pk__in query."""
     return [
         {
@@ -167,21 +170,23 @@ def _game_options(values) -> list[SearchSelectOption]:
             "label": g.search_label,
             "data": game_option_data(g),
         }
-        for g in Game.objects.filter(pk__in=values).select_related("platform")
+        for g in Game.objects.for_library(library)
+        .filter(pk__in=values)
+        .select_related("platform")
     ]
 
 
-def _device_options(values) -> list[SearchSelectOption]:
+def _device_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
     return [
         {"value": d.id, "label": d.name, "data": {}}
-        for d in Device.objects.filter(pk__in=values)
+        for d in Device.objects.for_library(library).filter(pk__in=values)
     ]
 
 
-def _platform_options(values) -> list[SearchSelectOption]:
+def _platform_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
     return [
         {"value": p.id, "label": p.name, "data": {}}
-        for p in Platform.objects.filter(pk__in=values)
+        for p in Platform.objects.visible_to(library).filter(pk__in=values)
     ]
 
 
@@ -471,8 +476,27 @@ _TIMESTAMP_ZONE_FIELDS: Final[dict[str, str]] = {
 
 
 class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
-    def __init__(self, *args, presentation: DateTimePresentation, **kwargs):
+    def __init__(
+        self,
+        *args,
+        library: UserLibrary,
+        presentation: DateTimePresentation,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
+        self.library = library
+        cast(
+            forms.ModelChoiceField, self.fields["game"]
+        ).queryset = Game.objects.for_library(library).order_by("sort_name")
+        self.fields["game"].widget.options_resolver = partial(
+            _game_options, library=library
+        )
+        cast(
+            forms.ModelChoiceField, self.fields["device"]
+        ).queryset = Device.objects.for_library(library).order_by("name")
+        self.fields["device"].widget.options_resolver = partial(
+            _device_options, library=library
+        )
         self._presentation = presentation
         for field_name, copy_target in _TIMESTAMP_COPY_TARGETS.items():
             zone_field_name = _TIMESTAMP_ZONE_FIELDS[field_name]
@@ -596,20 +620,38 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
     def __init__(
         self,
         *args,
-        default_currency: str,
+        library: UserLibrary,
+        user: User,
         presentation: DateTimePresentation,
         **kwargs,
     ):
-        self.default_currency = default_currency
+        self.library = library
+        self.default_currency = resolve_str_for_user(user, "DEFAULT_PURCHASE_CURRENCY")
         super().__init__(*args, **kwargs)
+        self.instance.library = library
+        games = Game.objects.for_library(library).order_by("sort_name")
+        visible_platforms = Platform.objects.visible_to(library).order_by("name")
+        cast(forms.ModelMultipleChoiceField, self.fields["games"]).queryset = games
+        self.fields["games"].widget.options_resolver = partial(
+            _game_options, library=library
+        )
+        cast(forms.ModelChoiceField, self.fields["related_game"]).queryset = games
+        self.fields["related_game"].widget.options_resolver = partial(
+            _game_options, library=library
+        )
         platform_field = cast(forms.ModelChoiceField, self.fields["platform"])
-        platform_field.queryset = Platform.objects.order_by("name")
+        platform_field.queryset = visible_platforms
+        platform_field.widget.options_resolver = partial(
+            _platform_options, library=library
+        )
         # The bundle Price is optional: in price-per-game mode it is hidden and
         # the per-game inputs carry the prices instead. Empty falls back to 0.
         self.fields["price"].required = False
         if not self.initial.get("price_currency"):
-            self.initial["price_currency"] = default_currency
-        self.fields["price_currency"].widget.attrs["placeholder"] = default_currency
+            self.initial["price_currency"] = self.default_currency
+        self.fields["price_currency"].widget.attrs["placeholder"] = (
+            self.default_currency
+        )
         for field_name in ("date_purchased", "date_refunded"):
             self.fields[field_name].widget = DatePickerWidget(
                 presentation=presentation,
@@ -716,7 +758,31 @@ class GameModelChoiceField(forms.ModelChoiceField):
         return obj.sort_name
 
 
-class GameForm(PrimitiveWidgetsMixin, forms.ModelForm):
+class _LibraryBoundConstraintValidationMixin:
+    def _get_validation_exclusions(self):
+        exclusions = super()._get_validation_exclusions()
+        # ``library`` is assigned by the constructor rather than submitted by
+        # the browser. Django otherwise excludes it from model constraint
+        # validation because it is not a form field, allowing a per-library
+        # duplicate to reach the database as an IntegrityError.
+        exclusions.discard("library")
+        return exclusions
+
+
+class GameForm(
+    _LibraryBoundConstraintValidationMixin, PrimitiveWidgetsMixin, forms.ModelForm
+):
+    def __init__(self, *args, library: UserLibrary, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.library = library
+        self.instance.library = library
+        cast(
+            forms.ModelChoiceField, self.fields["platform"]
+        ).queryset = Platform.objects.visible_to(library).order_by("name")
+        self.fields["platform"].widget.options_resolver = partial(
+            _platform_options, library=library
+        )
+
     platform = forms.ModelChoiceField(
         queryset=Platform.objects.order_by("name"),
         required=False,
@@ -740,7 +806,14 @@ class GameForm(PrimitiveWidgetsMixin, forms.ModelForm):
         widgets: ClassVar[dict[str, forms.Widget]] = {"name": autofocus_input_widget}
 
 
-class PlatformForm(PrimitiveWidgetsMixin, forms.ModelForm):
+class PlatformForm(
+    _LibraryBoundConstraintValidationMixin, PrimitiveWidgetsMixin, forms.ModelForm
+):
+    def __init__(self, *args, library: UserLibrary, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.library = library
+        self.instance.library = library
+
     class Meta:
         model = Platform
         fields = (
@@ -752,6 +825,11 @@ class PlatformForm(PrimitiveWidgetsMixin, forms.ModelForm):
 
 
 class DeviceForm(PrimitiveWidgetsMixin, forms.ModelForm):
+    def __init__(self, *args, library: UserLibrary, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.library = library
+        self.instance.library = library
+
     class Meta:
         model = Device
         fields = ("name", "type")
@@ -759,8 +837,21 @@ class DeviceForm(PrimitiveWidgetsMixin, forms.ModelForm):
 
 
 class PlayEventForm(PrimitiveWidgetsMixin, forms.ModelForm):
-    def __init__(self, *args, presentation: DateTimePresentation, **kwargs):
+    def __init__(
+        self,
+        *args,
+        library: UserLibrary,
+        presentation: DateTimePresentation,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
+        self.library = library
+        cast(
+            forms.ModelChoiceField, self.fields["game"]
+        ).queryset = Game.objects.for_library(library).order_by("sort_name")
+        self.fields["game"].widget.options_resolver = partial(
+            _game_options, library=library
+        )
         for field_name in ("started", "ended"):
             self.fields[field_name].widget = DatePickerWidget(
                 presentation=presentation,
@@ -800,8 +891,18 @@ class PlayEventForm(PrimitiveWidgetsMixin, forms.ModelForm):
 
 
 class GameStatusChangeForm(PrimitiveWidgetsMixin, forms.ModelForm):
-    def __init__(self, *args, presentation: DateTimePresentation, **kwargs):
+    def __init__(
+        self,
+        *args,
+        library: UserLibrary,
+        presentation: DateTimePresentation,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
+        self.library = library
+        cast(
+            forms.ModelChoiceField, self.fields["game"]
+        ).queryset = Game.objects.for_library(library).order_by("sort_name")
         self.fields["timestamp"].widget = DateTimeFieldWidget(
             presentation=presentation,
             label=str(self.fields["timestamp"].label or "timestamp"),

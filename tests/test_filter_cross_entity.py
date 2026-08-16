@@ -16,7 +16,9 @@ import json
 from datetime import UTC, date, datetime
 
 import pytest
+from django.contrib.auth import get_user_model
 
+from common.criteria import FilterQueryContext
 from games.filters import (
     parse_game_filter,
     parse_purchase_filter,
@@ -24,12 +26,35 @@ from games.filters import (
 )
 from games.models import Device, Game, Platform, PlayEvent, Purchase, Session
 
+UNRESTRICTED_FILTER_CONTEXT = FilterQueryContext(
+    lambda model: model._default_manager.all()
+)
+
+
+@pytest.fixture(autouse=True)
+def _single_library_filter_world(db, monkeypatch):
+    """These algebra tests use one explicit owner; isolation is tested elsewhere."""
+    user = get_user_model().objects.create_user(username="cross-entity-owner")
+
+    def owned_create(original):
+        def create(**kwargs):
+            kwargs.setdefault("library", user.library)
+            return original(**kwargs)
+
+        return create
+
+    for model in (Game, Device, Purchase):
+        manager = model.objects
+        monkeypatch.setattr(manager, "create", owned_create(manager.create))
+
 
 def _session_ids(filter_json: str) -> set[int]:
     parsed = parse_session_filter(filter_json)
     assert parsed is not None
     return set(
-        Session.objects.filter(parsed.to_q()).distinct().values_list("id", flat=True)
+        Session.objects.filter(parsed.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        .distinct()
+        .values_list("id", flat=True)
     )
 
 
@@ -41,7 +66,9 @@ def _game_ids(filter_json: str) -> set[int]:
     parsed = parse_game_filter(filter_json)
     assert parsed is not None
     return set(
-        Game.objects.filter(parsed.to_q()).distinct().values_list("id", flat=True)
+        Game.objects.filter(parsed.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        .distinct()
+        .values_list("id", flat=True)
     )
 
 
@@ -95,10 +122,14 @@ def purchase_world(db):
     Game.objects.create(name="NoPurchase", platform=pc)
 
     p1 = Purchase.objects.create(
-        date_purchased=date(2024, 1, 1), type=Purchase.GAME, converted_price=10.0
+        price_currency="CZK",
+        date_purchased=date(2024, 1, 1),
+        type=Purchase.GAME,
+        converted_price=10.0,
     )
     p1.games.set([game_buyer])
     p2 = Purchase.objects.create(
+        price_currency="CZK",
         date_purchased=date(2024, 1, 1),
         type=Purchase.DLC,
         related_game=dlc_buyer,
@@ -123,11 +154,15 @@ def test_purchase_ownership_type_widget_json_selects_games(db):
     Game.objects.create(name="NoPurchase", platform=pc)
 
     physical_purchase = Purchase.objects.create(
-        date_purchased=date(2024, 1, 1), ownership_type=Purchase.PHYSICAL
+        price_currency="CZK",
+        date_purchased=date(2024, 1, 1),
+        ownership_type=Purchase.PHYSICAL,
     )
     physical_purchase.games.set([physical])
     digital_purchase = Purchase.objects.create(
-        date_purchased=date(2024, 1, 1), ownership_type=Purchase.DIGITAL
+        price_currency="CZK",
+        date_purchased=date(2024, 1, 1),
+        ownership_type=Purchase.DIGITAL,
     )
     digital_purchase.games.set([digital])
 
@@ -300,10 +335,12 @@ def test_purchase_refunded_false_matches_none(db):
     kept = Game.objects.create(name="Kept", platform=pc)
     none = Game.objects.create(name="NoPurchase", platform=pc)
     p1 = Purchase.objects.create(
-        date_purchased=date(2024, 1, 1), date_refunded=date(2024, 2, 1)
+        price_currency="CZK",
+        date_purchased=date(2024, 1, 1),
+        date_refunded=date(2024, 2, 1),
     )
     p1.games.set([refunded])
-    p2 = Purchase.objects.create(date_purchased=date(2024, 1, 1))
+    p2 = Purchase.objects.create(price_currency="CZK", date_purchased=date(2024, 1, 1))
     p2.games.set([kept])
 
     filter_json = _relation_bool_json(
@@ -318,9 +355,13 @@ def test_purchase_infinite_true_matches_any(db):
     pc = Platform.objects.create(name="PC")
     infinite = Game.objects.create(name="Infinite", platform=pc)
     finite = Game.objects.create(name="Finite", platform=pc)
-    p1 = Purchase.objects.create(date_purchased=date(2024, 1, 1), infinite=True)
+    p1 = Purchase.objects.create(
+        price_currency="CZK", date_purchased=date(2024, 1, 1), infinite=True
+    )
     p1.games.set([infinite])
-    p2 = Purchase.objects.create(date_purchased=date(2024, 1, 1), infinite=False)
+    p2 = Purchase.objects.create(
+        price_currency="CZK", date_purchased=date(2024, 1, 1), infinite=False
+    )
     p2.games.set([finite])
 
     filter_json = _relation_bool_json(
@@ -338,10 +379,12 @@ def test_purchase_refunded_true_matches_any(db):
     kept = Game.objects.create(name="Kept", platform=pc)
     Game.objects.create(name="NoPurchase", platform=pc)
     p1 = Purchase.objects.create(
-        date_purchased=date(2024, 1, 1), date_refunded=date(2024, 2, 1)
+        price_currency="CZK",
+        date_purchased=date(2024, 1, 1),
+        date_refunded=date(2024, 2, 1),
     )
     p1.games.set([refunded])
-    p2 = Purchase.objects.create(date_purchased=date(2024, 1, 1))
+    p2 = Purchase.objects.create(price_currency="CZK", date_purchased=date(2024, 1, 1))
     p2.games.set([kept])
 
     filter_json = _relation_bool_json(
@@ -358,9 +401,13 @@ def test_purchase_infinite_false_matches_none(db):
     infinite = Game.objects.create(name="Infinite", platform=pc)
     finite = Game.objects.create(name="Finite", platform=pc)
     no_purchase = Game.objects.create(name="NoPurchase", platform=pc)
-    p1 = Purchase.objects.create(date_purchased=date(2024, 1, 1), infinite=True)
+    p1 = Purchase.objects.create(
+        price_currency="CZK", date_purchased=date(2024, 1, 1), infinite=True
+    )
     p1.games.set([infinite])
-    p2 = Purchase.objects.create(date_purchased=date(2024, 1, 1), infinite=False)
+    p2 = Purchase.objects.create(
+        price_currency="CZK", date_purchased=date(2024, 1, 1), infinite=False
+    )
     p2.games.set([finite])
 
     filter_json = _relation_bool_json(
@@ -385,12 +432,14 @@ def two_purchase_world(db):
     combined = Game.objects.create(name="Combined", platform=pc)
 
     game_digital = Purchase.objects.create(
+        price_currency="CZK",
         date_purchased=date(2024, 1, 1),
         type=Purchase.GAME,
         ownership_type=Purchase.DIGITAL,
     )
     game_digital.games.set([split])
     dlc_physical = Purchase.objects.create(
+        price_currency="CZK",
         date_purchased=date(2024, 1, 1),
         type=Purchase.DLC,
         related_game=split,
@@ -400,6 +449,7 @@ def two_purchase_world(db):
 
     # combined: a single purchase that is BOTH type=game AND ownership=physical.
     both = Purchase.objects.create(
+        price_currency="CZK",
         date_purchased=date(2024, 1, 1),
         type=Purchase.GAME,
         ownership_type=Purchase.PHYSICAL,
@@ -458,9 +508,13 @@ def test_purchase_finished_widget_json_selects_purchases(db):
     other_game = Game.objects.create(name="Other", platform=pc)
     PlayEvent.objects.create(game=finished_game, ended=date(2024, 6, 15))
 
-    bought_finished = Purchase.objects.create(date_purchased=date(2024, 1, 1))
+    bought_finished = Purchase.objects.create(
+        price_currency="CZK", date_purchased=date(2024, 1, 1)
+    )
     bought_finished.games.set([finished_game])
-    bought_other = Purchase.objects.create(date_purchased=date(2024, 1, 1))
+    bought_other = Purchase.objects.create(
+        price_currency="CZK", date_purchased=date(2024, 1, 1)
+    )
     bought_other.games.set([other_game])
 
     filter_json = json.dumps(
@@ -483,6 +537,8 @@ def test_purchase_finished_widget_json_selects_purchases(db):
     parsed = parse_purchase_filter(filter_json)
     assert parsed is not None
     purchase_ids = set(
-        Purchase.objects.filter(parsed.to_q()).distinct().values_list("id", flat=True)
+        Purchase.objects.filter(parsed.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        .distinct()
+        .values_list("id", flat=True)
     )
     assert purchase_ids == {bought_finished.id}

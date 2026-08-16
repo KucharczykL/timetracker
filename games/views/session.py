@@ -1,10 +1,11 @@
-from typing import Any
+from typing import Any, cast
 
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
@@ -34,13 +35,14 @@ from common.duration_presentation import (
     DurationPresentation,
     duration_presentation_for_request,
 )
-from common.filter_execution import regex_timeout_view
+from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.returns import OriginUrl
 from common.utils import paginate
 from games.formatting import session_time_range
 from games.forms import SESSION_TIMEZONE_EMBEDS, SessionForm
-from games.models import Device, Game, Session
+from games.models import Device, Game, Session, UserLibrary
+from games.ownership import owned_or_404
 from games.sorting import (
     SESSION_DEFAULT_SORT,
     SESSION_SORTS,
@@ -50,7 +52,6 @@ from games.sorting import (
 from games.views.deletion import confirm_and_apply, confirm_and_delete
 from games.views.filtering import warn_unknown_sort
 from games.views.returns import return_url
-from timetracker.settings_resolver import resolve_for_user
 
 
 def session_row_data(
@@ -83,25 +84,30 @@ def session_row_data(
 @login_required
 @regex_timeout_view
 def list_sessions(request: HttpRequest) -> HttpResponse:
+    library = cast(User, request.user).library
     presentation = date_time_presentation_for_request(request)
     durations = duration_presentation_for_request(request)
     origin = request.get_full_path()
-    sessions: QuerySet[Session] = Session.objects.select_related(
+    sessions: QuerySet[Session] = Session.objects.for_library(library).select_related(
         "game", "game__platform", "device"
     )
-    device_list = Device.objects.order_by("name")
+    device_list = Device.objects.for_library(library).order_by("name")
 
     # ── Structured filter (JSON; free-text search lives here too) ──
     filter_json = request.GET.get("filter", "")
     if filter_json:
-        from games.filters import parse_session_filter
+        from games.filters import filter_query_context_for_library, parse_session_filter
         from games.views.filtering import apply_structured_filter
 
         session_filter = apply_structured_filter(
             request, parse_session_filter, filter_json
         )
         if session_filter is not None:
-            sessions = sessions.filter(session_filter.to_q())
+            sessions = execute_filter(
+                session_filter,
+                sessions,
+                filter_query_context_for_library(library),
+            )
     find = parse_find_filter(request)
     sort = apply_sort(sessions, find, SESSION_SORTS, SESSION_DEFAULT_SORT)
     sessions = sort.queryset
@@ -172,6 +178,7 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
 @login_required
 def add_session(request: HttpRequest, game_id: int = 0) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
+    library = cast(User, request.user).library
     initial: dict[str, Any] = {
         # Truncated to the minute, which is as precise as the field's segments
         # go. The widget carries any sub-minute part of the value it was
@@ -179,24 +186,28 @@ def add_session(request: HttpRequest, game_id: int = 0) -> HttpResponse:
         # shifting a stored session's duration — so seeding the raw instant
         # would attach this page load's microseconds to a hand-typed time.
         "timestamp_start": timezone.now().replace(second=0, microsecond=0),
-        "device": resolve_for_user(request.user, "DEFAULT_DEVICE"),
+        "device": cast(User, request.user).library.preferences.default_device,
     }
 
     if request.method == "POST":
         form = SessionForm(
-            request.POST or None, initial=initial, presentation=presentation
+            request.POST or None,
+            initial=initial,
+            library=library,
+            presentation=presentation,
         )
         if form.is_valid():
             form.save()
             return redirect(return_url(request, fallback="games:list_sessions"))
     else:
         if game_id:
-            game = get_object_or_404(Game, id=game_id)
+            game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
             form = SessionForm(
                 initial={
                     **initial,
                     "game": game,
                 },
+                library=library,
                 presentation=presentation,
             )
             # Chained with a pre-filled game: focus the device field instead of
@@ -204,7 +215,11 @@ def add_session(request: HttpRequest, game_id: int = 0) -> HttpResponse:
             form.fields["game"].widget.autofocus = False
             form.fields["device"].widget.autofocus = True
         else:
-            form = SessionForm(initial=initial, presentation=presentation)
+            form = SessionForm(
+                initial=initial,
+                library=library,
+                presentation=presentation,
+            )
 
     # TODO: re-add custom buttons #91
     return render_page(
@@ -226,9 +241,10 @@ def add_session(request: HttpRequest, game_id: int = 0) -> HttpResponse:
 
 @login_required
 def edit_session(request: HttpRequest, session_id: int) -> HttpResponse:
-    session = get_object_or_404(Session, id=session_id)
+    library = cast(User, request.user).library
+    session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
     initial = (
-        {"device": resolve_for_user(request.user, "DEFAULT_DEVICE")}
+        {"device": cast(User, request.user).library.preferences.default_device}
         if session.device_id is None
         else None
     )
@@ -236,6 +252,7 @@ def edit_session(request: HttpRequest, session_id: int) -> HttpResponse:
         request.POST or None,
         instance=session,
         initial=initial,
+        library=library,
         presentation=date_time_presentation_for_request(request),
     )
     if form.is_valid():
@@ -258,8 +275,8 @@ def edit_session(request: HttpRequest, session_id: int) -> HttpResponse:
     )
 
 
-def clone_session_by_id(session_id: int) -> Session:
-    session = get_object_or_404(Session, id=session_id)
+def clone_session_by_id(session_id: int, library: UserLibrary) -> Session:
+    session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
     clone = session
     clone.pk = None
     clone.timestamp_start = timezone.now()
@@ -278,7 +295,8 @@ def clone_session_by_id(session_id: int) -> Session:
 def new_session_from_existing_session(
     request: HttpRequest, session_id: int
 ) -> HttpResponse:
-    clone_session_by_id(session_id)
+    library = cast(User, request.user).library
+    clone_session_by_id(session_id, library)
     return redirect(return_url(request, fallback="games:list_sessions"))
 
 
@@ -293,7 +311,8 @@ def _posted_browser_zone(request: HttpRequest) -> str:
 @login_required
 @require_POST
 def finish_session(request: HttpRequest, session_id: int) -> HttpResponse:
-    session = get_object_or_404(Session, id=session_id)
+    library = cast(User, request.user).library
+    session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
     session.timestamp_end = timezone.now()
     session.timestamp_end_timezone = _posted_browser_zone(request)
     session.save()
@@ -302,7 +321,8 @@ def finish_session(request: HttpRequest, session_id: int) -> HttpResponse:
 
 @login_required
 def reset_session(request: HttpRequest, session_id: int) -> HttpResponse:
-    session = get_object_or_404(Session, id=session_id)
+    library = cast(User, request.user).library
+    session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
 
     def reset_start_to_now() -> None:
         session.timestamp_start = timezone.now()
@@ -325,7 +345,8 @@ def reset_session(request: HttpRequest, session_id: int) -> HttpResponse:
 
 @login_required
 def delete_session(request: HttpRequest, session_id: int = 0) -> HttpResponse:
-    session = get_object_or_404(Session, id=session_id)
+    library = cast(User, request.user).library
+    session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
     return confirm_and_delete(
         request,
         session,

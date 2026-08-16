@@ -54,11 +54,22 @@ VISIBLE_HEADER_COUNT = """
 
 
 @pytest.fixture
-def populated(db) -> None:
-    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-    device = Device.objects.create(name="A Desktop Computer Of Some Kind", type="p")
-    game = Game.objects.create(name=LONG_NAME, platform=platform, year_released=2024)
-    short = Game.objects.create(name="Short", platform=platform, year_released=2023)
+def populated(e2e_library) -> None:
+    platform = Platform.objects.create(
+        library=e2e_library, name="PC", icon="pc", group="PC"
+    )
+    device = Device.objects.create(
+        library=e2e_library, name="A Desktop Computer Of Some Kind", type="p"
+    )
+    game = Game.objects.create(
+        library=e2e_library,
+        name=LONG_NAME,
+        platform=platform,
+        year_released=2024,
+    )
+    short = Game.objects.create(
+        library=e2e_library, name="Short", platform=platform, year_released=2023
+    )
     Session.objects.create(
         game=game,
         device=device,
@@ -68,6 +79,7 @@ def populated(db) -> None:
     )
     for index, purchased_game in enumerate((game, short)):
         purchase = Purchase.objects.create(
+            library=e2e_library,
             platform=platform,
             date_purchased=BASE + timedelta(days=index),
             date_refunded=BASE + timedelta(days=index + 5) if index == 0 else None,
@@ -82,10 +94,11 @@ def populated(db) -> None:
 
 
 @pytest.fixture
-def bundled_purchase(populated) -> None:
+def bundled_purchase(populated, e2e_library) -> None:
     """A two-game purchase: it carries the extra Split action, which widens the
     Actions column past what a single-game row needs."""
     bundle = Purchase.objects.create(
+        library=e2e_library,
         platform=Platform.objects.first(),
         date_purchased=BASE + timedelta(days=9),
         price=4321,

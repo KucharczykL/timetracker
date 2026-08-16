@@ -17,8 +17,9 @@ ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 
 class SignalsTest(TestCase):
     def test_deleting_game_with_sessions_does_not_raise(self):
+        library = get_user_model().objects.create_user(username="signals").library
         # Create a game and attach a session to it
-        g = Game(name="Signal Test Game")
+        g = Game(library=library, name="Signal Test Game")
         g.save()
 
         s = Session(
@@ -51,13 +52,17 @@ class RawFixtureLoadTest(TestCase):
     def setUp(self):
         self.fixture_dir = self.enterContext(tempfile.TemporaryDirectory())
 
+        self.library = (
+            get_user_model().objects.create_user(username="raw-fixture").library
+        )
+
     def _write_fixture(self, objects) -> str:
         path = Path(self.fixture_dir) / "fixture.json"
         path.write_text(serializers.serialize("json", objects))
         return str(path)
 
     def test_playtime_from_the_fixture_survives_the_load(self):
-        game = Game.objects.create(name="Fixture Game")
+        game = Game.objects.create(library=self.library, name="Fixture Game")
         Session.objects.create(
             game=game,
             timestamp_start=datetime(2022, 9, 26, 14, 0, tzinfo=ZONEINFO),
@@ -77,7 +82,9 @@ class RawFixtureLoadTest(TestCase):
         self.assertEqual(Game.objects.get(pk=game.pk).playtime, timedelta(hours=5))
 
     def test_status_in_a_fixture_is_not_an_audited_transition(self):
-        game = Game.objects.create(name="Fixture Game", status="u")
+        game = Game.objects.create(
+            library=self.library, name="Fixture Game", status="u"
+        )
         fixture = self._write_fixture([game])
         loaded = json.loads(Path(fixture).read_text())
         loaded[0]["fields"]["status"] = "f"

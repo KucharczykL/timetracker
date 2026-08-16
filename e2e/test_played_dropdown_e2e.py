@@ -24,8 +24,7 @@ ROW_FRACTIONS = [0.02, 0.1, 0.3, 0.5, 0.7, 0.9, 0.98]
 
 
 @pytest.fixture
-def authenticated_page(live_server, page: Page, django_user_model) -> Page:
-    django_user_model.objects.create_user(username="tester", password="secret123")
+def authenticated_page(live_server, page: Page, e2e_user) -> Page:
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")
     page.fill('input[name="password"]', "secret123")
@@ -35,8 +34,10 @@ def authenticated_page(live_server, page: Page, django_user_model) -> Page:
 
 
 @pytest.fixture
-def game(db) -> Game:
-    return Game.objects.create(name="Test Game", sort_name="test game")
+def game(e2e_library) -> Game:
+    return Game.objects.create(
+        library=e2e_library, name="Test Game", sort_name="test game"
+    )
 
 
 def open_played_menu(page: Page, live_server, game: Game) -> None:

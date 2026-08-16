@@ -31,12 +31,17 @@ class BootstrapContainerTest(TestCase):
         self.assertIn(("scrub_staging", ()), _run("--scrub-staging"))
 
     def test_sample_data_loads_into_an_empty_database(self):
-        self.assertIn(("loaddata", ("sample.yaml.gz",)), _run("--sample-data"))
+        self.assertIn(
+            ("load_sample_data", ("--user", "admin")),
+            _run("--sample-data"),
+        )
+        self.assertTrue(get_user_model().objects.get(username="admin").is_superuser)
 
     def test_sample_data_skipped_when_games_exist(self):
-        Game.objects.create(name="Already Seeded")
+        user = get_user_model().objects.create_user(username="existing")
+        Game.objects.create(library=user.library, name="Already Seeded")
         self.assertNotIn(
-            ("loaddata", ("sample.yaml.gz",)),
+            ("load_sample_data", ("--user", "admin")),
             _run("--sample-data"),
         )
 

@@ -3,14 +3,26 @@
 import json
 from collections.abc import Callable
 from functools import wraps
-from typing import Any, Concatenate
+from typing import TYPE_CHECKING, Any, Concatenate
 
 from django.contrib import messages
 from django.db import OperationalError, connection, transaction
+from django.db.models import Model, QuerySet
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect
 
+if TYPE_CHECKING:
+    from common.criteria import FilterQueryContext, OperatorFilter
+
 FILTER_STATEMENT_TIMEOUT_MS = 1000
+
+
+def execute_filter[M: Model](
+    filter_object: OperatorFilter,
+    queryset: QuerySet[M],
+    context: FilterQueryContext,
+) -> QuerySet[M]:
+    return filter_object.apply(queryset, context)
 
 
 class FilterQueryTimeout(Exception):

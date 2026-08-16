@@ -35,14 +35,17 @@ class Command(BaseCommand):
         if options["scrub_staging"]:
             call_command("scrub_staging")
 
-        if options["sample_data"] and not Game.objects.exists():
-            call_command("loaddata", "sample.yaml.gz")
-            self.stdout.write(self.style.SUCCESS("Loaded sample data."))
+        should_load_sample = options["sample_data"] and not Game.objects.exists()
+        should_create_default_user = options["default_superuser"] or should_load_sample
 
-        if options["default_superuser"]:
+        if should_create_default_user:
             user_model = get_user_model()
             if not user_model.objects.filter(username="admin").exists():
                 user_model.objects.create_superuser("admin", "", "admin")
                 self.stdout.write(
                     self.style.SUCCESS("Created default superuser: admin / admin")
                 )
+
+        if should_load_sample:
+            call_command("load_sample_data", "--user", "admin")
+            self.stdout.write(self.style.SUCCESS("Loaded sample data."))

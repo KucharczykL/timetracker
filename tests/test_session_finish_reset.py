@@ -13,16 +13,17 @@ STARTED_AT = datetime(2024, 6, 1, 12, tzinfo=UTC)
 
 
 @pytest.fixture
-def logged_in(client, django_user_model, db):
-    user = django_user_model.objects.create_user(username="u", password="p")
-    client.force_login(user)
+def logged_in(client, owned_user):
+    client.force_login(owned_user)
     return client
 
 
 @pytest.fixture
-def open_session(db):
+def open_session(owned_library):
     game = Game.objects.create(
-        name="Test Game", platform=Platform.objects.create(name="PC")
+        library=owned_library,
+        name="Test Game",
+        platform=Platform.objects.create(name="PC"),
     )
     return Session.objects.create(game=game, timestamp_start=STARTED_AT)
 

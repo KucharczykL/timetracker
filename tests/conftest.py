@@ -7,6 +7,17 @@ from timetracker import config as config_module
 from timetracker import settings_resolver
 
 
+@pytest.fixture
+def owned_user(db, django_user_model):
+    """Provision an explicit owner for legacy tests adapted to library scoping."""
+    return django_user_model.objects.create_user(username="fixture-owner", password="p")
+
+
+@pytest.fixture
+def owned_library(owned_user):
+    return owned_user.library
+
+
 @pytest.fixture(autouse=True)
 def _reset_settings_caches():
     """Isolate the layered settings resolver between tests.

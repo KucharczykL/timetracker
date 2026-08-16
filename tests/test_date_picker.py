@@ -279,16 +279,31 @@ class DatePickerWidgetFormTest(TestCase):
     identically to the persisted date, blank-optional vs required validation,
     and invalid-POST redisplay behavior."""
 
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+
+        from games.models import Platform
+
+        self.user = get_user_model().objects.create_user(username="date-picker")
+        self.library = self.user.library
+        self.platform = Platform.objects.create(name="PC", icon="pc", group="PC")
+
     def _form(self, presentation=DEFAULT_PRESENTATION, **kwargs):
         from games.forms import PurchaseForm
 
-        return PurchaseForm(default_currency="USD", presentation=presentation, **kwargs)
+        return PurchaseForm(
+            library=self.library,
+            user=self.user,
+            presentation=presentation,
+            **kwargs,
+        )
 
     def _game(self):
-        from games.models import Game, Platform
+        from games.models import Game
 
-        platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-        return Game.objects.create(name="Test Game", platform=platform)
+        return Game.objects.create(
+            library=self.library, name="Test Game", platform=self.platform
+        )
 
     def _valid_data(self, game, **overrides):
         from games.models import Purchase
@@ -374,7 +389,12 @@ class DatePickerWidgetFormTest(TestCase):
         from games.models import Purchase
 
         game = self._game()
-        purchase = Purchase.objects.create(price=10, date_purchased=date(2025, 6, 1))
+        purchase = Purchase.objects.create(
+            library=self.library,
+            price_currency="CZK",
+            price=10,
+            date_purchased=date(2025, 6, 1),
+        )
         purchase.games.add(game)
 
         form = self._form(instance=purchase)

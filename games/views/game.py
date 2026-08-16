@@ -1,11 +1,12 @@
 from datetime import timedelta
-from typing import Any
+from typing import Any, cast
 
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
 from django.db.models import F, OuterRef, Q, QuerySet, Subquery, Sum
 from django.http import HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import redirect
 from django.urls import reverse
 
 from common.components import (
@@ -49,7 +50,7 @@ from common.duration_presentation import (
     DurationPresentation,
     duration_presentation_for_request,
 )
-from common.filter_execution import regex_timeout_view
+from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.returns import OriginUrl, action_url
 from common.utils import paginate, safe_division
@@ -57,12 +58,14 @@ from games.filters import (
     PlayEventFilter,
     PurchaseFilter,
     SessionFilter,
+    filter_query_context_for_library,
     filter_url,
     parse_game_filter,
 )
 from games.formatting import session_time_range
 from games.forms import GameForm
 from games.models import Game, GameStatusChange, Session
+from games.ownership import owned_or_404
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
 from games.views.deletion import confirm_and_delete
 from games.views.filtering import (
@@ -77,10 +80,11 @@ from games.views.returns import origin_from, return_url
 @login_required
 @regex_timeout_view
 def list_games(request: HttpRequest) -> HttpResponse:
+    library = cast(User, request.user).library
     presentation = date_time_presentation_for_request(request)
     durations = duration_presentation_for_request(request)
     origin = request.get_full_path()
-    games = Game.objects.select_related("platform")
+    games = Game.objects.for_library(library).select_related("platform")
 
     # Playtime column sums only the sessions matching the active session
     # sub-filter; an empty Q matches every session, so with no session filter the
@@ -92,15 +96,17 @@ def list_games(request: HttpRequest) -> HttpResponse:
     if filter_json:
         game_filter = apply_structured_filter(request, parse_game_filter, filter_json)
         if game_filter is not None:
-            games = games.filter(game_filter.to_q())
+            context = filter_query_context_for_library(library)
+            games = execute_filter(game_filter, games, context)
             if game_filter.session_filter is not None:
-                session_q = game_filter.session_filter.to_q()
+                session_q = game_filter.session_filter.to_q(context)
 
     # Per-game playtime restricted to the session sub-filter, summed in the DB.
     # session_q stays in Session's own field namespace via the correlated
     # subquery, so no `sessions__` path-prefixing is needed.
     windowed_playtime = (
-        Session.objects.filter(session_q, game=OuterRef("pk"))
+        Session.objects.for_library(library)
+        .filter(session_q, game=OuterRef("pk"))
         .values("game")
         .annotate(total=Sum(F("duration_calculated") + F("duration_manual")))
         .values("total")
@@ -191,7 +197,8 @@ def list_games(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def add_game(request: HttpRequest) -> HttpResponse:
-    form = GameForm(request.POST or None)
+    library = cast(User, request.user).library
+    form = GameForm(request.POST or None, library=library)
     if form.is_valid():
         game = form.save()
         origin = origin_from(request)
@@ -235,7 +242,8 @@ def add_game(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def delete_game(request: HttpRequest, game_id: int) -> HttpResponse:
-    game = get_object_or_404(Game, id=game_id)
+    library = cast(User, request.user).library
+    game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
     return confirm_and_delete(
         request,
         game,
@@ -259,8 +267,9 @@ def _deleted_with_game(game: Game) -> Node:
 
 @login_required
 def edit_game(request: HttpRequest, game_id: int) -> HttpResponse:
-    game = get_object_or_404(Game, id=game_id)
-    form = GameForm(request.POST or None, instance=game)
+    library = cast(User, request.user).library
+    game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
+    form = GameForm(request.POST or None, instance=game, library=library)
     if form.is_valid():
         form.save()
         return redirect(return_url(request, fallback="games:list_games"))
@@ -726,7 +735,8 @@ def _history_section(
 
 @login_required
 def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
-    game = Game.objects.get(id=game_id)
+    library = cast(User, request.user).library
+    game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
     presentation = date_time_presentation_for_request(request)
     durations = duration_presentation_for_request(request)
     origin = request.get_full_path()

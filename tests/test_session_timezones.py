@@ -21,16 +21,16 @@ def _make_session(game: Game, **overrides) -> Session:
     return Session.objects.create(**defaults)
 
 
-def test_zone_fields_default_to_null(db):
-    session = _make_session(Game.objects.create(name="Hades"))
+def test_zone_fields_default_to_null(owned_library):
+    session = _make_session(Game.objects.create(library=owned_library, name="Hades"))
     session.refresh_from_db()
     assert session.timestamp_start_timezone is None
     assert session.timestamp_end_timezone is None
 
 
-def test_zone_fields_store_iana_names(db):
+def test_zone_fields_store_iana_names(owned_library):
     session = _make_session(
-        Game.objects.create(name="Hades"),
+        Game.objects.create(library=owned_library, name="Hades"),
         timestamp_start_timezone="Asia/Tokyo",
         timestamp_end_timezone="Europe/Prague",
     )
@@ -39,10 +39,10 @@ def test_zone_fields_store_iana_names(db):
     assert session.timestamp_end_timezone == "Europe/Prague"
 
 
-def test_duration_calculated_ignores_stored_zones(db):
+def test_duration_calculated_ignores_stored_zones(owned_library):
     """duration_calculated is instant arithmetic over UTC values; a stored
     zone must not change it (spec: 'Calculation — no change, verified')."""
-    game = Game.objects.create(name="Hades")
+    game = Game.objects.create(library=owned_library, name="Hades")
     plain = _make_session(game)
     zoned = _make_session(
         game,
@@ -55,10 +55,10 @@ def test_duration_calculated_ignores_stored_zones(db):
     assert zoned.duration_calculated == plain.duration_calculated
 
 
-def test_date_bucketing_ignores_stored_zones(db):
+def test_date_bucketing_ignores_stored_zones(owned_library):
     """__date bucketing resolves in the *active* timezone, never the
     session's own zone — a zoned row lands in the same bucket as its twin."""
-    game = Game.objects.create(name="Hades")
+    game = Game.objects.create(library=owned_library, name="Hades")
     _make_session(game)
     _make_session(game, timestamp_start_timezone="Pacific/Kiritimati")
     with django_timezone.override("UTC"):

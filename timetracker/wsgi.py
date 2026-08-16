@@ -14,3 +14,7 @@ from django.core.wsgi import get_wsgi_application
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "timetracker.settings")
 
 application = get_wsgi_application()
+
+from games.readiness import assert_library_structure
+
+assert_library_structure()

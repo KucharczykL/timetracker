@@ -54,6 +54,10 @@ class FilterError(ValueError):
     """
 
 
+class FilterQueryContextRequired(RuntimeError):
+    """Filter compilation reached a queryset operation without authorization."""
+
+
 MAX_REGEX_PATTERN_LENGTH = 200
 
 
@@ -1277,6 +1281,37 @@ class AggregateSpec:
             raise TypeError(f"a {self.reducer} aggregate requires a source field")
 
 
+QuerysetResolver = Callable[[type[models.Model]], models.QuerySet[Any]]
+
+
+@dataclass(frozen=True)
+class FilterQueryContext:
+    """Explicit source of authorization-scoped querysets for filter compilation."""
+
+    resolver: QuerysetResolver
+    authorization_scoped: bool = True
+
+    def queryset_for[M: models.Model](self, model: type[M]) -> models.QuerySet[M]:
+        queryset = self.resolver(model)
+        if queryset.model is not model:
+            raise RuntimeError(
+                f"filter queryset resolver returned {queryset.model.__name__}"
+                f" for {model.__name__}"
+            )
+        return queryset
+
+    def ensure_execution(self) -> None:
+        if not self.authorization_scoped:
+            raise RuntimeError("validation-only filter context cannot execute a filter")
+
+    @classmethod
+    def for_validation(cls) -> Self:
+        return cls(
+            lambda model: model._default_manager.none(),
+            authorization_scoped=False,
+        )
+
+
 @dataclass
 class OperatorFilter:
     """Mixin providing AND/OR/NOT composition for entity filter types.
@@ -1414,7 +1449,7 @@ class OperatorFilter:
         """
         return None
 
-    def _apply_operators(self, q: Q) -> Q:
+    def _apply_operators(self, q: Q, context: FilterQueryContext | None) -> Q:
         """Compose this node's sub-filters onto ``q`` (which already holds this
         node's own criteria).
 
@@ -1428,11 +1463,11 @@ class OperatorFilter:
         raise" guarantee when used via ``filter_from_json``.
         """
         for sub in self.AND:
-            q &= sub.to_q()
+            q &= sub.to_q(context)
         for sub in self.OR:
-            q |= sub.to_q()
+            q |= sub.to_q(context)
         for sub in self.NOT:
-            q &= ~sub.to_q()
+            q &= ~sub.to_q(context)
         if self.field_comparisons:
             model = self._comparison_model()
             if model is None:
@@ -1516,10 +1551,11 @@ class OperatorFilter:
                         predicate_q=predicate_q,
                         relation_paths=relation_paths,
                         quantifier=comparison.quantifier,
+                        context=context,
                     )
         return q
 
-    def to_q(self) -> Q:
+    def to_q(self, context: FilterQueryContext | None = None) -> Q:
         """Build a Django Q object from this filter and its sub-filters.
 
         Generic for every concrete filter: walk the declarative ``fields`` table
@@ -1548,11 +1584,21 @@ class OperatorFilter:
             for attr_name, spec in self.aggregates.items():
                 aggregate = getattr(self, attr_name)
                 if aggregate is not None:
-                    q &= aggregate_to_q(aggregate, model=model, spec=spec)
-        q &= self._extra_q()
-        return self._apply_operators(q)
+                    q &= aggregate_to_q(
+                        aggregate, model=model, spec=spec, context=context
+                    )
+        q &= self._extra_q(context)
+        return self._apply_operators(q, context)
 
-    def _extra_q(self) -> Q:
+    def apply[M: models.Model](
+        self, queryset: models.QuerySet[M], context: FilterQueryContext
+    ) -> models.QuerySet[M]:
+        """Apply this filter to a caller-supplied authorization-scoped queryset."""
+
+        context.ensure_execution()
+        return queryset.filter(self.to_q(context))
+
+    def _extra_q(self, context: FilterQueryContext | None = None) -> Q:
         """Q for criterion fields handled imperatively rather than via ``fields``.
 
         Default is empty; concrete filters override to add the M2M ``games``
@@ -1752,7 +1798,11 @@ def filter_from_json[F: OperatorFilter](cls: type[F], json_str: str) -> F | None
 
     Usage:
         f = filter_from_json(GameFilter, request.GET.get("filter", ""))
-        games = Game.objects.filter(f.to_q())
+        games = execute_filter(
+            f,
+            Game.objects.for_library(library),
+            filter_query_context_for_library(library),
+        )
 
     Returns ``None`` for input that carries no filter: a missing param, JSON
     ``null``, or any non-object JSON value (``from_json`` rejects non-dicts).
@@ -1801,7 +1851,7 @@ def filter_from_json[F: OperatorFilter](cls: type[F], json_str: str) -> F | None
     # catches them. FilterError already re-raises as itself; non-ValueError
     # wiring bugs propagate untouched.
     try:
-        result.to_q()
+        result.to_q(FilterQueryContext.for_validation())
     except FilterError:
         raise
     except (ValueError, TypeError) as exc:
@@ -2737,6 +2787,7 @@ def relation_to_q(
     related_model: ModelClass,
     related_lookup: str,
     parent_field: str = "id",
+    context: FilterQueryContext | None = None,
 ) -> Q:
     """EXISTS / NOT-EXISTS / FOR-ALL subquery for a nested cross-entity sub-filter.
 
@@ -2759,15 +2810,23 @@ def relation_to_q(
     The branch is exhaustive — an unexpected match raises rather than silently
     degrading to ANY.
     """
-    related = related_model.objects.all()
+    if context is None:
+        raise FilterQueryContextRequired("nested filter requires query context")
+    related = context.queryset_for(related_model)
     if sub.match == RelationMatch.ANY:
-        matching = related.filter(sub.to_q()).values_list(related_lookup, flat=True)
+        matching = related.filter(sub.to_q(context)).values_list(
+            related_lookup, flat=True
+        )
         return Q(**{f"{parent_field}__in": matching})
     if sub.match == RelationMatch.NONE:
-        matching = related.filter(sub.to_q()).values_list(related_lookup, flat=True)
+        matching = related.filter(sub.to_q(context)).values_list(
+            related_lookup, flat=True
+        )
         return ~Q(**{f"{parent_field}__in": matching})
     if sub.match == RelationMatch.ALL:
-        violating = related.filter(~sub.to_q()).values_list(related_lookup, flat=True)
+        violating = related.filter(~sub.to_q(context)).values_list(
+            related_lookup, flat=True
+        )
         return ~Q(**{f"{parent_field}__in": violating})
     raise FilterError(f"Unsupported relation match {sub.match!r}")
 
@@ -2778,6 +2837,7 @@ def _multivalued_comparison_to_q(
     predicate_q: Q,
     relation_paths: list[str],
     quantifier: RelationMatch,
+    context: FilterQueryContext | None,
 ) -> Q:
     """Quantify a field comparison whose multi-valued operand(s) fan out related
     rows (#282), as a ``pk IN (<subquery>)`` membership over ``model`` itself —
@@ -2805,7 +2865,9 @@ def _multivalued_comparison_to_q(
       relation has no such row, so it matches ALL (vacuous truth), mirroring
       ``relation_to_q``.
     """
-    rows = model.objects.all()
+    if context is None:
+        raise FilterQueryContextRequired("multivalued filter requires query context")
+    rows = context.queryset_for(model)
     if quantifier == RelationMatch.ANY:
         matching = rows.filter(predicate_q).values_list("pk", flat=True)
         return Q(pk__in=matching)
@@ -2828,6 +2890,7 @@ def aggregate_to_q(
     *,
     model: ModelClass,
     spec: AggregateSpec,
+    context: FilterQueryContext | None = None,
 ) -> Q:
     """Filter ``model`` by a reducer (count / sum / avg) over a relation.
 
@@ -2846,6 +2909,9 @@ def aggregate_to_q(
     it keep their meaning (a key-prefix rewriter would silently re-root them
     against the wrong model).
     """
+    if context is None:
+        raise FilterQueryContextRequired("aggregate filter requires query context")
+
     from django.db.models import Avg, Count, Sum
 
     scope_condition: Q | None = None
@@ -2865,7 +2931,9 @@ def aggregate_to_q(
                 f"{spec.scope_filter.__name__} has no comparison model"
                 f" to scope a {spec.accessor!r} aggregate"
             )
-        matching = related_model.objects.filter(criterion.scope.to_q())
+        matching = context.queryset_for(related_model).filter(
+            criterion.scope.to_q(context)
+        )
         scope_condition = Q(**{f"{spec.accessor}__in": matching})
 
     # The spec is static config declared on the filter class, never user input —
@@ -2896,7 +2964,8 @@ def aggregate_to_q(
         )
 
     ids = (
-        model.objects.annotate(_agg=aggregate_expression)
+        context.queryset_for(model)
+        .annotate(_agg=aggregate_expression)
         .filter(compare)
         .values_list("id", flat=True)
     )

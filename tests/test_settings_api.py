@@ -19,8 +19,9 @@ from django.urls import reverse
 
 @pytest.fixture
 def no_currency_env(monkeypatch):
-    monkeypatch.delenv("DEFAULT_CURRENCY", raising=False)
-    monkeypatch.delenv("DEFAULT_CURRENCY__FILE", raising=False)
+    for key in ("DEFAULT_PURCHASE_CURRENCY", "DEFAULT_DISPLAY_CURRENCY"):
+        monkeypatch.delenv(key, raising=False)
+        monkeypatch.delenv(f"{key}__FILE", raising=False)
     yield
 
 
@@ -82,8 +83,15 @@ def _patch(client, url, value):
     )
 
 
+def _patch_committed(callbacks, client, url, value):
+    with callbacks(execute=True):
+        return _patch(client, url, value)
+
+
 def _currency(payload_list) -> dict:
-    return next(row for row in payload_list if row["key"] == "DEFAULT_CURRENCY")
+    return next(
+        row for row in payload_list if row["key"] == "DEFAULT_PURCHASE_CURRENCY"
+    )
 
 
 def _page_size(payload_list) -> dict:
@@ -106,14 +114,14 @@ def test_anonymous_is_rejected(db):
     assert anonymous.get(_user_url()).status_code == 401
     assert anonymous.get(_site_url()).status_code == 401
     assert _patch(
-        anonymous, _user_patch_url("DEFAULT_CURRENCY"), "EUR"
+        anonymous, _user_patch_url("DEFAULT_PURCHASE_CURRENCY"), "EUR"
     ).status_code == (401)
 
 
 def test_site_endpoints_forbidden_for_non_superuser(auth_client):
     assert auth_client.get(_site_url()).status_code == 403
     assert _patch(
-        auth_client, _site_patch_url("DEFAULT_CURRENCY"), "EUR"
+        auth_client, _site_patch_url("DEFAULT_PURCHASE_CURRENCY"), "EUR"
     ).status_code == (403)
 
 
@@ -124,11 +132,18 @@ def test_site_endpoints_allowed_for_superuser(superuser_client):
 # --- user scoping ---------------------------------------------------------
 
 
-def test_user_patch_and_get_round_trip(auth_client, no_currency_env):
-    response = _patch(auth_client, _user_patch_url("DEFAULT_CURRENCY"), "EUR")
+def test_user_patch_and_get_round_trip(
+    auth_client, no_currency_env, django_capture_on_commit_callbacks
+):
+    response = _patch_committed(
+        django_capture_on_commit_callbacks,
+        auth_client,
+        _user_patch_url("DEFAULT_PURCHASE_CURRENCY"),
+        "EUR",
+    )
     assert response.status_code == 200
     assert response.json() == {
-        "key": "DEFAULT_CURRENCY",
+        "key": "DEFAULT_PURCHASE_CURRENCY",
         "value": "EUR",
         "source": "user",
         "locked": False,
@@ -141,45 +156,67 @@ def test_user_patch_and_get_round_trip(auth_client, no_currency_env):
 
 
 def test_user_patch_emits_saved_success_toast(auth_client, no_currency_env):
-    response = _patch(auth_client, _user_patch_url("DEFAULT_CURRENCY"), "EUR")
+    response = _patch(auth_client, _user_patch_url("DEFAULT_PURCHASE_CURRENCY"), "EUR")
     trigger = json.loads(response.headers["HX-Trigger"])
     assert trigger["show-toast"] == {
-        "message": "Default currency saved",
+        "message": "Default purchase currency saved",
         "type": "success",
     }
 
 
 def test_user_settings_are_scoped_per_user(
-    auth_client, second_auth_client, no_currency_env
+    auth_client, second_auth_client, no_currency_env, django_capture_on_commit_callbacks
 ):
-    _patch(auth_client, _user_patch_url("DEFAULT_CURRENCY"), "EUR")
+    _patch_committed(
+        django_capture_on_commit_callbacks,
+        auth_client,
+        _user_patch_url("DEFAULT_PURCHASE_CURRENCY"),
+        "EUR",
+    )
     # The second user sees no personal override, so not EUR.
     other_currency = _currency(second_auth_client.get(_user_url()).json())
     assert other_currency["value"] != "EUR"
     assert other_currency["source"] != "user"
     # And the second user's write does not touch the first user's value.
-    _patch(second_auth_client, _user_patch_url("DEFAULT_CURRENCY"), "GBP")
+    _patch_committed(
+        django_capture_on_commit_callbacks,
+        second_auth_client,
+        _user_patch_url("DEFAULT_PURCHASE_CURRENCY"),
+        "GBP",
+    )
     first_currency = _currency(auth_client.get(_user_url()).json())
     assert first_currency["value"] == "EUR"
 
 
-def test_user_null_clears_back_to_fallback(auth_client, no_currency_env):
+def test_user_null_clears_back_to_fallback(
+    auth_client, no_currency_env, django_capture_on_commit_callbacks
+):
     from games.models import SiteSetting, UserPreferences
 
-    SiteSetting.objects.create(key="DEFAULT_CURRENCY", value="USD")
+    SiteSetting.objects.create(key="DEFAULT_PURCHASE_CURRENCY", value="USD")
 
-    _patch(auth_client, _user_patch_url("DEFAULT_CURRENCY"), "EUR")
-    response = _patch(auth_client, _user_patch_url("DEFAULT_CURRENCY"), None)
+    _patch_committed(
+        django_capture_on_commit_callbacks,
+        auth_client,
+        _user_patch_url("DEFAULT_PURCHASE_CURRENCY"),
+        "EUR",
+    )
+    response = _patch_committed(
+        django_capture_on_commit_callbacks,
+        auth_client,
+        _user_patch_url("DEFAULT_PURCHASE_CURRENCY"),
+        None,
+    )
     assert response.status_code == 200
     assert response.json() == {
-        "key": "DEFAULT_CURRENCY",
+        "key": "DEFAULT_PURCHASE_CURRENCY",
         "value": "USD",
         "source": "database",
         "locked": False,
         "namespace": "user",
     }
     preferences = UserPreferences.objects.get(user__username="tester")
-    assert preferences.default_currency is None
+    assert preferences.default_purchase_currency is None
     currency = _currency(auth_client.get(_user_url()).json())
     assert currency["source"] != "user"
 
@@ -191,10 +228,15 @@ def test_user_patch_rejects_bad_currency_and_writes_nothing(auth_client):
     from games.models import UserPreferences
 
     assert (
-        _patch(auth_client, _user_patch_url("DEFAULT_CURRENCY"), "EURO").status_code
+        _patch(
+            auth_client, _user_patch_url("DEFAULT_PURCHASE_CURRENCY"), "EURO"
+        ).status_code
         == 400
     )
-    assert not UserPreferences.objects.filter(user__username="tester").exists()
+    assert (
+        UserPreferences.objects.get(user__username="tester").default_purchase_currency
+        is None
+    )
 
 
 def test_user_patch_rejects_unknown_key(auth_client):
@@ -224,11 +266,21 @@ def test_user_patch_rejects_unsupported_landing_page_and_writes_nothing(auth_cli
     )
 
     assert response.status_code == 400
-    assert not UserPreferences.objects.filter(user__username="tester").exists()
+    assert (
+        UserPreferences.objects.get(user__username="tester").default_landing_page
+        is None
+    )
 
 
-def test_user_page_size_round_trips_as_int(auth_client):
-    response = _patch(auth_client, _user_patch_url("DEFAULT_PAGE_SIZE"), "50")
+def test_user_page_size_round_trips_as_int(
+    auth_client, django_capture_on_commit_callbacks
+):
+    response = _patch_committed(
+        django_capture_on_commit_callbacks,
+        auth_client,
+        _user_patch_url("DEFAULT_PAGE_SIZE"),
+        "50",
+    )
 
     assert response.status_code == 200
     assert response.json()["value"] == 50
@@ -236,8 +288,15 @@ def test_user_page_size_round_trips_as_int(auth_client):
     assert _page_size(auth_client.get(_user_url()).json())["value"] == 50
 
 
-def test_user_theme_patch_persists_without_browser_cookies(auth_client):
-    response = _patch(auth_client, _user_patch_url("THEME"), "dark")
+def test_user_theme_patch_persists_without_browser_cookies(
+    auth_client, django_capture_on_commit_callbacks
+):
+    response = _patch_committed(
+        django_capture_on_commit_callbacks,
+        auth_client,
+        _user_patch_url("THEME"),
+        "dark",
+    )
 
     assert response.status_code == 200
     assert response.json()["value"] == "dark"
@@ -367,35 +426,16 @@ def test_site_patch_rejects_infra_key(superuser_client):
     ).status_code == (400)
 
 
-# --- device pref: int serialization + clear ------------------------------
+# --- library preference exclusion -----------------------------------------
 
 
-def test_user_device_round_trips_as_int(auth_client, db):
-    from games.models import Device
+def test_default_device_is_not_exposed_as_an_account_setting(auth_client):
+    response = _patch(auth_client, _user_patch_url("DEFAULT_DEVICE"), 1)
 
-    device = Device.objects.create(name="Deck", type=Device.HANDHELD)
-    assert (
-        _patch(auth_client, _user_patch_url("DEFAULT_DEVICE"), device.pk).status_code
-        == 200
+    assert response.status_code == 400
+    assert all(
+        row["key"] != "DEFAULT_DEVICE" for row in auth_client.get(_user_url()).json()
     )
-    row = next(
-        r for r in auth_client.get(_user_url()).json() if r["key"] == "DEFAULT_DEVICE"
-    )
-    # The SettingOut value field must carry the int id (a str-only field would 500).
-    assert row["value"] == device.pk
-    assert row["source"] == "user"
-
-
-def test_user_device_null_clears(auth_client, db):
-    from games.models import Device, UserPreferences
-
-    device = Device.objects.create(name="Deck", type=Device.HANDHELD)
-    _patch(auth_client, _user_patch_url("DEFAULT_DEVICE"), device.pk)
-    assert (
-        _patch(auth_client, _user_patch_url("DEFAULT_DEVICE"), None).status_code == 200
-    )
-    preferences = UserPreferences.objects.get(user__username="tester")
-    assert preferences.default_device_id is None
 
 
 # --- locked is always False on the user endpoint --------------------------
@@ -406,7 +446,7 @@ def test_user_endpoint_reports_unlocked_even_when_env_pins(
 ):
     # An env-pinned USER key with no personal override still reports locked=False
     # on /user, because the user can always PATCH a personal override.
-    monkeypatch.setenv("DEFAULT_CURRENCY", "USD")
+    monkeypatch.setenv("DEFAULT_PURCHASE_CURRENCY", "USD")
     from timetracker import config as config_module
     from timetracker import settings_resolver
 
@@ -421,7 +461,7 @@ def test_user_endpoint_reports_unlocked_even_when_env_pins(
 
 def test_bad_currency_400_message_is_clean(auth_client):
     # The client must not see a Python list-repr like ['Currency must be ...'].
-    response = _patch(auth_client, _user_patch_url("DEFAULT_CURRENCY"), "EURO")
+    response = _patch(auth_client, _user_patch_url("DEFAULT_PURCHASE_CURRENCY"), "EURO")
     assert response.status_code == 400
     assert "[" not in response.json()["detail"]
 
@@ -435,7 +475,7 @@ def test_site_patch_sets_fallback_for_overlayless_user(
     with django_capture_on_commit_callbacks(execute=True):
         assert (
             _patch(
-                superuser_client, _site_patch_url("DEFAULT_CURRENCY"), "USD"
+                superuser_client, _site_patch_url("DEFAULT_PURCHASE_CURRENCY"), "USD"
             ).status_code
             == 200
         )
@@ -456,10 +496,112 @@ def test_user_endpoints_report_user_namespace(auth_client):
 
 
 def test_site_endpoints_report_site_namespace(superuser_client, no_currency_env):
-    listed = _setting(superuser_client.get(_site_url()).json(), "DEFAULT_CURRENCY")
+    listed = _setting(
+        superuser_client.get(_site_url()).json(), "DEFAULT_PURCHASE_CURRENCY"
+    )
     assert listed["namespace"] == "site"
 
     patched = _patch(
-        superuser_client, _site_patch_url("DEFAULT_CURRENCY"), "eur"
+        superuser_client, _site_patch_url("DEFAULT_PURCHASE_CURRENCY"), "eur"
     ).json()
     assert patched["namespace"] == "site"
+
+
+@pytest.mark.parametrize(
+    "key", ["DEFAULT_PURCHASE_CURRENCY", "DEFAULT_DISPLAY_CURRENCY"]
+)
+def test_both_currency_keys_round_trip_through_site_then_user(
+    superuser_client,
+    auth_client,
+    no_currency_env,
+    django_capture_on_commit_callbacks,
+    key,
+):
+    assert (
+        _patch_committed(
+            django_capture_on_commit_callbacks,
+            superuser_client,
+            _site_patch_url(key),
+            "USD",
+        ).status_code
+        == 200
+    )
+    inherited = _setting(auth_client.get(_user_url()).json(), key)
+    assert inherited["value"] == "USD"
+    assert inherited["source"] == "database"
+
+    assert (
+        _patch_committed(
+            django_capture_on_commit_callbacks,
+            auth_client,
+            _user_patch_url(key),
+            "EUR",
+        ).status_code
+        == 200
+    )
+    personal = _setting(auth_client.get(_user_url()).json(), key)
+    assert personal["value"] == "EUR"
+    assert personal["source"] == "user"
+
+
+def test_site_display_currency_change_affects_only_inheriting_users(
+    superuser_client,
+    auth_client,
+    second_auth_client,
+    no_currency_env,
+    django_capture_on_commit_callbacks,
+):
+    assert (
+        _patch_committed(
+            django_capture_on_commit_callbacks,
+            second_auth_client,
+            _user_patch_url("DEFAULT_DISPLAY_CURRENCY"),
+            "EUR",
+        ).status_code
+        == 200
+    )
+    assert (
+        _patch_committed(
+            django_capture_on_commit_callbacks,
+            superuser_client,
+            _site_patch_url("DEFAULT_DISPLAY_CURRENCY"),
+            "USD",
+        ).status_code
+        == 200
+    )
+    assert (
+        _setting(auth_client.get(_user_url()).json(), "DEFAULT_DISPLAY_CURRENCY")[
+            "value"
+        ]
+        == "USD"
+    )
+    assert (
+        _setting(
+            second_auth_client.get(_user_url()).json(),
+            "DEFAULT_DISPLAY_CURRENCY",
+        )["value"]
+        == "EUR"
+    )
+
+    assert (
+        _patch_committed(
+            django_capture_on_commit_callbacks,
+            superuser_client,
+            _site_patch_url("DEFAULT_DISPLAY_CURRENCY"),
+            "GBP",
+        ).status_code
+        == 200
+    )
+    assert (
+        _setting(auth_client.get(_user_url()).json(), "DEFAULT_DISPLAY_CURRENCY")[
+            "value"
+        ]
+        == "GBP"
+    )
+    assert (
+        _setting(
+            second_auth_client.get(_user_url()).json(),
+            "DEFAULT_DISPLAY_CURRENCY",
+        )["value"]
+        == "EUR"
+    )

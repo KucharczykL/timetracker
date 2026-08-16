@@ -11,7 +11,8 @@ from timetracker import config as config_module
 from timetracker import settings_resolver
 
 SITE_SETTING_KEYS = (
-    "DEFAULT_CURRENCY",
+    "DEFAULT_PURCHASE_CURRENCY",
+    "DEFAULT_DISPLAY_CURRENCY",
     "DEFAULT_DEVICE",
     "DEFAULT_LANDING_PAGE",
     "DEFAULT_PAGE_SIZE",
@@ -26,7 +27,8 @@ SITE_SETTING_KEYS = (
 @pytest.fixture
 def editable_site_setting_sources(monkeypatch, tmp_path, settings):
     """Keep source precedence deterministic for browser writes."""
-    settings.DEFAULT_CURRENCY = "CZK"
+    settings.DEFAULT_PURCHASE_CURRENCY = "CZK"
+    settings.DEFAULT_DISPLAY_CURRENCY = "CZK"
     for key in SITE_SETTING_KEYS:
         monkeypatch.delenv(key, raising=False)
         monkeypatch.delenv(f"{key}__FILE", raising=False)
@@ -126,22 +128,22 @@ def test_text_select_and_clear_site_defaults(
     page.goto(f"{live_server.url}{reverse('games:admin_settings')}")
     _wait_for_live_settings(page)
 
-    currency = page.get_by_label("Default currency", exact=True)
+    currency = page.get_by_label("Default purchase currency", exact=True)
     currency.fill("eur")
     with page.expect_response(
-        lambda response: _site_patch(response, "DEFAULT_CURRENCY")
+        lambda response: _site_patch(response, "DEFAULT_PURCHASE_CURRENCY")
     ) as saved:
         currency.press("Tab")
     assert saved.value.status == 200
     assert saved.value.json() == {
-        "key": "DEFAULT_CURRENCY",
+        "key": "DEFAULT_PURCHASE_CURRENCY",
         "value": "EUR",
         "source": "database",
         "locked": False,
         "namespace": "site",
     }
     expect(currency).to_have_value("EUR")
-    currency_badge = _source_badge(page, "DEFAULT_CURRENCY")
+    currency_badge = _source_badge(page, "DEFAULT_PURCHASE_CURRENCY")
     expect(currency_badge).to_have_attribute("data-setting-origin", "database")
     expect(currency_badge).to_have_text("Database")
     expect(currency_badge).to_have_class(re.compile(r"\bbg-brand-soft\b"))
@@ -160,12 +162,12 @@ def test_text_select_and_clear_site_defaults(
 
     currency.fill("")
     with page.expect_response(
-        lambda response: _site_patch(response, "DEFAULT_CURRENCY")
+        lambda response: _site_patch(response, "DEFAULT_PURCHASE_CURRENCY")
     ) as cleared:
         currency.press("Tab")
     assert cleared.value.status == 200
     assert cleared.value.json() == {
-        "key": "DEFAULT_CURRENCY",
+        "key": "DEFAULT_PURCHASE_CURRENCY",
         "value": "CZK",
         "source": "default",
         "locked": False,
@@ -209,16 +211,16 @@ def test_configuration_locked_field_shows_owner_and_explanation(
     superuser_page: Page,
     monkeypatch,
 ):
-    monkeypatch.setenv("DEFAULT_CURRENCY", "USD")
+    monkeypatch.setenv("DEFAULT_PURCHASE_CURRENCY", "USD")
     config_module.reset_caches()
     settings_resolver.clear_cache()
     page = superuser_page
     page.goto(f"{live_server.url}{reverse('games:admin_settings')}")
 
-    currency = page.get_by_label("Default currency", exact=True)
+    currency = page.get_by_label("Default purchase currency", exact=True)
     expect(currency).to_be_disabled()
     expect(currency).to_have_value("USD")
-    badge = _source_badge(page, "DEFAULT_CURRENCY")
+    badge = _source_badge(page, "DEFAULT_PURCHASE_CURRENCY")
     expect(badge).to_have_attribute("data-setting-origin", "env")
     expect(badge).to_have_attribute("data-setting-locked", "")
     expect(badge).to_have_text("Environment")
@@ -242,14 +244,14 @@ def test_site_page_ignores_a_synthetic_user_namespace_event(
     page.goto(f"{live_server.url}{reverse('games:admin_settings')}")
     _wait_for_live_settings(page)
 
-    badge = _source_badge(page, "DEFAULT_CURRENCY")
+    badge = _source_badge(page, "DEFAULT_PURCHASE_CURRENCY")
     before = badge.get_attribute("data-setting-origin")
 
     page.evaluate(
         """() => {
             document.body.dispatchEvent(new CustomEvent("setting-committed", {
                 detail: {
-                    key: "DEFAULT_CURRENCY",
+                    key: "DEFAULT_PURCHASE_CURRENCY",
                     value: "USD",
                     source: "user",
                     locked: false,

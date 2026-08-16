@@ -12,10 +12,12 @@ import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from django.contrib.auth import get_user_model
 
 from common.criteria import (
     AggregateCriterion,
     BoolCriterion,
+    FilterQueryContext,
     Modifier,
     MultiCriterion,
     RelationMatch,
@@ -24,6 +26,27 @@ from common.criteria import (
 from games.filters import GameFilter, PurchaseFilter, SessionFilter
 from games.models import Device, Game, Platform, Purchase, Session
 
+UNRESTRICTED_FILTER_CONTEXT = FilterQueryContext(
+    lambda model: model._default_manager.all()
+)
+
+
+@pytest.fixture(autouse=True)
+def _single_library_relation_world(db, monkeypatch):
+    """These algebra tests use one explicit owner; isolation is tested elsewhere."""
+    user = get_user_model().objects.create_user(username="relation-algebra-owner")
+
+    def owned_create(original):
+        def create(**kwargs):
+            kwargs.setdefault("library", user.library)
+            return original(**kwargs)
+
+        return create
+
+    for model in (Game, Device, Purchase):
+        manager = model.objects
+        monkeypatch.setattr(manager, "create", owned_create(manager.create))
+
 
 def _dt(year=2024, month=6, day=1):
     return datetime(year, month, day, 12, 0, tzinfo=UTC)
@@ -31,7 +54,9 @@ def _dt(year=2024, month=6, day=1):
 
 def _ids(filter_obj):
     return set(
-        Game.objects.filter(filter_obj.to_q()).distinct().values_list("id", flat=True)
+        Game.objects.filter(filter_obj.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        .distinct()
+        .values_list("id", flat=True)
     )
 
 
@@ -100,9 +125,11 @@ def test_nested_purchase_refunded_none(db):
     kept = Game.objects.create(name="Kept", platform=pc)
     none = Game.objects.create(name="NoPurchase", platform=pc)
     Purchase.objects.create(
-        date_purchased=_dt(), date_refunded=_dt(2024, 7, 1)
+        price_currency="CZK", date_purchased=_dt(), date_refunded=_dt(2024, 7, 1)
     ).games.set([refunded])
-    Purchase.objects.create(date_purchased=_dt()).games.set([kept])
+    Purchase.objects.create(price_currency="CZK", date_purchased=_dt()).games.set(
+        [kept]
+    )
 
     nested_none = GameFilter(
         purchase_filter=PurchaseFilter(
@@ -213,10 +240,12 @@ def test_aggregate_price_sum(db):
     cheap = Game.objects.create(name="Cheap", platform=pc)
     for amount in (10, 15):
         purchase = Purchase.objects.create(
-            date_purchased=_dt(), converted_price=Decimal(amount)
+            price_currency="CZK", date_purchased=_dt(), converted_price=Decimal(amount)
         )
         purchase.games.set([pricey])
-    purchase = Purchase.objects.create(date_purchased=_dt(), converted_price=Decimal(5))
+    purchase = Purchase.objects.create(
+        price_currency="CZK", date_purchased=_dt(), converted_price=Decimal(5)
+    )
     purchase.games.set([cheap])
 
     over_twenty = GameFilter(
@@ -236,11 +265,11 @@ def test_m2m_relation_none_excludes_partial_bundle(db):
     pc = Platform.objects.create(name="PC")
     hit = Game.objects.create(name="Hit", platform=pc)
     miss = Game.objects.create(name="Miss", platform=pc)
-    bundle = Purchase.objects.create(date_purchased=_dt())
+    bundle = Purchase.objects.create(price_currency="CZK", date_purchased=_dt())
     bundle.games.set([hit, miss])
-    solo = Purchase.objects.create(date_purchased=_dt())
+    solo = Purchase.objects.create(price_currency="CZK", date_purchased=_dt())
     solo.games.set([miss])
-    empty = Purchase.objects.create(date_purchased=_dt())
+    empty = Purchase.objects.create(price_currency="CZK", date_purchased=_dt())
 
     no_hit = PurchaseFilter(
         game_filter=GameFilter(
@@ -248,7 +277,9 @@ def test_m2m_relation_none_excludes_partial_bundle(db):
         )
     )
     purchase_ids = set(
-        Purchase.objects.filter(no_hit.to_q()).distinct().values_list("id", flat=True)
+        Purchase.objects.filter(no_hit.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        .distinct()
+        .values_list("id", flat=True)
     )
     assert purchase_ids == {solo.id, empty.id}  # bundle (contains Hit) excluded
 
@@ -268,7 +299,9 @@ def test_relation_none_on_non_game_parent(db):
         )
     )
     session_ids = set(
-        Session.objects.filter(not_hit.to_q()).values_list("id", flat=True)
+        Session.objects.filter(not_hit.to_q(UNRESTRICTED_FILTER_CONTEXT)).values_list(
+            "id", flat=True
+        )
     )
     assert session_ids == {keep.id}
 
@@ -377,13 +410,17 @@ def boolean_world(db):
     Session.objects.create(game=neither, timestamp_start=_dt(), emulated=False)
 
     Purchase.objects.create(
-        date_purchased=_dt(), date_refunded=_dt(2024, 7, 1)
+        price_currency="CZK", date_purchased=_dt(), date_refunded=_dt(2024, 7, 1)
     ).games.set([both])
-    Purchase.objects.create(date_purchased=_dt()).games.set([emu_only])
+    Purchase.objects.create(price_currency="CZK", date_purchased=_dt()).games.set(
+        [emu_only]
+    )
     Purchase.objects.create(
-        date_purchased=_dt(), date_refunded=_dt(2024, 7, 1)
+        price_currency="CZK", date_purchased=_dt(), date_refunded=_dt(2024, 7, 1)
     ).games.set([refund_only])
-    Purchase.objects.create(date_purchased=_dt()).games.set([neither])
+    Purchase.objects.create(price_currency="CZK", date_purchased=_dt()).games.set(
+        [neither]
+    )
 
     # split: emulated session and deck session are two different rows.
     split = Game.objects.create(name="Split", platform=pc)
@@ -576,7 +613,7 @@ def test_null_operator_normalizes_to_empty_list():
     restored = GameFilter.from_json({"AND": None})
     assert restored is not None
     assert restored.AND == []
-    restored.to_q()  # must not raise
+    restored.to_q(UNRESTRICTED_FILTER_CONTEXT)  # must not raise
 
 
 def test_from_json_drops_null_list_element():

@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.utils.html import escape
 
 from common.date_time_presentation import (
@@ -14,7 +15,8 @@ from common.duration_presentation import (
     DEFAULT_DURATION_FORMAT_PROFILE,
     DurationPresentation,
 )
-from games.filters import filter_url
+from common.filter_execution import execute_filter
+from games.filters import filter_query_context_for_library, filter_url
 from games.models import Game, Platform, PlayEvent, Purchase, Session
 from games.views import stats_links
 from games.views.stats_content import stats_content as _stats_content
@@ -39,12 +41,16 @@ def _dt(month, day, hour=12):
 
 @pytest.fixture
 def rendered(db):
+    library = get_user_model().objects.create_user(username="stats-content").library
     pc = Platform.objects.create(name="PC")
     # 6 games each played in-year → games-by-playtime exceeds the cap of 5.
     games = []
     for index in range(6):
         game = Game.objects.create(
-            name=f"Game {index}", platform=pc, status=Game.Status.PLAYED
+            library=library,
+            name=f"Game {index}",
+            platform=pc,
+            status=Game.Status.PLAYED,
         )
         start = _dt(6, index + 1)
         Session.objects.create(
@@ -55,26 +61,47 @@ def rendered(db):
         games.append(game)
 
     abandoned = Game.objects.create(
-        name="Abandoned", platform=pc, status=Game.Status.ABANDONED
+        library=library,
+        name="Abandoned",
+        platform=pc,
+        status=Game.Status.ABANDONED,
     )
-    Purchase.objects.create(date_purchased=_dt(1, 5), type=Purchase.GAME).games.set(
-        [games[0]]
-    )
-    Purchase.objects.create(date_purchased=_dt(2, 5), type=Purchase.GAME).games.set(
-        [abandoned]
-    )  # dropped
     Purchase.objects.create(
-        date_purchased=_dt(3, 5), date_refunded=_dt(4, 5), type=Purchase.GAME
+        library=library,
+        price_currency="CZK",
+        date_purchased=_dt(1, 5),
+        type=Purchase.GAME,
+    ).games.set([games[0]])
+    Purchase.objects.create(
+        library=library,
+        price_currency="CZK",
+        date_purchased=_dt(2, 5),
+        type=Purchase.GAME,
+    ).games.set([abandoned])  # dropped
+    Purchase.objects.create(
+        library=library,
+        price_currency="CZK",
+        date_purchased=_dt(3, 5),
+        date_refunded=_dt(4, 5),
+        type=Purchase.GAME,
     ).games.set([games[1]])  # refunded
-    Purchase.objects.create(date_purchased=_dt(5, 5), type=Purchase.GAME).games.set(
-        [games[2]]
-    )  # unfinished
+    Purchase.objects.create(
+        library=library,
+        price_currency="CZK",
+        date_purchased=_dt(5, 5),
+        type=Purchase.GAME,
+    ).games.set([games[2]])  # unfinished
 
     finished_game = games[0]
     PlayEvent.objects.create(game=finished_game, ended=_dt(8, 1))
 
-    ctx = compute_stats(YEAR)
-    return {"html": str(stats_content(ctx)), "pc": pc, "games": games}
+    ctx = compute_stats(library, YEAR)
+    return {
+        "html": str(stats_content(ctx)),
+        "pc": pc,
+        "games": games,
+        "user": library.user,
+    }
 
 
 def _href(builder_filter, **extra):
@@ -110,26 +137,34 @@ def test_unspecified_platform_row_links_to_null_bucket_sessions(
     """A platformless game's playtime lands in the stats "Unspecified" platform
     row; its link must carry the IS_NULL composition and match the same
     sessions (issue #290)."""
-    platformless_game = Game.objects.create(name="Homebrew")
+    user = django_user_model.objects.create_user(username="u2", password="p")
+    platformless_game = Game.objects.create(library=user.library, name="Homebrew")
     start = _dt(6, 1)
     Session.objects.create(
         game=platformless_game,
         timestamp_start=start,
         timestamp_end=start + timedelta(hours=1),
     )
-    ctx = compute_stats(YEAR)
+    ctx = compute_stats(user.library, YEAR)
     html = str(stats_content(ctx))
     assert "Unspecified" in html
 
     link_filter = stats_links.sessions_for_platform(None, YEAR)
     assert _href(link_filter) in html
 
-    expected = Session.objects.filter(game__platform__isnull=True).count()
-    assert (
-        Session.objects.filter(link_filter.to_q()).distinct().count() == expected == 1
+    scoped_sessions = Session.objects.for_library(user.library)
+    expected = scoped_sessions.filter(game__platform__isnull=True).count()
+    actual = (
+        execute_filter(
+            link_filter,
+            scoped_sessions,
+            filter_query_context_for_library(user.library),
+        )
+        .distinct()
+        .count()
     )
+    assert actual == expected == 1
 
-    user = django_user_model.objects.create_user(username="u2", password="p")
     client.force_login(user)
     response = client.get(filter_url(link_filter), follow=True)
     assert response.status_code == 200
@@ -155,10 +190,9 @@ def test_all_purchases_section_removed(rendered):
     assert "All Purchases" not in rendered["html"]
 
 
-def test_generated_links_resolve_to_200(rendered, client, django_user_model):
+def test_generated_links_resolve_to_200(rendered, client):
     """A stats link, when visited, returns 200 with its filter applied."""
-    user = django_user_model.objects.create_user(username="u", password="p")
-    client.force_login(user)
+    client.force_login(rendered["user"])
     for builder in (
         stats_links.purchases_total(YEAR),
         stats_links.purchases_dropped(YEAR),

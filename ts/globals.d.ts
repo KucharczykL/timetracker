@@ -8,6 +8,11 @@ declare global {
       init?: RequestInit,
       triggerDispatch?: "immediate" | "deferred",
     ): Promise<Response>;
-    toast(message: string, type?: string): void;
+    toast(
+      message: string,
+      type?: string,
+      options?: { id?: number | string; duration?: number | null },
+    ): void;
+    removeToast(id: number | string): void;
   }
 }

@@ -15,8 +15,7 @@ from games.models import Device, Game, Platform, Session
 
 
 @pytest.fixture
-def authenticated_page(live_server, page: Page, django_user_model) -> Page:
-    django_user_model.objects.create_user(username="tester", password="secret123")
+def authenticated_page(live_server, page: Page, e2e_user) -> Page:
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")
     page.fill('input[name="password"]', "secret123")
@@ -26,17 +25,22 @@ def authenticated_page(live_server, page: Page, django_user_model) -> Page:
 
 
 def test_device_dropdown_not_clipped_on_short_table(
-    authenticated_page: Page, live_server
+    authenticated_page: Page, live_server, e2e_library
 ):
     page = authenticated_page
     page.set_viewport_size({"width": 1280, "height": 800})
-    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-    game = Game.objects.create(name="Tunic")
+    platform = Platform.objects.create(
+        library=e2e_library, name="PC", icon="pc", group="PC"
+    )
+    game = Game.objects.create(library=e2e_library, name="Tunic")
     game.platform = platform
     game.save()
     # Many devices → a tall menu; a single row → a short table that would clip
     # an absolutely-positioned menu.
-    devices = [Device.objects.create(name=f"Device {i:02d}") for i in range(15)]
+    devices = [
+        Device.objects.create(library=e2e_library, name=f"Device {i:02d}")
+        for i in range(15)
+    ]
     session = Session.objects.create(
         game=game, device=devices[0], timestamp_start=timezone.now()
     )
@@ -71,7 +75,7 @@ def test_device_dropdown_not_clipped_on_short_table(
 
 
 def test_device_dropdown_flips_up_near_viewport_bottom(
-    authenticated_page: Page, live_server
+    authenticated_page: Page, live_server, e2e_library
 ):
     """A dropdown whose toggle sits near the viewport bottom must open upward
     and stay fully visible — not collapse off-screen.
@@ -82,11 +86,16 @@ def test_device_dropdown_flips_up_near_viewport_bottom(
     """
     page = authenticated_page
     page.set_viewport_size({"width": 1280, "height": 760})
-    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-    game = Game.objects.create(name="Tunic")
+    platform = Platform.objects.create(
+        library=e2e_library, name="PC", icon="pc", group="PC"
+    )
+    game = Game.objects.create(library=e2e_library, name="Tunic")
     game.platform = platform
     game.save()
-    devices = [Device.objects.create(name=f"Device {i:02d}") for i in range(15)]
+    devices = [
+        Device.objects.create(library=e2e_library, name=f"Device {i:02d}")
+        for i in range(15)
+    ]
     sessions = [
         Session.objects.create(
             game=game, device=devices[0], timestamp_start=timezone.now()

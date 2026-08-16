@@ -11,9 +11,14 @@ class AddPurchasePricingTest(TestCase):
     def setUp(self):
         self.user = User.objects.create_superuser("u", "u@e.com", "pw")
         self.client.force_login(self.user)
+        self.library = self.user.library
         self.platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-        self.game_a = Game.objects.create(name="Game A", platform=self.platform)
-        self.game_b = Game.objects.create(name="Game B", platform=self.platform)
+        self.game_a = Game.objects.create(
+            library=self.library, name="Game A", platform=self.platform
+        )
+        self.game_b = Game.objects.create(
+            library=self.library, name="Game B", platform=self.platform
+        )
 
     def _base_data(self, **overrides):
         data = {
@@ -66,6 +71,7 @@ class AddPurchasePricingTest(TestCase):
     def test_full_name_keeps_parenthesized_detail_shape(self):
         bundle = Purchase.objects.create(
             name="Humble Bundle",
+            library=self.library,
             date_purchased=date(2025, 1, 1),
             price=30,
             price_currency="USD",
@@ -83,12 +89,20 @@ class SplitPurchaseTest(TestCase):
     def setUp(self):
         self.user = User.objects.create_superuser("u", "u@e.com", "pw")
         self.client.force_login(self.user)
-        self.platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-        self.game_a = Game.objects.create(name="Game A", platform=self.platform)
-        self.game_b = Game.objects.create(name="Game B", platform=self.platform)
+        self.library = self.user.library
+        self.platform = Platform.objects.create(
+            library=self.library, name="PC", icon="pc", group="PC"
+        )
+        self.game_a = Game.objects.create(
+            library=self.library, name="Game A", platform=self.platform
+        )
+        self.game_b = Game.objects.create(
+            library=self.library, name="Game B", platform=self.platform
+        )
 
     def _bundle(self, games, price=30.0):
         bundle = Purchase.objects.create(
+            library=self.library,
             price=price,
             price_currency="USD",
             date_purchased=date(2025, 1, 1),
@@ -109,6 +123,7 @@ class SplitPurchaseTest(TestCase):
         self.assertFalse(Purchase.objects.filter(id=bundle.id).exists())
         self.assertEqual(Purchase.objects.count(), 2)
         for purchase in Purchase.objects.all():
+            self.assertEqual(purchase.library, self.library)
             self.assertEqual(purchase.num_purchases, 1)
             self.assertEqual(purchase.price, 15.0)  # 30 / 2, split evenly
             self.assertTrue(purchase.needs_price_update)

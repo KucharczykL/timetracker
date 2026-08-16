@@ -20,14 +20,19 @@ def _login(page: Page, live_server) -> None:
 
 
 @pytest.fixture
-def world(live_server, django_user_model):
-    django_user_model.objects.create_user(username="tester", password="secret123")
-    platform = Platform.objects.create(name="PC")
+def world(live_server, e2e_user):
+    platform = Platform.objects.create(library=e2e_user.library, name="PC")
     played = Game.objects.create(
-        name="Alpha", platform=platform, status=Game.Status.PLAYED
+        library=e2e_user.library,
+        name="Alpha",
+        platform=platform,
+        status=Game.Status.PLAYED,
     )
     Game.objects.create(
-        name="Zeta Unplayed", platform=platform, status=Game.Status.UNPLAYED
+        library=e2e_user.library,
+        name="Zeta Unplayed",
+        platform=platform,
+        status=Game.Status.UNPLAYED,
     )
     return played
 

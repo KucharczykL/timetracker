@@ -95,6 +95,7 @@
     platform: 1
     date_purchased: 2021-02-13
     date_refunded: null
+    price_currency: CZK
 - model: games.purchase
   pk: 2
   fields:
@@ -102,6 +103,7 @@
     platform: 1
     date_purchased: 2022-02-24
     date_refunded: null
+    price_currency: CZK
 - model: games.purchase
   pk: 3
   fields:
@@ -109,6 +111,7 @@
     platform: 1
     date_purchased: 2020-12-07
     date_refunded: null
+    price_currency: CZK
 - model: games.purchase
   pk: 4
   fields:
@@ -116,6 +119,7 @@
     platform: 9
     date_purchased: 2023-01-10
     date_refunded: null
+    price_currency: CZK
 - model: games.purchase
   pk: 5
   fields:
@@ -123,6 +127,7 @@
     platform: 9
     date_purchased: 2023-01-10
     date_refunded: null
+    price_currency: CZK
 - model: games.purchase
   pk: 6
   fields:
@@ -130,6 +135,7 @@
     platform: 5
     date_purchased: 2022-11-19
     date_refunded: null
+    price_currency: CZK
 - model: games.purchase
   pk: 7
   fields:
@@ -137,6 +143,7 @@
     platform: 5
     date_purchased: 2022-12-10
     date_refunded: null
+    price_currency: CZK
 - model: games.purchase
   pk: 8
   fields:
@@ -144,6 +151,7 @@
     platform: 5
     date_purchased: 2022-12-11
     date_refunded: null
+    price_currency: CZK
 - model: games.purchase
   pk: 9
   fields:
@@ -151,6 +159,7 @@
     platform: 5
     date_purchased: 2022-12-11
     date_refunded: null
+    price_currency: CZK
 - model: games.purchase
   pk: 10
   fields:
@@ -158,6 +167,7 @@
     platform: 5
     date_purchased: 2022-11-11
     date_refunded: null
+    price_currency: CZK
 - model: games.purchase
   pk: 11
   fields:
@@ -165,6 +175,7 @@
     platform: 1
     date_purchased: 2019-12-01
     date_refunded: null
+    price_currency: CZK
 - model: games.purchase
   pk: 12
   fields:
@@ -172,6 +183,7 @@
     platform: 5
     date_purchased: 2022-03-22
     date_refunded: null
+    price_currency: CZK
 - model: games.purchase
   pk: 13
   fields:
@@ -179,6 +191,7 @@
     platform: 5
     date_purchased: 2022-09-18
     date_refunded: null
+    price_currency: CZK
 - model: games.purchase
   pk: 14
   fields:
@@ -186,6 +199,7 @@
     platform: 5
     date_purchased: 2022-08-17
     date_refunded: null
+    price_currency: CZK
 - model: games.purchase
   pk: 15
   fields:
@@ -193,6 +207,7 @@
     platform: 5
     date_purchased: 2022-07-26
     date_refunded: null
+    price_currency: CZK
 - model: games.purchase
   pk: 16
   fields:
@@ -200,6 +215,7 @@
     platform: 5
     date_purchased: 2022-01-16
     date_refunded: null
+    price_currency: CZK
 - model: games.purchase
   pk: 17
   fields:
@@ -207,6 +223,7 @@
     platform: 5
     date_purchased: 2022-07-19
     date_refunded: null
+    price_currency: CZK
 - model: games.purchase
   pk: 18
   fields:
@@ -214,6 +231,7 @@
     platform: 1
     date_purchased: 2019-01-12
     date_refunded: null
+    price_currency: CZK
 - model: games.purchase
   pk: 19
   fields:
@@ -221,6 +239,7 @@
     platform: 5
     date_purchased: 2022-07-03
     date_refunded: null
+    price_currency: CZK
 - model: games.platform
   pk: 1
   fields:

@@ -7,18 +7,21 @@ from django_q.tasks import schedule
 
 
 class Command(BaseCommand):
-    help = "Manually schedule the next update_converted_prices task"
+    help = "Ensure the daily recovery schedule for library price conversions exists"
 
     def handle(self, *args, **kwargs):
-        if not Schedule.objects.filter(name="Update converted prices").exists():
+        name = "Recover library price conversions"
+        Schedule.objects.filter(func="games.tasks.convert_prices").delete()
+        Schedule.objects.filter(name="Update converted prices").delete()
+        if not Schedule.objects.filter(name=name).exists():
             schedule(
-                "games.tasks.convert_prices",
-                name="Update converted prices",
-                schedule_type=Schedule.MINUTES,
+                "games.tasks.recover_library_price_conversions",
+                name=name,
+                schedule_type=Schedule.DAILY,
                 next_run=now() + timedelta(seconds=30),
             )
             self.stdout.write(
-                self.style.SUCCESS("Scheduled the update_converted_prices task.")
+                self.style.SUCCESS("Scheduled daily library price-conversion recovery.")
             )
         else:
-            self.stdout.write(self.style.WARNING("Task is already scheduled."))
+            self.stdout.write(self.style.WARNING("Recovery task is already scheduled."))

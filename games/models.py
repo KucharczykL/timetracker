@@ -5,10 +5,10 @@ from typing import ClassVar, Final
 import requests
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Case, ExpressionWrapper, F, Func, Q, Sum, Value, When
 from django.db.models.fields.generated import GeneratedField
-from django.db.models.functions import Coalesce, NullIf
+from django.db.models.functions import Coalesce, Lower, NullIf, Trim
 from django.template.defaultfilters import floatformat, pluralize, slugify
 from django.utils import timezone
 
@@ -20,19 +20,45 @@ from timetracker.uuidv7 import UUIDv7Field
 logger = logging.getLogger("games")
 
 
+class LibraryOwnedQuerySet(models.QuerySet):
+    def for_library(self, library):
+        return self.filter(library=library)
+
+
+def _validate_related_library(
+    owner_library_id, related, field_name: str, *, allow_shared: bool = False
+):
+    if related is None:
+        return
+    related_library_id = related.library_id
+    if allow_shared and related_library_id is None:
+        return
+    if related_library_id != owner_library_id:
+        raise ValidationError(
+            {
+                field_name: (
+                    f"{related._meta.verbose_name.title()} belongs to another library."
+                )
+            }
+        )
+
+
 class Game(models.Model):
     class Meta:
-        unique_together = (("name", "platform", "year_released"),)
+        unique_together = (("library", "name", "platform", "year_released"),)
         constraints = (
-            # A normal unique constraint permits multiple rows when platform is
-            # NULL; this preserves the platformless-game deduplication guarantee.
             models.UniqueConstraint(
-                fields=("name", "year_released"),
+                fields=("library", "name", "year_released"),
                 condition=Q(platform__isnull=True),
-                name="unique_platformless_game_name_year",
+                name="unique_library_platformless_game_name_year",
             ),
         )
 
+    objects = LibraryOwnedQuerySet.as_manager()
+
+    library = models.ForeignKey(
+        "UserLibrary", on_delete=models.CASCADE, related_name="games"
+    )
     name = models.CharField(max_length=255)
     sort_name = models.CharField(max_length=255, blank=True, default="")
     year_released = models.IntegerField(null=True, blank=True, default=None)
@@ -72,6 +98,20 @@ class Game(models.Model):
     status = models.CharField(max_length=1, choices=Status, default=Status.UNPLAYED)
     mastered = models.BooleanField(default=False)
 
+    def clean(self):
+        super().clean()
+        if self.platform_id is not None:
+            _validate_related_library(
+                self.library_id,
+                self.platform,
+                "platform",
+                allow_shared=True,
+            )
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return self.name
 
@@ -102,7 +142,39 @@ class Game(models.Model):
         return self.status == self.Status.UNPLAYED
 
 
+class PlatformQuerySet(LibraryOwnedQuerySet):
+    def visible_to(self, library):
+        return self.filter(Q(library__isnull=True) | Q(library=library))
+
+
 class Platform(models.Model):
+    class Meta:
+        constraints = (
+            models.UniqueConstraint(
+                Lower(Trim("name")),
+                Lower(Trim("group")),
+                condition=Q(library__isnull=True),
+                name="unique_shared_platform_normalized_name_group",
+            ),
+            models.UniqueConstraint(
+                F("library"),
+                Lower(Trim("name")),
+                Lower(Trim("group")),
+                condition=Q(library__isnull=False),
+                name="unique_private_platform_normalized_name_group",
+            ),
+        )
+
+    objects = PlatformQuerySet.as_manager()
+
+    library = models.ForeignKey(
+        "UserLibrary",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        default=None,
+        related_name="platforms",
+    )
     name = models.CharField(max_length=255)
     group = models.CharField(max_length=255, blank=True, default="")
     icon = models.SlugField(blank=True)
@@ -111,13 +183,34 @@ class Platform(models.Model):
     def __str__(self):
         return self.name
 
+    def clean(self):
+        super().clean()
+        duplicates = (
+            Platform.objects.exclude(pk=self.pk)
+            .annotate(
+                normalized_name=Lower(Trim("name")),
+                normalized_group=Lower(Trim("group")),
+            )
+            .filter(
+                normalized_name=self.name.strip().casefold(),
+                normalized_group=self.group.strip().casefold(),
+            )
+        )
+        if self.library_id is None:
+            collision = duplicates.filter(library__isnull=False).exists()
+        else:
+            collision = duplicates.filter(library__isnull=True).exists()
+        if collision:
+            raise ValidationError("A private Platform cannot shadow a shared Platform.")
+
     def save(self, *args, **kwargs):
         if not self.icon:
             self.icon = slugify(self.name)
+        self.clean()
         super().save(*args, **kwargs)
 
 
-class PurchaseQueryset(models.QuerySet):
+class PurchaseQueryset(LibraryOwnedQuerySet):
     def refunded(self):
         return self.filter(date_refunded__isnull=False)
 
@@ -173,6 +266,9 @@ class Purchase(models.Model):
 
     objects = PurchaseQueryset().as_manager()
 
+    library = models.ForeignKey(
+        "UserLibrary", on_delete=models.CASCADE, related_name="purchases"
+    )
     games = models.ManyToManyField(Game, related_name="purchases")
 
     platform = models.ForeignKey(
@@ -182,9 +278,8 @@ class Purchase(models.Model):
     date_refunded = models.DateField(blank=True, null=True, verbose_name="Refunded")
     infinite = models.BooleanField(default=False)
     price = models.FloatField(default=0)
-    # Empty by default: Purchase.save() fills it from the resolved DEFAULT_CURRENCY
-    # (the single source of the default). loaddata bypasses save(), so fixtures
-    # must set price_currency explicitly.
+    # Entry forms preselect a resolved default, but every persisted Purchase
+    # carries its original currency explicitly.
     price_currency = models.CharField(max_length=3, blank=True, default="")
     converted_price = models.FloatField(null=True)
     converted_currency = models.CharField(max_length=3, blank=True, default="")
@@ -253,20 +348,81 @@ class Purchase(models.Model):
         self.date_refunded = timezone.now()
         self.save()
 
+    def clean(self):
+        super().clean()
+        if self.platform_id is not None:
+            _validate_related_library(
+                self.library_id,
+                self.platform,
+                "platform",
+                allow_shared=True,
+            )
+        if self.related_game_id is not None:
+            _validate_related_library(
+                self.library_id,
+                self.related_game,
+                "related_game",
+            )
+
     def save(self, *args, **kwargs):
         if not self.price_currency:
-            # Local import: the resolver lazily imports this module in turn.
-            from timetracker.settings_resolver import resolve_str
-
-            self.price_currency = resolve_str("DEFAULT_CURRENCY")
+            raise ValidationError({"price_currency": "Purchase currency is required."})
+        self.clean()
         if self.type != Purchase.GAME and not self.related_game:
             raise ValidationError(
                 f"{self.get_type_display()} must have a related game."
             )
-        super().save(*args, **kwargs)
+
+        update_fields = kwargs.get("update_fields")
+        conversion_fields = {"date_purchased", "price", "price_currency"}
+        may_need_conversion = (
+            self._state.adding
+            or update_fields is None
+            or not conversion_fields.isdisjoint(update_fields)
+        )
+        if not may_need_conversion:
+            super().save(*args, **kwargs)
+            return
+
+        from games.conversion import _request_conversion_for_locked_state
+
+        is_new = self._state.adding
+        with transaction.atomic():
+            conversion_state = PurchaseConversionState.objects.select_for_update().get(
+                library_id=self.library_id
+            )
+            price_changed = is_new
+            if not is_new:
+                previous = (
+                    Purchase.objects.only("date_purchased", "price", "price_currency")
+                    .filter(pk=self.pk)
+                    .first()
+                )
+                price_changed = previous is None or (
+                    previous.date_purchased != self.date_purchased
+                    or previous.price != self.price
+                    or previous.price_currency != self.price_currency
+                )
+
+            if price_changed:
+                self.needs_price_update = True
+                if update_fields is not None:
+                    kwargs["update_fields"] = set(update_fields) | {
+                        "needs_price_update"
+                    }
+
+            super().save(*args, **kwargs)
+            if price_changed:
+                _request_conversion_for_locked_state(
+                    conversion_state,
+                    conversion_state.requested_currency,
+                )
 
 
 class SessionQuerySet(models.QuerySet):
+    def for_library(self, library):
+        return self.filter(game__library=library)
+
     def total_duration_unformatted(self):
         result = self.aggregate(
             duration=Sum(F("duration_calculated") + F("duration_manual"))
@@ -291,8 +447,6 @@ class Session(models.Model):
     game = models.ForeignKey(
         Game,
         on_delete=models.CASCADE,
-        null=True,
-        default=None,
         related_name="sessions",
     )
     timestamp_start = models.DateTimeField(verbose_name="Session start", db_index=True)
@@ -358,12 +512,24 @@ class Session(models.Model):
         return self.duration_manual != timedelta(0)
 
     def save(self, *args, **kwargs) -> None:
+        if self.game_id is not None and self.device_id is not None:
+            _validate_related_library(
+                self.game.library_id,
+                self.device,
+                "device",
+            )
         if not isinstance(self.duration_manual, timedelta):
             self.duration_manual = timedelta(0)
         super().save(*args, **kwargs)
 
 
 class Device(models.Model):
+    objects = LibraryOwnedQuerySet.as_manager()
+
+    library = models.ForeignKey(
+        "UserLibrary", on_delete=models.CASCADE, related_name="devices"
+    )
+
     PC = "PC"
     CONSOLE = "Console"
     HANDHELD = "Handheld"
@@ -401,7 +567,7 @@ class ExchangeRate(models.Model):
 
 def get_or_create_rate(currency_from: str, currency_to: str, year: int) -> float | None:
     # Currently unused. If ever wired up, its currency_to must come from
-    # settings_resolver.resolve_str("DEFAULT_CURRENCY"), not a boot-frozen value.
+    # settings_resolver.resolve_str("DEFAULT_DISPLAY_CURRENCY"), not a boot-frozen value.
     exchange_rate = None
     result = ExchangeRate.objects.filter(
         currency_from=currency_from, currency_to=currency_to, year=year
@@ -437,7 +603,14 @@ def get_or_create_rate(currency_from: str, currency_to: str, year: int) -> float
     return exchange_rate
 
 
+class PlayEventQuerySet(models.QuerySet):
+    def for_library(self, library):
+        return self.filter(game__library=library)
+
+
 class PlayEvent(models.Model):
+    objects = PlayEventQuerySet.as_manager()
+
     game = models.ForeignKey(Game, related_name="playevents", on_delete=models.CASCADE)
     started = models.DateField(null=True, blank=True)
     ended = models.DateField(null=True, blank=True)
@@ -475,10 +648,17 @@ class PlayEvent(models.Model):
 #     note = models.CharField(max_length=255)
 
 
+class GameStatusChangeQuerySet(models.QuerySet):
+    def for_library(self, library):
+        return self.filter(game__library=library)
+
+
 class GameStatusChange(models.Model):
     """
     Tracks changes to the status of a Game.
     """
+
+    objects = GameStatusChangeQuerySet.as_manager()
 
     game = models.ForeignKey(
         Game, on_delete=models.CASCADE, related_name="status_changes"
@@ -507,10 +687,12 @@ class FilterPreset(models.Model):
         ordering: ClassVar[list[str]] = ["name"]
         constraints = (
             models.UniqueConstraint(
-                fields=("user", "mode", "name"),
-                name="unique_user_mode_name_preset",
+                fields=("library", "mode", "name"),
+                name="unique_library_mode_name_preset",
             ),
         )
+
+    objects = LibraryOwnedQuerySet.as_manager()
 
     MODE_CHOICES = (
         ("games", "Games"),
@@ -521,10 +703,8 @@ class FilterPreset(models.Model):
         ("platforms", "Platforms"),
     )
 
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="filter_presets",
+    library = models.ForeignKey(
+        "UserLibrary", on_delete=models.CASCADE, related_name="filter_presets"
     )
     name = models.CharField(max_length=255)
     mode = models.CharField(max_length=50, choices=MODE_CHOICES, default="games")
@@ -555,12 +735,11 @@ class SiteSetting(models.Model):
         return f"{self.key} = {self.value!r}"
 
 
-#: USER-scoped key → the UserPreferences column storing it. DEFAULT_DEVICE maps to
-#: the FK *attname* (``default_device_id``) so reads/writes use the serializable id,
-#: not a Device instance. Keys absent here live in the ``extra_preferences`` bag.
+#: USER-scoped key → the nullable UserPreferences column storing it. Keys absent
+#: here live in the ``extra_preferences`` bag.
 USER_PREFERENCE_FIELD_BY_KEY: Final[dict[SettingKey, str]] = {
-    "DEFAULT_CURRENCY": "default_currency",
-    "DEFAULT_DEVICE": "default_device_id",
+    "DEFAULT_PURCHASE_CURRENCY": "default_purchase_currency",
+    "DEFAULT_DISPLAY_CURRENCY": "default_display_currency",
     "DEFAULT_LANDING_PAGE": "default_landing_page",
     "THEME": "theme",
     "DISPLAY_TIME_ZONE": "display_time_zone",
@@ -582,6 +761,66 @@ class UserLibrary(models.Model):
         return str(self.id)
 
 
+class UserLibraryPreferences(models.Model):
+    library = models.OneToOneField(
+        UserLibrary,
+        primary_key=True,
+        on_delete=models.CASCADE,
+        related_name="preferences",
+    )
+    default_device = models.ForeignKey(
+        Device,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    updated_at = models.DateTimeField(default=timezone.now)
+
+    def clean(self):
+        super().clean()
+        if self.default_device_id is not None:
+            _validate_related_library(
+                self.library_id,
+                self.default_device,
+                "default_device",
+            )
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
+    def set_default_device(self, device):
+        if self.default_device_id == getattr(device, "pk", None):
+            return False
+        self.default_device = device
+        self.updated_at = timezone.now()
+        self.save(update_fields=["default_device", "updated_at"])
+        return True
+
+
+class PurchaseConversionState(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        RUNNING = "running", "Running"
+        FAILED = "failed", "Failed"
+        COMPLETE = "complete", "Complete"
+
+    library = models.OneToOneField(
+        UserLibrary,
+        primary_key=True,
+        on_delete=models.CASCADE,
+        related_name="purchase_conversion_state",
+    )
+    requested_version = models.PositiveBigIntegerField(default=0)
+    requested_currency = models.CharField(max_length=3, blank=True, default="")
+    published_version = models.PositiveBigIntegerField(default=0)
+    published_currency = models.CharField(max_length=3, blank=True, default="")
+    status = models.CharField(max_length=10, choices=Status, default=Status.COMPLETE)
+    retry_at = models.DateTimeField(null=True, blank=True, default=None)
+    last_error = models.TextField(blank=True, default="")
+
+
 class UserPreferences(models.Model):
     """Per-user layer of the settings resolver: a personal override for a
     user-scoped setting, sitting above the site default. Unset is a NULL column
@@ -593,15 +832,11 @@ class UserPreferences(models.Model):
         on_delete=models.CASCADE,
         related_name="preferences",
     )
-    default_currency = models.CharField(
+    default_purchase_currency = models.CharField(
         max_length=3, null=True, blank=True, default=None
     )
-    default_device = models.ForeignKey(
-        Device,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="+",
+    default_display_currency = models.CharField(
+        max_length=3, null=True, blank=True, default=None
     )
     default_landing_page = models.CharField(
         max_length=100, null=True, blank=True, default=None
@@ -649,7 +884,6 @@ class UserPreferences(models.Model):
         field = USER_PREFERENCE_FIELD_BY_KEY.get(key)
         if field is not None:
             setattr(self, field, value)
-            # save() accepts the FK attname (default_device_id) in update_fields.
             self.save(update_fields=[field, "updated_at"])
             return
         if value is None:

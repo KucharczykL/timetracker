@@ -3,6 +3,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from common.date_time_presentation import (
@@ -22,12 +23,16 @@ ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 
 class FormatDurationTest(TestCase):
     def setUp(self) -> None:
-        return super().setUp()
+        self.library = get_user_model().objects.create_user(username="format").library
 
     def test_duration_format(self):
-        g = Game(name="The Test Game")
+        g = Game(library=self.library, name="The Test Game")
         g.save()
-        p = Purchase(date_purchased=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO))
+        p = Purchase(
+            price_currency="CZK",
+            library=self.library,
+            date_purchased=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO),
+        )
         p.save()
         p.games.add(g)
         p.save()
@@ -45,7 +50,7 @@ class FormatDurationTest(TestCase):
         )
 
     def test_session_range_uses_explicit_presentation(self):
-        game = Game.objects.create(name="Range game")
+        game = Game.objects.create(library=self.library, name="Range game")
         session = Session.objects.create(
             game=game,
             timestamp_start=datetime(2026, 7, 2, 17, 5, tzinfo=ZoneInfo("UTC")),
@@ -80,9 +85,9 @@ class FormatDurationTest(TestCase):
     ],
 )
 def test_registered_profiles_match_browser_session_range_literals(
-    profile_id: str, expected: str
+    profile_id: str, expected: str, owned_library
 ) -> None:
-    game = Game.objects.create(name=f"Range {profile_id}")
+    game = Game.objects.create(library=owned_library, name=f"Range {profile_id}")
     session = Session.objects.create(
         game=game,
         timestamp_start=datetime(2026, 7, 2, 19, 5, tzinfo=ZoneInfo("UTC")),
@@ -98,8 +103,10 @@ def test_registered_profiles_match_browser_session_range_literals(
 
 
 @pytest.mark.django_db
-def test_mdy_12h_session_range_uses_localized_client_contract_day_periods() -> None:
-    game = Game.objects.create(name="Localized range")
+def test_mdy_12h_session_range_uses_localized_client_contract_day_periods(
+    owned_library,
+) -> None:
+    game = Game.objects.create(library=owned_library, name="Localized range")
     session = Session.objects.create(
         game=game,
         timestamp_start=datetime(2026, 7, 2, 0, 5, tzinfo=ZoneInfo("UTC")),

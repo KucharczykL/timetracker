@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from common.criteria import filter_from_json
+from common.criteria import FilterQueryContext, filter_from_json
 from games.filters import GameFilter, PlayEventFilter, PurchaseFilter, SessionFilter
 
 FILTER_TREE_DIR = (
@@ -31,6 +31,10 @@ FILTER_FOR_MODEL = {
 }
 
 # Map each original fixture to its TS-emitted canonical form, by description.
+UNRESTRICTED_FILTER_CONTEXT = FilterQueryContext(
+    lambda model: model._default_manager.all()
+)
+
 if CANONICAL_PATH.exists():
     _canonical_by_description = {
         case["description"]: case
@@ -57,7 +61,7 @@ def _q_str(filter_object) -> str:
     # compiled SQL: repr() would *evaluate* them, and on the empty test DB every
     # subquery prints "<QuerySet []>" — making structurally different scoped
     # aggregates compare equal and the contract vacuous for them (issue #151).
-    return _render_q(filter_object.to_q())
+    return _render_q(filter_object.to_q(UNRESTRICTED_FILTER_CONTEXT))
 
 
 def _render_q(node) -> str:

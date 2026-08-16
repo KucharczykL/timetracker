@@ -18,8 +18,7 @@ STARTED_AT = dt.datetime(2020, 1, 1, 10, 0, tzinfo=dt.UTC)
 
 
 @pytest.fixture
-def authenticated_page(live_server, page: Page, django_user_model) -> Page:
-    django_user_model.objects.create_user(username="tester", password="secret123")
+def authenticated_page(live_server, page: Page, e2e_user) -> Page:
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")
     page.fill('input[name="password"]', "secret123")
@@ -28,17 +27,19 @@ def authenticated_page(live_server, page: Page, django_user_model) -> Page:
     return page
 
 
-def _make_running_session() -> Session:
-    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-    game = Game.objects.create(name="Reset Game", platform=platform)
+def _make_running_session(library) -> Session:
+    platform = Platform.objects.create(
+        library=library, name="PC", icon="pc", group="PC"
+    )
+    game = Game.objects.create(library=library, name="Reset Game", platform=platform)
     return Session.objects.create(game=game, timestamp_start=STARTED_AT)
 
 
 def test_reset_confirms_on_its_own_page_then_returns_to_the_list(
-    authenticated_page: Page, live_server
+    authenticated_page: Page, live_server, e2e_library
 ):
     page = authenticated_page
-    session = _make_running_session()
+    session = _make_running_session(e2e_library)
 
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
     row = page.locator(f"#session-row-{session.id}")
@@ -56,9 +57,11 @@ def test_reset_confirms_on_its_own_page_then_returns_to_the_list(
     assert session.timestamp_start > STARTED_AT
 
 
-def test_reset_cancel_leaves_start_unchanged(authenticated_page: Page, live_server):
+def test_reset_cancel_leaves_start_unchanged(
+    authenticated_page: Page, live_server, e2e_library
+):
     page = authenticated_page
-    session = _make_running_session()
+    session = _make_running_session(e2e_library)
 
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
     page.locator(f"#session-row-{session.id}").locator('a[href*="/reset"]').click()
@@ -72,9 +75,9 @@ def test_reset_cancel_leaves_start_unchanged(authenticated_page: Page, live_serv
 
 
 def test_reset_stamps_the_browser_zone(
-    authenticated_page: Page, browser: Browser, live_server
+    authenticated_page: Page, browser: Browser, live_server, e2e_library
 ):
-    session = _make_running_session()
+    session = _make_running_session(e2e_library)
 
     context = browser.new_context(timezone_id="Pacific/Honolulu")
     try:

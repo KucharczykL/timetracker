@@ -103,9 +103,15 @@ class RenderedPagesTest(TestCase):
             username="testuser", email="test@example.com", password="testpass"
         )
         self.client.force_login(self.user)
-        self.platform = Platform.objects.create(name="Test Platform", icon="test")
-        self.game = Game.objects.create(name="Test Game", platform=self.platform)
+        self.platform = Platform.objects.create(
+            library=self.user.library, name="Test Platform", icon="test"
+        )
+        self.game = Game.objects.create(
+            library=self.user.library, name="Test Game", platform=self.platform
+        )
         self.purchase = Purchase.objects.create(
+            library=self.user.library,
+            price_currency="CZK",
             date_purchased=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO),
             platform=self.platform,
         )
@@ -378,7 +384,9 @@ class RenderedPagesTest(TestCase):
         self.assertEqual(html.count("<div"), html.count("</div>"))
 
     def test_view_game_uses_play_event_row_element(self):
-        game = Game.objects.create(name="Played Game", platform=self.platform)
+        game = Game.objects.create(
+            library=self.user.library, name="Played Game", platform=self.platform
+        )
         html = self.get("games:view_game", game.id).content.decode()
         self.assertIn("<play-event-row", html)
         self.assertIn('game-id="', html)
@@ -388,7 +396,9 @@ class RenderedPagesTest(TestCase):
     def test_played_row_count_link_is_a_single_anchor(self):
         """The 'N times' count control is one styled <a> (ControlButton href
         mode), not a <button> nested inside an <a> (invalid HTML)."""
-        game = Game.objects.create(name="Anchor Game", platform=self.platform)
+        game = Game.objects.create(
+            library=self.user.library, name="Anchor Game", platform=self.platform
+        )
         html = self.get("games:view_game", game.id).content.decode()
         row = html[html.index("<play-event-row") :]
         count_at = row.index("data-count")
@@ -404,7 +414,9 @@ class RenderedPagesTest(TestCase):
         text between items — sibling span + " times" rendered as "0times".
         The initial count also crosses to play-event-row.ts as the count=""
         prop; the data-count span is a write-only display slot."""
-        game = Game.objects.create(name="Prose Game", platform=self.platform)
+        game = Game.objects.create(
+            library=self.user.library, name="Prose Game", platform=self.platform
+        )
         html = self.get("games:view_game", game.id).content.decode()
         row = html[html.index("<play-event-row") :]
         host_tag = row[: row.index(">") + 1]
@@ -415,7 +427,9 @@ class RenderedPagesTest(TestCase):
         """The two view-level fallback expressions on the game detail page:
         the Platform meta row shows "Unspecified" for a platformless game, and
         the sessions table shows "No device" for a device-less session."""
-        platformless = Game.objects.create(name="Platformless Game")
+        platformless = Game.objects.create(
+            library=self.user.library, name="Platformless Game"
+        )
         Session.objects.create(
             game=platformless,
             device=None,
@@ -429,7 +443,9 @@ class RenderedPagesTest(TestCase):
 
     def test_view_game_empty_sections(self):
         """A game with no sessions/purchases/etc shows the empty messages."""
-        lonely = Game.objects.create(name="Lonely Game", platform=self.platform)
+        lonely = Game.objects.create(
+            library=self.user.library, name="Lonely Game", platform=self.platform
+        )
         html = self.get("games:view_game", lonely.id).content.decode()
         for marker in [
             "No purchases yet.",
@@ -593,24 +609,40 @@ class PurchaseListDateFilterTest(TestCase):
             username="datetester", email="dt@example.com", password="testpass"
         )
         self.client.force_login(self.user)
-        self.platform = Platform.objects.create(name="DateP", icon="datep")
+        self.platform = Platform.objects.create(
+            library=self.user.library, name="DateP", icon="datep"
+        )
         # Markers are placed on the Game name because LinkedPurchase renders
         # the linked game's name (purchase.name doesn't surface in the list row).
-        early_game = Game.objects.create(name="EARLY-MARKER", platform=self.platform)
-        mid_game = Game.objects.create(name="MID-MARKER", platform=self.platform)
-        late_game = Game.objects.create(name="LATE-MARKER", platform=self.platform)
+        early_game = Game.objects.create(
+            library=self.user.library, name="EARLY-MARKER", platform=self.platform
+        )
+        mid_game = Game.objects.create(
+            library=self.user.library, name="MID-MARKER", platform=self.platform
+        )
+        late_game = Game.objects.create(
+            library=self.user.library, name="LATE-MARKER", platform=self.platform
+        )
         self.early = Purchase.objects.create(
-            platform=self.platform, date_purchased=datetime.date(2024, 1, 15)
+            library=self.user.library,
+            price_currency="CZK",
+            platform=self.platform,
+            date_purchased=datetime.date(2024, 1, 15),
         )
         self.early.games.add(early_game)
         self.mid = Purchase.objects.create(
+            library=self.user.library,
+            price_currency="CZK",
             platform=self.platform,
             date_purchased=datetime.date(2024, 6, 15),
             date_refunded=datetime.date(2024, 7, 1),
         )
         self.mid.games.add(mid_game)
         self.late = Purchase.objects.create(
-            platform=self.platform, date_purchased=datetime.date(2025, 1, 15)
+            library=self.user.library,
+            price_currency="CZK",
+            platform=self.platform,
+            date_purchased=datetime.date(2025, 1, 15),
         )
         self.late.games.add(late_game)
 
@@ -763,10 +795,14 @@ class GameListSessionFilterBoundaryTest(TestCase):
             username="gamefilter", email="gf@example.com", password="testpass"
         )
         self.client.force_login(self.user)
-        self.platform = Platform.objects.create(name="GFP", icon="gfp")
-        self.played = Game.objects.create(name="PLAYED-MARKER", platform=self.platform)
+        self.platform = Platform.objects.create(
+            library=self.user.library, name="GFP", icon="gfp"
+        )
+        self.played = Game.objects.create(
+            library=self.user.library, name="PLAYED-MARKER", platform=self.platform
+        )
         self.unplayed = Game.objects.create(
-            name="UNPLAYED-MARKER", platform=self.platform
+            library=self.user.library, name="UNPLAYED-MARKER", platform=self.platform
         )
         start = timezone.now()
         Session.objects.create(

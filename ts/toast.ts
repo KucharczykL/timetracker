@@ -2,26 +2,43 @@ import { reportClientError } from "./client-errors.js";
 
 declare const Alpine: any;
 
+type ToastId = number | string;
+
+interface ToastOptions {
+  id?: ToastId;
+  duration?: number | null;
+}
+
 interface Toast {
-  id: number;
+  id: ToastId;
   message: string;
   type: string;
   visible: boolean;
+  duration: number | null;
+  remaining: number | null;
+  deadline: number | null;
   timer: ReturnType<typeof setTimeout> | null;
-  pausedAt: number | null;
+  removalTimer: ReturnType<typeof setTimeout> | null;
 }
 
 interface ToastStore {
   toasts: Toast[];
-  addToast(message: string, type?: string): void;
-  dismissToast(id: number): void;
-  clearToastTimer(id: number): void;
-  resumeToastTimer(id: number, duration: number): void;
+  addToast(message: string, type?: string, options?: ToastOptions): void;
+  dismissToast(id: ToastId, notify?: boolean): void;
+  removeToast(id: ToastId): void;
+  clearToastTimer(id: ToastId): void;
+  resumeToastTimer(id: ToastId): void;
+  startToastTimer(toast: Toast): void;
 }
 
-interface ToastMessage {
+interface ToastMessage extends ToastOptions {
   message: string;
   type?: string;
+}
+
+function defaultDuration(type: string): number | null {
+  if (type === "error") return null;
+  return type === "debug" ? 3_000 : 5_000;
 }
 
 document.addEventListener("alpine:init", () => {
@@ -32,68 +49,104 @@ document.addEventListener("alpine:init", () => {
   const store: ToastStore = {
     toasts: [],
 
-    addToast(message: string, type?: string) {
-      console.log("[toast] addToast called:", { message, type });
+    addToast(message: string, type?: string, options: ToastOptions = {}) {
+      console.log("[toast] addToast called:", { message, type, options });
       if (!type) type = "info";
       const validTypes = ["success", "error", "info", "warning", "debug"];
       if (!validTypes.includes(type)) type = "info";
+      const id = options.id ?? ++idCounter;
+      const duration = options.duration === undefined
+        ? defaultDuration(type)
+        : options.duration;
+      const existing = this.toasts.find((toast) => toast.id === id);
 
-      if (this.toasts.length >= 3) {
-        console.log("[toast] max 3 toasts reached, removing oldest");
-        this.toasts.shift();
-      }
-
-      const id = ++idCounter;
-      console.log("[toast] toast added, count:", this.toasts.length);
-      this.toasts.push({ id, message, type, visible: true, timer: null, pausedAt: null });
-
-      if (type !== "error") {
-        const toast = this.toasts[this.toasts.length - 1];
-        const autoDismissDelay = type === "debug" ? 3000 : 5000;
-        toast.timer = setTimeout(() => {
-          console.log("[toast] auto-dismiss after " + autoDismissDelay / 1000 + "s");
-          this.dismissToast(id);
-        }, autoDismissDelay);
-      }
-    },
-
-    dismissToast(id: number) {
-      console.log("[toast] dismissToast for id:", id);
-      const index = this.toasts.findIndex((toast) => toast.id === id);
-      if (index === -1) {
-        console.log("[toast] toast not found");
+      if (existing) {
+        if (existing.timer) clearTimeout(existing.timer);
+        if (existing.removalTimer) clearTimeout(existing.removalTimer);
+        Object.assign(existing, {
+          message,
+          type,
+          visible: true,
+          duration,
+          remaining: duration,
+          deadline: null,
+          timer: null,
+          removalTimer: null,
+        });
+        this.startToastTimer(existing);
         return;
       }
 
+      if (this.toasts.length >= 3) {
+        console.log("[toast] max 3 toasts reached, removing oldest");
+        const oldest = this.toasts.shift();
+        if (oldest?.timer) clearTimeout(oldest.timer);
+        if (oldest?.removalTimer) clearTimeout(oldest.removalTimer);
+      }
+
+      console.log("[toast] toast added, count:", this.toasts.length);
+      const toast: Toast = {
+        id,
+        message,
+        type,
+        visible: true,
+        duration,
+        remaining: duration,
+        deadline: null,
+        timer: null,
+        removalTimer: null,
+      };
+      this.toasts.push(toast);
+      this.startToastTimer(toast);
+    },
+
+    startToastTimer(toast: Toast) {
+      if (toast.remaining === null) return;
+      toast.deadline = Date.now() + toast.remaining;
+      toast.timer = setTimeout(() => this.dismissToast(toast.id, false), toast.remaining);
+    },
+
+    dismissToast(id: ToastId, notify = true) {
+      console.log("[toast] dismissToast for id:", id);
+      const index = this.toasts.findIndex((toast) => toast.id === id);
+      if (index === -1) return;
+
       const toast = this.toasts[index];
       if (toast.timer) clearTimeout(toast.timer);
+      toast.timer = null;
       toast.visible = false;
+      if (notify) {
+        window.dispatchEvent(new CustomEvent("toast-dismissed", { detail: { id } }));
+      }
 
-      setTimeout(() => {
-        this.toasts = this.toasts.filter((toast) => toast.id !== id);
-        console.log("[toast] after dismiss, count:", this.toasts.length);
+      toast.removalTimer = setTimeout(() => {
+        this.removeToast(id);
       }, 300);
     },
 
-    clearToastTimer(id: number) {
+    removeToast(id: ToastId) {
+      const toast = this.toasts.find((candidate) => candidate.id === id);
+      if (toast?.timer) clearTimeout(toast.timer);
+      if (toast?.removalTimer) clearTimeout(toast.removalTimer);
+      this.toasts = this.toasts.filter((candidate) => candidate.id !== id);
+    },
+
+    clearToastTimer(id: ToastId) {
       const toast = this.toasts.find((toast) => toast.id === id);
       if (toast?.timer) {
         console.log("[toast] pause timer for toast id:", id);
         clearTimeout(toast.timer);
         toast.timer = null;
-        toast.pausedAt = Date.now();
+        toast.remaining = Math.max(0, (toast.deadline ?? Date.now()) - Date.now());
+        toast.deadline = null;
       }
     },
 
-    resumeToastTimer(id: number, duration: number) {
+    resumeToastTimer(id: ToastId) {
       const toast = this.toasts.find((toast) => toast.id === id);
-      if (toast?.pausedAt && toast.timer === null) {
-        console.log("[toast] resume timer for toast id:", id);
-        toast.timer = setTimeout(() => {
-          this.dismissToast(id);
-        }, duration);
-        toast.pausedAt = null;
-      }
+      if (!toast || toast.timer !== null || toast.remaining === null) return;
+      console.log("[toast] resume timer for toast id:", id);
+      this.startToastTimer(toast);
     },
   };
 
@@ -109,11 +162,15 @@ document.addEventListener("alpine:init", () => {
         console.log("[toast] show-toast event received:", detail);
         if (Array.isArray(detail)) {
           detail.forEach((message) => {
-            Alpine.store("toasts").addToast(message.message, message.type);
+            Alpine.store("toasts").addToast(message.message, message.type, message);
           });
         } else {
-          Alpine.store("toasts").addToast(detail.message, detail.type);
+          Alpine.store("toasts").addToast(detail.message, detail.type, detail);
         }
+      });
+      window.addEventListener("remove-toast", (event) => {
+        const { id } = (event as CustomEvent<{ id: ToastId }>).detail;
+        Alpine.store("toasts").removeToast(id);
       });
 
       try {
@@ -126,7 +183,7 @@ document.addEventListener("alpine:init", () => {
           if (Array.isArray(messages)) {
             messages.forEach((message) => {
               console.log("[toast] loading django-message:", message);
-              Alpine.store("toasts").addToast(message.message, message.type || "info");
+              Alpine.store("toasts").addToast(message.message, message.type || "info", message);
             });
           }
         }
@@ -141,28 +198,36 @@ document.addEventListener("alpine:init", () => {
       }
     },
 
-    addToast(message: string, type?: string) {
-      console.log("[toast] toastStore.addToast delegating:", { message, type });
-      Alpine.store("toasts").addToast(message, type);
+    addToast(message: string, type?: string, options?: ToastOptions) {
+      console.log("[toast] toastStore.addToast delegating:", { message, type, options });
+      Alpine.store("toasts").addToast(message, type, options);
     },
 
-    dismissToast(id: number) {
+    dismissToast(id: ToastId) {
       console.log("[toast] toastStore.dismissToast delegating:", id);
       Alpine.store("toasts").dismissToast(id);
     },
   }));
 });
 
-function toast(message: string, type?: string): void {
-  console.log("[toast] toast() called:", { message, type });
+function toast(message: string, type?: string, options: ToastOptions = {}): void {
+  console.log("[toast] toast() called:", { message, type, options });
   const event = new CustomEvent("show-toast", {
-    detail: { message, type },
+    detail: { message, type, ...options },
     bubbles: true,
   });
   document.dispatchEvent(event);
   console.log("[toast] CustomEvent dispatched, type:", event.type);
 }
 window.toast = toast;
+window.removeToast = (id: ToastId): void => {
+  const store = typeof Alpine === "undefined" ? null : Alpine.store("toasts");
+  if (store) {
+    store.removeToast(id);
+    return;
+  }
+  window.dispatchEvent(new CustomEvent("remove-toast", { detail: { id } }));
+};
 
 /** Dispatch the Django/HTMX events carried by one fetch response. */
 function dispatchHtmxTriggers(response: Response): void {

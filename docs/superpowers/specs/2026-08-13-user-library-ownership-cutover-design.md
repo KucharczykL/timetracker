@@ -252,10 +252,11 @@ does not request conversion.
 
 ### Settings migration
 
-Before deploying the old release's final preflight, record the effective old
-currency and effective default Device (personal override first, then site
-default). Production configuration is then updated explicitly for the new
-keys.
+Before deploying the cutover, capture the old release's effective site and
+personal currency resolution, including source and lock state, plus the
+effective default Device. These runtime facts and the database observations
+described below live in the one-time cutover manifest. Production
+configuration is then updated explicitly for the new keys.
 
 During cutover:
 
@@ -273,6 +274,130 @@ choice. There is no runtime alias for old names and no permanent rejection code
 for them. A follow-up issue adds focused warnings for unknown `[timetracker]`
 configuration keys and stale unknown SiteSetting rows, not arbitrary process
 environment variables.
+
+### Cutover manifest and fresh installs
+
+The one-User legacy path requires a JSON manifest supplied by absolute path in
+`TIMETRACKER_OWN_CUTOVER_MANIFEST`. It is generated beside the final
+pre-cutover custom-format PostgreSQL dump, contains no credentials, is never
+committed or baked into the image, and is retained with that protected backup
+and the migration reconciliation output.
+
+The version-1 manifest has five required top-level objects:
+
+- `source`: deployed version/short commit, source database and PostgreSQL
+  version, dump filename, and SHA-256;
+- `expected_legacy_state`: User id/username, row and link counts, and nullable
+  Session Game/Device observations;
+- `observed_setting_state`: exact preference/setting row counts and the raw old
+  site/User currency and default-Device values, preserving absent rows versus
+  present JSON nulls;
+- `operator_confirmed_settings`: old site and personal currency values with
+  source/lock metadata, the resulting Purchase and Display currencies, and the
+  effective default Device id/name; and
+- `observed_purchase_state`: exact original-currency counts plus converted
+  cache currency, completeness, and dirty/mixed-row counts.
+
+The key set below is exact; values are illustrative:
+
+```json
+{
+  "schema_version": 1,
+  "source": {
+    "deployment_version": "main-deadbee",
+    "git_commit_short": "deadbee",
+    "database_name": "timetracker",
+    "postgres_version": "18.4",
+    "dump_filename": "timetracker-pre-cutover.dump",
+    "dump_sha256": "64 lowercase hexadecimal characters"
+  },
+  "expected_legacy_state": {
+    "user_id": 1,
+    "username": "operator-confirmed username",
+    "row_counts": {
+      "users": 1,
+      "sessions": 0,
+      "games": 0,
+      "devices": 0,
+      "platforms": 0,
+      "purchases": 0,
+      "purchase_games": 0,
+      "play_events": 0,
+      "status_changes": 0,
+      "filter_presets": 0
+    },
+    "null_session_game_count": 0,
+    "null_session_device_count": 0
+  },
+  "observed_setting_state": {
+    "user_preferences_row_count": 1,
+    "site_setting_row_count": 0,
+    "old_site_currency_row": {
+      "present": false,
+      "value": null
+    },
+    "old_site_default_device_row": {
+      "present": false,
+      "value": null
+    },
+    "old_personal_currency_value": "EUR",
+    "old_personal_default_device_id": 1
+  },
+  "operator_confirmed_settings": {
+    "old_site_currency": {
+      "value": "CZK",
+      "source": "default",
+      "locked": false
+    },
+    "old_personal_currency": {
+      "value": "EUR",
+      "source": "user",
+      "locked": false
+    },
+    "effective_purchase_currency": "EUR",
+    "effective_display_currency": "CZK",
+    "effective_default_device_id": 1,
+    "effective_default_device_name": "Example device",
+    "effective_default_device_source": "user"
+  },
+  "observed_purchase_state": {
+    "purchase_count": 0,
+    "original_currency_counts": {},
+    "converted_cache_currency": "CZK",
+    "converted_cache_count": 0,
+    "null_converted_price_count": 0,
+    "blank_converted_currency_count": 0,
+    "needs_price_update_count": 0,
+    "mixed_cache_nullability_count": 0
+  }
+}
+```
+
+`effective_default_device_id` and `effective_default_device_name` are both
+`null` when there is no default Device; `effective_default_device_source` still
+uses the old resolver's exact source value. `original_currency_counts`
+preserves the exact stored case of each original currency key because original
+Purchase facts are not normalized by this cutover.
+
+Runtime-derived values come from the still-running old application, not from a
+new-code default or an inference from the dump. Database-derived values come
+from a restored copy of the exact hashed dump. The dump hash is provenance for
+the operator's restore and rehearsal; a data migration cannot recompute the
+hash of an archive it is not given. The migration prints that hash and validates
+the restored/live database facts represented by the manifest.
+
+The migration loads and validates the complete manifest before its first write.
+It rejects a missing/unreadable path, unknown schema version, missing or
+wrong-typed field, User identity mismatch, row/count drift, changed effective
+settings, a different default Device, or Purchase-cache drift. It never guesses
+or rewrites the artifact.
+
+A genuinely pristine install is the only no-manifest path: zero Users and zero
+rows in every legacy private, link, preference, and old setting table. It runs
+the schema migration without creating a library; normal post-migration User
+provisioning creates one later. Zero Users with any legacy state aborts as an
+orphaned database, exactly one User requires the manifest, and two or more
+Users remain unsupported and abort.
 
 ## Atomic conversion bridge
 
@@ -370,20 +495,33 @@ conversion.
 ## Production cutover
 
 The only supported legacy database is the inspected production shape: exactly
-one User and the current global private data. The application is offline for
-the operation. The cutover is rehearsed against a fresh copy first, then run
-against production with a fresh restorable backup.
+one User and the current global private data. A separate pristine zero-User
+branch exists solely so a fresh installation can apply the full migration
+history. The application is offline for the legacy operation. The cutover is
+rehearsed against a restored copy of the exact manifest-hashed dump first, then
+run against production with a newly generated matching dump and manifest.
 
 This is an ordinary Django data migration with explicit preconditions, not a
-temporary library/claim workflow. Before mutation it verifies:
+temporary library/claim workflow. Before mutation it selects and verifies one
+of the two supported shapes:
 
-- exactly one User and the expected required preference/configuration state;
+- zero Users plus no legacy state, which takes the pristine-install branch and
+  requires no manifest; or
+- exactly one User plus a valid `TIMETRACKER_OWN_CUTOVER_MANIFEST`, which takes
+  the legacy cutover branch and validates every recorded identity/count/value.
+
+The legacy branch additionally verifies:
+
+- the expected required preference/configuration state;
 - zero Sessions with a null Game;
 - no saved filter relying on nullable Session Game;
 - the exact built-in Platform classification fixture is unambiguous;
 - uniqueness changes can succeed;
 - every relationship can resolve to the single production library; and
-- recorded effective currency/default-Device values match deployment input.
+- recorded effective currency/default-Device values match deployment input;
+- all recorded row/link/original-currency counts still match; and
+- the source deployment identity and backup hash are emitted in reconciliation
+  output for the operator's retained audit record.
 
 Any mismatch aborts before guessing. The operator inspects and fixes the data,
 then reruns. The website is not kept online in a half-migrated compatibility

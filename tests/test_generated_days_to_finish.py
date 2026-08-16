@@ -20,9 +20,9 @@ pytestmark = pytest.mark.django_db
         (date(2026, 1, 4), date(2026, 1, 1), -3),
     ],
 )
-def test_generated_days_to_finish(started, ended, expected_days):
+def test_generated_days_to_finish(started, ended, expected_days, owned_library):
     event = PlayEvent.objects.create(
-        game=Game.objects.create(name=f"Game {started}-{ended}"),
+        game=Game.objects.create(library=owned_library, name=f"Game {started}-{ended}"),
         started=started,
         ended=ended,
     )

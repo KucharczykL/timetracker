@@ -1,9 +1,10 @@
 import json
 from datetime import timedelta
-from typing import Any
+from typing import Any, cast
 
 from django.apps import apps
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
 from django.db.models import (
     F,
     Sum,
@@ -42,6 +43,15 @@ from timetracker.settings_resolver import resolve_for_user
 
 
 def model_counts(request: HttpRequest) -> dict[str, Any]:
+    user = getattr(request, "user", None)
+    library = (
+        cast(User, user).library if user is not None and user.is_authenticated else None
+    )
+    sessions = (
+        Session.objects.for_library(library)
+        if library is not None
+        else Session.objects.none()
+    )
     now = timezone_now()
     # Use a contiguous [midnight, next midnight) range in the active timezone
     # instead of day/month/year extracts: a range filter can use an index on
@@ -52,11 +62,11 @@ def model_counts(request: HttpRequest) -> dict[str, Any]:
     # "Last 7 days" is a calendar-day window (today plus the previous six) so the
     # displayed total matches the list its navbar link points to.
     start_of_window = start_of_today - timedelta(days=6)
-    today_played = Session.objects.filter(
+    today_played = sessions.filter(
         timestamp_start__gte=start_of_today,
         timestamp_start__lt=start_of_tomorrow,
     ).aggregate(time=Sum(F("duration_total")))["time"]
-    last_7_played = Session.objects.filter(
+    last_7_played = sessions.filter(
         timestamp_start__gte=start_of_window,
         timestamp_start__lt=start_of_tomorrow,
     ).aggregate(time=Sum(F("duration_total")))["time"]
@@ -75,10 +85,20 @@ def model_counts(request: HttpRequest) -> dict[str, Any]:
     )
 
     return {
-        "game_available": Game.objects.exists(),
-        "platform_available": Platform.objects.exists(),
-        "purchase_available": Purchase.objects.exists(),
-        "session_count": Session.objects.exists(),
+        "game_available": (
+            Game.objects.for_library(library).exists() if library is not None else False
+        ),
+        "platform_available": (
+            Platform.objects.visible_to(library).exists()
+            if library is not None
+            else False
+        ),
+        "purchase_available": (
+            Purchase.objects.for_library(library).exists()
+            if library is not None
+            else False
+        ),
+        "session_count": sessions.exists(),
         "today_played": Duration(
             today_played, durations, id_scope="navbar-today", link=today_url
         ),
@@ -94,7 +114,8 @@ def global_current_year(request: HttpRequest) -> dict[str, int]:
 
 @login_required
 def stats_alltime(request: HttpRequest) -> HttpResponse:
-    data = compute_stats(None)
+    library = cast(User, request.user).library
+    data = compute_stats(library, None)
     presentation = date_time_presentation_for_request(request)
     durations = duration_presentation_for_request(request)
     return render_page(
@@ -111,7 +132,8 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
         )
     if year == 0:
         return HttpResponseRedirect(reverse("games:stats_alltime"))
-    data = compute_stats(year)
+    library = cast(User, request.user).library
+    data = compute_stats(library, year)
     presentation = date_time_presentation_for_request(request)
     durations = duration_presentation_for_request(request)
     return render_page(

@@ -1,6 +1,9 @@
+from typing import cast
+
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
 from django.http import HttpRequest, HttpResponse
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import redirect
 from django.urls import reverse
 
 from common.components import (
@@ -20,13 +23,14 @@ from common.components import (
     parse_filter_dict,
 )
 from common.date_time_presentation import date_time_presentation_for_request
-from common.filter_execution import regex_timeout_view
+from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.returns import action_url
 from common.utils import paginate
-from games.filters import parse_device_filter
+from games.filters import filter_query_context_for_library, parse_device_filter
 from games.forms import DeviceForm
 from games.models import Device
+from games.ownership import owned_or_404
 from games.sorting import (
     DEVICE_DEFAULT_SORT,
     DEVICE_SORTS,
@@ -45,9 +49,10 @@ from games.views.returns import return_url
 @login_required
 @regex_timeout_view
 def list_devices(request: HttpRequest) -> HttpResponse:
+    library = cast(User, request.user).library
     presentation = date_time_presentation_for_request(request)
     origin = request.get_full_path()
-    devices = Device.objects.all()
+    devices = Device.objects.for_library(library)
 
     filter_json = request.GET.get("filter", "")
     if filter_json:
@@ -55,7 +60,11 @@ def list_devices(request: HttpRequest) -> HttpResponse:
             request, parse_device_filter, filter_json
         )
         if device_filter is not None:
-            devices = devices.filter(device_filter.to_q())
+            devices = execute_filter(
+                device_filter,
+                devices,
+                filter_query_context_for_library(library),
+            )
 
     find = parse_find_filter(request)
     sort = apply_sort(devices, find, DEVICE_SORTS, DEVICE_DEFAULT_SORT)
@@ -128,8 +137,9 @@ def list_devices(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def edit_device(request: HttpRequest, device_id: int = 0) -> HttpResponse:
-    device = get_object_or_404(Device, id=device_id)
-    form = DeviceForm(request.POST or None, instance=device)
+    library = cast(User, request.user).library
+    device = owned_or_404(Device.objects.for_library(library), library, id=device_id)
+    form = DeviceForm(request.POST or None, instance=device, library=library)
     if form.is_valid():
         form.save()
         return redirect(return_url(request, fallback="games:list_devices"))
@@ -139,7 +149,8 @@ def edit_device(request: HttpRequest, device_id: int = 0) -> HttpResponse:
 
 @login_required
 def delete_device(request: HttpRequest, device_id: int) -> HttpResponse:
-    device = get_object_or_404(Device, id=device_id)
+    library = cast(User, request.user).library
+    device = owned_or_404(Device.objects.for_library(library), library, id=device_id)
     return confirm_and_delete(
         request,
         device,
@@ -154,7 +165,8 @@ def delete_device(request: HttpRequest, device_id: int) -> HttpResponse:
 
 @login_required
 def add_device(request: HttpRequest) -> HttpResponse:
-    form = DeviceForm(request.POST or None)
+    library = cast(User, request.user).library
+    form = DeviceForm(request.POST or None, library=library)
     if form.is_valid():
         form.save()
         return redirect(return_url(request, fallback="games:list_devices"))

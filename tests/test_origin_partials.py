@@ -12,20 +12,23 @@ ORIGIN = "/tracker/purchase/list?page=2"
 
 
 @pytest.fixture
-def purchase(db):
-    game = Game.objects.create(name="Bundled")
-    other = Game.objects.create(name="Also bundled")
+def purchase(owned_library):
+    game = Game.objects.create(library=owned_library, name="Bundled")
+    other = Game.objects.create(library=owned_library, name="Also bundled")
     purchase = Purchase.objects.create(
-        date_purchased=date(2024, 6, 1), type=Purchase.GAME, price=10
+        price_currency="CZK",
+        library=owned_library,
+        date_purchased=date(2024, 6, 1),
+        type=Purchase.GAME,
+        price=10,
     )
     purchase.games.set([game, other])
     return purchase
 
 
 @pytest.fixture
-def logged_in(client, django_user_model, db):
-    user = django_user_model.objects.create_user(username="u", password="p")
-    client.force_login(user)
+def logged_in(client, owned_user):
+    client.force_login(owned_user)
     return client
 
 

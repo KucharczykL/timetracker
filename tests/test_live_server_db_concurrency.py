@@ -47,7 +47,8 @@ def test_concurrent_live_server_requests_all_succeed(live_server, django_user_mo
     user = django_user_model.objects.create_user(username="tester", password="secret")
     platform = Platform.objects.create(name="PC", icon="pc")
     Game.objects.bulk_create(
-        Game(name=f"Game {index}", platform=platform) for index in range(60)
+        Game(library=user.library, name=f"Game {index}", platform=platform)
+        for index in range(60)
     )
 
     session_key = _authenticated_session_key(user)

@@ -28,7 +28,7 @@ from timetracker.settings_resolver import (
     resolve_with_origin,
 )
 
-type SettingFieldName = str  # e.g. "default_currency" -- the Django form field name
+type SettingFieldName = str  # e.g. "default_display_currency"
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,11 +43,13 @@ class TextFieldOverride:
     widget_attrs: Mapping[str, str] = field(default_factory=dict)
 
 
+_CURRENCY_TEXT_OVERRIDE = TextFieldOverride(
+    max_length=3,
+    widget_attrs={"x-mask": "aaa", "x-data": "", "class": "uppercase"},
+)
 _TEXT_FIELD_OVERRIDES: Final[dict[SettingKey, TextFieldOverride]] = {
-    "DEFAULT_CURRENCY": TextFieldOverride(
-        max_length=3,
-        widget_attrs={"x-mask": "aaa", "x-data": "", "class": "uppercase"},
-    ),
+    "DEFAULT_PURCHASE_CURRENCY": _CURRENCY_TEXT_OVERRIDE,
+    "DEFAULT_DISPLAY_CURRENCY": _CURRENCY_TEXT_OVERRIDE,
 }
 
 

@@ -15,15 +15,15 @@ from games.models import Device, Game, Platform, Purchase, Session
 pytestmark = pytest.mark.django_db
 
 
-def test_game_without_platform_stays_null():
-    game = Game.objects.create(name="Homebrew")
+def test_game_without_platform_stays_null(owned_library):
+    game = Game.objects.create(library=owned_library, name="Homebrew")
     game.refresh_from_db()
     assert game.platform is None
     assert Platform.objects.count() == 0
 
 
-def test_session_without_device_stays_null():
-    game = Game.objects.create(name="Homebrew")
+def test_session_without_device_stays_null(owned_library):
+    game = Game.objects.create(library=owned_library, name="Homebrew")
     session = Session.objects.create(
         game=game, timestamp_start=timezone.now(), duration_manual=timedelta(0)
     )
@@ -32,22 +32,29 @@ def test_session_without_device_stays_null():
     assert Device.objects.count() == 0
 
 
-def test_purchase_without_platform_stays_null_currency_still_defaults():
-    game = Game.objects.create(name="Homebrew")
+def test_purchase_without_platform_stays_null_with_explicit_currency(
+    owned_library,
+):
+    game = Game.objects.create(library=owned_library, name="Homebrew")
     purchase = Purchase.objects.create(
-        date_purchased=timezone.now().date(), price_currency=""
+        library=owned_library,
+        date_purchased=timezone.now().date(),
+        price_currency="CZK",
     )
     purchase.games.add(game)
     purchase.refresh_from_db()
     assert purchase.platform is None
-    assert purchase.price_currency  # DEFAULT_CURRENCY fallback survives
+    assert purchase.price_currency == "CZK"
 
 
-def test_platform_delete_sets_null_and_keeps_purchases():
+def test_platform_delete_sets_null_and_keeps_purchases(owned_library):
     platform = Platform.objects.create(name="Steam")
-    game = Game.objects.create(name="Hades", platform=platform)
+    game = Game.objects.create(library=owned_library, name="Hades", platform=platform)
     purchase = Purchase.objects.create(
-        date_purchased=timezone.now().date(), platform=platform
+        price_currency="CZK",
+        library=owned_library,
+        date_purchased=timezone.now().date(),
+        platform=platform,
     )
     purchase.games.add(game)
 
@@ -62,9 +69,11 @@ def test_platform_delete_sets_null_and_keeps_purchases():
     assert purchase.platform is None
 
 
-def test_device_delete_sets_null_on_sessions():
-    device = Device.objects.create(name="Deck", type=Device.HANDHELD)
-    game = Game.objects.create(name="Hades")
+def test_device_delete_sets_null_on_sessions(owned_library):
+    device = Device.objects.create(
+        library=owned_library, name="Deck", type=Device.HANDHELD
+    )
+    game = Game.objects.create(library=owned_library, name="Hades")
     session = Session.objects.create(
         game=game,
         device=device,
@@ -78,10 +87,10 @@ def test_device_delete_sets_null_on_sessions():
     assert session.device is None
 
 
-def test_platformless_duplicate_name_year_rejected():
-    Game.objects.create(name="Tetris", year_released=1984)
+def test_platformless_duplicate_name_year_rejected(owned_library):
+    Game.objects.create(library=owned_library, name="Tetris", year_released=1984)
     with pytest.raises(IntegrityError):
-        Game.objects.create(name="Tetris", year_released=1984)
+        Game.objects.create(library=owned_library, name="Tetris", year_released=1984)
 
 
 def test_platformless_duplicate_via_add_game_form_shows_error(
@@ -93,7 +102,7 @@ def test_platformless_duplicate_via_add_game_form_shows_error(
 
     user = django_user_model.objects.create_user(username="u", password="p")
     client.force_login(user)
-    Game.objects.create(name="Tetris", year_released=1984)
+    Game.objects.create(library=user.library, name="Tetris", year_released=1984)
 
     response = client.post(
         reverse("games:add_game"),
@@ -112,7 +121,7 @@ def test_platformless_duplicate_via_add_game_form_shows_error(
     assert Game.objects.count() == 1
 
 
-def test_exclude_platform_keeps_platformless_games():
+def test_exclude_platform_keeps_platformless_games(owned_library):
     # "Exclude platform X" keeps games with no platform — the visible behavior
     # the sentinel used to provide by accident, now stated explicitly in the
     # criterion's Q tree (issue #290).
@@ -120,8 +129,8 @@ def test_exclude_platform_keeps_platformless_games():
     from games.filters import GameFilter
 
     steam = Platform.objects.create(name="Steam")
-    Game.objects.create(name="Hades", platform=steam)
-    platformless = Game.objects.create(name="Homebrew")
+    Game.objects.create(library=owned_library, name="Hades", platform=steam)
+    platformless = Game.objects.create(library=owned_library, name="Homebrew")
 
     excluded = GameFilter(
         platform=MultiCriterion(value=[steam.id], modifier=Modifier.EXCLUDES)
@@ -129,10 +138,22 @@ def test_exclude_platform_keeps_platformless_games():
     assert list(Game.objects.filter(excluded.to_q())) == [platformless]
 
 
-def test_same_name_year_allowed_across_platforms_and_against_platformless():
+def test_same_name_year_allowed_across_platforms_and_against_platformless(
+    owned_library,
+):
     platform_a = Platform.objects.create(name="Game Boy")
     platform_b = Platform.objects.create(name="NES")
-    Game.objects.create(name="Tetris", year_released=1984)
-    Game.objects.create(name="Tetris", year_released=1984, platform=platform_a)
-    Game.objects.create(name="Tetris", year_released=1984, platform=platform_b)
+    Game.objects.create(library=owned_library, name="Tetris", year_released=1984)
+    Game.objects.create(
+        library=owned_library,
+        name="Tetris",
+        year_released=1984,
+        platform=platform_a,
+    )
+    Game.objects.create(
+        library=owned_library,
+        name="Tetris",
+        year_released=1984,
+        platform=platform_b,
+    )
     assert Game.objects.count() == 3

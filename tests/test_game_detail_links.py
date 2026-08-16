@@ -15,6 +15,7 @@ from games.filters import (
     PlayEventFilter,
     PurchaseFilter,
     SessionFilter,
+    filter_query_context_for_library,
     filter_url,
 )
 from games.formatting import session_time_range
@@ -31,22 +32,29 @@ def _dt(day, hour=12):
 
 
 @pytest.fixture
-def game(db):
+def game(owned_library):
     platform = Platform.objects.create(name="PC")
     game = Game.objects.create(
-        name="Test Game", platform=platform, status=Game.Status.PLAYED
+        library=owned_library,
+        name="Test Game",
+        platform=platform,
+        status=Game.Status.PLAYED,
     )
     Session.objects.create(game=game, timestamp_start=_dt(1), timestamp_end=_dt(1, 13))
-    Purchase.objects.create(date_purchased=_dt(1), type=Purchase.GAME).games.set([game])
+    Purchase.objects.create(
+        library=owned_library,
+        price_currency="CZK",
+        date_purchased=_dt(1),
+        type=Purchase.GAME,
+    ).games.set([game])
     PlayEvent.objects.create(game=game, ended=_dt(2))
     return game
 
 
 @pytest.fixture
-def rendered(game, rf, django_user_model):
-    user = django_user_model.objects.create_user(username="u", password="p")
+def rendered(game, rf, owned_user):
     request = rf.get(f"/game/{game.id}/")
-    request.user = user
+    request.user = owned_user
     request.session = {}
     return view_game(request, game.id).content.decode()
 
@@ -69,20 +77,30 @@ def test_playevents_section_links_to_filtered_playevents(game, rendered):
 def test_link_filters_scope_to_game(game):
     """Each link's filter selects exactly the game's own records, not another
     game's (parity between the section and the filtered list it links to)."""
-    other = Game.objects.create(name="Other", platform=game.platform)
-    Session.objects.create(game=other, timestamp_start=_dt(3), timestamp_end=_dt(3, 13))
-    Purchase.objects.create(date_purchased=_dt(3), type=Purchase.GAME).games.set(
-        [other]
+    other = Game.objects.create(
+        library=game.library, name="Other", platform=game.platform
     )
+    Session.objects.create(game=other, timestamp_start=_dt(3), timestamp_end=_dt(3, 13))
+    Purchase.objects.create(
+        library=game.library,
+        price_currency="CZK",
+        date_purchased=_dt(3),
+        type=Purchase.GAME,
+    ).games.set([other])
     PlayEvent.objects.create(game=other, ended=_dt(4))
 
-    sessions = Session.objects.filter(SessionFilter.where(game=[game.id]).to_q())
+    context = filter_query_context_for_library(game.library)
+    sessions = Session.objects.filter(SessionFilter.where(game=[game.id]).to_q(context))
     assert list(sessions) == list(game.sessions.all())
 
-    purchases = Purchase.objects.filter(PurchaseFilter.where(games=[game.id]).to_q())
+    purchases = Purchase.objects.filter(
+        PurchaseFilter.where(games=[game.id]).to_q(context)
+    )
     assert list(purchases) == list(game.purchases.all())
 
-    playevents = PlayEvent.objects.filter(PlayEventFilter.where(game=[game.id]).to_q())
+    playevents = PlayEvent.objects.filter(
+        PlayEventFilter.where(game=[game.id]).to_q(context)
+    )
     assert list(playevents) == list(game.playevents.all())
 
 
@@ -112,19 +130,20 @@ def test_sessions_section_is_read_only(game, rendered):
     assert ">Device<" in rendered
 
 
-def test_sessions_section_shows_last_five(db, django_user_model, rf):
+def test_sessions_section_shows_last_five(owned_user, rf):
     """Only the five most-recent sessions render; the badge keeps the total."""
     platform = Platform.objects.create(name="PC")
-    many = Game.objects.create(name="Many", platform=platform)
+    many = Game.objects.create(
+        library=owned_user.library, name="Many", platform=platform
+    )
     sessions = [
         Session.objects.create(
             game=many, timestamp_start=_dt(day), timestamp_end=_dt(day, 13)
         )
         for day in range(1, 7)  # six sessions, days 1..6
     ]
-    user = django_user_model.objects.create_user(username="many", password="p")
     request = rf.get(f"/game/{many.id}/")
-    request.user = user
+    request.user = owned_user
     request.session = {}
     html = view_game(request, many.id).content.decode()
 
@@ -156,13 +175,14 @@ def test_section_heading_spacing_does_not_depend_on_the_view_all_button(game, re
         )
 
 
-def test_no_view_all_for_empty_section(db, django_user_model, rf):
+def test_no_view_all_for_empty_section(owned_user, rf):
     """A game with no sessions/purchases/playevents shows no 'View all' link."""
     platform = Platform.objects.create(name="PC")
-    empty_game = Game.objects.create(name="Empty", platform=platform)
-    user = django_user_model.objects.create_user(username="u2", password="p")
+    empty_game = Game.objects.create(
+        library=owned_user.library, name="Empty", platform=platform
+    )
     request = rf.get(f"/game/{empty_game.id}/")
-    request.user = user
+    request.user = owned_user
     request.session = {}
     html = view_game(request, empty_game.id).content.decode()
     assert "View all" not in html

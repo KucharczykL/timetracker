@@ -47,7 +47,8 @@ remove that and `settings.ini` wins; remove that and the code default applies.
 | `APP_URL` | str (or comma-separated URLs) | `http://localhost:8000` | no | Public URL(s) of the site. One full URL or a comma-separated list. Derives `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` from all listed URLs. |
 | `ALLOWED_HOSTS` | list | derived from `APP_URL` | no | Comma-separated hostnames. Overrides the `APP_URL` derivation (useful for `ALLOWED_HOSTS=*` behind a reverse proxy). |
 | `TZ` | str | `Europe/Prague` (dev) / `UTC` (prod) | no | Boot-time Django/server time zone. Requires a restart and is not editable on Admin settings. |
-| `DEFAULT_CURRENCY` | str | `CZK` | no | Site-wide fallback for purchases saved without request/user context and the FX conversion/reporting target. Purchase-entry views resolve the current user's preference instead. |
+| `DEFAULT_PURCHASE_CURRENCY` | str | `CZK` | no | Live user/site default used to pre-fill the required original currency on new purchases. |
+| `DEFAULT_DISPLAY_CURRENCY` | str | `CZK` | no | Live user/site target for that library's converted purchase cache, totals, and statistics. |
 | `DEFAULT_PAGE_SIZE` | int | `25` | no | Default rows shown on list pages. Valid preference/site values: `10`, `25`, `50`, `100`, `500`, `1000`. |
 | `DATABASE_URL` | PostgreSQL URL | required | yes | Required PostgreSQL connection URL. The database must satisfy the [database contract](database.md): PostgreSQL 18.x, UTF8, `builtin`, and `C.UTF-8`. |
 | `DEV_LOGIN_PREFILL` | str (`user:pass`) | `""` (off) | no | **Dev/staging only — never set in production.** When set to `username:password`, the login page prefills those credentials (one click to log in) and sends `X-Robots-Tag: noindex`. Login is not bypassed. `make dev` sets it to `admin:admin`; `make devlogin` provisions that superuser. |
@@ -80,8 +81,9 @@ the global `SiteSetting` model.
   Which sources are enabled depends on the setting's registry definition; for
   example, only settings with `allow_file=True` accept a `NAME__FILE` source.
   Non-user keys proxy straight to `resolve_with_origin`.
-- **Scopes.** **user**-scoped settings (`DEFAULT_CURRENCY`, `DEFAULT_DEVICE`,
-  `DEFAULT_LANDING_PAGE`, `DEFAULT_PAGE_SIZE`, `THEME`, `DISPLAY_TIME_ZONE`,
+- **Scopes.** **user**-scoped settings (`DEFAULT_PURCHASE_CURRENCY`,
+  `DEFAULT_DISPLAY_CURRENCY`, `DEFAULT_DEVICE`, `DEFAULT_LANDING_PAGE`,
+  `DEFAULT_PAGE_SIZE`, `THEME`, `DISPLAY_TIME_ZONE`,
   `SESSION_TIME_ZONE_DISPLAY`, `DATE_FORMAT_LOCALE`, `DATETIME_FORMAT`) have a
   personal override layer *and*
   a `SiteSetting` site default; a plain **site**-scoped setting has only the
@@ -124,9 +126,10 @@ the existing navbar **Menu** dropdown. The page has two sections.
 
 #### Site defaults section
 
-Edits these nine live site defaults, in the order the page renders them:
+Edits these ten live site defaults, in the order the page renders them:
 
-- `DEFAULT_CURRENCY`
+- `DEFAULT_PURCHASE_CURRENCY`
+- `DEFAULT_DISPLAY_CURRENCY`
 - `DEFAULT_DEVICE`
 - `DEFAULT_LANDING_PAGE`
 - `DEFAULT_PAGE_SIZE`
@@ -183,8 +186,11 @@ pages so it cannot compete with the settings form's authoritative control.
 Every authenticated user can open `/tracker/settings` from the main navigation.
 Changes save immediately against the account through `/api/settings/user`:
 
-- **Default currency** pre-fills new purchases and supplies the fallback when a
-  submitted purchase has no currency, including separate-per-game purchases.
+- **Default purchase currency** pre-fills the required original currency on new
+  purchases, including separate-per-game purchases. A blank submitted currency
+  is rejected rather than inferred below the form boundary.
+- **Display currency** selects the converted purchase totals and statistics for
+  this library. Changing it requests a new atomic conversion publication.
 - **Default device** pre-selects the device on every add-session path and fills
   an empty device when editing a session. An existing device is preserved.
 - **Default landing page** controls the `/tracker/` redirect. Supported values
@@ -261,16 +267,131 @@ form.
 
 ### Currency scope
 
-Purchase-entry requests resolve `DEFAULT_CURRENCY` for the authenticated user.
-That resolved personal-or-inherited value pre-fills add/edit purchase forms,
-fills a blank submitted currency, and applies to separate-per-game purchases.
+Purchase-entry requests resolve `DEFAULT_PURCHASE_CURRENCY` for the
+authenticated user. The personal-or-inherited value pre-fills new purchase
+forms and separate-per-game purchases; `Purchase.save()` requires an explicit
+original currency and never guesses from process-global context.
 
-Code without user/request context deliberately remains site-wide.
-`Purchase.save()` fills a missing currency from the shared site resolution
-chain, and the FX conversion task uses the same site value as its reporting
-target. A personal currency preference therefore affects that user's purchase
-entry, but it does not change context-free model saves or the application-wide
-FX/reporting currency.
+`DEFAULT_DISPLAY_CURRENCY` is resolved independently for each User's library.
+It is the target of that library's versioned conversion state and the currency
+label used with its published converted totals. Updating one library never
+changes another library's cached values or reporting currency.
+
+### One-user production cutover for #630
+
+This is an offline, one-time migration. It accepts exactly one legacy User, or
+a genuinely pristine database. Keep the pre-cutover dump, its manifest, and
+the migration reconciliation output together in protected storage outside Git.
+
+1. While the **old release is still running**, record its deployment version or
+   short commit and query the old resolver for both the site and personal
+   `DEFAULT_CURRENCY` triples: effective value, exact source, and lock state.
+   Also record the effective default Device id, name, and source. These are
+   runtime facts; do not infer them from new-code defaults or from the dump.
+2. If the effective default Device is inherited rather than already stored as
+   the User's personal preference, select that same Device explicitly on the
+   old Personal settings page and verify the resolver now reports source
+   `user`. This makes the choice part of the final database snapshot.
+3. Verify the old converted purchase cache is complete in the recorded site
+   currency: every Purchase has a converted price and currency, every converted
+   currency is the recorded Display currency, and no Purchase has
+   `needs_price_update` set. Resolve any dirty, blank, null, or mixed rows
+   before continuing.
+4. Stop the web service and every qcluster/worker so no write can occur after
+   the observations. Create a **fresh** custom-format PostgreSQL archive using
+   a client compatible with the server. Require the production URL and record
+   the identity reported by that connection before dumping:
+
+   ```shell
+   : "${PRODUCTION_DATABASE_URL:?set the production database URL explicitly}"
+   PRODUCTION_DB_ID="$(psql --dbname="$PRODUCTION_DATABASE_URL" --no-align \
+     --tuples-only --command="SELECT current_database() || '@' || \
+     COALESCE(inet_server_addr()::text, 'local') || ':' || \
+     COALESCE(inet_server_port()::text, 'local')")"
+   test -n "$PRODUCTION_DB_ID"
+   pg_dump --dbname="$PRODUCTION_DATABASE_URL" --format=custom --no-owner --no-privileges \
+     --file=/protected/timetracker-pre-630.dump
+   pg_restore --list /protected/timetracker-pre-630.dump
+   ```
+
+5. Hash that exact archive (`sha256sum` on Unix, `Get-FileHash -Algorithm
+   SHA256` on PowerShell). Create a named empty rehearsal database, set a URL
+   that points specifically to it, and pass it explicitly to `pg_restore`:
+
+   ```shell
+   createdb --maintenance-db="$POSTGRES_ADMIN_URL" timetracker_630_rehearsal
+   DISPOSABLE_DATABASE_URL='postgresql://app@db/timetracker_630_rehearsal'
+   DISPOSABLE_DB_ID="$(psql --dbname="$DISPOSABLE_DATABASE_URL" --no-align \
+     --tuples-only --command="SELECT current_database() || '@' || \
+     COALESCE(inet_server_addr()::text, 'local') || ':' || \
+     COALESCE(inet_server_port()::text, 'local')")"
+   test -n "$DISPOSABLE_DB_ID"
+   test "$DISPOSABLE_DB_ID" != "$PRODUCTION_DB_ID"
+   pg_restore --dbname="$DISPOSABLE_DATABASE_URL" --exit-on-error \
+     --no-owner --no-privileges /protected/timetracker-pre-630.dump
+   ```
+
+   The final comparison proves the two URLs resolve to different connected
+   server/database identities. Inspect only this disposable restore when
+   collecting database facts.
+6. Build the exact version-1 manifest documented in the [cutover manifest
+   schema](superpowers/specs/2026-08-13-user-library-ownership-cutover-design.md#cutover-manifest-and-fresh-installs).
+   Fill its database observations from the restored archive and its
+   `operator_confirmed_settings` from steps 1-3. Confirm its
+   `source.dump_sha256` is the lowercase SHA-256 of the archive byte-for-byte,
+   and that its filename, database/PostgreSQL version, deployment version,
+   User identity, row/link counts, nullable observations, raw settings rows,
+   original-currency counts, and converted-cache counts all describe that same
+   restore. The manifest contains no credentials.
+7. Rehearse the complete migration against that disposable restore first.
+   Configure `DEFAULT_PURCHASE_CURRENCY` and `DEFAULT_DISPLAY_CURRENCY` to the
+   recorded old **site** currency. If the old site value was provided by a
+   locked `DEFAULT_CURRENCY` environment, `.env`, or INI source, keep that old
+   source available to this one migration command too; the migration verifies
+   its exact old value/source/lock triple. Mount the manifest read-only at an
+   absolute path and expose it only to the migration process:
+
+   ```shell
+   DATABASE_URL="$DISPOSABLE_DATABASE_URL" \
+     TIMETRACKER_OWN_CUTOVER_MANIFEST=/run/secrets/timetracker-own-630.json \
+     python manage.py migrate
+   DATABASE_URL="$DISPOSABLE_DATABASE_URL" \
+     python manage.py audit_library_ownership --user '<exact username>'
+   ```
+
+   Retain stdout, including the printed source deployment, dump SHA-256, and
+   new library UUID. Verify the audit, manifest row/link/original-currency
+   counts, converted-cache state and totals, both effective currency settings,
+   the library default Device, and representative pages/APIs before touching
+   production.
+8. Keep the unchanged production snapshot offline and deliberately switch from
+   `DISPOSABLE_DATABASE_URL` to the separately recorded production URL. Run the
+   migration and audit with the production target written explicitly:
+
+   ```shell
+   DATABASE_URL="$PRODUCTION_DATABASE_URL" \
+     TIMETRACKER_OWN_CUTOVER_MANIFEST=/run/secrets/timetracker-own-630.json \
+     python manage.py migrate
+   DATABASE_URL="$PRODUCTION_DATABASE_URL" \
+     python manage.py audit_library_ownership --user '<exact username>'
+   ```
+
+   Keep web and workers offline until reconciliation, ownership audit, totals,
+   settings, and page/API smoke checks all pass. If a production attempt ever
+   wrote outside the atomic migration, restore the exact final dump before a
+   new attempt. Remove the old `DEFAULT_CURRENCY` configuration only after
+   migration; it has no post-cutover runtime alias. Start services only after
+   verification succeeds.
+
+A pristine install (zero Users and zero rows in every legacy private, link,
+preference, and old-setting table) is the only path that runs the migration
+without `TIMETRACKER_OWN_CUTOVER_MANIFEST`; normal User provisioning creates
+the first library afterward. Zero Users with legacy data, or two or more Users,
+is rejected.
+
+You must never reuse a manifest from an earlier dump, even when the database
+appears unchanged. Any new dump requires a new hash, a new disposable restore,
+freshly observed counts/settings, a new manifest, and a complete rehearsal.
 
 ### Administration and development tools
 

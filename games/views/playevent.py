@@ -1,13 +1,14 @@
 import logging
 from collections.abc import Sequence
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
 from django.db.models import QuerySet
 from django.db.models.manager import BaseManager
 from django.http import HttpRequest, HttpResponse
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import redirect
 from django.urls import reverse
 
 from common.components import (
@@ -35,13 +36,14 @@ from common.duration_presentation import (
     DurationPresentation,
     duration_format_profile,
 )
-from common.filter_execution import regex_timeout_view
+from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.returns import OriginUrl, action_url
 from common.utils import paginate
-from games.filters import parse_playevent_filter
+from games.filters import filter_query_context_for_library, parse_playevent_filter
 from games.forms import PlayEventForm
 from games.models import Game, PlayEvent, Session
+from games.ownership import owned_or_404
 from games.sorting import (
     PLAYEVENT_DEFAULT_SORT,
     PLAYEVENT_SORTS,
@@ -176,9 +178,10 @@ def _get_formatted_playtime_for_game_sessions_in_range(
 @login_required
 @regex_timeout_view
 def list_playevents(request: HttpRequest) -> HttpResponse:
+    library = cast(User, request.user).library
     presentation = date_time_presentation_for_request(request)
     origin = request.get_full_path()
-    playevents = PlayEvent.objects.all()
+    playevents = PlayEvent.objects.for_library(library)
 
     filter_json = request.GET.get("filter", "")
     if filter_json:
@@ -186,7 +189,11 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
             request, parse_playevent_filter, filter_json
         )
         if playevent_filter is not None:
-            playevents = playevents.filter(playevent_filter.to_q())
+            playevents = execute_filter(
+                playevent_filter,
+                playevents,
+                filter_query_context_for_library(library),
+            )
 
     find = parse_find_filter(request)
     sort = apply_sort(playevents, find, PLAYEVENT_SORTS, PLAYEVENT_DEFAULT_SORT)
@@ -230,9 +237,10 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
 @login_required
 def add_playevent(request: HttpRequest, game_id: int = 0) -> HttpResponse:
     initial: dict[str, Any] = {}
+    library = cast(User, request.user).library
     if game_id:
         # coming from add_playevent_for_game url path
-        game = get_object_or_404(Game, id=game_id)
+        game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
         initial["game"] = game
         try:
             # First, try to get the latest session. If no sessions, then no playtime.
@@ -278,6 +286,7 @@ def add_playevent(request: HttpRequest, game_id: int = 0) -> HttpResponse:
     form = PlayEventForm(
         request.POST or None,
         initial=initial,
+        library=library,
         presentation=date_time_presentation_for_request(request),
     )
     if form.is_valid():
@@ -302,10 +311,14 @@ def add_playevent(request: HttpRequest, game_id: int = 0) -> HttpResponse:
 
 @login_required
 def edit_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:
-    playevent = get_object_or_404(PlayEvent, id=playevent_id)
+    library = cast(User, request.user).library
+    playevent = owned_or_404(
+        PlayEvent.objects.for_library(library), library, id=playevent_id
+    )
     form = PlayEventForm(
         request.POST or None,
         instance=playevent,
+        library=library,
         presentation=date_time_presentation_for_request(request),
     )
     if form.is_valid():
@@ -329,7 +342,10 @@ def edit_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:
 
 @login_required
 def delete_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:
-    playevent = get_object_or_404(PlayEvent, id=playevent_id)
+    library = cast(User, request.user).library
+    playevent = owned_or_404(
+        PlayEvent.objects.for_library(library), library, id=playevent_id
+    )
     return confirm_and_delete(
         request,
         playevent,

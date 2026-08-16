@@ -69,7 +69,7 @@ ALTERNATE_PROFILE = build_format_profile(
 
 @pytest.mark.django_db
 def test_non_default_presentation_reaches_every_server_display_path(
-    client, django_user_model, monkeypatch
+    client, django_user_model, monkeypatch, django_capture_on_commit_callbacks
 ) -> None:
     monkeypatch.setattr(
         presentation_module,
@@ -82,14 +82,19 @@ def test_non_default_presentation_reaches_every_server_display_path(
         lambda: datetime(2022, 7, 22, 12, 5, tzinfo=UTC),
     )
     user = django_user_model.objects.create_user(username="dates", password="pw")
-    change_user_setting(user, "DISPLAY_TIME_ZONE", "UTC")
-    change_user_setting(user, "DATE_FORMAT_LOCALE", "cs")
+    with django_capture_on_commit_callbacks(execute=True):
+        change_user_setting(user, "DISPLAY_TIME_ZONE", "UTC")
+        change_user_setting(user, "DATE_FORMAT_LOCALE", "cs")
     client.force_login(user)
 
-    platform = Platform.objects.create(name="PC")
-    device = Device.objects.create(name="Desktop")
-    game = Game.objects.create(name="Calendar Game", platform=platform)
+    platform = Platform.objects.create(library=user.library, name="PC")
+    device = Device.objects.create(library=user.library, name="Desktop")
+    game = Game.objects.create(
+        library=user.library, name="Calendar Game", platform=platform
+    )
     purchase = Purchase.objects.create(
+        price_currency="CZK",
+        library=user.library,
         date_purchased=date(2022, 9, 26),
         date_refunded=date(2022, 9, 27),
         platform=platform,

@@ -25,6 +25,21 @@ def _reset_settings_caches():
     settings_resolver.clear_cache()
 
 
+@pytest.fixture
+def e2e_user(django_user_model, live_server):
+    """Provision the explicit owner used by ordinary authenticated E2E tests."""
+    user, _created = django_user_model.objects.get_or_create(username="tester")
+    if not user.check_password("secret123"):
+        user.set_password("secret123")
+        user.save(update_fields=["password"])
+    return user
+
+
+@pytest.fixture
+def e2e_library(e2e_user):
+    return e2e_user.library
+
+
 def _find_system_chrome() -> str | None:
     """Locate a system Chrome/Chromium so e2e can drive the real browser instead
     of Playwright's bundled one (which hits shared-library issues under Nix/NixOS

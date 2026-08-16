@@ -8,6 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from games.models import Device, Game, Platform, Purchase, Session, UserPreferences
+from timetracker import settings_resolver
 
 
 @pytest.fixture
@@ -23,9 +24,14 @@ def auth_client(user):
 
 
 @pytest.fixture
-def game(db):
+def game(db, user):
     platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-    return Game.objects.create(name="Hades", platform=platform)
+    return Game.objects.create(library=user.library, name="Hades", platform=platform)
+
+
+def _set_purchase_currency(user) -> None:
+    UserPreferences.objects.filter(user=user).update(default_purchase_currency="EUR")
+    settings_resolver.clear_cache()
 
 
 def _tag_with(html: str, **attributes: object) -> str:
@@ -39,7 +45,7 @@ def _tag_with(html: str, **attributes: object) -> str:
     "url_name", ["games:add_purchase", "games:add_purchase_for_game"]
 )
 def test_purchase_add_forms_use_user_currency(auth_client, user, game, url_name):
-    UserPreferences.objects.create(user=user, default_currency="EUR")
+    _set_purchase_currency(user)
     args = [game.pk] if url_name.endswith("for_game") else []
 
     html = auth_client.get(reverse(url_name, args=args)).content.decode()
@@ -52,13 +58,14 @@ def test_purchase_add_forms_use_user_currency(auth_client, user, game, url_name)
 def test_purchase_edit_uses_user_currency_only_when_existing_value_is_empty(
     auth_client, user, game
 ):
-    UserPreferences.objects.create(user=user, default_currency="EUR")
+    _set_purchase_currency(user)
     empty = Purchase.objects.create(
-        date_purchased=date(2026, 1, 1), price_currency="USD"
+        library=user.library, date_purchased=date(2026, 1, 1), price_currency="USD"
     )
     empty.games.add(game)
     Purchase.objects.filter(pk=empty.pk).update(price_currency="")
     existing = Purchase.objects.create(
+        library=user.library,
         date_purchased=date(2026, 1, 2),
         price_currency="GBP",
     )
@@ -78,9 +85,9 @@ def test_purchase_edit_uses_user_currency_only_when_existing_value_is_empty(
 def test_purchase_edit_blank_currency_falls_back_to_user_currency(
     auth_client, user, game
 ):
-    UserPreferences.objects.create(user=user, default_currency="EUR")
+    _set_purchase_currency(user)
     purchase = Purchase.objects.create(
-        date_purchased=date(2026, 1, 1), price_currency="USD"
+        library=user.library, date_purchased=date(2026, 1, 1), price_currency="USD"
     )
     purchase.games.add(game)
 
@@ -110,7 +117,7 @@ def _purchase_post_data(game_ids: list[int], **overrides: object) -> dict[str, o
 
 
 def test_combined_purchase_save_falls_back_to_user_currency(auth_client, user, game):
-    UserPreferences.objects.create(user=user, default_currency="EUR")
+    _set_purchase_currency(user)
 
     response = auth_client.post(
         reverse("games:add_purchase"),
@@ -122,8 +129,10 @@ def test_combined_purchase_save_falls_back_to_user_currency(auth_client, user, g
 
 
 def test_separate_purchase_save_falls_back_to_user_currency(auth_client, user, game):
-    second = Game.objects.create(name="Celeste", platform=game.platform)
-    UserPreferences.objects.create(user=user, default_currency="EUR")
+    second = Game.objects.create(
+        library=user.library, name="Celeste", platform=game.platform
+    )
+    _set_purchase_currency(user)
 
     response = auth_client.post(
         reverse("games:add_purchase"),
@@ -145,8 +154,10 @@ def test_separate_purchase_save_falls_back_to_user_currency(auth_client, user, g
     "url_name", ["games:add_session", "games:add_session_for_game"]
 )
 def test_session_add_forms_use_user_device(auth_client, user, game, url_name):
-    preferred = Device.objects.create(name="Steam Deck", type=Device.HANDHELD)
-    UserPreferences.objects.create(user=user, default_device=preferred)
+    preferred = Device.objects.create(
+        library=user.library, name="Steam Deck", type=Device.HANDHELD
+    )
+    user.library.preferences.set_default_device(preferred)
     args = [game.pk] if url_name.endswith("for_game") else []
 
     html = auth_client.get(reverse(url_name, args=args)).content.decode()
@@ -157,9 +168,13 @@ def test_session_add_forms_use_user_device(auth_client, user, game, url_name):
 def test_session_edit_uses_user_device_only_when_existing_value_is_empty(
     auth_client, user, game
 ):
-    preferred = Device.objects.create(name="Steam Deck", type=Device.HANDHELD)
-    existing_device = Device.objects.create(name="Desktop", type=Device.PC)
-    UserPreferences.objects.create(user=user, default_device=preferred)
+    preferred = Device.objects.create(
+        library=user.library, name="Steam Deck", type=Device.HANDHELD
+    )
+    existing_device = Device.objects.create(
+        library=user.library, name="Desktop", type=Device.PC
+    )
+    user.library.preferences.set_default_device(preferred)
     empty = Session.objects.create(game=game, timestamp_start=timezone.now())
     existing = Session.objects.create(
         game=game,

@@ -86,10 +86,14 @@ def _find(sort=None):
 
 
 @pytest.fixture
-def two_games(db):
+def two_games(owned_library):
     platform = Platform.objects.create(name="P", icon="p")
-    alpha = Game.objects.create(name="Alpha", sort_name="Alpha", platform=platform)
-    beta = Game.objects.create(name="Beta", sort_name="Beta", platform=platform)
+    alpha = Game.objects.create(
+        library=owned_library, name="Alpha", sort_name="Alpha", platform=platform
+    )
+    beta = Game.objects.create(
+        library=owned_library, name="Beta", sort_name="Beta", platform=platform
+    )
     return alpha, beta
 
 
@@ -110,12 +114,20 @@ class TestApplySortGames:
         )
         assert list(result.queryset) == [beta, alpha]
 
-    def test_nullable_direct_sort_keeps_null_last_in_both_directions(self, db):
+    def test_nullable_direct_sort_keeps_null_last_in_both_directions(
+        self, owned_library
+    ):
         """Changing explicit NULLS LAST ordering would break this contract."""
         platform = Platform.objects.create(name="P", icon="p")
-        unknown = Game.objects.create(name="Unknown", platform=platform)
-        early = Game.objects.create(name="Early", platform=platform, year_released=1990)
-        late = Game.objects.create(name="Late", platform=platform, year_released=2000)
+        unknown = Game.objects.create(
+            library=owned_library, name="Unknown", platform=platform
+        )
+        early = Game.objects.create(
+            library=owned_library, name="Early", platform=platform, year_released=1990
+        )
+        late = Game.objects.create(
+            library=owned_library, name="Late", platform=platform, year_released=2000
+        )
 
         ascending = apply_sort(
             Game.objects.all(), _find("year"), GAME_SORTS, GAME_DEFAULT_SORT
@@ -127,11 +139,15 @@ class TestApplySortGames:
         assert list(ascending.queryset) == [early, late, unknown]
         assert list(descending.queryset) == [late, early, unknown]
 
-    def test_equal_sort_values_use_primary_key_tiebreaker(self, db):
+    def test_equal_sort_values_use_primary_key_tiebreaker(self, owned_library):
         """Removing the stable secondary ordering would break this contract."""
         platform = Platform.objects.create(name="P", icon="p")
-        first = Game.objects.create(name="First", platform=platform)
-        second = Game.objects.create(name="Second", platform=platform)
+        first = Game.objects.create(
+            library=owned_library, name="First", platform=platform
+        )
+        second = Game.objects.create(
+            library=owned_library, name="Second", platform=platform
+        )
 
         result = apply_sort(
             Game.objects.filter(pk__in=[second.pk, first.pk]),
@@ -143,12 +159,20 @@ class TestApplySortGames:
         assert list(result.queryset) == [first, second]
         assert result.terms == [SortTerm("status", False)]
 
-    def test_nullable_aggregate_sort_keeps_null_last_in_both_directions(self, db):
+    def test_nullable_aggregate_sort_keeps_null_last_in_both_directions(
+        self, owned_library
+    ):
         """Changing aggregate NULL ordering would break this contract."""
         platform = Platform.objects.create(name="P", icon="p")
-        unfinished = Game.objects.create(name="Unfinished", platform=platform)
-        early = Game.objects.create(name="Early", platform=platform)
-        late = Game.objects.create(name="Late", platform=platform)
+        unfinished = Game.objects.create(
+            library=owned_library, name="Unfinished", platform=platform
+        )
+        early = Game.objects.create(
+            library=owned_library, name="Early", platform=platform
+        )
+        late = Game.objects.create(
+            library=owned_library, name="Late", platform=platform
+        )
         PlayEvent.objects.create(
             game=early, started=date(2024, 1, 1), ended=date(2024, 1, 1)
         )
@@ -241,8 +265,8 @@ class TestParseFindFilter:
         from timetracker import settings_resolver
 
         user = django_user_model.objects.create_user(username="pages", password="pw")
-        UserPreferences.objects.create(
-            user=user, extra_preferences={"DEFAULT_PAGE_SIZE": 50}
+        UserPreferences.objects.filter(user=user).update(
+            extra_preferences={"DEFAULT_PAGE_SIZE": 50}
         )
         settings_resolver.clear_cache()
         request = RequestFactory().get("/x")
@@ -261,8 +285,8 @@ class TestParseFindFilter:
         user = django_user_model.objects.create_user(
             username=f"pages-{raw!r}", password="pw"
         )
-        UserPreferences.objects.create(
-            user=user, extra_preferences={"DEFAULT_PAGE_SIZE": 50}
+        UserPreferences.objects.filter(user=user).update(
+            extra_preferences={"DEFAULT_PAGE_SIZE": 50}
         )
         settings_resolver.clear_cache()
         request = RequestFactory().get("/x", {"per_page": raw})
@@ -280,8 +304,8 @@ class TestParseFindFilter:
         from timetracker import settings_resolver
 
         user = django_user_model.objects.create_user(username="equal", password="pw")
-        UserPreferences.objects.create(
-            user=user, extra_preferences={"DEFAULT_PAGE_SIZE": 50}
+        UserPreferences.objects.filter(user=user).update(
+            extra_preferences={"DEFAULT_PAGE_SIZE": 50}
         )
         settings_resolver.clear_cache()
         request = RequestFactory().get("/x", {"per_page": "50"})
@@ -309,9 +333,8 @@ class TestSortMapShapes:
 
 
 @pytest.fixture
-def logged_client(client, django_user_model):
-    user = django_user_model.objects.create_user(username="u", password="p")
-    client.force_login(user)
+def logged_client(client, owned_user):
+    client.force_login(owned_user)
     return client
 
 
@@ -405,6 +428,8 @@ class TestListPurchasesSort:
         # cheap (Alpha, price=10) purchased LATER so default -purchased order would show Alpha first
         # dear (Beta, price=90) purchased EARLIER — so -price must override default order to pass
         dear = Purchase.objects.create(
+            price_currency="CZK",
+            library=beta.library,
             date_purchased=datetime(2022, 1, 1, tzinfo=ZONEINFO),
             price=90,
             converted_price=90,
@@ -412,6 +437,8 @@ class TestListPurchasesSort:
         )
         dear.games.add(beta)
         cheap = Purchase.objects.create(
+            price_currency="CZK",
+            library=alpha.library,
             date_purchased=datetime(2022, 1, 2, tzinfo=ZONEINFO),
             price=10,
             converted_price=10,
@@ -436,7 +463,10 @@ class TestListPurchasesSort:
         # a multi-game purchase must still render exactly one row
         cheap, _ = two_purchases
         extra = Game.objects.create(
-            name="Aaa", sort_name="Aaa", platform=cheap.platform
+            library=cheap.library,
+            name="Aaa",
+            sort_name="Aaa",
+            platform=cheap.platform,
         )
         cheap.games.add(extra)
         response = logged_client.get(reverse("games:list_purchases"), {"sort": "name"})
@@ -523,18 +553,26 @@ def two_playevents(db, two_games):
 
 
 @pytest.fixture
-def two_devices(db):
+def two_devices(owned_library):
     # Names deliberately avoid the device-type labels ("Console", "Handheld", …)
     # so a body substring search can't collide with the type facet's options.
-    first = Device.objects.create(name="Aaa", type=Device.CONSOLE)
-    last = Device.objects.create(name="Zzz", type=Device.HANDHELD)
+    first = Device.objects.create(
+        library=owned_library, name="Aaa", type=Device.CONSOLE
+    )
+    last = Device.objects.create(
+        library=owned_library, name="Zzz", type=Device.HANDHELD
+    )
     return first, last
 
 
 @pytest.fixture
-def two_platforms(db):
-    switch = Platform.objects.create(name="Switch", icon="switch", group="Nintendo")
-    playstation = Platform.objects.create(name="PS5", icon="ps5", group="Sony")
+def two_platforms(owned_library):
+    switch = Platform.objects.create(
+        library=owned_library, name="Switch", icon="switch", group="Nintendo"
+    )
+    playstation = Platform.objects.create(
+        library=owned_library, name="PS5", icon="ps5", group="Sony"
+    )
     return switch, playstation
 
 

@@ -35,6 +35,12 @@ def _login(page: Page, live_server, username: str, password: str = "pw") -> None
     page.wait_for_url(f"{live_server.url}/tracker**")
 
 
+def _set_user_theme(user, theme: str) -> None:
+    preferences = UserPreferences.objects.get(user=user)
+    preferences.theme = theme
+    preferences.save(update_fields=["theme"])
+
+
 def _set_anonymous_theme(page: Page, live_server, value: str) -> None:
     page.goto(f"{live_server.url}{reverse('login')}")
     page.evaluate("value => localStorage.setItem('color-theme', value)", value)
@@ -129,7 +135,7 @@ def test_account_theme_wins_before_redirect_paints_without_touching_storage(
     user = django_user_model.objects.create_user(
         username=f"{preference}-user", password="pw"
     )
-    UserPreferences.objects.create(user=user, theme=preference)
+    _set_user_theme(user, preference)
     page.emulate_media(color_scheme=scheme)
     _set_anonymous_theme(page, live_server, anonymous)
     _install_first_frame_probe(page)
@@ -150,7 +156,7 @@ def test_logout_restores_the_anonymous_browser_preference(
     live_server, page: Page, django_user_model
 ):
     user = django_user_model.objects.create_user(username="logout-user", password="pw")
-    UserPreferences.objects.create(user=user, theme="dark")
+    _set_user_theme(user, "dark")
     page.emulate_media(color_scheme="light")
     _set_anonymous_theme(page, live_server, "light")
     page.fill('input[name="username"]', user.username)
@@ -182,7 +188,8 @@ def test_prelogin_storage_is_ignored_and_not_migrated_to_account(
     page.wait_for_url(f"{live_server.url}/tracker**")
 
     assert _first_frame(page) == {"preference": "system", "dark": False}
-    assert not UserPreferences.objects.filter(user=user).exists()
+    preferences = UserPreferences.objects.get(user=user)
+    assert preferences.theme is None
     assert page.evaluate("localStorage.getItem('color-theme')") == "dark"
 
 
@@ -192,7 +199,7 @@ def test_settings_control_updates_permanently_disabled_navbar_theme_state(
     user = django_user_model.objects.create_user(
         username="settings-user", password="pw"
     )
-    UserPreferences.objects.create(user=user, theme="light")
+    _set_user_theme(user, "light")
     page.emulate_media(color_scheme="light")
     _login(page, live_server, user.username)
     page.goto(f"{live_server.url}{reverse('games:settings')}")
@@ -236,7 +243,7 @@ def test_second_browser_reconciles_account_theme_on_navigation(
     live_server, browser: Browser, django_user_model
 ):
     user = django_user_model.objects.create_user(username="two-browser", password="pw")
-    UserPreferences.objects.create(user=user, theme="light")
+    _set_user_theme(user, "light")
     first_context = browser.new_context()
     second_context = browser.new_context()
     first = first_context.new_page()
@@ -272,7 +279,7 @@ def test_clearing_personal_theme_commits_the_inherited_value(
     live_server, page: Page, django_user_model
 ):
     user = django_user_model.objects.create_user(username="inherit-user", password="pw")
-    UserPreferences.objects.create(user=user, theme="light")
+    _set_user_theme(user, "light")
     SiteSetting.objects.create(key="THEME", value="dark")
     settings_resolver.clear_cache()
     _login(page, live_server, user.username)
