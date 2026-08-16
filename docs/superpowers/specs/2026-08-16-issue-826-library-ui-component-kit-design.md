@@ -153,8 +153,8 @@ no persistence and makes no network request.
 
 ### AccountMenu
 
-`AccountMenu` owns the circular trigger, identity/playtime/navigation/theme/
-logout grouping, separators, ordering, trigger fallback, and conditional Admin
+`AccountMenu` owns the circular initials trigger, identity/playtime/navigation/
+theme/logout grouping, separators, ordering, and conditional Admin
 entry. It receives display values, exact URLs, CSRF token, the theme-disabled
 flag, and already-composed playtime nodes. It performs no User, Session, or
 authorization query.
@@ -163,10 +163,12 @@ The menu order is username heading, Today playtime, Last 7 days playtime,
 current-year Stats, Settings, optional Admin settings, ThemeToggle, and Log out.
 Separators divide identity/playtime, navigation, theme, and logout groups.
 
-The trigger exposes the username and menu purpose even when only initials or a
-generic user icon are visible. Passing no Admin URL omits the item rather than
-rendering a disabled entry. The component composes the existing Dropdown,
-ThemeToggle, link, and POST-action primitives.
+The trigger exposes the username and menu purpose while its visible content is
+the caller-supplied initials. Initials are the fallback for the future avatar;
+they are required and there is no second generic-icon fallback. Passing no Admin
+URL omits the item rather than rendering a disabled entry. The component
+composes the existing Dropdown, ThemeToggle, link, and POST-action
+primitives.
 
 ## Preview and data flow
 
@@ -248,7 +250,7 @@ Timetracker. At minimum the recorded review includes:
 - linked, plain, and zero statistics;
 - the full UUID fact plus Copy, Copied, and failure states;
 - entity rows with and without detail, desktop actions, and mobile overflow;
-- AccountMenu with long username, initials and icon fallback, with and without
+- AccountMenu with a long username and initials, with and without
   Admin settings;
 - running, failed, and completed conversion toast appearances; and
 - neutral section navigation at desktop and mobile widths.
@@ -261,9 +263,10 @@ Test passage is not visual approval.
 
 These are forecasts used to expose scope growth, not delivery commitments.
 
-- PR 1 should touch approximately 10–12 files, predominantly moves, renames,
-  generated-contract updates, and consumer migrations. It should add no product
-  behavior and take roughly one implementation day plus review.
+- PR 1 should touch approximately 16–18 files once generated contracts and all
+  current Settings, Admin Settings, preview, TypeScript, and browser regression
+  consumers are counted. It remains predominantly moves, renames, and consumer
+  migrations; it should add no product behavior and take roughly one implementation day plus review.
 - PR 2 should touch approximately 12–16 files across server components, two
   small client behaviors, preview routing, and focused tests. It should take
   roughly two to four implementation days plus visual-review latency.

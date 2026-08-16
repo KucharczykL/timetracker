@@ -252,7 +252,8 @@ The final page issue replaces the current navbar structure:
 - Logo links to Home; the separate Home text link is removed.
 - Log game remains directly visible.
 - Library is directly visible.
-- A circular account button shows initials, with a generic user icon fallback.
+- A circular account button shows caller-supplied initials as the fallback for
+  a future avatar; there is no generic-icon state.
 
 On mobile, the logo wordmark contracts to its icon and all three controls—Log
 game, Library, and account—remain directly visible. There is no hamburger.
@@ -299,8 +300,8 @@ theme.
   operation, focus return, Escape, and outside-click dismissal through the
   existing Dropdown behavior.
 - Copy success and failure are announced accessibly.
-- The account trigger exposes the username/menu purpose even when only initials
-  or an icon are visible.
+- The account trigger exposes the username/menu purpose even though only initials
+  are visible until avatar support is implemented.
 - Section navigation retains correct landmarks, focus order, and anchor targets
   on desktop and mobile.
 - Empty and zero states retain the same layout and available actions.

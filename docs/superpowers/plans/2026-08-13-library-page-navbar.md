@@ -297,9 +297,9 @@ entity construction with `AccountMenu`. The layout may resolve current route
 and authorization, but all playtime/count queries remain in the request context
 function and are scoped to `request.user.library`.
 
-Use username initials derived deterministically from the username; pass the
-generic icon fallback when no usable character exists. The Stats URL is
-`reverse("games:stats_by_year", args=[localdate().year])`.
+Derive one or two non-whitespace initials deterministically from the non-empty
+username and pass them to `AccountMenu`; there is no generic-icon fallback. The
+Stats URL is `reverse("games:stats_by_year", args=[localdate().year])`.
 
 - [ ] **Step 4: Pass desktop navbar tests**
 
