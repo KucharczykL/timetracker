@@ -21,6 +21,14 @@
 # test, make lint, ...) use it directly. Every check target is --frozen, so
 # none of them touch uv.lock.
 #
+# The database is part of that: every Django target routes through
+# `ensure-postgres`, which builds an ignored loopback cluster (docs/database.md),
+# so a box with no PostgreSQL 18 fails `make check` no matter how good its Python
+# is. Step 5 provisions it here instead of leaving it to the first `make check`.
+# It is the one non-fatal step — a box that cannot host a cluster (running as
+# root, no matching build published) can still borrow one via DATABASE_URL, and
+# the Python and JS toolchains above remain useful either way.
+#
 # Idempotent: re-running skips whatever already exists.
 set -euo pipefail
 
@@ -162,7 +170,25 @@ if [ "${SKIP_JS:-0}" != "1" ]; then
   fi
 fi
 
-# ── 5. e2e browser ───────────────────────────────────────────────────────────
+# ── 5. PostgreSQL 18 dev cluster ─────────────────────────────────────────────
+# `make ensure-postgres` reuses DATABASE_URL when one is already exported, and
+# otherwise downloads the checksum-pinned PostgreSQL 18 build the harness pins
+# (the distro package is normally too old). Skip the whole step with
+# SKIP_POSTGRES=1.
+POSTGRES_READY=1
+if [ "${SKIP_POSTGRES:-0}" != "1" ]; then
+  log "Provisioning the PostgreSQL 18 dev cluster (make ensure-postgres)"
+  # Deliberately not fatal — see the header. Everything provisioned above stays
+  # usable, and the closing message below stops promising a runnable `make check`.
+  if ! make ensure-postgres; then
+    POSTGRES_READY=0
+    echo "warning: could not provision PostgreSQL 18. Every Django target (make check," >&2
+    echo "         make test, make migrate) needs a database; export DATABASE_URL" >&2
+    echo "         pointing at an existing PostgreSQL 18 server and re-run." >&2
+  fi
+fi
+
+# ── 6. e2e browser ───────────────────────────────────────────────────────────
 # e2e/conftest.py launches a browser it finds on PATH (google-chrome / chromium
 # / chrome) via executable_path — the intended escape hatch from Nix/version
 # issues. The image pre-installs Chromium under PLAYWRIGHT_BROWSERS_PATH but not
@@ -190,4 +216,9 @@ fi
 
 log "Done. Ensure PATH has \$HOME/.local/bin (uv + chromium) and node's bin, then:"
 log "  uv run --frozen python --version   # 3.14.x"
-log "  make check                         # full gate: lint, mypy, ts, vitest, pytest+e2e"
+if [ "$POSTGRES_READY" -eq 1 ]; then
+  log "  make check                         # full gate: lint, mypy, ts, vitest, pytest+e2e"
+else
+  log "  export DATABASE_URL=...            # no local cluster; see docs/database.md"
+  log "  make check                         # full gate (needs that database first)"
+fi
