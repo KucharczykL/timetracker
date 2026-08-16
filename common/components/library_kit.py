@@ -19,7 +19,10 @@ from common.components.primitives import (
     Link,
     P,
     Span,
+    custom_element_builder,
 )
+
+_CopyControl = custom_element_builder("copy-control")
 
 
 def StatisticGrid(*cards: Child) -> Node:
@@ -68,6 +71,29 @@ def FactList(facts: Sequence[tuple[str, Child]]) -> Node:
             ]
             for label, value in facts
         ]
+    ]
+
+
+def CopyControl(
+    value: str,
+    *,
+    label: str = "Copy",
+    description: str = "Copy value to clipboard",
+) -> Node:
+    return _CopyControl(value=value, class_="inline-flex")[
+        ControlButton(
+            [
+                ("data-copy-control", ""),
+                ("aria-label", description),
+            ],
+            variant="ghost",
+        )[
+            Span(
+                data_copy_label="",
+                aria_live="polite",
+                aria_atomic="true",
+            )[label]
+        ],
     ]
 
 
@@ -173,6 +199,7 @@ def EntitySummaryRow(
 
 
 __all__ = [
+    "CopyControl",
     "EntitySummaryAction",
     "EntitySummaryList",
     "EntitySummaryRow",

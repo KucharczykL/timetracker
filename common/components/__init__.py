@@ -90,6 +90,7 @@ from common.components.filters import (
     parse_filter_dict,
 )
 from common.components.library_kit import (
+    CopyControl,
     EntitySummaryAction,
     EntitySummaryList,
     EntitySummaryRow,
@@ -270,6 +271,7 @@ __all__ = [
     "ContentContainer",
     "ControlButton",
     "ControlLink",
+    "CopyControl",
     "CsrfInput",
     "DatePicker",
     "DatePickerCalendar",

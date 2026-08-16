@@ -1,4 +1,5 @@
 from common.components import (
+    CopyControl,
     Div,
     EntitySummaryAction,
     EntitySummaryList,
@@ -8,6 +9,7 @@ from common.components import (
     StatisticGrid,
     TooltipDefinition,
     TooltipDefinitionList,
+    collect_media,
 )
 
 
@@ -41,7 +43,7 @@ def test_fact_list_accepts_arbitrary_value_children():
                     "Library ID",
                     Div()[
                         "018f0000-0000-7000-8000-000000000000",
-                        "Copy",
+                        CopyControl("018f0000-0000-7000-8000-000000000000"),
                     ],
                 ),
                 ("Created", "31/12/2022"),
@@ -62,6 +64,21 @@ def test_fact_list_does_not_reuse_tooltip_presentation():
     assert "data-tooltip-definition-list" not in fact_html
     assert "data-fact-list" not in tooltip_html
     assert 'data-tooltip-definition-list=""' in tooltip_html
+
+
+def test_copy_control_exposes_value_description_live_label_and_media():
+    control = CopyControl(
+        "018f0000-0000-7000-8000-000000000000",
+        description="Copy Library ID",
+    )
+    html = str(control)
+
+    assert '<copy-control value="018f0000-0000-7000-8000-000000000000"' in html
+    assert 'data-copy-control=""' in html
+    assert 'data-copy-label=""' in html
+    assert 'aria-live="polite"' in html
+    assert 'aria-label="Copy Library ID"' in html
+    assert "dist/elements/copy-control.js" in collect_media(control).js
 
 
 def test_entity_row_renders_both_presentations_from_one_action_source():
