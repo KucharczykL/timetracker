@@ -427,6 +427,24 @@ def test_desktop_section_nav_scrolls_in_short_viewport(live_server, page: Page):
     assert page.evaluate("window.scrollY") == window_y
 
 
+def _wait_for_sheet_entrance(page: Page) -> None:
+    """Block until the sheet's slide-up transition has finished.
+
+    An empty animation list satisfies this too, which is what reduced-motion
+    and a non-animating panel both look like.
+    """
+    page.wait_for_function(
+        """() => {
+            const panel = document.querySelector(
+                'dialog[data-bottom-sheet][open] [data-sheet-panel]',
+            );
+            return panel !== null && panel
+                .getAnimations()
+                .every((animation) => animation.playState === 'finished');
+        }"""
+    )
+
+
 @override_settings(ROOT_URLCONF="e2e.test_settings_ui_kit_e2e")
 def test_mobile_section_sheet_navigation_and_dismissal(live_server, page: Page):
     page.set_viewport_size({"width": 390, "height": 600})
@@ -451,6 +469,8 @@ def test_mobile_section_sheet_navigation_and_dismissal(live_server, page: Page):
     assert dialog.evaluate("element => element.matches(':modal')")
     expect(links.first).to_be_focused()
 
+    # Resting geometry is only meaningful once the slide-up has finished.
+    _wait_for_sheet_entrance(page)
     dialog_box = dialog.bounding_box()
     panel_box = panel.bounding_box()
     assert dialog_box and panel_box
@@ -531,6 +551,51 @@ def test_mobile_sheet_scrolls_in_a_short_viewport(live_server, page: Page):
     body.evaluate("element => { element.scrollTop = element.scrollHeight; }")
     assert body.evaluate("element => element.scrollTop") > 0
     expect(page.locator("dialog[data-bottom-sheet]")).to_have_attribute("open", "")
+
+
+@override_settings(ROOT_URLCONF="e2e.test_settings_ui_kit_e2e")
+def test_mobile_sheet_slides_up_from_below_the_fold(live_server, page: Page):
+    """The panel must still be translated fully below the dialog when the sheet
+    opens. A scrollable dialog would let showModal()'s initial focus scroll that
+    off-screen panel into place, cancelling the slide-up and leaving the panel to
+    jitter — drawn briefly taller, clipped at the dialog's edge — as the scroll
+    offset unwinds against the animating transform."""
+    page.set_viewport_size({"width": 390, "height": 800})
+    page.goto(f"{live_server.url}/settings-kit-test/")
+
+    # dropdown:show fires after showModal() and before the opening frame, so it
+    # is the earliest point the initial geometry is observable.
+    page.evaluate(
+        """() => {
+            const dialog = document.querySelector('dialog[data-bottom-sheet]');
+            dialog.closest('drop-down').addEventListener(
+                'dropdown:show',
+                () => {
+                    window.__sheetAtShow = {
+                        dialogScrollTop: dialog.scrollTop,
+                        panelTop: dialog
+                            .querySelector('[data-sheet-panel]')
+                            .getBoundingClientRect().top,
+                        dialogBottom: dialog.getBoundingClientRect().bottom,
+                    };
+                },
+                { once: true },
+            );
+        }"""
+    )
+    page.locator("[data-section-nav-trigger]").click()
+    expect(page.locator("dialog[data-bottom-sheet]")).to_have_attribute("open", "")
+
+    at_show = page.evaluate("window.__sheetAtShow")
+    assert at_show["dialogScrollTop"] == 0
+    assert at_show["panelTop"] >= at_show["dialogBottom"] - 1
+
+    # And it settles flush against the bottom of the dialog.
+    _wait_for_sheet_entrance(page)
+    dialog_box = page.locator("dialog[data-bottom-sheet]").bounding_box()
+    panel_box = page.locator("[data-sheet-panel]").bounding_box()
+    assert dialog_box and panel_box
+    assert abs(panel_box["y"] + panel_box["height"] - dialog_box["height"]) < 2
 
 
 @override_settings(ROOT_URLCONF="e2e.test_settings_ui_kit_e2e")

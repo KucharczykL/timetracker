@@ -313,7 +313,10 @@ dialog[data-bottom-sheet] {
     margin: 0;
     padding: 0;
     border: 0;
-    overflow: hidden;
+    /* clip, not hidden: hidden makes the dialog a scroll container, and
+       showModal()'s initial focus then scrolls the translated-down panel into
+       view — cancelling the slide-up and racing the transform on the way back. */
+    overflow: clip;
     color: inherit;
     background: transparent;
 }
