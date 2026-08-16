@@ -4,6 +4,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 from django.core.exceptions import ValidationError
+from django.urls import NoReverseMatch, reverse
 
 from games.models import UserPreferences
 from timetracker import settings_registry
@@ -184,8 +185,17 @@ def test_landing_page_choices_are_the_supported_destinations():
         ("games:list_games", "Games"),
         ("games:list_purchases", "Purchases"),
         ("games:stats_by_year", "Statistics (this year)"),
-        ("games:library", "Library"),
     )
+
+
+def test_every_landing_page_choice_resolves_to_a_route():
+    for url_name, _label in settings_registry.LANDING_PAGE_CHOICES:
+        kwargs = {"year": 2025} if url_name == "games:stats_by_year" else None
+        try:
+            destination = reverse(url_name, kwargs=kwargs)
+        except NoReverseMatch as exc:
+            pytest.fail(f"Landing-page choice {url_name!r} has no route: {exc}")
+        assert destination.startswith("/")
 
 
 @pytest.mark.parametrize(
@@ -195,7 +205,6 @@ def test_landing_page_choices_are_the_supported_destinations():
         "games:list_games",
         "games:list_purchases",
         "games:stats_by_year",
-        "games:library",
     ],
 )
 def test_landing_page_validator_accepts_supported_url_names(url_name):

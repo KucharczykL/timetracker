@@ -39,7 +39,6 @@ LANDING_PAGE_CHOICES: Final[tuple[tuple[str, str], ...]] = (
     ("games:list_games", "Games"),
     ("games:list_purchases", "Purchases"),
     ("games:stats_by_year", "Statistics (this year)"),
-    ("games:library", "Library"),
 )
 _LANDING_PAGE_URL_NAMES: Final[frozenset[str]] = frozenset(
     url_name for url_name, _label in LANDING_PAGE_CHOICES
