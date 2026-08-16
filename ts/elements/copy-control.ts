@@ -22,8 +22,10 @@ class CopyControlElement extends HTMLElement {
     this.setLabel(this.initialLabel);
   }
 
-  private setLabel(value: string): void {
-    if (this.label) this.label.textContent = value;
+  private setLabel(value: string, visible = false): void {
+    if (!this.label) return;
+    this.label.textContent = value;
+    this.label.classList.toggle("sr-only", !visible);
   }
 
   private readonly onCopy = async (): Promise<void> => {
@@ -32,7 +34,7 @@ class CopyControlElement extends HTMLElement {
     this.setLabel(this.initialLabel);
     try {
       await navigator.clipboard.writeText(this.value);
-      this.setLabel("Copied");
+      this.setLabel("Copied!", true);
       this.resetTimer = window.setTimeout(() => {
         this.resetTimer = null;
         this.setLabel(this.initialLabel);

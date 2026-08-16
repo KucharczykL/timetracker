@@ -117,7 +117,7 @@ def test_library_kit_responsive_interactions_and_static_toasts(
         "resolve",
     )
     copy_button.click()
-    expect(copy_label).to_have_text("Copied")
+    expect(copy_label).to_have_text("Copied!")
     page.wait_for_timeout(2_100)
     expect(copy_label).to_have_text("Copy")
 

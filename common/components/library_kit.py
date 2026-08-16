@@ -10,7 +10,6 @@ from common.components.custom_elements import (
     DropdownMenuPanel,
 )
 from common.components.primitives import (
-    Button,
     ControlButton,
     Dd,
     Div,
@@ -20,6 +19,7 @@ from common.components.primitives import (
     Link,
     P,
     Path,
+    Popover,
     Rect,
     Span,
     Svg,
@@ -68,22 +68,13 @@ def CopyControl(
     label: str = "Copy",
     description: str = "Copy value to clipboard",
 ) -> Node:
-    return _CopyControl(value=value, class_="inline-flex")[
-        Button(
+    copy_control = _CopyControl(value=value, class_="inline-flex")[
+        ControlButton(
             [
-                ("type", "button"),
                 ("data-copy-control", ""),
                 ("aria-label", description),
-                (
-                    "class",
-                    (
-                        "inline-flex h-8 w-8 shrink-0 items-center justify-center "
-                        "rounded-base text-body hover:bg-neutral-tertiary-medium "
-                        "hover:text-heading focus:outline-hidden focus:ring-2 "
-                        "focus:ring-fg-brand hover:cursor-pointer"
-                    ),
-                ),
-            ]
+            ],
+            variant="ghost",
         )[
             Svg(
                 [
@@ -117,6 +108,11 @@ def CopyControl(
             )[label],
         ],
     ]
+    return Popover(
+        popover_content=description,
+        children=[copy_control],
+        tap=False,
+    )
 
 
 @dataclass(frozen=True, slots=True)

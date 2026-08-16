@@ -91,7 +91,12 @@ def test_copy_control_exposes_value_description_live_label_and_media():
     assert 'aria-label="Copy Library ID"' in html
     assert 'data-copy-icon=""' in html
     assert "sr-only" in html
-    assert "dist/elements/copy-control.js" in collect_media(control).js
+    media = collect_media(control)
+    assert "<pop-over" in html
+    assert 'data-pop-over-trigger=""' in html
+    assert 'role="tooltip"' in html
+    assert "dist/elements/copy-control.js" in media.js
+    assert "dist/elements/pop-over.js" in media.js
 
 
 def test_entity_row_renders_both_presentations_from_one_action_source():

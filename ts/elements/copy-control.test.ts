@@ -30,10 +30,13 @@ it("copies, announces success, and restores the original label after two seconds
   document.querySelector<HTMLButtonElement>("[data-copy-control]")!.click();
   await Promise.resolve();
   expect(writeText).toHaveBeenCalledWith("full-value");
-  expect(document.querySelector("[data-copy-label]")?.textContent).toBe("Copied");
+  const label = document.querySelector("[data-copy-label]") as HTMLElement;
+  expect(label.textContent).toBe("Copied!");
+  expect(label.classList.contains("sr-only")).toBe(false);
   expect(window.toast).not.toHaveBeenCalled();
   vi.advanceTimersByTime(2_000);
-  expect(document.querySelector("[data-copy-label]")?.textContent).toBe("Copy ID");
+  expect(label.textContent).toBe("Copy ID");
+  expect(label.classList.contains("sr-only")).toBe(true);
 });
 
 it("keeps failure visible until a new attempt", async () => {
@@ -62,7 +65,7 @@ it("keeps failure visible until a new attempt", async () => {
   button.click();
   expect(document.querySelector("[data-copy-label]")?.textContent).toBe("Copy");
   await Promise.resolve();
-  expect(document.querySelector("[data-copy-label]")?.textContent).toBe("Copied");
+  expect(document.querySelector("[data-copy-label]")?.textContent).toBe("Copied!");
 });
 
 it("restores the original label when disconnected during a reset delay", async () => {
@@ -81,7 +84,7 @@ it("restores the original label when disconnected during a reset delay", async (
   const control = document.querySelector<HTMLElement>("copy-control")!;
   control.querySelector<HTMLButtonElement>("[data-copy-control]")!.click();
   await Promise.resolve();
-  expect(control.querySelector("[data-copy-label]")?.textContent).toBe("Copied");
+  expect(control.querySelector("[data-copy-label]")?.textContent).toBe("Copied!");
 
   control.remove();
   vi.advanceTimersByTime(2_000);
