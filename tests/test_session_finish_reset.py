@@ -1,4 +1,4 @@
-"""Finishing and resetting a session are POST routes that reload the page."""
+"""Finishing and resetting a session confirm on GET and apply on POST."""
 
 from datetime import UTC, datetime
 
@@ -62,11 +62,12 @@ def test_finish_ignores_an_unknown_time_zone(logged_in, open_session):
     assert not open_session.timestamp_end_timezone
 
 
-def test_finish_rejects_get(logged_in, open_session):
+def test_finish_get_renders_a_confirmation_and_does_not_mutate(logged_in, open_session):
     response = logged_in.get(reverse("games:finish_session", args=[open_session.pk]))
 
     open_session.refresh_from_db()
-    assert response.status_code == 405
+    assert response.status_code == 200
+    assert "Test Game" in response.content.decode()
     assert open_session.timestamp_end is None
 
 

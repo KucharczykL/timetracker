@@ -436,8 +436,8 @@ def BrowserTimeZoneInput(field_name: str = BROWSER_TIME_ZONE_FIELD) -> Node:
 
 def SessionActions(session, csrf_token: str, origin: OriginUrl | None) -> Node:
     """Row actions for a session: Finish + Reset (only while the session is open),
-    Edit, Delete. Finish posts and the page reloads; reset confirms on its own
-    page first, because it overwrites the original start time. Edit and Delete
+    Edit, Delete. Finish posts and the page reloads; both finish and reset
+    confirm on their own page first when accessed via GET. Edit and Delete
     stay plain navigation links, so the whole group works without JavaScript
     beyond the browser-zone stamp the finish form carries."""
     from common.components.primitives import ButtonGroup

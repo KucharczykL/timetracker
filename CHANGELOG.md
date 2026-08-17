@@ -1,5 +1,9 @@
 ## Unreleased
 
+### Fixed
+
+* Fix Method Not Allowed (GET) error when trying to finish a session by rendering a confirmation page instead of rejecting GET requests with a 405 error.
+
 ### New
 
 * Elapsed durations follow a per-user **Duration format** preference, replacing
