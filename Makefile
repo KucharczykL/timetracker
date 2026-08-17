@@ -22,8 +22,6 @@ stop-postgres:
 
 all: ensure-postgres css migrate
 
-initialize: npm css migrate loadplatforms
-
 PYTHON_VERSION = 3.14
 DEV_HOST ?= 127.0.0.1
 DEV_PORT ?= 8000
@@ -96,19 +94,31 @@ ensure-python:
 	exit 1
 endif
 
-# Verify what the JS commands will ACTUALLY run on — `pnpm exec`, so it accounts
-# for the version pnpm was told to fetch above, not just PATH. Make runs a given
-# prerequisite once per invocation, so this costs one pnpm call per `make`.
-# On the first run without a suitable PATH node this is where the download
-# happens, so it also fails here (with a reason) rather than deep inside vitest.
-# node itself does the comparison and sets the exit status, keeping the recipe
-# free of shell-specific arithmetic for the Windows cmd.exe case.
+# Two gates, deliberately separate. `ensure-node-runtime` answers "is there a
+# usable interpreter", `ensure-node-deps` answers "is this project installed
+# into it". Consumer targets want both, but `npm` — the target whose whole job
+# is to CREATE the install — must depend on the runtime alone: gate it on the
+# dependency check and it refuses to run in the one state it exists to repair,
+# advising you to run the target that just refused. Every other node-using
+# target depends on `ensure-node-deps`, which pulls the runtime gate in behind
+# it, so the ordering holds without each call site restating it.
+#
+# Both verify what the JS commands will ACTUALLY run on — `pnpm exec`, so it
+# accounts for the version pnpm was told to fetch above, not just PATH. Make
+# runs a given prerequisite once per invocation, so this costs one pnpm call
+# each per `make`. On the first run without a suitable PATH node the download
+# happens in the runtime gate, so it also fails there (with a reason) rather
+# than deep inside vitest. node itself does the comparison and sets the exit
+# status, keeping the recipes free of shell-specific arithmetic for the Windows
+# cmd.exe case.
 ifeq ($(OS),Windows_NT)
-ensure-node:
+ensure-node-runtime:
 	@pnpm exec node -e "process.exit(+process.versions.node.split('.')[0] >= $(NODE_MAJOR_VERSION) ? 0 : 1)" || powershell -NoProfile -Command "Write-Host '==> Could not get Node >= $(NODE_MAJOR_VERSION) for the JS toolchain. pnpm could not supply $(NODE_VERSION); the first fetch needs network access.'; exit 1"
+
+ensure-node-deps: ensure-node-runtime
 	@pnpm exec node -e "$(TYPESCRIPT_PIN_CHECK)" || powershell -NoProfile -Command "Write-Host '==> This project JS dependencies are missing or stale. Run  make npm  to install them.'; exit 1"
 else
-ensure-node:
+ensure-node-runtime:
 	@pnpm exec node -e "process.exit(+process.versions.node.split('.')[0] >= $(NODE_MAJOR_VERSION) ? 0 : 1)" || \
 	( \
 		echo "==> Could not get Node >= $(NODE_MAJOR_VERSION) for the JS toolchain."; \
@@ -119,6 +129,8 @@ ensure-node:
 		echo "    Offline? Run from the Nix dev shell instead: nix-shell --run 'make $(MAKECMDGOALS)'"; \
 		exit 1 \
 	)
+
+ensure-node-deps: ensure-node-runtime
 	@pnpm exec node -e "$(TYPESCRIPT_PIN_CHECK)" || \
 	( \
 		echo "==> This project's JS dependencies are missing or stale."; \
@@ -132,10 +144,10 @@ ensure-node:
 	)
 endif
 
-npm: ensure-node
+npm: ensure-node-runtime
 	pnpm install
 
-css: ensure-node common/input.css
+css: ensure-node-deps common/input.css
 	pnpm tailwindcss -i ./common/input.css -o  ./games/static/base.css
 
 # --noinput, because the autodetector's questions can only end badly here. It
@@ -166,12 +178,13 @@ devlogin: migrate
 
 init: ensure-python ensure-postgres
 	uv sync --frozen
-	pnpm install
+	$(MAKE) npm
+	$(MAKE) css
 	$(MAKE) migrate
 	$(MAKE) loadplatforms
 	$(MAKE) gen-icons
 
-server: ensure-postgres ensure-node gen-element-types
+server: ensure-postgres ensure-node-deps gen-element-types
 	@pnpm concurrently \
 		--names "Django,TS" \
 		--prefix-colors "blue,green" \
@@ -187,10 +200,10 @@ gen-icons: ensure-postgres
 check-icons: ensure-postgres
 	uv run --frozen python manage.py gen_icons --check
 
-ts: ensure-node gen-element-types
+ts: ensure-node-deps gen-element-types
 	pnpm exec tsc
 
-ts-check: ensure-node gen-element-types
+ts-check: ensure-node-deps gen-element-types
 	pnpm exec tsc --noEmit -p tsconfig.check.json
 
 # Vitest consumes generated modules, and the classic bootstrap tests inspect its
@@ -199,7 +212,7 @@ test-ts: ts
 	pnpm test:ts
 
 dev: export DEV_LOGIN_PREFILL := admin:admin
-dev: ensure-postgres ensure-python ensure-node gen-element-types
+dev: ensure-postgres ensure-python ensure-node-deps gen-element-types
 	@pnpm concurrently \
 		--names "Django,Tailwind,TS" \
 		--prefix-colors "blue,green,magenta" \
@@ -230,7 +243,7 @@ dev-lan: export DEV_LOGIN_PREFILL := admin:admin
 # LAN address makes http://localhost:8000 fail with DisallowedHost on the very
 # machine running the server (and the browser preview with it).
 dev-lan: export APP_URL = http://$(LAN_HOST):$(DEV_PORT),http://localhost:$(DEV_PORT)
-dev-lan: ensure-python ensure-node gen-element-types
+dev-lan: ensure-python ensure-node-deps gen-element-types
 	@$(LAN_HOST_CHECK)
 	@echo "==> Open http://$(LAN_HOST):$(DEV_PORT) on your phone (login admin/admin)."
 	@pnpm concurrently \
@@ -244,7 +257,7 @@ dev-lan: ensure-python ensure-node gen-element-types
 caddy:
 	caddy run --watch
 
-dev-prod: ensure-postgres ensure-node migrate collectstatic
+dev-prod: ensure-postgres ensure-node-deps migrate collectstatic
 	@pnpm concurrently \
 		--names "Caddy,Django,Django-Q" \
 		"caddy run --config Caddyfile.dev" \
