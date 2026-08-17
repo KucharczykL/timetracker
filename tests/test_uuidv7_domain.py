@@ -66,6 +66,13 @@ def test_uuid_v7_domain_rejects_every_non_v7_or_non_rfc_value(value):
 
 @pytest.mark.django_db(transaction=True)
 def test_uuid_v7_domain_migration_reverses_and_reapplies():
+    # Migrating down to BEFORE_DOMAIN unapplies every later migration too, so
+    # the restore target is the graph's leaf nodes (what `migrate` with no
+    # target uses) rather than WITH_DOMAIN, which would strand this worker's
+    # shared database behind head for every later test that reuses it.
+    # An executor caches applied_migrations at construction, so each migrate()
+    # call needs a fresh one or it plans against stale state.
+    leaf_nodes = MigrationExecutor(connection).loader.graph.leaf_nodes()
     try:
         MigrationExecutor(connection).migrate([BEFORE_DOMAIN])
         assert domain_base_type() is None
@@ -73,4 +80,4 @@ def test_uuid_v7_domain_migration_reverses_and_reapplies():
         MigrationExecutor(connection).migrate([WITH_DOMAIN])
         assert domain_base_type() == "uuid"
     finally:
-        MigrationExecutor(connection).migrate([WITH_DOMAIN])
+        MigrationExecutor(connection).migrate(leaf_nodes)

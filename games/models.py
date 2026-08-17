@@ -59,6 +59,7 @@ class Game(models.Model):
     library = models.ForeignKey(
         "UserLibrary", on_delete=models.CASCADE, related_name="games"
     )
+    uuid = UUIDv7Field(unique=True, editable=False)
     name = models.CharField(max_length=255)
     sort_name = models.CharField(max_length=255, blank=True, default="")
     year_released = models.IntegerField(null=True, blank=True, default=None)
@@ -175,6 +176,7 @@ class Platform(models.Model):
         default=None,
         related_name="platforms",
     )
+    uuid = UUIDv7Field(unique=True, editable=False)
     name = models.CharField(max_length=255)
     group = models.CharField(max_length=255, blank=True, default="")
     icon = models.SlugField(blank=True)

@@ -17,6 +17,7 @@ from timetracker.uuidv7 import (
     UUIDv7Converter,
     UUIDv7Field,
     parse_uuidv7,
+    uuid7_at,
     validate_uuidv7,
 )
 
@@ -221,3 +222,59 @@ def test_uuidv7_field_normalizes_a_driver_string():
     normalized = UUIDv7Field().from_db_value(str(value), None, connection)
     assert normalized == value
     assert isinstance(normalized, uuid.UUID)
+
+
+def test_uuid7_at_encodes_the_requested_millisecond():
+    moment = datetime(2024, 1, 1, tzinfo=UTC)
+    value = uuid7_at(moment)
+    assert value.time == round(moment.timestamp() * 1000)
+
+
+def test_uuid7_at_floors_fractional_milliseconds_instead_of_rounding():
+    # microsecond=999_999 sits at the top of its millisecond: round() would
+    # carry into the next millisecond (and here, the next second), but the
+    # migration's reconciliation compares against PostgreSQL's
+    # date_trunc('milliseconds', ...), which floors — as does CPython's own
+    # uuid.uuid7() (nanoseconds // 1_000_000).
+    moment = datetime(2024, 1, 1, 0, 0, 0, 999_999, tzinfo=UTC)
+    value = uuid7_at(moment)
+    elapsed = moment - datetime(1970, 1, 1, tzinfo=UTC)
+    floored_ms = (
+        elapsed.days * 86_400_000
+        + elapsed.seconds * 1000
+        + elapsed.microseconds // 1000
+    )
+    assert value.time == floored_ms
+    assert value.time != round(moment.timestamp() * 1000)
+
+
+def test_uuid7_at_sets_version_and_variant():
+    value = uuid7_at(datetime(2024, 1, 1, tzinfo=UTC))
+    assert value.version == 7
+    assert value.variant == uuid.RFC_4122
+
+
+def test_uuid7_at_is_distinct_for_repeated_calls_at_the_same_instant():
+    moment = datetime(2024, 1, 1, tzinfo=UTC)
+    first = uuid7_at(moment)
+    second = uuid7_at(moment)
+    assert first != second
+
+
+def test_uuid7_at_sequence_orders_values_within_one_millisecond():
+    moment = datetime(2024, 1, 1, tzinfo=UTC)
+    values = [uuid7_at(moment, sequence=sequence) for sequence in range(5)]
+    assert values == sorted(values)
+    assert len({value for value in values}) == len(values)
+
+
+def test_uuid7_at_rejects_a_naive_datetime():
+    with pytest.raises(ValueError, match="timezone-aware"):
+        uuid7_at(datetime(2024, 1, 1))  # noqa: DTZ001
+
+
+def test_uuid7_at_pins_the_byte_layout():
+    moment = datetime(2024, 1, 1, tzinfo=UTC)
+    value = uuid7_at(moment, sequence=5)
+    # Everything except the 62 random rand_b bits: unix_ts_ms | version | rand_a | variant.
+    assert value.int >> 62 == 0x6330947D001C016
