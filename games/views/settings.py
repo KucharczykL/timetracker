@@ -12,8 +12,8 @@ from common.components import (
     LiveSettingFields,
     Node,
     ReadonlySettingField,
+    SectionedPage,
     SectionedPageHeader,
-    SectionedPageScaffold,
     SectionedPageSection,
     SettingsFieldLayout,
     ThemeSetting,
@@ -52,14 +52,11 @@ def user_settings(request: HttpRequest) -> HttpResponse:
             "Account, presentation, and purchase-entry preferences.",
         )
     ]
-    content = Div(class_="flex flex-col gap-6")[
-        SectionedPageHeader("Settings"),
-        SectionedPageScaffold(
-            sections,
-            navigation_label="Settings sections",
-            jump_label="Jump to a section",
-        ),
-    ]
+    content = SectionedPage(
+        "Settings",
+        sections,
+        navigation_label="Settings sections",
+    )
     return render_page(request, content, title="Settings", is_settings_page=True)
 
 
@@ -132,23 +129,16 @@ def admin_settings(request: HttpRequest) -> HttpResponse:
             ),
         ),
     ]
-    content = Div(class_="flex flex-col gap-6")[
-        SectionedPageHeader(
-            "Admin settings",
-            description=(
-                "Defaults inherited by users who have not saved personal overrides."
-            ),
-            actions=ControlButton(
-                href=reverse("games:export_admin_settings_ini"),
-                color="gray",
-            )["Download settings.ini"],
-        ),
-        SectionedPageScaffold(
-            sections,
-            navigation_label="Settings sections",
-            jump_label="Jump to a section",
-        ),
-    ]
+    content = SectionedPage(
+        "Admin settings",
+        sections,
+        description="Defaults inherited by users who have not saved personal overrides.",
+        actions=ControlButton(
+            href=reverse("games:export_admin_settings_ini"),
+            color="gray",
+        )["Download settings.ini"],
+        navigation_label="Settings sections",
+    )
     return render_page(
         request,
         content,

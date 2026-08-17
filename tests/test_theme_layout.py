@@ -41,6 +41,7 @@ def test_anonymous_document_has_browser_theme_configuration(db):
     assert "data-theme-source=" not in root
     assert "data-theme-update-url=" not in root
     assert "data-theme-csrf=" not in root
+    assert "<theme-toggle" not in html
 
 
 def test_account_document_has_complete_authoritative_theme_configuration(db):
@@ -94,10 +95,14 @@ def test_external_classic_bootstrap_is_first_script_and_precedes_css(db):
     assert " async" not in bootstrap_tag
     assert "readCookie" not in html
     assert 'theme-bootstrap">' not in html
+    assert "flowbite.min.js" not in html
 
 
 def test_theme_component_keeps_three_icons_and_tooltip(db):
-    html = Client().get(reverse("login")).content.decode()
+    user = get_user_model().objects.create_user(username="theme-user", password="pw")
+    client = Client()
+    client.force_login(user)
+    html = client.get(reverse("games:list_sessions")).content.decode()
 
     assert "<theme-toggle" in html
     assert 'data-theme-icon="system"' in html
@@ -148,7 +153,10 @@ def test_theme_toggle_renders_permanent_disabled_state_on_the_real_button():
 
 
 def test_ordinary_page_navbar_theme_toggle_is_server_rendered_enabled(db):
-    html = Client().get(reverse("login")).content.decode()
+    user = get_user_model().objects.create_user(username="theme-user", password="pw")
+    client = Client()
+    client.force_login(user)
+    html = client.get(reverse("games:list_sessions")).content.decode()
     markup, button = _theme_toggle_markup(html)
 
     assert 'disabled="true"' not in markup.split(">", 1)[0]

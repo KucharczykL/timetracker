@@ -119,12 +119,10 @@ class _NavbarAccountActions(HTMLParser):
         attrs: list[tuple[str, str | None]],
     ) -> None:
         attributes = dict(attrs)
-        ancestor_ids = {
-            value
+        in_menu = any(
+            "data-menu" in ancestor_attributes
             for _ancestor_tag, ancestor_attributes in self.stack
-            if (value := ancestor_attributes.get("id")) is not None
-        }
-        in_menu = "navbarMenu" in ancestor_ids
+        )
         if tag == "a" and attributes.get("href") == reverse("games:settings"):
             self.actions["settings"] = {"in_menu": in_menu}
         elif tag == "a" and attributes.get("href") == reverse("games:admin_settings"):

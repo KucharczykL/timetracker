@@ -12,6 +12,10 @@ from timetracker.config import (
     config,
     derive_hosts_and_origins,
 )
+from timetracker.settings_commands import (
+    SETTING_NAMESPACE_CHOICES,
+    SettingNamespace,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -282,4 +286,14 @@ def test_setting_source_choices_match_enum_members_in_order():
     # vocabulary (issue #497); this guards the one drift point that survives.
     assert tuple(value for value, _ in SETTING_SOURCE_CHOICES) == tuple(
         member.value for member in SettingSource
+    )
+
+
+def test_library_preferences_have_a_distinct_setting_source():
+    assert SettingSource.LIBRARY == "library"
+
+
+def test_setting_namespace_choices_match_enum_members_in_order():
+    assert tuple(value for value, _ in SETTING_NAMESPACE_CHOICES) == tuple(
+        member.value for member in SettingNamespace
     )

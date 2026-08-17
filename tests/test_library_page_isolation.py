@@ -1,3 +1,4 @@
+import re
 from datetime import timedelta
 from types import SimpleNamespace
 
@@ -7,6 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from common.layout import recent_session_resumes
+from common.returns import action_url
 from games.models import (
     Device,
     Game,
@@ -19,6 +21,66 @@ from games.models import (
 from games.views.general import model_counts
 
 pytestmark = pytest.mark.django_db
+
+
+def test_library_page_requires_login(client):
+    response = client.get("/tracker/library")
+
+    assert response.status_code == 302
+    assert "/login/" in response["Location"]
+
+
+def test_library_page_shows_only_current_library_records(client, django_user_model):
+    owner = django_user_model.objects.create_user(
+        username="library-owner", password="p"
+    )
+    other = django_user_model.objects.create_user(username="other-owner", password="p")
+    Game.objects.create(library=owner.library, name="Owned game")
+    Game.objects.create(library=other.library, name="Foreign game")
+    Device.objects.create(library=owner.library, name="Owned device")
+    Device.objects.create(library=other.library, name="Foreign device")
+    client.force_login(owner)
+
+    response = client.get("/tracker/library")
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert "Library" in body
+    assert "Activity is coming later" in body
+    assert "Games currently includes every game in your library." in body
+    assert str(owner.library.pk) in body
+    assert "1 Games" in body
+    assert "1 Devices" in body
+    assert 'data-setting-key="default-device"' in body
+    assert 'data-setting-source="library"' in body
+    assert 'data-live-setting-control=""' in body
+    default_device_url = reverse("api-1.0.0:update_library_default_device")
+    patch_url_template = default_device_url.removesuffix("default-device") + "__key__"
+    assert f'patch-url-template="{patch_url_template}"' in body
+    assert "Preselected when logging a game." in body
+    add_purchase_url = action_url("games:add_purchase", origin=reverse("games:library"))
+    add_purchase_links = re.findall(
+        rf'<a\b[^>]*href="{re.escape(add_purchase_url)}"[^>]*>', body
+    )
+    # Summary actions render both the wide link and narrow overflow-menu item;
+    # both must carry the Library return target.
+    assert len(add_purchase_links) == 2
+    assert all("bg-success" not in link for link in add_purchase_links)
+    assert "Foreign game" not in body
+    assert "Foreign device" not in body
+
+
+def test_library_page_evaluates_each_summary_count_once(
+    client, django_user_model, django_assert_num_queries
+):
+    """Changing a summary to call ``QuerySet.count`` twice adds a database query."""
+    owner = django_user_model.objects.create_user(username="query-owner", password="p")
+    client.force_login(owner)
+
+    with django_assert_num_queries(21):
+        response = client.get("/tracker/library")
+
+    assert response.status_code == 200
 
 
 @pytest.fixture
@@ -327,6 +389,19 @@ def test_navbar_playtime_is_scoped_to_the_authenticated_library(world):
     assert "1 h 00 m" in last_7_html
     assert "7 h 00 m" not in today_html
     assert "7 h 00 m" not in last_7_html
+
+
+def test_library_add_actions_preserve_the_library_as_the_return_origin(world):
+    origin = reverse("games:library")
+    body = world.client.get(origin).content.decode()
+
+    for viewname in (
+        "games:add_game",
+        "games:add_platform",
+        "games:add_device",
+        "games:add_purchase",
+    ):
+        assert action_url(viewname, origin=origin) in body
 
 
 def test_owned_or_404_is_lookup_only_for_an_already_scoped_queryset(world):

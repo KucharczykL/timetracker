@@ -15,6 +15,7 @@ from common.components import (
     FormFields,
     LiveSettingFields,
     MaskedSecretField,
+    SectionedPage,
     SectionedPageHeader,
     SectionedPageScaffold,
     SectionedPageSection,
@@ -446,6 +447,21 @@ class SectionedPageScaffoldTest(SimpleTestCase):
             navigation_label="Settings sections",
             jump_label="Jump to a section",
         )
+
+    def test_page_composes_header_and_scaffold_with_shared_spacing(self):
+        html = str(
+            SectionedPage(
+                "Settings",
+                self._sections(),
+                description="Personal preferences.",
+                navigation_label="Settings sections",
+            )
+        )
+
+        assert 'data-sectioned-page=""' in html
+        assert "flex flex-col gap-6" in html
+        assert "Personal preferences." in html
+        assert 'data-sectioned-page-scaffold=""' in html
 
     def test_same_dom_carries_mobile_sheet_and_desktop_rail_classes(self):
         scaffold = self._scaffold()

@@ -29,18 +29,20 @@ class SettingOperation(StrEnum):
 
 
 class SettingNamespace(StrEnum):
-    """Which mutation surface emitted a settings-committed event: the personal
-    settings page or the site-admin settings page. Distinct from SettingScope
-    (a *key's* registry classification) and from SettingSource (where a
-    resolved *value* came from) — namespace is never derivable from either."""
+    """Which mutation surface emitted a settings-committed event: personal,
+    site-admin, or library preferences. Distinct from SettingScope (a *key's*
+    registry classification) and from SettingSource (where a resolved *value*
+    came from) — namespace is never derivable from either."""
 
     USER = "user"
     SITE = "site"
+    LIBRARY = "library"
 
 
 SETTING_NAMESPACE_CHOICES: tuple[tuple[str, str], ...] = (
     ("user", "User"),
     ("site", "Site"),
+    ("library", "Library"),
 )
 
 

@@ -8,6 +8,7 @@ from django import forms
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.models import User
 from django.db import transaction
+from django.db.models import QuerySet
 from django.utils import timezone
 
 from common.components import (
@@ -140,6 +141,30 @@ class PrimitiveWidgetsMixin:
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         apply_primitive_widget_classes(self.fields)
+
+
+class LibraryPreferencesForm(PrimitiveWidgetsMixin, forms.Form):
+    """Library-owned preferences rendered through the shared settings field kit."""
+
+    default_device = forms.ModelChoiceField(
+        queryset=Device.objects.none(),
+        label="Default device",
+        required=False,
+        empty_label="No default device",
+    )
+
+    def __init__(
+        self,
+        *,
+        devices: QuerySet[Device],
+        default_device: Device | None,
+    ) -> None:
+        super().__init__()
+        default_device_field = cast(
+            forms.ModelChoiceField, self.fields["default_device"]
+        )
+        default_device_field.queryset = devices
+        self.initial["default_device"] = default_device
 
 
 class MultipleGameChoiceField(forms.ModelMultipleChoiceField):

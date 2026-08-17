@@ -9,6 +9,7 @@ import {
 
 const SOURCE_DESCRIPTIONS = {
   user: "Saved for your account and overrides the site default.",
+  library: "Saved for this library.",
   database: "Saved in the application database as the current site-wide value.",
   env: "Loaded from an environment variable.",
   env_file: "Loaded from a file referenced by an environment variable.",
@@ -86,4 +87,3 @@ class SettingSourceBadgeElement extends HTMLElement {
 }
 
 customElements.define("setting-source-badge", SettingSourceBadgeElement);
-

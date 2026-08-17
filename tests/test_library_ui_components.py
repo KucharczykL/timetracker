@@ -2,14 +2,17 @@ import pytest
 
 from common.components import (
     AccountMenu,
+    CopyableFactValue,
     CopyControl,
     Div,
-    EntitySummaryAction,
-    EntitySummaryList,
-    EntitySummaryRow,
+    EmptyState,
     FactList,
     StatisticCard,
     StatisticGrid,
+    SummaryAction,
+    SummaryList,
+    SummaryRow,
+    SummaryValue,
     TooltipDefinition,
     TooltipDefinitionList,
     collect_media,
@@ -25,7 +28,39 @@ def test_statistic_card_keeps_values_plain_and_non_interactive():
     assert "Games" in html and ">851<" in html
 
 
-def test_three_statistics_fill_the_wide_grid_and_zero_keeps_the_same_shape():
+def test_linked_statistic_and_summary_values_use_the_shared_link_treatment():
+    statistic_html = str(StatisticCard("Games", 851, href="/tracker/game/list"))
+    summary_html = str(
+        SummaryRow(
+            label="Games",
+            subtitle="Games currently tracked in this library.",
+            value=SummaryValue(851, "/tracker/game/list"),
+        )
+    )
+
+    assert "text-fg-link hover:text-fg-link-hover" in statistic_html
+    assert 'text-type-title" href="/tracker/game/list"' in statistic_html
+    assert "text-fg-link hover:text-fg-link-hover" in summary_html
+    assert (
+        'text-type-subheading tabular-nums" href="/tracker/game/list"' in summary_html
+    )
+
+
+def test_summary_value_pairs_a_value_with_its_optional_link():
+    html = str(
+        SummaryRow(
+            label="Games",
+            subtitle="Games currently tracked in this library.",
+            value=SummaryValue(1, "/games"),
+        )
+    )
+
+    assert 'href="/games"' in html
+    with pytest.raises(TypeError):
+        SummaryRow(label="Games", subtitle="Tracked games.", value_href="/games")
+
+
+def test_statistics_wrap_with_flex_without_special_casing_the_final_card():
     plain = str(StatisticCard("Unavailable", "—"))
     zero = str(StatisticCard("Devices", 0))
 
@@ -40,9 +75,9 @@ def test_three_statistics_fill_the_wide_grid_and_zero_keeps_the_same_shape():
     )
     assert 'data-statistic-grid=""' in grid
     assert grid.count('data-statistic-card=""') == 3
-    assert "grid-cols-2" in grid
-    assert "@xl:grid-cols-3" in grid
-    assert "last:col-span-2" in grid
+    assert "flex-wrap" in grid
+    assert "grid-cols" not in grid
+    assert "last:col-span" not in grid
     assert " p-4" not in grid
 
 
@@ -66,6 +101,33 @@ def test_fact_list_accepts_arbitrary_value_children():
     assert html.count("<dt") == 2
     assert html.count("<dd") == 2
     assert "Copy" in html
+
+
+def test_copyable_fact_value_owns_identifier_presentation_and_copy_control():
+    value = "018f0000-0000-7000-8000-000000000000"
+
+    html = str(CopyableFactValue(value, description="Copy Library ID"))
+
+    assert value in html
+    assert "font-mono" in html
+    assert 'aria-label="Copy Library ID"' in html
+
+
+def test_empty_state_centers_its_message_without_providing_a_section_heading():
+    html = str(
+        EmptyState(
+            "Activity is coming later",
+            "This section will be added as part of the Player's Journal.",
+        )
+    )
+
+    assert 'data-empty-state=""' in html
+    assert "items-center" in html
+    assert "justify-center" in html
+    assert "text-center" in html
+    assert "Activity is coming later" in html
+    assert "Player&#x27;s Journal" in html
+    assert "<h2" not in html
 
 
 def test_fact_list_does_not_reuse_tooltip_presentation():
@@ -100,59 +162,76 @@ def test_copy_control_exposes_value_description_live_label_and_media():
     assert "dist/elements/pop-over.js" in media.js
 
 
-def test_entity_row_renders_both_presentations_from_one_action_source():
+def test_summary_row_renders_both_presentations_from_one_action_source():
     actions = (
-        EntitySummaryAction("Browse", "/tracker/game/list"),
-        EntitySummaryAction("Add", "/tracker/game/add"),
+        SummaryAction("Browse", "/tracker/game/list"),
+        SummaryAction("Add", "/tracker/game/add"),
     )
     html = str(
-        EntitySummaryRow(
+        SummaryRow(
             label="Games",
             subtitle="Games currently tracked in this library.",
-            count=851,
-            count_href="/tracker/game/list",
+            value=SummaryValue(851, "/tracker/game/list"),
             actions=actions,
         )
     )
 
     assert html.count('href="/tracker/game/list"') == 3
     assert html.count('href="/tracker/game/add"') == 2
-    assert 'data-entity-summary-wide-actions=""' in html
-    assert 'data-entity-summary-overflow=""' in html
+    assert 'data-summary-wide-actions=""' in html
+    assert 'data-summary-overflow=""' in html
     assert 'aria-label="Games actions"' in html
     assert 'aria-label="851 Games"' in html
 
 
-def test_entity_list_is_divider_separated_without_a_nested_card_border():
+def test_summary_list_is_divider_separated_without_a_nested_card_border():
     html = str(
-        EntitySummaryList(
-            EntitySummaryRow(
+        SummaryList(
+            SummaryRow(
                 label="Devices",
                 subtitle="Hardware you use to play.",
-                count=2,
+                value=SummaryValue(2),
                 detail="Preselected when logging a game.",
             )
         )
     )
 
     opening = html[: html.index(">")]
-    assert 'data-entity-summary-list=""' in opening
+    assert 'data-summary-list=""' in opening
     assert "divide-y" in opening
     assert "border" not in opening
-    assert 'data-entity-summary-detail=""' in html
+    assert 'data-summary-detail=""' in html
 
 
-def test_entity_row_with_no_actions_renders_no_empty_overflow_menu():
+def test_summary_row_with_no_actions_renders_no_empty_overflow_menu():
     html = str(
-        EntitySummaryRow(
+        SummaryRow(
             label="Play events",
             subtitle="No management surface.",
-            count=0,
+            value=SummaryValue(0),
         )
     )
 
-    assert "data-entity-summary-overflow" not in html
+    assert "data-summary-overflow" not in html
     assert "<drop-down" not in html
+
+
+def test_summary_row_supports_actions_and_detail_without_a_primary_value():
+    html = str(
+        SummaryRow(
+            label="Temporary home",
+            subtitle="Purchase management will move later.",
+            actions=(SummaryAction("Add purchase", "/tracker/purchase/add"),),
+            detail=Div()["Purchase totals"],
+        )
+    )
+
+    assert "Temporary home" in html
+    assert "Purchase management will move later." in html
+    assert 'href="/tracker/purchase/add"' in html
+    assert "Add purchase" in html
+    assert "Purchase totals" in html
+    assert 'aria-label="None Temporary home"' not in html
 
 
 def _account_menu(**overrides):

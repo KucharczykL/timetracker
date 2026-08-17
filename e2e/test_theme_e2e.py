@@ -87,11 +87,13 @@ def test_invalid_browser_theme_falls_back_to_system(live_server, page: Page):
     assert _first_frame(page) == {"preference": "system", "dark": True}
 
 
-def test_navbar_toggle_swaps_visible_icon_and_reopens_hovered_tooltip(
-    live_server, page: Page
+def test_account_menu_toggle_swaps_visible_icon_and_reopens_hovered_tooltip(
+    live_server, page: Page, django_user_model
 ):
+    user = django_user_model.objects.create_user(username="theme-user", password="pw")
     page.emulate_media(color_scheme="light")
-    page.goto(f"{live_server.url}{reverse('login')}")
+    _login(page, live_server, user.username)
+    page.get_by_role("button", name="Open account menu for theme-user").click()
     toggle = page.locator("theme-toggle [data-pop-over-trigger]")
     tooltip = page.locator("[data-theme-tooltip]")
 
@@ -165,7 +167,7 @@ def test_logout_restores_the_anonymous_browser_preference(
     page.wait_for_url(f"{live_server.url}/tracker**")
     expect(page.locator("html")).to_have_class("dark")
 
-    page.locator("#navbarMenuLink").click()
+    page.get_by_role("button", name="Open account menu for logout-user").click()
     page.get_by_role("menuitem", name="Log out").click()
     page.wait_for_url(f"{live_server.url}{reverse('login')}**")
 
@@ -203,6 +205,7 @@ def test_settings_control_updates_permanently_disabled_navbar_theme_state(
     page.emulate_media(color_scheme="light")
     _login(page, live_server, user.username)
     page.goto(f"{live_server.url}{reverse('games:settings')}")
+    page.get_by_role("button", name="Open account menu for settings-user").click()
     theme = page.locator('select[name="theme"]')
     toggle = page.locator("theme-toggle [data-pop-over-control]")
     tooltip_surface = page.locator("theme-toggle [data-pop-over-trigger]")
@@ -307,6 +310,7 @@ def test_failed_theme_save_restores_system_state_then_allows_retry(
     page.emulate_media(color_scheme="dark")
     _login(page, live_server, user.username)
     page.goto(f"{live_server.url}{reverse('games:settings')}")
+    page.get_by_role("button", name="Open account menu for rollback-user").click()
     theme = page.locator('select[name="theme"]')
     toggle = page.locator("theme-toggle [data-pop-over-control]")
     tooltip_surface = page.locator("theme-toggle [data-pop-over-trigger]")

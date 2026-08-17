@@ -20,13 +20,13 @@ READ_ONLY: frozenset[UrlName] = frozenset(
         "games:export_admin_settings_ini",
         "games:filter_builder",
         "games:index",
+        "games:library",
         "games:list_devices",
         "games:list_games",
         "games:list_platforms",
         "games:list_playevents",
         "games:list_purchases",
         "games:list_sessions",
-        "games:library_kit_preview",
         "games:list_statuschanges",
         "games:settings",
         "games:settings_kit_preview",
@@ -90,7 +90,6 @@ IN_PLACE: frozenset[UrlName] = frozenset(
 # Routed only when DEBUG was true at games/urls.py import time.
 DEBUG_ONLY: frozenset[UrlName] = frozenset(
     {
-        "games:library_kit_preview",
         "games:settings_kit_preview",
         "games:settings_kit_preview_patch",
     }

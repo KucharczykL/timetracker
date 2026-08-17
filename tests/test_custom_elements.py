@@ -233,30 +233,6 @@ class BottomSheetTest(unittest.TestCase):
 
 
 class DropdownWrapperTest(unittest.TestCase):
-    def test_menu_dropdown_emits_tag_and_menu_trigger(self):
-        from common.components import (
-            DropdownLinkItem,
-            MenuDropdown,
-            collect_media,
-            render,
-        )
-
-        node = MenuDropdown(
-            label="Menu",
-            id="navbarMenu",
-            placement="bottom-center",
-            items=[DropdownLinkItem("/games/", "Game", current=True)],
-        )
-        html = render(node)
-        self.assertIn("<drop-down ", html)
-        self.assertIn('placement="bottom-center"', html)
-        self.assertIn('behavior="menu"', html)
-        self.assertIn('id="navbarMenuLink"', html)
-        self.assertIn('aria-haspopup="menu"', html)  # menu semantics from the wrapper
-        self.assertIn('role="menu"', html)
-        self.assertIn('aria-current="page"', html)
-        self.assertIn("dist/elements/drop-down.js", collect_media(node).js)
-
     def test_button_dropdown_uses_control_button_trigger(self):
         from common.components import ButtonDropdown, DropdownLinkItem, render
 
@@ -298,58 +274,7 @@ class DropdownWrapperTest(unittest.TestCase):
         self.assertNotIn("aria-labelledby", html)  # icon-only caret → explicit label
 
 
-class DropdownSubmenuTest(unittest.TestCase):
-    def test_submenu_item(self):
-        from common.components import (
-            Button,
-            Dropdown,
-            DropdownLinkItem,
-            DropdownMenuPanel,
-            DropdownSubmenu,
-            render,
-        )
-
-        node = Dropdown(
-            trigger_element=Button()["Menu"],
-            target_element=DropdownMenuPanel(
-                items=[
-                    DropdownSubmenu(
-                        "Game",
-                        id="navbarMenuGame",
-                        items=[
-                            DropdownLinkItem("/games/add/", "Add game"),
-                            DropdownLinkItem("/games/", "List games"),
-                        ],
-                    ),
-                ]
-            ),
-            id="navbarMenu",
-        )
-        html = render(node)
-        # The submenu trigger is itself a menuitem with a popup, nested in a
-        # right-start <drop-down>.
-        self.assertEqual(html.count("<drop-down "), 2)
-        self.assertIn('id="navbarMenuGameLink"', html)
-        self.assertIn('role="menuitem"', html)
-        self.assertIn('aria-haspopup="menu"', html)
-        self.assertIn('placement="right-start"', html)
-        self.assertIn('submenu="true"', html)
-        self.assertIn("Add game", html)
-
-    def test_placement_override(self):
-        from common.components import DropdownLinkItem, DropdownSubmenu, render
-
-        html = render(
-            DropdownSubmenu(
-                "Game",
-                id="g",
-                placement="bottom-start",
-                items=[DropdownLinkItem("/a/", "A")],
-            )
-        )
-        self.assertIn('placement="bottom-start"', html)
-        self.assertIn('submenu="true"', html)  # intrinsic, unaffected
-
+class DropdownMenuItemTest(unittest.TestCase):
     def test_check_and_divider_items(self):
         from common.components import (
             DropdownCheckItem,

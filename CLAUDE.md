@@ -241,7 +241,8 @@ Only a small number of HTML templates remain (platform icon snippets and partial
 
 - **HTMX** (`games/static/js/htmx.min.js`) — partial page updates
 - **Alpine.js** (vendored: `alpine.min.js`, `alpine-mask.min.js`) — reactive dropdowns (`GameStatusSelector`, `SessionDeviceSelector`), toast store
-- **Flowbite** (vendored: `flowbite.min.js`) — navbar collapse, dropdown toggles
+- **Flowbite** — its CSS theme and semantic tokens remain in use; the legacy
+  `flowbite.min.js` bundle is retained as a vendored static asset only
 - **Tailwind CSS** — utility classes, compiled from `common/input.css` → `games/static/base.css`
 - All third-party JS is served locally from `games/static/js/` (no CDNs), so pages and browser tests work offline
 - **Custom JS** authored in TypeScript under `ts/`, compiled to `games/static/js/dist/` (gitignored, build-only):

@@ -2,7 +2,7 @@
 
 Status: approved design from the #629-#638 review and design interview.
 
-Companion specification: [Library page, component kit, and navigation](2026-08-13-library-page-and-navigation-design.md).
+Current Library reference: [Library](../../library.md).
 
 ## Context
 

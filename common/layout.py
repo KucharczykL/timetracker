@@ -8,6 +8,8 @@ it hoists shared `<head>` content (the `_HEADERS` block, analogous to
 """
 
 import json
+import re
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 from django.conf import settings
@@ -27,7 +29,6 @@ from common.components.primitives import (
     CONTENT_MAX_WIDTH_CLASS,
     PAGE_GUTTER_CLASS,
     Body,
-    Button,
     Div,
     Head,
     Html,
@@ -165,184 +166,12 @@ def _main_script(mastered: bool) -> str:
     return _MAIN_SCRIPT_A + ("true" if mastered else "false") + _MAIN_SCRIPT_B
 
 
-def NavbarPlaytime(
-    today_played: Node | str,
-    last_7_played: Node | str,
-    *,
-    oob: bool = False,
-) -> Node:
-    """The navbar 'Today · Last 7 days' totals. Carries a stable id so
-    htmx endpoints can refresh it out-of-band after a session change.
-
-    Each total is a ``Duration`` node that owns its own link and popover — the
-    linking cannot happen here, because a popover trigger is a ``<button>`` and
-    may not sit inside an ``<a>``. Passing nodes rather than text is also what
-    keeps their declared ``Media`` reachable.
-    """
-    from common.components import HTMLAttribute, Li, Span
-
-    attributes: list[HTMLAttribute] = [
-        ("id", "navbar-playtime"),
-        ("class", "flex flex-col items-center text-type-micro"),
-    ]
-    if oob:
-        attributes.append(("hx-swap-oob", "true"))
-    return Li(attributes)[
-        Span(class_="flex uppercase gap-1")["Today", Span()["·"], "Last 7 days"],
-        Span(class_="flex items-center gap-1")[
-            today_played,
-            Span()["·"],
-            last_7_played,
-        ],
-    ]
-
-
 # Shared classes for the plain navbar entries (Home/Stats/Log out).
 _NAV_LINK_CLASS = (
     "block py-2 px-3 rounded-base hover:bg-neutral-tertiary-medium "
     "md:hover:bg-transparent md:border-0 md:hover:text-fg-brand md:p-0 "
     "text-heading"
 )
-
-
-def NavbarMenu(
-    *,
-    today_played: Node | str,
-    last_7_played: Node | str,
-    current_year: int,
-    csrf_token: str,
-    authenticated: bool = False,
-    is_superuser: bool = False,
-    is_settings_page: bool = False,
-    recent_resumes: list[Session] | None = None,
-    origin: OriginUrl | None = None,
-) -> Node:
-    """The responsive ``#navbar-dropdown`` collapse menu, built from components."""
-    from common.components import (
-        ControlLink,
-        Div,
-        DropdownDivider,
-        DropdownLinkItem,
-        DropdownPostItem,
-        DropdownSubmenu,
-        Li,
-        MenuDropdown,
-        ThemeToggle,
-        Ul,
-    )
-    from common.returns import action_url
-
-    def entity_submenu(label, slug, add_url, list_url):
-        return DropdownSubmenu(
-            label,
-            id=f"navbarMenu{slug}",
-            items=[
-                DropdownLinkItem(
-                    action_url(add_url, origin=origin), f"Add {label.lower()}"
-                ),
-                DropdownLinkItem(reverse(list_url), f"List {label.lower()}s"),
-            ],
-        )
-
-    theme_toggle = Li(class_="flex items-center")[
-        ThemeToggle(instance_key="navbar", disabled=is_settings_page)
-    ]
-
-    home = Li()[
-        ControlLink(
-            href=reverse("games:index"),
-            class_="block py-2 px-3 bg-brand rounded-base "
-            "md:bg-transparent md:p-0 text-fg-on-brand md:text-heading "
-            "md:hover:text-fg-brand",
-            aria_current="page",
-        )["Home"]
-    ]
-
-    account_items = (
-        [
-            DropdownDivider(),
-            DropdownLinkItem(reverse("games:settings"), "Settings"),
-            *(
-                [DropdownLinkItem(reverse("games:admin_settings"), "Admin settings")]
-                if is_superuser
-                else []
-            ),
-            DropdownPostItem(reverse("logout"), "Log out", csrf_token=csrf_token),
-        ]
-        if authenticated
-        else []
-    )
-
-    # One entity menu: each entity is a submenu of its actions (Add / List).
-    entity_menu = Li()[
-        MenuDropdown(
-            label="Menu",
-            id="navbarMenu",
-            placement="bottom-center",
-            items=[
-                entity_submenu(
-                    "Device", "Device", "games:add_device", "games:list_devices"
-                ),
-                entity_submenu("Game", "Game", "games:add_game", "games:list_games"),
-                entity_submenu(
-                    "Platform", "Platform", "games:add_platform", "games:list_platforms"
-                ),
-                entity_submenu(
-                    "Play event",
-                    "PlayEvent",
-                    "games:add_playevent",
-                    "games:list_playevents",
-                ),
-                entity_submenu(
-                    "Purchase", "Purchase", "games:add_purchase", "games:list_purchases"
-                ),
-                entity_submenu(
-                    "Session", "Session", "games:add_session", "games:list_sessions"
-                ),
-                *account_items,
-            ],
-        )
-    ]
-
-    stats = Li()[
-        ControlLink(
-            href=reverse("games:stats_by_year", args=[current_year]),
-            class_=_NAV_LINK_CLASS,
-        )["Stats"]
-    ]
-
-    # Desktop-only log button: between the playtime counter and Home in the menu
-    # row. `hidden md:flex` keeps it out of the expanded mobile menu (the mobile
-    # instance lives next to the hamburger instead).
-    desktop_log = (
-        Li(class_="hidden md:flex items-center")[
-            NavbarLogButton(
-                recent_resumes or [],
-                id="navbar-log-desktop",
-                csrf_token=csrf_token,
-                origin=origin,
-            )
-        ]
-        if authenticated
-        else ""
-    )
-
-    return Div(class_="hidden w-full md:block md:w-auto", id="navbar-dropdown")[
-        Ul(
-            class_="items-center flex flex-col font-medium p-4 md:p-0 mt-4 border "
-            "border-default-medium rounded-base bg-neutral-secondary-medium md:gap-8 "
-            "md:flex-row md:mt-0 md:border-0 md:bg-neutral-primary-soft"
-        )[
-            theme_toggle,
-            # No url arguments: each Duration owns its own link, because a
-            # popover trigger may not sit inside one.
-            NavbarPlaytime(today_played, last_7_played),
-            desktop_log,
-            home,
-            entity_menu,
-            stats,
-        ]
-    ]
 
 
 def recent_session_resumes(request: HttpRequest, limit: int = 5) -> list[Session]:
@@ -383,8 +212,8 @@ def NavbarLogButton(
     origin: OriginUrl | None = None,
 ) -> Node:
     """The always-visible split button: primary opens the general add-session form,
-    the caret dropdown one-click-resumes each recent game. ``id`` disambiguates the
-    two breakpoint instances (mobile beside the hamburger, desktop inside the menu)."""
+    the caret dropdown one-click-resumes each recent game. ``id`` identifies the
+    control and its associated dropdown."""
     from common.components import (
         ControlButton,
         DropdownActionItem,
@@ -439,75 +268,77 @@ def NavbarLogButton(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class NavbarViewer:
+    username: str
+    is_superuser: bool
+
+    @property
+    def initials(self) -> str:
+        parts = [part for part in re.split(r"[^A-Za-z0-9]+", self.username) if part]
+        return (
+            "".join(part[0] for part in parts)[:2].upper() or self.username[:2].upper()
+        )
+
+
 def Navbar(
     *,
     today_played: Node | str,
     last_7_played: Node | str,
     current_year: int,
     csrf_token: str,
-    authenticated: bool = False,
-    is_superuser: bool = False,
+    viewer: NavbarViewer | None = None,
     is_settings_page: bool = False,
     recent_resumes: list[Session] | None = None,
     origin: OriginUrl | None = None,
 ) -> Node:
-    """Top navigation bar, assembled from components (logo + hamburger + menu)."""
-    from common.components import ControlLink, Div, Icon, Span
+    """Authenticated primary navigation: logo, Log game, Library, account."""
+    from common.components import AccountMenu, ControlLink, Div, Span
 
     logo = static("icons/tesserae-icon-animated.svg")
     brand = ControlLink(
         href=reverse("games:index"),
-        # me-auto hugs the brand to the left edge and pushes every following item
-        # (log button, hamburger, menu) to the right — independent of which are
-        # visible at the current breakpoint or whether the log button renders.
+        # me-auto hugs the brand to the left edge and pushes Log game, Library,
+        # and the account menu to the right at every breakpoint.
         class_="flex items-center me-auto",
     )[
         Img(src=logo, alt="Timetracker Logo", class_="w-10 h-10"),
         Span(
-            class_="text-lg sm:text-2xl lg:text-4xl text-accent font-alien"  # type-ok: wordmark brand scale
+            class_="hidden sm:inline text-lg sm:text-2xl lg:text-4xl text-accent font-alien"  # type-ok: wordmark brand scale
         )["TIMETRACKER"],
     ]
-    hamburger = Button(
-        data_collapse_toggle="navbar-dropdown",
-        type="button",
-        aria_controls="navbar-dropdown",
-        aria_expanded="false",
-        class_="inline-flex items-center p-2 w-10 h-10 justify-center text-type-body text-body-subtle rounded-base md:hidden hover:bg-neutral-tertiary-medium focus:outline-hidden focus:ring-2 focus:ring-neutral-tertiary-medium",
-    )[Span(class_="sr-only")["Open main menu"], Icon("hamburger")]
-
-    menu = NavbarMenu(
-        today_played=today_played,
-        last_7_played=last_7_played,
-        current_year=current_year,
-        csrf_token=csrf_token,
-        authenticated=authenticated,
-        is_superuser=is_superuser,
-        is_settings_page=is_settings_page,
-        recent_resumes=recent_resumes or [],
-        origin=origin,
-    )
-    # Two breakpoint instances of the log button: the mobile one sits in the top
-    # bar next to the hamburger (`md:hidden`); the desktop one lives inside the
-    # menu row between the playtime counter and Home (rendered by NavbarMenu,
-    # `hidden md:flex`). Each is auth-gated; `me-auto` on the brand right-aligns
-    # the mobile group, and `menu` stays a direct flex child for its mobile wrap.
-    mobile_log = (
-        Div(class_="md:hidden")[
+    controls = ""
+    if viewer is not None:
+        controls = Div(class_="flex items-center gap-4 sm:gap-6")[
             NavbarLogButton(
                 recent_resumes or [],
-                id="navbar-log-mobile",
+                id="navbar-log",
                 csrf_token=csrf_token,
                 origin=origin,
-            )
+            ),
+            ControlLink(href=reverse("games:library"), class_=_NAV_LINK_CLASS)[
+                "Library"
+            ],
+            AccountMenu(
+                username=viewer.username,
+                initials=viewer.initials,
+                today_played=today_played,
+                last_7_played=last_7_played,
+                stats_url=reverse("games:stats_by_year", args=[current_year]),
+                settings_url=reverse("games:settings"),
+                admin_settings_url=(
+                    reverse("games:admin_settings") if viewer.is_superuser else None
+                ),
+                theme_disabled=is_settings_page,
+                logout_url=reverse("logout"),
+                csrf_token=csrf_token,
+            ),
         ]
-        if authenticated
-        else ""
-    )
     return Nav(class_="bg-neutral-primary-soft border-b border-default py-4")[
         Div(
             class_=f"w-full {CONTENT_MAX_WIDTH_CLASS} {PAGE_GUTTER_CLASS} "
-            "flex flex-wrap items-center gap-x-3 mx-auto"
-        )[brand, mobile_log, hamburger, menu]
+            "flex items-center gap-x-3 mx-auto"
+        )[brand, controls]
     ]
 
 
@@ -553,8 +384,14 @@ def TimetrackerDocument(
         last_7_played=counts["last_7_played"],
         current_year=year,
         csrf_token=csrf_token,
-        authenticated=request.user.is_authenticated,
-        is_superuser=request.user.is_superuser,
+        viewer=(
+            NavbarViewer(
+                username=request.user.get_username(),
+                is_superuser=request.user.is_superuser,
+            )
+            if request.user.is_authenticated
+            else None
+        ),
         is_settings_page=is_settings_page,
         recent_resumes=recent_session_resumes(request),
         origin=navbar_origin,
@@ -705,7 +542,6 @@ def TimetrackerDocument(
                         Script(src=static("js/temporal-polyfill.js")),
                         ModuleScript("dist/global-error-handler.js"),
                         Script(src=static("js/htmx.min.js")),
-                        Script(src=static("js/flowbite.min.js")),
                         ModuleScript("dist/htmx-redirect-toast.js"),
                         ModuleScript("dist/toast.js"),
                         Script(defer=True, src=static("js/alpine-mask.min.js")),

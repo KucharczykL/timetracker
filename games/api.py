@@ -57,9 +57,11 @@ from games.sorting import (
     parse_find_filter,
     parse_per_page_override,
 )
+from timetracker.config import SettingSource
 from timetracker.settings_commands import (
     SettingLockedError,
     SettingNamespace,
+    change_library_default_device,
     change_site_setting,
     change_user_setting,
 )
@@ -83,6 +85,7 @@ playevent_router = Router()
 game_router = Router()
 device_router = Router()
 platform_router = Router()
+library_router = Router()
 
 NOW_FACTORY = django_timezone_now
 PAGE_SIZE = 10
@@ -775,13 +778,13 @@ class SettingOut(Schema):
     ``str``-only field would 500. ``locked`` marks an env/`.env`/`.ini`-pinned
     value; ``/user`` forces it ``False`` (see :func:`list_user_settings`).
     ``namespace`` identifies which mutation surface produced this entry — the
-    personal or site-admin page — independent of ``source`` (where the
-    resolved value came from).
+    personal, site-admin, or library preferences surface — independent of
+    ``source`` (where the resolved value came from).
     """
 
     key: str
     value: str | int | None
-    source: str
+    source: SettingSource
     locked: bool
     namespace: SettingNamespace
 
@@ -789,6 +792,10 @@ class SettingOut(Schema):
 class SettingValueIn(Schema):
     # ``None`` means "clear this setting" (unset → falls through to lower layers).
     value: Any = None
+
+
+class DefaultDeviceIn(Schema):
+    value: int | str | None = None
 
 
 def _settings_of_scope(*scopes: SettingScope) -> list[SettingKey]:
@@ -866,6 +873,35 @@ def update_user_setting(request, key: str, payload: SettingValueIn):
     )
 
 
+@library_router.patch("/default-device", response=SettingOut)
+def update_library_default_device(request, payload: DefaultDeviceIn):
+    """Set the current library's default Device, or clear it with null.
+
+    The live-settings client substitutes its field key into a URL template, while
+    this endpoint serves only ``default-device``. Add a key-routed endpoint before
+    adding another library preference.
+    """
+    library = request.user.library
+    device = None
+    if payload.value is not None:
+        try:
+            device_id = int(payload.value)
+        except ValueError:
+            raise HttpError(400, "Device must be an integer or null.") from None
+        device = Device.objects.for_library(library).filter(pk=device_id).first()
+        if device is None:
+            raise HttpError(404, "Device not found.")
+    change_library_default_device(library, device)
+    messages.success(request, "Default device saved")
+    return {
+        "key": "default-device",
+        "value": device.pk if device is not None else None,
+        "source": SettingSource.LIBRARY,
+        "locked": False,
+        "namespace": SettingNamespace.LIBRARY,
+    }
+
+
 @settings_router.get("/site", response=list[SettingOut])
 def list_site_settings(request):
     """Site settings (and the site defaults under user prefs), resolved with
@@ -901,6 +937,7 @@ def update_site_setting(request, key: str, payload: SettingValueIn):
 
 
 api.add_router("/settings", settings_router)
+api.add_router("/library", library_router)
 
 client_error_logger = logging.getLogger("client_errors")
 

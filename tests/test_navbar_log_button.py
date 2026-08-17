@@ -14,7 +14,7 @@ from django.test import RequestFactory, TestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
-from common.layout import recent_session_resumes
+from common.layout import Navbar, NavbarViewer, recent_session_resumes
 from games.models import Game, Platform, Session
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
@@ -94,12 +94,23 @@ class NavbarLogButtonRenderTest(TestCase):
         html = self.client.get(
             reverse("games:list_games"), follow=True
         ).content.decode()
-        # Two breakpoint instances: mobile (beside the hamburger) + desktop
-        # (inside the menu row, between playtime and Home).
-        self.assertIn("navbar-log-mobile", html)
-        self.assertIn("navbar-log-desktop", html)
+        # The single direct control remains visible at every breakpoint.
+        self.assertIn('id="navbar-log"', html)
         self.assertIn("Log game", html)
         self.assertIn("Zzq Unique Title", html)
+
+    def test_authenticated_navbar_exposes_library_and_account_without_menu_or_hamburger(
+        self,
+    ) -> None:
+        self.client.force_login(self.user)
+        html = self.client.get(reverse("games:list_games")).content.decode()
+
+        self.assertIn('href="/tracker/library"', html)
+        self.assertIn('class="flex items-center gap-4 sm:gap-6"', html)
+        self.assertIn("Open account menu for testuser", html)
+        self.assertNotIn(">Home<", html)
+        self.assertNotIn(">Menu<", html)
+        self.assertNotIn("Open main menu", html)
 
     def test_list_page_captions_are_names_not_action_strips(self) -> None:
         """The deleted strip was a visible `<caption>` full of controls. A
@@ -127,3 +138,23 @@ class NavbarLogButtonRenderTest(TestCase):
         html = self.client.get(reverse("login")).content.decode()
         self.assertNotIn("navbar-log", html)
         self.assertNotIn("Zzq Unique Title", html)
+
+
+def test_navbar_viewer_derives_initials_and_falls_back_for_punctuation_only_names():
+    assert NavbarViewer("ada-lovelace", False).initials == "AL"
+    assert NavbarViewer("!!!", False).initials == "!!"
+
+
+def test_navbar_omits_authenticated_controls_without_a_viewer():
+    html = str(
+        Navbar(
+            today_played="0h",
+            last_7_played="0h",
+            current_year=2026,
+            csrf_token="token",
+            viewer=None,
+        )
+    )
+
+    assert "navbar-log" not in html
+    assert "Open account menu" not in html

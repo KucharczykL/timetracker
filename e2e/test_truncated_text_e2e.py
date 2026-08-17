@@ -457,8 +457,8 @@ def test_navbar_menu_name_is_hover_only_and_has_no_nested_button(
     Session.objects.create(game=game, timestamp_start=timezone.now())
 
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
-    page.locator("#navbar-log-desktopLink").click()
-    menu = page.locator("#navbar-log-desktop")
+    page.locator("#navbar-logLink").click()
+    menu = page.locator("#navbar-log")
     expect(menu).to_be_visible()
     host = menu.locator("truncated-text")
     expect(host.locator("button")).to_have_count(0)

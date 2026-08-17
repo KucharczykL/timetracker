@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from common.components.core import Child, Node, randomid
+from common.components.core import Child, Fragment, Node, randomid
 from common.components.custom_elements import (
     Dropdown,
     DropdownLinkItem,
@@ -32,18 +32,27 @@ _CopyControl = custom_element_builder("copy-control")
 def StatisticGrid(*cards: Child) -> Node:
     return Div(
         data_statistic_grid="",
-        class_="grid grid-cols-2 gap-6 @xl:grid-cols-3",
+        class_="flex flex-wrap gap-6",
     )[*cards]
 
 
-def StatisticCard(label: str, value: str | int) -> Node:
+def _value_node(value: str | int, label: str, href: str | None, class_: str) -> Node:
     value_text = str(value)
+    return (
+        Link(href=href, aria_label=f"{value_text} {label}", class_=class_)[value_text]
+        if href is not None
+        else Span(class_=f"{class_} text-heading")[value_text]
+    )
+
+
+def StatisticCard(label: str, value: str | int, *, href: str | None = None) -> Node:
+    value_node = _value_node(value, label, href, "text-type-title")
     return Div(
         data_statistic_card="",
-        class_="flex min-w-0 flex-col gap-1 last:col-span-2 @xl:last:col-span-1",
+        class_="flex min-w-32 flex-1 flex-col gap-1",
     )[
         P(class_="text-type-body text-body")[label],
-        Span(class_="text-type-title text-heading")[value_text],
+        value_node,
     ]
 
 
@@ -59,6 +68,34 @@ def FactList(facts: Sequence[tuple[str, Child]]) -> Node:
             ]
             for label, value in facts
         ]
+    ]
+
+
+def CopyableFactValue(
+    value: str,
+    *,
+    description: str = "Copy value to clipboard",
+) -> Node:
+    """A monospace identifier paired with its local clipboard control."""
+    return Fragment(
+        Span(class_="font-mono")[value],
+        " ",
+        CopyControl(value, description=description),
+    )
+
+
+def EmptyState(title: str, description: str) -> Node:
+    """A centered message for content areas with no current material.
+
+    Containers own their headings; this deliberately renders only the empty
+    content so it can be placed under a section, table, or panel title.
+    """
+    return Div(
+        data_empty_state="",
+        class_="flex min-h-40 flex-col items-center justify-center gap-2 text-center",
+    )[
+        P(class_="text-type-subheading text-heading")[title],
+        P(class_="text-type-body text-body")[description],
     ]
 
 
@@ -117,24 +154,30 @@ def CopyControl(
 
 
 @dataclass(frozen=True, slots=True)
-class EntitySummaryAction:
+class SummaryAction:
     label: str
     href: str
 
 
-def EntitySummaryList(*rows: Child) -> Node:
+@dataclass(frozen=True, slots=True)
+class SummaryValue:
+    value: str | int
+    href: str | None = None
+
+
+def SummaryList(*rows: Child) -> Node:
     return Div(
-        data_entity_summary_list="",
+        data_summary_list="",
         class_="flex flex-col divide-y divide-default-medium",
     )[*rows]
 
 
-def _entity_action_menu(
+def _summary_action_menu(
     label: str,
-    actions: Sequence[EntitySummaryAction],
+    actions: Sequence[SummaryAction],
 ) -> Node:
     menu_id = randomid(
-        seed="entity-actions-",
+        seed="summary-actions-",
         content=f"{label}:" + ":".join(action.href for action in actions),
         length=24,
     )
@@ -157,72 +200,72 @@ def _entity_action_menu(
     )
 
 
-def EntitySummaryRow(
+def SummaryRow(
     *,
     label: str,
     subtitle: str,
-    count: str | int,
-    count_href: str | None = None,
-    actions: Sequence[EntitySummaryAction] = (),
+    value: SummaryValue | None = None,
+    actions: Sequence[SummaryAction] = (),
     detail: Child | None = None,
 ) -> Node:
-    count_text = str(count)
-    count_node = (
-        Link(
-            href=count_href,
-            aria_label=f"{count_text} {label}",
-            class_="text-type-subheading text-heading tabular-nums",
-        )[count_text]
-        if count_href is not None
-        else Span(class_="text-type-subheading text-heading tabular-nums")[count_text]
-    )
     primary_children: list[Child] = [
         Div(class_="flex min-w-0 flex-col gap-1")[
             P(class_="text-type-subheading text-heading")[label],
             P(class_="text-type-body text-body")[subtitle],
-        ],
-        Div(class_="justify-self-end text-right")[count_node],
+        ]
     ]
+    if value is not None:
+        value_node = _value_node(
+            value.value,
+            label,
+            value.href,
+            "text-type-subheading tabular-nums",
+        )
+        primary_children.append(Div(class_="justify-self-end text-right")[value_node])
     if actions:
         primary_children.extend(
             [
                 Div(
-                    data_entity_summary_overflow="",
+                    data_summary_overflow="",
                     class_="justify-self-end @2xl:hidden",
-                )[_entity_action_menu(label, actions)],
+                )[_summary_action_menu(label, actions)],
                 Div(
-                    data_entity_summary_wide_actions="",
+                    data_summary_wide_actions="",
                     class_="hidden items-center justify-end gap-4 @2xl:flex",
                 )[*[Link(href=action.href)[action.label] for action in actions]],
             ]
         )
+    if value is not None and actions:
+        grid_columns = "grid-cols-[minmax(0,1fr)_auto_auto]"
+    elif value is not None or actions:
+        grid_columns = "grid-cols-[minmax(0,1fr)_auto]"
+    else:
+        grid_columns = "grid-cols-1"
     row_children: list[Child] = [
-        Div(
-            class_=(
-                "grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-4 "
-                "@2xl:grid-cols-[minmax(0,1fr)_auto_auto]"
-            )
-        )[*primary_children]
+        Div(class_=f"grid {grid_columns} items-center gap-4")[*primary_children]
     ]
     if detail is not None:
         row_children.append(
             Div(
-                data_entity_summary_detail="",
+                data_summary_detail="",
                 class_="text-type-body text-body",
             )[detail]
         )
     return Div(
-        data_entity_summary_row="",
+        data_summary_row="",
         class_="@container flex min-w-0 flex-col gap-3 py-4 first:pt-0 last:pb-0",
     )[*row_children]
 
 
 __all__ = [
     "CopyControl",
-    "EntitySummaryAction",
-    "EntitySummaryList",
-    "EntitySummaryRow",
+    "CopyableFactValue",
+    "EmptyState",
     "FactList",
     "StatisticCard",
     "StatisticGrid",
+    "SummaryAction",
+    "SummaryList",
+    "SummaryRow",
+    "SummaryValue",
 ]

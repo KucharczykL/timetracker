@@ -126,11 +126,6 @@ ICON_NODES: dict[str, Element] = {
             ],
         ],
     ],
-    'hamburger': Svg(
-        [('class', 'w-5 h-5'), ('aria-hidden', 'true'), ('fill', 'none'), ('viewBox', '0 0 17 14'), ('xmlns', 'http://www.w3.org/2000/svg')],
-    )[
-        Path([('stroke', 'currentColor'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('stroke-width', '2'), ('d', 'M1 1h15M1 7h15M1 13h15')]),
-    ],
     'info': Svg(
         [('x', '0px'), ('y', '0px'), ('width', '50'), ('height', '50'), ('viewBox', '0 0 48 48'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
