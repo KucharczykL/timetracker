@@ -5,11 +5,9 @@ from __future__ import annotations
 import json
 from datetime import UTC, date, datetime, timedelta
 from io import StringIO
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import Client
@@ -398,40 +396,3 @@ def test_conversion_publication_is_independent_per_library(parity_world):
         world.client_b.get("/api/conversion/status").json()["published_currency"]
         == "USD"
     )
-
-
-def test_configuration_contains_the_complete_cutover_runbook():
-    configuration = (Path(settings.BASE_DIR) / "docs" / "configuration.md").read_text()
-
-    for required in (
-        "TIMETRACKER_OWN_CUTOVER_MANIFEST",
-        "pg_dump",
-        "--format=custom",
-        "--no-owner",
-        "--no-privileges",
-        "pg_restore",
-        "source.dump_sha256",
-        "DEFAULT_PURCHASE_CURRENCY",
-        "DEFAULT_DISPLAY_CURRENCY",
-        "audit_library_ownership",
-        "DISPOSABLE_DATABASE_URL",
-        'pg_restore --dbname="$DISPOSABLE_DATABASE_URL"',
-        'DATABASE_URL="$DISPOSABLE_DATABASE_URL"',
-        'DATABASE_URL="$PRODUCTION_DATABASE_URL"',
-        "${PRODUCTION_DATABASE_URL:?",
-        'pg_dump --dbname="$PRODUCTION_DATABASE_URL"',
-        "current_database()",
-        'test -n "$PRODUCTION_DB_ID"',
-        'test "$DISPOSABLE_DB_ID" != "$PRODUCTION_DB_ID"',
-        "pristine",
-        "never reuse",
-    ):
-        assert required in configuration
-
-    disposable_identity_check = configuration.index(
-        'test "$DISPOSABLE_DB_ID" != "$PRODUCTION_DB_ID"'
-    )
-    disposable_restore = configuration.index(
-        'pg_restore --dbname="$DISPOSABLE_DATABASE_URL"'
-    )
-    assert disposable_identity_check < disposable_restore

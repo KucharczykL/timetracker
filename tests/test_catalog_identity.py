@@ -149,13 +149,17 @@ def create_platform_at(apps, *, name: str, created_at: datetime):
 
 @pytest.fixture
 def identity_harness():
+    # Migrating down to BEFORE_IDENTITY unapplies every later migration too, so
+    # the restore target is the graph's leaf nodes rather than WITH_IDENTITY,
+    # which would strand this worker's shared database behind head for every
+    # later test that reuses it.
+    leaf_nodes = MigrationExecutor(connection).loader.graph.leaf_nodes()
     executor = MigrationExecutor(connection)
     executor.migrate([BEFORE_IDENTITY])
     call_command("flush", interactive=False, verbosity=0)
     old_apps = executor.loader.project_state([BEFORE_IDENTITY]).apps
     yield old_apps
-    executor = MigrationExecutor(connection)
-    executor.migrate([WITH_IDENTITY])
+    MigrationExecutor(connection).migrate(leaf_nodes)
 
 
 def migrate_to_identity():

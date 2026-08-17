@@ -92,6 +92,11 @@ def test_bulk_created_user_has_no_implicit_library():
 
 @pytest.mark.django_db(transaction=True)
 def test_user_library_migration_does_not_backfill_existing_users():
+    # Migrating down to BEFORE_LIBRARY unapplies every later migration too, so
+    # the restore target is the graph's leaf nodes rather than WITH_LIBRARY,
+    # which would strand this worker's shared database behind head for every
+    # later test that reuses it.
+    leaf_nodes = MigrationExecutor(connection).loader.graph.leaf_nodes()
     try:
         executor = MigrationExecutor(connection)
         executor.migrate([BEFORE_LIBRARY])
@@ -106,4 +111,4 @@ def test_user_library_migration_does_not_backfill_existing_users():
         HistoricalUserLibrary = new_apps.get_model("games", "UserLibrary")
         assert not HistoricalUserLibrary.objects.filter(user_id=legacy_user_id).exists()
     finally:
-        MigrationExecutor(connection).migrate([WITH_LIBRARY])
+        MigrationExecutor(connection).migrate(leaf_nodes)
