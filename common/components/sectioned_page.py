@@ -234,6 +234,20 @@ def SectionedPageScaffold(
     a wide embedding promotes the nav to a rail without changing or cloning DOM.
     """
     _validate_sections(sections)
+    return _sectioned_page_scaffold(
+        sections,
+        navigation_label=navigation_label,
+        jump_label=jump_label,
+    )
+
+
+def _sectioned_page_scaffold(
+    sections: Sequence[SectionedPageSection],
+    *,
+    navigation_label: str,
+    jump_label: str,
+) -> Node:
+    """Render a scaffold whose sections have already been validated."""
     return ContentContainer(class_="@container")[
         Div(
             data_sectioned_page_scaffold="",
@@ -261,12 +275,13 @@ def SectionedPage(
     description: str = "",
     actions: Children = None,
     navigation_label: str,
-    jump_label: str,
+    jump_label: str = "Jump to a section",
 ) -> Node:
     """A complete sectioned page with its header, scaffold, and shared gap."""
+    _validate_sections(sections)
     return Div(data_sectioned_page="", class_="flex flex-col gap-6")[
         SectionedPageHeader(title, description=description, actions=actions),
-        SectionedPageScaffold(
+        _sectioned_page_scaffold(
             sections,
             navigation_label=navigation_label,
             jump_label=jump_label,

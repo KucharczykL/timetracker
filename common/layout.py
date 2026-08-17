@@ -8,6 +8,8 @@ it hoists shared `<head>` content (the `_HEADERS` block, analogous to
 """
 
 import json
+import re
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 from django.conf import settings
@@ -266,22 +268,31 @@ def NavbarLogButton(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class NavbarViewer:
+    username: str
+    is_superuser: bool
+
+    @property
+    def initials(self) -> str:
+        parts = [part for part in re.split(r"[^A-Za-z0-9]+", self.username) if part]
+        return (
+            "".join(part[0] for part in parts)[:2].upper() or self.username[:2].upper()
+        )
+
+
 def Navbar(
     *,
     today_played: Node | str,
     last_7_played: Node | str,
     current_year: int,
     csrf_token: str,
-    username: str = "",
-    authenticated: bool = False,
-    is_superuser: bool = False,
+    viewer: NavbarViewer | None = None,
     is_settings_page: bool = False,
     recent_resumes: list[Session] | None = None,
     origin: OriginUrl | None = None,
 ) -> Node:
     """Authenticated primary navigation: logo, Log game, Library, account."""
-    import re
-
     from common.components import AccountMenu, ControlLink, Div, Span
 
     logo = static("icons/tesserae-icon-animated.svg")
@@ -297,11 +308,7 @@ def Navbar(
         )["TIMETRACKER"],
     ]
     controls = ""
-    if authenticated:
-        parts = [part for part in re.split(r"[^A-Za-z0-9]+", username) if part]
-        initials = (
-            "".join(part[0] for part in parts)[:2].upper() or username[:2].upper()
-        )
+    if viewer is not None:
         controls = Div(class_="flex items-center gap-4 sm:gap-6")[
             NavbarLogButton(
                 recent_resumes or [],
@@ -313,14 +320,14 @@ def Navbar(
                 "Library"
             ],
             AccountMenu(
-                username=username,
-                initials=initials,
+                username=viewer.username,
+                initials=viewer.initials,
                 today_played=today_played,
                 last_7_played=last_7_played,
                 stats_url=reverse("games:stats_by_year", args=[current_year]),
                 settings_url=reverse("games:settings"),
                 admin_settings_url=(
-                    reverse("games:admin_settings") if is_superuser else None
+                    reverse("games:admin_settings") if viewer.is_superuser else None
                 ),
                 theme_disabled=is_settings_page,
                 logout_url=reverse("logout"),
@@ -377,9 +384,14 @@ def TimetrackerDocument(
         last_7_played=counts["last_7_played"],
         current_year=year,
         csrf_token=csrf_token,
-        username=request.user.get_username() if request.user.is_authenticated else "",
-        authenticated=request.user.is_authenticated,
-        is_superuser=request.user.is_superuser,
+        viewer=(
+            NavbarViewer(
+                username=request.user.get_username(),
+                is_superuser=request.user.is_superuser,
+            )
+            if request.user.is_authenticated
+            else None
+        ),
         is_settings_page=is_settings_page,
         recent_resumes=recent_session_resumes(request),
         origin=navbar_origin,

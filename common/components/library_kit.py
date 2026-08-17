@@ -36,17 +36,17 @@ def StatisticGrid(*cards: Child) -> Node:
     )[*cards]
 
 
-def StatisticCard(label: str, value: str | int, *, href: str | None = None) -> Node:
+def _value_node(value: str | int, label: str, href: str | None, class_: str) -> Node:
     value_text = str(value)
-    value_node = (
-        Link(
-            href=href,
-            aria_label=f"{value_text} {label}",
-            class_="text-type-title",
-        )[value_text]
+    return (
+        Link(href=href, aria_label=f"{value_text} {label}", class_=class_)[value_text]
         if href is not None
-        else Span(class_="text-type-title text-heading")[value_text]
+        else Span(class_=f"{class_} text-heading")[value_text]
     )
+
+
+def StatisticCard(label: str, value: str | int, *, href: str | None = None) -> Node:
+    value_node = _value_node(value, label, href, "text-type-title")
     return Div(
         data_statistic_card="",
         class_="flex min-w-32 flex-1 flex-col gap-1",
@@ -159,6 +159,12 @@ class SummaryAction:
     href: str
 
 
+@dataclass(frozen=True, slots=True)
+class SummaryValue:
+    value: str | int
+    href: str | None = None
+
+
 def SummaryList(*rows: Child) -> Node:
     return Div(
         data_summary_list="",
@@ -198,8 +204,7 @@ def SummaryRow(
     *,
     label: str,
     subtitle: str,
-    value: str | int | None = None,
-    value_href: str | None = None,
+    value: SummaryValue | None = None,
     actions: Sequence[SummaryAction] = (),
     detail: Child | None = None,
 ) -> Node:
@@ -210,17 +215,11 @@ def SummaryRow(
         ]
     ]
     if value is not None:
-        value_text = str(value)
-        value_node = (
-            Link(
-                href=value_href,
-                aria_label=f"{value_text} {label}",
-                class_="text-type-subheading tabular-nums",
-            )[value_text]
-            if value_href is not None
-            else Span(class_="text-type-subheading text-heading tabular-nums")[
-                value_text
-            ]
+        value_node = _value_node(
+            value.value,
+            label,
+            value.href,
+            "text-type-subheading tabular-nums",
         )
         primary_children.append(Div(class_="justify-self-end text-right")[value_node])
     if actions:
@@ -268,4 +267,5 @@ __all__ = [
     "SummaryAction",
     "SummaryList",
     "SummaryRow",
+    "SummaryValue",
 ]

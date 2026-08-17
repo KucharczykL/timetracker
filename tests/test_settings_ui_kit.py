@@ -455,7 +455,6 @@ class SectionedPageScaffoldTest(SimpleTestCase):
                 self._sections(),
                 description="Personal preferences.",
                 navigation_label="Settings sections",
-                jump_label="Jump to a section",
             )
         )
 

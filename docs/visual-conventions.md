@@ -317,9 +317,6 @@ scrollspy (#401). Calls recorded so #384 and later consumers do not relitigate i
   closes first, then updates the hash, scrolls below the sticky trigger, and focuses the
   destination. Do not show a drag handle without implementing and testing the corresponding
   gesture.
-- **Navbar collapse** is the pattern precedent (same-DOM stacked↔inline reflow), not a code
-  precedent — its mechanic is legacy Flowbite `data-collapse-toggle` + raw palette +
-  viewport breakpoints. New responsive behavior is custom elements + container queries.
 
 ## 6. Buttons, badges, form rows, tables — adopt the APIs; normalize the strings
 

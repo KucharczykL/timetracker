@@ -12,6 +12,7 @@ from common.components import (
     SummaryAction,
     SummaryList,
     SummaryRow,
+    SummaryValue,
     TooltipDefinition,
     TooltipDefinitionList,
     collect_media,
@@ -33,8 +34,7 @@ def test_linked_statistic_and_summary_values_use_the_shared_link_treatment():
         SummaryRow(
             label="Games",
             subtitle="Games currently tracked in this library.",
-            value=851,
-            value_href="/tracker/game/list",
+            value=SummaryValue(851, "/tracker/game/list"),
         )
     )
 
@@ -44,6 +44,20 @@ def test_linked_statistic_and_summary_values_use_the_shared_link_treatment():
     assert (
         'text-type-subheading tabular-nums" href="/tracker/game/list"' in summary_html
     )
+
+
+def test_summary_value_pairs_a_value_with_its_optional_link():
+    html = str(
+        SummaryRow(
+            label="Games",
+            subtitle="Games currently tracked in this library.",
+            value=SummaryValue(1, "/games"),
+        )
+    )
+
+    assert 'href="/games"' in html
+    with pytest.raises(TypeError):
+        SummaryRow(label="Games", subtitle="Tracked games.", value_href="/games")
 
 
 def test_statistics_wrap_with_flex_without_special_casing_the_final_card():
@@ -157,8 +171,7 @@ def test_summary_row_renders_both_presentations_from_one_action_source():
         SummaryRow(
             label="Games",
             subtitle="Games currently tracked in this library.",
-            value=851,
-            value_href="/tracker/game/list",
+            value=SummaryValue(851, "/tracker/game/list"),
             actions=actions,
         )
     )
@@ -177,7 +190,7 @@ def test_summary_list_is_divider_separated_without_a_nested_card_border():
             SummaryRow(
                 label="Devices",
                 subtitle="Hardware you use to play.",
-                value=2,
+                value=SummaryValue(2),
                 detail="Preselected when logging a game.",
             )
         )
@@ -195,7 +208,7 @@ def test_summary_row_with_no_actions_renders_no_empty_overflow_menu():
         SummaryRow(
             label="Play events",
             subtitle="No management surface.",
-            value=0,
+            value=SummaryValue(0),
         )
     )
 

@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import pytest
+from django import forms
 from django.urls import reverse
 
 from common.date_time_presentation import (
@@ -12,6 +13,7 @@ from games.forms import (
     DeviceForm,
     GameForm,
     GameStatusChangeForm,
+    LibraryPreferencesForm,
     PlatformForm,
     PlayEventForm,
     PurchaseForm,
@@ -91,6 +93,18 @@ def test_form_relationship_querysets_are_explicitly_library_bound(world):
     visible_platforms = {world.shared_platform.pk, world.own_platform.pk}
     assert _ids(game.fields["platform"].queryset) == visible_platforms
     assert _ids(purchase.fields["platform"].queryset) == visible_platforms
+
+
+def test_library_preferences_default_device_is_a_scoped_model_choice(world):
+    form = LibraryPreferencesForm(
+        devices=Device.objects.for_library(world.owner_library).order_by("name"),
+        default_device=world.own_device,
+    )
+    field = form.fields["default_device"]
+
+    assert isinstance(field, forms.ModelChoiceField)
+    assert _ids(field.queryset) == {world.own_device.pk}
+    assert form.initial["default_device"] == world.own_device
 
 
 @pytest.mark.parametrize(

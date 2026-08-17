@@ -56,7 +56,6 @@ def user_settings(request: HttpRequest) -> HttpResponse:
         "Settings",
         sections,
         navigation_label="Settings sections",
-        jump_label="Jump to a section",
     )
     return render_page(request, content, title="Settings", is_settings_page=True)
 
@@ -139,7 +138,6 @@ def admin_settings(request: HttpRequest) -> HttpResponse:
             color="gray",
         )["Download settings.ini"],
         navigation_label="Settings sections",
-        jump_label="Jump to a section",
     )
     return render_page(
         request,

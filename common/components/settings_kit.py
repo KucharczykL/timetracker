@@ -252,6 +252,7 @@ def prepare_setting_fields(
         tooltip_id = f"{control_id}_setting_source_tooltip"
         metadata_id = f"{control_id}_setting_metadata"
         field.widget.attrs["data-setting-key"] = state.key
+        field.widget.attrs["data-setting-source"] = state.source
         if state.live_save:
             field.widget.attrs["data-live-setting-control"] = ""
         else:

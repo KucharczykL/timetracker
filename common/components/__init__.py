@@ -97,6 +97,7 @@ from common.components.library_kit import (
     SummaryAction,
     SummaryList,
     SummaryRow,
+    SummaryValue,
 )
 from common.components.navigation import AccountMenu
 from common.components.primitives import (
@@ -390,6 +391,7 @@ __all__ = [
     "SummaryAction",
     "SummaryList",
     "SummaryRow",
+    "SummaryValue",
     "Table",
     "TableData",
     "TableRow",

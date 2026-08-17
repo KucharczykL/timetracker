@@ -23,10 +23,11 @@ from common.components import (
     SummaryAction,
     SummaryList,
     SummaryRow,
+    SummaryValue,
 )
 from common.date_time_presentation import date_time_presentation_for_request
 from common.layout import render_page
-from common.returns import action_url
+from common.returns import OriginUrl, UrlName, action_url
 from games.filters import PurchaseFilter, filter_url
 from games.forms import LibraryPreferencesForm
 from games.models import (
@@ -42,7 +43,7 @@ from timetracker.settings_commands import SettingNamespace
 
 
 def _actions(
-    list_name: str, add_name: str, *, origin: str
+    list_name: UrlName, add_name: UrlName, *, origin: OriginUrl
 ) -> tuple[SummaryAction, ...]:
     return (
         SummaryAction("Browse", reverse(list_name)),
@@ -63,6 +64,14 @@ def library(request: HttpRequest) -> HttpResponse:
     platforms = Platform.objects.for_library(library)
     not_refunded = purchases.not_refunded()
     conversion = PurchaseConversionState.objects.get(library=library)
+    game_count = games.count()
+    session_count = sessions.count()
+    purchase_count = purchases.count()
+    device_count = devices.count()
+    platform_count = platforms.count()
+    refunded_purchase_count = purchases.refunded().count()
+    default_device_source = "library"
+    default_device_normal_source = "library"
     total_spent = not_refunded.aggregate(total=Sum(F("converted_price")))["total"] or 0
     currency = conversion.published_currency
     total_spent_value = f"{currency} {total_spent:,.2f}"
@@ -77,18 +86,16 @@ def library(request: HttpRequest) -> HttpResponse:
             ]
         ),
         StatisticGrid(
-            StatisticCard("Games", games.count(), href=reverse("games:list_games")),
+            StatisticCard("Games", game_count, href=reverse("games:list_games")),
             StatisticCard(
-                "Sessions", sessions.count(), href=reverse("games:list_sessions")
+                "Sessions", session_count, href=reverse("games:list_sessions")
             ),
             StatisticCard(
                 "Purchases",
-                purchases.count(),
+                purchase_count,
                 href=filter_url(stats_links.purchases_total(None)),
             ),
-            StatisticCard(
-                "Devices", devices.count(), href=reverse("games:list_devices")
-            ),
+            StatisticCard("Devices", device_count, href=reverse("games:list_devices")),
         ),
     )
     default_device_control = LiveSettingFields(
@@ -99,8 +106,8 @@ def library(request: HttpRequest) -> HttpResponse:
         states={
             "default_device": SettingFieldState(
                 key="default-device",
-                source="user",
-                show_source=False,
+                source=default_device_source,
+                show_source=default_device_source != default_device_normal_source,
                 help_text="Preselected when logging a game.",
             )
         },
@@ -112,15 +119,13 @@ def library(request: HttpRequest) -> HttpResponse:
         SummaryRow(
             label="Games",
             subtitle="Games currently tracked in this library.",
-            value=games.count(),
-            value_href=reverse("games:list_games"),
+            value=SummaryValue(game_count, reverse("games:list_games")),
             actions=_actions("games:list_games", "games:add_game", origin=origin),
         ),
         SummaryRow(
             label="Platforms",
             subtitle="Platforms you added manually.",
-            value=platforms.count(),
-            value_href=reverse("games:list_platforms"),
+            value=SummaryValue(platform_count, reverse("games:list_platforms")),
             actions=_actions(
                 "games:list_platforms", "games:add_platform", origin=origin
             ),
@@ -128,8 +133,7 @@ def library(request: HttpRequest) -> HttpResponse:
         SummaryRow(
             label="Devices",
             subtitle="Hardware you use to play.",
-            value=devices.count(),
-            value_href=reverse("games:list_devices"),
+            value=SummaryValue(device_count, reverse("games:list_devices")),
             actions=_actions("games:list_devices", "games:add_device", origin=origin),
             detail=default_device_control,
         ),
@@ -145,7 +149,7 @@ def library(request: HttpRequest) -> HttpResponse:
         detail=StatisticGrid(
             StatisticCard(
                 "Purchases",
-                purchases.count(),
+                purchase_count,
                 href=filter_url(stats_links.purchases_total(None)),
             ),
             StatisticCard(
@@ -155,7 +159,7 @@ def library(request: HttpRequest) -> HttpResponse:
             ),
             StatisticCard(
                 "Refunded purchases",
-                purchases.refunded().count(),
+                refunded_purchase_count,
                 href=filter_url(stats_links.purchases_refunded(None)),
             ),
         ),
@@ -166,8 +170,8 @@ def library(request: HttpRequest) -> HttpResponse:
             "activity",
             "Activity",
             EmptyState(
-                "Activity is coming later",
-                "This section will be added as part of the Player's Journal.",
+                title="Activity is coming later",
+                description="This section will be added as part of the Player's Journal.",
             ),
         ),
         SectionedPageSection(
@@ -183,7 +187,6 @@ def library(request: HttpRequest) -> HttpResponse:
         sections,
         description="Your games, play history, purchases, and customizations belong to this library and stay together when it is backed up or restored.",
         navigation_label="Library sections",
-        jump_label="Jump to a section",
     )
     return render_page(request, content, title="Library")
 
