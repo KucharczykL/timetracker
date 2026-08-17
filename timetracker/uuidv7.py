@@ -109,7 +109,11 @@ class PostgreSQLUUIDv7(models.Func):
 
 
 class UUIDv7Field(models.UUIDField):
-    default_validators = (validate_uuidv7,)
+    # No default_validators: to_python() below already parses and
+    # version-checks every value, raising before Field.clean()'s
+    # run_validators() step would ever run a redundant second pass.
+    # validate_uuidv7 stays a public validator for callers that need one
+    # independent of this field (e.g. a form field that isn't this one).
 
     def __init__(self, *args, **kwargs) -> None:
         kwargs.setdefault("default", uuid.uuid7)
