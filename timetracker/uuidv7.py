@@ -11,8 +11,6 @@ INVALID_UUID_VERSION_CODE = "invalid_uuid_version"
 
 type UnixMilliseconds = int  # e.g. 1734000000000
 
-_VERSION_7 = 0x7
-_VARIANT_RFC_4122 = 0b10
 _RAND_A_BITS = 12
 _RAND_B_BITS = 62
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
@@ -21,9 +19,9 @@ _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 def uuid7_at(moment: datetime, *, sequence: int | None = None) -> uuid.UUID:
     """Encode a UUIDv7 whose embedded timestamp is `moment`, not "now".
 
-    `sequence`, when given, is written into the 12-bit rand_a field as the
-    monotonic counter RFC 9562 method 2 permits, so repeated calls at the
-    same millisecond can be given an explicit, testable order.
+    `sequence`, when given, is written into the 12-bit rand_a field as a
+    fixed-length dedicated counter (RFC 9562 Method 1), so repeated calls
+    at the same millisecond can be given an explicit, testable order.
     """
     if moment.tzinfo is None:
         raise ValueError("moment must be timezone-aware")
@@ -31,9 +29,12 @@ def uuid7_at(moment: datetime, *, sequence: int | None = None) -> uuid.UUID:
     # Floor to the millisecond via integer timedelta arithmetic, not
     # round(moment.timestamp() * 1000): floating-point .timestamp() loses
     # precision near the microsecond digit, and rounding (vs. flooring)
-    # would disagree with both PostgreSQL's date_trunc('milliseconds', ...)
-    # and CPython's own uuid.uuid7() (nanoseconds // 1_000_000), which the
-    # migration's reconciliation check compares against.
+    # would disagree with PostgreSQL's date_trunc('milliseconds', ...),
+    # which the migration's reconciliation check compares against. (This
+    # also matches how CPython's own uuid.uuid7() computes its embedded
+    # timestamp - nanoseconds // 1_000_000 - though its rand_a/rand_b are
+    # a 42-bit Method 1 counter plus a 32-bit random tail, not the
+    # independent random/sequence fields used here.)
     elapsed = moment - _EPOCH
     unix_ts_ms: UnixMilliseconds = (
         elapsed.days * 86_400_000
@@ -44,9 +45,9 @@ def uuid7_at(moment: datetime, *, sequence: int | None = None) -> uuid.UUID:
     rand_b = secrets.randbits(_RAND_B_BITS)
 
     value = (unix_ts_ms & 0xFFFF_FFFF_FFFF) << 80
-    value |= ((_VERSION_7 << _RAND_A_BITS) | (rand_a & 0xFFF)) << 64
-    value |= (_VARIANT_RFC_4122 << _RAND_B_BITS) | (rand_b & 0x3FFF_FFFF_FFFF_FFFF)
-    return uuid.UUID(int=value)
+    value |= (rand_a & 0xFFF) << 64
+    value |= rand_b & 0x3FFF_FFFF_FFFF_FFFF
+    return uuid.UUID(int=value, version=7)
 
 
 class UUIDv7ParseError(ValueError):
