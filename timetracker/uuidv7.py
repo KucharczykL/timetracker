@@ -26,7 +26,7 @@ def uuid7_at(moment: datetime, *, sequence: int | None = None) -> uuid.UUID:
     fresh counter per millisecond tick, as Method 1 itself calls for, is
     the caller's responsibility.
     """
-    if moment.tzinfo is None:
+    if moment.utcoffset() is None:
         raise ValueError("moment must be timezone-aware")
     if sequence is not None and not 0 <= sequence < (1 << _RAND_A_BITS):
         raise ValueError(f"sequence must be between 0 and {(1 << _RAND_A_BITS) - 1}")
@@ -49,8 +49,7 @@ def uuid7_at(moment: datetime, *, sequence: int | None = None) -> uuid.UUID:
     # unix_ts_ms's only possible out-of-range direction is negative (a
     # pre-epoch moment): a valid datetime's upper bound (year 9999) sits
     # well under the 48-bit field's ~year-10889 ceiling, so only the lower
-    # bound needs guarding - a negative value would otherwise wrap, via
-    # Python's two's-complement bitwise AND, into a huge future timestamp.
+    # bound needs guarding.
     if unix_ts_ms < 0:
         raise ValueError("moment must not be before the Unix epoch")
 

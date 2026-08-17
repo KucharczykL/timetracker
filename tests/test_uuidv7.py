@@ -1,5 +1,5 @@
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
 from types import SimpleNamespace
 
 import pytest
@@ -271,6 +271,29 @@ def test_uuid7_at_sequence_orders_values_within_one_millisecond():
 def test_uuid7_at_rejects_a_naive_datetime():
     with pytest.raises(ValueError, match="timezone-aware"):
         uuid7_at(datetime(2024, 1, 1))  # noqa: DTZ001
+
+
+class _TzinfoWithoutOffset(tzinfo):
+    """A tzinfo present but returning no offset - technically not aware.
+
+    Python's own definition of "aware" is `tzinfo is not None and
+    utcoffset() is not None`; a bare `tzinfo is None` check misses this.
+    """
+
+    def utcoffset(self, moment):
+        return None
+
+    def dst(self, moment):
+        return None
+
+    def tzname(self, moment):
+        return "broken"
+
+
+def test_uuid7_at_rejects_a_datetime_whose_tzinfo_has_no_utcoffset():
+    moment = datetime(2024, 1, 1, tzinfo=_TzinfoWithoutOffset())
+    with pytest.raises(ValueError, match="timezone-aware"):
+        uuid7_at(moment)
 
 
 @pytest.mark.parametrize("sequence", [-1, 4096])
