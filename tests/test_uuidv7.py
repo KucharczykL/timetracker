@@ -273,6 +273,28 @@ def test_uuid7_at_rejects_a_naive_datetime():
         uuid7_at(datetime(2024, 1, 1))  # noqa: DTZ001
 
 
+@pytest.mark.parametrize("sequence", [-1, 4096])
+def test_uuid7_at_rejects_a_sequence_outside_the_12_bit_range(sequence):
+    with pytest.raises(ValueError, match="sequence must be between 0 and 4095"):
+        uuid7_at(datetime(2024, 1, 1, tzinfo=UTC), sequence=sequence)
+
+
+@pytest.mark.parametrize("sequence", [0, 4095])
+def test_uuid7_at_accepts_sequence_at_the_12_bit_boundaries(sequence):
+    value = uuid7_at(datetime(2024, 1, 1, tzinfo=UTC), sequence=sequence)
+    assert value.version == 7
+
+
+def test_uuid7_at_rejects_a_pre_epoch_moment():
+    with pytest.raises(ValueError, match="before the Unix epoch"):
+        uuid7_at(datetime(1969, 12, 31, 23, 59, 59, 999_000, tzinfo=UTC))
+
+
+def test_uuid7_at_accepts_the_epoch_instant_itself():
+    value = uuid7_at(datetime(1970, 1, 1, tzinfo=UTC))
+    assert value.time == 0
+
+
 def test_uuid7_at_pins_the_byte_layout():
     moment = datetime(2024, 1, 1, tzinfo=UTC)
     value = uuid7_at(moment, sequence=5)

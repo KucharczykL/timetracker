@@ -19,12 +19,17 @@ _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 def uuid7_at(moment: datetime, *, sequence: int | None = None) -> uuid.UUID:
     """Encode a UUIDv7 whose embedded timestamp is `moment`, not "now".
 
-    `sequence`, when given, is written into the 12-bit rand_a field as a
-    fixed-length dedicated counter (RFC 9562 Method 1), so repeated calls
-    at the same millisecond can be given an explicit, testable order.
+    `sequence`, when given, is written into the 12-bit rand_a field in the
+    position used by an RFC 9562 Method 1 fixed-length dedicated counter,
+    so repeated calls at the same millisecond can be given an explicit,
+    testable order. This function only places the value there; seeding a
+    fresh counter per millisecond tick, as Method 1 itself calls for, is
+    the caller's responsibility.
     """
     if moment.tzinfo is None:
         raise ValueError("moment must be timezone-aware")
+    if sequence is not None and not 0 <= sequence < (1 << _RAND_A_BITS):
+        raise ValueError(f"sequence must be between 0 and {(1 << _RAND_A_BITS) - 1}")
 
     # Floor to the millisecond via integer timedelta arithmetic, not
     # round(moment.timestamp() * 1000): floating-point .timestamp() loses
@@ -41,12 +46,20 @@ def uuid7_at(moment: datetime, *, sequence: int | None = None) -> uuid.UUID:
         + elapsed.seconds * 1000
         + elapsed.microseconds // 1000
     )
+    # unix_ts_ms's only possible out-of-range direction is negative (a
+    # pre-epoch moment): a valid datetime's upper bound (year 9999) sits
+    # well under the 48-bit field's ~year-10889 ceiling, so only the lower
+    # bound needs guarding - a negative value would otherwise wrap, via
+    # Python's two's-complement bitwise AND, into a huge future timestamp.
+    if unix_ts_ms < 0:
+        raise ValueError("moment must not be before the Unix epoch")
+
     rand_a = secrets.randbits(_RAND_A_BITS) if sequence is None else sequence
     rand_b = secrets.randbits(_RAND_B_BITS)
 
-    value = (unix_ts_ms & 0xFFFF_FFFF_FFFF) << 80
-    value |= (rand_a & 0xFFF) << 64
-    value |= rand_b & 0x3FFF_FFFF_FFFF_FFFF
+    value = unix_ts_ms << 80
+    value |= rand_a << 64
+    value |= rand_b
     return uuid.UUID(int=value, version=7)
 
 
