@@ -1,4 +1,6 @@
+import secrets
 import uuid
+from datetime import UTC, datetime
 
 from django.core.exceptions import ValidationError
 from django.db import NotSupportedError, models
@@ -6,6 +8,58 @@ from django.urls.converters import UUIDConverter
 
 INVALID_UUID_CODE = "invalid_uuid"
 INVALID_UUID_VERSION_CODE = "invalid_uuid_version"
+
+type UnixMilliseconds = int  # e.g. 1734000000000
+
+_RAND_A_BITS = 12
+_RAND_B_BITS = 62
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+
+
+def uuid7_at(moment: datetime, *, sequence: int | None = None) -> uuid.UUID:
+    """Encode a UUIDv7 whose embedded timestamp is `moment`, not "now".
+
+    `sequence`, when given, is written into the 12-bit rand_a field in the
+    position used by an RFC 9562 Method 1 fixed-length dedicated counter,
+    so repeated calls at the same millisecond can be given an explicit,
+    testable order. This function only places the value there; seeding a
+    fresh counter per millisecond tick, as Method 1 itself calls for, is
+    the caller's responsibility.
+    """
+    if moment.utcoffset() is None:
+        raise ValueError("moment must be timezone-aware")
+    if sequence is not None and not 0 <= sequence < (1 << _RAND_A_BITS):
+        raise ValueError(f"sequence must be between 0 and {(1 << _RAND_A_BITS) - 1}")
+
+    # Floor to the millisecond via integer timedelta arithmetic, not
+    # round(moment.timestamp() * 1000): floating-point .timestamp() loses
+    # precision near the microsecond digit, and rounding (vs. flooring)
+    # would disagree with PostgreSQL's date_trunc('milliseconds', ...),
+    # which the migration's reconciliation check compares against. (This
+    # also matches how CPython's own uuid.uuid7() computes its embedded
+    # timestamp - nanoseconds // 1_000_000 - though its rand_a/rand_b are
+    # a 42-bit Method 1 counter plus a 32-bit random tail, not the
+    # independent random/sequence fields used here.)
+    elapsed = moment - _EPOCH
+    unix_ts_ms: UnixMilliseconds = (
+        elapsed.days * 86_400_000
+        + elapsed.seconds * 1000
+        + elapsed.microseconds // 1000
+    )
+    # unix_ts_ms's only possible out-of-range direction is negative (a
+    # pre-epoch moment): a valid datetime's upper bound (year 9999) sits
+    # well under the 48-bit field's ~year-10889 ceiling, so only the lower
+    # bound needs guarding.
+    if unix_ts_ms < 0:
+        raise ValueError("moment must not be before the Unix epoch")
+
+    rand_a = secrets.randbits(_RAND_A_BITS) if sequence is None else sequence
+    rand_b = secrets.randbits(_RAND_B_BITS)
+
+    value = unix_ts_ms << 80
+    value |= rand_a << 64
+    value |= rand_b
+    return uuid.UUID(int=value, version=7)
 
 
 class UUIDv7ParseError(ValueError):
@@ -54,7 +108,11 @@ class PostgreSQLUUIDv7(models.Func):
 
 
 class UUIDv7Field(models.UUIDField):
-    default_validators = (validate_uuidv7,)
+    # No default_validators: to_python() below already parses and
+    # version-checks every value, raising before Field.clean()'s
+    # run_validators() step would ever run a redundant second pass.
+    # validate_uuidv7 stays a public validator for callers that need one
+    # independent of this field (e.g. a form field that isn't this one).
 
     def __init__(self, *args, **kwargs) -> None:
         kwargs.setdefault("default", uuid.uuid7)

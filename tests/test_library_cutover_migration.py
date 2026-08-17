@@ -71,6 +71,12 @@ def cutover_harness(monkeypatch, settings, tmp_path):
     monkeypatch.setenv("ENV_FILE", str(tmp_path / "missing.env"))
     monkeypatch.setenv("INI_FILE", str(tmp_path / "missing.ini"))
     settings.DEFAULT_CURRENCY = "CZK"
+    # Captured before any backward migration: migrating down to
+    # BEFORE_CUTOVER unapplies every later migration too, so restoring to a
+    # hardcoded WITH_CUTOVER (rather than the graph's actual leaf nodes)
+    # would strand this worker's database behind head once a later migration
+    # (e.g. 0005_catalog_uuid_identity) exists.
+    leaf_nodes = MigrationExecutor(connection).loader.graph.leaf_nodes()
     executor = MigrationExecutor(connection)
     executor.migrate([BEFORE_CUTOVER])
     call_command("flush", interactive=False, verbosity=0)
@@ -82,10 +88,7 @@ def cutover_harness(monkeypatch, settings, tmp_path):
     executor = MigrationExecutor(connection)
     executor.migrate([BEFORE_CUTOVER])
     executor = MigrationExecutor(connection)
-    leaf = (
-        WITH_CUTOVER if WITH_CUTOVER in executor.loader.graph.nodes else BEFORE_CUTOVER
-    )
-    executor.migrate([leaf])
+    executor.migrate(leaf_nodes)
 
 
 def create_legacy_state(apps) -> dict[str, int]:
