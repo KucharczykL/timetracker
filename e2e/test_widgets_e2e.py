@@ -35,8 +35,7 @@ def authenticated_page(live_server, page: Page, e2e_user) -> Page:
 @pytest.fixture
 def touch_page(live_server, browser, e2e_user):
     """A logged-in page in a touch-enabled context (so locator.tap() works and
-    pointer events report pointerType "touch"). Desktop-width viewport so the
-    navbar menu is visible (md:block) rather than collapsed in the hamburger."""
+    pointer events report pointerType "touch"). Uses a desktop-width viewport."""
     context = browser.new_context(has_touch=True)
     page = context.new_page()
     _login(page, live_server)

@@ -81,7 +81,7 @@ def test_library_default_device_api_rejects_foreign_and_clears(client, user, use
     )
 
     assert selected.status_code == 200
-    assert selected.json()["source"] == "user"
+    assert selected.json()["source"] == "library"
     assert selected.json()["namespace"] == "library"
     assert rejected.status_code == 404
     assert cleared.status_code == 200

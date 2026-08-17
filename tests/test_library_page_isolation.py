@@ -53,6 +53,9 @@ def test_library_page_shows_only_current_library_records(client, django_user_mod
     assert "1 Devices" in body
     assert 'data-setting-key="default-device"' in body
     assert 'data-live-setting-control=""' in body
+    default_device_url = reverse("api-1.0.0:update_library_default_device")
+    patch_url_template = default_device_url.removesuffix("default-device") + "__key__"
+    assert f'patch-url-template="{patch_url_template}"' in body
     assert "Preselected when logging a game." in body
     add_purchase_url = action_url("games:add_purchase", origin=reverse("games:library"))
     add_purchase_links = re.findall(

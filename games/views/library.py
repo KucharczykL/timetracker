@@ -5,6 +5,7 @@ from typing import cast
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.db.models import F, Sum
+from django.http import HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from django.urls import reverse
 
@@ -50,7 +51,7 @@ def _actions(
 
 
 @login_required
-def library(request):
+def library(request: HttpRequest) -> HttpResponse:
     user = cast(User, request.user)
     library = user.library
     origin = request.get_full_path()

@@ -242,8 +242,8 @@ def NavbarLogButton(
     origin: OriginUrl | None = None,
 ) -> Node:
     """The always-visible split button: primary opens the general add-session form,
-    the caret dropdown one-click-resumes each recent game. ``id`` disambiguates the
-    two breakpoint instances (mobile beside the hamburger, desktop inside the menu)."""
+    the caret dropdown one-click-resumes each recent game. ``id`` identifies the
+    control and its associated dropdown."""
     from common.components import (
         ControlButton,
         DropdownActionItem,

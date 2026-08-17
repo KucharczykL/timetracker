@@ -236,13 +236,12 @@ def SummaryRow(
                 )[*[Link(href=action.href)[action.label] for action in actions]],
             ]
         )
-    grid_columns = (
-        "grid-cols-[minmax(0,1fr)_auto_auto]"
-        if value is not None and actions
-        else "grid-cols-[minmax(0,1fr)_auto]"
-        if value is not None or actions
-        else "grid-cols-1"
-    )
+    if value is not None and actions:
+        grid_columns = "grid-cols-[minmax(0,1fr)_auto_auto]"
+    elif value is not None or actions:
+        grid_columns = "grid-cols-[minmax(0,1fr)_auto]"
+    else:
+        grid_columns = "grid-cols-1"
     row_children: list[Child] = [
         Div(class_=f"grid {grid_columns} items-center gap-4")[*primary_children]
     ]

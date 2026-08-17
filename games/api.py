@@ -57,9 +57,11 @@ from games.sorting import (
     parse_find_filter,
     parse_per_page_override,
 )
+from timetracker.config import SettingSource
 from timetracker.settings_commands import (
     SettingLockedError,
     SettingNamespace,
+    change_library_default_device,
     change_site_setting,
     change_user_setting,
 )
@@ -776,13 +778,13 @@ class SettingOut(Schema):
     ``str``-only field would 500. ``locked`` marks an env/`.env`/`.ini`-pinned
     value; ``/user`` forces it ``False`` (see :func:`list_user_settings`).
     ``namespace`` identifies which mutation surface produced this entry — the
-    personal or site-admin page — independent of ``source`` (where the
-    resolved value came from).
+    personal, site-admin, or library preferences surface — independent of
+    ``source`` (where the resolved value came from).
     """
 
     key: str
     value: str | int | None
-    source: str
+    source: SettingSource
     locked: bool
     namespace: SettingNamespace
 
@@ -873,30 +875,30 @@ def update_user_setting(request, key: str, payload: SettingValueIn):
 
 @library_router.patch("/default-device", response=SettingOut)
 def update_library_default_device(request, payload: DefaultDeviceIn):
-    """Set the current library's default Device, or clear it with null."""
+    """Set the current library's default Device, or clear it with null.
+
+    The live-settings client substitutes its field key into a URL template, while
+    this endpoint serves only ``default-device``. Add a key-routed endpoint before
+    adding another library preference.
+    """
     library = request.user.library
     device = None
     if payload.value is not None:
         try:
             device_id = int(payload.value)
-        except TypeError, ValueError:
+        except ValueError:
             raise HttpError(400, "Device must be an integer or null.") from None
         device = Device.objects.for_library(library).filter(pk=device_id).first()
         if device is None:
             raise HttpError(404, "Device not found.")
-    from timetracker.settings_commands import change_library_default_device
-
     change_library_default_device(library, device)
     messages.success(request, "Default device saved")
     return {
         "key": "default-device",
         "value": device.pk if device is not None else None,
-        # A library preference is persisted as part of the authenticated
-        # account's library. Reuse the established source vocabulary so the
-        # shared live-settings client accepts and publishes the response.
-        "source": "user",
+        "source": SettingSource.LIBRARY,
         "locked": False,
-        "namespace": "library",
+        "namespace": SettingNamespace.LIBRARY,
     }
 
 
