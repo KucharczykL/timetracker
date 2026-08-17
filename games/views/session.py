@@ -1,4 +1,5 @@
 from typing import Any, cast
+from uuid import uuid7
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
@@ -279,6 +280,10 @@ def clone_session_by_id(session_id: int, library: UserLibrary) -> Session:
     session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
     clone = session
     clone.pk = None
+    # A clone is a new row, so it needs a new identity: the loaded instance
+    # still carries the source row's uuid, and the field's default only fires
+    # on an instance that never had one.
+    clone.uuid = uuid7()
     clone.timestamp_start = timezone.now()
     clone.timestamp_end = None
     # The clone's start is server-stamped now; a browser zone does not exist
