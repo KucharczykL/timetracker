@@ -271,6 +271,7 @@ class Purchase(models.Model):
     library = models.ForeignKey(
         "UserLibrary", on_delete=models.CASCADE, related_name="purchases"
     )
+    uuid = UUIDv7Field(unique=True, editable=False)
     games = models.ManyToManyField(Game, related_name="purchases")
 
     platform = models.ForeignKey(
