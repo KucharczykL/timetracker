@@ -22,8 +22,6 @@ stop-postgres:
 
 all: ensure-postgres css migrate
 
-initialize: npm css migrate loadplatforms
-
 PYTHON_VERSION = 3.14
 DEV_HOST ?= 127.0.0.1
 DEV_PORT ?= 8000
@@ -181,6 +179,7 @@ devlogin: migrate
 init: ensure-python ensure-postgres
 	uv sync --frozen
 	$(MAKE) npm
+	$(MAKE) css
 	$(MAKE) migrate
 	$(MAKE) loadplatforms
 	$(MAKE) gen-icons
