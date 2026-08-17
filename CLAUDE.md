@@ -25,13 +25,20 @@ that look like the code's fault:
   and ~11 vitest assertions fail with `expected null to be '2026-07-02 19:05 …'`.
   When `PATH` already has 26 (the Nix shell's `nodejs_26`, CI's `setup-node`, the
   `node:26` Docker stage) it is used as-is; otherwise the Makefile hands pnpm the
-  exact version and pnpm fetches it. `ensure-node` then verifies what the JS
-  commands will *actually* run on — `pnpm exec`, not `PATH` — so an offline first
-  run fails with the reason instead of a wall of null assertions.
+  exact version and pnpm fetches it. `ensure-node-runtime` then verifies what the
+  JS commands will *actually* run on — `pnpm exec`, not `PATH` — so an offline
+  first run fails with the reason instead of a wall of null assertions.
+  `ensure-node-deps` adds the second half: that *this project's* pinned
+  dependencies are installed into that runtime, not whatever global tsc `pnpm
+  exec` would otherwise fall back to.
 
 This is why every node invocation in the Makefile goes through `pnpm`: it is the
 single switch that redirects the whole JS toolchain onto the right runtime. A new
-node-using target should follow suit and depend on `ensure-node`.
+node-using target should follow suit and depend on **`ensure-node-deps`**, which
+pulls the runtime gate in behind it. The one target that must not is `npm`
+itself: it depends on `ensure-node-runtime` alone, because gating the target that
+*creates* the install behind a check for that install makes it refuse to run in
+the one state it exists to repair.
 
 `direnv exec . <cmd>` per command remains the wrong habit — it re-enters the shell
 and re-runs `uv sync` (~70 packages) for no benefit. It used to be worse: the
