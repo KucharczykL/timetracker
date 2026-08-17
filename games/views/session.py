@@ -309,14 +309,24 @@ def _posted_browser_zone(request: HttpRequest) -> str:
 
 
 @login_required
-@require_POST
 def finish_session(request: HttpRequest, session_id: int) -> HttpResponse:
     library = cast(User, request.user).library
     session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
-    session.timestamp_end = timezone.now()
-    session.timestamp_end_timezone = _posted_browser_zone(request)
-    session.save()
-    return redirect(return_url(request, fallback="games:list_sessions"))
+
+    def finish() -> None:
+        session.timestamp_end = timezone.now()
+        session.timestamp_end_timezone = _posted_browser_zone(request)
+        session.save()
+
+    return confirm_and_apply(
+        request,
+        action=finish,
+        title="Finish session",
+        message=f"Finish this running session of {session.game}?",
+        confirm_label="Finish session",
+        details=BrowserTimeZoneInput(),
+        fallback="games:list_sessions",
+    )
 
 
 @login_required
