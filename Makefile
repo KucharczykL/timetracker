@@ -138,14 +138,25 @@ npm: ensure-node
 css: ensure-node common/input.css
 	pnpm tailwindcss -i ./common/input.css -o  ./games/static/base.css
 
+# --noinput, because the autodetector's questions can only end badly here. It
+# asks one whenever a change is ambiguous — adding a unique field with a
+# callable default (every `UUIDv7Field`), or tightening a nullable field to NOT
+# NULL without a default. What happens next is decided by whatever stdin the
+# caller happened to have: a terminal prompts, /dev/null raises `EOFError`, and
+# a live pipe or socket (an agent runner, a CI step, an editor task) blocks
+# forever with the question buried in a redirected log. --noinput makes all
+# three deterministic — the unique-callable case proceeds, which is the answer
+# a manual backfill migration wants anyway, and a genuinely un-migratable
+# change exits non-zero with the reason instead of waiting on an answer that
+# is never coming.
 makemigrations: ensure-postgres
-	uv run --frozen python manage.py makemigrations
+	uv run --frozen python manage.py makemigrations --noinput
 
 # Drift guard for the aggregates. Bare `makemigrations` is not a substitute: on
 # drift it writes a new migration and exits 0, so an un-regenerated model change
 # reaches CI as a passing run.
 check-migrations: ensure-postgres
-	uv run --frozen python manage.py makemigrations --check --dry-run
+	uv run --frozen python manage.py makemigrations --check --dry-run --noinput
 
 migrate: ensure-postgres makemigrations
 	uv run --frozen python manage.py migrate
