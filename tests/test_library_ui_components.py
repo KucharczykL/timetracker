@@ -27,6 +27,25 @@ def test_statistic_card_keeps_values_plain_and_non_interactive():
     assert "Games" in html and ">851<" in html
 
 
+def test_linked_statistic_and_summary_values_use_the_shared_link_treatment():
+    statistic_html = str(StatisticCard("Games", 851, href="/tracker/game/list"))
+    summary_html = str(
+        SummaryRow(
+            label="Games",
+            subtitle="Games currently tracked in this library.",
+            value=851,
+            value_href="/tracker/game/list",
+        )
+    )
+
+    assert "text-fg-link hover:text-fg-link-hover" in statistic_html
+    assert 'text-type-title" href="/tracker/game/list"' in statistic_html
+    assert "text-fg-link hover:text-fg-link-hover" in summary_html
+    assert (
+        'text-type-subheading tabular-nums" href="/tracker/game/list"' in summary_html
+    )
+
+
 def test_statistics_wrap_with_flex_without_special_casing_the_final_card():
     plain = str(StatisticCard("Unavailable", "—"))
     zero = str(StatisticCard("Devices", 0))

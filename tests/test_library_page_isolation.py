@@ -8,6 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from common.layout import recent_session_resumes
+from common.returns import action_url
 from games.models import (
     Device,
     Game,
@@ -53,9 +54,12 @@ def test_library_page_shows_only_current_library_records(client, django_user_mod
     assert 'data-setting-key="default-device"' in body
     assert 'data-live-setting-control=""' in body
     assert "Preselected when logging a game." in body
+    add_purchase_url = action_url("games:add_purchase", origin=reverse("games:library"))
     add_purchase_links = re.findall(
-        r'<a\b[^>]*href="/tracker/purchase/add"[^>]*>', body
+        rf'<a\b[^>]*href="{re.escape(add_purchase_url)}"[^>]*>', body
     )
+    # Summary actions render both the wide link and narrow overflow-menu item;
+    # both must carry the Library return target.
     assert len(add_purchase_links) == 2
     assert all("bg-success" not in link for link in add_purchase_links)
     assert "Foreign game" not in body
@@ -368,6 +372,19 @@ def test_navbar_playtime_is_scoped_to_the_authenticated_library(world):
     assert "1 h 00 m" in last_7_html
     assert "7 h 00 m" not in today_html
     assert "7 h 00 m" not in last_7_html
+
+
+def test_library_add_actions_preserve_the_library_as_the_return_origin(world):
+    origin = reverse("games:library")
+    body = world.client.get(origin).content.decode()
+
+    for viewname in (
+        "games:add_game",
+        "games:add_platform",
+        "games:add_device",
+        "games:add_purchase",
+    ):
+        assert action_url(viewname, origin=origin) in body
 
 
 def test_owned_or_404_is_lookup_only_for_an_already_scoped_queryset(world):

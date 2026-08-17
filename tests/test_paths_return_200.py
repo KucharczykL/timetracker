@@ -66,6 +66,10 @@ class PathWorksTest(TestCase):
         response = self.client.get("/tracker/", follow=True)
         self.assertEqual(response.status_code, 200)
 
+    def test_library_page_returns_200(self):
+        response = self.client.get(reverse("games:library"))
+        self.assertEqual(response.status_code, 200)
+
     def test_game_list_returns_200(self):
         response = self.client.get(reverse("games:list_games"), follow=True)
         self.assertEqual(response.status_code, 200)

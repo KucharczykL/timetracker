@@ -42,7 +42,7 @@ def StatisticCard(label: str, value: str | int, *, href: str | None = None) -> N
         Link(
             href=href,
             aria_label=f"{value_text} {label}",
-            class_="text-type-title text-heading",
+            class_="text-type-title",
         )[value_text]
         if href is not None
         else Span(class_="text-type-title text-heading")[value_text]
@@ -215,7 +215,7 @@ def SummaryRow(
             Link(
                 href=value_href,
                 aria_label=f"{value_text} {label}",
-                class_="text-type-subheading text-heading tabular-nums",
+                class_="text-type-subheading tabular-nums",
             )[value_text]
             if value_href is not None
             else Span(class_="text-type-subheading text-heading tabular-nums")[
@@ -262,6 +262,7 @@ def SummaryRow(
 __all__ = [
     "CopyControl",
     "CopyableFactValue",
+    "EmptyState",
     "FactList",
     "StatisticCard",
     "StatisticGrid",

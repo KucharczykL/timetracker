@@ -204,146 +204,6 @@ _NAV_LINK_CLASS = (
 )
 
 
-def NavbarMenu(
-    *,
-    today_played: Node | str,
-    last_7_played: Node | str,
-    current_year: int,
-    csrf_token: str,
-    authenticated: bool = False,
-    is_superuser: bool = False,
-    is_settings_page: bool = False,
-    recent_resumes: list[Session] | None = None,
-    origin: OriginUrl | None = None,
-) -> Node:
-    """The responsive ``#navbar-dropdown`` collapse menu, built from components."""
-    from common.components import (
-        ControlLink,
-        Div,
-        DropdownDivider,
-        DropdownLinkItem,
-        DropdownPostItem,
-        DropdownSubmenu,
-        Li,
-        MenuDropdown,
-        ThemeToggle,
-        Ul,
-    )
-    from common.returns import action_url
-
-    def entity_submenu(label, slug, add_url, list_url):
-        return DropdownSubmenu(
-            label,
-            id=f"navbarMenu{slug}",
-            items=[
-                DropdownLinkItem(
-                    action_url(add_url, origin=origin), f"Add {label.lower()}"
-                ),
-                DropdownLinkItem(reverse(list_url), f"List {label.lower()}s"),
-            ],
-        )
-
-    theme_toggle = Li(class_="flex items-center")[
-        ThemeToggle(instance_key="navbar", disabled=is_settings_page)
-    ]
-
-    home = Li()[
-        ControlLink(
-            href=reverse("games:index"),
-            class_="block py-2 px-3 bg-brand rounded-base "
-            "md:bg-transparent md:p-0 text-fg-on-brand md:text-heading "
-            "md:hover:text-fg-brand",
-            aria_current="page",
-        )["Home"]
-    ]
-
-    account_items = (
-        [
-            DropdownDivider(),
-            DropdownLinkItem(reverse("games:settings"), "Settings"),
-            *(
-                [DropdownLinkItem(reverse("games:admin_settings"), "Admin settings")]
-                if is_superuser
-                else []
-            ),
-            DropdownPostItem(reverse("logout"), "Log out", csrf_token=csrf_token),
-        ]
-        if authenticated
-        else []
-    )
-
-    # One entity menu: each entity is a submenu of its actions (Add / List).
-    entity_menu = Li()[
-        MenuDropdown(
-            label="Menu",
-            id="navbarMenu",
-            placement="bottom-center",
-            items=[
-                entity_submenu(
-                    "Device", "Device", "games:add_device", "games:list_devices"
-                ),
-                entity_submenu("Game", "Game", "games:add_game", "games:list_games"),
-                entity_submenu(
-                    "Platform", "Platform", "games:add_platform", "games:list_platforms"
-                ),
-                entity_submenu(
-                    "Play event",
-                    "PlayEvent",
-                    "games:add_playevent",
-                    "games:list_playevents",
-                ),
-                entity_submenu(
-                    "Purchase", "Purchase", "games:add_purchase", "games:list_purchases"
-                ),
-                entity_submenu(
-                    "Session", "Session", "games:add_session", "games:list_sessions"
-                ),
-                *account_items,
-            ],
-        )
-    ]
-
-    stats = Li()[
-        ControlLink(
-            href=reverse("games:stats_by_year", args=[current_year]),
-            class_=_NAV_LINK_CLASS,
-        )["Stats"]
-    ]
-
-    # Desktop-only log button: between the playtime counter and Home in the menu
-    # row. `hidden md:flex` keeps it out of the expanded mobile menu (the mobile
-    # instance lives next to the hamburger instead).
-    desktop_log = (
-        Li(class_="hidden md:flex items-center")[
-            NavbarLogButton(
-                recent_resumes or [],
-                id="navbar-log-desktop",
-                csrf_token=csrf_token,
-                origin=origin,
-            )
-        ]
-        if authenticated
-        else ""
-    )
-
-    return Div(class_="hidden w-full md:block md:w-auto", id="navbar-dropdown")[
-        Ul(
-            class_="items-center flex flex-col font-medium p-4 md:p-0 mt-4 border "
-            "border-default-medium rounded-base bg-neutral-secondary-medium md:gap-8 "
-            "md:flex-row md:mt-0 md:border-0 md:bg-neutral-primary-soft"
-        )[
-            theme_toggle,
-            # No url arguments: each Duration owns its own link, because a
-            # popover trigger may not sit inside one.
-            NavbarPlaytime(today_played, last_7_played),
-            desktop_log,
-            home,
-            entity_menu,
-            stats,
-        ]
-    ]
-
-
 def recent_session_resumes(request: HttpRequest, limit: int = 5) -> list[Session]:
     """The most-recent session per distinct played game, newest first (up to
     ``limit``). Each is a resume target for the navbar log dropdown: cloning it
@@ -459,9 +319,8 @@ def Navbar(
     logo = static("icons/tesserae-icon-animated.svg")
     brand = ControlLink(
         href=reverse("games:index"),
-        # me-auto hugs the brand to the left edge and pushes every following item
-        # (log button, hamburger, menu) to the right — independent of which are
-        # visible at the current breakpoint or whether the log button renders.
+        # me-auto hugs the brand to the left edge and pushes Log game, Library,
+        # and the account menu to the right at every breakpoint.
         class_="flex items-center me-auto",
     )[
         Img(src=logo, alt="Timetracker Logo", class_="w-10 h-10"),

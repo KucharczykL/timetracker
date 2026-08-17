@@ -25,6 +25,7 @@ from common.components import (
 )
 from common.date_time_presentation import date_time_presentation_for_request
 from common.layout import render_page
+from common.returns import action_url
 from games.filters import PurchaseFilter, filter_url
 from games.forms import LibraryPreferencesForm
 from games.models import (
@@ -39,10 +40,12 @@ from games.views import stats_links
 from timetracker.settings_commands import SettingNamespace
 
 
-def _actions(list_name: str, add_name: str) -> tuple[SummaryAction, ...]:
+def _actions(
+    list_name: str, add_name: str, *, origin: str
+) -> tuple[SummaryAction, ...]:
     return (
         SummaryAction("Browse", reverse(list_name)),
-        SummaryAction("Add", reverse(add_name)),
+        SummaryAction("Add", action_url(add_name, origin=origin)),
     )
 
 
@@ -50,6 +53,7 @@ def _actions(list_name: str, add_name: str) -> tuple[SummaryAction, ...]:
 def library(request):
     user = cast(User, request.user)
     library = user.library
+    origin = request.get_full_path()
     presentation = date_time_presentation_for_request(request)
     games = Game.objects.for_library(library)
     sessions = Session.objects.for_library(library)
@@ -109,28 +113,34 @@ def library(request):
             subtitle="Games currently tracked in this library.",
             value=games.count(),
             value_href=reverse("games:list_games"),
-            actions=_actions("games:list_games", "games:add_game"),
+            actions=_actions("games:list_games", "games:add_game", origin=origin),
         ),
         SummaryRow(
             label="Platforms",
             subtitle="Platforms you added manually.",
             value=platforms.count(),
             value_href=reverse("games:list_platforms"),
-            actions=_actions("games:list_platforms", "games:add_platform"),
+            actions=_actions(
+                "games:list_platforms", "games:add_platform", origin=origin
+            ),
         ),
         SummaryRow(
             label="Devices",
             subtitle="Hardware you use to play.",
             value=devices.count(),
             value_href=reverse("games:list_devices"),
-            actions=_actions("games:list_devices", "games:add_device"),
+            actions=_actions("games:list_devices", "games:add_device", origin=origin),
             detail=default_device_control,
         ),
     )
     purchases_summary = SummaryRow(
         label="Temporary home",
         subtitle="Purchase management will move into the future Catalogue. This section provides a library summary in the meantime.",
-        actions=(SummaryAction("Add purchase", reverse("games:add_purchase")),),
+        actions=(
+            SummaryAction(
+                "Add purchase", action_url("games:add_purchase", origin=origin)
+            ),
+        ),
         detail=StatisticGrid(
             StatisticCard(
                 "Purchases",

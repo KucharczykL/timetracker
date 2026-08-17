@@ -94,13 +94,18 @@ def test_superuser_navbar_opens_responsive_admin_settings(
     page.set_viewport_size(viewport)
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
 
-    main_menu = page.locator("#navbar-dropdown")
-    if mobile:
-        expect(main_menu).to_be_hidden()
-        page.get_by_role("button", name="Open main menu", exact=True).click()
-    expect(main_menu).to_be_visible()
-
-    page.get_by_role("button", name="Menu", exact=True).click()
+    account_menu = page.locator("#account-menu")
+    expect(account_menu).to_be_hidden()
+    account_trigger = page.get_by_role(
+        "button", name="Open account menu for settings-admin"
+    )
+    account_trigger.click()
+    expect(account_menu).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(account_menu).to_be_hidden()
+    expect(account_trigger).to_be_focused()
+    account_trigger.click()
+    expect(account_menu).to_be_visible()
     admin_link = page.get_by_role("menuitem", name="Admin settings", exact=True)
     expect(admin_link).to_be_visible()
     with page.expect_navigation(wait_until="load"):

@@ -243,7 +243,7 @@ class DropdownWrapperTest(unittest.TestCase):
 
         node = MenuDropdown(
             label="Menu",
-            id="navbarMenu",
+            id="primary-menu",
             placement="bottom-center",
             items=[DropdownLinkItem("/games/", "Game", current=True)],
         )
@@ -251,7 +251,7 @@ class DropdownWrapperTest(unittest.TestCase):
         self.assertIn("<drop-down ", html)
         self.assertIn('placement="bottom-center"', html)
         self.assertIn('behavior="menu"', html)
-        self.assertIn('id="navbarMenuLink"', html)
+        self.assertIn('id="primary-menuLink"', html)
         self.assertIn('aria-haspopup="menu"', html)  # menu semantics from the wrapper
         self.assertIn('role="menu"', html)
         self.assertIn('aria-current="page"', html)
@@ -315,7 +315,7 @@ class DropdownSubmenuTest(unittest.TestCase):
                 items=[
                     DropdownSubmenu(
                         "Game",
-                        id="navbarMenuGame",
+                        id="game-submenu",
                         items=[
                             DropdownLinkItem("/games/add/", "Add game"),
                             DropdownLinkItem("/games/", "List games"),
@@ -323,13 +323,13 @@ class DropdownSubmenuTest(unittest.TestCase):
                     ),
                 ]
             ),
-            id="navbarMenu",
+            id="primary-menu",
         )
         html = render(node)
         # The submenu trigger is itself a menuitem with a popup, nested in a
         # right-start <drop-down>.
         self.assertEqual(html.count("<drop-down "), 2)
-        self.assertIn('id="navbarMenuGameLink"', html)
+        self.assertIn('id="game-submenuLink"', html)
         self.assertIn('role="menuitem"', html)
         self.assertIn('aria-haspopup="menu"', html)
         self.assertIn('placement="right-start"', html)
