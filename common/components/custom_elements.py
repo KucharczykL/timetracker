@@ -959,8 +959,7 @@ def _assemble(
     behavior: DropdownBehaviorName = "menu",
     config: dict[str, str] | None = None,
 ) -> Node:
-    """Stamp both contracts and wire the <drop-down> element. The single assembly
-    point shared by the public Dropdown and DropdownSubmenu. `config` becomes
+    """Stamp both contracts and wire the <drop-down> element. `config` becomes
     extra data-* attributes the chosen behavior reads (e.g. select's PATCH url)."""
     # config keys use underscores (e.g. data_patch_url); convert to data-* names
     # and pass as an explicit attribute list so the dict never spreads onto the
@@ -1101,28 +1100,6 @@ def DropdownMenuPanel(
     return Div(attributes)[Ul(role="presentation")[*items]]
 
 
-def MenuDropdown(
-    *,
-    label: Child,
-    items: list[Node],
-    id: str,
-    placement: str = "bottom-start",
-    aria_label: str = "",
-) -> Node:
-    """A borderless, navbar-style menu dropdown (the old non-outline look)."""
-    trigger = _as_menu_trigger(
-        ControlButton(variant="plain")[
-            Span(class_="flex items-center gap-1")[label, Icon("arrowdown")]
-        ].as_element()
-    )
-    return Dropdown(
-        trigger_element=trigger,
-        target_element=DropdownMenuPanel(items=items, aria_label=aria_label),
-        id=id,
-        placement=placement,
-    )
-
-
 def ButtonDropdown(
     *,
     label: Child,
@@ -1203,35 +1180,6 @@ def SplitButtonDropdown(
     )
     return Div(class_="inline-flex items-stretch rounded-base shadow-2xs")[
         primary, dropdown
-    ]
-
-
-def DropdownSubmenu(
-    label: Child, items: list[Node], *, id: str, placement: str = "right-start"
-) -> Node:
-    """A menu item that opens a nested submenu (a flyout, right by default).
-
-    Renders an ``<li>`` whose trigger is itself a ``role="menuitem"`` (so the
-    parent menu's keyboard nav includes it) carrying ``aria-haspopup`` so the
-    parent stays open when it activates. ``submenu=True`` is intrinsic (hover-open
-    + ArrowRight/Left); only ``placement`` is tunable."""
-    trigger = _as_menu_trigger(
-        Button(
-            type="button",
-            role="menuitem",
-            tabindex="-1",
-            class_=DROPDOWN_ITEM_CLASS + " flex items-center justify-between gap-2",
-        )[Span()[label], Icon("arrowright")]
-    )
-    return Li(role="presentation")[
-        _assemble(
-            trigger,
-            DropdownMenuPanel(items=items),
-            id=id,
-            placement=placement,
-            submenu=True,
-            wrapper_class="relative",
-        )
     ]
 
 

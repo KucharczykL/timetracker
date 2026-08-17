@@ -164,38 +164,6 @@ def _main_script(mastered: bool) -> str:
     return _MAIN_SCRIPT_A + ("true" if mastered else "false") + _MAIN_SCRIPT_B
 
 
-def NavbarPlaytime(
-    today_played: Node | str,
-    last_7_played: Node | str,
-    *,
-    oob: bool = False,
-) -> Node:
-    """The navbar 'Today · Last 7 days' totals. Carries a stable id so
-    htmx endpoints can refresh it out-of-band after a session change.
-
-    Each total is a ``Duration`` node that owns its own link and popover — the
-    linking cannot happen here, because a popover trigger is a ``<button>`` and
-    may not sit inside an ``<a>``. Passing nodes rather than text is also what
-    keeps their declared ``Media`` reachable.
-    """
-    from common.components import HTMLAttribute, Li, Span
-
-    attributes: list[HTMLAttribute] = [
-        ("id", "navbar-playtime"),
-        ("class", "flex flex-col items-center text-type-micro"),
-    ]
-    if oob:
-        attributes.append(("hx-swap-oob", "true"))
-    return Li(attributes)[
-        Span(class_="flex uppercase gap-1")["Today", Span()["·"], "Last 7 days"],
-        Span(class_="flex items-center gap-1")[
-            today_played,
-            Span()["·"],
-            last_7_played,
-        ],
-    ]
-
-
 # Shared classes for the plain navbar entries (Home/Stats/Log out).
 _NAV_LINK_CLASS = (
     "block py-2 px-3 rounded-base hover:bg-neutral-tertiary-medium "
@@ -562,7 +530,6 @@ def TimetrackerDocument(
                         Script(src=static("js/temporal-polyfill.js")),
                         ModuleScript("dist/global-error-handler.js"),
                         Script(src=static("js/htmx.min.js")),
-                        Script(src=static("js/flowbite.min.js")),
                         ModuleScript("dist/htmx-redirect-toast.js"),
                         ModuleScript("dist/toast.js"),
                         Script(defer=True, src=static("js/alpine-mask.min.js")),

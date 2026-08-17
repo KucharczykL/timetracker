@@ -95,6 +95,7 @@ def test_external_classic_bootstrap_is_first_script_and_precedes_css(db):
     assert " async" not in bootstrap_tag
     assert "readCookie" not in html
     assert 'theme-bootstrap">' not in html
+    assert "flowbite.min.js" not in html
 
 
 def test_theme_component_keeps_three_icons_and_tooltip(db):
