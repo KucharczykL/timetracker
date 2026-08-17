@@ -1,4 +1,4 @@
-"""Fail closed when ownership-cutover companion records are incomplete."""
+"""Fail closed when a user or library is missing its companion records."""
 
 import logging
 
