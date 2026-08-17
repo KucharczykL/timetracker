@@ -52,20 +52,6 @@ ifneq ($(PATH_NODE_SUPPORTED),yes)
 export npm_config_use_node_version = $(NODE_VERSION)
 endif
 
-# Getting the right node is not enough: `pnpm exec <tool>` falls back to a global
-# binary when node_modules/ is absent, so a worktree that never had `pnpm install`
-# run in it silently type-checks against whatever tsc happens to be on the system.
-# An older tsc does not know the ESNext.Temporal lib this project's tsconfig asks
-# for, so it rejects the `lib` array outright and then reports every Temporal
-# reference in ts/ as an undefined name — again reading like the code's fault.
-# Comparing the installed major against package.json's own pin catches both the
-# missing install and a stale one, without duplicating the version here. The path
-# must be explicit: a bare 'typescript' specifier lets node walk up to a PARENT
-# directory's node_modules, so a git worktree nested under the main checkout would
-# find that copy and pass while pnpm exec — which does not walk up — still runs
-# the global tsc. Checking ./node_modules directly measures what pnpm exec sees.
-TYPESCRIPT_PIN_CHECK = try{const p=require('./package.json'); const spec=(p.devDependencies||{}).typescript||(p.dependencies||{}).typescript; const want=spec.replace(/[~^>=< v]/g,'').split('.')[0]; process.exit(require('./node_modules/typescript/package.json').version.split('.')[0]===want?0:1)}catch(error){process.exit(1)}
-
 # Ensure a usable CPython 3.14 exists for uv before any target that needs it.
 # Fast no-op when one is already available (a Nix shell puts it on PATH; a
 # provisioned .venv counts too). Otherwise try uv's own downloader, and only if
@@ -114,9 +100,6 @@ endif
 ifeq ($(OS),Windows_NT)
 ensure-node-runtime:
 	@pnpm exec node -e "process.exit(+process.versions.node.split('.')[0] >= $(NODE_MAJOR_VERSION) ? 0 : 1)" || powershell -NoProfile -Command "Write-Host '==> Could not get Node >= $(NODE_MAJOR_VERSION) for the JS toolchain. pnpm could not supply $(NODE_VERSION); the first fetch needs network access.'; exit 1"
-
-ensure-node-deps: ensure-node-runtime
-	@pnpm exec node -e "$(TYPESCRIPT_PIN_CHECK)" || powershell -NoProfile -Command "Write-Host '==> This project JS dependencies are missing or stale. Run  make npm  to install them.'; exit 1"
 else
 ensure-node-runtime:
 	@pnpm exec node -e "process.exit(+process.versions.node.split('.')[0] >= $(NODE_MAJOR_VERSION) ? 0 : 1)" || \
@@ -129,20 +112,13 @@ ensure-node-runtime:
 		echo "    Offline? Run from the Nix dev shell instead: nix-shell --run 'make $(MAKECMDGOALS)'"; \
 		exit 1 \
 	)
-
-ensure-node-deps: ensure-node-runtime
-	@pnpm exec node -e "$(TYPESCRIPT_PIN_CHECK)" || \
-	( \
-		echo "==> This project's JS dependencies are missing or stale."; \
-		echo "    pnpm exec resolved $$(pnpm exec tsc --version 2>/dev/null || echo 'no tsc'),"; \
-		echo "    which is not the typescript major that package.json pins."; \
-		echo "    Without a matching tsc the ESNext.Temporal lib in tsconfig.json is"; \
-		echo "    rejected and every Temporal reference in ts/ is reported as an"; \
-		echo "    undefined name, as if the code were broken."; \
-		echo "    Run  make npm  to install this project's pinned dependencies."; \
-		exit 1 \
-	)
 endif
+
+# No OS split and no `||` message: the script prints its own diagnosis, so the
+# text lives next to the comparison that produced it instead of being echoed
+# twice in two shell dialects around a bare exit status.
+ensure-node-deps: ensure-node-runtime
+	@pnpm exec node scripts/check-typescript-pin.mjs
 
 npm: ensure-node-runtime
 	pnpm install
