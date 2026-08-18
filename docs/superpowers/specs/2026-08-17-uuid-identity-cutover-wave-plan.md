@@ -137,10 +137,14 @@ issue into four (ID-11/#646, ID-12/#848, ID-13/#849, ID-14/#850 on GitHub),
 mirroring Wave B's grouping for review-size symmetry: catalog (`Game`+
 `Platform`), Session/play-history (`Session`+`PlayEvent`+`GameStatusChange`),
 Purchase, library configuration (`Device`+`FilterPreset`). Each PR, per model
-group: drops the integer `id` and every now-unused integer FK column Wave C
-replaced, renames `uuid` to `id`, promotes it to primary key, and drops any
-transitional `to_field` pointers Wave C's FK columns needed while `uuid`
-wasn't yet the primary key. Lower risk than Wave C per PR — by this point
+group: drops the integer `id`, renames `uuid` to `id`, promotes it to primary
+key, and drops any transitional `to_field` pointers Wave C's FK columns needed
+while `uuid` wasn't yet the primary key. (Amended 2026-08-18 by
+[the ID-06 design](2026-08-18-issue-644-playhistory-fk-uuid-design.md): the
+old integer FK columns are dropped by Wave C itself, in the same migration
+that adds the UUID column, because a retained `NOT NULL` integer FK column
+would keep a live write-path obligation for two more waves. Wave E has no FK
+columns left to drop — only the integer `id` and the `to_field` pointers.) Lower risk than Wave C per PR — by this point
 nothing references the integer columns — but kept split for reviewability
 and to keep `games/sorting.py`'s `F("pk").asc()` tiebreak change auditable
 per model group rather than in one sweep. All four are `blocked-by` ID-10.
