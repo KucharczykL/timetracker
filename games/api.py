@@ -240,14 +240,14 @@ def search_platforms(request, q: str = "", limit: int = 10):
             qs.annotate(
                 last_game_use=Subquery(
                     Game.objects.for_library(library)
-                    .filter(platform=OuterRef("pk"))
+                    .filter(platform=OuterRef("uuid"))
                     .order_by("-updated_at")
                     .values("updated_at")[:1],
                     output_field=DateTimeField(),
                 ),
                 last_purchase_use=Subquery(
                     Purchase.objects.for_library(library)
-                    .filter(platform=OuterRef("pk"))
+                    .filter(platform=OuterRef("uuid"))
                     .order_by("-updated_at")
                     .values("updated_at")[:1],
                     output_field=DateTimeField(),

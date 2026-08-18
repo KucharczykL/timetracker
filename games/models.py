@@ -66,7 +66,12 @@ class Game(models.Model):
     original_year_released = models.IntegerField(null=True, blank=True, default=None)
     wikidata = models.CharField(max_length=50, blank=True, default="")
     platform = models.ForeignKey(
-        "Platform", on_delete=models.SET_NULL, null=True, blank=True, default=None
+        "Platform",
+        to_field="uuid",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        default=None,
     )
 
     playtime = models.DurationField(blank=True, editable=False, default=timedelta(0))
@@ -275,7 +280,12 @@ class Purchase(models.Model):
     games = models.ManyToManyField(Game, related_name="purchases")
 
     platform = models.ForeignKey(
-        Platform, on_delete=models.SET_NULL, default=None, null=True, blank=True
+        Platform,
+        to_field="uuid",
+        on_delete=models.SET_NULL,
+        default=None,
+        null=True,
+        blank=True,
     )
     date_purchased = models.DateField(verbose_name="Purchased")
     date_refunded = models.DateField(blank=True, null=True, verbose_name="Refunded")

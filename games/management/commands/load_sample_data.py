@@ -50,9 +50,8 @@ class FixtureRelationship(NamedTuple):
 
     `reference_field` names which field of the *target* record the reference
     value names — the fixture-validation equivalent of the FK's `to_field`.
-    Defaults to "pk" (an ordinary integer-PK relation); "uuid" for relations
-    whose database FK points through `Game.uuid` instead of `Game.pk`
-    (`games.playevent.game`, `games.gamestatuschange.game`).
+    Defaults to "pk" (an ordinary integer-PK relation); "uuid" for a relation
+    whose database FK points through the target's `uuid` rather than its `pk`.
     """
 
     field: str
@@ -63,9 +62,15 @@ class FixtureRelationship(NamedTuple):
 
 
 FIXTURE_RELATIONSHIPS: dict[str, tuple[FixtureRelationship, ...]] = {
-    "games.game": (FixtureRelationship("platform", "games.platform", False, False),),
+    "games.game": (
+        FixtureRelationship(
+            "platform", "games.platform", False, False, reference_field="uuid"
+        ),
+    ),
     "games.purchase": (
-        FixtureRelationship("platform", "games.platform", False, False),
+        FixtureRelationship(
+            "platform", "games.platform", False, False, reference_field="uuid"
+        ),
         FixtureRelationship("related_game", "games.game", False, False),
         FixtureRelationship("games", "games.game", True, False),
     ),
@@ -106,12 +111,12 @@ class Command(BaseCommand):
             state = PurchaseConversionState.objects.select_for_update().get(
                 library=user.library
             )
-            platform_ids = self._load_platforms(records, user.library)
+            platform_uuids = self._load_platforms(records, user.library)
             self._load_exchange_rates(records)
             loadable = self._prepare_private_records(
                 records,
                 user.library,
-                platform_ids,
+                platform_uuids,
             )
             self._reject_primary_key_collisions(loadable)
             try:
@@ -265,7 +270,22 @@ class Command(BaseCommand):
 
     @staticmethod
     def _load_platforms(records, library):
-        platform_ids = {}
+        """Create or reuse each fixture platform, returning fixture uuid → real uuid.
+
+        Both platform references in the fixture name the target's `uuid`, and
+        the real row's uuid is never the fixture's on either path: a reused row
+        already had its own, and a created one mints a fresh one from
+        `UUIDv7Field`'s default. Adopting the fixture's uuid instead is not an
+        option — `_reject_primary_key_collisions` guards pks only, so a second
+        load into a database already holding that uuid would violate the unique
+        constraint, and the reuse path could not honor it anyway. So the
+        translation here is load-bearing: without it every game and purchase
+        would dangle.
+
+        Values are strings because the prepared records are re-serialized with
+        `yaml.safe_dump` before deserialization, which cannot represent a UUID.
+        """
+        platform_uuids = {}
         for record in records:
             if record["model"] != "games.platform":
                 continue
@@ -289,8 +309,13 @@ class Command(BaseCommand):
                         "Sample Platform has no reusable exact identity: "
                         f"{fields['name']!r} / {fields.get('group', '')!r}."
                     ) from error
-            platform_ids[str(record["pk"])] = platform.pk
-        return platform_ids
+            # A fixture platform carrying no uuid is legal input — validation
+            # indexes reference fields with .get() and only errors at the
+            # referencing record — so it simply maps nothing.
+            fixture_uuid = fields.get("uuid")
+            if fixture_uuid is not None:
+                platform_uuids[str(fixture_uuid)] = str(platform.uuid)
+        return platform_uuids
 
     @staticmethod
     def _load_exchange_rates(records):
@@ -306,7 +331,7 @@ class Command(BaseCommand):
             )
 
     @staticmethod
-    def _prepare_private_records(records, library, platform_ids):
+    def _prepare_private_records(records, library, platform_uuids):
         prepared = []
         for record in records:
             model = record["model"]
@@ -317,13 +342,14 @@ class Command(BaseCommand):
             if model in PRIVATE_MODELS:
                 fields["library"] = str(library.pk)
             if model in {"games.game", "games.purchase"}:
-                platform_id = fields.get("platform")
-                if platform_id is not None:
-                    if str(platform_id) not in platform_ids:
+                platform_reference = fields.get("platform")
+                if platform_reference is not None:
+                    if str(platform_reference) not in platform_uuids:
                         raise CommandError(
-                            f"Sample {model} references unknown Platform {platform_id}."
+                            f"Sample {model} references unknown Platform "
+                            f"{platform_reference}."
                         )
-                    fields["platform"] = platform_ids[str(platform_id)]
+                    fields["platform"] = platform_uuids[str(platform_reference)]
             prepared.append(copied)
         return prepared
 

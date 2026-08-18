@@ -203,6 +203,11 @@ def test_committed_sample_load_owns_private_rows_and_reuses_shared_platform(owne
     assert Platform.objects.filter(pk=dummy.pk).exists()
     assert Platform.objects.filter(name="Steam", group="PC").count() == 1
     assert Platform.objects.get(name="Steam", group="PC").pk == steam.pk
+    # The fixture references platforms by uuid, and a reused row's uuid is not
+    # the fixture's, so the loaded rows must have been remapped onto this exact
+    # platform rather than carrying the fixture's identity through.
+    assert Game.objects.filter(platform=steam).exists()
+    assert Purchase.objects.filter(platform=steam).exists()
     assert Game.objects.filter(library=owner.library).exists()
     assert not Game.objects.exclude(library=owner.library).exists()
     assert Device.objects.filter(library=owner.library).exists()
@@ -290,9 +295,11 @@ def test_sample_load_rejects_a_private_row_without_portable_owner_marker(
     assert not Device.objects.filter(pk=202).exists()
 
 
-# PlayEvent.game and GameStatusChange.game reference Game.uuid, not Game.pk
-# (see games/models.py); a well-formed UUID that no fixture game carries.
+# PlayEvent.game and GameStatusChange.game reference Game.uuid, and both
+# platform foreign keys reference Platform.uuid, not either target's pk (see
+# games/models.py); well-formed UUIDs that no fixture record carries.
 ABSENT_GAME_UUID = "00000000-0000-7000-8000-000000000000"
+ABSENT_PLATFORM_UUID = "00000000-0000-7000-8000-000000000001"
 
 
 @pytest.mark.django_db
@@ -311,6 +318,16 @@ ABSENT_GAME_UUID = "00000000-0000-7000-8000-000000000000"
             "games.purchase",
             {"library": "__target_library__", "related_game": 999},
             "Game",
+        ),
+        (
+            "games.game",
+            {"library": "__target_library__", "platform": ABSENT_PLATFORM_UUID},
+            "Platform",
+        ),
+        (
+            "games.purchase",
+            {"library": "__target_library__", "platform": ABSENT_PLATFORM_UUID},
+            "Platform",
         ),
     ],
 )
