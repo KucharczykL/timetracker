@@ -533,6 +533,7 @@ class Device(models.Model):
     library = models.ForeignKey(
         "UserLibrary", on_delete=models.CASCADE, related_name="devices"
     )
+    uuid = UUIDv7Field(unique=True, editable=False)
 
     PC = "PC"
     CONSOLE = "Console"
@@ -712,6 +713,7 @@ class FilterPreset(models.Model):
     library = models.ForeignKey(
         "UserLibrary", on_delete=models.CASCADE, related_name="filter_presets"
     )
+    uuid = UUIDv7Field(unique=True, editable=False)
     name = models.CharField(max_length=255)
     mode = models.CharField(max_length=50, choices=MODE_CHOICES, default="games")
     find_filter = models.JSONField(default=dict, blank=True)
