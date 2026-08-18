@@ -312,3 +312,72 @@ def test_add_session_post_with_foreign_device_is_rejected_without_mutation(world
     assert Session.objects.count() == before
     body = response.content.decode()
     assert world.foreign_device.name not in body
+
+
+def test_bound_forms_preselect_platform_by_integer_id(world):
+    """A bound instance must hand the platform combobox the identity its
+    options carry — an integer Platform pk — not the foreign key's attname."""
+    import datetime
+
+    purchase = Purchase.objects.create(
+        library=world.owner_library,
+        platform=world.own_platform,
+        date_purchased=datetime.date(2026, 1, 1),
+        price=10,
+        price_currency="USD",
+    )
+
+    game_form = GameForm(library=world.owner_library, instance=world.own_game)
+    purchase_form = PurchaseForm(
+        library=world.owner_library,
+        user=world.owner,
+        presentation=PRESENTATION,
+        instance=purchase,
+    )
+
+    for form in (game_form, purchase_form):
+        rendered = str(form["platform"])
+        assert world.own_platform.name in rendered
+        assert f'value="{world.own_platform.pk}"' in rendered
+
+
+def test_bound_forms_leave_an_unset_platform_unselected(world):
+    import datetime
+
+    platformless_game = Game.objects.create(
+        library=world.owner_library, name="Platformless form game", platform=None
+    )
+    platformless_purchase = Purchase.objects.create(
+        library=world.owner_library,
+        platform=None,
+        date_purchased=datetime.date(2026, 1, 1),
+        price=10,
+        price_currency="USD",
+    )
+
+    game_form = GameForm(library=world.owner_library, instance=platformless_game)
+    purchase_form = PurchaseForm(
+        library=world.owner_library,
+        user=world.owner,
+        presentation=PRESENTATION,
+        instance=platformless_purchase,
+    )
+
+    for form in (game_form, purchase_form):
+        rendered = str(form["platform"])
+        assert world.own_platform.name not in rendered
+        assert "None" not in rendered
+
+
+def test_game_option_data_carries_the_integer_platform_id(world):
+    from games.forms import game_option_data
+
+    platformless = Game.objects.create(
+        library=world.owner_library, name="Optionless", platform=None
+    )
+
+    assert game_option_data(world.own_game) == {
+        "platform": str(world.own_platform.pk),
+        "platform_name": world.own_platform.name,
+    }
+    assert game_option_data(platformless) == {"platform": "", "platform_name": ""}

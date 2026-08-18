@@ -177,12 +177,31 @@ class SingleGameChoiceField(forms.ModelChoiceField):
         return obj.search_label
 
 
+def seed_related_initial(form: forms.ModelForm, *field_names: str) -> None:
+    """Seed a bound form's initial with each named relation's *instance*.
+
+    Transitional. ``ModelForm`` initial comes from ``model_to_dict``, which
+    reads a foreign key's attname — a UUID for every relation pointed at a
+    ``uuid`` target — while the SearchSelect widgets carry integer option
+    values. ``ModelChoiceField.prepare_value`` turns an instance back into its
+    pk, so feeding the instance produces the identity the options use. Drops
+    out once those pks *are* the UUIDs.
+    """
+    if not form.instance.pk:
+        return
+    for field_name in field_names:
+        form.initial[field_name] = getattr(form.instance, field_name)
+
+
 def game_option_data(game: Game) -> dict[str, str]:
     """The data-* payload of a game option, shared by the games search API and
     this module's resolver — one producer, so the two sites cannot drift.
-    Callers must select_related("platform")."""
+
+    Reads the platform's own pk rather than the foreign key attname, which is
+    the identity the platform combobox's options carry. Callers must
+    select_related("platform")."""
     return {
-        "platform": str(game.platform_id) if game.platform_id else "",
+        "platform": str(game.platform.id) if game.platform else "",
         "platform_name": game.platform.name if game.platform else "",
     }
 
@@ -669,6 +688,7 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
         platform_field.widget.options_resolver = partial(
             _platform_options, library=library
         )
+        seed_related_initial(self, "platform")
         # The bundle Price is optional: in price-per-game mode it is hidden and
         # the per-game inputs carry the prices instead. Empty falls back to 0.
         self.fields["price"].required = False
@@ -807,6 +827,7 @@ class GameForm(
         self.fields["platform"].widget.options_resolver = partial(
             _platform_options, library=library
         )
+        seed_related_initial(self, "platform")
 
     platform = forms.ModelChoiceField(
         queryset=Platform.objects.order_by("name"),
@@ -877,14 +898,7 @@ class PlayEventForm(PrimitiveWidgetsMixin, forms.ModelForm):
         self.fields["game"].widget.options_resolver = partial(
             _game_options, library=library
         )
-        if self.instance.pk:
-            # Transitional: PlayEvent.game_id is now a UUID (the FK's to_field),
-            # but this field's widget options are integer game ids. ModelForm's
-            # default initial comes from model_to_dict, which would read that
-            # UUID attname straight through. Feeding the instance instead makes
-            # ModelChoiceField.prepare_value resolve it to game.pk, matching the
-            # widget's option values. Disappears once Game.pk is the UUID.
-            self.initial["game"] = self.instance.game
+        seed_related_initial(self, "game")
         for field_name in ("started", "ended"):
             self.fields[field_name].widget = DatePickerWidget(
                 presentation=presentation,

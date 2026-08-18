@@ -99,7 +99,7 @@ class GameFilter(OperatorFilter):
     year_released: IntCriterion | None = None
     original_year_released: IntCriterion | None = None
     wikidata: StringCriterion | None = None
-    platform: MultiCriterion | None = None  # platform_id (int FK)
+    platform: MultiCriterion | None = None  # integer Platform pks
     platform_group: ChoiceCriterion | None = None  # platform__group (str)
     status: ChoiceCriterion | None = None  # selectable filter widget
     mastered: BoolCriterion | None = None
@@ -145,7 +145,7 @@ class GameFilter(OperatorFilter):
         "year_released": FilterField(),
         "original_year_released": FilterField(),
         "wikidata": FilterField(),
-        "platform": FilterField("platform_id", search_url="/api/platforms/search"),
+        "platform": FilterField("platform__id", search_url="/api/platforms/search"),
         "status": FilterField(),
         "mastered": FilterField(),
         "playtime_hours": FilterField(handler=duration_hours_handler("playtime")),
@@ -213,7 +213,7 @@ class GameFilter(OperatorFilter):
                 context=context,
                 related_model=Platform,
                 related_lookup="id",
-                parent_field="platform_id",
+                parent_field="platform__id",
             )
 
         return q
@@ -335,7 +335,7 @@ class PurchaseFilter(OperatorFilter):
     NOT: list[PurchaseFilter] = field(default_factory=list)
 
     name: StringCriterion | None = None
-    platform: MultiCriterion | None = None  # platform_id (int FK)
+    platform: MultiCriterion | None = None  # integer Platform pks
     games: ChoiceCriterion | None = None  # games (M2M IDs)
     date_purchased: DateCriterion | None = None
     date_refunded: DateCriterion | None = None
@@ -371,7 +371,7 @@ class PurchaseFilter(OperatorFilter):
     # out of the table entirely (the free-text box, not a pickable field).
     fields: ClassVar[dict[str, FilterField]] = {
         "name": FilterField(),
-        "platform": FilterField("platform_id", search_url="/api/platforms/search"),
+        "platform": FilterField("platform__id", search_url="/api/platforms/search"),
         "games": FilterField(
             lookup="games",
             search_url="/api/games/search",
@@ -437,7 +437,7 @@ class PurchaseFilter(OperatorFilter):
                 context=context,
                 related_model=Platform,
                 related_lookup="id",
-                parent_field="platform_id",
+                parent_field="platform__id",
             )
 
         return q
@@ -631,7 +631,7 @@ class PlatformFilter(OperatorFilter):
                 self.game_filter,
                 context=context,
                 related_model=Game,
-                related_lookup="platform_id",
+                related_lookup="platform__id",
             )
 
         if self.purchase_filter is not None:
@@ -641,7 +641,7 @@ class PlatformFilter(OperatorFilter):
                 self.purchase_filter,
                 context=context,
                 related_model=Purchase,
-                related_lookup="platform_id",
+                related_lookup="platform__id",
             )
 
         return q

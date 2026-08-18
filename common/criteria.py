@@ -2408,21 +2408,29 @@ class ModelFieldBundle(TypedDict):
     columns: list[ComparableColumn]
 
 
-def _resolve_model_field(
-    model: type[models.Model], lookup: ORMLookup
-) -> models.Field | None:
-    """Resolve a filter field's ORM ``lookup`` to its terminal concrete model field.
+class _LookupSegment(NamedTuple):
+    """One resolved segment of a filter lookup path.
 
-    Walks ``__``-separated segments, descending into the related model at each
-    relation segment, and stops at the first non-relation field — so a trailing
-    transform such as ``created_at__date`` returns the ``created_at`` field and a
-    relation hop such as ``platform__group`` returns ``Platform.group``. A
-    single-segment FK attname (``platform_id``) resolves directly (Django accepts
-    attnames). Returns None when a segment does not resolve (e.g. a mis-typed
-    lookup, or an aggregate field name that is no column); the caller decides
-    whether that None is expected (columnless field) or a misconfiguration to
-    raise on. Handler-mapped fields never reach here — ``field_metadata`` skips
-    them upstream.
+    ``is_hop`` marks a relation the walk descended *through* (``platform`` in
+    ``platform__group``) as opposed to the terminal field the lookup names.
+    """
+
+    field: models.Field | models.ForeignObjectRel
+    is_hop: bool
+
+
+def _walk_lookup(model: type[models.Model], lookup: ORMLookup):
+    """Yield each resolved segment of an ORM ``lookup``, terminal segment last.
+
+    Descends into the related model at every relation segment and stops at the
+    first non-relation field, so a trailing transform such as ``__date`` is not
+    a segment of the path. Yields nothing further once a segment fails to
+    resolve, which leaves the caller with either no segments or a trailing
+    ``is_hop`` — both meaning "this lookup names no column".
+
+    The single walk behind ``_resolve_model_field`` and ``_lookup_is_nullable``:
+    they answer different questions about the same path and must never disagree
+    about what that path is.
     """
     current = model
     segments = lookup.split("__")
@@ -2430,18 +2438,63 @@ def _resolve_model_field(
         try:
             model_field = current._meta.get_field(segment)
         except FieldDoesNotExist:
-            return None
+            return
         is_last = index == len(segments) - 1
         if model_field.is_relation and not is_last:
             related = model_field.related_model
             if related is None:
-                return None
+                return
+            yield _LookupSegment(model_field, is_hop=True)
             current = related
             continue
         # First non-relation field, or a terminal relation/FK: this is the field.
-        # Any remaining segments are transforms (e.g. ``__date``) and are ignored.
-        return model_field if isinstance(model_field, models.Field) else None
-    return None
+        yield _LookupSegment(model_field, is_hop=False)
+        return
+
+
+def _resolve_model_field(
+    model: type[models.Model], lookup: ORMLookup
+) -> models.Field | None:
+    """Resolve a filter field's ORM ``lookup`` to its terminal concrete model field.
+
+    A trailing transform such as ``created_at__date`` returns the ``created_at``
+    field and a relation hop such as ``platform__group`` returns
+    ``Platform.group``. A single-segment FK attname (``platform_id``) resolves
+    directly (Django accepts attnames). Returns None when a segment does not
+    resolve (e.g. a mis-typed lookup, or an aggregate field name that is no
+    column); the caller decides whether that None is expected (columnless field)
+    or a misconfiguration to raise on. Handler-mapped fields never reach here —
+    ``field_metadata`` skips them upstream.
+    """
+    terminal: _LookupSegment | None = None
+    for segment in _walk_lookup(model, lookup):
+        terminal = segment
+    if terminal is None or terminal.is_hop:
+        return None
+    return terminal.field if isinstance(terminal.field, models.Field) else None
+
+
+def _lookup_is_nullable(model: type[models.Model] | None, lookup: ORMLookup) -> bool:
+    """Whether an ORM ``lookup`` can yield NULL for some row of ``model``.
+
+    This is a property of the whole path, not of its terminal column: a hop
+    through a nullable relation leaves every field beyond it absent, which is
+    how the ORM already behaves — a platformless game matches both
+    ``platform__id__isnull=True`` and ``platform__group__isnull=True`` even
+    though ``Platform.id`` and ``Platform.group`` are both NOT NULL. Reading
+    only the terminal field would report those two lookups as non-nullable and
+    drop the presence modifiers from their filter widgets.
+
+    False for a lookup that names no column (aggregates, handler-mapped fields,
+    a mis-typed lookup), matching the metadata layer's treatment of a field it
+    cannot resolve.
+    """
+    if model is None:
+        return False
+    return any(
+        bool(getattr(segment.field, "null", False))
+        for segment in _walk_lookup(model, lookup)
+    )
 
 
 def _static_choices(model_field: models.Field | None) -> list[ChoiceMeta]:
@@ -2549,6 +2602,7 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             # loud-failure contract) instead of silently degrading to an empty
             # picker, while the legitimately-columnless fields never hit the None.
             model_field: models.Field | None = None
+            resolved_lookup: ORMLookup | None = None
             field_spec = filter_cls.fields.get(name)
             if (
                 field_spec is not None
@@ -2556,6 +2610,7 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
                 and model is not None
             ):
                 lookup = field_spec.lookup or name
+                resolved_lookup = lookup
                 model_field = _resolve_model_field(model, lookup)
                 if model_field is None:
                     raise ValueError(
@@ -2569,7 +2624,15 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             kind: FieldMetaKind = (
                 "number" if is_aggregate else criterion_kind(criterion_cls)
             )
-            nullable = bool(getattr(model_field, "null", False))
+            # Nullability belongs to the whole lookup path, not to its terminal
+            # column: a hop through a nullable relation leaves the fields beyond
+            # it absent, so ``platform__group`` is nullable even though
+            # ``Platform.group`` is not.
+            nullable = (
+                _lookup_is_nullable(model, resolved_lookup)
+                if resolved_lookup is not None
+                else False
+            )
             # Value-widget config (issue #242). ``field_spec`` is None for
             # aggregates (no ``fields`` entry) — guard it. ``is_m2m`` is derived
             # from the resolved model field, so a future FK set field needs no flag.

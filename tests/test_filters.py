@@ -42,6 +42,7 @@ from common.criteria import (
     _criterion_class_for,
     _field_comparison_to_q,
     _filter_class_for,
+    _lookup_is_nullable,
     _maybe_group_for,
     _resolve_model_field,
     _ScalarCriterion,
@@ -1105,6 +1106,136 @@ class TestExpandedFiltersAgainstDB:
         )
         results = list(Platform.objects.filter(pf.to_q(UNRESTRICTED_FILTER_CONTEXT)))
         assert data["plat"] in results
+
+    def test_platform_criterion_selects_by_integer_id(self):
+        """The platform facet carries integer Platform pks, whichever identity
+        the FK column itself holds."""
+        from games.filters import GameFilter, PurchaseFilter
+        from games.models import Game, Platform, Purchase
+
+        data = self._setup_entities()
+        other = Platform.objects.create(name="Other Console", group="Sega")
+        elsewhere = Game.objects.create(name="Sonic", platform=other)
+
+        game_filter = GameFilter.from_json(
+            {"platform": {"value": [data["plat"].id], "modifier": "INCLUDES"}}
+        )
+        games = set(Game.objects.filter(game_filter.to_q()))
+        assert data["game"] in games
+        assert data["game2"] in games
+        assert elsewhere not in games
+
+        purchase_filter = PurchaseFilter.from_json(
+            {"platform": {"value": [data["plat"].id], "modifier": "INCLUDES"}}
+        )
+        assert data["pur"] in set(Purchase.objects.filter(purchase_filter.to_q()))
+
+    def test_platform_excludes_keeps_platformless_rows(self):
+        """The excludes isnull arm, now that the lookup traverses the relation:
+        excluding a platform must keep rows that have none at all."""
+        import datetime
+
+        from games.filters import GameFilter, PurchaseFilter
+        from games.models import Game, Purchase
+
+        data = self._setup_entities()
+        platformless_game = Game.objects.create(name="Homebrew", platform=None)
+        platformless_purchase = Purchase.objects.create(
+            platform=None,
+            date_purchased=datetime.date(2026, 2, 1),
+            price=1,
+            price_currency="USD",
+        )
+
+        game_filter = GameFilter.from_json(
+            {"platform": {"value": [data["plat"].id], "modifier": "EXCLUDES"}}
+        )
+        games = set(Game.objects.filter(game_filter.to_q()))
+        assert platformless_game in games
+        assert data["game"] not in games
+
+        purchase_filter = PurchaseFilter.from_json(
+            {"platform": {"value": [data["plat"].id], "modifier": "EXCLUDES"}}
+        )
+        purchases = set(Purchase.objects.filter(purchase_filter.to_q()))
+        assert platformless_purchase in purchases
+        assert data["pur"] not in purchases
+
+    def test_platform_presence_modifiers_split_the_null_set(self):
+        import datetime
+
+        from games.filters import GameFilter, PurchaseFilter
+        from games.models import Game, Purchase
+
+        data = self._setup_entities()
+        platformless_game = Game.objects.create(name="Homebrew", platform=None)
+        platformless_purchase = Purchase.objects.create(
+            platform=None,
+            date_purchased=datetime.date(2026, 2, 1),
+            price=1,
+            price_currency="USD",
+        )
+
+        is_null = GameFilter.from_json({"platform": {"modifier": "IS_NULL"}})
+        games = set(Game.objects.filter(is_null.to_q()))
+        assert games == {platformless_game}
+
+        not_null = GameFilter.from_json({"platform": {"modifier": "NOT_NULL"}})
+        games = set(Game.objects.filter(not_null.to_q()))
+        assert data["game"] in games
+        assert platformless_game not in games
+
+        is_null_purchase = PurchaseFilter.from_json(
+            {"platform": {"modifier": "IS_NULL"}}
+        )
+        assert set(Purchase.objects.filter(is_null_purchase.to_q())) == {
+            platformless_purchase
+        }
+
+    def test_platform_relation_traverses_in_both_directions(self):
+        """The three relation lookups that spell the FK column: the parent's
+        ``related_lookup`` (Platform → Game, Platform → Purchase) and the
+        child's ``parent_field`` (Game → Platform, Purchase → Platform)."""
+        from games.filters import GameFilter, PlatformFilter, PurchaseFilter
+        from games.models import Game, Platform, Purchase
+
+        data = self._setup_entities()
+        other = Platform.objects.create(name="Other Console", group="Sega")
+        Game.objects.create(name="Sonic", platform=other)
+
+        # child → parent: games whose platform is in the Nintendo group
+        game_filter = GameFilter.from_json(
+            {"platform_filter": {"group": {"value": "Nintendo", "modifier": "EQUALS"}}}
+        )
+        assert game_filter.platform_filter is not None
+        games = set(Game.objects.filter(game_filter.to_q(UNRESTRICTED_FILTER_CONTEXT)))
+        assert data["game"] in games
+        assert games == {data["game"], data["game2"]}
+
+        # parent → child, via Game
+        by_game = PlatformFilter.from_json(
+            {"game_filter": {"name": {"value": "Zelda", "modifier": "EQUALS"}}}
+        )
+        assert set(
+            Platform.objects.filter(by_game.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        ) == {data["plat"]}
+
+        # parent → child, via Purchase
+        by_purchase = PlatformFilter.from_json(
+            {"purchase_filter": {"price": {"value": 49.99, "modifier": "EQUALS"}}}
+        )
+        assert set(
+            Platform.objects.filter(by_purchase.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        ) == {data["plat"]}
+
+        # child → parent, from Purchase
+        purchase_filter = PurchaseFilter.from_json(
+            {"platform_filter": {"group": {"value": "Nintendo", "modifier": "EQUALS"}}}
+        )
+        assert purchase_filter.platform_filter is not None
+        assert set(
+            Purchase.objects.filter(purchase_filter.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        ) == {data["pur"]}
 
     def test_session_filter_duration_splits(self):
         from games.filters import SessionFilter
@@ -5110,6 +5241,13 @@ class TestFieldMetadata:
         entry = self._by_name(GameFilter)["platform"]
         assert entry["nullable"] == bool(Game._meta.get_field("platform").null)
 
+    def test_nullable_follows_a_nullable_relation_hop(self):
+        # Reaching a NOT NULL column through a nullable relation still yields a
+        # nullable field: a game with no platform has no platform group either,
+        # and the ORM matches it on platform__group__isnull=True.
+        assert self._by_name(GameFilter)["platform_group"]["nullable"] is True
+        assert self._by_name(PurchaseFilter)["platform"]["nullable"] is True
+
     def test_handler_field_defaults_not_nullable(self):
         # playtime_hours is handler-mapped (no model column) → nullable False
         entry = self._by_name(GameFilter)["playtime_hours"]
@@ -5125,7 +5263,7 @@ class TestFieldMetadata:
     def test_explicit_filterfield_label_wins(self):
         from common.criteria import FilterField
 
-        assert GameFilter.fields["platform"].lookup == "platform_id"
+        assert GameFilter.fields["platform"].lookup == "platform__id"
         # default label fallback is the title-cased name
         assert self._by_name(GameFilter)["name"]["label"] == "Name"
         # a FilterField.label override would take precedence (plumbing check)
@@ -5153,6 +5291,26 @@ class TestFieldMetadata:
         assert _resolve_model_field(Game, "does_not_exist") is None
         # reverse relation / aggregate-style name resolves to no concrete field
         assert _resolve_model_field(Game, "sessions") is None
+
+    def test_lookup_is_nullable_ors_over_the_whole_path(self):
+        from games.models import Game, PlayEvent
+
+        # terminal column's own nullability, with no relation hop in the path
+        assert _lookup_is_nullable(Game, "year_released") is True
+        assert _lookup_is_nullable(Game, "name") is False
+        # a single-segment FK attname reads the FK
+        assert _lookup_is_nullable(Game, "platform_id") is True
+        # a nullable hop makes a NOT NULL terminal column reachable as NULL
+        assert _lookup_is_nullable(Game, "platform__id") is True
+        assert _lookup_is_nullable(Game, "platform__group") is True
+        # a NOT NULL hop does not
+        assert _lookup_is_nullable(PlayEvent, "game__id") is False
+
+    def test_lookup_is_nullable_false_for_no_column(self):
+        from games.models import Game
+
+        assert _lookup_is_nullable(None, "anything") is False
+        assert _lookup_is_nullable(Game, "does_not_exist") is False
 
     def test_nullable_true_for_plain_column(self):
         # year_released is a nullable plain (non-relation) column — exercises the
