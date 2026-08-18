@@ -21,13 +21,18 @@ This keeps comparisons, ordering, and unique constraints independent of the
 database host's operating-system locale.
 
 Development uses `make ensure-postgres`, normally through `make init`, to
-create an ignored loopback-only cluster under `.cache/`. Stop it with
-`make stop-postgres`; the command waits for shutdown and succeeds when the
-managed server is already stopped or absent. It only targets the current
-worktree's managed cluster. Set `DATABASE_URL` to use an existing server
-instead; `make stop-postgres` never stops that external server. Deployments
-should provide the URL through `DATABASE_URL__FILE` so credentials need not
-appear in the environment or the Compose configuration.
+create an ignored loopback-only cluster under `.cache/`. The server appends its
+own output to `.cache/postgres/server.log` rather than writing to the terminal,
+because the daemon outlives `make` and would otherwise keep holding the
+inherited stdout — under a pipeline (`make migrate | tail`) that is the write
+end of the pipe, so the reader waits for an EOF that never comes and a finished
+command looks like it hung. A failed start quotes the log lines that attempt
+added. Stop the cluster with `make stop-postgres`; the command waits for
+shutdown and succeeds when the managed server is already stopped or absent. It
+only targets the current worktree's managed cluster. Set `DATABASE_URL` to use
+an existing server instead; `make stop-postgres` never stops that external
+server. Deployments should provide the URL through `DATABASE_URL__FILE` so
+credentials need not appear in the environment or the Compose configuration.
 
 The managed cluster needs an unprivileged user, because PostgreSQL refuses to
 run as root. Containers and cloud sandboxes that log in as root therefore cannot
