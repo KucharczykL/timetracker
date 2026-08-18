@@ -617,7 +617,9 @@ class PlayEvent(models.Model):
     objects = PlayEventQuerySet.as_manager()
 
     uuid = UUIDv7Field(unique=True, editable=False)
-    game = models.ForeignKey(Game, related_name="playevents", on_delete=models.CASCADE)
+    game = models.ForeignKey(
+        Game, to_field="uuid", related_name="playevents", on_delete=models.CASCADE
+    )
     started = models.DateField(null=True, blank=True)
     ended = models.DateField(null=True, blank=True)
     days_to_finish = GeneratedField(
@@ -668,7 +670,7 @@ class GameStatusChange(models.Model):
 
     uuid = UUIDv7Field(unique=True, editable=False)
     game = models.ForeignKey(
-        Game, on_delete=models.CASCADE, related_name="status_changes"
+        Game, to_field="uuid", on_delete=models.CASCADE, related_name="status_changes"
     )
     old_status = models.CharField(
         max_length=1, choices=Game.Status.choices, blank=True, null=True

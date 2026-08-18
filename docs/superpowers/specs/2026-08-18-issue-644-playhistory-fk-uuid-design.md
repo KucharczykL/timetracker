@@ -175,20 +175,25 @@ FK identity rewritten playevent_rows=<n> playevent_games=<n> gamestatuschange_ro
 
 ## Filter values stay integers
 
-Two lookups name the FK column and must change, both keeping integer criterion
-values:
+Three lookups in `games/filters.py` name the FK column and must change, all
+keeping integer criterion values:
 
-- `games/filters.py` — `PlayEventFilter.fields["game"]`:
+- `PlayEventFilter.fields["game"]`:
   `FilterField("game_id", search_url="/api/games/search")` →
   `FilterField("game__id", …)`.
-- `games/filters.py` — `GameFilter._extra_q`'s playevent relation:
+- `GameFilter._extra_q`'s playevent relation:
   `relation_to_q(…, related_model=PlayEvent, related_lookup="game_id")` →
   `related_lookup="game__id"`. `relation_to_q` feeds that lookup into
   `values_list(...)` and compares it against `Game.pk`, so leaving it naming
   the FK column would compare UUIDs against integers.
+- `PlayEventFilter._extra_q`'s `game_filter` sub-filter, the reverse direction
+  of the same relation: `relation_to_q(…, related_lookup="id",
+  parent_field="game_id")` → `parent_field="game__id"`. Missed by the first
+  draft of this design and found by writing the failing test:
+  `operator does not exist: uuid_v7 = bigint`.
 
-Both now traverse the relation and filter `Game.id`, one join deeper, on tables
-of this size an irrelevant cost.
+All three now traverse the relation and filter `Game.id`, one join deeper, on
+tables of this size an irrelevant cost.
 
 Why not switch the criterion values to UUIDs now: `/api/games/search` (which
 supplies the option values for **every** game facet, including the sessions and
@@ -263,32 +268,35 @@ Confirmed in the installed Django source, not assumed:
 expected raises during deserialization; the serializer writes the same
 `to_field` value on the way out.
 
-**Regeneration procedure** (no production database required; the committed
-fixture is already anonymized, so round-tripping it through the migration is
-sound):
+**Regeneration procedure.** A database round trip (load the fixture at `0008`,
+migrate, re-dump with `anonymize_sample`) is *not* executable: loading the
+integer-referenced fixture needs the pre-cutover code, while running the new
+migration needs the post-cutover code, and no single checkout has both. The
+fixture is instead transformed directly, once, by a throwaway script that is
+not committed:
 
-1. Fresh empty database, `make migrate` up to `0008` only
-   (`manage.py migrate games 0008`).
-2. `make devlogin` (idempotent `admin` superuser), then
-   `manage.py load_sample_data --user admin` — loads the current committed
-   fixture at the pre-cutover schema.
-3. `make migrate` — runs `0009`, backfilling `game_uuid` from each game's
-   `uuid`.
-4. `make anonymize-sample USER=admin` — dumps the migrated database back to
-   `games/fixtures/sample.yaml.gz` through the existing, tested command, which
-   now naturally emits `uuid` fields and UUID `game` references.
+1. Read the gzip'd YAML; walk `games.game` records ordered by
+   `(created_at, pk)` and mint each one's `uuid` with
+   `timetracker.uuidv7.uuid7_at(created_at, sequence=…)`, resetting the
+   sequence counter per millisecond — the same algorithm the `0005`/`0006`
+   backfills use, so the fixture's identities carry the same
+   creation-ordering guarantee.
+2. Rewrite each `games.playevent` record's `game` to that game's UUID string.
+3. Re-emit exactly as `anonymize_sample._write_fixture` does:
+   `yaml.safe_dump(sort_keys=True, default_flow_style=False)` then
+   `gzip.compress(compresslevel=9, mtime=0)`.
 
-Verification of the regenerated blob, as a checklist the implementer records in
-the PR: per-model record counts match the current fixture (851 game, 2718
-session, 795 purchase, 203 playevent, 25 platform, 14 device, 75 exchangerate),
-every `playevent.game` value appears as some `game.uuid`, and
+The result is byte-for-byte what `dumpdata` now produces for these models, so
+the next real `make anonymize-sample` run against a production copy stays
+consistent with it.
+
+Verification of the regenerated blob, recorded in the PR: per-model record
+counts match the current fixture (851 game, 2718 session, 795 purchase, 203
+playevent, 25 platform, 14 device, 75 exchangerate); no field on any record
+differs except the added `game.uuid` and the rewritten `playevent.game`; every
+`playevent.game` value resolves to exactly one `game.uuid`; and
 `test_committed_sample_load_owns_private_rows_and_reuses_shared_platform`
 passes against it.
-
-Note for the reviewer: the round trip re-runs the anonymizer over
-already-anonymized data, so prices, purchase↔game links, and date offsets are
-re-randomized. That is a whole-file diff of a binary blob either way; the row
-counts and the load test are the evidence, not the diff.
 
 ## Surfaces confirmed unaffected
 
@@ -299,9 +307,13 @@ editing, the diff has exceeded its boundary:
   `Game.objects…get(id=…)`, not a column; `PlayEventOut` exposes `game.name`;
   `/api/games/search` keeps integer option values. `AutoPlayEventIn`
   (`ModelSchema`, `fields=("game", …)`) is referenced by no endpoint and only
-  by `tests/test_session_playhistory_identity.py`; its derived `game` type
-  flips int→UUID, which the existing assertion (`"uuid" not in
-  model_fields`) does not notice. See "Follow-ups".
+  by `tests/test_session_playhistory_identity.py`; its derived `game` field
+  stays typed `int` — Ninja derives a relation's type from
+  `field.related_model._meta.pk.get_internal_type()`
+  (`ninja/orm/fields.py:134`), i.e. `Game`'s untouched integer primary key, not
+  from `to_field`. So the schema silently *disagrees* with the column it
+  describes. Harmless while nothing uses it; recorded in the test and in
+  "Follow-ups".
 - `games/signals.py`: `game_status_changed` creates `GameStatusChange` with a
   `Game` instance. The `getattr(instance, "game_id", None)` at
   `games/signals.py:113` is on **`Session`**, so it is ID-08's problem, not
@@ -314,6 +326,12 @@ editing, the diff has exceeded its boundary:
   `games/views/game.py` passes `game_id=game.id` to `_PlayEventRow` and the API.
 - `common/import_data.py` resolves `Game` objects, not ids.
 - No Django admin registration exists for either model.
+
+One surface *is* affected and was missed by the first draft:
+`anonymize_sample._anonymize` keys its per-game date-offset dictionary by
+integer `Game.pk` and looks it up with `event.game_id`, which now reads back a
+UUID. It needs a parallel UUID-keyed offset map for the playevent loop. ID-08
+and ID-09 hit the same lines for sessions and purchases.
 
 ## Verification
 
@@ -373,15 +391,19 @@ single unit when reverting.
   entropy, otherwise the command's documented byte-determinism per `--seed`
   breaks. Out of scope here because the regeneration procedure above never
   touches production data.
-- **`AutoPlayEventIn` is dead code.** No endpoint references it; it exists only
-  to be asserted about. Delete it or wire it up.
+- **`AutoPlayEventIn` is dead code that now misdescribes its column.** No
+  endpoint references it, and its derived `game` field claims `int` while the
+  column holds a UUID (see "Surfaces confirmed unaffected"). Delete it, or wire
+  it up with an explicitly typed `game` field.
 
 ## Handoffs
 
 - **ID-07/ID-08/ID-09** reuse: the six-operation migration shape, the
-  `field__id` filter-lookup rewrite, the form-initial shim, the
-  reference-field-aware `FIXTURE_RELATIONSHIPS`, and the fixture regeneration
-  procedure. ID-08 additionally owns `games/signals.py:113`.
+  `field__id` filter-lookup rewrite (all three directions: the facet lookup,
+  the parent's `related_lookup`, and the child's `parent_field`), the
+  form-initial shim, the reference-field-aware `FIXTURE_RELATIONSHIPS`, the
+  fixture transform, and the `anonymize_sample` offset-map fix. ID-08
+  additionally owns `games/signals.py:113`.
 - **ID-10 (#645)** verifies the integer→UUID map across every converted
   relation; this issue ships no management command, only the migration's
   printed line and tests.

@@ -3,6 +3,7 @@ from __future__ import annotations
 import gzip
 from io import StringIO
 from pathlib import Path
+from typing import NamedTuple
 
 import yaml
 from django.contrib.auth import get_user_model
@@ -43,19 +44,41 @@ LOADABLE_MODELS = {
     "games.gamestatuschange": GameStatusChange,
 }
 
-FIXTURE_RELATIONSHIPS = {
-    "games.game": (("platform", "games.platform", False, False),),
+
+class FixtureRelationship(NamedTuple):
+    """One FK/M2M reference field on a fixture record.
+
+    `reference_field` names which field of the *target* record the reference
+    value names — the fixture-validation equivalent of the FK's `to_field`.
+    Defaults to "pk" (an ordinary integer-PK relation); "uuid" for relations
+    whose database FK points through `Game.uuid` instead of `Game.pk`
+    (`games.playevent.game`, `games.gamestatuschange.game`).
+    """
+
+    field: str
+    target_model: str
+    many: bool
+    required: bool
+    reference_field: str = "pk"
+
+
+FIXTURE_RELATIONSHIPS: dict[str, tuple[FixtureRelationship, ...]] = {
+    "games.game": (FixtureRelationship("platform", "games.platform", False, False),),
     "games.purchase": (
-        ("platform", "games.platform", False, False),
-        ("related_game", "games.game", False, False),
-        ("games", "games.game", True, False),
+        FixtureRelationship("platform", "games.platform", False, False),
+        FixtureRelationship("related_game", "games.game", False, False),
+        FixtureRelationship("games", "games.game", True, False),
     ),
     "games.session": (
-        ("game", "games.game", False, True),
-        ("device", "games.device", False, False),
+        FixtureRelationship("game", "games.game", False, True),
+        FixtureRelationship("device", "games.device", False, False),
     ),
-    "games.playevent": (("game", "games.game", False, True),),
-    "games.gamestatuschange": (("game", "games.game", False, True),),
+    "games.playevent": (
+        FixtureRelationship("game", "games.game", False, True, reference_field="uuid"),
+    ),
+    "games.gamestatuschange": (
+        FixtureRelationship("game", "games.game", False, True, reference_field="uuid"),
+    ),
 }
 
 
@@ -142,6 +165,24 @@ class Command(BaseCommand):
             raise CommandError("Sample fixture root must be a list.")
         supported = set(LOADABLE_MODELS) | {"games.platform", "games.exchangerate"}
         record_keys = set()
+
+        # Which non-pk fields each model needs indexed, derived from every
+        # relationship's reference_field, so a new relation (e.g. session.game
+        # or purchase.related_game moving to reference_field="uuid") needs no
+        # further change here.
+        reference_fields_needed: dict[str, set[str]] = {}
+        for relationships in FIXTURE_RELATIONSHIPS.values():
+            for relationship in relationships:
+                if relationship.reference_field == "pk":
+                    continue
+                reference_fields_needed.setdefault(
+                    relationship.target_model, set()
+                ).add(relationship.reference_field)
+
+        # (model, reference_field) -> set of reference-field values present
+        # among that model's fixture records, for non-pk reference fields.
+        reference_index: dict[tuple[str, str], set[str]] = {}
+
         for record in records:
             if not isinstance(record, dict) or not isinstance(
                 record.get("fields"), dict
@@ -173,31 +214,50 @@ class Command(BaseCommand):
             ):
                 raise CommandError("Sample Platform has an invalid owner marker.")
 
+            for reference_field in reference_fields_needed.get(model, ()):
+                value = fields.get(reference_field)
+                if value is not None:
+                    reference_index.setdefault((model, reference_field), set()).add(
+                        str(value)
+                    )
+
         for record in records:
             model = record["model"]
             fields = record["fields"]
-            for field, target_model, many, required in FIXTURE_RELATIONSHIPS.get(
-                model, ()
-            ):
-                value = fields.get(field)
+            for relationship in FIXTURE_RELATIONSHIPS.get(model, ()):
+                value = fields.get(relationship.field)
                 if value is None:
-                    if required:
+                    if relationship.required:
                         raise CommandError(
                             f"Sample {model} {record['pk']} is missing required "
-                            f"{target_model.rsplit('.', 1)[1].title()} reference {field}."
+                            f"{relationship.target_model.rsplit('.', 1)[1].title()} "
+                            f"reference {relationship.field}."
                         )
                     continue
-                if many:
+                if relationship.many:
                     if not isinstance(value, list):
                         raise CommandError(
-                            f"Sample {model} {record['pk']} field {field} must be a list."
+                            f"Sample {model} {record['pk']} field "
+                            f"{relationship.field} must be a list."
                         )
                     references = value
                 else:
                     references = [value]
                 for reference in references:
-                    if (target_model, str(reference)) not in record_keys:
-                        target_label = target_model.rsplit(".", 1)[1].title()
+                    if relationship.reference_field == "pk":
+                        found = (
+                            relationship.target_model,
+                            str(reference),
+                        ) in record_keys
+                    else:
+                        found = str(reference) in reference_index.get(
+                            (relationship.target_model, relationship.reference_field),
+                            set(),
+                        )
+                    if not found:
+                        target_label = relationship.target_model.rsplit(".", 1)[
+                            1
+                        ].title()
                         raise CommandError(
                             f"Sample {model} {record['pk']} references {target_label} "
                             f"{reference}, which is not included in the fixture."
