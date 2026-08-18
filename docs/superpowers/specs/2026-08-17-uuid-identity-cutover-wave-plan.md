@@ -103,6 +103,11 @@ ID-09/#847 on GitHub), ordered cheapest-and-most-validating first:
 | ID-08 | #846 | `Session.game`, `Session.device` | Heaviest of the "single entity" slices: session quick-filter facets (game, device, started, ended, duration), the `PATCH /api/session/{id}/device` endpoint, session list/detail templates, sorting. |
 | ID-09 | #847 | `Purchase.games` (M2M), `Purchase.related_game` | Heaviest slice overall: multi-game bundle/split logic, DLC/addon `related_game` relationship, purchase forms' multi-game SearchSelect, stats aggregation through the M2M. Landed last, after the pattern is proven three times over. |
 
+ID-07's rejected alternatives — including why filter nullability was fixed at
+the source rather than accepted as a temporary loss — are kept as a
+[decision record](2026-08-18-issue-845-platform-fk-uuid-design.md); its
+mechanics are folded into the checklist below rather than duplicated there.
+
 **Why ID-07 took `Purchase.platform` from ID-09.** The two platform foreign
 keys are structurally identical (nullable `SET_NULL` to `Platform`), so
 grouping by owning model rather than by target manufactured three transitional
