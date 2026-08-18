@@ -101,12 +101,57 @@ ID-09/#847 on GitHub), ordered cheapest-and-most-validating first:
 | ID-06 | #644 | `PlayEvent.game`, `GameStatusChange.game` | Lowest surface: both are single Game-FKs, mostly read-only/audit, neither has its own quick-filter bar mode of its own weight. Bundled to validate the FK-rewrite pattern cheaply before the bigger slices. |
 | ID-07 | #845 | `Game.platform`, `Purchase.platform` | **Every** foreign key pointing at `Platform` — re-scoped during its design (2026-08-18) to slice by target model rather than by owning model. Moderate surface (platform quick-filter facet on two modes, the platform search endpoint's recency subqueries, platform badge/link rendering). |
 | ID-08 | #846 | `Session.game`, `Session.device`, `UserLibraryPreferences.default_device` | Heaviest of the "single entity" slices: session quick-filter facets (game, device, started, ended, duration), the `PATCH /api/session/{id}/device` endpoint, session list/detail templates, sorting. Took the fourth `Device` foreign key during its design (2026-08-18) so **every** foreign key pointing at `Device` moves together — see its [design spec](2026-08-18-issue-846-session-fk-uuid-design.md). |
-| ID-09 | #847 | `Purchase.games` (M2M), `Purchase.related_game` | Heaviest slice overall: multi-game bundle/split logic, DLC/addon `related_game` relationship, purchase forms' multi-game SearchSelect, stats aggregation through the M2M. Landed last, after the pattern is proven three times over. |
+| ID-09 | #847 | `Purchase.related_game` (**only** — see below) | Expected to be the heaviest slice overall, on account of the `Purchase.games` M2M. Its design (2026-08-18) established that Django cannot move an M2M to a non-pk target without an explicit through model, and **deferred the M2M's through column to ID-11**, leaving one nullable FK — see its [design spec](2026-08-18-issue-847-purchase-fk-uuid-design.md). |
 
 ID-07's rejected alternatives — including why filter nullability was fixed at
 the source rather than accepted as a temporary loss — are kept as a
 [decision record](2026-08-18-issue-845-platform-fk-uuid-design.md); its
 mechanics are folded into the checklist below rather than duplicated there.
+
+**Why ID-09 does not move `Purchase.games`.** Established by probe against the
+installed Django 6.0.7, during ID-09's design; the full argument is in its
+[design spec](2026-08-18-issue-847-purchase-fk-uuid-design.md). `ManyToManyField`
+accepts no `to_field`, and `create_many_to_many_intermediary_model` builds the
+auto-created through's foreign keys as plain `ForeignKey(to_model)` — an
+auto-created through always references the target's **primary key**. Pointing
+`Purchase.games` at `Game.uuid` therefore requires an explicit through model,
+and that is not a column retype:
+
+- `Serializer.handle_m2m_field` bails on a non-auto-created through, so
+  `dumpdata` emits purchase records with **no `games` key**. The committed
+  fixture would carry ~4505 `games.purchasegame` records in place of 795 `games:`
+  lists, roughly doubling it, and `load_sample_data` /
+  `PORTABLE_LIBRARY_MODELS` / `DUMP_LABELS` would have to learn a model that
+  exists only to carry the transition.
+- The existing shape cannot survive either: `loaddata` of `games: [<int pk>]`
+  fails with a foreign-key violation, and `games: [<uuid>]` with
+  `DeserializationError`, because `deserialize_m2m_values` converts through the
+  **target's pk** field in both directions.
+
+Deferring costs no application code, now or later: every site touching the M2M
+speaks "Game primary key" (`_games_to_q`'s `games__in=`/`games=`, both
+`games__id` `relation_to_q` lookups, `m2m_changed`'s `pk_set`,
+`anonymize_sample`'s direct `Through(...)` build, `audit_library_ownership`'s
+projection, the fixture's `games:` lists, `sorting.py`'s reverse-join
+annotations), and each follows automatically once that pk *is* the UUID. What
+ID-11 inherits is one database-level conversion inside the migration that is
+already rewriting `Game.id` — and ID-13 owes the same table the mirror-image
+conversion of `purchase_id` regardless, so Wave E pays for it once instead of
+twice. ID-09 pins both columns with a test so neither slice can miss it.
+
+**The integer→UUID flip of filter and search-endpoint values dissolves into
+Wave E.** ID-09 was nominated to own it; its design established that there is
+nothing to own. Wave C's lookups are all `<name>__id`, which resolve UUIDs the
+moment the pk is one, so a dedicated flip issue would have to move every lookup
+to `<name>__uuid` and back. The genuine residual is three *type annotations*,
+which belong to the promoting slices: `GameOption.value: int`
+(`games/api.py:129-132`, the response schema of all three search endpoints — a
+`UUID` against it raises a pydantic `ValidationError`, so the promotion 500s the
+endpoint rather than flipping it for free), `SearchSelectOption["value"]`
+(`common/components/search_select.py:77`), and the three option resolvers in
+`games/forms.py:216-241`. Because `Game`/`Platform` promote in ID-11 while
+`Device` waits for ID-14, the shared schema must tolerate both types across that
+window.
 
 **Why ID-07 took `Purchase.platform` from ID-09.** The two platform foreign
 keys are structurally identical (nullable `SET_NULL` to `Platform`), so
@@ -265,6 +310,13 @@ integer→UUID map is complete and consistent across every model converted in
 Waves B and C, run as a gate before Wave E. No schema change. `blocked-by`
 ID-06, ID-07, ID-08, ID-09 (all of Wave C).
 
+Two columns are still integers when ID-10 runs, both on `games_purchase_games`,
+and neither is a gap: `game_id` is the M2M column ID-09 deferred (anomalous — the
+only `Game` reference that did not move in Wave C), and `purchase_id` is normal,
+because `Purchase.uuid` is not promoted until ID-13. `auth.User` is not a
+converted model, so `UserLibrary.user` and `UserPreferences.user` stay integer
+throughout.
+
 ## Wave E — remove legacy integers, promote UUID to PK (ID-11–ID-14, 4 issues, was 1)
 
 The original `#646` "Remove legacy integer identities" is re-scoped from one
@@ -283,6 +335,25 @@ columns left to drop — only the integer `id` and the `to_field` pointers.) Low
 nothing references the integer columns — but kept split for reviewability
 and to keep `games/sorting.py`'s `F("pk").asc()` tiebreak change auditable
 per model group rather than in one sweep. All four are `blocked-by` ID-10.
+
+**ID-11 and ID-13 are no longer pure contractions** (amended 2026-08-18 by
+[the ID-09 design](2026-08-18-issue-847-purchase-fk-uuid-design.md)). Each owns
+one expand/contract on `games_purchase_games` — ID-11 on `game_id`, ID-13 on
+`purchase_id` — as a UUID holding column, an `UPDATE … FROM` join, a drop, a
+rename, and a restore of the FK plus the `(purchase, game)` unique index that
+`DROP COLUMN` cascades away (checklist item 6, which applies to the through
+table because its `unique_together` spans both dropped columns). Django's
+migration *state* needs no operation: an auto-created through derives its
+foreign keys from the target's pk at state-render time.
+
+ID-11 additionally owns everything keyed to `Game` and `Platform` ceasing to be
+integers, which is the larger half of that slice: deleting `to_field="uuid"`
+from every FK naming `Game.uuid` or `Platform.uuid` (mandatory — `to_field`
+becomes `fields.E312` the moment the field is renamed), the corresponding
+`seed_related_initial` arguments in `PurchaseForm`/`SessionForm`/`GameForm`,
+`audit_library_ownership`'s `related_game__id`/`platform__id` lookups,
+`PurchaseFilter._games_to_q`'s `int(...)` coercion, and the `Game`/`Platform`
+half of the option-value annotation widening described in Wave C above.
 
 ## Wave F — canonical slug+UUID URLs (ID-15/#647, 1 issue, scope TBD in its own design)
 
