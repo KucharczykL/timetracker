@@ -182,7 +182,7 @@ class GameFilter(OperatorFilter):
                 self.session_filter,
                 context=context,
                 related_model=Session,
-                related_lookup="game_id",
+                related_lookup="game__id",
             )
 
         if self.purchase_filter is not None:
@@ -230,8 +230,8 @@ class SessionFilter(OperatorFilter):
     OR: list[SessionFilter] = field(default_factory=list)
     NOT: list[SessionFilter] = field(default_factory=list)
 
-    game: MultiCriterion | None = None  # filters on game_id
-    device: MultiCriterion | None = None  # filters on device_id
+    game: MultiCriterion | None = None  # filters on game__id
+    device: MultiCriterion | None = None  # filters on device__id
     emulated: BoolCriterion | None = None
     note: StringCriterion | None = None
     duration_total_hours: IntCriterion | None = None
@@ -255,8 +255,8 @@ class SessionFilter(OperatorFilter):
     # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
     # reviewable diff (AND-composition makes the order semantically irrelevant).
     fields: ClassVar[dict[str, FilterField]] = {
-        "game": FilterField("game_id", search_url="/api/games/search"),
-        "device": FilterField("device_id", search_url="/api/devices/search"),
+        "game": FilterField("game__id", search_url="/api/games/search"),
+        "device": FilterField("device__id", search_url="/api/devices/search"),
         "emulated": FilterField(),
         "note": FilterField(),
         "duration_total_hours": FilterField(
@@ -306,7 +306,7 @@ class SessionFilter(OperatorFilter):
                 context=context,
                 related_model=Game,
                 related_lookup="id",
-                parent_field="game_id",
+                parent_field="game__id",
             )
 
         if self.device_filter is not None:
@@ -317,7 +317,7 @@ class SessionFilter(OperatorFilter):
                 context=context,
                 related_model=Device,
                 related_lookup="id",
-                parent_field="device_id",
+                parent_field="device__id",
             )
 
         return q
@@ -572,7 +572,7 @@ class DeviceFilter(OperatorFilter):
                 self.session_filter,
                 context=context,
                 related_model=Session,
-                related_lookup="device_id",
+                related_lookup="device__id",
             )
 
         return q

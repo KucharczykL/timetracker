@@ -162,16 +162,17 @@ values stay integer pks:
 Missing any one surfaces as `operator does not exist: uuid_v7 = bigint`. The
 `# filters on game_id` / `# filters on device_id` field comments move with them.
 
-**`DeviceFilter`'s rewrite is not behaviour-neutral, and that is the point.**
-`relation_to_q` compiles NONE/ALL to `~Q(id__in=<values_list subquery>)`
-(`common/criteria.py:2884-2893`). Selecting the raw `device_id` lets that
-subquery yield NULL, and SQL's `NOT IN (… NULL …)` is never true — so today a
-NONE-matched session sub-filter on the devices mode returns **zero devices**
-whenever any matching session has no device. Traversing `device__id` joins
-through the relation, which drops those rows and makes the result correct. This
-is a latent bug the cutover fixes; it gets its own test rather than riding along
-unremarked. `GameFilter`'s `game_id` → `game__id` has no such effect, because
-`Session.game` is NOT NULL.
+**All six are behaviour-neutral, including `DeviceFilter`'s.** The review of
+this design argued that the `device_id` → `device__id` rewrite also fixes a
+latent NULL bug — `relation_to_q` compiles NONE/ALL to
+`~Q(id__in=<values_list subquery>)` (`common/criteria.py:2884-2893`), a NULL in
+that subquery makes `NOT IN` never true, and a session with no device puts one
+there. The bug is real: a NONE-matched session sub-filter on the devices mode
+returns **zero devices** whenever any matching session has no device. The fix
+is not. Django LEFT OUTER JOINs a nullable relation in a `values_list`
+projection, so `device__id` yields exactly the same NULL that `device_id` did —
+verified by running the failing case against both lookups. It is filed
+separately rather than pinned as a contract here.
 
 No nullability work: `_lookup_is_nullable` (`common/criteria.py`) already ORs
 `.null` across the whole lookup path, so `device__id` keeps the device facet's

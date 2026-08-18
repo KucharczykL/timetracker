@@ -5248,6 +5248,14 @@ class TestFieldMetadata:
         assert self._by_name(GameFilter)["platform_group"]["nullable"] is True
         assert self._by_name(PurchaseFilter)["platform"]["nullable"] is True
 
+    def test_session_relation_facets_keep_their_presence_metadata(self):
+        # Both session facets reach the target's own NOT NULL id through the
+        # relation, so nullability comes from the hop: device is optional on a
+        # session, game is not.
+        session_fields = self._by_name(SessionFilter)
+        assert session_fields["device"]["nullable"] is True
+        assert session_fields["game"]["nullable"] is False
+
     def test_handler_field_defaults_not_nullable(self):
         # playtime_hours is handler-mapped (no model column) → nullable False
         entry = self._by_name(GameFilter)["playtime_hours"]
@@ -5264,6 +5272,8 @@ class TestFieldMetadata:
         from common.criteria import FilterField
 
         assert GameFilter.fields["platform"].lookup == "platform__id"
+        assert SessionFilter.fields["game"].lookup == "game__id"
+        assert SessionFilter.fields["device"].lookup == "device__id"
         # default label fallback is the title-cased name
         assert self._by_name(GameFilter)["name"]["label"] == "Name"
         # a FilterField.label override would take precedence (plumbing check)
