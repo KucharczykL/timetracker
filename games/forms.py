@@ -877,6 +877,14 @@ class PlayEventForm(PrimitiveWidgetsMixin, forms.ModelForm):
         self.fields["game"].widget.options_resolver = partial(
             _game_options, library=library
         )
+        if self.instance.pk:
+            # Transitional: PlayEvent.game_id is now a UUID (the FK's to_field),
+            # but this field's widget options are integer game ids. ModelForm's
+            # default initial comes from model_to_dict, which would read that
+            # UUID attname straight through. Feeding the instance instead makes
+            # ModelChoiceField.prepare_value resolve it to game.pk, matching the
+            # widget's option values. Disappears once Game.pk is the UUID.
+            self.initial["game"] = self.instance.game
         for field_name in ("started", "ended"):
             self.fields[field_name].widget = DatePickerWidget(
                 presentation=presentation,

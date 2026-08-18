@@ -202,7 +202,7 @@ class GameFilter(OperatorFilter):
                 self.playevent_filter,
                 context=context,
                 related_model=PlayEvent,
-                related_lookup="game_id",
+                related_lookup="game__id",
             )
 
         if self.platform_filter is not None:
@@ -658,7 +658,7 @@ class PlayEventFilter(OperatorFilter):
     OR: list[PlayEventFilter] = field(default_factory=list)
     NOT: list[PlayEventFilter] = field(default_factory=list)
 
-    game: MultiCriterion | None = None  # filters on game_id
+    game: MultiCriterion | None = None  # filters on game__id (integer game ids)
     started: DateCriterion | None = None  # DateField, bare lookup
     ended: DateCriterion | None = None  # DateField, bare lookup
     days_to_finish: IntCriterion | None = None
@@ -674,7 +674,7 @@ class PlayEventFilter(OperatorFilter):
     # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
     # reviewable diff (AND-composition makes the order semantically irrelevant).
     fields: ClassVar[dict[str, FilterField]] = {
-        "game": FilterField("game_id", search_url="/api/games/search"),
+        "game": FilterField("game__id", search_url="/api/games/search"),
         "started": FilterField(),
         "ended": FilterField(),
         "days_to_finish": FilterField(),
@@ -704,7 +704,7 @@ class PlayEventFilter(OperatorFilter):
                 context=context,
                 related_model=Game,
                 related_lookup="id",
-                parent_field="game_id",
+                parent_field="game__id",
             )
 
         return q

@@ -188,6 +188,12 @@ class Command(BaseCommand):
             game_id: timedelta(days=random.randint(-JITTER_DAYS, JITTER_DAYS))
             for game_id in all_game_ids
         }
+        # PlayEvent.game resolves through Game.uuid rather than Game.pk, so its
+        # rows need the same per-game offsets looked up by the other identity.
+        game_offsets_by_uuid = {
+            game.uuid: game_offsets[game.pk]
+            for game in Game.objects.filter(pk__in=all_game_ids).only("pk", "uuid")
+        }
 
         sessions = list(Session.objects.order_by("pk"))
         for session in sessions:
@@ -208,7 +214,7 @@ class Command(BaseCommand):
 
         playevents = list(PlayEvent.objects.order_by("pk"))
         for event in playevents:
-            offset = game_offsets[event.game_id]
+            offset = game_offsets_by_uuid[event.game_id]
             if event.started is not None:
                 event.started += offset
             if event.ended is not None:

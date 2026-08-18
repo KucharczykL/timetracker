@@ -103,6 +103,20 @@ ID-09/#847 on GitHub), ordered cheapest-and-most-validating first:
 | ID-08 | #846 | `Session.game`, `Session.device` | Heaviest of the "single entity" slices: session quick-filter facets (game, device, started, ended, duration), the `PATCH /api/session/{id}/device` endpoint, session list/detail templates, sorting. |
 | ID-09 | #847 | `Purchase.games` (M2M), `Purchase.related_game`, `Purchase.platform` | Heaviest slice overall: multi-game bundle/split logic, DLC/addon `related_game` relationship, purchase forms' multi-game SearchSelect, stats aggregation through the M2M. Landed last, after the pattern is proven three times over. |
 
+Two facts about the remaining slices, established after ID-06 landed and worth
+knowing before estimating any of them:
+
+- **`UserLibraryPreferences.default_device` (`games/models.py:781`) belongs to
+  no wave.** It is a fourth `Device` foreign key, nullable, with no filter or
+  fixture surface. ID-08 or ID-14 must claim it explicitly, or ID-14 promotes
+  `Device.uuid` to primary key underneath a live integer foreign key.
+- **Every remaining Wave C relation except `Session.game` and `Purchase.games`
+  is `null=True, on_delete=SET_NULL`.** ID-06 proved the six-operation shape
+  only on `NOT NULL` columns: its step 1 exists to relax a NOT NULL that a
+  nullable relation does not have, and its reconciliation asserts a zero NULL
+  count where the real invariant is "the NULL set is unchanged, and the
+  non-NULL rows anti-join clean".
+
 `blocked-by` on GitHub: ID-06 ← #640,#641; ID-07 ← #640; ID-08 ← #640,#641,#643;
 ID-09 ← #640,#642. No slice depends on another's schema, only on the shared
 FK-rewrite pattern the first slice establishes (add UUID-typed FK column
@@ -112,6 +126,55 @@ relation to the new column, drop the old integer FK column — a per-relation
 expand/contract, mirroring Wave B's per-model expand/contract). Recommended
 run order ID-06 → ID-07 → ID-08 → ID-09, though only the FK-rewrite pattern
 (not schema) needs to exist first.
+
+### What "swap every read/write path" actually means (learned in ID-06)
+
+ID-06 shipped as the
+[play-history FK design](2026-08-18-issue-644-playhistory-fk-uuid-design.md),
+which is the worked example every later Wave C slice should read before
+estimating its own size. The relation itself was two lines of model code; the
+surrounding work was four seams this plan had not named. **Each of them recurs
+in ID-07, ID-08 and ID-09** — treat this as the slice checklist:
+
+1. **Every lookup that spells the foreign-key column.** `games/filters.py`
+   holds three kinds, and ID-06 needed all three for one relation:
+   `FilterField("<name>_id")` on the owning filter, `relation_to_q(...,
+   related_lookup="<name>_id")` on the parent's cross-entity filter, and
+   `relation_to_q(..., parent_field="<name>_id")` on the child's. Missing one
+   surfaces as `operator does not exist: uuid_v7 = bigint`. Rewrite them to
+   `<name>__id` so criterion values stay integer — **do not flip filter values
+   to UUIDs mid-wave**: `/api/games/search` and its siblings feed the facets of
+   every mode at once, so a single relation cannot change the option value type
+   without breaking the modes still on integer FKs. The values flip once, after
+   the last Wave C slice.
+2. **`ModelForm` initial values.** `model_to_dict` reads the FK *attname*, so a
+   bound instance hands the widget a UUID while a `SearchSelect`'s options are
+   integer ids. Seed `self.initial[field]` with the related *instance*;
+   `ModelChoiceField.prepare_value` resolves it back to the pk. A field derived
+   from the model (plain `<select>`) is self-consistent and needs nothing.
+3. **`games/fixtures/sample.yaml.gz`.** Django serializes a foreign key as the
+   target's `to_field` value, so the committed fixture stops deserializing the
+   moment a relation moves — and
+   `tests/test_library_commands.py::test_committed_sample_load_owns_private_rows_and_reuses_shared_platform`
+   loads that exact blob, so it is a `make check` failure. The fixture must
+   carry the target's `uuid` and reference it. Regenerate with a throwaway
+   transform (ID-06's design records the recipe); a database round trip does
+   not work, because loading the old fixture needs pre-cutover code while the
+   migration needs post-cutover code.
+4. **`load_sample_data` and `anonymize_sample`.** The loader's
+   `FIXTURE_RELATIONSHIPS` (now a `FixtureRelationship` NamedTuple) declares
+   which field of the target a reference names — a new relation adds
+   `reference_field="uuid"` there and nothing else. The anonymizer keys its
+   per-game date-offset map by integer pk and looks it up through the child's
+   FK attname, so each moved relation needs the matching UUID-keyed map.
+
+Also settled by ID-06 and reusable verbatim: the six-operation, reversible
+migration shape (relax NOT NULL → add holding column → backfill and reconcile
+→ drop integer column → rename → retype into the real FK), with the
+`SET CONSTRAINTS ALL IMMEDIATE` guard between the backfill and the schema
+alterations. Django's final `AlterField` does rename the column and create the
+FK constraint in one operation; the `SeparateDatabaseAndState` fallback the
+design describes was not needed.
 
 **Saved-filter content is explicitly out of scope for Wave C.** Filter
 criteria on `platform`/`device`/`game` fields store raw integer PKs inside
@@ -137,10 +200,14 @@ issue into four (ID-11/#646, ID-12/#848, ID-13/#849, ID-14/#850 on GitHub),
 mirroring Wave B's grouping for review-size symmetry: catalog (`Game`+
 `Platform`), Session/play-history (`Session`+`PlayEvent`+`GameStatusChange`),
 Purchase, library configuration (`Device`+`FilterPreset`). Each PR, per model
-group: drops the integer `id` and every now-unused integer FK column Wave C
-replaced, renames `uuid` to `id`, promotes it to primary key, and drops any
-transitional `to_field` pointers Wave C's FK columns needed while `uuid`
-wasn't yet the primary key. Lower risk than Wave C per PR — by this point
+group: drops the integer `id`, renames `uuid` to `id`, promotes it to primary
+key, and drops any transitional `to_field` pointers Wave C's FK columns needed
+while `uuid` wasn't yet the primary key. (Amended 2026-08-18 by
+[the ID-06 design](2026-08-18-issue-644-playhistory-fk-uuid-design.md): the
+old integer FK columns are dropped by Wave C itself, in the same migration
+that adds the UUID column, because a retained `NOT NULL` integer FK column
+would keep a live write-path obligation for two more waves. Wave E has no FK
+columns left to drop — only the integer `id` and the `to_field` pointers.) Lower risk than Wave C per PR — by this point
 nothing references the integer columns — but kept split for reviewability
 and to keep `games/sorting.py`'s `F("pk").asc()` tiebreak change auditable
 per model group rather than in one sweep. All four are `blocked-by` ID-10.

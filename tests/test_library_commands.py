@@ -290,13 +290,18 @@ def test_sample_load_rejects_a_private_row_without_portable_owner_marker(
     assert not Device.objects.filter(pk=202).exists()
 
 
+# PlayEvent.game and GameStatusChange.game reference Game.uuid, not Game.pk
+# (see games/models.py); a well-formed UUID that no fixture game carries.
+ABSENT_GAME_UUID = "00000000-0000-7000-8000-000000000000"
+
+
 @pytest.mark.django_db
 @pytest.mark.parametrize(
     ("model", "fields", "target_model"),
     [
         ("games.session", {"game": 999}, "Game"),
-        ("games.playevent", {"game": 999}, "Game"),
-        ("games.gamestatuschange", {"game": 999}, "Game"),
+        ("games.playevent", {"game": ABSENT_GAME_UUID}, "Game"),
+        ("games.gamestatuschange", {"game": ABSENT_GAME_UUID}, "Game"),
         (
             "games.purchase",
             {"library": "__target_library__", "games": [999]},
