@@ -103,6 +103,20 @@ ID-09/#847 on GitHub), ordered cheapest-and-most-validating first:
 | ID-08 | #846 | `Session.game`, `Session.device` | Heaviest of the "single entity" slices: session quick-filter facets (game, device, started, ended, duration), the `PATCH /api/session/{id}/device` endpoint, session list/detail templates, sorting. |
 | ID-09 | #847 | `Purchase.games` (M2M), `Purchase.related_game`, `Purchase.platform` | Heaviest slice overall: multi-game bundle/split logic, DLC/addon `related_game` relationship, purchase forms' multi-game SearchSelect, stats aggregation through the M2M. Landed last, after the pattern is proven three times over. |
 
+Two facts about the remaining slices, established after ID-06 landed and worth
+knowing before estimating any of them:
+
+- **`UserLibraryPreferences.default_device` (`games/models.py:781`) belongs to
+  no wave.** It is a fourth `Device` foreign key, nullable, with no filter or
+  fixture surface. ID-08 or ID-14 must claim it explicitly, or ID-14 promotes
+  `Device.uuid` to primary key underneath a live integer foreign key.
+- **Every remaining Wave C relation except `Session.game` and `Purchase.games`
+  is `null=True, on_delete=SET_NULL`.** ID-06 proved the six-operation shape
+  only on `NOT NULL` columns: its step 1 exists to relax a NOT NULL that a
+  nullable relation does not have, and its reconciliation asserts a zero NULL
+  count where the real invariant is "the NULL set is unchanged, and the
+  non-NULL rows anti-join clean".
+
 `blocked-by` on GitHub: ID-06 ← #640,#641; ID-07 ← #640; ID-08 ← #640,#641,#643;
 ID-09 ← #640,#642. No slice depends on another's schema, only on the shared
 FK-rewrite pattern the first slice establishes (add UUID-typed FK column
