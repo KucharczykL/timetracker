@@ -106,7 +106,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
     # subquery, so no `sessions__` path-prefixing is needed.
     windowed_playtime = (
         Session.objects.for_library(library)
-        .filter(session_q, game=OuterRef("pk"))
+        .filter(session_q, game=OuterRef("uuid"))
         .values("game")
         .annotate(total=Sum(F("duration_calculated") + F("duration_manual")))
         .values("total")

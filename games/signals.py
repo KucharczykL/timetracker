@@ -110,10 +110,10 @@ def update_game_playtime(sender, instance, **kwargs):
         return
     # During cascade deletes the related Game may already have been removed.
     # Use the FK id to look up the Game safely and bail out if it no longer exists.
-    game_pk = getattr(instance, "game_id", None)
-    if not game_pk:
+    game_uuid = getattr(instance, "game_id", None)
+    if not game_uuid:
         return
-    game = Game.objects.filter(pk=game_pk).first()
+    game = Game.objects.filter(uuid=game_uuid).first()
     if not game:
         return
 

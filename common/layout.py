@@ -11,6 +11,7 @@ import json
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
+from uuid import UUID
 
 from django.conf import settings
 from django.contrib.auth.models import User
@@ -186,7 +187,7 @@ def recent_session_resumes(request: HttpRequest, limit: int = 5) -> list[Session
         return []
     from games.models import Session
 
-    seen: set[int] = set()
+    seen: set[UUID] = set()
     resumes: list[Session] = []
     for session in (
         Session.objects.for_library(cast(User, request.user).library)

@@ -153,7 +153,7 @@ def test_sessions_for_game_matches_year_scoped_sessions(world):
     game = world["finished_game"]
     expected = (
         Session.objects.for_library(world["library"])
-        .filter(timestamp_start__year=YEAR, game_id=game.id)
+        .filter(timestamp_start__year=YEAR, game=game)
         .count()
     )
     assert expected == 2  # guard: the out-of-year session is excluded

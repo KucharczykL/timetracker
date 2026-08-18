@@ -67,14 +67,22 @@ game = models.ForeignKey(
     Game, to_field="uuid", on_delete=models.CASCADE, related_name="sessions"
 )
 device = models.ForeignKey(
-    "Device", to_field="uuid", on_delete=models.SET_NULL,
-    null=True, blank=True, default=None,
+    "Device",
+    to_field="uuid",
+    on_delete=models.SET_NULL,
+    null=True,
+    blank=True,
+    default=None,
 )
 
 # UserLibraryPreferences
 default_device = models.ForeignKey(
-    Device, to_field="uuid", null=True, blank=True,
-    on_delete=models.SET_NULL, related_name="+",
+    Device,
+    to_field="uuid",
+    null=True,
+    blank=True,
+    on_delete=models.SET_NULL,
+    related_name="+",
 )
 ```
 
@@ -195,7 +203,9 @@ does `session.device_id = payload.device_id`, which after the cutover assigns an
 ```python
 device = None
 if payload.device_id is not None:
-    device = owned_or_404(Device.objects.for_library(library), library, id=payload.device_id)
+    device = owned_or_404(
+        Device.objects.for_library(library), library, id=payload.device_id
+    )
 session.device = device
 ```
 
