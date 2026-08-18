@@ -242,6 +242,76 @@ def test_start_cluster_removes_stale_process_metadata(harness, monkeypatch, tmp_
     assert commands[0][:3] == [str(tools.pg_ctl), "-D", str(data_dir)]
 
 
+def test_start_cluster_redirects_server_output_to_a_log_file(
+    harness, monkeypatch, tmp_path
+):
+    """The postmaster must not inherit make's stdout, or a pipeline never sees EOF."""
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    tools = harness.Tools(*(tmp_path / name for name in harness.TOOL_NAMES))
+    commands: list[list[str]] = []
+    monkeypatch.setattr(harness, "cluster_is_running", lambda *args: False)
+    monkeypatch.setattr(harness, "run", lambda args, **kwargs: commands.append(args))
+
+    harness.start_cluster(tools, data_dir, 5432)
+
+    assert commands[0][3:5] == ["-l", str(tmp_path / "server.log")]
+
+
+def test_failed_start_quotes_only_this_attempts_server_log(
+    harness, monkeypatch, tmp_path
+):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    log_file = tmp_path / "server.log"
+    log_file.write_text("PANIC from an earlier run\n")
+    tools = harness.Tools(*(tmp_path / name for name in harness.TOOL_NAMES))
+    monkeypatch.setattr(harness, "cluster_is_running", lambda *args: False)
+
+    def failing_run(args, **kwargs):
+        with log_file.open("a") as file:
+            file.write("FATAL: could not create lock file: Permission denied\n")
+        raise subprocess.CalledProcessError(1, args)
+
+    monkeypatch.setattr(harness, "run", failing_run)
+
+    with pytest.raises(harness.HarnessError) as error:
+        harness.start_cluster(tools, data_dir, 5432)
+
+    assert "could not create lock file" in str(error.value)
+    assert "earlier run" not in str(error.value)
+
+
+def test_failed_start_without_new_log_output_names_the_log_file(
+    harness, monkeypatch, tmp_path
+):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    tools = harness.Tools(*(tmp_path / name for name in harness.TOOL_NAMES))
+    monkeypatch.setattr(harness, "cluster_is_running", lambda *args: False)
+
+    def failing_run(args, **kwargs):
+        raise subprocess.CalledProcessError(1, args)
+
+    monkeypatch.setattr(harness, "run", failing_run)
+
+    with pytest.raises(harness.HarnessError) as error:
+        harness.start_cluster(tools, data_dir, 5432)
+
+    assert str(tmp_path / "server.log") in str(error.value)
+
+
+def test_server_log_tail_is_bounded(harness, tmp_path):
+    log_file = tmp_path / "server.log"
+    log_file.write_text("".join(f"line {number}\n" for number in range(100)))
+
+    tail = harness.server_log_tail(log_file, 0)
+
+    assert "line 99" in tail
+    assert "line 80" in tail
+    assert "line 79" not in tail
+
+
 def test_stop_missing_cluster_is_a_noop_without_tool_discovery(
     harness, monkeypatch, tmp_path, capsys
 ):

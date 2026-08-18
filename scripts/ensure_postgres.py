@@ -35,6 +35,7 @@ from timetracker.postgres_contract import (
 
 REQUIRED_MAJOR = 18
 PG_CTL_NOT_RUNNING = 3
+SERVER_LOG_TAIL_LINES = 20
 TOOL_NAMES = (
     "initdb",
     "pg_ctl",
@@ -270,6 +271,25 @@ def cluster_is_running(tools: Tools, data_dir: Path) -> bool:
     return result.returncode == 0
 
 
+def server_log_tail(log_file: Path, offset: int) -> str:
+    """Quote what one start attempt appended to the server log.
+
+    `-l` sends the postmaster's output to that file instead of the terminal, so a
+    failed start would otherwise surface nothing beyond pg_ctl's own "examine the
+    log output". Reading from a recorded offset keeps earlier entries — including
+    a previous crash — intact rather than truncating the file to get a clean tail.
+    """
+    try:
+        with log_file.open("rb") as file:
+            file.seek(offset)
+            lines = file.read().decode("utf-8", "replace").splitlines()
+    except OSError:
+        lines = []
+    if not lines:
+        return f" See {log_file}."
+    return f" Last lines of {log_file}:\n" + "\n".join(lines[-SERVER_LOG_TAIL_LINES:])
+
+
 def start_cluster(tools: Tools, data_dir: Path, port: int) -> None:
     pid_file = data_dir / "postmaster.pid"
     if pid_file.exists() and not cluster_is_running(tools, data_dir):
@@ -279,17 +299,30 @@ def start_cluster(tools: Tools, data_dir: Path, port: int) -> None:
             "timetracker-pg-" + hashlib.sha256(str(data_dir).encode()).hexdigest()[:12]
         )
         socket_dir.mkdir(exist_ok=True)
-        run(
-            [
-                str(tools.pg_ctl),
-                "-D",
-                str(data_dir),
-                "-o",
-                f"-h 127.0.0.1 -p {port} -k {socket_dir}",
-                "-w",
-                "start",
-            ]
-        )
+        # Without -l, pg_ctl hands the postmaster its own stdout and stderr, and
+        # the daemon keeps holding them long after make exits. Under a pipeline
+        # those are the write end of the pipe, so the reader never sees EOF and
+        # a finished command looks like it hung.
+        log_file = data_dir.parent / "server.log"
+        log_offset = log_file.stat().st_size if log_file.exists() else 0
+        try:
+            run(
+                [
+                    str(tools.pg_ctl),
+                    "-D",
+                    str(data_dir),
+                    "-l",
+                    str(log_file),
+                    "-o",
+                    f"-h 127.0.0.1 -p {port} -k {socket_dir}",
+                    "-w",
+                    "start",
+                ]
+            )
+        except subprocess.CalledProcessError as exc:
+            raise HarnessError(
+                "PostgreSQL did not start." + server_log_tail(log_file, log_offset)
+            ) from exc
 
 
 def stop_cluster(tools: Tools, data_dir: Path) -> bool:
