@@ -68,15 +68,17 @@ Two tests:
 def test_forward_migration_repoints_the_related_game_relation(fk_uuid_harness):
     seed_historic_world(fk_uuid_harness, username="migrator")
     before = dict(
-        fk_uuid_harness.get_model("games", "Purchase")
-        .objects.values_list("pk", "related_game__name")
+        fk_uuid_harness.get_model("games", "Purchase").objects.values_list(
+            "pk", "related_game__name"
+        )
     )
 
     new_apps = migrate_to_fk_uuid()
 
     after = dict(
-        new_apps.get_model("games", "Purchase")
-        .objects.values_list("pk", "related_game__name")
+        new_apps.get_model("games", "Purchase").objects.values_list(
+            "pk", "related_game__name"
+        )
     )
     assert after == before
     assert sum(1 for name in after.values() if name is None) == 2
@@ -90,19 +92,19 @@ def test_forward_migration_repoints_the_related_game_relation(fk_uuid_harness):
 def test_reverse_migration_restores_the_original_integer_ids(fk_uuid_harness):
     seed_historic_world(fk_uuid_harness, username="migrator")
     before = dict(
-        fk_uuid_harness.get_model("games", "Purchase")
-        .objects.values_list("pk", "related_game_id")
+        fk_uuid_harness.get_model("games", "Purchase").objects.values_list(
+            "pk", "related_game_id"
+        )
     )
 
     migrate_to_fk_uuid()
     MigrationExecutor(connection).migrate([BEFORE_FK_UUID])
-    old_apps = MigrationExecutor(connection).loader.project_state(
-        [BEFORE_FK_UUID]
-    ).apps
+    old_apps = MigrationExecutor(connection).loader.project_state([BEFORE_FK_UUID]).apps
 
     after = dict(
-        old_apps.get_model("games", "Purchase")
-        .objects.values_list("pk", "related_game_id")
+        old_apps.get_model("games", "Purchase").objects.values_list(
+            "pk", "related_game_id"
+        )
     )
     assert after == before
     assert column_type("games_purchase", "related_game_id") == "bigint"
@@ -271,9 +273,7 @@ def test_purchase_filters_by_related_instance_and_by_integer_id(
     assert Purchase.objects.filter(related_game__id=base_game.id).count() == 1
 
 
-def test_addon_purchases_reverse_accessor_reaches_the_purchase(
-    base_game, dlc_purchase
-):
+def test_addon_purchases_reverse_accessor_reaches_the_purchase(base_game, dlc_purchase):
     assert list(base_game.addon_purchases.all()) == [dlc_purchase]
 
 
@@ -500,13 +500,11 @@ Expected: FAIL. Two tests should go red — the strengthened `test_output_invari
 `anonymize_sample.py`. The comprehension at `:194-197` already runs the query that carries both values — widen its loop rather than adding a second query:
 
 ```python
-        games_by_pk = {
-            game.pk: game
-            for game in Game.objects.filter(pk__in=all_game_ids).only("pk", "uuid")
-        }
-        game_offsets_by_uuid = {
-            game.uuid: game_offsets[pk] for pk, game in games_by_pk.items()
-        }
+games_by_pk = {
+    game.pk: game
+    for game in Game.objects.filter(pk__in=all_game_ids).only("pk", "uuid")
+}
+game_offsets_by_uuid = {game.uuid: game_offsets[pk] for pk, game in games_by_pk.items()}
 ```
 
 Then `:247`:
@@ -550,9 +548,11 @@ git commit -m "fix: emit the base-game link as a uuid when anonymizing"
 `games/management/commands/load_sample_data.py:74`:
 
 ```python
-        FixtureRelationship(
-            "related_game", "games.game", False, False, reference_field="uuid"
-        ),
+(
+    FixtureRelationship(
+        "related_game", "games.game", False, False, reference_field="uuid"
+    ),
+)
 ```
 
 Leave the `games` entry on `reference_field="pk"` — its list still carries Game pks.
@@ -564,11 +564,13 @@ The validator derives its reference index generically from this field; the comme
 `tests/test_library_commands.py:321` — the `related_game` parameter case now has to name a *uuid* the fixture does not carry, or it stops testing the rejection path and starts failing on a type error:
 
 ```python
-        (
-            "games.purchase",
-            {"library": "__target_library__", "related_game": ABSENT_GAME_UUID},
-            "Game",
-        ),
+(
+    (
+        "games.purchase",
+        {"library": "__target_library__", "related_game": ABSENT_GAME_UUID},
+        "Game",
+    ),
+)
 ```
 
 Leave the sibling `{"games": [999]}` case at `:316` on an integer — it still covers the pk reference path, and it is the regression guard for the deferral.
