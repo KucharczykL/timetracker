@@ -42,6 +42,7 @@ from common.criteria import (
     _criterion_class_for,
     _field_comparison_to_q,
     _filter_class_for,
+    _lookup_is_nullable,
     _maybe_group_for,
     _resolve_model_field,
     _ScalarCriterion,
@@ -5110,6 +5111,13 @@ class TestFieldMetadata:
         entry = self._by_name(GameFilter)["platform"]
         assert entry["nullable"] == bool(Game._meta.get_field("platform").null)
 
+    def test_nullable_follows_a_nullable_relation_hop(self):
+        # Reaching a NOT NULL column through a nullable relation still yields a
+        # nullable field: a game with no platform has no platform group either,
+        # and the ORM matches it on platform__group__isnull=True.
+        assert self._by_name(GameFilter)["platform_group"]["nullable"] is True
+        assert self._by_name(PurchaseFilter)["platform"]["nullable"] is True
+
     def test_handler_field_defaults_not_nullable(self):
         # playtime_hours is handler-mapped (no model column) → nullable False
         entry = self._by_name(GameFilter)["playtime_hours"]
@@ -5153,6 +5161,26 @@ class TestFieldMetadata:
         assert _resolve_model_field(Game, "does_not_exist") is None
         # reverse relation / aggregate-style name resolves to no concrete field
         assert _resolve_model_field(Game, "sessions") is None
+
+    def test_lookup_is_nullable_ors_over_the_whole_path(self):
+        from games.models import Game, PlayEvent
+
+        # terminal column's own nullability, with no relation hop in the path
+        assert _lookup_is_nullable(Game, "year_released") is True
+        assert _lookup_is_nullable(Game, "name") is False
+        # a single-segment FK attname reads the FK
+        assert _lookup_is_nullable(Game, "platform_id") is True
+        # a nullable hop makes a NOT NULL terminal column reachable as NULL
+        assert _lookup_is_nullable(Game, "platform__id") is True
+        assert _lookup_is_nullable(Game, "platform__group") is True
+        # a NOT NULL hop does not
+        assert _lookup_is_nullable(PlayEvent, "game__id") is False
+
+    def test_lookup_is_nullable_false_for_no_column(self):
+        from games.models import Game
+
+        assert _lookup_is_nullable(None, "anything") is False
+        assert _lookup_is_nullable(Game, "does_not_exist") is False
 
     def test_nullable_true_for_plain_column(self):
         # year_released is a nullable plain (non-relation) column — exercises the
