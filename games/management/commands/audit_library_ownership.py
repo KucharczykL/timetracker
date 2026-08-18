@@ -172,7 +172,7 @@ class Command(BaseCommand):
                 platform__library__isnull=False,
             )
             .exclude(platform__library_id=F("library_id"))
-            .values_list("pk", "platform_id")
+            .values_list("pk", "platform__id")
         ):
             violations.append(f"Game.platform: game {game_id}, platform {platform_id}")
         for purchase_id, platform_id in (
@@ -181,7 +181,7 @@ class Command(BaseCommand):
                 platform__library__isnull=False,
             )
             .exclude(platform__library_id=F("library_id"))
-            .values_list("pk", "platform_id")
+            .values_list("pk", "platform__id")
         ):
             violations.append(
                 f"Purchase.platform: purchase {purchase_id}, platform {platform_id}"
