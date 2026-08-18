@@ -18,9 +18,9 @@ document's internal explanatory grouping only.
 | ID-04 | #642 | Purchase and ownership identity: `Purchase` |
 | ID-05 | #643 | Library configuration identities: `Device`, `FilterPreset` |
 | ID-06 | #644 | Rewrite `PlayEvent.game`, `GameStatusChange.game` FKs to UUID |
-| ID-07 | #845 | Rewrite `Game.platform` FK to UUID |
+| ID-07 | #845 | Rewrite `Game.platform` and `Purchase.platform` FKs to UUID |
 | ID-08 | #846 | Rewrite `Session.game`, `Session.device` FKs to UUID |
-| ID-09 | #847 | Rewrite `Purchase.games` M2M, `Purchase.related_game`, `Purchase.platform` to UUID |
+| ID-09 | #847 | Rewrite `Purchase.games` M2M and `Purchase.related_game` to UUID |
 | ID-10 | #645 | Verify the integer-to-UUID reconciliation map |
 | ID-11 | #646 | Remove legacy integer identities: catalog (`Game`, `Platform`) |
 | ID-12 | #848 | Remove legacy integer identities: Session/play-history |
@@ -99,9 +99,21 @@ ID-09/#847 on GitHub), ordered cheapest-and-most-validating first:
 | ID | Issue | Relations | Why this grouping |
 | --- | --- | --- | --- |
 | ID-06 | #644 | `PlayEvent.game`, `GameStatusChange.game` | Lowest surface: both are single Game-FKs, mostly read-only/audit, neither has its own quick-filter bar mode of its own weight. Bundled to validate the FK-rewrite pattern cheaply before the bigger slices. |
-| ID-07 | #845 | `Game.platform` | Catalog-internal; moderate surface (platform quick-filter facet on Game, platform badge/link rendering). Deferred from `#640` specifically so it lands here once ID-10's reconciliation discipline exists. |
+| ID-07 | #845 | `Game.platform`, `Purchase.platform` | **Every** foreign key pointing at `Platform` — re-scoped during its design (2026-08-18) to slice by target model rather than by owning model. Moderate surface (platform quick-filter facet on two modes, the platform search endpoint's recency subqueries, platform badge/link rendering). |
 | ID-08 | #846 | `Session.game`, `Session.device` | Heaviest of the "single entity" slices: session quick-filter facets (game, device, started, ended, duration), the `PATCH /api/session/{id}/device` endpoint, session list/detail templates, sorting. |
-| ID-09 | #847 | `Purchase.games` (M2M), `Purchase.related_game`, `Purchase.platform` | Heaviest slice overall: multi-game bundle/split logic, DLC/addon `related_game` relationship, purchase forms' multi-game SearchSelect, stats aggregation through the M2M. Landed last, after the pattern is proven three times over. |
+| ID-09 | #847 | `Purchase.games` (M2M), `Purchase.related_game` | Heaviest slice overall: multi-game bundle/split logic, DLC/addon `related_game` relationship, purchase forms' multi-game SearchSelect, stats aggregation through the M2M. Landed last, after the pattern is proven three times over. |
+
+**Why ID-07 took `Purchase.platform` from ID-09.** The two platform foreign
+keys are structurally identical (nullable `SET_NULL` to `Platform`), so
+grouping by owning model rather than by target manufactured three transitional
+artifacts and no benefit: `load_sample_data`'s remap would have carried two
+identities at once for a full wave (one relation naming a `uuid`, the other a
+`pk`, against the same target model), `games/filters.py` would have moved two
+of six platform lookups and left four, and `GameForm.platform` would have
+needed the `ModelForm` initial shim while `PurchaseForm.platform` — same field
+name, same widget, same target — must not have had it. The two adjacent,
+identical `OuterRef` subqueries in `/api/platforms/search` settled it: under
+the split, one would have had to change and the other stay.
 
 Two facts about the remaining slices, established after ID-06 landed and worth
 knowing before estimating any of them:
@@ -115,10 +127,11 @@ knowing before estimating any of them:
   only on `NOT NULL` columns: its step 1 exists to relax a NOT NULL that a
   nullable relation does not have, and its reconciliation asserts a zero NULL
   count where the real invariant is "the NULL set is unchanged, and the
-  non-NULL rows anti-join clean".
+  non-NULL rows anti-join clean". ID-07 settled this — see item 5 below.
 
-`blocked-by` on GitHub: ID-06 ← #640,#641; ID-07 ← #640; ID-08 ← #640,#641,#643;
-ID-09 ← #640,#642. No slice depends on another's schema, only on the shared
+`blocked-by` on GitHub: ID-06 ← #640,#641; ID-07 ← #640 (unchanged by the
+re-scope: both platform relations point at `Platform.uuid`, and nothing in the
+slice reads `Purchase.uuid`); ID-08 ← #640,#641,#643; ID-09 ← #640,#642. No slice depends on another's schema, only on the shared
 FK-rewrite pattern the first slice establishes (add UUID-typed FK column
 pointing at the target's `uuid` field, backfill via the parent's
 already-populated `uuid` column, swap every read/write path for that
@@ -164,17 +177,51 @@ in ID-07, ID-08 and ID-09** — treat this as the slice checklist:
 4. **`load_sample_data` and `anonymize_sample`.** The loader's
    `FIXTURE_RELATIONSHIPS` (now a `FixtureRelationship` NamedTuple) declares
    which field of the target a reference names — a new relation adds
-   `reference_field="uuid"` there and nothing else. The anonymizer keys its
-   per-game date-offset map by integer pk and looks it up through the child's
-   FK attname, so each moved relation needs the matching UUID-keyed map.
+   `reference_field="uuid"` there. If the loader *remaps* that target (it does,
+   for `Platform`, matching an existing shared row on `(library, name, group)`
+   and otherwise creating one), the remap must translate to the **real** row's
+   `uuid`: it is never the fixture's, on either path. Its values must be `str`,
+   because prepared records are re-serialized with `yaml.safe_dump`, which
+   cannot represent a `UUID`. The anonymizer keys its per-game date-offset map
+   by integer pk and looks it up through the child's FK attname, so each moved
+   ***`Game`*** relation needs the matching UUID-keyed map — ID-07 needed no
+   anonymizer change at all, because nothing there is keyed by platform. Read
+   the command rather than applying this item by rote.
+5. **A nullable relation is a different migration, and different metadata.**
+   Established by ID-07, which moved the first two:
+   - **Five operations, not six.** ID-06's leading `AlterField` exists only to
+     relax a `NOT NULL`; on an already-nullable column it is a no-op that
+     implies a constraint that does not exist. Of what remains, only
+     `Session.game` is `NOT NULL`.
+   - **Reconciliation asserts NULL-set identity**, as two zero-row anti-joins
+     (nothing gained NULL, nothing lost it) rather than a count comparison,
+     which passes if one row gains NULL while another loses it. Both backfill
+     directions are `UPDATE … FROM` joins, so NULL rows are simply not touched
+     — reversibility needs no special case.
+   - **The filter-metadata nullability fix is already done** (`common/criteria.py`,
+     `_lookup_is_nullable`). Rewriting a lookup to `<name>__id` moves the
+     resolved field from the nullable FK to the target's `NOT NULL` pk, which
+     silently dropped the facet's presence modifiers. Nullability is now a
+     property of the whole lookup path, OR-ed across relation hops, so ID-08
+     and ID-09 need no per-relation nullability work.
+6. **Check the owning model's `Meta.unique_together` and `constraints`.**
+   `RemoveField` compiles to a bare `DROP COLUMN`, and PostgreSQL cascades away
+   every index over that column — while Django's migration *state* still lists
+   them, so `make check-migrations` reports no drift and the suite stays green
+   with the guarantee gone. ID-07 had to take down and restore both of `Game`'s
+   (`unique_together`, which also has to be empty across the window where the
+   field does not exist, and the partial platformless-name `UniqueConstraint`).
+   Assert them present *and enforced* afterwards; before ID-07 no test asserted
+   either. Note when writing that test that a NULL never collides in a unique
+   index, so a row needs non-NULL values in every constrained column to trip it.
 
-Also settled by ID-06 and reusable verbatim: the six-operation, reversible
-migration shape (relax NOT NULL → add holding column → backfill and reconcile
-→ drop integer column → rename → retype into the real FK), with the
+Also settled by ID-06 and reusable verbatim: the reversible migration shape
+(optionally relax NOT NULL → add holding column → backfill and reconcile → drop
+integer column → rename → retype into the real FK), with the
 `SET CONSTRAINTS ALL IMMEDIATE` guard between the backfill and the schema
 alterations. Django's final `AlterField` does rename the column and create the
-FK constraint in one operation; the `SeparateDatabaseAndState` fallback the
-design describes was not needed.
+FK constraint in one operation — confirmed twice now, in ID-06 and ID-07; the
+`SeparateDatabaseAndState` fallback the design describes has not been needed.
 
 **Saved-filter content is explicitly out of scope for Wave C.** Filter
 criteria on `platform`/`device`/`game` fields store raw integer PKs inside
