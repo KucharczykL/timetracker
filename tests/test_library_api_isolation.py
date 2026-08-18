@@ -259,7 +259,7 @@ def test_session_reads_and_mutations_are_library_scoped(two_libraries):
     )
     own.refresh_from_db()
     foreign.refresh_from_db()
-    assert own.device_id == world["device_a"].id
+    assert own.device_id == world["device_a"].uuid
     assert foreign.timestamp_end == datetime(YEAR, 6, 2, 13, tzinfo=UTC)
 
 

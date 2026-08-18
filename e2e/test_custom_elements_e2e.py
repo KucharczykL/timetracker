@@ -105,7 +105,7 @@ def test_session_device_selector_patches(
     )
     page.wait_for_function("() => window.__refreshed === true")
     session.refresh_from_db()
-    assert session.device_id == deck.id
+    assert session.device_id == deck.uuid
     # No htmx container listens for device-changed (unlike status-changed /
     # play-added on the game page), so there is no refresh GET to await here.
     # Instead verify the server-rendered state: a fresh page load shows the new

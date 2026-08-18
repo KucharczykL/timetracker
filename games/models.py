@@ -460,6 +460,7 @@ class Session(models.Model):
     uuid = UUIDv7Field(unique=True, editable=False)
     game = models.ForeignKey(
         Game,
+        to_field="uuid",
         on_delete=models.CASCADE,
         related_name="sessions",
     )
@@ -499,6 +500,7 @@ class Session(models.Model):
     )
     device = models.ForeignKey(
         "Device",
+        to_field="uuid",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -790,6 +792,7 @@ class UserLibraryPreferences(models.Model):
     )
     default_device = models.ForeignKey(
         Device,
+        to_field="uuid",
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
@@ -811,7 +814,7 @@ class UserLibraryPreferences(models.Model):
         super().save(*args, **kwargs)
 
     def set_default_device(self, device):
-        if self.default_device_id == getattr(device, "pk", None):
+        if self.default_device_id == getattr(device, "uuid", None):
             return False
         self.default_device = device
         self.updated_at = timezone.now()

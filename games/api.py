@@ -487,11 +487,16 @@ def partial_update_session_device(
 ):
     library = cast(User, request.user).library
     session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
+    device = None
     if payload.device_id is not None:
         # A stale id (device deleted in another tab) must 404, not surface as
         # an IntegrityError 500 the client's retry toast can never resolve.
-        owned_or_404(Device.objects.for_library(library), library, id=payload.device_id)
-    session.device_id = payload.device_id
+        device = owned_or_404(
+            Device.objects.for_library(library), library, id=payload.device_id
+        )
+    # The payload carries the integer pk the selector's options do, while the
+    # column holds the device's uuid: bind the instance, not the id.
+    session.device = device
     session.save()
     messages.success(request, "Device updated")
     return Status(204, None)

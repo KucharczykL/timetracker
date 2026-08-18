@@ -100,7 +100,7 @@ ID-09/#847 on GitHub), ordered cheapest-and-most-validating first:
 | --- | --- | --- | --- |
 | ID-06 | #644 | `PlayEvent.game`, `GameStatusChange.game` | Lowest surface: both are single Game-FKs, mostly read-only/audit, neither has its own quick-filter bar mode of its own weight. Bundled to validate the FK-rewrite pattern cheaply before the bigger slices. |
 | ID-07 | #845 | `Game.platform`, `Purchase.platform` | **Every** foreign key pointing at `Platform` — re-scoped during its design (2026-08-18) to slice by target model rather than by owning model. Moderate surface (platform quick-filter facet on two modes, the platform search endpoint's recency subqueries, platform badge/link rendering). |
-| ID-08 | #846 | `Session.game`, `Session.device` | Heaviest of the "single entity" slices: session quick-filter facets (game, device, started, ended, duration), the `PATCH /api/session/{id}/device` endpoint, session list/detail templates, sorting. |
+| ID-08 | #846 | `Session.game`, `Session.device`, `UserLibraryPreferences.default_device` | Heaviest of the "single entity" slices: session quick-filter facets (game, device, started, ended, duration), the `PATCH /api/session/{id}/device` endpoint, session list/detail templates, sorting. Took the fourth `Device` foreign key during its design (2026-08-18) so **every** foreign key pointing at `Device` moves together — see its [design spec](2026-08-18-issue-846-session-fk-uuid-design.md). |
 | ID-09 | #847 | `Purchase.games` (M2M), `Purchase.related_game` | Heaviest slice overall: multi-game bundle/split logic, DLC/addon `related_game` relationship, purchase forms' multi-game SearchSelect, stats aggregation through the M2M. Landed last, after the pattern is proven three times over. |
 
 ID-07's rejected alternatives — including why filter nullability was fixed at
@@ -124,9 +124,12 @@ Two facts about the remaining slices, established after ID-06 landed and worth
 knowing before estimating any of them:
 
 - **`UserLibraryPreferences.default_device` (`games/models.py:781`) belongs to
-  no wave.** It is a fourth `Device` foreign key, nullable, with no filter or
-  fixture surface. ID-08 or ID-14 must claim it explicitly, or ID-14 promotes
-  `Device.uuid` to primary key underneath a live integer foreign key.
+  ID-08**, which claimed it during its design (2026-08-18) on the same
+  slice-by-target-model reasoning that moved `Purchase.platform` into ID-07. It
+  is a fourth `Device` foreign key, nullable, with no filter or fixture surface,
+  so taking it cost one more nullable relation in ID-08's migration and left
+  ID-14 a pure contraction rather than a foreign-key rewrite with its own
+  reconciliation.
 - **Every remaining Wave C relation except `Session.game` and `Purchase.games`
   is `null=True, on_delete=SET_NULL`.** ID-06 proved the six-operation shape
   only on `NOT NULL` columns: its step 1 exists to relax a NOT NULL that a
@@ -154,6 +157,16 @@ estimating its own size. The relation itself was two lines of model code; the
 surrounding work was four seams this plan had not named. **Each of them recurs
 in ID-07, ID-08 and ID-09** — treat this as the slice checklist:
 
+0. **Correlated subqueries are a lookup direction of their own.** Before
+   trusting any "confirmed unaffected" list, grep the app for `OuterRef` *and*
+   read what each one correlates. ID-07 found `/api/platforms/search`'s recency
+   subqueries filtering on the foreign-key column; ID-08 found
+   `games/views/game.py:109`, where the games list annotates `filtered_playtime`
+   from `Session.objects.filter(game=OuterRef("pk"))` — unconditional, so
+   leaving it would have broken every render of the page, not just a filtered
+   one. Both designs had listed the file as unaffected, and in both cases an
+   adversarial review before implementation is what caught it. `OuterRef("pk")`
+   becomes `OuterRef("uuid")`.
 1. **Every lookup that spells the foreign-key column.** `games/filters.py`
    holds three kinds, and ID-06 needed all three for one relation:
    `FilterField("<name>_id")` on the owning filter, `relation_to_q(...,
@@ -169,7 +182,14 @@ in ID-07, ID-08 and ID-09** — treat this as the slice checklist:
    bound instance hands the widget a UUID while a `SearchSelect`'s options are
    integer ids. Seed `self.initial[field]` with the related *instance*;
    `ModelChoiceField.prepare_value` resolves it back to the pk. A field derived
-   from the model (plain `<select>`) is self-consistent and needs nothing.
+   from the model (plain `<select>`) is self-consistent and needs nothing. The
+   helper is `seed_related_initial` in `games/forms.py`. **Check what the view
+   already puts in `initial` before adding a call**: `BaseModelForm` merges the
+   caller's `initial` over `model_to_dict`, so seeding unconditionally silently
+   overwrites a deliberate default — ID-08 hit this on `edit_session`, which
+   offers the library's default device to a session that has none. The helper
+   now skips a field whose initial is already a model instance, which
+   `model_to_dict` never produces.
 3. **`games/fixtures/sample.yaml.gz`.** Django serializes a foreign key as the
    target's `to_field` value, so the committed fixture stops deserializing the
    moment a relation moves — and

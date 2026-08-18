@@ -299,6 +299,8 @@ def test_sample_load_rejects_a_private_row_without_portable_owner_marker(
 # platform foreign keys reference Platform.uuid, not either target's pk (see
 # games/models.py); well-formed UUIDs that no fixture record carries.
 ABSENT_GAME_UUID = "00000000-0000-7000-8000-000000000000"
+ABSENT_DEVICE_UUID = "00000000-0000-7000-8000-000000000001"
+PRESENT_GAME_UUID = "00000000-0000-7000-8000-000000000002"
 ABSENT_PLATFORM_UUID = "00000000-0000-7000-8000-000000000001"
 
 
@@ -306,7 +308,7 @@ ABSENT_PLATFORM_UUID = "00000000-0000-7000-8000-000000000001"
 @pytest.mark.parametrize(
     ("model", "fields", "target_model"),
     [
-        ("games.session", {"game": 999}, "Game"),
+        ("games.session", {"game": ABSENT_GAME_UUID}, "Game"),
         ("games.playevent", {"game": ABSENT_GAME_UUID}, "Game"),
         ("games.gamestatuschange", {"game": ABSENT_GAME_UUID}, "Game"),
         (
@@ -363,19 +365,28 @@ def test_sample_load_rejects_a_session_device_outside_the_fixture_graph(
                         "library": "__target_library__",
                         "name": "Included game",
                         "platform": None,
+                        # Both session references name their target's uuid, so
+                        # the included game must carry one for this fixture to
+                        # fail on the *device* it is testing.
+                        "uuid": PRESENT_GAME_UUID,
                     },
                 },
                 {
                     "model": "games.session",
                     "pk": 302,
-                    "fields": {"game": 301, "device": 999},
+                    "fields": {
+                        "game": PRESENT_GAME_UUID,
+                        "device": ABSENT_DEVICE_UUID,
+                    },
                 },
             ]
         )
     )
     monkeypatch.setattr(load_sample_data, "FIXTURE_PATH", fixture)
 
-    with pytest.raises(CommandError, match=r"references Device 999.*not included"):
+    with pytest.raises(
+        CommandError, match=rf"references Device {ABSENT_DEVICE_UUID}.*not included"
+    ):
         call_command("load_sample_data", "--user", owner.username, verbosity=0)
 
 
