@@ -167,7 +167,7 @@ def test_sessions_for_platform_matches_year_scoped_sessions(world):
     platform = world["pc"]
     expected = (
         Session.objects.for_library(world["library"])
-        .filter(timestamp_start__year=YEAR, game__platform_id=platform.id)
+        .filter(timestamp_start__year=YEAR, game__platform=platform)
         .count()
     )
     assert (
