@@ -419,9 +419,25 @@ all.** Probed against a real database during ID-10, running ID-11's own sequence
   recreating each referencing FK after the new primary key exists. `CASCADE` is
   not an option — it would take those four FK constraints with it, producing
   exactly the state-versus-database divergence `audit_uuid_identity` checks for.
-- Left for ID-11 to settle: `primary_key=True` subsumes `unique=True`, so
-  Django's schema editor may *attempt* that impossible drop and fail the
-  migration outright rather than leaving a redundant index.
+- **Settled by ID-11 (delivered 2026-08-19): it does attempt the impossible drop
+  and fails the migration outright.** `_alter_field` drops the old unique
+  constraint whenever `_field_became_primary_key`, so the promotion dies on the
+  four dependent foreign keys. Two consequences bind ID-12/13/14, both recorded
+  in the [ID-11 design](2026-08-19-issue-646-catalog-uuid-primary-key-design.md):
+  - **`sqlmigrate` cannot verify a promotion.** It resolves constraint names
+    against the *un-migrated* database, so it reports the doomed operation clean
+    and prints SQL that applies to nothing. Only a real `migrate` proves it.
+  - **Never `RenameField` a column other models reach through `to_field`.**
+    `ProjectState.rename_field` rewrites every referring relation's
+    `remote_field.field_name` **in place**, and `ModelState.clone` shares field
+    objects, so one forward pass leaves every historical state in the process
+    believing those foreign keys always pointed at the primary key. The symptom
+    is `cannot cast type uuid_v7 to bigint` on the *second* application — which
+    is why it is invisible until a migration-harness test reverses and re-applies
+    in one process, and why all ten of those modules break at once when it bites.
+    ID-11 promotes via `SeparateDatabaseAndState`: `RemoveField` + `AddField` for
+    state, one `RunPython` owning the DDL, placed after the state operations so
+    Django's own SQL builders still generate every constraint name.
 
 ID-11 additionally owns everything keyed to `Game` and `Platform` ceasing to be
 integers, which is the larger half of that slice: deleting `to_field="uuid"`
@@ -431,6 +447,26 @@ becomes `fields.E312` the moment the field is renamed), the corresponding
 `audit_library_ownership`'s `related_game__id`/`platform__id` lookups,
 `PurchaseFilter._games_to_q`'s `int(...)` coercion, and the `Game`/`Platform`
 half of the option-value annotation widening described in Wave C above.
+
+**ID-11 also took the catalog half of Wave F's URL work**, which this plan had
+not anticipated. Every catalog route is declared `<int:…>`, so promotion makes
+`reverse()` raise `NoReverseMatch` and 404s every existing URL — it is not
+optional for the slice that promotes the key. The eight routes moved to the
+`uuidv7` converter (registered in `games/urls.py`, not the project URLconf,
+because several tests import that module under a stripped `ROOT_URLCONF`). Old
+integer URLs 404 and **no alias is possible**: serving a redirect needs the
+integer→UUID map, which the migration destroys. That forecloses the choice
+`#648`'s title presumes; see the ID-11 design for the rejected `legacy_id`
+alternative.
+
+Three further sites the option-value widening did not cover, each an independent
+failure with no search endpoint involved: `PATCH /api/games/{id}/status`'s
+`game_id: int`, `PlayEventIn.game_id`, and `GameOut.id` (nested in `SessionOut`,
+so session reads 500). And `MultiCriterion` itself hard-codes `value: list[int]`
+with `_coerce_int`, so every catalog facet would have degraded to an "Ignored
+invalid filter" toast rather than failing loudly — ID-11 added a
+`UUIDMultiCriterion` sibling, which ID-14 mirrors for `Device` before deleting
+the integer variant.
 
 ## Wave F — canonical slug+UUID URLs (ID-15/#647, 1 issue, scope TBD in its own design)
 

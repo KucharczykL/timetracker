@@ -46,34 +46,65 @@ migration looks correct and applies to nothing. Any verification of this slice
 that stops at `sqlmigrate` is worthless; only a real `migrate` against a real
 database proves the shape.
 
-## The fix: detach the foreign keys, promote, reattach
+## The fix: own the DDL, and never rename a `to_field` target
+
+**Amended during implementation (2026-08-19).** The `db_constraint` toggle
+described below was implemented, and it does not work. Recording why, because
+the failure is invisible in the obvious tests and the underlying trap applies to
+every remaining Wave E slice.
 
 `CASCADE` is not a way out — it would take the four FK constraints with it,
 producing exactly the state-versus-database divergence `audit_uuid_identity`
-exists to catch. Dropping and recreating them by hand is the obvious remedy, but
-it means hand-written DDL with hand-picked constraint names in a schema whose
-names Django otherwise owns.
+exists to catch. So the promotion needs the referencing constraints gone first,
+and the original design achieved that with public operations: `AlterField` each
+referencing foreign key to `db_constraint=False` before the promotion and back
+afterwards, letting Django name everything.
 
-**Chosen — toggle `db_constraint` across the promotion.** `AlterField` each of
-the six *field-backed* referencing foreign keys (four at `Game`, two at
-`Platform`) to `db_constraint=False` before the promotion and back afterwards
-(with `to_field` deleted). Django drops each constraint on the way in, the
-redundant unique index then drops cleanly, and Django recreates each constraint
-against the new primary key on the way out, naming everything itself. Public
-operations end to end: no `SeparateDatabaseAndState`, no raw DDL for the
-promotion, nothing for a future migration to trip over. The seventh reference,
-`games_purchase_games.game_id`, has no Django field to alter and is handled by
-the `RunPython` steps below.
+**It survives a single forward pass and fails on the second.** The migration
+applies cleanly to a fresh database; it then fails with
+`cannot cast type uuid_v7 to bigint` the moment it is reversed and re-applied
+**in the same process** — which is precisely what all ten migration-harness test
+modules do. The cause is not the toggle but the rename beside it:
 
-Probed: applies clean, and afterwards all seven foreign keys reference
+> `ProjectState.rename_field` rewrites every referring relation's
+> `remote_field.field_name` **in place**, and `ModelState.clone` copies its
+> field dict shallowly, so those relation objects are shared with the states of
+> the migrations that declared them. One `RenameField(uuid → id)` therefore
+> leaves *every historical state* in the process believing those foreign keys
+> always pointed at the primary key. On the next replay the pre-promotion state
+> types the column as `bigint`, and the detach — whose declared
+> `to_field="uuid"` is now ignored — tries to cast the live `uuid_v7` column to
+> it.
+
+**Chosen — `SeparateDatabaseAndState`, with `RemoveField` + `AddField` in place
+of `RenameField`.** The state half declares the promotion and drops the
+`to_field` pointers; the database half is one `RunPython` owning the whole DDL
+sequence. Two properties make this the right trade rather than a retreat:
+
+- **No operation resolves a relation whose target is mid-move.** That is the
+  class of bug above, removed rather than worked around.
+- **Django still names every constraint.** The `RunPython` runs *after* the
+  state operations, so `apps.get_model` already describes the promoted schema
+  and `schema_editor._create_fk_sql` / `_create_index_sql` /
+  `alter_unique_together` generate the names Django would have. Verified against
+  a real database: every recreated constraint comes back under byte-identical
+  name to the one it replaced, which is what ID-13 will look for.
+
+**Rejected — keep `RenameField` and rebuild the historical states.** The
+corruption is in Django's own shared objects; nothing in a migration can undo it
+for states that other migrations already hold.
+
+Probed after the change: applies cleanly with data, and survives repeated
+reverse/forward cycling in one process. All seven foreign keys reference
 `games_game(id)` / `games_platform(id)`, `games_game_uuid_…_uniq` is gone,
-`makemigrations --check` reports no drift, and all 4505 through rows survive with
-their links intact.
+`makemigrations --check` reports no drift, and every through-table link is
+preserved by identity.
 
-**Rejected — `SeparateDatabaseAndState` with raw DDL.** Full control, but it
-takes the primary-key promotion out of Django's hands for no benefit the
-`db_constraint` toggle does not already give, and hand-named constraints would
-diverge from what ID-12/13/14 regenerate.
+**One more thing the original design got wrong**: the `uuidv7` path converter was
+registered in the *project* URLconf. Several tests import `games/urls.py` under a
+stripped `ROOT_URLCONF`, where that registration never runs and every catalog
+route fails to build. It is registered in `games/urls.py` instead — beside the
+routes that need it.
 
 ## The order is forced
 
@@ -96,14 +127,16 @@ the naive way first:
    checklist item 6, applied to an auto-created through rather than a model
    `Meta`.
 
-So the migration is, in order: convert the through table (raw, `RunPython`, with
-reconciliation) → detach six foreign keys → promote `Game` → promote `Platform` →
-reattach six foreign keys → restore the through table's constraint and indexes.
+So the database half is, in order: convert the through table (with
+reconciliation) → drop the six referencing foreign keys → for each catalog table,
+drop the integer `id`, rename `uuid` to `id`, add the primary key, and retire the
+now-redundant unique index → recreate all seven foreign keys plus the through
+table's indexes.
 
-Each promotion is `RemoveField(id)`, `RenameField(uuid → id)`,
-`AlterField(id, UUIDv7Field(primary_key=True))`. Django renders the intermediate
-pk-less state without complaint; no `SeparateDatabaseAndState` is needed to get
-through it.
+The state half is, per model, `RemoveField(id)`, `RemoveField(uuid)`,
+`AddField(id, UUIDv7Field(primary_key=True))` — drop-and-add, never a rename, for
+the reason recorded above. Django renders the intermediate pk-less state without
+complaint.
 
 The restore step goes through `schema_editor` (`_create_fk_sql`,
 `_create_index_sql`, `alter_unique_together`) rather than literal SQL, so the
