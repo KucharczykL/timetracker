@@ -159,7 +159,11 @@ class AnonymizeSampleTest(TestCase):
             self.assertGreaterEqual(len(fields["games"]), 1)
             self.assertLessEqual(len(fields["games"]), 10)
             if fields["type"] != Purchase.GAME:
-                self.assertIsNotNone(fields["related_game"])
+                self.assertIn(
+                    str(fields["related_game"]),
+                    {str(item["fields"]["uuid"]) for item in by_model["games.game"]},
+                    "related_game must name a game uuid carried by the same dump",
+                )
 
         for session in by_model["games.session"]:
             self.assertEqual(session["fields"]["note"], "")

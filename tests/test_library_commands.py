@@ -318,7 +318,7 @@ ABSENT_PLATFORM_UUID = "00000000-0000-7000-8000-000000000001"
         ),
         (
             "games.purchase",
-            {"library": "__target_library__", "related_game": 999},
+            {"library": "__target_library__", "related_game": ABSENT_GAME_UUID},
             "Game",
         ),
         (

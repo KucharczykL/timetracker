@@ -277,6 +277,11 @@ class Purchase(models.Model):
         "UserLibrary", on_delete=models.CASCADE, related_name="purchases"
     )
     uuid = UUIDv7Field(unique=True, editable=False)
+    # An auto-created many-to-many table always references the target's primary
+    # key: ManyToManyField takes no to_field, and Django builds the
+    # intermediary's foreign keys as plain ForeignKeys. So this link still
+    # resolves through Game.id while every other Game relation resolves through
+    # Game.uuid; it converts when Game.uuid becomes the primary key.
     games = models.ManyToManyField(Game, related_name="purchases")
 
     platform = models.ForeignKey(
@@ -312,6 +317,7 @@ class Purchase(models.Model):
     name = models.CharField(max_length=255, blank=True, default="")
     related_game = models.ForeignKey(
         Game,
+        to_field="uuid",
         on_delete=models.SET_NULL,
         default=None,
         null=True,

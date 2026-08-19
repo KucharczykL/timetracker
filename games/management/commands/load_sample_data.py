@@ -71,7 +71,9 @@ FIXTURE_RELATIONSHIPS: dict[str, tuple[FixtureRelationship, ...]] = {
         FixtureRelationship(
             "platform", "games.platform", False, False, reference_field="uuid"
         ),
-        FixtureRelationship("related_game", "games.game", False, False),
+        FixtureRelationship(
+            "related_game", "games.game", False, False, reference_field="uuid"
+        ),
         FixtureRelationship("games", "games.game", True, False),
     ),
     "games.session": (
