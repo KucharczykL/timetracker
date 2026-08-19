@@ -696,7 +696,7 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
         platform_field.widget.options_resolver = partial(
             _platform_options, library=library
         )
-        seed_related_initial(self, "platform")
+        seed_related_initial(self, "platform", "related_game")
         # The bundle Price is optional: in price-per-game mode it is hidden and
         # the per-game inputs carry the prices instead. Empty falls back to 0.
         self.fields["price"].required = False

@@ -193,7 +193,7 @@ class Command(BaseCommand):
                 related_game__isnull=False,
             )
             .exclude(related_game__library_id=F("library_id"))
-            .values_list("pk", "related_game_id")
+            .values_list("pk", "related_game__id")
         ):
             violations.append(
                 f"Purchase.related_game: purchase {purchase_id}, game {game_id}"
