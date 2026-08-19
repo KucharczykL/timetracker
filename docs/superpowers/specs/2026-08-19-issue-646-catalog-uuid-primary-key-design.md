@@ -111,20 +111,45 @@ recreated names match Django's convention — probed, and the unique index comes
 back under the byte-identical name it had before. ID-13 performs the mirror
 conversion on `purchase_id` and will look for exactly those names.
 
-## Irreversible, explicitly
+## Reverse: restore an empty schema, raise on a populated one
 
 `DROP COLUMN games_game.id` destroys the only integer→UUID mapping. Nothing
-remains to restore the original integers from, so a reverse could at best
-*renumber* rows — inventing values that look like the originals and are not.
+remains to restore the original integers from, so a reverse carrying data could
+at best *renumber* rows — inventing values that look like the originals and are
+not. This migration will not do that.
 
-The migration therefore declares an explicit raising reverse rather than a
-plausible one. Because reverse operations run last-to-first, the raise belongs on
-the final `RunPython` so `migrate games 0012` fails immediately, having changed
-nothing, with a message naming the restore-from-backup requirement.
+A reverse that simply raises, however, is not available: **ten migration-harness
+test modules migrate *down* past this slot in their setup fixture** — each calls
+`MigrationExecutor.migrate([<its own pre-cutover node>])` and restores the graph's
+leaf nodes on teardown — so an unconditional raise errors them at setup.
+Measured with a throwaway irreversible no-op in this slot: **21 tests error**
+across `test_uuidv7_domain`, `test_user_library`, `test_catalog_identity`,
+`test_session_playhistory_identity`, `test_purchase_identity`,
+`test_library_config_identity`, `test_playhistory_fk_uuid`,
+`test_platform_fk_uuid`, `test_session_fk_uuid` and `test_purchase_fk_uuid`. With
+a reversible no-op in the same slot the suite is green.
 
-This breaks the reversibility chain: no Wave B or Wave C migration below `0013`
-can be reversed without first restoring a dump. That is a real cost, accepted
-because the alternative is a reverse that silently fabricates identities.
+**Chosen — reverse on emptiness.** The reverse rebuilds the pre-promotion schema
+shape when `games_game` and `games_platform` are both empty, and raises the
+restore-from-backup error the moment either holds a row. Measured at all 21 of
+those harness reverses: both tables are empty every time, so the harnesses need
+no edit. A real deployment still cannot roll back, which is the intended
+guarantee — the raise is the honest answer whenever there is anything to lose,
+and DDL-only restore is correct whenever there is not.
+
+Because reverse operations run last-to-first, the emptiness gate belongs on the
+final `RunPython`, so a populated `migrate games 0012` fails immediately having
+changed nothing.
+
+**Rejected — a full structural reverse that renumbers.** It would make the chain
+below `0013` genuinely reversible with data present, at the price of re-deriving
+integers that only resemble the originals, plus a reverse path mirroring the
+entire forward migration.
+
+**Rejected — an unconditional raise plus rewriting the ten harnesses.** The
+strongest honesty guarantee, but the diff spans test modules belonging to
+already-merged slices, and every remaining Wave E slice would repeat the edit.
+
 Reversing also requires reverting the regenerated fixture blob; migration and
 fixture are a single unit, as in every prior slice.
 
@@ -176,6 +201,24 @@ the existing strict RFC 9562 v7 parser, onto which the four catalog declarations
 move. Each declaration then states its real value type, and ID-14 deletes the
 integer variant rather than re-widening a shared one.
 
+Two obligations come with adding a criterion class, neither optional:
+
+- **It must be registered in both `_CRITERION_TYPES` and `_CRITERION_KINDS`**
+  (`common/criteria.py`), with kind `"set"`. `criterion_kind()` raises
+  `ValueError` for an unregistered class, and the two tables' parity is itself
+  asserted by `tests/test_filter_paths.py`.
+- **It must serialize.** `filter_to_json` is `json.dumps(f.to_json())`, and
+  `_SetCriterion.to_json` emits `value` / `excludes` elements — and the
+  `{"id": …, "label": …}` wire dicts — verbatim. `json.dumps` cannot represent a
+  `uuid.UUID`, so `UUIDMultiCriterion.to_json` stringifies its elements. **This
+  is a 500 on ordinary pages, not an edge case:** the game detail page builds
+  three such filter links (`PurchaseFilter.where(games=[game.id])` and the
+  session/play-event equivalents), and the stats page builds them per row
+  through `stats_links.sessions_for_game` / `sessions_for_platform`, which pass
+  the id as both a value and a `labels` key. The round-trip equality the filter
+  tests assert (`to_json` → `from_json`) must survive the stringification, so
+  `_coerce_uuid7` has to parse back what `to_json` emitted.
+
 `PurchaseFilter.games` moves to it as well. It is currently a `ChoiceCriterion`
 whose values are id-bearing by exception, made 500-safe by a hand-rolled `int()`
 coercion inside `_games_to_q`; that coercion is deleted rather than retyped, and
@@ -195,17 +238,21 @@ parse layer for a transition with three slices left.
 **Rejected — widen `_coerce_int` to accept either.** It stops rejecting a
 wrong-typed id for the field it is on, which is the entire reason the hook exists.
 
-The TypeScript side needs nothing: `CriterionPayload` is
+The **filter-tree** TypeScript needs nothing: `CriterionPayload` is
 `Record<string, unknown>`, the serializer never inspects values, and the widget
 layer carries no numeric-id assumption (checked: `search-select.ts`'s only
-`parseInt` is the prefetch count).
+`parseInt` is the prefetch count). One *other* piece of TypeScript does — see
+the custom-element prop below.
 
-### Search-endpoint option schemas
+### Every schema and annotation that types a catalog id as `int`
 
-One `GameOption(Schema)` with `value: int` is the declared response of
-`/api/games/search`, `/api/platforms/search` **and** `/api/devices/search`. A
-`UUID` against it raises a pydantic `ValidationError`, so the promotion 500s two
-of those three endpoints.
+The search-endpoint schema is the one the wave plan predicted; it is not the only
+one, and the others fail harder because they sit on ordinary pages.
+
+**Search endpoints.** One `GameOption(Schema)` with `value: int` is the declared
+response of `/api/games/search`, `/api/platforms/search` **and**
+`/api/devices/search`. A `UUID` against it raises a pydantic `ValidationError`,
+so the promotion 500s two of those three.
 
 **Chosen — split per entity:** `GameOption.value: UUID`,
 `PlatformOption.value: UUID`, `DeviceOption.value: int`. This removes the
@@ -214,7 +261,39 @@ a union that describes no endpoint precisely; ID-14 becomes a one-line change to
 `DeviceOption`. It also ends the standing oddity of a schema named `GameOption`
 typing the device and platform endpoints.
 
+**Three further Ninja declarations**, none of them search endpoints, each an
+independent failure:
+
+- `partial_update_game(request, game_id: int, …)` — `PATCH /api/games/{game_id}/status`,
+  the target of the game-status selector on every games list row. 422 on every
+  status change.
+- `PlayEventIn.game_id: int` — the play-event create endpoint.
+- `GameOut.id: int`, nested in `SessionOut.game` — `GET /api/session/` and
+  `GET /api/session/{id}` raise a pydantic `ValidationError` and 500.
+
+**One custom-element prop, which is also the TypeScript exception.**
+`PlayEventRowProps.game_id: int` (`common/components/custom_elements.py`)
+codegens `gameId: Number(el.getAttribute("game-id"))` into `ts/generated/props.ts`;
+a UUID attribute yields `NaN`, which `JSON.stringify` writes as `null`, and the
+POST 422s. The prop becomes `str` and `make gen-element-types` regenerates
+`props.ts` — the codegen is exactly the drift guard that makes this a compile-time
+change rather than a silent one.
+
 `SearchSelectOption["value"]` is already `str | int` and needs `UUID` added.
+
+**Annotation-only sites**, which keep working but stop telling the truth, and are
+corrected in the same pass: `GameLink(game_id: int)`, `stats_links`'
+`game_id: int` / `platform_id: int | None`, the `game_id: int = 0` sentinel
+parameters on the three chained add-views (a UUID is truthy and `0` is falsy, so
+`if game_id:` still behaves), and the catalog view signatures in
+`games/views/game.py` and `games/views/platform.py`.
+
+**Wave checklist item 1 — "every lookup that spells the foreign-key column" — is
+a genuine no-op here, which is worth stating rather than leaving silent.** Wave C
+rewrote every catalog lookup to be target-pk-relative (`FilterField("platform__id")`,
+`related_lookup="id"`, `parent_field="games__id"` / `"platform__id"`), so each
+resolves to whatever the primary key is and none changes. What this slice owes is
+only the *value type* half, above. Confirmed by re-reading all of them.
 
 ### The remaining production sites
 
@@ -222,6 +301,12 @@ typing the device and platform endpoints.
   list's unconditional `filtered_playtime` annotation) and in
   `/api/platforms/search`'s two recency subqueries. Wave checklist item 0.
 - `games/signals.py`'s `Game.objects.filter(uuid=…)` → `filter(pk=…)`.
+- **`int(game.pk)` in `NameWithIcon`** (`common/components/domain.py`), feeding
+  `reverse("games:view_game", …)`. `int(UUID)` raises `TypeError`, and this
+  component renders on the games list, the session list, purchase rows and game
+  detail — total breakage, from a cast that was never needed. The adjacent
+  `int(purchase.id)` is safe until ID-13 but is the same latent pattern and goes
+  with it.
 - `to_field="uuid"` deleted from all six catalog foreign keys — mandatory, since
   it becomes `fields.E312` the moment the field is renamed. The two `Device`
   ones stay until ID-14.
@@ -229,9 +314,17 @@ typing the device and platform endpoints.
   fourth keeps only `"device"`. The helper itself dies with ID-14.
 - `audit_library_ownership`'s `platform__id` / `related_game__id` projections
   keep resolving and now yield UUIDs, while its device projections still yield
-  integers. Its comment claims the report never mixes two id kinds; the comment
-  is corrected, the queries are not changed. Mixing is the honest state of the
-  world for the next three slices.
+  integers, so its violation report mixes two id kinds until ID-14. No code
+  change: mixing is the honest state of the world for the next three slices, and
+  each line names its entity. (ID-09's handoff described the integer projections
+  as deliberate. That reasoning lives in the issue thread; the file itself
+  carries no comment stating it, so there is nothing in the code to correct.)
+- Two test modules pass integer literals straight to a catalog `reverse()` and
+  will `NoReverseMatch` after the converter swap: `tests/test_deletion_helper.py`
+  (`reverse("games:view_game", args=[1])`, `action_url("games:delete_game", 1, …)`)
+  and `tests/test_returns.py` (`action_url("games:edit_game", 1, …)`). A
+  `RequestFactory` path string in the same file is never resolved and is
+  unaffected.
 - `games/sorting.py`'s `F("pk").asc()` tiebreak needs no change. It is
   model-generic, and a UUIDv7 pk preserves the creation ordering the integer
   encoded.
@@ -241,8 +334,18 @@ typing the device and platform endpoints.
 **`load_sample_data`:** `FixtureRelationship.reference_field` flips from
 `"uuid"` to `"pk"` for the catalog relations; the device relations keep `"uuid"`.
 The platform remap, which resolves a fixture platform to a real shared or
-newly-created row, now yields that row's pk. Values must stay `str` — prepared
-records are re-serialized with `yaml.safe_dump`, which cannot represent a `UUID`.
+newly-created row, moves on **both** sides — a detail easy to miss, because only
+the value side looks like identity work:
+
+- *value* — `str(platform.uuid)` becomes `str(platform.pk)`;
+- *key* — `_load_platforms` indexes the map by `fields.get("uuid")`, the very
+  key the fixture transform below deletes. It must read the record's `pk`
+  instead. Missing this leaves the map empty, and `_prepare_private_records`
+  then raises `CommandError: Sample games.game references unknown Platform …`
+  — a `make check` failure through `tests/test_library_commands.py`.
+
+Values must stay `str` — prepared records are re-serialized with
+`yaml.safe_dump`, which cannot represent a `UUID`.
 
 **`anonymize_sample`** needs more than a rename, and two of its problems are
 silent:
@@ -270,6 +373,20 @@ against that same resolved name and walk the through table. One code path, no
 promoted-versus-unpromoted branch, and it is already the terminal shape once
 ID-14 lands — so ID-12, ID-13 and ID-14 need no anonymizer change at all.
 
+**The generic writer does not reach `_anonymize` itself**, which reads
+`Game.uuid` directly in three places and breaks independently:
+
+- `Game.objects.filter(pk__in=all_game_ids).only("pk", "uuid")` — `FieldError`
+  once `uuid` does not exist;
+- the `game_offsets_by_uuid` map built from `game.uuid` — `AttributeError`, and
+  a redundant identity map besides, since the pk *is* the uuid;
+- `purchase.related_game_id = games_by_pk[random.choice(all_game_ids)].uuid` —
+  the add-on reassignment ID-09 identified as the anonymizer's *write*-side
+  seam.
+
+All three collapse rather than convert: with one identity, `game_offsets` keyed
+by pk is the only map needed and `games_by_pk` disappears.
+
 **Rejected — branch on promoted versus not.** Smallest diff now, at the price of
 carrying a two-armed shape for three more waves while models migrate across it
 one group at a time.
@@ -286,12 +403,16 @@ uuid and `fields.uuid` is deleted; every `games:` list on a purchase is rewritte
 from integers to the corresponding uuids; foreign-key values are already uuids
 and do not change.
 
-Note for whoever regenerates from production later: `all_game_ids` is read
-`.order_by("pk")`, which after this slice orders by uuid rather than by integer,
-so the `random.sample` / `random.choice` draws differ. The RNG is consumed
-identically and the output stays byte-deterministic per `--seed`; it simply will
-not reproduce the transformed blob. That is expected — a production regeneration
-never reproduces the previous blob anyway.
+Note for whoever regenerates from production later: two orderings silently shift
+from integer to uuid, and both change which game gets what. `all_game_ids` is
+read `.order_by("pk")`, so the `random.sample` / `random.choice` draws differ;
+and `_resequence_identity` orders `("created_at", "pk")` after `_anonymize` has
+set every game's `created_at` to a single fixed epoch, so that ordering is
+*entirely* tie-broken by pk and decides which game receives which re-derived
+uuid. The RNG is consumed identically either way and the output stays
+byte-deterministic per `--seed`; it simply will not reproduce the transformed
+blob. That is expected — a production regeneration never reproduces the previous
+blob anyway.
 
 ## Inventory and tripwires
 
@@ -324,16 +445,24 @@ including `e2e/`. Focused tests:
   which would otherwise raise in Python before PostgreSQL sees anything (wave
   checklist item 7). A NULL never collides in a unique index, so the colliding
   row needs non-NULL values in every constrained column.
-- **The through table's uniqueness enforced**, driven through the through model
-  directly — `related.add(obj)` a second time is silently filtered by
-  `_get_missing_target_ids` and proves nothing.
-- **Per-endpoint option value types**, one test per search endpoint, so the
-  device endpoint's integer contract is pinned across the window rather than
-  assumed.
-- **`UUIDMultiCriterion` coercion**, including that a stale integer value — the
-  shape a saved preset or bookmarked filter URL from before this slice carries —
-  degrades to the logged "Ignored invalid filter" toast over an unfiltered page
-  rather than a 500.
+- **The through table's uniqueness enforced.** `test_the_purchase_games_pair_is_still_unique`
+  already exists and already drives the through model directly (`related.add(obj)`
+  a second time is silently filtered by `_get_missing_target_ids` and proves
+  nothing). It needs to keep passing, not to be written.
+- **Per-endpoint identity types across *every* `int`-typed endpoint**, not only
+  the search ones: the two catalog search endpoints, the device search endpoint
+  (whose integer contract is pinned across the window rather than assumed), the
+  status-PATCH route, the play-event create route, and a session read that
+  exercises the nested `GameOut`. The narrower "one test per search endpoint"
+  would have caught none of the last three.
+- **`UUIDMultiCriterion` round-trips**, i.e. `to_json` → `from_json` equality
+  with UUID values *and* labels, since `to_json` now stringifies what `_coerce_uuid7`
+  must parse back. Plus a stale integer value — the shape a saved preset or
+  bookmarked filter URL from before this slice carries — degrading to the logged
+  "Ignored invalid filter" toast over an unfiltered page rather than a 500.
+- **A filter link built server-side survives serialization**: a game detail page
+  render and a stats page render, both of which call `filter_to_json` with
+  catalog ids as criterion values and as `labels` keys.
 - **A catalog route resolves for a UUID and 404s for an integer.**
 - **The anonymizer's through remap**, asserted *inside* the command's
   transaction. A test hooked at `_write_fixture` runs after
@@ -371,8 +500,13 @@ Each is also a comment on the issue itself.
 - **ID-12 (#848)** — `Session`, `PlayEvent`, `GameStatusChange`. Inherits the
   `db_constraint` detach/reattach recipe, and the warning that `sqlmigrate`
   cannot verify it. `Session.game` is the one `NOT NULL` relation left in the
-  cutover. No anonymizer or criterion work: the generic identity writer and
-  `UUIDMultiCriterion` already cover it.
+  cutover. No anonymizer or criterion-class work: the generic identity writer and
+  `UUIDMultiCriterion` already cover it. One trap of its own, found while
+  reviewing this slice: `games/views/session.py`'s session-clone path assigns
+  `clone.uuid = uuid7()` to mint a fresh identity. Once `Session.uuid` is
+  `Session.id` that line silently sets a non-field attribute instead, and the
+  clone reuses the source's identity — a failure with no exception attached to
+  it.
 - **ID-13 (#849)** — `Purchase`. Owns the mirror-image conversion of
   `games_purchase_games.purchase_id`, against the same table, with the same
   unique index cascading away again and the same restore under Django's names.
