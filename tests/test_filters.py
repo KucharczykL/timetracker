@@ -9,6 +9,7 @@ from dataclasses import field as dc_field
 from datetime import UTC
 from functools import reduce
 from typing import ClassVar
+from uuid import UUID
 
 import pytest
 from django.db.models import F, Q
@@ -36,6 +37,7 @@ from common.criteria import (
     OperatorFilter,
     RelationMatch,
     StringCriterion,
+    UUIDMultiCriterion,
     _allowed_comparison_modifiers,
     _comparison_group_for,
     _comparison_operand_info,
@@ -492,6 +494,61 @@ class TestMultiCriterion:
         restored = MultiCriterion.from_json(original.to_json())
         assert restored.value == [797]
         assert restored.labels == {}
+
+
+GAME_UUID = UUID("018f5e66-e800-7000-8000-000000000001")
+OTHER_UUID = UUID("018f5e66-e800-7000-8000-000000000002")
+
+
+class TestUUIDMultiCriterion:
+    """The set criterion for relations whose target's primary key is a UUID."""
+
+    def test_coerces_string_values_to_uuids(self):
+        c = UUIDMultiCriterion.from_json({"value": [str(GAME_UUID)]})
+        assert c.value == [GAME_UUID]
+        assert c.to_q("game_id") == Q(game_id__in=[GAME_UUID])
+
+    def test_survives_a_json_string_round_trip(self):
+        """The whole point: filter_to_json is json.dumps(to_json()), which cannot
+        represent a UUID. to_json must emit what from_json parses back."""
+        original = UUIDMultiCriterion(
+            value=[GAME_UUID], excludes=[OTHER_UUID], modifier=Modifier.INCLUDES
+        )
+        restored = UUIDMultiCriterion.from_json(
+            json.loads(json.dumps(original.to_json()))
+        )
+        assert restored == original
+
+    def test_labels_survive_a_json_string_round_trip(self):
+        """Labels are keyed by the id, so the {id, label} wire dict carries a
+        UUID in its ``id`` slot and has to stringify there too."""
+        original = UUIDMultiCriterion(
+            value=[GAME_UUID], labels={GAME_UUID: "Cool Game"}
+        )
+        as_json = json.loads(json.dumps(original.to_json()))
+        assert as_json == {"value": [{"id": str(GAME_UUID), "label": "Cool Game"}]}
+        assert UUIDMultiCriterion.from_json(as_json).value == [GAME_UUID]
+
+    def test_rejects_an_integer_value(self):
+        """The shape a pre-promotion saved preset or bookmarked URL carries. It
+        must raise FilterError (caught by the view boundary and turned into an
+        'Ignored invalid filter' message), never escape as a bare ValueError."""
+        with pytest.raises(FilterError):
+            UUIDMultiCriterion.from_json({"value": [797]})
+
+    def test_rejects_a_uuid_of_the_wrong_version(self):
+        """parse_uuidv7 is version-strict, and this criterion inherits that."""
+        with pytest.raises(FilterError):
+            UUIDMultiCriterion.from_json(
+                {"value": ["8f1a5b2c-0000-4000-8000-000000000000"]}
+            )
+
+    def test_shares_the_set_modifier_algebra(self):
+        """Same _SetCriterion behaviour as MultiCriterion, including the M2M
+        modifiers that must defer to a filter-level Q builder."""
+        c = UUIDMultiCriterion(value=[GAME_UUID], modifier=Modifier.INCLUDES_ALL)
+        with pytest.raises(FilterError, match="requires a filter-level"):
+            c.to_q("games")
 
 
 class TestChoiceCriterionAgainstDB:

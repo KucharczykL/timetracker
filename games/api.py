@@ -126,7 +126,22 @@ class PlayEventOut(Schema):
     created_at: datetime
 
 
+# One schema per search endpoint rather than one shared by all three: each
+# entity's option value is whatever that entity's primary key is, and those
+# stop agreeing as the identity cutover promotes them one group at a time.
 class GameOption(Schema):  # mirrors SearchSelectOption
+    value: int
+    label: str
+    data: dict
+
+
+class PlatformOption(Schema):  # mirrors SearchSelectOption
+    value: int
+    label: str
+    data: dict
+
+
+class DeviceOption(Schema):  # mirrors SearchSelectOption
     value: int
     label: str
     data: dict
@@ -215,7 +230,7 @@ def delete_playevent(request, playevent_id: int):
     return Status(204, None)
 
 
-@device_router.get("/search", response=list[GameOption])
+@device_router.get("/search", response=list[DeviceOption])
 def search_devices(request, q: str = "", limit: int = 10):
     library = cast(User, request.user).library
     qs = Device.objects.for_library(library)
@@ -228,7 +243,7 @@ def search_devices(request, q: str = "", limit: int = 10):
     return [{"value": d.id, "label": d.name, "data": {}} for d in qs[:limit]]
 
 
-@platform_router.get("/search", response=list[GameOption])
+@platform_router.get("/search", response=list[PlatformOption])
 def search_platforms(request, q: str = "", limit: int = 10):
     library = cast(User, request.user).library
     qs = Platform.objects.visible_to(library)

@@ -26,6 +26,7 @@ from typing import (
     get_origin,
     get_type_hints,
 )
+from uuid import UUID
 
 from django.core.exceptions import FieldDoesNotExist
 from django.db import DataError, connection, models
@@ -33,6 +34,7 @@ from django.db.models import F, Q
 from django.db.models.functions import ExtractYear, TruncDate
 
 from common.filter_execution import FilterQueryTimeout, run_with_statement_timeout
+from timetracker.uuidv7 import UUIDv7ParseError, parse_uuidv7
 
 # ── Errors ─────────────────────────────────────────────────────────────────
 
@@ -245,6 +247,16 @@ def _coerce_date(raw: Any) -> str:
     except ValueError as exc:
         raise FilterError(f"expected an ISO date string, got {raw!r}") from exc
     return raw
+
+
+def _coerce_uuid7(raw: Any) -> UUID:
+    # Values arrive from JSON as strings and must reach the ORM as UUIDs.
+    # Version-strict, matching the URL converter: a v4 is as wrong here as a
+    # bare integer, and both are reachable from a hand-edited ``?filter=``.
+    try:
+        return parse_uuidv7(raw)
+    except UUIDv7ParseError as exc:
+        raise FilterError(f"expected a UUIDv7, got {raw!r}") from exc
 
 
 # ── Base criterion ─────────────────────────────────────────────────────────
@@ -726,6 +738,29 @@ class MultiCriterion(_SetCriterion):
 
 
 @dataclass
+class UUIDMultiCriterion(_SetCriterion):
+    """``MultiCriterion`` for a relation whose target's primary key is a UUID.
+
+    Identical modifier algebra; only the value type and its serialization
+    differ. The override below is not cosmetic: ``filter_to_json`` is
+    ``json.dumps(to_json())``, which cannot represent a ``UUID``, and filter
+    links are built server-side on ordinary pages.
+    """
+
+    value: list[UUID] = field(default_factory=list)
+    excludes: list[UUID] = field(default_factory=list)
+    labels: dict[UUID, str] = field(default_factory=dict, compare=False)
+    _coerce: ClassVar[Coercer | None] = staticmethod(_coerce_uuid7)
+
+    def _labelled(self, item: Any) -> Any:
+        # The id travels as a string on both the bare and the {id, label} path.
+        labelled = super()._labelled(item)
+        if isinstance(labelled, dict):
+            return {**labelled, "id": str(labelled["id"])}
+        return str(labelled)
+
+
+@dataclass
 class ChoiceCriterion(_SetCriterion):
     """Filter on a choice/enum field with multi-select include/exclude.
 
@@ -1005,6 +1040,7 @@ _CRITERION_TYPES: dict[str, type[_Criterion]] = {
     "DateCriterion": DateCriterion,
     "BoolCriterion": BoolCriterion,
     "MultiCriterion": MultiCriterion,
+    "UUIDMultiCriterion": UUIDMultiCriterion,
     "ChoiceCriterion": ChoiceCriterion,
     "AggregateCriterion": AggregateCriterion,
     "FieldComparisonCriterion": FieldComparisonCriterion,
@@ -1170,6 +1206,7 @@ _CRITERION_KINDS: dict[type[_Criterion], LeafWidgetKind] = {
     DateCriterion: "date",
     BoolCriterion: "bool",
     MultiCriterion: "set",
+    UUIDMultiCriterion: "set",
     ChoiceCriterion: "set",
     FieldComparisonCriterion: "field-comparison",
 }
