@@ -3,6 +3,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
+from uuid import UUID
 
 import yaml
 from django.contrib.auth import get_user_model
@@ -10,7 +11,30 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
 
-from games.models import Device, Game, Platform, PlayEvent, Purchase, Session
+from games.management.commands.anonymize_sample import Command as AnonymizeCommand
+from games.models import (
+    Device,
+    Game,
+    Platform,
+    PlayEvent,
+    Purchase,
+    Session,
+)
+
+
+def _uuid_moment(value):
+    """The millisecond a UUIDv7 embeds, as a timezone-aware datetime."""
+    return datetime.fromtimestamp((UUID(str(value)).int >> 80) / 1000, UTC)
+
+
+def _parsed_moment(value):
+    moment = (
+        value if isinstance(value, datetime) else datetime.fromisoformat(str(value))
+    )
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    return moment.replace(microsecond=moment.microsecond // 1000 * 1000)
+
 
 GENERATED_KEYS = {
     "price_per_game",
@@ -275,3 +299,104 @@ class AnonymizeSampleTest(TestCase):
                     item["fields"].get("library"),
                     (None, "__target_library__"),
                 )
+
+
+class ReassignedIdentityTest(TestCase):
+    """The anonymizer must derive uuids from the dates it just randomised.
+
+    A UUIDv7 embeds its creation millisecond, so leaving the source database's
+    uuids in place both leaks the real timestamps the command exists to hide and
+    breaks the ordering invariant `audit_uuid_identity` gates on.
+    """
+
+    def _dump(self, seed=11):
+        _build_dataset()
+        with TemporaryDirectory() as tempdir:
+            output = Path(tempdir) / "out.yaml.gz"
+            call_command(
+                "anonymize_sample", user="sample-source", seed=seed, output=output
+            )
+            objects = _load_output(output)
+        by_model = {}
+        for item in objects:
+            by_model.setdefault(item["model"], []).append(item)
+        return by_model
+
+    def test_uuid_timestamps_track_the_anonymized_created_at(self):
+        by_model = self._dump()
+
+        for game in by_model["games.game"]:
+            self.assertEqual(
+                _uuid_moment(game["fields"]["uuid"]),
+                _parsed_moment(game["fields"]["created_at"]),
+            )
+        for session in by_model["games.session"]:
+            self.assertEqual(
+                _uuid_moment(session["fields"]["uuid"]),
+                _parsed_moment(session["fields"]["created_at"]),
+            )
+
+    def test_output_preserves_uuid_ordering(self):
+        by_model = self._dump()
+
+        for model_label in ("games.game", "games.session", "games.purchase"):
+            records = by_model[model_label]
+            by_uuid = [
+                item["pk"]
+                for item in sorted(
+                    records, key=lambda item: UUID(item["fields"]["uuid"])
+                )
+            ]
+            by_created = [
+                item["pk"]
+                for item in sorted(
+                    records,
+                    key=lambda item: (str(item["fields"]["created_at"]), item["pk"]),
+                )
+            ]
+            self.assertEqual(by_uuid, by_created, model_label)
+
+    def test_related_game_reference_follows_the_new_uuid(self):
+        by_model = self._dump()
+
+        emitted = {item["fields"]["uuid"] for item in by_model["games.game"]}
+        for purchase in by_model["games.purchase"]:
+            related = purchase["fields"]["related_game"]
+            if related is not None:
+                self.assertIn(str(related), {str(value) for value in emitted})
+
+    def test_session_and_playevent_references_follow_the_new_uuid(self):
+        by_model = self._dump()
+
+        games = {str(item["fields"]["uuid"]) for item in by_model["games.game"]}
+        devices = {str(item["fields"]["uuid"]) for item in by_model["games.device"]}
+        for session in by_model["games.session"]:
+            self.assertIn(str(session["fields"]["game"]), games)
+            device = session["fields"]["device"]
+            if device is not None:
+                self.assertIn(str(device), devices)
+        for event in by_model["games.playevent"]:
+            self.assertIn(str(event["fields"]["game"]), games)
+
+    def test_hidden_device_referrer_follows_the_new_uuid(self):
+        """UserLibraryPreferences.default_device is related_name="+".
+
+        Django's `_meta.related_objects` filters hidden relations out, so a
+        referrer walk built on it strands this one on a uuid no Device carries.
+        The row is never dumped, so only the database shows it - and only from
+        inside the command's transaction, since `_write_fixture` runs after the
+        rollback.
+        """
+        _build_dataset()
+        library = get_user_model().objects.get(username="sample-source").library
+        preferences = library.preferences
+        preferences.default_device = Device.objects.get(library=library)
+        preferences.save()
+
+        AnonymizeCommand()._reassign_uuids()
+
+        preferences.refresh_from_db()
+        self.assertTrue(
+            Device.objects.filter(uuid=preferences.default_device_id).exists(),
+            "default_device still names a uuid no Device carries",
+        )

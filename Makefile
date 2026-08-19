@@ -258,6 +258,9 @@ dumpgames: ensure-postgres
 loadplatforms: ensure-postgres
 	uv run --frozen python manage.py loadplatforms
 
+audit-uuid-identity: ensure-postgres
+	uv run --frozen python manage.py audit_uuid_identity
+
 loadall: ensure-postgres
 	uv run --frozen python manage.py loaddata data.yaml
 
