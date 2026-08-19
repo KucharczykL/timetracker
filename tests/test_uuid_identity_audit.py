@@ -361,3 +361,17 @@ def test_referential_agreement_reports_a_not_valid_constraint(cursor):
         "games_playevent.game_id"
     ]
     assert "NOT VALID" in report.violations[0].detail
+
+
+def test_the_committed_sample_fixture_passes_the_audit(django_user_model):
+    """The blob ships uuids; a regeneration must not reintroduce load-time ones.
+
+    A record with no `uuid` key is minted one at load time, in file order,
+    against a `created_at` the anonymizer jittered - which breaks the ordering
+    invariant for exactly the models whose uuids the fixture omits.
+    """
+    owner = django_user_model.objects.create_user(username="sample-owner")
+
+    call_command("load_sample_data", "--user", owner.username, verbosity=0)
+
+    call_command("audit_uuid_identity")
