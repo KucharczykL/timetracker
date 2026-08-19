@@ -142,6 +142,7 @@ against `make check` before pushing when possible.
 | Same aggregate minus `e2e/`, for iterating | `make check-fast` (~70s vs ~6.5 min; **not** the verification gate) |
 | Run every test except `e2e/` | `make test-fast` (`ARGS` works the same) |
 | Sync uv.lock | `uv sync` (after editing pyproject.toml) |
+| Verify the UUID identity map | `make audit-uuid-identity` (read-only; fails on any violation) |
 | Load platform fixtures | `make loadplatforms` |
 | Load sample data | `make loadsample` |
 | Regenerate sample data (anonymized prod) | `make anonymize-sample` (see Testing) |
