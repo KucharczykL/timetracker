@@ -101,7 +101,7 @@ ID-09/#847 on GitHub), ordered cheapest-and-most-validating first:
 | ID-06 | #644 | `PlayEvent.game`, `GameStatusChange.game` | Lowest surface: both are single Game-FKs, mostly read-only/audit, neither has its own quick-filter bar mode of its own weight. Bundled to validate the FK-rewrite pattern cheaply before the bigger slices. |
 | ID-07 | #845 | `Game.platform`, `Purchase.platform` | **Every** foreign key pointing at `Platform` — re-scoped during its design (2026-08-18) to slice by target model rather than by owning model. Moderate surface (platform quick-filter facet on two modes, the platform search endpoint's recency subqueries, platform badge/link rendering). |
 | ID-08 | #846 | `Session.game`, `Session.device`, `UserLibraryPreferences.default_device` | Heaviest of the "single entity" slices: session quick-filter facets (game, device, started, ended, duration), the `PATCH /api/session/{id}/device` endpoint, session list/detail templates, sorting. Took the fourth `Device` foreign key during its design (2026-08-18) so **every** foreign key pointing at `Device` moves together — see its [design spec](2026-08-18-issue-846-session-fk-uuid-design.md). |
-| ID-09 | #847 | `Purchase.related_game` (**only** — see below) | Expected to be the heaviest slice overall, on account of the `Purchase.games` M2M. Its design (2026-08-18) established that Django cannot move an M2M to a non-pk target without an explicit through model, and **deferred the M2M's through column to ID-11**, leaving one nullable FK — see its [design spec](2026-08-18-issue-847-purchase-fk-uuid-design.md). |
+| ID-09 | #847 | `Purchase.related_game` (**only** — see below) | Expected to be the heaviest slice overall, on account of the `Purchase.games` M2M. Its design (2026-08-18) established that Django cannot move an M2M to a non-pk target without an explicit through model, and **deferred the M2M's through column to ID-11**, leaving one nullable FK — see its [decision record](2026-08-18-issue-847-purchase-fk-uuid-design.md). What remained was the lightest relation of the four; the fixture, loader and anonymizer seams were the bulk of the work. |
 
 ID-07's rejected alternatives — including why filter nullability was fixed at
 the source rather than accepted as a temporary loss — are kept as a
@@ -110,7 +110,7 @@ mechanics are folded into the checklist below rather than duplicated there.
 
 **Why ID-09 does not move `Purchase.games`.** Established by probe against the
 installed Django 6.0.7, during ID-09's design; the full argument is in its
-[design spec](2026-08-18-issue-847-purchase-fk-uuid-design.md). `ManyToManyField`
+[decision record](2026-08-18-issue-847-purchase-fk-uuid-design.md). `ManyToManyField`
 accepts no `to_field`, and `create_many_to_many_intermediary_model` builds the
 auto-created through's foreign keys as plain `ForeignKey(to_model)` — an
 auto-created through always references the target's **primary key**. Pointing
@@ -256,7 +256,20 @@ in ID-07, ID-08 and ID-09** — treat this as the slice checklist:
    by integer pk and looks it up through the child's FK attname, so each moved
    ***`Game`*** relation needs the matching UUID-keyed map — ID-07 needed no
    anonymizer change at all, because nothing there is keyed by platform. Read
-   the command rather than applying this item by rote.
+   the command rather than applying this item by rote: ID-09 found a second
+   seam shape there, an *assignment* rather than a lookup
+   (`purchase.related_game_id = random.choice(all_game_ids)` reassigns the
+   base game), which needs the pk→uuid map on the write side. Keep sampling the
+   integer id list and translate the result — the through-row build still needs
+   Game pks — and note that `random.choice` consumes the RNG identically, so the
+   determinism test stays green.
+
+   **The loader declaration and the anonymizer fix are one unit.**
+   `test_output_reloads_via_loaddata` runs `load_sample_data` over the
+   anonymizer's fresh output, so neither the `reference_field="uuid"` entry nor
+   the id translation is green without the other, whatever order the commits
+   land in. ID-09's plan expected the anonymizer step to pass alone and it did
+   not.
 5. **A nullable relation is a different migration, and different metadata.**
    Established by ID-07, which moved the first two:
    - **Five operations, not six.** ID-06's leading `AlterField` exists only to
@@ -284,6 +297,14 @@ in ID-07, ID-08 and ID-09** — treat this as the slice checklist:
    Assert them present *and enforced* afterwards; before ID-07 no test asserted
    either. Note when writing that test that a NULL never collides in a unique
    index, so a row needs non-NULL values in every constrained column to trip it.
+7. **A database-integrity test has to bypass `save()`.** Insert the bad row with
+   `bulk_create`. `Model.save()` runs `clean()`, which dereferences the relation
+   (`_validate_related_library`) and raises in Python before PostgreSQL ever
+   sees the row, so the test passes while proving nothing about the FK
+   constraint. ID-07, ID-08 and ID-09 each hit this. The same reflex applies to
+   asserting a through table's uniqueness: `related.add(obj)` a second time is
+   silently filtered by `_get_missing_target_ids`, so go through the through
+   model directly.
 
 Also settled by ID-06 and reusable verbatim: the reversible migration shape
 (optionally relax NOT NULL → add holding column → backfill and reconcile → drop
