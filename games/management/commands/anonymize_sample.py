@@ -20,6 +20,7 @@ from games.models import (
     Purchase,
     Session,
 )
+from timetracker.uuidv7 import uuid7_at
 
 # DB-computed columns: the serializer emits them, loaddata discards them.
 # Stripped to keep the fixture clean.
@@ -57,8 +58,27 @@ DEFAULT_NAME_OVERRIDES = (
 )
 
 
+# The dumped models carrying a uuid, parents first. GameStatusChange and
+# FilterPreset are deliberately absent: neither is dumped, so re-deriving their
+# identities buys nothing, and GameStatusChange.timestamp is nullable - the one
+# source column this recipe cannot encode.
+IDENTITY_MODELS = (Platform, Device, Game, Purchase, Session, PlayEvent)
+
+_UUID_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+_RAND_B_BITS = 62
+
+
 def _midnight(date_value):
     return datetime(date_value.year, date_value.month, date_value.day, tzinfo=UTC)
+
+
+def _floor_ms(moment):
+    elapsed = moment - _UUID_EPOCH
+    return (
+        elapsed.days * 86_400_000
+        + elapsed.seconds * 1000
+        + elapsed.microseconds // 1000
+    )
 
 
 class Command(BaseCommand):
@@ -289,12 +309,80 @@ class Command(BaseCommand):
                 device.name = f"Device {device.pk}"
             Device.objects.bulk_update(devices, ["name"])
 
+        self._reassign_uuids()
+
         return {
             "games": len(all_game_ids),
             "purchases": len(purchases),
             "sessions": len(sessions),
             "playevents": len(playevents),
         }
+
+    def _reassign_uuids(self):
+        """Re-derive every dumped uuid from the dates this command just wrote.
+
+        A UUIDv7 embeds its creation millisecond, so uuids carried over from the
+        source database would publish the very timestamps the randomisation
+        exists to hide, and would order against the rewritten `created_at`
+        rather than with it.
+
+        Runs last, after every date rewrite, and inside the same rolled-back
+        transaction. Foreign keys here are DEFERRABLE INITIALLY DEFERRED and the
+        transaction never commits, so a parent's uuid can change before its
+        children are pointed at the new value.
+        """
+        for model in IDENTITY_MODELS:
+            self._remap_referrers(model, self._resequence_identity(model))
+
+    @staticmethod
+    def _resequence_identity(model):
+        """Assign uuids encoding `created_at`, ordered and sequenced like 0005.
+
+        Entropy comes from the seeded RNG rather than `secrets`, which is what
+        keeps the output byte-identical for a given --seed.
+        """
+        rows = list(model.objects.order_by("created_at", "pk"))
+        replacements = {}
+        previous_ms = None
+        sequence = 0
+        for row in rows:
+            current_ms = _floor_ms(row.created_at)
+            sequence = sequence + 1 if current_ms == previous_ms else 0
+            previous_ms = current_ms
+            replacement = uuid7_at(
+                row.created_at,
+                sequence=sequence,
+                entropy=random.getrandbits(_RAND_B_BITS),
+            )
+            replacements[row.uuid] = replacement
+            row.uuid = replacement
+        model.objects.bulk_update(rows, ["uuid"], batch_size=1000)
+        return replacements
+
+    @staticmethod
+    def _remap_referrers(model, replacements):
+        """Point every foreign key naming this model's uuid at the new value.
+
+        `get_fields(include_hidden=True)`, not `related_objects`: the latter
+        drops relations whose `related_name` ends in "+", which would silently
+        strand `UserLibraryPreferences.default_device`.
+        """
+        for relation in model._meta.get_fields(include_hidden=True):
+            if not relation.is_relation or relation.concrete or relation.many_to_many:
+                continue
+            field = relation.field
+            if field.target_field.name != "uuid":
+                continue
+            children = list(
+                field.model._base_manager.exclude(**{f"{field.attname}__isnull": True})
+            )
+            for child in children:
+                current = getattr(child, field.attname)
+                if current in replacements:
+                    setattr(child, field.attname, replacements[current])
+            field.model._base_manager.bulk_update(
+                children, [field.name], batch_size=1000
+            )
 
     def _load_overrides(self, path):
         if not path or not path.exists():
