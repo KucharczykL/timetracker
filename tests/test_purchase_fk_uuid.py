@@ -1,8 +1,12 @@
+import uuid
+
 import pytest
 from django.core.management import call_command
-from django.db import connection
+from django.db import IntegrityError, connection, transaction
 from django.db.migrations.executor import MigrationExecutor
 from django.utils import timezone
+
+from games.models import Game, Purchase
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -186,3 +190,104 @@ def test_reverse_migration_restores_the_original_integer_ids(fk_uuid_harness):
     assert "related_game_uuid" not in [
         field.name for field in RevertedPurchase._meta.get_fields()
     ]
+
+
+# --- Live ORM behaviour -------------------------------------------------------
+
+
+def _purchase(library, **overrides) -> Purchase:
+    fields = {
+        "library": library,
+        "date_purchased": timezone.now().date(),
+        "price": 10.0,
+        "price_currency": "USD",
+        "ownership_type": Purchase.DIGITAL,
+        "type": Purchase.GAME,
+    }
+    return Purchase.objects.create(**{**fields, **overrides})
+
+
+@pytest.fixture
+def base_game(owned_library):
+    return Game.objects.create(library=owned_library, name="Base")
+
+
+@pytest.fixture
+def dlc_purchase(owned_library, base_game):
+    return _purchase(
+        owned_library,
+        type=Purchase.DLC,
+        name="Expansion",
+        related_game=base_game,
+    )
+
+
+def test_related_game_attname_reads_back_as_the_games_uuid(base_game, dlc_purchase):
+    assert dlc_purchase.related_game_id == base_game.uuid
+
+
+def test_purchase_filters_by_related_instance_and_by_integer_id(
+    base_game, dlc_purchase
+):
+    assert Purchase.objects.filter(related_game=base_game).count() == 1
+    assert Purchase.objects.filter(related_game__id=base_game.id).count() == 1
+
+
+def test_addon_purchases_reverse_accessor_reaches_the_purchase(base_game, dlc_purchase):
+    assert list(base_game.addon_purchases.all()) == [dlc_purchase]
+
+
+def test_deleting_the_base_game_clears_the_link_without_deleting_the_purchase(
+    base_game, dlc_purchase
+):
+    base_game.delete()
+    dlc_purchase.refresh_from_db()
+    assert dlc_purchase.related_game_id is None
+    assert Purchase.objects.filter(pk=dlc_purchase.pk).exists()
+
+
+def test_database_rejects_a_purchase_naming_a_game_uuid_no_game_owns(owned_library):
+    # bulk_create, not save(): save() runs clean(), which dereferences
+    # self.related_game and would raise in Python before PostgreSQL sees the row.
+    orphan = Purchase(
+        library=owned_library,
+        date_purchased=timezone.now().date(),
+        price_currency="USD",
+        type=Purchase.DLC,
+        name="Orphan",
+    )
+    orphan.related_game_id = uuid.uuid4()
+    with pytest.raises(IntegrityError), transaction.atomic():
+        Purchase.objects.bulk_create([orphan])
+
+
+# --- Deferred many-to-many ----------------------------------------------------
+
+
+def test_the_purchase_games_through_table_is_still_integer_keyed():
+    """The many-to-many link is deliberately left on integer ids.
+
+    Django cannot point an auto-created intermediary at a non-primary-key
+    field, so this table converts when Game.uuid and Purchase.uuid become the
+    primary keys. Rewrite this test then; do not delete it now.
+    """
+    assert column_type("games_purchase_games", "game_id") == "bigint"
+    assert column_type("games_purchase_games", "purchase_id") == "bigint"
+    assert foreign_key_target("games_purchase_games", "game_id") == (
+        "games_game",
+        "id",
+    )
+    assert foreign_key_target("games_purchase_games", "purchase_id") == (
+        "games_purchase",
+        "id",
+    )
+
+
+def test_the_purchase_games_pair_is_still_unique(owned_library, base_game):
+    purchase = _purchase(owned_library)
+    purchase.games.add(base_game)
+    # Through the through model directly: a second .add() is silently filtered
+    # by _get_missing_target_ids and would prove nothing.
+    through = Purchase.games.through
+    with pytest.raises(IntegrityError), transaction.atomic():
+        through.objects.create(purchase_id=purchase.pk, game_id=base_game.pk)
