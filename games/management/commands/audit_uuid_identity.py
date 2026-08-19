@@ -4,8 +4,12 @@ from django.db import connection
 from games.identity_audit import (
     CheckReport,
     actual_column_types,
+    check_identity_columns,
+    check_ordering,
+    check_referential_agreement,
     check_residual_inventory,
     check_type_agreement,
+    identity_models,
     primary_key_types,
     relation_columns,
 )
@@ -20,6 +24,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         relations = relation_columns()
+        models = identity_models()
         with connection.cursor() as cursor:
             actual_types = actual_column_types(cursor)
             reports = [
@@ -27,6 +32,9 @@ class Command(BaseCommand):
                 check_residual_inventory(
                     relations, actual_types, primary_key_types(actual_types)
                 ),
+                check_identity_columns(cursor, models),
+                check_ordering(models),
+                check_referential_agreement(cursor, relations),
             ]
 
         violations = [

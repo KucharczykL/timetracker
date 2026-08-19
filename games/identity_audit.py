@@ -61,6 +61,15 @@ RESIDUAL_INTEGER_PRIMARY_KEYS: dict[TableName, OwnerLabel] = {
 }
 
 INTEGER_TYPES = frozenset(["integer", "bigint", "smallint"])
+UUID_TYPE: ColumnType = "uuid_v7"
+
+# The field each model's UUID was backfilled from, and orders by. Wave B chose
+# these per model rather than uniformly; `GameStatusChange` has no `created_at`
+# at all, so its audit trail's own `timestamp` is the only ordering it has.
+DEFAULT_ORDER_SOURCE = "created_at"
+IDENTITY_ORDER_SOURCE: dict[TableName, str] = {
+    "games_gamestatuschange": "timestamp",
+}
 
 # pg_type.typname carries PostgreSQL's internal spelling; Django's db_type()
 # emits the SQL standard one. Domains (uuid_v7) are already named identically.
@@ -107,6 +116,14 @@ class RelationColumn(NamedTuple):
 
     def __str__(self) -> str:
         return f"{self.table}.{self.column}"
+
+
+class IdentityModel(NamedTuple):
+    model: type[Model]
+    table: TableName
+    identity_field: str  # ORM name, e.g. "uuid" or "library"
+    identity_column: str  # database column, e.g. "uuid" or "library_id"
+    order_source: str | None  # None when the model has nothing to order by
 
 
 def audited_models() -> list[type[Model]]:
@@ -328,5 +345,248 @@ def check_residual_inventory(
         )
         for table, type_name in sorted(integer_primary_keys.items())
         if table in RESIDUAL_INTEGER_PRIMARY_KEYS
+    )
+    return CheckReport(violations, notes)
+
+
+def identity_models() -> list[IdentityModel]:
+    """Every model carrying a UUID identity, derived rather than listed.
+
+    A model qualifies through its own `uuid` column or through a `uuid_v7`
+    primary key - the latter catches `UserLibrary`, which is already converted,
+    and the two models that share its key.
+    """
+    models = []
+    for model in audited_models():
+        primary_key = model._meta.pk
+        identity = next(
+            (
+                field
+                for field in model._meta.local_fields
+                if field.name == "uuid" and field.db_type(connection) == UUID_TYPE
+            ),
+            None,
+        )
+        if (
+            identity is None
+            and primary_key is not None
+            and primary_key.db_type(connection) == UUID_TYPE
+        ):
+            identity = primary_key
+        if identity is None or identity.column is None:
+            continue
+        source = IDENTITY_ORDER_SOURCE.get(model._meta.db_table, DEFAULT_ORDER_SOURCE)
+        has_source = any(field.name == source for field in model._meta.local_fields)
+        models.append(
+            IdentityModel(
+                model=model,
+                table=model._meta.db_table,
+                identity_field=identity.name,
+                identity_column=identity.column,
+                order_source=source if has_source else None,
+            )
+        )
+    return sorted(models, key=lambda entry: entry.table)
+
+
+def check_identity_columns(cursor, models: list[IdentityModel]) -> CheckReport:
+    """Confirm each identity column is still typed, constrained and populated.
+
+    PostgreSQL enforces all of this already; the point is that Wave C's column
+    surgery could have dropped a constraint while Django's migration state kept
+    listing it, and `RemoveField` compiles to a `DROP COLUMN` that cascades away
+    every index over the column without any drift check noticing.
+    """
+    violations: list[Violation] = []
+    notes: list[Note] = []
+    for entry in models:
+        subject = f"{entry.table}.{entry.identity_column}"
+        cursor.execute(
+            """
+            SELECT type.typname, attribute.attnotnull
+            FROM pg_attribute AS attribute
+            JOIN pg_class AS class ON class.oid = attribute.attrelid
+            JOIN pg_type AS type ON type.oid = attribute.atttypid
+            WHERE class.relname = %s AND attribute.attname = %s
+              AND attribute.attnum > 0 AND NOT attribute.attisdropped
+            """,
+            [entry.table, entry.identity_column],
+        )
+        row = cursor.fetchone()
+        if row is None:
+            violations.append(
+                Violation("identity-column", subject, "column does not exist")
+            )
+            continue
+        type_name, not_null = row
+        if type_name != UUID_TYPE:
+            violations.append(
+                Violation(
+                    "identity-column",
+                    subject,
+                    f"expected {UUID_TYPE}, found {type_name}",
+                )
+            )
+        if not not_null:
+            violations.append(
+                Violation("identity-column", subject, "column is nullable")
+            )
+
+        constraints = connection.introspection.get_constraints(cursor, entry.table)
+        unique_indexes = [
+            name
+            for name, constraint in constraints.items()
+            if constraint["columns"] == [entry.identity_column]
+            and (constraint["unique"] or constraint["primary_key"])
+        ]
+        if not unique_indexes:
+            violations.append(
+                Violation("identity-column", subject, "no unique index over the column")
+            )
+
+        cursor.execute(
+            f'SELECT count(*), count(DISTINCT "{entry.identity_column}"), '
+            f'count(*) FILTER (WHERE "{entry.identity_column}" IS NULL) '
+            f'FROM "{entry.table}"'
+        )
+        row_count, distinct_count, null_count = cursor.fetchone()
+        if distinct_count != row_count - null_count:
+            violations.append(
+                Violation(
+                    "identity-column",
+                    subject,
+                    f"{row_count - null_count} non-null rows share "
+                    f"{distinct_count} distinct values",
+                )
+            )
+        if null_count:
+            violations.append(
+                Violation("identity-column", subject, f"{null_count} NULL identities")
+            )
+        notes.append(Note("identity-column", subject, f"{row_count} rows"))
+    return CheckReport(violations, notes)
+
+
+def check_ordering(models: list[IdentityModel]) -> CheckReport:
+    """Confirm UUID order still reproduces creation order.
+
+    The one invariant here that no constraint enforces. Wave B's backfill
+    established it and every later insert has to preserve it, because a UUIDv7
+    minted at any time other than the row's own creation silently breaks it.
+
+    Rows whose ordering source is NULL are excluded rather than required to sort
+    last: migration 0006 stamped those with the migration's own clock, which put
+    them last only until the next row was inserted.
+    """
+    violations: list[Violation] = []
+    notes: list[Note] = []
+    for entry in models:
+        if entry.order_source is None:
+            notes.append(
+                Note(
+                    "ordering",
+                    entry.table,
+                    "skipped: the model has no creation timestamp to order by",
+                )
+            )
+            continue
+        rows = entry.model._base_manager.all()
+        excluded = rows.filter(**{f"{entry.order_source}__isnull": True}).count()
+        if excluded:
+            rows = rows.filter(**{f"{entry.order_source}__isnull": False})
+        by_identity = list(
+            rows.order_by(entry.identity_field).values_list("pk", flat=True)
+        )
+        by_source = list(
+            rows.order_by(entry.order_source, "pk").values_list("pk", flat=True)
+        )
+        if by_identity != by_source:
+            divergence = next(
+                index
+                for index, (left, right) in enumerate(zip(by_identity, by_source))
+                if left != right
+            )
+            violations.append(
+                Violation(
+                    "ordering",
+                    entry.table,
+                    f"identity order diverges from ({entry.order_source}, pk) order "
+                    f"at position {divergence}: identity gives pk "
+                    f"{by_identity[divergence]}, {entry.order_source} gives pk "
+                    f"{by_source[divergence]}",
+                )
+            )
+        note = f"{len(by_identity)} rows ordered by {entry.order_source}"
+        if excluded:
+            note += f", {excluded} excluded for a NULL {entry.order_source}"
+        notes.append(Note("ordering", entry.table, note))
+    return CheckReport(violations, notes)
+
+
+def check_referential_agreement(cursor, relations: list[RelationColumn]) -> CheckReport:
+    """Confirm every relation resolves, and that PostgreSQL has actually checked.
+
+    The orphan count is what a committed database's constraints already
+    guarantee. `convalidated` is not: PostgreSQL accepts a `NOT VALID` foreign
+    key, which enforces new rows while never having looked at the existing ones.
+    """
+    violations: list[Violation] = []
+    notes: list[Note] = []
+    tables = sorted({relation.table for relation in relations})
+    cursor.execute(
+        """
+        SELECT class.relname, attribute.attname, constraint_.convalidated
+        FROM pg_constraint AS constraint_
+        JOIN pg_class AS class ON class.oid = constraint_.conrelid
+        JOIN pg_attribute AS attribute
+          ON attribute.attrelid = constraint_.conrelid
+         AND attribute.attnum = ANY(constraint_.conkey)
+        WHERE constraint_.contype = 'f' AND class.relname = ANY(%s)
+        """,
+        [tables],
+    )
+    validated = {
+        (table, column): is_valid for table, column, is_valid in cursor.fetchall()
+    }
+
+    for relation in relations:
+        is_valid = validated.get(relation.key)
+        if is_valid is None:
+            violations.append(
+                Violation(
+                    "referential",
+                    str(relation),
+                    "no foreign-key constraint on the column",
+                )
+            )
+        elif not is_valid:
+            violations.append(
+                Violation(
+                    "referential",
+                    str(relation),
+                    "foreign key is NOT VALID - existing rows were never checked",
+                )
+            )
+        cursor.execute(
+            f"""
+            SELECT count(*) FROM "{relation.table}" AS child
+            LEFT JOIN "{relation.target_table}" AS target
+              ON target."{relation.target_column}" = child."{relation.column}"
+            WHERE child."{relation.column}" IS NOT NULL
+              AND target."{relation.target_column}" IS NULL
+            """
+        )
+        (orphans,) = cursor.fetchone()
+        if orphans:
+            violations.append(
+                Violation(
+                    "referential",
+                    str(relation),
+                    f"{orphans} row(s) reference a missing "
+                    f"{relation.target_table}.{relation.target_column}",
+                )
+            )
+    notes.append(
+        Note("referential", "relations", f"{len(relations)} relation columns resolved")
     )
     return CheckReport(violations, notes)
