@@ -39,15 +39,12 @@ _NOT_A_CONVERTED_MODEL = "never converts: not part of the UUID identity cutover"
 # missing from here fails the audit as a gap, and an entry that is no longer
 # integer fails it as stale, so a Wave E slice cannot land without shrinking it.
 RESIDUAL_INTEGER_RELATIONS: dict[TableColumn, OwnerLabel] = {
-    ("games_purchase_games", "game_id"): _converted_by("ID-11 (#646)"),
     ("games_purchase_games", "purchase_id"): _converted_by("ID-13 (#849)"),
     ("games_userlibrary", "user_id"): NEVER_CONVERTS,
     ("games_userpreferences", "user_id"): NEVER_CONVERTS,
 }
 
 RESIDUAL_INTEGER_PRIMARY_KEYS: dict[TableName, OwnerLabel] = {
-    "games_game": _converted_by("ID-11 (#646)"),
-    "games_platform": _converted_by("ID-11 (#646)"),
     "games_session": _converted_by("ID-12 (#848)"),
     "games_playevent": _converted_by("ID-12 (#848)"),
     "games_gamestatuschange": _converted_by("ID-12 (#848)"),

@@ -3,6 +3,7 @@ import logging
 from collections.abc import Mapping
 from datetime import UTC, date, datetime
 from typing import Any, Final, NoReturn, cast
+from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.contrib import messages
@@ -96,7 +97,7 @@ class GameStatusUpdate(Schema):
 
 
 class PlayEventIn(Schema):
-    game_id: int
+    game_id: UUID
     started: date | None = None
     ended: date | None = None
     note: str = ""
@@ -130,13 +131,13 @@ class PlayEventOut(Schema):
 # entity's option value is whatever that entity's primary key is, and those
 # stop agreeing as the identity cutover promotes them one group at a time.
 class GameOption(Schema):  # mirrors SearchSelectOption
-    value: int
+    value: UUID
     label: str
     data: dict
 
 
 class PlatformOption(Schema):  # mirrors SearchSelectOption
-    value: int
+    value: UUID
     label: str
     data: dict
 
@@ -174,7 +175,7 @@ def search_games(request, q: str = "", limit: int = 10):
 
 
 @game_router.patch("/{game_id}/status", response={204: None})
-def partial_update_game(request, game_id: int, payload: GameStatusUpdate):
+def partial_update_game(request, game_id: UUID, payload: GameStatusUpdate):
     library = cast(User, request.user).library
     game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
     game.status = payload.status
@@ -255,14 +256,14 @@ def search_platforms(request, q: str = "", limit: int = 10):
             qs.annotate(
                 last_game_use=Subquery(
                     Game.objects.for_library(library)
-                    .filter(platform=OuterRef("uuid"))
+                    .filter(platform=OuterRef("pk"))
                     .order_by("-updated_at")
                     .values("updated_at")[:1],
                     output_field=DateTimeField(),
                 ),
                 last_purchase_use=Subquery(
                     Purchase.objects.for_library(library)
-                    .filter(platform=OuterRef("uuid"))
+                    .filter(platform=OuterRef("pk"))
                     .order_by("-updated_at")
                     .values("updated_at")[:1],
                     output_field=DateTimeField(),
@@ -344,7 +345,7 @@ class PlatformOut(Schema):
 
 
 class GameOut(Schema):
-    id: int
+    id: UUID
     name: str
     platform: PlatformOut | None = None
 

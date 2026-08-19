@@ -16,6 +16,7 @@ must never restore a global model-manager fallback.
 """
 
 from calendar import monthrange
+from uuid import UUID
 
 from common.criteria import (
     BoolCriterion,
@@ -23,7 +24,7 @@ from common.criteria import (
     DateCriterion,
     IntCriterion,
     Modifier,
-    MultiCriterion,
+    UUIDMultiCriterion,
 )
 from games.filters import (
     GameFilter,
@@ -62,18 +63,18 @@ def all_sessions(year) -> SessionFilter:
     return SessionFilter.where(**_session_bounds(year))
 
 
-def sessions_for_game(game_id: int, year, label: str = "") -> SessionFilter:
+def sessions_for_game(game_id: UUID, year, label: str = "") -> SessionFilter:
     # Carry the game name as a display label so the filter bar renders a named
     # pill on landing (#224); falls back to a bare id when no label is given.
     session_filter = SessionFilter.where(**_session_bounds(year))
-    session_filter.game = MultiCriterion(
+    session_filter.game = UUIDMultiCriterion(
         value=[game_id], labels={game_id: label} if label else {}
     )
     return session_filter
 
 
 def sessions_for_platform(
-    platform_id: int | None, year, label: str = ""
+    platform_id: UUID | None, year, label: str = ""
 ) -> SessionFilter:
     # See sessions_for_game: the platform name rides along as a display label so
     # the session bar's (cross-entity) platform pill renders a name, not an id.
@@ -82,11 +83,11 @@ def sessions_for_platform(
         # The stats "Unspecified" bucket groups by the game__platform LEFT JOIN,
         # which now means exactly sessions whose required Game is platformless.
         session_filter.game_filter = GameFilter(
-            platform=MultiCriterion(modifier=Modifier.IS_NULL)
+            platform=UUIDMultiCriterion(modifier=Modifier.IS_NULL)
         )
         return session_filter
     session_filter.game_filter = GameFilter(
-        platform=MultiCriterion(
+        platform=UUIDMultiCriterion(
             value=[platform_id], labels={platform_id: label} if label else {}
         )
     )

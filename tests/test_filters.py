@@ -496,6 +496,11 @@ class TestMultiCriterion:
         assert restored.labels == {}
 
 
+def _uuid_series(count: int) -> list[str]:
+    """`count` distinct UUIDv7 strings, for set-size guards that only need bulk."""
+    return [f"018f5e66-e800-7000-8000-{index:012x}" for index in range(count)]
+
+
 GAME_UUID = UUID("018f5e66-e800-7000-8000-000000000001")
 OTHER_UUID = UUID("018f5e66-e800-7000-8000-000000000002")
 
@@ -860,15 +865,17 @@ class TestGameFilterFromJson:
         assert gf.status is not None
         assert gf.status.modifier == Modifier.NOT_NULL
 
-    def test_platform_criterion_coerces_ids_to_int(self):
-        # platform is a MultiCriterion over the int FK platform_id; string ids
-        # from the widget are coerced to int at parse (issue #157).
+    def test_platform_criterion_coerces_ids_to_uuid(self):
+        # platform is a UUIDMultiCriterion over the platform_id FK; string ids
+        # from the widget are coerced to UUID at parse (issue #157).
+        first = "018f5e66-e800-7000-8000-000000000001"
+        second = "018f5e66-e800-7000-8000-000000000003"
         gf = GameFilter.from_json(
-            {"platform": {"value": ["1", "3"], "modifier": "INCLUDES"}}
+            {"platform": {"value": [first, second], "modifier": "INCLUDES"}}
         )
         assert gf is not None
         assert gf.platform is not None
-        assert gf.platform.value == [1, 3]
+        assert gf.platform.value == [UUID(first), UUID(second)]
 
     def test_round_trip(self):
         data = {
@@ -1979,11 +1986,11 @@ class TestFilterErrorBoundary:
         with pytest.raises(FilterError):
             parse_session_filter(bad)
 
-    def test_non_integer_games_id(self):
-        """A hand-edited non-integer game id must raise FilterError, not let a
-        bare ValueError from int() escape the boundary."""
-        bad = json.dumps({"games": {"modifier": "INCLUDES", "value": ["not-a-number"]}})
-        with pytest.raises(FilterError, match="games filter values must be integers"):
+    def test_non_uuid_games_id(self):
+        """A hand-edited malformed game id must raise FilterError, not let a
+        bare ValueError from the UUID parser escape the boundary."""
+        bad = json.dumps({"games": {"modifier": "INCLUDES", "value": ["not-a-uuid"]}})
+        with pytest.raises(FilterError, match="expected a UUIDv7"):
             parse_purchase_filter(bad)
 
     def test_invalid_criterion_nested_in_all_match_relation(self):
@@ -2405,7 +2412,7 @@ class TestFilterBreadthGuard:
         good = json.dumps(
             {
                 "platform": {
-                    "value": list(range(MAX_SET_VALUES)),
+                    "value": _uuid_series(MAX_SET_VALUES),
                     "modifier": "INCLUDES",
                 }
             }
@@ -2419,7 +2426,7 @@ class TestFilterBreadthGuard:
             {
                 "platform": {
                     "value": [],
-                    "excludes": list(range(MAX_SET_VALUES)),
+                    "excludes": _uuid_series(MAX_SET_VALUES),
                     "modifier": "INCLUDES",
                 }
             }
@@ -4894,7 +4901,7 @@ class TestFilterFieldDescriptors:
         from games.filters import PurchaseFilter
 
         pf = PurchaseFilter.from_json(
-            {"games": {"value": [1, 2], "modifier": "INCLUDES"}}
+            {"games": {"value": _uuid_series(2), "modifier": "INCLUDES"}}
         )
         assert pf is not None
         assert (

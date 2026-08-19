@@ -261,9 +261,9 @@ def _session(game, **overrides) -> Session:
     )
 
 
-def test_session_attnames_read_back_as_the_targets_uuids(game, device):
+def test_session_attnames_read_back_as_the_targets_identities(game, device):
     session = _session(game, device=device)
-    assert session.game_id == game.uuid
+    assert session.game_id == game.pk
     assert session.device_id == device.uuid
 
 
@@ -449,16 +449,16 @@ def test_filtered_playtime_annotation_survives_the_uuid_relation(
 # --- Form initial-value shim -------------------------------------------------
 
 
-def test_sessionform_preselects_both_relations_by_integer_id(
-    game, device, owned_library
-):
+def test_sessionform_preselects_both_relations_by_identity(game, device, owned_library):
     session = _session(game, device=device)
 
     form = SessionForm(
         instance=session, library=owned_library, presentation=PRESENTATION
     )
 
-    assert form.initial["game"] == game
+    # Game needs no shim any more - its attname is the identity the widget's
+    # options carry. Device still does, until its own identity is promoted.
+    assert form.initial["game"] == game.pk
     assert form.initial["device"] == device
     assert form.fields["game"].prepare_value(form.initial["game"]) == game.pk
     assert form.fields["device"].prepare_value(form.initial["device"]) == device.pk
@@ -480,7 +480,7 @@ def test_sessionform_keeps_a_caller_supplied_device_initial(
     assert form.initial["device"] == device
 
 
-def test_sessionform_posting_integer_ids_saves_the_right_relations(
+def test_sessionform_posting_identities_saves_the_right_relations(
     game, device, owned_library
 ):
     session = _session(game)
@@ -504,7 +504,7 @@ def test_sessionform_posting_integer_ids_saves_the_right_relations(
 
     assert form.is_valid(), form.errors
     saved = form.save()
-    assert saved.game_id == other_game.uuid
+    assert saved.game_id == other_game.pk
     assert saved.device_id == device.uuid
 
 

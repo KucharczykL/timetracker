@@ -360,15 +360,14 @@ def test_sample_load_rejects_a_session_device_outside_the_fixture_graph(
             [
                 {
                     "model": "games.game",
-                    "pk": 301,
+                    # Session.game names its target's primary key, which for Game
+                    # is the UUID - so the included game must carry it here for
+                    # this fixture to fail on the *device* it is testing.
+                    "pk": PRESENT_GAME_UUID,
                     "fields": {
                         "library": "__target_library__",
                         "name": "Included game",
                         "platform": None,
-                        # Both session references name their target's uuid, so
-                        # the included game must carry one for this fixture to
-                        # fail on the *device* it is testing.
-                        "uuid": PRESENT_GAME_UUID,
                     },
                 },
                 {

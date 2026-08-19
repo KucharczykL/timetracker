@@ -1,5 +1,5 @@
 from typing import Any, cast
-from uuid import uuid7
+from uuid import UUID, uuid7
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
@@ -177,7 +177,7 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def add_session(request: HttpRequest, game_id: int = 0) -> HttpResponse:
+def add_session(request: HttpRequest, game_id: UUID | None = None) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
     library = cast(User, request.user).library
     initial: dict[str, Any] = {

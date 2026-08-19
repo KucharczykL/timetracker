@@ -9,21 +9,25 @@ RETURNABLE = frozenset({"games:list_games", "games:view_game"})
 LIST_URL = "/tracker/game/list?page=3"
 
 
+# Any catalog route takes a UUIDv7; the value never reaches the database.
+GAME_ID = "018f5e66-e800-7000-8000-000000000001"
+
+
 def _request(request_factory, origin_value=None):
     query = {ORIGIN_PARAM: origin_value} if origin_value is not None else {}
     return request_factory.get("/tracker/game/1/edit", query)
 
 
 def test_action_url_appends_the_encoded_origin(db):
-    assert action_url("games:edit_game", 1, origin=LIST_URL) == (
-        reverse("games:edit_game", args=[1])
+    assert action_url("games:edit_game", GAME_ID, origin=LIST_URL) == (
+        reverse("games:edit_game", args=[GAME_ID])
         + "?origin=%2Ftracker%2Fgame%2Flist%3Fpage%3D3"
     )
 
 
 def test_action_url_without_an_origin_is_the_bare_url(db):
-    assert action_url("games:edit_game", 1, origin=None) == reverse(
-        "games:edit_game", args=[1]
+    assert action_url("games:edit_game", GAME_ID, origin=None) == reverse(
+        "games:edit_game", args=[GAME_ID]
     )
 
 
@@ -78,7 +82,7 @@ def test_an_embedded_newline_is_stripped_not_passed_through(rf, db):
 
 
 def test_rejected_path_is_dropped(rf, db):
-    detail = reverse("games:view_game", args=[1])
+    detail = reverse("games:view_game", args=[GAME_ID])
     assert (
         parse_origin(_request(rf, detail), returnable=RETURNABLE, reject=detail) is None
     )

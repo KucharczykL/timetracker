@@ -208,21 +208,11 @@ class Command(BaseCommand):
             game_id: timedelta(days=random.randint(-JITTER_DAYS, JITTER_DAYS))
             for game_id in all_game_ids
         }
-        # Session.game, PlayEvent.game and Purchase.related_game resolve through
-        # Game.uuid rather than Game.pk, so their rows need both the per-game
-        # offsets and the reassignment targets looked up by the other identity.
-        games_by_pk = {
-            game.pk: game
-            for game in Game.objects.filter(pk__in=all_game_ids).only("pk", "uuid")
-        }
-        game_offsets_by_uuid = {
-            game.uuid: game_offsets[pk] for pk, game in games_by_pk.items()
-        }
 
         sessions = list(Session.objects.order_by("pk"))
         for session in sessions:
             if session.game_id is not None:
-                offset = game_offsets_by_uuid[session.game_id]
+                offset = game_offsets[session.game_id]
             else:
                 offset = timedelta(days=random.randint(-JITTER_DAYS, JITTER_DAYS))
             session.timestamp_start += offset
@@ -238,7 +228,7 @@ class Command(BaseCommand):
 
         playevents = list(PlayEvent.objects.order_by("pk"))
         for event in playevents:
-            offset = game_offsets_by_uuid[event.game_id]
+            offset = game_offsets[event.game_id]
             if event.started is not None:
                 event.started += offset
             if event.ended is not None:
@@ -267,7 +257,7 @@ class Command(BaseCommand):
             purchase.needs_price_update = False
             purchase.name = ""
             if purchase.type != Purchase.GAME:
-                purchase.related_game_id = games_by_pk[random.choice(all_game_ids)].uuid
+                purchase.related_game_id = random.choice(all_game_ids)
             count = random.randint(1, min(MAX_GAMES_PER_PURCHASE, len(all_game_ids)))
             chosen = random.sample(all_game_ids, count)
             through_rows.extend(

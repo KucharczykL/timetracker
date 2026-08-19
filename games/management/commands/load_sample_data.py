@@ -64,29 +64,29 @@ class FixtureRelationship(NamedTuple):
 FIXTURE_RELATIONSHIPS: dict[str, tuple[FixtureRelationship, ...]] = {
     "games.game": (
         FixtureRelationship(
-            "platform", "games.platform", False, False, reference_field="uuid"
+            "platform", "games.platform", False, False, reference_field="pk"
         ),
     ),
     "games.purchase": (
         FixtureRelationship(
-            "platform", "games.platform", False, False, reference_field="uuid"
+            "platform", "games.platform", False, False, reference_field="pk"
         ),
         FixtureRelationship(
-            "related_game", "games.game", False, False, reference_field="uuid"
+            "related_game", "games.game", False, False, reference_field="pk"
         ),
         FixtureRelationship("games", "games.game", True, False),
     ),
     "games.session": (
-        FixtureRelationship("game", "games.game", False, True, reference_field="uuid"),
+        FixtureRelationship("game", "games.game", False, True, reference_field="pk"),
         FixtureRelationship(
             "device", "games.device", False, False, reference_field="uuid"
         ),
     ),
     "games.playevent": (
-        FixtureRelationship("game", "games.game", False, True, reference_field="uuid"),
+        FixtureRelationship("game", "games.game", False, True, reference_field="pk"),
     ),
     "games.gamestatuschange": (
-        FixtureRelationship("game", "games.game", False, True, reference_field="uuid"),
+        FixtureRelationship("game", "games.game", False, True, reference_field="pk"),
     ),
 }
 
@@ -274,15 +274,14 @@ class Command(BaseCommand):
 
     @staticmethod
     def _load_platforms(records, library):
-        """Create or reuse each fixture platform, returning fixture uuid → real uuid.
+        """Create or reuse each fixture platform, returning fixture id → real id.
 
-        Both platform references in the fixture name the target's `uuid`, and
-        the real row's uuid is never the fixture's on either path: a reused row
+        Both platform references in the fixture name the target's primary key,
+        and the real row's is never the fixture's on either path: a reused row
         already had its own, and a created one mints a fresh one from
-        `UUIDv7Field`'s default. Adopting the fixture's uuid instead is not an
-        option — `_reject_primary_key_collisions` guards pks only, so a second
-        load into a database already holding that uuid would violate the unique
-        constraint, and the reuse path could not honor it anyway. So the
+        `UUIDv7Field`'s default. Adopting the fixture's instead is not an
+        option — `_reject_primary_key_collisions` guards against exactly that
+        collision, and the reuse path could not honor it anyway. So the
         translation here is load-bearing: without it every game and purchase
         would dangle.
 
@@ -313,12 +312,12 @@ class Command(BaseCommand):
                         "Sample Platform has no reusable exact identity: "
                         f"{fields['name']!r} / {fields.get('group', '')!r}."
                     ) from error
-            # A fixture platform carrying no uuid is legal input — validation
+            # A fixture platform carrying no pk is legal input — validation
             # indexes reference fields with .get() and only errors at the
             # referencing record — so it simply maps nothing.
-            fixture_uuid = fields.get("uuid")
-            if fixture_uuid is not None:
-                platform_uuids[str(fixture_uuid)] = str(platform.uuid)
+            fixture_identity = record.get("pk")
+            if fixture_identity is not None:
+                platform_uuids[str(fixture_identity)] = str(platform.pk)
         return platform_uuids
 
     @staticmethod

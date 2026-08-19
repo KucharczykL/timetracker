@@ -36,7 +36,6 @@ from common.criteria import (
     BoolCriterion,
     ChoiceCriterion,
     DateCriterion,
-    FilterError,
     FilterField,
     FilterQueryContext,
     FilterQueryContextRequired,
@@ -48,6 +47,7 @@ from common.criteria import (
     MultiCriterion,
     OperatorFilter,
     StringCriterion,
+    UUIDMultiCriterion,
     bool_isnull_handler,
     bool_nonzero_duration_handler,
     comparable_columns,
@@ -99,7 +99,7 @@ class GameFilter(OperatorFilter):
     year_released: IntCriterion | None = None
     original_year_released: IntCriterion | None = None
     wikidata: StringCriterion | None = None
-    platform: MultiCriterion | None = None  # integer Platform pks
+    platform: UUIDMultiCriterion | None = None  # Platform ids
     platform_group: ChoiceCriterion | None = None  # platform__group (str)
     status: ChoiceCriterion | None = None  # selectable filter widget
     mastered: BoolCriterion | None = None
@@ -230,7 +230,7 @@ class SessionFilter(OperatorFilter):
     OR: list[SessionFilter] = field(default_factory=list)
     NOT: list[SessionFilter] = field(default_factory=list)
 
-    game: MultiCriterion | None = None  # filters on game__id
+    game: UUIDMultiCriterion | None = None  # filters on game__id
     device: MultiCriterion | None = None  # filters on device__id
     emulated: BoolCriterion | None = None
     note: StringCriterion | None = None
@@ -335,8 +335,8 @@ class PurchaseFilter(OperatorFilter):
     NOT: list[PurchaseFilter] = field(default_factory=list)
 
     name: StringCriterion | None = None
-    platform: MultiCriterion | None = None  # integer Platform pks
-    games: ChoiceCriterion | None = None  # games (M2M IDs)
+    platform: UUIDMultiCriterion | None = None  # Platform ids
+    games: UUIDMultiCriterion | None = None  # games (M2M ids)
     date_purchased: DateCriterion | None = None
     date_refunded: DateCriterion | None = None
     is_refunded: BoolCriterion | None = None  # date_refunded IS NOT NULL
@@ -444,7 +444,7 @@ class PurchaseFilter(OperatorFilter):
 
     @staticmethod
     def _games_to_q(
-        criterion: ChoiceCriterion, context: FilterQueryContext | None = None
+        criterion: UUIDMultiCriterion, context: FilterQueryContext | None = None
     ) -> Q:
         """Build the Q for the many-to-many ``games`` field.
 
@@ -473,14 +473,10 @@ class PurchaseFilter(OperatorFilter):
         games (and an M2M ``games__isnull=True`` arm would add a redundant
         LEFT JOIN, not change results).
         """
-        # Criterion values arrive as strings; the M2M lookups want game PKs.
-        # A hand-edited filter can carry a non-integer id — raise FilterError so
-        # the boundary catches it instead of a bare ValueError escaping.
-        try:
-            game_ids = [int(game_id) for game_id in criterion.value]
-            exclude_ids = [int(game_id) for game_id in criterion.excludes]
-        except (ValueError, TypeError) as exc:
-            raise FilterError(f"games filter values must be integers: {exc}") from exc
+        # The criterion class already coerced and validated every element, so
+        # the lists reach the M2M lookups as the target's primary-key type.
+        game_ids = criterion.value
+        exclude_ids = criterion.excludes
 
         # Empty value means no constraint; still apply excludes if any
         if not game_ids:
@@ -658,7 +654,7 @@ class PlayEventFilter(OperatorFilter):
     OR: list[PlayEventFilter] = field(default_factory=list)
     NOT: list[PlayEventFilter] = field(default_factory=list)
 
-    game: MultiCriterion | None = None  # filters on game__id (integer game ids)
+    game: UUIDMultiCriterion | None = None  # filters on game__id
     started: DateCriterion | None = None  # DateField, bare lookup
     ended: DateCriterion | None = None  # DateField, bare lookup
     days_to_finish: IntCriterion | None = None

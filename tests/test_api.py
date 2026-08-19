@@ -89,7 +89,7 @@ def test_platform_search_blank_query_uses_newest_game_or_purchase(auth_client):
 
     rows = auth_client.get("/api/platforms/search", {"limit": 10}).json()
 
-    assert [row["value"] for row in rows][:2] == [switch.id, atari.id]
+    assert [row["value"] for row in rows][:2] == [str(switch.id), str(atari.id)]
 
 
 def test_platform_search_blank_query_does_not_join_games_to_purchases(auth_client):
@@ -136,7 +136,7 @@ def test_platform_search_typed_query_remains_alphabetical(auth_client):
 
     rows = auth_client.get("/api/platforms/search", {"q": "Al", "limit": 10}).json()
 
-    assert [row["value"] for row in rows] == [alpha.id, alpine.id]
+    assert [row["value"] for row in rows] == [str(alpha.id), str(alpine.id)]
 
 
 def _make_session(**overrides):
@@ -169,7 +169,7 @@ def test_session_detail_shape(auth_client):
     data = response.json()
     assert data["id"] == session.id
     assert data["game"] == {
-        "id": session.game.id,
+        "id": str(session.game.id),
         "name": "Hades",
         "platform": {"name": "PC", "icon": session.game.platform.icon},
     }
@@ -256,11 +256,12 @@ def test_session_list_filter_parity(auth_client):
     other_platform = Platform.objects.create(name="Switch")
     other_game = _owned_game(name="Celeste", platform=other_platform)
     _make_session(game=other_game)
-    # Structured filter: sessions for the "keep" game only (game MultiCriterion INCLUDES).
-    # SessionFilter.game is MultiCriterion — JSON: {"game": {"value": [id], "modifier": "INCLUDES"}}
+    # Structured filter: sessions for the "keep" game only (INCLUDES).
+    # SessionFilter.game is a UUIDMultiCriterion, and this hand-built JSON has to
+    # carry the identity the way the wire does - as a string.
     session_filter = {
         "game": {
-            "value": [keep.game.id],
+            "value": [str(keep.game.id)],
             "modifier": "INCLUDES",
         }
     }

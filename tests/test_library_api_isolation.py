@@ -170,7 +170,7 @@ def test_search_options_are_library_scoped_and_shared_platforms_remain_visible(
     game_ids = {
         row["value"] for row in client.get("/api/games/search", {"q": "Game"}).json()
     }
-    assert game_ids == {world["game_a"].id, world["shared_game_a"].id}
+    assert game_ids == {str(world["game_a"].id), str(world["shared_game_a"].id)}
 
     device_ids = {
         row["value"]
@@ -188,7 +188,10 @@ def test_search_options_are_library_scoped_and_shared_platforms_remain_visible(
         updated_at=datetime(2022, 1, 1, tzinfo=UTC)
     )
     platform_ids = [row["value"] for row in client.get("/api/platforms/search").json()]
-    assert platform_ids == [world["platform_a"].id, world["shared_platform"].id]
+    assert platform_ids == [
+        str(world["platform_a"].id),
+        str(world["shared_platform"].id),
+    ]
 
     groups = {row["value"] for row in client.get("/api/platforms/groups").json()}
     assert groups == {"Shared", "Library A"}
@@ -223,7 +226,7 @@ def test_playevent_crud_is_library_scoped(two_libraries):
     assert client.delete(f"/api/playevent/{foreign.id}").status_code == 404
     create = client.post(
         "/api/playevent/",
-        json.dumps({"game_id": world["game_b"].id, "note": "foreign"}),
+        json.dumps({"game_id": str(world["game_b"].id), "note": "foreign"}),
         content_type="application/json",
     )
     assert create.status_code == 404

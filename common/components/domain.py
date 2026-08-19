@@ -1,6 +1,7 @@
 """Domain components for games / purchases / sessions."""
 
 from typing import TYPE_CHECKING, NamedTuple
+from uuid import UUID
 
 from django.template.defaultfilters import floatformat
 from django.urls import reverse
@@ -28,7 +29,7 @@ if TYPE_CHECKING:
 
 
 def GameLink(
-    game_id: int,
+    game_id: UUID,
     name: str = "",
     children: Children = None,
 ) -> Node:
