@@ -463,6 +463,23 @@ file directly.
       the pre-existing
       `tests/test_purchase_fk_uuid.py::test_the_purchase_games_through_table_is_still_integer_keyed`
       (`:321`) — so neither slice updates one and leaves the other red.
+- [ ] **Step 2b** — comment on #646 with the ID-11 sequencing probe run during ID-10,
+      measured against a real database:
+      - `DROP COLUMN games_game.id` **fails** until the through-table conversion has
+        happened, because `games_purchase_games_game_id_..._fk` depends on it. The
+        through column must convert first.
+      - That conversion's `DROP COLUMN game_id` **silently removes the
+        `(purchase_id, game_id)` unique index**, leaving only the pkey and the
+        `purchase_id` index. Recreate it explicitly.
+      - After `RENAME uuid TO id` + `ADD PRIMARY KEY (id)`, the old
+        `games_game_uuid_..._uniq` remains as a **second unique index on the same
+        column**, and `DROP CONSTRAINT` on it **fails** — the four referencing foreign
+        keys depend on that specific index. Dropping and recreating each referencing FK
+        after the new primary key exists is the only way to retire it; `CASCADE` would
+        take the four FK constraints with it.
+      - Open question for ID-11 to settle: `primary_key=True` subsumes `unique=True`, so
+        Django's schema editor may *attempt* that impossible drop and fail the migration
+        outright rather than leaving a redundant index.
 - [ ] **Step 3** — file follow-up issues:
       (a) the 4096-rows-per-millisecond ceiling in `anonymize_sample` (851 games today,
       fails loudly past 4096);
