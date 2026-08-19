@@ -277,6 +277,12 @@ range before and after the transform.
   audit-over-the-committed-blob test exercise different code. Accepted: the
   alternative is a production copy on every fixture change, and the audit test is
   what catches a divergence between them.
+- **The audit's own lifetime is undecided**, and deliberately so. The residual
+  inventory is wave-specific and empties as ID-11–ID-14 land, settling at six
+  permanent `never converts` entries; the five checks are not specific to this
+  cutover at all, and the ordering one is arguably the most durable of them,
+  since sortable identity is why the project uses UUIDv7 rather than v4. Whether
+  the inventory check still earns its place afterwards is #879, blocked by ID-14.
 - **Saved-filter content stays out of scope**, unchanged from the wave plan's
   Wave C statement: `FilterPreset` JSON stores raw integer pks, the only real
   deployment has zero preset rows, and no remap tooling is built.
