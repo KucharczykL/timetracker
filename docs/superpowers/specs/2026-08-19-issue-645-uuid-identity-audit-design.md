@@ -264,12 +264,12 @@ range before and after the transform.
   and the anonymizer collapses every Game, Platform and Device to a single
   `FIXED_EPOCH` millisecond. At 851 games the headroom is 4.8×; past it,
   regeneration fails with `ValueError`. Loud rather than silent, but it will
-  bite eventually. Filed as a follow-up.
+  bite eventually. Filed as #876.
 - **Fixtures that carry explicit `created_at` and omit `uuid`** can violate the
   ordering gate, since the omitted uuid is generated at load time. Neither
   committed fixture does so after this change (`platforms.yaml` is immune via
   `auto_now_add`; `sample.yaml.gz` is fixed here), but nothing prevents the next
-  one. Filed as a convention note.
+  one. Filed as #877.
 - **The fixture has two producers that are only coincidentally aligned.**
   `anonymize_sample` (pinned to `--seed 42` by `make anonymize-sample`) is the
   nominal producer, but the committed blob comes from an uncommitted throwaway

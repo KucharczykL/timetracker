@@ -305,6 +305,23 @@ in ID-07, ID-08 and ID-09** — treat this as the slice checklist:
    asserting a through table's uniqueness: `related.add(obj)` a second time is
    silently filtered by `_get_missing_target_ids`, so go through the through
    model directly.
+8. **A relation's uuid is a *timestamp*, so anything that rewrites dates must
+   rewrite uuids too.** Established by ID-10. `anonymize_sample` randomised
+   `created_at` on every model it touched and never touched `uuid`, which both
+   published the real creation timestamps it exists to hide (UUIDv7 carries them
+   to the millisecond, recoverable with `uuid_extract_timestamp`) and left uuid
+   order disagreeing with creation order. It now re-derives each dumped uuid
+   from the anonymized timestamp using migration `0005`'s algorithm, taking the
+   random tail from the seeded RNG via `uuid7_at(..., entropy=...)` so the blob
+   stays byte-identical per `--seed`. Two traps inside that:
+   - Walk referrers with **`_meta.get_fields(include_hidden=True)`**, never
+     `related_objects`, which drops relations whose `related_name` ends in `"+"`
+     — `UserLibraryPreferences.default_device` is one, and would silently keep
+     pointing at a dead uuid.
+   - A regression test for this has to run **inside** the command's transaction.
+     `_write_fixture` is called after `transaction.set_rollback(True)`, so a test
+     hooked there measures a database where everything has already been undone,
+     and passes against the bug.
 
 Also settled by ID-06 and reusable verbatim: the reversible migration shape
 (optionally relax NOT NULL → add holding column → backfill and reconcile → drop
@@ -338,6 +355,24 @@ because `Purchase.uuid` is not promoted until ID-13. `auth.User` is not a
 converted model, so `UserLibrary.user` and `UserPreferences.user` stay integer
 throughout.
 
+**Delivered 2026-08-19** as `manage.py audit_uuid_identity` (`make
+audit-uuid-identity`), with its reasoning in the
+[ID-10 design](2026-08-19-issue-645-uuid-identity-audit-design.md). Two
+consequences bind every Wave E slice:
+
+- **`RESIDUAL_INTEGER_RELATIONS` and `RESIDUAL_INTEGER_PRIMARY_KEYS` in
+  `games/identity_audit.py` are the machine-readable Wave E readiness
+  statement.** Each entry names the slice that owns converting it, and the audit
+  asserts set *equality* in both directions — so a slice that converts a column
+  without removing its inventory entry turns the gate red, exactly as one that
+  introduces an unowned integer column does. ID-11/12/13/14 each shrink it.
+  `tests/test_purchase_fk_uuid.py::test_the_purchase_games_through_table_is_still_integer_keyed`
+  pins the same two through-table columns independently, so ID-11 and ID-13 have
+  **two** sites to update, not one.
+- **`anonymize_sample` now re-derives every dumped uuid from the timestamps it
+  randomises**, and the committed fixture was regenerated to match. See
+  checklist item 8 below.
+
 ## Wave E — remove legacy integers, promote UUID to PK (ID-11–ID-14, 4 issues, was 1)
 
 The original `#646` "Remove legacy integer identities" is re-scoped from one
@@ -366,6 +401,27 @@ rename, and a restore of the FK plus the `(purchase, game)` unique index that
 table because its `unique_together` spans both dropped columns). Django's
 migration *state* needs no operation: an auto-created through derives its
 foreign keys from the target's pk at state-render time.
+
+**The order of ID-11's operations is forced, and one index cannot be retired at
+all.** Probed against a real database during ID-10, running ID-11's own sequence:
+
+- `DROP COLUMN games_game.id` **fails** while the through table still references
+  it (`games_purchase_games_game_id_…_fk` depends on the column), so the through
+  conversion has to come first.
+- That conversion's `DROP COLUMN game_id` **does** silently remove the
+  `(purchase_id, game_id)` unique index — checklist item 6, now demonstrated
+  rather than inferred. Afterwards only the pkey and the `purchase_id` index
+  remain.
+- After `RENAME uuid TO id` and `ADD PRIMARY KEY (id)`, the old
+  `games_game_uuid_…_uniq` survives as a **second unique index on the same
+  column**, and dropping it **fails**: the four foreign keys referencing
+  `Game.uuid` depend on that specific index. Retiring it means dropping and
+  recreating each referencing FK after the new primary key exists. `CASCADE` is
+  not an option — it would take those four FK constraints with it, producing
+  exactly the state-versus-database divergence `audit_uuid_identity` checks for.
+- Left for ID-11 to settle: `primary_key=True` subsumes `unique=True`, so
+  Django's schema editor may *attempt* that impossible drop and fail the
+  migration outright rather than leaving a redundant index.
 
 ID-11 additionally owns everything keyed to `Game` and `Platform` ceasing to be
 integers, which is the larger half of that slice: deleting `to_field="uuid"`
