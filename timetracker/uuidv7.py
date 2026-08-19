@@ -16,7 +16,9 @@ _RAND_B_BITS = 62
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 
-def uuid7_at(moment: datetime, *, sequence: int | None = None) -> uuid.UUID:
+def uuid7_at(
+    moment: datetime, *, sequence: int | None = None, entropy: int | None = None
+) -> uuid.UUID:
     """Encode a UUIDv7 whose embedded timestamp is `moment`, not "now".
 
     `sequence`, when given, is written into the 12-bit rand_a field in the
@@ -25,11 +27,19 @@ def uuid7_at(moment: datetime, *, sequence: int | None = None) -> uuid.UUID:
     testable order. This function only places the value there; seeding a
     fresh counter per millisecond tick, as Method 1 itself calls for, is
     the caller's responsibility.
+
+    `entropy`, when given, fills the 62-bit rand_b tail that is otherwise
+    drawn from `secrets`. It exists for callers that must be reproducible
+    from their own seeded generator - `anonymize_sample` regenerates a
+    committed fixture and needs a byte-identical result per seed. Leave it
+    unset anywhere the value reaches a real record.
     """
     if moment.utcoffset() is None:
         raise ValueError("moment must be timezone-aware")
     if sequence is not None and not 0 <= sequence < (1 << _RAND_A_BITS):
         raise ValueError(f"sequence must be between 0 and {(1 << _RAND_A_BITS) - 1}")
+    if entropy is not None and not 0 <= entropy < (1 << _RAND_B_BITS):
+        raise ValueError(f"entropy must be between 0 and {(1 << _RAND_B_BITS) - 1}")
 
     # Floor to the millisecond via integer timedelta arithmetic, not
     # round(moment.timestamp() * 1000): floating-point .timestamp() loses
@@ -54,7 +64,7 @@ def uuid7_at(moment: datetime, *, sequence: int | None = None) -> uuid.UUID:
         raise ValueError("moment must not be before the Unix epoch")
 
     rand_a = secrets.randbits(_RAND_A_BITS) if sequence is None else sequence
-    rand_b = secrets.randbits(_RAND_B_BITS)
+    rand_b = secrets.randbits(_RAND_B_BITS) if entropy is None else entropy
 
     value = unix_ts_ms << 80
     value |= rand_a << 64

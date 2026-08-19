@@ -323,3 +323,36 @@ def test_uuid7_at_pins_the_byte_layout():
     value = uuid7_at(moment, sequence=5)
     # Everything except the 62 random rand_b bits: unix_ts_ms | version | rand_a | variant.
     assert value.int >> 62 == 0x6330947D001C016
+
+
+def test_uuid7_at_repeats_exactly_for_the_same_entropy():
+    moment = datetime(2024, 1, 1, tzinfo=UTC)
+    first = uuid7_at(moment, sequence=3, entropy=12345)
+    second = uuid7_at(moment, sequence=3, entropy=12345)
+    assert first == second
+
+
+def test_uuid7_at_writes_entropy_into_rand_b():
+    entropy = 0x2BADC0FFEE1234
+    value = uuid7_at(datetime(2024, 1, 1, tzinfo=UTC), entropy=entropy)
+    assert value.int & ((1 << 62) - 1) == entropy
+    assert value.version == 7
+    assert value.variant == uuid.RFC_4122
+
+
+@pytest.mark.parametrize("entropy", [-1, 1 << 62])
+def test_uuid7_at_rejects_entropy_outside_the_62_bit_range(entropy):
+    with pytest.raises(ValueError, match="entropy must be between 0 and"):
+        uuid7_at(datetime(2024, 1, 1, tzinfo=UTC), entropy=entropy)
+
+
+@pytest.mark.parametrize("entropy", [0, (1 << 62) - 1])
+def test_uuid7_at_accepts_entropy_at_the_62_bit_boundaries(entropy):
+    value = uuid7_at(datetime(2024, 1, 1, tzinfo=UTC), entropy=entropy)
+    assert value.int & ((1 << 62) - 1) == entropy
+
+
+def test_uuid7_at_without_entropy_still_varies_between_calls():
+    moment = datetime(2024, 1, 1, tzinfo=UTC)
+    values = {uuid7_at(moment, sequence=0) for _ in range(8)}
+    assert len(values) == 8
