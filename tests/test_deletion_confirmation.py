@@ -43,7 +43,7 @@ def test_post_deletes_and_returns_to_the_origin(logged_in, game):
 
 
 def test_post_drops_an_origin_naming_the_deleted_game(logged_in, game):
-    origin = reverse("games:view_game", args=[game.id])
+    origin = game.get_absolute_url()
     response = logged_in.post(action_url("games:delete_game", game.id, origin=origin))
     assert response["Location"] == reverse("games:list_games")
 
@@ -122,5 +122,5 @@ def test_every_delete_confirms_first_with_owning_game_fallback(
     assert logged_in.get(url).status_code == 200
     assert type(instance).objects.filter(pk=instance.pk).exists()
     response = logged_in.post(url)
-    assert response["Location"] == reverse("games:view_game", args=[owning_game.id])
+    assert response["Location"] == owning_game.get_absolute_url()
     assert not type(instance).objects.filter(pk=instance.pk).exists()

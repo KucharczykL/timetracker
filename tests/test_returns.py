@@ -4,6 +4,7 @@ import pytest
 from django.urls import reverse
 
 from common.returns import ORIGIN_PARAM, action_url, parse_origin
+from games.views.returns import origin_from
 
 RETURNABLE = frozenset({"games:list_games", "games:view_game"})
 LIST_URL = "/tracker/game/list?page=3"
@@ -82,8 +83,18 @@ def test_an_embedded_newline_is_stripped_not_passed_through(rf, db):
 
 
 def test_rejected_path_is_dropped(rf, db):
-    detail = reverse("games:view_game", args=[GAME_ID])
+    detail = reverse("games:view_game", args=[GAME_ID, "test-game"])
     assert (
         parse_origin(_request(rf, detail), returnable=RETURNABLE, reject=detail) is None
     )
     assert parse_origin(_request(rf, detail), returnable=RETURNABLE) == detail
+
+
+@pytest.mark.parametrize(
+    "url_name",
+    ["games:view_game_by_uuid", "games:view_game_legacy"],
+)
+def test_uuid_only_compatibility_routes_are_not_returnable_origins(rf, db, url_name):
+    origin = reverse(url_name, args=[GAME_ID])
+
+    assert origin_from(_request(rf, origin)) is None

@@ -98,7 +98,7 @@ def create_playevent_tabledata(
         [
             TruncatedText(
                 playevent.game.name,
-                link=reverse("games:view_game", args=[playevent.game.id]),
+                link=playevent.game.get_absolute_url(),
             ),
             presentation.format(playevent.started, "date")
             if playevent.started
@@ -292,11 +292,13 @@ def add_playevent(request: HttpRequest, game_id: UUID | None = None) -> HttpResp
     )
     if form.is_valid():
         form.save()
-        if not game_id:
-            # coming from add_playevent url path
-            game_id = form.instance.game.id
+        game = form.instance.game
         return redirect(
-            return_url(request, fallback="games:view_game", fallback_args=[game_id])
+            return_url(
+                request,
+                fallback="games:view_game",
+                fallback_args=[game.id, game.url_slug],
+            )
         )
 
     return render_page(
@@ -326,7 +328,9 @@ def edit_playevent(request: HttpRequest, playevent_id: UUID) -> HttpResponse:
         form.save()
         return redirect(
             return_url(
-                request, fallback="games:view_game", fallback_args=[playevent.game.id]
+                request,
+                fallback="games:view_game",
+                fallback_args=[playevent.game.id, playevent.game.url_slug],
             )
         )
 
@@ -353,5 +357,5 @@ def delete_playevent(request: HttpRequest, playevent_id: UUID) -> HttpResponse:
         title="Delete playthrough",
         message=f"Permanently delete this playthrough of {playevent.game}?",
         fallback="games:view_game",
-        fallback_args=[playevent.game.id],
+        fallback_args=[playevent.game.id, playevent.game.url_slug],
     )

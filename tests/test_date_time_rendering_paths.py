@@ -182,7 +182,7 @@ def test_non_default_presentation_reaches_every_server_display_path(
     assert "2022.26.09" in title_parser.title
     assert "2022-09-26" not in title_parser.title
 
-    game_html = client.get(reverse("games:view_game", args=[game.pk])).content.decode()
+    game_html = client.get(game.get_absolute_url()).content.decode()
     for expected in (
         "2022.26.09 @ 12h58",
         "2022.26.09",

@@ -1,7 +1,7 @@
 import re
 import unittest
 from typing import get_args
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from uuid import UUID
 
 import django
@@ -1789,6 +1789,7 @@ class ResolveNameWithIconTest(unittest.TestCase):
         self.mock_game.name = "Test Game"
         self.mock_game.pk = UUID("018f5e66-e800-7000-8000-000000000002")
         self.mock_game.platform = self.mock_platform
+        self.mock_game.get_absolute_url.return_value = "/game/test-game"
 
         self.mock_session = MagicMock()
         self.mock_session.game = self.mock_game
@@ -1808,21 +1809,17 @@ class ResolveNameWithIconTest(unittest.TestCase):
         override_game.name = "Override"
         override_game.platform = self.mock_platform
         override_game.pk = 99
-        with patch("common.components.domain.reverse", return_value="/game/99"):
-            resolved = components._resolve_name_with_icon(
-                "", override_game, self.mock_session, True
-            )
+        resolved = components._resolve_name_with_icon(
+            "", override_game, self.mock_session, True
+        )
         self.assertEqual(resolved.name, "Test Game")
         self.assertIsNot(resolved.name, "Override")
 
     def test_game_only_provides_platform(self):
-        with patch("common.components.domain.reverse", return_value="/game/1"):
-            resolved = components._resolve_name_with_icon(
-                "", self.mock_game, None, True
-            )
+        resolved = components._resolve_name_with_icon("", self.mock_game, None, True)
         self.assertEqual(resolved.name, "Test Game")
         self.assertEqual(resolved.badge, components.PlatformBadge("steam", "Steam"))
-        self.assertEqual(resolved.link, "/game/1")
+        self.assertEqual(resolved.link, "/game/test-game")
 
     def test_game_without_platform_gets_unspecified_badge(self):
         platformless_game = MagicMock()
@@ -1857,11 +1854,8 @@ class ResolveNameWithIconTest(unittest.TestCase):
         self.assertIsNone(resolved.link)
 
     def test_linkify_true_creates_link(self):
-        with patch("common.components.domain.reverse", return_value="/game/42"):
-            resolved = components._resolve_name_with_icon(
-                "", self.mock_game, None, True
-            )
-        self.assertEqual(resolved.link, "/game/42")
+        resolved = components._resolve_name_with_icon("", self.mock_game, None, True)
+        self.assertEqual(resolved.link, "/game/test-game")
 
     def test_session_emulated_flag_preserved(self):
         emulated_session = MagicMock()

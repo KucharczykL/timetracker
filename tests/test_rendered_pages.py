@@ -360,7 +360,7 @@ class RenderedPagesTest(TestCase):
     # --- detail pages --------------------------------------------------------
 
     def test_view_game(self):
-        html = self.get("games:view_game", self.game.id).content.decode()
+        html = self.client.get(self.game.get_absolute_url()).content.decode()
         for marker in [
             'id="game-info"',
             "text-type-title font-serif",
@@ -387,7 +387,7 @@ class RenderedPagesTest(TestCase):
         game = Game.objects.create(
             library=self.user.library, name="Played Game", platform=self.platform
         )
-        html = self.get("games:view_game", game.id).content.decode()
+        html = self.client.get(game.get_absolute_url()).content.decode()
         self.assertIn("<play-event-row", html)
         self.assertIn('game-id="', html)
         self.assertNotIn("@@", html)  # token-replace hack gone
@@ -399,7 +399,7 @@ class RenderedPagesTest(TestCase):
         game = Game.objects.create(
             library=self.user.library, name="Anchor Game", platform=self.platform
         )
-        html = self.get("games:view_game", game.id).content.decode()
+        html = self.client.get(game.get_absolute_url()).content.decode()
         row = html[html.index("<play-event-row") :]
         count_at = row.index("data-count")
         control = row[row.rindex("<a", 0, count_at) : row.index("</a>", count_at)]
@@ -417,7 +417,7 @@ class RenderedPagesTest(TestCase):
         game = Game.objects.create(
             library=self.user.library, name="Prose Game", platform=self.platform
         )
-        html = self.get("games:view_game", game.id).content.decode()
+        html = self.client.get(game.get_absolute_url()).content.decode()
         row = html[html.index("<play-event-row") :]
         host_tag = row[: row.index(">") + 1]
         self.assertIn('count="0"', host_tag)
@@ -436,7 +436,7 @@ class RenderedPagesTest(TestCase):
             timestamp_start=datetime(2022, 9, 26, 15, 0, tzinfo=ZONEINFO),
             timestamp_end=datetime(2022, 9, 26, 16, 0, tzinfo=ZONEINFO),
         )
-        html = self.get("games:view_game", platformless.id).content.decode()
+        html = self.client.get(platformless.get_absolute_url()).content.decode()
         self.assertIn("Unspecified", html)
         self.assertIn("No device", html)
         self.assertNoEscapedTags(html)
@@ -446,7 +446,7 @@ class RenderedPagesTest(TestCase):
         lonely = Game.objects.create(
             library=self.user.library, name="Lonely Game", platform=self.platform
         )
-        html = self.get("games:view_game", lonely.id).content.decode()
+        html = self.client.get(lonely.get_absolute_url()).content.decode()
         for marker in [
             "No purchases yet.",
             "No sessions yet.",

@@ -417,7 +417,7 @@ def test_pages_that_build_filter_links_still_render(library_client):
     game = Game.objects.create(library=library, name="Linked", platform=platform)
     Session.objects.create(game=game, timestamp_start=timezone.now())
 
-    assert client.get(f"/tracker/game/{game.pk}/view").status_code == 200
+    assert client.get(game.get_absolute_url()).status_code == 200
     assert client.get("/tracker/stats/").status_code == 200
 
 
@@ -437,8 +437,8 @@ def test_a_stale_integer_filter_degrades_instead_of_crashing(library_client):
 
 
 def test_catalog_routes_accept_a_uuid_and_reject_an_integer():
-    assert reverse("games:view_game", args=[GAME_ROUTE_ID]).endswith(
-        f"{GAME_ROUTE_ID}/view"
+    assert reverse("games:view_game", args=[GAME_ROUTE_ID, "catalog-game"]).endswith(
+        f"{GAME_ROUTE_ID}/catalog-game/"
     )
     with pytest.raises(NoReverseMatch):
-        reverse("games:view_game", args=[1])
+        reverse("games:view_game", args=[1, "catalog-game"])

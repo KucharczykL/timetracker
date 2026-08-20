@@ -75,7 +75,7 @@ class PathWorksTest(TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_view_game_returns_200(self):
-        response = self.client.get(reverse("games:view_game", args=[self.game.id]))
+        response = self.client.get(self.game.get_absolute_url())
         self.assertEqual(response.status_code, 200)
 
     def test_add_game_returns_200(self):

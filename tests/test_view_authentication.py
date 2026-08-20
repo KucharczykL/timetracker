@@ -37,6 +37,7 @@ def world(owned_library):
     purchase.games.set([game])
     return {
         "game_id": game.id,
+        "slug": game.url_slug,
         "purchase_id": purchase.id,
         "session_id": Session.objects.create(
             game=game, timestamp_start=datetime(2024, 6, 1, 12, tzinfo=UTC)

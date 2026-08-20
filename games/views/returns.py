@@ -37,6 +37,15 @@ READ_ONLY: frozenset[UrlName] = frozenset(
     }
 )
 
+# GET-only compatibility routes that redirect to a canonical read-only page.
+# They are classified but deliberately excluded from the origin allow-list.
+COMPATIBILITY_REDIRECTS: frozenset[UrlName] = frozenset(
+    {
+        "games:view_game_by_uuid",
+        "games:view_game_legacy",
+    }
+)
+
 # Mutates, then redirects (or sends HX-Redirect); consumes an origin.
 ORIGIN_AWARE: frozenset[UrlName] = frozenset(
     {

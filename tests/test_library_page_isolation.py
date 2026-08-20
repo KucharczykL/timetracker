@@ -200,6 +200,12 @@ def test_platform_management_list_omits_shared_catalogue_rows(world):
     assert world.shared_platform.name not in body
 
 
+def _object_url(url_name, obj):
+    if url_name == "games:view_game":
+        return obj.get_absolute_url()
+    return reverse(url_name, args=[obj.pk])
+
+
 @pytest.mark.parametrize(
     ("url_name", "object_name"),
     [
@@ -229,7 +235,7 @@ def test_platform_management_list_omits_shared_catalogue_rows(world):
 def test_foreign_detail_edit_and_delete_reads_return_404(world, url_name, object_name):
     obj = getattr(world, object_name)
 
-    assert world.client.get(reverse(url_name, args=[obj.pk])).status_code == 404
+    assert world.client.get(_object_url(url_name, obj)).status_code == 404
 
 
 @pytest.mark.parametrize(
@@ -259,7 +265,7 @@ def test_foreign_detail_edit_and_delete_reads_return_404(world, url_name, object
 def test_owned_detail_edit_and_delete_reads_work(world, url_name, object_name):
     obj = getattr(world, object_name)
 
-    assert world.client.get(reverse(url_name, args=[obj.pk])).status_code == 200
+    assert world.client.get(_object_url(url_name, obj)).status_code == 200
 
 
 @pytest.mark.parametrize(

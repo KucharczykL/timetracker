@@ -1,7 +1,6 @@
 """Domain components for games / purchases / sessions."""
 
 from typing import TYPE_CHECKING, NamedTuple
-from uuid import UUID
 
 from django.template.defaultfilters import floatformat
 from django.urls import reverse
@@ -29,18 +28,15 @@ if TYPE_CHECKING:
 
 
 def GameLink(
-    game_id: UUID,
+    game: Game,
     name: str = "",
     children: Children = None,
 ) -> Node:
     """Link to a game's detail page. Uses children (slot) if provided, otherwise name."""
-    from django.urls import reverse
-
     display = as_children(children) or [name]
-    link = reverse("games:view_game", args=[game_id])
 
     return Span(class_="truncate-container")[
-        Link(href=link, class_="font-condensed")[*display],
+        Link(href=game.get_absolute_url(), class_="font-condensed")[*display],
     ]
 
 
@@ -262,7 +258,7 @@ def _resolve_name_with_icon(
     if game is not None:
         badge = _platform_badge(game)
         if linkify:
-            link = reverse("games:view_game", args=[game.pk])
+            link = game.get_absolute_url()
 
     resolved_name = name or (game.name if game else "")
 

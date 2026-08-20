@@ -44,7 +44,21 @@ urlpatterns = [
     path("device/list", device.list_devices, name="list_devices"),
     path("game/add", game.add_game, name="add_game"),
     path("game/<uuidv7:game_id>/edit", game.edit_game, name="edit_game"),
-    path("game/<uuidv7:game_id>/view", game.view_game, name="view_game"),
+    path(
+        "game/<uuidv7:game_id>/view",
+        game.redirect_game_to_canonical,
+        name="view_game_legacy",
+    ),
+    path(
+        "game/<uuidv7:game_id>/",
+        game.redirect_game_to_canonical,
+        name="view_game_by_uuid",
+    ),
+    path(
+        "game/<uuidv7:game_id>/<slug:slug>/",
+        game.view_game,
+        name="view_game",
+    ),
     path("game/<uuidv7:game_id>/delete", game.delete_game, name="delete_game"),
     path("game/list", game.list_games, name="list_games"),
     path("platform/add", platform.add_platform, name="add_platform"),

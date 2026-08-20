@@ -53,10 +53,10 @@ def game(owned_library):
 
 @pytest.fixture
 def rendered(game, rf, owned_user):
-    request = rf.get(f"/game/{game.id}/")
+    request = rf.get(game.get_absolute_url())
     request.user = owned_user
     request.session = {}
-    return view_game(request, game.id).content.decode()
+    return view_game(request, game.id, game.url_slug).content.decode()
 
 
 def test_sessions_section_links_to_filtered_sessions(game, rendered):
@@ -145,7 +145,7 @@ def test_sessions_section_shows_last_five(owned_user, rf):
     request = rf.get(f"/game/{many.id}/")
     request.user = owned_user
     request.session = {}
-    html = view_game(request, many.id).content.decode()
+    html = view_game(request, many.id, many.url_slug).content.decode()
 
     newest, oldest = sessions[-1], sessions[0]
     # session_time_range output (digits/spaces/em-dash) isn't HTML-escaped, so no escape() needed
@@ -184,5 +184,5 @@ def test_no_view_all_for_empty_section(owned_user, rf):
     request = rf.get(f"/game/{empty_game.id}/")
     request.user = owned_user
     request.session = {}
-    html = view_game(request, empty_game.id).content.decode()
+    html = view_game(request, empty_game.id, empty_game.url_slug).content.decode()
     assert "View all" not in html
