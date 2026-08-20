@@ -584,6 +584,32 @@ class ExternalReference(models.Model):
         if errors:
             raise ValidationError(errors)
 
+        if not self._state.adding:
+            persisted_target_ids = (
+                type(self)
+                .objects.filter(pk=self.pk)
+                .values("game_id", "edition_id", "release_id", "platform_id")
+                .first()
+            )
+            if persisted_target_ids is not None:
+                persisted_target_uuid = next(
+                    (
+                        target_id
+                        for target_id in persisted_target_ids.values()
+                        if target_id is not None
+                    ),
+                    None,
+                )
+                if persisted_target_uuid != self.target_uuid:
+                    raise ValidationError(
+                        {
+                            "target_uuid": (
+                                "An existing external reference is already mapped "
+                                "to a target and cannot be reassigned."
+                            )
+                        }
+                    )
+
     @property
     def target_uuid(self) -> UUID:
         target_ids = {

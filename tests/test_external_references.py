@@ -129,6 +129,26 @@ def test_external_reference_database_prevents_duplicate_provider_kind_key():
         )
 
 
+def test_external_reference_save_cannot_reassign_a_persisted_tuple_target():
+    """Changing a saved tuple's target would silently reassign external identity."""
+    original = Game.objects.create(name="Original Reference Target")
+    replacement = Game.objects.create(name="Replacement Reference Target")
+    reference = ExternalReference.objects.create(
+        provider="wikidata",
+        entity_kind="game",
+        provider_key="Q123",
+        game=original,
+    )
+
+    reference.game = replacement
+
+    with pytest.raises(ValidationError, match="already mapped"):
+        reference.save()
+
+    reference.refresh_from_db()
+    assert reference.target_uuid == original.pk
+
+
 def test_external_reference_save_rejects_a_kind_target_mismatch():
     """Model saves must reject an edition label applied to a game target."""
     with pytest.raises(ValidationError, match="edition"):
