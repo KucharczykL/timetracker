@@ -108,6 +108,7 @@ class GameStatusSelectorRenderTest(unittest.TestCase):
         self.assertIn('data-patch-url="/api/games/7/status"', html)
         self.assertIn('data-body-key="status"', html)
         self.assertIn('data-value="u"', html)
+        self.assertNotIn("data-empty-is-null=", html)
         self.assertNotIn("<game-status-selector", html)  # element retired
 
 
@@ -299,22 +300,27 @@ class DropdownMenuItemTest(unittest.TestCase):
 
 
 class SessionDeviceSelectorRenderTest(unittest.TestCase):
-    def test_emits_listbox_and_numeric_patch(self):
+    def test_emits_listbox_and_nullable_string_patch(self):
         from types import SimpleNamespace
 
         from common.components import SessionDeviceSelector, render
 
-        session = SimpleNamespace(id=4, device=SimpleNamespace(id=2, name="Deck"))
+        session_id = "018f5e66-e800-7000-8000-000000000001"
+        device_id = "018f5e66-e800-7000-8000-000000000002"
+        session = SimpleNamespace(
+            id=session_id, device=SimpleNamespace(id=device_id, name="Deck")
+        )
         devices = [
-            SimpleNamespace(id=1, name="Desktop"),
-            SimpleNamespace(id=2, name="Deck"),
+            SimpleNamespace(id="018f5e66-e800-7000-8000-000000000003", name="Desktop"),
+            SimpleNamespace(id=device_id, name="Deck"),
         ]
         html = render(SessionDeviceSelector(session, devices, "tok"))
         self.assertIn('behavior="select"', html)
-        self.assertIn('data-patch-url="/api/session/4/device"', html)
+        self.assertIn(f'data-patch-url="/api/session/{session_id}/device"', html)
         self.assertIn('data-body-key="device_id"', html)
-        self.assertIn('data-numeric="true"', html)
-        self.assertIn('data-value="2"', html)
+        self.assertIn('data-empty-is-null="true"', html)
+        self.assertNotIn("data-numeric=", html)
+        self.assertIn(f'data-value="{device_id}"', html)
 
     def test_clear_option_present(self):
         from types import SimpleNamespace
@@ -373,7 +379,7 @@ class SelectDropdownRenderTest(unittest.TestCase):
         self.assertIn('aria-selected="true"', html)  # the current option
         self.assertIn("data-label", html)  # the toggle's swappable label
 
-    def test_numeric_flag_sets_data_numeric(self):
+    def test_empty_is_null_flag_sets_data_attribute(self):
         from common.components import SelectDropdown, render
         from common.components.custom_elements import SelectOption
 
@@ -386,7 +392,7 @@ class SelectDropdownRenderTest(unittest.TestCase):
                 body_key="device_id",
                 event="device-changed",
                 csrf="t",
-                numeric=True,
+                empty_is_null=True,
             )
         )
-        self.assertIn('data-numeric="true"', html)
+        self.assertIn('data-empty-is-null="true"', html)

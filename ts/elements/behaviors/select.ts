@@ -1,22 +1,11 @@
 import { registerBehavior } from "../dropdown-behaviors.js";
 import { MenuOptions } from "../menu-behavior.js";
 
-// In numeric mode an empty data-value means "clear" and must PATCH null —
-// Number("") is 0, not NaN, so without this branch it would silently send 0.
 export function selectPayloadValue(
   rawValue: string,
-  numeric: boolean,
-): string | number | null {
-  if (!numeric) return rawValue;
-  return rawValue === "" ? null : Number(rawValue);
-}
-
-// A whitespace-only data-value slips both the empty-clear branch (it is not
-// "") and the NaN guard (Number(" ") === 0) and would PATCH e.g. device_id: 0
-// — treat it as malformed alongside the genuinely non-numeric values.
-export function malformedNumericValue(rawValue: string): boolean {
-  if (rawValue === "") return false;
-  return rawValue.trim() === "" || Number.isNaN(Number(rawValue));
+  emptyIsNull: boolean,
+): string | null {
+  return emptyIsNull && rawValue === "" ? null : rawValue;
 }
 
 // Value-selector behavior: pick an option → swap the toggle label, reflect the
@@ -33,7 +22,7 @@ registerBehavior("select", {
     const bodyKey = host.dataset.bodyKey ?? "";
     const event = host.dataset.event ?? "";
     const csrf = host.dataset.csrf ?? "";
-    const numeric = host.dataset.numeric === "true";
+    const emptyIsNull = host.dataset.emptyIsNull === "true";
     const options = Array.from(host.querySelectorAll<HTMLElement>("[data-option]"));
 
     const handlers: Array<[HTMLElement, (event: Event) => void]> = [];
@@ -42,12 +31,6 @@ registerBehavior("select", {
         clickEvent.preventDefault();
         clickEvent.stopPropagation();
         const rawValue = option.dataset.value ?? "";
-        if (numeric && malformedNumericValue(rawValue)) {
-          // Don't send {key: NaN} (serializes to null) — abort the malformed PATCH.
-          console.error("select: non-numeric data-value", rawValue, patchUrl);
-          controller.close();
-          return;
-        }
         // Snapshot the pre-click UI so a failed PATCH can revert — the update
         // below is optimistic (applied before the server confirms).
         const previousLabelHtml = label?.innerHTML;
@@ -63,7 +46,9 @@ registerBehavior("select", {
           .fetchWithHtmxTriggers(patchUrl, {
             method: "PATCH",
             headers: { "Content-Type": "application/json", "X-CSRFToken": csrf },
-            body: JSON.stringify({ [bodyKey]: selectPayloadValue(rawValue, numeric) }),
+            body: JSON.stringify({
+              [bodyKey]: selectPayloadValue(rawValue, emptyIsNull),
+            }),
           })
           .then((response) => {
             // fetch resolves on 4xx/5xx, so an unchecked response would make a

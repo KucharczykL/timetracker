@@ -61,7 +61,7 @@ def _presets_url() -> str:
     return reverse("api-1.0.0:list_presets")
 
 
-def _delete_url(preset_id: int) -> str:
+def _delete_url(preset_id) -> str:
     return reverse("api-1.0.0:delete_preset", args=[preset_id])
 
 
@@ -257,7 +257,7 @@ def test_list_emits_persisted_sort(auth_client):
     payload = _list(auth_client).json()
     assert payload == [
         {
-            "value": preset.id,
+            "value": str(preset.id),
             "label": "Sorted",
             "data": {"filter": "{}", "sort": "-playtime", "per_page": ""},
         }
@@ -346,7 +346,7 @@ def test_list_emits_persisted_per_page(auth_client):
     payload = _list(auth_client).json()
     assert payload == [
         {
-            "value": preset.id,
+            "value": str(preset.id),
             "label": "Big",
             "data": {"filter": "{}", "sort": "", "per_page": "100"},
         }
@@ -365,7 +365,7 @@ def test_list_degrades_corrupt_stored_per_page_to_inherited(auth_client, user, s
 
     assert _list(auth_client).json() == [
         {
-            "value": preset.id,
+            "value": str(preset.id),
             "label": "Corrupt",
             "data": {"filter": "{}", "sort": "", "per_page": ""},
         }
@@ -398,7 +398,7 @@ def test_list_shape_round_trips_object_filter(auth_client):
     payload = _list(auth_client).json()
     assert payload == [
         {
-            "value": preset.id,
+            "value": str(preset.id),
             "label": "Shape",
             "data": {
                 "filter": json.dumps(stored, sort_keys=True),

@@ -44,7 +44,6 @@ from common.criteria import (
     ModelFieldBundle,
     ModelKey,
     Modifier,
-    MultiCriterion,
     OperatorFilter,
     StringCriterion,
     UUIDMultiCriterion,
@@ -231,7 +230,7 @@ class SessionFilter(OperatorFilter):
     NOT: list[SessionFilter] = field(default_factory=list)
 
     game: UUIDMultiCriterion | None = None  # filters on game__id
-    device: MultiCriterion | None = None  # filters on device__id
+    device: UUIDMultiCriterion | None = None  # filters on device_id
     emulated: BoolCriterion | None = None
     note: StringCriterion | None = None
     duration_total_hours: IntCriterion | None = None
@@ -256,7 +255,7 @@ class SessionFilter(OperatorFilter):
     # reviewable diff (AND-composition makes the order semantically irrelevant).
     fields: ClassVar[dict[str, FilterField]] = {
         "game": FilterField("game__id", search_url="/api/games/search"),
-        "device": FilterField("device__id", search_url="/api/devices/search"),
+        "device": FilterField("device_id", search_url="/api/devices/search"),
         "emulated": FilterField(),
         "note": FilterField(),
         "duration_total_hours": FilterField(
@@ -317,7 +316,7 @@ class SessionFilter(OperatorFilter):
                 context=context,
                 related_model=Device,
                 related_lookup="id",
-                parent_field="device__id",
+                parent_field="device_id",
             )
 
         return q
@@ -568,7 +567,7 @@ class DeviceFilter(OperatorFilter):
                 self.session_filter,
                 context=context,
                 related_model=Session,
-                related_lookup="device__id",
+                related_lookup="device_id",
             )
 
         return q

@@ -143,7 +143,7 @@ class PlatformOption(Schema):  # mirrors SearchSelectOption
 
 
 class DeviceOption(Schema):  # mirrors SearchSelectOption
-    value: int
+    value: UUIDv7
     label: str
     data: dict
 
@@ -351,7 +351,7 @@ class GameOut(Schema):
 
 
 class DeviceOut(Schema):
-    id: int
+    id: UUIDv7
     name: str
     type: str
 
@@ -494,7 +494,7 @@ def get_session(request, session_id: UUIDv7):
 class SessionDeviceUpdate(Schema):
     # Required key, nullable value: null clears the device (renders as
     # "No device").
-    device_id: int | None
+    device_id: UUIDv7 | None
 
 
 @session_router.patch("/{session_id}/device", response={204: None})
@@ -510,8 +510,6 @@ def partial_update_session_device(
         device = owned_or_404(
             Device.objects.for_library(library), library, id=payload.device_id
         )
-    # The payload carries the integer pk the selector's options do, while the
-    # column holds the device's uuid: bind the instance, not the id.
     session.device = device
     session.save()
     messages.success(request, "Device updated")
@@ -622,7 +620,7 @@ preset_router = Router()
 class PresetOption(Schema):
     """Preset picker option; empty string values mean inherit."""
 
-    value: int
+    value: UUIDv7
     label: str
     data: dict[str, str]
 
@@ -743,7 +741,7 @@ def save_preset(request, payload: PresetIn):
 
 
 @preset_router.delete("/{preset_id}", response={204: None})
-def delete_preset(request, preset_id: int):
+def delete_preset(request, preset_id: UUIDv7):
     """Delete one of the current library's presets.
 
     Scoped to request.user.library so it cannot touch another library's preset (404
@@ -816,7 +814,7 @@ class SettingValueIn(Schema):
 
 
 class DefaultDeviceIn(Schema):
-    value: int | str | None = None
+    value: UUIDv7 | None = None
 
 
 def _settings_of_scope(*scopes: SettingScope) -> list[SettingKey]:
@@ -905,18 +903,14 @@ def update_library_default_device(request, payload: DefaultDeviceIn):
     library = request.user.library
     device = None
     if payload.value is not None:
-        try:
-            device_id = int(payload.value)
-        except ValueError:
-            raise HttpError(400, "Device must be an integer or null.") from None
-        device = Device.objects.for_library(library).filter(pk=device_id).first()
+        device = Device.objects.for_library(library).filter(pk=payload.value).first()
         if device is None:
             raise HttpError(404, "Device not found.")
     change_library_default_device(library, device)
     messages.success(request, "Default device saved")
     return {
         "key": "default-device",
-        "value": device.pk if device is not None else None,
+        "value": str(device.pk) if device is not None else None,
         "source": SettingSource.LIBRARY,
         "locked": False,
         "namespace": SettingNamespace.LIBRARY,

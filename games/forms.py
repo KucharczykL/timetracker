@@ -8,7 +8,7 @@ from django import forms
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.models import User
 from django.db import transaction
-from django.db.models import Model, QuerySet
+from django.db.models import QuerySet
 from django.utils import timezone
 
 from common.components import (
@@ -175,29 +175,6 @@ class MultipleGameChoiceField(forms.ModelMultipleChoiceField):
 class SingleGameChoiceField(forms.ModelChoiceField):
     def label_from_instance(self, obj) -> str:
         return obj.search_label
-
-
-def seed_related_initial(form: forms.ModelForm, *field_names: str) -> None:
-    """Seed a bound form's initial with each named relation's *instance*.
-
-    Transitional. ``ModelForm`` initial comes from ``model_to_dict``, which
-    reads a foreign key's attname — a UUID for every relation pointed at a
-    ``uuid`` target — while the SearchSelect widgets carry integer option
-    values. ``ModelChoiceField.prepare_value`` turns an instance back into its
-    pk, so feeding the instance produces the identity the options use. Drops
-    out once those pks *are* the UUIDs.
-
-    A field whose initial is *already* an instance was seeded by the caller —
-    ``BaseModelForm`` merges its ``initial`` argument over ``model_to_dict``,
-    which only ever yields attnames — and keeps it. That is how the session
-    edit page offers the library's default device to a session that has none.
-    """
-    if not form.instance.pk:
-        return
-    for field_name in field_names:
-        if isinstance(form.initial.get(field_name), Model):
-            continue
-        form.initial[field_name] = getattr(form.instance, field_name)
 
 
 def game_option_data(game: Game) -> dict[str, str]:
@@ -548,7 +525,6 @@ class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
         self.fields["device"].widget.options_resolver = partial(
             _device_options, library=library
         )
-        seed_related_initial(self, "device")
         self._presentation = presentation
         for field_name, copy_target in _TIMESTAMP_COPY_TARGETS.items():
             zone_field_name = _TIMESTAMP_ZONE_FIELDS[field_name]

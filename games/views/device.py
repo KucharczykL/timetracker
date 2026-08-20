@@ -1,4 +1,5 @@
 from typing import cast
+from uuid import UUID
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
@@ -136,7 +137,7 @@ def list_devices(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def edit_device(request: HttpRequest, device_id: int = 0) -> HttpResponse:
+def edit_device(request: HttpRequest, device_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     device = owned_or_404(Device.objects.for_library(library), library, id=device_id)
     form = DeviceForm(request.POST or None, instance=device, library=library)
@@ -148,7 +149,7 @@ def edit_device(request: HttpRequest, device_id: int = 0) -> HttpResponse:
 
 
 @login_required
-def delete_device(request: HttpRequest, device_id: int) -> HttpResponse:
+def delete_device(request: HttpRequest, device_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     device = owned_or_404(Device.objects.for_library(library), library, id=device_id)
     return confirm_and_delete(

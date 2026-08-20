@@ -558,8 +558,7 @@ class BoolCriterion(_Criterion):
 
 @dataclass
 class _SetCriterion(_Criterion):
-    """Shared base for set-membership criteria (``MultiCriterion`` /
-    ``ChoiceCriterion``).
+    """Shared base for UUID and choice set-membership criteria.
 
     Two orthogonal channels, mirroring Stash's modifier model:
 
@@ -684,13 +683,7 @@ class _SetCriterion(_Criterion):
         # would bypass the boundary and 500).
         result.value = [_strip_set_label(item) for item in result.value]
         result.excludes = [_strip_set_label(item) for item in result.excludes]
-        # Coerce each element against the field-column type (issue #157), so an
-        # int-set field (MultiCriterion) rejects a wrong-typed id at parse rather
-        # than letting ``field__in=["xyz"]`` 500 at query execution. ChoiceCriterion
-        # leaves ``_coerce`` None: its string-code fields (status, ownership_type,
-        # group, …) run against char columns and never 500. The one id-bearing
-        # ChoiceCriterion, PurchaseFilter.games (M2M int ids), is made 500-safe
-        # separately by _games_to_q's explicit int() coercion, not here.
+        # Coerce each element against the field-column type (issue #157).
         if cls._coerce is not None:
             coerce = cls._coerce
             result.value = [coerce(item) for item in result.value]
@@ -724,22 +717,8 @@ class _SetCriterion(_Criterion):
 
 
 @dataclass
-class MultiCriterion(_SetCriterion):
-    """Filter on a many-to-many or ForeignKey relationship by ID list.
-
-    All modifier logic (including ``INCLUDES_ALL`` and ``EXCLUDES``) lives in
-    ``_SetCriterion``; this subclass only refines the value type.
-    """
-
-    value: list[int] = field(default_factory=list)
-    excludes: list[int] = field(default_factory=list)
-    labels: dict[int, str] = field(default_factory=dict, compare=False)
-    _coerce: ClassVar[Coercer | None] = staticmethod(_coerce_int)
-
-
-@dataclass
 class UUIDMultiCriterion(_SetCriterion):
-    """``MultiCriterion`` for a relation whose target's primary key is a UUID.
+    """Set criterion for a relation whose target's primary key is UUIDv7.
 
     Identical modifier algebra; only the value type and its serialization
     differ. The override below is not cosmetic: ``filter_to_json`` is
@@ -764,8 +743,7 @@ class UUIDMultiCriterion(_SetCriterion):
 class ChoiceCriterion(_SetCriterion):
     """Filter on a choice/enum field with multi-select include/exclude.
 
-    Used by FilterSelect widgets for status, ownership_type, etc. Shares all
-    modifier logic with ``MultiCriterion`` via ``_SetCriterion``.
+    Used by FilterSelect widgets for status, ownership_type, etc.
     """
 
     value: list[str] = field(default_factory=list)
@@ -1039,7 +1017,6 @@ _CRITERION_TYPES: dict[str, type[_Criterion]] = {
     "FloatCriterion": FloatCriterion,
     "DateCriterion": DateCriterion,
     "BoolCriterion": BoolCriterion,
-    "MultiCriterion": MultiCriterion,
     "UUIDMultiCriterion": UUIDMultiCriterion,
     "ChoiceCriterion": ChoiceCriterion,
     "AggregateCriterion": AggregateCriterion,
@@ -1205,7 +1182,6 @@ _CRITERION_KINDS: dict[type[_Criterion], LeafWidgetKind] = {
     AggregateCriterion: "number",
     DateCriterion: "date",
     BoolCriterion: "bool",
-    MultiCriterion: "set",
     UUIDMultiCriterion: "set",
     ChoiceCriterion: "set",
     FieldComparisonCriterion: "field-comparison",

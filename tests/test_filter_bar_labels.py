@@ -23,12 +23,16 @@ def test_stats_link_prefills_labelled_choice():
     serializes it into the ``?filter=`` JSON, so the quick bar prefills a
     labelled pill rather than a bare id."""
     import json
+    from uuid import UUID
 
     from common.components.filters import _choice_from_raw
-    from common.criteria import MultiCriterion
+    from common.criteria import UUIDMultiCriterion
     from games.filters import SessionFilter
 
-    link = SessionFilter(game=MultiCriterion(value=[5], labels={5: "Hollow Knight"}))
+    game_id = UUID("018f5e66-e800-7000-8000-000000000001")
+    link = SessionFilter(
+        game=UUIDMultiCriterion(value=[game_id], labels={game_id: "Hollow Knight"})
+    )
     existing = json.loads(json.dumps(link.to_json()))
     choice = _choice_from_raw(existing.get("game") or {})
-    assert choice.selected == [("5", "Hollow Knight")]
+    assert choice.selected == [(str(game_id), "Hollow Knight")]

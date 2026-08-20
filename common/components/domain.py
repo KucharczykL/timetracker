@@ -331,7 +331,7 @@ def SessionDeviceSelector(session, session_devices, csrf_token: str) -> Node:
         body_key="device_id",
         event="device-changed",
         csrf=csrf_token,
-        numeric=True,
+        empty_is_null=True,
     )
 
 

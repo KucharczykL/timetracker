@@ -19,9 +19,9 @@ from common.criteria import (
     BoolCriterion,
     FilterQueryContext,
     Modifier,
-    MultiCriterion,
     RelationMatch,
     StringCriterion,
+    UUIDMultiCriterion,
 )
 from games.filters import GameFilter, PurchaseFilter, SessionFilter
 from games.models import Device, Game, Platform, Purchase, Session
@@ -474,7 +474,7 @@ def test_and_list_two_subfilters_same_relation(boolean_world):
                 session_filter=SessionFilter(emulated=BoolCriterion(value=True))
             ),
             GameFilter(
-                session_filter=SessionFilter(device=MultiCriterion(value=[deck]))
+                session_filter=SessionFilter(device=UUIDMultiCriterion(value=[deck]))
             ),
         ]
     )
@@ -485,7 +485,8 @@ def test_and_list_two_subfilters_same_relation(boolean_world):
     # One session required to be BOTH emulated AND on the deck: split is excluded.
     single_session = GameFilter(
         session_filter=SessionFilter(
-            emulated=BoolCriterion(value=True), device=MultiCriterion(value=[deck])
+            emulated=BoolCriterion(value=True),
+            device=UUIDMultiCriterion(value=[deck]),
         )
     )
     single_ids = _ids(single_session)
@@ -594,7 +595,7 @@ def test_mixed_and_or_not_composition_order(boolean_world):
         ],
         NOT=[
             GameFilter(
-                session_filter=SessionFilter(device=MultiCriterion(value=[deck]))
+                session_filter=SessionFilter(device=UUIDMultiCriterion(value=[deck]))
             )
         ],
     )

@@ -341,8 +341,7 @@ def test_games_uniqueness_guarantees_are_still_enforced(owned_library):
 
 
 def test_search_endpoints_report_each_entitys_own_identity_type(library_client):
-    """Catalog values are UUID strings; Device stays integer until ID-14. Pinning
-    all three keeps the mixed window honest instead of assumed."""
+    """Every catalog/config search option exposes its UUID identity as JSON text."""
     client, library = library_client
     platform = Platform.objects.create(name="Search Platform")
     game = Game.objects.create(library=library, name="Searchable", platform=platform)
@@ -355,7 +354,7 @@ def test_search_endpoints_report_each_entitys_own_identity_type(library_client):
     assert [row["value"] for row in platforms] == [str(platform.pk)]
 
     devices = client.get("/api/devices/search", {"q": "Search"}).json()
-    assert [row["value"] for row in devices] == [device.pk]
+    assert [row["value"] for row in devices] == [str(device.pk)]
 
 
 def test_game_bearing_endpoints_accept_the_new_identity(library_client):
