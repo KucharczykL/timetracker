@@ -40,19 +40,25 @@ or silently normalize input.
 | closed range | `1999/2001-03` | `1999-01-01` | `2001-03-31` |
 | open-start range | `../2001-03` | `null` | `2001-03-31` |
 | open-end range | `1999/..` | `1999-01-01` | `null` |
+| unknown-start range | `/2001-03` | `null` | `2001-03-31` |
+| unknown-end range | `1999/` | `1999-01-01` | `null` |
 
 Four-digit Gregorian years from 0001 through 9999 are supported. A decade has
 exactly one rightmost `X`; `000X` is rejected because Python and PostgreSQL
 calendar dates have no year zero. Range endpoints may independently use day,
 month, year, or decade precision. A range's own precision token is always
 `range`, even when both endpoints have the same precision or name the same day.
-`../..` is rejected because it carries no information beyond unknown.
+Every range must have at least one known endpoint. `../..`, `../`, `/..`, and
+`/` are rejected because they carry no known calendar bound and add no useful
+information beyond a standalone unknown value.
 
 Unknown is serialized as `null`, not an invented date or the open-end marker
-`..`. Empty interval endpoints are not accepted in this slice: EDTF distinguishes
-an unknown endpoint from an open endpoint, while the approved charter asks this
-primitive for open ranges and a standalone unknown date. A later requirement
-for unknown range endpoints must make that semantic distinction explicit.
+`..`. Within a range, an empty endpoint means **unknown**: an endpoint exists,
+but its date is not known. `..` means **open**: the interval has no specified
+bound on that side. Both project to a `null` lower or upper query bound because
+neither justifies a calendar date, but their canonical strings and in-memory
+endpoint kinds remain distinct. Serialization, display, and later correction
+can therefore preserve `1999/` rather than silently changing it to `1999/..`.
 
 Day precision is exact for this primitive. Month, year, decade, range, and
 unknown are imprecise. Exact zoned timestamps remain ordinary `datetime`
@@ -64,8 +70,11 @@ values outside this calendar primitive.
 
 - `TemporalPrecision`, a `StrEnum` with `day`, `month`, `year`, `decade`,
   `range`, and `unknown`;
+- `TemporalRangeBoundary`, a `StrEnum` whose `UNKNOWN` and `OPEN` values retain
+  the empty-string and `..` range endpoint semantics;
 - an immutable `TemporalValue` whose public construction path accepts only a
-  canonical scalar and derives `lower_bound`, `upper_bound`, and `precision`;
+  canonical scalar and derives `lower_bound`, `upper_bound`, `precision`, and
+  optional typed `range_start`/`range_end` endpoints;
 - named constructors for day, month, year, decade, range, and unknown values;
 - `TemporalValueParseError`, carrying a stable error code and a precise human
   message; and
@@ -89,7 +98,10 @@ unsupported season, unsupported set, unsupported extended year, and unsupported
 timestamp. Range order is possible-time order: when both sides are bounded, the
 start endpoint's earliest possible day must not follow the end endpoint's latest
 possible day. This admits mixed-precision intervals such as `2020/2020-01`
-without pretending either endpoint is more precise than written.
+without pretending either endpoint is more precise than written. A known range
+endpoint is a non-range, non-unknown `TemporalValue`; an unknown or open endpoint
+is its corresponding `TemporalRangeBoundary`. Non-range values expose `None`
+for both endpoint properties, so “not a range” never aliases either boundary.
 
 ## Django and PostgreSQL persistence
 
@@ -174,8 +186,9 @@ The explicit four-column consumer contract is repetitive but unsurprising.
 ## Verification and complexity forecast
 
 Pure tests cover every supported precision, leap-year/month-end boundaries,
-open and mixed-precision ranges, scalar serialization round-trips, constructor
-invariants, equality/hash behavior, and every stable validation code. Django
+open, unknown-endpoint, and mixed-precision ranges, scalar serialization
+round-trips, constructor invariants, equality/hash behavior, and every stable
+validation code. Django
 tests cover field deconstruction, PostgreSQL-only enforcement, model/dump-data
 round-trips, typed generated values, ORM queries over the stored bounds and
 precision, and database rejection of invalid raw inserts. Migration tests cover
@@ -186,6 +199,6 @@ The final gate is `make check` with the Makefile's default parallel workers,
 then `git diff --check` and full diff review against this specification.
 
 Forecast: two independent runtime subsystems (Python/Django and PostgreSQL),
-four implementation/test files, and 700–1,000 non-generated changed lines.
+four implementation/test files, and 750–1,100 non-generated changed lines.
 The issue therefore stays below all re-slice thresholds: it does not cross three
 runtime subsystems, 40 files, or 2,000 non-generated lines.

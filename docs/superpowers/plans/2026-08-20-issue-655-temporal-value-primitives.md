@@ -25,13 +25,14 @@ pytest/pytest-django.
 
 - Work only on issue #655 from `origin/codex/catalog-wave`; target the final PR
   to `codex/catalog-wave`.
-- Preserve only canonical day, month, year, decade, closed/open range, and
-  unknown values. Do not implement qualifiers, UI, overlap criteria, or legacy
-  migration from #656–#659.
+- Preserve only canonical day, month, year, decade, closed/open/unknown-endpoint
+  range, and standalone unknown values. Do not implement qualifiers, UI,
+  overlap criteria, or legacy migration from #656–#659.
 - Serialize a temporal value as its canonical string or `null`; never serialize
   caller-controlled derived bounds.
 - Use Gregorian years 0001–9999 and reject seasons, sets, extended/negative
-  years, timestamps, `000X`, both-open ranges, and non-canonical spellings.
+  years, timestamps, `000X`, ranges without a known endpoint, and
+  non-canonical spellings.
 - Keep generated query values typed as nullable PostgreSQL `date`, nullable
   PostgreSQL `date`, and non-null precision text.
 - Add no dependency: the parser uses `datetime.date`, `calendar.monthrange`,
@@ -60,15 +61,25 @@ pytest/pytest-django.
 
 - Produces `TemporalPrecision(StrEnum)` values `DAY`, `MONTH`, `YEAR`,
   `DECADE`, `RANGE`, and `UNKNOWN` with lowercase serialized values.
+- Produces `TemporalRangeBoundary(StrEnum)` values `UNKNOWN = ""` and
+  `OPEN = ".."`.
 - Produces immutable `TemporalValue` properties `canonical: str | None`,
   `lower_bound: date | None`, `upper_bound: date | None`,
-  `precision: TemporalPrecision`, and `is_exact: bool`.
+  `precision: TemporalPrecision`, `is_exact: bool`, and
+  `range_start`/`range_end: TemporalValue | TemporalRangeBoundary | None`.
 - Produces `TemporalValue.parse(value: str | None) -> TemporalValue`,
   `TemporalValue.unknown()`, `TemporalValue.from_day(value: date)`,
   `TemporalValue.from_month(year: int, month: int)`,
   `TemporalValue.from_year(year: int)`,
-  `TemporalValue.from_decade(start_year: int)`, and
-  `TemporalValue.range(start: TemporalValue | None, end: TemporalValue | None)`.
+  `TemporalValue.from_decade(start_year: int)`, and the following range
+  constructor:
+
+  ```python
+  TemporalValue.range(
+      start: TemporalValue | TemporalRangeBoundary,
+      end: TemporalValue | TemporalRangeBoundary,
+  ) -> TemporalValue
+  ```
 - Produces `serialize() -> str | None`,
   `parse_temporal_value(value: object) -> TemporalValue`, and
   `validate_temporal_value(value: object) -> None`.
@@ -80,6 +91,9 @@ pytest/pytest-django.
 The implementation keeps derived state private and frozen:
 
 ```python
+from __future__ import annotations
+
+
 class TemporalPrecision(StrEnum):
     DAY = "day"
     MONTH = "month"
@@ -89,12 +103,19 @@ class TemporalPrecision(StrEnum):
     UNKNOWN = "unknown"
 
 
+class TemporalRangeBoundary(StrEnum):
+    UNKNOWN = ""
+    OPEN = ".."
+
+
 @dataclass(frozen=True, slots=True, init=False)
 class TemporalValue:
     canonical: str | None
     lower_bound: date | None
     upper_bound: date | None
     precision: TemporalPrecision
+    range_start: TemporalValue | TemporalRangeBoundary | None
+    range_end: TemporalValue | TemporalRangeBoundary | None
 
     def __init__(self, canonical: str | None) -> None:
         parsed = _parse_canonical(canonical)
@@ -102,12 +123,15 @@ class TemporalValue:
         object.__setattr__(self, "lower_bound", parsed.lower_bound)
         object.__setattr__(self, "upper_bound", parsed.upper_bound)
         object.__setattr__(self, "precision", parsed.precision)
+        object.__setattr__(self, "range_start", parsed.range_start)
+        object.__setattr__(self, "range_end", parsed.range_end)
 ```
 
 - [ ] **Step 1: Write the failing supported-value matrix tests.** Parameterize
   `None`, leap and ordinary days/months, years, decades, closed ranges,
-  mixed-precision ranges, and both open directions. Assert canonical value,
-  exact lower/upper dates, precision, `is_exact`, and
+  mixed-precision ranges, both open directions, and both unknown-endpoint
+  directions. Assert canonical value, exact lower/upper dates, precision,
+  endpoint values/kinds, `is_exact`, and
   `TemporalValue.parse(value.serialize()) == value` for every row.
 - [ ] **Step 2: Run the focused test with default workers and verify it fails.**
   Run `make test-fast ARGS="tests/test_temporal.py -q"`; expect collection to
@@ -121,14 +145,15 @@ class TemporalValue:
   Run `make test-fast ARGS="tests/test_temporal.py -q"`.
 - [ ] **Step 5: Add failing validation and constructor-invariant tests.** Cover
   whitespace/case changes, empty string, invalid leap/month/day, `0000`, `000X`,
-  reversed and `../..` ranges, multiple slashes, qualifiers, seasons, sets,
-  extended/negative years, timestamps, wrong Python types, invalid constructor
-  arguments, and attempted mutation. Assert exact stable codes and useful
-  messages.
+  reversed ranges, `../..`, `../`, `/..`, `/`, multiple slashes, qualifiers,
+  seasons, sets, extended/negative years, timestamps, nested/standalone-unknown
+  endpoint values, wrong Python types, invalid constructor arguments, and
+  attempted mutation. Assert exact stable codes and useful messages.
 - [ ] **Step 6: Implement fail-closed classification and error mapping.** Detect
   excluded EDTF families before the generic syntax error, reject booleans as
-  integers in constructors, and enforce range order by the start's lower bound
-  and the end's upper bound.
+  integers in constructors, map empty and `..` range tokens to their distinct
+  `TemporalRangeBoundary` members, and enforce range order by the start's lower
+  bound and the end's upper bound.
 - [ ] **Step 7: Run the focused test with default workers.** Run
   `make test-fast ARGS="tests/test_temporal.py -q"`; expect all pure tests to
   pass.
@@ -168,17 +193,22 @@ single atom           -> atom lower, atom upper, atom precision
 start/end range       -> start atom lower, end atom upper, precision "range"
 ../end open range     -> lower null, end atom upper, precision "range"
 start/.. open range   -> start atom lower, upper null, precision "range"
+/end unknown range    -> lower null, end atom upper, precision "range"
+start/ unknown range  -> start atom lower, upper null, precision "range"
 ```
 
 Each atom helper branches over exactly `YYYY-MM-DD`, `YYYY-MM`, `YYYY`, and
 `YYYX`; it constructs a real date rather than using PostgreSQL's normalizing
-`to_date()`. The public functions reject multiple slashes, empty endpoints,
-`../..`, and a bounded start lower date after the bounded end upper date.
+`to_date()`. The public functions accept exactly one empty endpoint as unknown,
+distinguish it from `..`, and reject multiple slashes, ranges without a known
+endpoint, and a bounded start lower date after the bounded end upper date.
 
 - [ ] **Step 1: Write failing migration/domain contract tests.** Assert the
   domain base type and constraint, exact function return types and immutable
   volatility, SQL results for the same supported matrix as Python, `null ->
-  (null, null, unknown)`, and database rejection for every invalid expression.
+  (null, null, unknown)`, identical unbounded projections without canonical
+  collapse for open versus unknown endpoints, and database rejection for every
+  invalid expression.
 - [ ] **Step 2: Run the focused domain tests and verify they fail.** Run
   `make test-fast ARGS="tests/test_temporal_domain.py -q"`; expect missing
   domain/function failures.
