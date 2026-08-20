@@ -12,7 +12,7 @@ def _year_value(year: int | None) -> TemporalValue | None:
     return TemporalValue.from_year(year) if year is not None else None
 
 
-def save_legacy_game_form(form: "GameForm") -> Game:
+def save_legacy_game_form(form: GameForm) -> Game:
     game = form.save(commit=False)
     return save_private_game(
         game=game,
