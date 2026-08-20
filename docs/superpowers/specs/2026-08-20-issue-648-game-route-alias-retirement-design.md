@@ -1,50 +1,51 @@
-# Game compatibility route retirement
+# Game URL contract
 
-Status: approved 2026-08-20. Issue: #648 (ID-16). Parent phase: #600.
-Depends on the Game canonical URL work in #647.
+## Canonical detail URL
 
-## Retired URL contract
+A Game's read-only detail page has the canonical URL
+`/tracker/game/<uuid>/<slug>/`. The UUID is authoritative. Every lookup stays
+within the authenticated user's Library; the slug is derived from the current
+Game name and is never queried, persisted, made unique, or treated as
+authorization.
 
-Issue #647 left two UUID-only compatibility routes for the canonical Game
-detail URL: `/tracker/game/<uuid>/view` and `/tracker/game/<uuid>/`. Internal
-links now use `/tracker/game/<uuid>/<slug>/`, so both compatibility aliases are
-retired immediately rather than carried through a tagged-release bake-in.
+`Game.url_slug` applies Django's ASCII `slugify()` to the display name and uses
+`game` when the result is empty. `Game.get_absolute_url()` is the canonical URL
+builder. Renaming a Game therefore changes its canonical URL without creating
+alias state. A request with an outdated or otherwise incorrect slug resolves
+the owned Game by UUID and redirects permanently to its current canonical URL,
+preserving the query string. Missing and foreign-Library UUIDs remain 404 and
+do not expose a current slug.
 
-The UUID-only path has no matching route and returns 404. The exact historical
-`/view` path also returns 404 through an unnamed guard route. The guard is
-required because Django's `CommonMiddleware` would otherwise append a slash,
-turn the old URL into `/view/`, and let the canonical slug route treat `view`
-as a stale slug. It is deliberately unnamed and therefore is not a public
-reversal or return-origin interface.
+Internal Game-detail links consume a Game instance and call
+`get_absolute_url()`. Display-label overrides do not determine the URL slug.
+Game edit/delete and Game-scoped create routes remain UUID-only because they
+are not read-only detail resources.
 
-The guard does not reserve the slug `view`. `/tracker/game/<uuid>/view/`
-continues to use the canonical slug route: it renders a Game whose current slug
-is `view`, or redirects as an ordinary stale slug for another Game.
+## Retired compatibility paths
 
-## Preserved behavior and boundaries
+The UUID-only paths `/tracker/game/<uuid>/` and
+`/tracker/game/<uuid>/view` are not compatibility aliases. The first has no
+matching route and returns 404. The exact no-slash `/view` path is matched by
+an unnamed guard that returns 404, preventing Django's `CommonMiddleware` from
+appending a slash and reviving the retired URL through stale-slug
+canonicalization.
 
-`Game.get_absolute_url()`, the canonical `games:view_game` route, UUIDv7
-validation, query-preserving stale-slug redirects, and authenticated
-library-scoped Game lookups remain unchanged. The stale-slug redirect helper
-therefore remains, while the UUID-only redirect view and the two public route
-names are removed.
+The guard does not reserve the slug `view`.
+`/tracker/game/<uuid>/view/` uses the canonical slug route: it renders a Game
+whose current slug is `view`, or redirects as an ordinary stale slug for a
+different Game.
 
-The compatibility-return classification disappears when its last named routes
-do. No schema, migration, reconciliation, API, filter, saved-preset,
-statistics, or data-isolation changes belong to this issue. Legacy integer
-catalog URLs already 404 because #646 destroyed the integer-to-UUID map; this
-issue adds no integer alias or permanent identity column.
+Legacy integer Game URLs also have no aliases. The integer-to-UUID mapping was
+discarded when UUIDv7 became the primary identity, so the application retains
+no legacy identity column or redirect table.
 
-## Reversibility and verification
+## Route invariants
 
-This is a code-only contraction. Reverting the code restores both UUID-only
-redirects without a data operation or reconciliation step.
+`UUIDv7Converter` remains registered in `games/urls.py`, including when that
+module is imported under an alternative root URL configuration. The canonical
+route rejects integers and non-v7 UUIDs. Unnamed retirement guards are not URL
+reversal or return-origin interfaces, and every named route remains classified
+exactly once by `games.views.returns`.
 
-Focused verification proves that the retired names cannot reverse, the two
-old paths return 404 without a `Location` header, the no-slash `/view` request
-cannot escape through slash appending, and `/view/` still works as the ordinary
-canonical-slug shape. Existing tests continue to cover canonical rendering,
-stale-slug redirects and query preservation, UUIDv7 routing, and foreign-library
-404 behavior. Route classification remains exhaustive after removing the empty
-compatibility bucket. The final gate is `make check` with the Makefile's default
-parallel worker count, followed by `git diff --check` and complete diff review.
+Platform, Purchase, Session, PlayEvent, GameStatusChange, Device, API, filter,
+preset, and statistics identities do not derive slugs from this contract.
