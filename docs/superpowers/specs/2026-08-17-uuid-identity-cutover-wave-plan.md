@@ -461,24 +461,6 @@ alone is insufficient. Catalog facets use `UUIDMultiCriterion`. Device facets
 remain on the integer variant until ID-14 promotes `Device`, after which the
 integer variant can be removed.
 
-**ID-13 delivered 2026-08-20 as #849.** `Purchase.uuid` is now its UUIDv7
-primary key, and the matching `games_purchase_games.purchase_id` through-column
-is a UUIDv7 foreign key; the two Purchase entries are consequently removed from
-the residual-integer audit inventory. The committed sample fixture stores every
-Purchase identity at `pk` with no `fields.uuid`, while the generic
-anonymizer/loader identity handling continues to serve both promoted and
-unpromoted models. #849 also converted these seven existing bare Purchase
-identity routes to UUIDv7: edit, delete, view, refund confirmation, refund,
-split confirmation, and split.
-
-**Prepared #647 handoff (not posted):**
-
-> #849 promoted Purchase UUIDv7 identities and converted the seven existing
-> bare Purchase identity routes (edit, delete, view, refund confirmation,
-> refund, split confirmation, and split) to UUIDv7. It deliberately made no
-> canonical slug or URL-alias policy decision; that policy remains #647's
-> scope.
-
 ## Wave F — canonical slug+UUID URLs (ID-15/#647, 1 issue, scope TBD in its own design)
 
 ID-15 stays one issue, `blocked-by` ID-11 (catalog UUID becomes the real PK).
