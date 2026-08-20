@@ -12,8 +12,9 @@ TIME-01 introduces the final reusable value and persistence contract for exact
 calendar days and the imprecise month, year, decade, range, and unknown values
 that later catalog and player-history models will store. The canonical EDTF
 expression remains the source representation. Parsed lower and upper calendar
-bounds plus a stable precision token are persisted as typed generated columns,
-so normal queries never reparse the canonical expression.
+bounds, overall precision, and range endpoint kind/precision are persisted as
+typed generated columns, so normal queries never reparse the canonical
+expression.
 
 This issue does not add a model that consumes the primitive. In particular, it
 does not add `Edition` or `Release`, change either legacy Game year field, or
@@ -70,11 +71,12 @@ values outside this calendar primitive.
 
 - `TemporalPrecision`, a `StrEnum` with `day`, `month`, `year`, `decade`,
   `range`, and `unknown`;
-- `TemporalRangeBoundary`, a `StrEnum` whose `UNKNOWN` and `OPEN` values retain
-  the empty-string and `..` range endpoint semantics;
+- `TemporalEndpointKind`, a `StrEnum` with `known`, `unknown`, and `open`;
+- an immutable `TemporalEndpoint` carrying its kind and, only when known, its
+  non-range `TemporalValue` plus precision/component convenience properties;
 - an immutable `TemporalValue` whose public construction path accepts only a
   canonical scalar and derives `lower_bound`, `upper_bound`, `precision`, and
-  optional typed `range_start`/`range_end` endpoints;
+  optional typed `start`/`end` endpoints;
 - named constructors for day, month, year, decade, range, and unknown values;
 - `TemporalValueParseError`, carrying a stable error code and a precise human
   message; and
@@ -99,9 +101,40 @@ timestamp. Range order is possible-time order: when both sides are bounded, the
 start endpoint's earliest possible day must not follow the end endpoint's latest
 possible day. This admits mixed-precision intervals such as `2020/2020-01`
 without pretending either endpoint is more precise than written. A known range
-endpoint is a non-range, non-unknown `TemporalValue`; an unknown or open endpoint
-is its corresponding `TemporalRangeBoundary`. Non-range values expose `None`
-for both endpoint properties, so “not a range” never aliases either boundary.
+endpoint contains a non-range, non-unknown `TemporalValue`; unknown and open
+endpoints contain no value. Non-range values expose `None` for both endpoint
+properties, so “not a range” never aliases either boundary.
+
+### Developer API
+
+Component helpers describe what the value itself knows. For an atomic value,
+day knows year/month/day, month knows year/month, year knows only year, and
+decade knows none of those exact components. Range and unknown values return
+false for all three helpers; callers inspect a range's endpoints instead.
+
+```python
+value = TemporalValue.parse("2024-05")
+value.precision is TemporalPrecision.MONTH
+value.has_known_year is True
+value.has_known_month is True
+value.has_known_day is False
+value.is_range is False
+
+interval = TemporalValue.parse("2020/..")
+interval.start.kind is TemporalEndpointKind.KNOWN
+interval.start.precision is TemporalPrecision.YEAR
+interval.start.has_known_month is False
+interval.end.kind is TemporalEndpointKind.OPEN
+interval.end.is_open is True
+interval.end.is_unknown is False
+```
+
+`TemporalEndpoint.known(value)`, `TemporalEndpoint.unknown()`, and
+`TemporalEndpoint.open()` are the explicit construction paths used by
+`TemporalValue.range(start=..., end=...)`. A known endpoint rejects range or
+standalone-unknown values. Every endpoint exposes `is_known`, `is_unknown`, and
+`is_open`; its `precision` is nullable and component helpers are false unless
+the endpoint is known.
 
 ## Django and PostgreSQL persistence
 
@@ -117,13 +150,14 @@ boundary:
 2. The domain rejects malformed or unsupported non-null strings even when a
    write bypasses Django. SQL validation covers the same accepted grammar,
    real Gregorian dates, range endpoint rules, and range ordering as Python.
-3. Immutable PostgreSQL functions derive lower bound, upper bound, and precision
-   from the canonical value. Django `Func` wrappers expose them as
-   `TemporalLowerBound`, `TemporalUpperBound`, and `TemporalPrecisionValue`.
-4. A consumer declares three persisted `GeneratedField`s with typed
-   `DateField`, `DateField`, and `CharField` outputs. Parsing therefore happens
-   when a row is written, not whenever it is filtered or sorted. The stored
-   columns can receive ordinary B-tree indexes and direct ORM lookups.
+3. Immutable PostgreSQL functions derive lower bound, upper bound, overall
+   precision, start/end kind, and start/end precision from the canonical value.
+   Django `Func` wrappers expose each projection.
+4. A consumer declares seven persisted `GeneratedField`s: two nullable dates,
+   one non-null overall precision, two nullable endpoint kinds, and two nullable
+   endpoint precisions. Parsing therefore happens when a row is written, not
+   whenever it is filtered or sorted. The stored columns can receive ordinary
+   B-tree indexes and direct ORM lookups.
 
 The consumer shape is explicit rather than hidden behind a descriptor:
 
@@ -147,12 +181,60 @@ release_date_precision = models.GeneratedField(
     db_persist=True,
     editable=False,
 )
+release_date_start_kind = models.GeneratedField(
+    expression=TemporalStartKind("release_date"),
+    output_field=models.CharField(max_length=7, null=True),
+    db_persist=True,
+    editable=False,
+)
+release_date_end_kind = models.GeneratedField(
+    expression=TemporalEndKind("release_date"),
+    output_field=models.CharField(max_length=7, null=True),
+    db_persist=True,
+    editable=False,
+)
+release_date_start_precision = models.GeneratedField(
+    expression=TemporalStartPrecision("release_date"),
+    output_field=models.CharField(max_length=7, null=True),
+    db_persist=True,
+    editable=False,
+)
+release_date_end_precision = models.GeneratedField(
+    expression=TemporalEndPrecision("release_date"),
+    output_field=models.CharField(max_length=7, null=True),
+    db_persist=True,
+    editable=False,
+)
 ```
 
-Explicit fields cost four declarations per temporal fact, but preserve normal
+Explicit fields cost eight declarations per temporal fact, but preserve normal
 Django migration state, introspection, field naming, and index control. The
 primitive defines the values and expressions; each owning domain issue chooses
 the semantic prefix and indexes its own query paths.
+
+The generated fields make component and endpoint semantics ordinary ORM data:
+
+```python
+Release.objects.filter(
+    release_date_precision__in=[
+        TemporalPrecision.DAY,
+        TemporalPrecision.MONTH,
+    ]
+)
+Release.objects.filter(
+    release_date_start_precision__in=[
+        TemporalPrecision.DAY,
+        TemporalPrecision.MONTH,
+    ]
+)
+Release.objects.filter(release_date_end_kind=TemporalEndpointKind.OPEN)
+Release.objects.filter(release_date_end_kind=TemporalEndpointKind.UNKNOWN)
+```
+
+The first query asks whether an atomic value names a month. The second asks the
+same question of a range's start endpoint. Open and unknown endpoints retain the
+same nullable calendar bound but remain directly distinguishable without string
+suffix inspection.
 
 ## Migration and reversibility
 
@@ -178,10 +260,10 @@ but date bounds become strings or query-time casts, coherence is difficult to
 enforce at the database boundary, and future overlap indexes become opaque
 expression indexes rather than ordinary typed columns.
 
-**A magical multi-column descriptor** was rejected. Injecting four fields from
+**A magical multi-column descriptor** was rejected. Injecting eight fields from
 one pseudo-field hides migration state and makes deconstruction, generated-field
 dependencies, admin/form behavior, and per-consumer indexes harder to inspect.
-The explicit four-column consumer contract is repetitive but unsurprising.
+The explicit eight-column consumer contract is repetitive but unsurprising.
 
 ## Verification and complexity forecast
 
@@ -191,14 +273,14 @@ round-trips, constructor invariants, equality/hash behavior, and every stable
 validation code. Django
 tests cover field deconstruction, PostgreSQL-only enforcement, model/dump-data
 round-trips, typed generated values, ORM queries over the stored bounds and
-precision, and database rejection of invalid raw inserts. Migration tests cover
-domain/function creation, parity between Python and SQL over the shared fixture
-matrix, reversibility, and reapplication.
+atomic/endpoint precision and endpoint kind, and database rejection of invalid
+raw inserts. Migration tests cover domain/function creation, parity between
+Python and SQL over the shared fixture matrix, reversibility, and reapplication.
 
 The final gate is `make check` with the Makefile's default parallel workers,
 then `git diff --check` and full diff review against this specification.
 
 Forecast: two independent runtime subsystems (Python/Django and PostgreSQL),
-four implementation/test files, and 750–1,100 non-generated changed lines.
+four implementation/test files, and 900–1,300 non-generated changed lines.
 The issue therefore stays below all re-slice thresholds: it does not cross three
 runtime subsystems, 40 files, or 2,000 non-generated lines.
