@@ -81,17 +81,17 @@ urlpatterns = [
         name="add_purchase_for_game",
     ),
     path(
-        "purchase/<int:purchase_id>/edit",
+        "purchase/<uuidv7:purchase_id>/edit",
         purchase.edit_purchase,
         name="edit_purchase",
     ),
     path(
-        "purchase/<int:purchase_id>/delete",
+        "purchase/<uuidv7:purchase_id>/delete",
         purchase.delete_purchase,
         name="delete_purchase",
     ),
     path(
-        "purchase/<int:purchase_id>/view",
+        "purchase/<uuidv7:purchase_id>/view",
         purchase.view_purchase,
         name="view_purchase",
     ),
@@ -101,22 +101,22 @@ urlpatterns = [
         name="list_purchases",
     ),
     path(
-        "purchase/<int:purchase_id>/refund/confirm",
+        "purchase/<uuidv7:purchase_id>/refund/confirm",
         purchase.refund_purchase_confirmation,
         name="refund_purchase_confirmation",
     ),
     path(
-        "purchase/<int:purchase_id>/refund",
+        "purchase/<uuidv7:purchase_id>/refund",
         purchase.refund_purchase,
         name="refund_purchase",
     ),
     path(
-        "purchase/<int:purchase_id>/split/confirm",
+        "purchase/<uuidv7:purchase_id>/split/confirm",
         purchase.split_purchase_confirmation,
         name="split_purchase_confirmation",
     ),
     path(
-        "purchase/<int:purchase_id>/split",
+        "purchase/<uuidv7:purchase_id>/split",
         purchase.split_purchase,
         name="split_purchase",
     ),

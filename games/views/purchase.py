@@ -71,7 +71,7 @@ from games.views.returns import origin_from, return_url
 
 
 def _render_purchase_buttons(
-    purchase_id, is_refunded, can_split=False, *, origin: OriginUrl | None
+    purchase_id: UUID, is_refunded, can_split=False, *, origin: OriginUrl | None
 ):
     """Return button group HTML for a purchase row."""
     return ButtonGroup(
@@ -401,7 +401,7 @@ def add_purchase(request: HttpRequest, game_id: UUID | None = None) -> HttpRespo
 
 
 @login_required
-def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
+def edit_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     purchase = owned_or_404(
         Purchase.objects.for_library(library), library, id=purchase_id
@@ -429,7 +429,7 @@ def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
 
 
 @login_required
-def delete_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
+def delete_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     purchase = owned_or_404(
         Purchase.objects.for_library(library), library, id=purchase_id
@@ -484,7 +484,7 @@ def _purchase_page_title(purchase: Purchase, presentation: DateTimePresentation)
 
 
 @login_required
-def view_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
+def view_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     purchase = owned_or_404(
         Purchase.objects.for_library(library), library, id=purchase_id
@@ -498,7 +498,7 @@ def view_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
 
 
 def _refund_confirmation_modal(
-    purchase_id: int, request: HttpRequest, origin: OriginUrl | None
+    purchase_id: UUID, request: HttpRequest, origin: OriginUrl | None
 ) -> Node:
     form = Form(
         hx_post=action_url("games:refund_purchase", purchase_id, origin=origin),
@@ -531,7 +531,7 @@ def _refund_confirmation_modal(
 
 @login_required
 def refund_purchase_confirmation(
-    request: HttpRequest, purchase_id: int
+    request: HttpRequest, purchase_id: UUID
 ) -> HttpResponse:
     library = cast(User, request.user).library
     purchase = owned_or_404(
@@ -544,7 +544,7 @@ def refund_purchase_confirmation(
 
 @login_required
 @require_POST
-def refund_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
+def refund_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     purchase = owned_or_404(
         Purchase.objects.for_library(library), library, id=purchase_id
@@ -603,7 +603,9 @@ def _split_confirmation_modal(
 
 
 @login_required
-def split_purchase_confirmation(request: HttpRequest, purchase_id: int) -> HttpResponse:
+def split_purchase_confirmation(
+    request: HttpRequest, purchase_id: UUID
+) -> HttpResponse:
     library = cast(User, request.user).library
     purchase = owned_or_404(
         Purchase.objects.for_library(library), library, id=purchase_id
@@ -616,7 +618,7 @@ def split_purchase_confirmation(request: HttpRequest, purchase_id: int) -> HttpR
 @login_required
 @require_POST
 @transaction.atomic
-def split_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
+def split_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
     """Replace one multi-game (unsplittable-style) purchase with one single-game
     purchase per game, splitting the price evenly as a starting point. Each new
     purchase is then independently priceable and refundable."""
