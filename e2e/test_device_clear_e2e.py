@@ -1,8 +1,8 @@
 """The device selector's "No device" clear entry clears the device (issue #290).
 
-The entry has data-value=""; in numeric mode the select behavior must send
-{"device_id": null} — Number("") is 0, so this is the end-to-end guard for the
-empty-means-null branch in ts/elements/behaviors/select.ts.
+The entry has data-value=""; with empty_is_null enabled the select behavior
+must send {"device_id": null}. This is the end-to-end guard for that branch in
+ts/elements/behaviors/select.ts.
 """
 
 import json

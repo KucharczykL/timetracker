@@ -92,4 +92,3 @@ invalid-filter degradation path.
   reverse/reapply restore the exact historical structure.
 - The committed fixture and anonymize/load round trip use promoted primary-key
   representation deterministically.
-

@@ -12,7 +12,7 @@ describe("selectPayloadValue", () => {
     expect(selectPayloadValue(value, true)).toBe(value);
   });
 
-  it("passes the empty string through in non-numeric mode", () => {
+  it("passes the empty string through for an ordinary selector", () => {
     expect(selectPayloadValue("", false)).toBe("");
   });
 

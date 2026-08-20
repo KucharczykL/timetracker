@@ -10,15 +10,12 @@
  */
 
 import { getCsrfToken } from "../csrf.js";
+import type { SearchSelectOption } from "./search-select.js";
 
 export { getCsrfToken };
 
-// The /api/presets/ list item (a SearchSelectOption: value/label/data).
-interface PresetOption {
-  value: number;
-  label: string;
-  data: Record<string, string>;
-}
+// The /api/presets/ list item (value/label/data, including a UUID string value).
+type PresetOption = SearchSelectOption;
 
 interface PresetActionDetail {
   name: string;

@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchPresetNames, getCsrfToken, savePreset, wirePresetDelete } from "./presets.js";
 
 const API_URL = "/api/presets/";
+const PRESET_UUID = "018f5e66-e800-7000-8000-000000000001";
+const OTHER_PRESET_UUID = "018f5e66-e800-7000-8000-000000000002";
 
 function clearCsrfCookie(): void {
   document.cookie = "csrftoken=; expires=Thu, 01 Jan 1970 00:00:00 GMT";
@@ -32,7 +34,7 @@ function mountPicker() {
   return { root, picker, widget, dispose };
 }
 
-function dispatchDelete(widget: HTMLElement, value = "42", label = "My preset"): void {
+function dispatchDelete(widget: HTMLElement, value = PRESET_UUID, label = "My preset"): void {
   widget.dispatchEvent(
     new CustomEvent("search-select:action", {
       bubbles: true,
@@ -88,7 +90,7 @@ describe("wirePresetDelete", () => {
       string,
       RequestInit & { headers: Record<string, string> },
     ];
-    expect(url).toBe("/api/presets/42");
+    expect(url).toBe(`/api/presets/${PRESET_UUID}`);
     expect(options.method).toBe("DELETE");
     expect(options.headers["X-CSRFToken"]).toBe("testtoken");
     expect(widget.refetchOptions).toHaveBeenCalledOnce();
@@ -111,7 +113,7 @@ describe("wirePresetDelete", () => {
     vi.stubGlobal("confirm", confirmStub);
     const { widget } = mountPicker();
 
-    dispatchDelete(widget, "7", "Backlog");
+    dispatchDelete(widget, PRESET_UUID, "Backlog");
 
     expect(confirmStub).toHaveBeenCalledWith('Delete preset "Backlog"?');
   });
@@ -149,7 +151,11 @@ describe("wirePresetDelete", () => {
     widget.dispatchEvent(
       new CustomEvent("search-select:action", {
         bubbles: true,
-        detail: { name: "preset", action: "include", option: { value: "1", label: "x", data: {} } },
+        detail: {
+          name: "preset",
+          action: "include",
+          option: { value: PRESET_UUID, label: "x", data: {} },
+        },
       }),
     );
 
@@ -281,8 +287,8 @@ describe("fetchPresetNames", () => {
       Promise.resolve(
         new Response(
           JSON.stringify([
-            { value: 1, label: " Backlog ", data: { filter: "{}" } },
-            { value: 2, label: "Finished", data: { filter: "{}" } },
+            { value: PRESET_UUID, label: " Backlog ", data: { filter: "{}" } },
+            { value: OTHER_PRESET_UUID, label: "Finished", data: { filter: "{}" } },
           ]),
         ),
       ),

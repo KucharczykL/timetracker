@@ -97,4 +97,3 @@ that primary key; residual audit contains only permanent integer exceptions.
 - [ ] Run `make check` with the Makefile's default parallel workers.
 - [ ] Inspect `git diff --check`, the final diff, and a whole-branch code review;
   resolve all load-bearing findings before handoff.
-

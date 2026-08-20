@@ -13,6 +13,7 @@ const MODELS = JSON.stringify({
     columns: [],
   },
 });
+const PRESET_UUID = "018f5e66-e800-7000-8000-000000000001";
 
 describe("applyUrl", () => {
   it("returns the bare list url for an empty filter", () => {
@@ -80,8 +81,8 @@ function dispatchPick(
       bubbles: true,
       detail: {
         name: "preset",
-        values: ["1"],
-        last: { value: "1", label: "Finished games", data },
+        values: [PRESET_UUID],
+        last: { value: PRESET_UUID, label: "Finished games", data },
       },
     }),
   );
@@ -221,7 +222,7 @@ describe("<filter-builder>", () => {
         detail: {
           name: "preset",
           action: "delete",
-          option: { value: "42", label: "My preset", data: { filter: "{}" } },
+          option: { value: PRESET_UUID, label: "My preset", data: { filter: "{}" } },
         },
       }),
     );
@@ -232,7 +233,7 @@ describe("<filter-builder>", () => {
       string,
       RequestInit & { headers: Record<string, string> },
     ];
-    expect(url).toBe("/api/presets/42");
+    expect(url).toBe(`/api/presets/${PRESET_UUID}`);
     expect(options.method).toBe("DELETE");
     expect(options.headers["X-CSRFToken"]).toBe("testtoken");
     expect(widget.refetchOptions).toHaveBeenCalledOnce();
@@ -352,7 +353,7 @@ describe("<filter-builder>", () => {
   it("live-warns when the typed preset name collides with an existing one (#357)", async () => {
     const { builder } = mount();
     // GET /api/presets/ shape: an array of SearchSelectOptions (label = name).
-    const options = [{ value: 1, label: "Finished games", data: {} }];
+    const options = [{ value: PRESET_UUID, label: "Finished games", data: {} }];
     const fetchStub = vi.fn(() =>
       Promise.resolve(new Response(JSON.stringify(options), { status: 200 })),
     );
