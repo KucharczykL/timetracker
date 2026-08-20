@@ -26,8 +26,13 @@ PRESERVED_FIELDS = (
     "related_game_id",
     "date_purchased",
     "date_refunded",
+    "infinite",
     "price",
     "price_currency",
+    "converted_price",
+    "converted_currency",
+    "needs_price_update",
+    "num_purchases",
     "ownership_type",
     "type",
     "name",
@@ -69,16 +74,33 @@ def seed_purchase(apps, *, username: str):
     purchase = Purchase.objects.create(
         library_id=library.pk,
         date_purchased=date(2026, 8, 20),
+        infinite=True,
         price=12.5,
         price_currency="USD",
+        converted_price=49.5,
+        converted_currency="EUR",
+        needs_price_update=False,
+        num_purchases=3,
         ownership_type="di",
         type="game",
         name="Preserved purchase",
     )
-    purchase.games.set(games)
+    Purchase.games.through.objects.bulk_create(
+        [
+            Purchase.games.through(purchase_id=purchase.pk, game_id=game.pk)
+            for game in games
+        ]
+    )
     purchase.refresh_from_db()
+    expected_price_per_game = purchase.converted_price / purchase.num_purchases
+    assert purchase.price_per_game == expected_price_per_game
     values = Purchase.objects.values(*PRESERVED_FIELDS).get(pk=purchase.pk)
-    return purchase.uuid, values, {game.pk for game in games}
+    through_rows = set(
+        Purchase.games.through.objects.filter(purchase_id=purchase.pk).values_list(
+            "id", "purchase__uuid", "game_id"
+        )
+    )
+    return purchase.uuid, values, through_rows, expected_price_per_game
 
 
 def table_columns(table_name: str) -> set[str]:
@@ -181,8 +203,8 @@ def test_model_declares_uuidv7_primary_key_without_a_second_uuid_field():
 
 
 def test_forward_preserves_uuid_row_values_and_every_game_link(promotion_harness):
-    purchase_uuid, expected_values, expected_games = seed_purchase(
-        promotion_harness, username="promotion-forward"
+    purchase_uuid, expected_values, expected_through_rows, expected_price_per_game = (
+        seed_purchase(promotion_harness, username="promotion-forward")
     )
 
     apps = migrate_to_promotion()
@@ -193,7 +215,15 @@ def test_forward_preserves_uuid_row_values_and_every_game_link(promotion_harness
         Purchase.objects.values(*PRESERVED_FIELDS).get(pk=purchase_uuid)
         == expected_values
     )
-    assert set(migrated.games.values_list("pk", flat=True)) == expected_games
+    assert migrated.price_per_game == expected_price_per_game
+    assert (
+        set(
+            Purchase.games.through.objects.filter(
+                purchase_id=purchase_uuid
+            ).values_list("id", "purchase_id", "game_id")
+        )
+        == expected_through_rows
+    )
     assert isinstance(Purchase._meta.pk, UUIDv7Field)
     assert "uuid" not in {field.name for field in Purchase._meta.local_fields}
 
@@ -253,6 +283,8 @@ def test_empty_reverse_restores_integer_purchase_and_through_relation(
     assert column_property("games_purchase", "id", "is_identity") == "YES"
     assert column_property("games_purchase", "uuid", "domain_name") == "uuid_v7"
     assert "uuidv7()" in column_property("games_purchase", "uuid", "column_default")
+    assert primary_key_columns("games_purchase") == {("id",)}
+    assert ("uuid",) in non_primary_unique_columns("games_purchase")
     assert (
         column_property("games_purchase_games", "purchase_id", "data_type") == "bigint"
     )

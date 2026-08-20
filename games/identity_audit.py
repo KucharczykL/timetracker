@@ -121,8 +121,8 @@ class IdentityModel(NamedTuple):
 def audited_models() -> list[type[Model]]:
     """Every table this project owns, auto-created through tables included.
 
-    `include_auto_created` is not optional: `games_purchase_games` carries half
-    the residual integer inventory and is invisible without it.
+    `include_auto_created` is not optional: `games_purchase_games` carries the
+    permanent bigint through-row primary-key exemption and is invisible without it.
     """
     return list(apps.get_app_config("games").get_models(include_auto_created=True))
 
