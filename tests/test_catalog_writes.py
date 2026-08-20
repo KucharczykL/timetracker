@@ -127,16 +127,80 @@ def test_save_private_game_rejects_a_foreign_private_platform(
 ):
     other = django_user_model.objects.create_user(username="other-catalog-owner")
     foreign = Platform.objects.create(library=other.library, name="Foreign")
-    game = Game(library=owned_library, name="Rejected")
+    graph = save_private_game(
+        game=Game(library=owned_library, name="Owned catalog game"),
+        original_release_date=TemporalValue.from_year(1998),
+        release_date=TemporalValue.from_year(1999),
+        platform=None,
+    )
+    graph.game.name = "Rejected"
 
     with pytest.raises(ValidationError, match="another library"):
         save_private_game(
-            game=game,
+            game=graph.game,
             original_release_date=None,
             release_date=None,
             platform=foreign,
         )
-    assert not Game.objects.filter(name="Rejected").exists()
+
+    stored_game = Game.objects.get(pk=graph.game.pk)
+    stored_release = Release.objects.get(pk=graph.release.pk)
+    assert stored_game.name == "Owned catalog game"
+    assert stored_game.original_release_date == TemporalValue.from_year(1998)
+    assert stored_game.editions.get(is_default=True).pk == graph.edition.pk
+    assert stored_release.release_date == TemporalValue.from_year(1999)
+    assert stored_release.platform_id is None
+
+
+def test_save_private_game_rejects_a_persisted_shared_game():
+    """Removing the null-owner guard lets the private writer mutate shared data."""
+    game = Game.objects.create(name="Shared catalog game")
+    game.name = "Rejected shared catalog game"
+
+    with pytest.raises(ValidationError, match="requires a library owner"):
+        save_private_game(
+            game=game,
+            original_release_date=TemporalValue.from_year(1998),
+            release_date=TemporalValue.from_year(1999),
+            platform=None,
+        )
+
+    stored_game = Game.objects.get(pk=game.pk)
+    assert stored_game.library_id is None
+    assert stored_game.name == "Shared catalog game"
+    assert stored_game.original_release_date is None
+    assert not stored_game.editions.filter(is_default=True).exists()
+
+
+def test_save_private_game_rejects_persisted_owner_transfer(
+    owned_library, django_user_model
+):
+    """Ignoring the locked owner transfers a private graph to another library."""
+    other = django_user_model.objects.create_user(username="new-catalog-owner")
+    graph = save_private_game(
+        game=Game(library=owned_library, name="Owned catalog game"),
+        original_release_date=TemporalValue.from_year(1998),
+        release_date=TemporalValue.from_year(1999),
+        platform=None,
+    )
+    graph.game.library = other.library
+    graph.game.name = "Transferred catalog game"
+
+    with pytest.raises(ValidationError, match="library owner"):
+        save_private_game(
+            game=graph.game,
+            original_release_date=None,
+            release_date=None,
+            platform=None,
+        )
+
+    stored_game = Game.objects.get(pk=graph.game.pk)
+    stored_release = Release.objects.get(pk=graph.release.pk)
+    assert stored_game.library_id == owned_library.pk
+    assert stored_game.name == "Owned catalog game"
+    assert stored_game.original_release_date == TemporalValue.from_year(1998)
+    assert stored_game.editions.get(is_default=True).pk == graph.edition.pk
+    assert stored_release.release_date == TemporalValue.from_year(1999)
 
 
 def test_save_private_game_rolls_back_new_game_when_release_write_fails(

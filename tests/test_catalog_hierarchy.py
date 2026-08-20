@@ -3,8 +3,10 @@ import uuid
 from datetime import date
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.core import serializers
-from django.db import models
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError, models, transaction
 
 from common.criteria import FilterError, _comparison_group_for, comparable_columns
 from games.forms import GameForm
@@ -20,6 +22,59 @@ from games.models import (
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db
+
+
+def test_catalog_visibility_is_opt_in_and_derives_through_the_hierarchy():
+    """A missing shared-owner branch must not broaden private query contracts."""
+    user_model = get_user_model()
+    library_a = user_model.objects.create_user(username="catalog-a").library
+    library_b = user_model.objects.create_user(username="catalog-b").library
+    private_a = Game.objects.create(library=library_a, name="Private A")
+    private_b = Game.objects.create(library=library_b, name="Private B")
+    shared = Game.objects.create(name="Shared")
+    private_a_edition = Edition.objects.create(game=private_a)
+    private_b_edition = Edition.objects.create(game=private_b)
+    shared_edition = Edition.objects.create(game=shared)
+    private_a_release = Release.objects.create(edition=private_a_edition)
+    private_b_release = Release.objects.create(edition=private_b_edition)
+    shared_release = Release.objects.create(edition=shared_edition)
+
+    assert set(Game.objects.for_library(library_a)) == {private_a}
+    assert set(Game.objects.visible_to(library_a)) == {private_a, shared}
+    assert set(Edition.objects.for_library(library_a)) == {private_a_edition}
+    assert set(Edition.objects.visible_to(library_a)) == {
+        private_a_edition,
+        shared_edition,
+    }
+    assert set(Release.objects.for_library(library_a)) == {private_a_release}
+    assert set(Release.objects.visible_to(library_a)) == {
+        private_a_release,
+        shared_release,
+    }
+    assert not Game.objects.visible_to(library_a).contains(private_b)
+    assert not Edition.objects.visible_to(library_a).contains(private_b_edition)
+    assert not Release.objects.visible_to(library_a).contains(private_b_release)
+
+
+def test_shared_and_private_games_can_share_a_name_but_private_duplicates_fail():
+    """A missing private uniqueness constraint would permit same-owner duplicates."""
+    user_model = get_user_model()
+    library = user_model.objects.create_user(username="catalog-owner").library
+
+    shared = Game.objects.create(name="Coexisting", year_released=1998)
+    private = Game.objects.create(
+        library=library,
+        name="Coexisting",
+        year_released=1998,
+    )
+
+    assert {shared.library_id, private.library_id} == {None, library.pk}
+    with pytest.raises(IntegrityError), transaction.atomic():
+        Game.objects.create(
+            library=library,
+            name="Coexisting",
+            year_released=1998,
+        )
 
 
 def test_catalog_hierarchy_preserves_game_identity_and_allows_multiplicity(
@@ -162,6 +217,65 @@ def test_catalog_hierarchy_delete_behavior_is_explicit(owned_library):
     game.delete()
     assert not Edition.objects.filter(pk=second_edition_id).exists()
     assert not Release.objects.filter(pk=second_release_id).exists()
+
+
+def test_release_save_allows_shared_and_same_library_platforms(owned_library):
+    """Rejecting a visible Platform would break valid catalog graphs."""
+    private_platform = Platform.objects.create(
+        library=owned_library, name="Private Platform"
+    )
+    shared_platform = Platform.objects.create(name="Shared Platform")
+    private_game = Game.objects.create(library=owned_library, name="Private Game")
+    private_edition = Edition.objects.create(game=private_game)
+    shared_game = Game.objects.create(name="Shared Game")
+    shared_edition = Edition.objects.create(game=shared_game)
+
+    private_same_library = Release.objects.create(
+        edition=private_edition, platform=private_platform
+    )
+    private_shared = Release.objects.create(
+        edition=private_edition, platform=shared_platform
+    )
+    shared = Release.objects.create(edition=shared_edition, platform=shared_platform)
+
+    assert (
+        private_same_library.platform,
+        private_shared.platform,
+        shared.platform,
+    ) == (private_platform, shared_platform, shared_platform)
+
+
+def test_release_save_rejects_foreign_platform_from_private_graph(
+    owned_library, django_user_model
+):
+    """Removing release ownership validation permits another library's Platform."""
+    other = django_user_model.objects.create_user(username="release-foreign-owner")
+    foreign_platform = Platform.objects.create(
+        library=other.library, name="Foreign Platform"
+    )
+    private_game = Game.objects.create(library=owned_library, name="Private Game")
+    release = Release(edition=Edition.objects.create(game=private_game))
+
+    with pytest.raises(ValidationError, match="another library"):
+        release.platform = foreign_platform
+        release.save()
+
+    assert not Release.objects.filter(pk=release.pk).exists()
+
+
+def test_release_save_rejects_private_platform_from_shared_graph(owned_library):
+    """Removing release ownership validation leaks a private Platform into shared data."""
+    private_platform = Platform.objects.create(
+        library=owned_library, name="Private Platform"
+    )
+    shared_game = Game.objects.create(name="Shared Game")
+    release = Release(edition=Edition.objects.create(game=shared_game))
+
+    with pytest.raises(ValidationError, match="another library"):
+        release.platform = private_platform
+        release.save()
+
+    assert not Release.objects.filter(pk=release.pk).exists()
 
 
 def test_legacy_game_form_remains_authoritative_and_creates_no_graph(

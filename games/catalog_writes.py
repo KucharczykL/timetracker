@@ -29,9 +29,11 @@ def save_private_game(
     release_date: TemporalValue | None,
     platform: Platform | None,
 ) -> PrivateGameGraph:
-    _validate_platform(game, platform)
     if not game._state.adding:
-        Game.objects.select_for_update().get(pk=game.pk)
+        persisted_game = Game.objects.select_for_update().get(pk=game.pk)
+        if persisted_game.library_id != game.library_id:
+            raise ValidationError("A persisted Game cannot change library owner.")
+    _validate_platform(game, platform)
 
     game.original_release_date = original_release_date
     game.save()
