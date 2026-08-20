@@ -65,12 +65,12 @@ urlpatterns = [
         name="add_playevent_for_game",
     ),
     path(
-        "playevent/edit/<int:playevent_id>",
+        "playevent/edit/<uuidv7:playevent_id>",
         playevent.edit_playevent,
         name="edit_playevent",
     ),
     path(
-        "playevent/delete/<int:playevent_id>",
+        "playevent/delete/<uuidv7:playevent_id>",
         playevent.delete_playevent,
         name="delete_playevent",
     ),
@@ -127,23 +127,23 @@ urlpatterns = [
         name="add_session_for_game",
     ),
     path(
-        "session/add/from-list/<int:session_id>",
+        "session/add/from-list/<uuidv7:session_id>",
         session.new_session_from_existing_session,
         name="list_sessions_start_session_from_session",
     ),
-    path("session/<int:session_id>/edit", session.edit_session, name="edit_session"),
+    path("session/<uuidv7:session_id>/edit", session.edit_session, name="edit_session"),
     path(
-        "session/<int:session_id>/finish",
+        "session/<uuidv7:session_id>/finish",
         session.finish_session,
         name="finish_session",
     ),
     path(
-        "session/<int:session_id>/reset",
+        "session/<uuidv7:session_id>/reset",
         session.reset_session,
         name="reset_session",
     ),
     path(
-        "session/<int:session_id>/delete",
+        "session/<uuidv7:session_id>/delete",
         session.delete_session,
         name="delete_session",
     ),
@@ -154,12 +154,12 @@ urlpatterns = [
         name="add_statuschange",
     ),
     path(
-        "statuschange/edit/<int:statuschange_id>",
+        "statuschange/edit/<uuidv7:statuschange_id>",
         statuschange.edit_statuschange,
         name="edit_statuschange",
     ),
     path(
-        "statuschange/delete/<int:pk>",
+        "statuschange/delete/<uuidv7:pk>",
         statuschange.delete_statuschange,
         name="delete_statuschange",
     ),

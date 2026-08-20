@@ -282,10 +282,10 @@ def test_apis_filters_and_presets_reconcile_per_library(parity_world):
         sessions = client.get("/api/session/").json()
         assert sessions["count"] == 2
         assert {row["id"] for row in sessions["items"]} == {
-            session.pk for session in getattr(world, f"sessions_{side}")
+            str(session.pk) for session in getattr(world, f"sessions_{side}")
         }
         assert {row["id"] for row in client.get("/api/playevent/").json()} == {
-            getattr(world, f"playevent_{side}").pk
+            str(getattr(world, f"playevent_{side}").pk)
         }
         count = client.get(
             "/api/filter/count",

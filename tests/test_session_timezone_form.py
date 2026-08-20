@@ -69,6 +69,8 @@ def test_unbound_add_form_captures_the_start_zone_only(library):
     """Both rows render, but only the start captures: an open session's end
     timestamp is committed later, in a zone this page cannot know."""
     form = SessionForm(library=library, presentation=_PRESENTATION)
+    assert form.instance.pk is not None
+    assert form.instance._state.adding
     html = render(FormFields(form, embedded=SESSION_TIMEZONE_EMBEDS))
     assert html.count("<time-zone-row") == 2
     assert html.count('capture-default="true"') == 1

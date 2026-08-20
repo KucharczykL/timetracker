@@ -10,6 +10,7 @@ from games.views.deletion import confirm_and_apply, confirm_and_delete
 
 # Any catalog route takes a UUIDv7; the value never reaches the database.
 GAME_ID = "018f5e66-e800-7000-8000-000000000001"
+SESSION_ID = "018f5e66-e800-7000-8000-000000000002"
 CONFIRM_URL = "/tracker/platform/1/delete"
 
 
@@ -54,7 +55,7 @@ def test_post_runs_the_action_once_and_redirects(db):
 
 def test_origin_rides_through_the_confirmation(db):
     origin = f"{reverse('games:list_sessions')}?page=2"
-    confirm_url = action_url("games:delete_session", 1, origin=origin)
+    confirm_url = action_url("games:delete_session", SESSION_ID, origin=origin)
 
     body = _apply(_request("get", confirm_url), []).content.decode()
     assert "origin=%2Ftracker%2Fsession%2Flist%3Fpage%3D2" in body

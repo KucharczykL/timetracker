@@ -563,7 +563,7 @@ class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
             timestamp_field = self.fields[field_name]
             assert isinstance(timestamp_field, AwareDateTimeField)
             timestamp_field.zone_resolver = zone_resolver
-        is_new_record = self.instance.pk is None
+        is_new_record = self.instance._state.adding
         # The end zone is only meaningful once an end timestamp exists: an open
         # session stamped at creation would carry that zone into a finish that
         # happens elsewhere, hours later. The start is always about to be

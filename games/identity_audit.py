@@ -45,9 +45,6 @@ RESIDUAL_INTEGER_RELATIONS: dict[TableColumn, OwnerLabel] = {
 }
 
 RESIDUAL_INTEGER_PRIMARY_KEYS: dict[TableName, OwnerLabel] = {
-    "games_session": _converted_by("ID-12 (#848)"),
-    "games_playevent": _converted_by("ID-12 (#848)"),
-    "games_gamestatuschange": _converted_by("ID-12 (#848)"),
     "games_purchase": _converted_by("ID-13 (#849)"),
     "games_device": _converted_by("ID-14 (#850)"),
     "games_filterpreset": _converted_by("ID-14 (#850)"),

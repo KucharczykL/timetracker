@@ -453,7 +453,9 @@ class SessionActionsTest(unittest.TestCase):
     """Session row actions: finish posts and reset links to its confirmation,
     both only while the session is open. Edit/Delete always present."""
 
-    def _session(self, *, pk=7, timestamp_end=None, game_name="Hades"):
+    SESSION_ID = UUID("018f5e66-e800-7000-8000-000000000001")
+
+    def _session(self, *, pk=SESSION_ID, timestamp_end=None, game_name="Hades"):
         from types import SimpleNamespace
 
         return SimpleNamespace(
@@ -467,9 +469,9 @@ class SessionActionsTest(unittest.TestCase):
 
         html = str(SessionActions(self._session(), "tok123", None))
         self.assertIn('method="post"', html)
-        self.assertIn("/session/7/finish", html)
+        self.assertIn(f"/session/{self.SESSION_ID}/finish", html)
         self.assertIn('value="tok123"', html)
-        self.assertIn("/session/7/reset", html)
+        self.assertIn(f"/session/{self.SESSION_ID}/reset", html)
         # The zone the browser is in is submitted with the finish, so a
         # travelling user's end timestamp is not labelled with their account
         # zone.
@@ -484,9 +486,11 @@ class SessionActionsTest(unittest.TestCase):
             timestamp_end=datetime.datetime(2026, 6, 24, 19, 0, tzinfo=datetime.UTC)
         )
         html = str(SessionActions(ended, "tok123", None))
-        self.assertNotIn("/session/7/finish", html)
-        self.assertNotIn("/session/7/reset", html)
-        self.assertIn("/session/7/edit", html)  # edit link still present
+        self.assertNotIn(f"/session/{self.SESSION_ID}/finish", html)
+        self.assertNotIn(f"/session/{self.SESSION_ID}/reset", html)
+        self.assertIn(
+            f"/session/{self.SESSION_ID}/edit", html
+        )  # edit link still present
 
 
 class ComponentOutputIsNotEscapedTest(unittest.TestCase):
