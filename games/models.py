@@ -37,6 +37,11 @@ class LibraryOwnedQuerySet(models.QuerySet):
         return self.filter(library=library)
 
 
+class GameQuerySet(LibraryOwnedQuerySet):
+    def visible_to(self, library):
+        return self.filter(Q(library__isnull=True) | Q(library=library))
+
+
 def _validate_related_library(
     owner_library_id, related, field_name: str, *, allow_shared: bool = False
 ):
@@ -66,10 +71,15 @@ class Game(models.Model):
             ),
         )
 
-    objects = LibraryOwnedQuerySet.as_manager()
+    objects = GameQuerySet.as_manager()
 
     library = models.ForeignKey(
-        "UserLibrary", on_delete=models.CASCADE, related_name="games"
+        "UserLibrary",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        default=None,
+        related_name="games",
     )
     id = UUIDv7Field(primary_key=True, editable=False)
     name = models.CharField(max_length=255)
@@ -302,6 +312,16 @@ class Platform(models.Model):
         super().save(*args, **kwargs)
 
 
+class EditionQuerySet(models.QuerySet):
+    def for_library(self, library):
+        return self.filter(game__library=library)
+
+    def visible_to(self, library):
+        return self.filter(
+            Q(game__library__isnull=True) | Q(game__library=library)
+        )
+
+
 class Edition(models.Model):
     class Meta:
         constraints = (
@@ -313,12 +333,24 @@ class Edition(models.Model):
         )
 
     id = UUIDv7Field(primary_key=True, editable=False)
+    objects = EditionQuerySet.as_manager()
     game = models.ForeignKey(
         Game,
         on_delete=models.CASCADE,
         related_name="editions",
     )
     is_default = models.BooleanField(default=False, editable=False)
+
+
+class ReleaseQuerySet(models.QuerySet):
+    def for_library(self, library):
+        return self.filter(edition__game__library=library)
+
+    def visible_to(self, library):
+        return self.filter(
+            Q(edition__game__library__isnull=True)
+            | Q(edition__game__library=library)
+        )
 
 
 class Release(models.Model):
@@ -332,6 +364,7 @@ class Release(models.Model):
         )
 
     id = UUIDv7Field(primary_key=True, editable=False)
+    objects = ReleaseQuerySet.as_manager()
     edition = models.ForeignKey(
         Edition,
         on_delete=models.CASCADE,
