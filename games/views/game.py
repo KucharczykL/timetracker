@@ -1,11 +1,11 @@
 from datetime import timedelta
-from typing import Any, cast
+from typing import Any, NoReturn, cast
 from uuid import UUID
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.db.models import F, OuterRef, Q, QuerySet, Subquery, Sum
-from django.http import HttpRequest, HttpResponse
+from django.http import Http404, HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import redirect
 from django.urls import reverse
@@ -773,8 +773,5 @@ def _canonical_game_redirect(request: HttpRequest, game: Game) -> HttpResponse:
     return redirect(target, permanent=True)
 
 
-@login_required
-def redirect_game_to_canonical(request: HttpRequest, game_id: UUID) -> HttpResponse:
-    library = cast(User, request.user).library
-    game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
-    return _canonical_game_redirect(request, game)
+def retired_game_view(request: HttpRequest, game_id: UUID) -> NoReturn:
+    raise Http404
