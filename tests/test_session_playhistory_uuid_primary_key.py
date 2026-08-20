@@ -1,8 +1,12 @@
 """Promote Session and play-history UUIDs without changing their identities."""
 
+import importlib
+import threading
 import uuid
-from datetime import date
+from concurrent.futures import ThreadPoolExecutor
+from datetime import date, timedelta
 
+import psycopg
 import pytest
 from django.core.management import call_command
 from django.db import IntegrityError, connection, models, transaction
@@ -20,6 +24,38 @@ TABLES = (
     "games_playevent",
     "games_gamestatuschange",
 )
+PRESERVED_FIELDS = {
+    "Session": (
+        "game_id",
+        "timestamp_start",
+        "timestamp_end",
+        "timestamp_start_timezone",
+        "timestamp_end_timezone",
+        "duration_manual",
+        "duration_calculated",
+        "duration_total",
+        "device_id",
+        "note",
+        "emulated",
+        "created_at",
+        "modified_at",
+    ),
+    "PlayEvent": (
+        "game_id",
+        "started",
+        "ended",
+        "days_to_finish",
+        "note",
+        "created_at",
+        "updated_at",
+    ),
+    "GameStatusChange": (
+        "game_id",
+        "old_status",
+        "new_status",
+        "timestamp",
+    ),
+}
 
 
 @pytest.fixture
@@ -42,6 +78,14 @@ def migrate_to_promotion():
     return executor.loader.project_state([WITH_PROMOTION]).apps
 
 
+def snapshot_rows(model, identity_field: str, fields: tuple[str, ...]) -> dict:
+    snapshot = {}
+    for values in model.objects.values(identity_field, *fields):
+        identity = values.pop(identity_field)
+        snapshot[identity] = values
+    return snapshot
+
+
 def seed_relations(apps, *, username: str):
     User = apps.get_model("auth", "User")
     UserLibrary = apps.get_model("games", "UserLibrary")
@@ -55,41 +99,53 @@ def seed_relations(apps, *, username: str):
     library = UserLibrary.objects.create(user_id=user.pk, created_at=timezone.now())
     game = Game.objects.create(library_id=library.pk, name=f"{username} game")
     device = Device.objects.create(library_id=library.pk, name=f"{username} device")
-    started = timezone.now()
-    sessions = [
-        Session.objects.create(
-            game_id=game.pk,
-            device_id=device.uuid,
-            timestamp_start=started,
-            note="with device",
-        ),
-        Session.objects.create(
-            game_id=game.pk,
-            timestamp_start=started,
-            note="without device",
-        ),
-    ]
-    playevents = [
+    started = timezone.now().replace(microsecond=123_000)
+    Session.objects.create(
+        game_id=game.pk,
+        device_id=device.uuid,
+        timestamp_start=started,
+        timestamp_end=started + timedelta(hours=2),
+        timestamp_start_timezone="Europe/Prague",
+        timestamp_end_timezone="UTC",
+        duration_manual=timedelta(minutes=7),
+        note="with device",
+        emulated=True,
+    )
+    Session.objects.create(
+        game_id=game.pk,
+        timestamp_start=started + timedelta(days=1),
+        timestamp_start_timezone="UTC",
+        duration_manual=timedelta(minutes=13),
+        note="without device",
+    )
+    for day in (1, 2):
         PlayEvent.objects.create(
-            game_id=game.pk, started=date(2026, 1, day), note=f"event {day}"
+            game_id=game.pk,
+            started=date(2026, 1, day),
+            ended=date(2026, 1, day + 2),
+            note=f"event {day}",
         )
-        for day in (1, 2)
-    ]
-    changes = [
+    for changes_so_far, (old_status, new_status) in enumerate((("u", "p"), ("p", "f"))):
         GameStatusChange.objects.create(
             game_id=game.pk,
             old_status=old_status,
             new_status=new_status,
-            timestamp=started,
+            timestamp=started + timedelta(minutes=changes_so_far),
         )
-        for old_status, new_status in (("u", "p"), ("p", "f"))
-    ]
     return {
         "game_id": game.pk,
         "device_uuid": device.uuid,
-        "Session": {row.uuid: row.note for row in sessions},
-        "PlayEvent": {row.uuid: row.note for row in playevents},
-        "GameStatusChange": {row.uuid: row.new_status for row in changes},
+        "rows": {
+            "Session": snapshot_rows(Session, "uuid", PRESERVED_FIELDS["Session"]),
+            "PlayEvent": snapshot_rows(
+                PlayEvent, "uuid", PRESERVED_FIELDS["PlayEvent"]
+            ),
+            "GameStatusChange": snapshot_rows(
+                GameStatusChange,
+                "uuid",
+                PRESERVED_FIELDS["GameStatusChange"],
+            ),
+        },
     }
 
 
@@ -141,6 +197,20 @@ def column_is_identity(table_name: str, column_name: str) -> str:
     return row[0]
 
 
+def column_nullability(table_name: str, column_name: str) -> str:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT is_nullable FROM information_schema.columns
+            WHERE table_name = %s AND column_name = %s
+            """,
+            [table_name, column_name],
+        )
+        row = cursor.fetchone()
+    assert row is not None
+    return row[0]
+
+
 def constraints(table_name: str) -> dict[str, dict]:
     with connection.cursor() as cursor:
         return connection.introspection.get_constraints(cursor, table_name)
@@ -162,13 +232,20 @@ def indexed_column_sets(table_name: str) -> set[tuple[str, ...]]:
     }
 
 
-def identity_constraint_names(table_name: str, column_name: str) -> list[str]:
-    return [
-        name
-        for name, details in constraints(table_name).items()
-        if details["columns"] == [column_name]
-        and (details["primary_key"] or details["unique"])
-    ]
+def primary_key_columns(table_name: str) -> set[tuple[str, ...]]:
+    return {
+        tuple(details["columns"])
+        for details in constraints(table_name).values()
+        if details["primary_key"]
+    }
+
+
+def non_primary_unique_columns(table_name: str) -> set[tuple[str, ...]]:
+    return {
+        tuple(details["columns"])
+        for details in constraints(table_name).values()
+        if details["unique"] and not details["primary_key"]
+    }
 
 
 def raw_insert(model, *, identity=None, **field_values):
@@ -212,40 +289,79 @@ def test_forward_migration_preserves_uuids_rows_values_and_relationships(
 
     apps = migrate_to_promotion()
 
-    for model_name, value_field in (
-        ("Session", "note"),
-        ("PlayEvent", "note"),
-        ("GameStatusChange", "new_status"),
-    ):
+    for model_name in ("Session", "PlayEvent", "GameStatusChange"):
         model = apps.get_model("games", model_name)
         assert (
-            dict(model.objects.values_list("pk", value_field)) == expected[model_name]
+            snapshot_rows(
+                model,
+                "id",
+                PRESERVED_FIELDS[model_name],
+            )
+            == expected["rows"][model_name]
         )
         assert isinstance(model._meta.pk, UUIDv7Field)
         assert model._meta.pk.name == "id"
         assert "uuid" not in {field.name for field in model._meta.local_fields}
 
-    Session = apps.get_model("games", "Session")
-    PlayEvent = apps.get_model("games", "PlayEvent")
-    GameStatusChange = apps.get_model("games", "GameStatusChange")
-    assert set(Session.objects.values_list("game_id", flat=True)) == {
-        expected["game_id"]
-    }
-    assert set(Session.objects.values_list("device_id", flat=True)) == {
-        expected["device_uuid"],
-        None,
-    }
-    assert set(PlayEvent.objects.values_list("game_id", flat=True)) == {
-        expected["game_id"]
-    }
-    assert set(GameStatusChange.objects.values_list("game_id", flat=True)) == {
-        expected["game_id"]
-    }
+
+def test_forward_migration_installs_physical_uuid_primary_keys(promotion_harness):
+    seed_relations(promotion_harness, username="promotion-primary-keys")
+
+    migrate_to_promotion()
 
     for table in TABLES:
         assert table_columns(table).isdisjoint({"uuid"})
         assert column_type(table, "id") == "uuid_v7"
-        assert len(identity_constraint_names(table, "id")) == 1
+        assert primary_key_columns(table) == {("id",)}
+        assert column_nullability(table, "id") == "NO"
+        assert ("id",) not in non_primary_unique_columns(table)
+
+
+def test_reverse_preflight_locks_every_table_against_concurrent_writes(
+    promotion_harness, monkeypatch
+):
+    migrate_to_promotion()
+    migration = importlib.import_module(
+        "games.migrations.0014_session_playhistory_uuid_primary_key"
+    )
+    connection.ensure_connection()
+    assert connection.connection is not None
+    dsn = connection.connection.info.dsn
+    locks_acquired = threading.Event()
+    probe_complete = threading.Event()
+
+    def probe_concurrent_writes():
+        blocked_tables = []
+        try:
+            assert locks_acquired.wait(timeout=5)
+            with psycopg.connect(dsn) as concurrent:
+                for table in TABLES:
+                    try:
+                        with concurrent.transaction():
+                            concurrent.execute("SET LOCAL lock_timeout = '100ms'")
+                            concurrent.execute(
+                                f'LOCK TABLE "{table}" IN ROW EXCLUSIVE MODE'
+                            )
+                    except psycopg.errors.LockNotAvailable:
+                        blocked_tables.append(table)
+        finally:
+            probe_complete.set()
+        return blocked_tables
+
+    original_lock = migration.lock_promoted_tables
+
+    def observed_lock(cursor):
+        original_lock(cursor)
+        locks_acquired.set()
+        assert probe_complete.wait(timeout=5)
+
+    monkeypatch.setattr(migration, "lock_promoted_tables", observed_lock)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        probe = pool.submit(probe_concurrent_writes)
+        MigrationExecutor(connection).migrate([BEFORE_PROMOTION])
+        blocked_tables = probe.result(timeout=5)
+
+    assert blocked_tables == list(TABLES)
 
 
 def test_forward_migration_preserves_unrelated_indexes_and_outbound_foreign_keys(
@@ -352,7 +468,7 @@ def test_empty_reverse_restores_integer_ids_and_separate_uuid_columns(
         assert column_is_identity(table, "id") == "YES"
         assert column_type(table, "uuid") == "uuid_v7"
         assert "uuidv7()" in column_default(table, "uuid")
-        assert len(identity_constraint_names(table, "uuid")) == 1
+        assert ("uuid",) in non_primary_unique_columns(table)
 
 
 @pytest.mark.parametrize("model_name", ["Session", "PlayEvent", "GameStatusChange"])
@@ -372,7 +488,7 @@ def test_populated_reverse_fails_before_mutating_any_table(
     for table in TABLES:
         assert column_type(table, "id") == "uuid_v7"
         assert column_type(table, "uuid") is None
-    assert seeded[model_name]
+    assert seeded["rows"][model_name]
 
 
 def test_one_migration_executor_can_reverse_and_reapply_the_promotion(

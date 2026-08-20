@@ -69,9 +69,15 @@ def promote_playhistory_identities(apps, schema_editor):
     )
 
 
+def lock_promoted_tables(cursor):
+    tables = ", ".join(f'"{table_name}"' for _model_name, table_name in PROMOTED_TABLES)
+    cursor.execute(f"LOCK TABLE {tables} IN ACCESS EXCLUSIVE MODE")
+
+
 def restore_empty_playhistory(apps, schema_editor):
     del apps
     with schema_editor.connection.cursor() as cursor:
+        lock_promoted_tables(cursor)
         cursor.execute(
             "SELECT (SELECT count(*) FROM games_session), "
             "(SELECT count(*) FROM games_playevent), "
