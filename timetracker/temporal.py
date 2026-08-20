@@ -237,6 +237,7 @@ def _parse_canonical(canonical: str | None) -> _TemporalParts:
 
 
 def _reject_unsupported_family(canonical: str) -> None:
+    tokens = canonical.split("/")
     if any(qualifier in canonical for qualifier in "?~%"):
         raise TemporalValueParseError(
             f"Temporal qualifiers are not supported: {canonical!r}.",
@@ -257,18 +258,20 @@ def _reject_unsupported_family(canonical: str) -> None:
             f"Temporal seasons are not supported: {canonical!r}.",
             code="unsupported_season",
         )
-    if "X" in canonical:
-        tokens = canonical.split("/")
-        if any("X" in token and not _DECADE_RE.fullmatch(token) for token in tokens):
-            raise TemporalValueParseError(
-                f"Unspecified temporal components are not supported: {canonical!r}.",
-                code="unsupported_unspecified_component",
-            )
-    if canonical.startswith(("-", "Y")) or re.fullmatch(
-        r"[0-9]{5,}", canonical, re.ASCII
+    if "X" in canonical and any(
+        "X" in token and not _DECADE_RE.fullmatch(token) for token in tokens
     ):
         raise TemporalValueParseError(
-            f"Extended or negative years are not supported: {canonical!r}.",
+            f"Unspecified temporal components are not supported: {canonical!r}.",
+            code="unsupported_unspecified_component",
+        )
+    if any(
+        token.startswith(("-", "Y"))
+        or re.match(r"(?:0000|[0-9]{5,})(?:$|-)", token, re.ASCII)
+        for token in tokens
+    ):
+        raise TemporalValueParseError(
+            f"Unsupported, extended, or negative temporal year: {canonical!r}.",
             code="unsupported_year",
         )
 

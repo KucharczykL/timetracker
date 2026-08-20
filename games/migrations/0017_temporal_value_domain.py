@@ -1,5 +1,10 @@
 from django.db import migrations
 
+# PostgreSQL assumes domain constraints and stored generated expressions remain
+# immutable after creation. Any later migration that changes these functions'
+# semantics must drop and re-add the domain constraint to revalidate stored
+# values, and rebuild every persisted generated column that uses a projection.
+
 CREATE_TEMPORAL_VALUE_DOMAIN = r"""
 CREATE FUNCTION _timetracker_temporal_atom_precision(value text)
 RETURNS text

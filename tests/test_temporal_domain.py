@@ -4,6 +4,8 @@ import pytest
 from django.db import DatabaseError, connection, transaction
 from django.db.migrations.executor import MigrationExecutor
 
+from timetracker.temporal import TemporalValue, TemporalValueParseError
+
 pytestmark = pytest.mark.django_db
 
 BEFORE_TEMPORAL = ("games", "0016_library_config_uuid_primary_key")
@@ -20,6 +22,12 @@ PUBLIC_FUNCTIONS = {
     "timetracker_temporal_start_precision": ("text", "i"),
     "timetracker_temporal_end_precision": ("text", "i"),
 }
+PRIVATE_FUNCTIONS = {
+    "_timetracker_temporal_atom_lower": ("date", "i"),
+    "_timetracker_temporal_atom_upper": ("date", "i"),
+    "_timetracker_temporal_atom_precision": ("text", "i"),
+}
+ALL_FUNCTIONS = PUBLIC_FUNCTIONS | PRIVATE_FUNCTIONS
 
 
 def temporal_domain_base_type() -> str | None:
@@ -55,6 +63,39 @@ def temporal_projection(value):
         return cursor.fetchone()
 
 
+def temporal_function_metadata(functions):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT p.proname, pg_catalog.format_type(p.prorettype, NULL), p.provolatile
+            FROM pg_proc AS p
+            WHERE p.pronamespace = current_schema()::regnamespace
+              AND p.proname = ANY(%s)
+            ORDER BY p.proname
+            """,
+            [list(functions)],
+        )
+        return {
+            name: (return_type, volatility) for name, return_type, volatility in cursor
+        }
+
+
+def python_projection(canonical):
+    value = TemporalValue.parse(canonical)
+    start = value.start
+    end = value.end
+    return (
+        value.lower_bound,
+        value.upper_bound,
+        value.kind.value,
+        None if value.precision is None else value.precision.value,
+        None if start is None else start.kind.value,
+        None if end is None else end.kind.value,
+        None if start is None or start.precision is None else start.precision.value,
+        None if end is None or end.precision is None else end.precision.value,
+    )
+
+
 def test_temporal_domain_uses_fixed_varchar_and_named_constraint():
     assert temporal_domain_base_type() == "varchar"
     with connection.cursor() as cursor:
@@ -70,21 +111,7 @@ def test_temporal_domain_uses_fixed_varchar_and_named_constraint():
 
 
 def test_temporal_functions_have_stable_return_types_and_are_immutable():
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT p.proname, pg_catalog.format_type(p.prorettype, NULL), p.provolatile
-            FROM pg_proc AS p
-            WHERE p.proname = ANY(%s)
-            ORDER BY p.proname
-            """,
-            [list(PUBLIC_FUNCTIONS)],
-        )
-        actual = {
-            name: (return_type, volatility) for name, return_type, volatility in cursor
-        }
-
-    assert actual == PUBLIC_FUNCTIONS
+    assert temporal_function_metadata(PUBLIC_FUNCTIONS) == PUBLIC_FUNCTIONS
 
 
 @pytest.mark.parametrize(
@@ -181,11 +208,40 @@ def test_temporal_sql_projection_preserves_supported_values(canonical, expected)
 @pytest.mark.parametrize(
     "canonical",
     [
+        None,
+        "0001-01-01",
+        "9999-12-31",
+        "1900-02",
+        "2000-02",
+        "0010",
+        "9999",
+        "001X",
+        "999X",
+        "2020/2020-01",
+        "2020-02/2020-02-01",
+        "199X/2001-03-04",
+        "../2001-03",
+        "/2001-03",
+        "1999/..",
+        "1999/",
+    ],
+)
+def test_temporal_sql_projection_matches_python_contract(canonical):
+    assert temporal_projection(canonical) == python_projection(canonical)
+
+
+@pytest.mark.parametrize(
+    "canonical",
+    [
         "",
         " 2024",
         "2023-02-29",
         "2024-13",
+        "2024-00",
+        "2024-00-01",
+        "2024-01-00",
         "2024/2023",
+        "2024/2025/2026",
         "../..",
         "../",
         "/..",
@@ -194,16 +250,27 @@ def test_temporal_sql_projection_preserves_supported_values(canonical, expected)
         "2001-21",
         "[2020,2021]",
         "2004-XX",
+        "1985-04-XX",
+        "2004-XX/2005",
         "0000",
+        "0000-01",
+        "0000-01-01",
         "000X",
         "-1985",
         "10000",
+        "10000-01",
+        "10000-01-01",
+        "2024/10000-01",
         "2024-01-01T12:00:00",
         "٢٠٢٤-٠٢",
         "２０２４",
+        "2024‐02",
+        "2024⁄02",
     ],
 )
 def test_temporal_domain_rejects_invalid_or_unsupported_raw_values(canonical):
+    with pytest.raises(TemporalValueParseError):
+        TemporalValue.parse(canonical)
     with (
         pytest.raises(DatabaseError),
         transaction.atomic(),
@@ -240,8 +307,10 @@ def test_temporal_domain_migration_reverses_and_reapplies():
     try:
         MigrationExecutor(connection).migrate([BEFORE_TEMPORAL])
         assert temporal_domain_base_type() is None
+        assert temporal_function_metadata(ALL_FUNCTIONS) == {}
 
         MigrationExecutor(connection).migrate([WITH_TEMPORAL])
         assert temporal_domain_base_type() == "varchar"
+        assert temporal_function_metadata(ALL_FUNCTIONS) == ALL_FUNCTIONS
     finally:
         MigrationExecutor(connection).migrate(leaf_nodes)
