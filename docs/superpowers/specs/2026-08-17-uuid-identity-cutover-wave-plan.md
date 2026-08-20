@@ -27,7 +27,7 @@ document's internal explanatory grouping only.
 | ID-13 | #849 | Remove legacy integer identity: `Purchase` |
 | ID-14 | #850 | Remove legacy integer identities: `Device`, `FilterPreset` |
 | ID-15 | #647 | Canonical slug+UUID URLs |
-| ID-16 | #648 | Remove integer routes without permanent aliases |
+| ID-16 | #648 | Retire transitional URL aliases, if any |
 
 `blocked-by` links between these issues on GitHub encode the dependency
 edges described per wave below.
@@ -419,11 +419,12 @@ all.** Probed against a real database during ID-10, running ID-11's own sequence
   recreating each referencing FK after the new primary key exists. `CASCADE` is
   not an option — it would take those four FK constraints with it, producing
   exactly the state-versus-database divergence `audit_uuid_identity` checks for.
-- **Settled by ID-11 (delivered 2026-08-19): it does attempt the impossible drop
-  and fails the migration outright.** `_alter_field` drops the old unique
-  constraint whenever `_field_became_primary_key`, so the promotion dies on the
-  four dependent foreign keys. Two consequences bind ID-12/13/14, both recorded
-  in the [ID-11 design](2026-08-19-issue-646-catalog-uuid-primary-key-design.md):
+- **Django attempts the impossible drop and fails the migration outright.**
+  `_alter_field` drops the old unique constraint whenever
+  `_field_became_primary_key`, so a promotion dies while foreign keys depend on
+  that constraint. Two consequences bind every primary-key promotion and are
+  detailed in the
+  [catalog design](2026-08-19-issue-646-catalog-uuid-primary-key-design.md):
   - **`sqlmigrate` cannot verify a promotion.** It resolves constraint names
     against the *un-migrated* database, so it reports the doomed operation clean
     and prints SQL that applies to nothing. Only a real `migrate` proves it.
@@ -432,12 +433,11 @@ all.** Probed against a real database during ID-10, running ID-11's own sequence
     `remote_field.field_name` **in place**, and `ModelState.clone` shares field
     objects, so one forward pass leaves every historical state in the process
     believing those foreign keys always pointed at the primary key. The symptom
-    is `cannot cast type uuid_v7 to bigint` on the *second* application — which
-    is why it is invisible until a migration-harness test reverses and re-applies
-    in one process, and why all ten of those modules break at once when it bites.
-    ID-11 promotes via `SeparateDatabaseAndState`: `RemoveField` + `AddField` for
-    state, one `RunPython` owning the DDL, placed after the state operations so
-    Django's own SQL builders still generate every constraint name.
+    can appear only when a migration is reversed and reapplied in the same
+    process: `cannot cast type uuid_v7 to bigint`.
+    Use `SeparateDatabaseAndState`: `RemoveField` + `AddField` for state and one
+    `RunPython` owning the DDL, placed after the state operations so Django's own
+    SQL builders still generate every constraint name.
 
 ID-11 additionally owns everything keyed to `Game` and `Platform` ceasing to be
 integers, which is the larger half of that slice: deleting `to_field="uuid"`
@@ -448,25 +448,18 @@ becomes `fields.E312` the moment the field is renamed), the corresponding
 `PurchaseFilter._games_to_q`'s `int(...)` coercion, and the `Game`/`Platform`
 half of the option-value annotation widening described in Wave C above.
 
-**ID-11 also took the catalog half of Wave F's URL work**, which this plan had
-not anticipated. Every catalog route is declared `<int:…>`, so promotion makes
-`reverse()` raise `NoReverseMatch` and 404s every existing URL — it is not
-optional for the slice that promotes the key. The eight routes moved to the
-`uuidv7` converter (registered in `games/urls.py`, not the project URLconf,
-because several tests import that module under a stripped `ROOT_URLCONF`). Old
-integer URLs 404 and **no alias is possible**: serving a redirect needs the
-integer→UUID map, which the migration destroys. That forecloses the choice
-`#648`'s title presumes; see the ID-11 design for the rejected `legacy_id`
-alternative.
+**A primary-key promotion owns the corresponding identifier-converter swap.**
+Routes cannot continue using `<int:…>` after their target becomes UUID-keyed.
+The catalog routes therefore use the `uuidv7` converter registered in
+`games/urls.py`, beside the routes that require it. Old integer URLs have no
+redirect alias because the migration removes the integer→UUID map. Wave F still
+owns slug policy and canonical URL shape, not the catalog identifier type.
 
-Three further sites the option-value widening did not cover, each an independent
-failure with no search endpoint involved: `PATCH /api/games/{id}/status`'s
-`game_id: int`, `PlayEventIn.game_id`, and `GameOut.id` (nested in `SessionOut`,
-so session reads 500). And `MultiCriterion` itself hard-codes `value: list[int]`
-with `_coerce_int`, so every catalog facet would have degraded to an "Ignored
-invalid filter" toast rather than failing loudly — ID-11 added a
-`UUIDMultiCriterion` sibling, which ID-14 mirrors for `Device` before deleting
-the integer variant.
+The same boundary applies to every identity-bearing API request, response,
+custom-element property, and filter criterion; changing search response options
+alone is insufficient. Catalog facets use `UUIDMultiCriterion`. Device facets
+remain on the integer variant until ID-14 promotes `Device`, after which the
+integer variant can be removed.
 
 ## Wave F — canonical slug+UUID URLs (ID-15/#647, 1 issue, scope TBD in its own design)
 
@@ -476,13 +469,13 @@ slug-plus-UUID canonical URL (the charter's example is `Game`;
 `Platform`/`Session`/`Purchase`/`Device` may only need a bare-UUID URL or no
 change at all) — not decided here.
 
-## Wave G — remove integer routes (ID-16/#648, 1 issue, time-gated not code-gated)
+## Wave G — retire transitional URL aliases (ID-16/#648, conditional)
 
-ID-16 stays one issue, `blocked-by` ID-15, deliberately landed later than the
-others in this plan: it should wait for a bake-in period after ID-15
-(confirm no internal link still builds an integer URL, no
-external/bookmarked traffic still depends on one) rather than merging
-back-to-back with it.
+Primary-key promotions do not retain integer routes when they destroy the
+integer-to-UUID map. ID-16 applies only if ID-15 deliberately introduces or
+retains another transitional URL alias. In that case it remains blocked by
+ID-15 and waits for a bake-in period before removing exactly those documented
+aliases. If ID-15 leaves no transitional alias, ID-16 is obsolete.
 
 ## Summary: PR count
 
