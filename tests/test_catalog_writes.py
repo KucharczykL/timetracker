@@ -149,6 +149,7 @@ def test_save_private_game_rejects_a_foreign_private_platform(
     assert stored_game.original_release_date == TemporalValue.from_year(1998)
     assert stored_game.editions.get(is_default=True).pk == graph.edition.pk
     assert stored_release.release_date == TemporalValue.from_year(1999)
+    assert stored_release.platform_id is None
 
 
 def test_save_private_game_rejects_a_persisted_shared_game(
