@@ -11,6 +11,8 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 BEFORE_HIERARCHY = ("games", "0017_temporal_value_domain")
 WITH_HIERARCHY = ("games", "0018_catalog_hierarchy")
+BEFORE_CATALOG_WRITES = WITH_HIERARCHY
+WITH_CATALOG_WRITES = ("games", "0019_catalog_write_defaults")
 
 
 @pytest.fixture
@@ -20,6 +22,17 @@ def hierarchy_harness():
     executor.migrate([BEFORE_HIERARCHY])
     call_command("flush", interactive=False, verbosity=0)
     old_apps = executor.loader.project_state([BEFORE_HIERARCHY]).apps
+    yield old_apps
+    MigrationExecutor(connection).migrate(leaf_nodes)
+
+
+@pytest.fixture
+def catalog_write_migration_harness():
+    leaf_nodes = MigrationExecutor(connection).loader.graph.leaf_nodes()
+    executor = MigrationExecutor(connection)
+    executor.migrate([BEFORE_CATALOG_WRITES])
+    call_command("flush", interactive=False, verbosity=0)
+    old_apps = executor.loader.project_state([BEFORE_CATALOG_WRITES]).apps
     yield old_apps
     MigrationExecutor(connection).migrate(leaf_nodes)
 
@@ -228,3 +241,44 @@ def test_reverse_migration_preserves_the_legacy_game(hierarchy_harness):
             "uuid_v7",
             "temporal_value",
         }
+
+
+def test_catalog_write_migration_preserves_children_as_nondefaults(
+    catalog_write_migration_harness,
+):
+    apps = catalog_write_migration_harness
+    User = apps.get_model("auth", "User")
+    UserLibrary = apps.get_model("games", "UserLibrary")
+    Game = apps.get_model("games", "Game")
+    Edition = apps.get_model("games", "Edition")
+    Release = apps.get_model("games", "Release")
+    user = User.objects.create(username="catalog-writer-migration")
+    library = UserLibrary.objects.create(
+        user_id=user.pk,
+        created_at=timezone.now(),
+    )
+    game = Game.objects.create(library_id=library.pk, name="Existing")
+    edition = Edition.objects.create(game_id=game.pk)
+    release = Release.objects.create(edition_id=edition.pk)
+
+    executor = MigrationExecutor(connection)
+    executor.migrate([WITH_CATALOG_WRITES])
+    new_apps = executor.loader.project_state([WITH_CATALOG_WRITES]).apps
+    NewEdition = new_apps.get_model("games", "Edition")
+    NewRelease = new_apps.get_model("games", "Release")
+    assert NewEdition.objects.get(pk=edition.pk).is_default is False
+    assert NewRelease.objects.get(pk=release.pk).is_default is False
+
+    executor = MigrationExecutor(connection)
+    executor.migrate([BEFORE_CATALOG_WRITES])
+    restored_apps = executor.loader.project_state([BEFORE_CATALOG_WRITES]).apps
+    assert (
+        restored_apps.get_model("games", "Edition")
+        .objects.filter(pk=edition.pk)
+        .exists()
+    )
+    assert (
+        restored_apps.get_model("games", "Release")
+        .objects.filter(pk=release.pk)
+        .exists()
+    )

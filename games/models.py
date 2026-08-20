@@ -303,21 +303,41 @@ class Platform(models.Model):
 
 
 class Edition(models.Model):
+    class Meta:
+        constraints = (
+            models.UniqueConstraint(
+                fields=("game",),
+                condition=Q(is_default=True),
+                name="unique_default_edition_per_game",
+            ),
+        )
+
     id = UUIDv7Field(primary_key=True, editable=False)
     game = models.ForeignKey(
         Game,
         on_delete=models.CASCADE,
         related_name="editions",
     )
+    is_default = models.BooleanField(default=False, editable=False)
 
 
 class Release(models.Model):
+    class Meta:
+        constraints = (
+            models.UniqueConstraint(
+                fields=("edition",),
+                condition=Q(is_default=True),
+                name="unique_default_release_per_edition",
+            ),
+        )
+
     id = UUIDv7Field(primary_key=True, editable=False)
     edition = models.ForeignKey(
         Edition,
         on_delete=models.CASCADE,
         related_name="releases",
     )
+    is_default = models.BooleanField(default=False, editable=False)
     platform = models.ForeignKey(
         Platform,
         on_delete=models.SET_NULL,
