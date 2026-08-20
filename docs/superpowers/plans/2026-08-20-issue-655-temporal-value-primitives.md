@@ -5,15 +5,16 @@
 > `superpowers:executing-plans` to implement this plan task-by-task. Steps use
 > checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a reusable, fail-closed temporal value that preserves canonical
-day/month/year/decade/range/unknown representation precision and exposes stored
-typed query bounds plus shared component/exactness predicates.
+**Goal:** Add a reusable, fail-closed temporal value that preserves atomic,
+range, and unknown kinds plus day/month/year/decade precision, and exposes
+stored typed query bounds plus shared component/exactness predicates.
 
 **Architecture:** `timetracker.temporal` owns the immutable Python value,
 canonical scalar serialization, Django field, and generated-expression wrappers.
 A reversible PostgreSQL migration creates the matching `temporal_value` domain
 and immutable parser/projection functions; future consumers store the canonical
-domain value plus seven persisted generated columns.
+domain value plus eight persisted generated columns. Value kind is separate from
+nullable atomic/endpoint precision.
 
 **Tech Stack:** Python 3.14 standard library, Django 6, PostgreSQL 18,
 pytest/pytest-django.
@@ -38,8 +39,8 @@ pytest/pytest-django.
   years, timestamps, `000X`, ranges without a known endpoint, and
   non-canonical spellings.
 - Keep generated query values typed as two nullable PostgreSQL dates, one
-  non-null overall precision token, two nullable endpoint-kind tokens, and two
-  nullable endpoint-precision tokens.
+  non-null value-kind token, one nullable atomic-precision token, two nullable
+  endpoint-kind tokens, and two nullable endpoint-precision tokens.
 - Add no dependency: the parser uses `datetime.date`, `calendar.monthrange`,
   enums, and anchored regular expressions from the Python standard library.
 - Keep the Makefile's default `PYTEST_WORKERS` for focused and full verification.
@@ -51,7 +52,7 @@ pytest/pytest-django.
 
 | File | Responsibility |
 | --- | --- |
-| Create `timetracker/temporal.py` | Precision enum, immutable value/parser, stable errors, Django field, and generated-expression wrappers. |
+| Create `timetracker/temporal.py` | Kind/precision enums, immutable value/parser, stable errors, Django field, generated-expression wrappers, and shared ORM predicates. |
 | Create `games/migrations/0017_temporal_value_domain.py` | Immutable SQL parser/projection functions and the `temporal_value` domain, with reverse SQL. |
 | Create `tests/test_temporal.py` | Pure value/validation/serialization tests plus isolated Django field and generated-column integration tests. |
 | Create `tests/test_temporal_domain.py` | PostgreSQL domain/function parity, raw-write rejection, metadata, and migration reversal/reapplication tests. |
@@ -64,8 +65,9 @@ pytest/pytest-django.
 
 **Interfaces:**
 
-- Produces `TemporalPrecision(StrEnum)` values `DAY`, `MONTH`, `YEAR`,
-  `DECADE`, `RANGE`, and `UNKNOWN` with lowercase serialized values.
+- Produces `TemporalValueKind(StrEnum)` values `ATOMIC`, `RANGE`, and `UNKNOWN`
+  and `TemporalPrecision(StrEnum)` values `DAY`, `MONTH`, `YEAR`, and `DECADE`,
+  all with lowercase serialized values.
 - Produces `TemporalEndpointKind(StrEnum)` values `KNOWN = "known"`,
   `UNKNOWN = "unknown"`, and `OPEN = "open"`.
 - Produces immutable `TemporalEndpoint` properties `kind`,
@@ -74,7 +76,8 @@ pytest/pytest-django.
   `has_known_day`, plus `known(value)`, `unknown()`, and `open()` constructors.
 - Produces immutable `TemporalValue` properties `canonical: str | None`,
   `lower_bound: date | None`, `upper_bound: date | None`,
-  `precision: TemporalPrecision`, `is_complete_day`, `is_exact_day`, `is_range`,
+  `kind: TemporalValueKind`, `precision: TemporalPrecision | None`,
+  `is_complete_day`, `is_exact_day`, `is_range`, `is_unknown`,
   `has_known_year`, `has_known_month`, `has_known_day`, and
   `start`/`end: TemporalEndpoint | None`.
 - Produces `TemporalValue.parse(value: str | None) -> TemporalValue`,
@@ -92,11 +95,14 @@ pytest/pytest-django.
   ```
 - Produces `serialize() -> str | None`,
   `parse_temporal_value(value: object) -> TemporalValue`, and
-  `validate_temporal_value(value: object) -> None`.
+  `validate_temporal_value(value: object) -> None`. Parsing an existing
+  `TemporalValue` returns it unchanged, including standalone unknown, so field
+  normalization and constructors share one entry point.
 - Produces `TemporalValueParseError(ValueError)` with stable `code` values
   `invalid_type`, `invalid_syntax`, `invalid_date`, `invalid_range`,
   `unsupported_qualifier`, `unsupported_season`, `unsupported_set`,
-  `unsupported_year`, and `unsupported_timestamp`.
+  `unsupported_unspecified_component`, `unsupported_year`, and
+  `unsupported_timestamp`.
 
 The implementation keeps derived state private and frozen:
 
@@ -109,6 +115,10 @@ class TemporalPrecision(StrEnum):
     MONTH = "month"
     YEAR = "year"
     DECADE = "decade"
+
+
+class TemporalValueKind(StrEnum):
+    ATOMIC = "atomic"
     RANGE = "range"
     UNKNOWN = "unknown"
 
@@ -130,7 +140,8 @@ class TemporalValue:
     canonical: str | None
     lower_bound: date | None
     upper_bound: date | None
-    precision: TemporalPrecision
+    kind: TemporalValueKind
+    precision: TemporalPrecision | None
     start: TemporalEndpoint | None
     end: TemporalEndpoint | None
 
@@ -139,6 +150,7 @@ class TemporalValue:
         object.__setattr__(self, "canonical", parsed.canonical)
         object.__setattr__(self, "lower_bound", parsed.lower_bound)
         object.__setattr__(self, "upper_bound", parsed.upper_bound)
+        object.__setattr__(self, "kind", parsed.kind)
         object.__setattr__(self, "precision", parsed.precision)
         object.__setattr__(self, "start", parsed.start)
         object.__setattr__(self, "end", parsed.end)
@@ -147,30 +159,34 @@ class TemporalValue:
 - [ ] **Step 1: Write the failing supported-value matrix tests.** Parameterize
   `None`, leap and ordinary days/months, years, decades, closed ranges,
   mixed-precision ranges, both open directions, and both unknown-endpoint
-  directions. Assert canonical value, exact lower/upper dates, precision,
-  endpoint values/kinds/precision, independent component helpers,
+  directions. Assert canonical value, exact lower/upper dates, kind, nullable
+  precision, endpoint values/kinds/precision, independent component helpers,
   `is_complete_day`, `is_exact_day`, and
   `TemporalValue.parse(value.serialize()) == value` for every row.
 - [ ] **Step 2: Run the focused test with default workers and verify it fails.**
-  Run `make test-fast ARGS="tests/test_temporal.py -q"`; expect collection to
+  Run `make test ARGS="tests/test_temporal.py -q"`; expect collection to
   fail because `timetracker.temporal` does not exist.
 - [ ] **Step 3: Implement the minimal immutable parser and constructors.** Use
   full-match regular expressions only to classify the canonical grammar; use
-  `date(...)` and `monthrange(...)` to validate and derive real bounds. Keep
+  `date(year, month, day)` and `monthrange(year, month)` to validate and derive
+  real bounds. Keep
   derived attributes out of the public constructor and make unknown's scalar
   representation `None`.
 - [ ] **Step 4: Run the focused test and verify the supported matrix passes.**
-  Run `make test-fast ARGS="tests/test_temporal.py -q"`.
+  Run `make test ARGS="tests/test_temporal.py -q"`.
 - [ ] **Step 5: Add failing validation and constructor-invariant tests.** Cover
   whitespace/case changes, empty string, invalid leap/month/day, `0000`, `000X`,
   reversed ranges, `../..`, `../`, `/..`, `/`, multiple slashes, qualifiers,
   seasons, sets, extended/negative years, timestamps, nested/standalone-unknown
   endpoint values, incoherent endpoint kind/value pairs, wrong Python types,
-  invalid constructor arguments, and attempted mutation. Assert exact stable
-  codes and useful messages.
+  invalid constructor arguments, and attempted mutation. Include standalone and
+  range-endpoint `2004-XX`, `1985-04-XX`, `1985-XX-XX`, representative Level 2
+  `X` forms, Arabic-Indic/full-width digits, and lookalike slash/hyphen
+  punctuation. Assert exact stable codes, precedence, and useful messages.
 - [ ] **Step 6: Implement fail-closed classification and error mapping.** Detect
-  excluded EDTF families before the generic syntax error, reject booleans as
-  integers in constructors, map known/empty/`..` range tokens to immutable
+  excluded EDTF families before the generic syntax error, use only ASCII
+  `[0-9]` digit classes, reject booleans as integers in constructors, map
+  known/empty/`..` range tokens to immutable
   `TemporalEndpoint` objects, and enforce range order by the known start's lower
   bound and known end's upper bound. Atomic component helpers derive from the
   components known by the accepted atom; range and unknown return false and
@@ -179,7 +195,7 @@ class TemporalValue:
   predicates even though the #655 grammar makes day precision, complete day,
   and exact day equivalent for accepted atomic values.
 - [ ] **Step 7: Run the focused test with default workers.** Run
-  `make test-fast ARGS="tests/test_temporal.py -q"`; expect all pure tests to
+  `make test ARGS="tests/test_temporal.py -q"`; expect all pure tests to
   pass.
 - [ ] **Step 8: Commit the Python contract.** Stage only
   `timetracker/temporal.py` and `tests/test_temporal.py`; commit as
@@ -194,20 +210,25 @@ class TemporalValue:
 **Interfaces:**
 
 - Produces PostgreSQL domain `temporal_value` over `varchar(64)`.
+  Its check constraint is named `temporal_value_valid`.
 - Produces immutable SQL functions `timetracker_temporal_is_valid(text) ->
   boolean`, `timetracker_temporal_lower(text) -> date`,
-  `timetracker_temporal_upper(text) -> date`, and
+  `timetracker_temporal_upper(text) -> date`,
+  `timetracker_temporal_kind(text) -> text`, and
   `timetracker_temporal_precision(text) -> text`.
 - Produces immutable SQL functions `timetracker_temporal_start_kind(text) ->
   text`, `timetracker_temporal_end_kind(text) -> text`,
   `timetracker_temporal_start_precision(text) -> text`, and
   `timetracker_temporal_end_precision(text) -> text`.
-- Produces `TemporalValueField`, storing the domain scalar and returning
-  `TemporalValue` instances; defaults are `null=True`, `blank=True`,
-  `default=None`, and `editable=False`.
+- Produces `TemporalValueField(models.Field)`, storing the domain scalar,
+  returning known database values as `TemporalValue`, and representing
+  model-level standalone unknown consistently as `None`. It fixes
+  `max_length=64`, rejects conflicting overrides, and defaults to `null=True`,
+  `blank=False`, `default=None`, and `editable=False`.
 - Produces Django expressions `TemporalLowerBound(expression)`,
-  `TemporalUpperBound(expression)`, `TemporalPrecisionValue(expression)`,
-  `TemporalStartKind(expression)`, `TemporalEndKind(expression)`,
+  `TemporalUpperBound(expression)`, `TemporalKind(expression)`,
+  `TemporalPrecisionValue(expression)`, `TemporalStartKind(expression)`,
+  `TemporalEndKind(expression)`,
   `TemporalStartPrecision(expression)`, and
   `TemporalEndPrecision(expression)` with typed output fields.
 - Produces shared ORM predicates
@@ -216,7 +237,10 @@ class TemporalValue:
   `temporal_has_known_day_q(field_name: str, *, endpoint: Literal["start", "end"] | None = None) -> models.Q`, and
   `temporal_exact_day_q(field_name: str) -> models.Q`. The first three own all
   atomic/endpoint component-knowledge rules; the last owns strict atomic-day
-  exactness and is the extension point for #656 qualifiers.
+  exactness and is the extension point for #656 qualifiers. Atomic predicates
+  require kind `atomic`; endpoint predicates require the selected endpoint kind
+  `known`. Their private precision sets are respectively day/month/year,
+  day/month, and day.
 
 The public SQL functions use three private immutable atom functions with exact
 roles:
@@ -226,9 +250,9 @@ _timetracker_temporal_atom_lower(text) -> date
 _timetracker_temporal_atom_upper(text) -> date
 _timetracker_temporal_atom_precision(text) -> text
 
-null canonical       -> lower null, upper null, precision "unknown"
-single atom           -> atom bounds/precision; endpoint metadata null
-start/end range       -> known kinds and each atom's precision
+null canonical       -> lower/upper null, kind unknown, precision null
+single atom           -> atom bounds, kind atomic, atom precision; endpoint metadata null
+start/end range       -> kind range, overall precision null, known endpoint kinds/precisions
 ../end open range     -> start kind open; end kind/precision known
 start/.. open range   -> start kind/precision known; end kind open
 /end unknown range    -> start kind unknown; end kind/precision known
@@ -236,53 +260,79 @@ start/ unknown range  -> start kind/precision known; end kind unknown
 ```
 
 Each atom helper branches over exactly `YYYY-MM-DD`, `YYYY-MM`, `YYYY`, and
-`YYYX`; it constructs a real date rather than using PostgreSQL's normalizing
-`to_date()`. The public functions accept exactly one empty endpoint as unknown,
-distinguish it from `..`, and reject multiple slashes, ranges without a known
-endpoint, and a bounded start lower date after the bounded end upper date.
+`YYYX` using ASCII classes; it constructs a real date with `make_date` and
+immutable integer/date operations rather than using PostgreSQL's normalizing
+`to_date()`, text-to-date/timestamp casts, locale-sensitive parsing, or timezone-
+sensitive operations. The public functions accept exactly one empty endpoint as
+unknown, distinguish it from `..`, and reject multiple slashes, ranges without a
+known endpoint, and a bounded start lower date after the bounded end upper date.
 
 - [ ] **Step 1: Write failing migration/domain contract tests.** Assert the
-  domain base type and constraint, exact function return types and immutable
-  volatility, SQL results for the same supported matrix as Python, `null ->
-  (null, null, unknown)`, identical unbounded projections without canonical
+  domain base type and exact `temporal_value_valid` constraint, exact function
+  return types and immutable volatility, SQL results for the same supported
+  matrix as Python, `null ->
+  (null, null, unknown, null)`, identical unbounded projections without canonical
   collapse but different endpoint kinds for open versus unknown endpoints,
-  nullable endpoint metadata for atomic values, and database rejection for
-  every invalid expression.
+  nullable overall precision for range/unknown, nullable endpoint metadata for
+  atomic values, changed-`DateStyle`/`TimeZone` invariance, and database
+  rejection for every shared invalid expression including Unicode digits.
 - [ ] **Step 2: Run the focused domain tests and verify they fail.** Run
-  `make test-fast ARGS="tests/test_temporal_domain.py -q"`; expect missing
+  `make test ARGS="tests/test_temporal_domain.py -q"`; expect missing
   domain/function failures.
 - [ ] **Step 3: Add migration `0017_temporal_value_domain`.** Create the two
   private atom functions named above plus a private atom-precision function,
-  then all seven projection functions, then `timetracker_temporal_is_valid`,
+  then all eight projection functions, then `timetracker_temporal_is_valid`,
   then the domain. Reverse in the exact opposite order. Implement `is_valid` as
-  an immutable PL/pgSQL exception boundary that calls all seven public
+  an immutable PL/pgSQL exception boundary that calls all eight public
   projections and returns false for any rejected value; the domain check is
   `VALUE IS NULL OR timetracker_temporal_is_valid(VALUE)`.
 - [ ] **Step 4: Run domain tests and compare SQL with Python.** Run
-  `make test-fast ARGS="tests/test_temporal_domain.py -q"`; expect the shared
+  `make test ARGS="tests/test_temporal_domain.py -q"`; expect the shared
   valid/invalid fixture matrices to agree.
 - [ ] **Step 5: Write failing Django-field integration tests.** Under
-  `isolate_apps("games")`, declare a temporary model containing
-  `TemporalValueField` and seven persisted `GeneratedField`s using the public
-  expressions. Assert field deconstruction, PostgreSQL-only behavior, Python
-  assignment/full-clean conversion, ORM/database/dump-data round-trips, typed
-  generated values, filters over atomic/endpoint precision and endpoint kind
-  without canonical-text expressions in their SQL, all shared component-query
-  helpers for atomic/start/end values, `temporal_exact_day_q` excluding every
-  non-day value, endpoint-argument validation, and raw invalid insert rejection.
+  `isolate_apps("games")`, use a transaction-marked fixture to declare and create
+  one temporary model containing `TemporalValueField` and eight persisted
+  `GeneratedField`s using the public expressions. Delete the table in `finally`
+  with a separate schema-editor scope. Assert fixed field deconstruction and
+  conflicting-length rejection, PostgreSQL-only behavior, fresh/default/direct-
+  assignment/full-clean/save/refresh representation, empty-string rejection,
+  ORM/database/JSON-dump-data round-trips, create/save, `bulk_create`,
+  `bulk_update`, `QuerySet.update`, exact filters, `None` and
+  `TemporalValue.unknown()` filters, typed generated values, filters over kind,
+  atomic/endpoint precision and endpoint kind without canonical-text expressions
+  in their SQL, all shared component-query helpers for atomic/start/end values,
+  `temporal_exact_day_q` excluding every non-day value, endpoint-argument
+  validation, and raw invalid insert rejection.
 - [ ] **Step 6: Implement the Django bridge.** Map parse errors to Django
   `ValidationError` with the same code, return the PostgreSQL domain from
   `db_type`, serialize only the canonical scalar, reject non-PostgreSQL
   backends, give each expression the exact typed `output_field`, and centralize
   the generated-field suffix and currently equivalent precision lists inside
-  the shared query helpers. Consumers must never reconstruct those lists.
+  the shared query helpers. Explicitly implement `to_python()`,
+  `from_db_value()`, `get_prep_value()`, `value_from_object()`, and
+  `value_to_string()` so psycopg and serializers receive only canonical strings
+  or `None`; do not inherit `CharField` wrapper conversion or validators.
+  Consumers must never reconstruct the query lists.
 
   ```python
-  class TemporalValueField(models.CharField):
+  def _normalize_temporal_model_value(value: object) -> TemporalValue | None:
+      if value is None:
+          return None
+      try:
+          parsed = parse_temporal_value(value)
+      except TemporalValueParseError as exc:
+          raise ValidationError(str(exc), code=exc.code) from exc
+      return None if parsed.kind is TemporalValueKind.UNKNOWN else parsed
+
+
+  class TemporalValueField(models.Field):
       def __init__(self, *args, **kwargs):
-          kwargs.setdefault("max_length", 64)
+          max_length = kwargs.pop("max_length", 64)
+          if max_length != 64:
+              raise ValueError("TemporalValueField.max_length is fixed at 64.")
+          kwargs["max_length"] = 64
           kwargs.setdefault("null", True)
-          kwargs.setdefault("blank", True)
+          kwargs.setdefault("blank", False)
           kwargs.setdefault("default", None)
           kwargs.setdefault("editable", False)
           super().__init__(*args, **kwargs)
@@ -291,6 +341,23 @@ endpoint, and a bounded start lower date after the bounded end upper date.
           if connection.vendor != "postgresql":
               raise NotSupportedError("TemporalValueField requires PostgreSQL.")
           return "temporal_value"
+
+      def to_python(self, value):
+          return _normalize_temporal_model_value(value)
+
+      def from_db_value(self, value, expression, connection):
+          return _normalize_temporal_model_value(value)
+
+      def get_prep_value(self, value):
+          normalized = _normalize_temporal_model_value(value)
+          return None if normalized is None else normalized.serialize()
+
+      def value_from_object(self, obj):
+          return _normalize_temporal_model_value(super().value_from_object(obj))
+
+      def value_to_string(self, obj):
+          value = self.value_from_object(obj)
+          return "" if value is None else value.serialize()
 
 
   class TemporalLowerBound(models.Func):
@@ -303,9 +370,14 @@ endpoint, and a bounded start lower date after the bounded end upper date.
       output_field = models.DateField(null=True)
 
 
+  class TemporalKind(models.Func):
+      function = "timetracker_temporal_kind"
+      output_field = models.CharField(max_length=7)
+
+
   class TemporalPrecisionValue(models.Func):
       function = "timetracker_temporal_precision"
-      output_field = models.CharField(max_length=7)
+      output_field = models.CharField(max_length=7, null=True)
 
 
   class TemporalStartKind(models.Func):
@@ -328,13 +400,18 @@ endpoint, and a bounded start lower date after the bounded end upper date.
       output_field = models.CharField(max_length=7, null=True)
   ```
 - [ ] **Step 7: Run both focused suites with default workers.** Run
-  `make test-fast ARGS="tests/test_temporal.py tests/test_temporal_domain.py -q"`.
+  `make test ARGS="tests/test_temporal.py tests/test_temporal_domain.py -q"`.
 - [ ] **Step 8: Prove migration reversibility.** In a transaction-marked test,
   capture graph leaf nodes, migrate to `0016_library_config_uuid_primary_key`,
   assert domain/functions are absent, migrate to `0017`, assert they are
   restored, and restore leaf nodes in `finally` using fresh
   `MigrationExecutor` instances.
-- [ ] **Step 9: Commit the persistence contract.** Stage the four implementation
+- [ ] **Step 9: Pin safe follow-on evolution.** Document in the migration module
+  that replacing parser/projection function bodies does not revalidate domain
+  values or recompute stored generated columns. Any semantic follow-on must
+  drop/re-add the domain constraint and rebuild every affected persisted
+  generated column before relying on new projections.
+- [ ] **Step 10: Commit the persistence contract.** Stage the four implementation
   and test files; commit as `feat: persist temporal query bounds`.
 
 ### Task 3: Cross-cutting verification and handoff

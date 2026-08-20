@@ -12,9 +12,9 @@ TIME-01 introduces the final reusable value and persistence contract for exact
 calendar days and the imprecise month, year, decade, range, and unknown values
 that later catalog and player-history models will store. The canonical EDTF
 expression remains the source representation. Parsed lower and upper calendar
-bounds, overall precision, and range endpoint kind/precision are persisted as
-typed generated columns, so normal queries never reparse the canonical
-expression.
+bounds, value kind, atomic precision, and range endpoint kind/precision are
+persisted as typed generated columns, so normal queries never reparse the
+canonical expression.
 
 This issue does not add a model that consumes the primitive. In particular, it
 does not add `Edition` or `Release`, change either legacy Game year field, or
@@ -31,26 +31,31 @@ use of `X` in this issue.
 The supported expressions are a deliberately small generated subset of the
 [Library of Congress EDTF specification](https://www.loc.gov/standards/datetime/).
 The application accepts only canonical spelling; it does not trim, case-fold,
-or silently normalize input.
+or silently normalize input. Canonical digits are ASCII `[0-9]`; Unicode decimal
+digits and lookalike punctuation are rejected even if Python can interpret
+them.
 
-| Precision | Canonical value | Lower bound | Upper bound |
+| Value kind / precision | Canonical value | Lower bound | Upper bound |
 | --- | --- | --- | --- |
-| unknown | JSON/Python/SQL `null` | `null` | `null` |
-| day | `2024-02-29` | `2024-02-29` | `2024-02-29` |
-| month | `2024-02` | `2024-02-01` | `2024-02-29` |
-| year | `2024` | `2024-01-01` | `2024-12-31` |
-| decade | `199X` | `1990-01-01` | `1999-12-31` |
-| closed range | `1999/2001-03` | `1999-01-01` | `2001-03-31` |
-| open-start range | `../2001-03` | `null` | `2001-03-31` |
-| open-end range | `1999/..` | `1999-01-01` | `null` |
-| unknown-start range | `/2001-03` | `null` | `2001-03-31` |
-| unknown-end range | `1999/` | `1999-01-01` | `null` |
+| unknown / — | JSON/Python/SQL `null` | `null` | `null` |
+| atomic / day | `2024-02-29` | `2024-02-29` | `2024-02-29` |
+| atomic / month | `2024-02` | `2024-02-01` | `2024-02-29` |
+| atomic / year | `2024` | `2024-01-01` | `2024-12-31` |
+| atomic / decade | `199X` | `1990-01-01` | `1999-12-31` |
+| range / — | `1999/2001-03` | `1999-01-01` | `2001-03-31` |
+| range / — | `../2001-03` | `null` | `2001-03-31` |
+| range / — | `1999/..` | `1999-01-01` | `null` |
+| range / — | `/2001-03` | `null` | `2001-03-31` |
+| range / — | `1999/` | `1999-01-01` | `null` |
 
 Four-digit Gregorian years from 0001 through 9999 are supported. A decade has
 exactly one rightmost `X`; `000X` is rejected because Python and PostgreSQL
 calendar dates have no year zero. Range endpoints may independently use day,
-month, year, or decade precision. A range's own precision token is always
-`range`, even when both endpoints have the same precision or name the same day.
+month, year, or decade precision. A range has kind `range` and no overall
+precision, even when both endpoints have the same precision or name the same
+day; EDTF precision belongs to its endpoints. Standalone unknown similarly has
+kind `unknown` and no precision. Atomic values have kind `atomic` and one of the
+four supported precisions.
 Every range must have at least one known endpoint. `../..`, `../`, `/..`, and
 `/` are rejected because they carry no known calendar bound and add no useful
 information beyond a standalone unknown value.
@@ -77,14 +82,14 @@ this calendar primitive.
 
 `timetracker.temporal` owns:
 
-- `TemporalPrecision`, a `StrEnum` with `day`, `month`, `year`, `decade`,
-  `range`, and `unknown`;
+- `TemporalValueKind`, a `StrEnum` with `atomic`, `range`, and `unknown`;
+- `TemporalPrecision`, a `StrEnum` with `day`, `month`, `year`, and `decade`;
 - `TemporalEndpointKind`, a `StrEnum` with `known`, `unknown`, and `open`;
 - an immutable `TemporalEndpoint` carrying its kind and, only when known, its
   non-range `TemporalValue` plus precision/component convenience properties;
 - an immutable `TemporalValue` whose public construction path accepts only a
-  canonical scalar and derives `lower_bound`, `upper_bound`, `precision`, and
-  optional typed `start`/`end` endpoints;
+  canonical scalar and derives `lower_bound`, `upper_bound`, `kind`, nullable
+  `precision`, and optional typed `start`/`end` endpoints;
 - named constructors for day, month, year, decade, range, and unknown values;
 - `TemporalValueParseError`, carrying a stable error code and a precise human
   message; and
@@ -104,8 +109,12 @@ the wire form because accepting them would create a second source of truth.
 
 Validation distinguishes at least invalid input type, non-canonical syntax,
 invalid calendar date, invalid/reversed range, unsupported qualifier,
-unsupported season, unsupported set, unsupported extended year, and unsupported
-timestamp. Range order is possible-time order: when both sides are bounded, the
+unsupported season, unsupported set, unsupported component-level unspecified
+value (`unsupported_unspecified_component`), unsupported extended year, and
+unsupported timestamp. The unspecified-
+component error takes precedence over generic syntax errors for EDTF-shaped
+values such as `2004-XX`, `1985-04-XX`, `1985-XX-XX`, and their use in range
+endpoints. Range order is possible-time order: when both sides are bounded, the
 start endpoint's earliest possible day must not follow the end endpoint's latest
 possible day. This admits mixed-precision intervals such as `2020/2020-01`
 without pretending either endpoint is more precise than written. A known range
@@ -115,10 +124,13 @@ properties, so “not a range” never aliases either boundary.
 
 ### Developer API
 
-`TemporalPrecision` describes the representation's granularity; it is not a
-cumulative component-knowledge bitmap. Independent component helpers describe
-what the value itself knows. Within the #655 subset, an atomic day happens to
-know year/month/day, a month knows year/month, a year knows only year, and a
+`TemporalValueKind` distinguishes atomic, range, and unknown values.
+`TemporalPrecision` describes only an atomic value or known endpoint's
+representation granularity; range and unknown values have `precision is None`.
+Precision is not a cumulative component-knowledge bitmap. Independent
+component helpers describe what the value itself knows. Within the #655 subset,
+an atomic day happens to know year/month/day, a month knows year/month, a year
+knows only year, and a
 decade knows no exact component. Range and unknown values return false for all
 three helpers; callers inspect a range's endpoints instead. A future
 component-unspecified value such as `XXXX-XX-12` may therefore have day
@@ -132,6 +144,7 @@ the same result in #655, but their contracts are intentionally distinct.
 
 ```python
 value = TemporalValue.parse("2024-05")
+value.kind is TemporalValueKind.ATOMIC
 value.precision is TemporalPrecision.MONTH
 value.has_known_year is True
 value.has_known_month is True
@@ -141,6 +154,8 @@ value.is_exact_day is False
 value.is_range is False
 
 interval = TemporalValue.parse("2020/..")
+interval.kind is TemporalValueKind.RANGE
+interval.precision is None
 interval.start.kind is TemporalEndpointKind.KNOWN
 interval.start.precision is TemporalPrecision.YEAR
 interval.start.has_known_month is False
@@ -151,8 +166,9 @@ interval.end.is_unknown is False
 
 `TemporalEndpoint.known(value)`, `TemporalEndpoint.unknown()`, and
 `TemporalEndpoint.open()` are the explicit construction paths used by
-`TemporalValue.range(start=..., end=...)`. A known endpoint rejects range or
-standalone-unknown values. Every endpoint exposes `is_known`, `is_unknown`, and
+`TemporalValue.range(start=start_endpoint, end=end_endpoint)`. A known endpoint
+rejects range or standalone-unknown values. Every endpoint exposes `is_known`,
+`is_unknown`, and
 `is_open`; its `precision` is nullable and component helpers are false unless
 the endpoint is known.
 
@@ -171,9 +187,12 @@ The public helpers are `temporal_has_known_year_q`,
 `temporal_has_known_month_q`, `temporal_has_known_day_q`, and
 `temporal_exact_day_q`. Each accepts a temporal-field prefix and an optional
 `endpoint="start"` or `endpoint="end"`; `temporal_exact_day_q` is atomic-only
-and accepts no endpoint argument. In #655 the private query construction can
-use the precision projections because the accepted grammar makes their results
-equivalent. #656 extends `temporal_exact_day_q` with qualifier criteria, and a
+and accepts no endpoint argument. In #655 the private query construction uses
+value/endpoint kind plus precision projections because the accepted grammar
+makes them equivalent to component knowledge: atomic known-year uses
+`day/month/year`, known-month uses `day/month`, and known-day/exact-day uses
+`day`; endpoint helpers also require endpoint kind `known`. #656 extends
+`temporal_exact_day_q` with qualifier criteria, and a
 future component-unspecified issue may extend the stored projections and known-
 component helpers. Callers retain the same semantic API throughout.
 
@@ -183,22 +202,37 @@ The persistence contract mirrors the existing `UUIDv7Field`/`uuid_v7` domain
 boundary:
 
 1. `TemporalValueField` stores only the canonical scalar in a PostgreSQL
-   `temporal_value` domain backed by `varchar(64)`. It normalizes values during
-   model validation/database preparation and converts database-loaded values to
-   `TemporalValue`. It defaults to nullable unknown and is non-editable so an
+   `temporal_value` domain backed by `varchar(64)`. It is a purpose-built
+   `models.Field`, not a `CharField`: explicit Python conversion, database
+   preparation, object extraction, and serializer methods prevent wrapper
+   objects from reaching psycopg or generic string validators. Known database
+   values load as `TemporalValue`; model-level standalone unknown is consistently
+   `None`. The standalone value API still uses `TemporalValue.unknown()`, which
+   field preparation accepts and writes as SQL `NULL`. Direct raw assignment has
+   Django's normal pre-cleaning behavior; `full_clean()` normalizes supported
+   input, and refresh returns the canonical model representation. The field
+   fixes `max_length=64`, rejects conflicting overrides, defaults to
+   `null=True`, `blank=False`, `default=None`, and is non-editable so an
    automatic `ModelForm` cannot expose the explicitly deferred raw-EDTF
-   interface.
+   interface. `blank=False` ensures model cleaning parses and rejects `""`
+   instead of skipping it, while `null=True` still accepts `None`.
 2. The domain rejects malformed or unsupported non-null strings even when a
    write bypasses Django. SQL validation covers the same accepted grammar,
    real Gregorian dates, range endpoint rules, and range ordering as Python.
-3. Immutable PostgreSQL functions derive lower bound, upper bound, overall
-   precision, start/end kind, and start/end precision from the canonical value.
-   Django `Func` wrappers expose each projection.
-4. A consumer declares seven persisted `GeneratedField`s: two nullable dates,
-   one non-null overall precision, two nullable endpoint kinds, and two nullable
-   endpoint precisions. Parsing therefore happens when a row is written, not
-   whenever it is filtered or sorted. The stored columns can receive ordinary
-   B-tree indexes and direct ORM lookups.
+   Its check constraint has the stable name `temporal_value_valid` so follow-on
+   migrations can explicitly revalidate it.
+3. Immutable PostgreSQL functions derive lower bound, upper bound, non-null
+   value kind, nullable atomic precision, start/end kind, and start/end precision
+   from the canonical value. They classify ASCII text and construct dates only
+   with immutable integer/date operations such as `make_date`; text-to-date or
+   timestamp casts, `to_date()`, timezone-sensitive operations, and locale-
+   dependent parsing are forbidden. Django `Func` wrappers expose each
+   projection.
+4. A consumer declares eight persisted `GeneratedField`s: two nullable dates,
+   one non-null value kind, one nullable atomic precision, two nullable endpoint
+   kinds, and two nullable endpoint precisions. Parsing therefore happens when a
+   row is written, not whenever it is filtered or sorted. The stored columns can
+   receive ordinary B-tree indexes and direct ORM lookups.
 
 The consumer shape is explicit rather than hidden behind a descriptor:
 
@@ -216,9 +250,15 @@ release_date_upper = models.GeneratedField(
     db_persist=True,
     editable=False,
 )
+release_date_kind = models.GeneratedField(
+    expression=TemporalKind("release_date"),
+    output_field=models.CharField(max_length=7),
+    db_persist=True,
+    editable=False,
+)
 release_date_precision = models.GeneratedField(
     expression=TemporalPrecisionValue("release_date"),
-    output_field=models.CharField(max_length=7),
+    output_field=models.CharField(max_length=7, null=True),
     db_persist=True,
     editable=False,
 )
@@ -248,18 +288,19 @@ release_date_end_precision = models.GeneratedField(
 )
 ```
 
-Explicit fields cost eight declarations per temporal fact, but preserve normal
+Explicit fields cost nine declarations per temporal fact, but preserve normal
 Django migration state, introspection, field naming, and index control. The
 primitive defines the values and expressions; each owning domain issue chooses
 the semantic prefix and indexes its own query paths.
 
-The generated fields make precision and endpoint kind ordinary ORM data. The
-shared predicates above are the public component/exactness query API; consumers
-do not hand-code the currently equivalent precision lists:
+The generated fields make value kind, precision, and endpoint kind ordinary ORM
+data. The shared predicates above are the public component/exactness query API;
+consumers do not hand-code the currently equivalent precision lists:
 
 ```python
 Release.objects.filter(release_date_end_kind=TemporalEndpointKind.OPEN)
 Release.objects.filter(release_date_end_kind=TemporalEndpointKind.UNKNOWN)
+Release.objects.filter(release_date_kind=TemporalValueKind.UNKNOWN)
 ```
 
 Open and unknown endpoints retain the same nullable calendar bound but remain
@@ -272,6 +313,13 @@ projection functions, then the `temporal_value` domain. It adds no table or
 column and touches no data. Reverse SQL drops the unused domain and functions.
 Once #649 adds consuming columns, ordinary dependency order requires those
 columns to be reversed before this foundation can be removed.
+
+Later issues must not treat replacing an immutable function body as sufficient
+schema evolution. PostgreSQL does not revalidate existing domain values or
+recompute stored generated columns merely because a referenced function
+changes. Any semantic parser/projection change therefore drops and re-adds the
+domain constraint to revalidate stored canonical values and rebuilds every
+affected persisted generated column before the new projection is relied upon.
 
 The migration test reverses to `0016_library_config_uuid_primary_key`, proves
 the domain and functions are absent, reapplies `0017`, proves their signatures
@@ -289,29 +337,32 @@ but date bounds become strings or query-time casts, coherence is difficult to
 enforce at the database boundary, and future overlap indexes become opaque
 expression indexes rather than ordinary typed columns.
 
-**A magical multi-column descriptor** was rejected. Injecting eight fields from
+**A magical multi-column descriptor** was rejected. Injecting nine fields from
 one pseudo-field hides migration state and makes deconstruction, generated-field
 dependencies, admin/form behavior, and per-consumer indexes harder to inspect.
-The explicit eight-column consumer contract is repetitive but unsurprising.
+The explicit nine-column consumer contract is repetitive but unsurprising.
 
 ## Verification and complexity forecast
 
-Pure tests cover every supported precision, leap-year/month-end boundaries,
-open, unknown-endpoint, and mixed-precision ranges, scalar serialization
+Pure tests cover every supported kind and precision, leap-year/month-end
+boundaries, open, unknown-endpoint, and mixed-precision ranges, scalar serialization
 round-trips, constructor invariants, equality/hash behavior, and every stable
 validation code. Pure tests separately pin representation precision, component
-knowledge, complete-day, and exact-day semantics. Django
+knowledge, complete-day, and exact-day semantics, and reject representative
+component-level `X`, Unicode-digit, and lookalike-punctuation values. Django
 tests cover field deconstruction, PostgreSQL-only enforcement, model/dump-data
-round-trips, typed generated values, ORM queries over the stored bounds and
-atomic/endpoint precision and endpoint kind, all shared component/exactness
-query helpers, and database rejection of invalid raw inserts. Migration tests
-cover domain/function creation, parity between Python and SQL over the shared
-fixture matrix, reversibility, and reapplication.
+round-trips, every field preparation path including bulk writes and filters,
+typed generated values, ORM queries over the stored bounds, kind,
+atomic/endpoint precision and endpoint kind, all shared component/exactness query
+helpers, and database rejection of invalid raw inserts. Transactional temporary-
+model tests always delete their tables in `finally`. Migration tests cover
+domain/function creation, parity between Python and SQL over the shared fixture
+matrix under changed `DateStyle` and `TimeZone`, reversibility, and reapplication.
 
 The final gate is `make check` with the Makefile's default parallel workers,
 then `git diff --check` and full diff review against this specification.
 
 Forecast: two independent runtime subsystems (Python/Django and PostgreSQL),
-four implementation/test files, and 900–1,300 non-generated changed lines.
+four implementation/test files, and 1,000–1,450 non-generated changed lines.
 The issue therefore stays below all re-slice thresholds: it does not cross three
 runtime subsystems, 40 files, or 2,000 non-generated lines.
