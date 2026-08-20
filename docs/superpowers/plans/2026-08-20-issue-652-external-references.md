@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a provider-neutral, target-safe external-reference map; migrate legacy Game Wikidata identities exactly; and keep the current Game form/field synchronized through its thin compatibility adapter.
+**Goal:** Add a provider-neutral, target-safe external-reference map with deterministic outbound links; migrate legacy Game Wikidata identities exactly; and keep the current Game form/field synchronized and clickable through its thin compatibility path.
 
-**Architecture:** Store one canonical provider/kind/key tuple with one of four database-enforced catalog foreign-key targets. Centralize provider normalization, deterministic lookup, and idempotent/conflict-safe persistence in a focused service, then call its Wikidata synchronizer from an outer transaction in the existing thin Game-form adapter. Create and backfill the schema in one fail-closed atomic migration with deterministic reconciliation output and a populated-reverse guard.
+**Architecture:** Store one canonical provider/kind/key tuple with one of four database-enforced catalog foreign-key targets. Centralize normalization, trusted provider URL templates, deterministic lookup/link generation, and idempotent/conflict-safe persistence in a focused service, then call its Wikidata synchronizer from an outer transaction in the existing thin Game-form adapter. Create and backfill the schema in one fail-closed atomic migration and render the current canonical Wikidata value as a policy-built link.
 
 **Tech Stack:** Python 3.14, Django 6 ORM/migrations, PostgreSQL 17, pytest-django, pytest-xdist, Make.
 
@@ -14,13 +14,16 @@
 
 - Treat issue #652, the overhaul charter, and the catalog foundation wave as authoritative.
 - The canonical tuple is `(provider, entity_kind, provider_key)` and resolves to one existing Game, Edition, Release, or Platform UUID.
+- `provider` names the external namespace; `provider_key` is that provider's identifier rather than a URL; `entity_kind` declares whether it identifies an internal Game, Edition, Release, or Platform.
 - Store exactly one typed catalog foreign-key target and enforce declared-kind/target agreement in PostgreSQL and model validation.
 - Normalize provider names by explicit policy. For Wikidata, trim and uppercase the key and require `Q[1-9][0-9]*`.
+- Each provider policy owns one trusted HTTPS URL template. It may use `{entity_kind}` and must use `{provider_key}`; Wikidata uses `https://www.wikidata.org/wiki/{provider_key}`. Build links only after kind validation, canonicalization, and path-segment encoding.
+- Store neither repeated complete URLs nor editable per-row templates. `ExternalReference.external_url` and the provider URL builder are the consumer contract.
 - Unknown providers and blank/malformed reference keys fail closed; add no speculative IGDB/store policies.
 - Preserve Game UUIDs, catalog hierarchy UUIDs/relationships, all non-Wikidata fields, and equal-name rows. Never merge or infer identity.
 - Duplicate or malformed normalized nonblank legacy values must all be reported and abort before data writes.
 - Whitespace-only legacy Wikidata becomes `""` and creates no reference; every valid nonblank value maps to exactly one Game reference with the same Game UUID.
-- Keep the current Game Wikidata form/list behavior and label. Canonicalize through `GameForm.clean_wikidata()` and synchronize through the existing thin adapter; do not switch existing reads or add compatibility behavior to the durable catalog writer.
+- Keep the current Game Wikidata form/list field and label. Canonicalize through `GameForm.clean_wikidata()`, synchronize through the existing thin adapter, and render a nonblank list value as a link whose text remains the canonical key; do not switch reads to the reference table or add compatibility behavior to the durable catalog writer.
 - A tuple already mapped to another target is never silently reassigned.
 - Keep schema/data migration atomic. Refuse reverse migration when any reference exists; production rollback is verified database restore plus the prior image.
 - Add no auth/client/cache/source-record/refresh/helper-route/import/matching/tombstone/redirect behavior.
@@ -30,14 +33,15 @@
 ## File structure
 
 - Modify `games/models.py`: add the target-safe `ExternalReference` model/constraints.
-- Create `games/external_references.py`: provider registry, normalization, idempotent persistence, deterministic UUID lookup, and temporary Game Wikidata synchronization.
+- Create `games/external_references.py`: provider registry with trusted URL templates, normalization, URL building, idempotent persistence, deterministic UUID lookup, and temporary Game Wikidata synchronization.
 - Create `games/migrations/0022_external_references.py`: schema, fail-closed legacy preflight/backfill, exact reconciliation, idempotency proof, and reverse guard.
 - Modify `games/forms.py`: canonicalize and validate the existing Wikidata field.
 - Modify `games/catalog_compat.py`: synchronize Wikidata with an outer transaction around the existing writer.
+- Modify `games/views/game.py`: render a canonical nonblank Wikidata value as a policy-built link while keeping the legacy display source.
 - Create `tests/test_external_references.py`: model, constraint, provider policy, persistence, lookup, and deletion contracts.
 - Create `tests/test_external_reference_migration.py`: migration mapping, reconciliation, rollback, idempotency, and reverse behavior.
 - Create `tests/test_catalog_compat.py`: adapter-level synchronization and graph/reference rollback.
-- Modify `tests/test_catalog_write_views.py`: current form/display behavior, canonicalization, and validation.
+- Modify `tests/test_catalog_write_views.py`: current form/display behavior, canonicalization, exact link destination, blank rendering, and validation.
 - Remove this plan and its paired design only after all implementation and verification gates pass; preserve their planning commit in branch history.
 
 ## Planning gate checkpoint
@@ -60,7 +64,8 @@ presents the planning artifacts.
 - Produces `ExternalReference.Provider.WIKIDATA == "wikidata"`.
 - Produces entity kinds `game`, `edition`, `release`, and `platform`.
 - Produces `normalize_provider(provider: str) -> str` and `normalize_provider_key(*, provider: str, provider_key: str) -> tuple[str, str]`.
-- Produces `ExternalReference.target_uuid: UUID` and four nullable target foreign keys with reverse name `external_references`.
+- Produces `external_reference_url(*, provider: str, entity_kind: str, provider_key: str) -> str` using the provider policy's trusted URL template.
+- Produces `ExternalReference.target_uuid: UUID`, `ExternalReference.external_url: str`, and four nullable target foreign keys with reverse name `external_references`.
 
 - [ ] **Step 1: Write provider normalization tests**
 
@@ -68,7 +73,11 @@ Add parametrized tests proving `" WikiData "` plus `" q123 "` normalize to
 `("wikidata", "Q123")`; `Q1` and large positive Q-numbers pass; `""`,
 whitespace, `Q0`, `Q01`, negative, suffixed, embedded-whitespace, and non-Q
 keys raise `ValidationError`; and an unknown provider raises
-`ValidationError` rather than using a generic policy.
+`ValidationError` rather than using a generic policy. Assert
+`external_reference_url(provider=" WikiData ", entity_kind="game",
+provider_key=" q123 ") ==
+"https://www.wikidata.org/wiki/Q123"` and that malformed/unknown input never
+produces a URL.
 
 - [ ] **Step 2: Run normalization tests to verify RED**
 
@@ -83,13 +92,37 @@ Expected: collection/import failure because `games.external_references` and
 
 - [ ] **Step 3: Implement the minimal explicit provider registry**
 
-Create `games/external_references.py` with a compiled full-match Wikidata regex
-and these exact signatures:
+Create `games/external_references.py` with a compiled full-match Wikidata regex,
+a frozen `ProviderPolicy` containing `normalize_key` and `url_template`, and
+these exact signatures:
 
 ```python
+@dataclass(frozen=True, slots=True)
+class ProviderPolicy:
+    normalize_key: Callable[[str], str]
+    url_template: str
+
+
+def _normalize_wikidata_key(provider_key: str) -> str:
+    key = provider_key.strip().upper()
+    if not WIKIDATA_KEY_PATTERN.fullmatch(key):
+        raise ValidationError(
+            {"provider_key": "Enter a Wikidata entity ID such as Q123."}
+        )
+    return key
+
+
+PROVIDER_POLICIES = {
+    "wikidata": ProviderPolicy(
+        normalize_key=_normalize_wikidata_key,
+        url_template="https://www.wikidata.org/wiki/{provider_key}",
+    ),
+}
+
+
 def normalize_provider(provider: str) -> str:
     normalized = provider.strip().casefold()
-    if normalized != "wikidata":
+    if normalized not in PROVIDER_POLICIES:
         raise ValidationError({"provider": "Unsupported external-reference provider."})
     return normalized
 
@@ -98,13 +131,27 @@ def normalize_provider_key(
     *, provider: str, provider_key: str
 ) -> tuple[str, str]:
     provider = normalize_provider(provider)
-    key = provider_key.strip().upper()
-    if not WIKIDATA_KEY_PATTERN.fullmatch(key):
-        raise ValidationError(
-            {"provider_key": "Enter a Wikidata entity ID such as Q123."}
-        )
-    return provider, key
+    return provider, PROVIDER_POLICIES[provider].normalize_key(provider_key)
+
+
+def external_reference_url(
+    *, provider: str, entity_kind: str, provider_key: str
+) -> str:
+    if entity_kind not in {"game", "edition", "release", "platform"}:
+        raise ValidationError({"entity_kind": "Unsupported catalog entity kind."})
+    provider, key = normalize_provider_key(
+        provider=provider, provider_key=provider_key
+    )
+    policy = PROVIDER_POLICIES[provider]
+    return policy.url_template.format(
+        entity_kind=quote(entity_kind, safe=""),
+        provider_key=quote(key, safe=""),
+    )
 ```
+
+Register Wikidata with the exact trusted template
+`https://www.wikidata.org/wiki/{provider_key}`. Do not read a URL template from
+form input or an `ExternalReference` row.
 
 Keep imports of concrete catalog models inside persistence functions or behind
 `TYPE_CHECKING`, so `games.models` can import the normalization helper without
@@ -114,7 +161,8 @@ a module cycle.
 
 For each of Game, Edition, Release, and Platform, create one reference and
 assert a UUIDv7 primary key, the canonical tuple, exactly one non-NULL target,
-the expected entity kind, `target_uuid`, and reverse manager. Add tests that:
+the expected entity kind, `target_uuid`, exact `external_url`, and reverse
+manager. Add tests that:
 
 - attempt the same provider/kind/key twice and receive `IntegrityError`;
 - construct a mismatched kind/target and receive `ValidationError` on save;
@@ -146,6 +194,7 @@ Add `ExternalReference` after `Release` in `games/models.py` with UUIDv7 `id`,
   `external_reference_canonical_provider_key`;
 - `clean()` that normalizes the tuple and raises field-addressable errors for
   target mismatch; and
+- `external_url` that delegates to `external_reference_url`; and
 - `save()` that calls `clean()` before `super().save()`.
 
 Start `games/migrations/0022_external_references.py` with the matching
@@ -380,12 +429,13 @@ git commit -m "feat: migrate legacy Wikidata references"
 - Modify: `tests/test_catalog_write_views.py`
 - Modify later: `games/forms.py`
 - Modify later: `games/catalog_compat.py`
+- Modify later: `games/views/game.py`
 
 **Interfaces:**
 - `GameForm.clean_wikidata()` canonicalizes blank/nonblank legacy Wikidata with the shared provider policy and rejects a tuple owned by another Game.
 - `save_legacy_game_form(form)` wraps `save_private_game(...)` and `sync_game_wikidata(game=game)` in one outer atomic transaction.
 - `save_private_game(...)` remains the durable compatibility-free catalog writer with its current signature.
-- Current Game form/list continues reading `Game.wikidata` with the same field and label.
+- Current Game form/list continues reading `Game.wikidata` with the same field and label; a nonblank list value becomes `Link(href=external_reference_url(...))[game.wikidata]`.
 
 - [ ] **Step 1: Write adapter synchronization tests**
 
@@ -401,10 +451,12 @@ current responsibility and does not create an external reference by itself.
 
 Extend `tests/test_catalog_write_views.py` to POST padded lowercase Wikidata on
 add/edit and assert successful redirects, canonical legacy/reference values,
-and the unchanged Wikidata form/list display. POST `Q0` and assert a normal
-field error with no Game/reference writes. Post a duplicate key and assert a
-field-addressable validation response plus unchanged persisted state, not an
-unhandled error.
+and the unchanged Wikidata form field/list column. Assert the list response
+contains an anchor whose text is `Q123` and whose exact escaped `href` is
+`https://www.wikidata.org/wiki/Q123`; a blank value has no outbound anchor.
+POST `Q0` and assert a normal field error with no Game/reference writes. Post a
+duplicate key and assert a field-addressable validation response plus unchanged
+persisted state, not an unhandled error.
 
 - [ ] **Step 3: Run focused tests to verify RED**
 
@@ -434,13 +486,37 @@ Decorate `save_legacy_game_form` with `transaction.atomic`. After
 the service/database constraint remains the race-safe backstop and any failure
 rolls the outer adapter transaction back.
 
-- [ ] **Step 6: Run focused writer/view tests to GREEN**
+- [ ] **Step 6: Render the canonical Wikidata value as a trusted link**
 
-Run the two focused files, followed by `tests/test_external_references.py`, and
-confirm rollback assertions reload database state outside the failed atomic
-block.
+In `games/views/game.py`, replace only the current raw nonblank Wikidata cell
+value with:
 
-- [ ] **Step 7: Run existing catalog regression suites**
+```python
+Link(
+    href=external_reference_url(
+        provider="wikidata", entity_kind="game", provider_key=game.wikidata
+    )
+)[game.wikidata]
+if game.wikidata
+else ""
+```
+
+Keep the current `Wikidata` column heading and legacy value source. The trusted
+policy emits HTTPS and the component escapes attributes/text; do not use
+`Safe`, `target="_blank"`, or per-row URL data.
+
+- [ ] **Step 7: Run focused adapter/view tests to GREEN**
+
+Run:
+
+```bash
+direnv exec . uv run --frozen pytest tests/test_catalog_compat.py tests/test_catalog_write_views.py tests/test_external_references.py -q
+```
+
+Confirm rollback assertions reload database state outside the failed atomic
+block and link assertions compare the exact canonical text and destination.
+
+- [ ] **Step 8: Run existing catalog regression suites**
 
 Run:
 
@@ -448,13 +524,14 @@ Run:
 direnv exec . uv run --frozen pytest tests/test_catalog_hierarchy.py tests/test_catalog_writes.py tests/test_catalog_write_views.py tests/test_library_api_isolation.py -q
 ```
 
-Expected: PASS with current forms, display, visibility, and private mutation
-behavior unchanged except canonical Wikidata storage.
+Expected: PASS with current forms, visibility, and private mutation behavior
+unchanged; the intended display delta is the canonical Wikidata text becoming
+an exact policy-built anchor.
 
-- [ ] **Step 8: Commit the compatibility slice**
+- [ ] **Step 9: Commit the compatibility slice**
 
 ```bash
-git add games/forms.py games/catalog_compat.py tests/test_catalog_compat.py tests/test_catalog_write_views.py
+git add games/forms.py games/catalog_compat.py games/views/game.py tests/test_catalog_compat.py tests/test_catalog_write_views.py
 git commit -m "feat: synchronize legacy Wikidata writes"
 ```
 
@@ -512,7 +589,8 @@ git diff --numstat origin/codex/catalog-wave...HEAD
 git status --short
 ```
 
-Confirm no IGDB/source/import/UI/helper-route behavior entered the branch;
+Confirm no IGDB/source/import/helper-route behavior or editable/arbitrary URL
+template entered the branch;
 actual scope remains below three runtime subsystems, 40 files, and 2,000
 non-generated changed lines; and all new model constraints have matching
 migration state. Return to approval before continuing if a threshold is crossed.
@@ -553,5 +631,6 @@ Expected: no whitespace errors and a clean issue branch.
 Push `codex/issue-652-external-references` and open a GitHub PR with base
 `codex/catalog-wave`. The PR body must summarize the typed target-integrity
 contract, canonical provider policy, fail-closed migration and exact
-reconciliation, compatibility behavior, focused/full verification, actual
-scope totals, rollback requirement, and include `Closes #652`. Do not merge it.
+reconciliation, trusted URL-template/link behavior, compatibility behavior,
+focused/full verification, actual scope totals, rollback requirement, and
+include `Closes #652`. Do not merge it.

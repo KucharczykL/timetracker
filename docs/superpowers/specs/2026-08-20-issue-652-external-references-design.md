@@ -18,8 +18,35 @@ Every nonblank legacy `Game.wikidata` value is trimmed, uppercased, validated,
 and copied to one Game-kind Wikidata reference whose target is the same Game
 UUID. Blank and whitespace-only values become the canonical empty string and
 create no reference. The current Game form, list display, and legacy field stay
-in place. CAT-02's existing private catalog writer keeps that field and the new
-reference synchronized until the later catalog compatibility cleanup.
+in place. CAT-02's existing thin adapter keeps that field and the new reference
+synchronized until the later catalog compatibility cleanup.
+
+## External-reference vocabulary
+
+An external reference connects four pieces of information:
+
+- **Provider** identifies the external namespace and its rules. The first
+  provider is `wikidata`.
+- **Provider key** is the identifier assigned by that provider, not a URL and
+  not a timetracker UUID. A Wikidata key looks like `Q123`; its canonical
+  stored form follows the provider's rules.
+- **Entity kind** identifies what level of timetracker's catalog the provider
+  key describes: the platform-independent work (`game`), a commercial variant
+  (`edition`), an edition on a platform (`release`), or the platform itself
+  (`platform`). It prevents an identifier for one catalog level from resolving
+  through another level and is part of the unique lookup namespace.
+- **Target UUID** is the primary key of that concrete internal Game, Edition,
+  Release, or Platform row.
+
+For example, a Game reference may be represented as:
+
+| provider | entity kind | provider key | internal target |
+| --- | --- | --- | --- |
+| `wikidata` | `game` | `Q123` | `Game.id = 019...` |
+
+The lookup key is the first three columns; the result is the internal UUID in
+the fourth. The provider key remains provider-owned text even when it happens
+to contain only digits or a letter plus digits.
 
 The following remain out of scope:
 
@@ -40,9 +67,9 @@ The following remain out of scope:
 canonical `provider` (50 characters), `entity_kind` (20 characters), and
 `provider_key` (255 characters), plus four nullable target foreign keys:
 `game`, `edition`, `release`, and `platform`. Each target uses `CASCADE`, because
-a hard-deleted catalog row must
-not leave an identifier that resolves to no row. CAT-05 does not otherwise
-change deletion behavior; #653 owns future archive/tombstone semantics.
+a hard-deleted catalog row must not leave an identifier that resolves to no
+row. CAT-05 does not otherwise change deletion behavior; #653 owns future
+archive/tombstone semantics.
 
 The entity kinds are the stable lowercase values `game`, `edition`, `release`,
 and `platform`. A database `CheckConstraint` contains four explicit branches.
@@ -77,6 +104,10 @@ def normalize_provider(provider: str) -> str: ...
 
 def normalize_provider_key(*, provider: str, provider_key: str) -> tuple[str, str]: ...
 
+def external_reference_url(
+    *, provider: str, entity_kind: str, provider_key: str
+) -> str: ...
+
 def save_external_reference(
     *, provider: str, provider_key: str, target: CatalogTarget
 ) -> ExternalReference: ...
@@ -97,6 +128,24 @@ policy to a nonblank legacy value, canonicalizes whitespace-only input to
 `""`, and rejects a tuple already owned by another Game. This keeps validation
 on the existing visible field while the database unique constraint remains the
 concurrency backstop.
+
+Each trusted provider policy also owns an HTTPS link template containing one
+`{provider_key}` placeholder. The initial Wikidata template is:
+
+```text
+https://www.wikidata.org/wiki/{provider_key}
+```
+
+`external_reference_url` validates the entity kind, normalizes the provider/key,
+percent-encodes the canonical key as one path segment, and substitutes the
+saved tuple into that provider's template. A provider policy may use
+`{entity_kind}` as well as the required `{provider_key}` when its public URL
+shape distinguishes entity types; Wikidata's global entity URL needs only the
+key. `ExternalReference.external_url` exposes the same result for a saved row.
+The URL template is code-owned policy, not per-reference database data:
+this gives every saved tuple one deterministic link without storing repeated
+URLs, allowing arbitrary user-controlled destinations, or leaving stale URLs
+after a provider policy correction.
 
 `save_external_reference` derives the entity kind and target field from the
 concrete target model; callers cannot supply a contradictory kind. Inside an
@@ -140,8 +189,12 @@ effects:
   reference unchanged rather than producing a partial write.
 
 The Game form fields, label, templates, list column, and display source remain
-unchanged. No current read surface is switched to the reference table in this
-issue; only the provider-neutral lookup service is a new consumer contract.
+unchanged. The Game list still obtains the visible identifier from
+`Game.wikidata`, but a nonblank value renders through the existing `Link`
+component with the policy-built Wikidata URL and the canonical key as its link
+text. A blank value remains blank. No current read surface is switched to the
+reference table in this issue; the provider-neutral lookup and URL builders are
+new consumer contracts.
 
 ## Migration, preflight, and exact reconciliation
 
@@ -232,7 +285,7 @@ Focused model/service tests prove provider/key canonicalization, rejection of
 blank/malformed/unknown providers, all four target kinds, UUIDv7 identities,
 database uniqueness, database target-kind checks, foreign-key existence,
 idempotent same-target writes, conflict refusal, deterministic lookup, no
-cross-kind fallback, and target-delete cascade.
+cross-kind fallback, exact trusted URL generation, and target-delete cascade.
 
 Migration tests cover mixed canonical/noncanonical/blank Wikidata values,
 exact same-Game UUID mapping, preserved catalog hierarchy/relationships, exact
@@ -240,10 +293,11 @@ machine/human output, malformed and duplicate all-at-once preflight failure,
 post-write mismatch rollback, empty databases, direct repeated forward
 idempotency, populated reverse refusal, and empty reverse success.
 
-Catalog-writer and view tests cover create, unchanged edit, key replacement,
+Catalog-adapter and view tests cover create, unchanged edit, key replacement,
 clearing, malformed form input, duplicate-key conflict, and rollback after a
 later graph/reference failure. They assert the current Wikidata field remains
-visible and displays the canonical value.
+visible and displays the canonical value as a link to the exact Wikidata
+entity, while a blank value remains unlinked.
 
 Verification runs the focused external-reference migration/service/writer/view
 suites, the existing catalog hierarchy and shared/private suites,
@@ -272,15 +326,20 @@ future provider to add another dedicated field.
 specification defines their key semantics. Provider-neutral structure does not
 require speculative provider behavior.
 
+**Store a complete URL or editable template on every reference.** Rejected
+because provider URLs are shared policy, not row identity. Repetition can drift,
+and editable templates create arbitrary outbound-link destinations. A trusted
+provider policy makes the normalized key useful as a link while storing only
+the durable identity tuple.
+
 ## Complexity forecast and re-slice gate
 
 Forecast: two runtime subsystems (external-reference model/service and the
-existing thin Game-form compatibility path), approximately nine
-implementation/test files, and 1,200–1,800 non-generated changed lines.
+existing thin Game-form/list compatibility path), approximately ten
+implementation/test files, and 1,300–1,900 non-generated changed lines.
 Expected files are `games/models.py`, `games/external_references.py`, migration
-`0022`, `games/forms.py`, `games/catalog_compat.py`, and focused tests under
-`tests/`. Existing views need no structural change because form validation and
-the current adapter preserve their contract.
+`0022`, `games/forms.py`, `games/catalog_compat.py`, `games/views/game.py`, and
+focused tests under `tests/`.
 
 The temporary design and plan are committed before tests or runtime code and
 removed only after implementation and all gates pass, preserving the planning
