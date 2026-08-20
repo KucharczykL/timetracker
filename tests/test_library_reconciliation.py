@@ -262,7 +262,7 @@ def test_apis_filters_and_presets_reconcile_per_library(parity_world):
     world = parity_world
     for side in ("a", "b"):
         client = getattr(world, f"client_{side}")
-        # JSON carries the identity as a string; Device is still integer-keyed.
+        # JSON carries every promoted identity as a string.
         own_games = {
             str(world.__dict__[f"game_{side}"].pk),
             str(world.__dict__[f"shared_game_{side}"].pk),
@@ -273,7 +273,7 @@ def test_apis_filters_and_presets_reconcile_per_library(parity_world):
         }
         assert game_ids == own_games
         assert {row["value"] for row in client.get("/api/devices/search").json()} == {
-            getattr(world, f"device_{side}").pk
+            str(getattr(world, f"device_{side}").pk)
         }
         assert {row["value"] for row in client.get("/api/platforms/search").json()} == {
             str(world.shared_platform.pk),

@@ -64,7 +64,7 @@ class MiddlewareIntegrationTest(TestCase):
 
         response = self.client.patch(
             f"/api/session/{session.id}/device",
-            data=json.dumps({"device_id": device.id}),
+            data=json.dumps({"device_id": str(device.id)}),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 204)
