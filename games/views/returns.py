@@ -33,9 +33,16 @@ READ_ONLY: frozenset[UrlName] = frozenset(
         "games:stats_alltime",
         "games:stats_by_year",
         "games:view_game",
+        "games:view_purchase",
+    }
+)
+
+# GET-only compatibility routes that redirect to a canonical read-only page.
+# They are classified but deliberately excluded from the origin allow-list.
+COMPATIBILITY_REDIRECTS: frozenset[UrlName] = frozenset(
+    {
         "games:view_game_by_uuid",
         "games:view_game_legacy",
-        "games:view_purchase",
     }
 )
 
