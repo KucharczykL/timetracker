@@ -497,7 +497,6 @@ class Session(models.Model):
     )
     device = models.ForeignKey(
         "Device",
-        to_field="uuid",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -539,10 +538,10 @@ class Session(models.Model):
 class Device(models.Model):
     objects = LibraryOwnedQuerySet.as_manager()
 
+    id = UUIDv7Field(primary_key=True, editable=False)
     library = models.ForeignKey(
         "UserLibrary", on_delete=models.CASCADE, related_name="devices"
     )
-    uuid = UUIDv7Field(unique=True, editable=False)
 
     PC = "PC"
     CONSOLE = "Console"
@@ -710,6 +709,8 @@ class FilterPreset(models.Model):
 
     objects = LibraryOwnedQuerySet.as_manager()
 
+    id = UUIDv7Field(primary_key=True, editable=False)
+
     MODE_CHOICES = (
         ("games", "Games"),
         ("sessions", "Sessions"),
@@ -722,7 +723,6 @@ class FilterPreset(models.Model):
     library = models.ForeignKey(
         "UserLibrary", on_delete=models.CASCADE, related_name="filter_presets"
     )
-    uuid = UUIDv7Field(unique=True, editable=False)
     name = models.CharField(max_length=255)
     mode = models.CharField(max_length=50, choices=MODE_CHOICES, default="games")
     find_filter = models.JSONField(default=dict, blank=True)
@@ -787,7 +787,6 @@ class UserLibraryPreferences(models.Model):
     )
     default_device = models.ForeignKey(
         Device,
-        to_field="uuid",
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
@@ -809,7 +808,7 @@ class UserLibraryPreferences(models.Model):
         super().save(*args, **kwargs)
 
     def set_default_device(self, device):
-        if self.default_device_id == getattr(device, "uuid", None):
+        if self.default_device_id == getattr(device, "pk", None):
             return False
         self.default_device = device
         self.updated_at = timezone.now()
