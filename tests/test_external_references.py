@@ -378,14 +378,17 @@ def test_sync_game_wikidata_replaces_an_old_game_mapping_when_the_legacy_key_cha
     ) == ["Q456"]
 
 
-def test_sync_game_wikidata_removes_only_game_mappings_when_legacy_value_is_blank():
+@pytest.mark.parametrize("preserved_kind", ["edition", "release", "platform"])
+def test_sync_game_wikidata_removes_only_game_mappings_when_legacy_value_is_blank(
+    preserved_kind,
+):
     """Clearing a Game's legacy key must not delete another catalog kind's identity."""
     targets = _catalog_targets()
     game_reference = save_external_reference(
         provider="wikidata", provider_key="Q123", target=targets["game"]
     )
-    edition_reference = save_external_reference(
-        provider="wikidata", provider_key="Q123", target=targets["edition"]
+    preserved_reference = save_external_reference(
+        provider="wikidata", provider_key="Q123", target=targets[preserved_kind]
     )
     targets["game"].wikidata = "   "
 
@@ -393,7 +396,7 @@ def test_sync_game_wikidata_removes_only_game_mappings_when_legacy_value_is_blan
 
     assert synced is None
     assert not ExternalReference.objects.filter(pk=game_reference.pk).exists()
-    assert ExternalReference.objects.filter(pk=edition_reference.pk).exists()
+    assert ExternalReference.objects.filter(pk=preserved_reference.pk).exists()
     assert targets["game"].wikidata == ""
 
 
