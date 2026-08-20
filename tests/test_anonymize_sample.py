@@ -24,7 +24,13 @@ from games.models import (
 # Models whose UUIDv7 identity has been promoted to their primary key carry it
 # in the record's `pk`; the rest still carry it in a `uuid` field.
 PROMOTED_MODELS = frozenset(
-    ["games.game", "games.platform", "games.session", "games.playevent"]
+    [
+        "games.game",
+        "games.platform",
+        "games.purchase",
+        "games.session",
+        "games.playevent",
+    ]
 )
 
 
