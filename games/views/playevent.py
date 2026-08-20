@@ -311,7 +311,7 @@ def add_playevent(request: HttpRequest, game_id: UUID | None = None) -> HttpResp
 
 
 @login_required
-def edit_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:
+def edit_playevent(request: HttpRequest, playevent_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     playevent = owned_or_404(
         PlayEvent.objects.for_library(library), library, id=playevent_id
@@ -342,7 +342,7 @@ def edit_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:
 
 
 @login_required
-def delete_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:
+def delete_playevent(request: HttpRequest, playevent_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     playevent = owned_or_404(
         PlayEvent.objects.for_library(library), library, id=playevent_id

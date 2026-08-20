@@ -217,7 +217,7 @@ def test_playevent_crud_is_library_scoped(two_libraries):
     foreign = world["playevent_b"]
 
     listed_ids = {row["id"] for row in client.get("/api/playevent/").json()}
-    assert foreign.id not in listed_ids
+    assert str(foreign.id) not in listed_ids
     assert client.get(f"/api/playevent/{foreign.id}").status_code == 404
     assert (
         _patch(client, f"/api/playevent/{foreign.id}", {"note": "changed"}).status_code
@@ -242,7 +242,7 @@ def test_session_reads_and_mutations_are_library_scoped(two_libraries):
 
     payload = client.get("/api/session/").json()
     assert payload["count"] == 1
-    assert [row["id"] for row in payload["items"]] == [own.id]
+    assert [row["id"] for row in payload["items"]] == [str(own.id)]
     assert client.get(f"/api/session/{foreign.id}").status_code == 404
     assert (
         _patch(

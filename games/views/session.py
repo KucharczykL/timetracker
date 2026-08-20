@@ -241,7 +241,7 @@ def add_session(request: HttpRequest, game_id: UUID | None = None) -> HttpRespon
 
 
 @login_required
-def edit_session(request: HttpRequest, session_id: int) -> HttpResponse:
+def edit_session(request: HttpRequest, session_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
     initial = (
@@ -276,14 +276,12 @@ def edit_session(request: HttpRequest, session_id: int) -> HttpResponse:
     )
 
 
-def clone_session_by_id(session_id: int, library: UserLibrary) -> Session:
+def clone_session_by_id(session_id: UUID, library: UserLibrary) -> Session:
     session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
     clone = session
-    clone.pk = None
-    # A clone is a new row, so it needs a new identity: the loaded instance
-    # still carries the source row's uuid, and the field's default only fires
-    # on an instance that never had one.
-    clone.uuid = uuid7()
+    # A loaded instance keeps its identity. Assign the promoted primary key
+    # explicitly so saving creates a distinct row with the generator's value.
+    clone.id = uuid7()
     clone.timestamp_start = timezone.now()
     clone.timestamp_end = None
     # The clone's start is server-stamped now; a browser zone does not exist
@@ -298,7 +296,7 @@ def clone_session_by_id(session_id: int, library: UserLibrary) -> Session:
 @login_required
 @require_POST
 def new_session_from_existing_session(
-    request: HttpRequest, session_id: int
+    request: HttpRequest, session_id: UUID
 ) -> HttpResponse:
     library = cast(User, request.user).library
     clone_session_by_id(session_id, library)
@@ -314,7 +312,7 @@ def _posted_browser_zone(request: HttpRequest) -> str:
 
 
 @login_required
-def finish_session(request: HttpRequest, session_id: int) -> HttpResponse:
+def finish_session(request: HttpRequest, session_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
 
@@ -335,7 +333,7 @@ def finish_session(request: HttpRequest, session_id: int) -> HttpResponse:
 
 
 @login_required
-def reset_session(request: HttpRequest, session_id: int) -> HttpResponse:
+def reset_session(request: HttpRequest, session_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
 
@@ -359,7 +357,7 @@ def reset_session(request: HttpRequest, session_id: int) -> HttpResponse:
 
 
 @login_required
-def delete_session(request: HttpRequest, session_id: int = 0) -> HttpResponse:
+def delete_session(request: HttpRequest, session_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
     return confirm_and_delete(

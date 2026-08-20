@@ -1,5 +1,6 @@
 import json
 import logging
+import uuid
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
@@ -167,7 +168,7 @@ def test_session_detail_shape(auth_client):
     response = auth_client.get(f"/api/session/{session.id}")
     assert response.status_code == 200
     data = response.json()
-    assert data["id"] == session.id
+    assert data["id"] == str(session.id)
     assert data["game"] == {
         "id": str(session.game.id),
         "name": "Hades",
@@ -209,7 +210,7 @@ def test_session_is_manual_matrix(auth_client, manual, expected):
 
 
 def test_session_detail_404(auth_client):
-    response = auth_client.get("/api/session/999999")
+    response = auth_client.get(f"/api/session/{uuid.uuid7()}")
     assert response.status_code == 404
 
 
@@ -248,7 +249,7 @@ def test_session_list_sort_parity(auth_client):
     newer = _make_session(timestamp_start=datetime(2026, 1, 1, tzinfo=UTC))
     ascending = auth_client.get("/api/session/?sort=date").json()["items"]
     ids = [row["id"] for row in ascending]
-    assert ids.index(older.id) < ids.index(newer.id)
+    assert ids.index(str(older.id)) < ids.index(str(newer.id))
 
 
 def test_session_list_filter_parity(auth_client):
@@ -267,7 +268,7 @@ def test_session_list_filter_parity(auth_client):
     }
     response = auth_client.get("/api/session/", {"filter": json.dumps(session_filter)})
     items = response.json()["items"]
-    assert [row["id"] for row in items] == [keep.id]
+    assert [row["id"] for row in items] == [str(keep.id)]
 
 
 def test_session_list_requires_auth():
@@ -423,7 +424,7 @@ def test_session_patch_does_not_write_generatedfield(auth_client):
 
 
 def test_session_patch_404(auth_client):
-    assert _patch_session(auth_client, 999999, {"note": "x"}).status_code == 404
+    assert _patch_session(auth_client, uuid.uuid7(), {"note": "x"}).status_code == 404
 
 
 def test_session_patch_requires_auth():

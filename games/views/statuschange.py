@@ -1,4 +1,5 @@
 from typing import cast
+from uuid import UUID
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
@@ -48,7 +49,7 @@ def add_statuschange(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def edit_statuschange(request: HttpRequest, statuschange_id: int) -> HttpResponse:
+def edit_statuschange(request: HttpRequest, statuschange_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     statuschange = owned_or_404(
         GameStatusChange.objects.for_library(library), library, id=statuschange_id
@@ -114,7 +115,7 @@ def list_statuschanges(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def delete_statuschange(request: HttpRequest, pk: int) -> HttpResponse:
+def delete_statuschange(request: HttpRequest, pk: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     statuschange = owned_or_404(
         GameStatusChange.objects.for_library(library), library, id=pk

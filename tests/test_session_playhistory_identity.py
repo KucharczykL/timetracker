@@ -115,11 +115,21 @@ def test_raw_gamestatuschange_insert_omitting_id_gets_the_database_default(game)
     assert GameStatusChange.objects.get(pk=change_uuid).new_status == "p"
 
 
-def test_cloning_a_session_mints_a_new_uuid(game, owned_library):
+def test_cloning_a_session_assigns_a_fresh_uuid_to_the_promoted_pk(
+    game, owned_library, monkeypatch
+):
     source = Session.objects.create(game=game, timestamp_start=timezone.now())
+    source_pk = source.pk
+    expected_clone_pk = uuid.UUID("018f5e66-e800-7000-8000-000000000002")
+    monkeypatch.setattr("games.views.session.uuid7", lambda: expected_clone_pk)
+
     clone = clone_session_by_id(source.pk, owned_library)
-    assert clone.pk != source.pk
+
+    assert clone.pk == expected_clone_pk
+    assert clone.pk != source_pk
     assert clone.pk.version == 7
+    assert Session.objects.filter(pk=source_pk).exists()
+    assert set(Session.objects.values_list("pk", flat=True)) == {source_pk, clone.pk}
 
 
 def test_database_rejects_a_duplicate_session_uuid(game):

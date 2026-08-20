@@ -117,7 +117,7 @@ class UpdatePlayEventIn(Schema):
 
 
 class PlayEventOut(Schema):
-    id: int
+    id: UUIDv7
     game: str = Field(..., alias="game.name")
     started: date | None = None
     ended: date | None = None
@@ -201,7 +201,7 @@ def create_playevent(request, payload: PlayEventIn):
 
 
 @playevent_router.get("/{playevent_id}", response=PlayEventOut)
-def get_playevent(request, playevent_id: int):
+def get_playevent(request, playevent_id: UUIDv7):
     library = cast(User, request.user).library
     playevent = owned_or_404(
         PlayEvent.objects.for_library(library), library, id=playevent_id
@@ -210,7 +210,7 @@ def get_playevent(request, playevent_id: int):
 
 
 @playevent_router.patch("/{playevent_id}", response=PlayEventOut)
-def partial_update_playevent(request, playevent_id: int, payload: UpdatePlayEventIn):
+def partial_update_playevent(request, playevent_id: UUIDv7, payload: UpdatePlayEventIn):
     library = cast(User, request.user).library
     playevent = owned_or_404(
         PlayEvent.objects.for_library(library), library, id=playevent_id
@@ -222,7 +222,7 @@ def partial_update_playevent(request, playevent_id: int, payload: UpdatePlayEven
 
 
 @playevent_router.delete("/{playevent_id}", response={204: None})
-def delete_playevent(request, playevent_id: int):
+def delete_playevent(request, playevent_id: UUIDv7):
     library = cast(User, request.user).library
     playevent = owned_or_404(
         PlayEvent.objects.for_library(library), library, id=playevent_id
@@ -382,7 +382,7 @@ def _endpoint_zone_label(
 
 
 class SessionOut(Schema):
-    id: int
+    id: UUIDv7
     game: GameOut | None = None
     device: DeviceOut | None = None
     timestamp_start: datetime
@@ -480,7 +480,7 @@ def list_sessions_api(request, filter: str = "", sort: str = "", page: int = 1):
 
 
 @session_router.get("/{session_id}", response=SessionOut)
-def get_session(request, session_id: int):
+def get_session(request, session_id: UUIDv7):
     library = cast(User, request.user).library
     return owned_or_404(
         Session.objects.for_library(library).select_related(
@@ -499,7 +499,7 @@ class SessionDeviceUpdate(Schema):
 
 @session_router.patch("/{session_id}/device", response={204: None})
 def partial_update_session_device(
-    request, session_id: int, payload: SessionDeviceUpdate
+    request, session_id: UUIDv7, payload: SessionDeviceUpdate
 ):
     library = cast(User, request.user).library
     session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
@@ -532,7 +532,7 @@ class SessionUpdate(Schema):
 
 
 @session_router.patch("/{session_id}", response={200: SessionOut})
-def partial_update_session(request, session_id: int, payload: SessionUpdate):
+def partial_update_session(request, session_id: UUIDv7, payload: SessionUpdate):
     library = cast(User, request.user).library
     session = owned_or_404(
         Session.objects.for_library(library).select_related(
