@@ -6,6 +6,7 @@ there the uuid column is created and backfilled, here it is promoted.
 
 import datetime
 import json
+import uuid
 
 import pytest
 from django.core.management import call_command
@@ -125,6 +126,20 @@ def column_type(table_name: str, column_name: str) -> str | None:
         cursor.execute(
             """
             SELECT domain_name FROM information_schema.columns
+            WHERE table_name = %s AND column_name = %s
+            """,
+            [table_name, column_name],
+        )
+        row = cursor.fetchone()
+    assert row is not None, f"{table_name}.{column_name} does not exist"
+    return row[0]
+
+
+def column_nullability(table_name: str, column_name: str) -> str:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT is_nullable FROM information_schema.columns
             WHERE table_name = %s AND column_name = %s
             """,
             [table_name, column_name],
@@ -261,6 +276,7 @@ def test_reverse_migration_restores_the_schema_when_the_catalog_is_empty(
     assert column_type("games_game", "uuid") == "uuid_v7"
     assert column_type("games_game", "id") is None
     assert column_type("games_purchase_games", "game_id") is None
+    assert column_nullability("games_purchase_games", "game_id") == "NO"
 
 
 def test_reverse_migration_refuses_a_populated_catalog(promotion_harness):
@@ -367,6 +383,30 @@ def test_game_bearing_endpoints_accept_the_new_identity(library_client):
     session = Session.objects.create(game=game, timestamp_start=timezone.now())
     detail = client.get(f"/api/session/{session.pk}").json()
     assert detail["game"]["id"] == str(game.pk)
+
+
+def test_game_bearing_endpoints_reject_a_non_v7_uuid(library_client):
+    """A generic UUID parser accepts v4, but catalog identities are UUIDv7.
+
+    Reject at Ninja's request boundary instead of letting UUIDv7Field raise a
+    Django ValidationError during the ORM lookup, which escapes as a 500.
+    """
+    client, _library = library_client
+    invalid_id = uuid.uuid4()
+
+    status_update = client.patch(
+        f"/api/games/{invalid_id}/status",
+        json.dumps({"status": Game.Status.PLAYED}),
+        content_type="application/json",
+    )
+    playevent_create = client.post(
+        "/api/playevent/",
+        json.dumps({"game_id": str(invalid_id), "note": "played"}),
+        content_type="application/json",
+    )
+
+    assert status_update.status_code == 422
+    assert playevent_create.status_code == 422
 
 
 def test_pages_that_build_filter_links_still_render(library_client):

@@ -235,7 +235,9 @@ def restore_empty_catalog(apps, schema_editor):
             )
 
         cursor.execute(f'ALTER TABLE "{THROUGH_TABLE}" DROP COLUMN game_id')
-        cursor.execute(f'ALTER TABLE "{THROUGH_TABLE}" ADD COLUMN game_id bigint')
+        cursor.execute(
+            f'ALTER TABLE "{THROUGH_TABLE}" ADD COLUMN game_id bigint NOT NULL'
+        )
 
     _restore_pre_promotion_constraints(apps, schema_editor)
 

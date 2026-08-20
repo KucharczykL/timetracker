@@ -3,7 +3,6 @@ import logging
 from collections.abc import Mapping
 from datetime import UTC, date, datetime
 from typing import Any, Final, NoReturn, cast
-from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.contrib import messages
@@ -78,6 +77,7 @@ from timetracker.settings_resolver import (
     resolve_for_user_with_origin,
     resolve_with_origin,
 )
+from timetracker.uuidv7 import UUIDv7
 
 logger = logging.getLogger("games")
 
@@ -97,7 +97,7 @@ class GameStatusUpdate(Schema):
 
 
 class PlayEventIn(Schema):
-    game_id: UUID
+    game_id: UUIDv7
     started: date | None = None
     ended: date | None = None
     note: str = ""
@@ -131,13 +131,13 @@ class PlayEventOut(Schema):
 # entity's option value is whatever that entity's primary key is, and those
 # stop agreeing as the identity cutover promotes them one group at a time.
 class GameOption(Schema):  # mirrors SearchSelectOption
-    value: UUID
+    value: UUIDv7
     label: str
     data: dict
 
 
 class PlatformOption(Schema):  # mirrors SearchSelectOption
-    value: UUID
+    value: UUIDv7
     label: str
     data: dict
 
@@ -175,7 +175,7 @@ def search_games(request, q: str = "", limit: int = 10):
 
 
 @game_router.patch("/{game_id}/status", response={204: None})
-def partial_update_game(request, game_id: UUID, payload: GameStatusUpdate):
+def partial_update_game(request, game_id: UUIDv7, payload: GameStatusUpdate):
     library = cast(User, request.user).library
     game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
     game.status = payload.status
@@ -345,7 +345,7 @@ class PlatformOut(Schema):
 
 
 class GameOut(Schema):
-    id: UUID
+    id: UUIDv7
     name: str
     platform: PlatformOut | None = None
 
