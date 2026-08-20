@@ -30,7 +30,9 @@ def raw_insert_without_identity(model, **field_values):
     if getattr(instance, "updated_at", "missing") is None:
         instance.updated_at = now
     fields = [
-        field for field in model._meta.local_concrete_fields if not field.primary_key
+        field
+        for field in model._meta.local_concrete_fields
+        if not field.primary_key and not field.generated
     ]
     columns = ", ".join(f'"{field.column}"' for field in fields)
     placeholders = ", ".join(["%s"] * len(fields))

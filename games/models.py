@@ -16,6 +16,17 @@ from django.utils import timezone
 from common.duration_presentation import format_decimal_hours
 from common.utils import label_with_details
 from timetracker.settings_registry import THEME_CHOICES, SettingKey
+from timetracker.temporal import (
+    TemporalEndKind,
+    TemporalEndPrecision,
+    TemporalKind,
+    TemporalLowerBound,
+    TemporalPrecisionValue,
+    TemporalStartKind,
+    TemporalStartPrecision,
+    TemporalUpperBound,
+    TemporalValueField,
+)
 from timetracker.uuidv7 import UUIDv7Field
 
 logger = logging.getLogger("games")
@@ -65,6 +76,70 @@ class Game(models.Model):
     sort_name = models.CharField(max_length=255, blank=True, default="")
     year_released = models.IntegerField(null=True, blank=True, default=None)
     original_year_released = models.IntegerField(null=True, blank=True, default=None)
+    original_release_date = TemporalValueField()
+    original_release_date_lower = models.GeneratedField(
+        expression=TemporalLowerBound("original_release_date"),
+        output_field=models.DateField(null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    original_release_date_upper = models.GeneratedField(
+        expression=TemporalUpperBound("original_release_date"),
+        output_field=models.DateField(null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    original_release_date_kind = models.GeneratedField(
+        expression=TemporalKind("original_release_date"),
+        output_field=models.CharField(max_length=7),
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    original_release_date_precision = models.GeneratedField(
+        expression=TemporalPrecisionValue("original_release_date"),
+        output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    original_release_date_start_kind = models.GeneratedField(
+        expression=TemporalStartKind("original_release_date"),
+        output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    original_release_date_end_kind = models.GeneratedField(
+        expression=TemporalEndKind("original_release_date"),
+        output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    original_release_date_start_precision = models.GeneratedField(
+        expression=TemporalStartPrecision("original_release_date"),
+        output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    original_release_date_end_precision = models.GeneratedField(
+        expression=TemporalEndPrecision("original_release_date"),
+        output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
     wikidata = models.CharField(max_length=50, blank=True, default="")
     platform = models.ForeignKey(
         "Platform",
@@ -225,6 +300,96 @@ class Platform(models.Model):
             self.icon = slugify(self.name)
         self.clean()
         super().save(*args, **kwargs)
+
+
+class Edition(models.Model):
+    id = UUIDv7Field(primary_key=True, editable=False)
+    game = models.ForeignKey(
+        Game,
+        on_delete=models.CASCADE,
+        related_name="editions",
+    )
+
+
+class Release(models.Model):
+    id = UUIDv7Field(primary_key=True, editable=False)
+    edition = models.ForeignKey(
+        Edition,
+        on_delete=models.CASCADE,
+        related_name="releases",
+    )
+    platform = models.ForeignKey(
+        Platform,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        default=None,
+        related_name="+",
+    )
+    release_date = TemporalValueField()
+    release_date_lower = models.GeneratedField(
+        expression=TemporalLowerBound("release_date"),
+        output_field=models.DateField(null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    release_date_upper = models.GeneratedField(
+        expression=TemporalUpperBound("release_date"),
+        output_field=models.DateField(null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    release_date_kind = models.GeneratedField(
+        expression=TemporalKind("release_date"),
+        output_field=models.CharField(max_length=7),
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    release_date_precision = models.GeneratedField(
+        expression=TemporalPrecisionValue("release_date"),
+        output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    release_date_start_kind = models.GeneratedField(
+        expression=TemporalStartKind("release_date"),
+        output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    release_date_end_kind = models.GeneratedField(
+        expression=TemporalEndKind("release_date"),
+        output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    release_date_start_precision = models.GeneratedField(
+        expression=TemporalStartPrecision("release_date"),
+        output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    release_date_end_precision = models.GeneratedField(
+        expression=TemporalEndPrecision("release_date"),
+        output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
 
 
 class PurchaseQueryset(LibraryOwnedQuerySet):
