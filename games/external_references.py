@@ -1,9 +1,21 @@
+from __future__ import annotations
+
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from urllib.parse import quote
+from uuid import UUID
 
 from django.core.exceptions import ValidationError
+from django.db import IntegrityError, transaction
+
+if TYPE_CHECKING:
+    from games.models import Edition, ExternalReference, Game, Platform, Release
+
+    type CatalogTarget = Game | Edition | Release | Platform
+else:
+    type CatalogTarget = object
 
 WIKIDATA_KEY_PATTERN = re.compile(r"Q[1-9][0-9]*")
 
@@ -58,3 +70,122 @@ def external_reference_url(
         entity_kind=quote(entity_kind, safe=""),
         provider_key=quote(key, safe=""),
     )
+
+
+def _target_metadata(target: CatalogTarget) -> tuple[str, str]:
+    from games.models import Edition, Game, Platform, Release
+
+    target_metadata = {
+        Game: ("game", "game"),
+        Edition: ("edition", "edition"),
+        Release: ("release", "release"),
+        Platform: ("platform", "platform"),
+    }
+    try:
+        return target_metadata[type(target)]
+    except KeyError as error:
+        raise ValidationError({"target": "Unsupported catalog target."}) from error
+
+
+def save_external_reference(
+    *, provider: str, provider_key: str, target: CatalogTarget
+) -> ExternalReference:
+    """Persist one canonical provider tuple without allowing target reassignment."""
+    from games.models import ExternalReference
+
+    provider, provider_key = normalize_provider_key(
+        provider=provider, provider_key=provider_key
+    )
+    entity_kind, target_field = _target_metadata(target)
+    tuple_filters = {
+        "provider": provider,
+        "entity_kind": entity_kind,
+        "provider_key": provider_key,
+    }
+
+    with transaction.atomic():
+        reference = (
+            ExternalReference.objects.select_for_update().filter(**tuple_filters).first()
+        )
+        if reference is None:
+            try:
+                with transaction.atomic():
+                    return ExternalReference.objects.create(
+                        **tuple_filters, **{target_field: target}
+                    )
+            except IntegrityError:
+                reference = (
+                    ExternalReference.objects.select_for_update()
+                    .filter(**tuple_filters)
+                    .get()
+                )
+
+        if reference.target_uuid == target.pk:
+            return reference
+        raise ValidationError(
+            {
+                "provider_key": (
+                    "This external reference already maps to another catalog target."
+                )
+            }
+        )
+
+
+def resolve_external_reference(
+    *, provider: str, entity_kind: str, provider_key: str
+) -> UUID | None:
+    """Resolve one canonical provider tuple to its target UUID."""
+    from games.models import ExternalReference
+
+    target_id_fields = {
+        "game": "game_id",
+        "edition": "edition_id",
+        "release": "release_id",
+        "platform": "platform_id",
+    }
+    try:
+        target_id_field = target_id_fields[entity_kind]
+    except KeyError as error:
+        raise ValidationError({"entity_kind": "Unsupported catalog entity kind."}) from error
+
+    provider, provider_key = normalize_provider_key(
+        provider=provider, provider_key=provider_key
+    )
+    return (
+        ExternalReference.objects.filter(
+            provider=provider,
+            entity_kind=entity_kind,
+            provider_key=provider_key,
+        )
+        .values_list(target_id_field, flat=True)
+        .first()
+    )
+
+
+def sync_game_wikidata(*, game: Game) -> ExternalReference | None:
+    """Synchronize the temporary Game.wikidata compatibility field to its reference."""
+    from games.models import ExternalReference
+
+    with transaction.atomic():
+        references = list(
+            ExternalReference.objects.select_for_update().filter(
+                provider="wikidata", entity_kind="game", game=game
+            )
+        )
+        legacy_key = game.wikidata.strip()
+        if not legacy_key:
+            game.wikidata = ""
+            for reference in references:
+                reference.delete()
+            return None
+
+        _, canonical_key = normalize_provider_key(
+            provider="wikidata", provider_key=legacy_key
+        )
+        game.wikidata = canonical_key
+        for reference in references:
+            if reference.provider_key != canonical_key:
+                reference.delete()
+        return save_external_reference(
+            provider="wikidata", provider_key=canonical_key, target=game
+        )
