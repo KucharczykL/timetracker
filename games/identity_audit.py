@@ -39,13 +39,11 @@ _NOT_A_CONVERTED_MODEL = "never converts: not part of the UUID identity cutover"
 # missing from here fails the audit as a gap, and an entry that is no longer
 # integer fails it as stale, so a Wave E slice cannot land without shrinking it.
 RESIDUAL_INTEGER_RELATIONS: dict[TableColumn, OwnerLabel] = {
-    ("games_purchase_games", "purchase_id"): _converted_by("ID-13 (#849)"),
     ("games_userlibrary", "user_id"): NEVER_CONVERTS,
     ("games_userpreferences", "user_id"): NEVER_CONVERTS,
 }
 
 RESIDUAL_INTEGER_PRIMARY_KEYS: dict[TableName, OwnerLabel] = {
-    "games_purchase": _converted_by("ID-13 (#849)"),
     "games_device": _converted_by("ID-14 (#850)"),
     "games_filterpreset": _converted_by("ID-14 (#850)"),
     "games_purchase_games": _THROUGH_PK_IS_PERMANENT,
@@ -123,8 +121,8 @@ class IdentityModel(NamedTuple):
 def audited_models() -> list[type[Model]]:
     """Every table this project owns, auto-created through tables included.
 
-    `include_auto_created` is not optional: `games_purchase_games` carries half
-    the residual integer inventory and is invisible without it.
+    `include_auto_created` is not optional: `games_purchase_games` carries the
+    permanent bigint through-row primary-key exemption and is invisible without it.
     """
     return list(apps.get_app_config("games").get_models(include_auto_created=True))
 

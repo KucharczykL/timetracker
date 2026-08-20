@@ -3,8 +3,10 @@ from __future__ import annotations
 import os
 import subprocess
 from datetime import UTC, date, datetime
+from gzip import open as gzip_open
 from io import StringIO
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 import yaml
@@ -220,6 +222,19 @@ def test_committed_sample_load_owns_private_rows_and_reuses_shared_platform(owne
     assert not PlayEvent.objects.exclude(game__library=owner.library).exists()
 
 
+def test_committed_sample_stores_purchase_uuid_identity_as_its_primary_key():
+    from games.management.commands.load_sample_data import FIXTURE_PATH
+
+    with gzip_open(FIXTURE_PATH, "rt") as fixture:
+        records = yaml.safe_load(fixture)
+
+    purchases = [record for record in records if record["model"] == "games.purchase"]
+    assert purchases
+    assert all(isinstance(record["pk"], str) for record in purchases)
+    assert all(UUID(record["pk"]).version == 7 for record in purchases)
+    assert all("uuid" not in record["fields"] for record in purchases)
+
+
 @pytest.mark.django_db
 def test_sample_load_requests_conversion_when_preserved_cache_currency_differs(
     owner, monkeypatch, tmp_path
@@ -230,9 +245,10 @@ def test_sample_load_requests_conversion_when_preserved_cache_currency_differs(
     queued = []
     monkeypatch.setattr(conversion, "async_task", lambda *args: queued.append(args))
     fixture = tmp_path / "sample.yaml"
+    purchase_uuid = "00000000-0000-7000-8000-000000000101"
     fixture.write_text(
-        """- model: games.purchase
-  pk: 101
+        f"""- model: games.purchase
+  pk: {purchase_uuid}
   fields:
     library: __target_library__
     games: []
@@ -263,7 +279,7 @@ def test_sample_load_requests_conversion_when_preserved_cache_currency_differs(
     call_command("load_sample_data", "--user", owner.username, verbosity=0)
 
     state.refresh_from_db()
-    purchase = Purchase.objects.get(pk=101)
+    purchase = Purchase.objects.get(pk=purchase_uuid)
     assert (purchase.converted_price, purchase.converted_currency) == (230, "CZK")
     assert (
         state.requested_version,

@@ -49,7 +49,6 @@ EXPECTED_RELATION_COLUMNS = {
 }
 
 EXPECTED_RESIDUAL_INTEGER_PRIMARY_KEYS = {
-    "games_purchase": "converted by ID-13 (#849)",
     "games_device": "converted by ID-14 (#850)",
     "games_filterpreset": "converted by ID-14 (#850)",
     "games_purchase_games": "never converts: an auto-created through table keeps its own key",
@@ -158,16 +157,16 @@ def test_residual_inventory_reports_a_converted_column_still_listed(
 def test_residual_inventory_reports_an_unowned_integer_primary_key(
     actual_types, monkeypatch
 ):
-    monkeypatch.delitem(RESIDUAL_INTEGER_PRIMARY_KEYS, "games_purchase")
+    monkeypatch.delitem(RESIDUAL_INTEGER_PRIMARY_KEYS, "games_device")
 
     report = check_residual_inventory(
         relation_columns(), actual_types, primary_key_types(actual_types)
     )
 
-    assert [violation.subject for violation in report.violations] == ["games_purchase"]
+    assert [violation.subject for violation in report.violations] == ["games_device"]
 
 
-def test_residual_inventory_notes_name_the_owning_slice(actual_types):
+def test_purchase_relations_are_absent_from_the_residual_inventory(actual_types):
     report = check_residual_inventory(
         relation_columns(), actual_types, primary_key_types(actual_types)
     )
@@ -177,8 +176,8 @@ def test_residual_inventory_notes_name_the_owning_slice(actual_types):
         for note in report.notes
         if note.subject == "games_purchase_games.purchase_id"
     ]
-    assert len(through_notes) == 1
-    assert "ID-13 (#849)" in through_notes[0].detail
+    assert through_notes == []
+    assert "games_purchase" not in RESIDUAL_INTEGER_PRIMARY_KEYS
 
 
 def test_command_succeeds_on_a_migrated_database():
