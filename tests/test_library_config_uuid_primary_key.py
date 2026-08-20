@@ -458,7 +458,7 @@ def test_reverse_preflight_locks_both_promoted_tables(promotion_harness, monkeyp
     )
     connection.ensure_connection()
     assert connection.connection is not None
-    dsn = connection.connection.info.dsn
+    connection_params = connection.get_connection_params()
     locks_acquired = threading.Event()
     probe_complete = threading.Event()
 
@@ -466,7 +466,7 @@ def test_reverse_preflight_locks_both_promoted_tables(promotion_harness, monkeyp
         blocked = []
         try:
             assert locks_acquired.wait(timeout=5)
-            with psycopg.connect(dsn) as concurrent:
+            with psycopg.connect(**connection_params) as concurrent:
                 for table in TABLES:
                     try:
                         with concurrent.transaction():

@@ -350,7 +350,7 @@ def test_reverse_preflight_locks_every_table_against_concurrent_writes(
     )
     connection.ensure_connection()
     assert connection.connection is not None
-    dsn = connection.connection.info.dsn
+    connection_params = connection.get_connection_params()
     locks_acquired = threading.Event()
     probe_complete = threading.Event()
 
@@ -358,7 +358,7 @@ def test_reverse_preflight_locks_every_table_against_concurrent_writes(
         blocked_tables = []
         try:
             assert locks_acquired.wait(timeout=5)
-            with psycopg.connect(dsn) as concurrent:
+            with psycopg.connect(**connection_params) as concurrent:
                 for table in TABLES:
                     try:
                         with concurrent.transaction():
