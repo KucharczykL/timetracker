@@ -55,6 +55,7 @@ from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.returns import OriginUrl, action_url
 from common.utils import paginate, safe_division
+from games.catalog_compat import save_legacy_game_form
 from games.filters import (
     PlayEventFilter,
     PurchaseFilter,
@@ -201,7 +202,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
     library = cast(User, request.user).library
     form = GameForm(request.POST or None, library=library)
     if form.is_valid():
-        game = form.save()
+        game = save_legacy_game_form(form)
         origin = origin_from(request)
         if "submit_and_redirect" in request.POST:
             return redirect(
@@ -272,7 +273,7 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
     game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
     form = GameForm(request.POST or None, instance=game, library=library)
     if form.is_valid():
-        form.save()
+        save_legacy_game_form(form)
         return redirect(return_url(request, fallback="games:list_games"))
     return render_page(
         request,
