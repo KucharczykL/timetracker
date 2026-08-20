@@ -1,4 +1,6 @@
+import json
 import uuid
+from datetime import timedelta
 from typing import NamedTuple
 
 import pytest
@@ -7,12 +9,16 @@ from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.utils import timezone
 
+from timetracker.temporal import TemporalValue
+
 pytestmark = pytest.mark.django_db(transaction=True)
 
 BEFORE_HIERARCHY = ("games", "0017_temporal_value_domain")
 WITH_HIERARCHY = ("games", "0018_catalog_hierarchy")
 BEFORE_CATALOG_WRITES = WITH_HIERARCHY
 WITH_CATALOG_WRITES = ("games", "0019_catalog_write_defaults")
+BEFORE_CATALOG_BACKFILL = WITH_CATALOG_WRITES
+WITH_CATALOG_BACKFILL = ("games", "0020_catalog_hierarchy_backfill")
 
 
 @pytest.fixture
@@ -37,10 +43,27 @@ def catalog_write_migration_harness():
     MigrationExecutor(connection).migrate(leaf_nodes)
 
 
+@pytest.fixture
+def catalog_backfill_migration_harness():
+    leaf_nodes = MigrationExecutor(connection).loader.graph.leaf_nodes()
+    executor = MigrationExecutor(connection)
+    executor.migrate([BEFORE_CATALOG_BACKFILL])
+    call_command("flush", interactive=False, verbosity=0)
+    old_apps = executor.loader.project_state([BEFORE_CATALOG_BACKFILL]).apps
+    yield old_apps
+    MigrationExecutor(connection).migrate(leaf_nodes)
+
+
 def migrate_to_hierarchy():
     executor = MigrationExecutor(connection)
     executor.migrate([WITH_HIERARCHY])
     return executor.loader.project_state([WITH_HIERARCHY]).apps
+
+
+def migrate_to_catalog_backfill():
+    executor = MigrationExecutor(connection)
+    executor.migrate([WITH_CATALOG_BACKFILL])
+    return executor.loader.project_state([WITH_CATALOG_BACKFILL]).apps
 
 
 def seed_legacy_game(apps):
@@ -65,6 +88,126 @@ def seed_legacy_game(apps):
         mastered=True,
     )
     return game_id, platform.pk
+
+
+def seed_catalog_backfill_world(apps):
+    User = apps.get_model("auth", "User")
+    UserLibrary = apps.get_model("games", "UserLibrary")
+    Platform = apps.get_model("games", "Platform")
+    Game = apps.get_model("games", "Game")
+    Edition = apps.get_model("games", "Edition")
+    Release = apps.get_model("games", "Release")
+
+    user_a = User.objects.create(username="catalog-backfill-a")
+    user_b = User.objects.create(username="catalog-backfill-b")
+    library_a = UserLibrary.objects.create(
+        user_id=user_a.pk,
+        created_at=timezone.now(),
+    )
+    library_b = UserLibrary.objects.create(
+        user_id=user_b.pk,
+        created_at=timezone.now(),
+    )
+    shared_platform = Platform.objects.create(name="Shared Platform")
+    private_platform = Platform.objects.create(
+        library_id=library_a.pk,
+        name="Private Platform",
+    )
+
+    known_id = uuid.uuid7()
+    known = Game.objects.create(
+        id=known_id,
+        library_id=library_a.pk,
+        name="Same Name",
+        sort_name="Name, Same A",
+        platform_id=shared_platform.pk,
+        year_released=2001,
+        original_year_released=2000,
+        wikidata="Q100",
+        status="p",
+        mastered=True,
+        playtime=timedelta(hours=12, minutes=30),
+    )
+    prewritten_id = uuid.uuid7()
+    prewritten = Game.objects.create(
+        id=prewritten_id,
+        library_id=library_b.pk,
+        name="Same Name",
+        sort_name="Name, Same B",
+        platform_id=None,
+        year_released=2001,
+        original_year_released=None,
+        wikidata="Q200",
+        status="u",
+        mastered=False,
+        playtime=timedelta(hours=3),
+        original_release_date="1980",
+    )
+    prewritten_edition = Edition.objects.create(
+        game_id=prewritten.pk,
+        is_default=True,
+    )
+    prewritten_release = Release.objects.create(
+        edition_id=prewritten_edition.pk,
+        is_default=True,
+        platform_id=shared_platform.pk,
+        release_date="1981",
+    )
+    children_id = uuid.uuid7()
+    children = Game.objects.create(
+        id=children_id,
+        library_id=library_a.pk,
+        name="Existing children",
+        sort_name="children existing",
+        platform_id=private_platform.pk,
+        year_released=None,
+        original_year_released=None,
+        wikidata="",
+        status="f",
+        mastered=True,
+        playtime=timedelta(hours=50),
+    )
+    nondefault_edition = Edition.objects.create(game_id=children.pk)
+    nondefault_release = Release.objects.create(
+        edition_id=nondefault_edition.pk,
+        platform_id=shared_platform.pk,
+        release_date="1990",
+    )
+
+    preserved_fields = (
+        "library_id",
+        "name",
+        "sort_name",
+        "original_year_released",
+        "year_released",
+        "platform_id",
+        "wikidata",
+        "status",
+        "mastered",
+        "playtime",
+        "created_at",
+        "updated_at",
+    )
+    preserved_games = {
+        game.pk: tuple(getattr(game, field) for field in preserved_fields)
+        for game in (known, prewritten, children)
+    }
+    return {
+        "game_ids": (known_id, prewritten_id, children_id),
+        "known_game_id": known_id,
+        "prewritten_game_id": prewritten_id,
+        "children_game_id": children_id,
+        "shared_platform_id": shared_platform.pk,
+        "private_platform_id": private_platform.pk,
+        "prewritten_default_ids": (
+            prewritten_edition.pk,
+            prewritten_release.pk,
+        ),
+        "nondefault_edition_id": nondefault_edition.pk,
+        "nondefault_release_id": nondefault_release.pk,
+        "preserved_fields": preserved_fields,
+        "preserved_games": preserved_games,
+    }
 
 
 class ColumnMetadata(NamedTuple):
@@ -282,3 +425,99 @@ def test_catalog_write_migration_preserves_children_as_nondefaults(
         .objects.filter(pk=release.pk)
         .exists()
     )
+
+
+def test_catalog_backfill_maps_every_game_without_merging_or_changing_legacy_state(
+    catalog_backfill_migration_harness,
+    capsys,
+):
+    seeded = seed_catalog_backfill_world(catalog_backfill_migration_harness)
+    apps = migrate_to_catalog_backfill()
+    Game = apps.get_model("games", "Game")
+    Edition = apps.get_model("games", "Edition")
+    Release = apps.get_model("games", "Release")
+
+    assert set(Game.objects.values_list("pk", flat=True)) == set(seeded["game_ids"])
+    for game_id, expected in seeded["preserved_games"].items():
+        game = Game.objects.get(pk=game_id)
+        assert (
+            tuple(getattr(game, field) for field in seeded["preserved_fields"])
+            == expected
+        )
+
+    graph_ids = {}
+    for game_id in seeded["game_ids"]:
+        edition = Edition.objects.get(game_id=game_id, is_default=True)
+        release = Release.objects.get(edition=edition, is_default=True)
+        graph_ids[game_id] = (edition.pk, release.pk)
+
+    assert len(set(graph_ids.values())) == 3
+    assert graph_ids[seeded["prewritten_game_id"]] == seeded["prewritten_default_ids"]
+    assert Edition.objects.filter(is_default=True).count() == 3
+    assert Release.objects.filter(is_default=True).count() == 3
+
+    known = Game.objects.get(pk=seeded["known_game_id"])
+    known_release = Release.objects.get(
+        edition__game_id=known.pk,
+        edition__is_default=True,
+        is_default=True,
+    )
+    assert known.original_release_date == TemporalValue.from_year(2000)
+    assert known_release.release_date == TemporalValue.from_year(2001)
+    assert known_release.platform_id == seeded["shared_platform_id"]
+
+    prewritten = Game.objects.get(pk=seeded["prewritten_game_id"])
+    prewritten_release = Release.objects.get(
+        edition__game_id=prewritten.pk,
+        edition__is_default=True,
+        is_default=True,
+    )
+    assert prewritten.original_release_date is None
+    assert prewritten_release.release_date == TemporalValue.from_year(2001)
+    assert prewritten_release.platform_id is None
+
+    children = Game.objects.get(pk=seeded["children_game_id"])
+    children_release = Release.objects.get(
+        edition__game_id=children.pk,
+        edition__is_default=True,
+        is_default=True,
+    )
+    assert children.original_release_date is None
+    assert children_release.release_date is None
+    assert children_release.platform_id == seeded["private_platform_id"]
+
+    nondefault_release = Release.objects.get(pk=seeded["nondefault_release_id"])
+    assert nondefault_release.edition_id == seeded["nondefault_edition_id"]
+    assert nondefault_release.release_date == TemporalValue.from_year(1990)
+    assert nondefault_release.platform_id == seeded["shared_platform_id"]
+    assert nondefault_release.is_default is False
+
+    lines = capsys.readouterr().out.splitlines()
+    machine_line = next(
+        line
+        for line in lines
+        if line.startswith("CATALOG_HIERARCHY_RECONCILIATION_JSON=")
+    )
+    assert json.loads(machine_line.split("=", 1)[1]) == {
+        "schema_version": 1,
+        "summary": {
+            "games": 3,
+            "editions": 4,
+            "releases": 4,
+            "default_editions": 3,
+            "default_releases": 3,
+            "original_dates_known": 1,
+            "original_dates_unknown": 2,
+            "release_dates_known": 2,
+            "release_dates_unknown": 1,
+            "unspecified_platforms": 1,
+            "mismatches": 0,
+        },
+        "mismatches": [],
+    }
+    assert (
+        "CAT hierarchy reconciliation: games=3 editions=4 releases=4 "
+        "default_editions=3 default_releases=3 original_dates_known=1 "
+        "original_dates_unknown=2 release_dates_known=2 "
+        "release_dates_unknown=1 unspecified_platforms=1 mismatches=0"
+    ) in lines
