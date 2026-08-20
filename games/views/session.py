@@ -280,7 +280,8 @@ def clone_session_by_id(session_id: UUID, library: UserLibrary) -> Session:
     session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
     clone = session
     # A loaded instance keeps its identity. Assign the promoted primary key
-    # explicitly so saving creates a distinct row with the generator's value.
+    # explicitly, then force an insert so a generated-key collision cannot
+    # update an existing session.
     clone.id = uuid7()
     clone.timestamp_start = timezone.now()
     clone.timestamp_end = None
@@ -289,7 +290,7 @@ def clone_session_by_id(session_id: UUID, library: UserLibrary) -> Session:
     clone.timestamp_start_timezone = None
     clone.timestamp_end_timezone = None
     clone.note = ""
-    clone.save()
+    clone.save(force_insert=True)
     return clone
 
 
