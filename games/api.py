@@ -793,9 +793,10 @@ api.add_router("/conversion", conversion_router)
 class SettingOut(Schema):
     """One resolved setting for the settings panel.
 
-    ``value`` is ``str | int | None`` (device id is an int, unset is None) — a
-    ``str``-only field would 500. ``locked`` marks an env/`.env`/`.ini`-pinned
-    value; ``/user`` forces it ``False`` (see :func:`list_user_settings`).
+    ``value`` covers the primitive values used by the general settings surfaces.
+    Identity-bearing settings use dedicated strict schemas. ``locked`` marks an
+    env/`.env`/`.ini`-pinned value; ``/user`` forces it ``False`` (see
+    :func:`list_user_settings`).
     ``namespace`` identifies which mutation surface produced this entry — the
     personal, site-admin, or library preferences surface — independent of
     ``source`` (where the resolved value came from).
@@ -815,6 +816,14 @@ class SettingValueIn(Schema):
 
 class DefaultDeviceIn(Schema):
     value: UUIDv7 | None = None
+
+
+class DefaultDeviceOut(Schema):
+    key: str
+    value: UUIDv7 | None
+    source: SettingSource
+    locked: bool
+    namespace: SettingNamespace
 
 
 def _settings_of_scope(*scopes: SettingScope) -> list[SettingKey]:
@@ -892,7 +901,7 @@ def update_user_setting(request, key: str, payload: SettingValueIn):
     )
 
 
-@library_router.patch("/default-device", response=SettingOut)
+@library_router.patch("/default-device", response=DefaultDeviceOut)
 def update_library_default_device(request, payload: DefaultDeviceIn):
     """Set the current library's default Device, or clear it with null.
 
@@ -910,7 +919,7 @@ def update_library_default_device(request, payload: DefaultDeviceIn):
     messages.success(request, "Default device saved")
     return {
         "key": "default-device",
-        "value": str(device.pk) if device is not None else None,
+        "value": device.pk if device is not None else None,
         "source": SettingSource.LIBRARY,
         "locked": False,
         "namespace": SettingNamespace.LIBRARY,

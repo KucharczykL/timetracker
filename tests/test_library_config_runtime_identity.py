@@ -8,6 +8,7 @@ from django.test import Client
 from django.urls import NoReverseMatch, Resolver404, resolve, reverse
 
 from common.criteria import FilterError, Modifier, UUIDMultiCriterion
+from games.api import api
 from games.filters import SessionFilter, parse_session_filter
 from games.models import Device, FilterPreset, Game, Session
 
@@ -101,10 +102,21 @@ def test_session_device_patch_is_strict_nullable_and_library_scoped(runtime_worl
 def test_default_device_setting_is_strict_nullable_and_library_scoped(runtime_world):
     world = runtime_world
     url = "/api/library/default-device"
-    assert (
-        _patch(world["client"], url, {"value": str(world["own_device"].pk)}).status_code
-        == 200
-    )
+    selected = _patch(world["client"], url, {"value": str(world["own_device"].pk)})
+    assert selected.status_code == 200
+    assert selected.json()["value"] == str(world["own_device"].pk)
+
+    openapi = api.get_openapi_schema()
+    response_schema = openapi["paths"]["/api/library/default-device"]["patch"][
+        "responses"
+    ][200]["content"]["application/json"]["schema"]
+    assert response_schema == {"$ref": "#/components/schemas/DefaultDeviceOut"}
+    assert openapi["components"]["schemas"]["DefaultDeviceOut"]["properties"]["value"][
+        "anyOf"
+    ] == [
+        {"format": "uuid", "type": "string"},
+        {"type": "null"},
+    ]
     for invalid in (1, "malformed", str(UUID4)):
         assert _patch(world["client"], url, {"value": invalid}).status_code == 422
     assert _patch(world["client"], url, {"value": str(uuid.uuid7())}).status_code == 404
