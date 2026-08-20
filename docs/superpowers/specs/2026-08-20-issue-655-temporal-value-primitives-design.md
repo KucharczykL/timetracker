@@ -22,7 +22,9 @@ migrate any existing fact. Those belong to #649 and #650. Approximate and
 uncertain qualifiers remain #656; entry and presentation UI remains #657;
 overlap-filter criteria and saved-filter contracts remain #658; broad legacy
 temporal migration remains #659. Seasons, sets, extended or negative years,
-timestamps, day parts, and raw user-authored EDTF remain unsupported.
+timestamps, day parts, component-level unspecified `X` values, and raw
+user-authored EDTF remain unsupported. The decade form is the sole supported
+use of `X` in this issue.
 
 ## Canonical contract
 
@@ -61,9 +63,15 @@ neither justifies a calendar date, but their canonical strings and in-memory
 endpoint kinds remain distinct. Serialization, display, and later correction
 can therefore preserve `1999/` rather than silently changing it to `1999/..`.
 
-Day precision is exact for this primitive. Month, year, decade, range, and
-unknown are imprecise. Exact zoned timestamps remain ordinary `datetime`
-values outside this calendar primitive.
+Every day-precision atom accepted by this deliberately small subset contains a
+known year, month, and day and has no qualifier, so it is an exact day. That is
+a property of the accepted subset, not the definition of
+`TemporalPrecision.DAY`. Full EDTF can place unspecified `X` values in
+individual components while retaining day-shaped representation precision;
+those expressions are deferred, but the API must not contradict their eventual
+addition. Month, year, decade, range, and unknown values in this subset are
+imprecise. Exact zoned timestamps remain ordinary `datetime` values outside
+this calendar primitive.
 
 ## Python value and serialization
 
@@ -107,10 +115,20 @@ properties, so “not a range” never aliases either boundary.
 
 ### Developer API
 
-Component helpers describe what the value itself knows. For an atomic value,
-day knows year/month/day, month knows year/month, year knows only year, and
-decade knows none of those exact components. Range and unknown values return
-false for all three helpers; callers inspect a range's endpoints instead.
+`TemporalPrecision` describes the representation's granularity; it is not a
+cumulative component-knowledge bitmap. Independent component helpers describe
+what the value itself knows. Within the #655 subset, an atomic day happens to
+know year/month/day, a month knows year/month, a year knows only year, and a
+decade knows no exact component. Range and unknown values return false for all
+three helpers; callers inspect a range's endpoints instead. A future
+component-unspecified value such as `XXXX-XX-12` may therefore have day
+precision and a known day component without a known month or year, without
+changing the meaning of either API.
+
+`is_complete_day` means an atomic day whose year, month, and day components are
+all known. `is_exact_day` additionally requires that no component is uncertain
+or approximate. Qualifiers are deferred to #656, so the two predicates return
+the same result in #655, but their contracts are intentionally distinct.
 
 ```python
 value = TemporalValue.parse("2024-05")
@@ -118,6 +136,8 @@ value.precision is TemporalPrecision.MONTH
 value.has_known_year is True
 value.has_known_month is True
 value.has_known_day is False
+value.is_complete_day is False
+value.is_exact_day is False
 value.is_range is False
 
 interval = TemporalValue.parse("2020/..")
@@ -135,6 +155,27 @@ interval.end.is_unknown is False
 standalone-unknown values. Every endpoint exposes `is_known`, `is_unknown`, and
 `is_open`; its `precision` is nullable and component helpers are false unless
 the endpoint is known.
+
+Callers also use shared ORM predicates from `timetracker.temporal` rather than
+reconstructing component or exactness rules from generated columns:
+
+```python
+Release.objects.filter(temporal_has_known_month_q("release_date"))
+Release.objects.filter(
+    temporal_has_known_month_q("release_date", endpoint="start")
+)
+Release.objects.filter(temporal_exact_day_q("release_date"))
+```
+
+The public helpers are `temporal_has_known_year_q`,
+`temporal_has_known_month_q`, `temporal_has_known_day_q`, and
+`temporal_exact_day_q`. Each accepts a temporal-field prefix and an optional
+`endpoint="start"` or `endpoint="end"`; `temporal_exact_day_q` is atomic-only
+and accepts no endpoint argument. In #655 the private query construction can
+use the precision projections because the accepted grammar makes their results
+equivalent. #656 extends `temporal_exact_day_q` with qualifier criteria, and a
+future component-unspecified issue may extend the stored projections and known-
+component helpers. Callers retain the same semantic API throughout.
 
 ## Django and PostgreSQL persistence
 
@@ -212,29 +253,17 @@ Django migration state, introspection, field naming, and index control. The
 primitive defines the values and expressions; each owning domain issue chooses
 the semantic prefix and indexes its own query paths.
 
-The generated fields make component and endpoint semantics ordinary ORM data:
+The generated fields make precision and endpoint kind ordinary ORM data. The
+shared predicates above are the public component/exactness query API; consumers
+do not hand-code the currently equivalent precision lists:
 
 ```python
-Release.objects.filter(
-    release_date_precision__in=[
-        TemporalPrecision.DAY,
-        TemporalPrecision.MONTH,
-    ]
-)
-Release.objects.filter(
-    release_date_start_precision__in=[
-        TemporalPrecision.DAY,
-        TemporalPrecision.MONTH,
-    ]
-)
 Release.objects.filter(release_date_end_kind=TemporalEndpointKind.OPEN)
 Release.objects.filter(release_date_end_kind=TemporalEndpointKind.UNKNOWN)
 ```
 
-The first query asks whether an atomic value names a month. The second asks the
-same question of a range's start endpoint. Open and unknown endpoints retain the
-same nullable calendar bound but remain directly distinguishable without string
-suffix inspection.
+Open and unknown endpoints retain the same nullable calendar bound but remain
+directly distinguishable without string suffix inspection.
 
 ## Migration and reversibility
 
@@ -270,12 +299,14 @@ The explicit eight-column consumer contract is repetitive but unsurprising.
 Pure tests cover every supported precision, leap-year/month-end boundaries,
 open, unknown-endpoint, and mixed-precision ranges, scalar serialization
 round-trips, constructor invariants, equality/hash behavior, and every stable
-validation code. Django
+validation code. Pure tests separately pin representation precision, component
+knowledge, complete-day, and exact-day semantics. Django
 tests cover field deconstruction, PostgreSQL-only enforcement, model/dump-data
 round-trips, typed generated values, ORM queries over the stored bounds and
-atomic/endpoint precision and endpoint kind, and database rejection of invalid
-raw inserts. Migration tests cover domain/function creation, parity between
-Python and SQL over the shared fixture matrix, reversibility, and reapplication.
+atomic/endpoint precision and endpoint kind, all shared component/exactness
+query helpers, and database rejection of invalid raw inserts. Migration tests
+cover domain/function creation, parity between Python and SQL over the shared
+fixture matrix, reversibility, and reapplication.
 
 The final gate is `make check` with the Makefile's default parallel workers,
 then `git diff --check` and full diff review against this specification.

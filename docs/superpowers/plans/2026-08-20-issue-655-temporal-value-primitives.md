@@ -6,8 +6,8 @@
 > checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a reusable, fail-closed temporal value that preserves canonical
-day/month/year/decade/range/unknown precision and exposes stored typed query
-bounds.
+day/month/year/decade/range/unknown representation precision and exposes stored
+typed query bounds plus shared component/exactness predicates.
 
 **Architecture:** `timetracker.temporal` owns the immutable Python value,
 canonical scalar serialization, Django field, and generated-expression wrappers.
@@ -28,6 +28,10 @@ pytest/pytest-django.
 - Preserve only canonical day, month, year, decade, closed/open/unknown-endpoint
   range, and standalone unknown values. Do not implement qualifiers, UI,
   overlap criteria, or legacy migration from #656–#659.
+- Reject component-level unspecified `X` values; the decade form is #655's sole
+  supported use of `X`. Treat precision as representation granularity rather
+  than a cumulative component-knowledge guarantee so later EDTF support does
+  not contradict the API.
 - Serialize a temporal value as its canonical string or `null`; never serialize
   caller-controlled derived bounds.
 - Use Gregorian years 0001–9999 and reject seasons, sets, extended/negative
@@ -70,8 +74,8 @@ pytest/pytest-django.
   `has_known_day`, plus `known(value)`, `unknown()`, and `open()` constructors.
 - Produces immutable `TemporalValue` properties `canonical: str | None`,
   `lower_bound: date | None`, `upper_bound: date | None`,
-  `precision: TemporalPrecision`, `is_exact`, `is_range`, `has_known_year`,
-  `has_known_month`, `has_known_day`, and
+  `precision: TemporalPrecision`, `is_complete_day`, `is_exact_day`, `is_range`,
+  `has_known_year`, `has_known_month`, `has_known_day`, and
   `start`/`end: TemporalEndpoint | None`.
 - Produces `TemporalValue.parse(value: str | None) -> TemporalValue`,
   `TemporalValue.unknown()`, `TemporalValue.from_day(value: date)`,
@@ -144,7 +148,8 @@ class TemporalValue:
   `None`, leap and ordinary days/months, years, decades, closed ranges,
   mixed-precision ranges, both open directions, and both unknown-endpoint
   directions. Assert canonical value, exact lower/upper dates, precision,
-  endpoint values/kinds/precision, component helpers, `is_exact`, and
+  endpoint values/kinds/precision, independent component helpers,
+  `is_complete_day`, `is_exact_day`, and
   `TemporalValue.parse(value.serialize()) == value` for every row.
 - [ ] **Step 2: Run the focused test with default workers and verify it fails.**
   Run `make test-fast ARGS="tests/test_temporal.py -q"`; expect collection to
@@ -167,9 +172,12 @@ class TemporalValue:
   excluded EDTF families before the generic syntax error, reject booleans as
   integers in constructors, map known/empty/`..` range tokens to immutable
   `TemporalEndpoint` objects, and enforce range order by the known start's lower
-  bound and known end's upper bound. Atomic component helpers derive only from
-  `DAY`, `MONTH`, and `YEAR`; range and unknown return false and delegate
-  endpoint questions to `start`/`end`.
+  bound and known end's upper bound. Atomic component helpers derive from the
+  components known by the accepted atom; range and unknown return false and
+  delegate endpoint questions to `start`/`end`. Keep representation precision,
+  component knowledge, complete-day status, and exact-day status as separate
+  predicates even though the #655 grammar makes day precision, complete day,
+  and exact day equivalent for accepted atomic values.
 - [ ] **Step 7: Run the focused test with default workers.** Run
   `make test-fast ARGS="tests/test_temporal.py -q"`; expect all pure tests to
   pass.
@@ -202,6 +210,13 @@ class TemporalValue:
   `TemporalStartKind(expression)`, `TemporalEndKind(expression)`,
   `TemporalStartPrecision(expression)`, and
   `TemporalEndPrecision(expression)` with typed output fields.
+- Produces shared ORM predicates
+  `temporal_has_known_year_q(field_name: str, *, endpoint: Literal["start", "end"] | None = None) -> models.Q`,
+  `temporal_has_known_month_q(field_name: str, *, endpoint: Literal["start", "end"] | None = None) -> models.Q`,
+  `temporal_has_known_day_q(field_name: str, *, endpoint: Literal["start", "end"] | None = None) -> models.Q`, and
+  `temporal_exact_day_q(field_name: str) -> models.Q`. The first three own all
+  atomic/endpoint component-knowledge rules; the last owns strict atomic-day
+  exactness and is the extension point for #656 qualifiers.
 
 The public SQL functions use three private immutable atom functions with exact
 roles:
@@ -252,12 +267,15 @@ endpoint, and a bounded start lower date after the bounded end upper date.
   expressions. Assert field deconstruction, PostgreSQL-only behavior, Python
   assignment/full-clean conversion, ORM/database/dump-data round-trips, typed
   generated values, filters over atomic/endpoint precision and endpoint kind
-  without canonical-text expressions in their SQL, and raw invalid insert
-  rejection.
+  without canonical-text expressions in their SQL, all shared component-query
+  helpers for atomic/start/end values, `temporal_exact_day_q` excluding every
+  non-day value, endpoint-argument validation, and raw invalid insert rejection.
 - [ ] **Step 6: Implement the Django bridge.** Map parse errors to Django
   `ValidationError` with the same code, return the PostgreSQL domain from
   `db_type`, serialize only the canonical scalar, reject non-PostgreSQL
-  backends, and give each expression the exact typed `output_field`.
+  backends, give each expression the exact typed `output_field`, and centralize
+  the generated-field suffix and currently equivalent precision lists inside
+  the shared query helpers. Consumers must never reconstruct those lists.
 
   ```python
   class TemporalValueField(models.CharField):
