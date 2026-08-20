@@ -46,13 +46,7 @@ urlpatterns = [
     path("game/<uuidv7:game_id>/edit", game.edit_game, name="edit_game"),
     path(
         "game/<uuidv7:game_id>/view",
-        game.redirect_game_to_canonical,
-        name="view_game_legacy",
-    ),
-    path(
-        "game/<uuidv7:game_id>/",
-        game.redirect_game_to_canonical,
-        name="view_game_by_uuid",
+        game.retired_game_view,
     ),
     path(
         "game/<uuidv7:game_id>/<slug:slug>/",

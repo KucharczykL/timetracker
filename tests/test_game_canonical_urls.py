@@ -1,4 +1,5 @@
 import pytest
+from django.urls import NoReverseMatch, reverse
 
 from games.models import Game
 
@@ -33,21 +34,41 @@ def test_canonical_game_url_renders_the_detail_page(client, owned_user, owned_li
     assert response.status_code == 200
 
 
-@pytest.mark.parametrize("uuid_only_suffix", ["/", "/view"])
-def test_uuid_only_game_urls_redirect_permanently_to_the_canonical_url(
+@pytest.mark.parametrize(
+    "route_name", ["games:view_game_by_uuid", "games:view_game_legacy"]
+)
+def test_retired_game_compatibility_route_names_do_not_reverse(
+    owned_library, route_name
+):
+    game = Game.objects.create(library=owned_library, name="Retired Route")
+
+    with pytest.raises(NoReverseMatch):
+        reverse(route_name, args=[game.id])
+
+
+@pytest.mark.parametrize("retired_suffix", ["/", "/view"])
+def test_retired_game_compatibility_paths_return_404_without_redirecting(
     client,
     owned_user,
     owned_library,
-    uuid_only_suffix,
+    retired_suffix,
 ):
     client.force_login(owned_user)
-    game = Game.objects.create(library=owned_library, name="Redirected Game")
-    expected = f"/tracker/game/{game.id}/redirected-game/"
+    game = Game.objects.create(library=owned_library, name="Retired Route")
 
-    response = client.get(f"/tracker/game/{game.id}{uuid_only_suffix}")
+    response = client.get(f"/tracker/game/{game.id}{retired_suffix}")
 
-    assert response.status_code == 301
-    assert response["Location"] == expected
+    assert response.status_code == 404
+    assert "Location" not in response
+
+
+def test_view_remains_a_valid_canonical_slug(client, owned_user, owned_library):
+    client.force_login(owned_user)
+    game = Game.objects.create(library=owned_library, name="View")
+
+    response = client.get(f"/tracker/game/{game.id}/view/")
+
+    assert response.status_code == 200
 
 
 def test_stale_slug_redirects_permanently_and_preserves_the_query_string(
