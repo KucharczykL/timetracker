@@ -141,9 +141,7 @@ def test_catalog_backfill_maps_every_game_without_merging_or_changing_legacy_sta
         graph_ids[game_id] = (edition.pk, release.pk)
 
     assert len({*graph_ids.values()}) == len(seeded["game_ids"])
-    assert graph_ids[seeded["prewritten_game_id"]] == seeded[
-        "prewritten_default_ids"
-    ]
+    assert graph_ids[seeded["prewritten_game_id"]] == seeded["prewritten_default_ids"]
     assert Edition.objects.filter(is_default=True).count() == len(seeded["game_ids"])
     assert Release.objects.filter(is_default=True).count() == len(seeded["game_ids"])
 
@@ -355,14 +353,9 @@ def _emit(summary, mismatches):
         "summary": summary,
         "mismatches": mismatches,
     }
+    print(MACHINE_PREFIX + json.dumps(payload, sort_keys=True, separators=(",", ":")))
     print(
-        MACHINE_PREFIX
-        + json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    )
-    print(
-        HUMAN_PREFIX
-        + " "
-        + " ".join(f"{key}={summary[key]}" for key in SUMMARY_KEYS)
+        HUMAN_PREFIX + " " + " ".join(f"{key}={summary[key]}" for key in SUMMARY_KEYS)
     )
     for mismatch in mismatches:
         details = " ".join(
@@ -495,9 +488,7 @@ counts. Import the migration module with:
 ```python
 from importlib import import_module
 
-catalog_backfill = import_module(
-    "games.migrations.0020_catalog_hierarchy_backfill"
-)
+catalog_backfill = import_module("games.migrations.0020_catalog_hierarchy_backfill")
 ```
 
 Call `catalog_backfill.backfill_catalog_hierarchy(apps, None)` using the frozen
