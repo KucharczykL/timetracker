@@ -49,8 +49,6 @@ EXPECTED_RELATION_COLUMNS = {
 }
 
 EXPECTED_RESIDUAL_INTEGER_PRIMARY_KEYS = {
-    "games_device": "converted by ID-14 (#850)",
-    "games_filterpreset": "converted by ID-14 (#850)",
     "games_purchase_games": "never converts: an auto-created through table keeps its own key",
     "games_exchangerate": "never converts: not part of the UUID identity cutover",
     "games_sitesetting": "never converts: not part of the UUID identity cutover",
@@ -157,13 +155,15 @@ def test_residual_inventory_reports_a_converted_column_still_listed(
 def test_residual_inventory_reports_an_unowned_integer_primary_key(
     actual_types, monkeypatch
 ):
-    monkeypatch.delitem(RESIDUAL_INTEGER_PRIMARY_KEYS, "games_device")
+    monkeypatch.delitem(RESIDUAL_INTEGER_PRIMARY_KEYS, "games_exchangerate")
 
     report = check_residual_inventory(
         relation_columns(), actual_types, primary_key_types(actual_types)
     )
 
-    assert [violation.subject for violation in report.violations] == ["games_device"]
+    assert [violation.subject for violation in report.violations] == [
+        "games_exchangerate"
+    ]
 
 
 def test_purchase_relations_are_absent_from_the_residual_inventory(actual_types):
@@ -230,9 +230,17 @@ def test_identity_columns_are_clean_on_a_migrated_database(cursor):
 
 
 def test_identity_columns_report_a_dropped_not_null(cursor):
-    # Device remains unpromoted until ID-14, so its separate UUID identity can
-    # still have NOT NULL removed independently of its integer primary key.
-    cursor.execute("ALTER TABLE games_device ALTER COLUMN uuid DROP NOT NULL")
+    # FilterPreset has no referrers, so its promoted primary key can be replaced
+    # by a unique index before making the identity nullable. This isolates the
+    # nullable-column violation from the separate unique-index check.
+    cursor.execute(
+        "ALTER TABLE games_filterpreset DROP CONSTRAINT games_filterpreset_pkey"
+    )
+    cursor.execute(
+        "CREATE UNIQUE INDEX test_filterpreset_identity_unique "
+        "ON games_filterpreset (id)"
+    )
+    cursor.execute("ALTER TABLE games_filterpreset ALTER COLUMN id DROP NOT NULL")
 
     report = check_identity_columns(cursor, identity_models())
 

@@ -147,7 +147,7 @@ def test_session_detail_patch_uses_a_uuidv7_path(runtime_world):
     assert response.json()["id"] == str(session.pk)
 
 
-def test_session_device_patch_uses_a_uuidv7_path_and_an_integer_device_id(
+def test_session_device_patch_uses_uuidv7_session_and_device_ids(
     runtime_world,
 ):
     session = runtime_world.own_session
@@ -159,7 +159,7 @@ def test_session_device_patch_uses_a_uuidv7_path_and_an_integer_device_id(
         runtime_world.client,
         "patch",
         f"/api/session/{session.pk}/device",
-        {"device_id": replacement.pk},
+        {"device_id": str(replacement.pk)},
     )
 
     assert response.status_code == 204

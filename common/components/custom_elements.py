@@ -1230,13 +1230,14 @@ def SelectDropdown(
     body_key: str,
     event: str,
     csrf: str,
-    numeric: bool = False,
+    empty_is_null: bool = False,
     placement: str = "bottom-start",
     class_: str = "",
 ) -> Node:
     """A value-selector dropdown: a current-value trigger + a listbox whose picks
     PATCH the server (via the client `select` behavior). The per-entity specifics
-    (endpoint, body key, numeric) are the caller's; this owns the shared shape."""
+    (endpoint, body key, empty/null policy) are the caller's; this owns the shared
+    shape."""
     trigger = ControlButton(
         [("class", "rounded-base" + (f" {class_}" if class_ else ""))],
         variant="outline",
@@ -1252,8 +1253,8 @@ def SelectDropdown(
         "data_event": event,
         "data_csrf": csrf,
     }
-    if numeric:
-        config["data_numeric"] = "true"
+    if empty_is_null:
+        config["data_empty_is_null"] = "true"
     return Dropdown(
         trigger_element=trigger,
         target_element=ListboxPanel(options=options),

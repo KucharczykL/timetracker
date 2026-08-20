@@ -701,7 +701,7 @@ def test_scoped_aggregate_narrows_game_list(
         "session_count": {
             "value": 1,
             "modifier": "GREATER_THAN",
-            "scope": {"device": {"value": [deck.pk], "modifier": "INCLUDES"}},
+            "scope": {"device": {"value": [str(deck.pk)], "modifier": "INCLUDES"}},
         }
     }
     page.goto(

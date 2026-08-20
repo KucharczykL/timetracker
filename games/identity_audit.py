@@ -44,8 +44,6 @@ RESIDUAL_INTEGER_RELATIONS: dict[TableColumn, OwnerLabel] = {
 }
 
 RESIDUAL_INTEGER_PRIMARY_KEYS: dict[TableName, OwnerLabel] = {
-    "games_device": _converted_by("ID-14 (#850)"),
-    "games_filterpreset": _converted_by("ID-14 (#850)"),
     "games_purchase_games": _THROUGH_PK_IS_PERMANENT,
     "games_exchangerate": _NOT_A_CONVERTED_MODEL,
     "games_sitesetting": _NOT_A_CONVERTED_MODEL,

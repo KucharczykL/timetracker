@@ -28,8 +28,8 @@ def floor_ms(moment: datetime) -> int:
     )
 
 
-def raw_insert_without_uuid(model, **field_values):
-    """INSERT a row through raw SQL that omits the `uuid` column entirely,
+def raw_insert_without_identity(model, **field_values):
+    """INSERT a row through raw SQL that omits the `id` column entirely,
     so PostgreSQL's own `uuidv7()` column default fills it in - the only
     way to exercise `db_default`, since the ORM always resolves the field's
     Python `default` first and never leaves the column to the database.
@@ -38,7 +38,7 @@ def raw_insert_without_uuid(model, **field_values):
     fields = [
         field
         for field in model._meta.local_concrete_fields
-        if field.name != "uuid" and not field.primary_key and not field.generated
+        if not field.primary_key and not field.generated
     ]
     columns = ", ".join(f'"{field.column}"' for field in fields)
     placeholders = ", ".join(["%s"] * len(fields))
@@ -54,7 +54,7 @@ def raw_insert_without_uuid(model, **field_values):
     with connection.cursor() as cursor:
         cursor.execute(
             f'INSERT INTO "{model._meta.db_table}" ({columns}) '
-            f'VALUES ({placeholders}) RETURNING "uuid"',
+            f'VALUES ({placeholders}) RETURNING "id"',
             values,
         )
         return uuid.UUID(str(cursor.fetchone()[0]))
@@ -80,9 +80,9 @@ def make_preset(library, **overrides):
 def test_device_created_through_the_orm_gets_a_distinct_version_7_uuid(owned_library):
     first = make_device(owned_library, name="First")
     second = make_device(owned_library, name="Second")
-    assert first.uuid.version == 7
-    assert second.uuid.version == 7
-    assert first.uuid != second.uuid
+    assert first.pk.version == 7
+    assert second.pk.version == 7
+    assert first.pk != second.pk
 
 
 def test_filterpreset_created_through_the_orm_gets_a_distinct_version_7_uuid(
@@ -90,49 +90,49 @@ def test_filterpreset_created_through_the_orm_gets_a_distinct_version_7_uuid(
 ):
     first = make_preset(owned_library, name="First")
     second = make_preset(owned_library, name="Second")
-    assert first.uuid.version == 7
-    assert second.uuid.version == 7
-    assert first.uuid != second.uuid
+    assert first.pk.version == 7
+    assert second.pk.version == 7
+    assert first.pk != second.pk
 
 
 def test_raw_device_insert_omitting_uuid_gets_the_database_default(owned_library):
-    device_uuid = raw_insert_without_uuid(
+    device_uuid = raw_insert_without_identity(
         Device, library=owned_library, name="Raw Device"
     )
     assert device_uuid.version == 7
-    assert Device.objects.get(uuid=device_uuid).name == "Raw Device"
+    assert Device.objects.get(pk=device_uuid).name == "Raw Device"
 
 
 def test_raw_filterpreset_insert_omitting_uuid_gets_the_database_default(owned_library):
-    preset_uuid = raw_insert_without_uuid(
+    preset_uuid = raw_insert_without_identity(
         FilterPreset, library=owned_library, name="Raw Preset", mode="games"
     )
     assert preset_uuid.version == 7
-    assert FilterPreset.objects.get(uuid=preset_uuid).name == "Raw Preset"
+    assert FilterPreset.objects.get(pk=preset_uuid).name == "Raw Preset"
 
 
 def test_database_rejects_a_duplicate_device_uuid(owned_library):
     shared = uuid.uuid7()
-    make_device(owned_library, name="First", uuid=shared)
+    make_device(owned_library, name="First", id=shared)
     with pytest.raises(IntegrityError), transaction.atomic():
-        make_device(owned_library, name="Second", uuid=shared)
+        make_device(owned_library, name="Second", id=shared)
 
 
 def test_database_rejects_a_duplicate_filterpreset_uuid(owned_library):
     shared = uuid.uuid7()
-    make_preset(owned_library, name="First", uuid=shared)
+    make_preset(owned_library, name="First", id=shared)
     with pytest.raises(IntegrityError), transaction.atomic():
-        make_preset(owned_library, name="Second", uuid=shared)
+        make_preset(owned_library, name="Second", id=shared)
 
 
 def test_database_rejects_a_non_v7_device_uuid(owned_library):
     with pytest.raises(IntegrityError), transaction.atomic():
-        make_device(owned_library, name="Bad", uuid=uuid.uuid4())
+        make_device(owned_library, name="Bad", id=uuid.uuid4())
 
 
 def test_database_rejects_a_non_v7_filterpreset_uuid(owned_library):
     with pytest.raises(IntegrityError), transaction.atomic():
-        make_preset(owned_library, name="Bad", uuid=uuid.uuid4())
+        make_preset(owned_library, name="Bad", id=uuid.uuid4())
 
 
 # --- Invisibility ------------------------------------------------------------

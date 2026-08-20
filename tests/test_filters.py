@@ -33,7 +33,6 @@ from common.criteria import (
     FloatCriterion,
     IntCriterion,
     Modifier,
-    MultiCriterion,
     OperatorFilter,
     RelationMatch,
     StringCriterion,
@@ -400,102 +399,6 @@ class TestChoiceCriterion:
         assert ChoiceCriterion(value=["f", "p"]).to_json() == {"value": ["f", "p"]}
 
 
-class TestMultiCriterion:
-    def test_includes(self):
-        c = MultiCriterion(value=[797], modifier=Modifier.INCLUDES)
-        assert c.to_q("game_id") == Q(game_id__in=[797])
-
-    def test_excludes_only_empty_value(self):
-        """Exclude one device with no includes — value=[], excludes=[11].
-
-        Regression: an empty ``value`` must not add ``__in=[]`` (which matches
-        nothing); the criterion should mean "all rows except device 11".
-        """
-        c = MultiCriterion(value=[], excludes=[11], modifier=Modifier.INCLUDES)
-        # The explicit isnull arm (issue #290): "exclude device 11" keeps
-        # device-less sessions by construction, not via ORM negation internals.
-        assert c.to_q("device_id") == ~Q(device_id__in=[11]) | Q(device_id__isnull=True)
-
-    def test_include_and_exclude(self):
-        c = MultiCriterion(value=[1], excludes=[2], modifier=Modifier.INCLUDES)
-        assert c.to_q("game_id") == Q(game_id__in=[1]) & (
-            ~Q(game_id__in=[2]) | Q(game_id__isnull=True)
-        )
-
-    def test_excludes_modifier_applies_excludes_channel(self):
-        """Harmonized (Stash model): EXCLUDES negates ``value`` AND still applies
-        the orthogonal ``excludes`` channel. Previously MultiCriterion.EXCLUDES
-        dropped the excludes list entirely."""
-        c = MultiCriterion(value=[1], excludes=[2], modifier=Modifier.EXCLUDES)
-        assert c.to_q("game_id") == (~Q(game_id__in=[1]) | Q(game_id__isnull=True)) & (
-            ~Q(game_id__in=[2]) | Q(game_id__isnull=True)
-        )
-
-    @pytest.mark.parametrize(
-        "modifier", [Modifier.INCLUDES_ALL, Modifier.INCLUDES_ONLY]
-    )
-    def test_m2m_modifiers_require_filter_builder(self, modifier):
-        """INCLUDES_ALL / INCLUDES_ONLY cannot be built by the generic criterion
-        layer — they require a filter-level Q builder (see
-        PurchaseFilter._games_to_q)."""
-        c = MultiCriterion(value=[1, 2], modifier=modifier)
-        # Must raise FilterError (catchable user-input error), NOT AssertionError
-        # (which vanishes under `python -O` and would re-open the 500 path).
-        with pytest.raises(FilterError, match="requires a filter-level"):
-            c.to_q("games")
-
-    def test_is_null(self):
-        c = MultiCriterion(value=[], modifier=Modifier.IS_NULL)
-        assert c.to_q("device_id") == Q(device_id__isnull=True)
-
-    def test_from_json_strips_embedded_labels(self):
-        """from_json normalises {id, label} dicts to bare ids."""
-        c = MultiCriterion.from_json(
-            {
-                "value": [{"id": 797, "label": "Hollow Knight"}],
-                "excludes": [{"id": 11, "label": "Steam Deck"}],
-            }
-        )
-        assert c.value == [797]
-        assert c.excludes == [11]
-        assert c.to_q("game_id") == Q(game_id__in=[797]) & (
-            ~Q(game_id__in=[11]) | Q(game_id__isnull=True)
-        )
-
-    def test_to_json_embeds_known_labels(self):
-        """to_json folds the labels map back into {id, label} wire shape (#224)."""
-        c = MultiCriterion(value=[797], labels={797: "Hollow Knight"})
-        assert c.to_json() == {"value": [{"id": 797, "label": "Hollow Knight"}]}
-
-    def test_to_json_without_labels_emits_bare_ids(self):
-        """No labels -> serialization is unchanged (bare ids)."""
-        assert MultiCriterion(value=[797]).to_json() == {"value": [797]}
-
-    def test_to_json_emits_bare_id_for_unlabelled_element(self):
-        """Only ids present in the labels map get a label; others stay bare."""
-        c = MultiCriterion(value=[1, 2], labels={1: "One"})
-        assert c.to_json() == {"value": [{"id": 1, "label": "One"}, 2]}
-
-    def test_to_json_embeds_labels_on_excludes_channel(self):
-        """The excludes channel is labelled symmetrically with value."""
-        c = MultiCriterion(value=[], excludes=[2], labels={2: "Two"})
-        assert c.to_json() == {"excludes": [{"id": 2, "label": "Two"}]}
-
-    def test_labels_do_not_affect_query(self):
-        """Labels are display-only: to_q is identical with and without them."""
-        labelled = MultiCriterion(value=[1], excludes=[2], labels={1: "a", 2: "b"})
-        bare = MultiCriterion(value=[1], excludes=[2])
-        assert labelled.to_q("game_id") == bare.to_q("game_id")
-
-    def test_labels_round_trip_strips_back_to_bare(self):
-        """to_json embeds labels; from_json strips them — the query value is the
-        same bare id list either way."""
-        original = MultiCriterion(value=[797], labels={797: "Hollow Knight"})
-        restored = MultiCriterion.from_json(original.to_json())
-        assert restored.value == [797]
-        assert restored.labels == {}
-
-
 def _uuid_series(count: int) -> list[str]:
     """`count` distinct UUIDv7 strings, for set-size guards that only need bulk."""
     return [f"018f5e66-e800-7000-8000-{index:012x}" for index in range(count)]
@@ -549,7 +452,7 @@ class TestUUIDMultiCriterion:
             )
 
     def test_shares_the_set_modifier_algebra(self):
-        """Same _SetCriterion behaviour as MultiCriterion, including the M2M
+        """Shared set-criterion behaviour, including the M2M
         modifiers that must defer to a filter-level Q builder."""
         c = UUIDMultiCriterion(value=[GAME_UUID], modifier=Modifier.INCLUDES_ALL)
         with pytest.raises(FilterError, match="requires a filter-level"):
@@ -2469,7 +2372,7 @@ _WRONG_VALUE_BY_CRITERION = {
     FloatCriterion: "not-a-number",
     AggregateCriterion: "not-a-number",
     DateCriterion: "garbage",
-    MultiCriterion: ["not-an-int"],
+    UUIDMultiCriterion: ["not-a-uuid"],
 }
 
 _ALL_FILTERS = [
@@ -2511,7 +2414,7 @@ class TestValueTypeBoundaryMatrix:
         self, filter_cls, field_name, criterion_cls
     ):
         bad_value = _WRONG_VALUE_BY_CRITERION[criterion_cls]
-        modifier = "INCLUDES" if criterion_cls is MultiCriterion else "EQUALS"
+        modifier = "INCLUDES" if criterion_cls is UUIDMultiCriterion else "EQUALS"
         payload = json.dumps({field_name: {"value": bad_value, "modifier": modifier}})
         with pytest.raises(FilterError):
             filter_from_json(filter_cls, payload)
@@ -4925,8 +4828,8 @@ class TestFilterField:
 
     def test_lookup_override(self):
         assert FilterField("platform_id").to_q(
-            "platform", MultiCriterion(value=[1, 2])
-        ) == Q(platform_id__in=[1, 2])
+            "platform", UUIDMultiCriterion(value=[GAME_UUID, OTHER_UUID])
+        ) == Q(platform_id__in=[GAME_UUID, OTHER_UUID])
 
     def test_lookup_and_handler_together_rejected(self):
         with pytest.raises(ValueError, match="lookup OR handler"):
@@ -5337,7 +5240,7 @@ class TestFieldMetadata:
 
         assert GameFilter.fields["platform"].lookup == "platform__id"
         assert SessionFilter.fields["game"].lookup == "game__id"
-        assert SessionFilter.fields["device"].lookup == "device__id"
+        assert SessionFilter.fields["device"].lookup == "device_id"
         # default label fallback is the title-cased name
         assert self._by_name(GameFilter)["name"]["label"] == "Name"
         # a FilterField.label override would take precedence (plumbing check)
@@ -5857,7 +5760,9 @@ class TestScopedAggregateJSON:
             "session_count": {
                 "value": 5,
                 "modifier": "GREATER_THAN",
-                "scope": {"device": {"value": [1], "modifier": "INCLUDES"}},
+                "scope": {
+                    "device": {"value": [str(GAME_UUID)], "modifier": "INCLUDES"}
+                },
             }
         }
 

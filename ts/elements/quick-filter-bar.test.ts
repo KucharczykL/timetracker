@@ -4,6 +4,7 @@ import "./quick-filter-bar.js";
 import { applyUrl } from "./filter-url.js";
 
 const LIST_URL = "/tracker/session/list";
+const PRESET_UUID = "018f5e66-e800-7000-8000-000000000001";
 
 // Static facet markup matching what the server's field_widget renders. For the
 // set kind the <search-select> root carries the data-filter-widget attributes
@@ -364,8 +365,8 @@ function mountWithPicker(): {
         bubbles: true,
         detail: {
           name: "preset",
-          values: ["1"],
-          last: { value: "1", label: "My preset", data },
+          values: [PRESET_UUID],
+          last: { value: PRESET_UUID, label: "My preset", data },
         },
       }),
     );
@@ -385,11 +386,18 @@ describe("quick-filter-bar preset pick", () => {
     vi.stubGlobal("fetch", fetch);
     widget.dispatchEvent(new CustomEvent("search-select:action", {
       bubbles: true,
-      detail: { name: "preset", action: "delete", option: { value: "3", label: "Owned", data: {} } },
+      detail: {
+        name: "preset",
+        action: "delete",
+        option: { value: PRESET_UUID, label: "Owned", data: {} },
+      },
     }));
     await Promise.resolve();
     expect(confirm).toHaveBeenCalledWith('Delete preset "Owned"?');
-    expect(fetch).toHaveBeenCalledWith("/api/presets/3", expect.objectContaining({ method: "DELETE" }));
+    expect(fetch).toHaveBeenCalledWith(
+      `/api/presets/${PRESET_UUID}`,
+      expect.objectContaining({ method: "DELETE" }),
+    );
     expect(refetchOptions).toHaveBeenCalledOnce();
   });
 

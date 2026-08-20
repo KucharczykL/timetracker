@@ -215,7 +215,7 @@ class Command(BaseCommand):
                 device__isnull=False,
             )
             .exclude(device__library_id=F("game__library_id"))
-            .values_list("pk", "device__id")
+            .values_list("pk", "device_id")
         ):
             violations.append(
                 f"Session.device: session {session_id}, device {device_id}"
@@ -227,7 +227,7 @@ class Command(BaseCommand):
                 default_device__isnull=False,
             )
             .exclude(default_device__library_id=F("library_id"))
-            .values_list("library_id", "default_device__id")
+            .values_list("library_id", "default_device_id")
         ):
             violations.append(
                 "UserLibraryPreferences.default_device: "

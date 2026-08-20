@@ -176,7 +176,7 @@ def test_search_options_are_library_scoped_and_shared_platforms_remain_visible(
         row["value"]
         for row in client.get("/api/devices/search", {"q": "Device"}).json()
     }
-    assert device_ids == {world["device_a"].id}
+    assert device_ids == {str(world["device_a"].id)}
 
     Game.objects.filter(pk=world["shared_game_a"].pk).update(
         updated_at=datetime(2020, 1, 1, tzinfo=UTC)
@@ -256,13 +256,13 @@ def test_session_reads_and_mutations_are_library_scoped(two_libraries):
         _patch(
             client,
             f"/api/session/{own.id}/device",
-            {"device_id": world["device_b"].id},
+            {"device_id": str(world["device_b"].id)},
         ).status_code
         == 404
     )
     own.refresh_from_db()
     foreign.refresh_from_db()
-    assert own.device_id == world["device_a"].uuid
+    assert own.device_id == world["device_a"].pk
     assert foreign.timestamp_end == datetime(YEAR, 6, 2, 13, tzinfo=UTC)
 
 

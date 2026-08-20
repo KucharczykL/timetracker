@@ -50,8 +50,8 @@ class FixtureRelationship(NamedTuple):
 
     `reference_field` names which field of the *target* record the reference
     value names — the fixture-validation equivalent of the FK's `to_field`.
-    Defaults to "pk" (an ordinary integer-PK relation); "uuid" for a relation
-    whose database FK points through the target's `uuid` rather than its `pk`.
+    Defaults to "pk" for an ordinary primary-key relation. Name another field
+    only when the database FK deliberately targets a secondary identity.
     """
 
     field: str
@@ -78,9 +78,7 @@ FIXTURE_RELATIONSHIPS: dict[str, tuple[FixtureRelationship, ...]] = {
     ),
     "games.session": (
         FixtureRelationship("game", "games.game", False, True, reference_field="pk"),
-        FixtureRelationship(
-            "device", "games.device", False, False, reference_field="uuid"
-        ),
+        FixtureRelationship("device", "games.device", False, False),
     ),
     "games.playevent": (
         FixtureRelationship("game", "games.game", False, True, reference_field="pk"),
@@ -176,9 +174,8 @@ class Command(BaseCommand):
         record_keys = set()
 
         # Which non-pk fields each model needs indexed, derived from every
-        # relationship's reference_field, so a new relation (e.g. session.game
-        # or purchase.related_game moving to reference_field="uuid") needs no
-        # further change here.
+        # relationship's reference_field, so a relation deliberately targeting
+        # a secondary identity needs no further validation change here.
         reference_fields_needed: dict[str, set[str]] = {}
         for relationships in FIXTURE_RELATIONSHIPS.values():
             for relationship in relationships:

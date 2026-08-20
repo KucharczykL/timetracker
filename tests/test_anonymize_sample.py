@@ -26,6 +26,8 @@ from games.models import (
 PROMOTED_MODELS = frozenset(
     [
         "games.game",
+        "games.device",
+        "games.filterpreset",
         "games.platform",
         "games.purchase",
         "games.session",
@@ -247,8 +249,18 @@ class AnonymizeSampleTest(TestCase):
         self.assertEqual(PlayEvent.objects.count(), 2)
         self.assertTrue(all(event.pk.version == 7 for event in PlayEvent.objects.all()))
 
-    def test_scrub_devices_replaces_names(self):
-        _build_dataset()
+    def test_scrub_devices_uses_stable_primary_key_ordinals(self):
+        game_purchase, _ = _build_dataset()
+        Device.objects.create(
+            pk="00000000-0000-7000-8000-000000000101",
+            library=game_purchase.library,
+            name="Second source name",
+        )
+        Device.objects.create(
+            pk="00000000-0000-7000-8000-000000000100",
+            library=game_purchase.library,
+            name="First source name",
+        )
         with TemporaryDirectory() as tempdir:
             output = Path(tempdir) / "out.yaml.gz"
             call_command(
@@ -260,8 +272,14 @@ class AnonymizeSampleTest(TestCase):
             )
             objects = _load_output(output)
 
-        for device in [item for item in objects if item["model"] == "games.device"]:
-            self.assertRegex(device["fields"]["name"], r"^Device \d+$")
+        devices = sorted(
+            (item for item in objects if item["model"] == "games.device"),
+            key=lambda item: UUID(item["pk"]),
+        )
+        self.assertEqual(
+            [device["fields"]["name"] for device in devices],
+            ["Device 1", "Device 2", "Device 3"],
+        )
 
     def test_name_overrides_rename_games(self):
         game_purchase, _ = _build_dataset()
@@ -422,6 +440,6 @@ class ReassignedIdentityTest(TestCase):
 
         preferences.refresh_from_db()
         self.assertTrue(
-            Device.objects.filter(uuid=preferences.default_device_id).exists(),
-            "default_device still names a uuid no Device carries",
+            Device.objects.filter(pk=preferences.default_device_id).exists(),
+            "default_device still names a primary key no Device carries",
         )

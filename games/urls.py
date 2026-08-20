@@ -37,8 +37,10 @@ urlpatterns = [
         name="export_admin_settings_ini",
     ),
     path("device/add", device.add_device, name="add_device"),
-    path("device/delete/<int:device_id>", device.delete_device, name="delete_device"),
-    path("device/edit/<int:device_id>", device.edit_device, name="edit_device"),
+    path(
+        "device/delete/<uuidv7:device_id>", device.delete_device, name="delete_device"
+    ),
+    path("device/edit/<uuidv7:device_id>", device.edit_device, name="edit_device"),
     path("device/list", device.list_devices, name="list_devices"),
     path("game/add", game.add_game, name="add_game"),
     path("game/<uuidv7:game_id>/edit", game.edit_game, name="edit_game"),

@@ -264,14 +264,16 @@ def _session(game, **overrides) -> Session:
 def test_session_attnames_read_back_as_the_targets_identities(game, device):
     session = _session(game, device=device)
     assert session.game_id == game.pk
-    assert session.device_id == device.uuid
+    assert session.device_id == device.pk
 
 
-def test_default_device_attname_reads_back_as_the_devices_uuid(owned_library, device):
+def test_default_device_attname_reads_back_as_the_devices_identity(
+    owned_library, device
+):
     preferences = UserLibraryPreferences.objects.get(library=owned_library)
     preferences.set_default_device(device)
     preferences.refresh_from_db()
-    assert preferences.default_device_id == device.uuid
+    assert preferences.default_device_id == device.pk
 
 
 def test_set_default_device_still_short_circuits_an_unchanged_value(
@@ -456,10 +458,9 @@ def test_sessionform_preselects_both_relations_by_identity(game, device, owned_l
         instance=session, library=owned_library, presentation=PRESENTATION
     )
 
-    # Game needs no shim any more - its attname is the identity the widget's
-    # options carry. Device still does, until its own identity is promoted.
+    # Both attnames are the identities their widgets carry.
     assert form.initial["game"] == game.pk
-    assert form.initial["device"] == device
+    assert form.initial["device"] == device.pk
     assert form.fields["game"].prepare_value(form.initial["game"]) == game.pk
     assert form.fields["device"].prepare_value(form.initial["device"]) == device.pk
 
@@ -505,13 +506,13 @@ def test_sessionform_posting_identities_saves_the_right_relations(
     assert form.is_valid(), form.errors
     saved = form.save()
     assert saved.game_id == other_game.pk
-    assert saved.device_id == device.uuid
+    assert saved.device_id == device.pk
 
 
 # --- Device PATCH endpoint ----------------------------------------------------
 
 
-def _patch_device(client, session_id: int, payload: dict):
+def _patch_device(client, session_id, payload: dict):
     return client.patch(
         f"/api/session/{session_id}/device",
         data=json.dumps(payload),
@@ -519,18 +520,20 @@ def _patch_device(client, session_id: int, payload: dict):
     )
 
 
-def test_patch_session_device_binds_and_clears_by_integer_id(
+def test_patch_session_device_binds_and_clears_by_uuidv7(
     auth_client, owned_user, device
 ):
     game = Game.objects.create(library=owned_user.library, name="Patched")
     session = _session(game)
 
     assert (
-        _patch_device(auth_client, session.pk, {"device_id": device.pk}).status_code
+        _patch_device(
+            auth_client, session.pk, {"device_id": str(device.pk)}
+        ).status_code
         == 204
     )
     session.refresh_from_db()
-    assert session.device_id == device.uuid
+    assert session.device_id == device.pk
 
     assert (
         _patch_device(auth_client, session.pk, {"device_id": None}).status_code == 204
@@ -543,6 +546,6 @@ def test_patch_session_device_rejects_a_stale_device_id(auth_client, owned_user)
     game = Game.objects.create(library=owned_user.library, name="Patched")
     session = _session(game)
 
-    response = _patch_device(auth_client, session.pk, {"device_id": 999999})
+    response = _patch_device(auth_client, session.pk, {"device_id": str(uuid.uuid7())})
 
     assert response.status_code == 404

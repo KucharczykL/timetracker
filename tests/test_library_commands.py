@@ -222,17 +222,31 @@ def test_committed_sample_load_owns_private_rows_and_reuses_shared_platform(owne
     assert not PlayEvent.objects.exclude(game__library=owner.library).exists()
 
 
-def test_committed_sample_stores_purchase_uuid_identity_as_its_primary_key():
+def test_committed_sample_stores_promoted_uuid_identities_as_primary_keys():
     from games.management.commands.load_sample_data import FIXTURE_PATH
 
     with gzip_open(FIXTURE_PATH, "rt") as fixture:
         records = yaml.safe_load(fixture)
 
-    purchases = [record for record in records if record["model"] == "games.purchase"]
-    assert purchases
-    assert all(isinstance(record["pk"], str) for record in purchases)
-    assert all(UUID(record["pk"]).version == 7 for record in purchases)
-    assert all("uuid" not in record["fields"] for record in purchases)
+    promoted = {
+        model: [record for record in records if record["model"] == model]
+        for model in ("games.device", "games.filterpreset", "games.purchase")
+    }
+    assert promoted["games.device"]
+    assert promoted["games.purchase"]
+    for model_records in promoted.values():
+        assert all(isinstance(record["pk"], str) for record in model_records)
+        assert all(UUID(record["pk"]).version == 7 for record in model_records)
+        assert all("uuid" not in record["fields"] for record in model_records)
+
+    device_ids = {record["pk"] for record in promoted["games.device"]}
+    session_devices = {
+        record["fields"]["device"]
+        for record in records
+        if record["model"] == "games.session" and record["fields"]["device"] is not None
+    }
+    assert session_devices
+    assert session_devices <= device_ids
 
 
 @pytest.mark.django_db
@@ -295,9 +309,10 @@ def test_sample_load_rejects_a_private_row_without_portable_owner_marker(
     from games.management.commands import load_sample_data
 
     fixture = tmp_path / "sample.yaml"
+    device_id = "00000000-0000-7000-8000-000000000202"
     fixture.write_text(
-        """- model: games.device
-  pk: 202
+        f"""- model: games.device
+  pk: {device_id}
   fields:
     library: null
     name: Unowned device
@@ -310,7 +325,7 @@ def test_sample_load_rejects_a_private_row_without_portable_owner_marker(
     with pytest.raises(CommandError, match="portable owner marker"):
         call_command("load_sample_data", "--user", owner.username, verbosity=0)
 
-    assert not Device.objects.filter(pk=202).exists()
+    assert not Device.objects.filter(pk=device_id).exists()
 
 
 # PlayEvent.game, GameStatusChange.game, and both platform foreign keys reference
@@ -414,12 +429,13 @@ def test_sample_load_rejects_duplicate_fixture_primary_keys(
     from games.management.commands import load_sample_data
 
     fixture = tmp_path / "sample.yaml"
+    duplicate_device_id = "00000000-0000-7000-8000-000000000401"
     fixture.write_text(
         yaml.safe_dump(
             [
                 {
                     "model": "games.device",
-                    "pk": 401,
+                    "pk": duplicate_device_id,
                     "fields": {
                         "library": "__target_library__",
                         "name": "First",
@@ -427,7 +443,7 @@ def test_sample_load_rejects_duplicate_fixture_primary_keys(
                 },
                 {
                     "model": "games.device",
-                    "pk": 401,
+                    "pk": duplicate_device_id,
                     "fields": {
                         "library": "__target_library__",
                         "name": "Second",
@@ -438,10 +454,13 @@ def test_sample_load_rejects_duplicate_fixture_primary_keys(
     )
     monkeypatch.setattr(load_sample_data, "FIXTURE_PATH", fixture)
 
-    with pytest.raises(CommandError, match="duplicate games.device primary key 401"):
+    with pytest.raises(
+        CommandError,
+        match=rf"duplicate games.device primary key {duplicate_device_id}",
+    ):
         call_command("load_sample_data", "--user", owner.username, verbosity=0)
 
-    assert not Device.objects.filter(pk=401).exists()
+    assert not Device.objects.filter(pk=duplicate_device_id).exists()
 
 
 @pytest.mark.django_db(transaction=True)
@@ -451,6 +470,7 @@ def test_sample_load_force_inserts_and_rolls_back_a_late_primary_key_collision(
     from games.management.commands import load_sample_data
 
     fixture = tmp_path / "sample.yaml"
+    colliding_device_id = "00000000-0000-7000-8000-000000000503"
     fixture.write_text(
         yaml.safe_dump(
             [
@@ -475,7 +495,7 @@ def test_sample_load_force_inserts_and_rolls_back_a_late_primary_key_collision(
                 },
                 {
                     "model": "games.device",
-                    "pk": 503,
+                    "pk": colliding_device_id,
                     "fields": {
                         "library": "__target_library__",
                         "name": "Fixture device",
@@ -491,7 +511,7 @@ def test_sample_load_force_inserts_and_rolls_back_a_late_primary_key_collision(
     def insert_after_check(records):
         original_check(records)
         Device.objects.create(
-            pk=503,
+            pk=colliding_device_id,
             library=owner.library,
             name="Concurrent device",
         )
@@ -507,7 +527,7 @@ def test_sample_load_force_inserts_and_rolls_back_a_late_primary_key_collision(
 
     assert "duplicate key" in str(error.value).lower()
     assert not Platform.objects.filter(name="Rollback platform").exists()
-    assert not Device.objects.filter(pk=503).exists()
+    assert not Device.objects.filter(pk=colliding_device_id).exists()
     assert not ExchangeRate.objects.filter(
         currency_from="USD",
         currency_to="EUR",
@@ -559,6 +579,14 @@ def test_scoped_audit_reports_incoming_cross_library_links(owner, outsider):
         "UserLibraryPreferences.default_device",
     ):
         assert relation in report
+    assert (
+        f"Session.device: session {outsider_session.pk}, device {owner_device.pk}"
+        in report
+    )
+    assert (
+        "UserLibraryPreferences.default_device: "
+        f"library {outsider.library.pk}, device {owner_device.pk}" in report
+    )
 
 
 @pytest.mark.django_db

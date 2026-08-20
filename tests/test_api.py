@@ -71,7 +71,7 @@ def test_device_search_blank_query_orders_by_most_recent_session(auth_client):
 
     rows = auth_client.get("/api/devices/search", {"limit": 10}).json()
 
-    assert [row["value"] for row in rows][:2] == [deck.id, desktop.id]
+    assert [row["value"] for row in rows][:2] == [str(deck.id), str(desktop.id)]
 
 
 def test_platform_search_blank_query_uses_newest_game_or_purchase(auth_client):
@@ -124,7 +124,7 @@ def test_device_search_typed_query_remains_alphabetical(auth_client):
 
     rows = auth_client.get("/api/devices/search", {"q": "Al", "limit": 10}).json()
 
-    assert [row["value"] for row in rows] == [alpha.id, alpine.id]
+    assert [row["value"] for row in rows] == [str(alpha.id), str(alpine.id)]
 
 
 def test_platform_search_typed_query_remains_alphabetical(auth_client):
@@ -174,7 +174,11 @@ def test_session_detail_shape(auth_client):
         "name": "Hades",
         "platform": {"name": "PC", "icon": session.game.platform.icon},
     }
-    assert data["device"] == {"id": session.device.id, "name": "Deck", "type": "h"}
+    assert data["device"] == {
+        "id": str(session.device.id),
+        "name": "Deck",
+        "type": "h",
+    }
     assert data["timestamp_start"] == "2026-06-24T18:00:00Z"
     assert data["timestamp_end"] == "2026-06-24T19:00:00Z"
     assert data["duration_manual_seconds"] == 1800
@@ -449,7 +453,9 @@ def _patch_device(client, session_id, body):
 def test_device_patch_assigns_device(auth_client):
     session = _make_session()
     other_device = _owned_device(name="Desktop", type="PC")
-    response = _patch_device(auth_client, session.id, {"device_id": other_device.id})
+    response = _patch_device(
+        auth_client, session.id, {"device_id": str(other_device.id)}
+    )
     assert response.status_code == 204
     session.refresh_from_db()
     assert session.device == other_device
@@ -459,7 +465,7 @@ def test_device_patch_unknown_device_404(auth_client):
     # A stale id (device deleted elsewhere) must 404 cleanly, not IntegrityError.
     session = _make_session()
     original_device = session.device
-    response = _patch_device(auth_client, session.id, {"device_id": 999999})
+    response = _patch_device(auth_client, session.id, {"device_id": str(uuid.uuid7())})
     assert response.status_code == 404
     session.refresh_from_db()
     assert session.device == original_device

@@ -125,7 +125,7 @@ def test_exclude_platform_keeps_platformless_games(owned_library):
     # "Exclude platform X" keeps games with no platform — the visible behavior
     # the sentinel used to provide by accident, now stated explicitly in the
     # criterion's Q tree (issue #290).
-    from common.criteria import Modifier, MultiCriterion
+    from common.criteria import Modifier, UUIDMultiCriterion
     from games.filters import GameFilter
 
     steam = Platform.objects.create(name="Steam")
@@ -133,7 +133,7 @@ def test_exclude_platform_keeps_platformless_games(owned_library):
     platformless = Game.objects.create(library=owned_library, name="Homebrew")
 
     excluded = GameFilter(
-        platform=MultiCriterion(value=[steam.id], modifier=Modifier.EXCLUDES)
+        platform=UUIDMultiCriterion(value=[steam.id], modifier=Modifier.EXCLUDES)
     )
     assert list(Game.objects.filter(excluded.to_q())) == [platformless]
 

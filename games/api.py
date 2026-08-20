@@ -143,7 +143,7 @@ class PlatformOption(Schema):  # mirrors SearchSelectOption
 
 
 class DeviceOption(Schema):  # mirrors SearchSelectOption
-    value: int
+    value: UUIDv7
     label: str
     data: dict
 
@@ -351,7 +351,7 @@ class GameOut(Schema):
 
 
 class DeviceOut(Schema):
-    id: int
+    id: UUIDv7
     name: str
     type: str
 
@@ -494,7 +494,7 @@ def get_session(request, session_id: UUIDv7):
 class SessionDeviceUpdate(Schema):
     # Required key, nullable value: null clears the device (renders as
     # "No device").
-    device_id: int | None
+    device_id: UUIDv7 | None
 
 
 @session_router.patch("/{session_id}/device", response={204: None})
@@ -510,8 +510,6 @@ def partial_update_session_device(
         device = owned_or_404(
             Device.objects.for_library(library), library, id=payload.device_id
         )
-    # The payload carries the integer pk the selector's options do, while the
-    # column holds the device's uuid: bind the instance, not the id.
     session.device = device
     session.save()
     messages.success(request, "Device updated")
@@ -622,7 +620,7 @@ preset_router = Router()
 class PresetOption(Schema):
     """Preset picker option; empty string values mean inherit."""
 
-    value: int
+    value: UUIDv7
     label: str
     data: dict[str, str]
 
@@ -743,7 +741,7 @@ def save_preset(request, payload: PresetIn):
 
 
 @preset_router.delete("/{preset_id}", response={204: None})
-def delete_preset(request, preset_id: int):
+def delete_preset(request, preset_id: UUIDv7):
     """Delete one of the current library's presets.
 
     Scoped to request.user.library so it cannot touch another library's preset (404
@@ -795,9 +793,10 @@ api.add_router("/conversion", conversion_router)
 class SettingOut(Schema):
     """One resolved setting for the settings panel.
 
-    ``value`` is ``str | int | None`` (device id is an int, unset is None) — a
-    ``str``-only field would 500. ``locked`` marks an env/`.env`/`.ini`-pinned
-    value; ``/user`` forces it ``False`` (see :func:`list_user_settings`).
+    ``value`` covers the primitive values used by the general settings surfaces.
+    Identity-bearing settings use dedicated strict schemas. ``locked`` marks an
+    env/`.env`/`.ini`-pinned value; ``/user`` forces it ``False`` (see
+    :func:`list_user_settings`).
     ``namespace`` identifies which mutation surface produced this entry — the
     personal, site-admin, or library preferences surface — independent of
     ``source`` (where the resolved value came from).
@@ -816,7 +815,15 @@ class SettingValueIn(Schema):
 
 
 class DefaultDeviceIn(Schema):
-    value: int | str | None = None
+    value: UUIDv7 | None = None
+
+
+class DefaultDeviceOut(Schema):
+    key: str
+    value: UUIDv7 | None
+    source: SettingSource
+    locked: bool
+    namespace: SettingNamespace
 
 
 def _settings_of_scope(*scopes: SettingScope) -> list[SettingKey]:
@@ -894,7 +901,7 @@ def update_user_setting(request, key: str, payload: SettingValueIn):
     )
 
 
-@library_router.patch("/default-device", response=SettingOut)
+@library_router.patch("/default-device", response=DefaultDeviceOut)
 def update_library_default_device(request, payload: DefaultDeviceIn):
     """Set the current library's default Device, or clear it with null.
 
@@ -905,11 +912,7 @@ def update_library_default_device(request, payload: DefaultDeviceIn):
     library = request.user.library
     device = None
     if payload.value is not None:
-        try:
-            device_id = int(payload.value)
-        except ValueError:
-            raise HttpError(400, "Device must be an integer or null.") from None
-        device = Device.objects.for_library(library).filter(pk=device_id).first()
+        device = Device.objects.for_library(library).filter(pk=payload.value).first()
         if device is None:
             raise HttpError(404, "Device not found.")
     change_library_default_device(library, device)

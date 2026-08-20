@@ -128,7 +128,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--scrub-devices",
             action="store_true",
-            help="Replace device names with generic 'Device {pk}' labels.",
+            help="Replace device names with stable 'Device 1', 'Device 2', … labels.",
         )
         parser.add_argument(
             "--name-overrides",
@@ -295,8 +295,8 @@ class Command(BaseCommand):
         Device.objects.update(created_at=FIXED_EPOCH)
         if scrub_devices:
             devices = list(Device.objects.order_by("pk"))
-            for device in devices:
-                device.name = f"Device {device.pk}"
+            for ordinal, device in enumerate(devices, start=1):
+                device.name = f"Device {ordinal}"
             Device.objects.bulk_update(devices, ["name"])
 
         self._reassign_uuids()

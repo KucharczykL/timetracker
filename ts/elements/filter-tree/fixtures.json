@@ -81,7 +81,7 @@
       "description": "relation ANY with child",
       "model": "game",
       "filter": {
-        "session_filter": { "device": { "value": [1], "modifier": "INCLUDES" } }
+        "session_filter": { "device": { "value": ["018f5e66-e800-7000-8000-000000000001"], "modifier": "INCLUDES" } }
       }
     },
     {
@@ -106,12 +106,12 @@
     {
       "description": "relation ALL quantifier",
       "model": "game",
-      "filter": { "session_filter": { "match": "ALL", "device": { "value": [1], "modifier": "INCLUDES" } } }
+      "filter": { "session_filter": { "match": "ALL", "device": { "value": ["018f5e66-e800-7000-8000-000000000001"], "modifier": "INCLUDES" } } }
     },
     {
       "description": "negated relation (NOT EXISTS)",
       "model": "game",
-      "filter": { "NOT": [ { "session_filter": { "device": { "value": [1], "modifier": "INCLUDES" } } } ] }
+      "filter": { "NOT": [ { "session_filter": { "device": { "value": ["018f5e66-e800-7000-8000-000000000001"], "modifier": "INCLUDES" } } } ] }
     },
     {
       "description": "nested relation: game -> session -> game criterion",
@@ -129,7 +129,7 @@
         "session_count": {
           "value": 5,
           "modifier": "GREATER_THAN",
-          "scope": { "device": { "value": [1], "modifier": "INCLUDES" } }
+          "scope": { "device": { "value": ["018f5e66-e800-7000-8000-000000000001"], "modifier": "INCLUDES" } }
         }
       }
     },
@@ -142,7 +142,7 @@
             "session_count": {
               "value": 0,
               "modifier": "EQUALS",
-              "scope": { "device": { "value": [1], "modifier": "INCLUDES" } }
+              "scope": { "device": { "value": ["018f5e66-e800-7000-8000-000000000001"], "modifier": "INCLUDES" } }
             }
           }
         ]
@@ -157,7 +157,7 @@
           "modifier": "GREATER_THAN",
           "scope": {
             "OR": [
-              { "device": { "value": [1], "modifier": "INCLUDES" } },
+              { "device": { "value": ["018f5e66-e800-7000-8000-000000000001"], "modifier": "INCLUDES" } },
               { "note": { "value": "docked", "modifier": "INCLUDES" } }
             ]
           }

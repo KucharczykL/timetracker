@@ -11,6 +11,8 @@ import type { SearchSelectChangeDetail, SearchSelectActionDetail } from "./searc
 
 Element.prototype.scrollIntoView = () => {};
 
+const PRESET_UUID = "018f5e66-e800-7000-8000-000000000001";
+
 interface PresetWidget extends HTMLElement {
   setSelected(value: string, label?: string): void;
   refetchOptions(): void;
@@ -81,7 +83,7 @@ describe("preset personality shell additions (#297)", () => {
   it("refetchOptions resets a committed label so it never becomes the query", async () => {
     const requestedUrls = stubFetch([]);
     const host = mountPreset();
-    host.setSelected("1", "Backlog"); // committed pick leaves its label in the box
+    host.setSelected(PRESET_UUID, "Backlog"); // committed pick leaves its label in the box
     expect(searchBox(host).value).toBe("Backlog");
 
     host.refetchOptions();
@@ -102,7 +104,7 @@ describe("preset personality shell additions (#297)", () => {
   });
 
   it("a delete-button click dispatches search-select:action, never a pick", async () => {
-    stubFetch([{ value: "1", label: "Backlog", data: { filter: "{}" } }]);
+    stubFetch([{ value: PRESET_UUID, label: "Backlog", data: { filter: "{}" } }]);
     const host = mountPreset();
     host.refetchOptions();
     await flushPromises();
@@ -122,7 +124,7 @@ describe("preset personality shell additions (#297)", () => {
       {
         name: "preset",
         action: "delete",
-        option: { value: "1", label: "Backlog", data: { filter: "{}" } },
+        option: { value: PRESET_UUID, label: "Backlog", data: { filter: "{}" } },
       },
     ]);
     expect(changes).toBe(0);
@@ -130,7 +132,7 @@ describe("preset personality shell additions (#297)", () => {
   });
 
   it("a row click picks: change event carries the filter JSON in last.data", async () => {
-    stubFetch([{ value: "1", label: "Backlog", data: { filter: '{"a":1}' } }]);
+    stubFetch([{ value: PRESET_UUID, label: "Backlog", data: { filter: '{"a":1}' } }]);
     const host = mountPreset();
     host.refetchOptions();
     await flushPromises();
@@ -143,12 +145,12 @@ describe("preset personality shell additions (#297)", () => {
 
     expect(changes).toHaveLength(1);
     expect(changes[0].last?.data.filter).toBe('{"a":1}');
-    expect(changes[0].values).toEqual(["1"]);
+    expect(changes[0].values).toEqual([PRESET_UUID]);
   });
 
   it("a hostile label cannot inject markup — rows render via textContent", async () => {
     const hostile = '<img src=x onerror=alert(1)>';
-    stubFetch([{ value: "1", label: hostile, data: { filter: "{}" } }]);
+    stubFetch([{ value: PRESET_UUID, label: hostile, data: { filter: "{}" } }]);
     const host = mountPreset();
     host.refetchOptions();
     await flushPromises();
@@ -164,7 +166,7 @@ describe("preset personality shell additions (#297)", () => {
     const host = mountPreset();
     let changes = 0;
     host.addEventListener("search-select:change", () => (changes += 1));
-    host.setSelected("1", "Backlog");
+    host.setSelected(PRESET_UUID, "Backlog");
 
     host.clearSelection();
 
