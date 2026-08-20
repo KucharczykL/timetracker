@@ -455,41 +455,6 @@ The catalog routes therefore use the `uuidv7` converter registered in
 redirect alias because the migration removes the integer→UUID map. Wave F still
 owns slug policy and canonical URL shape, not the catalog identifier type.
 
-### Delivered ID-12/#848: Session and play-history promotion
-
-Delivered 2026-08-20, ID-12 promotes the existing UUIDv7 values of `Session`,
-`PlayEvent`, and `GameStatusChange` to their `id` primary keys. It removes the
-legacy integer `id` and separate `uuid` fields without minting identities or
-changing outbound `Game`/`Device` relationships. No foreign key targets these
-models' former `uuid` fields, and no through table refers to them, so this slice
-needs neither ID-11's relation-detachment sequence nor a through-table
-conversion.
-
-The migration carries forward the lessons proven by ID-11/#646. Django state
-uses `SeparateDatabaseAndState` with `RemoveField` plus `AddField`, never
-`RenameField`, and a following `RunPython` owns the PostgreSQL DDL. Verification
-must apply the migration to real PostgreSQL: `sqlmigrate` cannot prove this
-constraint transition, and one `MigrationExecutor` must be able to reverse and
-reapply it without historical-state mutation. The committed sample likewise
-stores Session and PlayEvent identities only in `pk`; its relationships remain
-unchanged, and the existing loader and anonymizer need no production change.
-
-Rollback is deliberately empty-only. Reverse checks all three tables together
-before any schema mutation and raises with backup-restoration guidance if any
-contains data. A deployment must therefore take a pre-migration backup that
-retains the integer→UUID mapping; populated rollback means restoring that
-backup, not synthesizing replacement integers. Empty reverse restores the old
-bigint primary key plus separate unique UUIDv7 field solely for migration-graph
-traversal.
-
-ID-12 also owns the required converter cutover for nine existing bare-identity
-HTML routes: PlayEvent edit/delete; Session clone/edit/finish/reset/delete; and
-GameStatusChange edit/delete. They now accept strict UUIDv7 values, reject old
-integers and other UUID versions, and provide no integer redirect because the
-mapping is gone. ID-15/#647 continues to own the separate decision about
-canonical slug-plus-UUID URL shapes; it does not own keeping those nine bare
-routes operational through the primary-key promotion.
-
 The same boundary applies to every identity-bearing API request, response,
 custom-element property, and filter criterion; changing search response options
 alone is insufficient. Catalog facets use `UUIDMultiCriterion`. Device facets
@@ -502,10 +467,7 @@ ID-15 stays one issue, `blocked-by` ID-11 (catalog UUID becomes the real PK).
 Its own design spec must resolve which entities actually get a
 slug-plus-UUID canonical URL (the charter's example is `Game`;
 `Platform`/`Session`/`Purchase`/`Device` may only need a bare-UUID URL or no
-change at all) — not decided here. ID-11/#646 and ID-12/#848 have already
-performed the necessary bare-identifier UUID converter swaps; #647 must build
-canonicalization policy on that delivered runtime contract rather than moving
-those swaps back into its scope.
+change at all) — not decided here.
 
 ## Wave G — retire transitional URL aliases (ID-16/#648, conditional)
 
@@ -530,11 +492,10 @@ forward — if a wave's design changes its issue boundary, update both.
 ## Status of each wave's design work
 
 - Wave A: done.
-- Wave B: delivered across #640–#643.
-- Waves C–D: delivered; their worked lessons and readiness inventories above
-  remain the inputs to every Wave E slice.
-- Wave E: ID-11/#646 and ID-12/#848 are designed and delivered. ID-13/#849 and
-  ID-14/#850 retain their existing boundaries and still require their own
-  issue-level design and implementation; ID-12 does not absorb either slice.
-- Waves F–G: not yet designed. Their URL-policy and compatibility-cleanup
-  boundaries remain separate from the delivered primary-key promotions.
+- Wave B: `#640` design approved (this session). `#641`/`#642`/`#643` need
+  their own short specs before implementation — expected to be small since
+  they copy `#640`'s pattern.
+- Waves C–G: not yet designed. This document fixes their PR boundaries and
+  ordering; each PR still needs its own issue-level design spec before
+  implementation, per the planning-gate acceptance criterion every one of
+  these issues already carries.
