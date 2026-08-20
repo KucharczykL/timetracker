@@ -318,17 +318,9 @@ def test_purchaseform_posting_an_identity_saves_the_right_base_game(
 # --- Deferred many-to-many ----------------------------------------------------
 
 
-def test_the_purchase_games_through_table_is_half_converted():
-    """The many-to-many link converts one column per promoted target.
-
-    Django cannot point an auto-created intermediary at a non-primary-key
-    field, so each half of this table moves when its own target's uuid becomes
-    the primary key. `game_id` moved with the catalog; `purchase_id` is still
-    integer and moves when Purchase is promoted. Rewrite this test then; do not
-    delete it now.
-    """
+def test_the_purchase_games_through_table_uses_promoted_relation_identities():
     assert column_type("games_purchase_games", "game_id") == "uuid_v7"
-    assert column_type("games_purchase_games", "purchase_id") == "bigint"
+    assert column_type("games_purchase_games", "purchase_id") == "uuid_v7"
     assert foreign_key_target("games_purchase_games", "game_id") == (
         "games_game",
         "id",
