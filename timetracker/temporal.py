@@ -5,6 +5,10 @@ from calendar import monthrange
 from dataclasses import dataclass
 from datetime import date
 from enum import StrEnum
+from typing import Literal
+
+from django.core.exceptions import ValidationError
+from django.db import NotSupportedError, models
 
 
 class TemporalPrecision(StrEnum):
@@ -348,15 +352,15 @@ def _parse_range(canonical: str) -> _TemporalParts:
             "A temporal range requires at least one known endpoint.",
             code="invalid_range",
         )
-    if (
-        start.value is not None
-        and end.value is not None
-        and start.value.lower_bound > end.value.upper_bound
-    ):
-        raise TemporalValueParseError(
-            f"Temporal range start follows its end: {canonical!r}.",
-            code="invalid_range",
-        )
+    if start.value is not None and end.value is not None:
+        start_lower = start.value.lower_bound
+        end_upper = end.value.upper_bound
+        assert start_lower is not None and end_upper is not None
+        if start_lower > end_upper:
+            raise TemporalValueParseError(
+                f"Temporal range start follows its end: {canonical!r}.",
+                code="invalid_range",
+            )
     return _TemporalParts(
         canonical=canonical,
         lower_bound=None if start.value is None else start.value.lower_bound,
@@ -404,3 +408,167 @@ def parse_temporal_value(value: object) -> TemporalValue:
 
 def validate_temporal_value(value: object) -> None:
     parse_temporal_value(value)
+
+
+def _normalize_temporal_model_value(value: object) -> TemporalValue | None:
+    if value is None:
+        return None
+    try:
+        parsed = parse_temporal_value(value)
+    except TemporalValueParseError as exc:
+        raise ValidationError(str(exc), code=exc.code, params={"value": value}) from exc
+    return None if parsed.kind is TemporalValueKind.UNKNOWN else parsed
+
+
+class TemporalValueField(models.Field):
+    def __init__(self, *args, **kwargs) -> None:
+        max_length = kwargs.pop("max_length", 64)
+        if max_length != 64:
+            raise ValueError("TemporalValueField.max_length is fixed at 64.")
+        kwargs["max_length"] = 64
+        kwargs.setdefault("null", True)
+        kwargs.setdefault("blank", False)
+        kwargs.setdefault("default", None)
+        kwargs.setdefault("editable", False)
+        super().__init__(*args, **kwargs)
+
+    def deconstruct(self):
+        name, path, args, kwargs = super().deconstruct()
+        kwargs.update(
+            max_length=64,
+            null=self.null,
+            blank=self.blank,
+            default=self.default,
+            editable=self.editable,
+        )
+        return name, path, args, kwargs
+
+    def db_type(self, connection) -> str:
+        if connection.vendor != "postgresql":
+            raise NotSupportedError("TemporalValueField requires PostgreSQL.")
+        return "temporal_value"
+
+    def to_python(self, value):
+        return _normalize_temporal_model_value(value)
+
+    def from_db_value(self, value, expression, connection):
+        return _normalize_temporal_model_value(value)
+
+    def get_prep_value(self, value):
+        normalized = _normalize_temporal_model_value(value)
+        return None if normalized is None else normalized.serialize()
+
+    def value_from_object(self, obj):
+        return _normalize_temporal_model_value(super().value_from_object(obj))
+
+    def value_to_string(self, obj):
+        value = self.value_from_object(obj)
+        return "" if value is None else value.serialize()
+
+
+class TemporalLowerBound(models.Func):
+    function = "timetracker_temporal_lower"
+    output_field = models.DateField(null=True)
+
+
+class TemporalUpperBound(models.Func):
+    function = "timetracker_temporal_upper"
+    output_field = models.DateField(null=True)
+
+
+class TemporalKind(models.Func):
+    function = "timetracker_temporal_kind"
+    output_field = models.CharField(max_length=7)
+
+
+class TemporalPrecisionValue(models.Func):
+    function = "timetracker_temporal_precision"
+    output_field = models.CharField(max_length=7, null=True)
+
+
+class TemporalStartKind(models.Func):
+    function = "timetracker_temporal_start_kind"
+    output_field = models.CharField(max_length=7, null=True)
+
+
+class TemporalEndKind(models.Func):
+    function = "timetracker_temporal_end_kind"
+    output_field = models.CharField(max_length=7, null=True)
+
+
+class TemporalStartPrecision(models.Func):
+    function = "timetracker_temporal_start_precision"
+    output_field = models.CharField(max_length=7, null=True)
+
+
+class TemporalEndPrecision(models.Func):
+    function = "timetracker_temporal_end_precision"
+    output_field = models.CharField(max_length=7, null=True)
+
+
+type TemporalEndpointName = Literal["start", "end"]
+
+_KNOWN_YEAR_PRECISIONS = (
+    TemporalPrecision.DAY.value,
+    TemporalPrecision.MONTH.value,
+    TemporalPrecision.YEAR.value,
+)
+_KNOWN_MONTH_PRECISIONS = (
+    TemporalPrecision.DAY.value,
+    TemporalPrecision.MONTH.value,
+)
+_KNOWN_DAY_PRECISIONS = (TemporalPrecision.DAY.value,)
+
+
+def _temporal_component_q(
+    field_name: str,
+    precisions: tuple[str, ...],
+    *,
+    endpoint: TemporalEndpointName | None,
+) -> models.Q:
+    if not isinstance(field_name, str) or not field_name:
+        raise ValueError("A temporal field name is required.")
+    if endpoint is None:
+        return models.Q(
+            **{
+                f"{field_name}_kind": TemporalValueKind.ATOMIC.value,
+                f"{field_name}_precision__in": precisions,
+            }
+        )
+    if endpoint not in ("start", "end"):
+        raise ValueError("endpoint must be 'start' or 'end'.")
+    return models.Q(
+        **{
+            f"{field_name}_{endpoint}_kind": TemporalEndpointKind.KNOWN.value,
+            f"{field_name}_{endpoint}_precision__in": precisions,
+        }
+    )
+
+
+def temporal_has_known_year_q(
+    field_name: str, *, endpoint: TemporalEndpointName | None = None
+) -> models.Q:
+    return _temporal_component_q(field_name, _KNOWN_YEAR_PRECISIONS, endpoint=endpoint)
+
+
+def temporal_has_known_month_q(
+    field_name: str, *, endpoint: TemporalEndpointName | None = None
+) -> models.Q:
+    return _temporal_component_q(field_name, _KNOWN_MONTH_PRECISIONS, endpoint=endpoint)
+
+
+def temporal_has_known_day_q(
+    field_name: str, *, endpoint: TemporalEndpointName | None = None
+) -> models.Q:
+    return _temporal_component_q(field_name, _KNOWN_DAY_PRECISIONS, endpoint=endpoint)
+
+
+def temporal_exact_day_q(field_name: str) -> models.Q:
+    if not isinstance(field_name, str) or not field_name:
+        raise ValueError("A temporal field name is required.")
+    return models.Q(
+        **{
+            f"{field_name}_kind": TemporalValueKind.ATOMIC.value,
+            f"{field_name}_precision": TemporalPrecision.DAY.value,
+        }
+    )
