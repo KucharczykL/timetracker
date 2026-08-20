@@ -460,7 +460,7 @@ class Session(models.Model):
     class Meta:
         get_latest_by = "timestamp_start"
 
-    uuid = UUIDv7Field(unique=True, editable=False)
+    id = UUIDv7Field(primary_key=True, editable=False)
     game = models.ForeignKey(
         Game,
         on_delete=models.CASCADE,
@@ -630,7 +630,7 @@ class PlayEventQuerySet(models.QuerySet):
 class PlayEvent(models.Model):
     objects = PlayEventQuerySet.as_manager()
 
-    uuid = UUIDv7Field(unique=True, editable=False)
+    id = UUIDv7Field(primary_key=True, editable=False)
     game = models.ForeignKey(Game, related_name="playevents", on_delete=models.CASCADE)
     started = models.DateField(null=True, blank=True)
     ended = models.DateField(null=True, blank=True)
@@ -680,7 +680,7 @@ class GameStatusChange(models.Model):
 
     objects = GameStatusChangeQuerySet.as_manager()
 
-    uuid = UUIDv7Field(unique=True, editable=False)
+    id = UUIDv7Field(primary_key=True, editable=False)
     game = models.ForeignKey(
         Game, on_delete=models.CASCADE, related_name="status_changes"
     )

@@ -48,6 +48,16 @@ EXPECTED_RELATION_COLUMNS = {
     ("games_userpreferences", "user_id"),
 }
 
+EXPECTED_RESIDUAL_INTEGER_PRIMARY_KEYS = {
+    "games_purchase": "converted by ID-13 (#849)",
+    "games_device": "converted by ID-14 (#850)",
+    "games_filterpreset": "converted by ID-14 (#850)",
+    "games_purchase_games": "never converts: an auto-created through table keeps its own key",
+    "games_exchangerate": "never converts: not part of the UUID identity cutover",
+    "games_sitesetting": "never converts: not part of the UUID identity cutover",
+    "games_userpreferences": "never converts: not part of the UUID identity cutover",
+}
+
 
 @pytest.fixture
 def actual_types():
@@ -110,6 +120,10 @@ def test_residual_inventory_matches_the_pinned_constant(actual_types):
     assert report.violations == []
 
 
+def test_residual_integer_primary_key_inventory_drops_only_the_promoted_models():
+    assert RESIDUAL_INTEGER_PRIMARY_KEYS == EXPECTED_RESIDUAL_INTEGER_PRIMARY_KEYS
+
+
 def test_residual_inventory_reports_an_unexpected_integer_relation(actual_types):
     doctored = actual_types | {("games_session", "game_id"): "bigint"}
 
@@ -144,13 +158,13 @@ def test_residual_inventory_reports_a_converted_column_still_listed(
 def test_residual_inventory_reports_an_unowned_integer_primary_key(
     actual_types, monkeypatch
 ):
-    monkeypatch.delitem(RESIDUAL_INTEGER_PRIMARY_KEYS, "games_session")
+    monkeypatch.delitem(RESIDUAL_INTEGER_PRIMARY_KEYS, "games_purchase")
 
     report = check_residual_inventory(
         relation_columns(), actual_types, primary_key_types(actual_types)
     )
 
-    assert [violation.subject for violation in report.violations] == ["games_session"]
+    assert [violation.subject for violation in report.violations] == ["games_purchase"]
 
 
 def test_residual_inventory_notes_name_the_owning_slice(actual_types):
@@ -217,9 +231,9 @@ def test_identity_columns_are_clean_on_a_migrated_database(cursor):
 
 
 def test_identity_columns_report_a_dropped_not_null(cursor):
-    # PlayEvent, not Game: a promoted identity is the primary key, whose NOT
-    # NULL cannot be dropped at all.
-    cursor.execute("ALTER TABLE games_playevent ALTER COLUMN uuid DROP NOT NULL")
+    # Device remains unpromoted until ID-14, so its separate UUID identity can
+    # still have NOT NULL removed independently of its integer primary key.
+    cursor.execute("ALTER TABLE games_device ALTER COLUMN uuid DROP NOT NULL")
 
     report = check_identity_columns(cursor, identity_models())
 
@@ -229,7 +243,7 @@ def test_identity_columns_report_a_dropped_not_null(cursor):
 
 
 def test_identity_columns_report_a_dropped_unique_index(cursor):
-    """Uses PlayEvent because nothing references its uuid.
+    """Uses PlayEvent because nothing references its promoted identity.
 
     games_game.id cannot be used here: it is the primary key, and four foreign
     keys depend on its index - the same coupling that makes a RemoveField on a
@@ -239,7 +253,7 @@ def test_identity_columns_report_a_dropped_unique_index(cursor):
         """
         SELECT constraint_.conname FROM pg_constraint AS constraint_
         JOIN pg_class AS class ON class.oid = constraint_.conrelid
-        WHERE class.relname = 'games_playevent' AND constraint_.contype = 'u'
+        WHERE class.relname = 'games_playevent' AND constraint_.contype = 'p'
         """
     )
     for (name,) in cursor.fetchall():

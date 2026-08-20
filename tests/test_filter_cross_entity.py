@@ -49,7 +49,7 @@ def _single_library_filter_world(db, monkeypatch):
         monkeypatch.setattr(manager, "create", owned_create(manager.create))
 
 
-def _session_ids(filter_json: str) -> set[int]:
+def _session_ids(filter_json: str) -> set[UUID]:
     parsed = parse_session_filter(filter_json)
     assert parsed is not None
     return set(
