@@ -152,14 +152,12 @@ def test_save_private_game_rejects_a_foreign_private_platform(
     assert stored_release.platform_id is None
 
 
-def test_save_private_game_rejects_a_persisted_shared_game(
-    owned_library,
-):
-    """Ignoring the locked owner lets a shared Game become private."""
+def test_save_private_game_rejects_a_persisted_shared_game():
+    """Removing the null-owner guard lets the private writer mutate shared data."""
     game = Game.objects.create(name="Shared catalog game")
-    game.library = owned_library
+    game.name = "Rejected shared catalog game"
 
-    with pytest.raises(ValidationError, match="library owner"):
+    with pytest.raises(ValidationError, match="requires a library owner"):
         save_private_game(
             game=game,
             original_release_date=TemporalValue.from_year(1998),
@@ -169,6 +167,7 @@ def test_save_private_game_rejects_a_persisted_shared_game(
 
     stored_game = Game.objects.get(pk=game.pk)
     assert stored_game.library_id is None
+    assert stored_game.name == "Shared catalog game"
     assert stored_game.original_release_date is None
     assert not stored_game.editions.filter(is_default=True).exists()
 
