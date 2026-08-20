@@ -31,8 +31,8 @@ The following remain out of scope:
   copy migration rehearsal;
 - adding names, kinds, default markers, external references, uniqueness policy,
   archive/tombstone behavior, or private-to-shared redirects;
-- changing URLs, forms, filters, saved presets, APIs, statistics, Sessions,
-  Purchases, templates, TypeScript, or CSS; and
+- changing the user-visible URLs, forms, filter vocabulary, saved presets,
+  APIs, statistics, Sessions, Purchases, templates, TypeScript, or CSS; and
 - adding PlayerGame, catalog matching, IGDB ingestion, dedicated catalog UI,
   product relationships, or automatic merges.
 
@@ -81,6 +81,13 @@ flag because this issue introduces identity, not the later management/writer
 contract. Multiple Editions remain representable by distinct UUIDs without
 inventing premature uniqueness rules.
 
+This bare identity schema intentionally cannot distinguish a default Edition or
+Release once a Game has multiple children. #888 must close that contract before
+it creates graphs: it must either add an explicit default discriminator with an
+enforced uniqueness rule, or guarantee and lock an exact-one-Edition and
+exact-one-Release graph for every compatibility write. CAT-01 does not claim
+that UUID identity alone identifies a default.
+
 ### Release
 
 `Release` contains the identity, parent, optional Platform, and temporal value
@@ -96,7 +103,9 @@ release_date and its eight persisted generated projections
 `Release.id` uses the same `UUIDv7Field` contract. `edition` uses
 `on_delete=CASCADE` and `related_name="releases"`. `platform` uses
 `on_delete=SET_NULL`, `null=True`, `blank=True`, `default=None`, and
-`related_name="releases"`. `NULL` is a first-class explicitly unspecified
+`related_name="+"`. The suppressed reverse accessor prevents this passive
+child from entering Platform metadata-derived filter paths before a Release
+filter contract exists. `NULL` is a first-class explicitly unspecified
 Platform, not a value to infer from Game, Device, Edition, another Release, or
 its date. Deleting a Platform through Django preserves the Release and changes
 it to unspecified, matching the current legacy Game behavior. #653 may later
@@ -131,10 +140,25 @@ injects model fields or an abstract pseudo-field is not introduced: explicit
 declarations preserve ordinary Django migration state, inspection, generated-
 column dependencies, and the semantic field prefixes approved here.
 
+All eight stored generated projections use `serialize=False`. Django's fixture
+serializer therefore emits the canonical temporal scalar but not database-
+derived values that cannot be loaded directly. The seven nullable projections
+set `null=True` on both the `GeneratedField` wrapper and its output field; the
+generated `kind` projection is non-null in both migration state and the
+physical PostgreSQL schema.
+
 Migration `0018_catalog_hierarchy` depends on
 `0017_temporal_value_domain`. It adds the nine Game columns and creates the
 Edition and Release tables. The migration contains no `RunPython`, writes no
-existing values, mints no graph identities, and performs no reconciliation.
+canonical values, mints no graph identities, and performs no reconciliation.
+PostgreSQL must nevertheless compute each stored Game projection for every
+existing row and may take a strong table lock while adding it; this is a schema
+rewrite risk, not a logical backfill. `sqlmigrate` output is inspected before
+merge, and the catalog wave's production-copy rehearsal must measure the
+resulting lock/rewrite behavior before rollout. If the emitted statements imply
+unacceptable repeated rewrites, the migration is consolidated before the
+implementation PR merges rather than hidden behind a data migration. A
+material change to the approved migration strategy returns to the design gate.
 The dependency guarantees that a fresh PostgreSQL database creates the
 `temporal_value` domain and immutable projection functions before any consuming
 column or generated expression.
@@ -151,9 +175,18 @@ The migration is additive and the models are passive:
 - `GameForm` continues to list only legacy fields explicitly.
 - Game create/edit paths continue to write only the existing Game row.
 - A current Game write does not implicitly create an Edition or Release.
-- Existing Game uniqueness, ownership validation, URLs, serialization,
-  filtering, statistics, Session entry, and Purchase entry keep using legacy
-  fields and relations.
+- Existing Game uniqueness, ownership validation, URLs, user-visible filters,
+  statistics, Session entry, and Purchase entry keep using legacy fields and
+  relations.
+- The canonical `original_release_date` scalar is intentionally present in
+  Django fixture serialization as additive model state; all generated
+  projections are excluded. No user-facing API serializer changes.
+- The field-comparison registry explicitly ignores #655 temporal projection
+  expressions, preventing new generated columns from silently expanding Game
+  or relationship-derived filter choices. Release's Platform relation exposes
+  no reverse accessor for the same compatibility reason.
+- The UUID identity audit recognizes Edition and Release as UUIDv7 tables and
+  records that neither has an integer ordering source.
 - No signal, manager, queryset, service, admin registration, or API schema is
   added for Edition or Release.
 
@@ -183,9 +216,10 @@ that backup.
 
 **Add names, default flags, and uniqueness now.** Rejected because neither the
 issue nor an existing consumer defines their semantics. UUID identity and
-parentage are sufficient for #650 and #888 to create one default graph, while
-later multi-edition management can add user-visible metadata with an approved
-contract rather than inheriting guesses from this slice.
+parentage are sufficient for #650 to address rows, while #888 must define the
+default-selection invariant described above before it writes a compatibility
+graph. Later multi-edition management can add user-visible metadata with an
+approved contract rather than inheriting guesses from this slice.
 
 **Hide the temporal projections behind an abstract model or dynamic field
 injector.** Rejected by #655's explicit consumer contract. The repetition is
@@ -210,8 +244,12 @@ Focused model tests cover:
 - exact parent/related-name behavior;
 - cascade deletion from Game and Edition;
 - Platform `SET_NULL` behavior and explicit unspecified Platform;
-- Game original-release and Release year-precision/unknown round trips and all
-  generated projections; and
+- Game original-release and Release range/year/unknown round trips and all
+  generated projections;
+- fixture serialization of canonical values without generated projections;
+- unchanged metadata-derived Game, Session, Purchase, PlayEvent, and Platform
+  filter surfaces;
+- UUID identity-audit inclusion for both new tables; and
 - continued legacy Game writes without automatic hierarchy creation.
 
 Focused migration tests cover:
@@ -220,17 +258,24 @@ Focused migration tests cover:
 - unchanged legacy field values and exact Game UUID;
 - no Edition/Release backfill;
 - `uuid_v7`, `temporal_value`, generated-column, and foreign-key schema shape;
+- database-side UUIDv7 defaults when raw inserts omit both IDs;
+- exact physical nullability for every generated projection;
 - reverse migration back to `0017` while preserving the legacy Game; and
+- physical absence of both tables and all nine Game columns after reverse,
+  while the `uuid_v7` and `temporal_value` domains remain; and
 - restoration of the migration graph's leaf nodes in `finally` so xdist worker
   databases are never stranded behind head.
 
-Verification finishes with both focused files, `make check` using the
+Verification also inspects `sqlmigrate games 0018`, then finishes with all
+focused files, `make check` using the
 Makefile's default parallel worker configuration, `git diff --check`,
 `make check-migrations`, and a full diff/scope audit against this specification.
 
-Forecast: two closely coupled runtime subsystems (Django ORM and PostgreSQL
-schema), four implementation/test files (`games/models.py`, one migration, and
-two focused test files), 500–850 non-generated changed lines, and no generated
-frontend output. This remains below every re-slice threshold: it does not cross
-three independent runtime subsystems, 40 files, or 2,000 non-generated changed
-lines.
+Forecast: two closely coupled runtime subsystems (Django application/model
+metadata and PostgreSQL schema), six implementation/test files
+(`games/models.py`, `common/criteria.py`, one migration, two focused test files,
+and the UUID identity-audit test), 700–1,100 non-generated changed lines, and no
+generated frontend output. The `common.criteria` change is a compatibility
+exclusion, not a new filter feature. This remains below every re-slice
+threshold: it does not cross three independent runtime subsystems, 40 files, or
+2,000 non-generated changed lines.

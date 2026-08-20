@@ -4,7 +4,7 @@
 
 **Goal:** Add passive Game, Edition, and Release catalog identities and temporal release-date storage without changing current reads, writes, or legacy data.
 
-**Architecture:** Extend `Game` with #655's explicit temporal consumer columns, add a UUIDv7 `Edition` child of Game, and add a UUIDv7 `Release` child of Edition with an optional Platform and the same temporal consumer shape. Ship one additive schema migration with no data operation; model and migration tests prove identity, cardinality, temporal precision, delete behavior, passivity, fresh-schema shape, and reversibility.
+**Architecture:** Extend `Game` with #655's explicit temporal consumer columns, add a UUIDv7 `Edition` child of Game, and add a UUIDv7 `Release` child of Edition with an optional Platform and the same temporal consumer shape. Ship one additive schema migration with no explicit data migration, prevent the new schema from expanding metadata-derived filter and fixture surfaces, and prove identity, cardinality, temporal precision, delete behavior, passivity, fresh-schema shape, and reversibility.
 
 **Tech Stack:** Python 3.14, Django ORM/migrations, PostgreSQL 17, pytest-django, pytest-xdist, Make.
 
@@ -14,20 +14,39 @@
 
 - Treat issue #649, the overhaul charter, the catalog wave specification, and #655's temporal-value contract as authoritative.
 - Preserve `Game.id` exactly; do not alter or regenerate existing Game UUIDs.
-- Keep every legacy Game field and every current read/write surface unchanged.
-- Add no backfill, catalog writer, adapter, UI, API, filter, statistic, PlayerGame, matching, IGDB, product relation, merge, tombstone, redirect, or external-reference behavior.
+- Keep every legacy Game field and every current user-visible read/write surface unchanged.
+- Add no logical backfill, catalog writer, adapter, UI, API, filter feature, statistic, PlayerGame, matching, IGDB, product relation, merge, tombstone, redirect, or external-reference behavior.
 - `Edition` and `Release` use `UUIDv7Field` primary keys; Edition belongs to Game, Release belongs to Edition, and Release Platform is optional and explicit.
 - Declare all nine columns for each temporal fact explicitly; do not hide them behind a dynamic model-field injector.
+- Set `serialize=False` on all generated projections; canonical temporal scalars remain fixture-serializable.
+- Set wrapper-level `null=True` on all seven nullable projections and make generated `kind` physically and logically non-null.
+- Suppress the Platform reverse accessor and exclude temporal generated expressions from the existing comparison registry so current filter choices do not change.
+- Defer default-graph selection to #888; this slice does not imply that one of multiple UUID children is the default.
 - Use `make test` and `make check` with the Makefile's default `PYTEST_WORKERS`; never set normal verification to serial mode.
 - Stop and re-slice before approval if actual scope crosses three independent runtime subsystems, 40 files, or 2,000 non-generated changed lines.
 
 ## File structure
 
 - Modify `games/models.py`: define Game original-release temporal fields and the Edition/Release models.
+- Modify `common/criteria.py`: exclude #655 generated projections from metadata-derived comparison choices.
 - Create `games/migrations/0018_catalog_hierarchy.py`: additive schema only, depending on `0017_temporal_value_domain`.
-- Create `tests/test_catalog_hierarchy.py`: current-model identity, cardinality, dates, delete behavior, and legacy-write passivity.
+- Create `tests/test_catalog_hierarchy.py`: current-model identity, cardinality, dates, serialization, filter compatibility, delete behavior, and legacy-write passivity.
 - Create `tests/test_catalog_hierarchy_migration.py`: forward/reverse migration and PostgreSQL schema contract.
-- Remove this plan and its paired issue design only after implementation and verification are complete; the approved gate remains in branch history.
+- Modify `tests/test_uuid_identity_audit.py`: include the new UUIDv7 tables with no integer ordering source.
+- Remove this plan and its paired issue design only after implementation and verification are complete; preserve the planning and review commits in the pushed PR range/review record, noting that a squash merge need not retain them in target-branch history.
+
+## Planning gate checkpoint
+
+Before runtime implementation, commit the adversarially reviewed versions of
+this plan and its paired design:
+
+```bash
+git add docs/superpowers/specs/2026-08-20-issue-649-catalog-identities-design.md docs/superpowers/plans/2026-08-20-issue-649-catalog-identities.md
+git commit -m "docs: harden catalog identity plan after review"
+```
+
+Then stop for explicit user approval. No Task 1 step may start before that
+approval.
 
 ---
 
@@ -35,17 +54,20 @@
 
 **Files:**
 - Modify: `games/models.py`
+- Modify: `common/criteria.py`
 - Create: `games/migrations/0018_catalog_hierarchy.py`
 - Create: `tests/test_catalog_hierarchy.py`
 - Create: `tests/test_catalog_hierarchy_migration.py`
+- Modify: `tests/test_uuid_identity_audit.py`
 
 **Interfaces:**
 - Consumes: `UUIDv7Field` from `timetracker.uuidv7` and the nine #655 field/expression types from `timetracker.temporal`.
 - Produces: `Game.original_release_date` plus its eight generated projections.
 - Produces: `Edition(id: UUIDv7, game: Game)` with reverse accessor `Game.editions` and Django cascade deletion.
-- Produces: `Release(id: UUIDv7, edition: Edition, platform: Platform | None, release_date: TemporalValue | None)` with reverse accessors `Edition.releases` and `Platform.releases`, Edition cascade deletion, and Platform `SET_NULL` deletion.
+- Produces: `Release(id: UUIDv7, edition: Edition, platform: Platform | None, release_date: TemporalValue | None)` with reverse accessor `Edition.releases`, no Platform reverse accessor, Edition cascade deletion, and Platform `SET_NULL` deletion.
 - Produces: `Release.release_date` plus its eight generated projections.
-- Produces: migration node `("games", "0018_catalog_hierarchy")`, with no data operation.
+- Produces: migration node `("games", "0018_catalog_hierarchy")`, with no explicit data operation and final non-null `kind` projections.
+- Preserves: the existing comparison-field vocabulary and fixture loadability.
 
 - [ ] **Step 1: Write failing current-model tests.**
 
@@ -54,13 +76,25 @@ and `Release` from `games.models`, `GameForm` from `games.forms`, and
 `TemporalValue` from `timetracker.temporal`. Add these exact behavioral cases:
 
 ```python
+import json
 import uuid
 from datetime import date
 
 import pytest
+from django.core import serializers
+from django.db import models
 
+from common.criteria import FilterError, _comparison_group_for, comparable_columns
 from games.forms import GameForm
-from games.models import Edition, Game, Platform, Release
+from games.models import (
+    Edition,
+    Game,
+    Platform,
+    PlayEvent,
+    Purchase,
+    Release,
+    Session,
+)
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db
@@ -86,18 +120,18 @@ def test_catalog_hierarchy_preserves_game_identity_and_allows_multiplicity(
     assert {row.pk.version for row in (standard, deluxe, *standard_releases, deluxe_release)} == {7}
 
 
-def test_game_and_release_temporal_values_preserve_year_and_unknown(
+def test_game_and_release_temporal_values_preserve_ranges_and_unknown(
     owned_library,
 ):
     game = Game.objects.create(
         library=owned_library,
         name="Year Game",
-        original_release_date=TemporalValue.from_year(1987),
+        original_release_date=TemporalValue.parse("1987/1989-03"),
     )
     edition = Edition.objects.create(game=game)
     known = Release.objects.create(
         edition=edition,
-        release_date=TemporalValue.from_year(1998),
+        release_date=TemporalValue.parse("1998-04/2000"),
     )
     unknown = Release.objects.create(edition=edition, release_date=None)
 
@@ -105,14 +139,27 @@ def test_game_and_release_temporal_values_preserve_year_and_unknown(
     known.refresh_from_db()
     unknown.refresh_from_db()
 
-    assert game.original_release_date == TemporalValue.from_year(1987)
+    assert game.original_release_date == TemporalValue.parse("1987/1989-03")
     assert (
         game.original_release_date_lower,
         game.original_release_date_upper,
         game.original_release_date_kind,
         game.original_release_date_precision,
-    ) == (date(1987, 1, 1), date(1987, 12, 31), "atomic", "year")
-    assert known.release_date == TemporalValue.from_year(1998)
+        game.original_release_date_start_kind,
+        game.original_release_date_end_kind,
+        game.original_release_date_start_precision,
+        game.original_release_date_end_precision,
+    ) == (
+        date(1987, 1, 1),
+        date(1989, 3, 31),
+        "range",
+        None,
+        "known",
+        "known",
+        "year",
+        "month",
+    )
+    assert known.release_date == TemporalValue.parse("1998-04/2000")
     assert (
         known.release_date_lower,
         known.release_date_upper,
@@ -123,20 +170,51 @@ def test_game_and_release_temporal_values_preserve_year_and_unknown(
         known.release_date_start_precision,
         known.release_date_end_precision,
     ) == (
-        date(1998, 1, 1),
-        date(1998, 12, 31),
-        "atomic",
+        date(1998, 4, 1),
+        date(2000, 12, 31),
+        "range",
+        None,
+        "known",
+        "known",
+        "month",
         "year",
-        None,
-        None,
-        None,
-        None,
     )
     assert unknown.release_date is None
     assert unknown.release_date_lower is None
     assert unknown.release_date_upper is None
     assert unknown.release_date_kind == "unknown"
     assert unknown.release_date_precision is None
+    assert unknown.release_date_start_kind is None
+    assert unknown.release_date_end_kind is None
+    assert unknown.release_date_start_precision is None
+    assert unknown.release_date_end_precision is None
+
+
+def test_game_and_release_preserve_year_precision(owned_library):
+    game = Game.objects.create(
+        library=owned_library,
+        name="Year Game",
+        original_release_date=TemporalValue.from_year(1987),
+    )
+    release = Release.objects.create(
+        edition=Edition.objects.create(game=game),
+        release_date=TemporalValue.from_year(1998),
+    )
+    game.refresh_from_db()
+    release.refresh_from_db()
+
+    assert (
+        game.original_release_date_lower,
+        game.original_release_date_upper,
+        game.original_release_date_kind,
+        game.original_release_date_precision,
+    ) == (date(1987, 1, 1), date(1987, 12, 31), "atomic", "year")
+    assert (
+        release.release_date_lower,
+        release.release_date_upper,
+        release.release_date_kind,
+        release.release_date_precision,
+    ) == (date(1998, 1, 1), date(1998, 12, 31), "atomic", "year")
 
 
 def test_catalog_hierarchy_delete_behavior_is_explicit(owned_library):
@@ -157,9 +235,11 @@ def test_catalog_hierarchy_delete_behavior_is_explicit(owned_library):
 
     second_edition = Edition.objects.create(game=game)
     second_release = Release.objects.create(edition=second_edition)
+    second_edition_id = second_edition.pk
+    second_release_id = second_release.pk
     game.delete()
-    assert not Edition.objects.filter(pk=second_edition.pk).exists()
-    assert not Release.objects.filter(pk=second_release.pk).exists()
+    assert not Edition.objects.filter(pk=second_edition_id).exists()
+    assert not Release.objects.filter(pk=second_release_id).exists()
 
 
 def test_legacy_game_form_remains_authoritative_and_creates_no_graph(
@@ -210,9 +290,78 @@ def test_catalog_hierarchy_ownership_and_delete_metadata_are_explicit():
     assert edition_field.remote_field.on_delete is models.CASCADE
     assert platform_field.null is True
     assert platform_field.remote_field.on_delete is models.SET_NULL
+    assert platform_field.remote_field.related_name == "+"
 ```
 
-Add `from django.db import models` to the test imports for these assertions.
+Add serialization and metadata-registry compatibility tests. The canonical
+field is additive fixture state, but no generated projection may be serialized;
+no comparison choice reachable from current models may mention either new
+temporal prefix, and a crafted projection operand must be rejected:
+
+```python
+def test_generated_temporal_projections_are_not_fixture_serialized(owned_library):
+    game = Game.objects.create(
+        library=owned_library,
+        name="Serialized Game",
+        original_release_date=TemporalValue.from_year(1998),
+    )
+    release = Release.objects.create(
+        edition=Edition.objects.create(game=game),
+        release_date=TemporalValue.from_year(1999),
+    )
+    game_payload, release_payload = [
+        row["fields"]
+        for row in json.loads(serializers.serialize("json", [game, release]))
+    ]
+
+    assert game_payload["original_release_date"] == "1998"
+    assert not any(
+        name.startswith("original_release_date_") for name in game_payload
+    )
+    assert release_payload["release_date"] == "1999"
+    assert not any(name.startswith("release_date_") for name in release_payload)
+
+
+@pytest.mark.parametrize("model", [Game, Session, Purchase, PlayEvent, Platform])
+def test_temporal_schema_does_not_expand_comparison_choices(model):
+    values = {column["value"] for column in comparable_columns(model)}
+    assert not any(
+        "original_release_date" in value or "release_date" in value
+        for value in values
+    )
+
+    with pytest.raises(FilterError):
+        _comparison_group_for(Game, "original_release_date_lower")
+```
+
+Also assert `Platform._meta` exposes no auto-created relation whose
+`related_model` is `Release`. The tests deliberately cover both direct Game
+columns and Game columns reached through current Session/Purchase/PlayEvent
+relations.
+
+Modify `tests/test_uuid_identity_audit.py` as part of the red phase. Add
+`"games_edition"` and `"games_release"` to
+`EXPECTED_IDENTITY_TABLES`, then extend the ordering-source test:
+
+```python
+    assert sources["games_edition"] is None
+    assert sources["games_release"] is None
+```
+
+This pins automatic audit discovery without changing the audit runtime and is
+expected to fail until the models and migration exist.
+
+Also add these automatically discovered UUID relation columns to
+`EXPECTED_RELATION_COLUMNS`:
+
+```python
+    ("games_edition", "game_id"),
+    ("games_release", "edition_id"),
+    ("games_release", "platform_id"),
+```
+
+The existing type-agreement test then proves all three relations use the same
+`uuid_v7` domain as their targets.
 
 - [ ] **Step 2: Write failing migration/schema tests.**
 
@@ -281,13 +430,14 @@ class ColumnMetadata(NamedTuple):
     domain_name: str | None
     is_generated: str
     is_nullable: str
+    generation_expression: str | None
 
 
 def column_metadata(table_name: str, column_name: str) -> ColumnMetadata:
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            SELECT domain_name, is_generated, is_nullable
+            SELECT domain_name, is_generated, is_nullable, generation_expression
             FROM information_schema.columns
             WHERE table_name = %s AND column_name = %s
             """,
@@ -357,23 +507,51 @@ def test_hierarchy_schema_uses_uuidv7_temporal_and_generated_columns(
         ("games_game", "original_release_date"),
         ("games_release", "release_date"),
     ):
-        for suffix in (
-            "lower",
-            "upper",
-            "kind",
-            "precision",
-            "start_kind",
-            "end_kind",
-            "start_precision",
-            "end_precision",
-        ):
-            assert column_metadata(table, f"{prefix}_{suffix}").is_generated == "ALWAYS"
+        expected_functions = {
+            "lower": "timetracker_temporal_lower",
+            "upper": "timetracker_temporal_upper",
+            "kind": "timetracker_temporal_kind",
+            "precision": "timetracker_temporal_precision",
+            "start_kind": "timetracker_temporal_start_kind",
+            "end_kind": "timetracker_temporal_end_kind",
+            "start_precision": "timetracker_temporal_start_precision",
+            "end_precision": "timetracker_temporal_end_precision",
+        }
+        for suffix, function_name in expected_functions.items():
+            metadata = column_metadata(table, f"{prefix}_{suffix}")
+            assert metadata.is_generated == "ALWAYS"
+            generation_expression = metadata.generation_expression
+            assert generation_expression is not None
+            assert function_name in generation_expression
+            assert metadata.is_nullable == ("NO" if suffix == "kind" else "YES")
     assert foreign_key_targets("games_edition")["game_id"] == ("games_game", "id")
     assert foreign_key_targets("games_release")["edition_id"] == ("games_edition", "id")
     assert foreign_key_targets("games_release")["platform_id"] == ("games_platform", "id")
     assert column_metadata("games_edition", "game_id").is_nullable == "NO"
     assert column_metadata("games_release", "edition_id").is_nullable == "NO"
     assert column_metadata("games_release", "platform_id").is_nullable == "YES"
+
+
+def test_database_defaults_generate_uuidv7_for_raw_hierarchy_inserts(
+    hierarchy_harness,
+):
+    game_id, _ = seed_legacy_game(hierarchy_harness)
+    migrate_to_hierarchy()
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO games_edition (game_id) VALUES (%s) RETURNING id",
+            [game_id],
+        )
+        edition_id = cursor.fetchone()[0]
+        cursor.execute(
+            "INSERT INTO games_release (edition_id, release_date) "
+            "VALUES (%s, NULL) RETURNING id",
+            [edition_id],
+        )
+        release_id = cursor.fetchone()[0]
+
+    assert edition_id.version == 7
+    assert release_id.version == 7
 
 
 def test_reverse_migration_preserves_the_legacy_game(hierarchy_harness):
@@ -391,23 +569,45 @@ def test_reverse_migration_preserves_the_legacy_game(hierarchy_harness):
     assert "original_release_date" not in {
         field.name for field in Game._meta.get_fields()
     }
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT to_regclass('games_edition'), to_regclass('games_release')"
+        )
+        assert cursor.fetchone() == (None, None)
+        cursor.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = 'games_game' "
+            "AND column_name LIKE 'original_release_date%'"
+        )
+        assert cursor.fetchall() == []
+        cursor.execute(
+            "SELECT typname FROM pg_type "
+            "WHERE typname IN ('uuid_v7', 'temporal_value')"
+        )
+        assert {row[0] for row in cursor.fetchall()} == {
+            "uuid_v7",
+            "temporal_value",
+        }
 ```
 
 Do not assert PostgreSQL `ON DELETE` clauses: Django owns these `on_delete`
 semantics in its collector, and Step 1 exercises the actual model behavior.
 
-- [ ] **Step 3: Run both files and verify the expected red state.**
+- [ ] **Step 3: Run the focused files and verify the expected red state.**
 
-Run each file independently so both missing-contract failures are observed:
+Run each file independently so all missing-contract failures are observed:
 
 ```bash
 make test ARGS="tests/test_catalog_hierarchy.py -q"
 make test ARGS="tests/test_catalog_hierarchy_migration.py -q"
+make test ARGS="tests/test_uuid_identity_audit.py -q"
 ```
 
 Expected: the current-model file fails collection because `Edition` and
 `Release` do not exist; the migration file fails because the migration graph
-has no `0018_catalog_hierarchy` node. Keep the Makefile's default worker count.
+has no `0018_catalog_hierarchy` node; the identity audit fails because the two
+expected UUID carriers do not yet exist. Keep the Makefile's default worker
+count.
 
 - [ ] **Step 4: Add the exact model declarations.**
 
@@ -434,48 +634,63 @@ Add this explicit block to `Game` next to the two legacy year fields:
     original_release_date_lower = models.GeneratedField(
         expression=TemporalLowerBound("original_release_date"),
         output_field=models.DateField(null=True),
+        null=True,
+        serialize=False,
         db_persist=True,
         editable=False,
     )
     original_release_date_upper = models.GeneratedField(
         expression=TemporalUpperBound("original_release_date"),
         output_field=models.DateField(null=True),
+        null=True,
+        serialize=False,
         db_persist=True,
         editable=False,
     )
     original_release_date_kind = models.GeneratedField(
         expression=TemporalKind("original_release_date"),
         output_field=models.CharField(max_length=7),
+        serialize=False,
         db_persist=True,
         editable=False,
     )
     original_release_date_precision = models.GeneratedField(
         expression=TemporalPrecisionValue("original_release_date"),
         output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
         db_persist=True,
         editable=False,
     )
     original_release_date_start_kind = models.GeneratedField(
         expression=TemporalStartKind("original_release_date"),
         output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
         db_persist=True,
         editable=False,
     )
     original_release_date_end_kind = models.GeneratedField(
         expression=TemporalEndKind("original_release_date"),
         output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
         db_persist=True,
         editable=False,
     )
     original_release_date_start_precision = models.GeneratedField(
         expression=TemporalStartPrecision("original_release_date"),
         output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
         db_persist=True,
         editable=False,
     )
     original_release_date_end_precision = models.GeneratedField(
         expression=TemporalEndPrecision("original_release_date"),
         output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
         db_persist=True,
         editable=False,
     )
@@ -508,58 +723,119 @@ class Release(models.Model):
         null=True,
         blank=True,
         default=None,
-        related_name="releases",
+        related_name="+",
     )
     release_date = TemporalValueField()
     release_date_lower = models.GeneratedField(
         expression=TemporalLowerBound("release_date"),
         output_field=models.DateField(null=True),
+        null=True,
+        serialize=False,
         db_persist=True,
         editable=False,
     )
     release_date_upper = models.GeneratedField(
         expression=TemporalUpperBound("release_date"),
         output_field=models.DateField(null=True),
+        null=True,
+        serialize=False,
         db_persist=True,
         editable=False,
     )
     release_date_kind = models.GeneratedField(
         expression=TemporalKind("release_date"),
         output_field=models.CharField(max_length=7),
+        serialize=False,
         db_persist=True,
         editable=False,
     )
     release_date_precision = models.GeneratedField(
         expression=TemporalPrecisionValue("release_date"),
         output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
         db_persist=True,
         editable=False,
     )
     release_date_start_kind = models.GeneratedField(
         expression=TemporalStartKind("release_date"),
         output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
         db_persist=True,
         editable=False,
     )
     release_date_end_kind = models.GeneratedField(
         expression=TemporalEndKind("release_date"),
         output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
         db_persist=True,
         editable=False,
     )
     release_date_start_precision = models.GeneratedField(
         expression=TemporalStartPrecision("release_date"),
         output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
         db_persist=True,
         editable=False,
     )
     release_date_end_precision = models.GeneratedField(
         expression=TemporalEndPrecision("release_date"),
         output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
         db_persist=True,
         editable=False,
     )
 ```
+
+In `common/criteria.py`, import the eight projection expression classes and
+group them in a private tuple:
+
+```python
+from timetracker.temporal import (
+    TemporalEndKind,
+    TemporalEndPrecision,
+    TemporalKind,
+    TemporalLowerBound,
+    TemporalPrecisionValue,
+    TemporalStartKind,
+    TemporalStartPrecision,
+    TemporalUpperBound,
+)
+
+_TEMPORAL_PROJECTION_EXPRESSIONS = (
+    TemporalLowerBound,
+    TemporalUpperBound,
+    TemporalKind,
+    TemporalPrecisionValue,
+    TemporalStartKind,
+    TemporalEndKind,
+    TemporalStartPrecision,
+    TemporalEndPrecision,
+)
+```
+
+At the start of `_maybe_group_for()`, after resolving the field and rejecting
+relations, make these projections non-comparable:
+
+```python
+    if isinstance(model_field, models.GeneratedField) and isinstance(
+        model_field.expression, _TEMPORAL_PROJECTION_EXPRESSIONS
+    ):
+        return None
+```
+
+This is expression-type based rather than prefix based, so later #655 consumers
+inherit the same exclusion without hiding unrelated generated fields. Do not
+alter any existing comparison groups or operator behavior.
+
+Update `_maybe_group_for()` and `comparable_columns()` docstrings so they state
+that generated fields with unresolved output types **and** #655 temporal
+projection expressions are excluded. Do not leave documentation claiming the
+unresolved-output case is the only GeneratedField exclusion.
 
 Do not add `__str__`, managers, validation, names, timestamps, default flags,
 unique constraints, signals, services, forms, APIs, or admin registrations.
@@ -577,23 +853,45 @@ not naturally emit that exact name. Inspect the file and require all of these
 facts:
 
 - dependency is exactly `("games", "0017_temporal_value_domain")`;
-- operations only create Edition/Release and add the nine Game fields;
+- operations create Edition/Release, add the nine Game fields, and finish with
+  exactly two `AlterField` operations for generated-kind nullability;
 - Edition and Release IDs deconstruct as `UUIDv7Field` primary keys;
 - all generated expressions use the semantic field prefix they project;
 - all three foreign keys point at the approved models and carry the approved
   `on_delete` behavior; and
-- there is no `RunPython`, data loop, backfill, legacy-field alteration, index,
-  constraint, or unrelated model change.
+- every generated projection deconstructs with `serialize=False`, and the seven
+  nullable projections also carry wrapper-level `null=True`; and
+- there is no `RunPython`, data loop, logical backfill, legacy-field alteration,
+  index, uniqueness/check constraint, or unrelated model change.
+
+Django's initial PostgreSQL DDL for a stored generated column does not emit a
+null clause. Hand-edit the migration so each `kind` projection is first created
+with `null=True`, after which the migration has an `AlterField` to the final
+`null=False` declaration. Do this for both `Game.original_release_date_kind`
+and `Release.release_date_kind`. The final migration state must exactly match
+the model; the explicit alter is required to produce physical `NOT NULL`.
+
+Inspect the emitted SQL before testing:
+
+```bash
+direnv exec . uv run --frozen python manage.py sqlmigrate games 0018
+```
+
+Confirm the SQL consumes but does not recreate the existing domains, adds
+stored generated expressions using the intended source columns, and emits
+`SET NOT NULL` for both kind columns. Record whether the nine additions to
+populated `games_game` are separate table-altering statements for the
+production-copy rehearsal handoff.
 
 - [ ] **Step 6: Run focused tests and repair only contract failures.**
 
 Run:
 
 ```bash
-make test ARGS="tests/test_catalog_hierarchy.py tests/test_catalog_hierarchy_migration.py -q"
+make test ARGS="tests/test_catalog_hierarchy.py tests/test_catalog_hierarchy_migration.py tests/test_uuid_identity_audit.py -q"
 ```
 
-Expected: both files pass with the Makefile's default parallel workers. If the
+Expected: all three files pass with the Makefile's default parallel workers. If the
 migration test exposes a mismatch between model state and physical PostgreSQL
 schema, correct the declaration/migration rather than weakening the assertion.
 
@@ -610,7 +908,7 @@ Expected: `No changes detected` and exit status 0.
 - [ ] **Step 8: Commit the implementation slice.**
 
 ```bash
-git add games/models.py games/migrations/0018_catalog_hierarchy.py tests/test_catalog_hierarchy.py tests/test_catalog_hierarchy_migration.py
+git add common/criteria.py games/models.py games/migrations/0018_catalog_hierarchy.py tests/test_catalog_hierarchy.py tests/test_catalog_hierarchy_migration.py tests/test_uuid_identity_audit.py
 git commit -m "feat: introduce catalog hierarchy identities"
 ```
 
@@ -631,7 +929,7 @@ git commit -m "feat: introduce catalog hierarchy identities"
 - [ ] **Step 1: Re-run the focused gate with default workers.**
 
 ```bash
-make test ARGS="tests/test_catalog_hierarchy.py tests/test_catalog_hierarchy_migration.py -q"
+make test ARGS="tests/test_catalog_hierarchy.py tests/test_catalog_hierarchy_migration.py tests/test_uuid_identity_audit.py -q"
 ```
 
 Record the final exit status and worker count from the Make/pytest output.
@@ -651,14 +949,19 @@ gate.
 
 ```bash
 make check-migrations
+direnv exec . uv run --frozen python manage.py sqlmigrate games 0018
 git diff --check origin/codex/catalog-wave...HEAD
 git diff --stat origin/codex/catalog-wave...HEAD
 git diff origin/codex/catalog-wave...HEAD
 ```
 
-Require no drift or whitespace errors. Review every changed line against the
+Require no drift or whitespace errors. Reconfirm the SQL evidence recorded in
+Task 1, including both `SET NOT NULL` statements and the populated-Game
+lock/rewrite rehearsal handoff. Review every changed line against the
 specification. Confirm there are no changes to current forms, views, URLs,
-filters, APIs, statistics, templates, TypeScript, CSS, legacy fields, or data.
+filter vocabulary, APIs, statistics, templates, TypeScript, CSS, legacy fields,
+or canonical data. The only filter-runtime diff must be the projection
+exclusion required to preserve that vocabulary.
 
 - [ ] **Step 4: Reconcile actual complexity with the planning gate.**
 
@@ -711,7 +1014,8 @@ Closes #649
 - focused hierarchy tests pass with the Makefile's default workers
 - `make check` passes with the Makefile's default workers
 - `make check-migrations` reports no model/migration drift
-- actual scope is reported against the forecast of four implementation/test files and 500–850 non-generated changed lines
+- `sqlmigrate games 0018` confirms generated expressions and physical kind nullability
+- actual scope is reported against the forecast of six implementation/test files and 700–1,100 non-generated changed lines
 ```
 
 Expand each Verification bullet with its recorded numeric output before calling
@@ -730,17 +1034,24 @@ is the issue branch, it links #649, and the verification evidence is exact.
 ## Plan self-review
 
 - **Specification coverage:** additive identities and cardinality are Task 1
-  Steps 1/4/5; UUIDv7 is Steps 1/4/5; temporal year/unknown preservation is
-  Steps 1/4; explicit relation/delete behavior is Steps 1/4/5; additive fresh
-  PostgreSQL migration and reverse safety are Steps 2/5/6; unchanged current
-  behavior is Step 1 plus Task 2's full gate; default-worker verification and
-  PR delivery are Task 2.
+  Steps 1/4/5; Python and database UUIDv7 defaults are Steps 1/2/4/5; temporal
+  range/year/unknown preservation and serialization are Steps 1/4; explicit
+  relation/delete behavior is Steps 1/4/5; physical nullability, additive fresh
+  PostgreSQL migration, SQL inspection, and reverse safety are Steps 2/5/6;
+  unchanged current filter and write behavior is Step 1 plus Task 2's full gate;
+  default-worker verification and PR delivery are Task 2.
 - **Boundary coverage:** no backfill or graph writer appears in an implementation
-  step; no surface outside models/migration/focused tests is modified; planning
-  cleanup occurs only after green evidence.
+  step; the only runtime compatibility edit outside models/migration is the
+  expression-type exclusion in `common.criteria`; planning cleanup occurs only
+  after green evidence, with its commits retained in the pushed PR range.
 - **Type consistency:** both temporal prefixes expose the same nine #655 field
   types; Edition/Game and Release/Edition are non-null; Release/Platform is
-  nullable; every identity is UUIDv7.
+  nullable; nullable projections agree in Django state and PostgreSQL; kind is
+  non-null in both; every identity is UUIDv7.
+- **Adversarial-review closure:** default selection is explicitly handed to
+  #888; fixture projections cannot be dumped; physical reverse checks and raw
+  database defaults are tested; range cases distinguish every endpoint
+  projection; and SQL inspection makes generated-column rewrite risk visible.
 - **Completeness scan:** every implementation step names exact fields,
   relations, tests, commands, and expected outcomes. Future PR evidence is
   required to come from the recorded final command output rather than being
