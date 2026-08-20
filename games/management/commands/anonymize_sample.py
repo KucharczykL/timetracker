@@ -20,7 +20,7 @@ from games.models import (
     Purchase,
     Session,
 )
-from timetracker.uuidv7 import uuid7_at
+from timetracker.uuidv7 import UUIDv7Field, uuid7_at
 
 # DB-computed columns: the serializer emits them, loaddata discards them.
 # Stripped to keep the fixture clean.
@@ -208,21 +208,11 @@ class Command(BaseCommand):
             game_id: timedelta(days=random.randint(-JITTER_DAYS, JITTER_DAYS))
             for game_id in all_game_ids
         }
-        # Session.game, PlayEvent.game and Purchase.related_game resolve through
-        # Game.uuid rather than Game.pk, so their rows need both the per-game
-        # offsets and the reassignment targets looked up by the other identity.
-        games_by_pk = {
-            game.pk: game
-            for game in Game.objects.filter(pk__in=all_game_ids).only("pk", "uuid")
-        }
-        game_offsets_by_uuid = {
-            game.uuid: game_offsets[pk] for pk, game in games_by_pk.items()
-        }
 
         sessions = list(Session.objects.order_by("pk"))
         for session in sessions:
             if session.game_id is not None:
-                offset = game_offsets_by_uuid[session.game_id]
+                offset = game_offsets[session.game_id]
             else:
                 offset = timedelta(days=random.randint(-JITTER_DAYS, JITTER_DAYS))
             session.timestamp_start += offset
@@ -238,7 +228,7 @@ class Command(BaseCommand):
 
         playevents = list(PlayEvent.objects.order_by("pk"))
         for event in playevents:
-            offset = game_offsets_by_uuid[event.game_id]
+            offset = game_offsets[event.game_id]
             if event.started is not None:
                 event.started += offset
             if event.ended is not None:
@@ -267,7 +257,7 @@ class Command(BaseCommand):
             purchase.needs_price_update = False
             purchase.name = ""
             if purchase.type != Purchase.GAME:
-                purchase.related_game_id = games_by_pk[random.choice(all_game_ids)].uuid
+                purchase.related_game_id = random.choice(all_game_ids)
             count = random.randint(1, min(MAX_GAMES_PER_PURCHASE, len(all_game_ids)))
             chosen = random.sample(all_game_ids, count)
             through_rows.extend(
@@ -335,12 +325,24 @@ class Command(BaseCommand):
             self._remap_referrers(model, self._resequence_identity(model))
 
     @staticmethod
-    def _resequence_identity(model):
+    def _identity_field_name(model) -> str:
+        """The name of the UUIDv7 column this command re-derives for `model`.
+
+        `id` once the model's identity has been promoted to its primary key,
+        `uuid` while it is still a secondary column. Resolving it per model —
+        rather than spelling "uuid" — is what lets one code path serve both
+        sides of the identity cutover.
+        """
+        return "id" if isinstance(model._meta.pk, UUIDv7Field) else "uuid"
+
+    @classmethod
+    def _resequence_identity(cls, model):
         """Assign uuids encoding `created_at`, ordered and sequenced like 0005.
 
         Entropy comes from the seeded RNG rather than `secrets`, which is what
         keeps the output byte-identical for a given --seed.
         """
+        identity = cls._identity_field_name(model)
         rows = list(model.objects.order_by("created_at", "pk"))
         replacements = {}
         previous_ms = None
@@ -354,24 +356,49 @@ class Command(BaseCommand):
                 sequence=sequence,
                 entropy=random.getrandbits(_RAND_B_BITS),
             )
-            replacements[row.uuid] = replacement
-            row.uuid = replacement
-        model.objects.bulk_update(rows, ["uuid"], batch_size=1000)
+            replacements[getattr(row, identity)] = replacement
+        # One UPDATE per row rather than bulk_update: the latter refuses a
+        # primary-key field outright, which is what `identity` is for a promoted
+        # model. A queryset update writes either.
+        for original, replacement in replacements.items():
+            model.objects.filter(**{identity: original}).update(
+                **{identity: replacement}
+            )
         return replacements
 
     @staticmethod
-    def _remap_referrers(model, replacements):
-        """Point every foreign key naming this model's uuid at the new value.
+    def _through_field_targeting(relation, model):
+        """The through model's own foreign key back to `model`."""
+        through = getattr(relation, "through", None) or relation.remote_field.through
+        return next(
+            field
+            for field in through._meta.get_fields()
+            if field.is_relation and field.concrete and field.related_model is model
+        )
+
+    @classmethod
+    def _remap_referrers(cls, model, replacements):
+        """Point every foreign key naming this model's identity at the new value.
 
         `get_fields(include_hidden=True)`, not `related_objects`: the latter
         drops relations whose `related_name` ends in "+", which would silently
         strand `UserLibraryPreferences.default_device`.
+
+        Many-to-many relations are walked too, via their through model's own
+        foreign key. Whether a relation needs remapping is decided by what it
+        targets, never by its kind: an auto-created through references the
+        target's primary key, so `Purchase.games` is inert while the identity is
+        a secondary column and live once it is the primary key.
         """
+        identity = cls._identity_field_name(model)
         for relation in model._meta.get_fields(include_hidden=True):
-            if not relation.is_relation or relation.concrete or relation.many_to_many:
+            if not relation.is_relation or relation.concrete:
                 continue
-            field = relation.field
-            if field.target_field.name != "uuid":
+            if relation.many_to_many:
+                field = cls._through_field_targeting(relation, model)
+            else:
+                field = relation.field
+            if field.target_field.name != identity:
                 continue
             children = list(
                 field.model._base_manager.exclude(**{f"{field.attname}__isnull": True})

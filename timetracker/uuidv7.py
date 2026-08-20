@@ -1,10 +1,12 @@
 import secrets
 import uuid
 from datetime import UTC, datetime
+from typing import Annotated
 
 from django.core.exceptions import ValidationError
 from django.db import NotSupportedError, models
 from django.urls.converters import UUIDConverter
+from pydantic import AfterValidator
 
 INVALID_UUID_CODE = "invalid_uuid"
 INVALID_UUID_VERSION_CODE = "invalid_uuid_version"
@@ -99,6 +101,9 @@ def parse_uuidv7(value: str | uuid.UUID) -> uuid.UUID:
             code=INVALID_UUID_VERSION_CODE,
         )
     return parsed
+
+
+UUIDv7 = Annotated[uuid.UUID, AfterValidator(parse_uuidv7)]
 
 
 def _parse_for_django(value: str | uuid.UUID) -> uuid.UUID:

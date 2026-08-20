@@ -1,4 +1,5 @@
 from typing import cast
+from uuid import UUID
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
@@ -137,7 +138,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def delete_platform(request: HttpRequest, platform_id: int) -> HttpResponse:
+def delete_platform(request: HttpRequest, platform_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     platform = owned_or_404(
         Platform.objects.for_library(library), library, id=platform_id
@@ -158,7 +159,7 @@ def delete_platform(request: HttpRequest, platform_id: int) -> HttpResponse:
 
 
 @login_required
-def edit_platform(request: HttpRequest, platform_id: int) -> HttpResponse:
+def edit_platform(request: HttpRequest, platform_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     platform = owned_or_404(
         Platform.objects.for_library(library), library, id=platform_id

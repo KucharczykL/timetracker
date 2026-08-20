@@ -14,6 +14,7 @@ parent's n-ary ``AND`` list. This module asserts:
 
 import json
 from datetime import UTC, date, datetime
+from uuid import UUID
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -62,7 +63,7 @@ def _dt(year=2024, month=6, day=1):
     return datetime(year, month, day, 12, 0, tzinfo=UTC)
 
 
-def _game_ids(filter_json: str) -> set[int]:
+def _game_ids(filter_json: str) -> set[UUID]:
     parsed = parse_game_filter(filter_json)
     assert parsed is not None
     return set(

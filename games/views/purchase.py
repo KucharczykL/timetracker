@@ -1,4 +1,5 @@
 from typing import cast
+from uuid import UUID
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -330,7 +331,7 @@ def _create_separate_purchases(form: PurchaseForm, post) -> None:
 
 
 @login_required
-def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
+def add_purchase(request: HttpRequest, game_id: UUID | None = None) -> HttpResponse:
     library = cast(User, request.user).library
     presentation = date_time_presentation_for_request(request)
     initial = {"date_purchased": timezone.now()}

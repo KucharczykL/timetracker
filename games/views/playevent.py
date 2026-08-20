@@ -2,6 +2,7 @@ import logging
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import Any, cast
+from uuid import UUID
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
@@ -235,7 +236,7 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def add_playevent(request: HttpRequest, game_id: int = 0) -> HttpResponse:
+def add_playevent(request: HttpRequest, game_id: UUID | None = None) -> HttpResponse:
     initial: dict[str, Any] = {}
     library = cast(User, request.user).library
     if game_id:

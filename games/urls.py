@@ -1,5 +1,5 @@
 from django.conf import settings
-from django.urls import path
+from django.urls import path, register_converter
 
 from games.views import (
     device,
@@ -12,6 +12,12 @@ from games.views import (
     session,
     statuschange,
 )
+from timetracker.uuidv7 import UUIDv7Converter
+
+# Registered here rather than in the project URLconf: several tests import this
+# module under a stripped ROOT_URLCONF, where the project's registration never
+# runs and every catalog route would fail to build.
+register_converter(UUIDv7Converter, "uuidv7")
 from games.views import settings as settings_views
 
 app_name = "games"
@@ -35,18 +41,18 @@ urlpatterns = [
     path("device/edit/<int:device_id>", device.edit_device, name="edit_device"),
     path("device/list", device.list_devices, name="list_devices"),
     path("game/add", game.add_game, name="add_game"),
-    path("game/<int:game_id>/edit", game.edit_game, name="edit_game"),
-    path("game/<int:game_id>/view", game.view_game, name="view_game"),
-    path("game/<int:game_id>/delete", game.delete_game, name="delete_game"),
+    path("game/<uuidv7:game_id>/edit", game.edit_game, name="edit_game"),
+    path("game/<uuidv7:game_id>/view", game.view_game, name="view_game"),
+    path("game/<uuidv7:game_id>/delete", game.delete_game, name="delete_game"),
     path("game/list", game.list_games, name="list_games"),
     path("platform/add", platform.add_platform, name="add_platform"),
     path(
-        "platform/<int:platform_id>/edit",
+        "platform/<uuidv7:platform_id>/edit",
         platform.edit_platform,
         name="edit_platform",
     ),
     path(
-        "platform/<int:platform_id>/delete",
+        "platform/<uuidv7:platform_id>/delete",
         platform.delete_platform,
         name="delete_platform",
     ),
@@ -54,7 +60,7 @@ urlpatterns = [
     path("playevent/list", playevent.list_playevents, name="list_playevents"),
     path("playevent/add", playevent.add_playevent, name="add_playevent"),
     path(
-        "playevent/add/for-game/<int:game_id>",
+        "playevent/add/for-game/<uuidv7:game_id>",
         playevent.add_playevent,
         name="add_playevent_for_game",
     ),
@@ -70,7 +76,7 @@ urlpatterns = [
     ),
     path("purchase/add", purchase.add_purchase, name="add_purchase"),
     path(
-        "purchase/add/for-game/<int:game_id>",
+        "purchase/add/for-game/<uuidv7:game_id>",
         purchase.add_purchase,
         name="add_purchase_for_game",
     ),
@@ -116,7 +122,7 @@ urlpatterns = [
     ),
     path("session/add", session.add_session, name="add_session"),
     path(
-        "session/add/for-game/<int:game_id>",
+        "session/add/for-game/<uuidv7:game_id>",
         session.add_session,
         name="add_session_for_game",
     ),

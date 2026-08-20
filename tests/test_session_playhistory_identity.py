@@ -1,5 +1,6 @@
 import uuid
 from datetime import UTC, date, datetime, timedelta
+from uuid import UUID
 
 import pytest
 from django.core.management import call_command
@@ -183,14 +184,12 @@ def test_uuid_is_absent_from_the_playevent_model_schema():
 
 def test_autoplayeventin_game_field_type_still_follows_games_primary_key():
     """`django_ninja`'s `ModelSchema` infers a relation field's type from
-    `field.related_model._meta.pk.get_internal_type()`
-    (`ninja/orm/fields.py`), not from the FK's `to_field` - so even though
-    `PlayEvent.game` now resolves through `Game.uuid`, the generated `game`
-    field silently stays `int`, matching `Game`'s untouched integer primary
-    key rather than the UUID the column actually stores. Left as a trap for
-    whoever wires this dead schema up; see "Follow-ups" in the design spec.
+    `field.related_model._meta.pk.get_internal_type()` (`ninja/orm/fields.py`),
+    not from the FK's `to_field`. That inference was a trap while the two
+    disagreed; now that `Game`'s primary key *is* the UUID the column stores,
+    it lands on the right type on its own.
     """
-    assert AutoPlayEventIn.model_fields["game"].annotation is int
+    assert AutoPlayEventIn.model_fields["game"].annotation is UUID
 
 
 # --- Migration: forward backfill --------------------------------------------

@@ -1,6 +1,7 @@
 """Domain components for games / purchases / sessions."""
 
 from typing import TYPE_CHECKING, NamedTuple
+from uuid import UUID
 
 from django.template.defaultfilters import floatformat
 from django.urls import reverse
@@ -28,7 +29,7 @@ if TYPE_CHECKING:
 
 
 def GameLink(
-    game_id: int,
+    game_id: UUID,
     name: str = "",
     children: Children = None,
 ) -> Node:
@@ -111,7 +112,7 @@ def PriceConverted(
 
 
 def LinkedPurchase(purchase: Purchase) -> Node:
-    link = reverse("games:view_purchase", args=[int(purchase.id)])
+    link = reverse("games:view_purchase", args=[purchase.id])
     link_content = ""
     games_list: Node | None = None
     game_count = purchase.games.count()
@@ -261,7 +262,7 @@ def _resolve_name_with_icon(
     if game is not None:
         badge = _platform_badge(game)
         if linkify:
-            link = reverse("games:view_game", args=[int(game.pk)])
+            link = reverse("games:view_game", args=[game.pk])
 
     resolved_name = name or (game.name if game else "")
 

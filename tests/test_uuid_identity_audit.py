@@ -144,13 +144,13 @@ def test_residual_inventory_reports_a_converted_column_still_listed(
 def test_residual_inventory_reports_an_unowned_integer_primary_key(
     actual_types, monkeypatch
 ):
-    monkeypatch.delitem(RESIDUAL_INTEGER_PRIMARY_KEYS, "games_game")
+    monkeypatch.delitem(RESIDUAL_INTEGER_PRIMARY_KEYS, "games_session")
 
     report = check_residual_inventory(
         relation_columns(), actual_types, primary_key_types(actual_types)
     )
 
-    assert [violation.subject for violation in report.violations] == ["games_game"]
+    assert [violation.subject for violation in report.violations] == ["games_session"]
 
 
 def test_residual_inventory_notes_name_the_owning_slice(actual_types):
@@ -159,10 +159,12 @@ def test_residual_inventory_notes_name_the_owning_slice(actual_types):
     )
 
     through_notes = [
-        note for note in report.notes if note.subject == "games_purchase_games.game_id"
+        note
+        for note in report.notes
+        if note.subject == "games_purchase_games.purchase_id"
     ]
     assert len(through_notes) == 1
-    assert "ID-11 (#646)" in through_notes[0].detail
+    assert "ID-13 (#849)" in through_notes[0].detail
 
 
 def test_command_succeeds_on_a_migrated_database():
@@ -215,7 +217,9 @@ def test_identity_columns_are_clean_on_a_migrated_database(cursor):
 
 
 def test_identity_columns_report_a_dropped_not_null(cursor):
-    cursor.execute("ALTER TABLE games_game ALTER COLUMN uuid DROP NOT NULL")
+    # PlayEvent, not Game: a promoted identity is the primary key, whose NOT
+    # NULL cannot be dropped at all.
+    cursor.execute("ALTER TABLE games_playevent ALTER COLUMN uuid DROP NOT NULL")
 
     report = check_identity_columns(cursor, identity_models())
 
@@ -227,9 +231,9 @@ def test_identity_columns_report_a_dropped_not_null(cursor):
 def test_identity_columns_report_a_dropped_unique_index(cursor):
     """Uses PlayEvent because nothing references its uuid.
 
-    games_game.uuid cannot be used here: four foreign keys depend on its unique
-    index, so dropping it needs CASCADE - which is the same coupling that makes
-    a RemoveField on a constrained column silently take indexes with it.
+    games_game.id cannot be used here: it is the primary key, and four foreign
+    keys depend on its index - the same coupling that makes a RemoveField on a
+    constrained column silently take indexes with it.
     """
     cursor.execute(
         """
@@ -262,9 +266,10 @@ def test_ordering_reports_a_swapped_pair(owned_library):
     # must itself be version 7: uuid_v7 is a domain with a CHECK, so a uuid4()
     # here would raise a domain violation instead of the ordering violation.
     scratch = uuid7_at(datetime(2030, 1, 1, tzinfo=UTC))
-    Game.objects.filter(pk=first.pk).update(uuid=scratch)
-    Game.objects.filter(pk=second.pk).update(uuid=first.uuid)
-    Game.objects.filter(pk=first.pk).update(uuid=second.uuid)
+    original_first, original_second = first.pk, second.pk
+    Game.objects.filter(pk=original_first).update(id=scratch)
+    Game.objects.filter(pk=original_second).update(id=original_first)
+    Game.objects.filter(pk=scratch).update(id=original_second)
 
     report = check_ordering(identity_models())
 
@@ -332,7 +337,7 @@ def test_referential_agreement_reports_an_orphan_row(cursor):
     assert [violation.subject for violation in report.violations] == [
         "games_session.game_id"
     ]
-    assert "reference a missing games_game.uuid" in report.violations[0].detail
+    assert "reference a missing games_game.id" in report.violations[0].detail
 
 
 def test_referential_agreement_reports_a_not_valid_constraint(cursor):
@@ -352,7 +357,7 @@ def test_referential_agreement_reports_a_not_valid_constraint(cursor):
     cursor.execute(f'ALTER TABLE games_playevent DROP CONSTRAINT "{name}"')
     cursor.execute(
         f'ALTER TABLE games_playevent ADD CONSTRAINT "{name}" '
-        "FOREIGN KEY (game_id) REFERENCES games_game(uuid) NOT VALID"
+        "FOREIGN KEY (game_id) REFERENCES games_game(id) NOT VALID"
     )
 
     report = check_referential_agreement(cursor, relation_columns())

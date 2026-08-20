@@ -1,6 +1,8 @@
 """Tests for OperatorFilter.where() — Django-.filter()-style ergonomic
 construction of filters (issue #56, Component 1b)."""
 
+from uuid import UUID
+
 import pytest
 
 from common.criteria import (
@@ -8,8 +10,8 @@ from common.criteria import (
     ChoiceCriterion,
     IntCriterion,
     Modifier,
-    MultiCriterion,
     StringCriterion,
+    UUIDMultiCriterion,
 )
 from games.filters import GameFilter
 
@@ -57,9 +59,11 @@ def test_bool_field_resolves_bool_criterion():
 
 
 def test_multi_field_resolves_multi_criterion():
-    # platform is a MultiCriterion over the int FK platform_id.
-    assert GameFilter.where(platform=[1, 2]) == GameFilter(
-        platform=MultiCriterion(value=[1, 2], modifier=Modifier.INCLUDES)
+    # platform is a UUIDMultiCriterion over the platform_id FK.
+    first = UUID("018f5e66-e800-7000-8000-000000000001")
+    second = UUID("018f5e66-e800-7000-8000-000000000002")
+    assert GameFilter.where(platform=[first, second]) == GameFilter(
+        platform=UUIDMultiCriterion(value=[first, second], modifier=Modifier.INCLUDES)
     )
 
 

@@ -59,7 +59,7 @@ class Game(models.Model):
     library = models.ForeignKey(
         "UserLibrary", on_delete=models.CASCADE, related_name="games"
     )
-    uuid = UUIDv7Field(unique=True, editable=False)
+    id = UUIDv7Field(primary_key=True, editable=False)
     name = models.CharField(max_length=255)
     sort_name = models.CharField(max_length=255, blank=True, default="")
     year_released = models.IntegerField(null=True, blank=True, default=None)
@@ -67,7 +67,6 @@ class Game(models.Model):
     wikidata = models.CharField(max_length=50, blank=True, default="")
     platform = models.ForeignKey(
         "Platform",
-        to_field="uuid",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -181,7 +180,7 @@ class Platform(models.Model):
         default=None,
         related_name="platforms",
     )
-    uuid = UUIDv7Field(unique=True, editable=False)
+    id = UUIDv7Field(primary_key=True, editable=False)
     name = models.CharField(max_length=255)
     group = models.CharField(max_length=255, blank=True, default="")
     icon = models.SlugField(blank=True)
@@ -286,7 +285,6 @@ class Purchase(models.Model):
 
     platform = models.ForeignKey(
         Platform,
-        to_field="uuid",
         on_delete=models.SET_NULL,
         default=None,
         null=True,
@@ -317,7 +315,6 @@ class Purchase(models.Model):
     name = models.CharField(max_length=255, blank=True, default="")
     related_game = models.ForeignKey(
         Game,
-        to_field="uuid",
         on_delete=models.SET_NULL,
         default=None,
         null=True,
@@ -466,7 +463,6 @@ class Session(models.Model):
     uuid = UUIDv7Field(unique=True, editable=False)
     game = models.ForeignKey(
         Game,
-        to_field="uuid",
         on_delete=models.CASCADE,
         related_name="sessions",
     )
@@ -635,9 +631,7 @@ class PlayEvent(models.Model):
     objects = PlayEventQuerySet.as_manager()
 
     uuid = UUIDv7Field(unique=True, editable=False)
-    game = models.ForeignKey(
-        Game, to_field="uuid", related_name="playevents", on_delete=models.CASCADE
-    )
+    game = models.ForeignKey(Game, related_name="playevents", on_delete=models.CASCADE)
     started = models.DateField(null=True, blank=True)
     ended = models.DateField(null=True, blank=True)
     days_to_finish = GeneratedField(
@@ -688,7 +682,7 @@ class GameStatusChange(models.Model):
 
     uuid = UUIDv7Field(unique=True, editable=False)
     game = models.ForeignKey(
-        Game, to_field="uuid", on_delete=models.CASCADE, related_name="status_changes"
+        Game, on_delete=models.CASCADE, related_name="status_changes"
     )
     old_status = models.CharField(
         max_length=1, choices=Game.Status.choices, blank=True, null=True

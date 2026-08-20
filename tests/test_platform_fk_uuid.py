@@ -300,12 +300,14 @@ def make_purchase(library, platform):
     )
 
 
-def test_game_platform_id_reads_back_as_the_platforms_uuid(game, platform):
-    assert game.platform_id == platform.uuid
+def test_game_platform_id_reads_back_as_the_platforms_identity(game, platform):
+    assert game.platform_id == platform.pk
 
 
-def test_purchase_platform_id_reads_back_as_the_platforms_uuid(owned_library, platform):
-    assert make_purchase(owned_library, platform).platform_id == platform.uuid
+def test_purchase_platform_id_reads_back_as_the_platforms_identity(
+    owned_library, platform
+):
+    assert make_purchase(owned_library, platform).platform_id == platform.pk
 
 
 def test_filters_by_platform_instance_and_integer_id(game, owned_library, platform):

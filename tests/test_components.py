@@ -2,6 +2,7 @@ import re
 import unittest
 from typing import get_args
 from unittest.mock import MagicMock, patch
+from uuid import UUID
 
 import django
 from django import forms
@@ -1778,11 +1779,11 @@ class ResolveNameWithIconTest(unittest.TestCase):
         self.mock_platform = MagicMock()
         self.mock_platform.name = "Steam"
         self.mock_platform.icon = "steam"
-        self.mock_platform.pk = 1
+        self.mock_platform.pk = UUID("018f5e66-e800-7000-8000-000000000001")
 
         self.mock_game = MagicMock()
         self.mock_game.name = "Test Game"
-        self.mock_game.pk = 1
+        self.mock_game.pk = UUID("018f5e66-e800-7000-8000-000000000002")
         self.mock_game.platform = self.mock_platform
 
         self.mock_session = MagicMock()

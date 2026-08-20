@@ -27,7 +27,7 @@ document's internal explanatory grouping only.
 | ID-13 | #849 | Remove legacy integer identity: `Purchase` |
 | ID-14 | #850 | Remove legacy integer identities: `Device`, `FilterPreset` |
 | ID-15 | #647 | Canonical slug+UUID URLs |
-| ID-16 | #648 | Remove integer routes without permanent aliases |
+| ID-16 | #648 | Retire transitional URL aliases, if any |
 
 `blocked-by` links between these issues on GitHub encode the dependency
 edges described per wave below.
@@ -419,9 +419,25 @@ all.** Probed against a real database during ID-10, running ID-11's own sequence
   recreating each referencing FK after the new primary key exists. `CASCADE` is
   not an option — it would take those four FK constraints with it, producing
   exactly the state-versus-database divergence `audit_uuid_identity` checks for.
-- Left for ID-11 to settle: `primary_key=True` subsumes `unique=True`, so
-  Django's schema editor may *attempt* that impossible drop and fail the
-  migration outright rather than leaving a redundant index.
+- **Django attempts the impossible drop and fails the migration outright.**
+  `_alter_field` drops the old unique constraint whenever
+  `_field_became_primary_key`, so a promotion dies while foreign keys depend on
+  that constraint. Two consequences bind every primary-key promotion and are
+  detailed in the
+  [catalog design](2026-08-19-issue-646-catalog-uuid-primary-key-design.md):
+  - **`sqlmigrate` cannot verify a promotion.** It resolves constraint names
+    against the *un-migrated* database, so it reports the doomed operation clean
+    and prints SQL that applies to nothing. Only a real `migrate` proves it.
+  - **Never `RenameField` a column other models reach through `to_field`.**
+    `ProjectState.rename_field` rewrites every referring relation's
+    `remote_field.field_name` **in place**, and `ModelState.clone` shares field
+    objects, so one forward pass leaves every historical state in the process
+    believing those foreign keys always pointed at the primary key. The symptom
+    can appear only when a migration is reversed and reapplied in the same
+    process: `cannot cast type uuid_v7 to bigint`.
+    Use `SeparateDatabaseAndState`: `RemoveField` + `AddField` for state and one
+    `RunPython` owning the DDL, placed after the state operations so Django's own
+    SQL builders still generate every constraint name.
 
 ID-11 additionally owns everything keyed to `Game` and `Platform` ceasing to be
 integers, which is the larger half of that slice: deleting `to_field="uuid"`
@@ -432,6 +448,19 @@ becomes `fields.E312` the moment the field is renamed), the corresponding
 `PurchaseFilter._games_to_q`'s `int(...)` coercion, and the `Game`/`Platform`
 half of the option-value annotation widening described in Wave C above.
 
+**A primary-key promotion owns the corresponding identifier-converter swap.**
+Routes cannot continue using `<int:…>` after their target becomes UUID-keyed.
+The catalog routes therefore use the `uuidv7` converter registered in
+`games/urls.py`, beside the routes that require it. Old integer URLs have no
+redirect alias because the migration removes the integer→UUID map. Wave F still
+owns slug policy and canonical URL shape, not the catalog identifier type.
+
+The same boundary applies to every identity-bearing API request, response,
+custom-element property, and filter criterion; changing search response options
+alone is insufficient. Catalog facets use `UUIDMultiCriterion`. Device facets
+remain on the integer variant until ID-14 promotes `Device`, after which the
+integer variant can be removed.
+
 ## Wave F — canonical slug+UUID URLs (ID-15/#647, 1 issue, scope TBD in its own design)
 
 ID-15 stays one issue, `blocked-by` ID-11 (catalog UUID becomes the real PK).
@@ -440,13 +469,13 @@ slug-plus-UUID canonical URL (the charter's example is `Game`;
 `Platform`/`Session`/`Purchase`/`Device` may only need a bare-UUID URL or no
 change at all) — not decided here.
 
-## Wave G — remove integer routes (ID-16/#648, 1 issue, time-gated not code-gated)
+## Wave G — retire transitional URL aliases (ID-16/#648, conditional)
 
-ID-16 stays one issue, `blocked-by` ID-15, deliberately landed later than the
-others in this plan: it should wait for a bake-in period after ID-15
-(confirm no internal link still builds an integer URL, no
-external/bookmarked traffic still depends on one) rather than merging
-back-to-back with it.
+Primary-key promotions do not retain integer routes when they destroy the
+integer-to-UUID map. ID-16 applies only if ID-15 deliberately introduces or
+retains another transitional URL alias. In that case it remains blocked by
+ID-15 and waits for a bake-in period before removing exactly those documented
+aliases. If ID-15 leaves no transitional alias, ID-16 is obsolete.
 
 ## Summary: PR count
 

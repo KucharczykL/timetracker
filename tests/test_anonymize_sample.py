@@ -21,6 +21,16 @@ from games.models import (
     Session,
 )
 
+# Models whose UUIDv7 identity has been promoted to their primary key carry it
+# in the record's `pk`; the rest still carry it in a `uuid` field.
+PROMOTED_MODELS = frozenset(["games.game", "games.platform"])
+
+
+def identity(record):
+    if record["model"] in PROMOTED_MODELS:
+        return record["pk"]
+    return record["fields"]["uuid"]
+
 
 def _uuid_moment(value):
     """The millisecond a UUIDv7 embeds, as a timezone-aware datetime."""
@@ -185,8 +195,8 @@ class AnonymizeSampleTest(TestCase):
             if fields["type"] != Purchase.GAME:
                 self.assertIn(
                     str(fields["related_game"]),
-                    {str(item["fields"]["uuid"]) for item in by_model["games.game"]},
-                    "related_game must name a game uuid carried by the same dump",
+                    {str(identity(item)) for item in by_model["games.game"]},
+                    "related_game must name a game identity in the same dump",
                 )
 
         for session in by_model["games.session"]:
@@ -327,12 +337,12 @@ class ReassignedIdentityTest(TestCase):
 
         for game in by_model["games.game"]:
             self.assertEqual(
-                _uuid_moment(game["fields"]["uuid"]),
+                _uuid_moment(identity(game)),
                 _parsed_moment(game["fields"]["created_at"]),
             )
         for session in by_model["games.session"]:
             self.assertEqual(
-                _uuid_moment(session["fields"]["uuid"]),
+                _uuid_moment(identity(session)),
                 _parsed_moment(session["fields"]["created_at"]),
             )
 
@@ -343,9 +353,7 @@ class ReassignedIdentityTest(TestCase):
             records = by_model[model_label]
             by_uuid = [
                 item["pk"]
-                for item in sorted(
-                    records, key=lambda item: UUID(item["fields"]["uuid"])
-                )
+                for item in sorted(records, key=lambda item: UUID(str(identity(item))))
             ]
             by_created = [
                 item["pk"]
@@ -359,7 +367,7 @@ class ReassignedIdentityTest(TestCase):
     def test_related_game_reference_follows_the_new_uuid(self):
         by_model = self._dump()
 
-        emitted = {item["fields"]["uuid"] for item in by_model["games.game"]}
+        emitted = {identity(item) for item in by_model["games.game"]}
         for purchase in by_model["games.purchase"]:
             related = purchase["fields"]["related_game"]
             if related is not None:
@@ -368,8 +376,8 @@ class ReassignedIdentityTest(TestCase):
     def test_session_and_playevent_references_follow_the_new_uuid(self):
         by_model = self._dump()
 
-        games = {str(item["fields"]["uuid"]) for item in by_model["games.game"]}
-        devices = {str(item["fields"]["uuid"]) for item in by_model["games.device"]}
+        games = {str(identity(item)) for item in by_model["games.game"]}
+        devices = {str(identity(item)) for item in by_model["games.device"]}
         for session in by_model["games.session"]:
             self.assertIn(str(session["fields"]["game"]), games)
             device = session["fields"]["device"]

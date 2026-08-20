@@ -8,6 +8,8 @@ from common.returns import action_url
 from games.models import Platform
 from games.views.deletion import confirm_and_apply, confirm_and_delete
 
+# Any catalog route takes a UUIDv7; the value never reaches the database.
+GAME_ID = "018f5e66-e800-7000-8000-000000000001"
 CONFIRM_URL = "/tracker/platform/1/delete"
 
 
@@ -62,8 +64,8 @@ def test_origin_rides_through_the_confirmation(db):
 
 
 def test_reject_refuses_an_origin_naming_the_acted_on_page(db):
-    origin = reverse("games:view_game", args=[1])
-    confirm_url = action_url("games:delete_game", 1, origin=origin)
+    origin = reverse("games:view_game", args=[GAME_ID])
+    confirm_url = action_url("games:delete_game", GAME_ID, origin=origin)
 
     response = _apply(_request("post", confirm_url), [], reject=origin)
 

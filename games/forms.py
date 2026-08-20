@@ -548,7 +548,7 @@ class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
         self.fields["device"].widget.options_resolver = partial(
             _device_options, library=library
         )
-        seed_related_initial(self, "game", "device")
+        seed_related_initial(self, "device")
         self._presentation = presentation
         for field_name, copy_target in _TIMESTAMP_COPY_TARGETS.items():
             zone_field_name = _TIMESTAMP_ZONE_FIELDS[field_name]
@@ -696,7 +696,6 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
         platform_field.widget.options_resolver = partial(
             _platform_options, library=library
         )
-        seed_related_initial(self, "platform", "related_game")
         # The bundle Price is optional: in price-per-game mode it is hidden and
         # the per-game inputs carry the prices instead. Empty falls back to 0.
         self.fields["price"].required = False
@@ -835,7 +834,6 @@ class GameForm(
         self.fields["platform"].widget.options_resolver = partial(
             _platform_options, library=library
         )
-        seed_related_initial(self, "platform")
 
     platform = forms.ModelChoiceField(
         queryset=Platform.objects.order_by("name"),
@@ -906,7 +904,6 @@ class PlayEventForm(PrimitiveWidgetsMixin, forms.ModelForm):
         self.fields["game"].widget.options_resolver = partial(
             _game_options, library=library
         )
-        seed_related_initial(self, "game")
         for field_name in ("started", "ended"):
             self.fields[field_name].widget = DatePickerWidget(
                 presentation=presentation,

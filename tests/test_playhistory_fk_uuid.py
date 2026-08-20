@@ -195,16 +195,16 @@ def game(owned_library):
     return Game.objects.create(library=owned_library, name="FK Identity Subject")
 
 
-def test_playevent_game_id_reads_back_as_the_games_uuid(game):
+def test_playevent_game_id_reads_back_as_the_games_identity(game):
     playevent = PlayEvent.objects.create(game=game)
-    assert playevent.game_id == game.uuid
+    assert playevent.game_id == game.pk
 
 
-def test_gamestatuschange_game_id_reads_back_as_the_games_uuid(game):
+def test_gamestatuschange_game_id_reads_back_as_the_games_identity(game):
     change = GameStatusChange.objects.create(
         game=game, new_status="p", timestamp=timezone.now()
     )
-    assert change.game_id == game.uuid
+    assert change.game_id == game.pk
 
 
 def test_playevent_filters_by_game_instance(game, owned_library):
@@ -338,20 +338,20 @@ def test_playeventfilter_game_filter_selects_playevents_for_matching_games(
 # --- Form initial-value shim -------------------------------------------------
 
 
-def test_playeventform_preselects_the_games_integer_id_when_editing(
-    game, owned_library
-):
+def test_playeventform_preselects_the_games_identity_when_editing(game, owned_library):
     playevent = PlayEvent.objects.create(game=game)
 
     form = PlayEventForm(
         instance=playevent, library=owned_library, presentation=PRESENTATION
     )
 
-    assert form.initial["game"] == game
+    # No shim any more: `model_to_dict` hands over the foreign key attname, and
+    # that attname *is* the identity the widget's options carry.
+    assert form.initial["game"] == game.pk
     assert form.fields["game"].prepare_value(form.initial["game"]) == game.pk
 
 
-def test_playeventform_posting_an_integer_game_id_saves_the_right_game(
+def test_playeventform_posting_a_game_identity_saves_the_right_game(
     game, owned_library
 ):
     playevent = PlayEvent.objects.create(game=game)
@@ -371,4 +371,4 @@ def test_playeventform_posting_an_integer_game_id_saves_the_right_game(
 
     assert form.is_valid(), form.errors
     saved = form.save()
-    assert saved.game_id == other_game.uuid
+    assert saved.game_id == other_game.pk

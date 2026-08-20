@@ -237,8 +237,8 @@ def dlc_purchase(owned_library, base_game):
     )
 
 
-def test_related_game_attname_reads_back_as_the_games_uuid(base_game, dlc_purchase):
-    assert dlc_purchase.related_game_id == base_game.uuid
+def test_related_game_attname_reads_back_as_the_games_identity(base_game, dlc_purchase):
+    assert dlc_purchase.related_game_id == base_game.pk
 
 
 def test_purchase_filters_by_related_instance_and_by_integer_id(
@@ -291,7 +291,7 @@ def test_purchaseform_preselects_the_base_game_by_integer_id(
     assert form["related_game"].value() == base_game.id
 
 
-def test_purchaseform_posting_an_integer_id_saves_the_right_base_game(
+def test_purchaseform_posting_an_identity_saves_the_right_base_game(
     owned_user, owned_library, base_game, other_game, dlc_purchase
 ):
     form = PurchaseForm(
@@ -312,20 +312,22 @@ def test_purchaseform_posting_an_integer_id_saves_the_right_base_game(
     )
     assert form.is_valid(), form.errors
     saved = form.save()
-    assert saved.related_game_id == base_game.uuid
+    assert saved.related_game_id == base_game.pk
 
 
 # --- Deferred many-to-many ----------------------------------------------------
 
 
-def test_the_purchase_games_through_table_is_still_integer_keyed():
-    """The many-to-many link is deliberately left on integer ids.
+def test_the_purchase_games_through_table_is_half_converted():
+    """The many-to-many link converts one column per promoted target.
 
     Django cannot point an auto-created intermediary at a non-primary-key
-    field, so this table converts when Game.uuid and Purchase.uuid become the
-    primary keys. Rewrite this test then; do not delete it now.
+    field, so each half of this table moves when its own target's uuid becomes
+    the primary key. `game_id` moved with the catalog; `purchase_id` is still
+    integer and moves when Purchase is promoted. Rewrite this test then; do not
+    delete it now.
     """
-    assert column_type("games_purchase_games", "game_id") == "bigint"
+    assert column_type("games_purchase_games", "game_id") == "uuid_v7"
     assert column_type("games_purchase_games", "purchase_id") == "bigint"
     assert foreign_key_target("games_purchase_games", "game_id") == (
         "games_game",

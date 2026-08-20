@@ -11,6 +11,7 @@ match the stats queries' M2M traversal exactly.
 
 import json
 from datetime import UTC, datetime
+from uuid import UUID
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -20,6 +21,9 @@ from games.filters import filter_query_context_for_library
 from games.models import Game, Platform, PlayEvent, Purchase, Session
 from games.views import stats_links
 from games.views.stats_data import compute_stats
+
+# Only the link URL is under test here; the id never reaches the database.
+SAMPLE_PLATFORM_ID = UUID("018f5e66-e800-7000-8000-000000000001")
 
 YEAR = 2024
 
@@ -220,7 +224,9 @@ def test_sessions_for_game_embeds_label(world):
     destination filter bar renders a named pill, not a bare id (#224)."""
     game = world["finished_game"]
     payload = stats_links.sessions_for_game(game.id, YEAR, game.name).to_json()
-    assert payload["game"]["value"] == [{"id": game.id, "label": game.name}]
+    # The id is a string on the wire: to_json output feeds json.dumps, which
+    # cannot represent a UUID.
+    assert payload["game"]["value"] == [{"id": str(game.id), "label": game.name}]
 
 
 def test_sessions_for_platform_embeds_label(world):
@@ -231,15 +237,15 @@ def test_sessions_for_platform_embeds_label(world):
         platform.id, YEAR, platform.name
     ).to_json()
     assert payload["game_filter"]["platform"]["value"] == [
-        {"id": platform.id, "label": platform.name}
+        {"id": str(platform.id), "label": platform.name}
     ]
 
 
 def test_sessions_for_game_without_label_stays_bare(world):
-    """No label given -> serialization is unchanged (bare id)."""
+    """No label given -> serialization is a bare id (still a string)."""
     game = world["finished_game"]
     payload = stats_links.sessions_for_game(game.id, YEAR).to_json()
-    assert payload["game"]["value"] == [game.id]
+    assert payload["game"]["value"] == [str(game.id)]
 
 
 def test_games_in_month_matches_that_month(world):
@@ -421,7 +427,7 @@ _NESTED_BUILDERS = [
     ("games_played", lambda: stats_links.games_played(YEAR), Game),
     (
         "sessions_for_platform",
-        lambda: stats_links.sessions_for_platform(1, YEAR),
+        lambda: stats_links.sessions_for_platform(SAMPLE_PLATFORM_ID, YEAR),
         Session,
     ),
 ]

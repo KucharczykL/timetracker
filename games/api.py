@@ -77,6 +77,7 @@ from timetracker.settings_resolver import (
     resolve_for_user_with_origin,
     resolve_with_origin,
 )
+from timetracker.uuidv7 import UUIDv7
 
 logger = logging.getLogger("games")
 
@@ -96,7 +97,7 @@ class GameStatusUpdate(Schema):
 
 
 class PlayEventIn(Schema):
-    game_id: int
+    game_id: UUIDv7
     started: date | None = None
     ended: date | None = None
     note: str = ""
@@ -126,7 +127,22 @@ class PlayEventOut(Schema):
     created_at: datetime
 
 
+# One schema per search endpoint rather than one shared by all three: each
+# entity's option value is whatever that entity's primary key is, and those
+# stop agreeing as the identity cutover promotes them one group at a time.
 class GameOption(Schema):  # mirrors SearchSelectOption
+    value: UUIDv7
+    label: str
+    data: dict
+
+
+class PlatformOption(Schema):  # mirrors SearchSelectOption
+    value: UUIDv7
+    label: str
+    data: dict
+
+
+class DeviceOption(Schema):  # mirrors SearchSelectOption
     value: int
     label: str
     data: dict
@@ -159,7 +175,7 @@ def search_games(request, q: str = "", limit: int = 10):
 
 
 @game_router.patch("/{game_id}/status", response={204: None})
-def partial_update_game(request, game_id: int, payload: GameStatusUpdate):
+def partial_update_game(request, game_id: UUIDv7, payload: GameStatusUpdate):
     library = cast(User, request.user).library
     game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
     game.status = payload.status
@@ -215,7 +231,7 @@ def delete_playevent(request, playevent_id: int):
     return Status(204, None)
 
 
-@device_router.get("/search", response=list[GameOption])
+@device_router.get("/search", response=list[DeviceOption])
 def search_devices(request, q: str = "", limit: int = 10):
     library = cast(User, request.user).library
     qs = Device.objects.for_library(library)
@@ -228,7 +244,7 @@ def search_devices(request, q: str = "", limit: int = 10):
     return [{"value": d.id, "label": d.name, "data": {}} for d in qs[:limit]]
 
 
-@platform_router.get("/search", response=list[GameOption])
+@platform_router.get("/search", response=list[PlatformOption])
 def search_platforms(request, q: str = "", limit: int = 10):
     library = cast(User, request.user).library
     qs = Platform.objects.visible_to(library)
@@ -240,14 +256,14 @@ def search_platforms(request, q: str = "", limit: int = 10):
             qs.annotate(
                 last_game_use=Subquery(
                     Game.objects.for_library(library)
-                    .filter(platform=OuterRef("uuid"))
+                    .filter(platform=OuterRef("pk"))
                     .order_by("-updated_at")
                     .values("updated_at")[:1],
                     output_field=DateTimeField(),
                 ),
                 last_purchase_use=Subquery(
                     Purchase.objects.for_library(library)
-                    .filter(platform=OuterRef("uuid"))
+                    .filter(platform=OuterRef("pk"))
                     .order_by("-updated_at")
                     .values("updated_at")[:1],
                     output_field=DateTimeField(),
@@ -329,7 +345,7 @@ class PlatformOut(Schema):
 
 
 class GameOut(Schema):
-    id: int
+    id: UUIDv7
     name: str
     platform: PlatformOut | None = None
 

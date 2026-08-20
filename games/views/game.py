@@ -1,5 +1,6 @@
 from datetime import timedelta
 from typing import Any, cast
+from uuid import UUID
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
@@ -106,7 +107,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
     # subquery, so no `sessions__` path-prefixing is needed.
     windowed_playtime = (
         Session.objects.for_library(library)
-        .filter(session_q, game=OuterRef("uuid"))
+        .filter(session_q, game=OuterRef("pk"))
         .values("game")
         .annotate(total=Sum(F("duration_calculated") + F("duration_manual")))
         .values("total")
@@ -241,7 +242,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def delete_game(request: HttpRequest, game_id: int) -> HttpResponse:
+def delete_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
     return confirm_and_delete(
@@ -266,7 +267,7 @@ def _deleted_with_game(game: Game) -> Node:
 
 
 @login_required
-def edit_game(request: HttpRequest, game_id: int) -> HttpResponse:
+def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
     form = GameForm(request.POST or None, instance=game, library=library)
@@ -734,7 +735,7 @@ def _history_section(
 
 
 @login_required
-def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
+def view_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
     presentation = date_time_presentation_for_request(request)
