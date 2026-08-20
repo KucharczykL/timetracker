@@ -317,9 +317,7 @@ class EditionQuerySet(models.QuerySet):
         return self.filter(game__library=library)
 
     def visible_to(self, library):
-        return self.filter(
-            Q(game__library__isnull=True) | Q(game__library=library)
-        )
+        return self.filter(Q(game__library__isnull=True) | Q(game__library=library))
 
 
 class Edition(models.Model):
@@ -348,8 +346,7 @@ class ReleaseQuerySet(models.QuerySet):
 
     def visible_to(self, library):
         return self.filter(
-            Q(edition__game__library__isnull=True)
-            | Q(edition__game__library=library)
+            Q(edition__game__library__isnull=True) | Q(edition__game__library=library)
         )
 
 

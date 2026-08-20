@@ -246,17 +246,21 @@ def test_game_search_exposes_only_catalog_safe_games_and_fields(two_libraries):
 
     assert [
         row["value"]
-        for row in world["client_a"].get(
-            "/api/games/search", {"q": "Library A Sort Needle"}
-        ).json()
+        for row in world["client_a"]
+        .get("/api/games/search", {"q": "Library A Sort Needle"})
+        .json()
     ] == [str(world["game_a"].id)]
-    assert world["client_b"].get(
-        "/api/games/search", {"q": "Library A Sort Needle"}
-    ).json() == []
+    assert (
+        world["client_b"]
+        .get("/api/games/search", {"q": "Library A Sort Needle"})
+        .json()
+        == []
+    )
     for client in (world["client_a"], world["client_b"]):
-        assert client.get(
-            "/api/games/search", {"q": "Shared Catalog Sort Needle"}
-        ).json() == []
+        assert (
+            client.get("/api/games/search", {"q": "Shared Catalog Sort Needle"}).json()
+            == []
+        )
 
 
 def test_shared_and_foreign_game_status_ids_are_undisclosed_and_unchanged(

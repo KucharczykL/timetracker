@@ -10,6 +10,8 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 BEFORE_SHARED_CATALOG = ("games", "0020_catalog_hierarchy_backfill")
 WITH_SHARED_CATALOG = ("games", "0021_alter_game_library")
+
+
 @pytest.fixture
 def shared_catalog_harness():
     leaf_nodes = MigrationExecutor(connection).loader.graph.leaf_nodes()

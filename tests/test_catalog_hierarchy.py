@@ -42,7 +42,10 @@ def test_catalog_visibility_is_opt_in_and_derives_through_the_hierarchy():
     assert set(Game.objects.for_library(library_a)) == {private_a}
     assert set(Game.objects.visible_to(library_a)) == {private_a, shared}
     assert set(Edition.objects.for_library(library_a)) == {private_a_edition}
-    assert set(Edition.objects.visible_to(library_a)) == {private_a_edition, shared_edition}
+    assert set(Edition.objects.visible_to(library_a)) == {
+        private_a_edition,
+        shared_edition,
+    }
     assert set(Release.objects.for_library(library_a)) == {private_a_release}
     assert set(Release.objects.visible_to(library_a)) == {
         private_a_release,
