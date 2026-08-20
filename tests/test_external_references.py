@@ -149,6 +149,31 @@ def test_external_reference_save_cannot_reassign_a_persisted_tuple_target():
     assert reference.target_uuid == original.pk
 
 
+def test_external_reference_save_cannot_reassign_an_existing_primary_key_target():
+    """A fresh instance with an existing ID must not repoint its saved tuple."""
+    original = Game.objects.create(name="Original Existing-ID Target")
+    replacement = Game.objects.create(name="Replacement Existing-ID Target")
+    reference = ExternalReference.objects.create(
+        provider="wikidata",
+        entity_kind="game",
+        provider_key="Q123",
+        game=original,
+    )
+    replacement_instance = ExternalReference(
+        id=reference.pk,
+        provider="wikidata",
+        entity_kind="game",
+        provider_key="Q123",
+        game=replacement,
+    )
+
+    with pytest.raises(ValidationError, match="already mapped"):
+        replacement_instance.save()
+
+    reference.refresh_from_db()
+    assert reference.target_uuid == original.pk
+
+
 def test_external_reference_save_rejects_a_kind_target_mismatch():
     """Model saves must reject an edition label applied to a game target."""
     with pytest.raises(ValidationError, match="edition"):

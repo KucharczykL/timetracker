@@ -584,7 +584,7 @@ class ExternalReference(models.Model):
         if errors:
             raise ValidationError(errors)
 
-        if not self._state.adding:
+        if self.pk is not None:
             persisted_target_ids = (
                 type(self)
                 .objects.filter(pk=self.pk)
