@@ -1,13 +1,16 @@
 """Promote Session and play-history UUIDs without changing their identities."""
 
+import gzip
 import importlib
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
+from pathlib import Path
 
 import psycopg
 import pytest
+import yaml
 from django.core.management import call_command
 from django.db import IntegrityError, connection, models, transaction
 from django.db.migrations.executor import MigrationExecutor
@@ -19,6 +22,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 BEFORE_PROMOTION = ("games", "0013_catalog_uuid_primary_key")
 WITH_PROMOTION = ("games", "0014_session_playhistory_uuid_primary_key")
+SAMPLE_FIXTURE = Path(__file__).parents[1] / "games" / "fixtures" / "sample.yaml.gz"
 TABLES = (
     "games_session",
     "games_playevent",
@@ -56,6 +60,26 @@ PRESERVED_FIELDS = {
         "timestamp",
     ),
 }
+
+
+def test_the_committed_sample_fixture_uses_promoted_playhistory_primary_keys():
+    with gzip.open(SAMPLE_FIXTURE, "rt") as stream:
+        records = yaml.safe_load(stream)
+
+    promoted_models = {
+        "games.game",
+        "games.platform",
+        "games.session",
+        "games.playevent",
+    }
+    promoted = [record for record in records if record["model"] in promoted_models]
+
+    assert promoted
+    assert {record["model"] for record in promoted} == promoted_models
+    assert not any(record["model"] == "games.gamestatuschange" for record in records)
+    for record in promoted:
+        assert uuid.UUID(str(record["pk"])).version == 7
+        assert "uuid" not in record["fields"]
 
 
 @pytest.fixture

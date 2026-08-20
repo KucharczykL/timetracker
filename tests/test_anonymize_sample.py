@@ -23,7 +23,9 @@ from games.models import (
 
 # Models whose UUIDv7 identity has been promoted to their primary key carry it
 # in the record's `pk`; the rest still carry it in a `uuid` field.
-PROMOTED_MODELS = frozenset(["games.game", "games.platform"])
+PROMOTED_MODELS = frozenset(
+    ["games.game", "games.platform", "games.session", "games.playevent"]
+)
 
 
 def identity(record):
@@ -183,6 +185,9 @@ class AnonymizeSampleTest(TestCase):
                 GENERATED_KEYS & item["fields"].keys(),
                 f"generated key leaked into {item['model']}",
             )
+            if item["model"] in PROMOTED_MODELS:
+                self.assertEqual(UUID(str(item["pk"])).version, 7)
+                self.assertNotIn("uuid", item["fields"])
 
         for purchase in by_model["games.purchase"]:
             fields = purchase["fields"]
@@ -229,6 +234,12 @@ class AnonymizeSampleTest(TestCase):
             self.assertEqual(purchase.library, target.library)
             self.assertLessEqual(purchase.price, 100)
             self.assertEqual(purchase.name, "")
+        self.assertEqual(Session.objects.count(), 3)
+        self.assertTrue(
+            all(session.pk.version == 7 for session in Session.objects.all())
+        )
+        self.assertEqual(PlayEvent.objects.count(), 2)
+        self.assertTrue(all(event.pk.version == 7 for event in PlayEvent.objects.all()))
 
     def test_scrub_devices_replaces_names(self):
         _build_dataset()

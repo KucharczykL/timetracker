@@ -214,7 +214,9 @@ def test_committed_sample_load_owns_private_rows_and_reuses_shared_platform(owne
     assert not Device.objects.exclude(library=owner.library).exists()
     assert Purchase.objects.filter(library=owner.library).exists()
     assert not Purchase.objects.exclude(library=owner.library).exists()
+    assert Session.objects.filter(game__library=owner.library).exists()
     assert not Session.objects.exclude(game__library=owner.library).exists()
+    assert PlayEvent.objects.filter(game__library=owner.library).exists()
     assert not PlayEvent.objects.exclude(game__library=owner.library).exists()
 
 
@@ -295,9 +297,9 @@ def test_sample_load_rejects_a_private_row_without_portable_owner_marker(
     assert not Device.objects.filter(pk=202).exists()
 
 
-# PlayEvent.game and GameStatusChange.game reference Game.uuid, and both
-# platform foreign keys reference Platform.uuid, not either target's pk (see
-# games/models.py); well-formed UUIDs that no fixture record carries.
+# PlayEvent.game, GameStatusChange.game, and both platform foreign keys reference
+# their promoted target's UUIDv7 primary key; these are well-formed UUIDs that
+# no fixture record carries.
 ABSENT_GAME_UUID = "00000000-0000-7000-8000-000000000000"
 ABSENT_DEVICE_UUID = "00000000-0000-7000-8000-000000000001"
 PRESENT_GAME_UUID = "00000000-0000-7000-8000-000000000002"
