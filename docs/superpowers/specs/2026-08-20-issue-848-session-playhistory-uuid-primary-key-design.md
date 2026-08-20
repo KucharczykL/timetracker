@@ -31,7 +31,8 @@ After the cutover:
 Purchase, Device, FilterPreset, slug canonicalization, filters, saved presets,
 statistics, custom elements, TypeScript, and unrelated anonymizer behavior are
 outside this slice. Device identities and all device-valued request or response
-fields remain integers until ID-14/#850.
+fields remain integers until ID-14/#850. Purchase identity promotion remains
+with ID-13/#849.
 
 ## PostgreSQL and Django migration constraints
 
