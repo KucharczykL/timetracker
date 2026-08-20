@@ -5,6 +5,7 @@ from datetime import date
 import pytest
 from django.contrib.auth import get_user_model
 from django.core import serializers
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models, transaction
 
 from common.criteria import FilterError, _comparison_group_for, comparable_columns
@@ -213,6 +214,65 @@ def test_catalog_hierarchy_delete_behavior_is_explicit(owned_library):
     game.delete()
     assert not Edition.objects.filter(pk=second_edition_id).exists()
     assert not Release.objects.filter(pk=second_release_id).exists()
+
+
+def test_release_save_allows_shared_and_same_library_platforms(owned_library):
+    """Rejecting a visible Platform would break valid catalog graphs."""
+    private_platform = Platform.objects.create(
+        library=owned_library, name="Private Platform"
+    )
+    shared_platform = Platform.objects.create(name="Shared Platform")
+    private_game = Game.objects.create(library=owned_library, name="Private Game")
+    private_edition = Edition.objects.create(game=private_game)
+    shared_game = Game.objects.create(name="Shared Game")
+    shared_edition = Edition.objects.create(game=shared_game)
+
+    private_same_library = Release.objects.create(
+        edition=private_edition, platform=private_platform
+    )
+    private_shared = Release.objects.create(
+        edition=private_edition, platform=shared_platform
+    )
+    shared = Release.objects.create(edition=shared_edition, platform=shared_platform)
+
+    assert (
+        private_same_library.platform,
+        private_shared.platform,
+        shared.platform,
+    ) == (private_platform, shared_platform, shared_platform)
+
+
+def test_release_save_rejects_foreign_platform_from_private_graph(
+    owned_library, django_user_model
+):
+    """Removing release ownership validation permits another library's Platform."""
+    other = django_user_model.objects.create_user(username="release-foreign-owner")
+    foreign_platform = Platform.objects.create(
+        library=other.library, name="Foreign Platform"
+    )
+    private_game = Game.objects.create(library=owned_library, name="Private Game")
+    release = Release(edition=Edition.objects.create(game=private_game))
+
+    with pytest.raises(ValidationError, match="another library"):
+        release.platform = foreign_platform
+        release.save()
+
+    assert not Release.objects.filter(pk=release.pk).exists()
+
+
+def test_release_save_rejects_private_platform_from_shared_graph(owned_library):
+    """Removing release ownership validation leaks a private Platform into shared data."""
+    private_platform = Platform.objects.create(
+        library=owned_library, name="Private Platform"
+    )
+    shared_game = Game.objects.create(name="Shared Game")
+    release = Release(edition=Edition.objects.create(game=shared_game))
+
+    with pytest.raises(ValidationError, match="another library"):
+        release.platform = private_platform
+        release.save()
+
+    assert not Release.objects.filter(pk=release.pk).exists()
 
 
 def test_legacy_game_form_remains_authoritative_and_creates_no_graph(

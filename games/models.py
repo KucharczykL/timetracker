@@ -444,6 +444,20 @@ class Release(models.Model):
         editable=False,
     )
 
+    def clean(self):
+        super().clean()
+        if self.platform_id is not None:
+            _validate_related_library(
+                self.edition.game.library_id,
+                self.platform,
+                "platform",
+                allow_shared=True,
+            )
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
 
 class PurchaseQueryset(LibraryOwnedQuerySet):
     def refunded(self):
