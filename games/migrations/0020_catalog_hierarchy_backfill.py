@@ -104,6 +104,71 @@ def _preflight_mismatches(apps, snapshot):
     return mismatches
 
 
+def _temporal_kind_mismatches(apps):
+    Game = apps.get_model("games", "Game")
+    Release = apps.get_model("games", "Release")
+    mismatches = []
+    game_rows = Game.objects.order_by("pk").values(
+        "pk",
+        "original_release_date",
+        "original_release_date_kind",
+        "original_release_date_precision",
+    )
+    for row in game_rows:
+        if row["original_release_date"] is not None and (
+            row["original_release_date_kind"],
+            row["original_release_date_precision"],
+        ) != ("atomic", "year"):
+            mismatches.append(
+                {
+                    "code": "temporal_kind_mismatch",
+                    "game_id": str(row["pk"]),
+                    "field": "original_release_date",
+                    "expected": "atomic/year",
+                    "actual": (
+                        f"{row['original_release_date_kind']}/"
+                        f"{row['original_release_date_precision'] or 'null'}"
+                    ),
+                }
+            )
+
+    release_rows = (
+        Release.objects.filter(
+            is_default=True,
+            edition__is_default=True,
+        )
+        .order_by("edition__game_id")
+        .values(
+            "pk",
+            "edition_id",
+            "edition__game_id",
+            "release_date",
+            "release_date_kind",
+            "release_date_precision",
+        )
+    )
+    for row in release_rows:
+        if row["release_date"] is not None and (
+            row["release_date_kind"],
+            row["release_date_precision"],
+        ) != ("atomic", "year"):
+            mismatches.append(
+                {
+                    "code": "temporal_kind_mismatch",
+                    "game_id": str(row["edition__game_id"]),
+                    "edition_id": str(row["edition_id"]),
+                    "release_id": str(row["pk"]),
+                    "field": "release_date",
+                    "expected": "atomic/year",
+                    "actual": (
+                        f"{row['release_date_kind']}/"
+                        f"{row['release_date_precision'] or 'null'}"
+                    ),
+                }
+            )
+    return mismatches
+
+
 def _ensure_default_graphs(apps):
     Game = apps.get_model("games", "Game")
     Edition = apps.get_model("games", "Edition")
@@ -323,6 +388,7 @@ def _result_mismatches(
                 },
             }
         )
+    mismatches.extend(_temporal_kind_mismatches(apps))
     return mismatches
 
 
@@ -341,13 +407,15 @@ def _summary(apps, mismatch_count):
         "default_editions": Edition.objects.filter(is_default=True).count(),
         "default_releases": default_releases.count(),
         "original_dates_known": Game.objects.filter(
-            original_release_date__isnull=False
+            original_release_date_kind="atomic",
+            original_release_date_precision="year",
         ).count(),
         "original_dates_unknown": Game.objects.filter(
             original_release_date__isnull=True
         ).count(),
         "release_dates_known": default_releases.filter(
-            release_date__isnull=False
+            release_date_kind="atomic",
+            release_date_precision="year",
         ).count(),
         "release_dates_unknown": default_releases.filter(
             release_date__isnull=True
@@ -408,6 +476,7 @@ def backfill_catalog_hierarchy(apps, schema_editor):
     before_snapshot = _game_snapshot(Game)
     mismatches = _preflight_mismatches(apps, before_snapshot)
     if mismatches:
+        mismatches.extend(_temporal_kind_mismatches(apps))
         _emit(_summary(apps, len(mismatches)), mismatches)
         _fail_if_mismatched(mismatches)
 

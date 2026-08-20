@@ -608,12 +608,28 @@ def test_catalog_backfill_reports_every_source_mismatch_and_rolls_back(
         year_released=10000,
         platform_id=foreign_platform.pk,
     )
+    temporal_game = Game.objects.create(
+        library_id=library_a.pk,
+        name="Unclassified canonical dates",
+        original_year_released=2000,
+        year_released=2001,
+        original_release_date="2000-05",
+    )
+    temporal_edition = Edition.objects.create(
+        game_id=temporal_game.pk,
+        is_default=True,
+    )
+    temporal_release = Release.objects.create(
+        edition_id=temporal_edition.pk,
+        is_default=True,
+        release_date="2001/2002",
+    )
 
     executor = MigrationExecutor(connection)
     try:
         with pytest.raises(
             RuntimeError,
-            match=r"CAT hierarchy reconciliation failed with 3 mismatch\(es\)\.",
+            match=r"CAT hierarchy reconciliation failed with 5 mismatch\(es\)\.",
         ):
             executor.migrate([WITH_CATALOG_BACKFILL])
 
@@ -628,19 +644,21 @@ def test_catalog_backfill_reports_every_source_mismatch_and_rolls_back(
             "invalid_original_year",
             "invalid_release_year",
             "legacy_platform_cross_library",
+            "temporal_kind_mismatch",
+            "temporal_kind_mismatch",
         ]
         assert payload["summary"] == {
-            "games": 1,
-            "editions": 0,
-            "releases": 0,
-            "default_editions": 0,
-            "default_releases": 0,
+            "games": 2,
+            "editions": 1,
+            "releases": 1,
+            "default_editions": 1,
+            "default_releases": 1,
             "original_dates_known": 0,
             "original_dates_unknown": 1,
             "release_dates_known": 0,
             "release_dates_unknown": 0,
-            "unspecified_platforms": 0,
-            "mismatches": 3,
+            "unspecified_platforms": 1,
+            "mismatches": 5,
         }
         assert payload["mismatches"] == [
             {
@@ -664,6 +682,22 @@ def test_catalog_backfill_reports_every_source_mismatch_and_rolls_back(
                 "game_library_id": str(library_a.pk),
                 "platform_library_id": str(library_b.pk),
             },
+            {
+                "code": "temporal_kind_mismatch",
+                "game_id": str(temporal_game.pk),
+                "field": "original_release_date",
+                "expected": "atomic/year",
+                "actual": "atomic/month",
+            },
+            {
+                "code": "temporal_kind_mismatch",
+                "game_id": str(temporal_game.pk),
+                "edition_id": str(temporal_edition.pk),
+                "release_id": str(temporal_release.pk),
+                "field": "release_date",
+                "expected": "atomic/year",
+                "actual": "range/null",
+            },
         ]
         assert (
             "CAT hierarchy mismatch: code=invalid_original_year actual=0 "
@@ -678,19 +712,152 @@ def test_catalog_backfill_reports_every_source_mismatch_and_rolls_back(
             f"game_id={game.pk} game_library_id={library_a.pk} "
             f"platform_id={foreign_platform.pk} platform_library_id={library_b.pk}"
         ) in lines
+        assert (
+            "CAT hierarchy mismatch: code=temporal_kind_mismatch "
+            "actual=atomic/month expected=atomic/year "
+            f"field=original_release_date game_id={temporal_game.pk}"
+        ) in lines
+        assert (
+            "CAT hierarchy mismatch: code=temporal_kind_mismatch "
+            "actual=range/null "
+            f"edition_id={temporal_edition.pk} expected=atomic/year "
+            f"field=release_date game_id={temporal_game.pk} "
+            f"release_id={temporal_release.pk}"
+        ) in lines
 
         applied = MigrationRecorder(connection).applied_migrations()
         assert WITH_CATALOG_BACKFILL not in applied
         game.refresh_from_db()
         assert game.original_release_date is None
-        assert Edition.objects.count() == 0
-        assert Release.objects.count() == 0
+        temporal_game.refresh_from_db()
+        temporal_release.refresh_from_db()
+        assert temporal_game.original_release_date == TemporalValue.from_month(2000, 5)
+        assert temporal_release.release_date == TemporalValue.parse("2001/2002")
+        assert Edition.objects.count() == 1
+        assert Release.objects.count() == 1
     finally:
         Game.objects.filter(pk=game.pk).update(
             original_year_released=2000,
             year_released=2001,
             platform_id=None,
         )
+
+
+def test_catalog_backfill_postwrite_mismatch_rolls_back_all_writes(
+    catalog_backfill_migration_harness,
+    capsys,
+):
+    apps = catalog_backfill_migration_harness
+    User = apps.get_model("auth", "User")
+    UserLibrary = apps.get_model("games", "UserLibrary")
+    Platform = apps.get_model("games", "Platform")
+    Game = apps.get_model("games", "Game")
+    Edition = apps.get_model("games", "Edition")
+    Release = apps.get_model("games", "Release")
+
+    user = User.objects.create(username="catalog-backfill-postwrite-failure")
+    library = UserLibrary.objects.create(
+        user_id=user.pk,
+        created_at=timezone.now(),
+    )
+    platform = Platform.objects.create(name="Post-write Platform")
+    game = Game.objects.create(
+        library_id=library.pk,
+        name="Post-write mismatch",
+        original_year_released=2000,
+        year_released=2001,
+        platform_id=platform.pk,
+    )
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            CREATE FUNCTION cat650_force_release_platform_mismatch()
+            RETURNS trigger
+            LANGUAGE plpgsql
+            AS $$
+            BEGIN
+                NEW.platform_id = NULL;
+                RETURN NEW;
+            END
+            $$
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TRIGGER cat650_force_release_platform_mismatch
+            BEFORE INSERT OR UPDATE ON games_release
+            FOR EACH ROW
+            EXECUTE FUNCTION cat650_force_release_platform_mismatch()
+            """
+        )
+
+    capsys.readouterr()
+    try:
+        executor = MigrationExecutor(connection)
+        with pytest.raises(
+            RuntimeError,
+            match=r"CAT hierarchy reconciliation failed with 1 mismatch\(es\)\.",
+        ):
+            executor.migrate([WITH_CATALOG_BACKFILL])
+
+        lines = capsys.readouterr().out.splitlines()
+        machine_line = next(
+            line
+            for line in lines
+            if line.startswith("CATALOG_HIERARCHY_RECONCILIATION_JSON=")
+        )
+        payload = json.loads(machine_line.split("=", 1)[1])
+        assert payload == {
+            "schema_version": 1,
+            "summary": {
+                "games": 1,
+                "editions": 1,
+                "releases": 1,
+                "default_editions": 1,
+                "default_releases": 1,
+                "original_dates_known": 1,
+                "original_dates_unknown": 0,
+                "release_dates_known": 1,
+                "release_dates_unknown": 0,
+                "unspecified_platforms": 1,
+                "mismatches": 1,
+            },
+            "mismatches": [
+                {
+                    "code": "release_platform_mismatch",
+                    "game_id": str(game.pk),
+                    "edition_id": payload["mismatches"][0]["edition_id"],
+                    "release_id": payload["mismatches"][0]["release_id"],
+                    "expected": str(platform.pk),
+                    "actual": None,
+                }
+            ],
+        }
+        mismatch = payload["mismatches"][0]
+        assert (
+            "CAT hierarchy mismatch: code=release_platform_mismatch actual=null "
+            f"edition_id={mismatch['edition_id']} expected={platform.pk} "
+            f"game_id={game.pk} release_id={mismatch['release_id']}"
+        ) in lines
+
+        assert (
+            WITH_CATALOG_BACKFILL
+            not in MigrationRecorder(connection).applied_migrations()
+        )
+        game.refresh_from_db()
+        assert game.original_release_date is None
+        assert Edition.objects.count() == 0
+        assert Release.objects.count() == 0
+    finally:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DROP TRIGGER IF EXISTS cat650_force_release_platform_mismatch "
+                "ON games_release"
+            )
+            cursor.execute(
+                "DROP FUNCTION IF EXISTS cat650_force_release_platform_mismatch()"
+            )
 
 
 def test_catalog_backfill_empty_database_emits_exact_zero_report(
