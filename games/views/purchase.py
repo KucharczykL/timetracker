@@ -456,7 +456,7 @@ def _view_purchase_content(
     title_class = "text-type-title font-serif text-slate-500"
     inner = Div(class_="flex flex-col gap-5 mb-3")[
         Div(class_=title_class)[
-            Link(href=reverse("games:view_game", args=[first_game.id]))[first_game.name]
+            Link(href=first_game.get_absolute_url())[first_game.name]
         ],
         Div(class_=row_class)[purchase.get_type_display()],
         Div(class_=row_class)[owned],
@@ -469,7 +469,7 @@ def _view_purchase_content(
             ]
         ],
         Div(class_=row_class)["Games included in this purchase:"],
-        Ul()[[Li()[GameLink(game.id, game.name)] for game in purchase.games.all()]],
+        Ul()[[Li()[GameLink(game, game.name)] for game in purchase.games.all()]],
     ]
     return ContentContainer(class_="dark:text-white")[inner]
 

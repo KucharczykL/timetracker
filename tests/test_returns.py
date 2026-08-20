@@ -82,7 +82,7 @@ def test_an_embedded_newline_is_stripped_not_passed_through(rf, db):
 
 
 def test_rejected_path_is_dropped(rf, db):
-    detail = reverse("games:view_game", args=[GAME_ID])
+    detail = reverse("games:view_game", args=[GAME_ID, "test-game"])
     assert (
         parse_origin(_request(rf, detail), returnable=RETURNABLE, reject=detail) is None
     )

@@ -38,7 +38,11 @@ def add_statuschange(request: HttpRequest) -> HttpResponse:
     if form.is_valid():
         obj = form.save()
         return redirect(
-            return_url(request, fallback="games:view_game", fallback_args=[obj.game.id])
+            return_url(
+                request,
+                fallback="games:view_game",
+                fallback_args=[obj.game.id, obj.game.url_slug],
+            )
         )
     return render_page(
         request,
@@ -64,7 +68,9 @@ def edit_statuschange(request: HttpRequest, statuschange_id: UUID) -> HttpRespon
         saved = form.save()
         return redirect(
             return_url(
-                request, fallback="games:view_game", fallback_args=[saved.game.id]
+                request,
+                fallback="games:view_game",
+                fallback_args=[saved.game.id, saved.game.url_slug],
             )
         )
     return render_page(
@@ -126,5 +132,5 @@ def delete_statuschange(request: HttpRequest, pk: UUID) -> HttpResponse:
         title="Delete status change",
         message="Permanently delete this status change?",
         fallback="games:view_game",
-        fallback_args=[statuschange.game.id],
+        fallback_args=[statuschange.game.id, statuschange.game.url_slug],
     )

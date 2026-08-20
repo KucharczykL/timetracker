@@ -45,7 +45,7 @@ def test_reset_confirms_on_its_own_page_then_returns_to_the_list(
     row = page.locator(f"#session-row-{session.id}")
     expect(row).to_contain_text("2020")
 
-    row.locator('a[href*="/reset"]').click()
+    row.get_by_role("link", name="Reset start to now", exact=True).click()
 
     expect(page.locator("body")).to_contain_text("Reset Game")
     page.locator('button:has-text("Reset to now")').click()
@@ -64,7 +64,9 @@ def test_reset_cancel_leaves_start_unchanged(
     session = _make_running_session(e2e_library)
 
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
-    page.locator(f"#session-row-{session.id}").locator('a[href*="/reset"]').click()
+    page.locator(f"#session-row-{session.id}").get_by_role(
+        "link", name="Reset start to now", exact=True
+    ).click()
 
     page.locator('a:has-text("Cancel")').click()
 

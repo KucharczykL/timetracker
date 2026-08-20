@@ -33,6 +33,8 @@ READ_ONLY: frozenset[UrlName] = frozenset(
         "games:stats_alltime",
         "games:stats_by_year",
         "games:view_game",
+        "games:view_game_by_uuid",
+        "games:view_game_legacy",
         "games:view_purchase",
     }
 )

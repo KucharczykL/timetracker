@@ -24,7 +24,7 @@ def test_game_status_selector_opens_and_patches(
     )
 
     page = authenticated_page
-    game_url = reverse("games:view_game", args=[game.id])
+    game_url = game.get_absolute_url()
     page.goto(f"{live_server.url}{game_url}")
 
     # The History section starts empty — the status change we make below must
@@ -158,7 +158,7 @@ def test_play_event_row_increments(authenticated_page: Page, live_server, e2e_li
     game = Game.objects.create(library=e2e_library, name="Test Game", platform=platform)
 
     page = authenticated_page
-    game_url = reverse("games:view_game", args=[game.id])
+    game_url = game.get_absolute_url()
     page.goto(f"{live_server.url}{game_url}")
 
     container = page.locator("#playevents-container")

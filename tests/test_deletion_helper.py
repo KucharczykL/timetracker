@@ -65,7 +65,7 @@ def test_origin_rides_through_the_confirmation(db):
 
 
 def test_reject_refuses_an_origin_naming_the_acted_on_page(db):
-    origin = reverse("games:view_game", args=[GAME_ID])
+    origin = reverse("games:view_game", args=[GAME_ID, "doomed-game"])
     confirm_url = action_url("games:delete_game", GAME_ID, origin=origin)
 
     response = _apply(_request("post", confirm_url), [], reject=origin)

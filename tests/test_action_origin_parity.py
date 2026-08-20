@@ -87,7 +87,11 @@ def test_list_pages_stamp_their_own_path(client, owned_user, world, url_name):
 def test_detail_pages_stamp_their_own_path(client, owned_user, world, url_name):
     client.force_login(owned_user)
     target = world if url_name == "games:view_game" else world.purchases.first()
-    page_path = reverse(url_name, args=[target.id])
+    page_path = (
+        target.get_absolute_url()
+        if url_name == "games:view_game"
+        else reverse(url_name, args=[target.id])
+    )
     response = client.get(page_path)
     assert response.status_code == 200
     assert _missing_origin(response.content.decode(), page_path) == []

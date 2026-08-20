@@ -252,7 +252,7 @@ def delete_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
         message=f"This will permanently delete {game.name} and all associated data:",
         details=_deleted_with_game(game),
         fallback="games:list_games",
-        detail_url=reverse("games:view_game", args=[game_id]),
+        detail_url=game.get_absolute_url(),
     )
 
 
@@ -735,9 +735,11 @@ def _history_section(
 
 
 @login_required
-def view_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
+def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
     library = cast(User, request.user).library
     game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
+    if slug != game.url_slug:
+        return _canonical_game_redirect(request, game)
     presentation = date_time_presentation_for_request(request)
     durations = duration_presentation_for_request(request)
     origin = request.get_full_path()
@@ -761,3 +763,18 @@ def view_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
         title=f"Game Overview - {game.name}",
         mastered=game.mastered,
     )
+
+
+def _canonical_game_redirect(request: HttpRequest, game: Game) -> HttpResponse:
+    target = game.get_absolute_url()
+    query = request.GET.urlencode()
+    if query:
+        target = f"{target}?{query}"
+    return redirect(target, permanent=True)
+
+
+@login_required
+def redirect_game_to_canonical(request: HttpRequest, game_id: UUID) -> HttpResponse:
+    library = cast(User, request.user).library
+    game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
+    return _canonical_game_redirect(request, game)

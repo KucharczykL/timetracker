@@ -166,7 +166,7 @@ def test_no_game_detail_mini_table_cell_wraps(
     any list page gets, so it is where the rule is under the most pressure."""
     page = authenticated_page
     game = Game.objects.get(name=LONG_NAME)
-    page.goto(f"{live_server.url}{reverse('games:view_game', args=[game.pk])}")
+    page.goto(f"{live_server.url}{game.get_absolute_url()}")
     for width in VIEWPORTS:
         page.set_viewport_size({"width": width, "height": 900})
         settle_layout(page)

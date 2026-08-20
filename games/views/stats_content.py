@@ -104,11 +104,11 @@ def _purchase_name(purchase) -> Node:
     first_game = purchase.first_game
     if purchase.type != "game":
         name = game_name or purchase.name
-        link = GameLink(first_game.id, name)
+        link = GameLink(first_game, name)
         suffix = f" ({first_game.name} {purchase.get_type_display()})"
         return Safe(str(link) + conditional_escape(suffix))
     name = game_name or first_game.name
-    return GameLink(first_game.id, name)
+    return GameLink(first_game, name)
 
 
 def _year_nav(year, year_range, url_template) -> Node:
@@ -182,7 +182,7 @@ def _playtime_table(
             Fragment(
                 value if isinstance(value, Node) else _cell(value),
                 " (",
-                GameLink(game.id, game.name),
+                GameLink(game, game.name),
                 ")",
                 _session_link(game.id, year, game.name),
             ),
@@ -228,7 +228,7 @@ def _playtime_table(
             make_row(
                 "First play",
                 Fragment(
-                    GameLink(first_game.id, first_game.name),
+                    GameLink(first_game, first_game.name),
                     f" ({presentation.format(first_play_date, 'date') if first_play_date else 'N/A'})",
                     _session_link(first_game.id, year, first_game.name),
                 ),
@@ -241,7 +241,7 @@ def _playtime_table(
             make_row(
                 "Last play",
                 Fragment(
-                    GameLink(last_game.id, last_game.name),
+                    GameLink(last_game, last_game.name),
                     f" ({presentation.format(last_play_date, 'date') if last_play_date else 'N/A'})",
                     _session_link(last_game.id, year, last_game.name),
                 ),
@@ -394,7 +394,7 @@ def stats_content(
                 "Name",
                 ctx.get("top_10_games_by_playtime") or [],
                 lambda g: Fragment(
-                    GameLink(g.id, g.name), _session_link(g.id, year, g.name)
+                    GameLink(g, g.name), _session_link(g.id, year, g.name)
                 ),
                 lambda g: Duration(
                     g.total_playtime,

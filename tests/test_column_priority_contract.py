@@ -127,4 +127,4 @@ class ActionsColumnPriorityTest(TestCase):
                 self.assert_actions_dominates(reverse(url_name))
 
     def test_game_detail_tables(self) -> None:
-        self.assert_actions_dominates(reverse("games:view_game", args=[self.game.pk]))
+        self.assert_actions_dominates(self.game.get_absolute_url())

@@ -10,6 +10,7 @@ from django.db.models import Case, ExpressionWrapper, F, Func, Q, Sum, Value, Wh
 from django.db.models.fields.generated import GeneratedField
 from django.db.models.functions import Coalesce, Lower, NullIf, Trim
 from django.template.defaultfilters import floatformat, pluralize, slugify
+from django.urls import reverse
 from django.utils import timezone
 
 from common.duration_presentation import format_decimal_hours
@@ -119,6 +120,16 @@ class Game(models.Model):
 
     def __str__(self):
         return self.name
+
+    @property
+    def url_slug(self) -> str:
+        return slugify(self.name) or "game"
+
+    def get_absolute_url(self) -> str:
+        return reverse(
+            "games:view_game",
+            kwargs={"game_id": self.pk, "slug": self.url_slug},
+        )
 
     @property
     def search_label(self) -> str:

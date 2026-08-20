@@ -41,7 +41,7 @@ def game(e2e_library) -> Game:
 
 
 def open_played_menu(page: Page, live_server, game: Game) -> None:
-    page.goto(f"{live_server.url}{reverse('games:view_game', args=[game.id])}")
+    page.goto(f"{live_server.url}{game.get_absolute_url()}")
     page.locator("play-event-row [data-toggle]").click()
     expect(page.locator("play-event-row [data-menu]")).to_be_visible()
 

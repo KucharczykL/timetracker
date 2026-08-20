@@ -157,7 +157,7 @@ class HtmlValidityTest(TestCase):
             reverse("games:list_purchases"),
             reverse("games:list_devices"),
             reverse("games:list_platforms"),
-            reverse("games:view_game", args=[self.long_game.id]),
+            self.long_game.get_absolute_url(),
             reverse("games:view_purchase", args=[self.bundle.id]),
             reverse("games:edit_game", args=[self.long_game.id]),
             reverse("games:delete_game", args=[self.long_game.id]),
