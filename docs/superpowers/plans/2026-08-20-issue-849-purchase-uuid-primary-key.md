@@ -50,14 +50,14 @@
 - `Purchase.id: UUIDv7Field` is the sole primary key; `Purchase.uuid` no longer exists.
 - `games_purchase_games.purchase_id` is a non-null `uuid_v7` FK to `games_purchase.id`, indexed independently and jointly unique with `game_id`.
 
-- [ ] Write focused failing tests for the final model contract, UUID/row/value/link preservation, physical PK/domain/default, through FK/index/uniqueness, duplicate and UUIDv4 rejection, empty reverse, populated reverse before mutation, reverse locking, and one-executor reverse/reapply.
-- [ ] Run the focused tests and record the expected failures caused by the missing migration/model contract.
-- [ ] Implement migration state and forward DDL in this order: add/backfill/reconcile `purchase_uuid`; force constraints immediate; drop/rename/not-null the through column; promote Purchase; drop redundant UUID uniqueness; recreate the through FK/index/unique pair.
-- [ ] Implement reverse by locking `games_purchase` and `games_purchase_games` together, rejecting any populated state, restoring Purchase's bigint identity plus separate UUID, restoring bigint through `purchase_id`, and recreating its FK/index/unique pair.
-- [ ] Update the model and remove exactly Purchase's two residual-integer inventory entries.
-- [ ] Rewrite the through-table tripwire so both relation columns are UUIDv7 and preserve the direct pair-uniqueness enforcement test.
-- [ ] Update Purchase identity tests to exercise promoted `pk`, raw database defaults, duplicate rejection, and wrong-version rejection while retaining historical `0007` migration coverage.
-- [ ] Run the focused migration/identity tests and commit with `git commit -m "feat: promote purchase UUID primary key"`.
+- [x] Write focused failing tests for the final model contract, UUID/row/value/link preservation, physical PK/domain/default, through FK/index/uniqueness, duplicate and UUIDv4 rejection, empty reverse, populated reverse before mutation, reverse locking, and one-executor reverse/reapply.
+- [x] Run the focused tests and record the expected failures caused by the missing migration/model contract.
+- [x] Implement migration state and forward DDL in this order: add/backfill/reconcile `purchase_uuid`; force constraints immediate; drop/rename/not-null the through column; promote Purchase; drop redundant UUID uniqueness; recreate the through FK/index/unique pair.
+- [x] Implement reverse by locking `games_purchase` and `games_purchase_games` together, rejecting any populated state, restoring Purchase's bigint identity plus separate UUID, restoring bigint through `purchase_id`, and recreating its FK/index/unique pair.
+- [x] Update the model and remove exactly Purchase's two residual-integer inventory entries.
+- [x] Rewrite the through-table tripwire so both relation columns are UUIDv7 and preserve the direct pair-uniqueness enforcement test.
+- [x] Update Purchase identity tests to exercise promoted `pk`, raw database defaults, duplicate rejection, and wrong-version rejection while retaining historical `0007` migration coverage.
+- [x] Run the focused migration/identity tests and commit with `git commit -m "feat: promote purchase UUID primary key"`.
 
 ### Task 3: Convert Purchase runtime routes
 
@@ -71,10 +71,10 @@
 - Seven Purchase identity routes use `<uuidv7:purchase_id>`.
 - Purchase view and identity helper parameters use `UUID`.
 
-- [ ] Write failing route tests covering UUIDv7 reverse/resolve, integer and UUIDv4 rejection, successful owned reads/actions, and foreign-library 404 behavior.
-- [ ] Run the focused test and confirm failure is caused by the existing integer route contract.
-- [ ] Convert view, edit, delete, refund confirmation/action, and split confirmation/action routes and parameter annotations while retaining library-scoped lookups and response behavior.
-- [ ] Run the focused runtime/isolation tests and commit with `git commit -m "feat: route purchase identities by UUID"`.
+- [x] Write failing route tests covering UUIDv7 reverse/resolve, integer and UUIDv4 rejection, successful owned reads/actions, and foreign-library 404 behavior.
+- [x] Run the focused test and confirm failure is caused by the existing integer route contract.
+- [x] Convert view, edit, delete, refund confirmation/action, and split confirmation/action routes and parameter annotations while retaining library-scoped lookups and response behavior.
+- [x] Run the focused runtime/isolation tests and commit with `git commit -m "feat: route purchase identities by UUID"`.
 
 ### Task 4: Promote Purchase fixture identities and document the handoff
 
@@ -84,19 +84,19 @@
 - Modify: fixture/sample-loading tests as required by observed failures
 - Modify: `docs/superpowers/specs/2026-08-17-uuid-identity-cutover-wave-plan.md`
 
-- [ ] Write or update failing fixture-shape tests so `games.purchase` stores its UUIDv7 identity under `pk` and has no `fields.uuid`.
-- [ ] Mechanically transform Purchase records without changing relationships, ordering, unrelated fields, or gzip determinism.
-- [ ] Update promoted-model fixture expectations; production loader/anonymizer logic remains generic unless a failing behavior test proves otherwise.
-- [ ] Verify deterministic anonymization, committed sample loading, and anonymize/load round trips.
-- [ ] Update the wave plan with delivered ID-13 behavior and prepare the #647 handoff noting that #849 converted seven bare Purchase routes while canonical URL policy remains there.
-- [ ] Commit with `git commit -m "feat: promote sample purchase identities"`.
+- [x] Write or update failing fixture-shape tests so `games.purchase` stores its UUIDv7 identity under `pk` and has no `fields.uuid`.
+- [x] Mechanically transform Purchase records without changing relationships, ordering, unrelated fields, or gzip determinism.
+- [x] Update promoted-model fixture expectations; production loader/anonymizer logic remains generic unless a failing behavior test proves otherwise.
+- [x] Verify deterministic anonymization, committed sample loading, and anonymize/load round trips.
+- [x] Update the wave plan with delivered ID-13 behavior and prepare the #647 handoff noting that #849 converted seven bare Purchase routes while canonical URL policy remains there.
+- [x] Commit with `git commit -m "feat: promote sample purchase identities"`.
 
 ### Task 5: Integrate and verify
 
 **Files:**
 - Review all branch changes; modify only to fix verified branch-caused failures.
 
-- [ ] Run focused Purchase migration, identity, runtime, audit, and fixture tests.
-- [ ] Run `make migrate`, `make audit-uuid-identity`, and `make check-migrations` against real PostgreSQL.
-- [ ] Run full `make check` with the default worker count.
-- [ ] Review the complete diff against the design and issue comments, then commit any verification-driven fixes.
+- [x] Run focused Purchase migration, identity, runtime, audit, and fixture tests.
+- [x] Run `make migrate`, `make audit-uuid-identity`, and `make check-migrations` against real PostgreSQL.
+- [x] Run full `make check` with the default worker count.
+- [x] Review the complete diff against the design and issue comments, then commit any verification-driven fixes.
