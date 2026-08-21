@@ -4,6 +4,7 @@ from uuid import UUID
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.db.models import F, OuterRef, Q, QuerySet, Subquery, Sum
 from django.http import Http404, HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
@@ -78,6 +79,20 @@ from games.views.filtering import (
 )
 from games.views.playevent import create_playevent_tabledata
 from games.views.returns import origin_from, return_url
+
+WIKIDATA_CONFLICT_MESSAGE = "This Wikidata entity ID already belongs to another game."
+
+
+def _save_game_form_or_add_wikidata_error(form: GameForm) -> Game | None:
+    try:
+        return save_legacy_game_form(form)
+    except ValidationError as error:
+        if not hasattr(error, "message_dict") or set(error.message_dict) != {
+            "provider_key"
+        }:
+            raise
+        form.add_error("wikidata", WIKIDATA_CONFLICT_MESSAGE)
+        return None
 
 
 @login_required
@@ -211,19 +226,22 @@ def add_game(request: HttpRequest) -> HttpResponse:
     library = cast(User, request.user).library
     form = GameForm(request.POST or None, library=library)
     if form.is_valid():
-        game = save_legacy_game_form(form)
-        origin = origin_from(request)
-        if "submit_and_redirect" in request.POST:
-            return redirect(
-                action_url(
-                    "games:add_purchase_for_game", game_id=game.id, origin=origin
+        game = _save_game_form_or_add_wikidata_error(form)
+        if game is not None:
+            origin = origin_from(request)
+            if "submit_and_redirect" in request.POST:
+                return redirect(
+                    action_url(
+                        "games:add_purchase_for_game", game_id=game.id, origin=origin
+                    )
                 )
-            )
-        elif "submit_and_create_session" in request.POST:
-            return redirect(
-                action_url("games:add_session_for_game", game_id=game.id, origin=origin)
-            )
-        return redirect(return_url(request, fallback="games:list_games"))
+            elif "submit_and_create_session" in request.POST:
+                return redirect(
+                    action_url(
+                        "games:add_session_for_game", game_id=game.id, origin=origin
+                    )
+                )
+            return redirect(return_url(request, fallback="games:list_games"))
 
     return render_page(
         request,
@@ -281,8 +299,7 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
     form = GameForm(request.POST or None, instance=game, library=library)
-    if form.is_valid():
-        save_legacy_game_form(form)
+    if form.is_valid() and _save_game_form_or_add_wikidata_error(form) is not None:
         return redirect(return_url(request, fallback="games:list_games"))
     return render_page(
         request,

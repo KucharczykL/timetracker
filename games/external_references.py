@@ -164,28 +164,34 @@ def resolve_external_reference(
 
 def sync_game_wikidata(*, game: Game) -> ExternalReference | None:
     """Synchronize the temporary Game.wikidata compatibility field to its reference."""
-    from games.models import ExternalReference
+    from games.models import ExternalReference, Game
 
+    legacy_key = game.wikidata.strip()
     with transaction.atomic():
+        persisted_game = Game.objects.select_for_update().get(pk=game.pk)
         references = list(
             ExternalReference.objects.select_for_update().filter(
-                provider="wikidata", entity_kind="game", game=game
+                provider="wikidata", entity_kind="game", game_id=game.pk
             )
         )
-        legacy_key = game.wikidata.strip()
         if not legacy_key:
-            game.wikidata = ""
             for reference in references:
                 reference.delete()
+            persisted_game.wikidata = ""
+            persisted_game.save(update_fields=("wikidata",))
+            game.wikidata = ""
             return None
 
         _, canonical_key = normalize_provider_key(
             provider="wikidata", provider_key=legacy_key
         )
-        game.wikidata = canonical_key
         for reference in references:
             if reference.provider_key != canonical_key:
                 reference.delete()
-        return save_external_reference(
-            provider="wikidata", provider_key=canonical_key, target=game
+        synced = save_external_reference(
+            provider="wikidata", provider_key=canonical_key, target=persisted_game
         )
+        persisted_game.wikidata = canonical_key
+        persisted_game.save(update_fields=("wikidata",))
+        game.wikidata = canonical_key
+        return synced

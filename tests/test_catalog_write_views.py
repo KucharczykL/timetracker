@@ -4,6 +4,7 @@ import pytest
 from django.urls import reverse
 
 from games.external_references import save_external_reference
+from games.forms import GameForm
 from games.models import Edition, ExternalReference, Game, Platform, Release
 from timetracker.temporal import TemporalValue
 
@@ -46,6 +47,28 @@ def game_payload(**overrides):
     }
     payload.update(overrides)
     return payload
+
+
+def inject_wikidata_conflict_after_validation(monkeypatch, *, library, provider_key):
+    original_is_valid = GameForm.is_valid
+    conflict_injected = False
+
+    def is_valid_with_competing_write(form):
+        nonlocal conflict_injected
+        is_valid = original_is_valid(form)
+        if is_valid and not conflict_injected:
+            competing_game = Game.objects.create(
+                library=library, name=f"Concurrent {provider_key} owner"
+            )
+            save_external_reference(
+                provider="wikidata",
+                provider_key=provider_key,
+                target=competing_game,
+            )
+            conflict_injected = True
+        return is_valid
+
+    monkeypatch.setattr(GameForm, "is_valid", is_valid_with_competing_write)
 
 
 def test_add_game_writes_legacy_and_default_catalog_graph(
@@ -221,3 +244,57 @@ def test_game_add_rejects_a_duplicate_wikidata_key_as_a_field_error(
     assert "This Wikidata entity ID already belongs to another game." in html
     assert Game.objects.filter(library=owned_library).count() == 1
     assert ExternalReference.objects.get(game=existing).provider_key == "Q123"
+
+
+def test_game_add_renders_a_write_time_wikidata_conflict_as_a_field_error(
+    client, monkeypatch, owned_user, owned_library
+):
+    """A key claimed after validation must not turn the add request into a 500."""
+    client.force_login(owned_user)
+    inject_wikidata_conflict_after_validation(
+        monkeypatch, library=owned_library, provider_key="Q123"
+    )
+
+    response = client.post(reverse("games:add_game"), game_payload())
+
+    assert response.status_code == 200
+    assert "This Wikidata entity ID already belongs to another game." in (
+        response.content.decode()
+    )
+    assert not Game.objects.filter(name="Legacy form game").exists()
+    assert ExternalReference.objects.get(provider_key="Q123").game.name == (
+        "Concurrent Q123 owner"
+    )
+
+
+def test_game_edit_renders_a_write_time_wikidata_conflict_and_rolls_back(
+    client, monkeypatch, owned_user, owned_library
+):
+    """A key claimed after validation must preserve the edited Game's old graph."""
+    game = Game.objects.create(
+        library=owned_library, name="Original name", wikidata="Q123"
+    )
+    original_reference = save_external_reference(
+        provider="wikidata", provider_key="Q123", target=game
+    )
+    client.force_login(owned_user)
+    inject_wikidata_conflict_after_validation(
+        monkeypatch, library=owned_library, provider_key="Q456"
+    )
+
+    response = client.post(
+        reverse("games:edit_game", args=[game.pk]),
+        game_payload(name="Changed name", wikidata="Q456"),
+    )
+
+    assert response.status_code == 200
+    assert "This Wikidata entity ID already belongs to another game." in (
+        response.content.decode()
+    )
+    game.refresh_from_db()
+    original_reference.refresh_from_db()
+    assert (game.name, game.wikidata) == ("Original name", "Q123")
+    assert original_reference.game_id == game.pk
+    assert ExternalReference.objects.get(provider_key="Q456").game.name == (
+        "Concurrent Q456 owner"
+    )

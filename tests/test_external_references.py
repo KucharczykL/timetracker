@@ -391,13 +391,14 @@ def test_resolve_external_reference_rejects_invalid_tuples(kwargs):
 
 
 def test_sync_game_wikidata_retains_the_existing_reference_for_an_unchanged_key():
-    """Synchronizing the same legacy key must preserve its external-reference UUID."""
+    """Sync must persist the canonical legacy key and preserve the reference UUID."""
     game = Game.objects.create(name="Unchanged Wikidata", wikidata=" Q123 ")
     original = save_external_reference(
         provider="wikidata", provider_key="Q123", target=game
     )
 
     synced = sync_game_wikidata(game=game)
+    game.refresh_from_db()
 
     assert synced is not None
     assert synced.pk == original.pk
@@ -427,6 +428,8 @@ def test_sync_game_wikidata_removes_only_game_mappings_when_legacy_value_is_blan
 ):
     """Clearing a Game's legacy key must not delete another catalog kind's identity."""
     targets = _catalog_targets()
+    targets["game"].wikidata = "Q123"
+    targets["game"].save(update_fields=("wikidata",))
     game_reference = save_external_reference(
         provider="wikidata", provider_key="Q123", target=targets["game"]
     )
@@ -436,6 +439,7 @@ def test_sync_game_wikidata_removes_only_game_mappings_when_legacy_value_is_blan
     targets["game"].wikidata = "   "
 
     synced = sync_game_wikidata(game=targets["game"])
+    targets["game"].refresh_from_db()
 
     assert synced is None
     assert not ExternalReference.objects.filter(pk=game_reference.pk).exists()
