@@ -146,6 +146,13 @@ makemigrations: ensure-postgres
 check-migrations: ensure-postgres
 	uv run --frozen python manage.py makemigrations --check --dry-run --noinput
 
+# Read back the DDL a migration actually emits, for the cases the migration file
+# does not show plainly: raw-SQL operations, and fields whose column definition
+# is decided by the field class rather than the call site.
+# Usage: make sqlmigrate ARGS="games 0023_library_event_schema"
+sqlmigrate: ensure-postgres
+	uv run --frozen python manage.py sqlmigrate $(ARGS)
+
 migrate: ensure-postgres makemigrations
 	uv run --frozen python manage.py migrate
 
