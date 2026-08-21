@@ -160,6 +160,32 @@ def test_external_reference_save_cannot_reassign_a_persisted_tuple_target():
     assert reference.target_uuid == original.pk
 
 
+def test_external_reference_save_cannot_reassign_a_same_uuid_target_across_kinds():
+    """A shared UUID in separate target tables must not hide a kind reassignment."""
+    original = Game.objects.create(name="Original Cross-Kind Target")
+    edition = Edition.objects.create(
+        id=original.pk,
+        game=Game.objects.create(name="Cross-Kind Edition Game"),
+    )
+    reference = ExternalReference.objects.create(
+        provider="wikidata",
+        entity_kind="game",
+        provider_key="Q123",
+        game=original,
+    )
+
+    reference.entity_kind = "edition"
+    reference.game = None
+    reference.edition = edition
+
+    with pytest.raises(ValidationError, match="already mapped"):
+        reference.save()
+
+    reference.refresh_from_db()
+    assert reference.entity_kind == "game"
+    assert reference.game_id == original.pk
+
+
 def test_external_reference_save_cannot_reassign_an_existing_primary_key_target():
     """A fresh instance with an existing ID must not repoint its saved tuple."""
     original = Game.objects.create(name="Original Existing-ID Target")
@@ -295,11 +321,16 @@ def test_save_external_reference_refuses_to_reassign_a_tuple_to_another_target()
         provider="wikidata", provider_key="Q123", target=original
     )
 
-    with pytest.raises(ValidationError, match="already maps to another catalog target"):
+    with pytest.raises(ValidationError) as exc_info:
         save_external_reference(
             provider="wikidata", provider_key="Q123", target=replacement
         )
 
+    assert exc_info.value.message_dict == {
+        "provider_key": [
+            "This external reference already maps to another catalog target."
+        ]
+    }
     reference.refresh_from_db()
     assert reference.target_uuid == original.pk
     assert ExternalReference.objects.count() == 1

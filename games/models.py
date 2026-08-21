@@ -592,15 +592,11 @@ class ExternalReference(models.Model):
                 .first()
             )
             if persisted_target_ids is not None:
-                persisted_target_uuid = next(
-                    (
-                        target_id
-                        for target_id in persisted_target_ids.values()
-                        if target_id is not None
-                    ),
-                    None,
-                )
-                if persisted_target_uuid != self.target_uuid:
+                current_target_ids = {
+                    f"{target_field}_id": target_ids[target_kind]
+                    for target_kind, target_field in self.TARGET_FIELDS.items()
+                }
+                if persisted_target_ids != current_target_ids:
                     raise ValidationError(
                         {
                             "target_uuid": (
