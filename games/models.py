@@ -617,8 +617,13 @@ class ExternalReference(models.Model):
             for target_kind, target_field in self.TARGET_FIELDS.items()
         }
         target_id = target_ids.get(self.entity_kind)
-        if target_id is None or sum(value is not None for value in target_ids.values()) != 1:
-            raise ValidationError({"entity_kind": "External reference target is invalid."})
+        if (
+            target_id is None
+            or sum(value is not None for value in target_ids.values()) != 1
+        ):
+            raise ValidationError(
+                {"entity_kind": "External reference target is invalid."}
+            )
         return target_id
 
     @property

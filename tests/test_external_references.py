@@ -19,14 +19,20 @@ pytestmark = pytest.mark.django_db
     [
         (" WikiData ", " q123 ", ("wikidata", "Q123")),
         ("wikidata", "Q1", ("wikidata", "Q1")),
-        ("wikidata", "Q999999999999999999999999", ("wikidata", "Q999999999999999999999999")),
+        (
+            "wikidata",
+            "Q999999999999999999999999",
+            ("wikidata", "Q999999999999999999999999"),
+        ),
     ],
 )
 def test_provider_normalization_canonicalizes_valid_wikidata_tuples(
     provider, provider_key, expected
 ):
     """A permissive or noncanonical provider tuple would split one identity."""
-    assert normalize_provider_key(provider=provider, provider_key=provider_key) == expected
+    assert (
+        normalize_provider_key(provider=provider, provider_key=provider_key) == expected
+    )
 
 
 @pytest.mark.parametrize(
@@ -41,7 +47,9 @@ def test_provider_normalization_rejects_invalid_wikidata_keys(provider_key):
 
 def test_provider_normalization_rejects_unknown_provider():
     """An unregistered provider must not receive a generic key policy."""
-    with pytest.raises(ValidationError, match="Unsupported external-reference provider"):
+    with pytest.raises(
+        ValidationError, match="Unsupported external-reference provider"
+    ):
         normalize_provider_key(provider="igdb", provider_key="123")
 
 
@@ -300,7 +308,9 @@ def test_save_external_reference_refuses_to_reassign_a_tuple_to_another_target()
 def test_save_external_reference_rejects_an_unsupported_target_class():
     """The write boundary must accept only the four catalog target models."""
     with pytest.raises(ValidationError, match="Unsupported catalog target"):
-        save_external_reference(provider="wikidata", provider_key="Q123", target=object())
+        save_external_reference(
+            provider="wikidata", provider_key="Q123", target=object()
+        )
 
 
 @pytest.mark.parametrize("entity_kind", ["game", "edition", "release", "platform"])
@@ -374,7 +384,9 @@ def test_sync_game_wikidata_replaces_an_old_game_mapping_when_the_legacy_key_cha
     assert synced.provider_key == "Q456"
     assert not ExternalReference.objects.filter(pk=old.pk).exists()
     assert list(
-        ExternalReference.objects.filter(game=game).values_list("provider_key", flat=True)
+        ExternalReference.objects.filter(game=game).values_list(
+            "provider_key", flat=True
+        )
     ) == ["Q456"]
 
 
@@ -415,4 +427,6 @@ def test_sync_game_wikidata_rolls_back_deletion_when_another_game_owns_the_key()
         sync_game_wikidata(game=first)
 
     assert ExternalReference.objects.get(pk=first_reference.pk).target_uuid == first.pk
-    assert ExternalReference.objects.get(pk=second_reference.pk).target_uuid == second.pk
+    assert (
+        ExternalReference.objects.get(pk=second_reference.pk).target_uuid == second.pk
+    )

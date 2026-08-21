@@ -50,9 +50,7 @@ def normalize_provider(provider: str) -> str:
     return normalized
 
 
-def normalize_provider_key(
-    *, provider: str, provider_key: str
-) -> tuple[str, str]:
+def normalize_provider_key(*, provider: str, provider_key: str) -> tuple[str, str]:
     provider = normalize_provider(provider)
     return provider, PROVIDER_POLICIES[provider].normalize_key(provider_key)
 
@@ -62,9 +60,7 @@ def external_reference_url(
 ) -> str:
     if entity_kind not in {"game", "edition", "release", "platform"}:
         raise ValidationError({"entity_kind": "Unsupported catalog entity kind."})
-    provider, key = normalize_provider_key(
-        provider=provider, provider_key=provider_key
-    )
+    provider, key = normalize_provider_key(provider=provider, provider_key=provider_key)
     policy = PROVIDER_POLICIES[provider]
     return policy.url_template.format(
         entity_kind=quote(entity_kind, safe=""),
@@ -105,7 +101,9 @@ def save_external_reference(
 
     with transaction.atomic():
         reference = (
-            ExternalReference.objects.select_for_update().filter(**tuple_filters).first()
+            ExternalReference.objects.select_for_update()
+            .filter(**tuple_filters)
+            .first()
         )
         if reference is None:
             try:
@@ -146,7 +144,9 @@ def resolve_external_reference(
     try:
         target_id_field = target_id_fields[entity_kind]
     except KeyError as error:
-        raise ValidationError({"entity_kind": "Unsupported catalog entity kind."}) from error
+        raise ValidationError(
+            {"entity_kind": "Unsupported catalog entity kind."}
+        ) from error
 
     provider, provider_key = normalize_provider_key(
         provider=provider, provider_key=provider_key
