@@ -56,6 +56,7 @@ from common.layout import render_page
 from common.returns import OriginUrl, action_url
 from common.utils import paginate, safe_division
 from games.catalog_compat import save_legacy_game_form
+from games.external_references import external_reference_url
 from games.filters import (
     PlayEventFilter,
     PurchaseFilter,
@@ -144,7 +145,15 @@ def list_games(request: HttpRequest) -> HttpResponse:
                     id_scope=f"game-{game.pk}-playtime",
                 ),
                 GameStatusSelector(game, Game.Status.choices, get_token(request)),
-                game.wikidata,
+                Link(
+                    href=external_reference_url(
+                        provider="wikidata",
+                        entity_kind="game",
+                        provider_key=game.wikidata,
+                    )
+                )[game.wikidata]
+                if game.wikidata
+                else "",
                 presentation.format(game.created_at, "date"),
                 ButtonGroup(
                     [
