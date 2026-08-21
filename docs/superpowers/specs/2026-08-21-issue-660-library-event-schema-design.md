@@ -1,76 +1,56 @@
-# EV-06 (#660): library event envelope and stream-head schema
+# Library event envelope and stream-head schema
 
-Status: approved 2026-08-21. Slice EV-06 of parent phase #601, governed by the
-[overhaul architectural charter](https://github.com/KucharczykL/timetracker/blob/codex/player-history-architecture/docs/superpowers/specs/2026-08-09-timetracker-overhaul-design.md)
-(sections *Event envelope* and *Durable references*), whose envelope field list
-this record implements and does not re-argue.
+`LibraryEventStreamHead` and `LibraryEvent` implement the *Event envelope*
+section of the
+[overhaul architectural charter](https://github.com/KucharczykL/timetracker/blob/codex/player-history-architecture/docs/superpowers/specs/2026-08-09-timetracker-overhaul-design.md),
+whose envelope field list this record does not repeat.
 
-## Outcome
+## What the tables are
 
-Two additive tables — `LibraryEventStreamHead` and `LibraryEvent` — plus their
-constraints and a `for_library()` manager. Nothing writes to them yet. The
-value delivered is the storage contract every later EV slice builds against,
-committed early enough that #661–#668 argue about behaviour rather than columns.
+Storage for a per-library append-only event stream, plus the head row a command
+locks to append to it. They are the contract the command, projection, and replay
+layers build against.
 
-## Boundary
+Nothing writes to them. The schema carries no sequence allocation, head
+provisioning, idempotency enforcement, payload validation, event-name
+vocabulary, upcasting, or append API, and no admin, API, filter, preset,
+statistics, signal, fixture, or UI registration. Both tables are empty on a
+freshly migrated database and stay empty until a writer exists.
 
-This slice is schema only. Each deferred concern has an owner:
-
-| Deferred | Owner |
-| --- | --- |
-| Head provisioning, row locking, sequence allocation | #661 |
-| `(library, idempotency_key)` command records and replay of a completed command | #662 |
-| Serialization-failure / deadlock / collision retries | #663 |
-| Dispatch | #664 |
-| Projectors | #665 |
-| Replay and rebuild | #666, #667 |
-| Durable-reference payload and snapshot representation | #668 |
-| Relational `PlayerGame → Game` link | #671 |
-| Baseline events for existing PlayerGames | #676 |
-| Live PlayerGame command/event writes | #677 |
-
-No admin, API, filter, preset, statistics, signal, fixture, or UI registration.
-No JSON shape validation, event-name vocabulary, upcasting, or append API. No
-data is backfilled: after this migration both tables are empty and stay empty.
-
-## Ownership: why every event has a non-null library
+## Ownership: every event has a non-null library
 
 `Game.library = NULL` and `Platform.library = NULL` identify *shared catalog*
-rows. That nullability is a catalog concept and must not leak into the stream:
+rows. That nullability is a catalog concept and does not reach the stream:
 
 - A `LibraryEvent` always belongs to one concrete `UserLibrary`. There is no
   ownerless event and no shared stream.
-- The event's *aggregate* is the private domain object being changed — a future
-  `PlayerGame`. `aggregate_id` therefore holds the `PlayerGame` UUID, never the
-  shared `Game` UUID.
+- The event's *aggregate* is the private domain object being changed.
+  `aggregate_id` holds that object's UUID, never a shared `Game` UUID.
 - A shared catalog UUID appears only *inside* the payload, as a durable
-  reference. #668 owns that representation.
-- Shared catalog mutations stay conventional relational writes and never enter
-  a private stream.
+  reference.
+- Shared catalog mutations are conventional relational writes and never enter a
+  private stream.
 
-Consequently this slice adds no Game-specific field, payload key, foreign key,
-validation, or test. A payload test here asserts only that nested UUID strings
+The schema therefore contains no Game-specific field, payload key, foreign key,
+or validation, and its payload tests assert only that nested UUID strings
 survive a JSON round trip, with no key carrying meaning.
 
-## Decisions
+## Design
 
-### 1. A separate head table, not a `current_sequence` column on `UserLibrary`
+### A separate head table, not a `current_sequence` column on `UserLibrary`
 
-The charter requires commands to lock *one* row before reading projections.
-Putting the counter on `UserLibrary` would make every command lock the row that
-preferences, ownership checks, and future settings writes also touch, turning
+A command locks one row before reading projections. On `UserLibrary` that lock
+would also block preferences, ownership checks, and settings writes, turning
 unrelated work into stream contention. A dedicated head row is the lock, and
-nothing else has a reason to take it.
+nothing else has a reason to take it. The head is also the stream's identity —
+its `id` is the stable stream UUID — which a column on `UserLibrary` could not
+express.
 
-The head is also the stream's identity (`id` is the stable stream UUID the
-charter calls for), which a column on `UserLibrary` could not express.
-
-### 2. `library` is denormalized onto the event, and that redundancy is enforced
+### `library` is denormalized onto the event, and the redundancy is enforced
 
 `LibraryEvent.library` is derivable through `stream → library`. It is stored
-anyway for two reasons: per-library queries (`for_library()`, and every later
-replay/journal read) should not join to the head, and the column is half of the
-ownership guard below.
+anyway so that per-library reads do not join to the head, and so it can be half
+of the ownership guard.
 
 Denormalization without enforcement is a bug generator, so the pair is checked
 by the database:
@@ -80,127 +60,114 @@ by the database:
 - the event carries a composite foreign key `(stream_id, library_id) →
   (id, library_id)`.
 
-An event can therefore never name another library's stream. Django has no
-composite-FK field, so this is named reversible raw SQL in the migration.
+An event cannot name another library's stream. Django has no composite-FK field,
+so this is named reversible raw SQL in migration `0023`.
 
-### 3. `stream` is RESTRICT, `library` is CASCADE — verified, not assumed
+### `stream` is RESTRICT, `library` is CASCADE
 
-The combination reads like a contradiction (deleting a library cascades to
-events *and* to the head, which events restrict). It works, and the reasons are
-mechanical:
+The combination reads like a contradiction — deleting a library cascades to
+events *and* to the head, which events restrict — and resolves mechanically:
 
 - `Collector.collect(..., fail_on_restricted=True)` clears restricted objects
   that are *also* collected for deletion; a library delete collects both the
-  head and its events by CASCADE, so the RESTRICT is cleared
-  (`django/db/models/deletion.py`, the `fail_on_restricted` block).
+  head and its events by CASCADE, so the RESTRICT is cleared.
 - `RESTRICT` calls `collector.add_dependency(head_model, event_model)`, so
   `Collector.sort()` orders events before the head. The raw composite FK is
-  plain `NO ACTION` and not deferrable, and this ordering is what keeps it
-  satisfied during the cascade.
+  plain `NO ACTION` and not deferrable, and this ordering keeps it satisfied
+  during the cascade.
 
-The net contract: deleting a library removes its events and its head, including
-a *populated* head; deleting a populated head directly raises `RestrictedError`.
-Both are pinned by tests — the populated-head cascade is the interesting case
-and the one the issue text left ambiguous.
+So: deleting a library removes its events and its head, including a populated
+head; deleting a populated head directly raises `RestrictedError`. Both are
+pinned by tests.
 
-### 4. `aggregate_id` and `correlation_id` are explicit-only, spelled `db_default=NOT_PROVIDED`
+The only model change that breaks this is `LibraryEvent.library` ceasing to be
+a CASCADE foreign key, which stops events being collected from the same origin.
+`related_name="+"` relations are still collected (`include_hidden=True`), and
+nullability affects only fast-delete eligibility, which the same guard covers.
+
+### `aggregate_id` and `correlation_id` are explicit-only
 
 Both must be supplied by the writer: a generated UUIDv7 default would silently
-manufacture a correlation where the caller forgot one, which is exactly the
-failure the charter's "compound action shares a correlation ID" rule depends on
-not happening. `UUIDv7Field.__init__` `setdefault`s both `default=uuid.uuid7`
-and `db_default=PostgreSQLUUIDv7()`, so each must be overridden.
+manufacture a correlation where the caller forgot one, which is exactly what the
+charter's "a compound user action shares a correlation ID" rule depends on not
+happening. `UUIDv7Field.__init__` `setdefault`s both `default=uuid.uuid7` and
+`db_default=PostgreSQLUUIDv7()`, so each is overridden.
 
-`default=None` is right — `has_default()` becomes true, `get_default()` returns
-`None`, and an unset value hits `NOT NULL`. `db_default=None` is *not*: measured
-against this project's Django 6.0.7 and the `uuid_v7` domain, it keeps
-`has_db_default()` true and emits
+`default=None` makes `has_default()` true and `get_default()` return `None`, so
+an unset value hits `NOT NULL`. `db_default` must be `models.NOT_PROVIDED`
+rather than `None`: `None` keeps `has_db_default()` true and emits
 
 ```
 "aggregate_id" uuid_v7 DEFAULT NULL NOT NULL
 ```
 
-while `db_default=models.NOT_PROVIDED` emits `"aggregate_id" uuid_v7 NOT NULL`
-and drops `db_default` from `deconstruct()`, so the migration stays clean. The
-two behave identically at runtime — `has_default()` is true either way, so both
-send an explicit `NULL` and both hit `NOT NULL`. The difference is whether the
-schema carries a meaningless `DEFAULT NULL` forever. Use `NOT_PROVIDED`.
+where `NOT_PROVIDED` emits `"aggregate_id" uuid_v7 NOT NULL` and drops
+`db_default` from `deconstruct()`. Runtime behaviour is identical either way —
+both send an explicit `NULL` — so the difference is only whether the schema
+carries a meaningless `DEFAULT NULL`, and no behavioural test separates them.
+`has_db_default()` is asserted on the fields directly, and `make
+check-migrations` sees the `deconstruct()` kwargs.
 
-Because runtime behaviour is identical, no behavioural test separates them: the
-`db_default` half is pinned by asserting `has_db_default()` is false on the
-field, and by `make check-migrations`, which sees the changed `deconstruct()`
-kwargs. A test that merely writes an event without `correlation_id` and expects
-`IntegrityError` proves only the `default=None` half.
+`UUIDv7Field.deconstruct()` records that absence explicitly. Django's
+`Field.deconstruct()` emits `db_default` only when one exists, so without this
+`clone()` — which the migration autodetector uses — rebuilds the field through
+`__init__` and re-applies the generated default, leaving migration state
+permanently disagreeing with the model.
 
-`causation_id` is nullable with `default=None` for the same override reason — a
-root event has no cause.
+`causation_id` is nullable with the same overrides: a root event has no cause.
 
-### 5. Sequences are stored and constrained here, never allocated here
+### Sequences are stored and constrained, never allocated
 
-`sequence` is a plain `PositiveBigIntegerField` with a `>= 1` check and a unique
-`(stream, sequence)` constraint. Tests in this slice assign sequences by hand.
-`current_sequence` on the head defaults to `0`, meaning "no event yet", and
-nothing in this slice advances it. #661 owns `SELECT … FOR UPDATE` on the head,
-the advance, and head creation.
+`sequence` is a `PositiveBigIntegerField` with a `>= 1` check and a unique
+`(stream, sequence)` constraint; writers assign it. `current_sequence` on the
+head defaults to `0`, meaning no event yet, and nothing advances it. Heads are
+not provisioned, so no `UserLibrary` has one.
 
-Heads are not provisioned or backfilled, so no `UserLibrary` has one when this
-migration finishes. That is deliberate: provisioning is a behaviour with a
-transaction contract, and #661 is where it can be tested as one.
+### `LibraryEventQuerySet` subclasses `LibraryOwnedQuerySet`
 
-### 6. `LibraryEventQuerySet` subclasses the existing `LibraryOwnedQuerySet`
+`LibraryOwnedQuerySet.for_library()` already has the required semantics and is
+used by `Game`, `Platform`, and `Purchase`. Re-declaring it would fork a
+convention for no gain.
 
-`games/models.py:37` already defines `LibraryOwnedQuerySet.for_library()` with
-exactly the required semantics, and `Game`, `Platform`, and `Purchase` use it.
-Re-declaring `for_library()` would fork a convention for no gain.
+### Rollback is allowed only while the tables are empty
 
-### 7. Rollback is allowed only while the tables are empty
+Migration `0023` is reversible so a branch can be abandoned, but reversing it
+once events exist destroys the only copy of that history — projections are
+rebuilt *from* the stream. Its last operation is a guard whose forward direction
+is a no-op and whose reverse raises when either table has rows; being last, a
+reversal hits it before anything is dropped. The migration is atomic on
+PostgreSQL, so a refused reversal leaves the database at `0023`.
 
-`0023` is reversible so a branch can be abandoned, but reversing it once events
-exist destroys the only copy of that history — projections are rebuilt *from*
-the stream, so there is nothing to recover from. The migration therefore ends
-with a guard operation whose reverse raises when either table has rows, and
-whose forward direction is a no-op. Failing visibly beats a silent `DROP TABLE`.
+That guard sits in the unapply path of every migration-rewind test fixture that
+migrates back past `0023`. Those pass because nothing has written an event; a
+fixture that seeds events and then rewinds will hit the guard, which is the
+intended outcome.
 
-The guard now sits in the unapply path of roughly a dozen existing
-migration-rewind fixtures (`tests/test_temporal_domain.py`,
-`tests/test_catalog_uuid_primary_key.py`, `tests/test_external_reference_migration.py`
-and siblings) which migrate back to an early node during *setup*. They stay
-green because nothing has written an event by then — but any future test that
-seeds events and then rewinds will hit the guard, and that is the correct
-outcome rather than a bug in the test.
+### No speculative indexes
 
-### 8. The UUID identity audit must be extended, not worked around
+Only the constraint-backed indexes and the ones Django creates for its own
+foreign keys. Query shapes belong to the readers, and an unused index on the
+hottest insert path in the system is a real cost.
 
-`games/identity_audit.py` pins the schema's relation columns and UUID carriers
-by exact set equality in both directions, so *adding* a model fails the audit
-until the audit is told about it. Three registrations are required, and each
-one is a decision rather than paperwork:
+### The UUID identity audit records both tables
 
-- `EXPECTED_RELATION_COLUMNS` and `EXPECTED_IDENTITY_TABLES`
-  (`tests/test_uuid_identity_audit.py:29`, `:203`) gain the four new FK columns
-  and the two new tables.
-- `RESIDUAL_INTEGER_RELATIONS` (`games/identity_audit.py:41`) gains
-  `("games_libraryevent", "actor_id")` labelled *never converts*: it points at
-  `auth.User`, whose primary key is integer and is not part of the UUID cutover
-  — the same reason `games_userlibrary.user_id` is already listed. Without the
-  entry the audit reports it as an unconverted gap.
-- `IDENTITY_ORDER_SOURCE` (`games/identity_audit.py:59`) gains
-  `"games_libraryevent": "recorded_at"`. The audit's ordering check defaults to
-  a `created_at` field; naming `recorded_at` explicitly is what keeps the check
-  *running* for the events table instead of silently degrading to a "skipped:
-  no creation timestamp" note. Given the charter treats UUIDv7 order as an audit
-  tiebreaker, an unaudited ordering here would be a bad place to lose coverage.
+`games/identity_audit.py` pins relation columns and UUID carriers by exact set
+equality in both directions, so a model it does not know about fails the audit.
+Three registrations carry the new tables:
 
-`LibraryEventStreamHead` has no timestamp and is therefore skipped by the
-ordering check. That is accepted rather than fixed: the issue's field contract
-is three columns, one row per library, and cross-library head ordering carries
-no meaning.
+- `EXPECTED_RELATION_COLUMNS` and `EXPECTED_IDENTITY_TABLES` list the four
+  foreign-key columns and both tables.
+- `RESIDUAL_INTEGER_RELATIONS` marks `("games_libraryevent", "actor_id")` as
+  never converting: it points at `auth.User`, whose primary key is integer and
+  outside the UUID cutover, like `games_userlibrary.user_id`.
+- `IDENTITY_ORDER_SOURCE` maps `games_libraryevent` to `recorded_at`. The
+  ordering check looks for a `created_at` field by default; naming `recorded_at`
+  keeps the check running rather than degrading to a "no creation timestamp"
+  note.
 
-### 9. No speculative indexes
-
-Beyond the constraint-backed indexes, nothing. Query shapes come from #664–#667;
-indexes added now would be guesses, and an unused index on the hottest insert
-path in the system is a real cost.
+`LibraryEventStreamHead` has no timestamp and is skipped by the ordering check.
+Its field contract is three columns, one row per library, and cross-library head
+ordering carries no meaning.
 
 ## Schema contract
 
@@ -230,7 +197,7 @@ path in the system is a real cost.
 | `correlation_id` | `UUIDv7Field(default=None, db_default=NOT_PROVIDED)` | explicit only |
 | `causation_id` | `UUIDv7Field(null=True, default=None, db_default=NOT_PROVIDED)` | root events have none |
 | `source_metadata` | `JSONField(default=dict, blank=True)` | manual / migration / import provenance |
-| `idempotency_key` | `CharField(max_length=255)` | non-empty; uniqueness is #662's |
+| `idempotency_key` | `CharField(max_length=255)` | non-empty, not unique |
 | `payload` | `JSONField()` | required, domain-neutral |
 
 ### Named constraints
@@ -246,41 +213,33 @@ path in the system is a real cost.
 | `library_event_idempotency_key_not_empty` | check |
 | `library_event_stream_matches_library` | raw-SQL composite FK `(stream_id, library_id) → (id, library_id)` |
 
-## Verification
+## Where the behaviour is pinned
 
-`tests/test_event_models.py` — identities, nullability, JSON round trips,
+`tests/test_event_models.py` covers identities, nullability, JSON round trips,
 independent `dict` defaults, `for_library()`, actor nulling, and every
-constraint above including the cross-library rejection and both delete
-behaviours. The eight constraint *names* are read back from `pg_constraint` in
-one test: the composite FK is raw SQL that Django's migration state cannot see,
-so nothing else would notice a typo in it until someone attempted a rollback.
+constraint including the cross-library rejection and both delete behaviours. It
+reads the eight constraint *names* back from `pg_constraint`, because the
+composite FK is raw SQL that Django's migration state cannot see and nothing
+else would notice a misspelling in it before a rollback attempt.
 
-`tests/test_uuid_identity_audit.py` — the three audit registrations of decision
-8, which are assertions about the whole schema and belong with the audit rather
-than with the new models.
+`tests/test_event_schema_migration.py` drives the migration executor across
+`0022 → 0023`: catalog data unchanged, both tables empty, clean reversal while
+empty, refused reversal once a head or event exists.
 
-`tests/test_event_schema_migration.py` — migration-executor test on the harness
-pattern of `tests/test_external_reference_migration.py`: seed users, libraries,
-private Games and a shared `Game.library = NULL`; migrate `0022 → 0023`;
-assert existing rows unchanged and both new tables empty; reverse cleanly;
-reverse *fails* once a head or event exists; restore the leaf afterwards.
-
-Gate: `make check` with the default `PYTEST_WORKERS`, plus
-`make check-migrations` (already inside `check`) and `git diff --check`.
+`make sqlmigrate ARGS="games 0023_library_event_schema"` reads back the emitted
+DDL, which is the only place the composite FK and the identity columns' absent
+defaults are visible together.
 
 ## What this shape forecloses
 
-- **One stream per library, forever.** A per-aggregate or per-year stream would
-  need a new head table and a rewrite of every `(stream, sequence)` reader.
-  Deliberate: the charter buys contiguous per-action appends and a single lock
-  order with it.
-- **No `(library, idempotency_key)` uniqueness yet.** #662 must both add the
-  constraint and decide what to do about any rows written before it lands. Cheap
-  now (tables are empty), expensive later.
+- **One stream per library.** A per-aggregate or per-year stream would need a
+  new head table and a rewrite of every `(stream, sequence)` reader. The trade
+  buys contiguous per-action appends and a single lock order.
+- **No `(library, idempotency_key)` uniqueness.** Adding it is cheap while the
+  tables are empty and expensive afterwards.
 - **`aggregate_id` has no foreign key** and cannot have one — aggregates span
-  models. Dangling aggregate IDs are possible by construction; validation, if
-  wanted, belongs to the dispatcher.
-- **`payload` is unvalidated JSONB.** Shape enforcement arrives with the event
-  vocabulary, not before it.
-- **No archival or partitioning.** The events table grows without bound; the
-  charter's 100,000-event rebuild budget is the first place that bites.
+  models. Dangling aggregate IDs are possible by construction; validation
+  belongs to the writer.
+- **`payload` is unvalidated JSONB.** Shape enforcement needs an event
+  vocabulary, which does not exist.
+- **No archival or partitioning.** The events table grows without bound.
