@@ -107,6 +107,16 @@ def test_uuidv7_field_allows_explicit_default_overrides():
     assert field.db_default is None
 
 
+def test_uuidv7_field_without_a_database_default_survives_a_clone():
+    # clone() rebuilds the field from deconstruct(), where __init__ would
+    # otherwise re-apply the generated db_default and leave migration state
+    # permanently disagreeing with the model.
+    field = UUIDv7Field(default=None, db_default=models.NOT_PROVIDED)
+
+    assert field.deconstruct()[3]["db_default"] is models.NOT_PROVIDED
+    assert field.clone().has_db_default() is False
+
+
 def test_uuidv7_field_rejects_an_unsupported_backend():
     with pytest.raises(NotSupportedError, match="PostgreSQL"):
         UUIDv7Field().db_type(SimpleNamespace(vendor="mysql"))

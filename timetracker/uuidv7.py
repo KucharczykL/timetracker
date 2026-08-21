@@ -134,6 +134,16 @@ class UUIDv7Field(models.UUIDField):
         kwargs.setdefault("db_default", PostgreSQLUUIDv7())
         super().__init__(*args, **kwargs)
 
+    def deconstruct(self):
+        name, path, args, kwargs = super().deconstruct()
+        # Field.deconstruct() records a db_default only when one exists, so a
+        # field that deliberately has none would come back from clone() with
+        # __init__'s generated default re-applied — and migration state would
+        # disagree with the model forever. Record the absence explicitly.
+        if not self.has_db_default():
+            kwargs["db_default"] = models.NOT_PROVIDED
+        return name, path, args, kwargs
+
     def db_type(self, connection) -> str:
         if connection.vendor != "postgresql":
             raise NotSupportedError("UUIDv7Field requires PostgreSQL.")

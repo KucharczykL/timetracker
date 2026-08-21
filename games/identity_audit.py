@@ -41,6 +41,7 @@ _NOT_A_CONVERTED_MODEL = "never converts: not part of the UUID identity cutover"
 RESIDUAL_INTEGER_RELATIONS: dict[TableColumn, OwnerLabel] = {
     ("games_userlibrary", "user_id"): NEVER_CONVERTS,
     ("games_userpreferences", "user_id"): NEVER_CONVERTS,
+    ("games_libraryevent", "actor_id"): NEVER_CONVERTS,
 }
 
 RESIDUAL_INTEGER_PRIMARY_KEYS: dict[TableName, OwnerLabel] = {
@@ -59,6 +60,7 @@ UUID_TYPE: ColumnType = "uuid_v7"
 DEFAULT_ORDER_SOURCE = "created_at"
 IDENTITY_ORDER_SOURCE: dict[TableName, str] = {
     "games_gamestatuschange": "timestamp",
+    "games_libraryevent": "recorded_at",
 }
 
 # pg_type.typname carries PostgreSQL's internal spelling; Django's db_type()

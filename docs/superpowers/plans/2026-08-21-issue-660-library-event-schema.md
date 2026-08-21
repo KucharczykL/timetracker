@@ -131,6 +131,16 @@ Watch for:
   generated value for each. `db_default=None` is wrong: it emits
   `DEFAULT NULL NOT NULL` into the DDL (measured on Django 6.0.7). `causation_id`
   adds `null=True`.
+- **`UUIDv7Field` could not express "no db_default" until this slice fixed it**
+  (found while generating `0023`): `Field.deconstruct()` records a `db_default`
+  only when one exists, so `clone()` — which the autodetector uses — rebuilt the
+  field through `__init__` and re-applied `PostgreSQLUUIDv7()`. Migration state
+  and the model then disagreed permanently, and `make check-migrations` would
+  have regenerated the same `AlterField` forever. Fixed at the root in
+  `timetracker/uuidv7.py` by having `deconstruct()` record the absence
+  explicitly, pinned by
+  `tests/test_uuidv7.py::test_uuidv7_field_without_a_database_default_survives_a_clone`.
+  Add `timetracker/uuidv7.py` and `tests/test_uuidv7.py` to the Files table.
 - Non-empty checks: `~Q(event_type="")` style, matching how the codebase writes
   `CheckConstraint(condition=Q(...))` — `condition=`, not the removed `check=`.
 - The head's `(id, library)` unique constraint is redundant against its PK by

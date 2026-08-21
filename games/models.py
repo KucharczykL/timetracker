@@ -1327,3 +1327,109 @@ class UserPreferences(models.Model):
         else:
             self.extra_preferences[key] = value
         self.save(update_fields=["extra_preferences", "updated_at"])
+
+
+class LibraryEventQuerySet(LibraryOwnedQuerySet):
+    pass
+
+
+class LibraryEventStreamHead(models.Model):
+    """The single append point of one library's event stream: its stable stream
+    identity and the sequence a command locks before appending."""
+
+    class Meta:
+        constraints = (
+            #: Redundant against the primary key, and present only so an event
+            #: can point a composite foreign key at (stream, library).
+            models.UniqueConstraint(
+                fields=("id", "library"),
+                name="unique_library_event_stream_head_library_identity",
+            ),
+        )
+
+    id = UUIDv7Field(primary_key=True, editable=False)
+    library = models.OneToOneField(
+        UserLibrary,
+        on_delete=models.CASCADE,
+        related_name="event_stream_head",
+    )
+    #: Zero means the stream exists but nothing has been appended yet.
+    current_sequence = models.PositiveBigIntegerField(default=0)
+
+    def __str__(self) -> str:
+        return f"Event stream {self.id}"
+
+
+class LibraryEvent(models.Model):
+    """One recorded change to a private library, carrying enough envelope to
+    replay and explain itself without reading any projection table."""
+
+    class Meta:
+        constraints = (
+            models.UniqueConstraint(
+                fields=("stream", "sequence"),
+                name="unique_library_event_stream_sequence",
+            ),
+            models.CheckConstraint(
+                condition=Q(sequence__gte=1),
+                name="library_event_sequence_positive",
+            ),
+            models.CheckConstraint(
+                condition=Q(payload_schema_version__gte=1),
+                name="library_event_payload_schema_version_positive",
+            ),
+            models.CheckConstraint(
+                condition=~Q(event_type=""),
+                name="library_event_type_not_empty",
+            ),
+            models.CheckConstraint(
+                condition=~Q(aggregate_type=""),
+                name="library_event_aggregate_type_not_empty",
+            ),
+            models.CheckConstraint(
+                condition=~Q(idempotency_key=""),
+                name="library_event_idempotency_key_not_empty",
+            ),
+        )
+
+    id = UUIDv7Field(primary_key=True, editable=False)
+    library = models.ForeignKey(
+        UserLibrary,
+        on_delete=models.CASCADE,
+        related_name="events",
+    )
+    stream = models.ForeignKey(
+        LibraryEventStreamHead,
+        on_delete=models.RESTRICT,
+        related_name="events",
+    )
+    sequence = models.PositiveBigIntegerField()
+    event_type = models.CharField(max_length=255)
+    aggregate_type = models.CharField(max_length=100)
+    #: The private aggregate being changed, never a shared catalog identity.
+    #: Both defaults are cleared so a writer cannot forget to name it.
+    aggregate_id = UUIDv7Field(default=None, db_default=models.NOT_PROVIDED)
+    payload_schema_version = models.PositiveIntegerField(default=1)
+    recorded_at = models.DateTimeField(default=timezone.now, editable=False)
+    effective_time = TemporalValueField()
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    #: Shared by every event of one human action, so the two are never confused
+    #: with a generated-per-row identity.
+    correlation_id = UUIDv7Field(default=None, db_default=models.NOT_PROVIDED)
+    causation_id = UUIDv7Field(
+        null=True, blank=True, default=None, db_default=models.NOT_PROVIDED
+    )
+    source_metadata = models.JSONField(default=dict, blank=True)
+    idempotency_key = models.CharField(max_length=255)
+    payload = models.JSONField()
+
+    objects = LibraryEventQuerySet.as_manager()
+
+    def __str__(self) -> str:
+        return f"{self.event_type} #{self.sequence}"
