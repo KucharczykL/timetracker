@@ -1,6 +1,7 @@
 import logging
 from datetime import timedelta
 from typing import ClassVar, Final
+from uuid import UUID
 
 import requests
 from django.conf import settings
@@ -15,7 +16,19 @@ from django.utils import timezone
 
 from common.duration_presentation import format_decimal_hours
 from common.utils import label_with_details
+from games.external_references import external_reference_url, normalize_provider_key
 from timetracker.settings_registry import THEME_CHOICES, SettingKey
+from timetracker.temporal import (
+    TemporalEndKind,
+    TemporalEndPrecision,
+    TemporalKind,
+    TemporalLowerBound,
+    TemporalPrecisionValue,
+    TemporalStartKind,
+    TemporalStartPrecision,
+    TemporalUpperBound,
+    TemporalValueField,
+)
 from timetracker.uuidv7 import UUIDv7Field
 
 logger = logging.getLogger("games")
@@ -24,6 +37,11 @@ logger = logging.getLogger("games")
 class LibraryOwnedQuerySet(models.QuerySet):
     def for_library(self, library):
         return self.filter(library=library)
+
+
+class GameQuerySet(LibraryOwnedQuerySet):
+    def visible_to(self, library):
+        return self.filter(Q(library__isnull=True) | Q(library=library))
 
 
 def _validate_related_library(
@@ -55,16 +73,85 @@ class Game(models.Model):
             ),
         )
 
-    objects = LibraryOwnedQuerySet.as_manager()
+    objects = GameQuerySet.as_manager()
 
     library = models.ForeignKey(
-        "UserLibrary", on_delete=models.CASCADE, related_name="games"
+        "UserLibrary",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        default=None,
+        related_name="games",
     )
     id = UUIDv7Field(primary_key=True, editable=False)
     name = models.CharField(max_length=255)
     sort_name = models.CharField(max_length=255, blank=True, default="")
     year_released = models.IntegerField(null=True, blank=True, default=None)
     original_year_released = models.IntegerField(null=True, blank=True, default=None)
+    original_release_date = TemporalValueField()
+    original_release_date_lower = models.GeneratedField(
+        expression=TemporalLowerBound("original_release_date"),
+        output_field=models.DateField(null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    original_release_date_upper = models.GeneratedField(
+        expression=TemporalUpperBound("original_release_date"),
+        output_field=models.DateField(null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    original_release_date_kind = models.GeneratedField(
+        expression=TemporalKind("original_release_date"),
+        output_field=models.CharField(max_length=7),
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    original_release_date_precision = models.GeneratedField(
+        expression=TemporalPrecisionValue("original_release_date"),
+        output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    original_release_date_start_kind = models.GeneratedField(
+        expression=TemporalStartKind("original_release_date"),
+        output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    original_release_date_end_kind = models.GeneratedField(
+        expression=TemporalEndKind("original_release_date"),
+        output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    original_release_date_start_precision = models.GeneratedField(
+        expression=TemporalStartPrecision("original_release_date"),
+        output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    original_release_date_end_precision = models.GeneratedField(
+        expression=TemporalEndPrecision("original_release_date"),
+        output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
     wikidata = models.CharField(max_length=50, blank=True, default="")
     platform = models.ForeignKey(
         "Platform",
@@ -223,6 +310,327 @@ class Platform(models.Model):
     def save(self, *args, **kwargs):
         if not self.icon:
             self.icon = slugify(self.name)
+        self.clean()
+        super().save(*args, **kwargs)
+
+
+class EditionQuerySet(models.QuerySet):
+    def for_library(self, library):
+        return self.filter(game__library=library)
+
+    def visible_to(self, library):
+        return self.filter(Q(game__library__isnull=True) | Q(game__library=library))
+
+
+class Edition(models.Model):
+    class Meta:
+        constraints = (
+            models.UniqueConstraint(
+                fields=("game",),
+                condition=Q(is_default=True),
+                name="unique_default_edition_per_game",
+            ),
+        )
+
+    id = UUIDv7Field(primary_key=True, editable=False)
+    objects = EditionQuerySet.as_manager()
+    game = models.ForeignKey(
+        Game,
+        on_delete=models.CASCADE,
+        related_name="editions",
+    )
+    is_default = models.BooleanField(default=False, editable=False)
+
+
+class ReleaseQuerySet(models.QuerySet):
+    def for_library(self, library):
+        return self.filter(edition__game__library=library)
+
+    def visible_to(self, library):
+        return self.filter(
+            Q(edition__game__library__isnull=True) | Q(edition__game__library=library)
+        )
+
+
+class Release(models.Model):
+    class Meta:
+        constraints = (
+            models.UniqueConstraint(
+                fields=("edition",),
+                condition=Q(is_default=True),
+                name="unique_default_release_per_edition",
+            ),
+        )
+
+    id = UUIDv7Field(primary_key=True, editable=False)
+    objects = ReleaseQuerySet.as_manager()
+    edition = models.ForeignKey(
+        Edition,
+        on_delete=models.CASCADE,
+        related_name="releases",
+    )
+    is_default = models.BooleanField(default=False, editable=False)
+    platform = models.ForeignKey(
+        Platform,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        default=None,
+        related_name="+",
+    )
+    release_date = TemporalValueField()
+    release_date_lower = models.GeneratedField(
+        expression=TemporalLowerBound("release_date"),
+        output_field=models.DateField(null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    release_date_upper = models.GeneratedField(
+        expression=TemporalUpperBound("release_date"),
+        output_field=models.DateField(null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    release_date_kind = models.GeneratedField(
+        expression=TemporalKind("release_date"),
+        output_field=models.CharField(max_length=7),
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    release_date_precision = models.GeneratedField(
+        expression=TemporalPrecisionValue("release_date"),
+        output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    release_date_start_kind = models.GeneratedField(
+        expression=TemporalStartKind("release_date"),
+        output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    release_date_end_kind = models.GeneratedField(
+        expression=TemporalEndKind("release_date"),
+        output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    release_date_start_precision = models.GeneratedField(
+        expression=TemporalStartPrecision("release_date"),
+        output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    release_date_end_precision = models.GeneratedField(
+        expression=TemporalEndPrecision("release_date"),
+        output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+
+    def clean(self):
+        super().clean()
+        if self.platform_id is not None:
+            _validate_related_library(
+                self.edition.game.library_id,
+                self.platform,
+                "platform",
+                allow_shared=True,
+            )
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
+
+class ExternalReference(models.Model):
+    class Provider(models.TextChoices):
+        WIKIDATA = "wikidata", "Wikidata"
+
+    class EntityKind(models.TextChoices):
+        GAME = "game", "Game"
+        EDITION = "edition", "Edition"
+        RELEASE = "release", "Release"
+        PLATFORM = "platform", "Platform"
+
+    TARGET_FIELDS: ClassVar[dict[str, str]] = {
+        EntityKind.GAME: "game",
+        EntityKind.EDITION: "edition",
+        EntityKind.RELEASE: "release",
+        EntityKind.PLATFORM: "platform",
+    }
+
+    class Meta:
+        constraints = (
+            models.UniqueConstraint(
+                fields=("provider", "entity_kind", "provider_key"),
+                name="unique_external_reference_provider_kind_key",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(
+                        entity_kind="game",
+                        game__isnull=False,
+                        edition__isnull=True,
+                        release__isnull=True,
+                        platform__isnull=True,
+                    )
+                    | Q(
+                        entity_kind="edition",
+                        game__isnull=True,
+                        edition__isnull=False,
+                        release__isnull=True,
+                        platform__isnull=True,
+                    )
+                    | Q(
+                        entity_kind="release",
+                        game__isnull=True,
+                        edition__isnull=True,
+                        release__isnull=False,
+                        platform__isnull=True,
+                    )
+                    | Q(
+                        entity_kind="platform",
+                        game__isnull=True,
+                        edition__isnull=True,
+                        release__isnull=True,
+                        platform__isnull=False,
+                    )
+                ),
+                name="external_reference_kind_matches_target",
+            ),
+            models.CheckConstraint(
+                condition=Q(provider="wikidata"),
+                name="external_reference_supported_provider",
+            ),
+            models.CheckConstraint(
+                condition=Q(provider_key__regex=r"^Q[1-9][0-9]*$"),
+                name="external_reference_canonical_provider_key",
+            ),
+        )
+
+    id = UUIDv7Field(primary_key=True, editable=False)
+    provider = models.CharField(max_length=50)
+    entity_kind = models.CharField(max_length=20)
+    provider_key = models.CharField(max_length=255)
+    game = models.ForeignKey(
+        Game,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="external_references",
+    )
+    edition = models.ForeignKey(
+        Edition,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="external_references",
+    )
+    release = models.ForeignKey(
+        Release,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="external_references",
+    )
+    platform = models.ForeignKey(
+        Platform,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="external_references",
+    )
+
+    def clean(self):
+        super().clean()
+        self.provider, self.provider_key = normalize_provider_key(
+            provider=self.provider,
+            provider_key=self.provider_key,
+        )
+
+        target_ids = {
+            target_kind: getattr(self, f"{target_field}_id")
+            for target_kind, target_field in self.TARGET_FIELDS.items()
+        }
+        errors = {}
+        expected_target_field = self.TARGET_FIELDS.get(self.entity_kind)
+        if expected_target_field is None:
+            errors["entity_kind"] = "Unsupported catalog entity kind."
+        elif target_ids[self.entity_kind] is None:
+            errors[expected_target_field] = (
+                f"A {self.entity_kind} reference requires a {self.entity_kind} target."
+            )
+        for target_kind, target_id in target_ids.items():
+            if target_id is not None and target_kind != self.entity_kind:
+                errors[target_kind] = (
+                    f"A {self.entity_kind} reference cannot target a {target_kind}."
+                )
+        if errors:
+            raise ValidationError(errors)
+
+        if self.pk is not None:
+            persisted_target_ids = (
+                type(self)
+                .objects.filter(pk=self.pk)
+                .values("game_id", "edition_id", "release_id", "platform_id")
+                .first()
+            )
+            if persisted_target_ids is not None:
+                current_target_ids = {
+                    f"{target_field}_id": target_ids[target_kind]
+                    for target_kind, target_field in self.TARGET_FIELDS.items()
+                }
+                if persisted_target_ids != current_target_ids:
+                    raise ValidationError(
+                        {
+                            "target_uuid": (
+                                "An existing external reference is already mapped "
+                                "to a target and cannot be reassigned."
+                            )
+                        }
+                    )
+
+    @property
+    def target_uuid(self) -> UUID:
+        target_ids = {
+            target_kind: getattr(self, f"{target_field}_id")
+            for target_kind, target_field in self.TARGET_FIELDS.items()
+        }
+        target_id = target_ids.get(self.entity_kind)
+        if (
+            target_id is None
+            or sum(value is not None for value in target_ids.values()) != 1
+        ):
+            raise ValidationError(
+                {"entity_kind": "External reference target is invalid."}
+            )
+        return target_id
+
+    @property
+    def external_url(self) -> str:
+        return external_reference_url(
+            provider=self.provider,
+            entity_kind=self.entity_kind,
+            provider_key=self.provider_key,
+        )
+
+    def save(self, *args, **kwargs):
         self.clean()
         super().save(*args, **kwargs)
 

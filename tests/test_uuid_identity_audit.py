@@ -28,6 +28,11 @@ pytestmark = pytest.mark.django_db
 # way the code does cannot fail when the derivation itself is wrong.
 EXPECTED_RELATION_COLUMNS = {
     ("games_device", "library_id"),
+    ("games_edition", "game_id"),
+    ("games_externalreference", "edition_id"),
+    ("games_externalreference", "game_id"),
+    ("games_externalreference", "platform_id"),
+    ("games_externalreference", "release_id"),
     ("games_filterpreset", "library_id"),
     ("games_game", "library_id"),
     ("games_game", "platform_id"),
@@ -40,6 +45,8 @@ EXPECTED_RELATION_COLUMNS = {
     ("games_purchase_games", "game_id"),
     ("games_purchase_games", "purchase_id"),
     ("games_purchaseconversionstate", "library_id"),
+    ("games_release", "edition_id"),
+    ("games_release", "platform_id"),
     ("games_session", "device_id"),
     ("games_session", "game_id"),
     ("games_userlibrary", "user_id"),
@@ -195,6 +202,8 @@ def test_command_fails_when_the_inventory_drifts(monkeypatch):
 
 EXPECTED_IDENTITY_TABLES = {
     "games_device",
+    "games_edition",
+    "games_externalreference",
     "games_filterpreset",
     "games_game",
     "games_gamestatuschange",
@@ -202,6 +211,7 @@ EXPECTED_IDENTITY_TABLES = {
     "games_playevent",
     "games_purchase",
     "games_purchaseconversionstate",
+    "games_release",
     "games_session",
     "games_userlibrary",
     "games_userlibrarypreferences",
@@ -222,6 +232,8 @@ def test_identity_models_use_the_backfilled_order_source():
     sources = {entry.table: entry.order_source for entry in identity_models()}
     assert sources["games_gamestatuschange"] == "timestamp"
     assert sources["games_game"] == "created_at"
+    assert sources["games_edition"] is None
+    assert sources["games_release"] is None
     assert sources["games_userlibrarypreferences"] is None
 
 

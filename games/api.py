@@ -158,12 +158,14 @@ class StringOption(Schema):  # SearchSelectOption with a string value (e.g. grou
 def search_games(request, q: str = "", limit: int = 10):
     library = cast(User, request.user).library
     qs = (
-        Game.objects.for_library(library)
+        Game.objects.visible_to(library)
         .select_related("platform")
         .order_by("sort_name")
     )
     if q:
-        qs = qs.filter(Q(name__icontains=q) | Q(sort_name__icontains=q))
+        qs = qs.filter(
+            Q(name__icontains=q) | Q(library=library, sort_name__icontains=q)
+        )
     return [
         {
             "value": g.id,

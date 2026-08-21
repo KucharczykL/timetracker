@@ -65,6 +65,7 @@ def two_libraries(db):
     game_a = Game.objects.create(
         library=library_a,
         name="Library A Game",
+        sort_name="Library A Sort Needle",
         platform=platform_a,
         year_released=YEAR,
         status=Game.Status.FINISHED,
@@ -72,9 +73,16 @@ def two_libraries(db):
     game_b = Game.objects.create(
         library=library_b,
         name="Library B Game",
+        sort_name="Library B Sort Needle",
         platform=platform_b,
         year_released=YEAR,
         status=Game.Status.FINISHED,
+    )
+    shared_game = Game.objects.create(
+        name="Shared Catalog Game",
+        sort_name="Shared Catalog Sort Needle",
+        platform=shared_platform,
+        year_released=YEAR - 2,
     )
     shared_game_a = Game.objects.create(
         library=library_a,
@@ -149,6 +157,7 @@ def two_libraries(db):
         "platform_b": platform_b,
         "game_a": game_a,
         "game_b": game_b,
+        "shared_game": shared_game,
         "shared_game_a": shared_game_a,
         "shared_game_b": shared_game_b,
         "device_a": device_a,
@@ -170,7 +179,11 @@ def test_search_options_are_library_scoped_and_shared_platforms_remain_visible(
     game_ids = {
         row["value"] for row in client.get("/api/games/search", {"q": "Game"}).json()
     }
-    assert game_ids == {str(world["game_a"].id), str(world["shared_game_a"].id)}
+    assert game_ids == {
+        str(world["game_a"].id),
+        str(world["shared_game_a"].id),
+        str(world["shared_game"].id),
+    }
 
     device_ids = {
         row["value"]
@@ -197,17 +210,77 @@ def test_search_options_are_library_scoped_and_shared_platforms_remain_visible(
     assert groups == {"Shared", "Library A"}
 
 
-def test_foreign_game_status_id_is_undisclosed_and_unchanged(two_libraries):
+def test_game_search_exposes_only_catalog_safe_games_and_fields(two_libraries):
+    world = two_libraries
+    shared_game_id = str(world["shared_game"].id)
+
+    for client in (world["client_a"], world["client_b"]):
+        payload = client.get("/api/games/search", {"q": "Shared Catalog Game"}).json()
+
+        assert [row["value"] for row in payload] == [shared_game_id]
+        for row in payload:
+            assert set(row) == {"value", "label", "data"}
+            assert isinstance(row["value"], str)
+            assert isinstance(row["label"], str)
+            assert row["data"] == {
+                "platform": str(world["shared_platform"].id),
+                "platform_name": "Shared Platform",
+            }
+
+    library_a_ids = {
+        row["value"]
+        for row in world["client_a"].get("/api/games/search", {"q": "Library"}).json()
+    }
+    library_b_ids = {
+        row["value"]
+        for row in world["client_b"].get("/api/games/search", {"q": "Library"}).json()
+    }
+    assert library_a_ids == {
+        str(world["game_a"].id),
+        str(world["shared_game_a"].id),
+    }
+    assert library_b_ids == {
+        str(world["game_b"].id),
+        str(world["shared_game_b"].id),
+    }
+
+    assert [
+        row["value"]
+        for row in world["client_a"]
+        .get("/api/games/search", {"q": "Library A Sort Needle"})
+        .json()
+    ] == [str(world["game_a"].id)]
+    assert (
+        world["client_b"]
+        .get("/api/games/search", {"q": "Library A Sort Needle"})
+        .json()
+        == []
+    )
+    for client in (world["client_a"], world["client_b"]):
+        assert (
+            client.get("/api/games/search", {"q": "Shared Catalog Sort Needle"}).json()
+            == []
+        )
+
+
+def test_shared_and_foreign_game_status_ids_are_undisclosed_and_unchanged(
+    two_libraries,
+):
     world = two_libraries
 
-    response = _patch(
-        world["client_a"],
-        f"/api/games/{world['game_b'].id}/status",
-        {"status": Game.Status.ABANDONED},
-    )
+    responses = [
+        _patch(
+            world["client_a"],
+            f"/api/games/{game.id}/status",
+            {"status": Game.Status.ABANDONED},
+        )
+        for game in (world["shared_game"], world["game_b"])
+    ]
 
-    assert response.status_code == 404
+    assert [response.status_code for response in responses] == [404, 404]
+    world["shared_game"].refresh_from_db()
     world["game_b"].refresh_from_db()
+    assert world["shared_game"].status == Game.Status.UNPLAYED
     assert world["game_b"].status == Game.Status.FINISHED
 
 
@@ -224,12 +297,17 @@ def test_playevent_crud_is_library_scoped(two_libraries):
         == 404
     )
     assert client.delete(f"/api/playevent/{foreign.id}").status_code == 404
-    create = client.post(
-        "/api/playevent/",
-        json.dumps({"game_id": str(world["game_b"].id), "note": "foreign"}),
-        content_type="application/json",
-    )
-    assert create.status_code == 404
+    playevent_count = PlayEvent.objects.count()
+    create_responses = [
+        client.post(
+            "/api/playevent/",
+            json.dumps({"game_id": str(game.id), "note": "not allowed"}),
+            content_type="application/json",
+        )
+        for game in (world["shared_game"], world["game_b"])
+    ]
+    assert [response.status_code for response in create_responses] == [404, 404]
+    assert PlayEvent.objects.count() == playevent_count
     foreign.refresh_from_db()
     assert foreign.note == "Library B event"
 

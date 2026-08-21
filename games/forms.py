@@ -26,8 +26,10 @@ from common.components import (
 from common.components.primitives import Checkbox
 from common.date_time_presentation import DateTimePresentation, zone_or_none
 from games.dev_login import prefill_credentials
+from games.external_references import normalize_provider_key
 from games.models import (
     Device,
+    ExternalReference,
     Game,
     GameStatusChange,
     Platform,
@@ -818,6 +820,31 @@ class GameForm(
             search_url="/api/platforms/search", options_resolver=_platform_options
         ),
     )
+
+    def clean_wikidata(self) -> str:
+        value = self.cleaned_data["wikidata"]
+        if not value.strip():
+            return ""
+
+        try:
+            _, canonical_key = normalize_provider_key(
+                provider="wikidata", provider_key=value
+            )
+        except forms.ValidationError as error:
+            raise forms.ValidationError(error.messages) from error
+
+        references = ExternalReference.objects.filter(
+            provider="wikidata",
+            entity_kind="game",
+            provider_key=canonical_key,
+        )
+        if self.instance.pk is not None:
+            references = references.exclude(game_id=self.instance.pk)
+        if references.exists():
+            raise forms.ValidationError(
+                "This Wikidata entity ID already belongs to another game."
+            )
+        return canonical_key
 
     class Meta:
         model = Game
