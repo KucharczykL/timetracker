@@ -1433,3 +1433,63 @@ class LibraryEvent(models.Model):
 
     def __str__(self) -> str:
         return f"{self.event_type} #{self.sequence}"
+
+
+class LibraryIdempotencyRecordQuerySet(LibraryOwnedQuerySet):
+    pass
+
+
+class LibraryIdempotencyRecord(models.Model):
+    """What one command key already produced, so repeating the key returns that
+    range instead of appending a second time.
+
+    The events table cannot carry this: one append writes many rows sharing a
+    key, so the pair could never be unique there.
+    """
+
+    class Meta:
+        constraints = (
+            models.UniqueConstraint(
+                fields=("library", "idempotency_key"),
+                name="unique_library_idempotency_key",
+            ),
+            models.CheckConstraint(
+                condition=Q(first_sequence__gte=1),
+                name="library_idempotency_first_sequence_positive",
+            ),
+            models.CheckConstraint(
+                condition=Q(last_sequence__gte=F("first_sequence")),
+                name="library_idempotency_range_ordered",
+            ),
+            models.CheckConstraint(
+                condition=~Q(idempotency_key=""),
+                name="library_idempotency_key_not_empty",
+            ),
+            models.CheckConstraint(
+                condition=~Q(request_fingerprint=""),
+                name="library_idempotency_request_fingerprint_not_empty",
+            ),
+            models.CheckConstraint(
+                condition=Q(fingerprint_version__gte=1),
+                name="library_idempotency_fingerprint_version_positive",
+            ),
+        )
+
+    id = UUIDv7Field(primary_key=True, editable=False)
+    library = models.ForeignKey(
+        UserLibrary,
+        on_delete=models.CASCADE,
+        related_name="idempotency_records",
+    )
+    idempotency_key = models.CharField(max_length=255)
+    request_fingerprint = models.CharField(max_length=64)
+    #: No default: a row must never claim a version it was not hashed under.
+    fingerprint_version = models.PositiveSmallIntegerField()
+    first_sequence = models.PositiveBigIntegerField()
+    last_sequence = models.PositiveBigIntegerField()
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
+
+    objects = LibraryIdempotencyRecordQuerySet.as_manager()
+
+    def __str__(self) -> str:
+        return self.idempotency_key
