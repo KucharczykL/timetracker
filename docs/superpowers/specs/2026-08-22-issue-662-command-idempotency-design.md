@@ -304,6 +304,12 @@ wait carries a timeout and every thread calls `close_old_connections()` in a
 instead of failing it, and a leaked open transaction blocks
 `TransactionTestCase` truncation.
 
+One more `django_db(transaction=True)` test pins the **reversible** migration,
+using the `MigrationExecutor` harness `tests/test_event_schema_migration.py`
+already established: with a record present, reversing `0024` succeeds. That is
+the behavioural difference from `0023`, which refuses, and it is the assertion
+that stops a future reader from adding the guard.
+
 `tests/test_event_append.py` loses `test_convenience_function_matches_the_primitive`
 and its local `append` helper switches to `lock_stream(library).append(...)`.
 
