@@ -260,6 +260,13 @@ def test_the_head_is_locked_for_the_whole_transaction(owned_library):
 
 @pytest.mark.django_db(transaction=True)
 def test_concurrent_appends_serialize_into_one_contiguous_range(owned_library):
+    #: The head must already be committed. A head this test's holder creates is
+    #: invisible to the waiter, whose SELECT ... FOR UPDATE then matches zero
+    #: rows and returns without waiting -- the appends would serialize on the
+    #: unique index inside get_or_create, and the head lock would go untested.
+    with transaction.atomic():
+        append(owned_library, idempotency_key="seed")
+
     holder_locked = Event()
     waiter_requested_lock = Event()
     results: dict[str, AppendResult] = {}
@@ -323,9 +330,9 @@ def test_concurrent_appends_serialize_into_one_contiguous_range(owned_library):
 
     holder_result = results["holder"]
     waiter_result = results["waiter"]
-    assert (holder_result.first_sequence, holder_result.last_sequence) == (1, 2)
-    assert (waiter_result.first_sequence, waiter_result.last_sequence) == (3, 4)
+    assert (holder_result.first_sequence, holder_result.last_sequence) == (2, 3)
+    assert (waiter_result.first_sequence, waiter_result.last_sequence) == (4, 5)
     assert holder_result.stream_id == waiter_result.stream_id
     assert list(
         LibraryEvent.objects.order_by("sequence").values_list("sequence", flat=True)
-    ) == [1, 2, 3, 4]
+    ) == [1, 2, 3, 4, 5]

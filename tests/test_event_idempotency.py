@@ -2,13 +2,20 @@ import contextlib
 import uuid
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from threading import Event, Thread
 from typing import Any
 
 import pytest
-from django.db import IntegrityError, migrations, transaction
+from django.db import (
+    IntegrityError,
+    close_old_connections,
+    connection,
+    migrations,
+    transaction,
+)
 from django.db.migrations.loader import MigrationLoader
 
-from games.events.append import NewEvent
+from games.events.append import AppendResult, NewEvent, lock_stream
 from games.events.idempotency import (
     FINGERPRINT_VERSION,
     IdempotencyKeyMismatch,
@@ -214,6 +221,92 @@ def test_a_rolled_back_command_leaves_its_key_usable(owned_library):
         result = run_command(owned_library)
 
     assert (result.first_sequence, result.last_sequence) == (1, 1)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_one_key_issued_concurrently_appends_once(owned_library):
+    #: The head must already be committed. A head the holder creates is
+    #: invisible to the waiter, whose SELECT ... FOR UPDATE would then match
+    #: zero rows and return without waiting, leaving the blocking path this
+    #: test exists to exercise untouched.
+    with transaction.atomic():
+        run_command(owned_library, idempotency_key="seed")
+
+    holder_locked = Event()
+    waiter_requested_lock = Event()
+    results: dict[str, AppendResult | ReplayedAppend] = {}
+    errors: list[BaseException] = []
+
+    def duplicate_command(library):
+        return run_command(
+            library,
+            [make_new_event(), make_new_event()],
+            idempotency_key="shared",
+            command_input={"shared": True},
+        )
+
+    def run_holder():
+        close_old_connections()
+        try:
+            with transaction.atomic():
+                #: idempotent_append owns both the lock and the append, leaving
+                #: no seam to signal from. Taking the lock here first is
+                #: re-entrant within this transaction and restores the seam.
+                lock_stream(owned_library)
+                holder_locked.set()
+                results["holder"] = duplicate_command(owned_library)
+                if not waiter_requested_lock.wait(10):
+                    raise TimeoutError("waiter never requested the head lock")
+        except BaseException as error:  # noqa: BLE001 - return thread failures
+            errors.append(error)
+        finally:
+            close_old_connections()
+
+    def run_waiter():
+        close_old_connections()
+
+        def announce_lock_request(execute, sql, params, many, context):
+            if "games_libraryeventstreamhead" in sql and "FOR UPDATE" in sql:
+                waiter_requested_lock.set()
+            return execute(sql, params, many, context)
+
+        try:
+            assert holder_locked.wait(10)
+            with (
+                connection.execute_wrapper(announce_lock_request),
+                transaction.atomic(),
+            ):
+                results["waiter"] = duplicate_command(owned_library)
+        except BaseException as error:  # noqa: BLE001 - return thread failures
+            errors.append(error)
+        finally:
+            close_old_connections()
+
+    holder = Thread(target=run_holder, name="duplicate-holder")
+    waiter = Thread(target=run_waiter, name="duplicate-waiter")
+    holder.start()
+    waiter.start()
+    holder.join(20)
+    waiter.join(20)
+
+    assert not errors, errors
+    assert not holder.is_alive()
+    assert not waiter.is_alive()
+
+    ranges = {
+        (result.first_sequence, result.last_sequence) for result in results.values()
+    }
+    assert ranges == {(2, 3)}
+    #: Which thread won is the scheduler's business; that exactly one appended
+    #: is not.
+    assert sorted(type(result).__name__ for result in results.values()) == [
+        "AppendResult",
+        "ReplayedAppend",
+    ]
+    assert LibraryEvent.objects.count() == 3
+    assert (
+        LibraryIdempotencyRecord.objects.filter(idempotency_key="shared").count() == 1
+    )
 
 
 def test_key_order_does_not_change_the_digest():
