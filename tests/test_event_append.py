@@ -1,8 +1,10 @@
 import uuid
 from datetime import date
+from threading import Event, Thread
 
+import psycopg
 import pytest
-from django.db import transaction
+from django.db import close_old_connections, connection, transaction
 from django.utils import timezone
 
 from games.events.append import (
@@ -256,9 +258,103 @@ def test_lock_stream_returns_the_same_head_for_a_provisioned_library(owned_libra
     assert LibraryEventStreamHead.objects.count() == 1
 
 
-def test_transaction_required_is_not_raised_inside_a_transaction(owned_library):
+@pytest.mark.django_db(transaction=True)
+def test_locking_outside_a_transaction_is_refused(owned_library):
+    with pytest.raises(TransactionRequired, match="open transaction"):
+        lock_stream(owned_library)
+
+    assert not LibraryEventStreamHead.objects.exists()
+    assert not LibraryEvent.objects.exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_head_is_locked_for_the_whole_transaction(owned_library):
+    #: The head must already be committed: a row this transaction created would
+    #: be invisible to the probe, which would then lock nothing and pass for the
+    #: wrong reason.
     with transaction.atomic():
+        head_id = append(owned_library).stream_id
+
+    connection.ensure_connection()
+    connection_params = connection.get_connection_params()
+
+    with transaction.atomic():
+        lock_stream(owned_library)
+        with psycopg.connect(**connection_params) as probe:
+            with probe.transaction():
+                with pytest.raises(psycopg.errors.LockNotAvailable):
+                    probe.execute(
+                        "SELECT current_sequence FROM games_libraryeventstreamhead"
+                        " WHERE id = %s FOR UPDATE NOWAIT",
+                        [head_id],
+                    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_appends_serialize_into_one_contiguous_range(owned_library):
+    holder_locked = Event()
+    waiter_requested_lock = Event()
+    results: dict[str, AppendResult] = {}
+    errors: list[BaseException] = []
+
+    def run_holder():
+        close_old_connections()
         try:
-            lock_stream(owned_library)
-        except TransactionRequired:  # pragma: no cover - regression guard
-            pytest.fail("lock_stream rejected an open transaction")
+            with transaction.atomic():
+                stream = lock_stream(owned_library)
+                holder_locked.set()
+                results["holder"] = stream.append(
+                    [make_new_event(), make_new_event()],
+                    actor=None,
+                    correlation_id=uuid.uuid7(),
+                    idempotency_key="holder",
+                )
+                if not waiter_requested_lock.wait(10):
+                    raise TimeoutError("waiter never requested the head lock")
+        except BaseException as error:  # noqa: BLE001 - return thread failures
+            errors.append(error)
+        finally:
+            close_old_connections()
+
+    def run_waiter():
+        close_old_connections()
+
+        def announce_lock_request(execute, sql, params, many, context):
+            if "games_libraryeventstreamhead" in sql and "FOR UPDATE" in sql:
+                #: Fires immediately before the statement blocks, so the holder
+                #: is released only once this request is genuinely outstanding.
+                waiter_requested_lock.set()
+            return execute(sql, params, many, context)
+
+        try:
+            assert holder_locked.wait(10)
+            with connection.execute_wrapper(announce_lock_request), transaction.atomic():
+                results["waiter"] = append(
+                    owned_library,
+                    [make_new_event(), make_new_event()],
+                    idempotency_key="waiter",
+                )
+        except BaseException as error:  # noqa: BLE001 - return thread failures
+            errors.append(error)
+        finally:
+            close_old_connections()
+
+    holder = Thread(target=run_holder, name="stream-holder")
+    waiter = Thread(target=run_waiter, name="stream-waiter")
+    holder.start()
+    waiter.start()
+    holder.join(20)
+    waiter.join(20)
+
+    assert not errors, errors
+    assert not holder.is_alive()
+    assert not waiter.is_alive()
+
+    holder_result = results["holder"]
+    waiter_result = results["waiter"]
+    assert (holder_result.first_sequence, holder_result.last_sequence) == (1, 2)
+    assert (waiter_result.first_sequence, waiter_result.last_sequence) == (3, 4)
+    assert holder_result.stream_id == waiter_result.stream_id
+    assert list(
+        LibraryEvent.objects.order_by("sequence").values_list("sequence", flat=True)
+    ) == [1, 2, 3, 4]
