@@ -75,6 +75,14 @@ with transaction.atomic():
 nothing to validate. It is two lines over the primitive, and both paths share
 one implementation so they cannot drift.
 
+> **Superseded by [#662](https://github.com/KucharczykL/timetracker/issues/662).**
+> `append_events` was deleted. Once a command's key must be recorded,
+> `idempotent_append(..., build=lambda _: events)` covers the same case, and
+> leaving a non-idempotent convenience beside it gives a command author an easy
+> way to write a command that silently cannot deduplicate. `lock_stream` and
+> `LockedStream.append` remain, so appending without a record is still
+> reachable — just no longer the convenient path.
+
 `lock_stream` is a plain function rather than a context manager. The lock is
 held until the caller's transaction commits, not until a block exits; a `with`
 statement would advertise a release that does not happen there.
@@ -273,6 +281,7 @@ class LockedStream:
 def lock_stream(library: UserLibrary) -> LockedStream: ...
 
 
+#: Deleted by #662; see the note above.
 def append_events(
     library: UserLibrary, events: Sequence[NewEvent], **kwargs
 ) -> AppendResult: ...
@@ -312,7 +321,8 @@ one `LockedStream` continue the same range; a rolled-back append leaves both the
 events table and `current_sequence` untouched; an empty event sequence is
 rejected; two libraries advance independently; `AppendResult` matches the
 persisted rows; `actor=None` and `source_metadata=None` are accepted, the latter
-stored as `{}`; `append_events` and the primitive produce identical rows.
+stored as `{}`; `append_events` and the primitive produce identical rows (that
+last test went with `append_events` in #662).
 
 Three tests need `django_db(transaction=True)`, because plain `django_db` builds
 a `TestCase` subclass that wraps every test in an atomic block:

@@ -6,14 +6,12 @@ from typing import Any
 import psycopg
 import pytest
 from django.db import close_old_connections, connection, transaction
-from django.utils import timezone
 
 from games.events.append import (
     AppendResult,
     LockedStream,
     NewEvent,
     TransactionRequired,
-    append_events,
     lock_stream,
 )
 from games.models import LibraryEvent, LibraryEventStreamHead
@@ -47,7 +45,7 @@ def append(library, events=None, **overrides: Any) -> AppendResult:
         "idempotency_key": "probe-key",
     }
     fields.update(overrides)
-    return append_events(library, events or [make_new_event()], **fields)
+    return lock_stream(library).append(events or [make_new_event()], **fields)
 
 
 def test_first_append_provisions_a_head_and_starts_at_one(owned_library):
@@ -216,38 +214,6 @@ def test_absent_source_metadata_is_stored_as_an_empty_object(owned_library):
     assert LibraryEvent.objects.get().source_metadata == {}
 
 
-def test_convenience_function_matches_the_primitive(owned_library, second_library):
-    correlation_id = uuid.uuid7()
-    recorded_at = timezone.now()
-    events = [make_new_event()]
-
-    with transaction.atomic():
-        through_function = append_events(
-            owned_library,
-            events,
-            actor=None,
-            correlation_id=correlation_id,
-            idempotency_key="same",
-            recorded_at=recorded_at,
-        )
-    with transaction.atomic():
-        through_primitive = lock_stream(second_library).append(
-            events,
-            actor=None,
-            correlation_id=correlation_id,
-            idempotency_key="same",
-            recorded_at=recorded_at,
-        )
-
-    compared = ("sequence", "event_type", "correlation_id", "recorded_at", "payload")
-    assert [
-        [getattr(event, name) for name in compared] for event in through_function.events
-    ] == [
-        [getattr(event, name) for name in compared]
-        for event in through_primitive.events
-    ]
-
-
 def test_lock_stream_returns_the_same_head_for_a_provisioned_library(owned_library):
     with transaction.atomic():
         first = lock_stream(owned_library)
@@ -294,6 +260,13 @@ def test_the_head_is_locked_for_the_whole_transaction(owned_library):
 
 @pytest.mark.django_db(transaction=True)
 def test_concurrent_appends_serialize_into_one_contiguous_range(owned_library):
+    #: The head must already be committed. A head this test's holder creates is
+    #: invisible to the waiter, whose SELECT ... FOR UPDATE then matches zero
+    #: rows and returns without waiting -- the appends would serialize on the
+    #: unique index inside get_or_create, and the head lock would go untested.
+    with transaction.atomic():
+        append(owned_library, idempotency_key="seed")
+
     holder_locked = Event()
     waiter_requested_lock = Event()
     results: dict[str, AppendResult] = {}
@@ -357,9 +330,9 @@ def test_concurrent_appends_serialize_into_one_contiguous_range(owned_library):
 
     holder_result = results["holder"]
     waiter_result = results["waiter"]
-    assert (holder_result.first_sequence, holder_result.last_sequence) == (1, 2)
-    assert (waiter_result.first_sequence, waiter_result.last_sequence) == (3, 4)
+    assert (holder_result.first_sequence, holder_result.last_sequence) == (2, 3)
+    assert (waiter_result.first_sequence, waiter_result.last_sequence) == (4, 5)
     assert holder_result.stream_id == waiter_result.stream_id
     assert list(
         LibraryEvent.objects.order_by("sequence").values_list("sequence", flat=True)
-    ) == [1, 2, 3, 4]
+    ) == [1, 2, 3, 4, 5]
