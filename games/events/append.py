@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from django.contrib.auth.models import AbstractBaseUser
+from django.contrib.auth.models import User
 from django.db import router, transaction
 from django.utils import timezone
 
@@ -66,7 +66,7 @@ class LockedStream:
         self,
         events: Sequence[NewEvent],
         *,
-        actor: AbstractBaseUser | None,
+        actor: User | None,
         correlation_id: uuid.UUID,
         idempotency_key: str,
         source_metadata: SourceMetadata | None = None,
@@ -140,7 +140,7 @@ def append_events(
     library: UserLibrary,
     events: Sequence[NewEvent],
     *,
-    actor: AbstractBaseUser | None,
+    actor: User | None,
     correlation_id: uuid.UUID,
     idempotency_key: str,
     source_metadata: SourceMetadata | None = None,

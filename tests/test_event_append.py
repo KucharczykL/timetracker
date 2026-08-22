@@ -1,6 +1,7 @@
 import uuid
 from datetime import date
 from threading import Event, Thread
+from typing import Any
 
 import psycopg
 import pytest
@@ -28,8 +29,8 @@ def second_library(django_user_model):
     ).library
 
 
-def make_new_event(**overrides) -> NewEvent:
-    fields = {
+def make_new_event(**overrides: Any) -> NewEvent:
+    fields: dict[str, Any] = {
         "event_type": "library.probe.recorded",
         "aggregate_type": "probe",
         "aggregate_id": uuid.uuid7(),
@@ -39,8 +40,8 @@ def make_new_event(**overrides) -> NewEvent:
     return NewEvent(**fields)
 
 
-def append(library, events=None, **overrides) -> AppendResult:
-    fields = {
+def append(library, events=None, **overrides: Any) -> AppendResult:
+    fields: dict[str, Any] = {
         "actor": None,
         "correlation_id": uuid.uuid7(),
         "idempotency_key": "probe-key",
@@ -115,10 +116,9 @@ def test_rolled_back_append_leaves_no_events_and_no_advance(owned_library):
     with transaction.atomic():
         append(owned_library)
 
-    with pytest.raises(RuntimeError, match="rolled back"):
-        with transaction.atomic():
-            append(owned_library)
-            raise RuntimeError("rolled back")
+    with pytest.raises(RuntimeError, match="rolled back"), transaction.atomic():
+        append(owned_library)
+        raise RuntimeError("rolled back")
 
     head = LibraryEventStreamHead.objects.get(library=owned_library)
     assert head.current_sequence == 1
@@ -149,9 +149,9 @@ def test_libraries_advance_independently(owned_library, second_library):
     assert (other.first_sequence, other.last_sequence) == (1, 1)
     assert LibraryEvent.objects.for_library(second_library).count() == 1
     assert LibraryEvent.objects.for_library(owned_library).count() == 2
-    assert other.stream_id != LibraryEventStreamHead.objects.get(
-        library=owned_library
-    ).id
+    assert (
+        other.stream_id != LibraryEventStreamHead.objects.get(library=owned_library).id
+    )
 
 
 def test_result_matches_the_persisted_rows(owned_library):
@@ -280,14 +280,16 @@ def test_the_head_is_locked_for_the_whole_transaction(owned_library):
 
     with transaction.atomic():
         lock_stream(owned_library)
-        with psycopg.connect(**connection_params) as probe:
-            with probe.transaction():
-                with pytest.raises(psycopg.errors.LockNotAvailable):
-                    probe.execute(
-                        "SELECT current_sequence FROM games_libraryeventstreamhead"
-                        " WHERE id = %s FOR UPDATE NOWAIT",
-                        [head_id],
-                    )
+        with (
+            psycopg.connect(**connection_params) as probe,
+            probe.transaction(),
+            pytest.raises(psycopg.errors.LockNotAvailable),
+        ):
+            probe.execute(
+                "SELECT current_sequence FROM games_libraryeventstreamhead"
+                " WHERE id = %s FOR UPDATE NOWAIT",
+                [head_id],
+            )
 
 
 @pytest.mark.django_db(transaction=True)
@@ -328,7 +330,10 @@ def test_concurrent_appends_serialize_into_one_contiguous_range(owned_library):
 
         try:
             assert holder_locked.wait(10)
-            with connection.execute_wrapper(announce_lock_request), transaction.atomic():
+            with (
+                connection.execute_wrapper(announce_lock_request),
+                transaction.atomic(),
+            ):
                 results["waiter"] = append(
                     owned_library,
                     [make_new_event(), make_new_event()],
