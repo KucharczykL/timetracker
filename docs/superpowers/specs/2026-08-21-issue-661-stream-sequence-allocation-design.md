@@ -239,7 +239,7 @@ type SourceMetadata = dict[str, Any]  # {"origin": "manual"}
 class NewEvent:
     event_type: str
     aggregate_type: str
-    aggregate_id: uuid.UUID          # a v7 UUID; the column is the uuid_v7 domain
+    aggregate_id: uuid.UUID  # a v7 UUID; the column is the uuid_v7 domain
     payload: dict[str, Any]
     payload_schema_version: int = 1
     effective_time: TemporalValue | None = None
@@ -273,7 +273,9 @@ class LockedStream:
 def lock_stream(library: UserLibrary) -> LockedStream: ...
 
 
-def append_events(library: UserLibrary, events: Sequence[NewEvent], **kwargs) -> AppendResult: ...
+def append_events(
+    library: UserLibrary, events: Sequence[NewEvent], **kwargs
+) -> AppendResult: ...
 
 
 class TransactionRequired(RuntimeError): ...
