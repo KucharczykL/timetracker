@@ -1,10 +1,15 @@
+import uuid
+from datetime import UTC, date, datetime
+from decimal import Decimal
 from typing import Any
 
 import pytest
 from django.db import IntegrityError, migrations, transaction
 from django.db.migrations.loader import MigrationLoader
 
+from games.events.idempotency import fingerprint_command_input
 from games.models import LibraryIdempotencyRecord
+from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db
 
@@ -61,6 +66,68 @@ def test_two_libraries_may_use_the_same_key(owned_library, second_library):
 def test_rejected_records(owned_library, overrides: dict[str, Any]):
     with pytest.raises(IntegrityError), transaction.atomic():
         make_record(owned_library, **overrides)
+
+
+def test_key_order_does_not_change_the_digest():
+    assert fingerprint_command_input(
+        {"note": "played", "game": "Tunic"}
+    ) == fingerprint_command_input({"game": "Tunic", "note": "played"})
+
+
+def test_nested_dictionaries_are_sorted_too():
+    assert fingerprint_command_input(
+        {"session": {"note": "played", "game": "Tunic"}}
+    ) == fingerprint_command_input({"session": {"game": "Tunic", "note": "played"}})
+
+
+def test_list_order_is_significant():
+    assert fingerprint_command_input(
+        {"games": ["Tunic", "Hades"]}
+    ) != fingerprint_command_input({"games": ["Hades", "Tunic"]})
+
+
+def test_a_changed_value_changes_the_digest():
+    assert fingerprint_command_input({"game": "Tunic"}) != fingerprint_command_input(
+        {"game": "Hades"}
+    )
+
+
+def test_the_digest_is_lowercase_hexadecimal_sha256():
+    digest = fingerprint_command_input({"game": "Tunic"})
+
+    assert len(digest) == 64
+    assert set(digest) <= set("0123456789abcdef")
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(uuid.uuid7(), id="uuid"),
+        pytest.param(
+            datetime(2026, 8, 22, 11, tzinfo=UTC), id="datetime"
+        ),
+        pytest.param(date(2026, 8, 22), id="date"),
+        pytest.param(Decimal("19.99"), id="decimal"),
+        pytest.param(TemporalValue.from_day(date(2026, 8, 22)), id="temporal-value"),
+    ],
+)
+def test_accepted_command_input_values(value: Any):
+    assert len(fingerprint_command_input({"value": value})) == 64
+
+
+def test_a_datetime_and_its_date_differ():
+    """datetime subclasses date, so a date-first branch would collapse them."""
+    day = date(2026, 8, 22)
+    moment = datetime(2026, 8, 22, tzinfo=UTC)
+
+    assert fingerprint_command_input({"when": day}) != fingerprint_command_input(
+        {"when": moment}
+    )
+
+
+def test_an_unsupported_value_is_refused():
+    with pytest.raises(TypeError):
+        fingerprint_command_input({"platforms": {"pc", "switch"}})
 
 
 def test_the_idempotency_migration_is_reversible():
