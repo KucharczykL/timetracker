@@ -1,3 +1,4 @@
+import contextlib
 import uuid
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -7,8 +8,19 @@ import pytest
 from django.db import IntegrityError, migrations, transaction
 from django.db.migrations.loader import MigrationLoader
 
-from games.events.idempotency import fingerprint_command_input
-from games.models import LibraryIdempotencyRecord
+from games.events.append import NewEvent
+from games.events.idempotency import (
+    FINGERPRINT_VERSION,
+    IdempotencyKeyMismatch,
+    ReplayedAppend,
+    fingerprint_command_input,
+    idempotent_append,
+)
+from games.models import (
+    LibraryEvent,
+    LibraryEventStreamHead,
+    LibraryIdempotencyRecord,
+)
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db
@@ -68,6 +80,142 @@ def test_rejected_records(owned_library, overrides: dict[str, Any]):
         make_record(owned_library, **overrides)
 
 
+def make_new_event(**overrides: Any) -> NewEvent:
+    fields: dict[str, Any] = {
+        "event_type": "library.probe.recorded",
+        "aggregate_type": "probe",
+        "aggregate_id": uuid.uuid7(),
+        "payload": {"probe": True},
+    }
+    fields.update(overrides)
+    return NewEvent(**fields)
+
+
+def run_command(library, events: list[NewEvent] | None = None, **overrides: Any):
+    fields: dict[str, Any] = {
+        "idempotency_key": "probe-key",
+        "command_input": {"probe": True},
+        "build": lambda _stream: events if events is not None else [make_new_event()],
+        "actor": None,
+        "correlation_id": uuid.uuid7(),
+    }
+    fields.update(overrides)
+    return idempotent_append(library, **fields)
+
+
+def test_a_fresh_command_appends_and_records_its_range(owned_library):
+    with transaction.atomic():
+        result = run_command(owned_library, [make_new_event(), make_new_event()])
+
+    record = LibraryIdempotencyRecord.objects.get()
+    assert (record.first_sequence, record.last_sequence) == (1, 2)
+    assert (result.first_sequence, result.last_sequence) == (1, 2)
+    assert record.fingerprint_version == FINGERPRINT_VERSION
+    assert record.request_fingerprint == fingerprint_command_input({"probe": True})
+    assert LibraryEvent.objects.count() == 2
+
+
+def test_repeating_a_key_replays_the_original_range(owned_library):
+    with transaction.atomic():
+        original = run_command(owned_library, [make_new_event(), make_new_event()])
+
+    with transaction.atomic():
+        replay = run_command(owned_library)
+
+    assert isinstance(replay, ReplayedAppend)
+    assert replay.stream_id == original.stream_id
+    assert (replay.first_sequence, replay.last_sequence) == (1, 2)
+    assert LibraryEvent.objects.count() == 2
+    assert LibraryIdempotencyRecord.objects.count() == 1
+    assert LibraryEventStreamHead.objects.get().current_sequence == 2
+
+
+def test_a_replay_never_builds_its_events(owned_library):
+    builds: list[str] = []
+
+    def build(_stream) -> list[NewEvent]:
+        builds.append("built")
+        return [make_new_event()]
+
+    with transaction.atomic():
+        run_command(owned_library, build=build)
+    with transaction.atomic():
+        run_command(owned_library, build=build)
+
+    assert builds == ["built"]
+
+
+def test_a_key_reused_over_different_input_is_refused(owned_library):
+    with transaction.atomic():
+        run_command(owned_library)
+
+    with transaction.atomic():
+        with pytest.raises(IdempotencyKeyMismatch, match="probe-key"):
+            run_command(owned_library, command_input={"probe": False})
+
+        #: The mismatch is raised before any write, so the caller's transaction
+        #: survives it -- unlike every failure in the append module.
+        result = run_command(
+            owned_library, idempotency_key="second-key", command_input={"probe": False}
+        )
+
+    assert (result.first_sequence, result.last_sequence) == (2, 2)
+    assert LibraryIdempotencyRecord.objects.count() == 2
+
+
+def test_a_record_from_another_fingerprint_version_replays_unchecked(owned_library):
+    with transaction.atomic():
+        run_command(owned_library)
+
+    LibraryIdempotencyRecord.objects.update(
+        fingerprint_version=FINGERPRINT_VERSION + 1,
+        request_fingerprint="0" * 64,
+    )
+
+    with transaction.atomic():
+        replay = run_command(owned_library, command_input={"probe": "different"})
+
+    assert isinstance(replay, ReplayedAppend)
+    assert LibraryEvent.objects.count() == 1
+
+
+def test_one_key_in_two_libraries_is_two_commands(owned_library, second_library):
+    with transaction.atomic():
+        first = run_command(owned_library)
+    with transaction.atomic():
+        second = run_command(second_library)
+
+    assert first.stream_id != second.stream_id
+    assert LibraryIdempotencyRecord.objects.count() == 2
+    assert LibraryEvent.objects.count() == 2
+
+
+def test_a_command_recording_nothing_claims_no_key(owned_library):
+    with transaction.atomic(), pytest.raises(ValueError, match="at least one event"):
+        run_command(owned_library, [])
+
+    assert not LibraryIdempotencyRecord.objects.exists()
+
+    with transaction.atomic():
+        result = run_command(owned_library)
+
+    assert result.first_sequence == 1
+
+
+def test_a_rolled_back_command_leaves_its_key_usable(owned_library):
+    with contextlib.suppress(RuntimeError), transaction.atomic():
+        run_command(owned_library)
+        raise RuntimeError("the command failed after appending")
+
+    assert not LibraryEvent.objects.exists()
+    assert not LibraryIdempotencyRecord.objects.exists()
+
+    with transaction.atomic():
+        result = run_command(owned_library)
+
+    assert (result.first_sequence, result.last_sequence) == (1, 1)
+
+
 def test_key_order_does_not_change_the_digest():
     assert fingerprint_command_input(
         {"note": "played", "game": "Tunic"}
@@ -103,9 +251,7 @@ def test_the_digest_is_lowercase_hexadecimal_sha256():
     "value",
     [
         pytest.param(uuid.uuid7(), id="uuid"),
-        pytest.param(
-            datetime(2026, 8, 22, 11, tzinfo=UTC), id="datetime"
-        ),
+        pytest.param(datetime(2026, 8, 22, 11, tzinfo=UTC), id="datetime"),
         pytest.param(date(2026, 8, 22), id="date"),
         pytest.param(Decimal("19.99"), id="decimal"),
         pytest.param(TemporalValue.from_day(date(2026, 8, 22)), id="temporal-value"),
