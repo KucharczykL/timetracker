@@ -134,25 +134,3 @@ def lock_stream(library: UserLibrary) -> LockedStream:
         #: transaction. Re-select so the row is locked whichever branch won.
         LibraryEventStreamHead.objects.get_or_create(library=library)
         return LockedStream(heads.get(library=library))
-
-
-def append_events(
-    library: UserLibrary,
-    events: Sequence[NewEvent],
-    *,
-    actor: User | None,
-    correlation_id: uuid.UUID,
-    idempotency_key: str,
-    source_metadata: SourceMetadata | None = None,
-    recorded_at: datetime | None = None,
-) -> AppendResult:
-    """Lock, append, and advance in one call, for a command with nothing to
-    validate between the lock and the append."""
-    return lock_stream(library).append(
-        events,
-        actor=actor,
-        correlation_id=correlation_id,
-        idempotency_key=idempotency_key,
-        source_metadata=source_metadata,
-        recorded_at=recorded_at,
-    )
