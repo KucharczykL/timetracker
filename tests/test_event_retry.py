@@ -1,8 +1,17 @@
+import uuid
 from random import Random
+from threading import Barrier, Thread
 
 import pytest
-from django.db import IntegrityError, OperationalError, transaction
+from django.db import (
+    IntegrityError,
+    OperationalError,
+    close_old_connections,
+    transaction,
+)
+from django.utils import timezone
 
+from games.events.append import NewEvent, lock_stream
 from games.events.idempotency import IdempotencyKeyMismatch
 from games.events.retry import (
     DEFAULT_RETRY_POLICY,
@@ -12,7 +21,11 @@ from games.events.retry import (
     is_retryable,
     run_in_transaction,
 )
-from games.models import LIBRARY_EVENT_SEQUENCE_CONSTRAINT
+from games.models import (
+    LIBRARY_EVENT_SEQUENCE_CONSTRAINT,
+    LibraryEvent,
+    Platform,
+)
 
 
 class FakeDiagnostic:
@@ -242,3 +255,113 @@ def test_each_retry_is_logged(capture_games_logger):
     retry_logs = games_records(caplog)
     assert len(retry_logs) == 3
     assert "40P01" in retry_logs[0].getMessage()
+
+
+def one_event() -> NewEvent:
+    return NewEvent(
+        event_type="probe.recorded",
+        aggregate_type="probe",
+        aggregate_id=uuid.uuid7(),
+        payload={},
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_real_sequence_collision_is_recognised_and_retried(owned_library):
+    """The classifier's whole job is reading a real psycopg error through
+    Django's wrapper. Only a real one proves the attribute path."""
+    with transaction.atomic():
+        first = lock_stream(owned_library).append(
+            [one_event()],
+            actor=None,
+            correlation_id=uuid.uuid7(),
+            idempotency_key="seed",
+        )
+
+    policy, sleeper = recording_policy()
+    attempts = []
+
+    def operation():
+        attempts.append(len(attempts))
+        #: Deliberately outside the head lock, at a sequence already taken.
+        LibraryEvent.objects.create(
+            library=owned_library,
+            stream_id=first.stream_id,
+            sequence=first.last_sequence,
+            event_type="probe.recorded",
+            aggregate_type="probe",
+            aggregate_id=uuid.uuid7(),
+            payload={},
+            recorded_at=timezone.now(),
+            effective_time=None,
+            actor=None,
+            correlation_id=uuid.uuid7(),
+            idempotency_key="collides",
+        )
+
+    with pytest.raises(RetryBudgetExhausted) as raised:
+        run_in_transaction(operation, policy=policy)
+
+    assert len(attempts) == 4
+    assert len(sleeper.delays) == 3
+    assert isinstance(raised.value.__cause__, IntegrityError)
+    assert LIBRARY_EVENT_SEQUENCE_CONSTRAINT in str(raised.value.__cause__)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_real_deadlock_is_recognised_and_the_victim_retries():
+    """Deadlock arrives as django.db.OperationalError wrapping psycopg's
+    DeadlockDetected -- a different exception family than the collision above,
+    reaching the same classifier."""
+    first = Platform.objects.create(name="deadlock-a")
+    second = Platform.objects.create(name="deadlock-b")
+
+    #: A barrier, not an Event with a timeout: if the two threads fail to meet,
+    #: this raises BrokenBarrierError into the thread and the test reports it,
+    #: where a lapsed Event would let both run serially and fail the retry
+    #: assertion with nothing explaining why.
+    both_near_locked = Barrier(2, timeout=10)
+    results: list[str] = []
+    retried: list[float] = []
+    errors: list[BaseException] = []
+
+    def run(near: int, far: int) -> None:
+        close_old_connections()
+        first_pass = True
+
+        def operation() -> str:
+            nonlocal first_pass
+            Platform.objects.select_for_update().get(pk=near)
+            if first_pass:
+                #: Only the opening attempt rendezvouses. The victim's retry
+                #: runs after the winner committed, with nobody left to meet --
+                #: waiting again would break the barrier on a timeout.
+                first_pass = False
+                both_near_locked.wait()
+            Platform.objects.select_for_update().get(pk=far)
+            return "recorded"
+
+        policy = RetryPolicy(sleep=retried.append, random=Random(0))
+        try:
+            results.append(run_in_transaction(operation, policy=policy))
+        except BaseException as error:  # noqa: BLE001 - return thread failures
+            errors.append(error)
+        finally:
+            close_old_connections()
+
+    forward = Thread(target=run, args=(first.pk, second.pk), name="deadlock-forward")
+    backward = Thread(target=run, args=(second.pk, first.pk), name="deadlock-backward")
+    forward.start()
+    backward.start()
+    forward.join(timeout=30)
+    backward.join(timeout=30)
+
+    assert not errors, errors
+    #: A live thread still holds row locks, and this test class TRUNCATEs at
+    #: teardown -- asserting here fails the test instead of hanging the worker.
+    assert not forward.is_alive()
+    assert not backward.is_alive()
+
+    #: PostgreSQL kills exactly one; the runner gives it back.
+    assert results == ["recorded", "recorded"]
+    assert len(retried) >= 1
