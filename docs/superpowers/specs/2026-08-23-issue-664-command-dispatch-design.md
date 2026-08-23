@@ -535,19 +535,27 @@ No migration, no schema change, no data change: this issue adds a module and its
 tests. Reversibility is `git revert` — nothing has run yet that could leave a
 row behind, because no caller exists until #671.
 
-## Follow-up issues to file
+## Follow-up issues
 
-1. Map `CommandConflict` to an HTTP status, page, or toast at the first evented
-   view — #671-owned.
-2. Decide what a no-op command means: `CommandRejected`, or a success result
-   with an empty range — #671-owned, needs a real command to answer.
-3. Delete the `TEST_KERNEL_*` allowlist members once real commands exist —
-   #671-owned.
-4. Administrator-assisted repair dispatch: an explicit entry point where actor
-   and owner differ, recording both.
-5. A shared helper for resolving a UUID field to a library-scoped object inside
-   `build`, so "rejects cross-library references" is one call rather than a
-   convention.
-6. `Decimal` canonicalisation in `_encode_command_value`: `Decimal("1.1")` and
-   `Decimal("1.10")` fingerprint differently, so an honest retry of a price
-   command becomes `IdempotencyKeyMismatch`. Needs a `FINGERPRINT_VERSION` bump.
+Filed and listed in #601 under "Follow-ups from the dispatch boundary", so they
+are tracked by the phase rather than by this document alone.
+
+Needing a real command first, so they follow #671:
+
+- #905 — map `CommandConflict` to an HTTP status, page, or toast at the first
+  evented view.
+- #906 — decide what a no-op command means: `CommandRejected`, or a success
+  result with an empty range.
+- #907 — delete the `TEST_KERNEL_*` allowlist members.
+
+Independent of #671:
+
+- #908 — administrator-assisted repair dispatch: an explicit entry point where
+  actor and owner differ, recording both.
+- #909 — a shared helper resolving a UUID field to a library-scoped object
+  inside `build`, so "rejects cross-library references" is one call rather than
+  a convention.
+- #910 — `Decimal` canonicalisation in `_encode_command_value`: `Decimal("1.1")`
+  and `Decimal("1.10")` fingerprint differently, so an honest retry of a price
+  command becomes `IdempotencyKeyMismatch`. Needs a `FINGERPRINT_VERSION` bump,
+  and is cheaper before the first price-carrying command exists.
