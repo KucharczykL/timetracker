@@ -21,9 +21,9 @@ rather than on class identity, and are limits rather than oversights:
 import inspect
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, is_dataclass
 from enum import StrEnum
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from django.contrib.auth.models import User
 
@@ -113,3 +113,28 @@ class Command(ABC):
     @abstractmethod
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
         """Validate against current state and describe what happened."""
+
+
+def canonical_command_input(command: Command) -> dict[str, Any]:
+    """The input a command's idempotency fingerprint is taken over.
+
+    The dataclass check is not only a guard: `Command` is an ABC, so it also
+    narrows the type `fields()` will accept.
+    """
+    if not is_dataclass(command):
+        raise TypeError(
+            f"{type(command).__qualname__} is not a dataclass. A command's "
+            "fields are its canonical input, so it has none to fingerprint."
+        )
+
+    #: Shallow, never asdict(): that recurses, so a TemporalValue field would
+    #: be destructured into its private layout before idempotency's
+    #: canonicalizer could reduce it to its canonical string. Equal values
+    #: would still hash equally, leaving the fingerprint quietly dependent on
+    #: a layout nobody thinks of as part of the contract.
+    return {
+        "command": command.command_name.value,
+        "fields": {
+            field.name: getattr(command, field.name) for field in fields(command)
+        },
+    }
