@@ -11,8 +11,8 @@ from django.db import (
 )
 from django.utils import timezone
 
-from games.events.append import NewEvent, lock_stream
-from games.events.idempotency import IdempotencyKeyMismatch
+from games.events.append import AppendResult, NewEvent, lock_stream
+from games.events.idempotency import IdempotencyKeyMismatch, idempotent_append
 from games.events.retry import (
     DEFAULT_RETRY_POLICY,
     NestedTransactionNotSupported,
@@ -24,6 +24,7 @@ from games.events.retry import (
 from games.models import (
     LIBRARY_EVENT_SEQUENCE_CONSTRAINT,
     LibraryEvent,
+    LibraryIdempotencyRecord,
     Platform,
 )
 
@@ -365,3 +366,47 @@ def test_a_real_deadlock_is_recognised_and_the_victim_retries():
     #: PostgreSQL kills exactly one; the runner gives it back.
     assert results == ["recorded", "recorded"]
     assert len(retried) >= 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_rolled_back_attempt_leaves_no_record_for_the_retry_to_replay(
+    owned_library,
+):
+    """The attempt's events and its idempotency record share one transaction.
+    If only the record survived a rollback, the retry would replay a range whose
+    events no longer exist -- a command silently lost."""
+    policy, sleeper = recording_policy()
+    attempts = []
+
+    def operation():
+        attempts.append(len(attempts))
+        result = idempotent_append(
+            owned_library,
+            idempotency_key="shared-key",
+            command_input={"note": "one action"},
+            build=lambda _stream: [one_event()],
+            actor=None,
+            correlation_id=uuid.uuid7(),
+        )
+        #: After the write, so the first attempt has something to roll back.
+        if len(attempts) == 1:
+            raise wrapped(OperationalError, "40001")
+        return result
+
+    result = run_in_transaction(operation, policy=policy)
+
+    assert len(attempts) == 2
+    assert len(sleeper.delays) == 1
+    #: An AppendResult, not a ReplayedAppend: the second attempt found no
+    #: record, because the first attempt's rolled back with its events.
+    assert isinstance(result, AppendResult)
+    assert (result.first_sequence, result.last_sequence) == (1, 1)
+    #: Read after the runner returned, on a committed connection: this is the
+    #: only assertion in the suite that the happy path commits at all.
+    assert LibraryEvent.objects.filter(library=owned_library).count() == 1
+    assert (
+        LibraryIdempotencyRecord.objects.filter(
+            library=owned_library, idempotency_key="shared-key"
+        ).count()
+        == 1
+    )
