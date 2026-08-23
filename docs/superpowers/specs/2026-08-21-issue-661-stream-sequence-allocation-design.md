@@ -113,6 +113,18 @@ removing the hazard — a caller who forgot the outer transaction would silently
 get the torn-write behaviour. The project sets no `ATOMIC_REQUESTS`, so views
 run in autocommit and the check fires on real misuse.
 
+> **Amended by [#663](https://github.com/KucharczykL/timetracker/issues/663).**
+> The caller this section leaves unnamed now exists: `run_in_transaction` in
+> `games/events/retry.py` opens the transaction, and re-runs the whole of it when
+> PostgreSQL kills it for a recoverable reason. It raises the mirror of
+> `TransactionRequired` — `NestedTransactionNotSupported` — when a transaction is
+> already open on the same alias, because rolling back to a savepoint could not
+> undo what an enclosing transaction had already done, and its retries would be
+> weaker than they look. The two checks resolve the same
+> `router.db_for_write(LibraryEvent)` alias with opposite polarity, so between
+> them they bracket the one valid state: exactly one transaction, opened by the
+> runner.
+
 ### The head is provisioned lazily
 
 #660 created no head rows. The hot path is one query:

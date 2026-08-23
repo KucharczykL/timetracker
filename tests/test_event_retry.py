@@ -326,7 +326,7 @@ def test_a_real_deadlock_is_recognised_and_the_victim_retries():
     retried: list[float] = []
     errors: list[BaseException] = []
 
-    def run(near: int, far: int) -> None:
+    def run(near: uuid.UUID, far: uuid.UUID) -> None:
         close_old_connections()
         first_pass = True
 
