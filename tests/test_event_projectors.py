@@ -8,8 +8,9 @@ import uuid
 from typing import ClassVar
 
 import pytest
-from django.db import transaction
+from django.db import OperationalError, transaction
 from test_command_dispatch import BasicCommand
+from test_event_retry import wrapped
 
 from games.events.append import NewEvent, lock_stream
 from games.events.dispatch import dispatch
@@ -46,6 +47,7 @@ def forget_previous_calls():
     yield
     for sink in (CALLS, APPLIED, SEEN, HEAD_SEQUENCE_SEEN):
         sink.clear()
+    FlakyProjector.attempts = 0
 
 
 def make_event(event_type: str = RECORDED, sequence: int = 1) -> LibraryEvent:
@@ -238,6 +240,30 @@ class DispatchRecorder(Projector, registry=dispatch_registry):
     handles: ClassVar[HandlerMap] = {"test.command.recorded": _recorded}
 
 
+retry_registry = ProjectorRegistry()
+
+
+class FlakyProjector(Projector, registry=retry_registry):
+    """Fails its first attempt the way PostgreSQL kills a deadlocked one.
+
+    The attempt counter is neither a field nor a row, so it survives the
+    rollback the retry depends on -- the same test-only violation of
+    `run_in_transaction`'s "no effects outside the database" contract that
+    `FlakyCommand` already makes.
+    """
+
+    family_name = ProjectorFamily.CURRENT_STATE
+    attempts: ClassVar[int] = 0
+
+    def _recorded(self, event: LibraryEvent) -> None:
+        type(self).attempts += 1
+        if type(self).attempts == 1:
+            raise wrapped(OperationalError, "40P01")
+        APPLIED.append((ProjectorFamily.CURRENT_STATE, event.sequence))
+
+    handles: ClassVar[HandlerMap] = {"test.command.recorded": _recorded}
+
+
 def make_new_event() -> NewEvent:
     return NewEvent(
         event_type=RECORDED,
@@ -351,3 +377,41 @@ def test_dispatch_folds_through_the_registry_it_was_given(owned_user, owned_libr
     )
 
     assert APPLIED == [(ProjectorFamily.CURRENT_STATE, 1)]
+
+
+@pytest.mark.django_db
+def test_a_failing_handler_names_itself_without_being_wrapped(owned_library):
+    with pytest.raises(RuntimeError) as raised, transaction.atomic():
+        append(owned_library, rollback_registry)
+
+    #: Exactly RuntimeError, not a subclass and not something carrying it: the
+    #: retry classifier reads the type, so a wrapper would be invisible to it.
+    assert type(raised.value) is RuntimeError
+    note = "\n".join(raised.value.__notes__)
+    assert ProjectorFamily.STATS.value in note
+    assert RECORDED in note
+    assert "#1" in note
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_retryable_failure_inside_a_handler_is_still_retried(
+    owned_user, owned_library
+):
+    """The load-bearing test for the error contract.
+
+    Wrapping a projector's exception in a `ProjectionFailed` would satisfy
+    neither of `run_in_transaction`'s checks -- the type nor the chained
+    SQLSTATE -- so every projected command would silently stop being retried.
+    This is what fails if anyone does it.
+    """
+    dispatch(
+        BasicCommand(label="flaky", count=1),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="flaky",
+        registry=retry_registry,
+    )
+
+    assert FlakyProjector.attempts == 2
+    assert APPLIED == [(ProjectorFamily.CURRENT_STATE, 1)]
+    assert LibraryEvent.objects.count() == 1

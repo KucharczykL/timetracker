@@ -24,6 +24,8 @@ type BoundHandler = Callable[[LibraryEvent], None]
 #: read out of the class body before any descriptor binding -- hence
 #: Callable[..., None] rather than a signature naming `self`.
 type HandlerMap = Mapping[EventType, Callable[..., None]]
+#: One handler and the family it speaks for, so a failure can say which.
+type FamilyHandler = tuple[ProjectorFamily, BoundHandler]
 #: Where a family was defined, as (module, qualified name).
 type DefinitionSite = tuple[str, str]  # ("games.projectors.journal", "Journal")
 
@@ -63,7 +65,7 @@ class ProjectorRegistry:
     def __init__(self) -> None:
         self._families: dict[ProjectorFamily, Projector] = {}
         self._claims: dict[ProjectorFamily, DefinitionSite] = {}
-        self._handlers: dict[EventType, tuple[BoundHandler, ...]] = {}
+        self._handlers: dict[EventType, tuple[FamilyHandler, ...]] = {}
 
     def register(self, projector_class: type[Projector]) -> None:
         family_name = getattr(projector_class, "family_name", None)
@@ -103,22 +105,40 @@ class ProjectorRegistry:
         self._rebuild_handlers()
 
     def _rebuild_handlers(self) -> None:
-        handlers: dict[EventType, list[BoundHandler]] = {}
+        handlers: dict[EventType, list[FamilyHandler]] = {}
         for family_name in sorted(self._families, key=_RUN_ORDER.__getitem__):
             family = self._families[family_name]
             for event_type, handler in family.handles.items():
-                handlers.setdefault(event_type, []).append(handler.__get__(family))
+                handlers.setdefault(event_type, []).append(
+                    (family_name, handler.__get__(family))
+                )
         self._handlers = {
             event_type: tuple(found) for event_type, found in handlers.items()
         }
 
     def handlers_for(self, event_type: EventType) -> tuple[BoundHandler, ...]:
-        return self._handlers.get(event_type, ())
+        return tuple(handler for _, handler in self._handlers.get(event_type, ()))
 
     def apply(self, event: LibraryEvent) -> None:
-        """Project one event through every family that claims its type."""
-        for handler in self.handlers_for(event.event_type):
-            handler(event)
+        """Project one event through every family that claims its type.
+
+        A handler's exception is annotated and re-raised, never wrapped and
+        never caught: `run_in_transaction` decides whether to retry from the
+        exception's type and its chained SQLSTATE, so a `ProjectionFailed`
+        carrying the original would stop a serialization failure inside a
+        projector from ever being retried. `add_note` adds the one fact a
+        traceback is missing -- which family, on which event -- and changes
+        nothing a caller can read.
+        """
+        for family_name, handler in self._handlers.get(event.event_type, ()):
+            try:
+                handler(event)
+            except Exception as error:
+                error.add_note(
+                    f"raised by the {family_name.value} projector applying "
+                    f"{event.event_type} #{event.sequence}"
+                )
+                raise
 
 
 DEFAULT_REGISTRY = ProjectorRegistry()
