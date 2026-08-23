@@ -433,7 +433,7 @@ def is_retryable(error: Exception) -> bool:
 
 Run: `make test ARGS="tests/test_event_retry.py -x"`
 
-Expected: PASS (14 tests, counting the parametrized cases).
+Expected: PASS (13 tests, counting the parametrized cases).
 
 - [ ] **Step 5: Lint before committing**
 
