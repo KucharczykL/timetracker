@@ -493,10 +493,12 @@ exists to have written a projection row.
 
 ## Follow-up issues
 
-To be filed against #601 and listed there, so the phase tracks them rather than
-this document alone:
+Filed and listed in #601 under "Follow-ups from the projector boundary", so the
+phase tracks them rather than this document alone:
 
-- `ProjectorPhase`: an ordered phase enum giving families a per-append aggregate
-  hook, with a decision about what a batch means during replay.
-- Relation prefetching on the replay read, so a family touching `event.actor` is
-  not an N+1 across a rebuild — assigned to #667 if it is not already inside it.
+- #913 — `ProjectorPhase`, an ordered phase enum giving families a per-append
+  aggregate hook. It must first answer what a batch means when replay folds an
+  existing stream, which is the reason it is not built here.
+- #914 — relation prefetching on the replay read, so a family touching
+  `event.actor` is not an N+1 across a rebuild. Close as folded in if #667's own
+  specification already covers it.
