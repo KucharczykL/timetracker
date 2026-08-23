@@ -35,12 +35,14 @@ thing.
 | Blocking direct writes to event-sourced projections | #737 |
 | Auditing forms, APIs, admin, imports, tasks, scripts for bypasses | #738 |
 | Mapping a conflict to an HTTP status, a page, or a toast | follow-up, #671-owned |
+| What a *no-op* command means, and whether one is legal | follow-up, #671-owned |
+| Administrator-assisted repair (actor ≠ owner) | follow-up |
 
 This issue owns the command base class, the command-name allowlist, the
-authorization check, the canonical-input derivation, and the single composition
-of transaction → idempotency → stream lock → append.
+authorization check, the canonical-input derivation, the refusal vocabulary, and
+the single composition of transaction → idempotency → stream lock → append.
 
-**It ships no domain command.** The first one is #671's. Everything here is
+**It ships no domain command.** The first ones are #671's. Everything here is
 proven against commands defined for the purpose, whose names are allowlist
 members marked as such.
 
@@ -56,8 +58,15 @@ Nothing already established is restated. What is load-bearing:
 - `run_in_transaction` (#663) opens the transaction, refuses to nest, retries a
   closed set of PostgreSQL failures, and raises `RetryBudgetExhausted`.
 - `ATOMIC_REQUESTS` is unset, so a request does not arrive inside a transaction.
-- `UserLibrary` is one-to-one with `User` and created by signal, so an
-  authenticated actor always has exactly one library.
+- Every `User` has exactly one `UserLibrary` — but **not** because of the
+  `post_save` signal, which returns early on `raw or not created` and so is
+  bypassed by `loaddata` and any `bulk_create`. The invariant is enforced by
+  `assert_library_structure()` running at WSGI/ASGI import
+  (`games/readiness.py`, `timetracker/wsgi.py`, `timetracker/asgi.py`), which
+  exists precisely because the signal is not sufficient — and which does not run
+  under a plain `manage.py` command. `dispatch` therefore treats a missing
+  library as the caller's problem: it takes the library as an argument and never
+  reaches for `actor.library`.
 
 ## Design
 
@@ -76,9 +85,21 @@ Two genuinely different commands then share a fingerprint, and a reused key
 replays one as the other. Deriving from `fields()` makes adding a field change
 the fingerprint by construction.
 
-The cost is that a command cannot hold anything it does not want fingerprinted —
-no request objects, no caches, no lazily-derived conveniences. That is the
-intended shape: a command is a value describing an intent, not a service.
+**What a command may hold is therefore narrow, and narrower than "anything it
+wants fingerprinted".** `_encode_command_value` raises `TypeError` on any type
+it does not know, so a command **cannot hold a model instance at all**. A
+command referencing a `Game` carries the UUID and re-fetches inside `build` —
+which is also where the charter's "rejects cross-library references" has to
+happen, since only `build` has the context to scope the lookup. No shared helper
+for that lookup is delivered here and none is owned elsewhere; it is filed as a
+follow-up rather than invented against zero call sites.
+
+`Decimal` is a sharper edge and worth naming before a price command meets it:
+`_encode_command_value` canonicalises it as `str(value)`, so `Decimal("1.1")`
+and `Decimal("1.10")` compare equal but fingerprint differently, turning an
+honest retry into `IdempotencyKeyMismatch`. Normalising it belongs to #662's
+canonicalizer and would require a `FINGERPRINT_VERSION` bump, so it is filed,
+not fixed here.
 
 ### The fingerprint reads fields shallowly, never `dataclasses.asdict`
 
@@ -98,14 +119,35 @@ touching anything named "idempotency".
 
 Shallow extraction — `{f.name: getattr(command, f.name) for f in fields(command)}` —
 keeps `_encode_command_value` as the single canonicalizer, which is what #662
-deliberately built. A field type it does not know still raises the `TypeError`
-that spec designed, pointing the author at the call site.
+deliberately built.
 
-### The name is an allowlist member, not a string
+The canonical input is **nested, not merged**:
 
-`CommandName` is a `StrEnum`, and `Command.name` is a `ClassVar[CommandName]`.
-The allowlist is the type: mypy rejects an unlisted name at check time, and
-every command the system can run is one grep in one file.
+```python
+{"command": command.command_name.value, "fields": {…}}
+```
+
+A flat merge would let a command field collide with the command's own name key
+and silently replace it.
+
+`fields()` is also why the "not a dataclass" check is not merely a nicety.
+`Command` is an ABC, and mypy cannot know its subclasses are dataclasses, so
+`fields(command)` fails `make check` with an `arg-type` error unless an
+`is_dataclass(command)` guard textually precedes it and narrows the type. The
+runtime guard and the type check are the same line of code.
+
+### The name is an allowlist member, not a string — and it is not called `name`
+
+`CommandName` is a `StrEnum`, and every command declares
+`command_name: ClassVar[CommandName]`. The allowlist is the type: mypy rejects
+an unlisted name at check time, and every command the system can run is one grep
+in one file.
+
+**The attribute is `command_name`, not `name`.** `name` is the most common field
+in this domain — `Game.name`, `Platform.name`, `Device.name` — and a command
+carrying one would shadow the `ClassVar` with a dataclass field, so the class
+would fail registration with an error about a missing command name rather than
+about the collision that caused it.
 
 A plain `str` alias would carry no enforcement at all, and a `NewType` would
 force wrapping every literal while still validating nothing. A format regex
@@ -126,7 +168,7 @@ an audit row should read as a domain term.
 
 The enum makes an *unlisted* name impossible. Two remaining errors are runtime:
 
-**A concrete command with no name.** `Command.name` has no default, so a
+**A concrete command with no name.** `Command.command_name` has no default, so a
 subclass that omits it fails at first dispatch with `AttributeError` — far from
 the definition that caused it. `__init_subclass__` raises at class definition,
 which is import time, which is startup.
@@ -142,29 +184,51 @@ still-abstract members. Verified on 3.14: an intermediate base that does not
 implement `build` reports `True`, a concrete command reports `False`.
 
 **Two classes claiming one member.** The enum guarantees the *member* is unique,
-not that one class owns it. A registry mapping name → class catches this.
+not that one class owns it. A registry mapping name → definition site catches
+this.
 
 That registry has a trap. `@dataclass(slots=True)` cannot add slots to an
 existing class, so it **builds a replacement class** — which fires
 `__init_subclass__` a second time, for a different class object with the same
-name. Verified on 3.14: a slotted command registers twice. A registry keyed on
-identity alone would reject every slotted command as a duplicate of itself, and
-the natural author reaction — dropping `slots=True` — would make the check pass
-by weakening the command.
+qualified name. Verified on 3.14: a slotted command registers twice. A registry
+keyed on identity alone would reject every slotted command as a duplicate of
+itself, and the natural author reaction — dropping `slots=True` — would make the
+check pass by weakening the command.
 
 So the registry stores `name → (module, qualname)`. A second registration
 carrying the same pair is the slots rebuild and replaces the entry; a different
 pair is the real collision and raises.
 
-### Authorization happens before the database
+Two consequences of that key, stated rather than discovered:
+
+- Two genuinely distinct classes that happen to share `(module, qualname)` —
+  defined in two branches of an `if`, or inside a parametrized test — read as
+  the slots rebuild and replace each other silently.
+- Subclassing a *concrete* command is impossible: the subclass inherits
+  `command_name` and registers under it from a different qualname, which is the
+  collision case. Commands compose by sharing an abstract base, not by
+  inheritance from a concrete one.
+
+### Authorization happens before any database work
 
 `dispatch` checks `actor.is_active` and `library.user_id == actor.pk` before it
 touches a connection, raising `CommandNotPermitted`.
 
-Order matters: `lock_stream` calls `get_or_create` on the stream head, so
-authorizing after opening the transaction would let a rejected dispatch leave a
-stream-head row behind for a library it was never allowed to write. Checking
-first means a refused command is inert.
+The tempting justification for that ordering is wrong and worth recording as
+wrong: "authorizing inside the transaction would leave a stream-head row behind,
+because `lock_stream` calls `get_or_create`". It would not. `CommandNotPermitted`
+is a plain `Exception`, so it escapes `run_in_transaction`'s `atomic` block and
+the attempt rolls back, head row included. Verified against a real database.
+
+The ordering earns its place for two other reasons. First, `lock_stream` takes
+`SELECT … FOR UPDATE` on the head; authorizing afterwards means a rejected
+dispatch briefly **locks another library's stream**, blocking that library's
+legitimate writers on a command that can never commit. Second, a command that
+cannot succeed should not open a transaction or consume a retry budget.
+
+Both are observable, so the check is pinned by "authorization raises before any
+query is issued" rather than by an after-the-fact row count that passes under
+either ordering.
 
 Staff status appears nowhere in the check, per the charter. There is no
 `is_superuser` branch to remove later because there is none to add.
@@ -180,24 +244,60 @@ lookup happens. By the time `dispatch` is called the caller already holds both
 objects; a typed exception is the honest signal, and the view (#671) decides
 whether that becomes a 404.
 
-### The command receives a context, not a stream
+### A command that refuses has a word for it
 
-`build` takes `CommandContext(library, actor, stream)`, not `LockedStream`.
+The charter says a command "validates current state and emits one or more
+immutable events". This boundary therefore owns the vocabulary for the other
+outcome, which nothing else does: `CommandRejected`, raised from `build` when
+current state does not permit the action ("that session has not started").
 
-A command validating against current state needs the library to scope its
-queries; a command recording who acted may need the actor. Passing only the
-stream forces each command to carry its own copy of both — and nothing then
-guarantees the library a command validates against is the library the dispatcher
-authorized. One object, assembled by the dispatcher after the check, removes
-that gap.
+It is a plain `Exception`, not a `CommandConflict` — nobody was in the way and
+retrying is pointless — and not a `CommandNotPermitted`, which is about who is
+asking rather than about what they asked for. Without it, an author's only
+options are a bare `ValueError`, which `run_in_transaction` lets through
+untranslated, or a conflict subclass that would render as "try again".
 
-It is also the extension point the next two issues want: #665 attaches projector
-execution and #901 an expected-sequence check, both by adding to the context
-rather than by changing every command's signature.
+**Returning no events is a programming error, not a refusal.**
+`LockedStream.append` raises `ValueError` on an empty sequence, and #662 chose
+that deliberately to mark it a bug. So a command that finds nothing to do raises
+`CommandRejected`; it does not return `[]`. Whether a genuinely idempotent no-op
+("set status to `f` when it is already `f`") deserves a *success* outcome
+instead is a real question with no real command to answer it — filed for #671.
+
+### The command receives a context, and the context does not contain the stream
+
+`build` takes `CommandContext(library, actor)`.
+
+The library scopes every query a command makes while validating; the actor is
+there for a command that records who acted. Passing neither — handing `build`
+the `LockedStream` as #662's callback signature does — forces each command to
+carry its own copies, and nothing then guarantees the library a command
+validates against is the library the dispatcher authorized.
+
+**The stream is deliberately absent.** `LockedStream.append` is public, so a
+command holding the stream can append directly and then *also* return events;
+`idempotent_append` records only the range it appended itself, leaving the
+command's own events committed inside the stream but outside the range the
+idempotency key replays. Verified against a real database: a rogue `build`
+produced sequences 1–2 with an idempotency record covering only 2, orphaning a
+committed event. #662 deleted its `append_events` helper for precisely this
+reason — that it "gives a command author in #664 an easy way to write a command
+that silently cannot deduplicate" — and putting the stream in the context would
+hand the same capability to every command instead of one.
+
+Nothing is lost by withholding it: #901's `expected_sequence` is checked by the
+dispatcher against the head, not by `build`, and #665 attaches projectors to the
+dispatcher's transaction rather than to the command.
+
+The context is assembled **inside the callback `idempotent_append` invokes**,
+per attempt — not once before `run_in_transaction`. A context built outside the
+loop would survive a rolled-back attempt and carry stale model instances into
+the next one.
 
 ### The result collapses the union
 
-`dispatch` returns `CommandResult(stream_id, first_sequence, last_sequence, replayed)`.
+`dispatch` returns
+`CommandResult(stream_id, first_sequence, last_sequence, replayed, correlation_id)`.
 
 #662 chose `AppendResult | ReplayedAppend` so that running projections against a
 replay is a type error rather than a review catch, and said the union should not
@@ -208,22 +308,39 @@ letting them escape invites reads taken after the lock is gone.
 `replayed: bool` rather than a nullable events tuple: outside callers branch on
 "did this actually do something", not on which class they got.
 
-### Correlation ID is generated once, outside the retry loop
+`correlation_id` is on the result because `dispatch` may have generated it. The
+charter's compound action — "a compound user action shares a correlation ID.
+This lets the Journal render one meaningful entry" — otherwise forces every
+caller to generate one defensively just in case a second dispatch follows.
 
-Optional parameter, defaulting to a fresh UUID — generated before
-`run_in_transaction`, so every attempt of a retried command carries one
-correlation ID.
+### Correlation ID is a UUIDv7, generated once, outside the retry loop
+
+`LibraryEvent.correlation_id` is a `UUIDv7Field` over a PostgreSQL domain with a
+version check, so a `uuid4` reaches the database and dies as SQLSTATE 23514 —
+which `is_retryable` correctly classifies as terminal, surfacing a raw
+`IntegrityError` rather than any typed conflict. Verified. The annotation
+`uuid.UUID` does not catch it, so `dispatch`:
+
+- defaults to `uuid.uuid7()` (stdlib on 3.14, the same callable `UUIDv7Field`
+  uses as its default);
+- validates a *supplied* one with `validate_uuidv7` from `timetracker.uuidv7`,
+  raising rather than letting it become an opaque integrity error four frames
+  down. A caller wiring in a request ID from middleware is the obvious way to
+  arrive here with a v4.
+
+Generation happens before `run_in_transaction`, so every attempt of a retried
+command carries one correlation ID.
 
 The default is safe here in a way the idempotency key's would not be. A
 generated correlation ID means "this action is its own action", which is true of
 every single-command call. A generated *idempotency key* would mean "this
 request has never been seen", which is exactly what a double submission is not —
-so the key stays required with no default, and a caller omitting it gets a type
-error rather than silently unprotected dedupe.
+so the key stays required with no default.
 
-Compound actions spanning two dispatches pass one correlation ID deliberately.
-They do **not** get one transaction: each dispatch owns its own (see
-foreclosures).
+`idempotency_key` is validated for the same reason the correlation ID is: the
+column is a `CharField(max_length=255)` under a non-empty check constraint, so
+an empty or overlong key would otherwise fail inside `bulk_create` and surface
+as a raw `IntegrityError`. `dispatch` rejects both up front.
 
 ### System writes are not expressible here
 
@@ -251,19 +368,24 @@ request, a page, and a user to be shown to.
 # games/events/dispatch.py
 
 class CommandName(StrEnum):
-    #: Placeholders exercising the kernel until #671 lands real commands.
-    TEST_KERNEL_ONE = "test.kernel.one"
-    TEST_KERNEL_TWO = "test.kernel.two"
+    #: Kernel-test placeholders. #671 adds real members and deletes these.
+    TEST_KERNEL_BASIC = "test.kernel.basic"
+    TEST_KERNEL_TWIN = "test.kernel.twin"
+    TEST_KERNEL_TEMPORAL = "test.kernel.temporal"
+    TEST_KERNEL_UNSHAPED = "test.kernel.unshaped"
+    TEST_KERNEL_FLAKY = "test.kernel.flaky"
 
 
 class CommandNotPermitted(Exception): ...
+
+
+class CommandRejected(Exception): ...
 
 
 @dataclass(frozen=True, slots=True)
 class CommandContext:
     library: UserLibrary
     actor: User
-    stream: LockedStream
 
 
 @dataclass(frozen=True, slots=True)
@@ -272,10 +394,11 @@ class CommandResult:
     first_sequence: int
     last_sequence: int
     replayed: bool
+    correlation_id: uuid.UUID
 
 
 class Command(ABC):
-    name: ClassVar[CommandName]
+    command_name: ClassVar[CommandName]
 
     @abstractmethod
     def build(self, context: CommandContext) -> Sequence[NewEvent]: ...
@@ -298,13 +421,21 @@ def dispatch(
 `tests/test_command_dispatch.py`. Every test that reaches `dispatch` needs
 `django_db(transaction=True)`, because `run_in_transaction` refuses to nest and
 pytest-django's ordinary `django_db` wraps each test in a transaction — the tax
-#663 documented and accepted.
+#663 documented and accepted, and what every test in `tests/test_event_retry.py`
+already does.
+
+**Test commands are defined at module level**, one per allowlist member. They
+cannot be defined inside test functions: the registry keys on `(module,
+qualname)`, so two functions each defining `class Command` produce distinct
+qualnames under one member and raise a collision at class-definition time,
+inside the test. The one place a class *is* defined in a function body is the
+duplicate-name test, which wants exactly that error.
 
 Definition-time guards (no database):
 
-- a concrete command without `name` raises at class definition
-- an abstract intermediate base without `name` is accepted
-- two classes claiming one `CommandName` raise at definition
+- a concrete command without `command_name` raises at class definition
+- an abstract intermediate base without `command_name` is accepted
+- a second class claiming a used `CommandName` raises at definition
 - a slotted command defines cleanly — the `__init_subclass__` double-fire does
   not read as a duplicate
 
@@ -316,46 +447,80 @@ Dispatch:
   range, and appends nothing
 - the same key with a changed field value raises `IdempotencyKeyMismatch`
 - **the same key and identical field values under a different `CommandName`
-  raises `IdempotencyKeyMismatch`** — the name is in the fingerprint
+  raises `IdempotencyKeyMismatch`** — `TEST_KERNEL_TWIN` exists to be the twin
 - a command with a `TemporalValue` field: equal values replay, different values
   mismatch — the shallow read reaches `_encode_command_value`
 - a command that is not a dataclass raises `TypeError`
-- `build` receives the dispatcher's library and actor
+- `build` receives the dispatcher's library and actor, and a context carrying no
+  stream — pinned by the dataclass's field set, so adding one is a deliberate act
+- a `build` that raises `CommandRejected` appends nothing and the exception
+  reaches the caller untranslated
 
 Authorization:
 
-- another user's library raises `CommandNotPermitted`, appends nothing, and
-  leaves **no stream-head row** for that library
-- an inactive user raises `CommandNotPermitted`
+- another user's library raises `CommandNotPermitted` **before any query is
+  issued** (`django_assert_num_queries(0)`)
+- an inactive user raises `CommandNotPermitted`, likewise with no query
 - a staff user against another user's library raises `CommandNotPermitted`
+
+Envelope validation:
+
+- a `uuid4` correlation ID raises before reaching the database
+- a supplied `uuid7` is used verbatim and returned on the result
+- an empty or 256-character idempotency key raises before reaching the database
 
 Composition:
 
-- correlation ID is generated when absent and shared by every event of the
-  dispatch; a supplied one is used verbatim across two dispatches
+- the correlation ID is generated **once per dispatch, not once per attempt** —
+  pinned by counting calls to the generator across a dispatch that retries, not
+  by inspecting the surviving attempt's rows, which look identical either way
 - `dispatch` inside an open `atomic()` raises `NestedTransactionNotSupported`
 - a command failing retryably on its first attempt produces one result and one
   set of events — the runner is actually wired in, not merely importable
 
+That last test raises an `OperationalError` whose `__cause__` carries SQLSTATE
+`40P01`, the shape `tests/test_event_retry.py` already uses. It needs
+attempt-counting state that is neither a field nor a database row, which
+knowingly violates `run_in_transaction`'s documented "no effects outside the
+database" contract. That is the only way to exercise the runner through a
+frozen command, and it is a test-only violation worth naming rather than
+discovering.
+
 ## What this shape forecloses
+
+**Administrator-assisted repair.** `library.user_id == actor.pk` makes
+`actor != owner` inexpressible, while the charter explicitly reserves it — "an
+explicit administrator-assisted repair may act on behalf of a library while
+retaining who performed it" — and `LibraryEvent.actor` is a separate nullable FK
+precisely so that case can be recorded. The charter's other sentence ("staff
+status is never an *implicit* bypass in normal library *views*") forbids the
+implicit form, not the explicit one. Removing the limit costs one predicate plus
+a separate, named entry point that cannot be reached by ordinary view code.
+Filed as a follow-up; no sibling issue owns it today.
 
 **Dispatching a command by name string.** The registry maps name → definition
 site for collision detection, not name → class for lookup. A future HTTP
-endpoint accepting `{"command": "session.create", …}` would need the reverse
-map and a per-command input deserializer; the map is a few lines, the
-deserializer is the real work, and neither is needed by a form-driven UI.
+endpoint accepting `{"command": "session.create", …}` would need the reverse map
+and a per-command input deserializer; the map is a few lines, the deserializer
+is the real work, and neither is needed by a form-driven UI.
 
 **Two commands in one transaction.** Each `dispatch` opens its own, because
 `run_in_transaction` refuses to nest. A compound action shares a correlation ID
 but not atomicity. This is the charter's own answer — "compound and bulk
 commands therefore never acquire multiple stream-head locks" — a compound action
 is *one* command emitting several events. Removing the limit means a
-`dispatch_many` that runs several commands under one runner with one key each,
-and a decision about what a partial failure means.
+`dispatch_many` running several commands under one runner, and a decision about
+what a partial failure means.
+
+**A command holding a model instance.** `_encode_command_value` raises on
+unknown types, so commands carry UUIDs and re-fetch. The failure is a runtime
+`TypeError` at dispatch, not a mypy error, so it is discovered by the first test
+rather than by the type checker.
 
 **A command defined outside this repository.** The allowlist is a closed enum;
-a plugin cannot add a member. Deliberate — the audit trail's vocabulary is
-fixed and reviewable.
+a plugin cannot add a member. Deliberate — the audit trail's vocabulary is fixed
+and reviewable. The kernel-test members are the cost of that choice arriving
+before any real command; #671 deletes them.
 
 **A non-human writer with a proper envelope.** Imports and migrations bypass the
 boundary entirely rather than passing through it with `origin` metadata. #738
@@ -372,5 +537,17 @@ row behind, because no caller exists until #671.
 
 ## Follow-up issues to file
 
-- Map `CommandConflict` to an HTTP status, page, or toast at the first evented
-  view — owned by #671.
+1. Map `CommandConflict` to an HTTP status, page, or toast at the first evented
+   view — #671-owned.
+2. Decide what a no-op command means: `CommandRejected`, or a success result
+   with an empty range — #671-owned, needs a real command to answer.
+3. Delete the `TEST_KERNEL_*` allowlist members once real commands exist —
+   #671-owned.
+4. Administrator-assisted repair dispatch: an explicit entry point where actor
+   and owner differ, recording both.
+5. A shared helper for resolving a UUID field to a library-scoped object inside
+   `build`, so "rejects cross-library references" is one call rather than a
+   convention.
+6. `Decimal` canonicalisation in `_encode_command_value`: `Decimal("1.1")` and
+   `Decimal("1.10")` fingerprint differently, so an honest retry of a price
+   command becomes `IdempotencyKeyMismatch`. Needs a `FINGERPRINT_VERSION` bump.
