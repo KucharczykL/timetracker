@@ -5,6 +5,7 @@ depends on, and appends the events of one human action contiguously -- all in
 one transaction owned by the caller.
 """
 
+import json
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -23,6 +24,36 @@ type SourceMetadata = dict[str, Any]  # {"origin": "manual"}
 
 class TransactionRequired(RuntimeError):
     """Raised when a stream is locked outside an open transaction."""
+
+
+class PayloadNotCanonical(ValueError):
+    """Raised for a payload PostgreSQL would hand back as something else."""
+
+
+def canonical_json[T](value: T, *, label: str) -> T:
+    """Return `value` as JSONB will return it, refusing anything that differs.
+
+    A projector reads the appended row rather than a re-selected one, so a value
+    that changes shape on the way to the database would be seen one way during
+    the command and another way during a replay. A tuple returns as a list and
+    an integer key as a string; the rest do not survive the encoder at all.
+
+    The round-trip is returned rather than the argument so the stored payload is
+    nobody else's object: an aliased one lets a projector reach back into the
+    NewEvent the command built.
+    """
+    try:
+        round_tripped = json.loads(json.dumps(value, allow_nan=False))
+    except (TypeError, ValueError) as error:
+        raise PayloadNotCanonical(
+            f"This {label} holds something JSON cannot carry: {error}"
+        ) from error
+    if round_tripped != value:
+        raise PayloadNotCanonical(
+            f"This {label} is not what PostgreSQL would return: "
+            f"{value!r} would come back as {round_tripped!r}."
+        )
+    return round_tripped
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +106,11 @@ class LockedStream:
         if not events:
             raise ValueError("An append records at least one event.")
 
+        #: Before the rows and before the advance: a refusal must leave a
+        #: transaction that may still commit exactly as it found it.
+        metadata = canonical_json(source_metadata or {}, label="source metadata")
+        payloads = [canonical_json(event.payload, label="payload") for event in events]
+
         head = self._head
         first_sequence = head.current_sequence + 1
         #: One act of recording, so every row of one action shares a timestamp.
@@ -87,14 +123,14 @@ class LockedStream:
                 event_type=event.event_type,
                 aggregate_type=event.aggregate_type,
                 aggregate_id=event.aggregate_id,
-                payload=event.payload,
+                payload=payloads[offset],
                 payload_schema_version=event.payload_schema_version,
                 recorded_at=recorded_at,
                 effective_time=event.effective_time,
                 actor=actor,
                 correlation_id=correlation_id,
                 causation_id=event.causation_id,
-                source_metadata=source_metadata or {},
+                source_metadata=metadata,
                 idempotency_key=idempotency_key,
             )
             for offset, event in enumerate(events)
