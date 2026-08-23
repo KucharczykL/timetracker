@@ -16,6 +16,7 @@ from django.contrib.auth.models import User
 from django.db import router, transaction
 from django.utils import timezone
 
+from games.events.projection import DEFAULT_REGISTRY, ProjectorRegistry
 from games.models import LibraryEvent, LibraryEventStreamHead, UserLibrary
 from timetracker.temporal import TemporalValue
 
@@ -102,6 +103,7 @@ class LockedStream:
         idempotency_key: str,
         source_metadata: SourceMetadata | None = None,
         recorded_at: datetime | None = None,
+        registry: ProjectorRegistry = DEFAULT_REGISTRY,
     ) -> AppendResult:
         if not events:
             raise ValueError("An append records at least one event.")
@@ -139,6 +141,15 @@ class LockedStream:
 
         head.current_sequence = rows[-1].sequence
         head.save(update_fields=["current_sequence"])
+
+        #: Event-major, and only after the advance: a family sees the append
+        #: already recorded rather than the event it happens to be holding. An
+        #: append is the one place this can run and still be in the command's
+        #: transaction under the lock it already took, which is what makes "no
+        #: event commits unprojected" a property of the writer.
+        for event in rows:
+            registry.apply(event)
+
         return AppendResult(
             stream_id=head.id,
             first_sequence=first_sequence,

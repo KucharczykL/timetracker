@@ -4,10 +4,16 @@ Every family here registers into a registry this module owns, so nothing
 declared for a test can reach `DEFAULT_REGISTRY` or another test.
 """
 
+import uuid
 from typing import ClassVar
 
 import pytest
+from django.db import transaction
+from test_command_dispatch import BasicCommand
 
+from games.events.append import NewEvent, lock_stream
+from games.events.dispatch import dispatch
+from games.events.idempotency import idempotent_append
 from games.events.projection import (
     DEFAULT_REGISTRY,
     HandlerMap,
@@ -15,7 +21,7 @@ from games.events.projection import (
     ProjectorFamily,
     ProjectorRegistry,
 )
-from games.models import LibraryEvent
+from games.models import Device, LibraryEvent, LibraryEventStreamHead
 
 RECORDED = "test.projector.recorded"
 OTHER = "test.projector.other"
@@ -23,13 +29,23 @@ UNHANDLED = "test.projector.unhandled"
 
 #: What each handler saw, in the order it saw it.
 CALLS: list[tuple[ProjectorFamily, str]] = []
+#: The same, for the families the append path folds through: which family, and
+#: which event of the append.
+APPLIED: list[tuple[ProjectorFamily, int]] = []
+#: The rows those handlers were handed, kept whole so a test can read the
+#: envelope a projector actually sees.
+SEEN: list[LibraryEvent] = []
+#: What the stream head said while a handler was running.
+HEAD_SEQUENCE_SEEN: list[int] = []
 
 
 @pytest.fixture(autouse=True)
 def forget_previous_calls():
-    CALLS.clear()
+    for sink in (CALLS, APPLIED, SEEN, HEAD_SEQUENCE_SEEN):
+        sink.clear()
     yield
-    CALLS.clear()
+    for sink in (CALLS, APPLIED, SEEN, HEAD_SEQUENCE_SEEN):
+        sink.clear()
 
 
 def make_event(event_type: str = RECORDED, sequence: int = 1) -> LibraryEvent:
@@ -162,3 +178,176 @@ def test_a_handler_is_bound_to_its_family():
     handler = ordering_registry.handlers_for(RECORDED)[0]
 
     assert handler.__self__.family_name is ProjectorFamily.CURRENT_STATE
+
+
+append_registry = ProjectorRegistry()
+
+
+class AppendCurrentState(Projector, registry=append_registry):
+    family_name = ProjectorFamily.CURRENT_STATE
+
+    def _recorded(self, event: LibraryEvent) -> None:
+        APPLIED.append((ProjectorFamily.CURRENT_STATE, event.sequence))
+        SEEN.append(event)
+        HEAD_SEQUENCE_SEEN.append(
+            LibraryEventStreamHead.objects.get(pk=event.stream_id).current_sequence
+        )
+
+    handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
+
+
+class AppendJournal(Projector, registry=append_registry):
+    family_name = ProjectorFamily.JOURNAL
+
+    def _recorded(self, event: LibraryEvent) -> None:
+        APPLIED.append((ProjectorFamily.JOURNAL, event.sequence))
+
+    handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
+
+
+rollback_registry = ProjectorRegistry()
+
+
+class RollbackWriter(Projector, registry=rollback_registry):
+    family_name = ProjectorFamily.CURRENT_STATE
+
+    def _recorded(self, event: LibraryEvent) -> None:
+        Device.objects.create(library_id=event.library_id, name="projected")
+
+    handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
+
+
+class RollbackFailer(Projector, registry=rollback_registry):
+    family_name = ProjectorFamily.STATS
+
+    def _recorded(self, event: LibraryEvent) -> None:
+        raise RuntimeError("the stats family refused")
+
+    handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
+
+
+dispatch_registry = ProjectorRegistry()
+
+
+class DispatchRecorder(Projector, registry=dispatch_registry):
+    family_name = ProjectorFamily.CURRENT_STATE
+
+    def _recorded(self, event: LibraryEvent) -> None:
+        APPLIED.append((ProjectorFamily.CURRENT_STATE, event.sequence))
+
+    handles: ClassVar[HandlerMap] = {"test.command.recorded": _recorded}
+
+
+def make_new_event() -> NewEvent:
+    return NewEvent(
+        event_type=RECORDED,
+        aggregate_type="probe",
+        aggregate_id=uuid.uuid7(),
+        payload={"probe": True},
+    )
+
+
+def append(library, registry, count: int = 1, idempotency_key: str = "probe-key"):
+    return lock_stream(library).append(
+        [make_new_event() for _ in range(count)],
+        actor=None,
+        correlation_id=uuid.uuid7(),
+        idempotency_key=idempotency_key,
+        registry=registry,
+    )
+
+
+@pytest.mark.django_db
+def test_an_append_folds_one_event_at_a_time_through_every_family(owned_library):
+    with transaction.atomic():
+        append(owned_library, append_registry, count=2)
+
+    #: Event-major: one event through the whole pipeline, then the next. The
+    #: append path and a replay fold identically only in this order.
+    assert APPLIED == [
+        (ProjectorFamily.CURRENT_STATE, 1),
+        (ProjectorFamily.JOURNAL, 1),
+        (ProjectorFamily.CURRENT_STATE, 2),
+        (ProjectorFamily.JOURNAL, 2),
+    ]
+
+
+@pytest.mark.django_db
+def test_a_handler_receives_the_persisted_row(owned_library):
+    correlation_id = uuid.uuid7()
+
+    with transaction.atomic():
+        result = lock_stream(owned_library).append(
+            [make_new_event()],
+            actor=None,
+            correlation_id=correlation_id,
+            idempotency_key="probe-key",
+            registry=append_registry,
+        )
+
+    projected = SEEN[0]
+    assert projected.pk == result.events[0].pk
+    assert projected.sequence == 1
+    assert projected.library_id == owned_library.pk
+    assert projected.correlation_id == correlation_id
+    assert projected.payload == {"probe": True}
+
+
+@pytest.mark.django_db
+def test_the_head_has_advanced_before_any_handler_runs(owned_library):
+    with transaction.atomic():
+        append(owned_library, append_registry, count=2)
+
+    #: Both handlers see the whole append already recorded, not the event they
+    #: happen to be holding.
+    assert HEAD_SEQUENCE_SEEN == [2, 2]
+
+
+@pytest.mark.django_db
+def test_a_replayed_append_folds_nothing(owned_library):
+    def build(stream):
+        return [make_new_event()]
+
+    for _ in range(2):
+        with transaction.atomic():
+            idempotent_append(
+                owned_library,
+                idempotency_key="once",
+                command_input={"probe": True},
+                build=build,
+                actor=None,
+                correlation_id=uuid.uuid7(),
+                registry=append_registry,
+            )
+
+    assert APPLIED == [
+        (ProjectorFamily.CURRENT_STATE, 1),
+        (ProjectorFamily.JOURNAL, 1),
+    ]
+    assert LibraryEvent.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_a_failing_family_takes_an_earlier_familys_write_with_it(owned_library):
+    with (
+        pytest.raises(RuntimeError, match="stats family refused"),
+        transaction.atomic(),
+    ):
+        append(owned_library, rollback_registry)
+
+    assert not Device.objects.exists()
+    assert not LibraryEvent.objects.exists()
+    assert not LibraryEventStreamHead.objects.filter(current_sequence__gt=0).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_dispatch_folds_through_the_registry_it_was_given(owned_user, owned_library):
+    dispatch(
+        BasicCommand(label="first", count=1),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="dispatched",
+        registry=dispatch_registry,
+    )
+
+    assert APPLIED == [(ProjectorFamily.CURRENT_STATE, 1)]

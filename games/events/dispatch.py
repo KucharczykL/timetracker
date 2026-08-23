@@ -37,6 +37,7 @@ from games.events.idempotency import (
     ReplayedAppend,
     idempotent_append,
 )
+from games.events.projection import DEFAULT_REGISTRY, ProjectorRegistry
 from games.events.retry import DEFAULT_RETRY_POLICY, RetryPolicy, run_in_transaction
 from games.models import LibraryEvent, UserLibrary
 from timetracker.uuidv7 import parse_uuidv7
@@ -239,6 +240,7 @@ def dispatch(
     correlation_id: uuid.UUID | None = None,
     source_metadata: SourceMetadata | None = None,
     policy: RetryPolicy = DEFAULT_RETRY_POLICY,
+    registry: ProjectorRegistry = DEFAULT_REGISTRY,
 ) -> CommandResult:
     """Record what `command` describes, once, in `library`, as `actor`.
 
@@ -270,6 +272,7 @@ def dispatch(
             actor=actor,
             correlation_id=resolved_correlation_id,
             source_metadata=source_metadata,
+            registry=registry,
         )
 
     outcome = run_in_transaction(run, policy=policy)
