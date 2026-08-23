@@ -1,5 +1,6 @@
 import uuid
 from datetime import date
+from decimal import Decimal
 from threading import Event, Thread
 from typing import Any
 
@@ -11,6 +12,7 @@ from games.events.append import (
     AppendResult,
     LockedStream,
     NewEvent,
+    PayloadNotCanonical,
     TransactionRequired,
     lock_stream,
 )
@@ -212,6 +214,101 @@ def test_absent_source_metadata_is_stored_as_an_empty_object(owned_library):
         append(owned_library)
 
     assert LibraryEvent.objects.get().source_metadata == {}
+
+
+#: Each one reaches PostgreSQL as something other than itself, or not at all: a
+#: tuple as a list, an integer key as a string, and the rest not at all.
+NON_CANONICAL_VALUES = [
+    pytest.param({"tags": ("first", "second")}, id="tuple"),
+    pytest.param({1: "first"}, id="integer-key"),
+    pytest.param({"price": Decimal("5.50")}, id="decimal"),
+    pytest.param({"tags": {"first", "second"}}, id="set"),
+    pytest.param({"ratio": float("nan")}, id="nan"),
+    pytest.param({"when": date(2026, 8, 21)}, id="date"),
+]
+
+
+@pytest.mark.parametrize("payload", NON_CANONICAL_VALUES)
+def test_a_non_canonical_payload_is_refused(owned_library, payload):
+    with transaction.atomic():
+        stream = lock_stream(owned_library)
+        with pytest.raises(PayloadNotCanonical, match="payload"):
+            stream.append(
+                [make_new_event(payload=payload)],
+                actor=None,
+                correlation_id=uuid.uuid7(),
+                idempotency_key="probe-key",
+            )
+
+    assert not LibraryEvent.objects.exists()
+
+
+@pytest.mark.parametrize("source_metadata", NON_CANONICAL_VALUES)
+def test_non_canonical_source_metadata_is_refused(owned_library, source_metadata):
+    with transaction.atomic():
+        stream = lock_stream(owned_library)
+        with pytest.raises(PayloadNotCanonical, match="source metadata"):
+            stream.append(
+                [make_new_event()],
+                actor=None,
+                correlation_id=uuid.uuid7(),
+                idempotency_key="probe-key",
+                source_metadata=source_metadata,
+            )
+
+    assert not LibraryEvent.objects.exists()
+
+
+def test_a_refused_payload_leaves_the_head_where_it_was(owned_library):
+    with transaction.atomic():
+        append(owned_library)
+
+    with transaction.atomic():
+        stream = lock_stream(owned_library)
+        with pytest.raises(PayloadNotCanonical):
+            stream.append(
+                [make_new_event(), make_new_event(payload={"tags": ()})],
+                actor=None,
+                correlation_id=uuid.uuid7(),
+                idempotency_key="second",
+            )
+
+    assert (
+        LibraryEventStreamHead.objects.get(library=owned_library).current_sequence == 1
+    )
+    assert LibraryEvent.objects.count() == 1
+
+
+def test_a_stored_payload_equals_what_postgres_returns(owned_library):
+    payload = {"tags": ["first", "second"], "counts": {"total": 2}, "ratio": 1.5}
+
+    with transaction.atomic():
+        result = append(owned_library, [make_new_event(payload=payload)])
+
+    appended = result.events[0]
+    assert appended.payload == LibraryEvent.objects.get(pk=appended.pk).payload
+
+
+def test_a_stored_payload_is_not_the_callers_object(owned_library):
+    payload = {"tags": ["first", "second"]}
+
+    with transaction.atomic():
+        result = append(owned_library, [make_new_event(payload=payload)])
+
+    #: A projector runs against this row, so an aliased payload would let it
+    #: reach back into the NewEvent the command built.
+    assert result.events[0].payload == payload
+    assert result.events[0].payload is not payload
+
+
+def test_stored_source_metadata_is_not_the_callers_object(owned_library):
+    source_metadata = {"origin": "manual"}
+
+    with transaction.atomic():
+        result = append(owned_library, source_metadata=source_metadata)
+
+    assert result.events[0].source_metadata == source_metadata
+    assert result.events[0].source_metadata is not source_metadata
 
 
 def test_lock_stream_returns_the_same_head_for_a_provisioned_library(owned_library):
