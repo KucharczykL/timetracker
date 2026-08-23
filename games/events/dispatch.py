@@ -28,8 +28,13 @@ from typing import Any, ClassVar, cast
 
 from django.contrib.auth.models import User
 
-from games.events.append import NewEvent
-from games.events.idempotency import IdempotencyKey
+from games.events.append import AppendResult, LockedStream, NewEvent, SourceMetadata
+from games.events.idempotency import (
+    IdempotencyKey,
+    ReplayedAppend,
+    idempotent_append,
+)
+from games.events.retry import DEFAULT_RETRY_POLICY, RetryPolicy, run_in_transaction
 from games.models import LibraryEvent, UserLibrary
 from timetracker.uuidv7 import parse_uuidv7
 
@@ -56,6 +61,7 @@ class CommandName(StrEnum):
     TEST_KERNEL_TWIN = "test.kernel.twin"
     TEST_KERNEL_TEMPORAL = "test.kernel.temporal"
     TEST_KERNEL_UNSHAPED = "test.kernel.unshaped"
+    TEST_KERNEL_REJECTING = "test.kernel.rejecting"
     TEST_KERNEL_FLAKY = "test.kernel.flaky"
 
 
@@ -219,3 +225,55 @@ def canonical_command_input(command: Command) -> dict[str, Any]:
             field.name: getattr(command, field.name) for field in fields(command)
         },
     }
+
+
+def dispatch(
+    command: Command,
+    *,
+    actor: User,
+    library: UserLibrary,
+    idempotency_key: IdempotencyKey,
+    correlation_id: uuid.UUID | None = None,
+    source_metadata: SourceMetadata | None = None,
+    policy: RetryPolicy = DEFAULT_RETRY_POLICY,
+) -> CommandResult:
+    """Record what `command` describes, once, in `library`, as `actor`.
+
+    Everything that can refuse the command refuses it before any database work:
+    a dispatch that cannot commit must not take `SELECT ... FOR UPDATE` on a
+    stream head and make that library's real writers wait behind it, and must
+    not spend a transaction or a retry budget getting there.
+    """
+    authorize(actor, library)
+    validate_idempotency_key(idempotency_key)
+    #: Once per dispatch, so every attempt of a retried command shares one.
+    resolved_correlation_id = resolve_correlation_id(correlation_id)
+    command_input = canonical_command_input(command)
+
+    def build(stream: LockedStream) -> Sequence[NewEvent]:
+        #: The stream is required by this signature and deliberately dropped:
+        #: withholding it is what stops a command appending on its own and
+        #: leaving events outside the range its key replays.
+        #: The context is built here, per attempt, so a rolled-back attempt
+        #: cannot hand its model instances to the next one.
+        return command.build(CommandContext(library=library, actor=actor))
+
+    def run() -> AppendResult | ReplayedAppend:
+        return idempotent_append(
+            library,
+            idempotency_key=idempotency_key,
+            command_input=command_input,
+            build=build,
+            actor=actor,
+            correlation_id=resolved_correlation_id,
+            source_metadata=source_metadata,
+        )
+
+    outcome = run_in_transaction(run, policy=policy)
+    return CommandResult(
+        stream_id=outcome.stream_id,
+        first_sequence=outcome.first_sequence,
+        last_sequence=outcome.last_sequence,
+        replayed=isinstance(outcome, ReplayedAppend),
+        correlation_id=resolved_correlation_id,
+    )

@@ -4,19 +4,26 @@ from dataclasses import dataclass, fields
 from typing import ClassVar
 
 import pytest
+from django.db import OperationalError, transaction
+from test_event_retry import wrapped
 
+from games.events import dispatch as dispatch_module
 from games.events.append import NewEvent
 from games.events.dispatch import (
     Command,
     CommandContext,
     CommandName,
     CommandNotPermitted,
+    CommandRejected,
     authorize,
     canonical_command_input,
+    dispatch,
     resolve_correlation_id,
     validate_idempotency_key,
 )
-from games.events.idempotency import fingerprint_command_input
+from games.events.idempotency import IdempotencyKeyMismatch, fingerprint_command_input
+from games.events.retry import NestedTransactionNotSupported
+from games.models import LibraryEvent
 from timetracker.temporal import TemporalValue
 
 
@@ -49,7 +56,14 @@ class BasicCommand(Command):
                 event_type="test.kernel.recorded",
                 aggregate_type="test",
                 aggregate_id=uuid.uuid7(),
-                payload={"label": self.label, "count": self.count},
+                #: Records what the context handed it, so a test can assert the
+                #: command saw the library and actor dispatch authorized.
+                payload={
+                    "label": self.label,
+                    "count": self.count,
+                    "library": str(context.library.pk),
+                    "actor": context.actor.pk,
+                },
             )
         ]
 
@@ -98,6 +112,42 @@ class UnshapedCommand(Command):
 
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
         return []
+
+
+@dataclass(frozen=True, slots=True)
+class RejectingCommand(Command):
+    command_name: ClassVar[CommandName] = CommandName.TEST_KERNEL_REJECTING
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent]:
+        raise CommandRejected("Current state does not permit this.")
+
+
+@dataclass(frozen=True, slots=True)
+class FlakyCommand(Command):
+    """Fails its first attempt the way PostgreSQL kills a deadlocked one.
+
+    The attempt counter is a class attribute because the command is frozen and
+    a rolled-back attempt leaves no row to count. That is an effect outside the
+    database inside a retried operation, which `run_in_transaction` documents as
+    forbidden -- knowingly, because it is the only way to make a command fail
+    once and then succeed.
+    """
+
+    command_name: ClassVar[CommandName] = CommandName.TEST_KERNEL_FLAKY
+    attempts: ClassVar[int] = 0
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent]:
+        type(self).attempts += 1
+        if type(self).attempts == 1:
+            raise wrapped(OperationalError, "40P01")
+        return [
+            NewEvent(
+                event_type="test.kernel.recorded",
+                aggregate_type="test",
+                aggregate_id=uuid.uuid7(),
+                payload={"attempt": type(self).attempts},
+            )
+        ]
 
 
 def test_a_concrete_command_must_name_itself():
@@ -245,6 +295,208 @@ def test_an_overlong_idempotency_key_is_refused():
 
 def test_a_key_at_the_column_limit_is_accepted():
     assert validate_idempotency_key("k" * 255) is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_dispatched_command_appends_its_events(owned_user, owned_library):
+    result = dispatch(
+        BasicCommand(label="x", count=1),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="first",
+        source_metadata={"origin": "manual"},
+    )
+
+    assert result.replayed is False
+    assert (result.first_sequence, result.last_sequence) == (1, 1)
+
+    event = LibraryEvent.objects.get(library=owned_library)
+    assert event.sequence == 1
+    assert event.actor_id == owned_user.pk
+    assert event.correlation_id == result.correlation_id
+    assert event.idempotency_key == "first"
+    assert event.source_metadata == {"origin": "manual"}
+
+
+@pytest.mark.django_db(transaction=True)
+def test_repeating_a_key_replays_the_original_range(owned_user, owned_library):
+    command = BasicCommand(label="x", count=1)
+    first = dispatch(
+        command, actor=owned_user, library=owned_library, idempotency_key="same"
+    )
+    second = dispatch(
+        command, actor=owned_user, library=owned_library, idempotency_key="same"
+    )
+
+    assert second.replayed is True
+    assert (second.first_sequence, second.last_sequence) == (
+        first.first_sequence,
+        first.last_sequence,
+    )
+    assert LibraryEvent.objects.filter(library=owned_library).count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_repeating_a_key_over_changed_fields_is_refused(owned_user, owned_library):
+    dispatch(
+        BasicCommand(label="x", count=1),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="same",
+    )
+
+    with pytest.raises(IdempotencyKeyMismatch):
+        dispatch(
+            BasicCommand(label="x", count=2),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key="same",
+        )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_repeating_a_key_under_another_command_name_is_refused(
+    owned_user, owned_library
+):
+    #: Identical fields. Only the command's name distinguishes these, which is
+    #: why it is part of the canonical input.
+    dispatch(
+        BasicCommand(label="x", count=1),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="same",
+    )
+
+    with pytest.raises(IdempotencyKeyMismatch):
+        dispatch(
+            TwinCommand(label="x", count=1),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key="same",
+        )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_build_receives_the_dispatchers_library_and_actor(owned_user, owned_library):
+    dispatch(
+        BasicCommand(label="x", count=1),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="first",
+    )
+
+    event = LibraryEvent.objects.get(library=owned_library)
+    assert event.payload["library"] == str(owned_library.pk)
+    assert event.payload["actor"] == owned_user.pk
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_rejected_command_appends_nothing(owned_user, owned_library):
+    with pytest.raises(CommandRejected):
+        dispatch(
+            RejectingCommand(),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key="first",
+        )
+
+    assert not LibraryEvent.objects.filter(library=owned_library).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_authorization_precedes_any_query(
+    owned_user, other_library, django_assert_num_queries
+):
+    #: The assertion that matters is the query count, not a row count
+    #: afterwards: a rejected dispatch rolls back either way, so only this can
+    #: tell that no lock was ever taken on another library's stream head.
+    with django_assert_num_queries(0), pytest.raises(CommandNotPermitted):
+        dispatch(
+            BasicCommand(label="x", count=1),
+            actor=owned_user,
+            library=other_library,
+            idempotency_key="first",
+        )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_dispatch_refuses_to_nest(owned_user, owned_library):
+    with transaction.atomic(), pytest.raises(NestedTransactionNotSupported):
+        dispatch(
+            BasicCommand(label="x", count=1),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key="first",
+        )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_retryable_failure_is_retried_into_one_append(owned_user, owned_library):
+    FlakyCommand.attempts = 0
+
+    result = dispatch(
+        FlakyCommand(),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="first",
+    )
+
+    assert FlakyCommand.attempts == 2
+    assert result.replayed is False
+    events = LibraryEvent.objects.filter(library=owned_library)
+    assert [event.payload["attempt"] for event in events] == [2]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_correlation_id_is_generated_once_per_dispatch(
+    owned_user, owned_library, monkeypatch
+):
+    #: Counted rather than read off the events: a rolled-back attempt leaves no
+    #: rows, so the surviving ones look identical whether the ID was generated
+    #: once per dispatch or once per attempt.
+    calls = 0
+    resolve = dispatch_module.resolve_correlation_id
+
+    def counting_resolve(correlation_id):
+        nonlocal calls
+        calls += 1
+        return resolve(correlation_id)
+
+    monkeypatch.setattr(dispatch_module, "resolve_correlation_id", counting_resolve)
+    FlakyCommand.attempts = 0
+
+    dispatch(
+        FlakyCommand(),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="first",
+    )
+
+    assert FlakyCommand.attempts == 2
+    assert calls == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_supplied_correlation_id_is_shared_across_dispatches(
+    owned_user, owned_library
+):
+    shared = uuid.uuid7()
+
+    for key in ("first", "second"):
+        result = dispatch(
+            BasicCommand(label=key, count=1),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key=key,
+            correlation_id=shared,
+        )
+        assert result.correlation_id == shared
+
+    correlation_ids = {
+        event.correlation_id
+        for event in LibraryEvent.objects.filter(library=owned_library)
+    }
+    assert correlation_ids == {shared}
 
 
 def test_the_context_carries_no_stream():
