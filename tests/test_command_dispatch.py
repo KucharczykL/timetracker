@@ -499,6 +499,22 @@ def test_a_supplied_correlation_id_is_shared_across_dispatches(
     assert correlation_ids == {shared}
 
 
+def test_placeholders_do_not_outlive_the_first_real_command():
+    #: The placeholders are inert only while nothing real shares the allowlist
+    #: with them. Once a domain command lands, a leftover TEST_ member is an
+    #: undeleted scaffold sitting in the list that is supposed to be the
+    #: readable inventory of everything the system can do.
+    placeholders = [name for name in CommandName if name.name.startswith("TEST_")]
+    real = [name for name in CommandName if not name.name.startswith("TEST_")]
+
+    assert not (placeholders and real), (
+        f"CommandName lists real commands {[name.value for name in real]} "
+        f"alongside placeholders {[name.value for name in placeholders]}. The "
+        "placeholders exist only to exercise dispatch before any real command "
+        "did; delete them and repoint these tests."
+    )
+
+
 def test_the_context_carries_no_stream():
     #: Pinned as a field set rather than left to review: a command holding the
     #: locked stream could append behind idempotency's back.

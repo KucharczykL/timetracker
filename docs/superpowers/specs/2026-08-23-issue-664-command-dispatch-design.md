@@ -441,6 +441,12 @@ Definition-time guards (no database):
 - a second class claiming a used `CommandName` raises at definition
 - a slotted command defines cleanly — the `__init_subclass__` double-fire does
   not read as a duplicate
+- **no `TEST_COMMAND_*` member survives alongside a real one.** The placeholders
+  are inert only while nothing real shares the allowlist with them, and an
+  allowlist that claims to be the readable inventory of everything the system
+  can do cannot also hold undeleted scaffolding. The assertion is vacuous until
+  the first real member lands and then fails loudly, which makes the cleanup a
+  gate rather than a memory.
 
 Dispatch:
 
