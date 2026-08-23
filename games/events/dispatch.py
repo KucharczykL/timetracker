@@ -19,19 +19,27 @@ rather than on class identity, and are limits rather than oversights:
 """
 
 import inspect
+import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass, fields, is_dataclass
 from enum import StrEnum
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 from django.contrib.auth.models import User
 
 from games.events.append import NewEvent
-from games.models import UserLibrary
+from games.events.idempotency import IdempotencyKey
+from games.models import LibraryEvent, UserLibrary
+from timetracker.uuidv7 import parse_uuidv7
 
 #: Where a command class was defined, as (module, qualified name).
 type DefinitionSite = tuple[str, str]  # ("games.commands.session", "CreateSession")
+
+#: Read off the column, so the argument check and the constraint cannot drift.
+IDEMPOTENCY_KEY_MAX_LENGTH: int = cast(
+    int, LibraryEvent._meta.get_field("idempotency_key").max_length
+)
 
 
 class CommandName(StrEnum):
@@ -66,6 +74,79 @@ class CommandContext:
 
     library: UserLibrary
     actor: User
+
+
+@dataclass(frozen=True, slots=True)
+class CommandResult:
+    """What one dispatch did, whether or not it was the dispatch that did it.
+
+    `replayed` collapses the append/replay union at this boundary, so a caller
+    branches on "did this change anything" rather than on which class it got.
+    The events themselves do not escape: projections run inside the command's
+    transaction, and a read taken after the lock is released is a different
+    read.
+    """
+
+    stream_id: uuid.UUID
+    first_sequence: int
+    last_sequence: int
+    replayed: bool
+    correlation_id: uuid.UUID
+
+
+class CommandNotPermitted(Exception):
+    """The actor may not issue commands against this library.
+
+    Not a `CommandConflict`: nobody was in the way, and no number of retries
+    turns one library's owner into another's.
+    """
+
+
+class CommandRejected(Exception):
+    """Current state does not permit the action.
+
+    Raised by a command's `build`, which is the only place that can tell. Also
+    not a `CommandConflict`, and distinct from `CommandNotPermitted`: this is
+    about what was asked rather than about who asked.
+    """
+
+
+def authorize(actor: User, library: UserLibrary) -> None:
+    """Refuse anyone but the library's own active owner.
+
+    Staff appears nowhere. An administrator-assisted repair is an explicit act
+    with its own entry point, never a privilege ordinary dispatch honours.
+    """
+    if not actor.is_active:
+        raise CommandNotPermitted("An inactive account cannot issue commands.")
+    #: Says nothing about the library or its owner: a refusal is not a place to
+    #: learn who else exists.
+    if library.user_id != actor.pk:
+        raise CommandNotPermitted("That library belongs to another account.")
+
+
+def resolve_correlation_id(correlation_id: uuid.UUID | None) -> uuid.UUID:
+    """Generate the correlation ID, or check the one the caller brought.
+
+    Events store it in a `UUIDv7Field` over a domain with a version check, so
+    an unchecked v4 would surface as a raw integrity error from inside the
+    append rather than as a complaint about the argument.
+    """
+    if correlation_id is None:
+        return uuid.uuid7()
+    return parse_uuidv7(correlation_id)
+
+
+def validate_idempotency_key(key: IdempotencyKey) -> None:
+    """Reject a key the events table would reject, while the caller can still
+    be told which argument was wrong."""
+    if not key:
+        raise ValueError("A command names itself with a non-empty idempotency key.")
+    if len(key) > IDEMPOTENCY_KEY_MAX_LENGTH:
+        raise ValueError(
+            f"An idempotency key is at most {IDEMPOTENCY_KEY_MAX_LENGTH} "
+            f"characters; this one is {len(key)}."
+        )
 
 
 _COMMAND_REGISTRY: dict[CommandName, DefinitionSite] = {}

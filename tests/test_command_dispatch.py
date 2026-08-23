@@ -10,10 +10,31 @@ from games.events.dispatch import (
     Command,
     CommandContext,
     CommandName,
+    CommandNotPermitted,
+    authorize,
     canonical_command_input,
+    resolve_correlation_id,
+    validate_idempotency_key,
 )
 from games.events.idempotency import fingerprint_command_input
 from timetracker.temporal import TemporalValue
+
+
+@pytest.fixture
+def other_user(django_user_model, db):
+    return django_user_model.objects.create_user(username="other-owner", password="p")
+
+
+@pytest.fixture
+def other_library(other_user):
+    return other_user.library
+
+
+@pytest.fixture
+def staff_user(django_user_model, db):
+    return django_user_model.objects.create_user(
+        username="staff-owner", password="p", is_staff=True, is_superuser=True
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,6 +180,71 @@ def test_the_command_name_enters_the_fingerprint():
     )
 
     assert basic != twin
+
+
+def test_the_owner_is_permitted(owned_user, owned_library):
+    assert authorize(owned_user, owned_library) is None
+
+
+def test_another_users_library_is_refused(owned_user, other_library):
+    with pytest.raises(CommandNotPermitted):
+        authorize(owned_user, other_library)
+
+
+def test_an_inactive_user_is_refused(owned_user, owned_library):
+    owned_user.is_active = False
+
+    with pytest.raises(CommandNotPermitted):
+        authorize(owned_user, owned_library)
+
+
+def test_staff_is_not_a_bypass(staff_user, other_library):
+    #: Staff status grants nothing at the write boundary. An assisted repair is
+    #: an explicit act, not a privilege that ordinary dispatch honours.
+    with pytest.raises(CommandNotPermitted):
+        authorize(staff_user, other_library)
+
+
+def test_a_refusal_names_neither_the_other_user_nor_their_library(
+    owned_user, other_user, other_library
+):
+    with pytest.raises(CommandNotPermitted) as refusal:
+        authorize(owned_user, other_library)
+
+    message = str(refusal.value)
+    assert other_user.username not in message
+    assert str(other_library.pk) not in message
+
+
+def test_an_absent_correlation_id_is_generated():
+    assert resolve_correlation_id(None).version == 7
+
+
+def test_a_supplied_uuid7_is_used_verbatim():
+    supplied = uuid.uuid7()
+
+    assert resolve_correlation_id(supplied) == supplied
+
+
+def test_a_uuid4_correlation_id_is_refused():
+    #: The column is a UUIDv7Field over a domain with a version check, so a
+    #: uuid4 would otherwise die as a raw IntegrityError from inside the append.
+    with pytest.raises(ValueError):
+        resolve_correlation_id(uuid.uuid4())
+
+
+def test_an_empty_idempotency_key_is_refused():
+    with pytest.raises(ValueError):
+        validate_idempotency_key("")
+
+
+def test_an_overlong_idempotency_key_is_refused():
+    with pytest.raises(ValueError):
+        validate_idempotency_key("k" * 256)
+
+
+def test_a_key_at_the_column_limit_is_accepted():
+    assert validate_idempotency_key("k" * 255) is None
 
 
 def test_the_context_carries_no_stream():
