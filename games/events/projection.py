@@ -1,0 +1,157 @@
+"""Which projection families exist, in what order they run, and what each one
+does with an event.
+
+A family is one class owning one projection concern. It declares the event types
+it handles as a mapping, and the append path folds every appended event through
+every family that claims its type -- in the same transaction, under the same
+stream-head lock.
+
+The module is `projection` rather than `projectors` because `games.projectors`
+is the package the real families live in. Two importable modules of one name are
+unambiguous to the interpreter and a trap for everyone else.
+"""
+
+from abc import ABC
+from collections.abc import Callable, Mapping
+from enum import StrEnum
+from typing import ClassVar
+
+from games.models import LibraryEvent
+
+type EventType = str  # "library.session.created"
+type BoundHandler = Callable[[LibraryEvent], None]
+#: What a family declares. The values are the handler functions themselves,
+#: read out of the class body before any descriptor binding -- hence
+#: Callable[..., None] rather than a signature naming `self`.
+type HandlerMap = Mapping[EventType, Callable[..., None]]
+#: Where a family was defined, as (module, qualified name).
+type DefinitionSite = tuple[str, str]  # ("games.projectors.journal", "Journal")
+
+
+class ProjectorFamily(StrEnum):
+    """Every projection family, in the order they run within one event.
+
+    **Member order is run order.** Journal and statistics families read the
+    current-state rows written earlier in the same transaction, so the order is
+    load-bearing and must not depend on which module Python imported first.
+
+    Nothing persists these names -- they are an ordering key, not the audit
+    trail's vocabulary -- so a member may be renamed, added, or reordered
+    without invalidating anything already recorded.
+    """
+
+    CURRENT_STATE = "current_state"
+    JOURNAL = "journal"
+    STATS = "stats"
+
+
+#: Resolved once: the enum's own member order, as a sort key.
+_RUN_ORDER: dict[ProjectorFamily, int] = {
+    family: position for position, family in enumerate(ProjectorFamily)
+}
+
+
+class ProjectorRegistry:
+    """The families that run, and the handlers each event type resolves to.
+
+    An object rather than a module-level dict so a caller can hold one of its
+    own: a test registers into a registry nobody else sees, and a rebuild can
+    eventually assemble a set of families pointed somewhere other than the live
+    tables.
+    """
+
+    def __init__(self) -> None:
+        self._families: dict[ProjectorFamily, Projector] = {}
+        self._claims: dict[ProjectorFamily, DefinitionSite] = {}
+        self._handlers: dict[EventType, tuple[BoundHandler, ...]] = {}
+
+    def register(self, projector_class: type[Projector]) -> None:
+        family_name = getattr(projector_class, "family_name", None)
+        if not isinstance(family_name, ProjectorFamily):
+            raise TypeError(
+                f"{projector_class.__qualname__} declares no family_name. Every "
+                "concrete family names itself with a ProjectorFamily member."
+            )
+
+        handles = getattr(projector_class, "handles", None)
+        if not isinstance(handles, Mapping):
+            raise TypeError(
+                f"{projector_class.__qualname__} declares no handles. A family "
+                "says which event types it projects, even if that is none."
+            )
+        for event_type, handler in handles.items():
+            if not callable(handler):
+                raise TypeError(
+                    f"{projector_class.__qualname__} maps {event_type!r} to "
+                    f"{handler!r}, which is not callable. Handlers are the "
+                    "functions themselves, so renaming one is an error here "
+                    "rather than a handler that never runs."
+                )
+
+        definition_site = (projector_class.__module__, projector_class.__qualname__)
+        claimed_by = self._claims.get(family_name)
+        if claimed_by is not None and claimed_by != definition_site:
+            raise TypeError(
+                f"{projector_class.__qualname__} claims {family_name.value!r}, "
+                f"already owned by {claimed_by[0]}.{claimed_by[1]}."
+            )
+
+        #: At registration, therefore at import: a family takes no arguments and
+        #: does no work in __init__.
+        self._families[family_name] = projector_class()
+        self._claims[family_name] = definition_site
+        self._rebuild_handlers()
+
+    def _rebuild_handlers(self) -> None:
+        handlers: dict[EventType, list[BoundHandler]] = {}
+        for family_name in sorted(self._families, key=_RUN_ORDER.__getitem__):
+            family = self._families[family_name]
+            for event_type, handler in family.handles.items():
+                handlers.setdefault(event_type, []).append(handler.__get__(family))
+        self._handlers = {
+            event_type: tuple(found) for event_type, found in handlers.items()
+        }
+
+    def handlers_for(self, event_type: EventType) -> tuple[BoundHandler, ...]:
+        return self._handlers.get(event_type, ())
+
+    def apply(self, event: LibraryEvent) -> None:
+        """Project one event through every family that claims its type."""
+        for handler in self.handlers_for(event.event_type):
+            handler(event)
+
+
+DEFAULT_REGISTRY = ProjectorRegistry()
+
+
+class Projector(ABC):
+    """One projection family.
+
+    Subclassing registers, which is why `handles` maps event types to the
+    handler **functions** read out of the class body rather than to their names:
+    renaming one without updating the map is a `NameError` at class definition,
+    where a string would have been a handler that silently never ran.
+
+    A family spells the declaration `handles: ClassVar[HandlerMap] = {...}`. The
+    annotation is not decoration: a bare assignment is a mutable class attribute
+    that no type checker reads and that ruff refuses (RUF012).
+
+    Instances are built once, at registration, with no arguments.
+    """
+
+    family_name: ClassVar[ProjectorFamily]
+    handles: ClassVar[HandlerMap]
+
+    def __init_subclass__(
+        cls,
+        *,
+        abstract: bool = False,
+        registry: ProjectorRegistry = DEFAULT_REGISTRY,
+        **kwargs: object,
+    ) -> None:
+        super().__init_subclass__(**kwargs)
+        #: Declared rather than detected: a family overrides no abstract method,
+        #: so inspect.isabstract sees every intermediate base as concrete.
+        if abstract:
+            return
+        registry.register(cls)

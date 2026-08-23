@@ -111,11 +111,16 @@ class CurrentStateProjector(Projector):
     def _session_created(self, event: LibraryEvent) -> None: ...
     def _session_deleted(self, event: LibraryEvent) -> None: ...
 
-    handles = {
+    handles: ClassVar[HandlerMap] = {
         "session.created": _session_created,
         "session.deleted": _session_deleted,
     }
 ```
+
+The `ClassVar[HandlerMap]` annotation is part of the declaration, not decoration.
+A bare `handles = {...}` is a mutable class attribute that no type checker reads
+and that ruff refuses outright (RUF012), so every family would otherwise open
+with a lint fight.
 
 `handles` maps to the **function objects** defined above it in the class body,
 never to method-name strings. Renaming `_session_created` without updating the
@@ -302,6 +307,7 @@ everyone else.
 
 type EventType = str  # "session.created"
 type BoundHandler = Callable[[LibraryEvent], None]
+type HandlerMap = Mapping[EventType, Callable[..., None]]
 type DefinitionSite = tuple[
     str, str
 ]  # ("games.projectors.current_state", "CurrentStateProjector")
@@ -329,7 +335,7 @@ class Projector(ABC):
     #: Callable[..., None] rather than Callable[[Self, LibraryEvent], None]:
     #: the values are plain functions read out of the class body, before any
     #: descriptor binding, and mypy will not reconcile the implicit `self`.
-    handles: ClassVar[Mapping[EventType, Callable[..., None]]]
+    handles: ClassVar[HandlerMap]
 
     def __init_subclass__(
         cls,

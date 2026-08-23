@@ -168,6 +168,9 @@ No database. Everything here is definition-time behaviour.
 - `handles` values are **plain functions**, read out of the class body before
   descriptor binding. Annotate `Callable[..., None]`; `Callable[[Self, LibraryEvent], None]`
   will not typecheck against an unbound function.
+- A family declares `handles: ClassVar[HandlerMap] = {...}`. Without the
+  annotation ruff raises RUF012 on the dict literal at **every** family, so the
+  alias exists to keep that one line short rather than to be clever.
 - Ordering is `ProjectorFamily` **member index**, not `sorted()` on the string
   values — `current_state` < `journal` < `stats` is a coincidence that would
   silently become the real rule.
