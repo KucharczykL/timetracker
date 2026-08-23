@@ -302,11 +302,14 @@ everyone else.
 
 type EventType = str  # "session.created"
 type BoundHandler = Callable[[LibraryEvent], None]
-type DefinitionSite = tuple[str, str]  # ("games.projectors.current_state", "CurrentStateProjector")
+type DefinitionSite = tuple[
+    str, str
+]  # ("games.projectors.current_state", "CurrentStateProjector")
 
 
 class ProjectorFamily(StrEnum):
     """Every projection family, in the order they run within one event."""
+
     CURRENT_STATE = "current_state"
     JOURNAL = "journal"
     STATS = "stats"
@@ -339,6 +342,7 @@ class Projector(ABC):
 
 ```python
 # games/events/append.py — new guard and changed signature
+
 
 class PayloadNotCanonical(ValueError):
     """A payload or source metadata that is not already what JSONB returns."""

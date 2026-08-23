@@ -108,8 +108,10 @@ event whose payload already round-trips.
 - `label` exists so the message names which of the two values was wrong; a
   message saying only "payload" when `source_metadata` was at fault is worse than
   no message.
-- `except TypeError, ValueError:` — PEP 758 bare form. ruff 0.16 formats to it;
-  do not add parentheses back.
+- PEP 758's bare `except A, B:` applies only **without** a binding. This clause
+  needs the error, so it is `except (TypeError, ValueError) as error:` —
+  parenthesized, and a `SyntaxError` here is the code's fault rather than the
+  interpreter's.
 - `json.dumps(float("nan"))` succeeds by default and yields `NaN`, which
   `json.loads` accepts. `allow_nan=False` is what makes it an error rather than a
   value that compares unequal to itself by accident.
