@@ -58,8 +58,8 @@ carries a module-level `pytestmark = pytest.mark.django_db`, which is fine.
 
 ```python
 def test_a_key_mismatch_is_a_command_conflict():
-    #: #664 catches one base for "another command was in the way" and may
-    #: narrow to the leaves for two different messages.
+    #: A dispatcher catches one base for "another command was in the way" and
+    #: may narrow to the leaves for two different messages.
     assert issubclass(IdempotencyKeyMismatch, CommandConflict)
 ```
 
@@ -136,7 +136,7 @@ git commit -m "feat: give command conflicts one base to be caught by"
 ### Task 2: One symbol for the sequence constraint name
 
 **Files:**
-- Modify: `games/models.py:1362-1372` (the `LibraryEvent.Meta.constraints` tuple)
+- Modify: `games/models.py:1368-1379` (the `LibraryEvent.Meta.constraints` tuple; the sequence constraint is 1369-1372)
 - Test: none of its own — `make check-migrations` is the assertion.
 
 **Interfaces:**
@@ -251,32 +251,42 @@ def wrapped(
         return error
 
 
+#: Parametrized over the SQLSTATE, not over a built exception: an exception
+#: built in the decorator is constructed once at collection time and shared by
+#: every worker for the whole session, and its test id would be `error0`
+#: instead of the state, so `-k 40P01` could not select a case.
 @pytest.mark.parametrize(
-    "error",
+    ("django_error", "sqlstate", "constraint_name"),
     [
-        wrapped(OperationalError, "40001"),
-        wrapped(OperationalError, "40P01"),
-        wrapped(IntegrityError, "23505", LIBRARY_EVENT_SEQUENCE_CONSTRAINT),
+        (OperationalError, "40001", None),
+        (OperationalError, "40P01", None),
+        (IntegrityError, "23505", LIBRARY_EVENT_SEQUENCE_CONSTRAINT),
     ],
 )
-def test_the_charters_three_failures_are_retryable(error):
-    assert is_retryable(error) is True
+def test_the_charters_three_failures_are_retryable(
+    django_error, sqlstate, constraint_name
+):
+    assert is_retryable(wrapped(django_error, sqlstate, constraint_name)) is True
 
 
 @pytest.mark.parametrize(
-    "error",
+    ("django_error", "sqlstate", "constraint_name"),
     [
-        #: #662's record collision: the head lock failed to serialize two
-        #: same-key commands, which is a bug and must stay visible.
-        wrapped(IntegrityError, "23505", "unique_library_idempotency_key"),
-        wrapped(IntegrityError, "23505", None),
-        wrapped(IntegrityError, "23503"),
-        wrapped(OperationalError, "57014"),
-        ValueError("not a database failure at all"),
+        #: The idempotency record's collision: the head lock failed to
+        #: serialize two same-key commands, which is a bug and must stay
+        #: visible rather than being retried away.
+        (IntegrityError, "23505", "unique_library_idempotency_key"),
+        (IntegrityError, "23505", None),
+        (IntegrityError, "23503", None),
+        (OperationalError, "57014", None),
     ],
 )
-def test_everything_else_is_terminal(error):
-    assert is_retryable(error) is False
+def test_everything_else_is_terminal(django_error, sqlstate, constraint_name):
+    assert is_retryable(wrapped(django_error, sqlstate, constraint_name)) is False
+
+
+def test_an_error_that_is_not_a_database_failure_is_terminal():
+    assert is_retryable(ValueError("not a database failure at all")) is False
 
 
 def test_an_error_with_no_driver_cause_is_terminal():
@@ -290,11 +300,17 @@ def test_the_default_budget_is_the_charters_three():
 def test_each_delay_stays_inside_a_bound_that_doubles():
     policy = RetryPolicy(random=Random(0))
     bounds = [0.025, 0.050, 0.100]
+    previous_bound = 0.0
     for attempt, bound in enumerate(bounds):
         #: Sampled repeatedly: one draw could sit inside the wrong bound.
         draws = [policy.delay_for(attempt) for _ in range(200)]
         assert min(draws) >= 0.0
         assert max(draws) <= bound
+        #: The ceiling alone is satisfied by `return 0.0` and by a bound that
+        #: never doubles. 200 uniform draws land within a percent of their own
+        #: ceiling, so the previous bound is a floor this one must clear.
+        assert max(draws) > previous_bound
+        previous_bound = bound
 
 
 def test_the_bound_stops_growing_at_the_cap():
@@ -334,10 +350,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from random import Random
 
-from django.db import IntegrityError, OperationalError, router, transaction
-
 from games.events.conflicts import CommandConflict
-from games.models import LIBRARY_EVENT_SEQUENCE_CONSTRAINT, LibraryEvent
+from games.models import LIBRARY_EVENT_SEQUENCE_CONSTRAINT
 
 logger = logging.getLogger("games")
 
@@ -388,8 +402,10 @@ DEFAULT_RETRY_POLICY = RetryPolicy()
 
 
 def _sqlstate(error: Exception) -> str | None:
-    #: Django re-raises driver errors `from` the original, so the psycopg
-    #: exception carrying sqlstate and diag is always the cause.
+    #: Django's cursor wrapper re-raises driver errors `from` the original, one
+    #: level deep, so a failure that reached us through a cursor carries the
+    #: psycopg exception as its cause. One raised any other way has no cause and
+    #: reads as terminal -- the safe direction.
     return getattr(error.__cause__, "sqlstate", None)
 
 
@@ -417,12 +433,19 @@ def is_retryable(error: Exception) -> bool:
 
 Run: `make test ARGS="tests/test_event_retry.py -x"`
 
-Expected: PASS (12 tests, counting the parametrized cases). Ignore that `LibraryEvent`, `IntegrityError`,
-`OperationalError`, `router`, and `transaction` are imported but unused so far —
-Task 4 uses every one. If `make lint` is run now it will flag them; that is
-expected and resolved by the next task.
+Expected: PASS (14 tests, counting the parametrized cases).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Lint before committing**
+
+Run: `make lint`
+
+Expected: clean. This module deliberately imports nothing it does not yet use —
+`router`, `transaction`, `IntegrityError`, `OperationalError` and `LibraryEvent`
+all arrive with the runner in Task 4. `pyproject.toml` sets no `[tool.ruff.lint]
+select`, so ruff runs its default `["E4", "E7", "E9", "F"]`, and `F401` would
+make this commit a point on the branch where `make check` cannot pass.
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add games/events/retry.py tests/test_event_retry.py
@@ -450,6 +473,10 @@ git commit -m "feat: classify which database failures a retry could fix"
   once and pass it to both, so the connection checked is the connection used.
 - Use `while True` rather than `for attempt in range(...)`: the loop always
   returns or raises, but a `for` leaves mypy demanding an unreachable tail.
+- This task adds the imports Task 3 deliberately left out. To
+  `games/events/retry.py` add `from django.db import IntegrityError,
+  OperationalError, router, transaction` and change the models import to
+  `from games.models import LIBRARY_EVENT_SEQUENCE_CONSTRAINT, LibraryEvent`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -546,7 +573,10 @@ def test_a_terminal_failure_is_raised_untouched_and_never_delayed(
 
     assert len(attempts) == 1
     assert sleeper.delays == []
-    assert caplog.records == []
+    #: Filtered by logger name: pytest attaches caplog's handler to the root
+    #: logger for the whole test as well, so any WARNING from a propagating
+    #: django.* logger would redden a bare `caplog.records == []`.
+    assert [record for record in caplog.records if record.name.startswith("games")] == []
 
 
 @pytest.mark.django_db(transaction=True)
@@ -576,8 +606,9 @@ def test_each_retry_is_logged(capture_games_logger):
         run_in_transaction(operation, policy=policy)
 
     #: One line per retry, none for the exhaustion: the exception is that record.
-    assert len(caplog.records) == 3
-    assert "40P01" in caplog.records[0].getMessage()
+    retry_logs = [record for record in caplog.records if record.name.startswith("games")]
+    assert len(retry_logs) == 3
+    assert "40P01" in retry_logs[0].getMessage()
 ```
 
 Add `from games.events.idempotency import IdempotencyKeyMismatch` to the file's
@@ -654,7 +685,7 @@ def run_in_transaction[T](
 
 Run: `make test ARGS="tests/test_event_retry.py -x"`
 
-Expected: PASS (19 tests).
+Expected: PASS (21 tests).
 
 - [ ] **Step 5: Check types and lint**
 
@@ -684,8 +715,21 @@ git commit -m "feat: retry a command's transaction within a bounded budget"
   be reproduced identically by the fake and agree with itself.
 
 **Gotchas:**
-- Threads need `close_old_connections()` on entry and exit; see
-  `tests/test_event_append.py` for the established shape.
+- **`uuid.uuid4()` will not save.** `LibraryEvent.aggregate_id` and
+  `correlation_id` are `UUIDv7Field`s, whose `to_python` runs `parse_uuidv7` and
+  raises on `parsed.version != 7` (`timetracker/uuidv7.py:98`) — and Django calls
+  `to_python` on every write. Every event test in the repo uses `uuid.uuid7()`
+  (`tests/test_event_append.py:34`). Use it here too. Note what a slip costs:
+  the operation would fail on its *first* attempt with a non-retryable error, so
+  the test fails with "ran once instead of four times" — which Step 2 below tells
+  you to read as a classifier bug. Rule out the fixture first.
+- Threads need `close_old_connections()` on entry and exit, must catch
+  `BaseException` into a list the test asserts on, and the test must assert
+  `not thread.is_alive()`; see `tests/test_event_append.py:275-320` for the
+  established shape. The liveness assertion is not decoration: `django_db(
+  transaction=True)` is a `TransactionTestCase`, whose teardown TRUNCATEs, and a
+  surviving thread still holding row locks makes that TRUNCATE block — hanging
+  the worker instead of failing the test.
 - The deadlock test costs roughly one `deadlock_timeout` (~1 s). That is the
   price of the evidence.
 - Lock two rows that are *not* the stream head — the charter's wording is
@@ -699,7 +743,7 @@ Append to `tests/test_event_retry.py`, adding these imports:
 
 ```python
 import uuid
-from threading import Event, Thread
+from threading import Barrier, Thread
 
 from django.db import close_old_connections
 from django.utils import timezone
@@ -713,7 +757,7 @@ def one_event() -> NewEvent:
     return NewEvent(
         event_type="probe.recorded",
         aggregate_type="probe",
-        aggregate_id=uuid.uuid4(),
+        aggregate_id=uuid.uuid7(),
         payload={},
     )
 
@@ -726,7 +770,7 @@ def test_a_real_sequence_collision_is_recognised_and_retried(owned_library):
         first = lock_stream(owned_library).append(
             [one_event()],
             actor=None,
-            correlation_id=uuid.uuid4(),
+            correlation_id=uuid.uuid7(),
             idempotency_key="seed",
         )
 
@@ -742,12 +786,12 @@ def test_a_real_sequence_collision_is_recognised_and_retried(owned_library):
             sequence=first.last_sequence,
             event_type="probe.recorded",
             aggregate_type="probe",
-            aggregate_id=uuid.uuid4(),
+            aggregate_id=uuid.uuid7(),
             payload={},
             recorded_at=timezone.now(),
             effective_time=None,
             actor=None,
-            correlation_id=uuid.uuid4(),
+            correlation_id=uuid.uuid7(),
             idempotency_key="collides",
         )
 
@@ -780,35 +824,38 @@ def test_a_real_deadlock_is_recognised_and_the_victim_retries():
     first = Platform.objects.create(name="deadlock-a")
     second = Platform.objects.create(name="deadlock-b")
 
-    both_hold_one = Event()
-    holders = 0
+    #: A barrier, not an Event with a timeout: if the two threads fail to meet,
+    #: this raises BrokenBarrierError into the thread and the test reports it,
+    #: where a lapsed Event would let both run serially and fail the retry
+    #: assertion with nothing explaining why.
+    both_near_locked = Barrier(2, timeout=10)
     results: list[str] = []
     retried: list[float] = []
+    errors: list[BaseException] = []
 
-    def lock_in_order(near: int, far: int) -> str:
-        nonlocal holders
+    def run(near: int, far: int) -> None:
+        close_old_connections()
+        first_pass = True
 
         def operation() -> str:
-            nonlocal holders
+            nonlocal first_pass
             Platform.objects.select_for_update().get(pk=near)
-            holders += 1
-            if holders >= 2:
-                both_hold_one.set()
-            #: Only the first pass waits; a retry runs after the winner
-            #: committed and must not block on an event that already fired.
-            both_hold_one.wait(timeout=5)
+            if first_pass:
+                #: Only the opening attempt rendezvouses. The victim's retry
+                #: runs after the winner committed, with nobody left to meet --
+                #: waiting again would break the barrier on a timeout.
+                first_pass = False
+                both_near_locked.wait()
             Platform.objects.select_for_update().get(pk=far)
             return "recorded"
 
         policy = RetryPolicy(sleep=retried.append, random=Random(0))
-        close_old_connections()
         try:
-            return run_in_transaction(operation, policy=policy)
+            results.append(run_in_transaction(operation, policy=policy))
+        except BaseException as error:  # noqa: BLE001 - return thread failures
+            errors.append(error)
         finally:
             close_old_connections()
-
-    def run(near: int, far: int) -> None:
-        results.append(lock_in_order(near, far))
 
     forward = Thread(target=run, args=(first.pk, second.pk), name="deadlock-forward")
     backward = Thread(target=run, args=(second.pk, first.pk), name="deadlock-backward")
@@ -816,6 +863,12 @@ def test_a_real_deadlock_is_recognised_and_the_victim_retries():
     backward.start()
     forward.join(timeout=30)
     backward.join(timeout=30)
+
+    assert not errors, errors
+    #: A live thread still holds row locks, and this test class TRUNCATEs at
+    #: teardown -- asserting here fails the test instead of hanging the worker.
+    assert not forward.is_alive()
+    assert not backward.is_alive()
 
     #: PostgreSQL kills exactly one; the runner gives it back.
     assert results == ["recorded", "recorded"]
@@ -828,12 +881,17 @@ Run: `make test ARGS="tests/test_event_retry.py -k real_deadlock -x" PYTEST_WORK
 
 Expected: PASS in roughly 1–2 seconds (one `deadlock_timeout`).
 
-**If it hangs to the 30 s join timeout**, the two threads are not actually
-contending — confirm both got past `select_for_update` on their near row before
-either reached its far row. **If it fails with an unretried
+**If it fails with a `BrokenBarrierError` in `errors`**, the two threads did not
+both reach their near-row lock inside 10 s — the machine is loaded, not the code
+broken; re-run before changing anything. **If it fails with an unretried
 `OperationalError`**, psycopg's `DeadlockDetected` is not reaching
 `is_retryable` with SQLSTATE `40P01`; print `error.__cause__.sqlstate` before
 touching the classifier.
+
+This test needs two threads genuinely holding locks at the same instant, which
+is a stronger requirement than the repo's other threaded tests (they need only
+ordered acquisition). If it proves flaky under the parallel default of the gate,
+the fix is a longer barrier timeout, not deleting the evidence.
 
 - [ ] **Step 5: Commit**
 
@@ -844,84 +902,102 @@ git commit -m "test: prove the classifier against real driver failures"
 
 ---
 
-### Task 6: Retry and idempotency compose into "already done"
+### Task 6: A retried attempt leaves nothing behind, and a returned one is committed
 
 **Files:**
 - Test: `tests/test_event_retry.py`
 
 **Interfaces:**
-- Consumes: `run_in_transaction` (Task 4), `idempotent_append` and
-  `ReplayedAppend` from `games.events.idempotency`.
+- Consumes: `run_in_transaction` (Task 4), `idempotent_append` from
+  `games.events.idempotency`.
 - Produces: nothing importable. This pins the property the pair of issues exists
   to produce, which neither module states on its own.
 
-**Gotcha:** a threaded test must not assert on the ORM until the server-rendered
-write has committed; here both threads are joined first, so the reads happen
-after both transactions ended.
+**What this deliberately does *not* test.** Two threads racing one idempotency
+key is already pinned, and pinned harder, by
+`tests/test_event_idempotency.py:227 test_one_key_issued_concurrently_appends_once`.
+That path cannot reach the runner's retry logic at all: `lock_stream` takes
+`SELECT … FOR UPDATE` on the head (`games/events/append.py:127-136`), so the
+second command *blocks* and then reads the committed record — no serialization
+failure, no deadlock, no retry. A second copy of it here would pass with
+`run_in_transaction` replaced by a bare `transaction.atomic()`, which is the
+definition of a test that proves nothing.
+
+The property that *is* new is the one only this issue creates: an attempt that
+fails partway rolls back its events **and** its idempotency record together, so
+the retry appends for real rather than replaying a ghost — and what the runner
+finally returns is committed, not merely returned.
+
+**Gotcha:** the failure must be raised *after* `idempotent_append` returns.
+Raising before it means the attempt wrote nothing and the test degenerates into
+Task 4's retry-then-succeed case.
 
 - [ ] **Step 1: Write the test**
 
 Append to `tests/test_event_retry.py`, adding
-`from games.events.idempotency import ReplayedAppend, idempotent_append` to the
-imports:
+`from games.events.append import AppendResult` and
+`from games.events.idempotency import idempotent_append` to the imports, and
+`LibraryIdempotencyRecord` to the existing `games.models` import:
 
 ```python
 @pytest.mark.django_db(transaction=True)
-def test_a_retried_command_replays_the_winners_range(owned_library):
-    """A loser that retries finds the winner's record and returns its range,
-    rather than appending the same human action twice."""
-    started = Event()
-    outcomes: list[object] = []
+def test_a_rolled_back_attempt_leaves_no_record_for_the_retry_to_replay(
+    owned_library,
+):
+    """The attempt's events and its idempotency record share one transaction.
+    If only the record survived a rollback, the retry would replay a range whose
+    events no longer exist -- a command silently lost."""
+    policy, sleeper = recording_policy()
+    attempts = []
 
-    def issue() -> None:
-        close_old_connections()
-        try:
-            started.wait(timeout=5)
-            outcomes.append(
-                run_in_transaction(
-                    lambda: idempotent_append(
-                        owned_library,
-                        idempotency_key="shared-key",
-                        command_input={"note": "one action"},
-                        build=lambda _stream: [one_event()],
-                        actor=None,
-                        correlation_id=uuid.uuid4(),
-                    )
-                )
-            )
-        finally:
-            close_old_connections()
+    def operation():
+        attempts.append(len(attempts))
+        result = idempotent_append(
+            owned_library,
+            idempotency_key="shared-key",
+            command_input={"note": "one action"},
+            build=lambda _stream: [one_event()],
+            actor=None,
+            correlation_id=uuid.uuid7(),
+        )
+        #: After the write, so the first attempt has something to roll back.
+        if len(attempts) == 1:
+            raise wrapped(OperationalError, "40001")
+        return result
 
-    threads = [Thread(target=issue, name=f"issuer-{index}") for index in range(2)]
-    for thread in threads:
-        thread.start()
-    started.set()
-    for thread in threads:
-        thread.join(timeout=30)
+    result = run_in_transaction(operation, policy=policy)
 
-    assert len(outcomes) == 2
-    replays = [result for result in outcomes if isinstance(result, ReplayedAppend)]
-    assert len(replays) == 1
-    #: One human action, one event -- not one per issuer.
+    assert len(attempts) == 2
+    assert len(sleeper.delays) == 1
+    #: An AppendResult, not a ReplayedAppend: the second attempt found no
+    #: record, because the first attempt's rolled back with its events.
+    assert isinstance(result, AppendResult)
+    assert (result.first_sequence, result.last_sequence) == (1, 1)
+    #: Read after the runner returned, on a committed connection: this is the
+    #: only assertion in the suite that the happy path commits at all.
     assert LibraryEvent.objects.filter(library=owned_library).count() == 1
-    ranges = {(result.first_sequence, result.last_sequence) for result in outcomes}
-    assert ranges == {(1, 1)}
+    assert (
+        LibraryIdempotencyRecord.objects.filter(
+            library=owned_library, idempotency_key="shared-key"
+        ).count()
+        == 1
+    )
 ```
 
 - [ ] **Step 2: Run it**
 
-Run: `make test ARGS="tests/test_event_retry.py -k replays_the_winners -x" PYTEST_WORKERS=0`
+Run: `make test ARGS="tests/test_event_retry.py -k rolled_back_attempt -x" PYTEST_WORKERS=0`
 
-Expected: PASS. **If both outcomes are `AppendResult`**, the two threads never
-overlapped — the losing thread ran entirely after the winner committed, which is
-still a correct replay but proves nothing about contention; check that
-`started.wait` is releasing both threads together.
+Expected: PASS. **If `result` is a `ReplayedAppend`**, the failed attempt's
+idempotency record outlived its rollback — the runner is not wrapping the
+operation in one transaction, or the operation opened its own. **If the event
+count is 2**, sequence allocation is running outside the retried transaction.
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git add tests/test_event_retry.py
-git commit -m "test: prove a retried duplicate replays instead of appending"
+git commit -m "test: prove a rolled-back attempt leaves no record behind"
 ```
 
 ---
@@ -938,8 +1014,9 @@ git commit -m "test: prove a retried duplicate replays instead of appending"
   sibling's stated contract amends that sibling's spec rather than leaving it
   describing code that no longer exists.
 
-Both amendments use the blockquote form #661's spec already established for
-being superseded (see its `append_events` note, added by #662):
+Both amendments follow the blockquote form #661's spec already uses for its
+supersession note (`> **Superseded by [#662](…).**`, at its line 78), with the
+verb changed — nothing about these sections is superseded, only extended:
 
 ```markdown
 > **Amended by [#663](https://github.com/KucharczykL/timetracker/issues/663).**

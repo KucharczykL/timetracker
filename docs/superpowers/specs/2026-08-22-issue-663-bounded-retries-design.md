@@ -267,15 +267,26 @@ document because #664 is the caller that has to honour it.
 The interaction is the charter's "instead of discarding either write" actually
 holding, and it falls out of the two mechanisms rather than being built:
 
-1. Two commands carrying one key race; one commits.
-2. The loser's transaction dies for a retryable reason.
-3. The runner re-runs it. `idempotent_append` takes the head lock, finds the
-   now-committed record, and returns `ReplayedAppend`.
+1. A command carrying a key that another command already committed dies for a
+   retryable reason — a deadlock on some non-stream row it also touched, say.
+2. The runner re-runs it. `idempotent_append` takes the head lock, finds the
+   committed record, and returns `ReplayedAppend` with the winner's range
+   instead of appending a second time.
 
-The retried command returns the winner's sequence range rather than appending a
-second time. This is pinned by a test because it is the property the whole pair
-of issues exists to produce, and because it is not obvious from either module
-alone.
+**Two same-key commands racing is not the path that reaches this**, and it is
+worth being exact about why, because it is the obvious guess. `lock_stream`
+takes `SELECT … FOR UPDATE` on the stream head, so the second command *blocks*
+until the first commits and then reads its record. It never fails, so it never
+retries; #662 already pins that path
+(`test_one_key_issued_concurrently_appends_once`). The runner is inert there.
+
+What this issue must pin instead is the half only it creates: an attempt that
+fails *after* appending rolls back its events and its idempotency record
+together. If the record could outlive its events, the retry would replay a range
+that no longer exists and the command would be silently lost. The same test
+carries the only proof in the suite that the runner's happy path commits at all
+— it reads the ORM after the runner returns, on a connection that would see
+nothing had the transaction rolled back.
 
 ## API contract
 
@@ -345,8 +356,11 @@ across attempts under a seeded `Random`.
   delay recorded, no warning logged;
 - `IdempotencyKeyMismatch` propagates as a `CommandConflict` without the
   operation being re-run;
-- two threads issuing one key against one library: the loser's retry returns
-  `ReplayedAppend` and the library holds N events, not 2N.
+- an attempt that fails *after* `idempotent_append` returns rolls back both its
+  events and its idempotency record, so the retry appends for real (an
+  `AppendResult`, not a `ReplayedAppend`) and the library ends with one event and
+  one record — the same test's post-return ORM reads being the proof that the
+  happy path commits.
 
 **Why two of those are real rather than synthesized.** The classifier's whole
 job is reading `__cause__.sqlstate` and `__cause__.diag.constraint_name` through
