@@ -162,10 +162,12 @@ LIBRARY_EVENT_SEQUENCE_CONSTRAINT = "unique_library_event_stream_sequence"
 Inside `LibraryEvent.Meta.constraints`, change the first entry:
 
 ```python
-            models.UniqueConstraint(
-                fields=("stream", "sequence"),
-                name=LIBRARY_EVENT_SEQUENCE_CONSTRAINT,
-            ),
+(
+    models.UniqueConstraint(
+        fields=("stream", "sequence"),
+        name=LIBRARY_EVENT_SEQUENCE_CONSTRAINT,
+    ),
+)
 ```
 
 - [ ] **Step 3: Prove no migration was produced**
@@ -315,7 +317,9 @@ def test_each_delay_stays_inside_a_bound_that_doubles():
 
 def test_the_bound_stops_growing_at_the_cap():
     policy = RetryPolicy(retries=10, random=Random(0))
-    assert max(policy.delay_for(9) for _ in range(200)) <= DEFAULT_RETRY_POLICY.max_delay
+    assert (
+        max(policy.delay_for(9) for _ in range(200)) <= DEFAULT_RETRY_POLICY.max_delay
+    )
 
 
 def test_a_policy_carries_its_own_randomness():
@@ -576,7 +580,9 @@ def test_a_terminal_failure_is_raised_untouched_and_never_delayed(
     #: Filtered by logger name: pytest attaches caplog's handler to the root
     #: logger for the whole test as well, so any WARNING from a propagating
     #: django.* logger would redden a bare `caplog.records == []`.
-    assert [record for record in caplog.records if record.name.startswith("games")] == []
+    assert [
+        record for record in caplog.records if record.name.startswith("games")
+    ] == []
 
 
 @pytest.mark.django_db(transaction=True)
@@ -606,7 +612,9 @@ def test_each_retry_is_logged(capture_games_logger):
         run_in_transaction(operation, policy=policy)
 
     #: One line per retry, none for the exhaustion: the exception is that record.
-    retry_logs = [record for record in caplog.records if record.name.startswith("games")]
+    retry_logs = [
+        record for record in caplog.records if record.name.startswith("games")
+    ]
     assert len(retry_logs) == 3
     assert "40P01" in retry_logs[0].getMessage()
 ```

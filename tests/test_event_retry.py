@@ -1,12 +1,16 @@
 from random import Random
 
 import pytest
-from django.db import IntegrityError, OperationalError
+from django.db import IntegrityError, OperationalError, transaction
 
+from games.events.idempotency import IdempotencyKeyMismatch
 from games.events.retry import (
     DEFAULT_RETRY_POLICY,
+    NestedTransactionNotSupported,
+    RetryBudgetExhausted,
     RetryPolicy,
     is_retryable,
+    run_in_transaction,
 )
 from games.models import LIBRARY_EVENT_SEQUENCE_CONSTRAINT
 
@@ -105,7 +109,9 @@ def test_each_delay_stays_inside_a_bound_that_doubles():
 
 def test_the_bound_stops_growing_at_the_cap():
     policy = RetryPolicy(retries=10, random=Random(0))
-    assert max(policy.delay_for(9) for _ in range(200)) <= DEFAULT_RETRY_POLICY.max_delay
+    assert (
+        max(policy.delay_for(9) for _ in range(200)) <= DEFAULT_RETRY_POLICY.max_delay
+    )
 
 
 def test_a_policy_carries_its_own_randomness():
@@ -114,3 +120,125 @@ def test_a_policy_carries_its_own_randomness():
     first = RetryPolicy(random=Random(7))
     second = RetryPolicy(random=Random(7))
     assert first.delay_for(0) == second.delay_for(0)
+
+
+class RecordingSleep:
+    """Stands in for time.sleep, so the suite never actually waits."""
+
+    def __init__(self) -> None:
+        self.delays: list[float] = []
+
+    def __call__(self, seconds: float) -> None:
+        self.delays.append(seconds)
+
+
+def recording_policy(**overrides) -> tuple[RetryPolicy, RecordingSleep]:
+    sleeper = RecordingSleep()
+    return RetryPolicy(sleep=sleeper, random=Random(0), **overrides), sleeper
+
+
+def games_records(caplog):
+    #: pytest attaches caplog's handler to the root logger for the whole test
+    #: as well, so any WARNING from a propagating django.* logger would show up
+    #: in an unfiltered caplog.records.
+    return [record for record in caplog.records if record.name.startswith("games")]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_it_returns_what_the_operation_returns():
+    assert run_in_transaction(lambda: "recorded") == "recorded"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_it_refuses_to_retry_beneath_another_transaction():
+    with (
+        transaction.atomic(),
+        pytest.raises(NestedTransactionNotSupported),
+    ):
+        run_in_transaction(lambda: "never reached")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_retryable_failure_that_clears_is_retried_and_succeeds():
+    policy, sleeper = recording_policy()
+    attempts = []
+
+    def operation():
+        attempts.append(len(attempts))
+        if len(attempts) < 3:
+            raise wrapped(OperationalError, "40P01")
+        return "recorded"
+
+    assert run_in_transaction(operation, policy=policy) == "recorded"
+    assert len(attempts) == 3
+    assert len(sleeper.delays) == 2
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_always_failing_retryable_error_exhausts_the_budget():
+    policy, sleeper = recording_policy()
+    attempts = []
+
+    def operation():
+        attempts.append(len(attempts))
+        raise wrapped(OperationalError, "40001")
+
+    with pytest.raises(RetryBudgetExhausted) as raised:
+        run_in_transaction(operation, policy=policy)
+
+    #: Three retries after the first attempt, per the charter.
+    assert len(attempts) == 4
+    assert raised.value.attempts == 4
+    assert len(sleeper.delays) == 3
+    assert isinstance(raised.value.__cause__, OperationalError)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_terminal_failure_is_raised_untouched_and_never_delayed(
+    capture_games_logger,
+):
+    policy, sleeper = recording_policy()
+    attempts = []
+
+    def operation():
+        attempts.append(len(attempts))
+        raise wrapped(IntegrityError, "23505", "unique_library_idempotency_key")
+
+    with capture_games_logger() as caplog, pytest.raises(IntegrityError):
+        run_in_transaction(operation, policy=policy)
+
+    assert len(attempts) == 1
+    assert sleeper.delays == []
+    assert games_records(caplog) == []
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_conflict_is_neither_retried_nor_reclassified():
+    policy, sleeper = recording_policy()
+    attempts = []
+
+    def operation():
+        attempts.append(len(attempts))
+        raise IdempotencyKeyMismatch("the key already recorded something else")
+
+    with pytest.raises(IdempotencyKeyMismatch):
+        run_in_transaction(operation, policy=policy)
+
+    assert len(attempts) == 1
+    assert sleeper.delays == []
+
+
+@pytest.mark.django_db(transaction=True)
+def test_each_retry_is_logged(capture_games_logger):
+    policy, _ = recording_policy()
+
+    def operation():
+        raise wrapped(OperationalError, "40P01")
+
+    with capture_games_logger() as caplog, pytest.raises(RetryBudgetExhausted):
+        run_in_transaction(operation, policy=policy)
+
+    #: One line per retry, none for the exhaustion: the exception is that record.
+    retry_logs = games_records(caplog)
+    assert len(retry_logs) == 3
+    assert "40P01" in retry_logs[0].getMessage()

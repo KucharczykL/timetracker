@@ -11,8 +11,10 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from random import Random
 
+from django.db import IntegrityError, OperationalError, router, transaction
+
 from games.events.conflicts import CommandConflict
-from games.models import LIBRARY_EVENT_SEQUENCE_CONSTRAINT
+from games.models import LIBRARY_EVENT_SEQUENCE_CONSTRAINT, LibraryEvent
 
 logger = logging.getLogger("games")
 
@@ -88,3 +90,52 @@ def is_retryable(error: Exception) -> bool:
     if sqlstate == UNIQUE_VIOLATION:
         return _constraint_name(error) == LIBRARY_EVENT_SEQUENCE_CONSTRAINT
     return False
+
+
+def run_in_transaction[T](
+    operation: Callable[[], T],
+    *,
+    policy: RetryPolicy = DEFAULT_RETRY_POLICY,
+) -> T:
+    """Run `operation` in a transaction, re-running it when PostgreSQL kills
+    the transaction for a reason another attempt could clear.
+
+    `operation` may run up to `policy.retries + 1` times, so it must be
+    re-runnable from scratch and must have no effects outside the database: no
+    mail, no file writes, no outbound calls. It must not rely on in-memory model
+    state surviving a rollback either -- Django leaves `pk` set on an object
+    whose insert was rolled back. Callbacks registered with
+    `transaction.on_commit` are safe: a failed attempt discards its own.
+    """
+    #: One alias for the check and the transaction. Unqualified atomic() would
+    #: open on the default connection while lock_stream inspects the routed one.
+    alias = router.db_for_write(LibraryEvent)
+    if transaction.get_connection(alias).in_atomic_block:
+        raise NestedTransactionNotSupported(
+            "run_in_transaction opens the transaction it retries: rolling back "
+            "here could not undo what an enclosing transaction already did, so "
+            "its retries would be weaker than they look."
+        )
+
+    attempt = 0
+    while True:
+        try:
+            with transaction.atomic(using=alias):
+                return operation()
+        except (IntegrityError, OperationalError) as error:
+            #: A CommandConflict is neither of these, so a key mismatch leaves
+            #: by the ordinary route without a case of its own.
+            if not is_retryable(error):
+                raise
+            if attempt == policy.retries:
+                raise RetryBudgetExhausted(attempt + 1) from error
+            constraint_name = _constraint_name(error)
+            logger.warning(
+                "Retrying a command after SQLSTATE %s%s (attempt %d of %d).",
+                _sqlstate(error),
+                f" on {constraint_name}" if constraint_name else "",
+                attempt + 1,
+                policy.retries + 1,
+            )
+            policy.sleep(policy.delay_for(attempt))
+            attempt += 1
