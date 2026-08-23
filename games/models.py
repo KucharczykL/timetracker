@@ -1360,6 +1360,11 @@ class LibraryEventStreamHead(models.Model):
         return f"Event stream {self.id}"
 
 
+#: Named here rather than inline so the retry classifier, which must recognise
+#: this collision by name, cannot drift from the constraint it matches.
+LIBRARY_EVENT_SEQUENCE_CONSTRAINT = "unique_library_event_stream_sequence"
+
+
 class LibraryEvent(models.Model):
     """One recorded change to a private library, carrying enough envelope to
     replay and explain itself without reading any projection table."""
@@ -1368,7 +1373,7 @@ class LibraryEvent(models.Model):
         constraints = (
             models.UniqueConstraint(
                 fields=("stream", "sequence"),
-                name="unique_library_event_stream_sequence",
+                name=LIBRARY_EVENT_SEQUENCE_CONSTRAINT,
             ),
             models.CheckConstraint(
                 condition=Q(sequence__gte=1),
