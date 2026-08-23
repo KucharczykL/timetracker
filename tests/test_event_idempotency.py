@@ -16,6 +16,7 @@ from django.db import (
 from django.db.migrations.loader import MigrationLoader
 
 from games.events.append import AppendResult, NewEvent, lock_stream
+from games.events.conflicts import CommandConflict
 from games.events.idempotency import (
     FINGERPRINT_VERSION,
     IdempotencyKeyMismatch,
@@ -381,3 +382,9 @@ def test_the_idempotency_migration_is_reversible():
         isinstance(operation, migrations.RunPython)
         for operation in migration.operations
     )
+
+
+def test_a_key_mismatch_is_a_command_conflict():
+    #: A dispatcher catches one base for "another command was in the way" and
+    #: may narrow to the leaves for two different messages.
+    assert issubclass(IdempotencyKeyMismatch, CommandConflict)

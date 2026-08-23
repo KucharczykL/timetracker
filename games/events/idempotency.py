@@ -24,6 +24,7 @@ from games.events.append import (
     SourceMetadata,
     lock_stream,
 )
+from games.events.conflicts import CommandConflict
 from games.models import LibraryIdempotencyRecord, UserLibrary
 from timetracker.temporal import TemporalValue
 
@@ -36,12 +37,12 @@ type RequestFingerprint = str  # "9f86d081884c7d65..." (sha256 hex)
 FINGERPRINT_VERSION = 1
 
 
-class IdempotencyKeyMismatch(Exception):
+class IdempotencyKeyMismatch(CommandConflict):
     """Raised when a key already belongs to a command with different input.
 
     Not a ValueError: `LockedStream.append` raises that for an empty event
-    sequence, and #663 must turn a conflict into a visible retry prompt while
-    letting that programming error surface as the bug it is.
+    sequence, and a conflict must become a visible retry prompt while letting
+    that programming error surface as the bug it is.
     """
 
 

@@ -54,7 +54,7 @@ recorded here so it is not re-proposed.
 
 | Not here | Owner |
 | --- | --- |
-| Retrying and classifying `IdempotencyKeyMismatch` into a visible conflict | #663 |
+| Retrying and classifying `IdempotencyKeyMismatch` into a visible conflict | #663 (delivered) |
 | Deciding what a command's canonical input *is* | #664 |
 | Command objects, authentication, authorization | #664 |
 | Projectors, and skipping them on a replay | #665 |
@@ -222,6 +222,15 @@ already raises `ValueError` for an empty event sequence, and #663 — the
 designated consumer — needs to turn a mismatch into a user-visible conflict
 while letting an empty-build programming error surface as a bug. One `except
 ValueError` cannot do both.
+
+> **Amended by [#663](https://github.com/KucharczykL/timetracker/issues/663).**
+> `IdempotencyKeyMismatch` now derives from `games.events.conflicts.CommandConflict`
+> rather than `Exception`, so a dispatcher can catch one base for both conflicts
+> — this one and `RetryBudgetExhausted` — while still narrowing to the leaf when
+> the two need different copy. #663 re-parented rather than wrapping, so callers
+> of `idempotent_append` never learn a second name for one condition. The
+> reasoning above is undisturbed: `CommandConflict` is not a `ValueError` either,
+> so an empty build still surfaces as the bug it is.
 
 It is raised from a `SELECT`, before any write. On this path `lock_stream`
 performs no write either — a record can only exist if some earlier append
