@@ -2,8 +2,8 @@
 
 [#661](https://github.com/KucharczykL/timetracker/issues/661),
 [#662](https://github.com/KucharczykL/timetracker/issues/662), and
-[#663](https://github.com/KucharczykL/timetracker/issues/663) built an event
-kernel with no caller: a stream that locks, a key that deduplicates, a
+[#663](https://github.com/KucharczykL/timetracker/issues/663) built the pieces of a
+write path with no caller: a stream that locks, a key that deduplicates, a
 transaction that retries. Each one deferred the same questions to this issue —
 what a command *is*, who is allowed to issue one, and which library it acts on.
 
@@ -344,12 +344,12 @@ as a raw `IntegrityError`. `dispatch` rejects both up front.
 
 ### System writes are not expressible here
 
-`dispatch` requires a `User`. `actor=None` — which the kernel accepts, for
+`dispatch` requires a `User`. `actor=None` — which `idempotent_append` accepts, for
 migration and import writes — cannot be expressed at this boundary at all.
 
 "Authenticated command dispatch" is then literally true, and a non-human writer
 has to be a deliberate decision rather than a default argument. Migrations and
-backfills keep calling the kernel directly; #738's bypass audit decides which of
+backfills keep calling `idempotent_append` directly; #738's bypass audit decides which of
 them deserve a door.
 
 ### It stops at the exception
@@ -367,13 +367,16 @@ request, a page, and a user to be shown to.
 ```python
 # games/events/dispatch.py
 
+
 class CommandName(StrEnum):
-    #: Kernel-test placeholders. #671 adds real members and deletes these.
-    TEST_KERNEL_BASIC = "test.kernel.basic"
-    TEST_KERNEL_TWIN = "test.kernel.twin"
-    TEST_KERNEL_TEMPORAL = "test.kernel.temporal"
-    TEST_KERNEL_UNSHAPED = "test.kernel.unshaped"
-    TEST_KERNEL_FLAKY = "test.kernel.flaky"
+    #: Placeholders exercising dispatch. #671 adds real members and deletes
+    #: these.
+    TEST_COMMAND_BASIC = "test.command.basic"
+    TEST_COMMAND_TWIN = "test.command.twin"
+    TEST_COMMAND_TEMPORAL = "test.command.temporal"
+    TEST_COMMAND_UNSHAPED = "test.command.unshaped"
+    TEST_COMMAND_REJECTING = "test.command.rejecting"
+    TEST_COMMAND_FLAKY = "test.command.flaky"
 
 
 class CommandNotPermitted(Exception): ...
@@ -447,7 +450,7 @@ Dispatch:
   range, and appends nothing
 - the same key with a changed field value raises `IdempotencyKeyMismatch`
 - **the same key and identical field values under a different `CommandName`
-  raises `IdempotencyKeyMismatch`** — `TEST_KERNEL_TWIN` exists to be the twin
+  raises `IdempotencyKeyMismatch`** — `TEST_COMMAND_TWIN` exists to be the twin
 - a command with a `TemporalValue` field: equal values replay, different values
   mismatch — the shallow read reaches `_encode_command_value`
 - a command that is not a dataclass raises `TypeError`
@@ -519,7 +522,7 @@ rather than by the type checker.
 
 **A command defined outside this repository.** The allowlist is a closed enum;
 a plugin cannot add a member. Deliberate — the audit trail's vocabulary is fixed
-and reviewable. The kernel-test members are the cost of that choice arriving
+and reviewable. The test-only members are the cost of that choice arriving
 before any real command; #671 deletes them.
 
 **A non-human writer with a proper envelope.** Imports and migrations bypass the
@@ -546,7 +549,7 @@ Needing a real command first, so they follow #671:
   evented view.
 - #906 — decide what a no-op command means: `CommandRejected`, or a success
   result with an empty range.
-- #907 — delete the `TEST_KERNEL_*` allowlist members.
+- #907 — delete the `TEST_COMMAND_*` allowlist members.
 
 Independent of #671:
 

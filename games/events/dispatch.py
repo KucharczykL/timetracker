@@ -1,5 +1,8 @@
-"""The kernel's front door: a named command, an actor allowed to issue it, and
-the library it acts on.
+"""The one entry point for recording a change to a library: a named command,
+an actor allowed to issue it, and the library it acts on.
+
+It composes the append, idempotency, and retry modules beside it, and is the
+only thing that should.
 
 A command is a frozen dataclass whose fields *are* its canonical input, so the
 idempotency fingerprint cannot fall out of step with what the command actually
@@ -56,13 +59,13 @@ class CommandName(StrEnum):
     renaming a class cannot invalidate idempotency keys already issued under it.
     """
 
-    #: Placeholders exercising the kernel until real commands exist.
-    TEST_KERNEL_BASIC = "test.kernel.basic"
-    TEST_KERNEL_TWIN = "test.kernel.twin"
-    TEST_KERNEL_TEMPORAL = "test.kernel.temporal"
-    TEST_KERNEL_UNSHAPED = "test.kernel.unshaped"
-    TEST_KERNEL_REJECTING = "test.kernel.rejecting"
-    TEST_KERNEL_FLAKY = "test.kernel.flaky"
+    #: Placeholders exercising dispatch until real commands exist.
+    TEST_COMMAND_BASIC = "test.command.basic"
+    TEST_COMMAND_TWIN = "test.command.twin"
+    TEST_COMMAND_TEMPORAL = "test.command.temporal"
+    TEST_COMMAND_UNSHAPED = "test.command.unshaped"
+    TEST_COMMAND_REJECTING = "test.command.rejecting"
+    TEST_COMMAND_FLAKY = "test.command.flaky"
 
 
 @dataclass(frozen=True, slots=True)

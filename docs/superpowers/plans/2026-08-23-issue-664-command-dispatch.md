@@ -2,14 +2,14 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Give the #661/#662/#663 event kernel its single authenticated caller — a
+**Goal:** Give the #661/#662/#663 write path its single authenticated caller — a
 `dispatch()` that turns a named, frozen-dataclass command plus an actor and a
 library into an appended, idempotent, retried range of events.
 
 **Architecture:** One new module, `games/events/dispatch.py`, composing the three
-existing kernel modules in one direction: `dispatch` authorises → derives
+existing modules in one direction: `dispatch` authorises → derives
 canonical input → `run_in_transaction` → `idempotent_append` → `lock_stream` →
-`command.build(context)`. Nothing in the kernel changes. No migration, no schema
+`command.build(context)`. Nothing beneath it changes. No migration, no schema
 change, no data change.
 
 **Spec:** `docs/superpowers/specs/2026-08-23-issue-664-command-dispatch-design.md`
@@ -40,8 +40,8 @@ carries the *what* and the order.
 **Create `games/events/dispatch.py`** — the whole deliverable. Everything public
 lives here: `CommandName`, `Command`, `CommandContext`, `CommandResult`,
 `CommandNotPermitted`, `CommandRejected`, `dispatch`. It sits beside
-`append.py` / `idempotency.py` / `retry.py` / `conflicts.py` as the kernel's front
-door and imports from all four.
+`append.py` / `idempotency.py` / `retry.py` / `conflicts.py` as the write path's one
+entry point, and imports from all four.
 
 **Create `tests/test_command_dispatch.py`** — one test module. Its module-level
 command classes are shared scaffolding for Tasks 1–4, so they cannot be split
@@ -62,9 +62,9 @@ would raise at import.
 **Interfaces:**
 - Consumes: `games.events.append.NewEvent` (the return element type of `build`).
 - Produces:
-  - `class CommandName(StrEnum)` with members `TEST_KERNEL_BASIC`,
-    `TEST_KERNEL_TWIN`, `TEST_KERNEL_TEMPORAL`, `TEST_KERNEL_UNSHAPED`,
-    `TEST_KERNEL_FLAKY` (values `"test.kernel.basic"` etc.).
+  - `class CommandName(StrEnum)` with members `TEST_COMMAND_BASIC`,
+    `TEST_COMMAND_TWIN`, `TEST_COMMAND_TEMPORAL`, `TEST_COMMAND_UNSHAPED`,
+    `TEST_COMMAND_REJECTING`, `TEST_COMMAND_FLAKY` (values `"test.command.basic"` etc.).
   - `class Command(ABC)` with `command_name: ClassVar[CommandName]` and
     `@abstractmethod def build(self, context: CommandContext) -> Sequence[NewEvent]`.
     `CommandContext` arrives in Task 3; until then annotate it as a forward
@@ -95,14 +95,14 @@ Module-level scaffolding first (every later task reuses it):
 ```python
 @dataclass(frozen=True, slots=True)
 class BasicCommand(Command):
-    command_name: ClassVar[CommandName] = CommandName.TEST_KERNEL_BASIC
+    command_name: ClassVar[CommandName] = CommandName.TEST_COMMAND_BASIC
     label: str
     count: int
 
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
         return [
             NewEvent(
-                event_type="test.kernel.recorded",
+                event_type="test.command.recorded",
                 aggregate_type="test",
                 aggregate_id=uuid.uuid7(),
                 payload={"label": self.label, "count": self.count},
@@ -110,7 +110,7 @@ class BasicCommand(Command):
         ]
 ```
 
-`TwinCommand` is `BasicCommand`'s fields exactly, under `TEST_KERNEL_TWIN`.
+`TwinCommand` is `BasicCommand`'s fields exactly, under `TEST_COMMAND_TWIN`.
 
 Tests:
 
@@ -120,7 +120,7 @@ Tests:
 - `test_an_abstract_base_need_not_name_itself` — a subclass that does *not*
   implement `build` defines cleanly. This is the `inspect.isabstract` branch.
 - `test_two_classes_cannot_claim_one_name` — inside `pytest.raises(TypeError)`,
-  define a second command under `CommandName.TEST_KERNEL_BASIC`. It must be
+  define a second command under `CommandName.TEST_COMMAND_BASIC`. It must be
   defined in the function body: that is what makes its `(module, qualname)`
   differ from `BasicCommand`'s and read as a real collision.
 - `test_a_slotted_command_is_not_a_duplicate_of_itself` — assert
@@ -137,7 +137,7 @@ Expected: collection error, `ImportError: cannot import name 'Command' from 'gam
 
 - [ ] **Step 3: Implement**
 
-`CommandName` as a `StrEnum`. Its members carry a comment marking them as kernel-test
+`CommandName` as a `StrEnum`. Its members carry a comment marking them as test-only
 placeholders that #671 deletes.
 
 `Command(ABC)` with the `ClassVar` and the abstract `build`. The registry is a
@@ -220,9 +220,9 @@ and `fields()` fails `make check` with an `arg-type` error without the narrowing
   `TemporalValue` field; assert `canonical_command_input(...)["fields"]["when"]`
   **is the `TemporalValue` instance**, not a dict. Then assert
   `fingerprint_command_input` of it succeeds and differs from the same command
-  with a different temporal value. Use `TEST_KERNEL_TEMPORAL`.
+  with a different temporal value. Use `TEST_COMMAND_TEMPORAL`.
 - `test_a_command_that_is_not_a_dataclass_is_rejected` — a plain-class command
-  under `TEST_KERNEL_UNSHAPED` implementing `build`; `pytest.raises(TypeError)`.
+  under `TEST_COMMAND_UNSHAPED` implementing `build`; `pytest.raises(TypeError)`.
 - `test_the_command_name_enters_the_fingerprint` — `fingerprint_command_input` of
   `BasicCommand(label="x", count=1)` differs from that of
   `TwinCommand(label="x", count=1)`, whose fields are identical.
@@ -419,7 +419,7 @@ throughout; combining it with the `db`-based `owned_library` fixture works.
   `pytest.raises(IdempotencyKeyMismatch)`.
 - `test_repeating_a_key_under_another_command_name_is_refused` — `BasicCommand`
   then `TwinCommand` with identical field values and the same key;
-  `pytest.raises(IdempotencyKeyMismatch)`. This is why `TEST_KERNEL_TWIN` exists.
+  `pytest.raises(IdempotencyKeyMismatch)`. This is why `TEST_COMMAND_TWIN` exists.
 - `test_build_receives_the_dispatchers_library_and_actor` — a command that records
   `context.library.pk` / `context.actor.pk` into its event payload; assert both.
 - `test_a_rejected_command_appends_nothing` — a `build` raising `CommandRejected`;
@@ -431,7 +431,7 @@ throughout; combining it with the `db`-based `owned_library` fixture works.
 - `test_dispatch_refuses_to_nest` — inside `transaction.atomic()`,
   `pytest.raises(NestedTransactionNotSupported)`.
 - `test_a_retryable_failure_is_retried_once` — `FlakyCommand`
-  (`TEST_KERNEL_FLAKY`) whose `build` raises `wrapped(OperationalError, "40P01")`
+  (`TEST_COMMAND_FLAKY`) whose `build` raises `wrapped(OperationalError, "40P01")`
   on its first call and succeeds on the second. Reuse `wrapped` from
   `tests/test_event_retry.py` — import it or copy the three-class helper.
   Assert one `CommandResult` and exactly one set of events.
@@ -456,8 +456,16 @@ PYTEST_WORKERS=0 make test ARGS="tests/test_command_dispatch.py -x"
 - [ ] **Step 3: Implement**
 
 ```python
-def dispatch(command, *, actor, library, idempotency_key, correlation_id=None,
-             source_metadata=None, policy=DEFAULT_RETRY_POLICY) -> CommandResult:
+def dispatch(
+    command,
+    *,
+    actor,
+    library,
+    idempotency_key,
+    correlation_id=None,
+    source_metadata=None,
+    policy=DEFAULT_RETRY_POLICY,
+) -> CommandResult:
     authorize(actor, library)
     validate_idempotency_key(idempotency_key)
     #: Once per dispatch, so every attempt of a retried command shares it.

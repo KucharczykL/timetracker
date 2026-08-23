@@ -46,14 +46,14 @@ def staff_user(django_user_model, db):
 
 @dataclass(frozen=True, slots=True)
 class BasicCommand(Command):
-    command_name: ClassVar[CommandName] = CommandName.TEST_KERNEL_BASIC
+    command_name: ClassVar[CommandName] = CommandName.TEST_COMMAND_BASIC
     label: str
     count: int
 
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
         return [
             NewEvent(
-                event_type="test.kernel.recorded",
+                event_type="test.command.recorded",
                 aggregate_type="test",
                 aggregate_id=uuid.uuid7(),
                 #: Records what the context handed it, so a test can assert the
@@ -73,14 +73,14 @@ class TwinCommand(Command):
     """BasicCommand's fields exactly, under another name, so a shared key can
     be shown to be refused on the name alone."""
 
-    command_name: ClassVar[CommandName] = CommandName.TEST_KERNEL_TWIN
+    command_name: ClassVar[CommandName] = CommandName.TEST_COMMAND_TWIN
     label: str
     count: int
 
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
         return [
             NewEvent(
-                event_type="test.kernel.recorded",
+                event_type="test.command.recorded",
                 aggregate_type="test",
                 aggregate_id=uuid.uuid7(),
                 payload={"label": self.label, "count": self.count},
@@ -90,13 +90,13 @@ class TwinCommand(Command):
 
 @dataclass(frozen=True, slots=True)
 class TemporalCommand(Command):
-    command_name: ClassVar[CommandName] = CommandName.TEST_KERNEL_TEMPORAL
+    command_name: ClassVar[CommandName] = CommandName.TEST_COMMAND_TEMPORAL
     when: TemporalValue
 
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
         return [
             NewEvent(
-                event_type="test.kernel.recorded",
+                event_type="test.command.recorded",
                 aggregate_type="test",
                 aggregate_id=uuid.uuid7(),
                 payload={},
@@ -108,7 +108,7 @@ class TemporalCommand(Command):
 class UnshapedCommand(Command):
     """A command that is not a dataclass, and so has no fields to fingerprint."""
 
-    command_name: ClassVar[CommandName] = CommandName.TEST_KERNEL_UNSHAPED
+    command_name: ClassVar[CommandName] = CommandName.TEST_COMMAND_UNSHAPED
 
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
         return []
@@ -116,7 +116,7 @@ class UnshapedCommand(Command):
 
 @dataclass(frozen=True, slots=True)
 class RejectingCommand(Command):
-    command_name: ClassVar[CommandName] = CommandName.TEST_KERNEL_REJECTING
+    command_name: ClassVar[CommandName] = CommandName.TEST_COMMAND_REJECTING
 
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
         raise CommandRejected("Current state does not permit this.")
@@ -133,7 +133,7 @@ class FlakyCommand(Command):
     once and then succeed.
     """
 
-    command_name: ClassVar[CommandName] = CommandName.TEST_KERNEL_FLAKY
+    command_name: ClassVar[CommandName] = CommandName.TEST_COMMAND_FLAKY
     attempts: ClassVar[int] = 0
 
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
@@ -142,7 +142,7 @@ class FlakyCommand(Command):
             raise wrapped(OperationalError, "40P01")
         return [
             NewEvent(
-                event_type="test.kernel.recorded",
+                event_type="test.command.recorded",
                 aggregate_type="test",
                 aggregate_id=uuid.uuid7(),
                 payload={"attempt": type(self).attempts},
@@ -171,7 +171,7 @@ def test_two_classes_cannot_claim_one_name():
 
         @dataclass(frozen=True, slots=True)
         class Impostor(Command):
-            command_name: ClassVar[CommandName] = CommandName.TEST_KERNEL_BASIC
+            command_name: ClassVar[CommandName] = CommandName.TEST_COMMAND_BASIC
 
             def build(self, context: CommandContext) -> Sequence[NewEvent]:
                 return []
@@ -188,7 +188,7 @@ def test_canonical_input_nests_name_and_fields():
     #: Nested rather than merged: a flat dict would let a command field named
     #: "command" replace the command's own identity.
     assert canonical_command_input(BasicCommand(label="x", count=1)) == {
-        "command": "test.kernel.basic",
+        "command": "test.command.basic",
         "fields": {"label": "x", "count": 1},
     }
 
