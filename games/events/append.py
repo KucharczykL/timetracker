@@ -18,8 +18,8 @@ from django.utils import timezone
 
 from games.events.envelope import RecordedEvent
 from games.events.projection import DEFAULT_REGISTRY, ProjectorRegistry
+from games.events.vocabulary import NewEvent
 from games.models import LibraryEvent, LibraryEventStreamHead, UserLibrary
-from timetracker.temporal import TemporalValue
 
 type SourceMetadata = dict[str, Any]  # {"origin": "manual"}
 
@@ -56,20 +56,6 @@ def canonical_json[T](value: T, *, label: str) -> T:
             f"{value!r} would come back as {round_tripped!r}."
         )
     return round_tripped
-
-
-@dataclass(frozen=True, slots=True)
-class NewEvent:
-    """One fact to append. Carries no stream, sequence, or library: those are
-    the stream's to assign, and a caller has no way to express them."""
-
-    event_type: str
-    aggregate_type: str
-    aggregate_id: uuid.UUID
-    payload: dict[str, Any]
-    payload_schema_version: int = 1
-    effective_time: TemporalValue | None = None
-    causation_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,11 +109,11 @@ class LockedStream:
                 library_id=head.library_id,
                 stream=head,
                 sequence=first_sequence + offset,
-                event_type=event.event_type,
-                aggregate_type=event.aggregate_type,
+                event_type=event.spec.event_type,
+                aggregate_type=event.spec.aggregate_type,
                 aggregate_id=event.aggregate_id,
                 payload=payloads[offset],
-                payload_schema_version=event.payload_schema_version,
+                payload_schema_version=event.spec.version,
                 recorded_at=recorded_at,
                 effective_time=event.effective_time,
                 actor=actor,

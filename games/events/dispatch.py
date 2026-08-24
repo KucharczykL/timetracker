@@ -31,7 +31,7 @@ from typing import Any, ClassVar, cast
 
 from django.contrib.auth.models import User
 
-from games.events.append import AppendResult, LockedStream, NewEvent, SourceMetadata
+from games.events.append import AppendResult, LockedStream, SourceMetadata
 from games.events.idempotency import (
     IdempotencyKey,
     ReplayedAppend,
@@ -39,6 +39,7 @@ from games.events.idempotency import (
 )
 from games.events.projection import DEFAULT_REGISTRY, ProjectorRegistry
 from games.events.retry import DEFAULT_RETRY_POLICY, RetryPolicy, run_in_transaction
+from games.events.vocabulary import NewEvent
 from games.models import LibraryEvent, UserLibrary
 from timetracker.uuidv7 import parse_uuidv7
 

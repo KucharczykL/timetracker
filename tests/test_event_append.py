@@ -2,7 +2,7 @@ import uuid
 from datetime import date
 from decimal import Decimal
 from threading import Event, Thread
-from typing import Any
+from typing import Any, TypedDict
 
 import psycopg
 import pytest
@@ -11,15 +11,32 @@ from django.db import close_old_connections, connection, transaction
 from games.events.append import (
     AppendResult,
     LockedStream,
-    NewEvent,
     PayloadNotCanonical,
     TransactionRequired,
     lock_stream,
 )
+from games.events.vocabulary import EventSpec, NewEvent
 from games.models import LibraryEvent, LibraryEventStreamHead
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db
+
+
+class ProbePayload(TypedDict):
+    probe: bool
+
+
+PROBE_RECORDED = EventSpec(
+    "library.probe.recorded", aggregate_type="probe", payload=ProbePayload
+)
+#: A second spec, so the row's event type, aggregate type, and schema version
+#: are each read off the spec rather than off one shared default.
+PLAYTHROUGH_STARTED = EventSpec(
+    "library.playthrough.started",
+    aggregate_type="playthrough",
+    payload=ProbePayload,
+    version=2,
+)
 
 
 @pytest.fixture
@@ -31,8 +48,7 @@ def second_library(django_user_model):
 
 def make_new_event(**overrides: Any) -> NewEvent:
     fields: dict[str, Any] = {
-        "event_type": "library.probe.recorded",
-        "aggregate_type": "probe",
+        "spec": PROBE_RECORDED,
         "aggregate_id": uuid.uuid7(),
         "payload": {"probe": True},
     }
@@ -175,11 +191,9 @@ def test_event_fields_round_trip(owned_library):
             owned_library,
             [
                 make_new_event(
-                    event_type="library.playthrough.started",
-                    aggregate_type="playthrough",
+                    spec=PLAYTHROUGH_STARTED,
                     aggregate_id=aggregate_id,
                     payload={"nested": {"id": str(aggregate_id)}},
-                    payload_schema_version=2,
                     effective_time=effective_time,
                     causation_id=causation_id,
                 )

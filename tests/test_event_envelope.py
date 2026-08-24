@@ -8,16 +8,32 @@ projector should see it.
 import dataclasses
 import uuid
 from datetime import UTC, datetime
+from typing import TypedDict
 
 import pytest
 from django.db import transaction
 
-from games.events.append import NewEvent, lock_stream
+from games.events.append import lock_stream
 from games.events.envelope import DeferredRowRefused, RecordedEvent
+from games.events.vocabulary import EventSpec, NewEvent
 from games.models import LibraryEvent
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db
+
+
+class ProbePayload(TypedDict):
+    probe: bool
+
+
+#: Version 3 so the recorded version is distinct from every other field, the
+#: same reason the rest of this append's values are.
+PROBE_RECORDED = EventSpec(
+    "library.probe.recorded",
+    aggregate_type="probe",
+    payload=ProbePayload,
+    version=3,
+)
 
 
 def append_one(library, actor=None) -> LibraryEvent:
@@ -27,11 +43,9 @@ def append_one(library, actor=None) -> LibraryEvent:
     test pass over a `from_row` that read the wrong one.
     """
     event = NewEvent(
-        event_type="library.probe.recorded",
-        aggregate_type="probe",
+        spec=PROBE_RECORDED,
         aggregate_id=uuid.uuid7(),
         payload={"probe": True, "tags": ["a", "b"]},
-        payload_schema_version=3,
         effective_time=TemporalValue.parse("2024-05-06"),
         causation_id=uuid.uuid7(),
     )

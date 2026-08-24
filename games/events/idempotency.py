@@ -20,12 +20,12 @@ from django.contrib.auth.models import User
 from games.events.append import (
     AppendResult,
     LockedStream,
-    NewEvent,
     SourceMetadata,
     lock_stream,
 )
 from games.events.conflicts import CommandConflict
 from games.events.projection import DEFAULT_REGISTRY, ProjectorRegistry
+from games.events.vocabulary import NewEvent
 from games.models import LibraryIdempotencyRecord, UserLibrary
 from timetracker.temporal import TemporalValue
 

@@ -5,12 +5,12 @@ declared for a test can reach `DEFAULT_REGISTRY` or another test.
 """
 
 import uuid
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypedDict
 
 import pytest
 from django.db import transaction
 
-from games.events.append import AppendResult, NewEvent, lock_stream
+from games.events.append import AppendResult, lock_stream
 from games.events.envelope import RecordedEvent
 from games.events.projection import (
     HandlerMap,
@@ -19,6 +19,7 @@ from games.events.projection import (
     ProjectorRegistry,
 )
 from games.events.replay import ReplayResult, StreamNotContiguous, replay
+from games.events.vocabulary import EventSpec, NewEvent
 from games.models import LibraryEvent, LibraryEventStreamHead
 
 pytestmark = pytest.mark.django_db
@@ -73,10 +74,17 @@ def second_library(django_user_model):
     ).library
 
 
+class ProbePayload(TypedDict):
+    probe: bool
+
+
+PROBE_RECORDED = EventSpec(RECORDED, aggregate_type="probe", payload=ProbePayload)
+PROBE_UNHANDLED = EventSpec(UNHANDLED, aggregate_type="probe", payload=ProbePayload)
+
+
 def make_new_event(**overrides: Any) -> NewEvent:
     fields: dict[str, Any] = {
-        "event_type": RECORDED,
-        "aggregate_type": "probe",
+        "spec": PROBE_RECORDED,
         "aggregate_id": uuid.uuid7(),
         "payload": {"probe": True},
     }
@@ -164,7 +172,7 @@ def test_a_stream_starting_after_one_refuses_the_replay(owned_library):
 
 
 def test_an_event_no_family_handles_is_folded_and_applied_to_nothing(owned_library):
-    append(owned_library, [make_new_event(event_type=UNHANDLED)])
+    append(owned_library, [make_new_event(spec=PROBE_UNHANDLED)])
 
     result = replay(owned_library, registry=registry)
 

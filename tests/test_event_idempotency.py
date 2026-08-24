@@ -3,7 +3,7 @@ import uuid
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from threading import Event, Thread
-from typing import Any
+from typing import Any, TypedDict
 
 import pytest
 from django.db import (
@@ -15,7 +15,7 @@ from django.db import (
 )
 from django.db.migrations.loader import MigrationLoader
 
-from games.events.append import AppendResult, NewEvent, lock_stream
+from games.events.append import AppendResult, lock_stream
 from games.events.conflicts import CommandConflict
 from games.events.idempotency import (
     FINGERPRINT_VERSION,
@@ -24,6 +24,7 @@ from games.events.idempotency import (
     fingerprint_command_input,
     idempotent_append,
 )
+from games.events.vocabulary import EventSpec, NewEvent
 from games.models import (
     LibraryEvent,
     LibraryEventStreamHead,
@@ -88,10 +89,18 @@ def test_rejected_records(owned_library, overrides: dict[str, Any]):
         make_record(owned_library, **overrides)
 
 
+class ProbePayload(TypedDict):
+    probe: bool
+
+
+PROBE_RECORDED = EventSpec(
+    "library.probe.recorded", aggregate_type="probe", payload=ProbePayload
+)
+
+
 def make_new_event(**overrides: Any) -> NewEvent:
     fields: dict[str, Any] = {
-        "event_type": "library.probe.recorded",
-        "aggregate_type": "probe",
+        "spec": PROBE_RECORDED,
         "aggregate_id": uuid.uuid7(),
         "payload": {"probe": True},
     }

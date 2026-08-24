@@ -6,7 +6,7 @@ declared for a test can reach `DEFAULT_REGISTRY` or another test.
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypedDict
 
 import pytest
 from django.db import OperationalError, connection, transaction
@@ -14,7 +14,7 @@ from django.test.utils import CaptureQueriesContext
 from test_command_dispatch import BasicCommand
 from test_event_retry import wrapped
 
-from games.events.append import NewEvent, lock_stream
+from games.events.append import lock_stream
 from games.events.dispatch import dispatch
 from games.events.envelope import RecordedEvent
 from games.events.idempotency import idempotent_append
@@ -25,6 +25,7 @@ from games.events.projection import (
     ProjectorFamily,
     ProjectorRegistry,
 )
+from games.events.vocabulary import EventSpec, NewEvent
 from games.models import Device, LibraryEvent, LibraryEventStreamHead
 
 RECORDED = "test.projector.recorded"
@@ -329,10 +330,16 @@ class FlakyProjector(Projector, registry=retry_registry):
     handles: ClassVar[HandlerMap] = {"test.command.recorded": _recorded}
 
 
+class ProbePayload(TypedDict):
+    probe: bool
+
+
+PROBE_RECORDED = EventSpec(RECORDED, aggregate_type="probe", payload=ProbePayload)
+
+
 def make_new_event() -> NewEvent:
     return NewEvent(
-        event_type=RECORDED,
-        aggregate_type="probe",
+        spec=PROBE_RECORDED,
         aggregate_id=uuid.uuid7(),
         payload={"probe": True},
     )

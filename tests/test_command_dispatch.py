@@ -1,14 +1,13 @@
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, fields
-from typing import ClassVar
+from typing import ClassVar, TypedDict
 
 import pytest
 from django.db import OperationalError, transaction
 from test_event_retry import wrapped
 
 from games.events import dispatch as dispatch_module
-from games.events.append import NewEvent
 from games.events.dispatch import (
     Command,
     CommandContext,
@@ -23,6 +22,16 @@ from games.events.dispatch import (
 )
 from games.events.idempotency import IdempotencyKeyMismatch, fingerprint_command_input
 from games.events.retry import NestedTransactionNotSupported
+from games.events.vocabulary import EventSpec, NewEvent
+
+
+class CommandPayload(TypedDict):
+    label: str
+
+
+COMMAND_RECORDED = EventSpec(
+    "test.command.recorded", aggregate_type="test", payload=CommandPayload
+)
 from games.models import LibraryEvent
 from timetracker.temporal import TemporalValue
 
@@ -53,8 +62,7 @@ class BasicCommand(Command):
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
         return [
             NewEvent(
-                event_type="test.command.recorded",
-                aggregate_type="test",
+                spec=COMMAND_RECORDED,
                 aggregate_id=uuid.uuid7(),
                 #: Records what the context handed it, so a test can assert the
                 #: command saw the library and actor dispatch authorized.
@@ -80,8 +88,7 @@ class TwinCommand(Command):
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
         return [
             NewEvent(
-                event_type="test.command.recorded",
-                aggregate_type="test",
+                spec=COMMAND_RECORDED,
                 aggregate_id=uuid.uuid7(),
                 payload={"label": self.label, "count": self.count},
             )
@@ -96,8 +103,7 @@ class TemporalCommand(Command):
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
         return [
             NewEvent(
-                event_type="test.command.recorded",
-                aggregate_type="test",
+                spec=COMMAND_RECORDED,
                 aggregate_id=uuid.uuid7(),
                 payload={},
                 effective_time=self.when,
@@ -142,8 +148,7 @@ class FlakyCommand(Command):
             raise wrapped(OperationalError, "40P01")
         return [
             NewEvent(
-                event_type="test.command.recorded",
-                aggregate_type="test",
+                spec=COMMAND_RECORDED,
                 aggregate_id=uuid.uuid7(),
                 payload={"attempt": type(self).attempts},
             )

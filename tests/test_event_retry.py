@@ -1,6 +1,7 @@
 import uuid
 from random import Random
 from threading import Barrier, Thread
+from typing import TypedDict
 
 import pytest
 from django.db import (
@@ -11,7 +12,7 @@ from django.db import (
 )
 from django.utils import timezone
 
-from games.events.append import AppendResult, NewEvent, lock_stream
+from games.events.append import AppendResult, lock_stream
 from games.events.idempotency import IdempotencyKeyMismatch, idempotent_append
 from games.events.retry import (
     DEFAULT_RETRY_POLICY,
@@ -21,6 +22,7 @@ from games.events.retry import (
     is_retryable,
     run_in_transaction,
 )
+from games.events.vocabulary import EventSpec, NewEvent
 from games.models import (
     LIBRARY_EVENT_SEQUENCE_CONSTRAINT,
     LibraryEvent,
@@ -258,10 +260,18 @@ def test_each_retry_is_logged(capture_games_logger):
     assert "40P01" in retry_logs[0].getMessage()
 
 
+class ProbePayload(TypedDict):
+    probe: bool
+
+
+PROBE_RECORDED = EventSpec(
+    "probe.recorded", aggregate_type="probe", payload=ProbePayload
+)
+
+
 def one_event() -> NewEvent:
     return NewEvent(
-        event_type="probe.recorded",
-        aggregate_type="probe",
+        spec=PROBE_RECORDED,
         aggregate_id=uuid.uuid7(),
         payload={},
     )
