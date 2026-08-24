@@ -5,6 +5,8 @@ import pytest
 from pydantic import ConfigDict, with_config
 
 from games.events.vocabulary import (
+    EVENT_TYPE_MAX_LENGTH,
+    EventNameInvalid,
     EventSpec,
     EventTypeRegistry,
     PayloadInvalid,
@@ -129,6 +131,42 @@ def test_a_schema_configured_wrong_refuses(payload: Any, wrong_key: str):
         )
 
     assert wrong_key in str(refusal.value)
+    assert "library.probe.recorded" in str(refusal.value)
+
+
+def test_an_empty_event_type_refuses():
+    """Refused here or nowhere useful: an empty type reaches the column as an
+    `IntegrityError` out of `bulk_create`, under the stream-head lock."""
+    with pytest.raises(EventNameInvalid) as refusal:
+        EventTypeRegistry().register(
+            EventSpec("", aggregate_type="probe", payload=ProbePayload)
+        )
+
+    assert "empty event type" in str(refusal.value)
+
+
+def test_an_event_type_wider_than_the_column_refuses():
+    """The length is read off the column, so this cannot drift from it."""
+    too_long = "x" * (EVENT_TYPE_MAX_LENGTH + 1)
+
+    with pytest.raises(EventNameInvalid) as refusal:
+        EventTypeRegistry().register(
+            EventSpec(too_long, aggregate_type="probe", payload=ProbePayload)
+        )
+
+    assert str(EVENT_TYPE_MAX_LENGTH) in str(refusal.value)
+    assert str(len(too_long)) in str(refusal.value)
+
+
+def test_an_empty_aggregate_type_refuses():
+    """The registry is the only gate this string has. It lives on the spec and
+    reaches no column, so nothing downstream could refuse it instead."""
+    with pytest.raises(EventNameInvalid) as refusal:
+        EventTypeRegistry().register(
+            EventSpec("library.probe.recorded", aggregate_type="", payload=ProbePayload)
+        )
+
+    assert "aggregate type" in str(refusal.value)
     assert "library.probe.recorded" in str(refusal.value)
 
 

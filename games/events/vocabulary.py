@@ -23,6 +23,7 @@ from typing import Any, cast, is_typeddict
 
 from pydantic import TypeAdapter, ValidationError
 
+from games.models import LibraryEvent
 from timetracker.temporal import TemporalValue
 
 type AggregateType = str  # "playthrough"
@@ -32,9 +33,26 @@ type AggregateType = str  # "playthrough"
 #: otherwise quietly coerce.
 REQUIRED_SCHEMA_CONFIG: Mapping[str, object] = {"extra": "forbid", "strict": True}
 
+#: Read off the column, so the registration check and the constraint cannot
+#: drift.
+EVENT_TYPE_MAX_LENGTH: int = cast(
+    int, LibraryEvent._meta.get_field("event_type").max_length
+)
+
 
 class UnregisteredEventType(ValueError):
     """Raised for an event type no registry knows."""
+
+
+class EventNameInvalid(ValueError):
+    """Raised for a spec whose event type or aggregate type is unusable.
+
+    The registry is the only gate either string has. An event type surfaces
+    late and badly without one -- an empty one as an `IntegrityError` from
+    `bulk_create` under the stream-head lock, an over-length one as a
+    `DataError` -- and the aggregate type reaches no column at all, so nothing
+    downstream could ever catch it.
+    """
 
 
 class PayloadInvalid(ValueError):
@@ -138,6 +156,8 @@ class EventTypeRegistry:
         self._registered: dict[str, RegisteredType] = {}
 
     def register(self, spec: EventSpec[Any]) -> None:
+        self._check_names(spec)
+
         claimed = self._registered.get(spec.event_type)
         if claimed is not None:
             raise ValueError(
@@ -165,6 +185,31 @@ class EventTypeRegistry:
         self._registered[spec.event_type] = RegisteredType(
             spec=spec, adapter=TypeAdapter(spec.payload)
         )
+
+    @staticmethod
+    def _check_names(spec: EventSpec[Any]) -> None:
+        """Refuse a spec whose two strings the rest of the system cannot carry.
+
+        First of the checks, so a malformed name is named as one rather than
+        reported as a collision with another malformed one.
+        """
+        if not spec.event_type:
+            raise EventNameInvalid(
+                f"{spec.payload!r} registers under an empty event type. An "
+                "event type is the name a recorded event is read back by."
+            )
+        if len(spec.event_type) > EVENT_TYPE_MAX_LENGTH:
+            raise EventNameInvalid(
+                f"{spec.event_type!r} is {len(spec.event_type)} characters; an "
+                f"event type is at most {EVENT_TYPE_MAX_LENGTH}, the width of "
+                "the column every event stores it in."
+            )
+        if not spec.aggregate_type:
+            raise EventNameInvalid(
+                f"{spec.event_type!r} names an empty aggregate type. It says "
+                "what the event is about and is declared here and nowhere "
+                "else, so no column and no constraint can catch it later."
+            )
 
     @staticmethod
     def _check_schema_config(spec: EventSpec[Any]) -> None:
