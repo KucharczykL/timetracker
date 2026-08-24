@@ -34,8 +34,8 @@ payload that does not match the spec's schema, before it writes anything.
 | Not here | Owner |
 | --- | --- |
 | The first real event types and their payload schemas | #671 |
-| Upcasting a payload from an older schema version | follow-up, filed by this issue |
-| Validating `source_metadata` | follow-up, filed by this issue |
+| Upcasting a payload from an older schema version | #918 |
+| Validating `source_metadata` | #920 |
 | The optional expected-sequence concurrency check | #901 |
 | Shadow projection tables, the rebuild, the atomic swap | #667 |
 | Durable reference snapshots inside payloads | #668 |
@@ -489,13 +489,19 @@ class PayloadVersionUnsupported(Exception): ...
 
 ## Follow-up issues
 
-1. **Payload upcasting and the read-side leg.** Register an upcaster per
+Filed:
+
+1. **#918 — payload upcasting and the read-side leg.** Register an upcaster per
    `(event_type, from_version)`, relax the registration version wall, and upcast
-   in `RecordedEvent`/`replay` before a projector sees a payload. Hard
-   prerequisite for the first schema change.
-2. **A retired-event-type tier.** So an event type can stop being appendable
-   without making historic streams unreplayable.
-3. **`source_metadata` validation.** The last unvalidated JSONB column on the
-   event row.
-4. **Nested payload schemas.** Decide, with #668, whether nested objects must be
-   `TypedDict`s to stay inside `extra="forbid"`.
+   before a projector sees a payload. Hard prerequisite for the first schema
+   change.
+2. **#919 — a retired-event-type tier.** So an event type can stop being
+   appendable without making historic streams unreplayable.
+3. **#920 — `source_metadata` validation.** The last unvalidated JSONB column on
+   the event row.
+4. **#921 — nested payload schemas.** Decide, with #668, whether nested objects
+   must be `TypedDict`s to stay inside `extra="forbid"`.
+
+The two issues this changes the terms of were told so directly: #671 (its event
+types must be registered specs, built through `spec.new`) and #796 (restore
+cannot write a historical payload version through `append`).

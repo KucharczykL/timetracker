@@ -154,7 +154,7 @@ sqlmigrate: ensure-postgres
 	uv run --frozen python manage.py sqlmigrate $(ARGS)
 
 migrate: ensure-postgres makemigrations
-	uv run --frozen python manage.py migrate
+	uv run --frozen python manage.py migrate $(ARGS)
 
 devlogin: migrate
 	uv run --frozen python manage.py devlogin
