@@ -5,15 +5,18 @@ declared for a test can reach `DEFAULT_REGISTRY` or another test.
 """
 
 import uuid
-from typing import ClassVar
+from datetime import UTC, datetime
+from typing import Any, ClassVar
 
 import pytest
-from django.db import OperationalError, transaction
+from django.db import OperationalError, connection, transaction
+from django.test.utils import CaptureQueriesContext
 from test_command_dispatch import BasicCommand
 from test_event_retry import wrapped
 
 from games.events.append import NewEvent, lock_stream
 from games.events.dispatch import dispatch
+from games.events.envelope import RecordedEvent
 from games.events.idempotency import idempotent_append
 from games.events.projection import (
     DEFAULT_REGISTRY,
@@ -33,11 +36,18 @@ CALLS: list[tuple[ProjectorFamily, str]] = []
 #: The same, for the families the append path folds through: which family, and
 #: which event of the append.
 APPLIED: list[tuple[ProjectorFamily, int]] = []
-#: The rows those handlers were handed, kept whole so a test can read the
+#: The values those handlers were handed, kept whole so a test can read the
 #: envelope a projector actually sees.
-SEEN: list[LibraryEvent] = []
+SEEN: list[RecordedEvent] = []
 #: What the stream head said while a handler was running.
 HEAD_SEQUENCE_SEEN: list[int] = []
+
+
+@pytest.fixture
+def second_library(django_user_model):
+    return django_user_model.objects.create_user(
+        username="second-owner", password="p"
+    ).library
 
 
 @pytest.fixture(autouse=True)
@@ -50,9 +60,34 @@ def forget_previous_calls():
     FlakyProjector.attempts = 0
 
 
-def make_event(event_type: str = RECORDED, sequence: int = 1) -> LibraryEvent:
-    """An unsaved row: the registry reads the envelope and touches no database."""
-    return LibraryEvent(event_type=event_type, sequence=sequence)
+def make_event(**overrides: Any) -> RecordedEvent:
+    """An envelope nothing recorded: the registry reads it and touches no
+    database.
+
+    The defaults live here rather than on `RecordedEvent`, which has none: a
+    partially-populated envelope is never wanted in production, and a default
+    there would let the contract test pass over a field `from_row` forgot.
+    """
+    fields: dict[str, Any] = {
+        "id": uuid.uuid7(),
+        "library_id": uuid.uuid7(),
+        "stream_id": uuid.uuid7(),
+        "sequence": 1,
+        "event_type": RECORDED,
+        "aggregate_type": "probe",
+        "aggregate_id": uuid.uuid7(),
+        "payload_schema_version": 1,
+        "recorded_at": datetime(2024, 5, 6, 7, 8, 9, tzinfo=UTC),
+        "effective_time": None,
+        "actor_id": None,
+        "correlation_id": uuid.uuid7(),
+        "causation_id": None,
+        "source_metadata": {},
+        "idempotency_key": "probe-key",
+        "payload": {"probe": True},
+    }
+    fields.update(overrides)
+    return RecordedEvent(**fields)
 
 
 ordering_registry = ProjectorRegistry()
@@ -63,7 +98,7 @@ ordering_registry = ProjectorRegistry()
 class JournalRecorder(Projector, registry=ordering_registry):
     family_name = ProjectorFamily.JOURNAL
 
-    def _recorded(self, event: LibraryEvent) -> None:
+    def _recorded(self, event: RecordedEvent) -> None:
         CALLS.append((ProjectorFamily.JOURNAL, event.event_type))
 
     handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
@@ -72,10 +107,10 @@ class JournalRecorder(Projector, registry=ordering_registry):
 class CurrentStateRecorder(Projector, registry=ordering_registry):
     family_name = ProjectorFamily.CURRENT_STATE
 
-    def _recorded(self, event: LibraryEvent) -> None:
+    def _recorded(self, event: RecordedEvent) -> None:
         CALLS.append((ProjectorFamily.CURRENT_STATE, event.event_type))
 
-    def _other(self, event: LibraryEvent) -> None:
+    def _other(self, event: RecordedEvent) -> None:
         CALLS.append((ProjectorFamily.CURRENT_STATE, event.event_type))
 
     handles: ClassVar[HandlerMap] = {RECORDED: _recorded, OTHER: _other}
@@ -116,7 +151,7 @@ def test_two_families_cannot_claim_one_member():
     class First(Projector, registry=registry):
         family_name = ProjectorFamily.STATS
 
-        def _recorded(self, event: LibraryEvent) -> None: ...
+        def _recorded(self, event: RecordedEvent) -> None: ...
 
         handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
 
@@ -125,7 +160,7 @@ def test_two_families_cannot_claim_one_member():
         class Second(Projector, registry=registry):
             family_name = ProjectorFamily.STATS
 
-            def _recorded(self, event: LibraryEvent) -> None: ...
+            def _recorded(self, event: RecordedEvent) -> None: ...
 
             handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
 
@@ -136,7 +171,7 @@ def test_registering_one_family_twice_is_not_a_collision():
     class Once(Projector, registry=registry):
         family_name = ProjectorFamily.STATS
 
-        def _recorded(self, event: LibraryEvent) -> None:
+        def _recorded(self, event: RecordedEvent) -> None:
             CALLS.append((ProjectorFamily.STATS, event.event_type))
 
         handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
@@ -163,7 +198,7 @@ def test_families_run_in_member_order_not_registration_order():
 
 
 def test_a_family_handles_only_the_types_it_declares():
-    ordering_registry.apply(make_event(OTHER))
+    ordering_registry.apply(make_event(event_type=OTHER))
 
     assert CALLS == [(ProjectorFamily.CURRENT_STATE, OTHER)]
 
@@ -171,7 +206,7 @@ def test_a_family_handles_only_the_types_it_declares():
 def test_an_unhandled_event_type_runs_nothing():
     assert ordering_registry.handlers_for(UNHANDLED) == ()
 
-    ordering_registry.apply(make_event(UNHANDLED))
+    ordering_registry.apply(make_event(event_type=UNHANDLED))
 
     assert CALLS == []
 
@@ -188,7 +223,7 @@ append_registry = ProjectorRegistry()
 class AppendCurrentState(Projector, registry=append_registry):
     family_name = ProjectorFamily.CURRENT_STATE
 
-    def _recorded(self, event: LibraryEvent) -> None:
+    def _recorded(self, event: RecordedEvent) -> None:
         APPLIED.append((ProjectorFamily.CURRENT_STATE, event.sequence))
         SEEN.append(event)
         HEAD_SEQUENCE_SEEN.append(
@@ -201,7 +236,7 @@ class AppendCurrentState(Projector, registry=append_registry):
 class AppendJournal(Projector, registry=append_registry):
     family_name = ProjectorFamily.JOURNAL
 
-    def _recorded(self, event: LibraryEvent) -> None:
+    def _recorded(self, event: RecordedEvent) -> None:
         APPLIED.append((ProjectorFamily.JOURNAL, event.sequence))
 
     handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
@@ -213,7 +248,7 @@ rollback_registry = ProjectorRegistry()
 class RollbackWriter(Projector, registry=rollback_registry):
     family_name = ProjectorFamily.CURRENT_STATE
 
-    def _recorded(self, event: LibraryEvent) -> None:
+    def _recorded(self, event: RecordedEvent) -> None:
         Device.objects.create(library_id=event.library_id, name="projected")
 
     handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
@@ -222,7 +257,7 @@ class RollbackWriter(Projector, registry=rollback_registry):
 class RollbackFailer(Projector, registry=rollback_registry):
     family_name = ProjectorFamily.STATS
 
-    def _recorded(self, event: LibraryEvent) -> None:
+    def _recorded(self, event: RecordedEvent) -> None:
         raise RuntimeError("the stats family refused")
 
     handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
@@ -234,10 +269,40 @@ dispatch_registry = ProjectorRegistry()
 class DispatchRecorder(Projector, registry=dispatch_registry):
     family_name = ProjectorFamily.CURRENT_STATE
 
-    def _recorded(self, event: LibraryEvent) -> None:
+    def _recorded(self, event: RecordedEvent) -> None:
         APPLIED.append((ProjectorFamily.CURRENT_STATE, event.sequence))
 
     handles: ClassVar[HandlerMap] = {"test.command.recorded": _recorded}
+
+
+quiet_registry = ProjectorRegistry()
+
+
+class QuietRecorder(Projector, registry=quiet_registry):
+    """Reads the envelope and nothing else, so every query the append issues
+    while it is folding is the append's own."""
+
+    family_name = ProjectorFamily.CURRENT_STATE
+
+    def _recorded(self, event: RecordedEvent) -> None:
+        APPLIED.append((ProjectorFamily.CURRENT_STATE, event.sequence))
+
+    handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
+
+
+actor_registry = ProjectorRegistry()
+
+
+class ActorReader(Projector, registry=actor_registry):
+    family_name = ProjectorFamily.CURRENT_STATE
+
+    def _recorded(self, event: RecordedEvent) -> None:
+        #: The traversal this issue exists to prevent. mypy refuses it too --
+        #: the ignore is what makes the runtime refusal worth asserting.
+        actor = event.actor  # type: ignore[attr-defined]
+        CALLS.append((ProjectorFamily.CURRENT_STATE, str(actor)))
+
+    handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
 
 
 retry_registry = ProjectorRegistry()
@@ -255,7 +320,7 @@ class FlakyProjector(Projector, registry=retry_registry):
     family_name = ProjectorFamily.CURRENT_STATE
     attempts: ClassVar[int] = 0
 
-    def _recorded(self, event: LibraryEvent) -> None:
+    def _recorded(self, event: RecordedEvent) -> None:
         type(self).attempts += 1
         if type(self).attempts == 1:
             raise wrapped(OperationalError, "40P01")
@@ -299,7 +364,7 @@ def test_an_append_folds_one_event_at_a_time_through_every_family(owned_library)
 
 
 @pytest.mark.django_db
-def test_a_handler_receives_the_persisted_row(owned_library):
+def test_a_handler_receives_the_recorded_event(owned_library):
     correlation_id = uuid.uuid7()
 
     with transaction.atomic():
@@ -312,7 +377,7 @@ def test_a_handler_receives_the_persisted_row(owned_library):
         )
 
     projected = SEEN[0]
-    assert projected.pk == result.events[0].pk
+    assert projected.id == result.events[0].pk
     assert projected.sequence == 1
     assert projected.library_id == owned_library.pk
     assert projected.correlation_id == correlation_id
@@ -415,3 +480,29 @@ def test_a_retryable_failure_inside_a_handler_is_still_retried(
     assert FlakyProjector.attempts == 2
     assert APPLIED == [(ProjectorFamily.CURRENT_STATE, 1)]
     assert LibraryEvent.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_a_handler_cannot_traverse_to_the_actor(owned_library):
+    with pytest.raises(AttributeError) as raised, transaction.atomic():
+        append(owned_library, actor_registry)
+
+    assert "actor" in str(raised.value)
+
+
+@pytest.mark.django_db
+def test_folding_costs_the_append_no_query(owned_library, second_library):
+    """What the value type buys, as an assertion.
+
+    A family reading the envelope adds nothing to the append, because there is
+    nothing left on the event to make it fetch.
+    """
+    with transaction.atomic(), CaptureQueriesContext(connection) as unprojected:
+        append(owned_library, ProjectorRegistry(), count=3)
+    with transaction.atomic(), CaptureQueriesContext(connection) as projected:
+        append(second_library, quiet_registry, count=3)
+
+    assert APPLIED == [
+        (ProjectorFamily.CURRENT_STATE, sequence) for sequence in (1, 2, 3)
+    ]
+    assert len(projected) == len(unprojected)

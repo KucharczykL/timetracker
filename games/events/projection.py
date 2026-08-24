@@ -6,6 +6,10 @@ it handles as a mapping, and the append path folds every appended event through
 every family that claims its type -- in the same transaction, under the same
 stream-head lock.
 
+A family is handed a `RecordedEvent`, never the row, so nothing here holds a
+model: a registry of families over a value, which is what lets one eventually be
+pointed at tables other than the live ones.
+
 The module is `projection` rather than `projectors` because `games.projectors`
 is the package the real families live in. Two importable modules of one name are
 unambiguous to the interpreter and a trap for everyone else.
@@ -16,10 +20,10 @@ from collections.abc import Callable, Mapping
 from enum import StrEnum
 from typing import ClassVar
 
-from games.models import LibraryEvent
+from games.events.envelope import RecordedEvent
 
 type EventType = str  # "library.session.created"
-type BoundHandler = Callable[[LibraryEvent], None]
+type BoundHandler = Callable[[RecordedEvent], None]
 #: What a family declares. The values are the handler functions themselves,
 #: read out of the class body before any descriptor binding -- hence
 #: Callable[..., None] rather than a signature naming `self`.
@@ -119,7 +123,7 @@ class ProjectorRegistry:
     def handlers_for(self, event_type: EventType) -> tuple[BoundHandler, ...]:
         return tuple(handler for _, handler in self._handlers.get(event_type, ()))
 
-    def apply(self, event: LibraryEvent) -> None:
+    def apply(self, event: RecordedEvent) -> None:
         """Project one event through every family that claims its type.
 
         A handler's exception is annotated and re-raised, never wrapped and
