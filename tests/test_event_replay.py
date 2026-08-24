@@ -84,6 +84,10 @@ AWKWARD_PAYLOAD: dict[str, Any] = {
     "b": 4,
 }
 
+#: The same trap on the other JSONB column. Metadata is free-form rather than
+#: schema-bound, so no registration constrains its keys.
+AWKWARD_METADATA: dict[str, Any] = {"zz": 1, "aaa": 2, "b": 3, "origin": "manual"}
+
 #: This module's own vocabulary, so a probe type never enters the one a
 #: production stream reads.
 EVENT_TYPES = EventTypeRegistry()
@@ -344,6 +348,42 @@ def test_a_payload_reaches_a_projector_in_one_key_order(owned_library):
     assert list(appended["zz"]) == list(replayed["zz"]) == ["a", "yy"]
     assert [list(item) for item in appended["aaa"]] == [["c", "nn"], ["zzz"]]
     assert [list(item) for item in replayed["aaa"]] == [["c", "nn"], ["zzz"]]
+
+
+def test_source_metadata_reaches_a_projector_in_one_key_order(owned_library):
+    """The same parity property on the envelope's other JSONB column.
+
+    Read as key sequences for the reason above: `==` holds either way. Both
+    columns reach a projector through one method, so an order rule applied to
+    one of them leaves the other free to differ between the two paths.
+    """
+    append(
+        owned_library,
+        [make_new_event()],
+        source_metadata=AWKWARD_METADATA,
+    )
+    appended = SEEN[0].source_metadata
+    SEEN.clear()
+
+    replay(owned_library, wiring=wiring)
+    replayed = SEEN[0].source_metadata
+
+    assert list(appended) == list(replayed) == ["aaa", "b", "origin", "zz"]
+
+
+def test_each_event_of_one_append_carries_its_own_source_metadata(owned_library):
+    """One append builds one metadata dict; a projector must not be handed the
+    same object once per event, where a family mutating it would edit an
+    envelope it does not own."""
+    append(
+        owned_library,
+        [make_new_event(), make_new_event()],
+        source_metadata=AWKWARD_METADATA,
+    )
+
+    first, second = SEEN
+    assert first.source_metadata == second.source_metadata
+    assert first.source_metadata is not second.source_metadata
 
 
 def test_a_payloads_lists_keep_the_order_they_were_written_in(owned_library):

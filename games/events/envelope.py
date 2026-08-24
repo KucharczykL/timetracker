@@ -65,22 +65,27 @@ class RecordedEvent:
 
     @classmethod
     def from_row(cls, row: LibraryEvent) -> RecordedEvent:
-        """Copy every concrete field off `row`, the payload canonically.
+        """Copy every concrete field off `row`, the two JSONB ones canonically.
 
         Written out rather than built from `_meta`, so mypy checks each field
         against its declared type and a model change fails as a named test
         rather than as a `TypeError` inside an append.
 
-        The payload's keys are sorted here because both paths reach a projector
-        through this method and they do not agree on order: an append hands over
-        the order its caller wrote, while a replay hands over jsonb's, which
-        sorts keys by length then bytes. A family that iterates a payload,
-        re-dumps it into a column, or hashes it would produce different rows on
-        the two paths, and no equality check would see it -- dict comparison
-        ignores order, which is why the defect survived. One fixed rule applied
-        here settles both paths and couples us to no PostgreSQL behaviour. The
-        consequence is deliberate: the order stored in the row is not the order
-        a projector reads.
+        The keys of `payload` and `source_metadata` are sorted here because both
+        paths reach a projector through this method and they do not agree on
+        order: an append hands over the order its caller wrote, while a replay
+        hands over jsonb's, which sorts keys by length then bytes. A family that
+        iterates one, re-dumps it into a column, or hashes it would produce
+        different rows on the two paths, and no equality check would see it --
+        dict comparison ignores order, which is why the defect survived. One
+        fixed rule applied here settles both paths and couples us to no
+        PostgreSQL behaviour. The consequence is deliberate: the order stored in
+        the row is not the order a projector reads.
+
+        Rebuilding both also un-aliases them. One append builds a single
+        metadata dict and gives every row a reference to it, so without the copy
+        a family mutating what it was handed would edit every other event of
+        that append.
         """
         deferred = row.get_deferred_fields()
         if deferred:
@@ -105,7 +110,7 @@ class RecordedEvent:
             actor_id=row.actor_id,
             correlation_id=row.correlation_id,
             causation_id=row.causation_id,
-            source_metadata=row.source_metadata,
+            source_metadata=_with_sorted_keys(row.source_metadata),
             idempotency_key=row.idempotency_key,
             payload=_with_sorted_keys(row.payload),
         )
