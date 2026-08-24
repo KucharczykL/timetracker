@@ -218,13 +218,18 @@ someone tries it. The replay guard stays as a second line, refusing a mismatch i
 can now never see. The follow-up issue that builds upcasting relaxes the
 registration check and grows the guard an upcast step.
 
-### The registry stamps what the caller cannot
+### The registry stamps the version the caller cannot
 
-`NewEvent` loses two fields. `payload_schema_version` becomes the registry's,
-because a writer never has a legitimate reason to record an old version -- old
-versions are read, not written. `aggregate_type` becomes the registry's because
-it is a fact about the event type: `library.playthrough.started` always acts on a
-playthrough.
+`NewEvent` loses two fields, for two different reasons.
+
+`payload_schema_version` becomes the registry's and is still written to the row:
+a writer never has a legitimate reason to record an old version -- old versions
+are read, not written -- but the recorded version is what a later upcaster reads
+to know which schema a payload was written against.
+
+`aggregate_type` is not restamped anywhere, because its column goes away
+entirely (below). The spec declares it, and anyone who needs it asks the
+registry.
 
 `NewEvent` is left with `spec`, `aggregate_id`, `payload`, `effective_time`, and
 `causation_id` -- and is built through `spec.new(...)`, which is what makes the
@@ -232,15 +237,16 @@ payload statically checked.
 
 ### The `aggregate_type` column goes away
 
-Once the registry stamps it, the column is a pure function of `event_type`,
-copied onto every row, where a changed registration would leave old rows carrying
-the old string with nothing noticing. The version guard watches versions; nothing
+Once the spec declares it, the column is a pure function of `event_type`, copied
+onto every row, where a changed registration would leave old rows carrying the
+old string with nothing noticing. The version guard watches versions; nothing
 would watch this.
 
 The tables are empty, so dropping the column costs one migration today and would
 cost a data migration later. `LibraryEvent` loses the field and the
-`library_event_aggregate_type_not_empty` check constraint; `RecordedEvent` loses
-the field; the registry derives it.
+`library_event_aggregate_type_not_empty` check constraint, and `RecordedEvent`
+loses the field, so no path -- append or replay -- carries a second copy of a
+fact the registry already holds.
 
 The cost is that SQL can no longer filter on it directly. "Every playthrough
 event" becomes an `IN` list of event-type strings, which the registry generates
@@ -421,7 +427,8 @@ class PayloadVersionUnsupported(Exception): ...
 | Registering a schema without the required config refuses | `tests/test_event_vocabulary.py` |
 | Registering a version above 1 refuses, naming upcasting | `tests/test_event_vocabulary.py` |
 | Registering the same event type twice refuses | `tests/test_event_vocabulary.py` |
-| The registry stamps the aggregate type and the version onto the row | `tests/test_event_append.py` |
+| The registry stamps the payload schema version onto the row | `tests/test_event_append.py` |
+| No path carries `aggregate_type`; the spec answers for it | `tests/test_event_vocabulary.py` |
 | A replayed payload equals the appended one **key order included** | `tests/test_event_replay.py` |
 | Replay refuses an unregistered type and a stale version | `tests/test_event_replay.py` |
 | The replay query floor is unchanged | `tests/test_event_replay.py` |
