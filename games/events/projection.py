@@ -24,7 +24,9 @@ from games.events.envelope import RecordedEvent
 from games.events.vocabulary import EventSpec, EventType
 
 type BoundHandler = Callable[[RecordedEvent], None]
-#: EventSpec keys; values are the handler functions.
+#: EventSpec keys; values are the handler functions, read out of the class body
+#: before any descriptor binding -- hence Callable[..., None] rather than a
+#: signature naming `self`.
 type HandlerMap = Mapping[EventSpec[Any], Callable[..., None]]
 #: One handler and the family it speaks for, so a failure can say which.
 type FamilyHandler = tuple[ProjectorFamily, BoundHandler]

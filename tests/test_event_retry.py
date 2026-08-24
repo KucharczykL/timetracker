@@ -264,7 +264,7 @@ def test_each_retry_is_logged(capture_games_logger):
 
 @with_config(ConfigDict(extra="forbid", strict=True))
 class ProbePayload(TypedDict):
-    """No keys: these tests need a row to exist, never to say anything."""
+    """No keys: these tests need only rows."""
 
 
 PROBE_RECORDED = EventSpec(

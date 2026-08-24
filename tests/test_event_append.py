@@ -45,7 +45,7 @@ class NestedPayload(TypedDict):
 
 @with_config(STRICT_CONFIG)
 class ShapesPayload(TypedDict):
-    """Every JSON container in one payload, plus the float that widens."""
+    """Every JSON container, plus a widening float."""
 
     tags: list[str]
     counts: dict[str, int]
@@ -54,8 +54,7 @@ class ShapesPayload(TypedDict):
 
 @with_config(STRICT_CONFIG)
 class OpaquePayload(TypedDict):
-    """A field pydantic will not look inside, which is what makes the
-    canonicalizer's turn before validation observable."""
+    """A field pydantic will not look inside."""
 
     details: dict[str, Any]
 
@@ -129,7 +128,7 @@ def append(library, events=None, **overrides: Any) -> AppendResult:
 
 
 def append_directly(stream: LockedStream, events, **overrides: Any) -> AppendResult:
-    """An append that skips `lock_stream`, for a test holding its own stream."""
+    """An append that skips `lock_stream`."""
     fields: dict[str, Any] = {
         "actor": None,
         "correlation_id": uuid.uuid7(),
@@ -272,12 +271,7 @@ def test_event_fields_round_trip(owned_library):
 
 
 def test_the_row_is_built_from_the_registered_spec(owned_library):
-    """The carried spec is a caller's word; the registration is the vocabulary.
-
-    Nothing a caller passes decides the recorded version -- an upcaster reads it
-    to know which schema a payload was written against, so a writer naming its
-    own would leave that reader guessing.
-    """
+    """The registration decides, not the caller's spec."""
     with transaction.atomic():
         append(owned_library, [make_new_event(spec=MISDECLARED_PROBE)])
 
@@ -338,12 +332,7 @@ def test_non_canonical_source_metadata_is_refused(owned_library, source_metadata
 
 
 def test_a_value_hidden_under_an_any_field_is_still_refused(owned_library):
-    """What fixes the canonicalizer's turn ahead of validation.
-
-    `details` is typed `dict[str, Any]`, so pydantic hands the Decimal straight
-    back. Validating first would put a value on disk that PostgreSQL returns as
-    a string.
-    """
+    """Why the canonicalizer runs before validation."""
     with transaction.atomic():
         stream = lock_stream(owned_library)
         with pytest.raises(PayloadNotCanonical, match="payload"):
@@ -380,12 +369,7 @@ def test_a_refused_payload_leaves_the_head_where_it_was(owned_library):
 
 
 def refuse_and_keep_appending(library, refused, raises, match: str) -> None:
-    """Refuse `refused`, then show the transaction it ran in still commits.
-
-    The three assertions inside the block are what "a refusal leaves the
-    transaction exactly as it found it" means: no row written, no advance, and
-    a stream still able to append. The count afterwards is the commit itself.
-    """
+    """Refuse, then show the transaction still commits."""
     with transaction.atomic():
         append(library)
 
@@ -434,11 +418,7 @@ def test_a_stored_payload_equals_what_postgres_returns(owned_library):
 
 
 def test_an_integer_for_a_float_field_is_stored_as_a_float(owned_library):
-    """The one case equality cannot see.
-
-    `{"ratio": 1} == {"ratio": 1.0}`, so only the type of what PostgreSQL hands
-    back says whether the row matches the schema it was recorded under.
-    """
+    """The one case equality cannot see."""
     with transaction.atomic():
         result = append(
             owned_library,

@@ -1,20 +1,4 @@
-"""Every event type the system knows, and the payload schema each one binds.
-
-An event type is a value -- an `EventSpec` constant naming its schema -- rather
-than a member of a closed enum, because an enum member cannot carry a payload
-type. A spec generic over its schema turns a wrong payload into a mypy error at
-the call site that builds the event, where an enum would have left it to surface
-at runtime, under the stream-head lock, inside a command.
-
-The registry is the gate. A type nobody registered cannot be appended and cannot
-be replayed, and a registered type's payload is validated against the schema the
-spec named. It is an object with a module-level default, exactly as
-`ProjectorRegistry` is: a test registers into a registry nobody else sees, so a
-test event type never enters the vocabulary an immutable audit trail reads.
-
-The vocabulary below is deliberately empty. The first real event types arrive
-with the commands that record them.
-"""
+"""Every event type and its payload schema."""
 
 import uuid
 from collections.abc import Mapping
@@ -39,40 +23,28 @@ EVENT_TYPE_MAX_LENGTH: int = cast(
 
 
 class UnregisteredEventType(ValueError):
-    """Raised for an event type no registry knows."""
+    """Raised for an unregistered event type."""
 
 
 class EventNameInvalid(ValueError):
-    """Raised for a spec whose event type or aggregate type is unusable.
-
-    The registry is the only gate either string has. An event type surfaces
-    late and badly without one -- an empty one as an `IntegrityError` from
-    `bulk_create` under the stream-head lock, an over-length one as a
-    `DataError` -- and the aggregate type reaches no column at all, so nothing
-    downstream could ever catch it.
-    """
+    """Raised for a spec's unusable name."""
 
 
 class PayloadInvalid(ValueError):
-    """Raised for a payload its event type's schema refuses."""
+    """Raised for a payload its schema refuses."""
 
 
 class SchemaNotConfigured(TypeError):
-    """Raised for a schema declared without the `@with_config` the registry
-    requires."""
+    """Raised for a schema without `@with_config`."""
 
 
 class VersionNotUpcastable(NotImplementedError):
-    """Raised for a registration above version 1, which has no upcaster."""
+    """Raised for a version above 1."""
 
 
 @dataclass(frozen=True, slots=True)
 class EventSpec[PayloadT]:
-    """One event type: its name, what it is about, and what its payload holds.
-
-    Frozen and hashable, so a spec is usable as a dict key -- which is how a
-    projector family claims the types it handles.
-    """
+    """One event type: name, aggregate, payload schema."""
 
     event_type: EventType
     #: Declared here only; no row copies it.
@@ -88,12 +60,7 @@ class EventSpec[PayloadT]:
         effective_time: TemporalValue | None = None,
         causation_id: uuid.UUID | None = None,
     ) -> NewEvent:
-        """Build the event this spec describes.
-
-        The generic parameter is what types `payload`, so an extra key, a
-        missing key, or a wrong value type is a mypy error here rather than a
-        refusal under the lock.
-        """
+        """Build the event this spec describes."""
         return NewEvent(
             spec=self,
             aggregate_id=aggregate_id,
@@ -106,18 +73,7 @@ class EventSpec[PayloadT]:
 
 @dataclass(frozen=True, slots=True)
 class NewEvent:
-    """One fact to append. Carries no stream, sequence, or library: those are
-    the stream's to assign, and a caller has no way to express them.
-
-    It carries its spec rather than an event-type string, so the type and its
-    schema arrive together and the version is the registry's to stamp.
-
-    **This is the value `spec.new()` produces, and that is how a command builds
-    one.** `payload` is typed `dict[str, Any]` here, so constructing this class
-    directly forgoes the payload check entirely: a misspelled or missing key
-    passes mypy and surfaces as a refusal under the stream-head lock. Only
-    `new()` reaches the spec's schema parameter, which is where the check lives.
-    """
+    """One fact to append; build with spec.new()."""
 
     spec: EventSpec[Any]
     aggregate_id: uuid.UUID
@@ -128,24 +84,14 @@ class NewEvent:
 
 @dataclass(frozen=True, slots=True)
 class RegisteredType:
-    """A registered spec and the adapter that validates its payloads.
-
-    The adapter is built once, at registration: building one per validation is
-    the obvious slow mistake.
-    """
+    """A registered spec and its payload adapter."""
 
     spec: EventSpec[Any]
     adapter: TypeAdapter[Any]
 
 
 class EventTypeRegistry:
-    """The event types that may be appended, and the schema each one validates
-    against.
-
-    An object rather than a module-level dict so a caller can hold one of its
-    own: a test registers a probe type into a registry nobody else sees, and
-    that type never becomes something a production stream could record.
-    """
+    """The event types that may be appended."""
 
     def __init__(self) -> None:
         self._registered: dict[EventType, RegisteredType] = {}
@@ -183,11 +129,7 @@ class EventTypeRegistry:
 
     @staticmethod
     def _check_names(spec: EventSpec[Any]) -> None:
-        """Refuse a spec whose two strings the rest of the system cannot carry.
-
-        First of the checks, so a malformed name is named as one rather than
-        reported as a collision with another malformed one.
-        """
+        """Refuse a spec's empty or over-long name."""
         if not spec.event_type:
             raise EventNameInvalid(
                 f"{spec.payload!r} registers under an empty event type. An "
@@ -208,12 +150,7 @@ class EventTypeRegistry:
 
     @staticmethod
     def _check_schema_config(spec: EventSpec[Any]) -> None:
-        """Refuse a schema whose `@with_config` does not say how to validate it.
-
-        The configuration is read off the class rather than off the adapter:
-        `with_config` sets `__pydantic_config__`, and reading that mapping is
-        what lets the refusal say which key is wrong.
-        """
+        """Refuse a schema without the required config."""
         config = getattr(spec.payload, "__pydantic_config__", None)
         if not isinstance(config, Mapping):
             raise SchemaNotConfigured(
@@ -241,12 +178,7 @@ class EventTypeRegistry:
     def validate(
         self, event_type: EventType, payload: dict[str, Any]
     ) -> dict[str, Any]:
-        """Return the payload as its schema reads it, refusing anything else.
-
-        Pydantic's value is returned rather than the argument, because it is the
-        one the schema actually describes -- a field typed `float` given `1`
-        comes back as `1.0`, and that is what belongs in the row.
-        """
+        """Return the payload its schema reads."""
         registration = self._registration_for(event_type)
         try:
             return cast("dict[str, Any]", registration.adapter.validate_python(payload))

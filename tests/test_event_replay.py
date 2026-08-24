@@ -55,13 +55,7 @@ class ProbePayload(TypedDict):
 
 @with_config(ConfigDict(extra="forbid", strict=True))
 class AwkwardPayload(TypedDict):
-    """Every container a payload can nest, under keys whose sorted order is
-    neither what a caller writes nor what jsonb returns.
-
-    `b` is shorter than `aaa` but sorts after it, which is the whole point:
-    jsonb orders keys by length first, so a payload that agreed with `sorted`
-    by accident would prove nothing.
-    """
+    """Keys ordered unlike both caller and jsonb."""
 
     zz: dict[str, int]
     aaa: list[dict[str, int]]
@@ -145,7 +139,7 @@ def make_new_event(**overrides: Any) -> NewEvent:
 
 
 def append(library, events=None, **overrides: Any) -> AppendResult:
-    """One append of `events`, folded through this module's wiring."""
+    """One append, folded through this module's wiring."""
     fields: dict[str, Any] = {
         "actor": None,
         "correlation_id": uuid.uuid7(),
@@ -165,12 +159,7 @@ def append_stream(library, length: int) -> AppendResult:
 
 
 def write_row_directly(library, **overrides: Any) -> LibraryEvent:
-    """One event written past `append`, and the head advanced to cover it.
-
-    The guards below are unreachable through `append`: it stamps the registered
-    version and refuses an unregistered type. Only a row somebody wrote to the
-    table -- a bad migration, a restore, a hand-edited fixture -- reaches them.
-    """
+    """One event written past append, head advanced."""
     head = LibraryEventStreamHead.objects.get(library=library)
     sequence = head.current_sequence + 1
     fields: dict[str, Any] = {
@@ -219,8 +208,7 @@ def test_an_unreadable_payload_version_refuses_the_replay(owned_library):
 
 
 def test_an_unreadable_row_is_refused_before_any_family_sees_it(owned_library):
-    """The ordering the guard exists for: a family must never be handed a
-    payload the registry cannot vouch for."""
+    """No family sees an unvouched payload."""
     LibraryEventStreamHead.objects.create(library=owned_library)
     write_row_directly(owned_library, payload_schema_version=2)
 
@@ -232,8 +220,7 @@ def test_an_unreadable_row_is_refused_before_any_family_sees_it(owned_library):
 
 
 def test_a_damaged_stream_is_refused_as_damaged_not_as_unreadable(owned_library):
-    """Contiguity is checked first: a stream missing an event is a hole, whatever
-    the row above the hole happens to carry."""
+    """Contiguity is checked first."""
     append_stream(owned_library, 2)
     write_row_directly(owned_library, payload_schema_version=2)
     LibraryEvent.objects.filter(sequence=2).delete()
@@ -324,13 +311,7 @@ def test_a_replay_folds_what_the_append_folded(owned_library):
 
 
 def test_a_payload_reaches_a_projector_in_one_key_order(owned_library):
-    """The parity property at the one place dict equality cannot see it.
-
-    `==` ignores key order, so the envelope comparison above passes whether or
-    not this holds; the assertions here read key sequences instead. jsonb sorts
-    keys by length then bytes, so without a canonical order a projector reads
-    the caller's order on the append path and PostgreSQL's on a replay.
-    """
+    """The parity property equality cannot see."""
     append(owned_library, [make_new_event(spec=PROBE_AWKWARD, payload=AWKWARD_PAYLOAD)])
     appended = SEEN[0].payload
     SEEN.clear()
@@ -345,12 +326,7 @@ def test_a_payload_reaches_a_projector_in_one_key_order(owned_library):
 
 
 def test_source_metadata_reaches_a_projector_in_one_key_order(owned_library):
-    """The same parity property on the envelope's other JSONB column.
-
-    Read as key sequences for the reason above: `==` holds either way. Both
-    columns reach a projector through one method, so an order rule applied to
-    one of them leaves the other free to differ between the two paths.
-    """
+    """The same property on the other column."""
     append(
         owned_library,
         [make_new_event()],
@@ -366,9 +342,7 @@ def test_source_metadata_reaches_a_projector_in_one_key_order(owned_library):
 
 
 def test_each_event_of_one_append_carries_its_own_source_metadata(owned_library):
-    """One append builds one metadata dict; a projector must not be handed the
-    same object once per event, where a family mutating it would edit an
-    envelope it does not own."""
+    """One dict per event, not one shared."""
     append(
         owned_library,
         [make_new_event(), make_new_event()],
@@ -381,8 +355,7 @@ def test_each_event_of_one_append_carries_its_own_source_metadata(owned_library)
 
 
 def test_a_payloads_lists_keep_the_order_they_were_written_in(owned_library):
-    """Keys are sorted; values are not. A list is ordered data, and reordering
-    one would change the fact the event records."""
+    """Keys are sorted; values are not."""
     append(owned_library, [make_new_event(spec=PROBE_AWKWARD, payload=AWKWARD_PAYLOAD)])
     appended = SEEN[0].payload
     SEEN.clear()

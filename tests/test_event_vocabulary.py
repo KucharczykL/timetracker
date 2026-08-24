@@ -135,8 +135,7 @@ def test_a_schema_configured_wrong_refuses(payload: Any, wrong_key: str):
 
 
 def test_an_empty_event_type_refuses():
-    """Refused here or nowhere useful: an empty type reaches the column as an
-    `IntegrityError` out of `bulk_create`, under the stream-head lock."""
+    """Refused here, or as an IntegrityError later."""
     with pytest.raises(EventNameInvalid) as refusal:
         EventTypeRegistry().register(
             EventSpec("", aggregate_type="probe", payload=ProbePayload)
@@ -146,7 +145,7 @@ def test_an_empty_event_type_refuses():
 
 
 def test_an_event_type_wider_than_the_column_refuses():
-    """The length is read off the column, so this cannot drift from it."""
+    """The length is read off the column."""
     too_long = "x" * (EVENT_TYPE_MAX_LENGTH + 1)
 
     with pytest.raises(EventNameInvalid) as refusal:
@@ -159,8 +158,7 @@ def test_an_event_type_wider_than_the_column_refuses():
 
 
 def test_an_empty_aggregate_type_refuses():
-    """The registry is the only gate this string has. It lives on the spec and
-    reaches no column, so nothing downstream could refuse it instead."""
+    """The registry is this string's only gate."""
     with pytest.raises(EventNameInvalid) as refusal:
         EventTypeRegistry().register(
             EventSpec("library.probe.recorded", aggregate_type="", payload=ProbePayload)
@@ -281,9 +279,5 @@ TEST_EVENT_TYPES = (
 
 @pytest.mark.parametrize("event_type", TEST_EVENT_TYPES)
 def test_a_test_registry_leaves_the_default_vocabulary_empty(event_type: str):
-    """The vocabulary half of the claim the projector suite already pins.
-
-    An immutable audit trail reads `DEFAULT_EVENT_TYPES`, so a probe type
-    reaching it is a name a production stream could then record.
-    """
+    """The vocabulary half of the projector claim."""
     assert event_type not in DEFAULT_EVENT_TYPES

@@ -47,17 +47,7 @@ class StreamNotContiguous(Exception):
 
 
 class PayloadVersionUnsupported(Exception):
-    """A recorded payload written against a schema version nobody can read.
-
-    Deliberately neither an `IntegrityError` nor an `OperationalError`, for the
-    same reason as `StreamNotContiguous`: a stream carrying a payload the
-    vocabulary cannot vouch for is not a database conflict, and another attempt
-    reads exactly the same bytes.
-
-    Unreachable through `append`, which stamps the registered version, and
-    registering any version but 1 is refused until an upcaster exists. It guards
-    the rows nothing in this package wrote.
-    """
+    """A payload no registered schema can read."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,8 +66,7 @@ class ReplayResult:
 def replay(
     library: UserLibrary, *, wiring: EventWiring = DEFAULT_WIRING
 ) -> ReplayResult:
-    """Fold `library`'s recorded events through `wiring.projectors`, oldest
-    first."""
+    """Fold a library's recorded events, oldest first."""
     head = LibraryEventStreamHead.objects.filter(library=library).first()
     if head is None:
         #: Never appended. A read that provisions its own head is a read nobody
@@ -123,13 +112,7 @@ def replay(
 
 
 def _check_readable(event: RecordedEvent, event_types: EventTypeRegistry) -> None:
-    """Refuse an event this vocabulary cannot read, before a family sees it.
-
-    Runs after the contiguity check, so a damaged stream is still refused as
-    damaged, and before `apply`, so no projector is ever handed a payload
-    nothing vouched for. Both checks are in-memory dict hits, which is why a
-    replay still costs the two queries it is pinned at.
-    """
+    """Refuse what the vocabulary cannot read."""
     spec = event_types.spec_for(event.event_type)
     if event.payload_schema_version != spec.version:
         raise PayloadVersionUnsupported(

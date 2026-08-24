@@ -42,27 +42,14 @@ WIRING = EventWiring(event_types=EVENT_TYPES)
 
 @pytest.fixture
 def distinct_actor(db, django_user_model):
-    """An actor whose id cannot be mistaken for anything else on the event.
-
-    A user allocated the usual small id would carry 1 or 2, which are the
-    version and the sequence.
-    """
+    """An id no other field shares."""
     return django_user_model.objects.create_user(
         id=9001, username="probe-actor", password="p"
     )
 
 
 def append_probe(library, actor=None) -> LibraryEvent:
-    """Append two events and return the second, whose every field holds a
-    distinct value.
-
-    Distinct matters: two fields sharing one value would let the contract test
-    pass over a `from_row` that read the wrong one, and the pinning test below
-    is what keeps that true. The registry stamps the schema version, so every
-    event here is version 1 -- returning the second of a pair is what puts the
-    sequence at 2 and keeps those two apart, and `distinct_actor` is what keeps
-    the actor's id away from both.
-    """
+    """Append two events, return the distinct second."""
 
     def probe() -> NewEvent:
         return PROBE_RECORDED.new(
@@ -86,13 +73,7 @@ def append_probe(library, actor=None) -> LibraryEvent:
 
 
 def test_no_two_concrete_fields_of_a_probe_share_a_value(owned_library, distinct_actor):
-    """What makes the contract below able to fail.
-
-    A `from_row` reading the wrong field is invisible wherever two fields agree,
-    so the probe's distinctness is asserted rather than assumed -- a field
-    removed from the model, or a probe value edited, cannot quietly turn the
-    contract test into one that passes over a mistake.
-    """
+    """What lets the contract below fail."""
     row = LibraryEvent.objects.get(pk=append_probe(owned_library, distinct_actor).pk)
 
     values = [
@@ -116,8 +97,7 @@ def test_every_concrete_field_arrives_with_its_own_value(owned_library, distinct
 
 
 def test_the_aggregate_type_is_the_registrys_answer(owned_library):
-    """The aggregate type is a function of the event type, so the spec answers
-    for it and no envelope carries a second copy to fall out of date."""
+    """The spec answers; no envelope copies it."""
     recorded = RecordedEvent.from_row(append_probe(owned_library))
 
     assert EVENT_TYPES.spec_for(recorded.event_type).aggregate_type == "probe"
@@ -125,12 +105,7 @@ def test_the_aggregate_type_is_the_registrys_answer(owned_library):
 
 
 def test_the_payload_arrives_with_its_keys_sorted_at_every_depth():
-    """The payload is a canonical value, not the order somebody wrote it in.
-
-    Read off an unsaved row, so this is the conversion alone: the append path
-    and the replay path both reach a projector through here, and they carry
-    different orders until this sorts them.
-    """
+    """The payload is a canonical value."""
     row = LibraryEvent(
         payload={"zz": {"yy": 1, "a": 2}, "aaa": [{"nn": 1, "c": 2}], "b": 3}
     )

@@ -47,7 +47,7 @@ class TwinPayload(TypedDict):
 
 @with_config(STRICT_CONFIG)
 class TemporalPayload(TypedDict):
-    """No keys: the temporal command records when it happened, nothing else."""
+    """No keys: the time is the fact."""
 
 
 @with_config(STRICT_CONFIG)

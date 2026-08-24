@@ -162,8 +162,7 @@ def test_a_handler_must_be_callable():
 
 
 def test_a_family_cannot_claim_a_bare_event_type_string():
-    """A string is an event type nobody defined. Only a spec names one, so
-    claiming one is the only way to reach a handler."""
+    """A string names no event type."""
     with pytest.raises(TypeError, match="not an EventSpec"):
 
         class Stringly(Projector, registry=ProjectorRegistry()):
@@ -266,7 +265,7 @@ def test_a_handler_is_bound_to_its_family():
 
 
 def wiring_over(projectors: ProjectorRegistry) -> EventWiring:
-    """This module's wiring, over whichever projector families a test wants."""
+    """This module's wiring over the given families."""
     return EventWiring(projectors=projectors, event_types=EVENT_TYPES)
 
 
