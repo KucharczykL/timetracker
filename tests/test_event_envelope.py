@@ -12,6 +12,7 @@ from typing import TypedDict
 
 import pytest
 from django.db import transaction
+from pydantic import ConfigDict, with_config
 
 from games.events.append import lock_stream
 from games.events.envelope import DeferredRowRefused, RecordedEvent
@@ -22,8 +23,10 @@ from timetracker.temporal import TemporalValue
 pytestmark = pytest.mark.django_db
 
 
+@with_config(ConfigDict(extra="forbid", strict=True))
 class ProbePayload(TypedDict):
     probe: bool
+    tags: list[str]
 
 
 #: Version 3 so the recorded version is distinct from every other field, the

@@ -5,6 +5,7 @@ from typing import ClassVar, TypedDict
 
 import pytest
 from django.db import OperationalError, transaction
+from pydantic import ConfigDict, with_config
 from test_event_retry import wrapped
 
 from games.events import dispatch as dispatch_module
@@ -23,17 +24,50 @@ from games.events.dispatch import (
 from games.events.idempotency import IdempotencyKeyMismatch, fingerprint_command_input
 from games.events.retry import NestedTransactionNotSupported
 from games.events.vocabulary import EventSpec, NewEvent
+from games.models import LibraryEvent
+from timetracker.temporal import TemporalValue
+
+STRICT_CONFIG = ConfigDict(extra="forbid", strict=True)
 
 
+@with_config(STRICT_CONFIG)
 class CommandPayload(TypedDict):
     label: str
+    count: int
+    library: str
+    actor: int
 
 
+@with_config(STRICT_CONFIG)
+class TwinPayload(TypedDict):
+    label: str
+    count: int
+
+
+@with_config(STRICT_CONFIG)
+class TemporalPayload(TypedDict):
+    """No keys: the temporal command records when it happened, nothing else."""
+
+
+@with_config(STRICT_CONFIG)
+class AttemptPayload(TypedDict):
+    attempt: int
+
+
+#: One spec per payload shape. A schema forbids the keys it does not declare,
+#: so four commands recording four shapes cannot share one event type.
 COMMAND_RECORDED = EventSpec(
     "test.command.recorded", aggregate_type="test", payload=CommandPayload
 )
-from games.models import LibraryEvent
-from timetracker.temporal import TemporalValue
+TWIN_RECORDED = EventSpec(
+    "test.command.twin.recorded", aggregate_type="test", payload=TwinPayload
+)
+TEMPORAL_RECORDED = EventSpec(
+    "test.command.temporal.recorded", aggregate_type="test", payload=TemporalPayload
+)
+FLAKY_RECORDED = EventSpec(
+    "test.command.flaky.recorded", aggregate_type="test", payload=AttemptPayload
+)
 
 
 @pytest.fixture
@@ -88,7 +122,7 @@ class TwinCommand(Command):
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
         return [
             NewEvent(
-                spec=COMMAND_RECORDED,
+                spec=TWIN_RECORDED,
                 aggregate_id=uuid.uuid7(),
                 payload={"label": self.label, "count": self.count},
             )
@@ -103,7 +137,7 @@ class TemporalCommand(Command):
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
         return [
             NewEvent(
-                spec=COMMAND_RECORDED,
+                spec=TEMPORAL_RECORDED,
                 aggregate_id=uuid.uuid7(),
                 payload={},
                 effective_time=self.when,
@@ -148,7 +182,7 @@ class FlakyCommand(Command):
             raise wrapped(OperationalError, "40P01")
         return [
             NewEvent(
-                spec=COMMAND_RECORDED,
+                spec=FLAKY_RECORDED,
                 aggregate_id=uuid.uuid7(),
                 payload={"attempt": type(self).attempts},
             )

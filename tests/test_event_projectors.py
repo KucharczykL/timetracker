@@ -11,6 +11,7 @@ from typing import Any, ClassVar, TypedDict
 import pytest
 from django.db import OperationalError, connection, transaction
 from django.test.utils import CaptureQueriesContext
+from pydantic import ConfigDict, with_config
 from test_command_dispatch import BasicCommand
 from test_event_retry import wrapped
 
@@ -330,6 +331,7 @@ class FlakyProjector(Projector, registry=retry_registry):
     handles: ClassVar[HandlerMap] = {"test.command.recorded": _recorded}
 
 
+@with_config(ConfigDict(extra="forbid", strict=True))
 class ProbePayload(TypedDict):
     probe: bool
 

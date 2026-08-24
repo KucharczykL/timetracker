@@ -9,6 +9,7 @@ from typing import Any, ClassVar, TypedDict
 
 import pytest
 from django.db import transaction
+from pydantic import ConfigDict, with_config
 
 from games.events.append import AppendResult, lock_stream
 from games.events.envelope import RecordedEvent
@@ -74,8 +75,12 @@ def second_library(django_user_model):
     ).library
 
 
+#: One key, carried by every event this module appends. The handled and the
+#: unhandled type share it: a projector keys on the event type, so the two specs
+#: cannot be told apart by their payloads anyway.
+@with_config(ConfigDict(extra="forbid", strict=True))
 class ProbePayload(TypedDict):
-    probe: bool
+    index: int
 
 
 PROBE_RECORDED = EventSpec(RECORDED, aggregate_type="probe", payload=ProbePayload)
@@ -86,7 +91,7 @@ def make_new_event(**overrides: Any) -> NewEvent:
     fields: dict[str, Any] = {
         "spec": PROBE_RECORDED,
         "aggregate_id": uuid.uuid7(),
-        "payload": {"probe": True},
+        "payload": {"index": 0},
     }
     fields.update(overrides)
     return NewEvent(**fields)

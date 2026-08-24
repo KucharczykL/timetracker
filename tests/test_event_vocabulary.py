@@ -89,6 +89,10 @@ def test_registering_a_second_spec_for_one_event_type_refuses(
     with pytest.raises(ValueError) as refusal:
         registry.register(twin)
 
+    #: Exactly ValueError: UnregisteredEventType is one too, and its message
+    #: names the event type as well, so both halves would pass over it.
+    assert refusal.type is ValueError
+    assert "already registered" in str(refusal.value)
     assert "library.probe.recorded" in str(refusal.value)
 
 

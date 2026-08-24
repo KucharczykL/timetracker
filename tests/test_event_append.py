@@ -7,6 +7,7 @@ from typing import Any, TypedDict
 import psycopg
 import pytest
 from django.db import close_old_connections, connection, transaction
+from pydantic import ConfigDict, with_config
 
 from games.events.append import (
     AppendResult,
@@ -22,8 +23,17 @@ from timetracker.temporal import TemporalValue
 pytestmark = pytest.mark.django_db
 
 
+STRICT_CONFIG = ConfigDict(extra="forbid", strict=True)
+
+
+@with_config(STRICT_CONFIG)
 class ProbePayload(TypedDict):
     probe: bool
+
+
+@with_config(STRICT_CONFIG)
+class NestedPayload(TypedDict):
+    nested: dict[str, str]
 
 
 PROBE_RECORDED = EventSpec(
@@ -34,7 +44,7 @@ PROBE_RECORDED = EventSpec(
 PLAYTHROUGH_STARTED = EventSpec(
     "library.playthrough.started",
     aggregate_type="playthrough",
-    payload=ProbePayload,
+    payload=NestedPayload,
     version=2,
 )
 
@@ -231,7 +241,9 @@ def test_absent_source_metadata_is_stored_as_an_empty_object(owned_library):
 
 
 #: Each one reaches PostgreSQL as something other than itself, or not at all: a
-#: tuple as a list, an integer key as a string, and the rest not at all.
+#: tuple as a list, an integer key as a string, and the rest not at all. None of
+#: them fits any schema, deliberately: they are inputs the canonicalizer refuses,
+#: not payloads a spec could declare.
 NON_CANONICAL_VALUES = [
     pytest.param({"tags": ("first", "second")}, id="tuple"),
     pytest.param({1: "first"}, id="integer-key"),

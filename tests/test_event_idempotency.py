@@ -14,6 +14,7 @@ from django.db import (
     transaction,
 )
 from django.db.migrations.loader import MigrationLoader
+from pydantic import ConfigDict, with_config
 
 from games.events.append import AppendResult, lock_stream
 from games.events.conflicts import CommandConflict
@@ -89,6 +90,7 @@ def test_rejected_records(owned_library, overrides: dict[str, Any]):
         make_record(owned_library, **overrides)
 
 
+@with_config(ConfigDict(extra="forbid", strict=True))
 class ProbePayload(TypedDict):
     probe: bool
 

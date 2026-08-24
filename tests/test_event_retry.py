@@ -11,6 +11,7 @@ from django.db import (
     transaction,
 )
 from django.utils import timezone
+from pydantic import ConfigDict, with_config
 
 from games.events.append import AppendResult, lock_stream
 from games.events.idempotency import IdempotencyKeyMismatch, idempotent_append
@@ -260,8 +261,9 @@ def test_each_retry_is_logged(capture_games_logger):
     assert "40P01" in retry_logs[0].getMessage()
 
 
+@with_config(ConfigDict(extra="forbid", strict=True))
 class ProbePayload(TypedDict):
-    probe: bool
+    """No keys: these tests need a row to exist, never to say anything."""
 
 
 PROBE_RECORDED = EventSpec(
