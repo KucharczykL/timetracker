@@ -24,10 +24,7 @@ from games.events.envelope import RecordedEvent
 from games.events.vocabulary import EventSpec, EventType
 
 type BoundHandler = Callable[[RecordedEvent], None]
-#: What a family declares. The keys are the `EventSpec` constants themselves, so
-#: a family cannot claim an event type nobody defined. The values are the handler
-#: functions, read out of the class body before any descriptor binding -- hence
-#: Callable[..., None] rather than a signature naming `self`.
+#: EventSpec keys; values are the handler functions.
 type HandlerMap = Mapping[EventSpec[Any], Callable[..., None]]
 #: One handler and the family it speaks for, so a failure can say which.
 type FamilyHandler = tuple[ProjectorFamily, BoundHandler]
@@ -70,8 +67,7 @@ class ProjectorRegistry:
     def __init__(self) -> None:
         self._families: dict[ProjectorFamily, Projector] = {}
         self._claims: dict[ProjectorFamily, DefinitionSite] = {}
-        #: Keyed on the event-type string, because that is what a RecordedEvent
-        #: carries. Only the declaration is spec-shaped.
+        #: The string a RecordedEvent carries.
         self._handlers: dict[EventType, tuple[FamilyHandler, ...]] = {}
 
     def register(self, projector_class: type[Projector]) -> None:

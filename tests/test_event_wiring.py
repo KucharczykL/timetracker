@@ -19,9 +19,7 @@ def test_every_spec_a_default_projector_claims_is_a_registered_event_type():
     Both registries are empty today, so this costs nothing and catches the first
     real mismatch.
     """
-    #: Read off the resolved handler map, which is keyed on exactly the event
-    #: types some family claims. The registry exposes no iteration of its own,
-    #: and adding one for a test would be the larger change.
+    #: The registry exposes no public iteration.
     claimed = DEFAULT_WIRING.projectors._handlers
 
     unregistered = sorted(

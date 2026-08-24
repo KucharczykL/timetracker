@@ -63,8 +63,7 @@ class OpaquePayload(TypedDict):
 PROBE_RECORDED = EventSpec(
     "library.probe.recorded", aggregate_type="probe", payload=ProbePayload
 )
-#: A second spec, so the row's event type and schema version are each read off
-#: the registered spec rather than off one shared default.
+#: Second spec: version and type from registration.
 PLAYTHROUGH_STARTED = EventSpec(
     "library.playthrough.started",
     aggregate_type="playthrough",
@@ -77,14 +76,11 @@ OPAQUE_RECORDED = EventSpec(
     "library.opaque.recorded", aggregate_type="probe", payload=OpaquePayload
 )
 
-#: Built but never registered, so an append carrying it has to be refused on the
-#: registry's word rather than on the spec object the caller happens to hold.
+#: Never registered: an append must refuse it.
 UNREGISTERED = EventSpec(
     "library.unregistered.happened", aggregate_type="probe", payload=ProbePayload
 )
-#: A registered event type under a spec nobody registered, disagreeing with the
-#: registration about everything a spec decides -- the version the row records,
-#: and the aggregate type the registry answers for.
+#: Registered type, unregistered spec, disagreeing about everything.
 MISDECLARED_PROBE = EventSpec(
     "library.probe.recorded",
     aggregate_type="mistaken",
@@ -92,8 +88,7 @@ MISDECLARED_PROBE = EventSpec(
     version=9,
 )
 
-#: This module's own vocabulary: a probe type registered here never enters the
-#: one a production stream reads.
+#: This module's own vocabulary, never production's.
 EVENT_TYPES = EventTypeRegistry()
 for registered_spec in (
     PROBE_RECORDED,
@@ -288,8 +283,7 @@ def test_the_row_is_built_from_the_registered_spec(owned_library):
 
     event = LibraryEvent.objects.get()
     assert event.payload_schema_version == PROBE_RECORDED.version == 1
-    #: The aggregate type is not among them: the spec declares it and the row
-    #: stores no copy, so the registration is the only place it lives.
+    #: No aggregate_type: the spec alone declares it.
     assert not hasattr(event, "aggregate_type")
     assert EVENT_TYPES.spec_for(event.event_type).aggregate_type == "probe"
 
@@ -312,10 +306,7 @@ def test_absent_source_metadata_is_stored_as_an_empty_object(owned_library):
     assert LibraryEvent.objects.get().source_metadata == {}
 
 
-#: Each one reaches PostgreSQL as something other than itself, or not at all: a
-#: tuple as a list, an integer key as a string, and the rest not at all. None of
-#: them fits any schema, deliberately: they are inputs the canonicalizer refuses,
-#: not payloads a spec could declare.
+#: Canonicalizer inputs, not payloads any schema declares.
 NON_CANONICAL_VALUES = [
     pytest.param({"tags": ("first", "second")}, id="tuple"),
     pytest.param({1: "first"}, id="integer-key"),
@@ -464,8 +455,7 @@ def test_an_integer_for_a_float_field_is_stored_as_a_float(owned_library):
 
 
 def test_a_stored_payload_is_not_the_callers_object(owned_library):
-    #: Built through spec.new, the one path that types a payload against the
-    #: schema its spec names.
+    #: spec.new types the payload against its schema.
     payload: ProbePayload = {"probe": True}
     event = PROBE_RECORDED.new(aggregate_id=uuid.uuid7(), payload=payload)
 

@@ -29,13 +29,10 @@ from timetracker.temporal import TemporalValue
 type AggregateType = str  # "playthrough"
 type EventType = str  # "library.session.created"
 
-#: What `@with_config` must set for validation to mean anything: extra="forbid"
-#: refuses a key nobody declared, strict=True refuses a value pydantic would
-#: otherwise quietly coerce.
+#: Without both, validation means nothing.
 REQUIRED_SCHEMA_CONFIG: Mapping[str, object] = {"extra": "forbid", "strict": True}
 
-#: Read off the column, so the registration check and the constraint cannot
-#: drift.
+#: Read off the column, so nothing drifts.
 EVENT_TYPE_MAX_LENGTH: int = cast(
     int, LibraryEvent._meta.get_field("event_type").max_length
 )
@@ -78,9 +75,7 @@ class EventSpec[PayloadT]:
     """
 
     event_type: EventType
-    #: Declared here and nowhere else. A row storing a copy would keep the old
-    #: string after a registration changed, with nothing to notice; asking the
-    #: registry instead costs SQL an IN list over event types the index serves.
+    #: Declared here only; no row copies it.
     aggregate_type: AggregateType
     payload: type[PayloadT]
     version: int = 1
@@ -102,8 +97,7 @@ class EventSpec[PayloadT]:
         return NewEvent(
             spec=self,
             aggregate_id=aggregate_id,
-            #: PayloadT is a TypedDict, therefore a dict, which no annotation
-            #: over an unbounded parameter can tell a checker.
+            #: PayloadT is a TypedDict, therefore a dict.
             payload=cast("dict[str, Any]", payload),
             effective_time=effective_time,
             causation_id=causation_id,

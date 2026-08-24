@@ -92,8 +92,7 @@ def test_registering_a_second_spec_for_one_event_type_refuses(
     with pytest.raises(ValueError) as refusal:
         registry.register(twin)
 
-    #: Exactly ValueError: UnregisteredEventType is one too, and its message
-    #: names the event type as well, so both halves would pass over it.
+    #: Exactly ValueError: UnregisteredEventType would pass too.
     assert refusal.type is ValueError
     assert "already registered" in str(refusal.value)
     assert "library.probe.recorded" in str(refusal.value)
@@ -258,10 +257,7 @@ def test_a_spec_is_hashable():
     assert {PROBE_RECORDED: "handler"}[PROBE_RECORDED] == "handler"
 
 
-#: Every event type any test module in this suite defines. Registering into a
-#: registry of one's own is what keeps them out of the production vocabulary,
-#: and the assertion below is what pins that -- a module that forgot its own
-#: `EventTypeRegistry()` would otherwise pass the whole suite.
+#: Every test event type this suite defines.
 TEST_EVENT_TYPES = (
     "library.probe.recorded",
     "library.probe.unhandled",

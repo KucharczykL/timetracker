@@ -55,8 +55,7 @@ class AttemptPayload(TypedDict):
     attempt: int
 
 
-#: One spec per payload shape. A schema forbids the keys it does not declare,
-#: so four commands recording four shapes cannot share one event type.
+#: One spec per payload shape.
 COMMAND_RECORDED = EventSpec(
     "test.command.recorded", aggregate_type="test", payload=CommandPayload
 )
@@ -70,9 +69,7 @@ FLAKY_RECORDED = EventSpec(
     "test.command.flaky.recorded", aggregate_type="test", payload=AttemptPayload
 )
 
-#: This module's own vocabulary, so a test event type never enters the one a
-#: production stream reads. Exported: the projector tests dispatch these same
-#: commands through a wiring of their own.
+#: This module's vocabulary. Projector tests import these.
 EVENT_TYPES = EventTypeRegistry()
 for spec in (COMMAND_RECORDED, TWIN_RECORDED, TEMPORAL_RECORDED, FLAKY_RECORDED):
     EVENT_TYPES.register(spec)

@@ -271,8 +271,7 @@ PROBE_RECORDED = EventSpec(
     "probe.recorded", aggregate_type="probe", payload=ProbePayload
 )
 
-#: This module's own vocabulary, so a probe type never enters the one a
-#: production stream reads.
+#: This module's own vocabulary, never production's.
 EVENT_TYPES = EventTypeRegistry()
 EVENT_TYPES.register(PROBE_RECORDED)
 WIRING = EventWiring(event_types=EVENT_TYPES)

@@ -34,8 +34,7 @@ PROBE_RECORDED = EventSpec(
     "library.probe.recorded", aggregate_type="probe", payload=ProbePayload
 )
 
-#: This module's own vocabulary, so a probe type never enters the one a
-#: production stream reads.
+#: This module's own vocabulary, never production's.
 EVENT_TYPES = EventTypeRegistry()
 EVENT_TYPES.register(PROBE_RECORDED)
 WIRING = EventWiring(event_types=EVENT_TYPES)
@@ -141,7 +140,7 @@ def test_the_payload_arrives_with_its_keys_sorted_at_every_depth():
     assert list(payload) == ["aaa", "b", "zz"]
     assert list(payload["zz"]) == ["a", "yy"]
     assert list(payload["aaa"][0]) == ["c", "nn"]
-    #: Rebuilt rather than reordered in place: the row belongs to its caller.
+    #: Rebuilt, not reordered: the row is untouched.
     assert list(row.payload) == ["zz", "aaa", "b"]
 
 

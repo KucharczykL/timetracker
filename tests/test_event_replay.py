@@ -47,9 +47,7 @@ SEEN: list[RecordedEvent] = []
 ORDER: list[tuple[ProjectorFamily, int]] = []
 
 
-#: One key, carried by every event this module appends. The handled and the
-#: unhandled type share it: a projector keys on the event type, so the two specs
-#: cannot be told apart by their payloads anyway.
+#: One event type for handled and unhandled.
 @with_config(ConfigDict(extra="forbid", strict=True))
 class ProbePayload(TypedDict):
     index: int
@@ -75,8 +73,7 @@ PROBE_RECORDED = EventSpec(RECORDED, aggregate_type="probe", payload=ProbePayloa
 PROBE_UNHANDLED = EventSpec(UNHANDLED, aggregate_type="probe", payload=ProbePayload)
 PROBE_AWKWARD = EventSpec(AWKWARD, aggregate_type="probe", payload=AwkwardPayload)
 
-#: Written in an order that is neither sorted nor the one jsonb hands back, at
-#: every level.
+#: Neither sorted nor jsonb's, at every level.
 AWKWARD_PAYLOAD: dict[str, Any] = {
     "zz": {"yy": 1, "a": 2},
     "aaa": [{"nn": 1, "c": 2}, {"zzz": 3}],
@@ -84,12 +81,10 @@ AWKWARD_PAYLOAD: dict[str, Any] = {
     "b": 4,
 }
 
-#: The same trap on the other JSONB column. Metadata is free-form rather than
-#: schema-bound, so no registration constrains its keys.
+#: The same trap on the other column.
 AWKWARD_METADATA: dict[str, Any] = {"zz": 1, "aaa": 2, "b": 3, "origin": "manual"}
 
-#: This module's own vocabulary, so a probe type never enters the one a
-#: production stream reads.
+#: This module's own vocabulary, never production's.
 EVENT_TYPES = EventTypeRegistry()
 for spec in (PROBE_RECORDED, PROBE_UNHANDLED, PROBE_AWKWARD):
     EVENT_TYPES.register(spec)
@@ -203,8 +198,7 @@ def test_an_unregistered_event_type_refuses_the_replay(owned_library):
     with pytest.raises(UnregisteredEventType, match="library.probe.forgotten"):
         replay(owned_library, wiring=wiring)
 
-    #: The events before the unreadable row were folded; it and nothing after
-    #: it reached a projector.
+    #: Folded up to the row, nothing after.
     assert [event.sequence for event in SEEN] == [1, 2]
 
 
@@ -217,7 +211,7 @@ def test_an_unreadable_payload_version_refuses_the_replay(owned_library):
         replay(owned_library, wiring=wiring)
 
     message = str(raised.value)
-    #: Both versions and the sequence, so the refusal names the row to look at.
+    #: Both versions and the sequence.
     assert "version 2" in message
     assert "version 1" in message
     assert "#3" in message

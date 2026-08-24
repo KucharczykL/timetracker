@@ -100,10 +100,7 @@ class ProbePayload(TypedDict):
 PROBE_RECORDED = EventSpec(RECORDED, aggregate_type="probe", payload=ProbePayload)
 PROBE_OTHER = EventSpec(OTHER, aggregate_type="probe", payload=ProbePayload)
 
-#: This module's own vocabulary, so a test event type never enters the one a
-#: production stream reads. The dispatch tests below run a command declared in
-#: `test_command_dispatch`, so its spec is registered here too -- registration
-#: is per registry, and that module keeps its own.
+#: This module's vocabulary, plus the dispatch specs.
 EVENT_TYPES = EventTypeRegistry()
 for spec in (PROBE_RECORDED, PROBE_OTHER, COMMAND_RECORDED):
     EVENT_TYPES.register(spec)
@@ -188,7 +185,7 @@ def test_a_family_is_dispatched_for_the_event_type_its_spec_names():
 
         handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
 
-    #: The lookup key is the string a RecordedEvent carries, not the spec.
+    #: The lookup key is a string.
     assert len(registry.handlers_for(RECORDED)) == 1
 
     registry.apply(make_event())

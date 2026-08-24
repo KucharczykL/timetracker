@@ -103,14 +103,10 @@ class LockedStream:
         #: Before the rows and before the advance: a refusal must leave a
         #: transaction that may still commit exactly as it found it.
         metadata = canonical_json(source_metadata or {}, label="source metadata")
-        #: Resolved by event-type string, never off the spec the NewEvent
-        #: carries: a caller holding a spec nobody registered must be refused,
-        #: which is what makes a test-owned vocabulary mean anything.
+        #: The registry's word, not the caller's spec.
         specs = [wiring.event_types.spec_for(event.spec.event_type) for event in events]
         payloads = [
-            #: Canonical first. A field typed `dict[str, Any]` carries content
-            #: pydantic hands straight back, so validating first would store a
-            #: value PostgreSQL returns as something else.
+            #: Canonical first: pydantic passes dicts through untouched.
             wiring.event_types.validate(
                 spec.event_type, canonical_json(event.payload, label="payload")
             )
@@ -128,10 +124,7 @@ class LockedStream:
                 sequence=first_sequence + offset,
                 event_type=spec.event_type,
                 aggregate_id=event.aggregate_id,
-                #: Pydantic's value, not the canonical input: a field typed
-                #: `float` given `1` comes back `1.0`, and storing the input
-                #: would put an int on disk under a schema promising a float,
-                #: where Python equality could never see it.
+                #: Pydantic's value: 1 into float stores 1.0.
                 payload=payload,
                 payload_schema_version=spec.version,
                 recorded_at=recorded_at,
