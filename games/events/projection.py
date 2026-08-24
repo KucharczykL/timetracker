@@ -21,7 +21,7 @@ from enum import StrEnum
 from typing import Any, ClassVar
 
 from games.events.envelope import RecordedEvent
-from games.events.vocabulary import EventSpec
+from games.events.vocabulary import EventSpec, EventType
 
 type BoundHandler = Callable[[RecordedEvent], None]
 #: What a family declares. The keys are the `EventSpec` constants themselves, so
@@ -72,7 +72,7 @@ class ProjectorRegistry:
         self._claims: dict[ProjectorFamily, DefinitionSite] = {}
         #: Keyed on the event-type string, because that is what a RecordedEvent
         #: carries. Only the declaration is spec-shaped.
-        self._handlers: dict[str, tuple[FamilyHandler, ...]] = {}
+        self._handlers: dict[EventType, tuple[FamilyHandler, ...]] = {}
 
     def register(self, projector_class: type[Projector]) -> None:
         family_name = getattr(projector_class, "family_name", None)
@@ -118,7 +118,7 @@ class ProjectorRegistry:
         self._rebuild_handlers()
 
     def _rebuild_handlers(self) -> None:
-        handlers: dict[str, list[FamilyHandler]] = {}
+        handlers: dict[EventType, list[FamilyHandler]] = {}
         for family_name in sorted(self._families, key=_RUN_ORDER.__getitem__):
             family = self._families[family_name]
             for spec, handler in family.handles.items():
@@ -129,7 +129,7 @@ class ProjectorRegistry:
             event_type: tuple(found) for event_type, found in handlers.items()
         }
 
-    def handlers_for(self, event_type: str) -> tuple[BoundHandler, ...]:
+    def handlers_for(self, event_type: EventType) -> tuple[BoundHandler, ...]:
         return tuple(handler for _, handler in self._handlers.get(event_type, ()))
 
     def apply(self, event: RecordedEvent) -> None:

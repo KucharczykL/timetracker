@@ -27,6 +27,7 @@ from games.models import LibraryEvent
 from timetracker.temporal import TemporalValue
 
 type AggregateType = str  # "playthrough"
+type EventType = str  # "library.session.created"
 
 #: What `@with_config` must set for validation to mean anything: extra="forbid"
 #: refuses a key nobody declared, strict=True refuses a value pydantic would
@@ -76,7 +77,7 @@ class EventSpec[PayloadT]:
     projector family claims the types it handles.
     """
 
-    event_type: str
+    event_type: EventType
     #: Declared here and nowhere else. A row storing a copy would keep the old
     #: string after a registration changed, with nothing to notice; asking the
     #: registry instead costs SQL an IN list over event types the index serves.
@@ -153,7 +154,7 @@ class EventTypeRegistry:
     """
 
     def __init__(self) -> None:
-        self._registered: dict[str, RegisteredType] = {}
+        self._registered: dict[EventType, RegisteredType] = {}
 
     def register(self, spec: EventSpec[Any]) -> None:
         self._check_names(spec)
@@ -240,10 +241,12 @@ class EventTypeRegistry:
                 "values pydantic silently coerced."
             )
 
-    def spec_for(self, event_type: str) -> EventSpec[Any]:
+    def spec_for(self, event_type: EventType) -> EventSpec[Any]:
         return self._registration_for(event_type).spec
 
-    def validate(self, event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def validate(
+        self, event_type: EventType, payload: dict[str, Any]
+    ) -> dict[str, Any]:
         """Return the payload as its schema reads it, refusing anything else.
 
         Pydantic's value is returned rather than the argument, because it is the
@@ -260,10 +263,10 @@ class EventTypeRegistry:
                 f"{error.errors(include_url=False)}"
             ) from error
 
-    def __contains__(self, event_type: str) -> bool:
+    def __contains__(self, event_type: EventType) -> bool:
         return event_type in self._registered
 
-    def _registration_for(self, event_type: str) -> RegisteredType:
+    def _registration_for(self, event_type: EventType) -> RegisteredType:
         try:
             return self._registered[event_type]
         except KeyError:

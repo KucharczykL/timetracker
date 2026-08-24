@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from games.events.vocabulary import EventType
 from games.models import LibraryEvent
 from timetracker.temporal import TemporalValue
 
@@ -51,7 +52,7 @@ class RecordedEvent:
     library_id: uuid.UUID
     stream_id: uuid.UUID
     sequence: int
-    event_type: str
+    event_type: EventType
     aggregate_id: uuid.UUID
     payload_schema_version: int
     recorded_at: datetime

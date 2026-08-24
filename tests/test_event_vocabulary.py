@@ -5,6 +5,7 @@ import pytest
 from pydantic import ConfigDict, with_config
 
 from games.events.vocabulary import (
+    DEFAULT_EVENT_TYPES,
     EVENT_TYPE_MAX_LENGTH,
     EventNameInvalid,
     EventSpec,
@@ -255,3 +256,38 @@ def test_new_builds_an_event_carrying_its_spec():
 
 def test_a_spec_is_hashable():
     assert {PROBE_RECORDED: "handler"}[PROBE_RECORDED] == "handler"
+
+
+#: Every event type any test module in this suite defines. Registering into a
+#: registry of one's own is what keeps them out of the production vocabulary,
+#: and the assertion below is what pins that -- a module that forgot its own
+#: `EventTypeRegistry()` would otherwise pass the whole suite.
+TEST_EVENT_TYPES = (
+    "library.probe.recorded",
+    "library.probe.unhandled",
+    "library.probe.awkward",
+    "library.probe.forgotten",
+    "library.ratio.recorded",
+    "library.opaque.recorded",
+    "library.playthrough.started",
+    "library.shapes.recorded",
+    "library.unregistered.happened",
+    "library.nothing.happened",
+    "test.command.recorded",
+    "test.command.twin.recorded",
+    "test.command.temporal.recorded",
+    "test.command.flaky.recorded",
+    "test.projector.recorded",
+    "test.projector.other",
+    "test.projector.unhandled",
+)
+
+
+@pytest.mark.parametrize("event_type", TEST_EVENT_TYPES)
+def test_a_test_registry_leaves_the_default_vocabulary_empty(event_type: str):
+    """The vocabulary half of the claim the projector suite already pins.
+
+    An immutable audit trail reads `DEFAULT_EVENT_TYPES`, so a probe type
+    reaching it is a name a production stream could then record.
+    """
+    assert event_type not in DEFAULT_EVENT_TYPES
