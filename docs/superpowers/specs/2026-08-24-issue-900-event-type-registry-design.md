@@ -357,14 +357,23 @@ changes except the two removed fields.
 ```python
 # games/events/vocabulary.py
 
+
 class UnregisteredEventType(ValueError): ...
+
+
 class PayloadInvalid(ValueError): ...
+
+
 #: A schema declared without the @with_config the registry requires.
 class SchemaNotConfigured(TypeError): ...
+
+
 #: Registering a version above 1 before upcasting exists.
 class VersionNotUpcastable(NotImplementedError): ...
 
+
 type AggregateType = str  # "playthrough"
+
 
 @dataclass(frozen=True, slots=True)
 class EventSpec[PayloadT]:
@@ -382,11 +391,15 @@ class EventSpec[PayloadT]:
         causation_id: uuid.UUID | None = None,
     ) -> NewEvent: ...
 
+
 class EventTypeRegistry:
     def register(self, spec: EventSpec[Any]) -> None: ...
-    def spec_for(self, event_type: str) -> EventSpec[Any]: ...   # raises UnregisteredEventType
+    def spec_for(
+        self, event_type: str
+    ) -> EventSpec[Any]: ...  # raises UnregisteredEventType
     def validate(self, event_type: str, payload: dict[str, Any]) -> dict[str, Any]: ...
     def __contains__(self, event_type: str) -> bool: ...
+
 
 DEFAULT_EVENT_TYPES: EventTypeRegistry
 ```
@@ -394,11 +407,13 @@ DEFAULT_EVENT_TYPES: EventTypeRegistry
 ```python
 # games/events/wiring.py
 
+
 @dataclass(frozen=True, slots=True)
 class EventWiring:
     projectors: ProjectorRegistry = DEFAULT_REGISTRY
     event_types: EventTypeRegistry = DEFAULT_EVENT_TYPES
     retry_policy: RetryPolicy = DEFAULT_RETRY_POLICY
+
 
 DEFAULT_WIRING: EventWiring
 ```

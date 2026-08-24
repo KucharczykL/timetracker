@@ -81,9 +81,16 @@ its constraint), `pyproject.toml` (declare pydantic).
 
 ```python
 class UnregisteredEventType(ValueError): ...
+
+
 class PayloadInvalid(ValueError): ...
+
+
 class SchemaNotConfigured(TypeError): ...
+
+
 class VersionNotUpcastable(NotImplementedError): ...
+
 
 type AggregateType = str  # "playthrough"
 
