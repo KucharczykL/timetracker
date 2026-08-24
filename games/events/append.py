@@ -16,6 +16,7 @@ from django.contrib.auth.models import User
 from django.db import router, transaction
 from django.utils import timezone
 
+from games.events.envelope import RecordedEvent
 from games.events.projection import DEFAULT_REGISTRY, ProjectorRegistry
 from games.models import LibraryEvent, LibraryEventStreamHead, UserLibrary
 from timetracker.temporal import TemporalValue
@@ -147,8 +148,8 @@ class LockedStream:
         #: append is the one place this can run and still be in the command's
         #: transaction under the lock it already took, which is what makes "no
         #: event commits unprojected" a property of the writer.
-        for event in rows:
-            registry.apply(event)
+        for row in rows:
+            registry.apply(RecordedEvent.from_row(row))
 
         return AppendResult(
             stream_id=head.id,
