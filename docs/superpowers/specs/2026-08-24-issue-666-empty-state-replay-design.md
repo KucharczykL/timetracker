@@ -17,8 +17,8 @@ state", and the machinery every later rebuild is built on.
 One function. It reads a library's stream in sequence order, converts each row to
 a `RecordedEvent`, and folds it through a registry -- the same value, in the same
 order, through the same call as an append. Streaming, so a hundred-thousand-event
-stream costs 4 MB rather than 223 MB, and bounded, so it can say exactly which
-prefix of the stream it covered.
+stream costs the application under a megabyte rather than 223 MB, and bounded, so
+it can say exactly which prefix of the stream it covered.
 
 ## Ownership boundary
 
@@ -82,6 +82,16 @@ snapshot semantics below cost nothing to buy.
 hydration is roughly 15 and `from_row` under 3. A rebuild's budget will be spent
 by families, not by this read: 1.74 s of the charter's 60 s, with every projector
 still to come.
+
+**`.iterator()` streams the client, not the server.** Django's PostgreSQL backend
+declares its server-side cursor `withhold=connection.autocommit`, so replay --
+which owns no transaction -- gets a `WITH HOLD` cursor, and PostgreSQL
+materializes the whole result at `DECLARE`. Measured over the same 100k events:
+52 ms to the first row in autocommit against 3 ms inside `atomic()`, one holdable
+cursor visible in `pg_cursors`, and no temp-file spill at that size. The client
+memory figures above are real and so is the single query; the server does the
+work up front either way. A caller wanting a non-holdable cursor wraps the call
+in `atomic()`, which is a choice it already has.
 
 One further measurement, because it overturns the obvious optimisation:
 constructing the value from a `.values(...)` mapping instead of a model instance
@@ -218,31 +228,58 @@ Checking only the final count would catch the same two faults for even less, and
 report "expected 40,000, folded 39,999" without saying where.
 
 `StreamNotContiguous` derives from `Exception` and deliberately not from
-`IntegrityError` or `OperationalError`: `run_in_transaction` classifies
-retryability by exception type, and a damaged stream is not a thing retrying
-fixes.
+`IntegrityError` or `OperationalError`. It would in fact survive
+`run_in_transaction`, whose retry decision reads `error.__cause__.sqlstate` and
+declines anything without one -- but those two types are the funnel that
+classifier catches on, and every other reader of them (`except IntegrityError`
+around a command, a log filter) would take a damaged stream for a database
+conflict.
 
 Events before the gap have already been applied and stay applied. Replay owns no
 transaction, so it cannot offer all-or-nothing; a caller wanting that wraps the
 call in `atomic` -- 1.74 s for 100k events -- and #667, which builds into shadow
 tables it is about to discard on failure, does not need to.
 
+The read is closed on the way out. The `.iterator()` generator is wrapped in
+`contextlib.closing`, so a gap, a raising projector, or any other unwinding leaves
+no cursor behind: in autocommit that cursor is `WITH HOLD`, which outlives its
+transaction by design and would otherwise sit on the connection until the
+generator is finalized -- and a propagating exception keeps the frame that holds
+it alive for as long as anything holds the exception.
+
 ### A library that never appended replays to nothing
 
 `ReplayResult.stream_id` is `uuid.UUID | None`. No head means the library has
 never appended, which is a legitimate empty stream rather than an error: the
-result is `(None, 0, 0)` and **no head row is created**. Replay is a read, and a
+result is `(None, 0)` and **no head row is created**. Replay is a read, and a
 read that provisions rows is a read nobody can run safely.
 
 A head sitting at sequence zero is the same answer with the stream's id.
 
+### The result carries the bound and nothing derivable from it
+
+There is no `event_count`. The contiguity contract makes the sequences exactly
+`1..folded_through`, each once, so a count would equal `folded_through` for every
+stream that does not raise -- a second field that can only ever agree with the
+first, and that a reader would eventually be tempted to check against it.
+
 ### Isolation comes from the head
 
-The filter is `stream_id=head.id`, where the head was fetched by library. The
-`(id, library)` unique constraint on `LibraryEventStreamHead` exists so an event
-can point a composite foreign key at the pair, which means a stream id already
-implies its library; filtering on `library_id` as well would restate that and
-suggest the two could disagree.
+The filter is `stream_id=head.id`, where the head was fetched by library. This is
+enforced rather than conventional: migration `0023_library_event_schema` adds a
+composite foreign key from `(stream_id, library_id)` to the head's
+`(id, library_id)` -- via `RunSQL`, so it is invisible in `models.py` -- and
+PostgreSQL refuses an event pairing one library's stream with another's library.
+A stream id therefore already implies its library, and filtering on `library_id`
+too would restate a constraint the database keeps.
+
+### The read follows the default connection
+
+`replay` reads through the default manager rather than routing explicitly the way
+`append` and `retry` reach for `router.db_for_write`. No router exists, so this
+is inert today. It is worth stating because the snapshot argument assumes a
+primary read: against a replica, `current_sequence` would be a lagged bound, and
+`folded_through` would name a prefix newer than the replica actually holds.
 
 ### A projector's exception passes through untouched
 
@@ -266,12 +303,11 @@ class StreamNotContiguous(Exception):
 
 @dataclass(frozen=True, slots=True)
 class ReplayResult:
-    """Which prefix of which stream was folded, and how much of it there was."""
+    """Which prefix of which stream was folded."""
 
     #: None when the library has never appended: an empty stream, not an error.
     stream_id: uuid.UUID | None
     folded_through: int
-    event_count: int
 
 
 def replay(
@@ -313,7 +349,7 @@ Damaged and empty streams:
   sequence, and the families applied everything before it
 - deleting the last event raises, naming the sequence the head promised
 - a head at sequence zero folds nothing and returns that stream id
-- a library with no head returns `(None, 0, 0)` and creates no head row
+- a library with no head returns `(None, 0)` and creates no head row
 
 Errors:
 

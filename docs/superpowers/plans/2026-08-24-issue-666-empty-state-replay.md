@@ -70,7 +70,6 @@ class StreamNotContiguous(Exception): ...
 class ReplayResult:
     stream_id: uuid.UUID | None
     folded_through: int
-    event_count: int
 
 
 def replay(
@@ -82,13 +81,19 @@ def replay(
 
 - [ ] Write the module docstring: what a replay is, and that the bound *is* the
       snapshot because events are immutable and append-only.
+- [ ] Set up the test module first: a `SEEN` list sink, a recorder family on
+      `ProjectorFamily.CURRENT_STATE` registered into a module-level
+      `ProjectorRegistry()`, and an autouse fixture clearing the sink before and
+      after each test — the pattern at `tests/test_event_projectors.py:35-60`.
+      Every test below drives that registry, never `DEFAULT_REGISTRY`.
 - [ ] `replay` reads the head with
       `LibraryEventStreamHead.objects.filter(library=library).first()`. `None`
-      returns `ReplayResult(stream_id=None, folded_through=0, event_count=0)`
-      **without creating a head row**.
+      returns `ReplayResult(stream_id=None, folded_through=0)` **without creating
+      a head row**.
 - [ ] Bound the read at the head's `current_sequence`, read
       `LibraryEvent.objects.filter(stream_id=head.id, sequence__lte=bound)
-      .order_by("sequence").iterator(chunk_size=REPLAY_CHUNK_SIZE)`.
+      .order_by("sequence").iterator(chunk_size=REPLAY_CHUNK_SIZE)`, and wrap the
+      iterator in `contextlib.closing` so unwinding closes the cursor.
 - [ ] Per row: `RecordedEvent.from_row(row)`, then the contiguity check, then
       `registry.apply(event)` — in that order, so a damaged stream is refused
       before it is projected.
@@ -98,16 +103,16 @@ def replay(
 - [ ] After the loop: `previous` must equal the bound, or raise
       `StreamNotContiguous` naming the sequence the head promised and the one the
       fold reached.
-- [ ] Return `ReplayResult(head.id, bound, event_count)`.
+- [ ] Return `ReplayResult(head.id, bound)`.
 
 **Tests (write each before the code it covers):**
 
 - [ ] a single-append stream folds every event, in sequence order, into the
       module's recorder
-- [ ] the result carries the stream id, `folded_through` equal to the head's
-      `current_sequence`, and the event count
-- [ ] a head at sequence zero folds nothing and returns that stream id with zeros
-- [ ] a library with no head returns `(None, 0, 0)` **and**
+- [ ] the result carries the stream id and `folded_through` equal to the head's
+      `current_sequence`
+- [ ] a head at sequence zero folds nothing and returns that stream id with zero
+- [ ] a library with no head returns `(None, 0)` **and**
       `LibraryEventStreamHead.objects.filter(library=library).exists()` is still
       false afterwards
 - [ ] deleting a middle event raises `StreamNotContiguous`, the message names the
@@ -122,11 +127,24 @@ def replay(
 
 - **Build streams with `lock_stream(...).append([...])` inside
   `transaction.atomic()`**, not by hand-rolling `LibraryEvent(...)` rows. The
-  head must advance or every tail check in this file is testing the fixture.
-  `dispatch` works too and is what the parity test in Task 2 uses.
-- Any test touching `lock_stream` needs `@pytest.mark.django_db(transaction=True)`
-  — `select_for_update` requires a real transaction, as every existing event test
-  already does.
+  head must advance or every tail check in this file is testing the fixture. One
+  `append` call takes a list of `NewEvent`s, which is how a test gets sequences
+  1..N; `BasicCommand` emits exactly one event per dispatch
+  (`tests/test_command_dispatch.py:53-68`), so `dispatch` is the wrong tool for a
+  multi-event stream.
+- **Plain `@pytest.mark.django_db` is right here.** `lock_stream`'s
+  `select_for_update` is satisfied by pytest-django's own atomic wrapper, which is
+  why `tests/test_event_append.py:22` and most of `test_event_projectors.py` use
+  it. `transaction=True` is needed only by tests that call `dispatch`, because
+  `run_in_transaction` refuses to nest (`games/events/retry.py:113-118`).
+  Transactional tests truncate instead of rolling back and are slower under
+  xdist, so do not reach for it by reflex.
+- **Close the iterator.** `contextlib.closing` around the `.iterator()` generator,
+  because in autocommit Django declares the server-side cursor `WITH HOLD`
+  (`django/db/backends/postgresql/base.py:421`), and a `StreamNotContiguous` or a
+  raising projector abandons the generator mid-flight. The traceback keeps the
+  frame — and therefore the cursor — alive for as long as anything holds the
+  exception.
 - `ReplayResult.stream_id` is `uuid.UUID | None`. Do not "simplify" it by raising
   for a library that never appended: an empty stream is a legitimate replay, and
   raising would make every caller special-case the case that needs no special
@@ -134,10 +152,14 @@ def replay(
 - Contiguity starts at 1, not at the first row's sequence. A stream whose first
   event is #2 is exactly as damaged as one with a hole in the middle, and reading
   the start from the data would make it undetectable.
-- `StreamNotContiguous` inherits `Exception`. Deriving it from `IntegrityError`
-  or `OperationalError` would make `run_in_transaction` retry a damaged stream.
-- Do not wrap `registry.apply` in a `try`. It already annotates and re-raises;
-  a second note or a wrapper breaks the retry classifier the same way.
+- `StreamNotContiguous` inherits `Exception`. It would in fact survive
+  `run_in_transaction` — that classifier declines anything whose `__cause__`
+  carries no SQLSTATE (`games/events/retry.py:67-92`) — but `IntegrityError` and
+  `OperationalError` are what every reader of those types catches on, and a
+  damaged stream is not a database conflict.
+- Do not wrap `registry.apply` in a `try`. It already annotates and re-raises, and
+  a wrapper is what breaks the retry classifier (`add_note` does not: it touches
+  neither the type nor `__cause__`).
 - No `.only()`, `.defer()`, `.values()`, or `select_related` on the read. The
   first two are refused by `from_row`, the third bypasses it, and the fourth
   joins for relations the value does not carry.
@@ -149,18 +171,20 @@ def replay(
 **Files:**
 - Modify: `tests/test_event_replay.py`
 
-**Interfaces consumed:** `replay`, `ReplayResult` from Task 1;
-`dispatch`/`BasicCommand` from `tests/test_command_dispatch.py`;
+**Interfaces consumed:** `replay`, `ReplayResult`, and the recorder family from
+Task 1; `lock_stream`/`NewEvent` from `games.events.append`;
 `Projector`/`ProjectorFamily`/`HandlerMap`/`ProjectorRegistry` from
 `games.events.projection`.
 
 **Steps:**
 
-- [ ] Add a module-level recorder family that appends the whole `RecordedEvent`
-      to a list sink (the `SEEN` pattern from `tests/test_event_projectors.py`),
-      with an autouse fixture clearing every sink before and after each test.
 - [ ] Add a second family on another `ProjectorFamily` member handling the same
-      event type, so ordering is observable.
+      event type, recording `(family, sequence)` into its own sink, so ordering is
+      observable. Clear it in the same autouse fixture.
+- [ ] Add a helper that builds a stream of N events: one
+      `lock_stream(library).append([NewEvent(...) for ...], actor=..., ...)` inside
+      `transaction.atomic()`, against the module registry. The query-floor test
+      needs two different N values from it.
 
 **Tests:**
 
@@ -175,8 +199,9 @@ def replay(
       recorded `(family, sequence)` pairs are
       `(first, 1), (second, 1), (first, 2), (second, 2)`
 - [ ] **the query floor**: `django_assert_num_queries(2)` around a replay of a
-      10-event stream, and again around a 60-event stream — the head read and the
-      cursor, whatever N is
+      10-event stream, and again around a 70-event stream — the head read and the
+      `DECLARE`, whatever N is. The `FETCH`es are not logged, and the count is the
+      same transactional or not
 - [ ] **the bound**: replay, then append two more events, and assert the first
       result's `folded_through` is the old head; a second replay covers the new
       events and reports the new head
