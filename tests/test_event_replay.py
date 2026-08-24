@@ -19,8 +19,18 @@ from games.events.projection import (
     ProjectorFamily,
     ProjectorRegistry,
 )
-from games.events.replay import ReplayResult, StreamNotContiguous, replay
-from games.events.vocabulary import EventSpec, EventTypeRegistry, NewEvent
+from games.events.replay import (
+    PayloadVersionUnsupported,
+    ReplayResult,
+    StreamNotContiguous,
+    replay,
+)
+from games.events.vocabulary import (
+    EventSpec,
+    EventTypeRegistry,
+    NewEvent,
+    UnregisteredEventType,
+)
 from games.events.wiring import EventWiring
 from games.models import LibraryEvent, LibraryEventStreamHead
 
@@ -153,6 +163,85 @@ def append_stream(library, length: int) -> AppendResult:
     return append(
         library, [make_new_event(payload={"index": index}) for index in range(length)]
     )
+
+
+def write_row_directly(library, **overrides: Any) -> LibraryEvent:
+    """One event written past `append`, and the head advanced to cover it.
+
+    The guards below are unreachable through `append`: it stamps the registered
+    version and refuses an unregistered type. Only a row somebody wrote to the
+    table -- a bad migration, a restore, a hand-edited fixture -- reaches them.
+    """
+    head = LibraryEventStreamHead.objects.get(library=library)
+    sequence = head.current_sequence + 1
+    fields: dict[str, Any] = {
+        "library": library,
+        "stream": head,
+        "sequence": sequence,
+        "event_type": RECORDED,
+        "aggregate_id": uuid.uuid7(),
+        "correlation_id": uuid.uuid7(),
+        "idempotency_key": f"direct-{sequence}",
+        "payload": {"index": sequence},
+    }
+    fields.update(overrides)
+    row = LibraryEvent.objects.create(**fields)
+    head.current_sequence = sequence
+    head.save(update_fields=["current_sequence"])
+    return row
+
+
+def test_an_unregistered_event_type_refuses_the_replay(owned_library):
+    append_stream(owned_library, 2)
+    write_row_directly(owned_library, event_type="library.probe.forgotten")
+    SEEN.clear()
+
+    with pytest.raises(UnregisteredEventType, match="library.probe.forgotten"):
+        replay(owned_library, wiring=wiring)
+
+    #: The events before the unreadable row were folded; it and nothing after
+    #: it reached a projector.
+    assert [event.sequence for event in SEEN] == [1, 2]
+
+
+def test_an_unreadable_payload_version_refuses_the_replay(owned_library):
+    append_stream(owned_library, 2)
+    write_row_directly(owned_library, payload_schema_version=2)
+    SEEN.clear()
+
+    with pytest.raises(PayloadVersionUnsupported) as raised:
+        replay(owned_library, wiring=wiring)
+
+    message = str(raised.value)
+    #: Both versions and the sequence, so the refusal names the row to look at.
+    assert "version 2" in message
+    assert "version 1" in message
+    assert "#3" in message
+    assert [event.sequence for event in SEEN] == [1, 2]
+
+
+def test_an_unreadable_row_is_refused_before_any_family_sees_it(owned_library):
+    """The ordering the guard exists for: a family must never be handed a
+    payload the registry cannot vouch for."""
+    LibraryEventStreamHead.objects.create(library=owned_library)
+    write_row_directly(owned_library, payload_schema_version=2)
+
+    with pytest.raises(PayloadVersionUnsupported):
+        replay(owned_library, wiring=wiring)
+
+    assert SEEN == []
+    assert ORDER == []
+
+
+def test_a_damaged_stream_is_refused_as_damaged_not_as_unreadable(owned_library):
+    """Contiguity is checked first: a stream missing an event is a hole, whatever
+    the row above the hole happens to carry."""
+    append_stream(owned_library, 2)
+    write_row_directly(owned_library, payload_schema_version=2)
+    LibraryEvent.objects.filter(sequence=2).delete()
+
+    with pytest.raises(StreamNotContiguous, match="2"):
+        replay(owned_library, wiring=wiring)
 
 
 def test_a_stream_folds_every_event_in_sequence_order(owned_library):
