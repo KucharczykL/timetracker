@@ -195,6 +195,7 @@ Converting it would widen the change for no guarantee.
 ```python
 # games/events/envelope.py
 
+
 @dataclass(frozen=True, slots=True)
 class RecordedEvent:
     """One event as a projector reads it: the envelope, by value.
