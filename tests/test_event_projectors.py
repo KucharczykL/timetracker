@@ -92,6 +92,23 @@ def make_event(**overrides: Any) -> RecordedEvent:
     return RecordedEvent(**fields)
 
 
+@with_config(ConfigDict(extra="forbid", strict=True))
+class ProbePayload(TypedDict):
+    probe: bool
+
+
+PROBE_RECORDED = EventSpec(RECORDED, aggregate_type="probe", payload=ProbePayload)
+PROBE_OTHER = EventSpec(OTHER, aggregate_type="probe", payload=ProbePayload)
+
+#: This module's own vocabulary, so a test event type never enters the one a
+#: production stream reads. The dispatch tests below run a command declared in
+#: `test_command_dispatch`, so its spec is registered here too -- registration
+#: is per registry, and that module keeps its own.
+EVENT_TYPES = EventTypeRegistry()
+for spec in (PROBE_RECORDED, PROBE_OTHER, COMMAND_RECORDED):
+    EVENT_TYPES.register(spec)
+
+
 ordering_registry = ProjectorRegistry()
 
 
@@ -103,7 +120,7 @@ class JournalRecorder(Projector, registry=ordering_registry):
     def _recorded(self, event: RecordedEvent) -> None:
         CALLS.append((ProjectorFamily.JOURNAL, event.event_type))
 
-    handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
+    handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
 
 
 class CurrentStateRecorder(Projector, registry=ordering_registry):
@@ -115,7 +132,7 @@ class CurrentStateRecorder(Projector, registry=ordering_registry):
     def _other(self, event: RecordedEvent) -> None:
         CALLS.append((ProjectorFamily.CURRENT_STATE, event.event_type))
 
-    handles: ClassVar[HandlerMap] = {RECORDED: _recorded, OTHER: _other}
+    handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded, PROBE_OTHER: _other}
 
 
 def test_a_family_must_name_itself():
@@ -144,7 +161,39 @@ def test_a_handler_must_be_callable():
 
         class Mistyped(Projector, registry=ProjectorRegistry()):
             family_name = ProjectorFamily.STATS
-            handles: ClassVar[HandlerMap] = {RECORDED: "recorded"}
+            handles: ClassVar[HandlerMap] = {PROBE_RECORDED: "recorded"}
+
+
+def test_a_family_cannot_claim_a_bare_event_type_string():
+    """A string is an event type nobody defined. Only a spec names one, so
+    claiming one is the only way to reach a handler."""
+    with pytest.raises(TypeError, match="not an EventSpec"):
+
+        class Stringly(Projector, registry=ProjectorRegistry()):
+            family_name = ProjectorFamily.STATS
+
+            def _recorded(self, event: RecordedEvent) -> None: ...
+
+            handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
+
+
+def test_a_family_is_dispatched_for_the_event_type_its_spec_names():
+    registry = ProjectorRegistry()
+
+    class SpecKeyed(Projector, registry=registry):
+        family_name = ProjectorFamily.STATS
+
+        def _recorded(self, event: RecordedEvent) -> None:
+            CALLS.append((ProjectorFamily.STATS, event.event_type))
+
+        handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
+
+    #: The lookup key is the string a RecordedEvent carries, not the spec.
+    assert len(registry.handlers_for(RECORDED)) == 1
+
+    registry.apply(make_event())
+
+    assert CALLS == [(ProjectorFamily.STATS, RECORDED)]
 
 
 def test_two_families_cannot_claim_one_member():
@@ -155,7 +204,7 @@ def test_two_families_cannot_claim_one_member():
 
         def _recorded(self, event: RecordedEvent) -> None: ...
 
-        handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
+        handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
 
     with pytest.raises(TypeError, match="already owned by"):
 
@@ -164,7 +213,7 @@ def test_two_families_cannot_claim_one_member():
 
             def _recorded(self, event: RecordedEvent) -> None: ...
 
-            handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
+            handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
 
 
 def test_registering_one_family_twice_is_not_a_collision():
@@ -176,7 +225,7 @@ def test_registering_one_family_twice_is_not_a_collision():
         def _recorded(self, event: RecordedEvent) -> None:
             CALLS.append((ProjectorFamily.STATS, event.event_type))
 
-        handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
+        handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
 
     registry.register(Once)
 
@@ -219,22 +268,6 @@ def test_a_handler_is_bound_to_its_family():
     assert handler.__self__.family_name is ProjectorFamily.CURRENT_STATE
 
 
-@with_config(ConfigDict(extra="forbid", strict=True))
-class ProbePayload(TypedDict):
-    probe: bool
-
-
-PROBE_RECORDED = EventSpec(RECORDED, aggregate_type="probe", payload=ProbePayload)
-
-#: This module's own vocabulary, so a test event type never enters the one a
-#: production stream reads. The dispatch tests below run a command declared in
-#: `test_command_dispatch`, so its spec is registered here too -- registration
-#: is per registry, and that module keeps its own.
-EVENT_TYPES = EventTypeRegistry()
-for spec in (PROBE_RECORDED, COMMAND_RECORDED):
-    EVENT_TYPES.register(spec)
-
-
 def wiring_over(projectors: ProjectorRegistry) -> EventWiring:
     """This module's wiring, over whichever projector families a test wants."""
     return EventWiring(projectors=projectors, event_types=EVENT_TYPES)
@@ -258,7 +291,7 @@ class AppendCurrentState(Projector, registry=append_registry):
             LibraryEventStreamHead.objects.get(pk=event.stream_id).current_sequence
         )
 
-    handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
+    handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
 
 
 class AppendJournal(Projector, registry=append_registry):
@@ -267,7 +300,7 @@ class AppendJournal(Projector, registry=append_registry):
     def _recorded(self, event: RecordedEvent) -> None:
         APPLIED.append((ProjectorFamily.JOURNAL, event.sequence))
 
-    handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
+    handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
 
 
 rollback_registry = ProjectorRegistry()
@@ -280,7 +313,7 @@ class RollbackWriter(Projector, registry=rollback_registry):
     def _recorded(self, event: RecordedEvent) -> None:
         Device.objects.create(library_id=event.library_id, name="projected")
 
-    handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
+    handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
 
 
 class RollbackFailer(Projector, registry=rollback_registry):
@@ -289,7 +322,7 @@ class RollbackFailer(Projector, registry=rollback_registry):
     def _recorded(self, event: RecordedEvent) -> None:
         raise RuntimeError("the stats family refused")
 
-    handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
+    handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
 
 
 dispatch_registry = ProjectorRegistry()
@@ -302,7 +335,7 @@ class DispatchRecorder(Projector, registry=dispatch_registry):
     def _recorded(self, event: RecordedEvent) -> None:
         APPLIED.append((ProjectorFamily.CURRENT_STATE, event.sequence))
 
-    handles: ClassVar[HandlerMap] = {"test.command.recorded": _recorded}
+    handles: ClassVar[HandlerMap] = {COMMAND_RECORDED: _recorded}
 
 
 quiet_registry = ProjectorRegistry()
@@ -318,7 +351,7 @@ class QuietRecorder(Projector, registry=quiet_registry):
     def _recorded(self, event: RecordedEvent) -> None:
         APPLIED.append((ProjectorFamily.CURRENT_STATE, event.sequence))
 
-    handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
+    handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
 
 
 actor_registry = ProjectorRegistry()
@@ -334,7 +367,7 @@ class ActorReader(Projector, registry=actor_registry):
         actor = event.actor  # type: ignore[attr-defined]
         CALLS.append((ProjectorFamily.CURRENT_STATE, str(actor)))
 
-    handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
+    handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
 
 
 retry_registry = ProjectorRegistry()
@@ -359,7 +392,7 @@ class FlakyProjector(Projector, registry=retry_registry):
             raise wrapped(OperationalError, "40P01")
         APPLIED.append((ProjectorFamily.CURRENT_STATE, event.sequence))
 
-    handles: ClassVar[HandlerMap] = {"test.command.recorded": _recorded}
+    handles: ClassVar[HandlerMap] = {COMMAND_RECORDED: _recorded}
 
 
 def append(library, wiring, count: int = 1, idempotency_key: str = "probe-key"):

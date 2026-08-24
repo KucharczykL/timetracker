@@ -91,7 +91,10 @@ class Recorder(Projector, registry=registry):
         SEEN.append(event)
         ORDER.append((ProjectorFamily.CURRENT_STATE, event.sequence))
 
-    handles: ClassVar[HandlerMap] = {RECORDED: _recorded, AWKWARD: _recorded}
+    handles: ClassVar[HandlerMap] = {
+        PROBE_RECORDED: _recorded,
+        PROBE_AWKWARD: _recorded,
+    }
 
 
 class SecondRecorder(Projector, registry=registry):
@@ -103,7 +106,7 @@ class SecondRecorder(Projector, registry=registry):
     def _recorded(self, event: RecordedEvent) -> None:
         ORDER.append((ProjectorFamily.JOURNAL, event.sequence))
 
-    handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
+    handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
 
 
 @pytest.fixture(autouse=True)
@@ -339,7 +342,7 @@ def test_a_raising_handler_propagates_with_its_notes(owned_library):
         def _recorded(self, event: RecordedEvent) -> None:
             raise KeyError("nothing here")
 
-        handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
+        handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
 
     append(owned_library)
 
