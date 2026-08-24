@@ -28,6 +28,7 @@ pytestmark = pytest.mark.django_db
 
 RECORDED = "library.probe.recorded"
 UNHANDLED = "library.probe.unhandled"
+AWKWARD = "library.probe.awkward"
 
 #: The whole value each family was handed, so a test can compare envelopes
 #: rather than a projection of them.
@@ -44,13 +45,39 @@ class ProbePayload(TypedDict):
     index: int
 
 
+@with_config(ConfigDict(extra="forbid", strict=True))
+class AwkwardPayload(TypedDict):
+    """Every container a payload can nest, under keys whose sorted order is
+    neither what a caller writes nor what jsonb returns.
+
+    `b` is shorter than `aaa` but sorts after it, which is the whole point:
+    jsonb orders keys by length first, so a payload that agreed with `sorted`
+    by accident would prove nothing.
+    """
+
+    zz: dict[str, int]
+    aaa: list[dict[str, int]]
+    order: list[int]
+    b: int
+
+
 PROBE_RECORDED = EventSpec(RECORDED, aggregate_type="probe", payload=ProbePayload)
 PROBE_UNHANDLED = EventSpec(UNHANDLED, aggregate_type="probe", payload=ProbePayload)
+PROBE_AWKWARD = EventSpec(AWKWARD, aggregate_type="probe", payload=AwkwardPayload)
+
+#: Written in an order that is neither sorted nor the one jsonb hands back, at
+#: every level.
+AWKWARD_PAYLOAD: dict[str, Any] = {
+    "zz": {"yy": 1, "a": 2},
+    "aaa": [{"nn": 1, "c": 2}, {"zzz": 3}],
+    "order": [3, 1, 2],
+    "b": 4,
+}
 
 #: This module's own vocabulary, so a probe type never enters the one a
 #: production stream reads.
 EVENT_TYPES = EventTypeRegistry()
-for spec in (PROBE_RECORDED, PROBE_UNHANDLED):
+for spec in (PROBE_RECORDED, PROBE_UNHANDLED, PROBE_AWKWARD):
     EVENT_TYPES.register(spec)
 
 registry = ProjectorRegistry()
@@ -64,7 +91,7 @@ class Recorder(Projector, registry=registry):
         SEEN.append(event)
         ORDER.append((ProjectorFamily.CURRENT_STATE, event.sequence))
 
-    handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
+    handles: ClassVar[HandlerMap] = {RECORDED: _recorded, AWKWARD: _recorded}
 
 
 class SecondRecorder(Projector, registry=registry):
@@ -204,6 +231,40 @@ def test_a_replay_folds_what_the_append_folded(owned_library):
     replay(owned_library, wiring=wiring)
 
     assert SEEN == appended
+
+
+def test_a_payload_reaches_a_projector_in_one_key_order(owned_library):
+    """The parity property at the one place dict equality cannot see it.
+
+    `==` ignores key order, so the envelope comparison above passes whether or
+    not this holds; the assertions here read key sequences instead. jsonb sorts
+    keys by length then bytes, so without a canonical order a projector reads
+    the caller's order on the append path and PostgreSQL's on a replay.
+    """
+    append(owned_library, [make_new_event(spec=PROBE_AWKWARD, payload=AWKWARD_PAYLOAD)])
+    appended = SEEN[0].payload
+    SEEN.clear()
+
+    replay(owned_library, wiring=wiring)
+    replayed = SEEN[0].payload
+
+    assert list(appended) == list(replayed) == ["aaa", "b", "order", "zz"]
+    assert list(appended["zz"]) == list(replayed["zz"]) == ["a", "yy"]
+    assert [list(item) for item in appended["aaa"]] == [["c", "nn"], ["zzz"]]
+    assert [list(item) for item in replayed["aaa"]] == [["c", "nn"], ["zzz"]]
+
+
+def test_a_payloads_lists_keep_the_order_they_were_written_in(owned_library):
+    """Keys are sorted; values are not. A list is ordered data, and reordering
+    one would change the fact the event records."""
+    append(owned_library, [make_new_event(spec=PROBE_AWKWARD, payload=AWKWARD_PAYLOAD)])
+    appended = SEEN[0].payload
+    SEEN.clear()
+
+    replay(owned_library, wiring=wiring)
+
+    assert appended["order"] == SEEN[0].payload["order"] == [3, 1, 2]
+    assert [item["zzz"] for item in appended["aaa"] if "zzz" in item] == [3]
 
 
 def test_replaying_twice_folds_the_same_events(owned_library):

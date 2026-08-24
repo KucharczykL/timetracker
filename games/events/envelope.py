@@ -19,6 +19,19 @@ class DeferredRowRefused(ValueError):
     """Raised for a row whose columns were not all selected."""
 
 
+def _with_sorted_keys(value: Any) -> Any:
+    """Return `value` with every dict's keys sorted, at every depth.
+
+    Keys only. A list is ordered data, so its items keep the order they were
+    recorded in and are rebuilt in place.
+    """
+    if isinstance(value, dict):
+        return {key: _with_sorted_keys(value[key]) for key in sorted(value)}
+    if isinstance(value, list):
+        return [_with_sorted_keys(item) for item in value]
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class RecordedEvent:
     """One event as a projector reads it: the envelope, by value.
@@ -52,11 +65,22 @@ class RecordedEvent:
 
     @classmethod
     def from_row(cls, row: LibraryEvent) -> RecordedEvent:
-        """Copy every concrete field off `row`.
+        """Copy every concrete field off `row`, the payload canonically.
 
         Written out rather than built from `_meta`, so mypy checks each field
         against its declared type and a model change fails as a named test
         rather than as a `TypeError` inside an append.
+
+        The payload's keys are sorted here because both paths reach a projector
+        through this method and they do not agree on order: an append hands over
+        the order its caller wrote, while a replay hands over jsonb's, which
+        sorts keys by length then bytes. A family that iterates a payload,
+        re-dumps it into a column, or hashes it would produce different rows on
+        the two paths, and no equality check would see it -- dict comparison
+        ignores order, which is why the defect survived. One fixed rule applied
+        here settles both paths and couples us to no PostgreSQL behaviour. The
+        consequence is deliberate: the order stored in the row is not the order
+        a projector reads.
         """
         deferred = row.get_deferred_fields()
         if deferred:
@@ -83,5 +107,5 @@ class RecordedEvent:
             causation_id=row.causation_id,
             source_metadata=row.source_metadata,
             idempotency_key=row.idempotency_key,
-            payload=row.payload,
+            payload=_with_sorted_keys(row.payload),
         )

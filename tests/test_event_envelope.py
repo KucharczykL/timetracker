@@ -125,6 +125,26 @@ def test_the_aggregate_type_is_the_registrys_answer(owned_library):
     assert not hasattr(recorded, "aggregate_type")
 
 
+def test_the_payload_arrives_with_its_keys_sorted_at_every_depth():
+    """The payload is a canonical value, not the order somebody wrote it in.
+
+    Read off an unsaved row, so this is the conversion alone: the append path
+    and the replay path both reach a projector through here, and they carry
+    different orders until this sorts them.
+    """
+    row = LibraryEvent(
+        payload={"zz": {"yy": 1, "a": 2}, "aaa": [{"nn": 1, "c": 2}], "b": 3}
+    )
+
+    payload = RecordedEvent.from_row(row).payload
+
+    assert list(payload) == ["aaa", "b", "zz"]
+    assert list(payload["zz"]) == ["a", "yy"]
+    assert list(payload["aaa"][0]) == ["c", "nn"]
+    #: Rebuilt rather than reordered in place: the row belongs to its caller.
+    assert list(row.payload) == ["zz", "aaa", "b"]
+
+
 def test_the_value_carries_no_model(owned_library, distinct_actor):
     recorded = RecordedEvent.from_row(append_probe(owned_library, distinct_actor))
 
