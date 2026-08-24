@@ -17,8 +17,10 @@ rows folds every event a second time, which is the caller's to prevent.
 """
 
 import uuid
+from collections.abc import Generator
 from contextlib import closing
 from dataclasses import dataclass
+from typing import cast
 
 from games.events.envelope import RecordedEvent
 from games.events.projection import DEFAULT_REGISTRY, ProjectorRegistry
@@ -62,12 +64,15 @@ def replay(
         return ReplayResult(stream_id=None, folded_through=0)
 
     bound = head.current_sequence
-    #: The head's library is enforced by a composite foreign key, so the stream
-    #: alone already scopes the read to one library.
-    rows = (
+    #: Filtering on the stream alone scopes the read to one library: a composite
+    #: foreign key ties an event's stream and library together in the database.
+    #: The cast covers `iterator`, typed as returning a plain iterator while
+    #: returning a generator, whose `close` releases the cursor below.
+    rows = cast(
+        Generator[LibraryEvent],
         LibraryEvent.objects.filter(stream_id=head.id, sequence__lte=bound)
         .order_by("sequence")
-        .iterator(chunk_size=REPLAY_CHUNK_SIZE)
+        .iterator(chunk_size=REPLAY_CHUNK_SIZE),
     )
 
     previous = 0

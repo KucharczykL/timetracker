@@ -45,6 +45,18 @@ class Recorder(Projector, registry=registry):
     handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
 
 
+class SecondRecorder(Projector, registry=registry):
+    """A second family on the same event type, so the fold's shape is visible:
+    both families see event one before either sees event two."""
+
+    family_name = ProjectorFamily.JOURNAL
+
+    def _recorded(self, event: RecordedEvent) -> None:
+        ORDER.append((ProjectorFamily.JOURNAL, event.sequence))
+
+    handles: ClassVar[HandlerMap] = {RECORDED: _recorded}
+
+
 @pytest.fixture(autouse=True)
 def forget_previous_calls():
     for sink in (SEEN, ORDER):
@@ -158,6 +170,82 @@ def test_an_event_no_family_handles_is_folded_and_applied_to_nothing(owned_libra
 
     assert result.folded_through == 1
     assert SEEN == []
+
+
+def test_a_replay_folds_what_the_append_folded(owned_library):
+    """The parity property: an event carries the same envelope, in the same
+    order, whichever path reached the projector."""
+    append_stream(owned_library, 3)
+    append(owned_library)
+    appended = list(SEEN)
+    SEEN.clear()
+
+    replay(owned_library, registry=registry)
+
+    assert SEEN == appended
+
+
+def test_replaying_twice_folds_the_same_events(owned_library):
+    append_stream(owned_library, 3)
+
+    SEEN.clear()
+    replay(owned_library, registry=registry)
+    first = list(SEEN)
+
+    SEEN.clear()
+    replay(owned_library, registry=registry)
+
+    assert SEEN == first
+
+
+def test_the_fold_is_event_major(owned_library):
+    append_stream(owned_library, 2)
+    ORDER.clear()
+
+    replay(owned_library, registry=registry)
+
+    assert ORDER == [
+        (ProjectorFamily.CURRENT_STATE, 1),
+        (ProjectorFamily.JOURNAL, 1),
+        (ProjectorFamily.CURRENT_STATE, 2),
+        (ProjectorFamily.JOURNAL, 2),
+    ]
+
+
+@pytest.mark.parametrize("length", [10, 70])
+def test_a_replay_costs_two_queries_whatever_the_stream_holds(
+    owned_library, django_assert_num_queries, length
+):
+    append_stream(owned_library, length)
+
+    #: The head, and the cursor the rows stream from. The fetches against that
+    #: cursor are not queries, and neither is anything per event.
+    with django_assert_num_queries(2):
+        replay(owned_library, registry=registry)
+
+
+def test_events_appended_after_a_replay_belong_to_the_next_one(owned_library):
+    append_stream(owned_library, 2)
+
+    first = replay(owned_library, registry=registry)
+    append_stream(owned_library, 2)
+    SEEN.clear()
+    second = replay(owned_library, registry=registry)
+
+    assert first.folded_through == 2
+    assert second.folded_through == 4
+    assert [event.sequence for event in SEEN] == [1, 2, 3, 4]
+
+
+def test_a_replay_folds_one_library_only(owned_library, second_library):
+    append_stream(owned_library, 2)
+    append_stream(second_library, 3)
+    SEEN.clear()
+
+    result = replay(second_library, registry=registry)
+
+    assert result.folded_through == 3
+    assert {event.library_id for event in SEEN} == {second_library.id}
 
 
 def test_a_raising_handler_propagates_with_its_notes(owned_library):
