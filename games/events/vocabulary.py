@@ -59,6 +59,9 @@ class EventSpec[PayloadT]:
     """
 
     event_type: str
+    #: Declared here and nowhere else. A row storing a copy would keep the old
+    #: string after a registration changed, with nothing to notice; asking the
+    #: registry instead costs SQL an IN list over event types the index serves.
     aggregate_type: AggregateType
     payload: type[PayloadT]
     version: int = 1

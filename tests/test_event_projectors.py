@@ -77,7 +77,6 @@ def make_event(**overrides: Any) -> RecordedEvent:
         "stream_id": uuid.uuid7(),
         "sequence": 1,
         "event_type": RECORDED,
-        "aggregate_type": "probe",
         "aggregate_id": uuid.uuid7(),
         "payload_schema_version": 1,
         "recorded_at": datetime(2024, 5, 6, 7, 8, 9, tzinfo=UTC),

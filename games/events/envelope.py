@@ -39,7 +39,6 @@ class RecordedEvent:
     stream_id: uuid.UUID
     sequence: int
     event_type: str
-    aggregate_type: str
     aggregate_id: uuid.UUID
     payload_schema_version: int
     recorded_at: datetime
@@ -75,7 +74,6 @@ class RecordedEvent:
             stream_id=row.stream_id,
             sequence=row.sequence,
             event_type=row.event_type,
-            aggregate_type=row.aggregate_type,
             aggregate_id=row.aggregate_id,
             payload_schema_version=row.payload_schema_version,
             recorded_at=row.recorded_at,

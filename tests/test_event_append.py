@@ -63,8 +63,8 @@ class OpaquePayload(TypedDict):
 PROBE_RECORDED = EventSpec(
     "library.probe.recorded", aggregate_type="probe", payload=ProbePayload
 )
-#: A second spec, so the row's event type, aggregate type, and schema version
-#: are each read off the registered spec rather than off one shared default.
+#: A second spec, so the row's event type and schema version are each read off
+#: the registered spec rather than off one shared default.
 PLAYTHROUGH_STARTED = EventSpec(
     "library.playthrough.started",
     aggregate_type="playthrough",
@@ -83,7 +83,8 @@ UNREGISTERED = EventSpec(
     "library.unregistered.happened", aggregate_type="probe", payload=ProbePayload
 )
 #: A registered event type under a spec nobody registered, disagreeing with the
-#: registration about everything the row copies off a spec.
+#: registration about everything a spec decides -- the version the row records,
+#: and the aggregate type the registry answers for.
 MISDECLARED_PROBE = EventSpec(
     "library.probe.recorded",
     aggregate_type="mistaken",
@@ -268,7 +269,6 @@ def test_event_fields_round_trip(owned_library):
 
     event = LibraryEvent.objects.get()
     assert event.event_type == "library.playthrough.started"
-    assert event.aggregate_type == "playthrough"
     assert event.aggregate_id == aggregate_id
     assert event.payload == {"nested": {"id": str(aggregate_id)}}
     assert event.effective_time == effective_time
@@ -288,7 +288,10 @@ def test_the_row_is_built_from_the_registered_spec(owned_library):
 
     event = LibraryEvent.objects.get()
     assert event.payload_schema_version == PROBE_RECORDED.version == 1
-    assert event.aggregate_type == "probe"
+    #: The aggregate type is not among them: the spec declares it and the row
+    #: stores no copy, so the registration is the only place it lives.
+    assert not hasattr(event, "aggregate_type")
+    assert EVENT_TYPES.spec_for(event.event_type).aggregate_type == "probe"
 
 
 def test_actor_is_recorded_and_optional(owned_library, django_user_model):

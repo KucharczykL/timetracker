@@ -16,7 +16,6 @@ CONSTRAINT_NAMES = (
     "library_event_sequence_positive",
     "library_event_payload_schema_version_positive",
     "library_event_type_not_empty",
-    "library_event_aggregate_type_not_empty",
     "library_event_idempotency_key_not_empty",
     "library_event_stream_matches_library",
 )
@@ -46,7 +45,6 @@ def make_event(stream, **overrides):
         "stream": stream,
         "sequence": sequence,
         "event_type": "library.probe.recorded",
-        "aggregate_type": "probe",
         "aggregate_id": uuid.uuid7(),
         "correlation_id": uuid.uuid7(),
         "idempotency_key": f"probe-{sequence}",
@@ -163,7 +161,7 @@ def test_payload_schema_version_below_one_is_rejected(head):
         make_event(head, payload_schema_version=0)
 
 
-@pytest.mark.parametrize("field", ["event_type", "aggregate_type", "idempotency_key"])
+@pytest.mark.parametrize("field", ["event_type", "idempotency_key"])
 def test_blank_text_fields_are_rejected(head, field):
     with pytest.raises(IntegrityError), transaction.atomic():
         make_event(head, **{field: ""})

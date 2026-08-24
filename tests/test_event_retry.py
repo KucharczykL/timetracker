@@ -310,7 +310,6 @@ def test_a_real_sequence_collision_is_recognised_and_retried(owned_library):
             stream_id=first.stream_id,
             sequence=first.last_sequence,
             event_type="probe.recorded",
-            aggregate_type="probe",
             aggregate_id=uuid.uuid7(),
             payload={},
             recorded_at=timezone.now(),

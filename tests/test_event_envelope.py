@@ -41,14 +41,28 @@ EVENT_TYPES.register(PROBE_RECORDED)
 WIRING = EventWiring(event_types=EVENT_TYPES)
 
 
+@pytest.fixture
+def distinct_actor(db, django_user_model):
+    """An actor whose id cannot be mistaken for anything else on the event.
+
+    A user allocated the usual small id would carry 1 or 2, which are the
+    version and the sequence.
+    """
+    return django_user_model.objects.create_user(
+        id=9001, username="probe-actor", password="p"
+    )
+
+
 def append_probe(library, actor=None) -> LibraryEvent:
     """Append two events and return the second, whose every field holds a
     distinct value.
 
     Distinct matters: two fields sharing one value would let the contract test
-    pass over a `from_row` that read the wrong one. The registry stamps the
-    schema version, so every event here is version 1 -- returning the second of
-    a pair is what puts the sequence at 2 and keeps those two apart.
+    pass over a `from_row` that read the wrong one, and the pinning test below
+    is what keeps that true. The registry stamps the schema version, so every
+    event here is version 1 -- returning the second of a pair is what puts the
+    sequence at 2 and keeps those two apart, and `distinct_actor` is what keeps
+    the actor's id away from both.
     """
 
     def probe() -> NewEvent:
@@ -72,8 +86,27 @@ def append_probe(library, actor=None) -> LibraryEvent:
     return result.events[1]
 
 
-def test_every_concrete_field_arrives_with_its_own_value(owned_library, owned_user):
-    row = LibraryEvent.objects.get(pk=append_probe(owned_library, owned_user).pk)
+def test_no_two_concrete_fields_of_a_probe_share_a_value(owned_library, distinct_actor):
+    """What makes the contract below able to fail.
+
+    A `from_row` reading the wrong field is invisible wherever two fields agree,
+    so the probe's distinctness is asserted rather than assumed -- a field
+    removed from the model, or a probe value edited, cannot quietly turn the
+    contract test into one that passes over a mistake.
+    """
+    row = LibraryEvent.objects.get(pk=append_probe(owned_library, distinct_actor).pk)
+
+    values = [
+        (field.attname, getattr(row, field.attname))
+        for field in LibraryEvent._meta.concrete_fields
+    ]
+    for index, (name, value) in enumerate(values):
+        for other_name, other_value in values[index + 1 :]:
+            assert value != other_value, f"{name} and {other_name} share a value"
+
+
+def test_every_concrete_field_arrives_with_its_own_value(owned_library, distinct_actor):
+    row = LibraryEvent.objects.get(pk=append_probe(owned_library, distinct_actor).pk)
 
     recorded = RecordedEvent.from_row(row)
 
@@ -83,8 +116,17 @@ def test_every_concrete_field_arrives_with_its_own_value(owned_library, owned_us
         )
 
 
-def test_the_value_carries_no_model(owned_library, owned_user):
-    recorded = RecordedEvent.from_row(append_probe(owned_library, owned_user))
+def test_the_aggregate_type_is_the_registrys_answer(owned_library):
+    """The aggregate type is a function of the event type, so the spec answers
+    for it and no envelope carries a second copy to fall out of date."""
+    recorded = RecordedEvent.from_row(append_probe(owned_library))
+
+    assert EVENT_TYPES.spec_for(recorded.event_type).aggregate_type == "probe"
+    assert not hasattr(recorded, "aggregate_type")
+
+
+def test_the_value_carries_no_model(owned_library, distinct_actor):
+    recorded = RecordedEvent.from_row(append_probe(owned_library, distinct_actor))
 
     for absent in ("actor", "library", "stream", "objects", "save", "_meta"):
         assert not hasattr(recorded, absent)
@@ -98,9 +140,9 @@ def test_a_recorded_event_cannot_be_assigned_to(owned_library):
 
 
 def test_converting_a_row_read_back_issues_no_query(
-    owned_library, owned_user, django_assert_num_queries
+    owned_library, distinct_actor, django_assert_num_queries
 ):
-    appended = append_probe(owned_library, owned_user)
+    appended = append_probe(owned_library, distinct_actor)
     #: Re-read rather than reused: the appended instance has its relations
     #: cached, so it would pass this for the wrong reason.
     row = LibraryEvent.objects.get(pk=appended.pk)
@@ -121,9 +163,9 @@ def test_a_deferred_row_is_refused_by_name(owned_library):
 
 
 def test_the_appended_row_and_the_row_read_back_convert_alike(
-    owned_library, owned_user
+    owned_library, distinct_actor
 ):
-    appended = append_probe(owned_library, owned_user)
+    appended = append_probe(owned_library, distinct_actor)
 
     assert RecordedEvent.from_row(appended) == RecordedEvent.from_row(
         LibraryEvent.objects.get(pk=appended.pk)

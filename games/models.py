@@ -1388,10 +1388,6 @@ class LibraryEvent(models.Model):
                 name="library_event_type_not_empty",
             ),
             models.CheckConstraint(
-                condition=~Q(aggregate_type=""),
-                name="library_event_aggregate_type_not_empty",
-            ),
-            models.CheckConstraint(
                 condition=~Q(idempotency_key=""),
                 name="library_event_idempotency_key_not_empty",
             ),
@@ -1410,7 +1406,6 @@ class LibraryEvent(models.Model):
     )
     sequence = models.PositiveBigIntegerField()
     event_type = models.CharField(max_length=255)
-    aggregate_type = models.CharField(max_length=100)
     #: The private aggregate being changed, never a shared catalog identity.
     #: Both defaults are cleared so a writer cannot forget to name it.
     aggregate_id = UUIDv7Field(default=None, db_default=models.NOT_PROVIDED)

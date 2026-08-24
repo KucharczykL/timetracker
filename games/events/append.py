@@ -127,7 +127,6 @@ class LockedStream:
                 stream=head,
                 sequence=first_sequence + offset,
                 event_type=spec.event_type,
-                aggregate_type=spec.aggregate_type,
                 aggregate_id=event.aggregate_id,
                 #: Pydantic's value, not the canonical input: a field typed
                 #: `float` given `1` comes back `1.0`, and storing the input
