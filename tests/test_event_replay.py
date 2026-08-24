@@ -21,6 +21,7 @@ from games.events.projection import (
 )
 from games.events.replay import ReplayResult, StreamNotContiguous, replay
 from games.events.vocabulary import EventSpec, NewEvent
+from games.events.wiring import EventWiring
 from games.models import LibraryEvent, LibraryEventStreamHead
 
 pytestmark = pytest.mark.django_db
@@ -35,6 +36,7 @@ SEEN: list[RecordedEvent] = []
 ORDER: list[tuple[ProjectorFamily, int]] = []
 
 registry = ProjectorRegistry()
+wiring = EventWiring(projectors=registry)
 
 
 class Recorder(Projector, registry=registry):
@@ -98,12 +100,12 @@ def make_new_event(**overrides: Any) -> NewEvent:
 
 
 def append(library, events=None, **overrides: Any) -> AppendResult:
-    """One append of `events`, folded through this module's registry."""
+    """One append of `events`, folded through this module's wiring."""
     fields: dict[str, Any] = {
         "actor": None,
         "correlation_id": uuid.uuid7(),
         "idempotency_key": f"probe-{uuid.uuid7()}",
-        "registry": registry,
+        "wiring": wiring,
     }
     fields.update(overrides)
     with transaction.atomic():
@@ -121,7 +123,7 @@ def test_a_stream_folds_every_event_in_sequence_order(owned_library):
     append_stream(owned_library, 3)
     SEEN.clear()
 
-    result = replay(owned_library, registry=registry)
+    result = replay(owned_library, wiring=wiring)
 
     assert [event.sequence for event in SEEN] == [1, 2, 3]
     assert result == ReplayResult(
@@ -132,14 +134,14 @@ def test_a_stream_folds_every_event_in_sequence_order(owned_library):
 def test_an_untouched_stream_folds_nothing(owned_library):
     head = LibraryEventStreamHead.objects.create(library=owned_library)
 
-    result = replay(owned_library, registry=registry)
+    result = replay(owned_library, wiring=wiring)
 
     assert result == ReplayResult(stream_id=head.id, folded_through=0)
     assert SEEN == []
 
 
 def test_a_library_that_never_appended_replays_to_nothing(owned_library):
-    result = replay(owned_library, registry=registry)
+    result = replay(owned_library, wiring=wiring)
 
     assert result == ReplayResult(stream_id=None, folded_through=0)
     assert SEEN == []
@@ -153,7 +155,7 @@ def test_a_missing_event_refuses_the_replay(owned_library):
     LibraryEvent.objects.filter(sequence=3).delete()
 
     with pytest.raises(StreamNotContiguous, match="3"):
-        replay(owned_library, registry=registry)
+        replay(owned_library, wiring=wiring)
 
     #: Everything before the gap was applied and stays applied: replay owns no
     #: transaction and cannot offer all-or-nothing.
@@ -165,7 +167,7 @@ def test_a_stream_ending_early_refuses_the_replay(owned_library):
     LibraryEvent.objects.filter(sequence=3).delete()
 
     with pytest.raises(StreamNotContiguous, match="3"):
-        replay(owned_library, registry=registry)
+        replay(owned_library, wiring=wiring)
 
 
 def test_a_stream_starting_after_one_refuses_the_replay(owned_library):
@@ -173,13 +175,13 @@ def test_a_stream_starting_after_one_refuses_the_replay(owned_library):
     LibraryEvent.objects.filter(sequence=1).delete()
 
     with pytest.raises(StreamNotContiguous, match="1"):
-        replay(owned_library, registry=registry)
+        replay(owned_library, wiring=wiring)
 
 
 def test_an_event_no_family_handles_is_folded_and_applied_to_nothing(owned_library):
     append(owned_library, [make_new_event(spec=PROBE_UNHANDLED)])
 
-    result = replay(owned_library, registry=registry)
+    result = replay(owned_library, wiring=wiring)
 
     assert result.folded_through == 1
     assert SEEN == []
@@ -193,7 +195,7 @@ def test_a_replay_folds_what_the_append_folded(owned_library):
     appended = list(SEEN)
     SEEN.clear()
 
-    replay(owned_library, registry=registry)
+    replay(owned_library, wiring=wiring)
 
     assert SEEN == appended
 
@@ -202,11 +204,11 @@ def test_replaying_twice_folds_the_same_events(owned_library):
     append_stream(owned_library, 3)
 
     SEEN.clear()
-    replay(owned_library, registry=registry)
+    replay(owned_library, wiring=wiring)
     first = list(SEEN)
 
     SEEN.clear()
-    replay(owned_library, registry=registry)
+    replay(owned_library, wiring=wiring)
 
     assert SEEN == first
 
@@ -215,7 +217,7 @@ def test_the_fold_is_event_major(owned_library):
     append_stream(owned_library, 2)
     ORDER.clear()
 
-    replay(owned_library, registry=registry)
+    replay(owned_library, wiring=wiring)
 
     assert ORDER == [
         (ProjectorFamily.CURRENT_STATE, 1),
@@ -234,16 +236,16 @@ def test_a_replay_costs_two_queries_whatever_the_stream_holds(
     #: The head, and the cursor the rows stream from. The fetches against that
     #: cursor are not queries, and neither is anything per event.
     with django_assert_num_queries(2):
-        replay(owned_library, registry=registry)
+        replay(owned_library, wiring=wiring)
 
 
 def test_events_appended_after_a_replay_belong_to_the_next_one(owned_library):
     append_stream(owned_library, 2)
 
-    first = replay(owned_library, registry=registry)
+    first = replay(owned_library, wiring=wiring)
     append_stream(owned_library, 2)
     SEEN.clear()
-    second = replay(owned_library, registry=registry)
+    second = replay(owned_library, wiring=wiring)
 
     assert first.folded_through == 2
     assert second.folded_through == 4
@@ -255,7 +257,7 @@ def test_a_replay_folds_one_library_only(owned_library, second_library):
     append_stream(second_library, 3)
     SEEN.clear()
 
-    result = replay(second_library, registry=registry)
+    result = replay(second_library, wiring=wiring)
 
     assert result.folded_through == 3
     assert {event.library_id for event in SEEN} == {second_library.id}
@@ -275,7 +277,7 @@ def test_a_raising_handler_propagates_with_its_notes(owned_library):
     append(owned_library)
 
     with pytest.raises(KeyError) as raised:
-        replay(owned_library, registry=failing_registry)
+        replay(owned_library, wiring=EventWiring(projectors=failing_registry))
 
     assert any(
         "stats" in note and RECORDED in note and "#1" in note

@@ -27,6 +27,7 @@ from games.events.projection import (
     ProjectorRegistry,
 )
 from games.events.vocabulary import EventSpec, NewEvent
+from games.events.wiring import EventWiring
 from games.models import Device, LibraryEvent, LibraryEventStreamHead
 
 RECORDED = "test.projector.recorded"
@@ -220,6 +221,7 @@ def test_a_handler_is_bound_to_its_family():
 
 
 append_registry = ProjectorRegistry()
+append_wiring = EventWiring(projectors=append_registry)
 
 
 class AppendCurrentState(Projector, registry=append_registry):
@@ -245,6 +247,7 @@ class AppendJournal(Projector, registry=append_registry):
 
 
 rollback_registry = ProjectorRegistry()
+rollback_wiring = EventWiring(projectors=rollback_registry)
 
 
 class RollbackWriter(Projector, registry=rollback_registry):
@@ -266,6 +269,7 @@ class RollbackFailer(Projector, registry=rollback_registry):
 
 
 dispatch_registry = ProjectorRegistry()
+dispatch_wiring = EventWiring(projectors=dispatch_registry)
 
 
 class DispatchRecorder(Projector, registry=dispatch_registry):
@@ -278,6 +282,7 @@ class DispatchRecorder(Projector, registry=dispatch_registry):
 
 
 quiet_registry = ProjectorRegistry()
+quiet_wiring = EventWiring(projectors=quiet_registry)
 
 
 class QuietRecorder(Projector, registry=quiet_registry):
@@ -293,6 +298,7 @@ class QuietRecorder(Projector, registry=quiet_registry):
 
 
 actor_registry = ProjectorRegistry()
+actor_wiring = EventWiring(projectors=actor_registry)
 
 
 class ActorReader(Projector, registry=actor_registry):
@@ -308,6 +314,7 @@ class ActorReader(Projector, registry=actor_registry):
 
 
 retry_registry = ProjectorRegistry()
+retry_wiring = EventWiring(projectors=retry_registry)
 
 
 class FlakyProjector(Projector, registry=retry_registry):
@@ -347,20 +354,20 @@ def make_new_event() -> NewEvent:
     )
 
 
-def append(library, registry, count: int = 1, idempotency_key: str = "probe-key"):
+def append(library, wiring, count: int = 1, idempotency_key: str = "probe-key"):
     return lock_stream(library).append(
         [make_new_event() for _ in range(count)],
         actor=None,
         correlation_id=uuid.uuid7(),
         idempotency_key=idempotency_key,
-        registry=registry,
+        wiring=wiring,
     )
 
 
 @pytest.mark.django_db
 def test_an_append_folds_one_event_at_a_time_through_every_family(owned_library):
     with transaction.atomic():
-        append(owned_library, append_registry, count=2)
+        append(owned_library, append_wiring, count=2)
 
     #: Event-major: one event through the whole pipeline, then the next. The
     #: append path and a replay fold identically only in this order.
@@ -382,7 +389,7 @@ def test_a_handler_receives_the_recorded_event(owned_library):
             actor=None,
             correlation_id=correlation_id,
             idempotency_key="probe-key",
-            registry=append_registry,
+            wiring=append_wiring,
         )
 
     projected = SEEN[0]
@@ -396,7 +403,7 @@ def test_a_handler_receives_the_recorded_event(owned_library):
 @pytest.mark.django_db
 def test_the_head_has_advanced_before_any_handler_runs(owned_library):
     with transaction.atomic():
-        append(owned_library, append_registry, count=2)
+        append(owned_library, append_wiring, count=2)
 
     #: Both handlers see the whole append already recorded, not the event they
     #: happen to be holding.
@@ -417,7 +424,7 @@ def test_a_replayed_append_folds_nothing(owned_library):
                 build=build,
                 actor=None,
                 correlation_id=uuid.uuid7(),
-                registry=append_registry,
+                wiring=append_wiring,
             )
 
     assert APPLIED == [
@@ -433,7 +440,7 @@ def test_a_failing_family_takes_an_earlier_familys_write_with_it(owned_library):
         pytest.raises(RuntimeError, match="stats family refused"),
         transaction.atomic(),
     ):
-        append(owned_library, rollback_registry)
+        append(owned_library, rollback_wiring)
 
     assert not Device.objects.exists()
     assert not LibraryEvent.objects.exists()
@@ -447,7 +454,7 @@ def test_dispatch_folds_through_the_registry_it_was_given(owned_user, owned_libr
         actor=owned_user,
         library=owned_library,
         idempotency_key="dispatched",
-        registry=dispatch_registry,
+        wiring=dispatch_wiring,
     )
 
     assert APPLIED == [(ProjectorFamily.CURRENT_STATE, 1)]
@@ -456,7 +463,7 @@ def test_dispatch_folds_through_the_registry_it_was_given(owned_user, owned_libr
 @pytest.mark.django_db
 def test_a_failing_handler_names_itself_without_being_wrapped(owned_library):
     with pytest.raises(RuntimeError) as raised, transaction.atomic():
-        append(owned_library, rollback_registry)
+        append(owned_library, rollback_wiring)
 
     #: Exactly RuntimeError, not a subclass and not something carrying it: the
     #: retry classifier reads the type, so a wrapper would be invisible to it.
@@ -483,7 +490,7 @@ def test_a_retryable_failure_inside_a_handler_is_still_retried(
         actor=owned_user,
         library=owned_library,
         idempotency_key="flaky",
-        registry=retry_registry,
+        wiring=retry_wiring,
     )
 
     assert FlakyProjector.attempts == 2
@@ -494,7 +501,7 @@ def test_a_retryable_failure_inside_a_handler_is_still_retried(
 @pytest.mark.django_db
 def test_a_handler_cannot_traverse_to_the_actor(owned_library):
     with pytest.raises(AttributeError) as raised, transaction.atomic():
-        append(owned_library, actor_registry)
+        append(owned_library, actor_wiring)
 
     assert "actor" in str(raised.value)
 
@@ -507,9 +514,9 @@ def test_folding_costs_the_append_no_query(owned_library, second_library):
     nothing left on the event to make it fetch.
     """
     with transaction.atomic(), CaptureQueriesContext(connection) as unprojected:
-        append(owned_library, ProjectorRegistry(), count=3)
+        append(owned_library, EventWiring(projectors=ProjectorRegistry()), count=3)
     with transaction.atomic(), CaptureQueriesContext(connection) as projected:
-        append(second_library, quiet_registry, count=3)
+        append(second_library, quiet_wiring, count=3)
 
     assert APPLIED == [
         (ProjectorFamily.CURRENT_STATE, sequence) for sequence in (1, 2, 3)

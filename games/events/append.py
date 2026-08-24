@@ -17,8 +17,8 @@ from django.db import router, transaction
 from django.utils import timezone
 
 from games.events.envelope import RecordedEvent
-from games.events.projection import DEFAULT_REGISTRY, ProjectorRegistry
 from games.events.vocabulary import NewEvent
+from games.events.wiring import DEFAULT_WIRING, EventWiring
 from games.models import LibraryEvent, LibraryEventStreamHead, UserLibrary
 
 type SourceMetadata = dict[str, Any]  # {"origin": "manual"}
@@ -90,7 +90,7 @@ class LockedStream:
         idempotency_key: str,
         source_metadata: SourceMetadata | None = None,
         recorded_at: datetime | None = None,
-        registry: ProjectorRegistry = DEFAULT_REGISTRY,
+        wiring: EventWiring = DEFAULT_WIRING,
     ) -> AppendResult:
         if not events:
             raise ValueError("An append records at least one event.")
@@ -135,7 +135,7 @@ class LockedStream:
         #: transaction under the lock it already took, which is what makes "no
         #: event commits unprojected" a property of the writer.
         for row in rows:
-            registry.apply(RecordedEvent.from_row(row))
+            wiring.projectors.apply(RecordedEvent.from_row(row))
 
         return AppendResult(
             stream_id=head.id,

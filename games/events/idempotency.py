@@ -24,8 +24,8 @@ from games.events.append import (
     lock_stream,
 )
 from games.events.conflicts import CommandConflict
-from games.events.projection import DEFAULT_REGISTRY, ProjectorRegistry
 from games.events.vocabulary import NewEvent
+from games.events.wiring import DEFAULT_WIRING, EventWiring
 from games.models import LibraryIdempotencyRecord, UserLibrary
 from timetracker.temporal import TemporalValue
 
@@ -104,7 +104,7 @@ def idempotent_append(
     correlation_id: uuid.UUID,
     source_metadata: SourceMetadata | None = None,
     recorded_at: datetime | None = None,
-    registry: ProjectorRegistry = DEFAULT_REGISTRY,
+    wiring: EventWiring = DEFAULT_WIRING,
 ) -> AppendResult | ReplayedAppend:
     """Append the events `build` describes, unless `idempotency_key` already
     produced some -- in which case return the range it produced.
@@ -148,7 +148,7 @@ def idempotent_append(
         idempotency_key=idempotency_key,
         source_metadata=source_metadata,
         recorded_at=recorded_at,
-        registry=registry,
+        wiring=wiring,
     )
     LibraryIdempotencyRecord.objects.create(
         library=library,

@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from typing import cast
 
 from games.events.envelope import RecordedEvent
-from games.events.projection import DEFAULT_REGISTRY, ProjectorRegistry
+from games.events.wiring import DEFAULT_WIRING, EventWiring
 from games.models import LibraryEvent, LibraryEventStreamHead, UserLibrary
 
 #: Chunk size is a memory decision rather than a speed one: 500 and 10000 fold
@@ -54,9 +54,10 @@ class ReplayResult:
 
 
 def replay(
-    library: UserLibrary, *, registry: ProjectorRegistry = DEFAULT_REGISTRY
+    library: UserLibrary, *, wiring: EventWiring = DEFAULT_WIRING
 ) -> ReplayResult:
-    """Fold `library`'s recorded events through `registry`, oldest first."""
+    """Fold `library`'s recorded events through `wiring.projectors`, oldest
+    first."""
     head = LibraryEventStreamHead.objects.filter(library=library).first()
     if head is None:
         #: Never appended. A read that provisions its own head is a read nobody
@@ -90,7 +91,7 @@ def replay(
                     "the append path did."
                 )
             previous = event.sequence
-            registry.apply(event)
+            wiring.projectors.apply(event)
 
     if previous != bound:
         raise StreamNotContiguous(
