@@ -98,6 +98,12 @@ class NewEvent:
 
     It carries its spec rather than an event-type string, so the type and its
     schema arrive together and the version is the registry's to stamp.
+
+    **This is the value `spec.new()` produces, and that is how a command builds
+    one.** `payload` is typed `dict[str, Any]` here, so constructing this class
+    directly forgoes the payload check entirely: a misspelled or missing key
+    passes mypy and surfaces as a refusal under the stream-head lock. Only
+    `new()` reaches the spec's schema parameter, which is where the check lives.
     """
 
     spec: EventSpec[Any]

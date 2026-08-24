@@ -104,8 +104,7 @@ class BasicCommand(Command):
 
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
         return [
-            NewEvent(
-                spec=COMMAND_RECORDED,
+            COMMAND_RECORDED.new(
                 aggregate_id=uuid.uuid7(),
                 #: Records what the context handed it, so a test can assert the
                 #: command saw the library and actor dispatch authorized.
@@ -130,8 +129,7 @@ class TwinCommand(Command):
 
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
         return [
-            NewEvent(
-                spec=TWIN_RECORDED,
+            TWIN_RECORDED.new(
                 aggregate_id=uuid.uuid7(),
                 payload={"label": self.label, "count": self.count},
             )
@@ -145,8 +143,7 @@ class TemporalCommand(Command):
 
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
         return [
-            NewEvent(
-                spec=TEMPORAL_RECORDED,
+            TEMPORAL_RECORDED.new(
                 aggregate_id=uuid.uuid7(),
                 payload={},
                 effective_time=self.when,
@@ -190,8 +187,7 @@ class FlakyCommand(Command):
         if type(self).attempts == 1:
             raise wrapped(OperationalError, "40P01")
         return [
-            NewEvent(
-                spec=FLAKY_RECORDED,
+            FLAKY_RECORDED.new(
                 aggregate_id=uuid.uuid7(),
                 payload={"attempt": type(self).attempts},
             )
@@ -518,7 +514,6 @@ def test_the_correlation_id_is_generated_once_per_dispatch(
     owned_user,
     owned_library,
     monkeypatch,
-    wiring=WIRING,
 ):
     #: Counted rather than read off the events: a rolled-back attempt leaves no
     #: rows, so the surviving ones look identical whether the ID was generated
