@@ -1,6 +1,7 @@
 import uuid
 from random import Random
 from threading import Barrier, Thread
+from typing import TypedDict
 
 import pytest
 from django.db import (
@@ -10,8 +11,9 @@ from django.db import (
     transaction,
 )
 from django.utils import timezone
+from pydantic import ConfigDict, with_config
 
-from games.events.append import AppendResult, NewEvent, lock_stream
+from games.events.append import AppendResult, lock_stream
 from games.events.idempotency import IdempotencyKeyMismatch, idempotent_append
 from games.events.retry import (
     DEFAULT_RETRY_POLICY,
@@ -21,6 +23,8 @@ from games.events.retry import (
     is_retryable,
     run_in_transaction,
 )
+from games.events.vocabulary import EventSpec, EventTypeRegistry, NewEvent
+from games.events.wiring import EventWiring
 from games.models import (
     LIBRARY_EVENT_SEQUENCE_CONSTRAINT,
     LibraryEvent,
@@ -258,10 +262,24 @@ def test_each_retry_is_logged(capture_games_logger):
     assert "40P01" in retry_logs[0].getMessage()
 
 
+@with_config(ConfigDict(extra="forbid", strict=True))
+class ProbePayload(TypedDict):
+    """No keys: these tests need only rows."""
+
+
+PROBE_RECORDED = EventSpec(
+    "probe.recorded", aggregate_type="probe", payload=ProbePayload
+)
+
+#: This module's own vocabulary, never production's.
+EVENT_TYPES = EventTypeRegistry()
+EVENT_TYPES.register(PROBE_RECORDED)
+WIRING = EventWiring(event_types=EVENT_TYPES)
+
+
 def one_event() -> NewEvent:
     return NewEvent(
-        event_type="probe.recorded",
-        aggregate_type="probe",
+        spec=PROBE_RECORDED,
         aggregate_id=uuid.uuid7(),
         payload={},
     )
@@ -277,6 +295,7 @@ def test_a_real_sequence_collision_is_recognised_and_retried(owned_library):
             actor=None,
             correlation_id=uuid.uuid7(),
             idempotency_key="seed",
+            wiring=WIRING,
         )
 
     policy, sleeper = recording_policy()
@@ -290,7 +309,6 @@ def test_a_real_sequence_collision_is_recognised_and_retried(owned_library):
             stream_id=first.stream_id,
             sequence=first.last_sequence,
             event_type="probe.recorded",
-            aggregate_type="probe",
             aggregate_id=uuid.uuid7(),
             payload={},
             recorded_at=timezone.now(),
@@ -387,6 +405,7 @@ def test_a_rolled_back_attempt_leaves_no_record_for_the_retry_to_replay(
             build=lambda _stream: [one_event()],
             actor=None,
             correlation_id=uuid.uuid7(),
+            wiring=WIRING,
         )
         #: After the write, so the first attempt has something to roll back.
         if len(attempts) == 1:

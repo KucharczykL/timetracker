@@ -127,7 +127,7 @@ against `make check` before pushing when possible.
 | Run a subset of tests | `make test ARGS="tests/test_filters.py -k relation -x"` (same for `make test-e2e ARGS=…`) |
 | Run TypeScript tests | `make test-ts` (vitest over `ts/**/*.test.ts`) |
 | Make migrations | `make makemigrations` |
-| Apply migrations | `make migrate` |
+| Apply migrations | `make migrate` (`ARGS` targets one app/migration: `make migrate ARGS="games 0024_libraryidempotencyrecord"`) |
 | CSS (Tailwind) | `make css` |
 | Django shell | `make shell` |
 | Create superuser | `make createsuperuser` |
@@ -150,7 +150,7 @@ against `make check` before pushing when possible.
 
 ## Architecture
 
-A Django 6+ monolith (v1.7.0) with a single app (`games/`) for tracking video game purchases, play sessions, and statistics. Uses HTMX for interactivity with a pure-Python server-side component system, plus a Django Ninja REST API.
+A Django 6+ monolith (v1.7.0) with a single app (`games/`) for tracking video game purchases, play sessions, and statistics. Uses HTMX for interactivity with a pure-Python server-side component system, plus a Django Ninja REST API. **pydantic** is a declared runtime dependency (`pyproject.toml`), not just Ninja's transitive one: the event vocabulary (`games/events/vocabulary.py`) validates every event payload against its schema with a `TypeAdapter`.
 
 ### Directory layout
 

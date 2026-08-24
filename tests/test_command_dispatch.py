@@ -1,14 +1,14 @@
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, fields
-from typing import ClassVar
+from typing import ClassVar, TypedDict
 
 import pytest
 from django.db import OperationalError, transaction
+from pydantic import ConfigDict, with_config
 from test_event_retry import wrapped
 
 from games.events import dispatch as dispatch_module
-from games.events.append import NewEvent
 from games.events.dispatch import (
     Command,
     CommandContext,
@@ -23,8 +23,57 @@ from games.events.dispatch import (
 )
 from games.events.idempotency import IdempotencyKeyMismatch, fingerprint_command_input
 from games.events.retry import NestedTransactionNotSupported
+from games.events.vocabulary import EventSpec, EventTypeRegistry, NewEvent
+from games.events.wiring import EventWiring
 from games.models import LibraryEvent
 from timetracker.temporal import TemporalValue
+
+STRICT_CONFIG = ConfigDict(extra="forbid", strict=True)
+
+
+@with_config(STRICT_CONFIG)
+class CommandPayload(TypedDict):
+    label: str
+    count: int
+    library: str
+    actor: int
+
+
+@with_config(STRICT_CONFIG)
+class TwinPayload(TypedDict):
+    label: str
+    count: int
+
+
+@with_config(STRICT_CONFIG)
+class TemporalPayload(TypedDict):
+    """No keys: the time is the fact."""
+
+
+@with_config(STRICT_CONFIG)
+class AttemptPayload(TypedDict):
+    attempt: int
+
+
+#: One spec per payload shape.
+COMMAND_RECORDED = EventSpec(
+    "test.command.recorded", aggregate_type="test", payload=CommandPayload
+)
+TWIN_RECORDED = EventSpec(
+    "test.command.twin.recorded", aggregate_type="test", payload=TwinPayload
+)
+TEMPORAL_RECORDED = EventSpec(
+    "test.command.temporal.recorded", aggregate_type="test", payload=TemporalPayload
+)
+FLAKY_RECORDED = EventSpec(
+    "test.command.flaky.recorded", aggregate_type="test", payload=AttemptPayload
+)
+
+#: This module's vocabulary. Projector tests import these.
+EVENT_TYPES = EventTypeRegistry()
+for spec in (COMMAND_RECORDED, TWIN_RECORDED, TEMPORAL_RECORDED, FLAKY_RECORDED):
+    EVENT_TYPES.register(spec)
+WIRING = EventWiring(event_types=EVENT_TYPES)
 
 
 @pytest.fixture
@@ -52,9 +101,7 @@ class BasicCommand(Command):
 
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
         return [
-            NewEvent(
-                event_type="test.command.recorded",
-                aggregate_type="test",
+            COMMAND_RECORDED.new(
                 aggregate_id=uuid.uuid7(),
                 #: Records what the context handed it, so a test can assert the
                 #: command saw the library and actor dispatch authorized.
@@ -79,9 +126,7 @@ class TwinCommand(Command):
 
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
         return [
-            NewEvent(
-                event_type="test.command.recorded",
-                aggregate_type="test",
+            TWIN_RECORDED.new(
                 aggregate_id=uuid.uuid7(),
                 payload={"label": self.label, "count": self.count},
             )
@@ -95,9 +140,7 @@ class TemporalCommand(Command):
 
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
         return [
-            NewEvent(
-                event_type="test.command.recorded",
-                aggregate_type="test",
+            TEMPORAL_RECORDED.new(
                 aggregate_id=uuid.uuid7(),
                 payload={},
                 effective_time=self.when,
@@ -141,9 +184,7 @@ class FlakyCommand(Command):
         if type(self).attempts == 1:
             raise wrapped(OperationalError, "40P01")
         return [
-            NewEvent(
-                event_type="test.command.recorded",
-                aggregate_type="test",
+            FLAKY_RECORDED.new(
                 aggregate_id=uuid.uuid7(),
                 payload={"attempt": type(self).attempts},
             )
@@ -305,6 +346,7 @@ def test_a_dispatched_command_appends_its_events(owned_user, owned_library):
         library=owned_library,
         idempotency_key="first",
         source_metadata={"origin": "manual"},
+        wiring=WIRING,
     )
 
     assert result.replayed is False
@@ -322,10 +364,18 @@ def test_a_dispatched_command_appends_its_events(owned_user, owned_library):
 def test_repeating_a_key_replays_the_original_range(owned_user, owned_library):
     command = BasicCommand(label="x", count=1)
     first = dispatch(
-        command, actor=owned_user, library=owned_library, idempotency_key="same"
+        command,
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="same",
+        wiring=WIRING,
     )
     second = dispatch(
-        command, actor=owned_user, library=owned_library, idempotency_key="same"
+        command,
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="same",
+        wiring=WIRING,
     )
 
     assert second.replayed is True
@@ -343,6 +393,7 @@ def test_repeating_a_key_over_changed_fields_is_refused(owned_user, owned_librar
         actor=owned_user,
         library=owned_library,
         idempotency_key="same",
+        wiring=WIRING,
     )
 
     with pytest.raises(IdempotencyKeyMismatch):
@@ -351,6 +402,7 @@ def test_repeating_a_key_over_changed_fields_is_refused(owned_user, owned_librar
             actor=owned_user,
             library=owned_library,
             idempotency_key="same",
+            wiring=WIRING,
         )
 
 
@@ -365,6 +417,7 @@ def test_repeating_a_key_under_another_command_name_is_refused(
         actor=owned_user,
         library=owned_library,
         idempotency_key="same",
+        wiring=WIRING,
     )
 
     with pytest.raises(IdempotencyKeyMismatch):
@@ -373,6 +426,7 @@ def test_repeating_a_key_under_another_command_name_is_refused(
             actor=owned_user,
             library=owned_library,
             idempotency_key="same",
+            wiring=WIRING,
         )
 
 
@@ -383,6 +437,7 @@ def test_build_receives_the_dispatchers_library_and_actor(owned_user, owned_libr
         actor=owned_user,
         library=owned_library,
         idempotency_key="first",
+        wiring=WIRING,
     )
 
     event = LibraryEvent.objects.get(library=owned_library)
@@ -398,6 +453,7 @@ def test_a_rejected_command_appends_nothing(owned_user, owned_library):
             actor=owned_user,
             library=owned_library,
             idempotency_key="first",
+            wiring=WIRING,
         )
 
     assert not LibraryEvent.objects.filter(library=owned_library).exists()
@@ -416,6 +472,7 @@ def test_authorization_precedes_any_query(
             actor=owned_user,
             library=other_library,
             idempotency_key="first",
+            wiring=WIRING,
         )
 
 
@@ -427,6 +484,7 @@ def test_dispatch_refuses_to_nest(owned_user, owned_library):
             actor=owned_user,
             library=owned_library,
             idempotency_key="first",
+            wiring=WIRING,
         )
 
 
@@ -439,6 +497,7 @@ def test_a_retryable_failure_is_retried_into_one_append(owned_user, owned_librar
         actor=owned_user,
         library=owned_library,
         idempotency_key="first",
+        wiring=WIRING,
     )
 
     assert FlakyCommand.attempts == 2
@@ -449,7 +508,9 @@ def test_a_retryable_failure_is_retried_into_one_append(owned_user, owned_librar
 
 @pytest.mark.django_db(transaction=True)
 def test_the_correlation_id_is_generated_once_per_dispatch(
-    owned_user, owned_library, monkeypatch
+    owned_user,
+    owned_library,
+    monkeypatch,
 ):
     #: Counted rather than read off the events: a rolled-back attempt leaves no
     #: rows, so the surviving ones look identical whether the ID was generated
@@ -470,6 +531,7 @@ def test_the_correlation_id_is_generated_once_per_dispatch(
         actor=owned_user,
         library=owned_library,
         idempotency_key="first",
+        wiring=WIRING,
     )
 
     assert FlakyCommand.attempts == 2
@@ -489,6 +551,7 @@ def test_a_supplied_correlation_id_is_shared_across_dispatches(
             library=owned_library,
             idempotency_key=key,
             correlation_id=shared,
+            wiring=WIRING,
         )
         assert result.correlation_id == shared
 

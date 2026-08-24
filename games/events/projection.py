@@ -2,9 +2,9 @@
 does with an event.
 
 A family is one class owning one projection concern. It declares the event types
-it handles as a mapping, and the append path folds every appended event through
-every family that claims its type -- in the same transaction, under the same
-stream-head lock.
+it handles as a mapping keyed on their `EventSpec` constants, and the append path
+folds every appended event through every family that claims its type -- in the
+same transaction, under the same stream-head lock.
 
 A family is handed a `RecordedEvent`, never the row, so nothing here holds a
 model: a registry of families over a value, which is what lets one eventually be
@@ -18,16 +18,16 @@ unambiguous to the interpreter and a trap for everyone else.
 from abc import ABC
 from collections.abc import Callable, Mapping
 from enum import StrEnum
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from games.events.envelope import RecordedEvent
+from games.events.vocabulary import EventSpec, EventType
 
-type EventType = str  # "library.session.created"
 type BoundHandler = Callable[[RecordedEvent], None]
-#: What a family declares. The values are the handler functions themselves,
-#: read out of the class body before any descriptor binding -- hence
-#: Callable[..., None] rather than a signature naming `self`.
-type HandlerMap = Mapping[EventType, Callable[..., None]]
+#: EventSpec keys; values are the handler functions, read out of the class body
+#: before any descriptor binding -- hence Callable[..., None] rather than a
+#: signature naming `self`.
+type HandlerMap = Mapping[EventSpec[Any], Callable[..., None]]
 #: One handler and the family it speaks for, so a failure can say which.
 type FamilyHandler = tuple[ProjectorFamily, BoundHandler]
 #: Where a family was defined, as (module, qualified name).
@@ -69,6 +69,7 @@ class ProjectorRegistry:
     def __init__(self) -> None:
         self._families: dict[ProjectorFamily, Projector] = {}
         self._claims: dict[ProjectorFamily, DefinitionSite] = {}
+        #: The string a RecordedEvent carries.
         self._handlers: dict[EventType, tuple[FamilyHandler, ...]] = {}
 
     def register(self, projector_class: type[Projector]) -> None:
@@ -85,10 +86,16 @@ class ProjectorRegistry:
                 f"{projector_class.__qualname__} declares no handles. A family "
                 "says which event types it projects, even if that is none."
             )
-        for event_type, handler in handles.items():
+        for spec, handler in handles.items():
+            if not isinstance(spec, EventSpec):
+                raise TypeError(
+                    f"{projector_class.__qualname__} claims {spec!r}, which is "
+                    "not an EventSpec. A family names the specs it handles, so "
+                    "it cannot claim an event type nobody defined."
+                )
             if not callable(handler):
                 raise TypeError(
-                    f"{projector_class.__qualname__} maps {event_type!r} to "
+                    f"{projector_class.__qualname__} maps {spec.event_type!r} to "
                     f"{handler!r}, which is not callable. Handlers are the "
                     "functions themselves, so renaming one is an error here "
                     "rather than a handler that never runs."
@@ -112,8 +119,8 @@ class ProjectorRegistry:
         handlers: dict[EventType, list[FamilyHandler]] = {}
         for family_name in sorted(self._families, key=_RUN_ORDER.__getitem__):
             family = self._families[family_name]
-            for event_type, handler in family.handles.items():
-                handlers.setdefault(event_type, []).append(
+            for spec, handler in family.handles.items():
+                handlers.setdefault(spec.event_type, []).append(
                     (family_name, handler.__get__(family))
                 )
         self._handlers = {
@@ -151,10 +158,11 @@ DEFAULT_REGISTRY = ProjectorRegistry()
 class Projector(ABC):
     """One projection family.
 
-    Subclassing registers, which is why `handles` maps event types to the
-    handler **functions** read out of the class body rather than to their names:
-    renaming one without updating the map is a `NameError` at class definition,
-    where a string would have been a handler that silently never ran.
+    Subclassing registers, which is why `handles` maps `EventSpec` constants to
+    the handler **functions** read out of the class body rather than strings to
+    handler names: renaming either without updating the map is a `NameError` at
+    class definition, where a string would have been a handler that silently
+    never ran.
 
     A family spells the declaration `handles: ClassVar[HandlerMap] = {...}`. The
     annotation is not decoration: a bare assignment is a mutable class attribute

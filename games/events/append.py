@@ -3,6 +3,11 @@
 A command locks the stream head, validates whatever mutable projections it
 depends on, and appends the events of one human action contiguously -- all in
 one transaction owned by the caller.
+
+Every event passes the wiring's event-type registry on the way in: an
+unregistered type and a payload its schema refuses are both turned away before
+anything is written, so nothing reaches an immutable trail that the vocabulary
+cannot read back.
 """
 
 import json
@@ -17,9 +22,9 @@ from django.db import router, transaction
 from django.utils import timezone
 
 from games.events.envelope import RecordedEvent
-from games.events.projection import DEFAULT_REGISTRY, ProjectorRegistry
+from games.events.vocabulary import NewEvent
+from games.events.wiring import DEFAULT_WIRING, EventWiring
 from games.models import LibraryEvent, LibraryEventStreamHead, UserLibrary
-from timetracker.temporal import TemporalValue
 
 type SourceMetadata = dict[str, Any]  # {"origin": "manual"}
 
@@ -59,20 +64,6 @@ def canonical_json[T](value: T, *, label: str) -> T:
 
 
 @dataclass(frozen=True, slots=True)
-class NewEvent:
-    """One fact to append. Carries no stream, sequence, or library: those are
-    the stream's to assign, and a caller has no way to express them."""
-
-    event_type: str
-    aggregate_type: str
-    aggregate_id: uuid.UUID
-    payload: dict[str, Any]
-    payload_schema_version: int = 1
-    effective_time: TemporalValue | None = None
-    causation_id: uuid.UUID | None = None
-
-
-@dataclass(frozen=True, slots=True)
 class AppendResult:
     stream_id: uuid.UUID
     first_sequence: int
@@ -104,7 +95,7 @@ class LockedStream:
         idempotency_key: str,
         source_metadata: SourceMetadata | None = None,
         recorded_at: datetime | None = None,
-        registry: ProjectorRegistry = DEFAULT_REGISTRY,
+        wiring: EventWiring = DEFAULT_WIRING,
     ) -> AppendResult:
         if not events:
             raise ValueError("An append records at least one event.")
@@ -112,7 +103,15 @@ class LockedStream:
         #: Before the rows and before the advance: a refusal must leave a
         #: transaction that may still commit exactly as it found it.
         metadata = canonical_json(source_metadata or {}, label="source metadata")
-        payloads = [canonical_json(event.payload, label="payload") for event in events]
+        #: The registry's word, not the caller's spec.
+        specs = [wiring.event_types.spec_for(event.spec.event_type) for event in events]
+        payloads = [
+            #: Canonical first: pydantic passes dicts through untouched.
+            wiring.event_types.validate(
+                spec.event_type, canonical_json(event.payload, label="payload")
+            )
+            for spec, event in zip(specs, events, strict=True)
+        ]
 
         head = self._head
         first_sequence = head.current_sequence + 1
@@ -123,11 +122,11 @@ class LockedStream:
                 library_id=head.library_id,
                 stream=head,
                 sequence=first_sequence + offset,
-                event_type=event.event_type,
-                aggregate_type=event.aggregate_type,
+                event_type=spec.event_type,
                 aggregate_id=event.aggregate_id,
-                payload=payloads[offset],
-                payload_schema_version=event.payload_schema_version,
+                #: Pydantic's value: 1 into float stores 1.0.
+                payload=payload,
+                payload_schema_version=spec.version,
                 recorded_at=recorded_at,
                 effective_time=event.effective_time,
                 actor=actor,
@@ -136,7 +135,9 @@ class LockedStream:
                 source_metadata=metadata,
                 idempotency_key=idempotency_key,
             )
-            for offset, event in enumerate(events)
+            for offset, (event, spec, payload) in enumerate(
+                zip(events, specs, payloads, strict=True)
+            )
         ]
         LibraryEvent.objects.bulk_create(rows)
 
@@ -149,7 +150,7 @@ class LockedStream:
         #: transaction under the lock it already took, which is what makes "no
         #: event commits unprojected" a property of the writer.
         for row in rows:
-            registry.apply(RecordedEvent.from_row(row))
+            wiring.projectors.apply(RecordedEvent.from_row(row))
 
         return AppendResult(
             stream_id=head.id,

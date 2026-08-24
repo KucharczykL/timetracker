@@ -12,6 +12,11 @@ lands while the fold is running sits above the bound and belongs to a later
 replay. `ReplayResult.folded_through` carries the bound out, so a caller that
 needs to know whether anything landed can ask the head again itself.
 
+A row the wired vocabulary cannot read -- an unregistered event type, or a
+payload recorded against another schema version -- refuses the whole fold rather
+than being skipped: a projection built from whichever events happened to be
+readable is not the one the append path produced.
+
 Nothing here empties anything. Replaying onto a projection that already holds
 rows folds every event a second time, which is the caller's to prevent.
 """
@@ -23,7 +28,8 @@ from dataclasses import dataclass
 from typing import cast
 
 from games.events.envelope import RecordedEvent
-from games.events.projection import DEFAULT_REGISTRY, ProjectorRegistry
+from games.events.vocabulary import EventTypeRegistry
+from games.events.wiring import DEFAULT_WIRING, EventWiring
 from games.models import LibraryEvent, LibraryEventStreamHead, UserLibrary
 
 #: Chunk size is a memory decision rather than a speed one: 500 and 10000 fold
@@ -40,6 +46,10 @@ class StreamNotContiguous(Exception):
     """
 
 
+class PayloadVersionUnsupported(Exception):
+    """A payload no registered schema can read."""
+
+
 @dataclass(frozen=True, slots=True)
 class ReplayResult:
     """Which prefix of which stream was folded.
@@ -54,9 +64,9 @@ class ReplayResult:
 
 
 def replay(
-    library: UserLibrary, *, registry: ProjectorRegistry = DEFAULT_REGISTRY
+    library: UserLibrary, *, wiring: EventWiring = DEFAULT_WIRING
 ) -> ReplayResult:
-    """Fold `library`'s recorded events through `registry`, oldest first."""
+    """Fold a library's recorded events, oldest first."""
     head = LibraryEventStreamHead.objects.filter(library=library).first()
     if head is None:
         #: Never appended. A read that provisions its own head is a read nobody
@@ -90,7 +100,8 @@ def replay(
                     "the append path did."
                 )
             previous = event.sequence
-            registry.apply(event)
+            _check_readable(event, wiring.event_types)
+            wiring.projectors.apply(event)
 
     if previous != bound:
         raise StreamNotContiguous(
@@ -98,3 +109,15 @@ def replay(
             "The events above the last one folded are missing."
         )
     return ReplayResult(stream_id=head.id, folded_through=bound)
+
+
+def _check_readable(event: RecordedEvent, event_types: EventTypeRegistry) -> None:
+    """Refuse what the vocabulary cannot read."""
+    spec = event_types.spec_for(event.event_type)
+    if event.payload_schema_version != spec.version:
+        raise PayloadVersionUnsupported(
+            f"Event #{event.sequence} records a {event.event_type} payload at "
+            f"schema version {event.payload_schema_version}, but the vocabulary "
+            f"holds version {spec.version}. Nothing upcasts a recorded payload "
+            "to another schema yet, so this stream cannot be folded."
+        )

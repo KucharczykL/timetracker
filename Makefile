@@ -153,8 +153,9 @@ check-migrations: ensure-postgres
 sqlmigrate: ensure-postgres
 	uv run --frozen python manage.py sqlmigrate $(ARGS)
 
+# Usage: make migrate ARGS="games 0024_libraryidempotencyrecord"
 migrate: ensure-postgres makemigrations
-	uv run --frozen python manage.py migrate
+	uv run --frozen python manage.py migrate $(ARGS)
 
 devlogin: migrate
 	uv run --frozen python manage.py devlogin

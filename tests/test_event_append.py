@@ -2,24 +2,101 @@ import uuid
 from datetime import date
 from decimal import Decimal
 from threading import Event, Thread
-from typing import Any
+from typing import Any, TypedDict
 
 import psycopg
 import pytest
 from django.db import close_old_connections, connection, transaction
+from pydantic import ConfigDict, with_config
 
 from games.events.append import (
     AppendResult,
     LockedStream,
-    NewEvent,
     PayloadNotCanonical,
     TransactionRequired,
     lock_stream,
 )
+from games.events.vocabulary import (
+    EventSpec,
+    EventTypeRegistry,
+    NewEvent,
+    PayloadInvalid,
+    UnregisteredEventType,
+)
+from games.events.wiring import EventWiring
 from games.models import LibraryEvent, LibraryEventStreamHead
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db
+
+
+STRICT_CONFIG = ConfigDict(extra="forbid", strict=True)
+
+
+@with_config(STRICT_CONFIG)
+class ProbePayload(TypedDict):
+    probe: bool
+
+
+@with_config(STRICT_CONFIG)
+class NestedPayload(TypedDict):
+    nested: dict[str, str]
+
+
+@with_config(STRICT_CONFIG)
+class ShapesPayload(TypedDict):
+    """Every JSON container, plus a widening float."""
+
+    tags: list[str]
+    counts: dict[str, int]
+    ratio: float
+
+
+@with_config(STRICT_CONFIG)
+class OpaquePayload(TypedDict):
+    """A field pydantic will not look inside."""
+
+    details: dict[str, Any]
+
+
+PROBE_RECORDED = EventSpec(
+    "library.probe.recorded", aggregate_type="probe", payload=ProbePayload
+)
+#: Second spec: version and type from registration.
+PLAYTHROUGH_STARTED = EventSpec(
+    "library.playthrough.started",
+    aggregate_type="playthrough",
+    payload=NestedPayload,
+)
+SHAPES_RECORDED = EventSpec(
+    "library.shapes.recorded", aggregate_type="probe", payload=ShapesPayload
+)
+OPAQUE_RECORDED = EventSpec(
+    "library.opaque.recorded", aggregate_type="probe", payload=OpaquePayload
+)
+
+#: Never registered: an append must refuse it.
+UNREGISTERED = EventSpec(
+    "library.unregistered.happened", aggregate_type="probe", payload=ProbePayload
+)
+#: Registered type, unregistered spec, disagreeing about everything.
+MISDECLARED_PROBE = EventSpec(
+    "library.probe.recorded",
+    aggregate_type="mistaken",
+    payload=ProbePayload,
+    version=9,
+)
+
+#: This module's own vocabulary, never production's.
+EVENT_TYPES = EventTypeRegistry()
+for registered_spec in (
+    PROBE_RECORDED,
+    PLAYTHROUGH_STARTED,
+    SHAPES_RECORDED,
+    OPAQUE_RECORDED,
+):
+    EVENT_TYPES.register(registered_spec)
+WIRING = EventWiring(event_types=EVENT_TYPES)
 
 
 @pytest.fixture
@@ -31,8 +108,7 @@ def second_library(django_user_model):
 
 def make_new_event(**overrides: Any) -> NewEvent:
     fields: dict[str, Any] = {
-        "event_type": "library.probe.recorded",
-        "aggregate_type": "probe",
+        "spec": PROBE_RECORDED,
         "aggregate_id": uuid.uuid7(),
         "payload": {"probe": True},
     }
@@ -45,9 +121,22 @@ def append(library, events=None, **overrides: Any) -> AppendResult:
         "actor": None,
         "correlation_id": uuid.uuid7(),
         "idempotency_key": "probe-key",
+        "wiring": WIRING,
     }
     fields.update(overrides)
     return lock_stream(library).append(events or [make_new_event()], **fields)
+
+
+def append_directly(stream: LockedStream, events, **overrides: Any) -> AppendResult:
+    """An append that skips `lock_stream`."""
+    fields: dict[str, Any] = {
+        "actor": None,
+        "correlation_id": uuid.uuid7(),
+        "idempotency_key": "probe-key",
+        "wiring": WIRING,
+    }
+    fields.update(overrides)
+    return stream.append(events, **fields)
 
 
 def test_first_append_provisions_a_head_and_starts_at_one(owned_library):
@@ -94,17 +183,9 @@ def test_multi_event_append_is_contiguous_and_shares_one_envelope(owned_library)
 def test_two_appends_on_one_locked_stream_continue_the_range(owned_library):
     with transaction.atomic():
         stream = lock_stream(owned_library)
-        first = stream.append(
-            [make_new_event()],
-            actor=None,
-            correlation_id=uuid.uuid7(),
-            idempotency_key="first",
-        )
-        second = stream.append(
-            [make_new_event(), make_new_event()],
-            actor=None,
-            correlation_id=uuid.uuid7(),
-            idempotency_key="second",
+        first = append_directly(stream, [make_new_event()], idempotency_key="first")
+        second = append_directly(
+            stream, [make_new_event(), make_new_event()], idempotency_key="second"
         )
 
     assert (first.first_sequence, first.last_sequence) == (1, 1)
@@ -129,12 +210,7 @@ def test_empty_event_sequence_is_rejected(owned_library):
     with transaction.atomic():
         stream = lock_stream(owned_library)
         with pytest.raises(ValueError, match="at least one event"):
-            stream.append(
-                [],
-                actor=None,
-                correlation_id=uuid.uuid7(),
-                idempotency_key="probe-key",
-            )
+            append_directly(stream, [])
 
     assert not LibraryEvent.objects.exists()
 
@@ -175,11 +251,9 @@ def test_event_fields_round_trip(owned_library):
             owned_library,
             [
                 make_new_event(
-                    event_type="library.playthrough.started",
-                    aggregate_type="playthrough",
+                    spec=PLAYTHROUGH_STARTED,
                     aggregate_id=aggregate_id,
                     payload={"nested": {"id": str(aggregate_id)}},
-                    payload_schema_version=2,
                     effective_time=effective_time,
                     causation_id=causation_id,
                 )
@@ -189,13 +263,23 @@ def test_event_fields_round_trip(owned_library):
 
     event = LibraryEvent.objects.get()
     assert event.event_type == "library.playthrough.started"
-    assert event.aggregate_type == "playthrough"
     assert event.aggregate_id == aggregate_id
     assert event.payload == {"nested": {"id": str(aggregate_id)}}
-    assert event.payload_schema_version == 2
     assert event.effective_time == effective_time
     assert event.causation_id == causation_id
     assert event.source_metadata == {"origin": "manual"}
+
+
+def test_the_row_is_built_from_the_registered_spec(owned_library):
+    """The registration decides, not the caller's spec."""
+    with transaction.atomic():
+        append(owned_library, [make_new_event(spec=MISDECLARED_PROBE)])
+
+    event = LibraryEvent.objects.get()
+    assert event.payload_schema_version == PROBE_RECORDED.version == 1
+    #: No aggregate_type: the spec alone declares it.
+    assert not hasattr(event, "aggregate_type")
+    assert EVENT_TYPES.spec_for(event.event_type).aggregate_type == "probe"
 
 
 def test_actor_is_recorded_and_optional(owned_library, django_user_model):
@@ -216,8 +300,7 @@ def test_absent_source_metadata_is_stored_as_an_empty_object(owned_library):
     assert LibraryEvent.objects.get().source_metadata == {}
 
 
-#: Each one reaches PostgreSQL as something other than itself, or not at all: a
-#: tuple as a list, an integer key as a string, and the rest not at all.
+#: Canonicalizer inputs, not payloads any schema declares.
 NON_CANONICAL_VALUES = [
     pytest.param({"tags": ("first", "second")}, id="tuple"),
     pytest.param({1: "first"}, id="integer-key"),
@@ -233,12 +316,7 @@ def test_a_non_canonical_payload_is_refused(owned_library, payload):
     with transaction.atomic():
         stream = lock_stream(owned_library)
         with pytest.raises(PayloadNotCanonical, match="payload"):
-            stream.append(
-                [make_new_event(payload=payload)],
-                actor=None,
-                correlation_id=uuid.uuid7(),
-                idempotency_key="probe-key",
-            )
+            append_directly(stream, [make_new_event(payload=payload)])
 
     assert not LibraryEvent.objects.exists()
 
@@ -248,12 +326,24 @@ def test_non_canonical_source_metadata_is_refused(owned_library, source_metadata
     with transaction.atomic():
         stream = lock_stream(owned_library)
         with pytest.raises(PayloadNotCanonical, match="source metadata"):
-            stream.append(
-                [make_new_event()],
-                actor=None,
-                correlation_id=uuid.uuid7(),
-                idempotency_key="probe-key",
-                source_metadata=source_metadata,
+            append_directly(stream, [make_new_event()], source_metadata=source_metadata)
+
+    assert not LibraryEvent.objects.exists()
+
+
+def test_a_value_hidden_under_an_any_field_is_still_refused(owned_library):
+    """Why the canonicalizer runs before validation."""
+    with transaction.atomic():
+        stream = lock_stream(owned_library)
+        with pytest.raises(PayloadNotCanonical, match="payload"):
+            append_directly(
+                stream,
+                [
+                    make_new_event(
+                        spec=OPAQUE_RECORDED,
+                        payload={"details": {"price": Decimal("5.50")}},
+                    )
+                ],
             )
 
     assert not LibraryEvent.objects.exists()
@@ -266,10 +356,9 @@ def test_a_refused_payload_leaves_the_head_where_it_was(owned_library):
     with transaction.atomic():
         stream = lock_stream(owned_library)
         with pytest.raises(PayloadNotCanonical):
-            stream.append(
+            append_directly(
+                stream,
                 [make_new_event(), make_new_event(payload={"tags": ()})],
-                actor=None,
-                correlation_id=uuid.uuid7(),
                 idempotency_key="second",
             )
 
@@ -279,26 +368,86 @@ def test_a_refused_payload_leaves_the_head_where_it_was(owned_library):
     assert LibraryEvent.objects.count() == 1
 
 
+def refuse_and_keep_appending(library, refused, raises, match: str) -> None:
+    """Refuse, then show the transaction still commits."""
+    with transaction.atomic():
+        append(library)
+
+    with transaction.atomic():
+        stream = lock_stream(library)
+        with pytest.raises(raises, match=match):
+            append_directly(stream, [refused], idempotency_key="refused")
+
+        assert LibraryEvent.objects.count() == 1
+        assert stream.current_sequence == 1
+        assert LibraryEventStreamHead.objects.get(library=library).current_sequence == 1
+        append_directly(stream, [make_new_event()], idempotency_key="after")
+
+    assert LibraryEvent.objects.count() == 2
+    assert LibraryEventStreamHead.objects.get(library=library).current_sequence == 2
+
+
+def test_an_unregistered_event_type_is_refused(owned_library):
+    refuse_and_keep_appending(
+        owned_library,
+        make_new_event(spec=UNREGISTERED),
+        UnregisteredEventType,
+        match="library.unregistered.happened",
+    )
+
+
+def test_a_payload_its_schema_refuses_is_refused(owned_library):
+    refuse_and_keep_appending(
+        owned_library,
+        make_new_event(payload={"probe": "yes"}),
+        PayloadInvalid,
+        match="library.probe.recorded",
+    )
+
+
 def test_a_stored_payload_equals_what_postgres_returns(owned_library):
     payload = {"tags": ["first", "second"], "counts": {"total": 2}, "ratio": 1.5}
 
     with transaction.atomic():
-        result = append(owned_library, [make_new_event(payload=payload)])
+        result = append(
+            owned_library, [make_new_event(spec=SHAPES_RECORDED, payload=payload)]
+        )
 
     appended = result.events[0]
     assert appended.payload == LibraryEvent.objects.get(pk=appended.pk).payload
 
 
+def test_an_integer_for_a_float_field_is_stored_as_a_float(owned_library):
+    """The one case equality cannot see."""
+    with transaction.atomic():
+        result = append(
+            owned_library,
+            [
+                make_new_event(
+                    spec=SHAPES_RECORDED,
+                    payload={"tags": [], "counts": {}, "ratio": 1},
+                )
+            ],
+        )
+
+    stored = LibraryEvent.objects.get(pk=result.events[0].pk).payload
+    assert isinstance(stored["ratio"], float)
+
+
 def test_a_stored_payload_is_not_the_callers_object(owned_library):
-    payload = {"tags": ["first", "second"]}
+    #: spec.new types the payload against its schema.
+    payload: ProbePayload = {"probe": True}
+    event = PROBE_RECORDED.new(aggregate_id=uuid.uuid7(), payload=payload)
 
     with transaction.atomic():
-        result = append(owned_library, [make_new_event(payload=payload)])
+        result = append(owned_library, [event])
+    payload["probe"] = False
 
     #: A projector runs against this row, so an aliased payload would let it
     #: reach back into the NewEvent the command built.
-    assert result.events[0].payload == payload
     assert result.events[0].payload is not payload
+    assert result.events[0].payload == {"probe": True}
+    assert LibraryEvent.objects.get(pk=result.events[0].pk).payload == {"probe": True}
 
 
 def test_stored_source_metadata_is_not_the_callers_object(owned_library):
@@ -375,10 +524,9 @@ def test_concurrent_appends_serialize_into_one_contiguous_range(owned_library):
             with transaction.atomic():
                 stream = lock_stream(owned_library)
                 holder_locked.set()
-                results["holder"] = stream.append(
+                results["holder"] = append_directly(
+                    stream,
                     [make_new_event(), make_new_event()],
-                    actor=None,
-                    correlation_id=uuid.uuid7(),
                     idempotency_key="holder",
                 )
                 if not waiter_requested_lock.wait(10):

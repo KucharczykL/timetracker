@@ -11,12 +11,22 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from games.events.vocabulary import EventType
 from games.models import LibraryEvent
 from timetracker.temporal import TemporalValue
 
 
 class DeferredRowRefused(ValueError):
     """Raised for a row whose columns were not all selected."""
+
+
+def _with_sorted_keys(value: Any) -> Any:
+    """Sort every dict's keys, at every depth."""
+    if isinstance(value, dict):
+        return {key: _with_sorted_keys(value[key]) for key in sorted(value)}
+    if isinstance(value, list):
+        return [_with_sorted_keys(item) for item in value]
+    return value
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,8 +48,7 @@ class RecordedEvent:
     library_id: uuid.UUID
     stream_id: uuid.UUID
     sequence: int
-    event_type: str
-    aggregate_type: str
+    event_type: EventType
     aggregate_id: uuid.UUID
     payload_schema_version: int
     recorded_at: datetime
@@ -53,12 +62,7 @@ class RecordedEvent:
 
     @classmethod
     def from_row(cls, row: LibraryEvent) -> RecordedEvent:
-        """Copy every concrete field off `row`.
-
-        Written out rather than built from `_meta`, so mypy checks each field
-        against its declared type and a model change fails as a named test
-        rather than as a `TypeError` inside an append.
-        """
+        """Copy every field, the JSONB ones canonically."""
         deferred = row.get_deferred_fields()
         if deferred:
             #: Every field is read below, and a deferred one is a round trip
@@ -75,7 +79,6 @@ class RecordedEvent:
             stream_id=row.stream_id,
             sequence=row.sequence,
             event_type=row.event_type,
-            aggregate_type=row.aggregate_type,
             aggregate_id=row.aggregate_id,
             payload_schema_version=row.payload_schema_version,
             recorded_at=row.recorded_at,
@@ -83,7 +86,7 @@ class RecordedEvent:
             actor_id=row.actor_id,
             correlation_id=row.correlation_id,
             causation_id=row.causation_id,
-            source_metadata=row.source_metadata,
+            source_metadata=_with_sorted_keys(row.source_metadata),
             idempotency_key=row.idempotency_key,
-            payload=row.payload,
+            payload=_with_sorted_keys(row.payload),
         )
