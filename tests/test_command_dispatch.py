@@ -23,7 +23,8 @@ from games.events.dispatch import (
 )
 from games.events.idempotency import IdempotencyKeyMismatch, fingerprint_command_input
 from games.events.retry import NestedTransactionNotSupported
-from games.events.vocabulary import EventSpec, NewEvent
+from games.events.vocabulary import EventSpec, EventTypeRegistry, NewEvent
+from games.events.wiring import EventWiring
 from games.models import LibraryEvent
 from timetracker.temporal import TemporalValue
 
@@ -68,6 +69,14 @@ TEMPORAL_RECORDED = EventSpec(
 FLAKY_RECORDED = EventSpec(
     "test.command.flaky.recorded", aggregate_type="test", payload=AttemptPayload
 )
+
+#: This module's own vocabulary, so a test event type never enters the one a
+#: production stream reads. Exported: the projector tests dispatch these same
+#: commands through a wiring of their own.
+EVENT_TYPES = EventTypeRegistry()
+for spec in (COMMAND_RECORDED, TWIN_RECORDED, TEMPORAL_RECORDED, FLAKY_RECORDED):
+    EVENT_TYPES.register(spec)
+WIRING = EventWiring(event_types=EVENT_TYPES)
 
 
 @pytest.fixture
@@ -344,6 +353,7 @@ def test_a_dispatched_command_appends_its_events(owned_user, owned_library):
         library=owned_library,
         idempotency_key="first",
         source_metadata={"origin": "manual"},
+        wiring=WIRING,
     )
 
     assert result.replayed is False
@@ -361,10 +371,18 @@ def test_a_dispatched_command_appends_its_events(owned_user, owned_library):
 def test_repeating_a_key_replays_the_original_range(owned_user, owned_library):
     command = BasicCommand(label="x", count=1)
     first = dispatch(
-        command, actor=owned_user, library=owned_library, idempotency_key="same"
+        command,
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="same",
+        wiring=WIRING,
     )
     second = dispatch(
-        command, actor=owned_user, library=owned_library, idempotency_key="same"
+        command,
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="same",
+        wiring=WIRING,
     )
 
     assert second.replayed is True
@@ -382,6 +400,7 @@ def test_repeating_a_key_over_changed_fields_is_refused(owned_user, owned_librar
         actor=owned_user,
         library=owned_library,
         idempotency_key="same",
+        wiring=WIRING,
     )
 
     with pytest.raises(IdempotencyKeyMismatch):
@@ -390,6 +409,7 @@ def test_repeating_a_key_over_changed_fields_is_refused(owned_user, owned_librar
             actor=owned_user,
             library=owned_library,
             idempotency_key="same",
+            wiring=WIRING,
         )
 
 
@@ -404,6 +424,7 @@ def test_repeating_a_key_under_another_command_name_is_refused(
         actor=owned_user,
         library=owned_library,
         idempotency_key="same",
+        wiring=WIRING,
     )
 
     with pytest.raises(IdempotencyKeyMismatch):
@@ -412,6 +433,7 @@ def test_repeating_a_key_under_another_command_name_is_refused(
             actor=owned_user,
             library=owned_library,
             idempotency_key="same",
+            wiring=WIRING,
         )
 
 
@@ -422,6 +444,7 @@ def test_build_receives_the_dispatchers_library_and_actor(owned_user, owned_libr
         actor=owned_user,
         library=owned_library,
         idempotency_key="first",
+        wiring=WIRING,
     )
 
     event = LibraryEvent.objects.get(library=owned_library)
@@ -437,6 +460,7 @@ def test_a_rejected_command_appends_nothing(owned_user, owned_library):
             actor=owned_user,
             library=owned_library,
             idempotency_key="first",
+            wiring=WIRING,
         )
 
     assert not LibraryEvent.objects.filter(library=owned_library).exists()
@@ -455,6 +479,7 @@ def test_authorization_precedes_any_query(
             actor=owned_user,
             library=other_library,
             idempotency_key="first",
+            wiring=WIRING,
         )
 
 
@@ -466,6 +491,7 @@ def test_dispatch_refuses_to_nest(owned_user, owned_library):
             actor=owned_user,
             library=owned_library,
             idempotency_key="first",
+            wiring=WIRING,
         )
 
 
@@ -478,6 +504,7 @@ def test_a_retryable_failure_is_retried_into_one_append(owned_user, owned_librar
         actor=owned_user,
         library=owned_library,
         idempotency_key="first",
+        wiring=WIRING,
     )
 
     assert FlakyCommand.attempts == 2
@@ -488,7 +515,10 @@ def test_a_retryable_failure_is_retried_into_one_append(owned_user, owned_librar
 
 @pytest.mark.django_db(transaction=True)
 def test_the_correlation_id_is_generated_once_per_dispatch(
-    owned_user, owned_library, monkeypatch
+    owned_user,
+    owned_library,
+    monkeypatch,
+    wiring=WIRING,
 ):
     #: Counted rather than read off the events: a rolled-back attempt leaves no
     #: rows, so the surviving ones look identical whether the ID was generated
@@ -509,6 +539,7 @@ def test_the_correlation_id_is_generated_once_per_dispatch(
         actor=owned_user,
         library=owned_library,
         idempotency_key="first",
+        wiring=WIRING,
     )
 
     assert FlakyCommand.attempts == 2
@@ -528,6 +559,7 @@ def test_a_supplied_correlation_id_is_shared_across_dispatches(
             library=owned_library,
             idempotency_key=key,
             correlation_id=shared,
+            wiring=WIRING,
         )
         assert result.correlation_id == shared
 

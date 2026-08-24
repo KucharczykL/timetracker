@@ -3,6 +3,11 @@
 A command locks the stream head, validates whatever mutable projections it
 depends on, and appends the events of one human action contiguously -- all in
 one transaction owned by the caller.
+
+Every event passes the wiring's event-type registry on the way in: an
+unregistered type and a payload its schema refuses are both turned away before
+anything is written, so nothing reaches an immutable trail that the vocabulary
+cannot read back.
 """
 
 import json
@@ -98,7 +103,19 @@ class LockedStream:
         #: Before the rows and before the advance: a refusal must leave a
         #: transaction that may still commit exactly as it found it.
         metadata = canonical_json(source_metadata or {}, label="source metadata")
-        payloads = [canonical_json(event.payload, label="payload") for event in events]
+        #: Resolved by event-type string, never off the spec the NewEvent
+        #: carries: a caller holding a spec nobody registered must be refused,
+        #: which is what makes a test-owned vocabulary mean anything.
+        specs = [wiring.event_types.spec_for(event.spec.event_type) for event in events]
+        payloads = [
+            #: Canonical first. A field typed `dict[str, Any]` carries content
+            #: pydantic hands straight back, so validating first would store a
+            #: value PostgreSQL returns as something else.
+            wiring.event_types.validate(
+                spec.event_type, canonical_json(event.payload, label="payload")
+            )
+            for spec, event in zip(specs, events, strict=True)
+        ]
 
         head = self._head
         first_sequence = head.current_sequence + 1
@@ -109,11 +126,15 @@ class LockedStream:
                 library_id=head.library_id,
                 stream=head,
                 sequence=first_sequence + offset,
-                event_type=event.spec.event_type,
-                aggregate_type=event.spec.aggregate_type,
+                event_type=spec.event_type,
+                aggregate_type=spec.aggregate_type,
                 aggregate_id=event.aggregate_id,
-                payload=payloads[offset],
-                payload_schema_version=event.spec.version,
+                #: Pydantic's value, not the canonical input: a field typed
+                #: `float` given `1` comes back `1.0`, and storing the input
+                #: would put an int on disk under a schema promising a float,
+                #: where Python equality could never see it.
+                payload=payload,
+                payload_schema_version=spec.version,
                 recorded_at=recorded_at,
                 effective_time=event.effective_time,
                 actor=actor,
@@ -122,7 +143,9 @@ class LockedStream:
                 source_metadata=metadata,
                 idempotency_key=idempotency_key,
             )
-            for offset, event in enumerate(events)
+            for offset, (event, spec, payload) in enumerate(
+                zip(events, specs, payloads, strict=True)
+            )
         ]
         LibraryEvent.objects.bulk_create(rows)
 

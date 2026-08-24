@@ -23,7 +23,8 @@ from games.events.retry import (
     is_retryable,
     run_in_transaction,
 )
-from games.events.vocabulary import EventSpec, NewEvent
+from games.events.vocabulary import EventSpec, EventTypeRegistry, NewEvent
+from games.events.wiring import EventWiring
 from games.models import (
     LIBRARY_EVENT_SEQUENCE_CONSTRAINT,
     LibraryEvent,
@@ -270,6 +271,12 @@ PROBE_RECORDED = EventSpec(
     "probe.recorded", aggregate_type="probe", payload=ProbePayload
 )
 
+#: This module's own vocabulary, so a probe type never enters the one a
+#: production stream reads.
+EVENT_TYPES = EventTypeRegistry()
+EVENT_TYPES.register(PROBE_RECORDED)
+WIRING = EventWiring(event_types=EVENT_TYPES)
+
 
 def one_event() -> NewEvent:
     return NewEvent(
@@ -289,6 +296,7 @@ def test_a_real_sequence_collision_is_recognised_and_retried(owned_library):
             actor=None,
             correlation_id=uuid.uuid7(),
             idempotency_key="seed",
+            wiring=WIRING,
         )
 
     policy, sleeper = recording_policy()
@@ -399,6 +407,7 @@ def test_a_rolled_back_attempt_leaves_no_record_for_the_retry_to_replay(
             build=lambda _stream: [one_event()],
             actor=None,
             correlation_id=uuid.uuid7(),
+            wiring=WIRING,
         )
         #: After the write, so the first attempt has something to roll back.
         if len(attempts) == 1:

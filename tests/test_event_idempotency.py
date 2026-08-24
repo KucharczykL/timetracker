@@ -25,7 +25,8 @@ from games.events.idempotency import (
     fingerprint_command_input,
     idempotent_append,
 )
-from games.events.vocabulary import EventSpec, NewEvent
+from games.events.vocabulary import EventSpec, EventTypeRegistry, NewEvent
+from games.events.wiring import EventWiring
 from games.models import (
     LibraryEvent,
     LibraryEventStreamHead,
@@ -99,6 +100,12 @@ PROBE_RECORDED = EventSpec(
     "library.probe.recorded", aggregate_type="probe", payload=ProbePayload
 )
 
+#: This module's own vocabulary, so a probe type never enters the one a
+#: production stream reads.
+EVENT_TYPES = EventTypeRegistry()
+EVENT_TYPES.register(PROBE_RECORDED)
+WIRING = EventWiring(event_types=EVENT_TYPES)
+
 
 def make_new_event(**overrides: Any) -> NewEvent:
     fields: dict[str, Any] = {
@@ -117,6 +124,7 @@ def run_command(library, events: list[NewEvent] | None = None, **overrides: Any)
         "build": lambda _stream: events if events is not None else [make_new_event()],
         "actor": None,
         "correlation_id": uuid.uuid7(),
+        "wiring": WIRING,
     }
     fields.update(overrides)
     return idempotent_append(library, **fields)

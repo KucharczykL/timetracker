@@ -12,7 +12,7 @@ import pytest
 from django.db import OperationalError, connection, transaction
 from django.test.utils import CaptureQueriesContext
 from pydantic import ConfigDict, with_config
-from test_command_dispatch import BasicCommand
+from test_command_dispatch import COMMAND_RECORDED, BasicCommand
 from test_event_retry import wrapped
 
 from games.events.append import lock_stream
@@ -26,7 +26,7 @@ from games.events.projection import (
     ProjectorFamily,
     ProjectorRegistry,
 )
-from games.events.vocabulary import EventSpec, NewEvent
+from games.events.vocabulary import EventSpec, EventTypeRegistry, NewEvent
 from games.events.wiring import EventWiring
 from games.models import Device, LibraryEvent, LibraryEventStreamHead
 
@@ -220,8 +220,33 @@ def test_a_handler_is_bound_to_its_family():
     assert handler.__self__.family_name is ProjectorFamily.CURRENT_STATE
 
 
+@with_config(ConfigDict(extra="forbid", strict=True))
+class ProbePayload(TypedDict):
+    probe: bool
+
+
+PROBE_RECORDED = EventSpec(RECORDED, aggregate_type="probe", payload=ProbePayload)
+
+#: This module's own vocabulary, so a test event type never enters the one a
+#: production stream reads. The dispatch tests below run a command declared in
+#: `test_command_dispatch`, so its spec is registered here too -- registration
+#: is per registry, and that module keeps its own.
+EVENT_TYPES = EventTypeRegistry()
+for spec in (PROBE_RECORDED, COMMAND_RECORDED):
+    EVENT_TYPES.register(spec)
+
+
+def wiring_over(projectors: ProjectorRegistry) -> EventWiring:
+    """This module's wiring, over whichever projector families a test wants."""
+    return EventWiring(projectors=projectors, event_types=EVENT_TYPES)
+
+
+def make_new_event() -> NewEvent:
+    return PROBE_RECORDED.new(aggregate_id=uuid.uuid7(), payload={"probe": True})
+
+
 append_registry = ProjectorRegistry()
-append_wiring = EventWiring(projectors=append_registry)
+append_wiring = wiring_over(append_registry)
 
 
 class AppendCurrentState(Projector, registry=append_registry):
@@ -247,7 +272,7 @@ class AppendJournal(Projector, registry=append_registry):
 
 
 rollback_registry = ProjectorRegistry()
-rollback_wiring = EventWiring(projectors=rollback_registry)
+rollback_wiring = wiring_over(rollback_registry)
 
 
 class RollbackWriter(Projector, registry=rollback_registry):
@@ -269,7 +294,7 @@ class RollbackFailer(Projector, registry=rollback_registry):
 
 
 dispatch_registry = ProjectorRegistry()
-dispatch_wiring = EventWiring(projectors=dispatch_registry)
+dispatch_wiring = wiring_over(dispatch_registry)
 
 
 class DispatchRecorder(Projector, registry=dispatch_registry):
@@ -282,7 +307,7 @@ class DispatchRecorder(Projector, registry=dispatch_registry):
 
 
 quiet_registry = ProjectorRegistry()
-quiet_wiring = EventWiring(projectors=quiet_registry)
+quiet_wiring = wiring_over(quiet_registry)
 
 
 class QuietRecorder(Projector, registry=quiet_registry):
@@ -298,7 +323,7 @@ class QuietRecorder(Projector, registry=quiet_registry):
 
 
 actor_registry = ProjectorRegistry()
-actor_wiring = EventWiring(projectors=actor_registry)
+actor_wiring = wiring_over(actor_registry)
 
 
 class ActorReader(Projector, registry=actor_registry):
@@ -314,7 +339,7 @@ class ActorReader(Projector, registry=actor_registry):
 
 
 retry_registry = ProjectorRegistry()
-retry_wiring = EventWiring(projectors=retry_registry)
+retry_wiring = wiring_over(retry_registry)
 
 
 class FlakyProjector(Projector, registry=retry_registry):
@@ -336,22 +361,6 @@ class FlakyProjector(Projector, registry=retry_registry):
         APPLIED.append((ProjectorFamily.CURRENT_STATE, event.sequence))
 
     handles: ClassVar[HandlerMap] = {"test.command.recorded": _recorded}
-
-
-@with_config(ConfigDict(extra="forbid", strict=True))
-class ProbePayload(TypedDict):
-    probe: bool
-
-
-PROBE_RECORDED = EventSpec(RECORDED, aggregate_type="probe", payload=ProbePayload)
-
-
-def make_new_event() -> NewEvent:
-    return NewEvent(
-        spec=PROBE_RECORDED,
-        aggregate_id=uuid.uuid7(),
-        payload={"probe": True},
-    )
 
 
 def append(library, wiring, count: int = 1, idempotency_key: str = "probe-key"):
@@ -514,7 +523,7 @@ def test_folding_costs_the_append_no_query(owned_library, second_library):
     nothing left on the event to make it fetch.
     """
     with transaction.atomic(), CaptureQueriesContext(connection) as unprojected:
-        append(owned_library, EventWiring(projectors=ProjectorRegistry()), count=3)
+        append(owned_library, wiring_over(ProjectorRegistry()), count=3)
     with transaction.atomic(), CaptureQueriesContext(connection) as projected:
         append(second_library, quiet_wiring, count=3)
 

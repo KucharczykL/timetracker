@@ -20,7 +20,7 @@ from games.events.projection import (
     ProjectorRegistry,
 )
 from games.events.replay import ReplayResult, StreamNotContiguous, replay
-from games.events.vocabulary import EventSpec, NewEvent
+from games.events.vocabulary import EventSpec, EventTypeRegistry, NewEvent
 from games.events.wiring import EventWiring
 from games.models import LibraryEvent, LibraryEventStreamHead
 
@@ -35,8 +35,26 @@ SEEN: list[RecordedEvent] = []
 #: Which family saw which sequence, in the order it happened.
 ORDER: list[tuple[ProjectorFamily, int]] = []
 
+
+#: One key, carried by every event this module appends. The handled and the
+#: unhandled type share it: a projector keys on the event type, so the two specs
+#: cannot be told apart by their payloads anyway.
+@with_config(ConfigDict(extra="forbid", strict=True))
+class ProbePayload(TypedDict):
+    index: int
+
+
+PROBE_RECORDED = EventSpec(RECORDED, aggregate_type="probe", payload=ProbePayload)
+PROBE_UNHANDLED = EventSpec(UNHANDLED, aggregate_type="probe", payload=ProbePayload)
+
+#: This module's own vocabulary, so a probe type never enters the one a
+#: production stream reads.
+EVENT_TYPES = EventTypeRegistry()
+for spec in (PROBE_RECORDED, PROBE_UNHANDLED):
+    EVENT_TYPES.register(spec)
+
 registry = ProjectorRegistry()
-wiring = EventWiring(projectors=registry)
+wiring = EventWiring(projectors=registry, event_types=EVENT_TYPES)
 
 
 class Recorder(Projector, registry=registry):
@@ -75,18 +93,6 @@ def second_library(django_user_model):
     return django_user_model.objects.create_user(
         username="second-owner", password="p"
     ).library
-
-
-#: One key, carried by every event this module appends. The handled and the
-#: unhandled type share it: a projector keys on the event type, so the two specs
-#: cannot be told apart by their payloads anyway.
-@with_config(ConfigDict(extra="forbid", strict=True))
-class ProbePayload(TypedDict):
-    index: int
-
-
-PROBE_RECORDED = EventSpec(RECORDED, aggregate_type="probe", payload=ProbePayload)
-PROBE_UNHANDLED = EventSpec(UNHANDLED, aggregate_type="probe", payload=ProbePayload)
 
 
 def make_new_event(**overrides: Any) -> NewEvent:
@@ -277,7 +283,10 @@ def test_a_raising_handler_propagates_with_its_notes(owned_library):
     append(owned_library)
 
     with pytest.raises(KeyError) as raised:
-        replay(owned_library, wiring=EventWiring(projectors=failing_registry))
+        replay(
+            owned_library,
+            wiring=EventWiring(projectors=failing_registry, event_types=EVENT_TYPES),
+        )
 
     assert any(
         "stats" in note and RECORDED in note and "#1" in note
