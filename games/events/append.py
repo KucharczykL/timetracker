@@ -21,6 +21,7 @@ from django.contrib.auth.models import User
 from django.db import router, transaction
 from django.utils import timezone
 
+from games.events.conflicts import CommandConflict
 from games.events.envelope import RecordedEvent
 from games.events.vocabulary import NewEvent
 from games.events.wiring import DEFAULT_WIRING, EventWiring
@@ -35,6 +36,19 @@ class TransactionRequired(RuntimeError):
 
 class PayloadNotCanonical(ValueError):
     """Raised for a payload PostgreSQL would hand back as something else."""
+
+
+class StreamSequenceMismatch(CommandConflict):
+    """Another writer advanced the stream."""
+
+    def __init__(self, *, expected: int, actual: int) -> None:
+        super().__init__(
+            f"The stream was at {expected} when it was read and is at "
+            f"{actual} now. Nothing was recorded; read the stream again "
+            "and retry."
+        )
+        self.expected = expected
+        self.actual = actual
 
 
 def canonical_json[T](value: T, *, label: str) -> T:
@@ -85,6 +99,25 @@ class LockedStream:
     @property
     def current_sequence(self) -> int:
         return self._head.current_sequence
+
+    def require_sequence(self, expected: int) -> None:
+        """Refuse unless the head still reads `expected`."""
+        if expected < 0:
+            raise ValueError(
+                f"A stream sequence is never negative; this one is {expected}."
+            )
+        #: The row: a cached field can lag.
+        actual = LibraryEventStreamHead.objects.values_list(
+            "current_sequence", flat=True
+        ).get(pk=self._head.pk)
+        if expected > actual:
+            raise ValueError(
+                f"This stream is at {actual}, so it was never at {expected}. "
+                "A head only advances, so that expectation came from "
+                "somewhere other than this stream."
+            )
+        if expected < actual:
+            raise StreamSequenceMismatch(expected=expected, actual=actual)
 
     def append(
         self,

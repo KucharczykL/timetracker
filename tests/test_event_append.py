@@ -13,6 +13,7 @@ from games.events.append import (
     AppendResult,
     LockedStream,
     PayloadNotCanonical,
+    StreamSequenceMismatch,
     TransactionRequired,
     lock_stream,
 )
@@ -468,6 +469,82 @@ def test_lock_stream_returns_the_same_head_for_a_provisioned_library(owned_libra
 
     assert first.stream_id == second.stream_id
     assert LibraryEventStreamHead.objects.count() == 1
+
+
+def test_require_sequence_accepts_the_current_head(owned_library):
+    with transaction.atomic():
+        append(owned_library)
+        assert lock_stream(owned_library).require_sequence(1) is None
+
+
+def test_require_sequence_accepts_zero_on_a_provisioned_head(owned_library):
+    with transaction.atomic():
+        assert lock_stream(owned_library).require_sequence(0) is None
+
+    assert not LibraryEvent.objects.exists()
+
+
+def test_require_sequence_refuses_an_expectation_the_stream_has_passed(owned_library):
+    with transaction.atomic():
+        append(owned_library, [make_new_event(), make_new_event()])
+        with pytest.raises(StreamSequenceMismatch) as refusal:
+            lock_stream(owned_library).require_sequence(1)
+
+    assert refusal.value.expected == 1
+    assert refusal.value.actual == 2
+
+
+def test_require_sequence_refuses_an_expectation_above_the_head(owned_library):
+    with transaction.atomic():
+        append(owned_library)
+        #: A ValueError rather than a mismatch, which is not one.
+        with pytest.raises(ValueError, match="never at 7"):
+            lock_stream(owned_library).require_sequence(7)
+
+
+def test_require_sequence_refuses_a_negative_expectation(owned_library):
+    with transaction.atomic():
+        append(owned_library, [make_new_event() for _ in range(5)])
+        #: Also below the head, so this asserts which branch wins.
+        with pytest.raises(ValueError, match="never negative"):
+            lock_stream(owned_library).require_sequence(-1)
+
+
+def test_require_sequence_ignores_a_stale_double_locked_stream(owned_library):
+    with transaction.atomic():
+        stale = lock_stream(owned_library)
+        append_directly(lock_stream(owned_library), [make_new_event()])
+
+        assert stale.current_sequence == 0
+        assert stale.require_sequence(1) is None
+
+
+def test_require_sequence_refuses_a_stale_stream_agreeing_with_itself(owned_library):
+    with transaction.atomic():
+        stale = lock_stream(owned_library)
+        append_directly(lock_stream(owned_library), [make_new_event()])
+
+        #: A cached compare would agree with itself.
+        with pytest.raises(StreamSequenceMismatch) as refusal:
+            stale.require_sequence(0)
+
+    assert (refusal.value.expected, refusal.value.actual) == (0, 1)
+
+
+def test_require_sequence_ignores_a_stale_head_after_a_savepoint_rollback(owned_library):
+    with transaction.atomic():
+        stream = lock_stream(owned_library)
+        try:
+            with transaction.atomic():
+                append_directly(stream, [make_new_event()])
+                raise RuntimeError("roll the savepoint back")
+        except RuntimeError:
+            pass
+
+        assert stream.current_sequence == 1
+        assert stream.require_sequence(0) is None
+
+    assert not LibraryEvent.objects.exists()
 
 
 @pytest.mark.django_db(transaction=True)
