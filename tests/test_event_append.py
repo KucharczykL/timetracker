@@ -658,3 +658,76 @@ def test_concurrent_appends_serialize_into_one_contiguous_range(owned_library):
     assert list(
         LibraryEvent.objects.order_by("sequence").values_list("sequence", flat=True)
     ) == [1, 2, 3, 4, 5]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_require_sequence_refuses_an_expectation_formed_before_the_lock(owned_library):
+    with transaction.atomic():
+        append(owned_library, idempotency_key="seed")
+
+    holder_locked = Event()
+    waiter_requested_lock = Event()
+    refusals: dict[str, StreamSequenceMismatch] = {}
+    errors: list[BaseException] = []
+
+    def run_holder():
+        close_old_connections()
+        try:
+            with transaction.atomic():
+                stream = lock_stream(owned_library)
+                holder_locked.set()
+                append_directly(stream, [make_new_event()], idempotency_key="holder")
+                if not waiter_requested_lock.wait(10):
+                    raise TimeoutError("waiter never requested the head lock")
+        except BaseException as error:  # noqa: BLE001 - return thread failures
+            errors.append(error)
+        finally:
+            close_old_connections()
+
+    def run_waiter():
+        close_old_connections()
+
+        def announce_lock_request(execute, sql, params, many, context):
+            if "games_libraryeventstreamhead" in sql and "FOR UPDATE" in sql:
+                waiter_requested_lock.set()
+            return execute(sql, params, many, context)
+
+        try:
+            assert holder_locked.wait(10)
+            #: Non-locking, and before the lock. A FOR UPDATE read here would
+            #: release the holder, block, and return the advanced head -- an
+            #: expectation that passes, proving nothing.
+            expected = LibraryEventStreamHead.objects.get(
+                library=owned_library
+            ).current_sequence
+            with (
+                connection.execute_wrapper(announce_lock_request),
+                transaction.atomic(),
+            ):
+                stream = lock_stream(owned_library)
+                #: Caught here: the harness fails on anything left in errors.
+                try:
+                    stream.require_sequence(expected)
+                except StreamSequenceMismatch as refusal:
+                    refusals["waiter"] = refusal
+        except BaseException as error:  # noqa: BLE001 - return thread failures
+            errors.append(error)
+        finally:
+            close_old_connections()
+
+    holder = Thread(target=run_holder, name="sequence-holder")
+    waiter = Thread(target=run_waiter, name="sequence-waiter")
+    holder.start()
+    waiter.start()
+    holder.join(20)
+    waiter.join(20)
+
+    assert not errors, errors
+    assert not holder.is_alive()
+    assert not waiter.is_alive()
+
+    refusal = refusals["waiter"]
+    assert (refusal.expected, refusal.actual) == (1, 2)
+    assert list(
+        LibraryEvent.objects.order_by("sequence").values_list("sequence", flat=True)
+    ) == [1, 2]
