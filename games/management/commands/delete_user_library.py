@@ -7,6 +7,8 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import DEFAULT_DB_ALIAS, transaction
 from django.db.models.deletion import Collector
 
+from games.retention import purging_library
+
 
 class Command(BaseCommand):
     help = (
@@ -36,7 +38,9 @@ class Command(BaseCommand):
         if confirmation != username:
             raise CommandError("--confirm must exactly match --user; nothing deleted.")
 
-        with transaction.atomic():
+        # A purge takes the events too.
+        # Nothing is left to protect.
+        with transaction.atomic(), purging_library():
             user = self._get_user(username, for_update=True)
             self._write_deletion_scope(self._deletion_counts(user))
             user.delete()

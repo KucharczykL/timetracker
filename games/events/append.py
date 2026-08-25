@@ -25,7 +25,12 @@ from games.events.conflicts import CommandConflict
 from games.events.envelope import RecordedEvent
 from games.events.vocabulary import NewEvent
 from games.events.wiring import DEFAULT_WIRING, EventWiring
-from games.models import LibraryEvent, LibraryEventStreamHead, UserLibrary
+from games.models import (
+    LibraryEvent,
+    LibraryEventReference,
+    LibraryEventStreamHead,
+    UserLibrary,
+)
 
 type SourceMetadata = dict[str, Any]  # {"origin": "manual"}
 
@@ -176,6 +181,23 @@ class LockedStream:
             )
         ]
         LibraryEvent.objects.bulk_create(rows)
+        #: Same lock, same transaction as the events.
+        #: A committed event protects its rows.
+        LibraryEventReference.objects.bulk_create(
+            [
+                LibraryEventReference(
+                    library_id=head.library_id,
+                    event=row,
+                    kind=reference["kind"],
+                    referenced_id=reference["id"],
+                    payload_key=key,
+                )
+                for row, spec in zip(rows, specs, strict=True)
+                for key, reference in wiring.event_types.references_in(
+                    spec.event_type, row.payload
+                )
+            ]
+        )
 
         head.current_sequence = rows[-1].sequence
         head.save(update_fields=["current_sequence"])

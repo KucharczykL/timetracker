@@ -45,14 +45,14 @@ has a name, a model, a capture function, and a resolution.
 
 The resolution has two values:
 
-- `REQUIRED` — a replay must find the row. The delete policy keeps the row, or
-  keeps a tombstone of the row.
+- `REQUIRED` — a replay must find the row. The retention policy keeps the row.
 - `EVIDENCE_ONLY` — the snapshot is sufficient. A replay does not look for the
   row.
 
 The resolution is a property of the kind, not of the payload field. There is one
-location to read the policy from, and one location for the delete policy to
-attach to.
+location to read the policy from, and one location for the retention policy to
+attach to. That policy is in `games/retention.py`; see
+[Retaining a referenced row](event-retention.md).
 
 `ReferenceKindRegistry` keeps an index by name and an index by model. A payload
 holds the name. A command holds the model instance. The registry refuses a
@@ -121,10 +121,12 @@ All payload validation goes through the registry.
 
 This contract applies to the payload only. These items are not part of it:
 
-- the delete policy and the tombstone policy for a row that an event refers to;
 - the resolution of references during a replay, and the report of the failures;
 - the display of a snapshot in the audit history;
 - a resolver that limits a UUID to one library.
+
+The retention policy for a row that an event refers to is not in this list. It
+is in [Retaining a referenced row](event-retention.md).
 
 The contract uses the existing payload column. It needs no migration and no
 schema change.

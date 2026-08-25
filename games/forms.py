@@ -796,6 +796,11 @@ class _LibraryBoundConstraintValidationMixin:
         # validation because it is not a form field, allowing a per-library
         # duplicate to reach the database as an IntegrityError.
         exclusions.discard("library")
+        # ``archived_at`` is the same story, with a sharper edge.
+        # Django skips a conditional constraint whose condition
+        # names an excluded field. A form row is live, so it
+        # contributes the NULL the condition expects.
+        exclusions.discard("archived_at")
         return exclusions
 
 

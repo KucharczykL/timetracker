@@ -20,7 +20,9 @@ def import_data(data: DataList):
         if name not in matching_names:
             # try exact match first
             try:
-                game_id = Game.objects.get(name__iexact=name)
+                #: Never an archived Game.
+                #: A deleted row stays deleted.
+                game_id = Game.objects.alive().get(name__iexact=name)
             except Game.DoesNotExist, Game.MultipleObjectsReturned:
                 game_id = None
             matching_names[name] = game_id

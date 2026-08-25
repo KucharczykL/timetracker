@@ -16,8 +16,10 @@ from django.dispatch import receiver
 from django.utils.timezone import now
 
 from games.models import (
+    Device,
     Game,
     GameStatusChange,
+    Platform,
     Purchase,
     PurchaseConversionState,
     Session,
@@ -25,6 +27,10 @@ from games.models import (
     UserLibrary,
     UserLibraryPreferences,
     UserPreferences,
+)
+from games.retention import (
+    detach_game_from_purchases,
+    refuse_to_delete_a_referenced_row,
 )
 from timetracker.settings_resolver import clear_cache as clear_settings_cache
 
@@ -87,18 +93,22 @@ def update_num_purchases(sender, instance, action, reverse, **kwargs):
 
 @receiver(pre_delete, sender=Game)
 def update_purchase_counts_on_game_delete(sender, instance, **kwargs):
+    """Keep purchase counts right.
+
+    The work is in `games.retention`. Archiving needs it too.
     """
-    Update num_purchases on related Purchase objects when a Game is deleted.
-    m2m_changed is not fired when a related object is deleted.
+    detach_game_from_purchases(instance)
+
+
+@receiver(pre_delete, sender=Game)
+@receiver(pre_delete, sender=Platform)
+@receiver(pre_delete, sender=Device)
+def refuse_to_delete_a_row_an_event_references(sender, instance, **kwargs):
+    """Stop a delete that strands a reference.
+
+    Here, not in the views, so every call path is held to it.
     """
-    for purchase in instance.purchases.all():
-        if purchase.num_purchases > 0:
-            purchase.num_purchases -= 1
-            if purchase.num_purchases == 0:
-                purchase.delete()
-            else:
-                purchase.updated_at = now()
-                purchase.save(update_fields=["num_purchases", "updated_at"])
+    refuse_to_delete_a_referenced_row(instance)
 
 
 @receiver([post_save, post_delete], sender=Session)

@@ -71,13 +71,13 @@ from games.forms import GameForm
 from games.models import Game, GameStatusChange, Session
 from games.ownership import owned_or_404
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
-from games.views.deletion import confirm_and_delete
 from games.views.filtering import (
     apply_structured_filter,
     builder_url_for,
     warn_unknown_sort,
 )
 from games.views.playevent import create_playevent_tabledata
+from games.views.retirement import confirm_and_retire
 from games.views.returns import origin_from, return_url
 
 WIKIDATA_CONFLICT_MESSAGE = "This Wikidata entity ID already belongs to another game."
@@ -273,10 +273,12 @@ def add_game(request: HttpRequest) -> HttpResponse:
 def delete_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
-    return confirm_and_delete(
+    return confirm_and_retire(
         request,
         game,
         title="Delete game",
+        noun="game",
+        label=game.name,
         message=f"This will permanently delete {game.name} and all associated data:",
         details=_deleted_with_game(game),
         fallback="games:list_games",
