@@ -121,12 +121,12 @@ All payload validation goes through the registry.
 
 This contract applies to the payload only. These items are not part of it:
 
-- the resolution of references during a replay, and the report of the failures;
 - the display of a snapshot in the audit history;
 - a resolver that limits a UUID to one library.
 
-The retention policy for a row that an event refers to is not in this list. It
-is in [Retaining a referenced row](event-retention.md).
+Two items are not in this list. The retention policy for a row that an event
+refers to, and the check that a replay makes of the recorded references, are both
+in [Retaining a referenced row](event-retention.md).
 
 The contract uses the existing payload column. It needs no migration and no
 schema change.

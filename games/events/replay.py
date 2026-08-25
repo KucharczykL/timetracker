@@ -17,6 +17,9 @@ payload recorded against another schema version -- refuses the whole fold rather
 than being skipped: a projection built from whichever events happened to be
 readable is not the one the append path produced.
 
+A stream whose REQUIRED references name rows that no longer exist is refused for
+the same reason, and before the first row is read.
+
 Nothing here empties anything. Replaying onto a projection that already holds
 rows folds every event a second time, which is the caller's to prevent.
 """
@@ -28,6 +31,7 @@ from dataclasses import dataclass
 from typing import cast
 
 from games.events.envelope import RecordedEvent
+from games.events.reconcile import require_resolvable_references
 from games.events.vocabulary import EventTypeRegistry
 from games.events.wiring import DEFAULT_WIRING, EventWiring
 from games.models import LibraryEvent, LibraryEventStreamHead, UserLibrary
@@ -72,6 +76,9 @@ def replay(
         #: Never appended. A read that provisions its own head is a read nobody
         #: can run safely.
         return ReplayResult(stream_id=None, folded_through=0)
+
+    #: One report, ahead of the whole fold.
+    require_resolvable_references(library, kinds=wiring.event_types.reference_kinds)
 
     bound = head.current_sequence
     #: Filtering on the stream alone scopes the read to one library: a composite

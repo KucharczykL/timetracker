@@ -88,11 +88,58 @@ The row can be archived. The function reads through `_default_manager`, which
 is the plain manager on all three models.
 
 If no row answers, the function raises `UnresolvableReference`. The exception
-holds the reference and not only a message, thus #669 can build the
-reconciliation report from the exception.
+holds the reference and not only a message, thus a caller can say which
+reference did not resolve.
 
-This issue supplies the resolver. #669 stops a replay that cannot resolve a
-reference, and writes the report.
+`unresolved_among(kind, references)` answers the same question for a set of index
+rows. It is in this module, beside the resolver. One module owns what resolves.
+If the two rules were in two modules, an archived row could pass one and fail the
+other.
+
+## The replay check
+
+`require_resolvable_references(library)` stops a replay of a library that records
+a reference to a row that no longer exists. `replay()` calls it after it reads
+the stream head and before it reads the first event. The code is in
+`games/events/reconcile.py`.
+
+The check reads the index and not the payloads. It takes the kind names that the
+index holds. For each `REQUIRED` kind it makes one anti-join against the model of
+that kind, through the plain manager. Thus an archived row resolves. The check
+does not query an `EVIDENCE_ONLY` kind, because for that kind the snapshot is
+sufficient.
+
+If each reference names a row, the replay continues. If one reference does not,
+the check raises `UnresolvedReferences`. The exception holds a
+`ReferenceReconciliation`: the library, the kinds that the check examined, the
+number of rows that no longer exist, and a description of the first 20 of them,
+in the order of the kind and the row id. The number is always complete. The
+description is not. A purge-shaped accident must not give a report of ten
+thousand lines.
+
+The description of one gap gives the kind, the id, the payload key, the sequence
+of the first event that names the row, the number of events that name it, and the
+snapshot that the first event recorded. This is the only step that reads a
+payload. The snapshot says what the row was called. It does not replace the row.
+Nothing here writes a row again.
+
+The two modes of `rebuild_projections` refuse. The refusal occurs before a
+shadow table holds a row, thus there is no report of the tables to give.
+`manage.py rebuild_projections` prints the full description to the error output
+and exits with a non-zero status in the two modes. A `--check` exits zero for
+drift, because a rebuild removes drift. A row that no longer exists is not a
+condition that a rebuild repairs.
+
+The message gives the remedy. Put each row back with the same id, or purge the
+library. A purge deletes the events, thus no recorded reference stays to resolve.
+
+The check has two limits, and they are the limits of the index. The check reads
+the index, thus a reference that the index does not hold is not visible to it.
+The append writes the index in the same transaction as the events, which is what
+makes the index complete. The check also runs before the fold, thus it is not a
+lock. The guard keeps a referenced row, thus a usual delete cannot occur between
+the check and the fold. A purge of the full library can occur, and it deletes the
+events also.
 
 ## The guard
 
@@ -123,7 +170,6 @@ delete, followed by an archive, is worse than each of the two outcomes.
 
 ## Not in this contract
 
-- The replay check and the reconciliation report (#669).
 - A Trash or recovery screen (#795). An archive in place, and not a stub
   record, keeps that screen possible: the `Edition` and `Release` rows and all
   external references stay correct.
