@@ -21,14 +21,21 @@ from games.events.envelope import RecordedEvent
 from games.events.idempotency import idempotent_append
 from games.events.projection import (
     DEFAULT_REGISTRY,
+    BoundHandler,
     HandlerMap,
     Projector,
     ProjectorFamily,
     ProjectorRegistry,
 )
+from games.events.targets import LIVE_TARGET, ProjectionTarget
 from games.events.vocabulary import EventSpec, EventTypeRegistry, NewEvent
 from games.events.wiring import EventWiring
-from games.models import Device, LibraryEvent, LibraryEventStreamHead
+from games.models import (
+    Device,
+    LibraryEvent,
+    LibraryEventStreamHead,
+    ProjectionModel,
+)
 
 RECORDED = "test.projector.recorded"
 OTHER = "test.projector.other"
@@ -262,6 +269,130 @@ def test_a_handler_is_bound_to_its_family():
     handler = ordering_registry.handlers_for(RECORDED)[0]
 
     assert handler.__self__.family_name is ProjectorFamily.CURRENT_STATE
+
+
+class RecordingTarget:
+    """A target that hands back the live model and remembers being asked.
+
+    Enough to tell a family that consults its target from one that imported a
+    model directly, without a shadow table to write into.
+    """
+
+    def __init__(self) -> None:
+        self.asked: list[str] = []
+
+    def model[M: ProjectionModel](self, model: type[M]) -> type[M]:
+        self.asked.append(model.__name__)
+        return model
+
+
+def family_behind(handler: BoundHandler) -> Projector:
+    """The family instance a bound handler came from.
+
+    `handlers_for` hands back plain callables, which is all the fold needs, so
+    a test asking which family it got reaches through the binding.
+    """
+    return handler.__self__  # type: ignore[attr-defined]
+
+
+def targets_of(registry: ProjectorRegistry) -> list[ProjectionTarget]:
+    return [
+        family_behind(handler).target for handler in registry.handlers_for(RECORDED)
+    ]
+
+
+def families_of(registry: ProjectorRegistry) -> list[ProjectorFamily]:
+    return [
+        family_behind(handler).family_name
+        for handler in registry.handlers_for(RECORDED)
+    ]
+
+
+def test_a_family_holds_the_live_target_by_default():
+    assert targets_of(ordering_registry) == [LIVE_TARGET, LIVE_TARGET]
+
+
+def test_a_sibling_registry_points_every_family_at_the_given_target():
+    shadow = RecordingTarget()
+
+    sibling = ordering_registry.for_target(shadow)
+
+    assert targets_of(sibling) == [shadow, shadow]
+    #: The registry the sibling came from is untouched: another process is
+    #: still folding appends through it into the live tables.
+    assert targets_of(ordering_registry) == [LIVE_TARGET, LIVE_TARGET]
+
+
+def test_a_sibling_registry_resolves_the_same_families_in_the_same_order():
+    sibling = ordering_registry.for_target(RecordingTarget())
+
+    assert families_of(sibling) == families_of(ordering_registry)
+    assert families_of(sibling) == [
+        ProjectorFamily.CURRENT_STATE,
+        ProjectorFamily.JOURNAL,
+    ]
+
+
+def test_a_sibling_registry_rebuilds_rather_than_re_registers():
+    """`for_target` cannot route through `register`.
+
+    Two things would go wrong: the duplicate-claim guard refuses the same
+    classes a second time, and an instantiation that forgot the target would
+    produce live-pointed families inside the shadow registry -- a rebuild
+    quietly writing production.
+    """
+    shadow = RecordingTarget()
+
+    first = ordering_registry.for_target(shadow)
+    second = ordering_registry.for_target(shadow)
+
+    assert families_of(first) == families_of(second)
+    assert targets_of(second) == [shadow, shadow]
+
+
+def test_registering_a_family_against_a_target_hands_it_that_target():
+    registry = ProjectorRegistry()
+
+    class Direct(Projector, registry=registry):
+        family_name = ProjectorFamily.STATS
+
+        def _recorded(self, event: RecordedEvent) -> None: ...
+
+        handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
+
+    target = RecordingTarget()
+    registry.register(Direct, target=target)
+
+    assert targets_of(registry) == [target]
+
+
+target_registry = ProjectorRegistry()
+
+
+class TargetedWriter(Projector, registry=target_registry):
+    """Writes what its target hands back, which is how a family is redirected
+    without a family knowing a rebuild is running."""
+
+    family_name = ProjectorFamily.CURRENT_STATE
+
+    def _recorded(self, event: RecordedEvent) -> None:
+        #: Device stands in for a projection table, which this module has none
+        #: of. What the assertion needs is a write whose model the target
+        #: chose, and the bound is the only thing that makes it a stand-in.
+        projected = self.target.model(Device)  # type: ignore[type-var]
+        projected.objects.create(library_id=event.library_id, name="projected")
+
+    handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
+
+
+@pytest.mark.django_db
+def test_a_handler_writes_through_the_target_its_family_holds(owned_library):
+    target = RecordingTarget()
+
+    target_registry.for_target(target).apply(make_event(library_id=owned_library.pk))
+
+    assert target.asked == ["Device"]
+    assert Device.objects.filter(name="projected").count() == 1
 
 
 def wiring_over(projectors: ProjectorRegistry) -> EventWiring:
