@@ -12,17 +12,20 @@ nothing to write to.
 """
 
 import re
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Sequence
 from contextlib import AbstractContextManager, contextmanager
+from dataclasses import replace
 from typing import Any, cast
 
 from django.apps import apps as global_apps
 from django.apps.registry import Apps
-from django.db import connection
+from django.db import connection, transaction
 from django.db.models.fields.generated import GeneratedField
 
-from games.events.targets import SHADOW_SUFFIX
-from games.models import ProjectionModel
+from games.events.replay import ReplayResult, replay
+from games.events.targets import SHADOW_SUFFIX, ShadowTarget
+from games.events.wiring import DEFAULT_WIRING, EventWiring
+from games.models import ProjectionModel, UserLibrary
 
 type ColumnName = str  # e.g. "library_id"
 type TableName = str  # e.g. "games_playergamestate"
@@ -198,3 +201,65 @@ def _write_target(statement: str) -> TableName | None:
 def _bare_name(identifier: str) -> TableName:
     """`pg_temp."games_x__shadow"` -> `games_x__shadow`."""
     return identifier.rsplit(".", maxsplit=1)[-1].strip('"').rstrip(";")
+
+
+# --- Phase 2: the replay ----------------------------------------------------
+
+
+def replay_into_shadow(
+    library: UserLibrary,
+    models: Iterable[type[ProjectionModel]],
+    *,
+    wiring: EventWiring = DEFAULT_WIRING,
+) -> ReplayResult:
+    """Fold the library's stream into the shadow tables the caller created.
+
+    The same families over the same events, pointed elsewhere -- there is no
+    second fold loop, because a rebuilt projection is only equal to the one the
+    write path produced if the same code wrote both.
+
+    One transaction, which #666's replay deliberately does not open for itself:
+    in autocommit every shadow row would be its own commit, and the shadow is
+    private and dropped on every path, so the wrap discards nothing a rollback
+    would have kept. It also turns the replay's cursor from `WITH HOLD` into an
+    ordinary one.
+
+    The head read at the start bounds the fold, and comes back as
+    `folded_through` -- the sequence the swap will assert the stream is still
+    at. An event appended while this runs sits above that bound and belongs to
+    a later replay.
+
+    Everything the replay refuses, this refuses with it: `StreamNotContiguous`,
+    `PayloadVersionUnsupported`, and a family's own exception carrying the note
+    naming the family, the event type and the sequence.
+    """
+    tables = list(models)
+    _require_shadow_tables(tables)
+    shadow_wiring = replace(
+        wiring, projectors=wiring.projectors.for_target(ShadowTarget())
+    )
+    with transaction.atomic(), only_shadow_writes():
+        return replay(library, wiring=shadow_wiring)
+
+
+def _require_shadow_tables(models: Sequence[type[ProjectionModel]]) -> None:
+    expected = [shadow_table_name(model) for model in models]
+    if not expected:
+        return
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT name FROM unnest(%s::text[]) AS name
+            WHERE to_regclass(quote_ident(name)) IS NULL
+            """,
+            [expected],
+        )
+        missing = [name for (name,) in cursor.fetchall()]
+    if missing:
+        raise RuntimeError(
+            f"This replay has no shadow table to write: {', '.join(missing)}. "
+            "Phase 2 writes tables phase 1 created on this connection, so a "
+            "caller that skipped `shadow_tables` -- or closed the connection "
+            "between the phases -- reaches here rather than a family's first "
+            "insert."
+        )

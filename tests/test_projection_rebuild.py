@@ -13,22 +13,41 @@ asserts set equality against a pinned list.
 """
 
 from collections.abc import Callable
-from uuid import uuid4
+from typing import Any, ClassVar, TypedDict
+from uuid import UUID, uuid4, uuid7
 
 import pytest
 from django.db import connection, transaction
 from django.test.utils import isolate_apps
+from pydantic import ConfigDict, with_config
 from test_projection_targets import ENTRY_TABLE, SHELF_TABLE, declare_projection_models
 
+from games.events.append import lock_stream
+from games.events.envelope import RecordedEvent
+from games.events.projection import (
+    HandlerMap,
+    Projector,
+    ProjectorFamily,
+    ProjectorRegistry,
+)
 from games.events.rebuild import (
     LiveWriteRefused,
     insertable_columns,
     only_shadow_writes,
     projection_models,
+    replay_into_shadow,
     shadow_tables,
 )
+from games.events.replay import ReplayResult, StreamNotContiguous
 from games.events.targets import SHADOW_SUFFIX, ShadowTarget
-from games.models import ProjectionModel, UserLibrary
+from games.events.vocabulary import EventSpec, EventTypeRegistry, NewEvent
+from games.events.wiring import EventWiring
+from games.models import (
+    LibraryEvent,
+    LibraryEventStreamHead,
+    ProjectionModel,
+    UserLibrary,
+)
 
 
 def create_tables(*models: type[ProjectionModel]) -> None:
@@ -336,3 +355,193 @@ def test_the_guard_refuses_a_write_to_a_table_no_rebuild_touches(owned_library):
         UserLibrary.objects.filter(pk=owned_library.pk).update(
             created_at=owned_library.created_at
         )
+
+
+# --- Phase 2: the replay ----------------------------------------------------
+#
+# The families below register into registries this module owns, so nothing
+# declared here reaches `DEFAULT_REGISTRY` or another test.
+
+
+@with_config(ConfigDict(extra="forbid", strict=True))
+class ShelfPayload(TypedDict):
+    title: str
+
+
+PROBE_SHELVED = EventSpec(
+    "library.probe.shelved", aggregate_type="probe", payload=ShelfPayload
+)
+EVENT_TYPES = EventTypeRegistry()
+EVENT_TYPES.register(PROBE_SHELVED)
+
+#: The shelf model the running test declared. A family is registered once, at
+#: import, while `isolate_apps` builds a new class per test -- which is the
+#: production shape read backwards: there a family names its model at import
+#: and a rebuild redirects the class it is handed.
+DECLARED_SHELF: list[type[ProjectionModel]] = []
+
+
+def declared_shelf() -> Any:
+    """The shelf model the running test declared.
+
+    Typed loosely because `objects` is added to concrete models and
+    `ProjectionModel` is abstract, so the precise type has no manager on it.
+    """
+    return DECLARED_SHELF[-1]
+
+
+shadow_registry = ProjectorRegistry()
+live_writing_registry = ProjectorRegistry()
+
+
+class Shelver(Projector, registry=shadow_registry):
+    """A family written the way #671's will be: it writes its target."""
+
+    family_name = ProjectorFamily.CURRENT_STATE
+
+    def _shelved(self, event: RecordedEvent) -> None:
+        projected = self.target.model(declared_shelf())
+        projected.objects.create(
+            id=event.aggregate_id,
+            library_id=event.library_id,
+            title=event.payload["title"],
+        )
+
+    handles: ClassVar[HandlerMap] = {PROBE_SHELVED: _shelved}
+
+
+class StubbornShelver(Projector, registry=live_writing_registry):
+    """A family that writes its live model, target or no target."""
+
+    family_name = ProjectorFamily.CURRENT_STATE
+
+    def _shelved(self, event: RecordedEvent) -> None:
+        declared_shelf().objects.create(
+            id=event.aggregate_id,
+            library_id=event.library_id,
+            title=event.payload["title"],
+        )
+
+    handles: ClassVar[HandlerMap] = {PROBE_SHELVED: _shelved}
+
+
+SHADOW_WIRING = EventWiring(projectors=shadow_registry, event_types=EVENT_TYPES)
+LIVE_WRITING_WIRING = EventWiring(
+    projectors=live_writing_registry, event_types=EVENT_TYPES
+)
+
+
+@pytest.fixture(autouse=True)
+def forget_the_declared_model():
+    yield
+    DECLARED_SHELF.clear()
+
+
+def declare_and_create_shelf() -> type[ProjectionModel]:
+    shelf, entry = declare_projection_models()
+    create_tables(shelf, entry)
+    DECLARED_SHELF.append(shelf)
+    return shelf
+
+
+def append_shelved(library, titles, *, wiring=SHADOW_WIRING):
+    """One append carrying an event per title, folded through `wiring`."""
+    events = [
+        NewEvent(spec=PROBE_SHELVED, aggregate_id=uuid7(), payload={"title": title})
+        for title in titles
+    ]
+    with transaction.atomic():
+        return lock_stream(library).append(
+            events,
+            actor=None,
+            correlation_id=uuid7(),
+            idempotency_key=f"probe-{uuid7()}",
+            wiring=wiring,
+        )
+
+
+def shelf_rows(model) -> list[tuple[UUID, str]]:
+    return sorted(model.objects.values_list("id", "title"))
+
+
+def head_sequence(library) -> int:
+    return LibraryEventStreamHead.objects.get(library=library).current_sequence
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_the_replay_fills_the_shadow_and_leaves_the_live_rows_alone(owned_library):
+    shelf = declare_and_create_shelf()
+    append_shelved(owned_library, ["one", "two", "three"])
+    live_rows = shelf_rows(shelf)
+    twin = ShadowTarget().model(shelf)
+
+    with shadow_tables([shelf]):
+        result = replay_into_shadow(owned_library, [shelf], wiring=SHADOW_WIRING)
+
+        #: The parity the whole issue is about: the same families over the same
+        #: events reach the state the append path wrote row by row.
+        assert shelf_rows(twin) == live_rows
+
+    assert shelf_rows(shelf) == live_rows
+    assert result.folded_through == head_sequence(owned_library)
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_a_family_writing_its_live_model_is_refused(owned_library):
+    shelf = declare_and_create_shelf()
+    append_shelved(owned_library, ["one"], wiring=LIVE_WRITING_WIRING)
+    live_rows = shelf_rows(shelf)
+
+    with shadow_tables([shelf]), pytest.raises(LiveWriteRefused):
+        replay_into_shadow(owned_library, [shelf], wiring=LIVE_WRITING_WIRING)
+
+    assert shelf_rows(shelf) == live_rows
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_a_hole_in_the_stream_refuses_the_replay_as_itself(owned_library):
+    """`StreamNotContiguous` arrives with its own type.
+
+    A phase that wrapped it would tell `run_in_transaction` to decide from the
+    wrapper, and a stream with a hole in it is not a thing another attempt fixes.
+    """
+    shelf = declare_and_create_shelf()
+    append_shelved(owned_library, ["one", "two", "three"])
+    LibraryEvent.objects.filter(library=owned_library, sequence=2).delete()
+
+    with shadow_tables([shelf]), pytest.raises(StreamNotContiguous, match="2"):
+        replay_into_shadow(owned_library, [shelf], wiring=SHADOW_WIRING)
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_a_library_that_never_appended_folds_nothing(owned_library):
+    shelf = declare_and_create_shelf()
+    twin = ShadowTarget().model(shelf)
+
+    with shadow_tables([shelf]):
+        result = replay_into_shadow(owned_library, [shelf], wiring=SHADOW_WIRING)
+
+        assert shelf_rows(twin) == []
+
+    assert result == ReplayResult(stream_id=None, folded_through=0)
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_the_replay_refuses_to_run_without_its_shadow_tables(owned_library):
+    """The phase names what is missing.
+
+    Its shadow tables are the caller's to create, and a temp table that was
+    never created -- or that a `connection.close()` between phases took with it
+    -- would otherwise surface as a bare "relation does not exist" from
+    whichever family wrote first.
+    """
+    shelf = declare_and_create_shelf()
+    append_shelved(owned_library, ["one"])
+
+    with pytest.raises(RuntimeError, match=f"{SHELF_TABLE}{SHADOW_SUFFIX}"):
+        replay_into_shadow(owned_library, [shelf], wiring=SHADOW_WIRING)
