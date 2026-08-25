@@ -10,13 +10,14 @@ from enum import StrEnum
 from typing import Any
 
 from django.db import router, transaction
-from django.db.models import Model
+from django.db.models import Exists, Model, OuterRef, QuerySet
 from django.db.models.deletion import Collector
 from django.utils.timezone import now
 
 from games.events.references import (
     DEFAULT_REFERENCE_KINDS,
     Reference,
+    ReferenceKind,
     ReferenceKindRegistry,
     Resolution,
 )
@@ -79,6 +80,16 @@ def resolve_reference(
         return kind.model._default_manager.get(pk=reference["id"])
     except kind.model.DoesNotExist:
         raise UnresolvableReference(reference) from None
+
+
+def unresolved_among(
+    kind: ReferenceKind[Any], references: QuerySet[LibraryEventReference]
+) -> QuerySet[LibraryEventReference]:
+    """The references of `kind` naming no row."""
+    #: `~Exists` plans as an anti-join.
+    return references.filter(
+        ~Exists(kind.model._default_manager.filter(pk=OuterRef("referenced_id")))
+    )
 
 
 def detach_game_from_purchases(game: Game) -> None:

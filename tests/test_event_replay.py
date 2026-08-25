@@ -394,14 +394,13 @@ def test_the_fold_is_event_major(owned_library):
 
 
 @pytest.mark.parametrize("length", [10, 70])
-def test_a_replay_costs_two_queries_whatever_the_stream_holds(
+def test_a_replay_costs_a_fixed_number_of_queries_whatever_the_stream_holds(
     owned_library, django_assert_num_queries, length
 ):
     append_stream(owned_library, length)
 
-    #: The head, and the cursor the rows stream from. The fetches against that
-    #: cursor are not queries, and neither is anything per event.
-    with django_assert_num_queries(2):
+    #: The head, the kinds, and the cursor.
+    with django_assert_num_queries(3):
         replay(owned_library, wiring=wiring)
 
 
