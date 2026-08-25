@@ -39,9 +39,26 @@ class LibraryOwnedQuerySet(models.QuerySet):
         return self.filter(library=library)
 
 
-class GameQuerySet(LibraryOwnedQuerySet):
+class ArchivableQuerySet(LibraryOwnedQuerySet):
+    """A row an event references outlives its deletion, archived.
+
+    `for_library` and `visible_to` are the two ways the application asks for
+    rows, so folding the exclusion into them is what keeps an archived row out
+    of every list, form, filter, and API without each of them remembering to
+    ask. A caller that must see archived rows -- a replay resolving a recorded
+    reference, the retention policy itself -- goes through the plain manager.
+    """
+
+    def alive(self):
+        return self.filter(archived_at__isnull=True)
+
+    def for_library(self, library):
+        return super().for_library(library).alive()
+
+
+class GameQuerySet(ArchivableQuerySet):
     def visible_to(self, library):
-        return self.filter(Q(library__isnull=True) | Q(library=library))
+        return self.filter(Q(library__isnull=True) | Q(library=library)).alive()
 
 
 def _validate_related_library(
@@ -64,11 +81,19 @@ def _validate_related_library(
 
 class Game(models.Model):
     class Meta:
-        unique_together = (("library", "name", "platform", "year_released"),)
+        #: Both partial on `archived_at`: an archived Game is gone as far as the
+        #: library is concerned, so it must not be what stops the same name
+        #: being entered again. `unique_together` cannot carry a condition,
+        #: which is why the first of these is a constraint rather than one.
         constraints = (
             models.UniqueConstraint(
+                fields=("library", "name", "platform", "year_released"),
+                condition=Q(archived_at__isnull=True),
+                name="unique_library_game_name_platform_year",
+            ),
+            models.UniqueConstraint(
                 fields=("library", "name", "year_released"),
-                condition=Q(platform__isnull=True),
+                condition=Q(platform__isnull=True) & Q(archived_at__isnull=True),
                 name="unique_library_platformless_game_name_year",
             ),
         )
@@ -165,6 +190,10 @@ class Game(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    #: Set instead of deleting, when a recorded event references this row.
+    archived_at = models.DateTimeField(
+        null=True, blank=True, default=None, editable=False
+    )
 
     class Status(models.TextChoices):
         UNPLAYED = (
@@ -245,25 +274,26 @@ class Game(models.Model):
         return self.status == self.Status.UNPLAYED
 
 
-class PlatformQuerySet(LibraryOwnedQuerySet):
+class PlatformQuerySet(ArchivableQuerySet):
     def visible_to(self, library):
-        return self.filter(Q(library__isnull=True) | Q(library=library))
+        return self.filter(Q(library__isnull=True) | Q(library=library)).alive()
 
 
 class Platform(models.Model):
     class Meta:
+        #: Both partial on `archived_at`, for the reason given on Game.Meta.
         constraints = (
             models.UniqueConstraint(
                 Lower(Trim("name")),
                 Lower(Trim("group")),
-                condition=Q(library__isnull=True),
+                condition=Q(library__isnull=True) & Q(archived_at__isnull=True),
                 name="unique_shared_platform_normalized_name_group",
             ),
             models.UniqueConstraint(
                 F("library"),
                 Lower(Trim("name")),
                 Lower(Trim("group")),
-                condition=Q(library__isnull=False),
+                condition=Q(library__isnull=False) & Q(archived_at__isnull=True),
                 name="unique_private_platform_normalized_name_group",
             ),
         )
@@ -283,6 +313,10 @@ class Platform(models.Model):
     group = models.CharField(max_length=255, blank=True, default="")
     icon = models.SlugField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    #: Set instead of deleting, when a recorded event references this row.
+    archived_at = models.DateTimeField(
+        null=True, blank=True, default=None, editable=False
+    )
 
     def __str__(self):
         return self.name
@@ -290,7 +324,9 @@ class Platform(models.Model):
     def clean(self):
         super().clean()
         duplicates = (
-            Platform.objects.exclude(pk=self.pk)
+            #: An archived Platform shadows nothing; it is not in any library.
+            Platform.objects.alive()
+            .exclude(pk=self.pk)
             .annotate(
                 normalized_name=Lower(Trim("name")),
                 normalized_group=Lower(Trim("group")),
@@ -315,11 +351,17 @@ class Platform(models.Model):
 
 
 class EditionQuerySet(models.QuerySet):
+    """Archival is inherited from Game rather than held here: an Edition has no
+    visibility of its own, so it has no `archived_at` of its own either."""
+
     def for_library(self, library):
-        return self.filter(game__library=library)
+        return self.filter(game__library=library, game__archived_at__isnull=True)
 
     def visible_to(self, library):
-        return self.filter(Q(game__library__isnull=True) | Q(game__library=library))
+        return self.filter(
+            Q(game__library__isnull=True) | Q(game__library=library),
+            game__archived_at__isnull=True,
+        )
 
 
 class Edition(models.Model):
@@ -343,12 +385,18 @@ class Edition(models.Model):
 
 
 class ReleaseQuerySet(models.QuerySet):
+    """Archival is inherited from Game, as for Edition."""
+
     def for_library(self, library):
-        return self.filter(edition__game__library=library)
+        return self.filter(
+            edition__game__library=library,
+            edition__game__archived_at__isnull=True,
+        )
 
     def visible_to(self, library):
         return self.filter(
-            Q(edition__game__library__isnull=True) | Q(edition__game__library=library)
+            Q(edition__game__library__isnull=True) | Q(edition__game__library=library),
+            edition__game__archived_at__isnull=True,
         )
 
 
@@ -955,7 +1003,9 @@ class Session(models.Model):
 
 
 class Device(models.Model):
-    objects = LibraryOwnedQuerySet.as_manager()
+    #: Archivable, not merely library-owned: `device` is a REQUIRED reference
+    #: kind, so a recorded event obliges this row to outlive its deletion.
+    objects = ArchivableQuerySet.as_manager()
 
     id = UUIDv7Field(primary_key=True, editable=False)
     library = models.ForeignKey(
@@ -979,6 +1029,10 @@ class Device(models.Model):
     name = models.CharField(max_length=255)
     type = models.CharField(max_length=255, choices=DEVICE_TYPES, default=UNKNOWN)
     created_at = models.DateTimeField(auto_now_add=True)
+    #: Set instead of deleting, when a recorded event references this row.
+    archived_at = models.DateTimeField(
+        null=True, blank=True, default=None, editable=False
+    )
 
     def __str__(self):
         return f"{self.name} ({self.type})"
