@@ -1,11 +1,4 @@
-"""The abstract base a projection table inherits, and the check that keeps a
-projected row a pure function of the events.
-
-Every model here is declared under `isolate_apps("games")`: an un-isolated
-`app_label = "games"` model would join the global registry for the rest of the
-process, where `games/identity_audit.py` would find it and
-`tests/test_uuid_identity_audit.py` would fail on a set it never expected.
-"""
+"""The projection base and its purity check."""
 
 import uuid
 
@@ -22,12 +15,7 @@ def error_ids(messages: list[CheckMessage]) -> list[str]:
 
 
 def check(model: type[models.Model]) -> list[str]:
-    """The check, run over the registry the model was declared in.
-
-    `isolate_apps` patches `Options.default_apps` and leaves the global
-    registry alone, so a check hard-wired to `django.apps.apps` would look at
-    none of these models and pass vacuously.
-    """
+    """The check over the model's own registry."""
     return error_ids(check_projection_models(apps=model._meta.apps))
 
 
@@ -77,9 +65,7 @@ def test_an_implicit_auto_field_primary_key_is_refused():
         class Meta:
             app_label = "games"
 
-    #: The shadow table's LIKE copy gets its own identity sequence starting at
-    #: 1, so an auto-increment key diffs every unchanged row as a deletion and
-    #: an insertion, forever.
+    #: The shadow gets its own identity sequence.
     assert check(Counted) == ["games.E003"]
 
 
@@ -103,8 +89,7 @@ def test_a_database_default_is_refused():
         class Meta:
             app_label = "games"
 
-    #: PostgreSQL copies the default onto the shadow and evaluates it there
-    #: independently.
+    #: The shadow evaluates the copied default itself.
     assert check(Defaulted) == ["games.E004"]
 
 
@@ -121,8 +106,7 @@ def test_a_uuid_module_default_is_refused():
 
 @isolate_apps("games")
 def test_the_repos_uuidv7_field_is_refused_on_both_counts():
-    """`UUIDv7Field` carries a `uuid.uuid7` default and a `uuidv7()` database
-    default, so the trap is one field declaration away."""
+    """The trap is one field declaration away."""
     from timetracker.uuidv7 import UUIDv7Field
 
     class Identified(ProjectionModel):
@@ -147,8 +131,7 @@ def test_a_rule_broken_by_an_intermediate_abstract_base_is_still_caught():
         class Meta:
             app_label = "games"
 
-    #: Abstract inheritance copies the field into the concrete model, so
-    #: `local_fields` sees it. That is the property being pinned.
+    #: The copied field lands in `local_fields`.
     assert check(Inheriting) == ["games.E001"]
 
 
@@ -169,8 +152,7 @@ def test_an_unmanaged_twin_is_not_checked():
             managed = False
             db_table = "games_live__shadow"
 
-    #: The manufactured twins are `managed = False` and carry the live model's
-    #: fields; checking them would report every live offence twice.
+    #: A twin would report each offence twice.
     assert check(Live) == []
 
 

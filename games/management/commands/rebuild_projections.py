@@ -12,7 +12,7 @@ from games.models import UserLibrary
 
 
 class Command(BaseCommand):
-    """Argument parsing and printing. Every decision is in `rebuild_projections`."""
+    """Arguments and printing; the decisions are elsewhere."""
 
     help = (
         "Rebuild one library's projections from its event stream, or -- with "
@@ -90,8 +90,7 @@ class Command(BaseCommand):
 
     def _write_check_outcome(self, report: RebuildReport) -> None:
         if report.head_at_diff != report.folded_through:
-            #: A check takes no lock, so an event that landed while it ran shows
-            #: up as drift that does not exist.
+            #: No lock: the drift may be false.
             self.stdout.write(
                 self.style.WARNING(
                     "The head moved while the check ran, so the diff above is "

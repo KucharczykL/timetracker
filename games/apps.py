@@ -15,10 +15,7 @@ class GamesConfig(AppConfig):
     name = "games"
 
     def ready(self):
-        #: Imported for their import side effects: signal receivers connect,
-        #: projector families register, and the projection-model checks join
-        #: the check registry. A projector nobody imported is a projection that
-        #: silently never updates.
+        #: Import side effects: signals, projectors, checks.
         from games import checks, projectors, signals  # noqa: F401
 
         connection_created.connect(

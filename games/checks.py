@@ -1,15 +1,4 @@
-"""Startup checks over the projection tables.
-
-A rebuild replays a stream into an empty shadow table and compares every column
-of every row against the live one. That comparison only means anything if
-replaying the same events twice produces the same rows, so a projection field
-may not draw its value from anywhere but the events.
-
-The check sees the declarative half of that rule. A handler calling
-`timezone.now()` is invisible to it and is caught by the diff instead — rebuild
-twice, get two answers — which is a worse error message and a real backstop.
-Claiming more would be claiming this is a purity analysis.
-"""
+"""Startup checks over the projection tables."""
 
 from collections.abc import Sequence
 from typing import Any
@@ -31,20 +20,13 @@ def check_projection_models(
     apps: Apps = global_apps,
     **kwargs: Any,
 ) -> list[CheckMessage]:
-    """Refuse a projection field whose value is not a function of the events.
-
-    `apps` is the registry to read, and it is a parameter for the same reason
-    the rebuild takes one: `isolate_apps` patches `Options.default_apps` and
-    leaves the global registry untouched, so a check hard-wired to
-    `django.apps.apps` would find no test model and pass vacuously.
-    """
+    """Refuse a field the events cannot determine."""
     labels = None if app_configs is None else {config.label for config in app_configs}
     errors: list[CheckMessage] = []
     for model in apps.get_models():
         if not issubclass(model, ProjectionModel):
             continue
-        #: The manufactured shadow twins carry the live model's fields under
-        #: `managed = False`; checking them would report every offence twice.
+        #: A twin repeats its live model's fields.
         if not model._meta.managed:
             continue
         if labels is not None and model._meta.app_label not in labels:

@@ -1,16 +1,4 @@
-"""Rebuilding a library's projections into shadow tables and swapping them in.
-
-The models are declared under `isolate_apps("games")` and created with
-`schema_editor`, and the rebuild is called with `apps=<model>._meta.apps`:
-`isolate_apps` patches `Options.default_apps` and leaves the global registry
-alone, so a rebuild reading `django.apps.apps` would discover zero tables here
-and every assertion below would pass over nothing.
-
-Isolation is not housekeeping either. An un-isolated `app_label = "games"`
-model — or a process-cached twin of one — joins the registry
-`games/identity_audit.py` reads, where `tests/test_uuid_identity_audit.py`
-asserts set equality against a pinned list.
-"""
+"""Rebuilding one library's projections through shadow tables."""
 
 from collections.abc import Callable
 from dataclasses import replace
@@ -71,11 +59,7 @@ from games.models import (
 
 
 def create_tables(*models: type[ProjectionModel]) -> None:
-    """The tables, for the length of the test.
-
-    Nothing drops them: the test runs inside pytest-django's transaction, and
-    PostgreSQL rolls DDL back with everything else.
-    """
+    """The tables, rolled back with the test."""
     with connection.schema_editor() as schema_editor:
         for model in models:
             schema_editor.create_model(model)
@@ -139,14 +123,12 @@ def test_discovery_passes_over_a_manufactured_twin():
     shelf, entry = declare_projection_models()
     ShadowTarget().model(shelf)
 
-    #: A twin is a projection model and is in the registry, so only its
-    #: `managed = False` keeps it from being rebuilt as a table of its own.
+    #: Only `managed = False` excludes a twin.
     assert set(projection_models(shelf._meta.apps)) == {shelf, entry}
 
 
 def test_the_application_declares_no_projection_table_yet():
-    """The honest answer for the current state: the families that own real
-    projection tables are a later issue, and this one rebuilds none of them."""
+    """No real projection table exists yet."""
     assert projection_models() == ()
 
 
@@ -189,8 +171,7 @@ def test_a_shadow_table_carries_the_live_columns_and_indexes():
         assert table_columns(shadow_of(SHELF_TABLE)) == table_columns(
             f'"{SHELF_TABLE}"'
         )
-        #: A family reads back rows it just wrote, at whatever selectivity the
-        #: live table was designed for.
+        #: A family reads back its own writes.
         assert index_count(shadow_of(SHELF_TABLE)) == index_count(f'"{SHELF_TABLE}"')
         assert index_count(shadow_of(SHELF_TABLE)) > 1
 
@@ -202,9 +183,7 @@ def test_a_shadow_table_carries_no_foreign_key():
     create_tables(shelf, entry)
 
     with shadow_tables([shelf, entry]):
-        #: `LIKE ... INCLUDING ALL` leaves foreign keys behind, which is what
-        #: lets the shadows be filled in any order: the reference that has to
-        #: hold is the one in the live table after the swap.
+        #: No foreign keys: any fill order works.
         assert foreign_key_count(f'"{ENTRY_TABLE}"') == 2
         assert foreign_key_count(shadow_of(ENTRY_TABLE)) == 0
 
@@ -218,8 +197,7 @@ def test_the_insertable_columns_are_the_tables_own_minus_the_generated_one():
     columns = table_columns(f'"{SHELF_TABLE}"')
 
     assert "played_minutes" in columns
-    #: PostgreSQL refuses to be handed a generated column and recomputes it
-    #: identically from the ones that are carried.
+    #: PostgreSQL refuses a generated column.
     assert insertable_columns(shelf) == tuple(
         column for column in columns if column != "played_minutes"
     )
@@ -227,19 +205,13 @@ def test_the_insertable_columns_are_the_tables_own_minus_the_generated_one():
 
 # --- The write guard --------------------------------------------------------
 #
-# One test per write path, because a signal-based guard passes the first of them
-# and misses the rest -- which is the whole reason the guard is an
-# `execute_wrapper` and not a `pre_save` receiver.
+# One test per path a signal misses.
 
 type WritePath = Callable[[type[ProjectionModel], UserLibrary], None]
 
 
 def seed_shelf(model, library, **overrides):
-    """One row in whichever shelf table is passed -- live or shadow.
-
-    `played_seconds` is nonzero by default so the generated column carries a
-    value on both sides of a diff rather than agreeing at zero.
-    """
+    """One row in the given shelf table."""
     fields = {
         "id": uuid4(),
         "library_id": library.pk,
@@ -307,8 +279,7 @@ def test_the_guard_refuses_a_write_to_a_live_projection_table(write, owned_libra
     create_tables(shelf, entry)
     seed_shelf(shelf, owned_library)
 
-    #: Not the shelf table by name: a cascading delete reaches the child table
-    #: first, and which table a path names first is not what is under test.
+    #: A cascade reaches the child table first.
     with only_shadow_writes(), pytest.raises(LiveWriteRefused, match="not a shadow"):
         write(shelf, owned_library)
 
@@ -321,15 +292,11 @@ def test_a_write_path_works_again_once_the_block_exits(write, owned_library):
     create_tables(shelf, entry)
     seed_shelf(shelf, owned_library)
 
-    #: The refusal is raised through Django's own `atomic(savepoint=False)`
-    #: around a write, which marks the transaction for rollback on any
-    #: exception. A savepoint of its own contains that, the way phase 2's
-    #: transaction contains it in production.
+    #: A savepoint contains the marked rollback.
     with only_shadow_writes(), pytest.raises(LiveWriteRefused), transaction.atomic():
         write(shelf, owned_library)
 
-    #: The guard is phase-local: another rebuild phase, and every other process,
-    #: keeps writing live projections throughout.
+    #: The guard is phase-local.
     write(shelf, owned_library)
 
 
@@ -369,20 +336,13 @@ def test_a_read_of_a_live_table_is_allowed(owned_library):
     seed_shelf(shelf, owned_library)
 
     with only_shadow_writes():
-        #: A rebuild reads live rows in the phase after this one, and a family
-        #: may read anything it likes; only writing is refused.
+        #: Only writes are refused.
         assert shelf.objects.count() == 1
 
 
 @pytest.mark.django_db
 def test_the_guard_refuses_a_write_to_a_table_no_rebuild_touches(owned_library):
-    """An allowlist, not a list of the tables being rebuilt.
-
-    The side effect nobody would have listed -- a family bumping a counter row,
-    filling a cache table, or recording an audit row outside its target -- is
-    what makes "check mode writes nothing" true by construction. In check mode
-    and on every discarded attempt, such a write would otherwise commit and stay.
-    """
+    """An allowlist, not the rebuilt tables."""
     with only_shadow_writes(), pytest.raises(LiveWriteRefused, match="userlibrary"):
         UserLibrary.objects.filter(pk=owned_library.pk).update(
             created_at=owned_library.created_at
@@ -391,8 +351,7 @@ def test_the_guard_refuses_a_write_to_a_table_no_rebuild_touches(owned_library):
 
 # --- Phase 2: the replay ----------------------------------------------------
 #
-# The families below register into registries this module owns, so nothing
-# declared here reaches `DEFAULT_REGISTRY` or another test.
+# Registries this module owns, never `DEFAULT_REGISTRY`.
 
 
 @with_config(ConfigDict(extra="forbid", strict=True))
@@ -406,19 +365,12 @@ PROBE_SHELVED = EventSpec(
 EVENT_TYPES = EventTypeRegistry()
 EVENT_TYPES.register(PROBE_SHELVED)
 
-#: The shelf model the running test declared. A family is registered once, at
-#: import, while `isolate_apps` builds a new class per test -- which is the
-#: production shape read backwards: there a family names its model at import
-#: and a rebuild redirects the class it is handed.
+#: Set per test, read by the family.
 DECLARED_SHELF: list[type[ProjectionModel]] = []
 
 
 def declared_shelf() -> Any:
-    """The shelf model the running test declared.
-
-    Typed loosely because `objects` is added to concrete models and
-    `ProjectionModel` is abstract, so the precise type has no manager on it.
-    """
+    """The shelf model the running test declared."""
     return DECLARED_SHELF[-1]
 
 
@@ -427,7 +379,7 @@ live_writing_registry = ProjectorRegistry()
 
 
 class Shelver(Projector, registry=shadow_registry):
-    """A family written the way #671's will be: it writes its target."""
+    """A family that writes its target."""
 
     family_name = ProjectorFamily.CURRENT_STATE
 
@@ -443,7 +395,7 @@ class Shelver(Projector, registry=shadow_registry):
 
 
 class StubbornShelver(Projector, registry=live_writing_registry):
-    """A family that writes its live model, target or no target."""
+    """A family that writes its live model."""
 
     family_name = ProjectorFamily.CURRENT_STATE
 
@@ -477,7 +429,7 @@ def declare_and_create_shelf() -> type[ProjectionModel]:
 
 
 def append_shelved(library, titles, *, wiring=SHADOW_WIRING):
-    """One append carrying an event per title, folded through `wiring`."""
+    """One append, one event per title."""
     events = [
         NewEvent(spec=PROBE_SHELVED, aggregate_id=uuid7(), payload={"title": title})
         for title in titles
@@ -511,8 +463,7 @@ def test_the_replay_fills_the_shadow_and_leaves_the_live_rows_alone(owned_librar
     with shadow_tables([shelf]):
         result = replay_into_shadow(owned_library, [shelf], wiring=SHADOW_WIRING)
 
-        #: The parity the whole issue is about: the same families over the same
-        #: events reach the state the append path wrote row by row.
+        #: The parity the whole issue is about.
         assert shelf_rows(twin) == live_rows
 
     assert shelf_rows(shelf) == live_rows
@@ -535,11 +486,7 @@ def test_a_family_writing_its_live_model_is_refused(owned_library):
 @pytest.mark.django_db
 @isolate_apps("games")
 def test_a_hole_in_the_stream_refuses_the_replay_as_itself(owned_library):
-    """`StreamNotContiguous` arrives with its own type.
-
-    A phase that wrapped it would tell `run_in_transaction` to decide from the
-    wrapper, and a stream with a hole in it is not a thing another attempt fixes.
-    """
+    """`StreamNotContiguous` arrives with its own type."""
     shelf = declare_and_create_shelf()
     append_shelved(owned_library, ["one", "two", "three"])
     LibraryEvent.objects.filter(library=owned_library, sequence=2).delete()
@@ -565,13 +512,7 @@ def test_a_library_that_never_appended_folds_nothing(owned_library):
 @pytest.mark.django_db
 @isolate_apps("games")
 def test_the_replay_refuses_to_run_without_its_shadow_tables(owned_library):
-    """The phase names what is missing.
-
-    Its shadow tables are the caller's to create, and a temp table that was
-    never created -- or that a `connection.close()` between phases took with it
-    -- would otherwise surface as a bare "relation does not exist" from
-    whichever family wrote first.
-    """
+    """The phase names the missing tables."""
     shelf = declare_and_create_shelf()
     append_shelved(owned_library, ["one"])
 
@@ -612,8 +553,7 @@ def test_a_shadow_holding_the_same_rows_reports_no_difference(owned_library):
     with shadow_tables([shelf]):
         seed_shelf(twin, owned_library, id=live.id, note="kept")
 
-        #: The generated column is compared with the rest and agrees by
-        #: construction: both sides computed it from the same seconds.
+        #: The generated column agrees by construction.
         assert diff_table(shelf, owned_library) == no_difference()
 
 
@@ -649,8 +589,7 @@ def test_a_row_the_live_table_lost_is_only_rebuilt(owned_library):
     assert difference.live_rows == 0
     assert difference.rebuilt_rows == 1
     assert difference.only_live == 0
-    #: Scoping the library in `WHERE` instead of a subquery would degrade the
-    #: outer join and hide exactly this row.
+    #: A `WHERE` scope would hide this row.
     assert difference.only_rebuilt == 1
     assert difference.sample == (str(rebuilt.id),)
 
@@ -683,13 +622,7 @@ def test_a_column_that_drifted_is_a_differing_row(owned_library):
 def test_a_column_that_drifted_to_or_from_null_is_a_differing_row(
     live_note, rebuilt_note, owned_library
 ):
-    """The null-safety pin.
-
-    `ROW(live.a, ...) <> ROW(shadow.a, ...)` returns NULL when either side holds
-    a NULL and the row is dropped, so a column that drifted to or from NULL
-    would be reported as matching. Whole-row `IS DISTINCT FROM` is composite
-    comparison and is null-safe.
-    """
+    """The null-safety pin."""
     shelf, _ = declare_projection_models()
     create_tables(shelf)
     twin = ShadowTarget().model(shelf)
@@ -733,8 +666,7 @@ def test_a_wholly_drifted_table_reports_a_bounded_sample(owned_library):
         difference = diff_table(shelf, owned_library)
 
     assert difference.only_live == drifted
-    #: Enough to act on, bounded so a wholly-drifted table cannot produce a
-    #: report nobody can read.
+    #: Bounded, so the report stays readable.
     assert len(difference.sample) == DIFF_SAMPLE_LIMIT
 
 
@@ -755,15 +687,14 @@ def test_every_table_is_diffed_in_the_order_it_was_given(owned_library):
 
 # --- Phase 4: the swap ------------------------------------------------------
 
-#: One `DELETE` and one `INSERT ... SELECT` per table, whatever the rows.
+#: One `DELETE` and one `INSERT` per table.
 SWAP_STATEMENTS_PER_TABLE = 2
-#: The lock, the head read, and the savepoint pair `transaction.atomic()` opens
-#: inside the transaction a test already runs in.
+#: The lock, the head read, two savepoints.
 SWAP_FIXED_STATEMENTS = 4
 
 
 def every_column(model, library) -> list[tuple[Any, ...]]:
-    """Every row this library owns, every column, so "unchanged" is literal."""
+    """Every column, so "unchanged" is literal."""
     columns = [field.name for field in model._meta.concrete_fields]
     return sorted(model.objects.filter(library_id=library.pk).values_list(*columns))
 
@@ -771,11 +702,7 @@ def every_column(model, library) -> list[tuple[Any, ...]]:
 @pytest.mark.django_db
 @isolate_apps("games")
 def test_the_swap_replaces_the_live_rows_with_the_rebuilt_ones(owned_library):
-    """Every way a projection can be wrong, corrected in one swap.
-
-    A row that drifted, a row that was lost, and a row that belongs to nothing
-    -- the delete-and-reinsert handles all three without knowing which happened.
-    """
+    """Drift, loss and a stray row, together."""
     shelf = declare_and_create_shelf()
     append_shelved(owned_library, ["one", "two", "three"])
     correct = shelf_rows(shelf)
@@ -805,20 +732,14 @@ def test_another_librarys_rows_come_through_the_swap_untouched(
         replayed = replay_into_shadow(owned_library, [shelf], wiring=SHADOW_WIRING)
         swap_in(owned_library, [shelf], replayed.folded_through)
 
-    #: Every column, not the count: the swap scopes its delete by library, and a
-    #: scope that reached too far would show up here as rows going missing.
+    #: Every column: a wide scope loses rows.
     assert every_column(shelf, second_library) == theirs
 
 
 @pytest.mark.django_db
 @isolate_apps("games")
 def test_an_event_that_landed_during_the_rebuild_refuses_the_swap(owned_library):
-    """The expectation is asserted before anything is written.
-
-    The shadow is a projection of a prefix of the stream, so swapping it in
-    would drop the event that landed. The attempt is the thing to redo, which
-    Task 9 does; here the swap only has to refuse and leave live alone.
-    """
+    """The expectation is asserted before any write."""
     shelf = declare_and_create_shelf()
     append_shelved(owned_library, ["one"])
 
@@ -838,12 +759,7 @@ def test_an_event_that_landed_during_the_rebuild_refuses_the_swap(owned_library)
 @pytest.mark.django_db
 @isolate_apps("games")
 def test_a_library_that_never_appended_is_swapped_empty(owned_library):
-    """An empty stream projects to no rows, and the swap says so.
-
-    `lock_stream` provisions the head row a `replay` refuses to create: a
-    rebuild is a writer, and `require_sequence(0)` is its assertion that the
-    library is still empty.
-    """
+    """An empty stream projects to no rows."""
     shelf = declare_and_create_shelf()
     seed_shelf(shelf, owned_library, title="left-over")
 
@@ -873,8 +789,7 @@ def test_the_swap_empties_and_refills_every_table_it_is_given(owned_library):
         )
         swap_in(owned_library, [shelf, entry], replayed.folded_through)
 
-    #: No family projects the entry table, so its rebuilt state is empty --
-    #: which is the point: a table the swap is given is replaced, not topped up.
+    #: A given table is replaced, not extended.
     assert entry.objects.count() == 0
     assert shelf.objects.count() == 1
 
@@ -901,28 +816,18 @@ def test_the_swap_costs_the_same_statements_at_any_size(
 
 
 def recording_policy(**overrides) -> tuple[RetryPolicy, list[float]]:
-    """A policy that records what it would have slept instead of sleeping.
-
-    `sleep` and `random` are fields on `RetryPolicy` precisely so a test asserts
-    on the delays the loop produces rather than on a patch of the stdlib.
-    """
+    """A policy that records its delays."""
     delays: list[float] = []
     return RetryPolicy(sleep=delays.append, random=Random(0), **overrides), delays
 
 
 class AppendsFirst:
-    """Stands in for a rebuild phase and lands an append just before it runs.
-
-    The race the loop exists for is an event arriving between the replay and the
-    swap, and there is no other lever to produce it: a family appending from
-    inside the replay is refused by the write guard, which is what the guard is
-    for.
-    """
+    """Appends just before the wrapped call runs."""
 
     def __init__(self, wrapped, library, *, appends=None):
         self.wrapped = wrapped
         self.library = library
-        #: None means every call; a number means the first that many.
+        #: None means every call.
         self.appends = appends
         self.calls = 0
 
@@ -942,11 +847,7 @@ def shelf_diff(report) -> TableDiff:
 def test_an_append_between_the_replay_and_the_swap_redoes_the_attempt(
     owned_library, monkeypatch
 ):
-    """The expectation is what went stale, so the whole attempt is redone.
-
-    The second attempt folds the event that landed, which is why the swap can
-    go ahead: its shadow is a projection of the stream as it now stands.
-    """
+    """A stale expectation redoes the whole attempt."""
     shelf = declare_and_create_shelf()
     append_shelved(owned_library, ["one"])
     policy, delays = recording_policy()
@@ -992,11 +893,9 @@ def test_a_stream_that_keeps_moving_exhausts_the_budget(owned_library, monkeypat
     assert report.swapped is False
     assert len(report.attempts) == policy.retries + 1
     assert all(attempt.conflict for attempt in report.attempts)
-    #: One sleep between attempts, none after the last: the budget is spent, not
-    #: waited out.
+    #: One sleep between attempts, none after.
     assert len(delays) == policy.retries
-    #: The corruption the rebuild was run to fix is still there, which is how a
-    #: swap that never happened shows up in the rows.
+    #: The drift a swap would have fixed.
     assert shelf.objects.filter(title="drifted").exists()
     assert not relation_exists(shadow_of(SHELF_TABLE))
 
@@ -1016,12 +915,11 @@ def test_check_mode_reports_the_drift_and_writes_nothing(owned_library):
     assert report.swapped is False
     assert report.library_id == owned_library.pk
     assert report.stream_id is not None
-    #: Discovery order: every projection table in the registry, not just the
-    #: ones a family writes.
+    #: Every projection table, not the projected ones.
     assert [table.table for table in report.tables] == [ENTRY_TABLE, SHELF_TABLE]
     assert shelf_diff(report).differing == 1
     assert report.attempts[0].swap_seconds is None
-    #: Nothing was written, and nothing was left behind either.
+    #: Nothing written, nothing left behind.
     assert shelf.objects.get().title == "drifted"
     assert not relation_exists(shadow_of(SHELF_TABLE))
 
@@ -1029,12 +927,7 @@ def test_check_mode_reports_the_drift_and_writes_nothing(owned_library):
 @pytest.mark.django_db
 @isolate_apps("games")
 def test_check_mode_reports_the_head_it_diffed_against(owned_library, monkeypatch):
-    """An append during the diff makes the diff advisory, and the report says so.
-
-    `check` never takes the lock, so an event landing between the replay's head
-    read and the diff shows up as drift that does not exist. The two numbers
-    side by side are what tells an operator that is what happened.
-    """
+    """An append during the diff is advisory."""
     shelf = declare_and_create_shelf()
     append_shelved(owned_library, ["one"])
     monkeypatch.setattr(
@@ -1072,11 +965,7 @@ def test_a_library_that_never_appended_has_no_stream_to_check(owned_library):
 def test_rebuilding_a_library_that_never_appended_names_the_stream_it_made(
     owned_library,
 ):
-    """`lock_stream` provisions the head, so a rebuild has a stream to report.
-
-    The field is nullable for the check-mode case above rather than because the
-    report ever presents a provisioned stream as an absent one.
-    """
+    """`lock_stream` provisions the head to report."""
     shelf = declare_and_create_shelf()
     seed_shelf(shelf, owned_library, title="left-over")
 
@@ -1096,10 +985,8 @@ def test_rebuilding_a_library_that_never_appended_names_the_stream_it_made(
 
 # --- The management command --------------------------------------------------
 #
-# The global registry declares no projection table yet, so the real-path tests
-# below run every phase over zero tables. That is the honest current state, and
-# it is what makes them real invocations rather than mocks: the canned-report
-# tests underneath cover the printing the empty state cannot exercise.
+# Real invocations run every phase, zero tables.
+# A canned report covers the rest.
 
 
 def run_command(*arguments) -> str:
@@ -1109,7 +996,7 @@ def run_command(*arguments) -> str:
 
 
 def canned_report(**overrides) -> RebuildReport:
-    """A report the command can print, so its printing is what the test reads."""
+    """A report the command can print."""
     report = RebuildReport(
         library_id=uuid7(),
         stream_id=uuid7(),
@@ -1144,7 +1031,7 @@ def canned_report(**overrides) -> RebuildReport:
 
 
 def reports(report):
-    """Stands in for the rebuild, so the command's printing is what is tested."""
+    """Stands in for the rebuild itself."""
 
     def rebuild(library, **options):
         return replace(report, library_id=library.pk, mode=options["mode"])
@@ -1158,8 +1045,7 @@ def test_the_command_checks_a_library_and_provisions_nothing(owned_library):
 
     assert str(owned_library.pk) in output
     assert "0 event" in output
-    #: A check never takes the lock, so it never provisions the head a rebuild
-    #: would -- which is the sharpest available reading of "writes nothing".
+    #: No lock, so no head is provisioned.
     assert not LibraryEventStreamHead.objects.filter(library=owned_library).exists()
 
 
@@ -1184,7 +1070,7 @@ def test_the_command_prints_a_line_per_table(owned_library, monkeypatch):
     assert f"{SHELF_TABLE}: 5 live, 4 rebuilt, 2 only live, 1 only rebuilt" in output
     assert "abc" in output
     assert "0.50s" in output
-    #: 2 only live, 1 only rebuilt and 1 differing: what an operator decides on.
+    #: Two only live, one rebuilt, one differing.
     assert "4 row(s)" in output
 
 
@@ -1240,21 +1126,8 @@ def test_a_library_id_that_is_not_a_uuid_fails(owned_library):
 
 @pytest.mark.django_db
 def test_this_module_left_the_application_registry_as_it_found_it():
-    """Two leak detectors, read after everything above has run.
-
-    Every model here is declared under `isolate_apps("games")` and every twin is
-    cached against that isolated registry. A model declared without it -- or a
-    twin cached against the global one -- would join the registry
-    `games/identity_audit.py` reads and stay there for the rest of the process.
-
-    So this is deliberately last in the file and deliberately not isolated: it
-    reads whatever the tests above left behind. Under CI's `PYTEST_WORKERS=0`
-    the same process then runs `tests/test_uuid_identity_audit.py`, which sorts
-    after this module and asserts set equality on exactly the second check
-    below -- so a leak fails here, naming the cause, rather than there.
-    """
-    #: A twin whose reverse accessors were not hidden reports `fields.E304`
-    #: against the live model as well, permanently.
+    """Two leak detectors, last and unisolated."""
+    #: An unhidden twin reds the live model.
     assert run_checks() == []
     assert {
         relation.key for relation in relation_columns()

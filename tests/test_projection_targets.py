@@ -1,15 +1,4 @@
-"""Manufacturing a shadow twin of a projection model.
-
-A family writes `self.target.model(Shelf).objects...`, so what a rebuild
-redirects is the class the family is handed, not the statement it writes. The
-twin carries the same fields under a `__shadow` table and is `managed = False`,
-because the table it names is a temp table the rebuild created with `LIKE`.
-
-Every model here is declared under `isolate_apps("games")`: an un-isolated
-`app_label = "games"` model — and the process-cached twin of one — joins the
-global registry for the rest of the run, where `games/identity_audit.py` finds
-it and `tests/test_uuid_identity_audit.py` fails on a set it never expected.
-"""
+"""A shadow twin of a projection model."""
 
 from django.core.checks import run_checks
 from django.db import models
@@ -24,14 +13,7 @@ ENTRY_TABLE = "test_projection_entry"
 
 
 def declare_projection_models() -> tuple[type[ProjectionModel], type[ProjectionModel]]:
-    """A parent and a child projection table, in the caller's isolated registry.
-
-    The `UserLibrary` stand-in is load-bearing rather than decoration:
-    `isolate_apps` hands the games app an empty registry, so
-    `ProjectionModel`'s foreign key resolves to nothing and every model here
-    reports `fields.E300`. A same-named model over the real table resolves it,
-    and the constraint `schema_editor` emits still points at the real rows.
-    """
+    """Parent and child tables; `UserLibrary` prevents `fields.E300`."""
 
     class UserLibrary(models.Model):
         id = models.UUIDField(primary_key=True)
@@ -93,8 +75,7 @@ def test_a_twin_lands_in_the_registry_its_live_model_came_from():
 
     twin = ShadowTarget().model(shelf)
 
-    #: Not the global registry: a twin manufactured over an isolated model must
-    #: not outlive the test that declared it.
+    #: A twin must not outlive its test.
     assert twin._meta.apps is shelf._meta.apps
 
 
@@ -104,8 +85,7 @@ def test_one_twin_is_manufactured_per_live_model():
     target = ShadowTarget()
 
     assert target.model(shelf) is target.model(shelf)
-    #: The cache outlives the target, because a redefined twin would displace
-    #: the first one in the registry and warn about it.
+    #: A redefined twin would displace the first.
     assert ShadowTarget().model(shelf) is target.model(shelf)
     assert target.model(entry) is not target.model(shelf)
 
@@ -119,13 +99,7 @@ def test_the_live_target_hands_back_the_live_model():
 
 @isolate_apps("games")
 def test_manufacturing_a_twin_leaves_every_check_clean():
-    """The `fields.E304` regression, pinned.
-
-    Setting `related_name = "+"` on a deep-copied field does not hide the
-    reverse accessor — `ForeignObjectRel.hidden` is a `cached_property` and the
-    copy carries the cached `False` across — so the clash is reported against
-    the **live** model too, and the twin is cached for the process.
-    """
+    """The `fields.E304` regression, pinned."""
     shelf, entry = declare_projection_models()
     target = ShadowTarget()
 
@@ -145,8 +119,7 @@ def test_a_twins_relations_hide_their_reverse_accessors():
 
     twin = ShadowTarget().model(entry)
 
-    #: `hidden` is the cached property a deep-copied field would have carried
-    #: over as False, so reading it is the point of the assertion.
+    #: A deep copy would cache `hidden` False.
     assert twin._meta.get_field("shelf").remote_field.hidden is True
     assert twin._meta.get_field("library").remote_field.hidden is True
 

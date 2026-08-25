@@ -272,11 +272,7 @@ def test_a_handler_is_bound_to_its_family():
 
 
 class RecordingTarget:
-    """A target that hands back the live model and remembers being asked.
-
-    Enough to tell a family that consults its target from one that imported a
-    model directly, without a shadow table to write into.
-    """
+    """Hands back the live model, remembers asking."""
 
     def __init__(self) -> None:
         self.asked: list[str] = []
@@ -287,11 +283,7 @@ class RecordingTarget:
 
 
 def family_behind(handler: BoundHandler) -> Projector:
-    """The family instance a bound handler came from.
-
-    `handlers_for` hands back plain callables, which is all the fold needs, so
-    a test asking which family it got reaches through the binding.
-    """
+    """The family a bound handler came from."""
     return handler.__self__  # type: ignore[attr-defined]
 
 
@@ -318,8 +310,7 @@ def test_a_sibling_registry_points_every_family_at_the_given_target():
     sibling = ordering_registry.for_target(shadow)
 
     assert targets_of(sibling) == [shadow, shadow]
-    #: The registry the sibling came from is untouched: another process is
-    #: still folding appends through it into the live tables.
+    #: The registry it came from is untouched.
     assert targets_of(ordering_registry) == [LIVE_TARGET, LIVE_TARGET]
 
 
@@ -334,13 +325,7 @@ def test_a_sibling_registry_resolves_the_same_families_in_the_same_order():
 
 
 def test_a_sibling_registry_rebuilds_rather_than_re_registers():
-    """`for_target` cannot route through `register`.
-
-    Two things would go wrong: the duplicate-claim guard refuses the same
-    classes a second time, and an instantiation that forgot the target would
-    produce live-pointed families inside the shadow registry -- a rebuild
-    quietly writing production.
-    """
+    """`for_target` cannot route through `register`."""
     shadow = RecordingTarget()
 
     first = ordering_registry.for_target(shadow)
@@ -370,15 +355,12 @@ target_registry = ProjectorRegistry()
 
 
 class TargetedWriter(Projector, registry=target_registry):
-    """Writes what its target hands back, which is how a family is redirected
-    without a family knowing a rebuild is running."""
+    """Writes wherever its target points."""
 
     family_name = ProjectorFamily.CURRENT_STATE
 
     def _recorded(self, event: RecordedEvent) -> None:
-        #: Device stands in for a projection table, which this module has none
-        #: of. What the assertion needs is a write whose model the target
-        #: chose, and the bound is the only thing that makes it a stand-in.
+        #: Device stands in for a projection table.
         projected = self.target.model(Device)  # type: ignore[type-var]
         projected.objects.create(library_id=event.library_id, name="projected")
 
