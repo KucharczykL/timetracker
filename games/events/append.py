@@ -128,10 +128,13 @@ class LockedStream:
         idempotency_key: str,
         source_metadata: SourceMetadata | None = None,
         recorded_at: datetime | None = None,
+        expected_sequence: int | None = None,
         wiring: EventWiring = DEFAULT_WIRING,
     ) -> AppendResult:
         if not events:
             raise ValueError("An append records at least one event.")
+        if expected_sequence is not None:
+            self.require_sequence(expected_sequence)
 
         #: Before the rows and before the advance: a refusal must leave a
         #: transaction that may still commit exactly as it found it.

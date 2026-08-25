@@ -24,6 +24,7 @@ from games.events.vocabulary import (
     PayloadInvalid,
     UnregisteredEventType,
 )
+from games.events.retry import run_in_transaction
 from games.events.wiring import EventWiring
 from games.models import LibraryEvent, LibraryEventStreamHead
 from timetracker.temporal import TemporalValue
@@ -545,6 +546,82 @@ def test_require_sequence_ignores_a_stale_head_after_a_savepoint_rollback(owned_
         assert stream.require_sequence(0) is None
 
     assert not LibraryEvent.objects.exists()
+
+
+def test_an_append_with_a_matching_expectation_records_normally(owned_library):
+    with transaction.atomic():
+        first = append(owned_library, expected_sequence=0)
+        second = append(owned_library, expected_sequence=1)
+
+    assert (first.first_sequence, first.last_sequence) == (1, 1)
+    assert (second.first_sequence, second.last_sequence) == (2, 2)
+
+
+def test_an_append_refused_on_its_expectation_writes_nothing(owned_library):
+    with transaction.atomic():
+        append(owned_library)
+        with pytest.raises(StreamSequenceMismatch):
+            append(
+                owned_library,
+                [make_new_event(), make_new_event()],
+                expected_sequence=0,
+            )
+
+    assert LibraryEvent.objects.count() == 1
+    head = LibraryEventStreamHead.objects.get(library=owned_library)
+    assert head.current_sequence == 1
+
+
+def test_an_empty_append_is_refused_before_its_expectation(owned_library):
+    with transaction.atomic():
+        append(owned_library)
+        #: The programming error wins; a stale expectation cannot reclassify it.
+        with pytest.raises(ValueError, match="at least one event"):
+            append_directly(lock_stream(owned_library), [], expected_sequence=0)
+
+
+def test_a_refused_append_leaves_the_transaction_committable(
+    owned_library, second_library
+):
+    with transaction.atomic():
+        append(owned_library)
+        append(second_library, idempotency_key="unrelated")
+        with pytest.raises(StreamSequenceMismatch):
+            append(owned_library, expected_sequence=0)
+
+    assert LibraryEvent.objects.filter(library=owned_library).count() == 1
+    assert LibraryEvent.objects.filter(library=second_library).count() == 1
+
+
+def test_one_expectation_cannot_serve_two_appends_on_one_stream(owned_library):
+    with transaction.atomic():
+        stream = lock_stream(owned_library)
+        append_directly(stream, [make_new_event()], expected_sequence=0)
+        with pytest.raises(StreamSequenceMismatch) as refusal:
+            append_directly(stream, [make_new_event()], expected_sequence=0)
+
+    assert (refusal.value.expected, refusal.value.actual) == (0, 1)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_sequence_mismatch_is_not_retried_and_rolls_back(owned_library):
+    with transaction.atomic():
+        append(owned_library)
+
+    attempts = 0
+
+    def operation() -> None:
+        nonlocal attempts
+        attempts += 1
+        append(owned_library, idempotency_key="doomed")
+        append(owned_library, expected_sequence=0)
+
+    with pytest.raises(StreamSequenceMismatch):
+        run_in_transaction(operation)
+
+    assert attempts == 1
+    #: The doomed append went back with the transaction.
+    assert LibraryEvent.objects.count() == 1
 
 
 @pytest.mark.django_db(transaction=True)
