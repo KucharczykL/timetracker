@@ -14,11 +14,14 @@ asserts set equality against a pinned list.
 
 from collections.abc import Callable
 from dataclasses import replace
+from io import StringIO
 from random import Random
 from typing import Any, ClassVar, TypedDict
 from uuid import UUID, uuid4, uuid7
 
 import pytest
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.db import connection, transaction
 from django.test.utils import isolate_apps
 from pydantic import ConfigDict, with_config
@@ -36,7 +39,9 @@ from games.events.projection import (
 from games.events.rebuild import (
     DIFF_SAMPLE_LIMIT,
     LiveWriteRefused,
+    RebuildAttempt,
     RebuildMode,
+    RebuildReport,
     TableDiff,
     diff_table,
     diff_tables,
@@ -53,6 +58,7 @@ from games.events.retry import RetryPolicy
 from games.events.targets import SHADOW_SUFFIX, ShadowTarget
 from games.events.vocabulary import EventSpec, EventTypeRegistry, NewEvent
 from games.events.wiring import EventWiring
+from games.management.commands import rebuild_projections as rebuild_command
 from games.models import (
     LibraryEvent,
     LibraryEventStreamHead,
@@ -1083,3 +1089,144 @@ def test_rebuilding_a_library_that_never_appended_names_the_stream_it_made(
         report.stream_id == LibraryEventStreamHead.objects.get(library=owned_library).id
     )
     assert shelf.objects.count() == 0
+
+
+# --- The management command --------------------------------------------------
+#
+# The global registry declares no projection table yet, so the real-path tests
+# below run every phase over zero tables. That is the honest current state, and
+# it is what makes them real invocations rather than mocks: the canned-report
+# tests underneath cover the printing the empty state cannot exercise.
+
+
+def run_command(*arguments) -> str:
+    output = StringIO()
+    call_command("rebuild_projections", *arguments, stdout=output)
+    return output.getvalue()
+
+
+def canned_report(**overrides) -> RebuildReport:
+    """A report the command can print, so its printing is what the test reads."""
+    report = RebuildReport(
+        library_id=uuid7(),
+        stream_id=uuid7(),
+        mode=RebuildMode.CHECK,
+        swapped=False,
+        folded_through=12,
+        head_at_diff=12,
+        tables=(
+            no_difference(ENTRY_TABLE, rows=3),
+            TableDiff(
+                table=SHELF_TABLE,
+                live_rows=5,
+                rebuilt_rows=4,
+                only_live=2,
+                only_rebuilt=1,
+                differing=1,
+                sample=("abc",),
+            ),
+        ),
+        attempts=(
+            RebuildAttempt(
+                folded_through=12,
+                replay_seconds=0.1,
+                diff_seconds=0.2,
+                swap_seconds=None,
+                conflict=None,
+            ),
+        ),
+        elapsed_seconds=0.5,
+    )
+    return replace(report, **overrides)
+
+
+def reports(report):
+    """Stands in for the rebuild, so the command's printing is what is tested."""
+
+    def rebuild(library, **options):
+        return replace(report, library_id=library.pk, mode=options["mode"])
+
+    return rebuild
+
+
+@pytest.mark.django_db
+def test_the_command_checks_a_library_and_provisions_nothing(owned_library):
+    output = run_command(str(owned_library.pk), "--check")
+
+    assert str(owned_library.pk) in output
+    assert "0 event" in output
+    #: A check never takes the lock, so it never provisions the head a rebuild
+    #: would -- which is the sharpest available reading of "writes nothing".
+    assert not LibraryEventStreamHead.objects.filter(library=owned_library).exists()
+
+
+@pytest.mark.django_db
+def test_the_command_rebuilds_and_says_it_swapped(owned_library):
+    output = run_command(str(owned_library.pk))
+
+    assert "Swapped" in output
+    assert LibraryEventStreamHead.objects.filter(library=owned_library).exists()
+
+
+@pytest.mark.django_db
+def test_the_command_prints_a_line_per_table(owned_library, monkeypatch):
+    monkeypatch.setattr(
+        rebuild_command, "rebuild_projections", reports(canned_report())
+    )
+
+    output = run_command(str(owned_library.pk), "--check")
+
+    assert "12 event" in output
+    assert f"{ENTRY_TABLE}: 3 live, 3 rebuilt" in output
+    assert f"{SHELF_TABLE}: 5 live, 4 rebuilt, 2 only live, 1 only rebuilt" in output
+    assert "abc" in output
+    assert "0.50s" in output
+    #: 2 only live, 1 only rebuilt and 1 differing: what an operator decides on.
+    assert "4 row(s)" in output
+
+
+@pytest.mark.django_db
+def test_the_command_flags_a_check_the_head_moved_under(owned_library, monkeypatch):
+    monkeypatch.setattr(
+        rebuild_command,
+        "rebuild_projections",
+        reports(canned_report(head_at_diff=14)),
+    )
+
+    output = run_command(str(owned_library.pk), "--check")
+
+    assert "advisory" in output
+
+
+@pytest.mark.django_db
+def test_a_rebuild_that_never_swapped_fails_the_command(owned_library, monkeypatch):
+    conflicted = canned_report(
+        swapped=False,
+        attempts=(
+            RebuildAttempt(
+                folded_through=12,
+                replay_seconds=0.1,
+                diff_seconds=0.2,
+                swap_seconds=None,
+                conflict="The stream was at 12 when it was read and is at 13 now.",
+            ),
+        ),
+    )
+    monkeypatch.setattr(rebuild_command, "rebuild_projections", reports(conflicted))
+
+    with pytest.raises(CommandError, match="nothing was swapped"):
+        run_command(str(owned_library.pk))
+
+
+@pytest.mark.django_db
+def test_an_unknown_library_fails_without_touching_anything(owned_library):
+    with pytest.raises(CommandError, match="No library"):
+        run_command(str(uuid7()))
+
+    assert not LibraryEventStreamHead.objects.exists()
+
+
+@pytest.mark.django_db
+def test_a_library_id_that_is_not_a_uuid_fails(owned_library):
+    with pytest.raises(CommandError, match="not a library id"):
+        run_command("the-one-with-the-games")
