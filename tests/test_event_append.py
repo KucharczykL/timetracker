@@ -13,9 +13,11 @@ from games.events.append import (
     AppendResult,
     LockedStream,
     PayloadNotCanonical,
+    StreamSequenceMismatch,
     TransactionRequired,
     lock_stream,
 )
+from games.events.retry import run_in_transaction
 from games.events.vocabulary import (
     EventSpec,
     EventTypeRegistry,
@@ -470,6 +472,160 @@ def test_lock_stream_returns_the_same_head_for_a_provisioned_library(owned_libra
     assert LibraryEventStreamHead.objects.count() == 1
 
 
+def test_require_sequence_accepts_the_current_head(owned_library):
+    with transaction.atomic():
+        append(owned_library)
+        assert lock_stream(owned_library).require_sequence(1) is None
+
+
+def test_require_sequence_accepts_zero_on_a_provisioned_head(owned_library):
+    with transaction.atomic():
+        assert lock_stream(owned_library).require_sequence(0) is None
+
+    assert not LibraryEvent.objects.exists()
+
+
+def test_require_sequence_refuses_an_expectation_the_stream_has_passed(owned_library):
+    with transaction.atomic():
+        append(owned_library, [make_new_event(), make_new_event()])
+        with pytest.raises(StreamSequenceMismatch) as refusal:
+            lock_stream(owned_library).require_sequence(1)
+
+    assert refusal.value.expected == 1
+    assert refusal.value.actual == 2
+
+
+def test_require_sequence_refuses_an_expectation_above_the_head(owned_library):
+    with transaction.atomic():
+        append(owned_library)
+        #: A ValueError rather than a mismatch, which is not one.
+        with pytest.raises(ValueError, match="never at 7"):
+            lock_stream(owned_library).require_sequence(7)
+
+
+def test_require_sequence_refuses_a_negative_expectation(owned_library):
+    with transaction.atomic():
+        append(owned_library, [make_new_event() for _ in range(5)])
+        #: Also below the head, so this asserts which branch wins.
+        with pytest.raises(ValueError, match="never negative"):
+            lock_stream(owned_library).require_sequence(-1)
+
+
+def test_require_sequence_ignores_a_stale_double_locked_stream(owned_library):
+    with transaction.atomic():
+        stale = lock_stream(owned_library)
+        append_directly(lock_stream(owned_library), [make_new_event()])
+
+        assert stale.current_sequence == 0
+        assert stale.require_sequence(1) is None
+
+
+def test_require_sequence_refuses_a_stale_stream_agreeing_with_itself(owned_library):
+    with transaction.atomic():
+        stale = lock_stream(owned_library)
+        append_directly(lock_stream(owned_library), [make_new_event()])
+
+        #: A cached compare would agree with itself.
+        with pytest.raises(StreamSequenceMismatch) as refusal:
+            stale.require_sequence(0)
+
+    assert (refusal.value.expected, refusal.value.actual) == (0, 1)
+
+
+def test_require_sequence_ignores_a_stale_head_after_a_savepoint_rollback(
+    owned_library,
+):
+    with transaction.atomic():
+        stream = lock_stream(owned_library)
+        try:
+            with transaction.atomic():
+                append_directly(stream, [make_new_event()])
+                raise RuntimeError("roll the savepoint back")
+        except RuntimeError:
+            pass
+
+        assert stream.current_sequence == 1
+        assert stream.require_sequence(0) is None
+
+    assert not LibraryEvent.objects.exists()
+
+
+def test_an_append_with_a_matching_expectation_records_normally(owned_library):
+    with transaction.atomic():
+        first = append(owned_library, expected_sequence=0)
+        second = append(owned_library, expected_sequence=1)
+
+    assert (first.first_sequence, first.last_sequence) == (1, 1)
+    assert (second.first_sequence, second.last_sequence) == (2, 2)
+
+
+def test_an_append_refused_on_its_expectation_writes_nothing(owned_library):
+    with transaction.atomic():
+        append(owned_library)
+        with pytest.raises(StreamSequenceMismatch):
+            append(
+                owned_library,
+                [make_new_event(), make_new_event()],
+                expected_sequence=0,
+            )
+
+    assert LibraryEvent.objects.count() == 1
+    head = LibraryEventStreamHead.objects.get(library=owned_library)
+    assert head.current_sequence == 1
+
+
+def test_an_empty_append_is_refused_before_its_expectation(owned_library):
+    with transaction.atomic():
+        append(owned_library)
+        #: The programming error wins; a stale expectation cannot reclassify it.
+        with pytest.raises(ValueError, match="at least one event"):
+            append_directly(lock_stream(owned_library), [], expected_sequence=0)
+
+
+def test_a_refused_append_leaves_the_transaction_committable(
+    owned_library, second_library
+):
+    with transaction.atomic():
+        append(owned_library)
+        append(second_library, idempotency_key="unrelated")
+        with pytest.raises(StreamSequenceMismatch):
+            append(owned_library, expected_sequence=0)
+
+    assert LibraryEvent.objects.filter(library=owned_library).count() == 1
+    assert LibraryEvent.objects.filter(library=second_library).count() == 1
+
+
+def test_one_expectation_cannot_serve_two_appends_on_one_stream(owned_library):
+    with transaction.atomic():
+        stream = lock_stream(owned_library)
+        append_directly(stream, [make_new_event()], expected_sequence=0)
+        with pytest.raises(StreamSequenceMismatch) as refusal:
+            append_directly(stream, [make_new_event()], expected_sequence=0)
+
+    assert (refusal.value.expected, refusal.value.actual) == (0, 1)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_sequence_mismatch_is_not_retried_and_rolls_back(owned_library):
+    with transaction.atomic():
+        append(owned_library)
+
+    attempts = 0
+
+    def operation() -> None:
+        nonlocal attempts
+        attempts += 1
+        append(owned_library, idempotency_key="doomed")
+        append(owned_library, expected_sequence=0)
+
+    with pytest.raises(StreamSequenceMismatch):
+        run_in_transaction(operation)
+
+    assert attempts == 1
+    #: The doomed append went back with the transaction.
+    assert LibraryEvent.objects.count() == 1
+
+
 @pytest.mark.django_db(transaction=True)
 def test_locking_outside_a_transaction_is_refused(owned_library):
     with pytest.raises(TransactionRequired, match="open transaction"):
@@ -581,3 +737,76 @@ def test_concurrent_appends_serialize_into_one_contiguous_range(owned_library):
     assert list(
         LibraryEvent.objects.order_by("sequence").values_list("sequence", flat=True)
     ) == [1, 2, 3, 4, 5]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_require_sequence_refuses_an_expectation_formed_before_the_lock(owned_library):
+    with transaction.atomic():
+        append(owned_library, idempotency_key="seed")
+
+    holder_locked = Event()
+    waiter_requested_lock = Event()
+    refusals: dict[str, StreamSequenceMismatch] = {}
+    errors: list[BaseException] = []
+
+    def run_holder():
+        close_old_connections()
+        try:
+            with transaction.atomic():
+                stream = lock_stream(owned_library)
+                holder_locked.set()
+                append_directly(stream, [make_new_event()], idempotency_key="holder")
+                if not waiter_requested_lock.wait(10):
+                    raise TimeoutError("waiter never requested the head lock")
+        except BaseException as error:  # noqa: BLE001 - return thread failures
+            errors.append(error)
+        finally:
+            close_old_connections()
+
+    def run_waiter():
+        close_old_connections()
+
+        def announce_lock_request(execute, sql, params, many, context):
+            if "games_libraryeventstreamhead" in sql and "FOR UPDATE" in sql:
+                waiter_requested_lock.set()
+            return execute(sql, params, many, context)
+
+        try:
+            assert holder_locked.wait(10)
+            #: Non-locking, and before the lock. A FOR UPDATE read here would
+            #: release the holder, block, and return the advanced head -- an
+            #: expectation that passes, proving nothing.
+            expected = LibraryEventStreamHead.objects.get(
+                library=owned_library
+            ).current_sequence
+            with (
+                connection.execute_wrapper(announce_lock_request),
+                transaction.atomic(),
+            ):
+                stream = lock_stream(owned_library)
+                #: Caught here: the harness fails on anything left in errors.
+                try:
+                    stream.require_sequence(expected)
+                except StreamSequenceMismatch as refusal:
+                    refusals["waiter"] = refusal
+        except BaseException as error:  # noqa: BLE001 - return thread failures
+            errors.append(error)
+        finally:
+            close_old_connections()
+
+    holder = Thread(target=run_holder, name="sequence-holder")
+    waiter = Thread(target=run_waiter, name="sequence-waiter")
+    holder.start()
+    waiter.start()
+    holder.join(20)
+    waiter.join(20)
+
+    assert not errors, errors
+    assert not holder.is_alive()
+    assert not waiter.is_alive()
+
+    refusal = refusals["waiter"]
+    assert (refusal.expected, refusal.actual) == (1, 2)
+    assert list(
+        LibraryEvent.objects.order_by("sequence").values_list("sequence", flat=True)
+    ) == [1, 2]
