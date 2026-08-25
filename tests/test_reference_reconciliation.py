@@ -327,6 +327,34 @@ def test_many_events_naming_one_stranded_row_are_one_gap(owned_library, device):
     assert gap.first_sequence == 1
 
 
+def test_one_event_naming_a_row_twice_is_one_event(owned_library, game, platform):
+    """The count is events, not index rows."""
+    kinds = ReferenceKindRegistry()
+    kinds.register(
+        ReferenceKind(
+            name="catalog.game",
+            model=Game,
+            capture=_capture_game,
+            resolution=Resolution.REQUIRED,
+        )
+    )
+    kinds.register(
+        ReferenceKind(
+            name="catalog.platform",
+            model=Platform,
+            capture=_capture_platform,
+            resolution=Resolution.REQUIRED,
+        )
+    )
+    append(owned_library, [everything_event(game, None, [platform, platform])])
+
+    strand(platform)
+
+    (gap,) = reconcile_references(owned_library, kinds=kinds).gaps
+    assert LibraryEventReference.objects.filter(kind="catalog.platform").count() == 2
+    assert gap.event_count == 1
+
+
 def test_a_sequence_field_names_its_key_and_its_entry(
     owned_library, game, device, platform
 ):
@@ -708,7 +736,7 @@ def test_the_printed_report_counts_what_it_did_not_name(owned_library):
         )
 
     printed = stderr.getvalue()
-    assert f"{GAP_SAMPLE_LIMIT + 2} recorded reference(s)" in printed
+    assert f"name {GAP_SAMPLE_LIMIT + 2} row(s) that no longer exist" in printed
     assert printed.count("first named by event #") == GAP_SAMPLE_LIMIT
     assert "and 2 more." in printed
 

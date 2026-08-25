@@ -42,7 +42,7 @@ returns before the check. There is no option to skip the check.
 - The snapshot describes the loss. It does not replace the row. If the payload
   holds no reference with that id, the label is `no snapshot recorded`.
 - `UnresolvedReferences` carries the report. The two modes of
-  `rebuild_projections` refuse, before the rebuild stages a shadow table.
+  `rebuild_projections` refuse, before a shadow table holds a row.
   `manage.py rebuild_projections` prints the report to the error output and
   exits with an error in the two modes. A `--check` exits with no error for
   drift, because a rebuild removes drift.
@@ -53,5 +53,5 @@ returns before the check. There is no option to skip the check.
   resolves; a scoped resolver is
   [#909](https://github.com/KucharczykL/timetracker/issues/909).
 
-The query count is one, plus one for each kind that the index holds, plus two
-for a report with a gap. This issue adds no migration and changes no schema.
+The query count is one, plus one for each `REQUIRED` kind that the index holds,
+plus two for a report with a gap. This issue adds no migration and changes no schema.

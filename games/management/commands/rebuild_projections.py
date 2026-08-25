@@ -42,8 +42,8 @@ class Command(BaseCommand):
             self._write_reconciliation(error.reconciliation)
             #: Both modes fail. No rebuild repairs this.
             raise CommandError(
-                f"{error.reconciliation.unresolved} recorded reference(s) name "
-                "rows that no longer exist, so nothing was replayed."
+                f"The events name {error.reconciliation.unresolved} row(s) that "
+                "no longer exist, so nothing was replayed."
             ) from error
         self._write_report(report)
 
@@ -106,8 +106,8 @@ class Command(BaseCommand):
     def _write_reconciliation(self, reconciliation: ReferenceReconciliation) -> None:
         """Every gap the refusal carries."""
         self.stderr.write(
-            f"Library {reconciliation.library_id}: {reconciliation.unresolved} "
-            f"recorded reference(s) name rows that no longer exist, over "
+            f"Library {reconciliation.library_id}: the events name "
+            f"{reconciliation.unresolved} row(s) that no longer exist, over "
             f"{len(reconciliation.kinds_checked)} kind(s) checked."
         )
         for gap in reconciliation.gaps:

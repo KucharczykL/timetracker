@@ -101,9 +101,8 @@ def summarise(reconciliation: ReferenceReconciliation) -> str:
     if remaining:
         named = f"{named}; and {remaining} more"
     return (
-        f"This library records {reconciliation.unresolved} reference(s) naming "
-        f"rows that no longer exist, so a replay cannot resolve them: {named}. "
-        f"{REMEDY}"
+        f"This library's events name {reconciliation.unresolved} row(s) that no "
+        f"longer exist, so a replay cannot resolve them: {named}. {REMEDY}"
     )
 
 
@@ -175,16 +174,20 @@ def _describe(
             "kind", "referenced_id", "payload_key", "event__sequence", "event__payload"
         )
     }
+    #: One event naming a row twice is one event.
     counted = {
         GapKey(row["kind"], row["referenced_id"]): row["naming"]
         for row in index.filter(named)
         .values("kind", "referenced_id")
-        .annotate(naming=Count("id"))
+        .annotate(naming=Count("event", distinct=True))
     }
 
     gaps = []
     for key in sample:
-        row = earliest[key]
+        row = earliest.get(key)
+        if row is None:
+            #: A purge landed between the two reads.
+            continue
         snapshot = _snapshot_in(
             row["event__payload"], row["payload_key"], key.referenced_id
         )

@@ -123,8 +123,8 @@ snapshot that the first event recorded. This is the only step that reads a
 payload. The snapshot says what the row was called. It does not replace the row.
 Nothing here writes a row again.
 
-The two modes of `rebuild_projections` refuse. The refusal occurs before the
-rebuild stages a shadow table, thus there is no report of the tables to give.
+The two modes of `rebuild_projections` refuse. The refusal occurs before a
+shadow table holds a row, thus there is no report of the tables to give.
 `manage.py rebuild_projections` prints the full description to the error output
 and exits with a non-zero status in the two modes. A `--check` exits zero for
 drift, because a rebuild removes drift. A row that no longer exists is not a
