@@ -13,6 +13,8 @@ asserts set equality against a pinned list.
 """
 
 from collections.abc import Callable
+from dataclasses import replace
+from random import Random
 from typing import Any, ClassVar, TypedDict
 from uuid import UUID, uuid4, uuid7
 
@@ -22,6 +24,7 @@ from django.test.utils import isolate_apps
 from pydantic import ConfigDict, with_config
 from test_projection_targets import ENTRY_TABLE, SHELF_TABLE, declare_projection_models
 
+from games.events import rebuild as rebuild_module
 from games.events.append import StreamSequenceMismatch, lock_stream
 from games.events.envelope import RecordedEvent
 from games.events.projection import (
@@ -33,17 +36,20 @@ from games.events.projection import (
 from games.events.rebuild import (
     DIFF_SAMPLE_LIMIT,
     LiveWriteRefused,
+    RebuildMode,
     TableDiff,
     diff_table,
     diff_tables,
     insertable_columns,
     only_shadow_writes,
     projection_models,
+    rebuild_projections,
     replay_into_shadow,
     shadow_tables,
     swap_in,
 )
 from games.events.replay import ReplayResult, StreamNotContiguous
+from games.events.retry import RetryPolicy
 from games.events.targets import SHADOW_SUFFIX, ShadowTarget
 from games.events.vocabulary import EventSpec, EventTypeRegistry, NewEvent
 from games.events.wiring import EventWiring
@@ -880,3 +886,200 @@ def test_the_swap_costs_the_same_statements_at_any_size(
             SWAP_FIXED_STATEMENTS + SWAP_STATEMENTS_PER_TABLE
         ):
             swap_in(owned_library, [shelf], replayed.folded_through)
+
+
+# --- The attempt loop and the report ----------------------------------------
+
+
+def recording_policy(**overrides) -> tuple[RetryPolicy, list[float]]:
+    """A policy that records what it would have slept instead of sleeping.
+
+    `sleep` and `random` are fields on `RetryPolicy` precisely so a test asserts
+    on the delays the loop produces rather than on a patch of the stdlib.
+    """
+    delays: list[float] = []
+    return RetryPolicy(sleep=delays.append, random=Random(0), **overrides), delays
+
+
+class AppendsFirst:
+    """Stands in for a rebuild phase and lands an append just before it runs.
+
+    The race the loop exists for is an event arriving between the replay and the
+    swap, and there is no other lever to produce it: a family appending from
+    inside the replay is refused by the write guard, which is what the guard is
+    for.
+    """
+
+    def __init__(self, wrapped, library, *, appends=None):
+        self.wrapped = wrapped
+        self.library = library
+        #: None means every call; a number means the first that many.
+        self.appends = appends
+        self.calls = 0
+
+    def __call__(self, *args, **kwargs):
+        self.calls += 1
+        if self.appends is None or self.calls <= self.appends:
+            append_shelved(self.library, [f"landed-{self.calls}"])
+        return self.wrapped(*args, **kwargs)
+
+
+def shelf_diff(report) -> TableDiff:
+    return next(table for table in report.tables if table.table == SHELF_TABLE)
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_an_append_between_the_replay_and_the_swap_redoes_the_attempt(
+    owned_library, monkeypatch
+):
+    """The expectation is what went stale, so the whole attempt is redone.
+
+    The second attempt folds the event that landed, which is why the swap can
+    go ahead: its shadow is a projection of the stream as it now stands.
+    """
+    shelf = declare_and_create_shelf()
+    append_shelved(owned_library, ["one"])
+    policy, delays = recording_policy()
+    monkeypatch.setattr(
+        rebuild_module, "swap_in", AppendsFirst(swap_in, owned_library, appends=1)
+    )
+
+    report = rebuild_projections(
+        owned_library,
+        mode=RebuildMode.REBUILD,
+        wiring=replace(SHADOW_WIRING, retry_policy=policy),
+        apps=shelf._meta.apps,
+    )
+
+    assert report.swapped is True
+    assert len(report.attempts) == 2
+    assert report.attempts[0].conflict is not None
+    assert report.attempts[0].swap_seconds is None
+    assert report.attempts[1].conflict is None
+    assert report.attempts[1].swap_seconds is not None
+    assert report.folded_through == head_sequence(owned_library) == 2
+    assert len(delays) == 1
+    assert 0 <= delays[0] <= policy.base_delay
+    assert shelf_diff(report).differing == 0
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_a_stream_that_keeps_moving_exhausts_the_budget(owned_library, monkeypatch):
+    shelf = declare_and_create_shelf()
+    append_shelved(owned_library, ["one"])
+    shelf.objects.filter(title="one").update(title="drifted")
+    policy, delays = recording_policy(retries=2)
+    monkeypatch.setattr(rebuild_module, "swap_in", AppendsFirst(swap_in, owned_library))
+
+    report = rebuild_projections(
+        owned_library,
+        mode=RebuildMode.REBUILD,
+        wiring=replace(SHADOW_WIRING, retry_policy=policy),
+        apps=shelf._meta.apps,
+    )
+
+    assert report.swapped is False
+    assert len(report.attempts) == policy.retries + 1
+    assert all(attempt.conflict for attempt in report.attempts)
+    #: One sleep between attempts, none after the last: the budget is spent, not
+    #: waited out.
+    assert len(delays) == policy.retries
+    #: The corruption the rebuild was run to fix is still there, which is how a
+    #: swap that never happened shows up in the rows.
+    assert shelf.objects.filter(title="drifted").exists()
+    assert not relation_exists(shadow_of(SHELF_TABLE))
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_check_mode_reports_the_drift_and_writes_nothing(owned_library):
+    shelf = declare_and_create_shelf()
+    append_shelved(owned_library, ["one"])
+    shelf.objects.filter(title="one").update(title="drifted")
+
+    report = rebuild_projections(
+        owned_library, wiring=SHADOW_WIRING, apps=shelf._meta.apps
+    )
+
+    assert report.mode is RebuildMode.CHECK
+    assert report.swapped is False
+    assert report.library_id == owned_library.pk
+    assert report.stream_id is not None
+    #: Discovery order: every projection table in the registry, not just the
+    #: ones a family writes.
+    assert [table.table for table in report.tables] == [ENTRY_TABLE, SHELF_TABLE]
+    assert shelf_diff(report).differing == 1
+    assert report.attempts[0].swap_seconds is None
+    #: Nothing was written, and nothing was left behind either.
+    assert shelf.objects.get().title == "drifted"
+    assert not relation_exists(shadow_of(SHELF_TABLE))
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_check_mode_reports_the_head_it_diffed_against(owned_library, monkeypatch):
+    """An append during the diff makes the diff advisory, and the report says so.
+
+    `check` never takes the lock, so an event landing between the replay's head
+    read and the diff shows up as drift that does not exist. The two numbers
+    side by side are what tells an operator that is what happened.
+    """
+    shelf = declare_and_create_shelf()
+    append_shelved(owned_library, ["one"])
+    monkeypatch.setattr(
+        rebuild_module, "diff_tables", AppendsFirst(diff_tables, owned_library)
+    )
+
+    report = rebuild_projections(
+        owned_library, wiring=SHADOW_WIRING, apps=shelf._meta.apps
+    )
+
+    assert report.folded_through == 1
+    assert report.head_at_diff == 2
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_a_library_that_never_appended_has_no_stream_to_check(owned_library):
+    shelf = declare_and_create_shelf()
+
+    report = rebuild_projections(
+        owned_library, wiring=SHADOW_WIRING, apps=shelf._meta.apps
+    )
+
+    assert report.stream_id is None
+    assert report.folded_through == 0
+    assert report.head_at_diff == 0
+    assert report.tables == (
+        no_difference(ENTRY_TABLE, rows=0),
+        no_difference(SHELF_TABLE, rows=0),
+    )
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_rebuilding_a_library_that_never_appended_names_the_stream_it_made(
+    owned_library,
+):
+    """`lock_stream` provisions the head, so a rebuild has a stream to report.
+
+    The field is nullable for the check-mode case above rather than because the
+    report ever presents a provisioned stream as an absent one.
+    """
+    shelf = declare_and_create_shelf()
+    seed_shelf(shelf, owned_library, title="left-over")
+
+    report = rebuild_projections(
+        owned_library,
+        mode=RebuildMode.REBUILD,
+        wiring=SHADOW_WIRING,
+        apps=shelf._meta.apps,
+    )
+
+    assert report.swapped is True
+    assert (
+        report.stream_id == LibraryEventStreamHead.objects.get(library=owned_library).id
+    )
+    assert shelf.objects.count() == 0

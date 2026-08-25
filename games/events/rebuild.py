@@ -12,9 +12,12 @@ nothing to write to.
 """
 
 import re
+import uuid
 from collections.abc import Iterable, Iterator, Sequence
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, replace
+from enum import StrEnum
+from time import monotonic
 from typing import Any, cast
 
 from django.apps import apps as global_apps
@@ -22,11 +25,11 @@ from django.apps.registry import Apps
 from django.db import connection, transaction
 from django.db.models.fields.generated import GeneratedField
 
-from games.events.append import lock_stream
+from games.events.append import StreamSequenceMismatch, lock_stream
 from games.events.replay import ReplayResult, replay
 from games.events.targets import SHADOW_SUFFIX, ShadowTarget
 from games.events.wiring import DEFAULT_WIRING, EventWiring
-from games.models import ProjectionModel, UserLibrary
+from games.models import LibraryEventStreamHead, ProjectionModel, UserLibrary
 
 type ColumnName = str  # e.g. "library_id"
 type TableName = str  # e.g. "games_playergamestate"
@@ -423,3 +426,220 @@ def swap_in(
                         shadow=connection.ops.quote_name(shadow_table_name(model)),
                     )
                 )
+
+
+# --- The attempt loop and the report ----------------------------------------
+
+
+class RebuildMode(StrEnum):
+    """What an invocation is allowed to do with what it finds."""
+
+    #: Replay and diff, take no lock, write nothing.
+    CHECK = "check"
+    #: Replay, diff, and swap regardless of the diff -- drift is the reason a
+    #: rebuild is being run, so refusing on it would refuse the case the tool
+    #: exists for.
+    REBUILD = "rebuild"
+
+
+@dataclass(frozen=True, slots=True)
+class RebuildAttempt:
+    """One pass through the phases, timed, and how it ended."""
+
+    folded_through: int
+    replay_seconds: float
+    diff_seconds: float
+    #: None when the attempt did not reach the swap: check mode, or a conflict.
+    swap_seconds: float | None
+    #: The conflict that sent the attempt back, as its message.
+    conflict: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class RebuildReport:
+    """What an operator reads, and what every test asserts on."""
+
+    library_id: uuid.UUID
+    #: None when the library never appended and nothing provisioned a stream --
+    #: which `check` never does and a `rebuild` always does, through the lock.
+    stream_id: uuid.UUID | None
+    mode: RebuildMode
+    swapped: bool
+    folded_through: int
+    #: The head when the diff ran. In check mode a difference from
+    #: `folded_through` means an event landed mid-check and the diff is
+    #: advisory; in rebuild mode the same race is a redo instead.
+    head_at_diff: int
+    tables: tuple[TableDiff, ...]
+    attempts: tuple[RebuildAttempt, ...]
+    elapsed_seconds: float
+
+
+@dataclass(frozen=True, slots=True)
+class _StagedRebuild:
+    """One attempt's shadow, folded and diffed, before anything is swapped.
+
+    A value rather than five locals so the two things built from it -- the
+    attempt and the report -- are built the same way at each of the loop's
+    exits, and so neither is a closure over a loop variable.
+    """
+
+    replayed: ReplayResult
+    replay_seconds: float
+    tables: tuple[TableDiff, ...]
+    diff_seconds: float
+    head_at_diff: int
+
+    def attempt(
+        self, *, swap_seconds: float | None, conflict: str | None
+    ) -> RebuildAttempt:
+        return RebuildAttempt(
+            folded_through=self.replayed.folded_through,
+            replay_seconds=self.replay_seconds,
+            diff_seconds=self.diff_seconds,
+            swap_seconds=swap_seconds,
+            conflict=conflict,
+        )
+
+    def report(
+        self,
+        *,
+        library: UserLibrary,
+        mode: RebuildMode,
+        swapped: bool,
+        stream_id: uuid.UUID | None,
+        attempts: Sequence[RebuildAttempt],
+        elapsed_seconds: float,
+    ) -> RebuildReport:
+        return RebuildReport(
+            library_id=library.pk,
+            stream_id=stream_id,
+            mode=mode,
+            swapped=swapped,
+            folded_through=self.replayed.folded_through,
+            head_at_diff=self.head_at_diff,
+            tables=self.tables,
+            attempts=tuple(attempts),
+            elapsed_seconds=elapsed_seconds,
+        )
+
+
+def _stage(
+    library: UserLibrary,
+    models: Sequence[type[ProjectionModel]],
+    wiring: EventWiring,
+) -> _StagedRebuild:
+    """Phases 2 and 3, timed, inside shadow tables the caller has created."""
+    replay_started = monotonic()
+    replayed = replay_into_shadow(library, models, wiring=wiring)
+    replay_seconds = monotonic() - replay_started
+
+    diff_started = monotonic()
+    tables = diff_tables(models, library)
+    diff_seconds = monotonic() - diff_started
+
+    #: After the diff, so a check mode report can say whether an event landed
+    #: while it ran. The rebuild path asserts the same number under the lock.
+    _, head_at_diff = _stream_head(library)
+    return _StagedRebuild(
+        replayed=replayed,
+        replay_seconds=replay_seconds,
+        tables=tables,
+        diff_seconds=diff_seconds,
+        head_at_diff=head_at_diff,
+    )
+
+
+def rebuild_projections(
+    library: UserLibrary,
+    *,
+    mode: RebuildMode = RebuildMode.CHECK,
+    wiring: EventWiring = DEFAULT_WIRING,
+    apps: Apps = global_apps,
+) -> RebuildReport:
+    """Rebuild one library's projections, or report what a rebuild would change.
+
+    Checking is the default: an invocation that writes is the one that says so.
+
+    A `StreamSequenceMismatch` redoes the whole attempt -- fresh shadow, fresh
+    replay, fresh expectation -- because what went stale is the expectation, and
+    a shadow folded from a prefix of the stream is not a thing to swap in.
+    `run_in_transaction` is not the loop for this: it classifies on SQLSTATE and
+    would decline this exception, correctly, since what needs redoing is the
+    replay outside the transaction rather than the transaction.
+
+    Everything else propagates on the first attempt: a hole in the stream, a
+    payload no schema can read, and a family's own exception are none of them
+    fixed by folding the same events again.
+    """
+    models = projection_models(apps)
+    policy = wiring.retry_policy
+    attempts: list[RebuildAttempt] = []
+    started = monotonic()
+
+    for attempt_number in range(policy.retries + 1):
+        with shadow_tables(models):
+            staged = _stage(library, models, wiring)
+            stream_id = staged.replayed.stream_id
+
+            if mode is RebuildMode.CHECK:
+                attempts.append(staged.attempt(swap_seconds=None, conflict=None))
+                return staged.report(
+                    library=library,
+                    mode=mode,
+                    swapped=False,
+                    stream_id=stream_id,
+                    attempts=attempts,
+                    elapsed_seconds=monotonic() - started,
+                )
+
+            swap_started = monotonic()
+            try:
+                swap_in(library, models, staged.replayed.folded_through)
+            except StreamSequenceMismatch as conflict:
+                attempts.append(
+                    staged.attempt(swap_seconds=None, conflict=str(conflict))
+                )
+                if attempt_number == policy.retries:
+                    return staged.report(
+                        library=library,
+                        mode=mode,
+                        swapped=False,
+                        stream_id=stream_id,
+                        attempts=attempts,
+                        elapsed_seconds=monotonic() - started,
+                    )
+            else:
+                attempts.append(
+                    staged.attempt(
+                        swap_seconds=monotonic() - swap_started, conflict=None
+                    )
+                )
+                if stream_id is None:
+                    #: The lock provisions the head a never-appended library has
+                    #: none of, so by here there is a real stream to name.
+                    stream_id, _ = _stream_head(library)
+                return staged.report(
+                    library=library,
+                    mode=mode,
+                    swapped=True,
+                    stream_id=stream_id,
+                    attempts=attempts,
+                    elapsed_seconds=monotonic() - started,
+                )
+
+        #: Outside the shadow block: the tables this attempt staged are dropped
+        #: before the next one recreates them, and nothing is held over the wait.
+        policy.sleep(policy.delay_for(attempt_number))
+
+    raise AssertionError("The loop returns on its last attempt, conflict or not.")
+
+
+def _stream_head(library: UserLibrary) -> tuple[uuid.UUID | None, int]:
+    """The library's stream and how far it has advanced, or `(None, 0)`."""
+    head = (
+        LibraryEventStreamHead.objects.filter(library=library)
+        .values_list("id", "current_sequence")
+        .first()
+    )
+    return head if head is not None else (None, 0)
