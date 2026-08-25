@@ -1,10 +1,7 @@
-"""The delete-game confirmation tells the truth about what it will do (#653).
+"""The confirmation tells the truth.
 
-A game no event references is really deleted, and the page says so. A game a
-recorded event references is retained instead, and the page has to say *that*
--- promising a permanent delete and then archiving is the one outcome worse
-than either. The copy is what the user consents to, so it is asserted through
-the browser rather than only against the view.
+The copy is what the user consents to. Assert it in the
+browser, not only against the view.
 """
 
 import uuid

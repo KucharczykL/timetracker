@@ -1,19 +1,6 @@
-"""What happens to a catalog row a recorded event named.
+"""What happens to a referenced row.
 
-`docs/event-references.md` promises that a `REQUIRED` reference resolves: a
-replay reading a payload must find the row it names. Nothing enforced that
-promise -- the three delete views hard-deleted, and a recorded reference could
-be left pointing at nothing.
-
-This module is the policy that keeps it. A row no event named is really
-deleted, as before. A row an event named is *retired* instead: everything the
-delete would have taken with it still goes, and the row itself stays behind
-with `archived_at` set, out of sight of every library-scoped read but still
-resolvable by id.
-
-The two halves are deliberately separate. Retention and resolvability live
-here; failing a replay that cannot resolve a reference, and reporting why, is
-#669's.
+The policy is in `docs/event-retention.md`.
 """
 
 import contextvars
@@ -37,21 +24,11 @@ from games.models import Game, LibraryEventReference
 
 
 class ReferencedRowDeletion(Exception):
-    """Raised when something tries to delete a row an event references.
-
-    The three delete views go through `archive_or_delete` and never see this.
-    It exists for everything else -- a shell, a script, a management command --
-    because a promise only one call path keeps is not a promise.
-    """
+    """Raised when a referenced row is deleted."""
 
 
 class UnresolvableReference(LookupError):
-    """Raised when a recorded reference names a row that is not there.
-
-    Carries the kind and id rather than only a message, so #669's
-    reconciliation report can be built from the exception instead of by
-    re-reading the payload.
-    """
+    """Raised when a recorded reference names nothing."""
 
     def __init__(self, reference: Reference) -> None:
         self.reference = reference
@@ -64,7 +41,7 @@ class UnresolvableReference(LookupError):
 
 
 class Retirement(StrEnum):
-    """What retiring a row turned out to mean."""
+    """What retiring a row meant."""
 
     DELETED = "deleted"
     ARCHIVED = "archived"
@@ -75,9 +52,7 @@ def reference_count(
 ) -> int:
     """How many recorded references name this row.
 
-    Deliberately not library-scoped: a shared Platform one library referenced
-    is retained for every library, because the event that named it outlives
-    whichever library stops using it.
+    Not library-scoped. One library keeps a shared row for all.
     """
     kind = kinds.kind_of(instance)
     return LibraryEventReference.objects.to_row(kind.name, instance.pk).count()
@@ -86,12 +61,10 @@ def reference_count(
 def must_be_retained(
     instance: Model, *, kinds: ReferenceKindRegistry = DEFAULT_REFERENCE_KINDS
 ) -> bool:
-    """Whether deleting this row would break a promise a payload made."""
+    """Whether a delete would strand a reference."""
     kind = kinds.kind_of(instance)
     if kind.resolution is not Resolution.REQUIRED:
-        #: An EVIDENCE_ONLY reference is a snapshot for a reader, not a
-        #: pointer a replay follows. The payload already holds everything it
-        #: promised, so the row is free to go.
+        #: EVIDENCE_ONLY: the snapshot promised everything.
         return False
     return LibraryEventReference.objects.to_row(kind.name, instance.pk).exists()
 
@@ -99,15 +72,9 @@ def must_be_retained(
 def resolve_reference(
     reference: Reference, *, kinds: ReferenceKindRegistry = DEFAULT_REFERENCE_KINDS
 ) -> Model:
-    """The row a recorded reference names, archived or not.
-
-    This is the one read that must see through the archive: the whole point of
-    retaining a row is that this keeps working after the library deleted it.
-    """
+    """The row a reference names."""
     kind = kinds.kind_for(reference["kind"])
-    #: `_default_manager` rather than `objects`, the documented way to reach a
-    #: manager on a model you were handed. It is the plain one on all three, so
-    #: it sees archived rows -- which is the whole point.
+    #: The plain manager. It sees archived rows.
     try:
         return kind.model._default_manager.get(pk=reference["id"])
     except kind.model.DoesNotExist:
@@ -115,11 +82,10 @@ def resolve_reference(
 
 
 def detach_game_from_purchases(game: Game) -> None:
-    """Take a game out of the purchases that counted it.
+    """Take a game out of its purchases.
 
-    `m2m_changed` does not fire for a related object's deletion, so the count
-    is maintained here. A purchase left with no games at all is deleted: it
-    recorded buying something that is no longer in the library.
+    `m2m_changed` does not fire for a deletion. A purchase with no
+    games left is deleted.
     """
     for purchase in game.purchases.all():
         if purchase.num_purchases > 0:
@@ -131,16 +97,15 @@ def detach_game_from_purchases(game: Game) -> None:
                 purchase.save(update_fields=["num_purchases", "updated_at"])
 
 
-#: What a delete does that no cascade describes, per model. Only Game has any:
-#: its purchase bookkeeping lives in a `pre_delete` receiver, and archiving
-#: never deletes the row, so the receiver never runs.
+#: What a delete does that no cascade does.
+#: Archiving never fires the `pre_delete` receiver.
 _UNCASCADED_COLLATERAL: dict[type[Model], Callable[[Any], None]] = {
     Game: detach_game_from_purchases,
 }
 
 
 def archive_or_delete(instance: Model) -> Retirement:
-    """Delete the row, or retire it in place if an event named it."""
+    """Delete the row, or archive it."""
     with transaction.atomic():
         if not must_be_retained(instance):
             instance.delete()
@@ -151,25 +116,15 @@ def archive_or_delete(instance: Model) -> Retirement:
             collateral(instance)
         _delete_everything_but(instance)
         stamp = now()
-        #: A queryset update rather than `save()`: this is a stamp, not an
-        #: edit. `Platform.save()` re-runs `clean()`, and `Game.save()` goes
-        #: through the status-change receiver -- neither has anything to say
-        #: about a row leaving the library.
+        #: A stamp, not an edit.
+        #: `save()` would run `clean()` and a receiver.
         model._default_manager.filter(pk=instance.pk).update(archived_at=stamp)
         instance.archived_at = stamp  # type: ignore[attr-defined]
         return Retirement.ARCHIVED
 
 
 def _delete_everything_but(instance: Model) -> None:
-    """Run the delete this row would have caused, and keep the row.
-
-    Django's own collector decides what a delete takes with it -- which
-    relations cascade, which are set to NULL, which m2m rows go. Asking it and
-    then dropping the root from what it collected is what keeps archiving and
-    deleting the same act minus one row. Enumerating the collateral here by
-    hand would be a second copy of every `on_delete`, free to drift from the
-    first, and the drift would show up as orphaned sessions in a list.
-    """
+    """Run the delete, and keep the row."""
     model = type(instance)
     collector = Collector(using=router.db_for_write(model, instance=instance))
     collector.collect([instance])
@@ -180,9 +135,8 @@ def _delete_everything_but(instance: Model) -> None:
             collector.data[model] = remaining
         else:
             del collector.data[model]
-    #: The root cannot reach a fast-delete queryset while the retention guard
-    #: is connected -- a signal listener rules it out -- but the exclusion
-    #: costs one clause and does not depend on that staying true.
+    #: The guard rules this out.
+    #: Do not depend on that.
     collector.fast_deletes = [
         queryset.exclude(pk=instance.pk) if queryset.model is model else queryset
         for queryset in collector.fast_deletes
@@ -195,12 +149,9 @@ _purging = contextvars.ContextVar("purging_library", default=False)
 
 @contextmanager
 def purging_library() -> Iterator[None]:
-    """Let a whole-library purge delete rows the guard would otherwise keep.
+    """Let a whole-library purge delete referenced rows.
 
-    A purge takes the events as well, so after it there is no recorded
-    reference left to resolve and nothing to retain the row for. Without this
-    the guard would make `delete_user_library` impossible to complete, which is
-    the one operation that is allowed to leave nothing behind.
+    A purge takes the events too. Nothing is left to resolve.
     """
     token = _purging.set(True)
     try:
@@ -210,7 +161,7 @@ def purging_library() -> Iterator[None]:
 
 
 def refuse_to_delete_a_referenced_row(instance: Model) -> None:
-    """The guard, called from `pre_delete` on every retainable model."""
+    """The guard, called from `pre_delete`."""
     if _purging.get():
         return
     if must_be_retained(instance):

@@ -1,9 +1,7 @@
-"""Confirm-then-retire: the delete affordance for a row an event may reference.
+"""The delete affordance for a referenceable row.
 
-A sibling of :func:`games.views.deletion.confirm_and_delete`, built on the same
-``confirm_and_apply``. The only difference is that it asks the retention policy
-what the POST will actually do, so the confirmation page can say so. Promising
-a permanent delete and then archiving would be the one thing worse than either.
+A sibling of `confirm_and_delete`. It asks the policy what the
+POST will do, so the page can say so.
 """
 
 from collections.abc import Sequence
@@ -20,7 +18,7 @@ from games.views.deletion import confirm_and_apply
 
 
 def retention_message(noun: str, label: str, count: int) -> str:
-    """What the confirmation says when the row is going to be kept."""
+    """What the page says when archiving."""
     return (
         f"{count} recorded event(s) reference {label}, and their history has to "
         f"stay readable. The {noun} will be removed from your library along "
@@ -42,11 +40,10 @@ def confirm_and_retire(
     details: Children = None,
     detail_url: str | None = None,
 ) -> HttpResponse:
-    """Confirm on GET, retire on POST, then return to the origin.
+    """Confirm on GET, retire on POST.
 
-    ``message`` is the copy for the ordinary case, where the row really is
-    deleted. When an event references it, :func:`retention_message` replaces
-    that copy; ``noun`` and ``label`` are what it needs to name the row.
+    `message` is the copy for a real delete. `noun` and `label`
+    name the row in the replacement copy.
     """
     referencing = reference_count(instance)
     return confirm_and_apply(

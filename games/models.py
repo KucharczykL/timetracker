@@ -40,13 +40,10 @@ class LibraryOwnedQuerySet(models.QuerySet):
 
 
 class ArchivableQuerySet(LibraryOwnedQuerySet):
-    """A row an event references outlives its deletion, archived.
+    """A referenced row outlives its deletion, archived.
 
-    `for_library` and `visible_to` are the two ways the application asks for
-    rows, so folding the exclusion into them is what keeps an archived row out
-    of every list, form, filter, and API without each of them remembering to
-    ask. A caller that must see archived rows -- a replay resolving a recorded
-    reference, the retention policy itself -- goes through the plain manager.
+    `for_library` and `visible_to` are how the application asks for
+    rows. A caller that must see archived rows uses the plain manager.
     """
 
     def alive(self):
@@ -81,10 +78,9 @@ def _validate_related_library(
 
 class Game(models.Model):
     class Meta:
-        #: Both partial on `archived_at`: an archived Game is gone as far as the
-        #: library is concerned, so it must not be what stops the same name
-        #: being entered again. `unique_together` cannot carry a condition,
-        #: which is why the first of these is a constraint rather than one.
+        #: Both partial on `archived_at`.
+        #: An archived name is free again.
+        #: `unique_together` cannot carry a condition.
         constraints = (
             models.UniqueConstraint(
                 fields=("library", "name", "platform", "year_released"),
@@ -190,7 +186,7 @@ class Game(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    #: Set instead of deleting, when a recorded event references this row.
+    #: Set instead of deleting a referenced row.
     archived_at = models.DateTimeField(
         null=True, blank=True, default=None, editable=False
     )
@@ -281,7 +277,7 @@ class PlatformQuerySet(ArchivableQuerySet):
 
 class Platform(models.Model):
     class Meta:
-        #: Both partial on `archived_at`, for the reason given on Game.Meta.
+        #: Both partial, as on Game.Meta.
         constraints = (
             models.UniqueConstraint(
                 Lower(Trim("name")),
@@ -313,7 +309,7 @@ class Platform(models.Model):
     group = models.CharField(max_length=255, blank=True, default="")
     icon = models.SlugField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    #: Set instead of deleting, when a recorded event references this row.
+    #: Set instead of deleting a referenced row.
     archived_at = models.DateTimeField(
         null=True, blank=True, default=None, editable=False
     )
@@ -324,7 +320,7 @@ class Platform(models.Model):
     def clean(self):
         super().clean()
         duplicates = (
-            #: An archived Platform shadows nothing; it is not in any library.
+            #: An archived Platform shadows nothing.
             Platform.objects.alive()
             .exclude(pk=self.pk)
             .annotate(
@@ -351,8 +347,10 @@ class Platform(models.Model):
 
 
 class EditionQuerySet(models.QuerySet):
-    """Archival is inherited from Game rather than held here: an Edition has no
-    visibility of its own, so it has no `archived_at` of its own either."""
+    """Archival is inherited from Game.
+
+    An Edition has no visibility of its own to archive.
+    """
 
     def for_library(self, library):
         return self.filter(game__library=library, game__archived_at__isnull=True)
@@ -385,7 +383,7 @@ class Edition(models.Model):
 
 
 class ReleaseQuerySet(models.QuerySet):
-    """Archival is inherited from Game, as for Edition."""
+    """Archival is inherited from Game."""
 
     def for_library(self, library):
         return self.filter(
@@ -1003,8 +1001,7 @@ class Session(models.Model):
 
 
 class Device(models.Model):
-    #: Archivable, not merely library-owned: `device` is a REQUIRED reference
-    #: kind, so a recorded event obliges this row to outlive its deletion.
+    #: Archivable: `device` is a REQUIRED reference kind.
     objects = ArchivableQuerySet.as_manager()
 
     id = UUIDv7Field(primary_key=True, editable=False)
@@ -1029,7 +1026,7 @@ class Device(models.Model):
     name = models.CharField(max_length=255)
     type = models.CharField(max_length=255, choices=DEVICE_TYPES, default=UNKNOWN)
     created_at = models.DateTimeField(auto_now_add=True)
-    #: Set instead of deleting, when a recorded event references this row.
+    #: Set instead of deleting a referenced row.
     archived_at = models.DateTimeField(
         null=True, blank=True, default=None, editable=False
     )
@@ -1574,19 +1571,16 @@ class LibraryEventReferenceQuerySet(LibraryOwnedQuerySet):
     def to_row(self, kind: str, referenced_id):
         """Every recorded reference naming that row.
 
-        Deliberately not library-scoped: a shared Platform referenced by one
-        library is retained for every library.
+        Not library-scoped. One library keeps a shared row for all.
         """
         return self.filter(kind=kind, referenced_id=referenced_id)
 
 
 class LibraryEventReference(models.Model):
-    """One reference one event recorded, indexed by the row it names.
+    """One reference one event recorded.
 
-    The payloads already hold this; the index exists so "is this row referenced"
-    is a lookup rather than a scan of every event's JSON. Written by the append,
-    inside the same transaction under the same lock, so a row is protected from
-    the moment the event naming it commits.
+    The payloads hold this too. The index makes the retention
+    question a lookup, not a scan of every event.
     """
 
     class Meta:
@@ -1619,9 +1613,10 @@ class LibraryEventReference(models.Model):
     )
     #: A registered ReferenceKind name, such as "catalog.game".
     kind = models.CharField(max_length=255)
-    #: Both defaults cleared: a generated one would name a row nothing recorded.
+    #: Both defaults cleared.
+    #: A generated id would name nothing.
     referenced_id = UUIDv7Field(default=None, db_default=models.NOT_PROVIDED)
-    #: The payload field holding it, so a report can say where to look.
+    #: The field holding it, for a report.
     payload_key = models.CharField(max_length=255)
 
     objects = LibraryEventReferenceQuerySet.as_manager()

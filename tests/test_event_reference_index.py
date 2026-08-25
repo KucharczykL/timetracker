@@ -1,4 +1,4 @@
-"""The index of which rows the recorded events name.
+"""Which rows the recorded events name.
 
 The payloads already hold this. These tests are about the index agreeing with
 them, because the retention guard reads the index and never the payloads.
@@ -156,7 +156,7 @@ def test_every_arity_is_indexed(owned_library, device, game, platform):
 
 
 def test_an_optional_reference_left_out_indexes_nothing(owned_library, device):
-    """`game=None` and an absent `absent` are the two ways to hold no row."""
+    """Two ways to hold no row."""
     append(
         owned_library,
         [
@@ -193,7 +193,7 @@ def test_the_index_row_carries_the_appending_library(owned_library, device):
 
 
 def test_the_same_row_referenced_twice_is_indexed_twice(owned_library, device):
-    """Two events, two rows: the guard counts events, not distinct rows."""
+    """The guard counts events, not rows."""
     append(owned_library, [device_event(device)], key="first")
     append(owned_library, [device_event(device)], key="second")
 
@@ -204,7 +204,7 @@ def test_the_same_row_referenced_twice_is_indexed_twice(owned_library, device):
 
 
 def test_the_index_is_written_in_the_appending_transaction(owned_library, device):
-    """A rolled-back append leaves no index row behind."""
+    """A rolled-back append indexes nothing."""
     with pytest.raises(RuntimeError, match="rolled back"), transaction.atomic():
         lock_stream(owned_library).append(
             [device_event(device)],
@@ -230,8 +230,8 @@ def test_deleting_an_event_takes_its_index_rows(owned_library, device):
 def test_purging_a_library_takes_its_index_rows(owned_user, owned_library, device):
     append(owned_library, [device_event(device)])
 
-    #: The retention guard would otherwise refuse to let the device go; a
-    #: whole-library purge is its one exemption. See `tests/test_retention.py`.
+    #: The guard would refuse.
+    #: A purge is its one exemption.
     with purging_library():
         owned_user.delete()
 

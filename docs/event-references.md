@@ -125,8 +125,8 @@ This contract applies to the payload only. These items are not part of it:
 - the display of a snapshot in the audit history;
 - a resolver that limits a UUID to one library.
 
-The retention policy for a row that an event refers to left this list: it is
-in [Retaining a referenced row](event-retention.md).
+The retention policy for a row that an event refers to is not in this list. It
+is in [Retaining a referenced row](event-retention.md).
 
 The contract uses the existing payload column. It needs no migration and no
 schema change.

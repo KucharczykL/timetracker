@@ -1,10 +1,7 @@
-"""What archiving a catalog row does to the reads that ask for it.
+"""What archiving does to the reads.
 
-#653 retains a row a recorded event references instead of deleting it, by
-stamping ``archived_at``. These tests pin the two halves of that: the row is
-gone from every library-scoped read, and it is still there for the callers that
-must resolve it. The stamping itself belongs to the retention policy; here the
-column is set by hand, so a read path is tested without a write path.
+An archived row leaves every library-scoped read and stays for the
+callers that resolve it. The column is set by hand here.
 """
 
 import pytest
@@ -161,7 +158,7 @@ def test_two_live_private_platforms_still_collide(owned_library):
 
 
 def test_an_archived_shared_platform_no_longer_shadows(owned_library):
-    """`Platform.clean` reads the same policy the constraints do."""
+    """`Platform.clean` reads the constraints' policy."""
     archive(Platform.objects.create(name="Steam", group="PC"))
 
     private = Platform.objects.create(library=owned_library, name="Steam", group="PC")
@@ -180,13 +177,10 @@ def test_a_live_shared_platform_still_shadows(owned_library):
 
 
 def test_the_add_game_form_accepts_an_archived_duplicate(owned_library):
-    """The friendly error and the constraint must agree on what a duplicate is.
+    """The form and the constraint agree.
 
-    Django skips a conditional constraint whose condition names an excluded
-    field, so `archived_at` has to be kept out of the form's exclusions -- see
-    `_LibraryBoundConstraintValidationMixin`. Without that the form would
-    accept a *live* duplicate too, and the database would answer with an
-    IntegrityError instead of a field error.
+    Without the `archived_at` exclusion fix, the form would also
+    accept a live duplicate. See `docs/event-retention.md`.
     """
     archive(make_game(owned_library, name="Tetris"))
 

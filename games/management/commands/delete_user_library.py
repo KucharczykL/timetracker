@@ -38,9 +38,8 @@ class Command(BaseCommand):
         if confirmation != username:
             raise CommandError("--confirm must exactly match --user; nothing deleted.")
 
-        # A purge takes the events with the rows they reference, so the
-        # retention guard has nothing left to protect and would only stand in
-        # the way of the one operation allowed to leave nothing behind.
+        # A purge takes the events too.
+        # Nothing is left to protect.
         with transaction.atomic(), purging_library():
             user = self._get_user(username, for_update=True)
             self._write_deletion_scope(self._deletion_counts(user))

@@ -1,110 +1,129 @@
 # Retaining a referenced row
 
-An event is immutable. A `REQUIRED` reference in its payload promises that a
-replay can find the row it names. A hard delete breaks that promise, and no
-later code can repair it: the row is gone and the payload still points at it.
+An event is immutable. A `REQUIRED` reference in a payload is a promise that a
+replay finds the row. A delete breaks the promise. No later code can repair it:
+the row is gone and the payload keeps the id.
 
 This is the policy that keeps the promise. The code is in
-`games/retention.py`. The payload side of the contract is in
+`games/retention.py`. The payload side is in
 [Durable references in event payloads](event-references.md).
 
 ## The two outcomes
 
-Deleting a `Game`, `Platform` or `Device` goes through
-`archive_or_delete(instance)`, which returns which of two things happened.
+A delete of a `Game`, a `Platform` or a `Device` calls
+`archive_or_delete(instance)`. The function gives the outcome.
 
-| Outcome | When | What is left |
+| Outcome | Condition | Result |
 |---|---|---|
-| `DELETED` | No recorded event names the row | Nothing. The ordinary delete, unchanged |
-| `ARCHIVED` | An event names the row under a `REQUIRED` kind | The row, with `archived_at` set. Everything else the delete would have taken is gone |
+| `DELETED` | No event names the row | Nothing stays. The usual delete |
+| `ARCHIVED` | An event names the row under a `REQUIRED` kind | The row stays, with `archived_at` set. All other data goes |
 
-An archived row is not a lighter kind of delete. Everything a real delete would
-have done still happens — the sessions, the play events, the purchase
-bookkeeping, the `SET_NULL`s. Only the row itself stays.
+An archived row is not a smaller delete. All the work of the delete occurs:
+the sessions, the play events, the purchase counts and the `SET_NULL`s. Only
+the row stays.
 
-## Where the collateral comes from
+## The index
 
-`_delete_everything_but` asks Django's own `Collector` what deleting the row
-would take with it, drops the root from what it collected, and runs the rest.
-Enumerating the cascades by hand would be a second copy of every `on_delete`,
-free to drift from the first, and the drift would surface as orphaned rows in a
-list view.
+`LibraryEventReference` holds one row for each reference in each event. The
+append writes it. The payloads hold the same data, but a scan of the payloads
+is a scan of the full log. The index makes the retention question a lookup.
 
-One thing the collector cannot know about: `Game`'s purchase bookkeeping lives
-in a `pre_delete` receiver, and archiving never deletes the row, so the receiver
-never fires. `detach_game_from_purchases` is that logic, called by both the
-receiver and the archive path so there is one implementation rather than two.
+The append writes the index in the same transaction as the events, under the
+same lock. Thus a row is protected at the moment the event that names it
+commits. There is no interval in which the guard permits a delete of that row.
 
+## What archiving does
+
+`_delete_everything_but` asks the Django collector which rows a delete
+collects. It then removes the root from the collection and deletes the
+remainder. A list of the cascades in this module would be a second copy of
+each `on_delete`. The two copies can become different. The result of a
+difference is a row that stays in a list view with no parent.
+
+The collector does not know about one thing. The purchase count of a `Game` is
+maintained in a `pre_delete` receiver. Archiving does not delete the row, thus
+the receiver does not operate. `detach_game_from_purchases` holds that logic.
+The receiver and the archive path both call it. There is one implementation.
+
+`archive_or_delete` sets `archived_at` with a queryset update. It does not call
+`save()`. This is a stamp and not a change of the record. `Platform.save()`
+operates `clean()` again, and `Game.save()` operates the status-change
+receiver. Neither is applicable to a row that leaves the library.
+
+The equivalence is a test, not a claim:
 `tests/test_retention.py::test_archiving_leaves_exactly_what_deleting_would`
-is the guard: the same fixture in two libraries, one game referenced and one
-not, and the two resulting library states must be equal.
+puts the same data in two libraries. One game is referenced and one game is
+not. The two libraries must keep equal state.
 
-## Where an archived row disappears from
+## Where an archived row is not visible
 
-`archived_at` is excluded inside `for_library()` and `visible_to()`, the two
-methods every user-facing read goes through. A list, a form, a filter, an API
-response — none of them has to remember to ask.
+`for_library()` and `visible_to()` exclude an archived row. All reads for a
+user go through these two methods. A list, a form, a filter and an API
+response do not each apply the exclusion.
 
-`Edition` and `Release` have no `archived_at` of their own. They have no
-visibility of their own either, so their querysets filter on the parent
-`Game`'s column.
+`Edition` and `Release` have no `archived_at` column. They also have no
+visibility of their own. Their querysets read the column of the parent `Game`.
 
-Uniqueness is partial on `archived_at`, on both `Game` constraints and both
-`Platform` constraints. An archived row is gone as far as the library is
-concerned, so it must not be what stops the same name being entered again.
-Django skips a conditional constraint during *form* validation when the
-condition names a field the form excludes, which is why
-`_LibraryBoundConstraintValidationMixin` (`games/forms.py`) keeps `archived_at`
-out of the exclusions — otherwise a live duplicate would reach the database as
-an `IntegrityError` instead of a field error.
+Each uniqueness constraint on `Game` and on `Platform` has the condition
+`archived_at IS NULL`. An archived row is not in the library. Thus it must not
+prevent the entry of the same name again. `Platform.clean()` applies the same
+condition, so the message to the user agrees with the constraint.
 
-Three reads deliberately see archived rows, all through the plain manager:
-`resolve_reference`, the retention policy itself, and the audit/ownership
-inventories.
+The conditions have one effect that is easy to miss. Django does not validate a
+conditional constraint in a form when the condition names an excluded field.
+`archived_at` is not editable, thus a form always excludes it. Without a
+correction, no constraint here operates during form validation, and a duplicate
+becomes an `IntegrityError` and not a field error.
+`_LibraryBoundConstraintValidationMixin` in `games/forms.py` keeps
+`archived_at` out of the exclusions. A row that a form reaches is a live row,
+thus the value is always NULL, which is the value the condition expects.
 
-## Resolving
+Three readers see archived rows. They use the plain manager: the resolver, this
+policy, and the audit inventories.
 
-`resolve_reference(reference)` returns the row a recorded reference names,
-archived or not. It raises `UnresolvableReference`, which carries the reference
-rather than only a message, when the row is not there at all.
+## Resolving a reference
 
-#653 ships this resolver and proves an archived row resolves through it.
-Failing a *replay* that cannot resolve a reference, and reporting which
-references could not be reconciled, is #669's.
+`resolve_reference(reference)` gives the row that a recorded reference names.
+The row can be archived. The function reads through `_default_manager`, which
+is the plain manager on all three models.
+
+If no row answers, the function raises `UnresolvableReference`. The exception
+holds the reference and not only a message, thus #669 can build the
+reconciliation report from the exception.
+
+This issue supplies the resolver. #669 stops a replay that cannot resolve a
+reference, and writes the report.
 
 ## The guard
 
-A `pre_delete` receiver on all three models raises `ReferencedRowDeletion`
-rather than let a referenced row be deleted. It is connected in
-`games/signals.py`, not left to the three delete views, because a promise only
-one call path keeps is not a promise — a shell, a script or a management
-command is held to it too.
+A `pre_delete` receiver on the three models raises `ReferencedRowDeletion`. The
+receiver is in `games/signals.py`. It is not in the three delete views, because
+a shell, a script and a management command must obey the same policy. The
+delete views call `archive_or_delete` and do not see this exception.
 
-Note that a receiver on `Platform` and `Device` rules out Django's fast-delete
-for them. The cost lands on a whole-library purge, which is the only operation
-that deletes them in bulk.
+A receiver on `Platform` and on `Device` prevents the Django fast delete for
+those models. Only a purge of a full library deletes them in quantity, thus the
+cost applies only there.
 
 ### The one exemption
 
-`purging_library()` turns the guard off for the duration of a whole-library
-purge, and `delete_user_library` enters it. A purge takes the events with the
-rows, so afterwards there is no recorded reference left to resolve and nothing
-to retain the row for. Without the exemption the guard would make the one
-operation allowed to leave nothing behind impossible to complete.
+`purging_library()` stops the guard for a purge of a full library.
+`delete_user_library` uses it. A purge also deletes the events. After a purge
+no recorded reference stays, thus no row needs retention. Without the
+exemption the guard stops the one operation that is permitted to leave nothing.
 
-The exemption is a context variable, so it does not outlive the `with` block
-and does not leak to another thread.
+The exemption is a context variable. It ends with the `with` block. It does not
+go to a different thread.
 
 ## The confirmation page
 
-`games/views/retirement.py` is the delete affordance for these three models: a
-sibling of `confirm_and_delete` that asks the policy what the POST will do and
-says so. Promising a permanent delete and then archiving would be worse than
-either outcome on its own, so the copy switches when the row is referenced.
+`games/views/retirement.py` is the delete control for these three models. It
+asks the policy what the POST does, and the page gives that text. A promise to
+delete, followed by an archive, is worse than each of the two outcomes.
 
-## What is not here
+## Not in this contract
 
-- Replay-time enforcement and the reconciliation report (#669).
-- A user-visible Trash or recovery UI (#795). Archiving in place rather than
-  writing a tombstone stub is what leaves that possible: the `Edition`/`Release`
-  graph and every external reference survive intact.
+- The replay check and the reconciliation report (#669).
+- A Trash or recovery screen (#795). An archive in place, and not a stub
+  record, keeps that screen possible: the `Edition` and `Release` rows and all
+  external references stay correct.

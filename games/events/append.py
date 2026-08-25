@@ -181,9 +181,8 @@ class LockedStream:
             )
         ]
         LibraryEvent.objects.bulk_create(rows)
-        #: Under the same lock, in the same transaction as the events: a row a
-        #: committed event names is protected from the moment it commits, with
-        #: no window where the retention guard would let it be deleted.
+        #: Same lock, same transaction as the events.
+        #: A committed event protects its rows.
         LibraryEventReference.objects.bulk_create(
             [
                 LibraryEventReference(

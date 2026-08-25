@@ -20,8 +20,8 @@ def import_data(data: DataList):
         if name not in matching_names:
             # try exact match first
             try:
-                #: Never an archived Game: an import must not re-attach rows to
-                #: something the library has already deleted.
+                #: Never an archived Game.
+                #: A deleted row stays deleted.
                 game_id = Game.objects.alive().get(name__iexact=name)
             except Game.DoesNotExist, Game.MultipleObjectsReturned:
                 game_id = None

@@ -1,11 +1,7 @@
-"""The retention policy: what a delete does to a row an event referenced.
+"""What a delete does to referenced rows.
 
-`docs/event-references.md` promises a REQUIRED reference resolves. #653 is what
-makes that true, and the load-bearing claim is narrower than "we keep the row":
-retiring a referenced row has to do *everything else* the delete would have
-done. A game that leaves behind its sessions would be a worse bug than the one
-this fixes, which is why the equivalence test below runs both paths against
-identical fixtures and compares what is left.
+The load-bearing claim is not "the row stays". It is that
+everything else the delete would do still happens.
 """
 
 import uuid
@@ -72,7 +68,7 @@ WIRING = EventWiring(event_types=EVENT_TYPES)
 
 
 def name_in_an_event(library, instance, *, key=None):
-    """Record one event referencing `instance`, and return the reference."""
+    """Record one event naming `instance`."""
     reference = capture_reference(instance)
     with transaction.atomic():
         lock_stream(library).append(
@@ -166,7 +162,7 @@ def test_a_referenced_device_is_archived(owned_library, device):
 def test_a_shared_platform_one_library_referenced_is_retained_for_everyone(
     owned_library,
 ):
-    """Retention is not library-scoped; the event outlives whoever named it."""
+    """Retention is not library-scoped."""
     shared = Platform.objects.create(name="Steam", group="PC storefronts")
     name_in_an_event(owned_library, shared)
 
@@ -185,7 +181,7 @@ def test_reference_count_counts_events_not_rows(owned_library, device):
 
 
 class LibraryState(TypedDict):
-    """What is left in a library after one of its games goes away."""
+    """What a library has left after a game goes."""
 
     sessions: int
     play_events: int
@@ -197,11 +193,10 @@ class LibraryState(TypedDict):
 
 
 def populate(library):
-    """One game with every kind of thing that hangs off it, plus a bystander.
+    """One game with everything below it.
 
-    The bystander game shares a bundle purchase with the doomed one, so the
-    purchase survives with a decremented count while the single-game purchase
-    is deleted outright -- both halves of what `pre_delete` does today.
+    The bystander shares a bundle purchase, so the bundle survives
+    with a lower count and the single-game purchase does not.
     """
     platform = Platform.objects.create(library=library, name="Steam", group="PC")
     doomed = Game.objects.create(
@@ -255,11 +250,10 @@ def snapshot(library, bundle, bystander) -> LibraryState:
 
 
 def test_archiving_leaves_exactly_what_deleting_would(owned_library, other_library):
-    """The one test that says archiving did not change product behaviour.
+    """Archiving did not change product behaviour.
 
-    Two libraries, the same fixture in each. One game is referenced and so is
-    archived; the other is not and so is deleted. Everything the two libraries
-    have left must match -- if archiving skipped a cascade, a count differs.
+    The same fixture in two libraries. One game is archived, one is
+    deleted. What the two libraries have left must match.
     """
     deleted_game, deleted_bundle, deleted_bystander = populate(owned_library)
     archived_game, archived_bundle, archived_bystander = populate(other_library)
@@ -271,7 +265,7 @@ def test_archiving_leaves_exactly_what_deleting_would(owned_library, other_libra
     after_delete = snapshot(owned_library, deleted_bundle, deleted_bystander)
     after_archive = snapshot(other_library, archived_bundle, archived_bystander)
     assert after_archive == after_delete
-    #: Not a vacuous comparison: the fixture really did have things to lose.
+    #: Not vacuous: the fixture had things to lose.
     assert after_delete == LibraryState(
         sessions=1,
         play_events=0,
@@ -373,7 +367,7 @@ def test_a_raw_delete_of_an_unreferenced_row_is_allowed(game):
 
 
 def test_a_cascade_that_would_take_a_referenced_row_is_refused(owned_library, game):
-    """`user.delete()` reaches the row through the library, and is stopped."""
+    """A cascade reaches the row, and is stopped."""
     name_in_an_event(owned_library, game)
 
     with pytest.raises(ReferencedRowDeletion):
@@ -436,10 +430,9 @@ def test_the_exemption_does_not_outlive_the_purge(owned_library, game):
 
 
 def test_an_evidence_only_kind_is_free_to_go(owned_library, device):
-    """A snapshot for a reader is not a pointer a replay follows.
+    """An EVIDENCE_ONLY row is free to go.
 
-    Every registered kind is REQUIRED today, so the branch is exercised through
-    a registry of this module's own rather than by weakening a real one.
+    Every registered kind is REQUIRED today. Use a local registry.
     """
     name_in_an_event(owned_library, device)
     evidence_only = ReferenceKindRegistry()

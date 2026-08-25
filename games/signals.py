@@ -93,11 +93,9 @@ def update_num_purchases(sender, instance, action, reverse, **kwargs):
 
 @receiver(pre_delete, sender=Game)
 def update_purchase_counts_on_game_delete(sender, instance, **kwargs):
-    """Keep purchase counts right when a Game is deleted.
+    """Keep purchase counts right.
 
-    The work lives in ``games.retention`` because retiring a referenced Game
-    has to do the same thing without ever deleting the row, so this receiver
-    never fires for it.
+    The work is in `games.retention`. Archiving needs it too.
     """
     detach_game_from_purchases(instance)
 
@@ -106,11 +104,9 @@ def update_purchase_counts_on_game_delete(sender, instance, **kwargs):
 @receiver(pre_delete, sender=Platform)
 @receiver(pre_delete, sender=Device)
 def refuse_to_delete_a_row_an_event_references(sender, instance, **kwargs):
-    """Stop a hard delete that would strand a recorded reference.
+    """Stop a delete that strands a reference.
 
-    Connected here rather than left to the three delete views, so a shell, a
-    script or a management command is held to the same promise. A whole-library
-    purge is the documented exemption; see ``retention.purging_library``.
+    Here, not in the views, so every call path is held to it.
     """
     refuse_to_delete_a_referenced_row(instance)
 
