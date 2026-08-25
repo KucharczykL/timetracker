@@ -202,7 +202,12 @@ class TableDiff:
     sample: tuple[str, ...]
 
 
-#: Three spellings are load-bearing; see the spec.
+#: Three spellings are necessary.
+#: `(live.*) IS DISTINCT FROM (shadow.*)` compares full rows and is null-safe.
+#: `ROW(...) <> ROW(...)` gives NULL when a column is NULL.
+#: The library scope stays in the subquery. A `WHERE` clause removes the rows
+#: that only the shadow table has.
+#: In the aggregate, `ORDER BY 1` is the constant 1, not the first column.
 _DIFF = """
 SELECT
     count(live.{pk}) AS live_rows,

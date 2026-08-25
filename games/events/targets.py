@@ -80,7 +80,12 @@ def _shadow_meta(model: type[models.Model]) -> type:
 def _rebuilt(
     field: models.Field, args: Sequence[Any], kwargs: dict[str, Any]
 ) -> models.Field:
-    """Not a deep copy: `hidden` caches False."""
+    """Not a deep copy: `hidden` caches False.
+
+    `ForeignObjectRel.hidden` is a cached property. A deep copy keeps the
+    cached value. Django then reports `fields.E304` against the live model.
+    The error stays until the process stops.
+    """
     if field.remote_field is not None:
         kwargs = {**kwargs, "related_name": "+"}
     return field.__class__(*args, **kwargs)

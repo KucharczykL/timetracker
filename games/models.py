@@ -1198,7 +1198,15 @@ class UserLibrary(models.Model):
 
 
 class ProjectionModel(models.Model):
-    """A projection table, rebuilt from events."""
+    """A projection table, rebuilt from events.
+
+    Three rules apply. This class gives each table a `library` column, so the
+    swap is one statement per table. The primary key must be explicit, because
+    the shadow copy starts a new identity sequence; `games.checks` refuses an
+    auto-increment key. No model outside the projections may point to a
+    projection row, because the swap deletes and inserts each row. No check
+    enforces that last rule.
+    """
 
     library = models.ForeignKey(
         UserLibrary,
