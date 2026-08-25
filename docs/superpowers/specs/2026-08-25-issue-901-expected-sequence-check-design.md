@@ -228,13 +228,11 @@ of every command author that produces spurious conflicts when used as it reads.
 replayed key meets a stale expectation, with no caller to judge the answer
 against.
 
-Two committed documents say otherwise and are amended by this issue:
-`2026-08-23-issue-664-command-dispatch-design.md` ("#901's `expected_sequence` is
-checked by the dispatcher against the head") and
-`2026-08-23-issue-664-command-dispatch.md` ("#901 checks `expected_sequence` at
-the dispatcher"). Both sentences exist to justify withholding the stream from
-`CommandContext` — *the dispatcher, not `build`* — and that justification survives
-untouched. Only the location is wrong: the check is `LockedStream`'s.
+`2026-08-23-issue-664-command-dispatch-design.md` says otherwise — "#901's
+`expected_sequence` is checked by the dispatcher against the head" — and is
+amended by this issue. That sentence exists to justify withholding the stream
+from `CommandContext` — *the dispatcher, not `build`* — and that justification
+survives untouched. Only the location is wrong: the check is `LockedStream`'s.
 
 ## Verification
 
