@@ -1197,6 +1197,31 @@ class UserLibrary(models.Model):
         return str(self.id)
 
 
+class ProjectionModel(models.Model):
+    """An event-sourced projection table: rebuilt from events, never authored.
+
+    Inheriting this is how a rebuild finds the table — structural rather than
+    declared, because a family listing the tables it writes drifts, and a table
+    left off the list keeps its old rows through the swap.
+
+    Three rules come with it, and `games.checks` refuses the declarative half of
+    them. Every projection table carries its own `library` column, so the swap
+    is one statement per table. Its primary key is explicit and event-derived,
+    because the shadow copy gets its own identity sequence. And nothing outside
+    the projections may reference a projection row by foreign key, because the
+    swap deletes and reinserts every one of them.
+    """
+
+    library = models.ForeignKey(
+        UserLibrary,
+        on_delete=models.CASCADE,
+        related_name="+",
+    )
+
+    class Meta:
+        abstract = True
+
+
 class UserLibraryPreferences(models.Model):
     library = models.OneToOneField(
         UserLibrary,
