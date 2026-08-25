@@ -45,12 +45,14 @@ class ShadowTarget:
         twins = _TWINS.setdefault(model._meta.apps, {})
         twin = twins.get(model)
         if twin is None:
-            twin = _manufacture(model)
+            twin = _manufacture(model, self)
             twins[model] = twin
         return cast("type[M]", twin)
 
 
-def _manufacture(model: type[models.Model]) -> type[models.Model]:
+def _manufacture(
+    model: type[models.Model], target: ProjectionTarget
+) -> type[models.Model]:
     namespace: ModelNamespace = {
         "__module__": __name__,
         "__qualname__": f"{model.__name__}Shadow",
@@ -58,7 +60,7 @@ def _manufacture(model: type[models.Model]) -> type[models.Model]:
     }
     for field in model._meta.local_fields:
         name, _path, args, kwargs = field.deconstruct()
-        namespace[name] = _rebuilt(field, args, kwargs)
+        namespace[name] = _rebuilt(field, args, kwargs, model, target)
     return type(f"{model.__name__}Shadow", (models.Model,), namespace)
 
 
@@ -78,7 +80,11 @@ def _shadow_meta(model: type[models.Model]) -> type:
 
 
 def _rebuilt(
-    field: models.Field, args: Sequence[Any], kwargs: dict[str, Any]
+    field: models.Field,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+    owner: type[models.Model],
+    target: ProjectionTarget,
 ) -> models.Field:
     """Not a deep copy: `hidden` caches False.
 
@@ -86,6 +92,21 @@ def _rebuilt(
     cached value. Django then reports `fields.E304` against the live model.
     The error stays until the process stops.
     """
-    if field.remote_field is not None:
-        kwargs = {**kwargs, "related_name": "+"}
+    if field.remote_field is None:
+        return field.__class__(*args, **kwargs)
+    kwargs = {**kwargs, "related_name": "+"}
+    related = _projection_referenced_by(field)
+    if related is not None:
+        #: A twin points at a twin. Live rows are another rebuild's input.
+        kwargs["to"] = "self" if related is owner else target.model(related)
     return field.__class__(*args, **kwargs)
+
+
+def _projection_referenced_by(field: models.Field) -> type[ProjectionModel] | None:
+    """The projection this relation points at, if any."""
+    from games.models import ProjectionModel
+
+    related = field.remote_field.model if field.remote_field is not None else None
+    if isinstance(related, type) and issubclass(related, ProjectionModel):
+        return related
+    return None

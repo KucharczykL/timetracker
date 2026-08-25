@@ -114,6 +114,47 @@ def test_manufacturing_a_twin_leaves_every_check_clean():
 
 
 @isolate_apps("games")
+def test_a_twins_relation_to_a_projection_points_at_the_twin():
+    """A live read would fold pre-rebuild state in."""
+    shelf, entry = declare_projection_models()
+    target = ShadowTarget()
+
+    twin = target.model(entry)
+
+    related = twin._meta.get_field("shelf").remote_field.model
+    assert related is target.model(shelf)
+    assert related._meta.db_table == f"{SHELF_TABLE}{SHADOW_SUFFIX}"
+
+
+@isolate_apps("games")
+def test_a_twins_relation_to_a_live_model_still_points_at_it():
+    """The library row is not a projection."""
+    shelf, _ = declare_projection_models()
+
+    twin = ShadowTarget().model(shelf)
+
+    related = twin._meta.get_field("library").remote_field.model
+    assert related._meta.db_table == "games_userlibrary"
+
+
+@isolate_apps("games")
+def test_a_twin_of_a_self_referential_projection_terminates():
+    class Node(ProjectionModel):
+        id = models.UUIDField(primary_key=True)
+        parent = models.ForeignKey(
+            "self", on_delete=models.CASCADE, null=True, related_name="children"
+        )
+
+        class Meta:
+            app_label = "games"
+            db_table = "test_projection_node"
+
+    twin = ShadowTarget().model(Node)
+
+    assert twin._meta.get_field("parent").remote_field.model is twin
+
+
+@isolate_apps("games")
 def test_a_twins_relations_hide_their_reverse_accessors():
     _, entry = declare_projection_models()
 
