@@ -1514,3 +1514,63 @@ class LibraryIdempotencyRecord(models.Model):
 
     def __str__(self) -> str:
         return self.idempotency_key
+
+
+class LibraryEventReferenceQuerySet(LibraryOwnedQuerySet):
+    def to_row(self, kind: str, referenced_id):
+        """Every recorded reference naming that row.
+
+        Deliberately not library-scoped: a shared Platform referenced by one
+        library is retained for every library.
+        """
+        return self.filter(kind=kind, referenced_id=referenced_id)
+
+
+class LibraryEventReference(models.Model):
+    """One reference one event recorded, indexed by the row it names.
+
+    The payloads already hold this; the index exists so "is this row referenced"
+    is a lookup rather than a scan of every event's JSON. Written by the append,
+    inside the same transaction under the same lock, so a row is protected from
+    the moment the event naming it commits.
+    """
+
+    class Meta:
+        indexes = (
+            #: The retention question, asked once per delete.
+            models.Index(fields=("kind", "referenced_id")),
+            models.Index(fields=("library", "kind")),
+        )
+        constraints = (
+            models.CheckConstraint(
+                condition=~Q(kind=""),
+                name="library_event_reference_kind_not_empty",
+            ),
+            models.CheckConstraint(
+                condition=~Q(payload_key=""),
+                name="library_event_reference_payload_key_not_empty",
+            ),
+        )
+
+    id = UUIDv7Field(primary_key=True, editable=False)
+    library = models.ForeignKey(
+        UserLibrary,
+        on_delete=models.CASCADE,
+        related_name="event_references",
+    )
+    event = models.ForeignKey(
+        LibraryEvent,
+        on_delete=models.CASCADE,
+        related_name="references",
+    )
+    #: A registered ReferenceKind name, such as "catalog.game".
+    kind = models.CharField(max_length=255)
+    #: Both defaults cleared: a generated one would name a row nothing recorded.
+    referenced_id = UUIDv7Field(default=None, db_default=models.NOT_PROVIDED)
+    #: The payload field holding it, so a report can say where to look.
+    payload_key = models.CharField(max_length=255)
+
+    objects = LibraryEventReferenceQuerySet.as_manager()
+
+    def __str__(self) -> str:
+        return f"{self.kind} {self.referenced_id}"
