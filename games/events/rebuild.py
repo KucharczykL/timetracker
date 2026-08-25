@@ -14,7 +14,7 @@ nothing to write to.
 import re
 from collections.abc import Iterable, Iterator, Sequence
 from contextlib import AbstractContextManager, contextmanager
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import Any, cast
 
 from django.apps import apps as global_apps
@@ -263,3 +263,114 @@ def _require_shadow_tables(models: Sequence[type[ProjectionModel]]) -> None:
             "between the phases -- reaches here rather than a family's first "
             "insert."
         )
+
+
+# --- Phase 3: the diff ------------------------------------------------------
+
+#: How many keys a table's diff carries out. Enough to act on, bounded so a
+#: wholly-drifted table cannot produce a report nobody can read.
+DIFF_SAMPLE_LIMIT = 20
+
+
+@dataclass(frozen=True, slots=True)
+class TableDiff:
+    """One projection table's live rows against the rebuilt ones.
+
+    Both row counts are carried rather than one difference, because "1000 live,
+    0 rebuilt" and "1000 live, 999 rebuilt" are different situations and a
+    single number tells them apart only by arithmetic nobody does under
+    pressure.
+    """
+
+    table: TableName
+    live_rows: int
+    rebuilt_rows: int
+    #: Rows the rebuild did not produce.
+    only_live: int
+    #: Rows the live table has lost.
+    only_rebuilt: int
+    #: Rows present on both sides whose columns disagree.
+    differing: int
+    #: The primary keys of the rows above, truncated to DIFF_SAMPLE_LIMIT.
+    sample: tuple[str, ...]
+
+
+#: The counts and the sample in one pass. Two spellings here are load-bearing
+#: and were probed:
+#:
+#: - the comparison is whole-row `IS DISTINCT FROM`, which is composite
+#:   comparison and null-safe. The row-constructor form
+#:   `ROW(live.a, ...) <> ROW(shadow.a, ...)` returns NULL when either side
+#:   holds a NULL and the row is silently dropped, so a column that drifted to
+#:   or from NULL would be reported as matching.
+#: - the per-library scope sits in a subquery on the live side. In `WHERE` it
+#:   degrades the outer join to an inner one and hides the rebuilt-only rows.
+#: - the sample's `ORDER BY` repeats the expression. Inside an aggregate a
+#:   number is an ordinary constant rather than an output-column reference, so
+#:   `ORDER BY 1` would sort by nothing and hand back an arbitrary sample.
+_DIFF = """
+SELECT
+    count(live.{pk}) AS live_rows,
+    count(shadow.{pk}) AS rebuilt_rows,
+    count(*) FILTER (WHERE shadow.{pk} IS NULL) AS only_live,
+    count(*) FILTER (WHERE live.{pk} IS NULL) AS only_rebuilt,
+    count(*) FILTER (
+        WHERE live.{pk} IS NOT NULL AND shadow.{pk} IS NOT NULL
+          AND (live.*) IS DISTINCT FROM (shadow.*)
+    ) AS differing,
+    (
+        array_agg(
+            coalesce(live.{pk}, shadow.{pk})::text
+            ORDER BY coalesce(live.{pk}, shadow.{pk})::text
+        )
+        FILTER (
+            WHERE live.{pk} IS NULL OR shadow.{pk} IS NULL
+               OR (live.*) IS DISTINCT FROM (shadow.*)
+        )
+    )[1:%s::int] AS sample
+FROM (SELECT * FROM {table} WHERE library_id = %s) AS live
+FULL OUTER JOIN {shadow} AS shadow ON live.{pk} = shadow.{pk}
+"""
+
+
+def _primary_key_column(model: type[ProjectionModel]) -> ColumnName:
+    """The column the two sides are joined on.
+
+    Both annotations in the way are optional for reasons a concrete projection
+    model is past: `Options.pk` because a model has none until its fields are
+    assembled, `Field.column` because a field has none until it joins a model.
+    """
+    return cast("ColumnName", cast("Any", model._meta.pk).column)
+
+
+def diff_table(model: type[ProjectionModel], library: UserLibrary) -> TableDiff:
+    """One table's rebuilt rows against the library's live ones.
+
+    The shadow needs no scope of its own: a rebuild replays one library, so
+    every row in it belongs to that library.
+    """
+    statement = _DIFF.format(
+        pk=connection.ops.quote_name(_primary_key_column(model)),
+        table=connection.ops.quote_name(model._meta.db_table),
+        shadow=connection.ops.quote_name(shadow_table_name(model)),
+    )
+    with connection.cursor() as cursor:
+        cursor.execute(statement, [DIFF_SAMPLE_LIMIT, library.pk])
+        live_rows, rebuilt_rows, only_live, only_rebuilt, differing, sample = (
+            cursor.fetchone()
+        )
+    return TableDiff(
+        table=model._meta.db_table,
+        live_rows=live_rows,
+        rebuilt_rows=rebuilt_rows,
+        only_live=only_live,
+        only_rebuilt=only_rebuilt,
+        differing=differing,
+        sample=tuple(sample or ()),
+    )
+
+
+def diff_tables(
+    models: Iterable[type[ProjectionModel]], library: UserLibrary
+) -> tuple[TableDiff, ...]:
+    return tuple(diff_table(model, library) for model in models)

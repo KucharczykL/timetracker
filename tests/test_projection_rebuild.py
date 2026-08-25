@@ -31,7 +31,11 @@ from games.events.projection import (
     ProjectorRegistry,
 )
 from games.events.rebuild import (
+    DIFF_SAMPLE_LIMIT,
     LiveWriteRefused,
+    TableDiff,
+    diff_table,
+    diff_tables,
     insertable_columns,
     only_shadow_writes,
     projection_models,
@@ -214,8 +218,20 @@ def test_the_insertable_columns_are_the_tables_own_minus_the_generated_one():
 type WritePath = Callable[[type[ProjectionModel], UserLibrary], None]
 
 
-def seed_shelf(model, library, *, title="seeded"):
-    return model.objects.create(id=uuid4(), library_id=library.pk, title=title)
+def seed_shelf(model, library, **overrides):
+    """One row in whichever shelf table is passed -- live or shadow.
+
+    `played_seconds` is nonzero by default so the generated column carries a
+    value on both sides of a diff rather than agreeing at zero.
+    """
+    fields = {
+        "id": uuid4(),
+        "library_id": library.pk,
+        "title": "seeded",
+        "played_seconds": 60,
+    }
+    fields.update(overrides)
+    return model.objects.create(**fields)
 
 
 def save_one(model, library):
@@ -545,3 +561,177 @@ def test_the_replay_refuses_to_run_without_its_shadow_tables(owned_library):
 
     with pytest.raises(RuntimeError, match=f"{SHELF_TABLE}{SHADOW_SUFFIX}"):
         replay_into_shadow(owned_library, [shelf], wiring=SHADOW_WIRING)
+
+
+# --- Phase 3: the diff ------------------------------------------------------
+
+
+@pytest.fixture
+def second_library(django_user_model):
+    return django_user_model.objects.create_user(
+        username="second-owner", password="p"
+    ).library
+
+
+def no_difference(table=SHELF_TABLE, *, rows=1) -> TableDiff:
+    return TableDiff(
+        table=table,
+        live_rows=rows,
+        rebuilt_rows=rows,
+        only_live=0,
+        only_rebuilt=0,
+        differing=0,
+        sample=(),
+    )
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_a_shadow_holding_the_same_rows_reports_no_difference(owned_library):
+    shelf, _ = declare_projection_models()
+    create_tables(shelf)
+    twin = ShadowTarget().model(shelf)
+    live = seed_shelf(shelf, owned_library, note="kept")
+
+    with shadow_tables([shelf]):
+        seed_shelf(twin, owned_library, id=live.id, note="kept")
+
+        #: The generated column is compared with the rest and agrees by
+        #: construction: both sides computed it from the same seconds.
+        assert diff_table(shelf, owned_library) == no_difference()
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_a_row_the_rebuild_did_not_produce_is_only_live(owned_library):
+    shelf, _ = declare_projection_models()
+    create_tables(shelf)
+    live = seed_shelf(shelf, owned_library)
+
+    with shadow_tables([shelf]):
+        difference = diff_table(shelf, owned_library)
+
+    assert difference.live_rows == 1
+    assert difference.rebuilt_rows == 0
+    assert difference.only_live == 1
+    assert difference.only_rebuilt == 0
+    assert difference.differing == 0
+    assert difference.sample == (str(live.id),)
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_a_row_the_live_table_lost_is_only_rebuilt(owned_library):
+    shelf, _ = declare_projection_models()
+    create_tables(shelf)
+    twin = ShadowTarget().model(shelf)
+
+    with shadow_tables([shelf]):
+        rebuilt = seed_shelf(twin, owned_library)
+        difference = diff_table(shelf, owned_library)
+
+    assert difference.live_rows == 0
+    assert difference.rebuilt_rows == 1
+    assert difference.only_live == 0
+    #: Scoping the library in `WHERE` instead of a subquery would degrade the
+    #: outer join and hide exactly this row.
+    assert difference.only_rebuilt == 1
+    assert difference.sample == (str(rebuilt.id),)
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_a_column_that_drifted_is_a_differing_row(owned_library):
+    shelf, _ = declare_projection_models()
+    create_tables(shelf)
+    twin = ShadowTarget().model(shelf)
+    live = seed_shelf(shelf, owned_library, played_seconds=60)
+
+    with shadow_tables([shelf]):
+        seed_shelf(twin, owned_library, id=live.id, played_seconds=120)
+        difference = diff_table(shelf, owned_library)
+
+    assert difference.differing == 1
+    assert difference.only_live == 0
+    assert difference.only_rebuilt == 0
+    assert difference.sample == (str(live.id),)
+
+
+@pytest.mark.parametrize(
+    ("live_note", "rebuilt_note"),
+    [("kept", None), (None, "kept")],
+    ids=["null-in-the-rebuild", "null-in-the-live-row"],
+)
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_a_column_that_drifted_to_or_from_null_is_a_differing_row(
+    live_note, rebuilt_note, owned_library
+):
+    """The null-safety pin.
+
+    `ROW(live.a, ...) <> ROW(shadow.a, ...)` returns NULL when either side holds
+    a NULL and the row is dropped, so a column that drifted to or from NULL
+    would be reported as matching. Whole-row `IS DISTINCT FROM` is composite
+    comparison and is null-safe.
+    """
+    shelf, _ = declare_projection_models()
+    create_tables(shelf)
+    twin = ShadowTarget().model(shelf)
+    live = seed_shelf(shelf, owned_library, note=live_note)
+
+    with shadow_tables([shelf]):
+        seed_shelf(twin, owned_library, id=live.id, note=rebuilt_note)
+        difference = diff_table(shelf, owned_library)
+
+    assert difference.differing == 1
+    assert difference.sample == (str(live.id),)
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_another_librarys_live_rows_are_not_this_librarys_difference(
+    owned_library, second_library
+):
+    shelf, _ = declare_projection_models()
+    create_tables(shelf)
+    twin = ShadowTarget().model(shelf)
+    live = seed_shelf(shelf, owned_library)
+    seed_shelf(shelf, second_library)
+
+    with shadow_tables([shelf]):
+        seed_shelf(twin, owned_library, id=live.id)
+
+        assert diff_table(shelf, owned_library) == no_difference()
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_a_wholly_drifted_table_reports_a_bounded_sample(owned_library):
+    shelf, _ = declare_projection_models()
+    create_tables(shelf)
+    drifted = 50
+    for index in range(drifted):
+        seed_shelf(shelf, owned_library, title=f"live-{index}")
+
+    with shadow_tables([shelf]):
+        difference = diff_table(shelf, owned_library)
+
+    assert difference.only_live == drifted
+    #: Enough to act on, bounded so a wholly-drifted table cannot produce a
+    #: report nobody can read.
+    assert len(difference.sample) == DIFF_SAMPLE_LIMIT
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_every_table_is_diffed_in_the_order_it_was_given(owned_library):
+    shelf, entry = declare_projection_models()
+    create_tables(shelf, entry)
+
+    with shadow_tables([shelf, entry]):
+        differences = diff_tables([shelf, entry], owned_library)
+
+    assert differences == (
+        no_difference(SHELF_TABLE, rows=0),
+        no_difference(ENTRY_TABLE, rows=0),
+    )
