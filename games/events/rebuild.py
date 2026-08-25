@@ -83,10 +83,16 @@ class LiveWriteRefused(RuntimeError):
 #: A statement opening with these writes.
 _WRITE_KEYWORDS = frozenset({"INSERT", "UPDATE", "DELETE", "COPY", "TRUNCATE", "MERGE"})
 
+#: A CTE hides its writes behind the first keyword.
+_CTE_KEYWORD = "WITH"
+
+#: Leading comments hide the first keyword too.
+_LEADING_COMMENTS = re.compile(r"^\s*(?:/\*.*?\*/|--[^\n]*(?:\n|$))+", re.DOTALL)
+
 #: The first identifier: the table written.
 _WRITE_TARGET = re.compile(
     r"""
-    ^\s*
+    \b
     (?: INSERT \s+ INTO
       | UPDATE
       | DELETE \s+ FROM
@@ -94,7 +100,7 @@ _WRITE_TARGET = re.compile(
       | COPY
       | MERGE \s+ INTO
     )
-    \s+
+    \s+ (?: ONLY \s+ )?
     (?P<table> [^\s(]+ )
     """,
     re.IGNORECASE | re.VERBOSE,
@@ -109,32 +115,37 @@ def only_shadow_writes() -> AbstractContextManager[None]:
 def _refuse_a_live_write(
     execute: Any, sql: str, params: Any, many: bool, context: Any
 ) -> Any:
-    target = _write_target(sql)
-    if target is not None and not target.endswith(SHADOW_SUFFIX):
-        raise LiveWriteRefused(
-            f"This statement writes {target!r}, which is not a shadow table. A "
-            "rebuild writes nothing but its own shadow copies, so a family that "
-            "reaches a live table is stopped on the statement rather than after "
-            f"it commits: {sql[:200]}"
-        )
+    for target in _write_targets(sql):
+        if not target.endswith(SHADOW_SUFFIX):
+            raise LiveWriteRefused(
+                f"This statement writes {target!r}, which is not a shadow table. "
+                "A rebuild writes nothing but its own shadow copies, so a family "
+                "that reaches a live table is stopped on the statement rather "
+                f"than after it commits: {sql[:200]}"
+            )
     return execute(sql, params, many, context)
 
 
-def _write_target(statement: str) -> TableName | None:
-    """The table written; unreadable means refused."""
-    stripped = statement.lstrip()
-    keyword = stripped.split(maxsplit=1)[0] if stripped else ""
-    if keyword.upper() not in _WRITE_KEYWORDS:
-        return None
+def _write_targets(statement: str) -> tuple[TableName, ...]:
+    """Every table written; unreadable means refused."""
+    stripped = _LEADING_COMMENTS.sub("", statement).lstrip()
+    keyword = stripped.split(maxsplit=1)[0].upper() if stripped else ""
+    if keyword == _CTE_KEYWORD:
+        #: A CTE writes any number of tables, or none.
+        return tuple(
+            _bare_name(match["table"]) for match in _WRITE_TARGET.finditer(stripped)
+        )
+    if keyword not in _WRITE_KEYWORDS:
+        return ()
     match = _WRITE_TARGET.match(stripped)
     if match is None:
-        return ""
-    return _bare_name(match["table"])
+        return ("",)
+    return (_bare_name(match["table"]),)
 
 
 def _bare_name(identifier: str) -> TableName:
-    """`pg_temp."games_x__shadow"` -> `games_x__shadow`."""
-    return identifier.rsplit(".", maxsplit=1)[-1].strip('"').rstrip(";")
+    """`pg_temp."games_x__shadow";` -> `games_x__shadow`."""
+    return identifier.rsplit(".", maxsplit=1)[-1].rstrip(";").strip('"')
 
 
 # --- Phase 2: the replay ----------------------------------------------------
@@ -270,7 +281,11 @@ def diff_tables(
 # --- Phase 4: the swap ------------------------------------------------------
 
 _DELETE_LIVE_ROWS = 'DELETE FROM {table} WHERE "library_id" = %s'
-_INSERT_REBUILT_ROWS = "INSERT INTO {table} ({columns}) SELECT {columns} FROM {shadow}"
+#: Scoped like the delete: the lock covers one library.
+_INSERT_REBUILT_ROWS = (
+    "INSERT INTO {table} ({columns}) "
+    'SELECT {columns} FROM {shadow} WHERE "library_id" = %s'
+)
 
 
 def swap_in(
@@ -295,7 +310,8 @@ def swap_in(
                         table=table,
                         columns=columns,
                         shadow=connection.ops.quote_name(shadow_table_name(model)),
-                    )
+                    ),
+                    [library.pk],
                 )
 
 

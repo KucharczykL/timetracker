@@ -349,6 +349,90 @@ def test_the_guard_refuses_a_write_to_a_table_no_rebuild_touches(owned_library):
         )
 
 
+def insert_into(relation: str) -> str:
+    return (
+        f"INSERT INTO {relation} "
+        '("id", "library_id", "title", "played_seconds") VALUES (%s, %s, %s, %s)'
+    )
+
+
+#: Each prefix moves the write past the first keyword.
+HIDING_PREFIXES = ["WITH counted AS (SELECT 1) ", "/* a comment */ ", "-- a comment\n"]
+
+
+@pytest.mark.parametrize(
+    "prefix", HIDING_PREFIXES, ids=["cte", "block_comment", "line_comment"]
+)
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_the_guard_refuses_a_live_write_the_first_keyword_hides(prefix, owned_library):
+    shelf, entry = declare_projection_models()
+    create_tables(shelf, entry)
+
+    with (
+        only_shadow_writes(),
+        pytest.raises(LiveWriteRefused, match="not a shadow"),
+        connection.cursor() as cursor,
+    ):
+        cursor.execute(
+            prefix + insert_into(f'"{SHELF_TABLE}"'),
+            [uuid4(), owned_library.pk, "hidden", 0],
+        )
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_a_read_only_cte_is_allowed(owned_library):
+    shelf, entry = declare_projection_models()
+    create_tables(shelf, entry)
+    seed_shelf(shelf, owned_library)
+
+    with only_shadow_writes(), connection.cursor() as cursor:
+        cursor.execute(
+            f'WITH counted AS (SELECT count(*) AS total FROM "{SHELF_TABLE}") '
+            "SELECT total FROM counted"
+        )
+        assert cursor.fetchone() == (1,)
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_a_cte_writing_a_shadow_table_is_allowed(owned_library):
+    shelf, entry = declare_projection_models()
+    create_tables(shelf, entry)
+
+    with shadow_tables([shelf]), only_shadow_writes(), connection.cursor() as cursor:
+        cursor.execute(
+            "WITH counted AS (SELECT 1) " + insert_into(shadow_of(SHELF_TABLE)),
+            [uuid4(), owned_library.pk, "projected", 0],
+        )
+
+    assert shelf.objects.count() == 0
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_a_shadow_write_that_ends_in_a_semicolon_is_allowed():
+    """The identifier keeps its quote if the order is wrong."""
+    shelf, entry = declare_projection_models()
+    create_tables(shelf, entry)
+
+    with shadow_tables([shelf]), only_shadow_writes(), connection.cursor() as cursor:
+        #: The table is the last token, so the semicolon rides on it.
+        cursor.execute(f"DELETE FROM {shadow_of(SHELF_TABLE)};")
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_a_shadow_write_naming_only_is_allowed():
+    """`ONLY` is a keyword, not the table."""
+    shelf, entry = declare_projection_models()
+    create_tables(shelf, entry)
+
+    with shadow_tables([shelf]), only_shadow_writes(), connection.cursor() as cursor:
+        cursor.execute(f'UPDATE ONLY {shadow_of(SHELF_TABLE)} SET "title" = %s', ["x"])
+
+
 # --- Phase 2: the replay ----------------------------------------------------
 #
 # Registries this module owns, never `DEFAULT_REGISTRY`.
@@ -734,6 +818,26 @@ def test_another_librarys_rows_come_through_the_swap_untouched(
 
     #: Every column: a wide scope loses rows.
     assert every_column(shelf, second_library) == theirs
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_a_foreign_row_in_the_shadow_is_left_behind(owned_library, second_library):
+    """The swap carries what the lock covers."""
+    shelf = declare_and_create_shelf()
+    append_shelved(owned_library, ["one"])
+    twin = ShadowTarget().model(shelf)
+
+    with shadow_tables([shelf]):
+        replayed = replay_into_shadow(owned_library, [shelf], wiring=SHADOW_WIRING)
+        #: A family reaching past its library writes one of these.
+        twin.objects.create(
+            id=uuid4(), library_id=second_library.pk, title="not mine", played_seconds=0
+        )
+        swap_in(owned_library, [shelf], replayed.folded_through)
+
+    assert not shelf.objects.filter(library_id=second_library.pk).exists()
+    assert [title for _, title in shelf_rows(shelf)] == ["one"]
 
 
 @pytest.mark.django_db
