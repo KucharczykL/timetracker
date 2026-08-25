@@ -22,7 +22,7 @@ from django.test.utils import isolate_apps
 from pydantic import ConfigDict, with_config
 from test_projection_targets import ENTRY_TABLE, SHELF_TABLE, declare_projection_models
 
-from games.events.append import lock_stream
+from games.events.append import StreamSequenceMismatch, lock_stream
 from games.events.envelope import RecordedEvent
 from games.events.projection import (
     HandlerMap,
@@ -41,6 +41,7 @@ from games.events.rebuild import (
     projection_models,
     replay_into_shadow,
     shadow_tables,
+    swap_in,
 )
 from games.events.replay import ReplayResult, StreamNotContiguous
 from games.events.targets import SHADOW_SUFFIX, ShadowTarget
@@ -735,3 +736,147 @@ def test_every_table_is_diffed_in_the_order_it_was_given(owned_library):
         no_difference(SHELF_TABLE, rows=0),
         no_difference(ENTRY_TABLE, rows=0),
     )
+
+
+# --- Phase 4: the swap ------------------------------------------------------
+
+#: One `DELETE` and one `INSERT ... SELECT` per table, whatever the rows.
+SWAP_STATEMENTS_PER_TABLE = 2
+#: The lock, the head read, and the savepoint pair `transaction.atomic()` opens
+#: inside the transaction a test already runs in.
+SWAP_FIXED_STATEMENTS = 4
+
+
+def every_column(model, library) -> list[tuple[Any, ...]]:
+    """Every row this library owns, every column, so "unchanged" is literal."""
+    columns = [field.name for field in model._meta.concrete_fields]
+    return sorted(model.objects.filter(library_id=library.pk).values_list(*columns))
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_the_swap_replaces_the_live_rows_with_the_rebuilt_ones(owned_library):
+    """Every way a projection can be wrong, corrected in one swap.
+
+    A row that drifted, a row that was lost, and a row that belongs to nothing
+    -- the delete-and-reinsert handles all three without knowing which happened.
+    """
+    shelf = declare_and_create_shelf()
+    append_shelved(owned_library, ["one", "two", "three"])
+    correct = shelf_rows(shelf)
+    shelf.objects.filter(title="one").update(title="drifted")
+    shelf.objects.filter(title="two").delete()
+    stray = seed_shelf(shelf, owned_library, title="never-appended")
+
+    with shadow_tables([shelf]):
+        replayed = replay_into_shadow(owned_library, [shelf], wiring=SHADOW_WIRING)
+        swap_in(owned_library, [shelf], replayed.folded_through)
+
+    assert shelf_rows(shelf) == correct
+    assert not shelf.objects.filter(pk=stray.pk).exists()
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_another_librarys_rows_come_through_the_swap_untouched(
+    owned_library, second_library
+):
+    shelf = declare_and_create_shelf()
+    append_shelved(owned_library, ["one"])
+    append_shelved(second_library, ["theirs"])
+    theirs = every_column(shelf, second_library)
+
+    with shadow_tables([shelf]):
+        replayed = replay_into_shadow(owned_library, [shelf], wiring=SHADOW_WIRING)
+        swap_in(owned_library, [shelf], replayed.folded_through)
+
+    #: Every column, not the count: the swap scopes its delete by library, and a
+    #: scope that reached too far would show up here as rows going missing.
+    assert every_column(shelf, second_library) == theirs
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_an_event_that_landed_during_the_rebuild_refuses_the_swap(owned_library):
+    """The expectation is asserted before anything is written.
+
+    The shadow is a projection of a prefix of the stream, so swapping it in
+    would drop the event that landed. The attempt is the thing to redo, which
+    Task 9 does; here the swap only has to refuse and leave live alone.
+    """
+    shelf = declare_and_create_shelf()
+    append_shelved(owned_library, ["one"])
+
+    with shadow_tables([shelf]):
+        replayed = replay_into_shadow(owned_library, [shelf], wiring=SHADOW_WIRING)
+        append_shelved(owned_library, ["landed-late"])
+        live_rows = shelf_rows(shelf)
+
+        with pytest.raises(StreamSequenceMismatch) as conflict:
+            swap_in(owned_library, [shelf], replayed.folded_through)
+
+    assert conflict.value.expected == replayed.folded_through
+    assert conflict.value.actual == head_sequence(owned_library)
+    assert shelf_rows(shelf) == live_rows
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_a_library_that_never_appended_is_swapped_empty(owned_library):
+    """An empty stream projects to no rows, and the swap says so.
+
+    `lock_stream` provisions the head row a `replay` refuses to create: a
+    rebuild is a writer, and `require_sequence(0)` is its assertion that the
+    library is still empty.
+    """
+    shelf = declare_and_create_shelf()
+    seed_shelf(shelf, owned_library, title="left-over")
+
+    with shadow_tables([shelf]):
+        replayed = replay_into_shadow(owned_library, [shelf], wiring=SHADOW_WIRING)
+        swap_in(owned_library, [shelf], replayed.folded_through)
+
+    assert shelf_rows(shelf) == []
+    assert head_sequence(owned_library) == 0
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_the_swap_empties_and_refills_every_table_it_is_given(owned_library):
+    shelf, entry = declare_projection_models()
+    create_tables(shelf, entry)
+    DECLARED_SHELF.append(shelf)
+    append_shelved(owned_library, ["one"])
+    shelved = shelf.objects.get()
+    entry.objects.create(
+        id=uuid4(), library_id=owned_library.pk, shelf=shelved, position=1
+    )
+
+    with shadow_tables([shelf, entry]):
+        replayed = replay_into_shadow(
+            owned_library, [shelf, entry], wiring=SHADOW_WIRING
+        )
+        swap_in(owned_library, [shelf, entry], replayed.folded_through)
+
+    #: No family projects the entry table, so its rebuilt state is empty --
+    #: which is the point: a table the swap is given is replaced, not topped up.
+    assert entry.objects.count() == 0
+    assert shelf.objects.count() == 1
+
+
+@pytest.mark.parametrize("rows", [1, 25])
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_the_swap_costs_the_same_statements_at_any_size(
+    owned_library, django_assert_num_queries, rows
+):
+    shelf = declare_and_create_shelf()
+    append_shelved(owned_library, [f"title-{index}" for index in range(rows)])
+
+    with shadow_tables([shelf]):
+        replayed = replay_into_shadow(owned_library, [shelf], wiring=SHADOW_WIRING)
+
+        with django_assert_num_queries(
+            SWAP_FIXED_STATEMENTS + SWAP_STATEMENTS_PER_TABLE
+        ):
+            swap_in(owned_library, [shelf], replayed.folded_through)

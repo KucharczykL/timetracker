@@ -22,6 +22,7 @@ from django.apps.registry import Apps
 from django.db import connection, transaction
 from django.db.models.fields.generated import GeneratedField
 
+from games.events.append import lock_stream
 from games.events.replay import ReplayResult, replay
 from games.events.targets import SHADOW_SUFFIX, ShadowTarget
 from games.events.wiring import DEFAULT_WIRING, EventWiring
@@ -374,3 +375,51 @@ def diff_tables(
     models: Iterable[type[ProjectionModel]], library: UserLibrary
 ) -> tuple[TableDiff, ...]:
     return tuple(diff_table(model, library) for model in models)
+
+
+# --- Phase 4: the swap ------------------------------------------------------
+
+_DELETE_LIVE_ROWS = 'DELETE FROM {table} WHERE "library_id" = %s'
+_INSERT_REBUILT_ROWS = "INSERT INTO {table} ({columns}) SELECT {columns} FROM {shadow}"
+
+
+def swap_in(
+    library: UserLibrary,
+    models: Iterable[type[ProjectionModel]],
+    folded_through: int,
+) -> None:
+    """Put the rebuilt rows in place of this library's live ones.
+
+    The lock pauses writes for this library and no other, and
+    `require_sequence` runs before any statement that writes: an event that
+    landed while the rebuild worked leaves the shadow a projection of a prefix,
+    so the swap refuses with `StreamSequenceMismatch` having written nothing and
+    the attempt is redone from a fresh shadow.
+
+    Raw DML rather than `QuerySet.delete()`, which collects the objects, walks
+    the cascades and fires a signal per object -- all of it wrong for replacing
+    a table's contents, and all of it proportional to the rows.
+
+    The tables are swapped in the order given and the order does not matter:
+    every foreign key Django's schema editor emits is `DEFERRABLE INITIALLY
+    DEFERRED`, so a reference that is briefly dangling mid-swap is checked at
+    `COMMIT`, by which time every table has been refilled.
+    """
+    with transaction.atomic():
+        stream = lock_stream(library)
+        stream.require_sequence(folded_through)
+        with connection.cursor() as cursor:
+            for model in models:
+                table = connection.ops.quote_name(model._meta.db_table)
+                columns = ", ".join(
+                    connection.ops.quote_name(column)
+                    for column in insertable_columns(model)
+                )
+                cursor.execute(_DELETE_LIVE_ROWS.format(table=table), [library.pk])
+                cursor.execute(
+                    _INSERT_REBUILT_ROWS.format(
+                        table=table,
+                        columns=columns,
+                        shadow=connection.ops.quote_name(shadow_table_name(model)),
+                    )
+                )
