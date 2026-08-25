@@ -17,6 +17,7 @@ from games.events.append import (
     TransactionRequired,
     lock_stream,
 )
+from games.events.retry import run_in_transaction
 from games.events.vocabulary import (
     EventSpec,
     EventTypeRegistry,
@@ -24,7 +25,6 @@ from games.events.vocabulary import (
     PayloadInvalid,
     UnregisteredEventType,
 )
-from games.events.retry import run_in_transaction
 from games.events.wiring import EventWiring
 from games.models import LibraryEvent, LibraryEventStreamHead
 from timetracker.temporal import TemporalValue
@@ -532,7 +532,9 @@ def test_require_sequence_refuses_a_stale_stream_agreeing_with_itself(owned_libr
     assert (refusal.value.expected, refusal.value.actual) == (0, 1)
 
 
-def test_require_sequence_ignores_a_stale_head_after_a_savepoint_rollback(owned_library):
+def test_require_sequence_ignores_a_stale_head_after_a_savepoint_rollback(
+    owned_library,
+):
     with transaction.atomic():
         stream = lock_stream(owned_library)
         try:

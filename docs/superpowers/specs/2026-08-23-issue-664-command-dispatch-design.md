@@ -285,9 +285,17 @@ reason — that it "gives a command author in #664 an easy way to write a comman
 that silently cannot deduplicate" — and putting the stream in the context would
 hand the same capability to every command instead of one.
 
-Nothing is lost by withholding it: #901's `expected_sequence` is checked by the
-dispatcher against the head, not by `build`, and #665 attaches projectors to the
+Nothing is lost by withholding it: #901's `expected_sequence` is checked against
+the head under the lock, not by `build`, and #665 attaches projectors to the
 dispatcher's transaction rather than to the command.
+
+> **Corrected by [#901](https://github.com/KucharczykL/timetracker/issues/901).**
+> This sentence read "checked by the dispatcher against the head". The check
+> shipped on `LockedStream` — `require_sequence`, and an `expected_sequence`
+> parameter on `append` — and `dispatch` never gained it: the token is
+> library-wide, which is the wrong guarantee for the per-entity commands
+> `dispatch` serves. The argument above is unaffected, because what it rests on
+> is that the check is not `build`'s.
 
 The context is assembled **inside the callback `idempotent_append` invokes**,
 per attempt — not once before `run_in_transaction`. A context built outside the

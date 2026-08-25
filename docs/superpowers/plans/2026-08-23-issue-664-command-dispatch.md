@@ -292,7 +292,9 @@ a command holding it can append directly *and* return events, and
 `idempotent_append` records only the range it appended itself — leaving committed
 events inside the stream but outside the range the key replays. #662 deleted its
 `append_events` helper for exactly this. Nothing is lost: #901 checks
-`expected_sequence` at the dispatcher, #665 attaches projectors to the transaction.
+`expected_sequence` under the head lock rather than in `build`, #665 attaches
+projectors to the transaction. (#901 shipped it on `LockedStream`, not on the
+dispatcher as this line first said; `dispatch` never gained the parameter.)
 
 **Neither refusal is a `CommandConflict`.** `CommandNotPermitted` is about who is
 asking, `CommandRejected` about what they asked for; #663's conflict base means
