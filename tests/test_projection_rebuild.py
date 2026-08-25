@@ -20,12 +20,14 @@ from typing import Any, ClassVar, TypedDict
 from uuid import UUID, uuid4, uuid7
 
 import pytest
+from django.core.checks import run_checks
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import connection, transaction
 from django.test.utils import isolate_apps
 from pydantic import ConfigDict, with_config
 from test_projection_targets import ENTRY_TABLE, SHELF_TABLE, declare_projection_models
+from test_uuid_identity_audit import EXPECTED_RELATION_COLUMNS
 
 from games.events import rebuild as rebuild_module
 from games.events.append import StreamSequenceMismatch, lock_stream
@@ -58,6 +60,7 @@ from games.events.retry import RetryPolicy
 from games.events.targets import SHADOW_SUFFIX, ShadowTarget
 from games.events.vocabulary import EventSpec, EventTypeRegistry, NewEvent
 from games.events.wiring import EventWiring
+from games.identity_audit import relation_columns
 from games.management.commands import rebuild_projections as rebuild_command
 from games.models import (
     LibraryEvent,
@@ -1230,3 +1233,29 @@ def test_an_unknown_library_fails_without_touching_anything(owned_library):
 def test_a_library_id_that_is_not_a_uuid_fails(owned_library):
     with pytest.raises(CommandError, match="not a library id"):
         run_command("the-one-with-the-games")
+
+
+# --- Registry hygiene --------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_this_module_left_the_application_registry_as_it_found_it():
+    """Two leak detectors, read after everything above has run.
+
+    Every model here is declared under `isolate_apps("games")` and every twin is
+    cached against that isolated registry. A model declared without it -- or a
+    twin cached against the global one -- would join the registry
+    `games/identity_audit.py` reads and stay there for the rest of the process.
+
+    So this is deliberately last in the file and deliberately not isolated: it
+    reads whatever the tests above left behind. Under CI's `PYTEST_WORKERS=0`
+    the same process then runs `tests/test_uuid_identity_audit.py`, which sorts
+    after this module and asserts set equality on exactly the second check
+    below -- so a leak fails here, naming the cause, rather than there.
+    """
+    #: A twin whose reverse accessors were not hidden reports `fields.E304`
+    #: against the live model as well, permanently.
+    assert run_checks() == []
+    assert {
+        relation.key for relation in relation_columns()
+    } == EXPECTED_RELATION_COLUMNS
