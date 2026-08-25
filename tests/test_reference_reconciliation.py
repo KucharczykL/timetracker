@@ -1,9 +1,12 @@
 """Whether recorded references still name rows."""
 
 import uuid
+from io import StringIO
 from typing import ClassVar, TypedDict
 
 import pytest
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.db import connection, transaction
 from django.test.utils import CaptureQueriesContext, isolate_apps
 from pydantic import ConfigDict, with_config
@@ -655,3 +658,64 @@ def test_a_broken_library_does_not_stop_another_rebuild(
     assert report.swapped is True
     with pytest.raises(UnresolvedReferences):
         rebuild_projections(other_library, mode=RebuildMode.REBUILD, wiring=WIRING)
+
+
+# --- what the operator reads ------------------------------------------------
+
+
+def run_command(*arguments) -> tuple[str, str]:
+    """Both streams, whether it failed or not."""
+    stdout, stderr = StringIO(), StringIO()
+    call_command("rebuild_projections", *arguments, stdout=stdout, stderr=stderr)
+    return stdout.getvalue(), stderr.getvalue()
+
+
+@pytest.mark.parametrize("arguments", ((), ("--check",)))
+def test_the_command_fails_and_names_the_stranded_row(owned_library, device, arguments):
+    """Both modes refuse."""
+    stranded_id = device.pk
+    result = append(owned_library, [device_event(device)])
+    strand(device)
+    stderr = StringIO()
+
+    with pytest.raises(CommandError, match="nothing was replayed"):
+        call_command(
+            "rebuild_projections",
+            str(owned_library.pk),
+            *arguments,
+            stdout=StringIO(),
+            stderr=stderr,
+        )
+
+    printed = stderr.getvalue()
+    assert f"device {stranded_id}" in printed
+    assert "'Steam Deck'" in printed
+    assert f"first named by event #{result.events[0].sequence}" in printed
+    assert "at payload key 'device'" in printed
+    assert "Restore each one under the same id" in printed
+
+
+def test_the_printed_report_counts_what_it_did_not_name(owned_library):
+    stranded_many(owned_library, GAP_SAMPLE_LIMIT + 2)
+    stderr = StringIO()
+
+    with pytest.raises(CommandError):
+        call_command(
+            "rebuild_projections",
+            str(owned_library.pk),
+            stdout=StringIO(),
+            stderr=stderr,
+        )
+
+    printed = stderr.getvalue()
+    assert f"{GAP_SAMPLE_LIMIT + 2} recorded reference(s)" in printed
+    assert printed.count("first named by event #") == GAP_SAMPLE_LIMIT
+    assert "and 2 more." in printed
+
+
+def test_a_swap_says_the_references_resolved(owned_library):
+    """Nothing counts them outward."""
+    stdout, _ = run_command(str(owned_library.pk))
+
+    assert "Swapped" in stdout
+    assert "References: all resolved." in stdout

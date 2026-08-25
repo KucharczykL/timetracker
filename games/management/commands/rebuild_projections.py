@@ -8,6 +8,11 @@ from games.events.rebuild import (
     TableDiff,
     rebuild_projections,
 )
+from games.events.reconcile import (
+    REMEDY,
+    ReferenceReconciliation,
+    UnresolvedReferences,
+)
 from games.models import UserLibrary
 
 
@@ -31,7 +36,15 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         library = self._get_library(options["library"])
         mode = RebuildMode.CHECK if options["check"] else RebuildMode.REBUILD
-        report = rebuild_projections(library, mode=mode)
+        try:
+            report = rebuild_projections(library, mode=mode)
+        except UnresolvedReferences as error:
+            self._write_reconciliation(error.reconciliation)
+            #: Both modes fail. No rebuild repairs this.
+            raise CommandError(
+                f"{error.reconciliation.unresolved} recorded reference(s) name "
+                "rows that no longer exist, so nothing was replayed."
+            ) from error
         self._write_report(report)
 
         if mode is RebuildMode.CHECK:
@@ -46,6 +59,8 @@ class Command(BaseCommand):
         self.stdout.write(
             self.style.SUCCESS(f"Swapped {len(report.tables)} table(s) into place.")
         )
+        #: True by having got this far.
+        self.stdout.write(self.style.SUCCESS("References: all resolved."))
 
     @staticmethod
     def _get_library(raw_id: str) -> UserLibrary:
@@ -87,6 +102,24 @@ class Command(BaseCommand):
         )
         if table.sample:
             self.stdout.write(f"    first keys: {', '.join(table.sample)}")
+
+    def _write_reconciliation(self, reconciliation: ReferenceReconciliation) -> None:
+        """Every gap the refusal carries."""
+        self.stderr.write(
+            f"Library {reconciliation.library_id}: {reconciliation.unresolved} "
+            f"recorded reference(s) name rows that no longer exist, over "
+            f"{len(reconciliation.kinds_checked)} kind(s) checked."
+        )
+        for gap in reconciliation.gaps:
+            self.stderr.write(
+                f"  {gap.kind} {gap.referenced_id} ({gap.label!r}, {gap.detail!r}): "
+                f"first named by event #{gap.first_sequence}, in "
+                f"{gap.event_count} event(s), at payload key {gap.payload_key!r}"
+            )
+        remaining = reconciliation.unresolved - len(reconciliation.gaps)
+        if remaining:
+            self.stderr.write(f"  and {remaining} more.")
+        self.stderr.write(REMEDY)
 
     def _write_check_outcome(self, report: RebuildReport) -> None:
         if report.head_at_diff != report.folded_through:
