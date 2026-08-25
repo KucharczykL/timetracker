@@ -7,6 +7,16 @@ from typing import Any, cast, is_typeddict
 
 from pydantic import TypeAdapter, ValidationError
 
+from games.events.references import (
+    DEFAULT_REFERENCE_KINDS,
+    FoundReference,
+    ReferenceFields,
+    ReferenceKindRegistry,
+    UnknownReferenceKind,
+    check_kinds_registered,
+    reference_fields,
+    references_in,
+)
 from games.models import LibraryEvent
 from timetracker.temporal import TemporalValue
 
@@ -84,17 +94,22 @@ class NewEvent:
 
 @dataclass(frozen=True, slots=True)
 class RegisteredType:
-    """A registered spec and its payload adapter."""
+    """A registered spec, its adapter, its references."""
 
     spec: EventSpec[Any]
     adapter: TypeAdapter[Any]
+    #: Derived from the payload's annotations at registration.
+    references: ReferenceFields
 
 
 class EventTypeRegistry:
     """The event types that may be appended."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self, reference_kinds: ReferenceKindRegistry = DEFAULT_REFERENCE_KINDS
+    ) -> None:
         self._registered: dict[EventType, RegisteredType] = {}
+        self._reference_kinds = reference_kinds
 
     def register(self, spec: EventSpec[Any]) -> None:
         self._check_names(spec)
@@ -124,7 +139,10 @@ class EventTypeRegistry:
             )
 
         self._registered[spec.event_type] = RegisteredType(
-            spec=spec, adapter=TypeAdapter(spec.payload)
+            spec=spec,
+            adapter=TypeAdapter(spec.payload),
+            #: Raises rather than record an unenumerable reference.
+            references=reference_fields(spec.payload),
         )
 
     @staticmethod
@@ -175,19 +193,47 @@ class EventTypeRegistry:
     def spec_for(self, event_type: EventType) -> EventSpec[Any]:
         return self._registration_for(event_type).spec
 
+    def reference_fields_for(self, event_type: EventType) -> ReferenceFields:
+        """Which of this payload's fields hold references."""
+        return self._registration_for(event_type).references
+
+    def references_in(
+        self, event_type: EventType, payload: Mapping[str, Any]
+    ) -> tuple[FoundReference, ...]:
+        """Every reference this recorded payload carries."""
+        return tuple(
+            references_in(payload, self._registration_for(event_type).references)
+        )
+
+    @property
+    def reference_kinds(self) -> ReferenceKindRegistry:
+        """The kinds payload references validate against."""
+        return self._reference_kinds
+
     def validate(
         self, event_type: EventType, payload: dict[str, Any]
     ) -> dict[str, Any]:
         """Return the payload its schema reads."""
         registration = self._registration_for(event_type)
         try:
-            return cast("dict[str, Any]", registration.adapter.validate_python(payload))
+            validated = cast(
+                "dict[str, Any]", registration.adapter.validate_python(payload)
+            )
         except ValidationError as error:
             raise PayloadInvalid(
                 f"This {event_type} payload does not fit "
                 f"{registration.spec.payload.__name__}: "
                 f"{error.errors(include_url=False)}"
             ) from error
+        try:
+            check_kinds_registered(
+                validated, registration.references, self._reference_kinds
+            )
+        except UnknownReferenceKind as error:
+            raise PayloadInvalid(
+                f"This {event_type} payload cannot be recorded: {error}"
+            ) from error
+        return validated
 
     def __contains__(self, event_type: EventType) -> bool:
         return event_type in self._registered
