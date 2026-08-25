@@ -5,6 +5,7 @@ import uuid
 from django.core.checks import CheckMessage
 from django.db import models
 from django.test.utils import isolate_apps
+from django.utils import timezone
 
 from games.checks import check_projection_models
 from games.models import ProjectionModel
@@ -91,6 +92,33 @@ def test_a_database_default_is_refused():
 
     #: The shadow evaluates the copied default itself.
     assert check(Defaulted) == ["games.E004"]
+
+
+@isolate_apps("games")
+def test_a_clock_default_is_refused():
+    class Stamped(ProjectionModel):
+        id = models.UUIDField(primary_key=True)
+        seen_at = models.DateTimeField(default=timezone.now)
+
+        class Meta:
+            app_label = "games"
+
+    #: A rebuild evaluates it again, at rebuild time.
+    assert check(Stamped) == ["games.E006"]
+
+
+@isolate_apps("games")
+def test_a_constant_default_is_allowed():
+    class Fixed(ProjectionModel):
+        id = models.UUIDField(primary_key=True)
+        origin = models.UUIDField(default=uuid.UUID(int=1))
+        tags = models.JSONField(default=dict)
+
+        class Meta:
+            app_label = "games"
+
+    #: A constant reproduces itself, whatever its module.
+    assert check(Fixed) == []
 
 
 @isolate_apps("games")

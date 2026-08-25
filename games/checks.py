@@ -1,5 +1,8 @@
 """Startup checks over the projection tables."""
 
+import datetime
+import time
+import uuid
 from collections.abc import Sequence
 from typing import Any
 
@@ -8,8 +11,29 @@ from django.apps import apps as global_apps
 from django.apps.registry import Apps
 from django.core.checks import CheckMessage, Error, Tags, register
 from django.db import models
+from django.utils import timezone
 
 from games.models import ProjectionModel
+
+#: A new UUID every call, so never a projection key.
+_UUID_FACTORIES = frozenset(
+    factory
+    for name in ("uuid1", "uuid4", "uuid6", "uuid7", "uuid8")
+    if callable(factory := getattr(uuid, name, None))
+)
+
+#: The clock decides these, so a rebuild moves them.
+_CLOCK_FACTORIES = frozenset(
+    {
+        timezone.now,
+        timezone.localtime,
+        timezone.localdate,
+        datetime.datetime.now,
+        datetime.datetime.today,
+        datetime.date.today,
+        time.time,
+    }
+)
 
 
 @register(Tags.models)
@@ -99,7 +123,7 @@ def _check_field(
                 id="games.E004",
             )
         )
-    if getattr(field.default, "__module__", None) == "uuid":
+    if callable(field.default) and field.default in _UUID_FACTORIES:
         errors.append(
             Error(
                 f"{where} defaults to a freshly minted UUID.",
@@ -110,6 +134,21 @@ def _check_field(
                 ),
                 obj=model,
                 id="games.E005",
+            )
+        )
+    if callable(field.default) and field.default in _CLOCK_FACTORIES:
+        errors.append(
+            Error(
+                f"{where} defaults to the clock.",
+                hint=(
+                    "A rebuild evaluates the default again, at rebuild time, so "
+                    "every row differs from the live one. A projected timestamp "
+                    "comes from the event — recorded_at or effective_time. This "
+                    "check knows the standard factories only; a wrapper around "
+                    "one of them is still a rebuild that cannot reproduce itself."
+                ),
+                obj=model,
+                id="games.E006",
             )
         )
     return errors
