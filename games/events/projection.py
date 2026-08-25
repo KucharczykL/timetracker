@@ -7,8 +7,8 @@ folds every appended event through every family that claims its type -- in the
 same transaction, under the same stream-head lock.
 
 A family is handed a `RecordedEvent`, never the row, so nothing here holds a
-model: a registry of families over a value, which is what lets one eventually be
-pointed at tables other than the live ones.
+model: a registry of families over a value, which is what lets `for_target`
+point them at tables other than the live ones.
 
 The module is `projection` rather than `projectors` because `games.projectors`
 is the package the real families live in. Two importable modules of one name are
@@ -21,6 +21,7 @@ from enum import StrEnum
 from typing import Any, ClassVar
 
 from games.events.envelope import RecordedEvent
+from games.events.targets import LIVE_TARGET, ProjectionTarget
 from games.events.vocabulary import EventSpec, EventType
 
 type BoundHandler = Callable[[RecordedEvent], None]
@@ -68,11 +69,18 @@ class ProjectorRegistry:
 
     def __init__(self) -> None:
         self._families: dict[ProjectorFamily, Projector] = {}
+        #: Kept so `for_target` rebuilds from the classes.
+        self._classes: dict[ProjectorFamily, type[Projector]] = {}
         self._claims: dict[ProjectorFamily, DefinitionSite] = {}
         #: The string a RecordedEvent carries.
         self._handlers: dict[EventType, tuple[FamilyHandler, ...]] = {}
 
-    def register(self, projector_class: type[Projector]) -> None:
+    def register(
+        self,
+        projector_class: type[Projector],
+        *,
+        target: ProjectionTarget = LIVE_TARGET,
+    ) -> None:
         family_name = getattr(projector_class, "family_name", None)
         if not isinstance(family_name, ProjectorFamily):
             raise TypeError(
@@ -109,11 +117,23 @@ class ProjectorRegistry:
                 f"already owned by {claimed_by[0]}.{claimed_by[1]}."
             )
 
-        #: At registration, therefore at import: a family takes no arguments and
-        #: does no work in __init__.
-        self._families[family_name] = projector_class()
+        #: A family takes its target, nothing else.
+        self._families[family_name] = projector_class(target)
+        self._classes[family_name] = projector_class
         self._claims[family_name] = definition_site
         self._rebuild_handlers()
+
+    def for_target(self, target: ProjectionTarget) -> ProjectorRegistry:
+        """The same families, writing where `target` points."""
+        sibling = ProjectorRegistry()
+        sibling._classes = dict(self._classes)
+        sibling._claims = dict(self._claims)
+        sibling._families = {
+            family_name: projector_class(target)
+            for family_name, projector_class in self._classes.items()
+        }
+        sibling._rebuild_handlers()
+        return sibling
 
     def _rebuild_handlers(self) -> None:
         handlers: dict[EventType, list[FamilyHandler]] = {}
@@ -168,11 +188,15 @@ class Projector(ABC):
     annotation is not decoration: a bare assignment is a mutable class attribute
     that no type checker reads and that ruff refuses (RUF012).
 
-    Instances are built once, at registration, with no arguments.
+    Instances are built once, at registration, with their target. A family
+    reads and writes `self.target.model(Shelf)`, never an imported model.
     """
 
     family_name: ClassVar[ProjectorFamily]
     handles: ClassVar[HandlerMap]
+
+    def __init__(self, target: ProjectionTarget = LIVE_TARGET) -> None:
+        self.target = target
 
     def __init_subclass__(
         cls,
