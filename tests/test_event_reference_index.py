@@ -16,6 +16,7 @@ from games.events.references import Reference, capture_reference
 from games.events.vocabulary import EventSpec, EventTypeRegistry
 from games.events.wiring import EventWiring
 from games.models import Device, Game, LibraryEvent, LibraryEventReference, Platform
+from games.retention import purging_library
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -229,7 +230,10 @@ def test_deleting_an_event_takes_its_index_rows(owned_library, device):
 def test_purging_a_library_takes_its_index_rows(owned_user, owned_library, device):
     append(owned_library, [device_event(device)])
 
-    owned_user.delete()
+    #: The retention guard would otherwise refuse to let the device go; a
+    #: whole-library purge is its one exemption. See `tests/test_retention.py`.
+    with purging_library():
+        owned_user.delete()
 
     assert not LibraryEventReference.objects.exists()
 

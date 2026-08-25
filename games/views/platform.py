@@ -37,12 +37,12 @@ from games.sorting import (
     apply_sort,
     parse_find_filter,
 )
-from games.views.deletion import confirm_and_delete
 from games.views.filtering import (
     apply_structured_filter,
     builder_url_for,
     warn_unknown_sort,
 )
+from games.views.retirement import confirm_and_retire
 from games.views.returns import return_url
 
 
@@ -143,10 +143,12 @@ def delete_platform(request: HttpRequest, platform_id: UUID) -> HttpResponse:
     platform = owned_or_404(
         Platform.objects.for_library(library), library, id=platform_id
     )
-    return confirm_and_delete(
+    return confirm_and_retire(
         request,
         platform,
         title="Delete platform",
+        noun="platform",
+        label=platform.name,
         message=f"Permanently delete {platform.name}?",
         details=Ul()[
             Li()[

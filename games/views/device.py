@@ -38,12 +38,12 @@ from games.sorting import (
     apply_sort,
     parse_find_filter,
 )
-from games.views.deletion import confirm_and_delete
 from games.views.filtering import (
     apply_structured_filter,
     builder_url_for,
     warn_unknown_sort,
 )
+from games.views.retirement import confirm_and_retire
 from games.views.returns import return_url
 
 
@@ -152,10 +152,12 @@ def edit_device(request: HttpRequest, device_id: UUID) -> HttpResponse:
 def delete_device(request: HttpRequest, device_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     device = owned_or_404(Device.objects.for_library(library), library, id=device_id)
-    return confirm_and_delete(
+    return confirm_and_retire(
         request,
         device,
         title="Delete device",
+        noun="device",
+        label=device.name,
         message=f"Permanently delete {device.name}?",
         details=Ul()[
             Li()[f"{device.session_set.count()} session(s) lose their device"]
