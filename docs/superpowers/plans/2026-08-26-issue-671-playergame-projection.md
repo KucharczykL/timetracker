@@ -41,6 +41,7 @@
 - Create: `games/migrations/0028_playergame.py` (generated, not hand-written)
 - Create: `tests/test_playergame_projection.py`
 - Modify: `tests/test_projection_rebuild.py:130-132`
+- Modify: `tests/test_uuid_identity_audit.py:29-63` (the pinned relation set)
 - Modify: `CLAUDE.md:152`
 
 **Interfaces:**
@@ -61,7 +62,7 @@ Create `tests/test_playergame_projection.py`:
 import uuid
 
 import pytest
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from games.checks import check_projection_models
@@ -104,7 +105,10 @@ def test_a_library_tracks_one_game_once(owned_library, tracked_game):
         tracked_at=timezone.now(),
     )
 
-    with pytest.raises(IntegrityError):
+    #: The savepoint is not decoration: an IntegrityError marks the test's
+    #: surrounding atomic block for rollback, and every later query in the
+    #: test would raise TransactionManagementError instead of running.
+    with transaction.atomic(), pytest.raises(IntegrityError):
         PlayerGame.objects.create(
             id=uuid.uuid7(),
             library=owned_library,
@@ -178,9 +182,12 @@ class PlayerGame(ProjectionModel):
 - [ ] **Step 4: Generate the migration**
 
 Run: `make makemigrations`
-Expected: `games/migrations/0028_playergame.py` created, containing one
-`CreateModel` and one `AddConstraint`. Read it and confirm the `id` column has
-no `default` and no `db_default`.
+Expected: `games/migrations/0028_playergame.py` created, containing a single
+`CreateModel` whose `options={"constraints": [...]}` carries the unique
+constraint inline — the autodetector only splits constraints into a separate
+`AddConstraint` when a circular dependency forces it, and
+`games/migrations/0026_libraryeventreference.py:67` is the precedent. Read the
+file and confirm the `id` column has no `default` and no `db_default`.
 
 - [ ] **Step 5: Run the tests to verify they pass**
 
@@ -208,7 +215,31 @@ def test_the_application_declares_the_playergame_projection():
 Add `PlayerGame` to the `from games.models import (...)` block at the top of
 that file, keeping the names alphabetical.
 
-- [ ] **Step 7: Record the model in CLAUDE.md**
+- [ ] **Step 7: Register the two new relation columns with the identity audit**
+
+`games/identity_audit.py` derives its expectations from model metadata, but
+`tests/test_uuid_identity_audit.py` pins the derivation against a hand-written
+set so that a wrong derivation cannot agree with itself. Two foreign keys arrive
+with this model, so two pairs join `EXPECTED_RELATION_COLUMNS`, in the set's
+existing alphabetical order — after the `games_platform` entry:
+
+```python
+    ("games_platform", "library_id"),
+    ("games_playergame", "game_id"),
+    ("games_playergame", "library_id"),
+    ("games_playevent", "game_id"),
+```
+
+Nothing else in that file changes: both columns are `uuid_v7`, so neither
+`RESIDUAL_INTEGER_RELATIONS` nor `RESIDUAL_INTEGER_PRIMARY_KEYS` gains an entry.
+
+Run: `make test ARGS="tests/test_uuid_identity_audit.py"`
+Expected: PASS. Skipping this step fails
+`test_relation_columns_cover_every_games_relation`, and
+`tests/test_projection_rebuild.py:1236` too — its leak detector imports the same
+constant.
+
+- [ ] **Step 8: Record the model in CLAUDE.md**
 
 After the `FilterPreset` bullet at `CLAUDE.md:152`, add:
 
@@ -216,15 +247,15 @@ After the `FilterPreset` bullet at `CLAUDE.md:152`, add:
 - **PlayerGame** — the first event-sourced projection: one row per catalog `Game` a library tracks. `id` is the creation event's `aggregate_id`, `tracked_at` its `recorded_at`, unique per `(library, game)`. Written only by the `CURRENT_STATE` projector; never by a view
 ```
 
-- [ ] **Step 8: Run the neighbouring suites**
+- [ ] **Step 9: Run the neighbouring suites**
 
-Run: `make test ARGS="tests/test_projection_rebuild.py tests/test_projection_model.py tests/test_playergame_projection.py"`
+Run: `make test ARGS="tests/test_projection_rebuild.py tests/test_projection_model.py tests/test_playergame_projection.py tests/test_uuid_identity_audit.py"`
 Expected: PASS.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
-git add games/models.py games/migrations/0028_playergame.py tests/test_playergame_projection.py tests/test_projection_rebuild.py CLAUDE.md
+git add games/models.py games/migrations/0028_playergame.py tests/test_playergame_projection.py tests/test_projection_rebuild.py tests/test_uuid_identity_audit.py CLAUDE.md
 git commit -m "Give the projections their first table"
 ```
 
@@ -388,8 +419,6 @@ git commit -m "Say in events that a library tracks a game"
 Append to `tests/test_playergame_projection.py` (and extend its imports):
 
 ```python
-from django.db import transaction
-
 from games.events.append import lock_stream
 from games.events.playergame import PLAYERGAME_CREATED
 from games.events.references import capture_reference
@@ -910,15 +939,21 @@ def test_a_tracked_game_refuses_a_hard_delete(owned_user, owned_library):
 `ReferencedRowDeletion` tests in this file cover games no projection tracks, and
 keep passing unchanged.
 
-Extend that file's imports with `from games.commands.playergame import
-TrackGame`, `from games.events.dispatch import dispatch`, and `PlayerGame` in
-the `games.models` import block.
+Extend that file's imports with `from django.db.models.deletion import
+RestrictedError`, `from games.commands.playergame import TrackGame`, `from
+games.events.dispatch import dispatch`, and `PlayerGame` in the `games.models`
+import block.
 
-- [ ] **Step 2: Run it to verify it fails**
+- [ ] **Step 2: Run both to see which one fails**
 
-Run: `make test ARGS="tests/test_retention.py -x -k tracked_game"`
-Expected: FAIL with
-`RestrictedError: Cannot delete some instances of model 'Game' because they are referenced through restricted foreign keys: 'PlayerGame.game'.`
+Run: `make test ARGS="tests/test_retention.py -k tracked_game"`
+Expected: exactly one failure. `test_a_tracked_game_refuses_a_hard_delete`
+already passes — the foreign key is doing its job before any change here.
+`test_a_tracked_game_archives_and_keeps_its_projection_row` FAILs with
+`RestrictedError: Cannot delete some instances of model 'Game' because they are
+referenced through restricted foreign keys: 'PlayerGame.game'.` — the same
+mechanism firing where it should not. No `-x`: the point of this step is seeing
+both outcomes.
 
 - [ ] **Step 3: Stop the retirement cascade collecting projections**
 
@@ -1016,18 +1051,27 @@ Run: `make check-migrations`
 Expected: "No changes detected".
 
 Run: `make audit-uuid-identity`
-Expected: exit 0. `games_playergame` appears with a note reading
-`skipped: the model has no creation timestamp to order by` — a Note, not a
-violation, because the audit's ordering check is about backfilled identities and
-this table has none. Every one of its columns is `uuid_v7`, so no entry in
-`RESIDUAL_INTEGER_RELATIONS` or `RESIDUAL_INTEGER_PRIMARY_KEYS` is needed.
+Expected: exit 0, with `games_playergame` carrying the ordering note
+`skipped: the model has no creation timestamp to order by`. That is a Note, not
+a violation: `identity_audit.DEFAULT_ORDER_SOURCE` is `"created_at"`, this model
+names its timestamp `tracked_at`, and nothing maps the table in
+`IDENTITY_ORDER_SOURCE`.
+
+**Leave it skipped, deliberately.** Mapping `"games_playergame": "tracked_at"`
+would restore the check, and the invariant it asserts does not reliably hold
+here: the aggregate id is minted inside `build()` while `recorded_at` is stamped
+at append, so two dispatches racing across libraries can order the two columns
+differently and red the audit for no defect. `games_libraryevent` accepts that
+same race against `recorded_at`; this table has no backfilled identities to
+protect, so it buys nothing for the flakiness.
 
 - [ ] **Step 2: Run the fast aggregate**
 
 Run: `make check-fast`
-Expected: PASS. Two suites are the likely casualties of a new model —
-`tests/test_projection_rebuild.py` (Task 1 updated it) and any test counting the
-models a library purge collects. Fix what it names.
+Expected: PASS. The three suites a new model reaches —
+`tests/test_projection_rebuild.py`, `tests/test_uuid_identity_audit.py`, and
+`tests/test_retention.py` — were all updated in Tasks 1 and 5. A failure here is
+a fourth one nobody predicted; read what it names rather than assuming.
 
 - [ ] **Step 3: Run the full gate**
 
@@ -1069,6 +1113,11 @@ the user's call, not this plan's.
   instead of "retire it with `archive_or_delete`". Nothing in this issue calls
   `Game.delete()` on a tracked game outside that test. Reordering the guard is a
   follow-up worth filing, not a change to make here.
+- **`fail_on_restricted=False` still puts `PlayerGame` in `collector.data`.**
+  Django's `RESTRICT` handler calls `add_dependency`, which seeds an empty bucket
+  for the restricted model. Empty means `delete_batch` runs no query and no
+  `pre_delete`/`post_delete` fires, so no row is touched — but a reader of
+  `collector.data` should not be surprised to find the key there.
 - **The E001–E006 regression guard lives in `tests/test_playergame_projection.py`,**
   not in `tests/test_projection_model.py` as the spec suggests. That file builds
   throwaway models under `@isolate_apps`; a real model's check belongs beside the
