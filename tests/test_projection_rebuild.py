@@ -42,6 +42,7 @@ from games.events.rebuild import (
     replay_into_shadow,
     shadow_tables,
     swap_in,
+    write_targets,
 )
 from games.events.replay import ReplayResult, StreamNotContiguous
 from games.events.retry import RetryPolicy
@@ -379,6 +380,38 @@ def test_the_guard_refuses_a_live_write_the_first_keyword_hides(prefix, owned_li
             prefix + insert_into(f'"{SHELF_TABLE}"'),
             [uuid4(), owned_library.pk, "hidden", 0],
         )
+
+
+@pytest.mark.parametrize(
+    ("statement", "expected"),
+    [
+        ('INSERT INTO "games_playergame" (id) VALUES (%s)', ("games_playergame",)),
+        (
+            '/* a comment */ INSERT INTO "games_playergame" (id) VALUES (%s)',
+            ("games_playergame",),
+        ),
+        (
+            (
+                'WITH moved AS (DELETE FROM "old" RETURNING *) '
+                'INSERT INTO "new" SELECT * FROM moved'
+            ),
+            ("old", "new"),
+        ),
+        ('SELECT 1 FROM "games_playergame"', ()),
+        ("SAVEPOINT s1", ()),
+        (
+            'UPDATE ONLY pg_temp."games_playergame__shadow" SET id = id',
+            ("games_playergame__shadow",),
+        ),
+    ],
+)
+def test_write_targets_names_every_table_a_statement_writes(statement, expected):
+    assert write_targets(statement) == expected
+
+
+def test_write_targets_refuses_a_write_it_cannot_parse():
+    #: An empty name is a refusal, not a miss.
+    assert write_targets("INSERT INTO (broken") == ("",)
 
 
 @pytest.mark.django_db

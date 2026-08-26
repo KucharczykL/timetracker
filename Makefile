@@ -269,6 +269,10 @@ loadplatforms: ensure-postgres
 audit-uuid-identity: ensure-postgres
 	uv run --frozen python manage.py audit_uuid_identity
 
+# Usage: make bench ARGS="--seed 10000 --gate"
+bench: ensure-postgres
+	uv run --frozen python manage.py benchmark_events $(ARGS)
+
 loadall: ensure-postgres
 	uv run --frozen python manage.py loaddata data.yaml
 
