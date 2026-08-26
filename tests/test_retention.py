@@ -478,7 +478,7 @@ def test_purging_one_library_leaves_the_others_rows(
 
 
 def test_purging_a_library_takes_its_projection_rows_with_it(owned_library):
-    """PlayerGame.game is RESTRICT; CASCADE through the library clears it."""
+    """A CASCADE through the library clears RESTRICT."""
     user = owned_library.user
     game = Game.objects.create(library=owned_library, name="Purged")
     dispatch(

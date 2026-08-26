@@ -410,7 +410,7 @@ def test_write_targets_names_every_table_a_statement_writes(statement, expected)
 
 
 def test_write_targets_refuses_a_write_it_cannot_parse():
-    #: An empty name is the guard's refusal, not a miss.
+    #: An empty name is a refusal, not a miss.
     assert write_targets("INSERT INTO (broken") == ("",)
 
 

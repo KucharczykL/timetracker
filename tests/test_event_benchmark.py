@@ -51,7 +51,7 @@ from games.models import (
 
 
 def track_one_game(library, *, name: str = "Benchmark probe") -> Game:
-    """Dispatch one real TrackGame against a fresh catalog row.
+    """Dispatch one TrackGame against a fresh row.
 
     Every caller must be marked django_db(transaction=True): dispatch
     refuses to run inside an enclosing atomic block.
@@ -96,7 +96,7 @@ def test_summarize_reports_the_count_the_tail_and_the_worst():
 
 @pytest.mark.django_db
 def test_the_counter_attributes_an_insert_an_update_and_a_delete():
-    """Counting statements is what makes an in-place update visible."""
+    """Statements are what make an update visible."""
     counter = StatementCounter()
     with connection.execute_wrapper(counter), connection.cursor() as cursor:
         cursor.execute('CREATE TEMP TABLE "counter_probe" (id integer PRIMARY KEY)')
@@ -104,7 +104,7 @@ def test_the_counter_attributes_an_insert_an_update_and_a_delete():
         cursor.execute('UPDATE "counter_probe" SET id = id + 10')
         cursor.execute('DELETE FROM "counter_probe" WHERE id = 11')
     assert counter.statements == 4
-    #: CREATE names no write keyword, so it is counted but not attributed.
+    #: CREATE is counted, but not attributed.
     assert counter.statements_per_table == {"counter_probe": 3}
     assert counter.rows_per_table == {"counter_probe": 5}
 
@@ -131,7 +131,7 @@ def test_the_counter_counts_statements_that_name_no_table():
 
 @pytest.mark.django_db(transaction=True)
 def test_the_counter_separates_projections_from_the_event_store(owned_library):
-    #: One tracked game: one projection row, one event, one reference.
+    #: One game: one row in each table.
     counter = StatementCounter()
     with connection.execute_wrapper(counter):
         track_one_game(owned_library)
@@ -161,7 +161,7 @@ def timings(p95: float, *, samples: int = 200) -> Timings:
 def attempt(
     *, seconds: float, folded_through: int = 0, conflict: str | None = None
 ) -> RebuildAttempt:
-    """One pass whose three phases sum to `seconds`."""
+    """One pass whose phases sum to `seconds`."""
     return RebuildAttempt(
         folded_through=folded_through,
         replay_seconds=seconds * 0.8,
@@ -221,7 +221,7 @@ def test_a_rebuild_over_its_scaled_budget_misses():
 
 
 def test_a_retried_rebuild_is_charged_only_its_last_pass():
-    """Three passes that each met the budget are not one pass that missed."""
+    """Three passes that met it are not one miss."""
     budget = rebuild_budget(
         rebuild_report(
             folded_through=10_000,
@@ -238,7 +238,7 @@ def test_a_retried_rebuild_is_charged_only_its_last_pass():
 
 
 def test_a_rebuild_below_the_gating_floor_is_not_gated():
-    #: Scaling is verified linear from 2,000 up, not below.
+    #: Scaling is verified linear from 2,000 up.
     budget = rebuild_budget(rebuild_report(folded_through=1_999, elapsed_seconds=99.0))
     assert budget.verdict is BudgetVerdict.NOT_GATED
     assert budget.measured == pytest.approx(99.0)
@@ -251,7 +251,7 @@ def test_seeding_writes_the_events_and_the_projection_rows(owned_library):
     assert report.events == 25
     assert report.catalog_rows == 29
     assert LibraryEvent.objects.filter(library=owned_library).count() == 25
-    #: append() folds inline, so the live rows exist already.
+    #: append() folds inline; the rows exist already.
     assert PlayerGame.objects.filter(library=owned_library).count() == 25
 
 
@@ -261,9 +261,8 @@ def test_seeding_batches_the_stream_rather_than_locking_per_event(owned_library)
     with connection.execute_wrapper(counter):
         seed_library(owned_library, actor=owned_library.user, events=25, spares=0)
     head = LibraryEventStreamHead._meta.db_table
-    #: One batch, two writes: lock_stream inserts the head that did not
-    #: exist, then append advances current_sequence once. A second batch
-    #: would add one UPDATE, not two statements.
+    #: One batch, two writes: the insert, then the advance.
+    #: A second batch adds one UPDATE, not two.
     assert counter.statements_per_table[head] == 2
 
 
@@ -274,7 +273,7 @@ def test_a_second_batch_only_advances_the_head(owned_library):
     with connection.execute_wrapper(counter), transaction.atomic():
         lock_stream(owned_library)
     head = LibraryEventStreamHead._meta.db_table
-    #: The head exists now, so get_or_create reads and writes nothing.
+    #: The head exists, so get_or_create writes nothing.
     assert head not in counter.statements_per_table
 
 
@@ -334,8 +333,7 @@ def test_one_dispatch_writes_one_projection_row_through_one_statement(owned_libr
     assert rows[LibraryEvent._meta.db_table] == 1
     assert rows[LibraryEventReference._meta.db_table] == 1
     assert rows[LibraryIdempotencyRecord._meta.db_table] >= 1
-    #: events=0 seeded no head, so lock_stream inserts it and append
-    #: advances it: two head rows, not one.
+    #: events=0 seeded no head: two rows, not one.
     assert rows[LibraryEventStreamHead._meta.db_table] == 2
     assert work.event_store_rows == 4 + rows[LibraryIdempotencyRecord._meta.db_table]
 
@@ -363,7 +361,7 @@ def test_folding_one_event_costs_six_statements(django_user_model):
 
 @pytest.mark.django_db
 def test_the_fold_counts_the_shadow_table_as_its_projection(owned_library):
-    """A replay writes games_playergame__shadow; the swap writes the live one."""
+    """A replay writes the shadow; the swap writes live."""
     seed_library(owned_library, actor=owned_library.user, events=10, spares=0)
     _report, fold = run_rebuild_scenario(
         owned_library, mode=RebuildMode.REBUILD, count_fold=True
@@ -380,7 +378,7 @@ def test_the_fold_counts_the_shadow_table_as_its_projection(owned_library):
 @pytest.mark.django_db(transaction=True)
 def test_a_run_folds_the_events_both_write_paths_produced():
     report = run_benchmark(seed=30, iterations=3, warmup=1, keep=True)
-    #: 30 seeded, 3 + 1 by the command scenario, 3 by amplification.
+    #: 30 seeded, 4 dispatched, 3 amplified.
     assert report.rebuild.folded_through == 37
     assert all(
         table.only_live == table.only_rebuilt == table.differing == 0
@@ -390,7 +388,7 @@ def test_a_run_folds_the_events_both_write_paths_produced():
 
 @pytest.mark.django_db(transaction=True)
 def test_a_run_purges_its_scratch_user_after_a_scenario_raises(monkeypatch):
-    """Deleting the workload plug point left a monkeypatch as the only seam."""
+    """No plug point left; a monkeypatch is the seam."""
     from games.events import benchmark_run as run_module
 
     def explode(*args, **kwargs):
@@ -405,7 +403,7 @@ def test_a_run_purges_its_scratch_user_after_a_scenario_raises(monkeypatch):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_kept_run_names_its_scratch_user_before_it_can_fail():
-    """--keep must print the cleanup even for a run that raises."""
+    """--keep prints the cleanup, even when raising."""
     announced: list[str] = []
     report = run_benchmark(
         seed=5,
@@ -513,13 +511,13 @@ def test_an_unknown_library_is_named():
 def test_the_command_prints_what_it_will_create_before_creating_it():
     output = run_command(seed=25, iterations=2, warmup=1)
     assert "25" in output
-    #: A three-minute default says so where it is read.
+    #: A three-minute default says so first.
     assert "estimate" in output.lower()
 
 
 @pytest.mark.django_db(transaction=True)
 def test_gate_raises_on_a_missed_budget(monkeypatch):
-    """25 samples clears the sample floor; no events need seeding for that."""
+    """25 samples clear the floor; no seeding needed."""
     monkeypatch.setattr(benchmark_module, "COMMAND_BUDGET_SECONDS", 0.0)
     with pytest.raises(CommandError, match="budget"):
         run_command(seed=0, iterations=25, warmup=1, gate=True)

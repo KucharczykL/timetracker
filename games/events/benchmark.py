@@ -1,15 +1,4 @@
-"""What a command costs, what a rebuild costs, and what one event costs.
-
-The charter fixes two numbers -- 100 ms at p95 for an ordinary command, 60
-seconds for a 100,000-event rebuild -- and asks that write amplification be
-recorded after every new projector family without fixing a limit for it. This
-module measures all three against the real workload, and this module is the
-only place those numbers are written down.
-
-It names things and decides things; it never does work. Nothing here imports
-benchmark_workload or benchmark_run, and that is what keeps the three modules
-acyclic.
-"""
+"""The vocabulary, and the charter's numbers."""
 
 import json
 import math
@@ -40,7 +29,7 @@ from games.models import (
 #: A wall-clock interval, from time.monotonic().
 type Seconds = float
 
-#: The four tables an append writes outside the projections.
+#: The four tables outside the projections.
 EVENT_STORE_TABLES: frozenset[TableName] = frozenset(
     model._meta.db_table
     for model in (
@@ -63,7 +52,7 @@ class Timings:
 
 
 def nearest_rank(samples: Sequence[Seconds], percentile: int) -> Seconds:
-    """The observation at `percentile`, never a value between two.
+    """The observation at `percentile`, never between two.
 
     `statistics.quantiles` interpolates, which invents a latency nothing
     measured. A budget is a claim about observations.
@@ -76,7 +65,7 @@ def nearest_rank(samples: Sequence[Seconds], percentile: int) -> Seconds:
 
 
 def summarize(samples: Sequence[Seconds]) -> Timings:
-    """The three numbers worth reading; the mean hides the tail."""
+    """Three numbers; the mean hides the tail."""
     return Timings(
         samples=len(samples),
         p50=nearest_rank(samples, 50),
@@ -87,13 +76,13 @@ def summarize(samples: Sequence[Seconds]) -> Timings:
 
 @dataclass(frozen=True, slots=True)
 class WorkPerEvent:
-    """What one event cost, in rows and in statements."""
+    """What one event cost: rows and statements."""
 
     events: int
     #: Every statement in the window, savepoints included.
     statements: int
     rows_per_table: Mapping[TableName, int]
-    #: Only statements that name a table they write; shadow names kept raw.
+    #: Only statements that name a table.
     statements_per_table: Mapping[TableName, int]
     projection_rows: int
     projection_statements: int
@@ -103,12 +92,12 @@ class WorkPerEvent:
 
 @dataclass(slots=True)
 class StatementCounter:
-    """Every statement, and the rows the writing ones touched.
+    """Every statement, and the rows writes touched.
 
     Counting statements rather than diffing COUNT(*) is what makes an update
     visible: a family that rewrites one row an event amplifies by one, and a
-    before-and-after count would report zero. The total matters as much as the
-    per-table breakdown, because four of the current fold's six statements are
+    before-and-after count reports zero. The total matters as much as the
+    per-table breakdown, because four of the fold's six statements are
     savepoints and name no table at all.
 
     Two limits: this sees one connection, so a family that opens its own is
@@ -126,7 +115,7 @@ class StatementCounter:
         self.statements += 1
         rowcount = context["cursor"].rowcount
         for table in write_targets(sql):
-            #: An unparseable write; the guard refuses it, we skip it.
+            #: Unparseable; the guard refuses, we skip.
             if not table:
                 continue
             self.statements_per_table[table] = (
@@ -139,7 +128,7 @@ class StatementCounter:
         return result
 
     def work(self, *, events: int) -> WorkPerEvent:
-        """Freeze the totals, classified by what owns each table."""
+        """Freeze the totals, classified by owner."""
         projection_tables = {model._meta.db_table for model in projection_models()}
         return WorkPerEvent(
             events=events,
@@ -158,7 +147,7 @@ class StatementCounter:
 
     @staticmethod
     def _total(counts: Mapping[TableName, int], tables: Container[TableName]) -> int:
-        #: A replay writes games_x__shadow, which is games_x's cost.
+        #: A shadow write is its projection's cost.
         return sum(
             count
             for table, count in counts.items()
@@ -168,13 +157,13 @@ class StatementCounter:
 
 @dataclass(frozen=True, slots=True)
 class Environment:
-    """The machine and the tuning a measurement belongs to."""
+    """The machine a number belongs to."""
 
     platform: str
-    #: Empty on the Linux systems where platform.processor() says nothing.
+    #: Empty on Linux, where processor() says nothing.
     processor: str
     cpu_count: int
-    #: None where the platform does not report it.
+    #: None where the platform declines.
     total_memory_bytes: int | None
     python_version: str
     postgresql_version: str
@@ -184,11 +173,11 @@ class Environment:
 
 
 def environment() -> Environment:
-    """Everything needed to reproduce a number, or to distrust it."""
+    """What is needed to reproduce a number."""
     with connection.cursor() as cursor:
         settings_read = {}
         for name in ("server_version", "shared_buffers", "work_mem"):
-            #: PostgreSQL takes no parameter here; these three are literals.
+            #: SHOW takes no parameter; these are literals.
             cursor.execute(f"SHOW {name}")
             settings_read[name] = cursor.fetchone()[0]
     return Environment(
@@ -208,7 +197,7 @@ def _total_memory() -> int | None:
     try:
         return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
     except AttributeError, ValueError, OSError:
-        #: Windows, and any POSIX that declines to answer.
+        #: Windows, and any POSIX that declines.
         return None
 
 
@@ -217,7 +206,7 @@ COMMAND_BUDGET_SECONDS: Seconds = 0.100
 REBUILD_BUDGET_SECONDS: Seconds = 60.0
 REBUILD_BUDGET_EVENTS = 100_000
 
-#: Scaling is verified linear from here up, not below.
+#: Scaling is verified linear from here up.
 MINIMUM_GATED_EVENTS = 2_000
 MINIMUM_GATED_SAMPLES = 20
 
@@ -248,7 +237,7 @@ def _verdict(*, measured: float, limit: float, gated: bool) -> BudgetVerdict:
 
 
 def command_budget(timings: Timings) -> Budget:
-    """The charter's 100 ms at p95, for an ordinary command."""
+    """The charter's 100 ms at p95."""
     return Budget(
         name="command p95",
         limit=COMMAND_BUDGET_SECONDS,
@@ -263,10 +252,11 @@ def command_budget(timings: Timings) -> Budget:
 
 
 def one_pass_seconds(report: RebuildReport) -> Seconds:
-    """The last attempt's phases; elapsed_seconds sums every retry.
+    """The last attempt's phases, not every retry.
 
-    A budget of 60 seconds per rebuild is a claim about one pass. Charging
-    it three contended passes fails a rebuild that met it three times.
+    A budget of 60 seconds per rebuild is a claim about one pass.
+    `elapsed_seconds` sums the retries, and charging a rebuild three
+    contended passes fails one that met the budget three times.
     """
     if not report.attempts:
         return report.elapsed_seconds
@@ -275,7 +265,7 @@ def one_pass_seconds(report: RebuildReport) -> Seconds:
 
 
 def rebuild_budget(report: RebuildReport) -> Budget:
-    """60 s per 100,000 events, scaled to what was actually folded."""
+    """60 s per 100,000 events, scaled."""
     events = report.folded_through
     limit = REBUILD_BUDGET_SECONDS * events / REBUILD_BUDGET_EVENTS
     measured = one_pass_seconds(report)
@@ -300,12 +290,12 @@ class SeedReport:
     catalog_seconds: Seconds
     events: int
     append_seconds: Seconds
-    #: The bulk-write number, in place of a bulk command.
+    #: The bulk-write number; no bulk command exists.
     events_per_second: float
 
 
 class RebuildDiffNotEmpty(RuntimeError):
-    """The parity claim the run exists to make is false."""
+    """The run's parity claim is false."""
 
 
 REPORT_SCHEMA = 1

@@ -1,11 +1,4 @@
-"""Seeding, the three scenarios, and the scratch teardown.
-
-Everything here works on a real library through the real write path. There is
-no workload protocol and no plug point: #671 shipped one command, one event
-type and one projector family, and this module names them.
-
-Imports benchmark.py for its vocabulary and nothing from benchmark_run.py.
-"""
+"""Seeding, the scenarios, and the scratch teardown."""
 
 import uuid
 from collections.abc import Iterator
@@ -33,15 +26,14 @@ from games.events.rebuild import RebuildMode, RebuildReport, rebuild_projections
 from games.events.references import capture_reference
 from games.models import Game, UserLibrary
 
-#: The seeded catalog rows, and the untracked ones scenarios consume.
+#: The seeded rows, and the untracked spares.
 SEEDED_NAME_PREFIX = "Benchmark game "
 SPARE_NAME_PREFIX = "Benchmark spare "
 
 CATALOG_BATCH = 1_000
 APPEND_BATCH = 1_000
 
-#: One key for every batch: only LibraryIdempotencyRecord is unique on it,
-#: and a direct append() never writes one.
+#: One key per batch; only records collide.
 SEED_IDEMPOTENCY_KEY = "benchmark-seed"
 
 #: capture_reference reads exactly these three.
@@ -51,7 +43,7 @@ _CAPTURED_FIELDS = ("id", "name", "year_released")
 def seed_library(
     library: UserLibrary, *, actor: User, events: int, spares: int
 ) -> SeedReport:
-    """Fill `library` with `events` real events, plus `spares` untracked games."""
+    """Fill `library`, and leave `spares` untracked games."""
     catalog_started = monotonic()
     _create_catalog(library, prefix=SEEDED_NAME_PREFIX, count=events)
     _create_catalog(library, prefix=SPARE_NAME_PREFIX, count=spares)
@@ -85,7 +77,7 @@ def seed_library(
 
 
 def _create_catalog(library: UserLibrary, *, prefix: str, count: int) -> None:
-    """Rows nothing has tracked, named so a scenario can find them."""
+    """Untracked rows, named for a scenario."""
     for start in range(0, count, CATALOG_BATCH):
         Game.objects.bulk_create(
             Game(library=library, name=f"{prefix}{index}")
@@ -98,17 +90,16 @@ def _seeded_games(library: UserLibrary) -> Iterator[Game]:
 
 
 def spare_games(library: UserLibrary) -> Iterator[Game]:
-    """The untracked rows the command scenarios consume, one each."""
+    """The untracked rows the scenarios consume."""
     return _catalog(library, SPARE_NAME_PREFIX)
 
 
 def _catalog(library: UserLibrary, prefix: str) -> Iterator[Game]:
-    """Keyset pages, because every caller commits mid-iteration.
+    """Keyset pages, because callers commit mid-iteration.
 
-    `.iterator()` would open a server-side cursor, which a
-    transaction-pooling pooler closes under us -- issue #917, and no reason
-    to depend on it for an iteration a `WHERE id > ?` does just as lazily.
-    UUIDv7 primary keys sort in insertion order, so the paging is stable.
+    `.iterator()` opens a server-side cursor, which a transaction-pooling
+    pooler closes under us -- issue #917. UUIDv7 primary keys sort in
+    insertion order, so `WHERE id > ?` pages just as lazily and survives.
     """
     last_id: uuid.UUID | None = None
     while True:
@@ -123,16 +114,7 @@ def _catalog(library: UserLibrary, prefix: str) -> Iterator[Game]:
 
 
 def purge_scratch_user(username: str) -> Seconds:
-    """Delete the scratch user through the command that already knows how.
-
-    At 100,000 events this collects roughly 400,000 rows -- the events, their
-    reference rows, the catalog, and the projections -- and takes about a sixth
-    of the run. A second, raw-SQL copy of the cascade would be faster and would
-    be a second thing that can drift from `on_delete`.
-
-    delete_user_library walks the collector twice, once to print the scope and
-    once to delete. Both walks are inside this number.
-    """
+    """Delete the scratch user, through delete_user_library."""
     started = monotonic()
     call_command(
         "delete_user_library",
@@ -160,12 +142,12 @@ def run_command_scenario(
     iterations: int,
     warmup: int,
 ) -> Timings:
-    """Dispatch against a library that already holds its seeded rows.
+    """Dispatch against the seeded library.
 
-    TrackGame's duplicate check queries the projection, so measuring it
-    against a full library is the measurement worth having. The warmup
-    dispatches are additional to `iterations` and are discarded: the first
-    one pays for connection setup and query planning no later one pays for.
+    TrackGame's duplicate check queries the projection, so a full library is
+    the condition worth measuring. The warmup dispatches are additional to
+    `iterations` and discarded: the first pays for connection setup and query
+    planning that no later one pays for.
     """
     for game in islice(games, warmup):
         _track(library, actor=actor, game=game)
@@ -180,10 +162,10 @@ def run_command_scenario(
 def run_amplification_scenario(
     library: UserLibrary, *, actor: User, games: Iterator[Game], iterations: int
 ) -> WorkPerEvent:
-    """What one whole command costs: append, idempotency, and the fold.
+    """What one command costs, end to end.
 
-    Counted in its own pass rather than during the command scenario, so the
-    wrapper's per-statement cost stays out of the latency being gated.
+    Counted in its own pass, so the wrapper's per-statement cost stays out of
+    the latency being gated.
     """
     counter = StatementCounter()
     dispatched = 0
@@ -197,15 +179,11 @@ def run_amplification_scenario(
 def run_rebuild_scenario(
     library: UserLibrary, *, mode: RebuildMode, count_fold: bool
 ) -> tuple[RebuildReport, WorkPerEvent | None]:
-    """Replay, diff, and -- in REBUILD mode -- swap.
-
-    No CHECK pass runs first: a REBUILD already separates replay, diff and
-    swap in its RebuildAttempt, and already diffs before swapping, so the
-    second pass bought nothing and cost a third of the run.
+    """Replay, diff, and swap.
 
     The counter is installed for the whole rebuild, so the gated time carries
     its own instrumentation. That makes a PASSED verdict conservative; pass
-    count_fold=False to re-measure a verdict that lands inside the overhead.
+    count_fold=False to re-measure a verdict inside the overhead.
     """
     if not count_fold:
         return rebuild_projections(library, mode=mode), None

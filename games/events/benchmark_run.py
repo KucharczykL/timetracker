@@ -1,8 +1,4 @@
-"""Order the scenarios, and take the scratch library away again.
-
-The only module that imports both benchmark.py and benchmark_workload.py,
-which is exactly why it is a third module and not part of either.
-"""
+"""Order the scenarios; remove the scratch library."""
 
 import logging
 import uuid
@@ -45,15 +41,14 @@ def run_benchmark(
     count_fold: bool = True,
     announce_scratch_user: Callable[[str], None] | None = None,
 ) -> BenchmarkReport:
-    """Seed a scratch library, measure it, and take it away again.
+    """Seed a library, measure it, remove it.
 
     With `library`, run the read-only rebuild scenario against one that
-    already exists and ignore `seed`.
+    exists and ignore `seed`.
 
-    `announce_scratch_user` is called with the username as soon as the user
-    exists, before any scenario can fail. --keep needs it: a run that raises
-    leaves the library behind, and the operator has to be told its name to
-    remove it.
+    `announce_scratch_user` takes the username as soon as the user exists,
+    before any scenario can fail. --keep needs it: a run that raises leaves
+    the library behind, and the operator has to be told its name.
     """
     if library is not None:
         return _measure_existing(library, count_fold=count_fold)
@@ -78,7 +73,7 @@ def run_benchmark(
             try:
                 purge_scratch_user(username)
             except Exception:
-                #: Never replace the failure that brought us here.
+                #: Never mask the failure underneath.
                 logger.exception("Could not purge scratch user %s.", username)
 
 
@@ -88,8 +83,7 @@ def _measure_scratch(
     library = user.library
     spares = 2 * iterations + warmup
     seeded = seed_library(library, actor=user, events=seed, spares=spares)
-    #: One iterator for both command scenarios: islice advances it, so
-    #: amplification dispatches against the spares the first pass left.
+    #: One iterator; islice leaves the next spares.
     games = spare_games(library)
     command = run_command_scenario(
         library, actor=user, games=games, iterations=iterations, warmup=warmup
@@ -135,7 +129,7 @@ def _measure_existing(library: UserLibrary, *, count_fold: bool) -> BenchmarkRep
 
 
 def _refuse_a_diff(report: RebuildReport) -> None:
-    """A rebuild that is quick and wrong is not a passing benchmark."""
+    """A quick, wrong rebuild is no benchmark."""
     drifted = sum(
         table.only_live + table.only_rebuilt + table.differing
         for table in report.tables

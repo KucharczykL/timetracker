@@ -18,7 +18,7 @@ from games.models import UserLibrary
 
 DEFAULT_SEED_EVENTS = 100_000
 
-#: Measured on the development machine; see docs/event-benchmarks.md.
+#: Measured; see docs/event-benchmarks.md.
 SECONDS_PER_SEEDED_EVENT = 65 / 100_000
 SECONDS_PER_REBUILT_EVENT = 59 / 100_000
 SECONDS_PER_PURGED_EVENT = 52 / 100_000
@@ -70,15 +70,14 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         library = self._resolve_library(options)
-        #: Resolved here, not at the parser: --library has to be able to tell
-        #: "no seed given" from "the default typed out".
+        #: Here, so --library sees an unset seed.
         seed = DEFAULT_SEED_EVENTS if options["seed"] is None else options["seed"]
         if library is None:
             self._write_estimate(
                 seed=seed,
                 iterations=options["iterations"],
                 warmup=options["warmup"],
-                #: --json owns stdout; a human watching still wants the notice.
+                #: --json owns stdout; the notice goes aside.
                 aside=options["json"],
             )
         try:
@@ -124,7 +123,7 @@ class Command(BaseCommand):
             raise CommandError(f"No library {library_id}.") from error
 
     def _announce_scratch_user(self, username: str) -> None:
-        """Before any scenario runs: a run that raises also leaves it behind."""
+        """First: a run that raises leaves it."""
         self.stdout.write(
             "Keeping the scratch library. Remove it with: "
             f"manage.py delete_user_library --user {username} --confirm {username}"
@@ -144,7 +143,7 @@ class Command(BaseCommand):
             f"Estimate: {estimate / 60:.1f} minute(s)."
         )
         if aside:
-            #: Unstyled: this is a notice on stderr, not a failure.
+            #: Unstyled: a notice, not a failure.
             self.stderr.write(notice, style_func=str)
         else:
             self.stdout.write(notice)
@@ -159,8 +158,7 @@ class Command(BaseCommand):
                 f"{report.seed.catalog_rows} catalog row(s) in "
                 f"{report.seed.catalog_seconds:.2f}s."
             )
-            #: An append measurement, not a command one: no budget applies,
-            #: because no bulk command exists to measure yet.
+            #: An append, not a command; no budget.
             self.stdout.write("  The event/s figure is a bulk append, not a command.")
         if report.command is not None:
             self.stdout.write(
@@ -239,7 +237,7 @@ class Command(BaseCommand):
         elif budget.verdict is BudgetVerdict.MISSED:
             self.stdout.write(self.style.ERROR(line))
         else:
-            #: Too small to judge; the number is still worth printing.
+            #: Too small to judge; still worth printing.
             self.stdout.write(self.style.WARNING(line))
 
     def _gate(self, report: BenchmarkReport) -> None:
