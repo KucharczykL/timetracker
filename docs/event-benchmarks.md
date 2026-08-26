@@ -197,7 +197,8 @@ Two conditions bound it, both already visible in the code:
   against them, so the last flush has to land before the replay phase returns.
 
 Neither is a new invariant. Both are reasons a buffering target is a piece of
-work with a design rather than a patch.
+work with a design rather than a patch. Issue **#932** carries it, with these
+numbers, for when a second projector family makes the budget tight again.
 
 ## Seeding, which has no budget
 
