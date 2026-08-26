@@ -166,12 +166,28 @@ def test_a_tracked_game_archives_and_keeps_its_projection_row(
 
 
 def test_a_tracked_game_refuses_a_hard_delete(owned_user, owned_library):
-    """The foreign key refuses before the tombstone.
+    #: The policy answers, not the foreign key.
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    dispatch(
+        TrackGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="track",
+    )
 
-    `Model.delete()` collects before it sends `pre_delete`, so RESTRICT raises
-    while `refuse_to_delete_a_referenced_row` is still unreached. Pinned as it
-    behaves rather than as it reads best, so that changing the order is a
-    visible decision.
+    with pytest.raises(ReferencedRowDeletion, match="archive_or_delete"):
+        game.delete()
+
+    assert Game.objects.filter(pk=game.pk).exists()
+
+
+def test_a_bulk_delete_of_a_tracked_game_still_answers_restricted(
+    owned_user, owned_library
+):
+    """A queryset never reaches `Model.delete()`.
+
+    The limit of the override, written down rather than found. Every path a
+    person takes deletes one row, so the message they read is the policy's.
     """
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     dispatch(
@@ -182,7 +198,7 @@ def test_a_tracked_game_refuses_a_hard_delete(owned_user, owned_library):
     )
 
     with pytest.raises(RestrictedError):
-        game.delete()
+        Game.objects.filter(pk=game.pk).delete()
 
     assert Game.objects.filter(pk=game.pk).exists()
 

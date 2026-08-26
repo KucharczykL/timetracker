@@ -152,6 +152,21 @@ A receiver on `Platform` and on `Device` prevents the Django fast delete for
 those models. Only a purge of a full library deletes them in quantity, thus the
 cost applies only there.
 
+### The order
+
+The three models are subclasses of `ReferencedRow`. Its `delete()` asks the
+policy before it calls `Model.delete()`.
+
+`Model.delete()` collects the related rows before it sends `pre_delete`. A
+`RESTRICT` relation, such as `PlayerGame.game`, thus refuses first and raises
+`RestrictedError`. That error names a foreign key. It does not tell the caller
+to use `archive_or_delete`. The override makes the policy speak first, and the
+receiver stays the backstop for the paths that do not call `Model.delete()`.
+
+A queryset delete is one such path. `Game.objects.filter(...).delete()` still
+raises `RestrictedError` for a tracked game. Each delete a person starts
+removes one row, thus each message a person reads is the policy's.
+
 ### The one exemption
 
 `purging_library()` stops the guard for a purge of a full library.
