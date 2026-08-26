@@ -138,7 +138,11 @@ def _delete_everything_but(instance: Model) -> None:
     """Run the delete, and keep the row."""
     model = type(instance)
     collector = Collector(using=router.db_for_write(model, instance=instance))
-    collector.collect([instance])
+    #: A RESTRICT row is not collateral of a retirement. Failing here would
+    #: refuse to archive a game a library tracks; deleting it would be worse,
+    #: because a replay writes it back and the live table would then disagree
+    #: with the rebuilt one for good.
+    collector.collect([instance], fail_on_restricted=False)
     collected = collector.data.get(model)
     if collected is not None:
         remaining = {row for row in collected if row.pk != instance.pk}

@@ -7,8 +7,11 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from games.checks import check_projection_models
+from games.commands.playergame import TrackGame
 from games.events.append import lock_stream
+from games.events.dispatch import dispatch
 from games.events.playergame import PLAYERGAME_CREATED
+from games.events.rebuild import RebuildMode, rebuild_projections
 from games.events.references import capture_reference
 from games.events.replay import replay
 from games.models import Game, PlayerGame
@@ -125,3 +128,34 @@ def test_folding_the_stream_again_writes_no_second_row(
 
     assert PlayerGame.objects.count() == 1
     assert PlayerGame.objects.get().pk == identity
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_rebuild_reproduces_the_tracked_rows(owned_user, owned_library, tracked_game):
+    """Replay parity, stated as a test: the rebuild changes nothing."""
+    dispatch(
+        TrackGame(game_id=tracked_game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="track",
+    )
+    before = PlayerGame.objects.get()
+
+    checked = rebuild_projections(owned_library, mode=RebuildMode.CHECK)
+
+    drift = [
+        (table.only_live, table.only_rebuilt, table.differing)
+        for table in checked.tables
+    ]
+    assert drift == [(0, 0, 0)]
+
+    rebuilt = rebuild_projections(owned_library, mode=RebuildMode.REBUILD)
+
+    assert rebuilt.swapped is True
+    after = PlayerGame.objects.get()
+    assert (after.pk, after.game_id, after.library_id, after.tracked_at) == (
+        before.pk,
+        before.game_id,
+        before.library_id,
+        before.tracked_at,
+    )

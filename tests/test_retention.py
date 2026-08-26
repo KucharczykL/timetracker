@@ -13,9 +13,12 @@ from typing import TypedDict
 import pytest
 from django.core.management import call_command
 from django.db import transaction
+from django.db.models.deletion import RestrictedError
 from pydantic import ConfigDict, with_config
 
+from games.commands.playergame import TrackGame
 from games.events.append import lock_stream
+from games.events.dispatch import dispatch
 from games.events.references import (
     DEFAULT_REFERENCE_KINDS,
     Reference,
@@ -32,6 +35,7 @@ from games.models import (
     LibraryEvent,
     LibraryEventReference,
     Platform,
+    PlayerGame,
     PlayEvent,
     Purchase,
     Release,
@@ -141,6 +145,47 @@ def test_a_referenced_game_is_archived(owned_library, game):
     retained = Game.objects.get(pk=game.pk)
     assert retained.archived_at is not None
     assert not Game.objects.for_library(owned_library).exists()
+
+
+def test_a_tracked_game_archives_and_keeps_its_projection_row(
+    owned_user, owned_library
+):
+    """A projection row is not collateral: a replay owns it."""
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    dispatch(
+        TrackGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="track",
+    )
+
+    assert archive_or_delete(game) is Retirement.ARCHIVED
+
+    assert Game.objects.get(pk=game.pk).archived_at is not None
+    assert PlayerGame.objects.filter(game=game).count() == 1
+
+
+def test_a_tracked_game_refuses_a_hard_delete(owned_user, owned_library):
+    """#653's rule, checked over the first payload that exercises it.
+
+    Two refusals now guard the same row, and the foreign key gets there first:
+    `Model.delete()` collects before it sends `pre_delete`, so RESTRICT raises
+    while `refuse_to_delete_a_referenced_row` is still unreached. Pinned as it
+    behaves rather than as it reads best, so that changing the order is a
+    visible decision.
+    """
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    dispatch(
+        TrackGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="track",
+    )
+
+    with pytest.raises(RestrictedError):
+        game.delete()
+
+    assert Game.objects.filter(pk=game.pk).exists()
 
 
 def test_a_referenced_platform_is_archived(owned_library, platform):
