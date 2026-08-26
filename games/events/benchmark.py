@@ -16,12 +16,18 @@ import os
 import platform as platform_module
 from collections.abc import Container, Mapping, Sequence
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import Any
 
 from django.conf import settings
 from django.db import connection
 
-from games.events.rebuild import TableName, projection_models, write_targets
+from games.events.rebuild import (
+    RebuildReport,
+    TableName,
+    projection_models,
+    write_targets,
+)
 from games.events.targets import SHADOW_SUFFIX
 from games.models import (
     LibraryEvent,
@@ -203,3 +209,83 @@ def _total_memory() -> int | None:
     except AttributeError, ValueError, OSError:
         #: Windows, and any POSIX that declines to answer.
         return None
+
+
+#: The charter's numbers. Nowhere else.
+COMMAND_BUDGET_SECONDS: Seconds = 0.100
+REBUILD_BUDGET_SECONDS: Seconds = 60.0
+REBUILD_BUDGET_EVENTS = 100_000
+
+#: Scaling is verified linear from here up, not below.
+MINIMUM_GATED_EVENTS = 2_000
+MINIMUM_GATED_SAMPLES = 20
+
+
+class BudgetVerdict(StrEnum):
+    """A budget has three outcomes, not two."""
+
+    PASSED = "passed"
+    MISSED = "missed"
+    #: The run was too small to judge.
+    NOT_GATED = "not_gated"
+
+
+@dataclass(frozen=True, slots=True)
+class Budget:
+    name: str
+    limit: float
+    unit: str
+    #: Always recorded; only the verdict is withheld.
+    measured: float
+    verdict: BudgetVerdict
+
+
+def _verdict(*, measured: float, limit: float, gated: bool) -> BudgetVerdict:
+    if not gated:
+        return BudgetVerdict.NOT_GATED
+    return BudgetVerdict.PASSED if measured <= limit else BudgetVerdict.MISSED
+
+
+def command_budget(timings: Timings) -> Budget:
+    """The charter's 100 ms at p95, for an ordinary command."""
+    return Budget(
+        name="command p95",
+        limit=COMMAND_BUDGET_SECONDS,
+        unit="s",
+        measured=timings.p95,
+        verdict=_verdict(
+            measured=timings.p95,
+            limit=COMMAND_BUDGET_SECONDS,
+            gated=timings.samples >= MINIMUM_GATED_SAMPLES,
+        ),
+    )
+
+
+def one_pass_seconds(report: RebuildReport) -> Seconds:
+    """The last attempt's phases; elapsed_seconds sums every retry.
+
+    A budget of 60 seconds per rebuild is a claim about one pass. Charging
+    it three contended passes fails a rebuild that met it three times.
+    """
+    if not report.attempts:
+        return report.elapsed_seconds
+    last = report.attempts[-1]
+    return last.replay_seconds + last.diff_seconds + (last.swap_seconds or 0.0)
+
+
+def rebuild_budget(report: RebuildReport) -> Budget:
+    """60 s per 100,000 events, scaled to what was actually folded."""
+    events = report.folded_through
+    limit = REBUILD_BUDGET_SECONDS * events / REBUILD_BUDGET_EVENTS
+    measured = one_pass_seconds(report)
+    return Budget(
+        name="rebuild",
+        limit=limit,
+        unit="s",
+        measured=measured,
+        verdict=_verdict(
+            measured=measured,
+            limit=limit,
+            gated=events >= MINIMUM_GATED_EVENTS,
+        ),
+    )

@@ -7,14 +7,18 @@ from django.db import connection
 
 from games.commands.playergame import TrackGame
 from games.events.benchmark import (
+    BudgetVerdict,
     Environment,
     StatementCounter,
     Timings,
+    command_budget,
     environment,
     nearest_rank,
+    rebuild_budget,
     summarize,
 )
 from games.events.dispatch import dispatch
+from games.events.rebuild import RebuildAttempt, RebuildMode, RebuildReport
 from games.models import Game, PlayerGame
 
 
@@ -120,3 +124,93 @@ def test_the_environment_records_what_the_numbers_are_true_of():
     assert captured.shared_buffers
     assert captured.work_mem
     assert captured.postgresql_version
+
+
+def timings(p95: float, *, samples: int = 200) -> Timings:
+    return Timings(samples=samples, p50=p95 / 2, p95=p95, maximum=p95 * 2)
+
+
+def attempt(
+    *, seconds: float, folded_through: int = 0, conflict: str | None = None
+) -> RebuildAttempt:
+    """One pass whose three phases sum to `seconds`."""
+    return RebuildAttempt(
+        folded_through=folded_through,
+        replay_seconds=seconds * 0.8,
+        diff_seconds=seconds * 0.15,
+        swap_seconds=seconds * 0.05,
+        conflict=conflict,
+    )
+
+
+def rebuild_report(
+    *,
+    folded_through: int,
+    elapsed_seconds: float,
+    attempts: tuple[RebuildAttempt, ...] | None = None,
+) -> RebuildReport:
+    return RebuildReport(
+        library_id=uuid.uuid7(),
+        stream_id=uuid.uuid7(),
+        mode=RebuildMode.REBUILD,
+        swapped=True,
+        folded_through=folded_through,
+        head_at_diff=folded_through,
+        tables=(),
+        attempts=(
+            (attempt(seconds=elapsed_seconds, folded_through=folded_through),)
+            if attempts is None
+            else attempts
+        ),
+        elapsed_seconds=elapsed_seconds,
+    )
+
+
+def test_a_command_inside_the_budget_passes():
+    assert command_budget(timings(0.05)).verdict is BudgetVerdict.PASSED
+
+
+def test_a_command_over_the_budget_misses():
+    assert command_budget(timings(0.15)).verdict is BudgetVerdict.MISSED
+
+
+def test_too_few_samples_is_not_gated_but_is_still_measured():
+    budget = command_budget(timings(0.15, samples=19))
+    assert budget.verdict is BudgetVerdict.NOT_GATED
+    assert budget.measured == 0.15
+
+
+def test_the_rebuild_budget_scales_to_the_events_actually_folded():
+    #: 60s per 100k, so 10k gets 6s.
+    budget = rebuild_budget(rebuild_report(folded_through=10_000, elapsed_seconds=5.9))
+    assert budget.limit == pytest.approx(6.0)
+    assert budget.verdict is BudgetVerdict.PASSED
+
+
+def test_a_rebuild_over_its_scaled_budget_misses():
+    budget = rebuild_budget(rebuild_report(folded_through=10_000, elapsed_seconds=6.5))
+    assert budget.verdict is BudgetVerdict.MISSED
+
+
+def test_a_retried_rebuild_is_charged_only_its_last_pass():
+    """Three passes that each met the budget are not one pass that missed."""
+    budget = rebuild_budget(
+        rebuild_report(
+            folded_through=10_000,
+            elapsed_seconds=18.0,
+            attempts=(
+                attempt(seconds=5.8, conflict="the head moved"),
+                attempt(seconds=5.9, conflict="the head moved"),
+                attempt(seconds=5.5),
+            ),
+        )
+    )
+    assert budget.measured == pytest.approx(5.5)
+    assert budget.verdict is BudgetVerdict.PASSED
+
+
+def test_a_rebuild_below_the_gating_floor_is_not_gated():
+    #: Scaling is verified linear from 2,000 up, not below.
+    budget = rebuild_budget(rebuild_report(folded_through=1_999, elapsed_seconds=99.0))
+    assert budget.verdict is BudgetVerdict.NOT_GATED
+    assert budget.measured == pytest.approx(99.0)
