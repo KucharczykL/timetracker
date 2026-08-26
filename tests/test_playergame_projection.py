@@ -52,6 +52,11 @@ def test_a_tracked_game_starts_unplayed():
     assert PlayerGame().status == PlayerGameStatus.UNPLAYED
 
 
+def test_a_tracked_game_starts_unmastered():
+    """The creation event states no mastery."""
+    assert PlayerGame().mastered is False
+
+
 def test_a_library_tracks_one_game_once(owned_library, tracked_game):
     PlayerGame.objects.create(
         id=uuid.uuid7(),
