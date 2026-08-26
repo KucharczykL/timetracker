@@ -472,8 +472,8 @@ class Budget:
     name: str
     limit: float
     unit: str
-    #: None when the run was too small to gate.
-    measured: float | None
+    #: Always recorded; only the verdict is withheld.
+    measured: float
     verdict: BudgetVerdict
 
 @dataclass(frozen=True, slots=True)
@@ -499,10 +499,15 @@ class SeedReport:
     #: The bulk-write number, in place of a bulk command.
     events_per_second: float
 
+class RebuildDiffNotEmpty(RuntimeError):
+    """The parity claim the run exists to make is false."""
+
 @dataclass(frozen=True, slots=True)
 class BenchmarkReport:
     schema: int  # 1
     environment: Environment
+    #: None in --library mode; --keep prints it.
+    scratch_username: str | None
     #: None in --library mode.
     seed: SeedReport | None
     command: Timings | None
