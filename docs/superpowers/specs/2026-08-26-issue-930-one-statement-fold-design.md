@@ -20,7 +20,10 @@ This design replaces the six statements with one. The fold becomes an upsert.
 
 ## The change
 
-`Projector` gets one method. It is the only sanctioned way a family writes a row.
+`Projector` gets one method. It is how a family writes a whole row from one
+event. A family that must delete a row, or change a subset of columns on a row
+another event created, is not designed here: the first such handler arrives with
+the untrack event, and it specifies its own shape.
 
 ```python
 def project[M: ProjectionModel](
@@ -45,6 +48,20 @@ The method takes `pk`, not `"id"`. Django permits the primary key in
 The identity goes on the instance after construction, because `Model(pk=...)` is
 not a valid constructor argument.
 
+`projection.py` holds no runtime ORM reference, and this method does not add
+one. `ProjectionModel` is imported under `TYPE_CHECKING`, as `targets.py` already
+imports it: a PEP 695 type parameter bound is evaluated lazily, and the manager
+the method calls arrives with the model the family passes. #914 bought that
+property; a convenience import would spend it.
+
+**A call passes every column of the row, except the key and any generated
+column.** The rule is not decoration. `DO UPDATE` writes only the columns it
+names, so a partial call updates an existing row correctly — and then inserts a
+row of nulls and defaults on the day the row is absent. A `NOT NULL` column
+turns that into an error; a nullable one turns it into silent loss. The helper
+therefore has one shape: the whole row, from the event that owns it. Django also
+refuses an empty `columns`, because `update_fields` cannot be empty.
+
 ## The statement
 
 On the live path and on the shadow path, the call gives one statement:
@@ -54,6 +71,12 @@ INSERT INTO "games_playergame" ("library_id", "id", "game_id", "tracked_at")
 VALUES (%s, %s, %s, %s)
 ON CONFLICT("id") DO UPDATE SET "library_id" = EXCLUDED."library_id", ...
 ```
+
+Both paths are measured, not assumed. The shadow path gives the same statement
+against `games_playergame__shadow`, and `write_targets` reads that target, so
+`only_shadow_writes` still sees what it guards. The temp table is created with
+`LIKE ... INCLUDING ALL`, which copies the primary key index that `ON CONFLICT`
+infers, and the `(library, game)` index with it.
 
 There is no savepoint, no `SELECT`, and no `RETURNING`. `bulk_create` opens its
 transaction with `savepoint=False`, and the fold already runs inside one:
@@ -85,9 +108,17 @@ This is a second reason to prefer the upsert, independent of the statement count
 
 ## Errors and retries
 
-`ProjectorRegistry.apply` re-raises the error with its note. `run_in_transaction`
-reads the SQLSTATE and re-runs the whole transaction from the start. The absent
-inner savepoint changes nothing that a caller can observe.
+`ProjectorRegistry.apply` re-raises the error with its note. `is_retryable`
+answers a unique violation with the constraint name: only
+`LIBRARY_EVENT_SEQUENCE_CONSTRAINT` is retried, so a `(library, game)` collision
+fails the command on its first attempt. That is the rule today, and the upsert
+raises the same error against the same constraint.
+
+`run_in_transaction` re-runs the whole transaction, so the absent inner savepoint
+changes nothing a caller can observe. The one visible difference is inside a
+failed transaction: `update_or_create` rolls back to its savepoint and leaves the
+transaction usable, and the upsert does not. No caller continues in a transaction
+that a fold has failed.
 
 ## Signals
 
@@ -117,6 +148,16 @@ the machine that [Event benchmarks](../../event-benchmarks.md) defines. The
 recorded run, the rebuild verdict, and the cost-per-event table are rewritten
 from that output.
 
+Three numbers there move, not one. The fold goes from 6.00 statements per event
+to 1.00. The command goes from 14 statements to 9, because one dispatch folds one
+event. The rebuild verdict section, which names this issue as "the standing lead
+on the cheaper fold", is rewritten to say what the lead produced.
+
+The projection row and statement counts per command do not move.
+`test_one_dispatch_writes_one_projection_row_through_one_statement` asserts one
+row through one statement today: the counter attributes a statement to a table
+only when it writes, and the five statements this work removes write nothing.
+
 The 60-second budget itself does not move. The issue excludes it: the charter
 permits a revision only with a recorded benchmark and a design review, and this
 work is an attempt to make the revision unnecessary.
@@ -134,6 +175,17 @@ a ceiling for a batched replay.
 
 Both numbers go in the benchmark document. A follow-up issue then opens with a
 measured ceiling rather than an estimate.
+
+## What would falsify this
+
+Statements are not the only cost in a replay. If the re-recorded rebuild still
+consumes most of the 60 seconds, this work removed five statements an event and
+did not buy the headroom the second projector family needs.
+
+That outcome does not invalidate the change, and it is not treated as a failure
+to hide. It moves the costing section from a supporting note to the result: the
+follow-up issue for a batched replay opens immediately, with the measurement that
+argues for it, and the charter's budget conversation happens on evidence.
 
 ## Out of scope
 
