@@ -168,9 +168,9 @@ def _check_callable_default(
             "A rebuild evaluates the default again, so only a constant "
             "reproduces the live row. E005 and E006 name two factory "
             "families; this refuses every other callable, including a "
-            "wrapper around one of them. The argless builtins — dict, list, "
-            "set, tuple, frozenset — are allowed, because Django wants a "
-            "callable for a mutable default and each returns one value."
+            "wrapper around one of them. An argless builtin constructor is the "
+            "exception, because it returns one value every call and Django "
+            "wants a callable for a mutable default."
         ),
         obj=model,
         id="games.E007",
