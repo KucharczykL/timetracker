@@ -26,7 +26,7 @@ which is the part nothing has exercised yet.
 | The `CURRENT_STATE` projector family | The `JOURNAL` and `STATS` families |
 | A `TrackGame` command reached by dispatch | Any view, form, or API that calls it |
 | Two-library isolation and replay-parity tests | Backfill (#676), write cutover (#677), read cutover (#678) |
-| | Any change to `Game.status`, `mastered`, or `playtime` |
+| One line of `games/retention.py`, so archiving survives the new foreign key | Any change to `Game.status`, `mastered`, or `playtime` |
 
 Nothing outside the event path reads or writes the new table in this issue. That
 is what makes it independently reviewable: the projection can be wrong in
@@ -85,6 +85,19 @@ copies the creation event's `recorded_at`.
 whole-library purge, where the library and its private games die inside one
 cascade, and it refuses a lone catalog deletion — which #653's reference
 tombstones already make impossible for any game an event names.
+
+RESTRICT also makes a projection row refuse to be *collateral*, and that reaches
+one function beyond this issue's files. `archive_or_delete()` retires a
+referenced game by collecting everything that cascades from it, deleting that,
+and keeping the row; Django's collector raises `RestrictedError` when a
+restricted row is not itself cascade-collected, so archiving a tracked game
+would fail. The answer is not to weaken the foreign key but to say what a
+projection is: not collateral. `games/retention.py` collects with
+`fail_on_restricted=False`, so the cascade runs and the projection rows stay.
+Deleting them there would be worse than an error — a replay recreates them, so
+the live table and the rebuilt one would disagree from that moment on. Nothing
+tracks a game until #676 backfills, so this is a landmine defused before it is
+armed rather than a bug being fixed.
 
 The unique constraint over `(library, game)` is the acceptance criterion
 "two libraries tracking the same shared Game receive independent PlayerGames",
@@ -223,7 +236,9 @@ rebuild.
   zero drift; `REBUILD` swaps and leaves the rows equal, which is replay parity
   stated as a test.
 - A game a `PlayerGame` event names refuses hard deletion (#653's rule, checked
-  here because this is the first payload that exercises it).
+  here because this is the first payload that exercises it), archives with its
+  `PlayerGame` row intact, and takes that row with it when the whole library is
+  purged.
 - `tests/test_projection_model.py` gains `PlayerGame` passing the E001–E006
   checks — the regression guard on the two opted-out field defaults.
 - `manage.py makemigrations --check` stays clean.
