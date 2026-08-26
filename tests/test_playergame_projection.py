@@ -133,11 +133,11 @@ def test_folding_the_stream_again_writes_no_second_row(
 def test_folding_the_creation_event_costs_one_statement(
     owned_user, owned_library, tracked_game
 ):
-    """The number #930 exists to reduce, at its source."""
+    """The number #930 exists to reduce."""
     identity = uuid.uuid7()
     append_created(owned_library, owned_user, tracked_game, identity=identity)
     event = RecordedEvent.from_row(LibraryEvent.objects.get(aggregate_id=identity))
-    #: Measure the insert, which is what a replay folds.
+    #: Measure the insert, which a replay folds.
     PlayerGame.objects.all().delete()
 
     with transaction.atomic(), CaptureQueriesContext(connection) as queries:
@@ -151,10 +151,9 @@ def test_folding_the_creation_event_costs_one_statement(
 def test_a_second_identity_for_a_tracked_game_is_refused(
     owned_user, owned_library, tracked_game
 ):
-    """The upsert keys on the identity, so the pair still collides.
+    """Keyed on identity, the pair still collides.
 
-    An `IntegrityError` fallback to an update by primary key would have found
-    no row, changed nothing, and folded the event into silence.
+    An update by primary key would fold the event into silence.
     """
     append_created(owned_library, owned_user, tracked_game, identity=uuid.uuid7())
 

@@ -78,14 +78,10 @@ def seed_library(
 
 
 def _analyze() -> None:
-    """Leave statistics that describe the rows just written.
+    """Leave statistics that describe the seeded rows.
 
-    Autovacuum wakes once a minute, so whether the planner knows the seeded
-    library exists depends on how long the seed took. It read the duplicate
-    check's 100,000 rows through the `library_id` index at 6 ms a command
-    while it believed the projection was empty, and 0.01 ms once told
-    otherwise. That is a fact about the naptime, not about the write path
-    under measurement.
+    Without this the command scenario races autovacuum's one-minute naptime,
+    and measures which index the planner guessed at.
     """
     with connection.cursor() as cursor:
         cursor.execute("ANALYZE")

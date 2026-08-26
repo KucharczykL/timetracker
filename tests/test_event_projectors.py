@@ -410,7 +410,7 @@ def test_the_helper_writes_through_the_target_its_family_holds(owned_library):
 
 @pytest.mark.django_db
 def test_the_helper_writes_one_row_through_one_statement(owned_library):
-    """The five statements #930 removes were a lock-and-look."""
+    """Five removed statements were a lock-and-look."""
     with CaptureQueriesContext(connection) as queries:
         project_registry.apply(make_event(library_id=owned_library.pk))
 
@@ -421,7 +421,7 @@ def test_the_helper_writes_one_row_through_one_statement(owned_library):
 
 @pytest.mark.django_db
 def test_the_helper_rewrites_the_row_an_identity_already_has(owned_library):
-    """A re-fold is an upsert, not a second row."""
+    """A re-fold upserts; it adds no row."""
     identity = uuid.uuid7()
 
     for sequence in (1, 2):
@@ -439,7 +439,7 @@ def test_the_helper_rewrites_the_row_an_identity_already_has(owned_library):
 
 @pytest.mark.django_db
 def test_the_helper_keeps_the_columns_it_was_not_given(owned_library):
-    """DO UPDATE writes the named columns and no others."""
+    """DO UPDATE writes the named columns only."""
     identity = uuid.uuid7()
     project_registry.apply(
         make_event(library_id=owned_library.pk, aggregate_id=identity)

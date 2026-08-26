@@ -205,12 +205,7 @@ class Projector(ABC):
     def project[M: ProjectionModel](
         self, model: type[M], identity: uuid.UUID, **columns: Any
     ) -> None:
-        """Write one whole row, keyed on the event's identity.
-
-        One statement: `INSERT ... ON CONFLICT (pk) DO UPDATE`. A re-fold
-        rewrites the row rather than reading for it first, so idempotency
-        costs the key's index rather than a `SELECT ... FOR UPDATE` and two
-        savepoints on every event.
+        """Write one whole row, keyed on identity.
 
         Pass every column of the row except the key and any generated column.
         `DO UPDATE` writes only the columns it names, so a partial call is
@@ -221,7 +216,7 @@ class Projector(ABC):
         projected = self.target.model(model)
         row = projected(**columns)
         row.pk = identity
-        #: The manager the model happens to name; `objects` is not promised.
+        #: `objects` is a convention, not a promise.
         projected._default_manager.bulk_create(
             [row],
             update_conflicts=True,

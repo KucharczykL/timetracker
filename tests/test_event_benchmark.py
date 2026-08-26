@@ -355,12 +355,10 @@ def test_one_dispatch_writes_one_projection_row_through_one_statement(owned_libr
 
 @pytest.mark.django_db
 def test_folding_one_event_costs_one_statement(django_user_model):
-    """The fold is an upsert: no lock, no look, no savepoint.
+    """The fold is one upsert.
 
-    A rebuild also pays a fixed cost -- the temp tables, the reference
-    anti-joins, the diff, the swap, the drop -- measured at 13 statements.
-    The average at ten events is therefore 2.3, not 1. The slope between two
-    sizes is the per-event number, and it is exact.
+    A rebuild also pays 13 fixed statements, so ten events average 2.3. The
+    slope between two sizes is the per-event number, and it is exact.
     """
     totals: dict[int, int] = {}
     for events in (10, 30):
