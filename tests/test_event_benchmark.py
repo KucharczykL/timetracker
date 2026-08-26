@@ -2,13 +2,17 @@
 
 import json
 import uuid
+from io import StringIO
 
 import pytest
 from django.contrib.auth.models import User
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.db import connection, transaction
 from django.utils import timezone
 
 from games.commands.playergame import TrackGame
+from games.events import benchmark as benchmark_module
 from games.events.append import lock_stream
 from games.events.benchmark import (
     BenchmarkReport,
@@ -267,9 +271,8 @@ def test_seeding_batches_the_stream_rather_than_locking_per_event(owned_library)
 def test_a_second_batch_only_advances_the_head(owned_library):
     seed_library(owned_library, actor=owned_library.user, events=1, spares=0)
     counter = StatementCounter()
-    with connection.execute_wrapper(counter):
-        with transaction.atomic():
-            lock_stream(owned_library)
+    with connection.execute_wrapper(counter), transaction.atomic():
+        lock_stream(owned_library)
     head = LibraryEventStreamHead._meta.db_table
     #: The head exists now, so get_or_create reads and writes nothing.
     assert head not in counter.statements_per_table
@@ -486,3 +489,56 @@ def test_the_report_carries_every_scenario_and_a_schema():
         "teardown_seconds",
         "budgets",
     }
+
+
+def run_command(**options) -> str:
+    output = StringIO()
+    call_command("benchmark_events", stdout=output, **options)
+    return output.getvalue()
+
+
+@pytest.mark.django_db
+def test_seed_and_library_together_are_refused(owned_library):
+    with pytest.raises(CommandError, match="--seed and --library"):
+        run_command(seed=10, library=str(owned_library.pk))
+
+
+@pytest.mark.django_db
+def test_an_unknown_library_is_named():
+    with pytest.raises(CommandError, match="No library"):
+        run_command(library=str(uuid.uuid7()))
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_command_prints_what_it_will_create_before_creating_it():
+    output = run_command(seed=25, iterations=2, warmup=1)
+    assert "25" in output
+    #: A three-minute default says so where it is read.
+    assert "estimate" in output.lower()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_gate_raises_on_a_missed_budget(monkeypatch):
+    """25 samples clears the sample floor; no events need seeding for that."""
+    monkeypatch.setattr(benchmark_module, "COMMAND_BUDGET_SECONDS", 0.0)
+    with pytest.raises(CommandError, match="budget"):
+        run_command(seed=0, iterations=25, warmup=1, gate=True)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_gate_is_silent_when_every_budget_passes():
+    #: Below both floors: NOT_GATED is not MISSED.
+    run_command(seed=25, iterations=2, warmup=1, gate=True)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_json_output_parses_and_carries_the_schema():
+    parsed = json.loads(run_command(seed=25, iterations=2, warmup=1, json=True))
+    assert parsed["schema"] == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_keep_names_the_scratch_user_it_leaves_behind():
+    output = run_command(seed=10, iterations=1, warmup=0, keep=True)
+    assert "delete_user_library" in output
+    assert User.objects.filter(username__startswith="benchmark-").exists()

@@ -391,8 +391,10 @@ def test_the_guard_refuses_a_live_write_the_first_keyword_hides(prefix, owned_li
             ("games_playergame",),
         ),
         (
-            'WITH moved AS (DELETE FROM "old" RETURNING *) '
-            'INSERT INTO "new" SELECT * FROM moved',
+            (
+                'WITH moved AS (DELETE FROM "old" RETURNING *) '
+                'INSERT INTO "new" SELECT * FROM moved'
+            ),
             ("old", "new"),
         ),
         ('SELECT 1 FROM "games_playergame"', ()),
