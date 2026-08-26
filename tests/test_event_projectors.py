@@ -23,6 +23,7 @@ from games.events.projection import (
     DEFAULT_REGISTRY,
     BoundHandler,
     HandlerMap,
+    ProjectionRowMissing,
     Projector,
     ProjectorFamily,
     ProjectorRegistry,
@@ -485,6 +486,80 @@ def test_the_helper_refuses_a_row_it_was_not_given_whole(owned_library):
     """A rebuild would null what the live path kept."""
     with pytest.raises(TypeError, match="folded without name"):
         partial_registry.apply(make_event(library_id=owned_library.pk))
+
+    assert Device.objects.count() == 0
+
+
+amend_registry = ProjectorRegistry()
+
+
+class AmendingWriter(Projector, registry=amend_registry):
+    """Changes one column of a row that exists."""
+
+    family_name = ProjectorFamily.CURRENT_STATE
+
+    def _recorded(self, event: RecordedEvent) -> None:
+        #: Device stands in for a projection table.
+        self.amend(  # type: ignore[type-var]
+            Device,
+            event.aggregate_id,
+            name=f"amended {event.sequence}",
+        )
+
+    handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
+
+
+def created_row(library, identity: uuid.UUID) -> Device:
+    """The row a creation event would have folded."""
+    return Device.objects.create(
+        pk=identity, library_id=library.pk, name="created", type=Device.UNKNOWN
+    )
+
+
+@pytest.mark.django_db
+def test_an_amendment_changes_the_columns_it_names(owned_library):
+    identity = uuid.uuid7()
+    created_row(owned_library, identity)
+
+    amend_registry.apply(make_event(library_id=owned_library.pk, aggregate_id=identity))
+
+    row = Device.objects.get(pk=identity)
+    assert (row.name, row.type) == ("amended 1", Device.UNKNOWN)
+
+
+@pytest.mark.django_db
+def test_an_amendment_costs_one_statement(owned_library):
+    """One UPDATE, and no read to build it."""
+    identity = uuid.uuid7()
+    created_row(owned_library, identity)
+
+    with CaptureQueriesContext(connection) as queries:
+        amend_registry.apply(
+            make_event(library_id=owned_library.pk, aggregate_id=identity)
+        )
+
+    assert [query["sql"].split(maxsplit=1)[0] for query in queries] == ["UPDATE"]
+
+
+@pytest.mark.django_db
+def test_an_amendment_writes_through_the_target_its_family_holds(owned_library):
+    identity = uuid.uuid7()
+    created_row(owned_library, identity)
+    target = RecordingTarget()
+
+    amend_registry.for_target(target).apply(
+        make_event(library_id=owned_library.pk, aggregate_id=identity)
+    )
+
+    assert target.asked == ["Device"]
+    assert Device.objects.get(pk=identity).name == "amended 1"
+
+
+@pytest.mark.django_db
+def test_an_amendment_with_no_row_is_refused(owned_library):
+    """Out of order, or a stream missing its creation event."""
+    with pytest.raises(ProjectionRowMissing, match="no row"):
+        amend_registry.apply(make_event(library_id=owned_library.pk))
 
     assert Device.objects.count() == 0
 
