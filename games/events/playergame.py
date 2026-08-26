@@ -46,3 +46,19 @@ PLAYERGAME_STATUS_CHANGED = EventSpec(
 )
 
 DEFAULT_EVENT_TYPES.register(PLAYERGAME_STATUS_CHANGED)
+
+
+@with_config(STRICT_SCHEMA)
+class PlayerGameMasteredChangedPayload(TypedDict):
+    """Whether this library now masters the game."""
+
+    mastered: bool
+
+
+PLAYERGAME_MASTERED_CHANGED = EventSpec(
+    "library.playergame.mastered_changed",
+    aggregate_type="playergame",
+    payload=PlayerGameMasteredChangedPayload,
+)
+
+DEFAULT_EVENT_TYPES.register(PLAYERGAME_MASTERED_CHANGED)

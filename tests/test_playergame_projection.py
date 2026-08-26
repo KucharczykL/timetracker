@@ -12,7 +12,11 @@ from games.commands.playergame import TrackGame
 from games.events.append import lock_stream
 from games.events.dispatch import dispatch
 from games.events.envelope import RecordedEvent
-from games.events.playergame import PLAYERGAME_CREATED, PLAYERGAME_STATUS_CHANGED
+from games.events.playergame import (
+    PLAYERGAME_CREATED,
+    PLAYERGAME_MASTERED_CHANGED,
+    PLAYERGAME_STATUS_CHANGED,
+)
 from games.events.projection import DEFAULT_REGISTRY
 from games.events.rebuild import RebuildMode, rebuild_projections
 from games.events.references import capture_reference
@@ -50,6 +54,11 @@ def test_the_identity_has_no_default():
 def test_a_tracked_game_starts_unplayed():
     """The creation event states no status."""
     assert PlayerGame().status == PlayerGameStatus.UNPLAYED
+
+
+def test_a_tracked_game_starts_unmastered():
+    """The creation event states no mastery."""
+    assert PlayerGame().mastered is False
 
 
 def test_a_library_tracks_one_game_once(owned_library, tracked_game):
@@ -313,3 +322,111 @@ def test_a_rebuild_reproduces_the_status(owned_user, owned_library, tracked_game
 
     assert rebuilt.swapped is True
     assert PlayerGame.objects.get(pk=identity).status == "completed"
+
+
+def append_mastered(library, actor, identity, mastered, *, key="mastered"):
+    """Append one mastery change, as dispatch would."""
+    with transaction.atomic():
+        stream = lock_stream(library)
+        return stream.append(
+            [
+                PLAYERGAME_MASTERED_CHANGED.new(
+                    aggregate_id=identity,
+                    payload={"mastered": mastered},
+                )
+            ],
+            actor=actor,
+            correlation_id=uuid.uuid7(),
+            idempotency_key=key,
+        )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_mastered_event_writes_the_flag(owned_user, owned_library, tracked_game):
+    identity = uuid.uuid7()
+    append_created(owned_library, owned_user, tracked_game, identity=identity)
+
+    append_mastered(owned_library, owned_user, identity, True)
+
+    assert PlayerGame.objects.get(pk=identity).mastered is True
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_mastered_event_states_the_way_back(
+    owned_user, owned_library, tracked_game
+):
+    """One type, and the payload decides."""
+    identity = uuid.uuid7()
+    append_created(owned_library, owned_user, tracked_game, identity=identity)
+    append_mastered(owned_library, owned_user, identity, True)
+
+    append_mastered(owned_library, owned_user, identity, False, key="undo")
+
+    assert PlayerGame.objects.get(pk=identity).mastered is False
+
+
+@pytest.mark.django_db(transaction=True)
+def test_replaying_the_creation_event_again_keeps_a_later_mastery(
+    owned_user, owned_library, tracked_game
+):
+    """A default is absent from DO UPDATE."""
+    identity = uuid.uuid7()
+    append_created(owned_library, owned_user, tracked_game, identity=identity)
+    append_mastered(owned_library, owned_user, identity, True)
+    created = RecordedEvent.from_row(
+        LibraryEvent.objects.get(event_type="library.playergame.created")
+    )
+
+    DEFAULT_REGISTRY.apply(created)
+
+    assert PlayerGame.objects.get(pk=identity).mastered is True
+
+
+@pytest.mark.django_db(transaction=True)
+def test_replaying_the_mastered_event_costs_one_statement(
+    owned_user, owned_library, tracked_game
+):
+    identity = uuid.uuid7()
+    append_created(owned_library, owned_user, tracked_game, identity=identity)
+    append_mastered(owned_library, owned_user, identity, True)
+    event = RecordedEvent.from_row(
+        LibraryEvent.objects.get(event_type="library.playergame.mastered_changed")
+    )
+
+    with CaptureQueriesContext(connection) as queries:
+        DEFAULT_REGISTRY.apply(event)
+
+    assert [query["sql"].split(maxsplit=1)[0] for query in queries] == ["UPDATE"]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_replay_reproduces_the_mastery(owned_user, owned_library, tracked_game):
+    identity = uuid.uuid7()
+    append_created(owned_library, owned_user, tracked_game, identity=identity)
+    append_mastered(owned_library, owned_user, identity, True)
+    PlayerGame.objects.all().delete()
+
+    replay(owned_library)
+
+    assert PlayerGame.objects.get(pk=identity).mastered is True
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_rebuild_reproduces_the_mastery(owned_user, owned_library, tracked_game):
+    """Replay parity over an amended row."""
+    identity = uuid.uuid7()
+    append_created(owned_library, owned_user, tracked_game, identity=identity)
+    append_mastered(owned_library, owned_user, identity, True)
+
+    checked = rebuild_projections(owned_library, mode=RebuildMode.CHECK)
+
+    drift = [
+        (table.only_live, table.only_rebuilt, table.differing)
+        for table in checked.tables
+    ]
+    assert drift == [(0, 0, 0)]
+
+    rebuilt = rebuild_projections(owned_library, mode=RebuildMode.REBUILD)
+
+    assert rebuilt.swapped is True
+    assert PlayerGame.objects.get(pk=identity).mastered is True

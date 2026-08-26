@@ -15,12 +15,25 @@ from games.events.dispatch import (
 )
 from games.events.playergame import (
     PLAYERGAME_CREATED,
+    PLAYERGAME_MASTERED_CHANGED,
     PLAYERGAME_STATUS_CHANGED,
     StatusValue,
 )
 from games.events.references import capture_reference
 from games.events.vocabulary import NewEvent
 from games.models import Game, PlayerGame, PlayerGameStatus
+
+
+def _tracked_game(context: CommandContext, game_id: uuid.UUID) -> PlayerGame:
+    """The projection row, never the catalog."""
+    try:
+        return PlayerGame.objects.get(library=context.library, game_id=game_id)
+    except PlayerGame.DoesNotExist:
+        raise CommandRejected(
+            f"This library tracks no game {game_id}. A recorded fact belongs "
+            "to a tracked game, and #676 backfills one for every game a "
+            "library has."
+        ) from None
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,7 +86,7 @@ class SetPlayerGameStatus(Command):
     status: PlayerGameStatus
 
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
-        tracked = self._tracked(context)
+        tracked = _tracked_game(context, self.game_id)
         #: Under dispatch's lock: no concurrent duplicate.
         if tracked.status == self.status:
             raise CommandRejected(
@@ -89,13 +102,29 @@ class SetPlayerGameStatus(Command):
             )
         ]
 
-    def _tracked(self, context: CommandContext) -> PlayerGame:
-        """The projection row, never the catalog."""
-        try:
-            return PlayerGame.objects.get(library=context.library, game_id=self.game_id)
-        except PlayerGame.DoesNotExist:
+
+@dataclass(frozen=True, slots=True)
+class SetPlayerGameMastered(Command):
+    """State whether this library mastered a tracked game."""
+
+    command_name: ClassVar[CommandName] = CommandName.PLAYERGAME_SET_MASTERED
+    #: A UUID, because Command fingerprints its fields.
+    game_id: uuid.UUID
+    mastered: bool
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent]:
+        tracked = _tracked_game(context, self.game_id)
+        #: Under dispatch's lock: no concurrent duplicate.
+        if tracked.mastered == self.mastered:
+            recorded = "mastered" if self.mastered else "not mastered"
             raise CommandRejected(
-                f"This library tracks no game {self.game_id}. A status belongs "
-                "to a tracked game, and #676 backfills one for every game a "
-                "library has."
-            ) from None
+                f"This library already records game {self.game_id} as "
+                f"{recorded}. Whether a repeat should instead succeed as a "
+                "no-op is EV-23 (#906)."
+            )
+        return [
+            PLAYERGAME_MASTERED_CHANGED.new(
+                aggregate_id=tracked.pk,
+                payload={"mastered": self.mastered},
+            )
+        ]

@@ -151,7 +151,7 @@ docs/           — Additional documentation
 - **ExchangeRate** — cached FX rates per currency pair per year
 - **GameStatusChange** — audit log of status transitions, ordered by `-timestamp`
 - **FilterPreset** — saved filter config; `mode` (games/sessions/purchases/playevents), `find_filter`, `object_filter`, `ui_options` (all JSON). Follows Stash's SavedFilter pattern
-- **PlayerGame** — the first projection: one row per catalog game a library tracks, written only by the projector handling `library.playergame.created`. Both `UUIDv7Field` defaults are opted out (the pk is the event's `aggregate_id`); `game` is `RESTRICT`, so a projection row is never collateral
+- **PlayerGame** — the first projection: one row per catalog game a library tracks, written only by the `PlayerGames` projector. Both `UUIDv7Field` defaults are opted out (the pk is the event's `aggregate_id`); `game` is `RESTRICT`, so a projection row is never collateral
 
 **A multi-game Purchase is an *unsplittable* bundle** — one price, whole-purchase
 refund (e.g. a Humble Bundle). Independently-refundable multi-item orders (e.g. a

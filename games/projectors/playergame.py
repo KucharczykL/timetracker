@@ -4,7 +4,11 @@ import uuid
 from typing import ClassVar
 
 from games.events.envelope import RecordedEvent
-from games.events.playergame import PLAYERGAME_CREATED, PLAYERGAME_STATUS_CHANGED
+from games.events.playergame import (
+    PLAYERGAME_CREATED,
+    PLAYERGAME_MASTERED_CHANGED,
+    PLAYERGAME_STATUS_CHANGED,
+)
 from games.events.projection import HandlerMap, Projector, ProjectorFamily
 from games.models import PlayerGame
 
@@ -28,7 +32,12 @@ class PlayerGames(Projector):
         #: From the payload, so replays agree.
         self.amend(PlayerGame, event.aggregate_id, status=event.payload["status"])
 
+    def _mastered_changed(self, event: RecordedEvent) -> None:
+        #: From the payload, so replays agree.
+        self.amend(PlayerGame, event.aggregate_id, mastered=event.payload["mastered"])
+
     handles: ClassVar[HandlerMap] = {
         PLAYERGAME_CREATED: _created,
         PLAYERGAME_STATUS_CHANGED: _status_changed,
+        PLAYERGAME_MASTERED_CHANGED: _mastered_changed,
     }

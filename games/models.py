@@ -1329,6 +1329,8 @@ class PlayerGame(ProjectionModel):
         choices=PlayerGameStatus,
         default=PlayerGameStatus.UNPLAYED,
     )
+    #: No event states it: a constant default.
+    mastered = models.BooleanField(default=False)
 
     class Meta:
         constraints = (
