@@ -35,6 +35,9 @@ _CLOCK_FACTORIES = frozenset(
     }
 )
 
+#: Argless builtins returning one value every call.
+_CONSTANT_FACTORIES = frozenset({dict, list, set, tuple, frozenset, str, int, float})
+
 
 @register(Tags.models)
 def check_projection_models(
@@ -123,32 +126,52 @@ def _check_field(
                 id="games.E004",
             )
         )
-    if callable(field.default) and field.default in _UUID_FACTORIES:
-        errors.append(
-            Error(
-                f"{where} defaults to a freshly minted UUID.",
-                hint=(
-                    "A projection key comes from the event — its aggregate_id "
-                    "or correlation_id, or a uuid5 over them — so that a "
-                    "rebuild produces the identity it produced last time."
-                ),
-                obj=model,
-                id="games.E005",
-            )
-        )
-    if callable(field.default) and field.default in _CLOCK_FACTORIES:
-        errors.append(
-            Error(
-                f"{where} defaults to the clock.",
-                hint=(
-                    "A rebuild evaluates the default again, at rebuild time, so "
-                    "every row differs from the live one. A projected timestamp "
-                    "comes from the event — recorded_at or effective_time. This "
-                    "check knows the standard factories only; a wrapper around "
-                    "one of them is still a rebuild that cannot reproduce itself."
-                ),
-                obj=model,
-                id="games.E006",
-            )
-        )
+    #: has_default() first: NOT_PROVIDED is callable.
+    if field.has_default() and callable(field.default):
+        unreproducible = _check_callable_default(model, field, where)
+        if unreproducible is not None:
+            errors.append(unreproducible)
     return errors
+
+
+def _check_callable_default(
+    model: type[ProjectionModel], field: models.Field, where: str
+) -> CheckMessage | None:
+    """How a callable default fails a rebuild."""
+    if field.default in _UUID_FACTORIES:
+        return Error(
+            f"{where} defaults to a freshly minted UUID.",
+            hint=(
+                "A projection key comes from the event — its aggregate_id "
+                "or correlation_id, or a uuid5 over them — so that a "
+                "rebuild produces the identity it produced last time."
+            ),
+            obj=model,
+            id="games.E005",
+        )
+    if field.default in _CLOCK_FACTORIES:
+        return Error(
+            f"{where} defaults to the clock.",
+            hint=(
+                "A rebuild evaluates the default again, at rebuild time, so "
+                "every row differs from the live one. A projected timestamp "
+                "comes from the event — recorded_at or effective_time."
+            ),
+            obj=model,
+            id="games.E006",
+        )
+    if field.default in _CONSTANT_FACTORIES:
+        return None
+    return Error(
+        f"{where} defaults to a callable.",
+        hint=(
+            "A rebuild evaluates the default again, so only a constant "
+            "reproduces the live row. E005 and E006 name two factory "
+            "families; this refuses every other callable, including a "
+            "wrapper around one of them. An argless builtin constructor is the "
+            "exception, because it returns one value every call and Django "
+            "wants a callable for a mutable default."
+        ),
+        obj=model,
+        id="games.E007",
+    )

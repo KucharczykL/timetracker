@@ -4,9 +4,9 @@ import uuid
 
 import pytest
 
-from games.commands.playergame import TrackGame
+from games.commands.playergame import SetPlayerGameStatus, TrackGame
 from games.events.dispatch import CommandRejected, dispatch
-from games.models import Game, LibraryEvent, PlayerGame
+from games.models import Game, LibraryEvent, PlayerGame, PlayerGameStatus
 from games.retention import purging_library
 
 
@@ -172,3 +172,124 @@ def test_purging_the_library_takes_the_tracked_row_with_it(owned_user, owned_lib
         owned_user.delete()
 
     assert not PlayerGame.objects.exists()
+
+
+def track(actor, library, game):
+    """The command this library must run first."""
+    dispatch(
+        TrackGame(game_id=game.pk),
+        actor=actor,
+        library=library,
+        idempotency_key=f"track-{game.pk}",
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_setting_a_status_records_it_and_folds_it(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+
+    dispatch(
+        SetPlayerGameStatus(game_id=game.pk, status=PlayerGameStatus.COMPLETED),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="complete-outer-wilds",
+    )
+
+    event = LibraryEvent.objects.get(event_type="library.playergame.status_changed")
+    assert event.payload == {"status": "completed"}
+    row = PlayerGame.objects.get()
+    assert event.aggregate_id == row.pk
+    assert row.status == PlayerGameStatus.COMPLETED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_status_leaves_the_rest_of_the_row_alone(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    before = PlayerGame.objects.get()
+
+    dispatch(
+        SetPlayerGameStatus(game_id=game.pk, status=PlayerGameStatus.PLAYED),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="play-outer-wilds",
+    )
+
+    after = PlayerGame.objects.get()
+    assert (after.pk, after.game_id, after.tracked_at) == (
+        before.pk,
+        before.game_id,
+        before.tracked_at,
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_status_for_an_untracked_game_is_refused(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Untracked")
+
+    with pytest.raises(CommandRejected, match="tracks no game"):
+        dispatch(
+            SetPlayerGameStatus(game_id=game.pk, status=PlayerGameStatus.PLAYED),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key="play-untracked",
+        )
+
+    assert not LibraryEvent.objects.filter(
+        event_type="library.playergame.status_changed"
+    ).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_status_for_a_game_another_library_tracks_is_refused(
+    owned_user, owned_library, other_user, other_library, shared_game
+):
+    track(other_user, other_library, shared_game)
+
+    with pytest.raises(CommandRejected, match="tracks no game"):
+        dispatch(
+            SetPlayerGameStatus(game_id=shared_game.pk, status=PlayerGameStatus.PLAYED),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key="play-theirs",
+        )
+
+    assert PlayerGame.objects.get().status == PlayerGameStatus.UNPLAYED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_status_a_game_already_has_is_refused(owned_user, owned_library):
+    """One convention for #906 to change."""
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+
+    with pytest.raises(CommandRejected, match="#906"):
+        dispatch(
+            SetPlayerGameStatus(game_id=game.pk, status=PlayerGameStatus.UNPLAYED),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key="unplay-outer-wilds",
+        )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_one_idempotency_key_records_one_status_change(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    command = SetPlayerGameStatus(game_id=game.pk, status=PlayerGameStatus.COMPLETED)
+
+    first = dispatch(
+        command, actor=owned_user, library=owned_library, idempotency_key="complete"
+    )
+    second = dispatch(
+        command, actor=owned_user, library=owned_library, idempotency_key="complete"
+    )
+
+    assert (first.replayed, second.replayed) == (False, True)
+    assert (
+        LibraryEvent.objects.filter(
+            event_type="library.playergame.status_changed"
+        ).count()
+        == 1
+    )

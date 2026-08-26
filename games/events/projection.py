@@ -41,6 +41,11 @@ type DefinitionSite = tuple[str, str]  # ("games.projectors.journal", "Journal")
 #: One column, under both the names a caller may use.
 type ColumnNames = tuple[str, str]  # ("library", "library_id")
 
+
+class ProjectionRowMissing(LookupError):
+    """Raised when an amendment finds no row."""
+
+
 #: Resolved per model, and no reason to outlive one.
 _REQUIRED_COLUMNS: WeakKeyDictionary[type[Any], tuple[ColumnNames, ...]] = (
     WeakKeyDictionary()
@@ -272,6 +277,30 @@ class Projector(ABC):
             update_fields=list(columns),
             unique_fields=["pk"],
         )
+
+    def amend[M: ProjectionModel](
+        self, model: type[M], identity: uuid.UUID, **columns: Any
+    ) -> None:
+        """Change part of a row that exists.
+
+        `project()` cannot serve this: an event that changes one column knows
+        nothing of the columns the creation event wrote.
+
+        A missing row is refused rather than inserted. A replay folds a stream
+        in sequence order, so an insert here would write a part-row that a
+        rebuild could not reproduce.
+        """
+        #: Never the imported model: a rebuild redirects.
+        projected = self.target.model(model)
+        #: `objects` is a convention, not a promise.
+        changed = projected._default_manager.filter(pk=identity).update(**columns)
+        if changed != 1:
+            raise ProjectionRowMissing(
+                f"{model.__qualname__} has no row {identity} to amend. An event "
+                "that changes part of a row is folded after the event that "
+                "created it, so a missing row is a broken stream rather than a "
+                "first write."
+            )
 
     def __init_subclass__(
         cls,

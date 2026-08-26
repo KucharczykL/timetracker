@@ -1,7 +1,10 @@
 """The projection base and its purity check."""
 
+import datetime
+import itertools
 import uuid
 
+from django.apps import apps as global_apps
 from django.core.checks import CheckMessage
 from django.db import models
 from django.test.utils import isolate_apps
@@ -112,13 +115,66 @@ def test_a_constant_default_is_allowed():
     class Fixed(ProjectionModel):
         id = models.UUIDField(primary_key=True)
         origin = models.UUIDField(default=uuid.UUID(int=1))
-        tags = models.JSONField(default=dict)
+        status = models.CharField(max_length=9, default="unplayed")
+        mastered = models.BooleanField(default=False)
+        archived_at = models.DateTimeField(null=True, default=None)
 
         class Meta:
             app_label = "games"
 
     #: A constant reproduces itself, whatever its module.
     assert check(Fixed) == []
+
+
+@isolate_apps("games")
+def test_an_empty_container_default_is_allowed():
+    """The idiom Django asks for."""
+
+    class Collected(ProjectionModel):
+        id = models.UUIDField(primary_key=True)
+        tags = models.JSONField(default=dict)
+        history = models.JSONField(default=list)
+
+        class Meta:
+            app_label = "games"
+
+    assert check(Collected) == []
+
+
+@isolate_apps("games")
+def test_a_callable_default_of_another_kind_is_refused():
+    """The rest, beyond E005 and E006."""
+
+    ranks = itertools.count()
+
+    def next_rank() -> int:
+        return next(ranks)
+
+    class Ranked(ProjectionModel):
+        id = models.UUIDField(primary_key=True)
+        rank = models.IntegerField(default=next_rank)
+
+        class Meta:
+            app_label = "games"
+
+    assert check(Ranked) == ["games.E007"]
+
+
+@isolate_apps("games")
+def test_a_wrapped_clock_default_is_refused():
+    """The hole E006's own hint admitted to."""
+
+    def when() -> datetime.datetime:
+        return timezone.now()
+
+    class Wrapped(ProjectionModel):
+        id = models.UUIDField(primary_key=True)
+        seen_at = models.DateTimeField(default=when)
+
+        class Meta:
+            app_label = "games"
+
+    assert check(Wrapped) == ["games.E007"]
 
 
 @isolate_apps("games")
@@ -182,6 +238,29 @@ def test_an_unmanaged_twin_is_not_checked():
 
     #: A twin would report each offence twice.
     assert check(Live) == []
+
+
+#: Every constant a projection column starts at.
+PINNED_DEFAULTS: dict[str, dict[str, object]] = {
+    "games.PlayerGame": {"status": "unplayed"},
+}
+
+
+def test_every_projection_default_is_pinned():
+    """A change to a default is reviewed."""
+    found = {
+        model._meta.label: {
+            field.name: field.default
+            for field in model._meta.concrete_fields
+            if field.has_default()
+        }
+        for model in global_apps.get_models()
+        if issubclass(model, ProjectionModel) and model._meta.managed
+    }
+
+    assert {label: columns for label, columns in found.items() if columns} == (
+        PINNED_DEFAULTS
+    )
 
 
 @isolate_apps("games")

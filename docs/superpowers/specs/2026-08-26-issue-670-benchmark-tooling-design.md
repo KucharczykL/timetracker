@@ -20,15 +20,15 @@ The command runs them in this sequence.
 | `rebuild` | `rebuild_projections(REBUILD)`, under the counter | 60 s for 100,000 events |
 
 The two command scenarios run after the seeding. `TrackGame` refuses a second
-track of one game, and its refusal reads the projection. Thus each dispatch needs
-its own untracked catalog row, and a full library is the correct condition.
+track of one game, and its refusal reads the projection, so each dispatch needs
+its own untracked catalog row. A full library is the correct condition.
 
-`--warmup` samples are additional to `--iterations`. The tool discards them. A
+`--warmup` samples are additional to `--iterations`, and discarded. A
 percentile is a nearest rank on the sorted samples. The tool reports p50, p95
 and the maximum, not the mean.
 
 The rebuild runs last. The stream then holds events from `LockedStream.append`
-and events from `dispatch`. One diff shows parity for the two write paths.
+and from `dispatch`, so one diff shows parity for the two write paths.
 
 ## Seeding and teardown
 
@@ -36,11 +36,11 @@ and events from `dispatch`. One diff shows parity for the two write paths.
 batches of 1,000. Each batch is one transaction and one `append()` call. The
 command prints a time estimate first.
 
-The teardown calls `delete_user_library`. A second copy of the cascade in SQL
-can disagree with `on_delete`. `--keep` holds the library and prints the command
-that removes it.
+The teardown calls `delete_user_library`, because a second copy of the cascade
+in SQL can disagree with `on_delete`. `--keep` holds the library and prints the
+command that removes it.
 
-`--library <uuid>` measures a library that exists. That mode uses `CHECK`, seeds
+`--library <uuid>` measures an existing library. That mode uses `CHECK`, seeds
 nothing, and writes no permanent row. `--seed` and `--library` together are an
 error.
 
@@ -48,21 +48,21 @@ error.
 
 A budget gives `PASSED`, `MISSED` or `NOT_GATED`. The rebuild budget scales on
 `folded_through`. Below 2,000 folded events, or below 20 samples, the tool
-reports the measurement but no verdict. Linear scaling is verified from 2,000
-events up.
+reports the measurement but no verdict. Linear scaling holds from 2,000 events
+up.
 
-`--gate` exits non-zero on `MISSED`. A rebuild diff that is not empty exits
-non-zero always. A rebuild that is quick and wrong is not a measurement.
+`--gate` exits non-zero on `MISSED`, and a rebuild diff that is not empty always
+exits non-zero: a rebuild that is quick and wrong is not a measurement.
 
 ## Cost per event
 
 A `connection.execute_wrapper` counts each statement and each affected row, per
-table. Statements that name no table go in the total only. A savepoint or a
-lock names no table, so a count per table alone hides the cost.
+table. Statements that name no table go in the total only: a savepoint or a
+lock names none, so a count per table alone hides the cost.
 
 `write_targets` in `games/events/rebuild.py` parses the targets, and the
-shadow-write guard uses the same function. A statement against
-`<table>__shadow` counts as a statement against `<table>`.
+shadow-write guard uses it too. A statement against `<table>__shadow` counts
+against `<table>`.
 
 `--no-count-fold` removes the counter from the rebuild. Use it when a verdict lands
 inside the cost of the instrument.
@@ -70,8 +70,8 @@ inside the cost of the instrument.
 ## Limits
 
 The tool measures one process: no concurrency and no query path. There is no
-bulk scenario, because no bulk command exists. In its place the tool reports the
+bulk scenario, because no bulk command exists; in its place the tool reports the
 append rate of the seeding, which has no budget.
 
-`replay()` opens a server-side cursor. A transaction-pooling pooler closes it. A
-cursor error gives a message that names issue #917.
+`replay()` opens a server-side cursor, which a transaction-pooling pooler closes.
+A cursor error gives a message naming issue #917.

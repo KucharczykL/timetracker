@@ -1288,6 +1288,21 @@ class ProjectionModel(models.Model):
         abstract = True
 
 
+class PlayerGameStatus(models.TextChoices):
+    """The status a library gives a game.
+
+    Full words, not the letters of `Game.Status`: a recorded payload cannot be
+    upcast, so an event recording `f` would mean Completed forever.
+    """
+
+    UNPLAYED = "unplayed", "Unplayed"
+    PLAYED = "played", "Played"
+    COMPLETED = "completed", "Completed"
+    RETIRED = "retired", "Retired"
+    SHELVED = "shelved", "Shelved"
+    ABANDONED = "abandoned", "Abandoned"
+
+
 class PlayerGame(ProjectionModel):
     """One catalog game a library tracks, projected from its events."""
 
@@ -1306,6 +1321,14 @@ class PlayerGame(ProjectionModel):
     )
     #: The creation event's recorded_at.
     tracked_at = models.DateTimeField(editable=False)
+    #: No event states it: a constant default.
+    #: A default is also absent from the creation fold's DO UPDATE list, so a
+    #: re-fold of that event keeps a status a later event set.
+    status = models.CharField(
+        max_length=9,
+        choices=PlayerGameStatus,
+        default=PlayerGameStatus.UNPLAYED,
+    )
 
     class Meta:
         constraints = (

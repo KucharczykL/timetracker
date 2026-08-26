@@ -5,9 +5,9 @@ in `games/events/rebuild.py`.
 
 ## The function and the command
 
-`rebuild_projections(library, *, mode, wiring, apps)` builds the projections of
-one library again from the events of that library. The default mode is `CHECK`.
-`REBUILD` is the mode that writes. The function returns a `RebuildReport`.
+`rebuild_projections(library, *, mode, wiring, apps)` rebuilds the projections
+of one library from its events. The default mode is `CHECK`; `REBUILD` writes.
+The function returns a `RebuildReport`.
 
 `manage.py rebuild_projections <library-uuid> [--check]` prints the report. The
 command exits with an error when a rebuild does not swap.
@@ -22,9 +22,8 @@ Each attempt has five phases:
 4. In `REBUILD` mode, swap the rows under the stream lock.
 5. Drop the shadow tables. This phase runs on all paths.
 
-`CHECK` mode stops after phase 3. It reads the stream head again and puts the
-head into the report. The head can move, because `CHECK` takes no lock. If the
-head moved, the diff is advisory.
+`CHECK` stops after phase 3. It reads the stream head again into the report.
+The head can move, because `CHECK` takes no lock, so the diff is advisory.
 
 ## The rules
 
@@ -32,16 +31,16 @@ head moved, the diff is advisory.
   `CREATE TEMP TABLE "<table>__shadow" (LIKE "<table>" INCLUDING ALL)`.
   `INCLUDING ALL` copies the defaults, the checks, the generated columns and the
   indexes. It does not copy the foreign keys.
-- A temp table is private to its connection. Thus two libraries can rebuild at
-  the same time. All five phases use one connection.
+- A temp table is private to its connection, so two libraries can rebuild at
+  once. All five phases use one connection.
 - The write guard is an allowlist in `connection.execute_wrapper`. A statement in
-  phase 2 can write a shadow table only. For any other target, the guard raises
+  phase 2 writes a shadow table only; any other target raises
   `LiveWriteRefused`. Two limits stay: the guard reads the statement text, and it
   does not see a second connection.
 - The diff is a `FULL OUTER JOIN` with whole-row
   `(live.*) IS DISTINCT FROM (shadow.*)`. This form is safe with NULL values.
-  Keep the library scope in a subquery. In a `WHERE` clause, the scope hides the
-  rows that only the shadow has.
+  Keep the library scope in a subquery: in a `WHERE` clause it hides the rows
+  only the shadow has.
 - The swap does one `DELETE` and one `INSERT ... SELECT` for each table, in one
   transaction. Before the first write, `lock_stream` locks the stream and
   `require_sequence` compares the head with `folded_through`. The order of the
@@ -50,13 +49,12 @@ head moved, the diff is advisory.
   `StreamSequenceMismatch`. The full attempt then runs again with a new shadow.
   Do not use `run_in_transaction` here. It sorts errors by SQLSTATE and refuses
   this one.
-- A shadow twin joins the registry of its live model and stays there. Thus each
-  relation of a twin uses `related_name="+"` and `on_delete=DO_NOTHING`. The
-  deletion collector reads hidden relations, and it skips `DO_NOTHING` only. A
-  different rule makes a later delete of a live row read a temp table that is
-  gone.
-- A projection model is a subclass of `ProjectionModel`. Each row must be a pure
-  function of the events. Thus a projection model must not have an automatic
-  primary key, a `db_default`, or a clock default.
+- A shadow twin joins the registry of its live model and stays there, so each
+  relation uses `related_name="+"` and `on_delete=DO_NOTHING`. The deletion
+  collector reads hidden relations and skips `DO_NOTHING` only. A different rule
+  makes a later delete of a live row read a temp table that is gone.
+- A projection model subclasses `ProjectionModel`. Each row is a pure function of
+  the events, so the model must not have an automatic primary key, a
+  `db_default`, or a clock default.
 
 This issue adds no migration and changes no schema.
