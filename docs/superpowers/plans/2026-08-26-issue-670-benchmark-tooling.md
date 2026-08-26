@@ -6,13 +6,15 @@
 rebuild time, and per-event write cost against the real `TrackGame` workload, and
 record one full run in the repository.
 
-**Architecture:** Two new modules under `games/events/` — `benchmark.py` holds the
-report types, the percentile helper, the statement counter, the environment
-capture, the budget rules, and `run_benchmark()`; `benchmark_workload.py` holds
-seeding, the three scenarios, and teardown. A thin management command owns
-arguments, printing, and exit codes, the way `rebuild_projections` does. One
-existing private helper in `games/events/rebuild.py` becomes public so the
-statement parser is shared rather than copied.
+**Architecture:** Three new modules under `games/events/`, layered so nothing
+imports upwards. `benchmark.py` is vocabulary and rules only — the report types,
+the percentile helper, the statement counter, the environment capture, the budget
+rules — and imports nothing from the other two. `benchmark_workload.py` holds
+seeding, the three scenarios, and teardown, and imports `benchmark.py`.
+`benchmark_run.py` holds `run_benchmark()` and imports both. A thin management
+command owns arguments, printing, and exit codes, the way `rebuild_projections`
+does. One existing private helper in `games/events/rebuild.py` becomes public so
+the statement parser is shared rather than copied.
 
 **Tech Stack:** Django 6, Python 3.14, PostgreSQL 18, pytest + pytest-django.
 
@@ -27,6 +29,17 @@ statement parser is shared rather than copied.
 - **Python 3.14.** A `SyntaxError` in an `except A, B:` means the wrong
   interpreter, not broken code.
 - Set `PYTEST_WORKERS=0` when debugging; parallel output interleaves.
+- **Any test that calls `dispatch()` must be marked
+  `@pytest.mark.django_db(transaction=True)`.** `dispatch` goes through
+  `run_in_transaction`, which raises `NestedTransactionNotSupported`
+  (`games/events/retry.py:114`) when it finds an enclosing atomic block — and
+  plain `@pytest.mark.django_db` *is* an enclosing atomic block. This is the
+  house pattern: `tests/test_command_dispatch.py` marks all eleven of its
+  dispatch tests this way, and `tests/test_retention.py` sets it once at module
+  level. Tests that only call `LockedStream.append` or `rebuild_projections` stay
+  on plain `django_db`, which is much faster — `transaction=True` truncates every
+  table between tests. Each task below states the marker per test; do not
+  "simplify" them to one.
 - **Name variables with complete words** — `element` not `el`, `statement` not
   `stmt`, `index` not `i`, in Python and TypeScript alike.
 - **Name compound types explicitly** (`TypedDict` / `NamedTuple` / `type` alias)
@@ -60,16 +73,23 @@ never on `--seed`.
 
 ## File Structure
 
+The three modules are a layer per import direction. `benchmark.py` names things
+and decides things; `benchmark_workload.py` does work; `benchmark_run.py` orders
+the work. Collapsing the first and third into one module produces an import cycle
+— the workload needs `StatementCounter` and `Timings`, and `run_benchmark` needs
+the scenarios — so the split is load-bearing, not taste.
+
 **Create:**
 
 - `games/events/benchmark.py` — `Seconds`, `BudgetVerdict`, `Timings`,
   `WorkPerEvent`, `Budget`, `Environment`, `SeedReport`, `BenchmarkReport`,
-  `nearest_rank`, `summarize`, `StatementCounter`, `environment`,
-  `command_budget`, `rebuild_budget`, `run_benchmark`. Everything the spec's API
-  contract names lives here.
-- `games/events/benchmark_workload.py` — `seed_library`, `run_command_scenario`,
-  `run_amplification_scenario`, `run_rebuild_scenario`, `purge_scratch_user`.
-  The bulk that `benchmark.py` orchestrates.
+  `RebuildDiffNotEmpty`, `nearest_rank`, `summarize`, `StatementCounter`,
+  `environment`, `command_budget`, `rebuild_budget`. **Imports nothing from the
+  other two benchmark modules.**
+- `games/events/benchmark_workload.py` — `seed_library`, `spare_games`,
+  `run_command_scenario`, `run_amplification_scenario`, `run_rebuild_scenario`,
+  `purge_scratch_user`. Imports `benchmark.py`.
+- `games/events/benchmark_run.py` — `run_benchmark`. Imports both.
 - `games/management/commands/benchmark_events.py` — arguments, printing, exit
   codes. No decisions.
 - `tests/test_event_benchmark.py` — everything the spec's "Where the behaviour is
@@ -124,7 +144,7 @@ at line 29).
         ),
         ('SELECT 1 FROM "games_playergame"', ()),
         ("SAVEPOINT s1", ()),
-        ('UPDATE ONLY pg_temp."games_playergame__shadow" SET id = id', 
+        ('UPDATE ONLY pg_temp."games_playergame__shadow" SET id = id',
          ("games_playergame__shadow",)),
     ],
 )
@@ -256,6 +276,10 @@ seconds for a 100,000-event rebuild -- and asks that write amplification be
 recorded after every new projector family without fixing a limit for it. This
 module measures all three against the real workload, and this module is the
 only place those numbers are written down.
+
+It names things and decides things; it never does work. Nothing here imports
+benchmark_workload or benchmark_run, and that is what keeps the three modules
+acyclic.
 """
 
 import math
@@ -324,12 +348,20 @@ git commit -m "Rank the samples rather than interpolate between them"
 
 **Interfaces:**
 - Consumes: `write_targets` from Task 1; `TableName` and `projection_models` from
-  `games.events.rebuild`.
+  `games.events.rebuild`; `SHADOW_SUFFIX` from `games.events.targets`.
 - Produces: `EVENT_STORE_TABLES: frozenset[TableName]`;
   `WorkPerEvent(events, statements, rows_per_table, statements_per_table,
   projection_rows, projection_statements, event_store_rows,
   event_store_statements)`; `StatementCounter` — a callable suitable for
   `connection.execute_wrapper`, with `.work(events: int) -> WorkPerEvent`.
+
+**A shadow table is its live table's cost.** During a rebuild the counter sees
+`games_playergame__shadow`, while `projection_models()` yields
+`games_playergame`. Classifying by the raw name reports the swap's two statements
+as the entire projection cost and drops every replay insert on the floor — the
+one number the whole `fold` block exists to produce. `work()` therefore strips
+`SHADOW_SUFFIX` before matching, and `statements_per_table` keeps the raw names so
+the breakdown still shows where the writes landed.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -343,17 +375,41 @@ from games.models import PlayerGame
 
 
 @pytest.mark.django_db
-def test_the_counter_attributes_a_write_to_the_table_it_names(owned_library):
+def test_the_counter_attributes_an_insert_an_update_and_a_delete():
+    """Counting statements is what makes an in-place update visible."""
+    counter = StatementCounter()
+    with connection.execute_wrapper(counter), connection.cursor() as cursor:
+        cursor.execute('CREATE TEMP TABLE "counter_probe" (id integer PRIMARY KEY)')
+        cursor.execute('INSERT INTO "counter_probe" (id) VALUES (1), (2)')
+        cursor.execute('UPDATE "counter_probe" SET id = id + 10')
+        cursor.execute('DELETE FROM "counter_probe" WHERE id = 11')
+    assert counter.statements == 4
+    #: CREATE names no write keyword, so it is counted but not attributed.
+    assert counter.statements_per_table == {"counter_probe": 3}
+    assert counter.rows_per_table == {"counter_probe": 5}
+
+
+@pytest.mark.django_db
+def test_the_counter_attributes_nothing_to_a_statement_that_only_reads():
     counter = StatementCounter()
     table = PlayerGame._meta.db_table
-    with connection.execute_wrapper(counter):
-        with connection.cursor() as cursor:
-            cursor.execute(f'SELECT count(*) FROM "{table}"')
+    with connection.execute_wrapper(counter), connection.cursor() as cursor:
+        cursor.execute(f'SELECT count(*) FROM "{table}"')
     assert counter.statements_per_table == {}
     assert counter.statements == 1
 
 
 @pytest.mark.django_db
+def test_the_counter_counts_statements_that_name_no_table():
+    counter = StatementCounter()
+    with connection.execute_wrapper(counter), connection.cursor() as cursor:
+        cursor.execute("SAVEPOINT benchmark_probe")
+        cursor.execute("RELEASE SAVEPOINT benchmark_probe")
+    assert counter.statements == 2
+    assert counter.statements_per_table == {}
+
+
+@pytest.mark.django_db(transaction=True)
 def test_the_counter_separates_projections_from_the_event_store(owned_library):
     #: One tracked game: one projection row, one event, one reference.
     counter = StatementCounter()
@@ -364,18 +420,12 @@ def test_the_counter_separates_projections_from_the_event_store(owned_library):
     assert work.projection_statements == 1
     assert work.event_store_rows >= 3
     assert work.statements > work.projection_statements
-
-
-@pytest.mark.django_db
-def test_the_counter_counts_statements_that_name_no_table(owned_library):
-    counter = StatementCounter()
-    with connection.execute_wrapper(counter):
-        with connection.cursor() as cursor:
-            cursor.execute("SAVEPOINT benchmark_probe")
-            cursor.execute("RELEASE SAVEPOINT benchmark_probe")
-    assert counter.statements == 2
-    assert counter.statements_per_table == {}
 ```
+
+The first three tests need no `transaction=True`: they issue raw SQL, and the
+`SAVEPOINT` one actively *requires* the enclosing atomic block that plain
+`django_db` provides — PostgreSQL refuses a savepoint outside a transaction. The
+fourth dispatches, so it takes the transactional marker.
 
 `track_one_game` is a helper this test file needs from here on. Add it near the
 top of the file, below the imports:
@@ -389,7 +439,11 @@ from games.models import Game
 
 
 def track_one_game(library, *, name: str = "Benchmark probe") -> Game:
-    """Dispatch one real TrackGame against a fresh catalog row."""
+    """Dispatch one real TrackGame against a fresh catalog row.
+
+    Every caller must be marked django_db(transaction=True): dispatch
+    refuses to run inside an enclosing atomic block.
+    """
     game = Game.objects.create(library=library, name=name)
     dispatch(
         TrackGame(game_id=game.pk),
@@ -413,10 +467,12 @@ Expected: FAIL, `ImportError: cannot import name 'StatementCounter'`.
 Add to `games/events/benchmark.py`. Extend the imports at the top:
 
 ```python
+from collections.abc import Container, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 from games.events.rebuild import TableName, projection_models, write_targets
+from games.events.targets import SHADOW_SUFFIX
 from games.models import (
     LibraryEvent,
     LibraryEventReference,
@@ -445,7 +501,7 @@ class WorkPerEvent:
     #: Every statement in the window, savepoints included.
     statements: int
     rows_per_table: Mapping[TableName, int]
-    #: Only statements that name a table they write.
+    #: Only statements that name a table they write; shadow names kept raw.
     statements_per_table: Mapping[TableName, int]
     projection_rows: int
     projection_statements: int
@@ -508,10 +564,13 @@ class StatementCounter:
 
     @staticmethod
     def _total(counts: Mapping[TableName, int], tables: Container[TableName]) -> int:
-        return sum(count for table, count in counts.items() if table in tables)
+        #: A replay writes games_x__shadow, which is games_x's cost.
+        return sum(
+            count
+            for table, count in counts.items()
+            if table.removesuffix(SHADOW_SUFFIX) in tables
+        )
 ```
-
-Add `Container` and `Mapping` to the `collections.abc` import.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -654,30 +713,51 @@ not earn.
 - Test: `tests/test_event_benchmark.py`
 
 **Interfaces:**
-- Consumes: `Timings` from Task 2; `RebuildReport` from `games.events.rebuild`.
+- Consumes: `Timings` from Task 2; `RebuildAttempt` and `RebuildReport` from
+  `games.events.rebuild`.
 - Produces: `BudgetVerdict` (`PASSED` / `MISSED` / `NOT_GATED`);
   `Budget(name, limit, unit, measured, verdict)`; the constants table above;
   `command_budget(timings: Timings) -> Budget`;
   `rebuild_budget(report: RebuildReport) -> Budget`.
 
+**The budget is charged one pass, not every retry.** `RebuildReport.elapsed_seconds`
+spans all attempts, and a contended library retries. Charging a
+sixty-seconds-per-pass budget the wall clock of three passes fails a rebuild that
+met the budget three times over. `rebuild_budget` therefore measures the last
+attempt's phases; `elapsed_seconds` stays in the report and is printed beside it.
+
 - [ ] **Step 1: Write the failing tests**
 
 ```python
-from dataclasses import replace
-
 from games.events.benchmark import (
     BudgetVerdict,
     command_budget,
     rebuild_budget,
 )
-from games.events.rebuild import RebuildMode, RebuildReport
+from games.events.rebuild import RebuildAttempt, RebuildMode, RebuildReport
 
 
 def timings(p95: float, *, samples: int = 200) -> Timings:
     return Timings(samples=samples, p50=p95 / 2, p95=p95, maximum=p95 * 2)
 
 
-def rebuild_report(*, folded_through: int, elapsed_seconds: float) -> RebuildReport:
+def attempt(*, seconds: float, conflict: str | None = None) -> RebuildAttempt:
+    """One pass whose three phases sum to `seconds`."""
+    return RebuildAttempt(
+        folded_through=0,
+        replay_seconds=seconds * 0.8,
+        diff_seconds=seconds * 0.15,
+        swap_seconds=seconds * 0.05,
+        conflict=conflict,
+    )
+
+
+def rebuild_report(
+    *,
+    folded_through: int,
+    elapsed_seconds: float,
+    attempts: tuple[RebuildAttempt, ...] | None = None,
+) -> RebuildReport:
     return RebuildReport(
         library_id=uuid.uuid7(),
         stream_id=uuid.uuid7(),
@@ -686,7 +766,9 @@ def rebuild_report(*, folded_through: int, elapsed_seconds: float) -> RebuildRep
         folded_through=folded_through,
         head_at_diff=folded_through,
         tables=(),
-        attempts=(),
+        attempts=(
+            (attempt(seconds=elapsed_seconds),) if attempts is None else attempts
+        ),
         elapsed_seconds=elapsed_seconds,
     )
 
@@ -717,11 +799,28 @@ def test_a_rebuild_over_its_scaled_budget_misses():
     assert budget.verdict is BudgetVerdict.MISSED
 
 
+def test_a_retried_rebuild_is_charged_only_its_last_pass():
+    """Three passes that each met the budget are not one pass that missed."""
+    budget = rebuild_budget(
+        rebuild_report(
+            folded_through=10_000,
+            elapsed_seconds=18.0,
+            attempts=(
+                attempt(seconds=5.8, conflict="the head moved"),
+                attempt(seconds=5.9, conflict="the head moved"),
+                attempt(seconds=5.5),
+            ),
+        )
+    )
+    assert budget.measured == pytest.approx(5.5)
+    assert budget.verdict is BudgetVerdict.PASSED
+
+
 def test_a_rebuild_below_the_gating_floor_is_not_gated():
     #: Scaling is verified linear from 2,000 up, not below.
     budget = rebuild_budget(rebuild_report(folded_through=1_999, elapsed_seconds=99.0))
     assert budget.verdict is BudgetVerdict.NOT_GATED
-    assert budget.measured == 99.0
+    assert budget.measured == pytest.approx(99.0)
 ```
 
 - [ ] **Step 2: Run them to verify they fail**
@@ -789,17 +888,30 @@ def command_budget(timings: Timings) -> Budget:
     )
 
 
+def one_pass_seconds(report: RebuildReport) -> Seconds:
+    """The last attempt's phases; elapsed_seconds sums every retry.
+
+    A budget of 60 seconds per rebuild is a claim about one pass. Charging
+    it three contended passes fails a rebuild that met it three times.
+    """
+    if not report.attempts:
+        return report.elapsed_seconds
+    last = report.attempts[-1]
+    return last.replay_seconds + last.diff_seconds + (last.swap_seconds or 0.0)
+
+
 def rebuild_budget(report: RebuildReport) -> Budget:
     """60 s per 100,000 events, scaled to what was actually folded."""
     events = report.folded_through
     limit = REBUILD_BUDGET_SECONDS * events / REBUILD_BUDGET_EVENTS
+    measured = one_pass_seconds(report)
     return Budget(
         name="rebuild",
         limit=limit,
         unit="s",
-        measured=report.elapsed_seconds,
+        measured=measured,
         verdict=_verdict(
-            measured=report.elapsed_seconds,
+            measured=measured,
             limit=limit,
             gated=events >= MINIMUM_GATED_EVENTS,
         ),
@@ -845,18 +957,28 @@ Batching is the difference between ~100 locked transactions and ~100,000 of them
 Seeding goes through `LockedStream.append` rather than `dispatch`, so it skips
 the idempotency record and the duplicate check, but the same validation runs, the
 same `LibraryEventReference` rows are written, and `append()` folds the same
-projectors inline — which is what makes Task 8's rebuild a parity proof.
+projectors inline — which is what makes Task 8's rebuild a parity proof. Because
+nothing here dispatches, these tests stay on plain `django_db`.
 
 Reusing one idempotency key across batches is safe: `LibraryEvent` carries only a
 not-empty check on that column, and the `(library, idempotency_key)` uniqueness
 lives on `LibraryIdempotencyRecord`, which a direct `append()` never writes.
+
+**Catalog iteration is keyset paging, not `.iterator()`.** Every consumer of these
+iterators commits between fetches — `seed_library` per append batch, the command
+scenarios per dispatch. `.iterator(chunk_size=…)` declares a server-side cursor
+here (`can_use_chunked_reads` is True and `DISABLE_SERVER_SIDE_CURSORS` is unset),
+which survives commits on a direct connection and does not survive a
+transaction-pooling pooler. That is issue #917, and there is no reason to widen
+its blast radius from the replay to the whole harness for an iteration that keyset
+paging does just as lazily.
 
 - [ ] **Step 1: Write the failing tests**
 
 ```python
 from games.events.benchmark import SeedReport
 from games.events.benchmark_workload import seed_library, spare_games
-from games.models import LibraryEvent
+from games.models import LibraryEvent, LibraryEventStreamHead
 
 
 @pytest.mark.django_db
@@ -876,8 +998,22 @@ def test_seeding_batches_the_stream_rather_than_locking_per_event(owned_library)
     with connection.execute_wrapper(counter):
         seed_library(owned_library, actor=owned_library.user, events=25, spares=0)
     head = LibraryEventStreamHead._meta.db_table
-    #: One batch, so the head advances once.
-    assert counter.statements_per_table[head] == 1
+    #: One batch, two writes: lock_stream inserts the head that did not
+    #: exist, then append advances current_sequence once. A second batch
+    #: would add one UPDATE, not two statements.
+    assert counter.statements_per_table[head] == 2
+
+
+@pytest.mark.django_db
+def test_a_second_batch_only_advances_the_head(owned_library):
+    seed_library(owned_library, actor=owned_library.user, events=1, spares=0)
+    counter = StatementCounter()
+    with connection.execute_wrapper(counter):
+        seed_library(owned_library, actor=owned_library.user, events=0, spares=0)
+        lock_stream(owned_library)
+    head = LibraryEventStreamHead._meta.db_table
+    #: The head exists now, so get_or_create reads and writes nothing.
+    assert head not in counter.statements_per_table
 
 
 @pytest.mark.django_db
@@ -896,6 +1032,11 @@ def test_seeding_reports_append_throughput(owned_library):
     #: Setup is timed apart from the measurement.
     assert report.catalog_seconds > 0
 ```
+
+`test_a_second_batch_only_advances_the_head` needs
+`with transaction.atomic():` around the `lock_stream` call, because
+`select_for_update` requires one. Wrap that line accordingly and import
+`transaction` and `lock_stream` in the test module.
 
 - [ ] **Step 2: Run them to verify they fail**
 
@@ -928,11 +1069,14 @@ class SeedReport:
 Everything here works on a real library through the real write path. There is
 no workload protocol and no plug point: #671 shipped one command, one event
 type and one projector family, and this module names them.
+
+Imports benchmark.py for its vocabulary and nothing from benchmark_run.py.
 """
 
 import uuid
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator
 from io import StringIO
+from itertools import batched
 from time import monotonic
 
 from django.contrib.auth.models import User
@@ -971,7 +1115,7 @@ def seed_library(
 
     append_started = monotonic()
     correlation_id = uuid.uuid7()
-    for batch in _batched(_seeded_games(library), APPEND_BATCH):
+    for batch in batched(_seeded_games(library), APPEND_BATCH):
         with transaction.atomic():
             lock_stream(library).append(
                 [
@@ -1015,34 +1159,24 @@ def spare_games(library: UserLibrary) -> Iterator[Game]:
 
 
 def _catalog(library: UserLibrary, prefix: str) -> Iterator[Game]:
-    #: An iterator, because 100,000 model instances is not a list.
-    return (
-        Game.objects.filter(library=library, name__startswith=prefix)
-        .only(*_CAPTURED_FIELDS)
-        .order_by("id")
-        .iterator(chunk_size=CATALOG_BATCH)
-    )
+    """Keyset pages, because every caller commits mid-iteration.
 
-
-def _batched[T](items: Iterator[T], size: int) -> Iterator[Sequence[T]]:
-    batch: list[T] = []
-    for item in items:
-        batch.append(item)
-        if len(batch) == size:
-            yield batch
-            batch = []
-    if batch:
-        yield batch
+    `.iterator()` would open a server-side cursor, which a
+    transaction-pooling pooler closes under us -- issue #917, and no reason
+    to depend on it for an iteration a `WHERE id > ?` does just as lazily.
+    UUIDv7 primary keys sort in insertion order, so the paging is stable.
+    """
+    last_id: uuid.UUID | None = None
+    while True:
+        page = Game.objects.filter(library=library, name__startswith=prefix)
+        if last_id is not None:
+            page = page.filter(id__gt=last_id)
+        rows = list(page.only(*_CAPTURED_FIELDS).order_by("id")[:CATALOG_BATCH])
+        if not rows:
+            return
+        yield from rows
+        last_id = rows[-1].id
 ```
-
-Use `itertools.batched` instead of `_batched` if it accepts an iterator cleanly —
-it does, and it is the standard-library spelling. Prefer it:
-
-```python
-from itertools import batched
-```
-
-and drop `_batched`, calling `batched(_seeded_games(library), APPEND_BATCH)`.
 
 - [ ] **Step 4: Run them to verify they pass**
 
@@ -1081,10 +1215,13 @@ row, and the claim belongs in the retention tests rather than the benchmark ones
 
 - [ ] **Step 1: Write the failing retention test**
 
-Add to `tests/test_retention.py`, following that file's existing fixture style:
+Add to `tests/test_retention.py`, following that file's existing fixture style.
+**Add no `django_db` marker** — that file already sets
+`pytestmark = pytest.mark.django_db(transaction=True)` at module level, which is
+exactly what this test's `dispatch` call needs, and a function-level plain marker
+would fight it.
 
 ```python
-@pytest.mark.django_db
 def test_purging_a_library_takes_its_projection_rows_with_it(owned_library):
     """PlayerGame.game is RESTRICT; CASCADE through the library clears it."""
     user = owned_library.user
@@ -1117,7 +1254,7 @@ design is wrong and the issue needs re-scoping, not a workaround.
 - [ ] **Step 3: Write the failing benchmark teardown test**
 
 ```python
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 def test_the_scratch_user_is_purged_and_the_purge_is_timed(owned_library):
     username = owned_library.user.username
     track_one_game(owned_library, name="Purged by the harness")
@@ -1175,6 +1312,7 @@ git commit -m "Purge the scratch library through the cascade, and prove it works
 
 **Files:**
 - Modify: `games/events/benchmark_workload.py`, `games/events/benchmark.py`
+- Create: `games/events/benchmark_run.py`
 - Test: `tests/test_event_benchmark.py`
 
 **Interfaces:**
@@ -1184,20 +1322,27 @@ git commit -m "Purge the scratch library through the cascade, and prove it works
   `run_command_scenario(library, *, actor, games, iterations, warmup) -> Timings`;
   `run_amplification_scenario(library, *, actor, games, iterations) -> WorkPerEvent`;
   `run_rebuild_scenario(library, *, mode, count_fold) -> tuple[RebuildReport, WorkPerEvent | None]`.
-  In `benchmark.py`: `BenchmarkReport`, `RebuildDiffNotEmpty`, `run_benchmark`.
+  In `benchmark.py`: `BenchmarkReport`, `RebuildDiffNotEmpty`.
+  In `benchmark_run.py`: `run_benchmark`.
 
 Order is the contract. The rebuild runs **last** so its diff covers events written
 by `LockedStream.append` *and* by `dispatch`, and its budget therefore scales on
 `RebuildReport.folded_through` rather than on `--seed`, which by then it exceeds
 by `2 * iterations + warmup`.
 
+`run_benchmark` lives in its own module because it is the only thing that needs
+both layers. Putting it in `benchmark.py` — which `benchmark_workload.py` already
+imports — is a circular import, and the failure is at import time, not in a test.
+
 - [ ] **Step 1: Write the failing tests**
 
 ```python
-from games.events.benchmark import BenchmarkReport, RebuildDiffNotEmpty, run_benchmark
+from games.events.benchmark import RebuildDiffNotEmpty
+from games.events.benchmark_run import BenchmarkReport, run_benchmark
+from games.events.targets import SHADOW_SUFFIX
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 def test_warmup_samples_are_additional_and_are_not_recorded(owned_library):
     seed_library(owned_library, actor=owned_library.user, events=5, spares=7)
     timings = run_command_scenario(
@@ -1212,7 +1357,7 @@ def test_warmup_samples_are_additional_and_are_not_recorded(owned_library):
     assert PlayerGame.objects.filter(library=owned_library).count() == 12
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 def test_one_dispatch_writes_one_projection_row_through_one_statement(owned_library):
     seed_library(owned_library, actor=owned_library.user, events=0, spares=1)
     work = run_amplification_scenario(
@@ -1223,22 +1368,55 @@ def test_one_dispatch_writes_one_projection_row_through_one_statement(owned_libr
     )
     assert work.projection_rows == 1
     assert work.projection_statements == 1
-    assert work.event_store_rows == 4
+    rows = work.rows_per_table
+    assert rows[LibraryEvent._meta.db_table] == 1
+    assert rows[LibraryEventReference._meta.db_table] == 1
+    assert rows[LibraryIdempotencyRecord._meta.db_table] >= 1
+    #: events=0 seeded no head, so lock_stream inserts it and append
+    #: advances it: two head rows, not one.
+    assert rows[LibraryEventStreamHead._meta.db_table] == 2
+    assert work.event_store_rows == 4 + rows[LibraryIdempotencyRecord._meta.db_table]
 
 
 @pytest.mark.django_db
-def test_folding_one_event_costs_six_statements(owned_library):
-    """The number #930 exists to reduce."""
+def test_folding_one_event_costs_six_statements(django_user_model):
+    """The number #930 exists to reduce.
+
+    A rebuild also pays a fixed cost -- the temp tables, the reference
+    anti-joins, the diff, the swap, the drop -- measured at 17 statements.
+    The average at ten events is therefore 7.7, not 6. The slope between two
+    sizes is the per-event number, and it is exact.
+    """
+    totals: dict[int, int] = {}
+    for events in (10, 30):
+        user = django_user_model.objects.create_user(username=f"fold-{events}")
+        seed_library(user.library, actor=user, events=events, spares=0)
+        _report, fold = run_rebuild_scenario(
+            user.library, mode=RebuildMode.REBUILD, count_fold=True
+        )
+        assert fold is not None
+        totals[events] = fold.statements
+    assert (totals[30] - totals[10]) / 20 == pytest.approx(6.0, abs=0.01)
+
+
+@pytest.mark.django_db
+def test_the_fold_counts_the_shadow_table_as_its_projection(owned_library):
+    """A replay writes games_playergame__shadow; the swap writes the live one."""
     seed_library(owned_library, actor=owned_library.user, events=10, spares=0)
-    _, fold = run_rebuild_scenario(
+    _report, fold = run_rebuild_scenario(
         owned_library, mode=RebuildMode.REBUILD, count_fold=True
     )
     assert fold is not None
-    assert fold.statements / fold.events == pytest.approx(6.0, abs=0.5)
+    live = PlayerGame._meta.db_table
+    shadow = f"{live}{SHADOW_SUFFIX}"
+    assert fold.statements_per_table[shadow] == 10
+    assert fold.projection_statements == (
+        fold.statements_per_table[shadow] + fold.statements_per_table[live]
+    )
 
 
-@pytest.mark.django_db
-def test_a_run_folds_the_events_both_write_paths_produced(owned_library):
+@pytest.mark.django_db(transaction=True)
+def test_a_run_folds_the_events_both_write_paths_produced():
     report = run_benchmark(seed=30, iterations=3, warmup=1, keep=True)
     #: 30 seeded, 3 + 1 by the command scenario, 3 by amplification.
     assert report.rebuild.folded_through == 37
@@ -1248,23 +1426,38 @@ def test_a_run_folds_the_events_both_write_paths_produced(owned_library):
     )
 
 
-@pytest.mark.django_db
-def test_a_run_purges_its_scratch_user_after_a_scenario_raises(owned_library, monkeypatch):
+@pytest.mark.django_db(transaction=True)
+def test_a_run_purges_its_scratch_user_after_a_scenario_raises(monkeypatch):
     """Deleting the workload plug point left a monkeypatch as the only seam."""
-    from games.events import benchmark as benchmark_module
+    from games.events import benchmark_run as run_module
 
     def explode(*args, **kwargs):
         raise RuntimeError("the scenario failed")
 
-    monkeypatch.setattr(benchmark_module, "run_command_scenario", explode)
+    monkeypatch.setattr(run_module, "run_command_scenario", explode)
     before = set(User.objects.values_list("username", flat=True))
     with pytest.raises(RuntimeError, match="the scenario failed"):
         run_benchmark(seed=5, iterations=2, warmup=0)
     assert set(User.objects.values_list("username", flat=True)) == before
 
 
-@pytest.mark.django_db
-def test_no_count_fold_leaves_the_fold_unmeasured(owned_library):
+@pytest.mark.django_db(transaction=True)
+def test_a_kept_run_names_its_scratch_user_before_it_can_fail():
+    """--keep must print the cleanup even for a run that raises."""
+    announced: list[str] = []
+    report = run_benchmark(
+        seed=5,
+        iterations=1,
+        warmup=0,
+        keep=True,
+        announce_scratch_user=announced.append,
+    )
+    assert announced == [report.scratch_username]
+    assert User.objects.filter(username=report.scratch_username).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_no_count_fold_leaves_the_fold_unmeasured():
     report = run_benchmark(seed=5, iterations=1, warmup=0, count_fold=False)
     assert report.fold is None
     assert report.rebuild is not None
@@ -1273,19 +1466,28 @@ def test_no_count_fold_leaves_the_fold_unmeasured(owned_library):
 @pytest.mark.django_db
 def test_library_mode_writes_no_persistent_row(owned_library):
     seed_library(owned_library, actor=owned_library.user, events=6, spares=0)
-    before = set(PlayerGame.objects.filter(library=owned_library).values_list("id", flat=True))
-    head_before = LibraryEventStreamHead.objects.get(library=owned_library).sequence
+    before = set(
+        PlayerGame.objects.filter(library=owned_library).values_list("id", flat=True)
+    )
+    head_before = LibraryEventStreamHead.objects.get(
+        library=owned_library
+    ).current_sequence
     report = run_benchmark(seed=0, iterations=0, warmup=0, library=owned_library)
     assert report.seed is None
     assert report.command is None
-    assert set(
-        PlayerGame.objects.filter(library=owned_library).values_list("id", flat=True)
-    ) == before
-    assert LibraryEventStreamHead.objects.get(library=owned_library).sequence == head_before
+    assert report.scratch_username is None
+    assert (
+        set(PlayerGame.objects.filter(library=owned_library).values_list("id", flat=True))
+        == before
+    )
+    assert (
+        LibraryEventStreamHead.objects.get(library=owned_library).current_sequence
+        == head_before
+    )
 
 
 @pytest.mark.django_db
-def test_a_non_empty_rebuild_diff_fails_the_run(owned_library, monkeypatch):
+def test_a_non_empty_rebuild_diff_fails_the_run(owned_library):
     seed_library(owned_library, actor=owned_library.user, events=6, spares=0)
     #: A row the replay will not produce.
     PlayerGame.objects.create(
@@ -1298,8 +1500,8 @@ def test_a_non_empty_rebuild_diff_fails_the_run(owned_library, monkeypatch):
         run_benchmark(seed=0, iterations=0, warmup=0, library=owned_library)
 
 
-@pytest.mark.django_db
-def test_the_report_carries_every_scenario_and_a_schema(owned_library):
+@pytest.mark.django_db(transaction=True)
+def test_the_report_carries_every_scenario_and_a_schema():
     report = run_benchmark(seed=25, iterations=3, warmup=1)
     assert isinstance(report, BenchmarkReport)
     assert report.schema == 1
@@ -1311,14 +1513,18 @@ def test_the_report_carries_every_scenario_and_a_schema(owned_library):
     parsed = json.loads(report.as_json())
     assert parsed["schema"] == 1
     assert set(parsed) >= {
-        "environment", "seed", "command", "amplification", "fold", "rebuild",
-        "teardown_seconds", "budgets",
+        "environment", "scratch_username", "seed", "command", "amplification",
+        "fold", "rebuild", "teardown_seconds", "budgets",
     }
 ```
 
-The stream head's sequence attribute name must match
-`LibraryEventStreamHead`'s field — read it before writing this test and use the
-real name.
+Three of these deliberately stay on plain `django_db`, because they only append
+and rebuild: the slope test, the shadow-attribution test, and the two
+`--library`-mode tests. The rest dispatch, directly or through `run_benchmark`,
+and take `transaction=True`.
+
+The stream head's field is `current_sequence` — `sequence` is
+`LibraryEvent`'s. Read `games/models.py` if a `FieldError` says otherwise.
 
 - [ ] **Step 2: Run them to verify they fail**
 
@@ -1330,6 +1536,8 @@ make test ARGS="tests/test_event_benchmark.py" PYTEST_WORKERS=0
 
 ```python
 from itertools import islice
+
+from django.db import connection, transaction
 
 from games.commands.playergame import TrackGame
 from games.events.benchmark import StatementCounter, Timings, WorkPerEvent, summarize
@@ -1409,19 +1617,25 @@ def run_rebuild_scenario(
     return report, counter.work(events=report.folded_through)
 ```
 
-Add `from django.db import connection, transaction` to the imports.
+- [ ] **Step 3b: `BenchmarkReport` and `RebuildDiffNotEmpty`, in `benchmark.py`**
 
-- [ ] **Step 3b: `run_benchmark`, in `benchmark.py`**
+These are vocabulary, so they stay in the bottom module. Add `import json` and
+`asdict` to that module's imports.
 
 ```python
 class RebuildDiffNotEmpty(RuntimeError):
     """The parity claim the run exists to make is false."""
 
 
+REPORT_SCHEMA = 1
+
+
 @dataclass(frozen=True, slots=True)
 class BenchmarkReport:
     schema: int
     environment: Environment
+    #: None in --library mode; --keep prints it.
+    scratch_username: str | None
     #: None in --library mode.
     seed: SeedReport | None
     command: Timings | None
@@ -1436,9 +1650,46 @@ class BenchmarkReport:
 
     def as_json(self) -> str:
         return json.dumps(asdict(self), indent=2, default=str)
+```
 
+- [ ] **Step 3c: `run_benchmark`, in the new `games/events/benchmark_run.py`**
 
-REPORT_SCHEMA = 1
+```python
+"""Order the scenarios, and take the scratch library away again.
+
+The only module that imports both benchmark.py and benchmark_workload.py,
+which is exactly why it is a third module and not part of either.
+"""
+
+import logging
+import uuid
+from collections.abc import Callable
+from dataclasses import replace
+
+from django.contrib.auth.models import User
+
+from games.events.benchmark import (
+    REPORT_SCHEMA,
+    BenchmarkReport,
+    RebuildDiffNotEmpty,
+    command_budget,
+    environment,
+    rebuild_budget,
+)
+from games.events.benchmark_workload import (
+    purge_scratch_user,
+    run_amplification_scenario,
+    run_command_scenario,
+    run_rebuild_scenario,
+    seed_library,
+    spare_games,
+)
+from games.events.rebuild import RebuildMode, RebuildReport
+from games.models import UserLibrary
+
+logger = logging.getLogger(__name__)
+
+SCRATCH_USERNAME_PREFIX = "benchmark-"
 
 
 def run_benchmark(
@@ -1449,53 +1700,48 @@ def run_benchmark(
     library: UserLibrary | None = None,
     keep: bool = False,
     count_fold: bool = True,
+    announce_scratch_user: Callable[[str], None] | None = None,
 ) -> BenchmarkReport:
     """Seed a scratch library, measure it, and take it away again.
 
     With `library`, run the read-only rebuild scenario against one that
     already exists and ignore `seed`.
+
+    `announce_scratch_user` is called with the username as soon as the user
+    exists, before any scenario can fail. --keep needs it: a run that raises
+    leaves the library behind, and the operator has to be told its name to
+    remove it.
     """
     if library is not None:
         return _measure_existing(library, count_fold=count_fold)
-    username = f"benchmark-{uuid.uuid7()}"
+    username = f"{SCRATCH_USERNAME_PREFIX}{uuid.uuid7()}"
     user = User.objects.create_user(username=username)
+    if announce_scratch_user is not None:
+        announce_scratch_user(username)
+    purged = False
     try:
-        return _measure_scratch(
+        report = _measure_scratch(
             user,
             seed=seed,
             iterations=iterations,
             warmup=warmup,
             count_fold=count_fold,
-            keep=keep,
         )
-    finally:
-        if not keep:
-            #: The report is already built; this time is stamped onto it
-            #: by _measure_scratch, which owns the happy path.
-            purge_scratch_user(username)
-```
-
-The `finally` above must not lose the teardown time on the happy path. Structure
-it so the happy path purges and records, and the `finally` only catches the
-failure case:
-
-```python
-    purged = False
-    try:
-        report = _measure_scratch(...)
         teardown = None if keep else purge_scratch_user(username)
         purged = True
         return replace(report, teardown_seconds=teardown)
     finally:
         if not purged and not keep:
-            purge_scratch_user(username)
+            try:
+                purge_scratch_user(username)
+            except Exception:
+                #: Never replace the failure that brought us here.
+                logger.exception("Could not purge scratch user %s.", username)
 ```
-
-`_measure_scratch` runs the scenarios in order and builds the report:
 
 ```python
 def _measure_scratch(
-    user: User, *, seed: int, iterations: int, warmup: int, count_fold: bool, keep: bool
+    user: User, *, seed: int, iterations: int, warmup: int, count_fold: bool
 ) -> BenchmarkReport:
     library = user.library
     spares = 2 * iterations + warmup
@@ -1514,6 +1760,7 @@ def _measure_scratch(
     return BenchmarkReport(
         schema=REPORT_SCHEMA,
         environment=environment(),
+        scratch_username=user.username,
         seed=seeded,
         command=command,
         amplification=amplification,
@@ -1538,6 +1785,7 @@ def _measure_existing(library: UserLibrary, *, count_fold: bool) -> BenchmarkRep
     return BenchmarkReport(
         schema=REPORT_SCHEMA,
         environment=environment(),
+        scratch_username=None,
         seed=None,
         command=None,
         amplification=None,
@@ -1568,20 +1816,22 @@ def _refuse_a_diff(report: RebuildReport) -> None:
 make test ARGS="tests/test_event_benchmark.py" PYTEST_WORKERS=0
 ```
 
-Expected: PASS. Two likely snags, both worth stopping over rather than working
+Expected: PASS. Three likely snags, all worth stopping over rather than working
 around:
 
-- `run_command_scenario` monkeypatched in `benchmark.py` requires `benchmark.py`
-  to call it through the module attribute it imported. Import the names into
-  `benchmark.py` normally; `monkeypatch.setattr(benchmark_module, "run_command_scenario", …)`
-  then patches the binding `benchmark.py` actually calls.
+- `run_command_scenario` monkeypatched in `benchmark_run.py` requires that module
+  to call it through the binding it imported. Import the names normally;
+  `monkeypatch.setattr(run_module, "run_command_scenario", …)` then patches the
+  binding `benchmark_run.py` actually calls.
 - The `--library` mode test asserts no persistent write. If it fails because
   `CHECK` mode swapped, re-read `rebuild.py` — `CHECK` must not swap.
+- A `NestedTransactionNotSupported` means a dispatching test lost its
+  `transaction=True`. Fix the marker, never the production code.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add games/events/benchmark.py games/events/benchmark_workload.py tests/test_event_benchmark.py
+git add games/events/benchmark.py games/events/benchmark_workload.py games/events/benchmark_run.py tests/test_event_benchmark.py
 git commit -m "Run the scenarios in the order the evidence needs"
 ```
 
@@ -1594,8 +1844,9 @@ git commit -m "Run the scenarios in the order the evidence needs"
 - Test: `tests/test_event_benchmark.py`
 
 **Interfaces:**
-- Consumes: `run_benchmark`, `BenchmarkReport`, `BudgetVerdict`,
-  `RebuildDiffNotEmpty`.
+- Consumes: `run_benchmark` from `games.events.benchmark_run`;
+  `BenchmarkReport`, `BudgetVerdict`, `RebuildDiffNotEmpty` from
+  `games.events.benchmark`.
 - Produces: `manage.py benchmark_events [--seed N] [--library UUID]
   [--iterations N] [--warmup N] [--gate] [--json] [--keep] [--no-count-fold]`.
 
@@ -1623,7 +1874,7 @@ def test_an_unknown_library_is_named():
         run_command(library=str(uuid.uuid7()))
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 def test_the_command_prints_what_it_will_create_before_creating_it():
     output = run_command(seed=25, iterations=2, warmup=1)
     assert "25" in output
@@ -1631,31 +1882,42 @@ def test_the_command_prints_what_it_will_create_before_creating_it():
     assert "estimate" in output.lower()
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 def test_gate_raises_on_a_missed_budget(monkeypatch):
+    """25 samples clears the sample floor; no events need seeding for that."""
     monkeypatch.setattr(benchmark_module, "COMMAND_BUDGET_SECONDS", 0.0)
     with pytest.raises(CommandError, match="budget"):
-        run_command(seed=2_500, iterations=25, warmup=1, gate=True)
+        run_command(seed=0, iterations=25, warmup=1, gate=True)
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 def test_gate_is_silent_when_every_budget_passes():
     #: Below both floors: NOT_GATED is not MISSED.
     run_command(seed=25, iterations=2, warmup=1, gate=True)
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 def test_json_output_parses_and_carries_the_schema():
     parsed = json.loads(run_command(seed=25, iterations=2, warmup=1, json=True))
     assert parsed["schema"] == 1
 
 
-@pytest.mark.django_db
-def test_keep_leaves_the_user_and_prints_the_cleanup(monkeypatch):
+@pytest.mark.django_db(transaction=True)
+def test_keep_names_the_scratch_user_it_leaves_behind():
     output = run_command(seed=10, iterations=1, warmup=0, keep=True)
     assert "delete_user_library" in output
     assert User.objects.filter(username__startswith="benchmark-").exists()
 ```
+
+`test_gate_raises_on_a_missed_budget` seeds nothing on purpose: the command
+budget it is testing needs `MINIMUM_GATED_SAMPLES` samples and no events, and the
+25 dispatches leave `folded_through` below `MINIMUM_GATED_EVENTS`, so the rebuild
+budget stays `NOT_GATED` and cannot decide the test. Seeding 2,000+ events here
+would cost seconds of suite time to gate a second budget the test does not
+control.
+
+`benchmark_module` is `games.events.benchmark` — `command_budget` reads the
+constant from its own module at call time, so that is the binding to patch.
 
 `--gate` uses `dest="gate"`, `--json` uses `dest="json"`, `--no-count-fold` uses
 `dest="count_fold"` with `action="store_false"`.
@@ -1684,9 +1946,11 @@ from games.events.benchmark import (
     BudgetVerdict,
     RebuildDiffNotEmpty,
     WorkPerEvent,
-    run_benchmark,
 )
+from games.events.benchmark_run import run_benchmark
 from games.models import UserLibrary
+
+DEFAULT_SEED_EVENTS = 100_000
 
 #: Measured on the development machine; see docs/event-benchmarks.md.
 SECONDS_PER_SEEDED_EVENT = 65 / 100_000
@@ -1711,7 +1975,12 @@ class Command(BaseCommand):
     )
 
     def add_arguments(self, parser):
-        parser.add_argument("--seed", type=int, default=100_000, help="Events to seed.")
+        parser.add_argument(
+            "--seed",
+            type=int,
+            default=None,
+            help=f"Events to seed (default {DEFAULT_SEED_EVENTS}).",
+        )
         parser.add_argument("--library", help="Check this library instead; read-only.")
         parser.add_argument("--iterations", type=int, default=200)
         parser.add_argument("--warmup", type=int, default=10, help="Additional, discarded.")
@@ -1726,21 +1995,32 @@ class Command(BaseCommand):
         )
 ```
 
-`handle()`:
+`--seed` defaults to `None`, not `100_000`, so `--library` can tell "the operator
+gave no seed" from "the operator typed the default". `handle()` resolves the real
+default after the mutual-exclusion check and threads the resolved value
+everywhere — nothing downstream reads `options["seed"]` again:
 
 ```python
     def handle(self, *args, **options):
         library = self._resolve_library(options)
+        seed = DEFAULT_SEED_EVENTS if options["seed"] is None else options["seed"]
         if library is None:
-            self._write_estimate(options)
+            self._write_estimate(
+                seed=seed,
+                iterations=options["iterations"],
+                warmup=options["warmup"],
+            )
         try:
             report = run_benchmark(
-                seed=options["seed"],
+                seed=seed,
                 iterations=options["iterations"],
                 warmup=options["warmup"],
                 library=library,
                 keep=options["keep"],
                 count_fold=options["count_fold"],
+                announce_scratch_user=(
+                    self._announce_scratch_user if options["keep"] else None
+                ),
             )
         except RebuildDiffNotEmpty as error:
             raise CommandError(str(error)) from error
@@ -1753,19 +2033,21 @@ class Command(BaseCommand):
             self.stdout.write(report.as_json())
         else:
             self._write_report(report)
-        if options["keep"]:
-            self.stdout.write(
-                "Kept. Remove it with: manage.py delete_user_library "
-                f"--user {report.username} --confirm {report.username}"
-            )
         if options["gate"]:
             self._gate(report)
 ```
 
-`report.username` requires `BenchmarkReport` to carry the scratch username. Add
-`scratch_username: str | None` to the dataclass in Task 8's module and set it —
-`--keep` cannot print the cleanup invocation otherwise. Make this edit as part of
-this task and re-run Task 8's tests.
+The cleanup line is printed by `_announce_scratch_user`, before any scenario
+runs, rather than after a successful report. A run that raises with `--keep` also
+leaves a library behind, and the operator needs its name either way:
+
+```python
+    def _announce_scratch_user(self, username: str) -> None:
+        self.stdout.write(
+            "Keeping the scratch library. Remove it with: "
+            f"manage.py delete_user_library --user {username} --confirm {username}"
+        )
+```
 
 `_resolve_library` refuses both flags and resolves the UUID, copying
 `rebuild_projections._get_library`:
@@ -1776,8 +2058,7 @@ this task and re-run Task 8's tests.
         raw_id = options["library"]
         if raw_id is None:
             return None
-        #: --seed's default is not a choice the operator made.
-        if options["seed"] != 100_000:
+        if options["seed"] is not None:
             raise CommandError("--seed and --library cannot both be given.")
         try:
             library_id = UUID(raw_id)
@@ -1789,31 +2070,19 @@ this task and re-run Task 8's tests.
             raise CommandError(f"No library {library_id}.") from error
 ```
 
-The default-sentinel comparison is fragile. Prefer `default=None` on `--seed` and
-resolve the 100,000 default after the mutual-exclusion check:
+`_write_estimate` takes the resolved numbers, never the raw options:
 
 ```python
-        if options["library"] is not None and options["seed"] is not None:
-            raise CommandError("--seed and --library cannot both be given.")
-        seed = 100_000 if options["seed"] is None else options["seed"]
-```
-
-Use this second form; it is honest about what the operator typed.
-
-`_write_estimate` prints the scaled expectation before anything is created:
-
-```python
-    def _write_estimate(self, options) -> None:
-        events = options["seed"]
-        estimate = events * (
+    def _write_estimate(self, *, seed: int, iterations: int, warmup: int) -> None:
+        estimate = seed * (
             SECONDS_PER_SEEDED_EVENT
             + SECONDS_PER_REBUILT_EVENT
             + SECONDS_PER_PURGED_EVENT
         )
         self.stdout.write(
-            f"About to create a scratch user, {events} events and "
-            f"{events + 2 * options['iterations'] + options['warmup']} catalog "
-            f"rows, then remove them. Estimate: {estimate / 60:.1f} minute(s)."
+            f"About to create a scratch user, {seed} events and "
+            f"{seed + 2 * iterations + warmup} catalog rows, then remove them. "
+            f"Estimate: {estimate / 60:.1f} minute(s)."
         )
 ```
 
@@ -1821,8 +2090,11 @@ Use this second form; it is honest about what the operator typed.
 events-per-second, labelled an append measurement with no budget and a line
 saying no bulk command exists to measure), the command timings, the two
 `WorkPerEvent` blocks divided by their event counts, the rebuild's per-phase
-timings and diff, the teardown, and the budgets. `_gate` raises `CommandError`
-naming every `MISSED` budget and says nothing about `NOT_GATED` ones:
+timings and diff, the teardown, and the budgets. Print the rebuild's
+`elapsed_seconds` **and** the budget's `measured` when they differ, naming the
+difference as retries — the budget charges one pass and the wall clock does not.
+`_gate` raises `CommandError` naming every `MISSED` budget and says nothing about
+`NOT_GATED` ones:
 
 ```python
     def _gate(self, report: BenchmarkReport) -> None:
@@ -1847,7 +2119,7 @@ make test ARGS="tests/test_event_benchmark.py" PYTEST_WORKERS=0
 - [ ] **Step 5: Commit**
 
 ```bash
-git add games/management/commands/benchmark_events.py games/events/benchmark.py tests/test_event_benchmark.py
+git add games/management/commands/benchmark_events.py tests/test_event_benchmark.py
 git commit -m "Print the measurement, and refuse a diff that makes it a lie"
 ```
 
@@ -1884,8 +2156,8 @@ make bench ARGS="--seed 2000 --iterations 25"
 ```
 
 Expected: a printed report, an empty rebuild diff, a `PASSED` or `MISSED` rebuild
-verdict (2,000 clears the floor), and `NOT_GATED` for the command p95 if fewer
-than 20 samples were recorded — with 25 iterations it is gated.
+verdict (2,000 clears the floor), and a gated command p95 (25 samples clears the
+sample floor).
 
 - [ ] **Step 3: Run the full `make check` gate**
 
@@ -1921,7 +2193,10 @@ Write `docs/event-benchmarks.md` containing:
 - the empty rebuild diff, called out as the parity evidence #601 asks for, over
   events written by both `LockedStream.append` and `dispatch`;
 - the seed's events-per-second, labelled an append measurement with no budget,
-  with one line saying no bulk command exists to measure yet.
+  with one line saying no bulk command exists to measure yet;
+- the measured fixed cost of a rebuild — 17 statements, independent of the event
+  count — beside the six per event, so a later reader knows why a small rebuild's
+  average is not six.
 
 - [ ] **Step 5: Commit**
 
@@ -1949,6 +2224,10 @@ message -> Task 9; the API contract -> Tasks 2-8; where the behaviour is pinned 
 the test steps throughout; verification -> Task 10; reversibility -> nothing to
 build.
 
+The spec's "the counter attributes an insert, an update, and a delete to the
+right table" is Task 3's first test, which exercises all three statement kinds
+against a temp table and checks both the statement and the row totals.
+
 **Two spec bullets deliberately not given their own task**, because they are
 assertions inside tasks that already exist: "`--library` mode leaves every
 persistent row untouched" is a Task 8 test, and "the rebuild budget scales on
@@ -1956,13 +2235,25 @@ persistent row untouched" is a Task 8 test, and "the rebuild budget scales on
 
 **Known rough edges an implementer will hit**, called out rather than hidden:
 
+- **The `django_db` marker is not uniform.** `dispatch` refuses an enclosing
+  atomic block, so every dispatching test needs `transaction=True`, and the
+  `SAVEPOINT` test needs the *plain* marker because a savepoint outside a
+  transaction is an error. Copying one marker across the file breaks it in both
+  directions.
+- **The three modules are acyclic by design.** `benchmark.py` must never import
+  `benchmark_workload` or `benchmark_run`. If a helper seems to want that, it
+  belongs in `benchmark_run.py`.
 - Task 8's shared `games` iterator is load-bearing. If the command scenario and
   the amplification scenario are given separate `spare_games()` calls, both start
   at the first spare and the second one dispatches against already-tracked games,
   which `TrackGame` refuses. One iterator, advanced by `islice`.
-- Task 9's `--seed` default must be resolved *after* the mutual-exclusion check,
-  or `--library` alone trips the check against its own default.
+- Task 9's `--seed` default is `None` at the parser and resolved in `handle()`
+  after the mutual-exclusion check. Nothing below `handle()` reads
+  `options["seed"]`; they take the resolved `seed`.
 - Task 3's counter reads `context["cursor"].rowcount` after `execute` returns.
   Reading it before would report the previous statement's count.
+- A rebuild's per-event cost is a slope, not an average: the fixed 17 statements
+  make ten events look like 7.7 each. Any new assertion about per-event cost must
+  measure two sizes.
 - Task 8's `_refuse_a_diff` runs before the teardown, so a failing run still
   purges — that is what Task 8's monkeypatch test proves.
