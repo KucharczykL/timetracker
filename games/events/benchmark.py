@@ -289,3 +289,15 @@ def rebuild_budget(report: RebuildReport) -> Budget:
             gated=events >= MINIMUM_GATED_EVENTS,
         ),
     )
+
+
+@dataclass(frozen=True, slots=True)
+class SeedReport:
+    """Setup, timed apart from the measurement."""
+
+    catalog_rows: int
+    catalog_seconds: Seconds
+    events: int
+    append_seconds: Seconds
+    #: The bulk-write number, in place of a bulk command.
+    events_per_second: float

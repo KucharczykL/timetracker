@@ -3,12 +3,14 @@
 import uuid
 
 import pytest
-from django.db import connection
+from django.db import connection, transaction
 
 from games.commands.playergame import TrackGame
+from games.events.append import lock_stream
 from games.events.benchmark import (
     BudgetVerdict,
     Environment,
+    SeedReport,
     StatementCounter,
     Timings,
     command_budget,
@@ -17,9 +19,10 @@ from games.events.benchmark import (
     rebuild_budget,
     summarize,
 )
+from games.events.benchmark_workload import seed_library, spare_games
 from games.events.dispatch import dispatch
 from games.events.rebuild import RebuildAttempt, RebuildMode, RebuildReport
-from games.models import Game, PlayerGame
+from games.models import Game, LibraryEvent, LibraryEventStreamHead, PlayerGame
 
 
 def track_one_game(library, *, name: str = "Benchmark probe") -> Game:
@@ -214,3 +217,55 @@ def test_a_rebuild_below_the_gating_floor_is_not_gated():
     budget = rebuild_budget(rebuild_report(folded_through=1_999, elapsed_seconds=99.0))
     assert budget.verdict is BudgetVerdict.NOT_GATED
     assert budget.measured == pytest.approx(99.0)
+
+
+@pytest.mark.django_db
+def test_seeding_writes_the_events_and_the_projection_rows(owned_library):
+    report = seed_library(owned_library, actor=owned_library.user, events=25, spares=4)
+    assert isinstance(report, SeedReport)
+    assert report.events == 25
+    assert report.catalog_rows == 29
+    assert LibraryEvent.objects.filter(library=owned_library).count() == 25
+    #: append() folds inline, so the live rows exist already.
+    assert PlayerGame.objects.filter(library=owned_library).count() == 25
+
+
+@pytest.mark.django_db
+def test_seeding_batches_the_stream_rather_than_locking_per_event(owned_library):
+    counter = StatementCounter()
+    with connection.execute_wrapper(counter):
+        seed_library(owned_library, actor=owned_library.user, events=25, spares=0)
+    head = LibraryEventStreamHead._meta.db_table
+    #: One batch, two writes: lock_stream inserts the head that did not
+    #: exist, then append advances current_sequence once. A second batch
+    #: would add one UPDATE, not two statements.
+    assert counter.statements_per_table[head] == 2
+
+
+@pytest.mark.django_db
+def test_a_second_batch_only_advances_the_head(owned_library):
+    seed_library(owned_library, actor=owned_library.user, events=1, spares=0)
+    counter = StatementCounter()
+    with connection.execute_wrapper(counter):
+        with transaction.atomic():
+            lock_stream(owned_library)
+    head = LibraryEventStreamHead._meta.db_table
+    #: The head exists now, so get_or_create reads and writes nothing.
+    assert head not in counter.statements_per_table
+
+
+@pytest.mark.django_db
+def test_seeding_leaves_the_spare_games_untracked(owned_library):
+    seed_library(owned_library, actor=owned_library.user, events=5, spares=3)
+    spares = list(spare_games(owned_library))
+    assert len(spares) == 3
+    assert not PlayerGame.objects.filter(game__in=spares).exists()
+
+
+@pytest.mark.django_db
+def test_seeding_reports_append_throughput(owned_library):
+    report = seed_library(owned_library, actor=owned_library.user, events=25, spares=0)
+    assert report.events_per_second > 0
+    assert report.append_seconds > 0
+    #: Setup is timed apart from the measurement.
+    assert report.catalog_seconds > 0
