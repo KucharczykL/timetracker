@@ -7,8 +7,10 @@ from django.db import connection
 
 from games.commands.playergame import TrackGame
 from games.events.benchmark import (
+    Environment,
     StatementCounter,
     Timings,
+    environment,
     nearest_rank,
     summarize,
 )
@@ -106,3 +108,15 @@ def test_the_counter_separates_projections_from_the_event_store(owned_library):
     assert work.projection_statements == 1
     assert work.event_store_rows >= 3
     assert work.statements > work.projection_statements
+
+
+@pytest.mark.django_db
+def test_the_environment_records_what_the_numbers_are_true_of():
+    captured = environment()
+    assert isinstance(captured, Environment)
+    assert captured.cpu_count >= 1
+    assert captured.python_version.startswith("3.14")
+    #: Same hardware, two tunings, two rebuild times.
+    assert captured.shared_buffers
+    assert captured.work_mem
+    assert captured.postgresql_version

@@ -12,9 +12,14 @@ acyclic.
 """
 
 import math
+import os
+import platform as platform_module
 from collections.abc import Container, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
+
+from django.conf import settings
+from django.db import connection
 
 from games.events.rebuild import TableName, projection_models, write_targets
 from games.events.targets import SHADOW_SUFFIX
@@ -152,3 +157,49 @@ class StatementCounter:
             for table, count in counts.items()
             if table.removesuffix(SHADOW_SUFFIX) in tables
         )
+
+
+@dataclass(frozen=True, slots=True)
+class Environment:
+    """The machine and the tuning a measurement belongs to."""
+
+    platform: str
+    #: Empty on the Linux systems where platform.processor() says nothing.
+    processor: str
+    cpu_count: int
+    #: None where the platform does not report it.
+    total_memory_bytes: int | None
+    python_version: str
+    postgresql_version: str
+    shared_buffers: str
+    work_mem: str
+    debug: bool
+
+
+def environment() -> Environment:
+    """Everything needed to reproduce a number, or to distrust it."""
+    with connection.cursor() as cursor:
+        settings_read = {}
+        for name in ("server_version", "shared_buffers", "work_mem"):
+            #: PostgreSQL takes no parameter here; these three are literals.
+            cursor.execute(f"SHOW {name}")
+            settings_read[name] = cursor.fetchone()[0]
+    return Environment(
+        platform=platform_module.platform(),
+        processor=platform_module.processor(),
+        cpu_count=os.cpu_count() or 0,
+        total_memory_bytes=_total_memory(),
+        python_version=platform_module.python_version(),
+        postgresql_version=settings_read["server_version"],
+        shared_buffers=settings_read["shared_buffers"],
+        work_mem=settings_read["work_mem"],
+        debug=settings.DEBUG,
+    )
+
+
+def _total_memory() -> int | None:
+    try:
+        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+    except AttributeError, ValueError, OSError:
+        #: Windows, and any POSIX that declines to answer.
+        return None
