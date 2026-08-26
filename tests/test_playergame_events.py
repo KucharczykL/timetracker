@@ -7,6 +7,7 @@ import pytest
 
 from games.events.playergame import (
     PLAYERGAME_CREATED,
+    PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED,
     PLAYERGAME_MASTERED_CHANGED,
     PLAYERGAME_STATUS_CHANGED,
     StatusValue,
@@ -121,5 +122,50 @@ def test_the_mastered_payload_carries_no_reference():
     """The creation event holds the one reference."""
     assert (
         DEFAULT_EVENT_TYPES.reference_fields_for(PLAYERGAME_MASTERED_CHANGED.event_type)
+        == {}
+    )
+
+
+def test_the_exclusion_event_is_in_the_application_vocabulary():
+    registered = DEFAULT_EVENT_TYPES.spec_for(
+        "library.playergame.excluded_from_unfinished_changed"
+    )
+
+    assert registered is PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED
+    assert registered.aggregate_type == "playergame"
+
+
+def test_the_exclusion_payload_states_the_value_it_sets():
+    """One type states both directions."""
+    validated = DEFAULT_EVENT_TYPES.validate(
+        PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED.event_type,
+        {"excluded_from_unfinished": False},
+    )
+
+    assert validated == {"excluded_from_unfinished": False}
+
+
+def test_an_exclusion_payload_of_a_string_is_refused():
+    """Strict validation takes no truthy string."""
+    with pytest.raises(PayloadInvalid):
+        DEFAULT_EVENT_TYPES.validate(
+            PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED.event_type,
+            {"excluded_from_unfinished": "true"},
+        )
+
+
+def test_an_exclusion_payload_stating_nothing_is_refused():
+    with pytest.raises(PayloadInvalid):
+        DEFAULT_EVENT_TYPES.validate(
+            PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED.event_type, {}
+        )
+
+
+def test_the_exclusion_payload_carries_no_reference():
+    """The creation event holds the one reference."""
+    assert (
+        DEFAULT_EVENT_TYPES.reference_fields_for(
+            PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED.event_type
+        )
         == {}
     )
