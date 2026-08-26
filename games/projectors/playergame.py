@@ -4,7 +4,7 @@ import uuid
 from typing import ClassVar
 
 from games.events.envelope import RecordedEvent
-from games.events.playergame import PLAYERGAME_CREATED
+from games.events.playergame import PLAYERGAME_CREATED, PLAYERGAME_STATUS_CHANGED
 from games.events.projection import HandlerMap, Projector, ProjectorFamily
 from games.models import PlayerGame
 
@@ -24,4 +24,11 @@ class PlayerGames(Projector):
             tracked_at=event.recorded_at,
         )
 
-    handles: ClassVar[HandlerMap] = {PLAYERGAME_CREATED: _created}
+    def _status_changed(self, event: RecordedEvent) -> None:
+        #: From the payload, so a replay writes what was recorded.
+        self.amend(PlayerGame, event.aggregate_id, status=event.payload["status"])
+
+    handles: ClassVar[HandlerMap] = {
+        PLAYERGAME_CREATED: _created,
+        PLAYERGAME_STATUS_CHANGED: _status_changed,
+    }

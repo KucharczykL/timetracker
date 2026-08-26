@@ -12,7 +12,7 @@ from games.commands.playergame import TrackGame
 from games.events.append import lock_stream
 from games.events.dispatch import dispatch
 from games.events.envelope import RecordedEvent
-from games.events.playergame import PLAYERGAME_CREATED
+from games.events.playergame import PLAYERGAME_CREATED, PLAYERGAME_STATUS_CHANGED
 from games.events.projection import DEFAULT_REGISTRY
 from games.events.rebuild import RebuildMode, rebuild_projections
 from games.events.references import capture_reference
@@ -219,3 +219,97 @@ def test_a_rebuild_reproduces_the_tracked_rows(owned_user, owned_library, tracke
         before.library_id,
         before.tracked_at,
     )
+
+
+def append_status(library, actor, identity, status, *, key="status"):
+    """Append one status change, as dispatch would."""
+    with transaction.atomic():
+        stream = lock_stream(library)
+        return stream.append(
+            [
+                PLAYERGAME_STATUS_CHANGED.new(
+                    aggregate_id=identity,
+                    payload={"status": status},
+                )
+            ],
+            actor=actor,
+            correlation_id=uuid.uuid7(),
+            idempotency_key=key,
+        )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_status_event_writes_the_status(owned_user, owned_library, tracked_game):
+    identity = uuid.uuid7()
+    append_created(owned_library, owned_user, tracked_game, identity=identity)
+
+    append_status(owned_library, owned_user, identity, "completed")
+
+    assert PlayerGame.objects.get(pk=identity).status == "completed"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_folding_the_creation_event_again_keeps_a_later_status(
+    owned_user, owned_library, tracked_game
+):
+    """The default keeps status out of the DO UPDATE list."""
+    identity = uuid.uuid7()
+    append_created(owned_library, owned_user, tracked_game, identity=identity)
+    append_status(owned_library, owned_user, identity, "completed")
+    created = RecordedEvent.from_row(
+        LibraryEvent.objects.get(event_type="library.playergame.created")
+    )
+
+    DEFAULT_REGISTRY.apply(created)
+
+    assert PlayerGame.objects.get(pk=identity).status == "completed"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_folding_the_status_event_costs_one_statement(
+    owned_user, owned_library, tracked_game
+):
+    identity = uuid.uuid7()
+    append_created(owned_library, owned_user, tracked_game, identity=identity)
+    append_status(owned_library, owned_user, identity, "completed")
+    event = RecordedEvent.from_row(
+        LibraryEvent.objects.get(event_type="library.playergame.status_changed")
+    )
+
+    with CaptureQueriesContext(connection) as queries:
+        DEFAULT_REGISTRY.apply(event)
+
+    assert [query["sql"].split(maxsplit=1)[0] for query in queries] == ["UPDATE"]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_replay_reproduces_the_status(owned_user, owned_library, tracked_game):
+    identity = uuid.uuid7()
+    append_created(owned_library, owned_user, tracked_game, identity=identity)
+    append_status(owned_library, owned_user, identity, "completed")
+    PlayerGame.objects.all().delete()
+
+    replay(owned_library)
+
+    assert PlayerGame.objects.get(pk=identity).status == "completed"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_rebuild_reproduces_the_status(owned_user, owned_library, tracked_game):
+    """Replay parity over a row an amendment changed."""
+    identity = uuid.uuid7()
+    append_created(owned_library, owned_user, tracked_game, identity=identity)
+    append_status(owned_library, owned_user, identity, "completed")
+
+    checked = rebuild_projections(owned_library, mode=RebuildMode.CHECK)
+
+    drift = [
+        (table.only_live, table.only_rebuilt, table.differing)
+        for table in checked.tables
+    ]
+    assert drift == [(0, 0, 0)]
+
+    rebuilt = rebuild_projections(owned_library, mode=RebuildMode.REBUILD)
+
+    assert rebuilt.swapped is True
+    assert PlayerGame.objects.get(pk=identity).status == "completed"
