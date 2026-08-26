@@ -35,8 +35,7 @@ _CLOCK_FACTORIES = frozenset(
     }
 )
 
-#: Argless builtins returning one value every call. Django asks for a callable
-#: rather than a shared mutable default, so these are constants in practice.
+#: Argless builtins returning one value every call.
 _CONSTANT_FACTORIES = frozenset({dict, list, set, tuple, frozenset, str, int, float})
 
 
@@ -127,7 +126,7 @@ def _check_field(
                 id="games.E004",
             )
         )
-    #: has_default() first: NOT_PROVIDED is a class, so it is callable.
+    #: has_default() first: NOT_PROVIDED is callable.
     if field.has_default() and callable(field.default):
         unreproducible = _check_callable_default(model, field, where)
         if unreproducible is not None:
@@ -138,7 +137,7 @@ def _check_field(
 def _check_callable_default(
     model: type[ProjectionModel], field: models.Field, where: str
 ) -> CheckMessage | None:
-    """Which of the three ways a callable default fails a rebuild."""
+    """How a callable default fails a rebuild."""
     if field.default in _UUID_FACTORIES:
         return Error(
             f"{where} defaults to a freshly minted UUID.",
@@ -166,13 +165,12 @@ def _check_callable_default(
     return Error(
         f"{where} defaults to a callable.",
         hint=(
-            "A projection column no event states carries a constant, which a "
-            "rebuild reproduces; a callable is evaluated again at rebuild "
-            "time. E005 and E006 name the two factory families by identity, "
-            "and this refuses every other callable — including a wrapper "
-            "around one of them. An empty container is the exception: pass "
-            "dict, list, set, tuple or frozenset, which Django wants for a "
-            "mutable default and which return one value every call."
+            "A rebuild evaluates the default again, so only a constant "
+            "reproduces the live row. E005 and E006 name two factory "
+            "families; this refuses every other callable, including a "
+            "wrapper around one of them. The argless builtins — dict, list, "
+            "set, tuple, frozenset — are allowed, because Django wants a "
+            "callable for a mutable default and each returns one value."
         ),
         obj=model,
         id="games.E007",

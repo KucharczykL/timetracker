@@ -24,9 +24,9 @@ PLAYERGAME_CREATED = EventSpec(
 DEFAULT_EVENT_TYPES.register(PLAYERGAME_CREATED)
 
 
-#: A Literal rather than PlayerGameStatus: strict pydantic refuses a plain
-#: string for an enum-annotated field, and a recorded payload is read back from
-#: JSON as one. A test pins these arguments equal to PlayerGameStatus.values.
+#: A Literal, not PlayerGameStatus, on purpose.
+#: Strict validation refuses a plain string for an enum field, and a recorded
+#: payload is read back as one. A test pins these arguments to the choices.
 type StatusValue = Literal[
     "unplayed", "played", "completed", "retired", "shelved", "abandoned"
 ]
@@ -34,7 +34,7 @@ type StatusValue = Literal[
 
 @with_config(STRICT_SCHEMA)
 class PlayerGameStatusChangedPayload(TypedDict):
-    """The status this library now gives the game."""
+    """The status this library now gives."""
 
     status: StatusValue
 

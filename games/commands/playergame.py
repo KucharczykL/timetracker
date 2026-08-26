@@ -64,12 +64,12 @@ class TrackGame(Command):
 
 @dataclass(frozen=True, slots=True)
 class SetPlayerGameStatus(Command):
-    """Give a game this library tracks a new status."""
+    """Set the status of a tracked game."""
 
     command_name: ClassVar[CommandName] = CommandName.PLAYERGAME_SET_STATUS
     #: A UUID, because Command fingerprints its fields.
     game_id: uuid.UUID
-    #: A TextChoices member is a str, so json writes its value.
+    #: A TextChoices member is a str.
     status: PlayerGameStatus
 
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
@@ -84,18 +84,13 @@ class SetPlayerGameStatus(Command):
         return [
             PLAYERGAME_STATUS_CHANGED.new(
                 aggregate_id=tracked.pk,
-                #: A test pins the Literal equal to the choices.
+                #: A test pins Literal and choices equal.
                 payload={"status": cast("StatusValue", self.status.value)},
             )
         ]
 
     def _tracked(self, context: CommandContext) -> PlayerGame:
-        """The projection row, never the catalog.
-
-        A library that tracks a game may set its status, whatever became of
-        the catalog row afterwards. A game of another library resolves to no
-        row here, so the rejection tells the caller nothing about it.
-        """
+        """The projection row, never the catalog."""
         try:
             return PlayerGame.objects.get(library=context.library, game_id=self.game_id)
         except PlayerGame.DoesNotExist:

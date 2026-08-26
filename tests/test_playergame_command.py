@@ -260,7 +260,7 @@ def test_a_status_for_a_game_another_library_tracks_is_refused(
 
 @pytest.mark.django_db(transaction=True)
 def test_the_status_a_game_already_has_is_refused(owned_user, owned_library):
-    """One convention for #906 to change in one place."""
+    """One convention for #906 to change."""
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     track(owned_user, owned_library, game)
 

@@ -43,7 +43,7 @@ type ColumnNames = tuple[str, str]  # ("library", "library_id")
 
 
 class ProjectionRowMissing(LookupError):
-    """Raised for an amendment with no row to change."""
+    """Raised when an amendment finds no row."""
 
 
 #: Resolved per model, and no reason to outlive one.
@@ -281,16 +281,14 @@ class Projector(ABC):
     def amend[M: ProjectionModel](
         self, model: type[M], identity: uuid.UUID, **columns: Any
     ) -> None:
-        """Change part of a row an earlier event created.
+        """Change part of a row that exists.
 
         `project()` cannot serve this: an event that changes one column knows
-        nothing of the columns the creation event wrote, and a whole-row write
-        would have to read them back first. One `UPDATE`, and no read.
+        nothing of the columns the creation event wrote.
 
         A missing row is refused rather than inserted. A replay folds a stream
-        in sequence order, so the creation event has already written the row;
-        no row matched means the stream is broken, and an insert here would
-        write a part-row that a rebuild could not reproduce.
+        in sequence order, so an insert here would write a part-row that a
+        rebuild could not reproduce.
         """
         #: Never the imported model: a rebuild redirects.
         projected = self.target.model(model)

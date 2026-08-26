@@ -494,7 +494,7 @@ amend_registry = ProjectorRegistry()
 
 
 class AmendingWriter(Projector, registry=amend_registry):
-    """Changes one column of a row that exists."""
+    """Changes one column of an existing row."""
 
     family_name = ProjectorFamily.CURRENT_STATE
 
@@ -510,7 +510,7 @@ class AmendingWriter(Projector, registry=amend_registry):
 
 
 def created_row(library, identity: uuid.UUID) -> Device:
-    """The row a creation event would have folded."""
+    """The row a creation event folds."""
     return Device.objects.create(
         pk=identity, library_id=library.pk, name="created", type=Device.UNKNOWN
     )
@@ -529,7 +529,7 @@ def test_an_amendment_changes_the_columns_it_names(owned_library):
 
 @pytest.mark.django_db
 def test_an_amendment_costs_one_statement(owned_library):
-    """One UPDATE, and no read to build it."""
+    """One UPDATE, and no read."""
     identity = uuid.uuid7()
     created_row(owned_library, identity)
 
@@ -557,7 +557,7 @@ def test_an_amendment_writes_through_the_target_its_family_holds(owned_library):
 
 @pytest.mark.django_db
 def test_an_amendment_with_no_row_is_refused(owned_library):
-    """Out of order, or a stream missing its creation event."""
+    """A stream missing its creation event."""
     with pytest.raises(ProjectionRowMissing, match="no row"):
         amend_registry.apply(make_event(library_id=owned_library.pk))
 

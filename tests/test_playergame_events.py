@@ -59,7 +59,7 @@ def test_the_status_event_is_in_the_application_vocabulary():
 
 
 def test_the_status_payload_names_every_status():
-    """The Literal and the choices are one vocabulary."""
+    """The Literal and the choices agree."""
     #: __value__ reads through the PEP 695 alias.
     assert sorted(get_args(StatusValue.__value__)) == sorted(PlayerGameStatus.values)
 
@@ -80,7 +80,7 @@ def test_a_status_outside_the_vocabulary_is_refused():
 
 
 def test_the_status_payload_carries_no_reference():
-    """The creation event holds this aggregate's one reference."""
+    """The creation event holds the one reference."""
     assert (
         DEFAULT_EVENT_TYPES.reference_fields_for(PLAYERGAME_STATUS_CHANGED.event_type)
         == {}

@@ -25,7 +25,7 @@ class PlayerGames(Projector):
         )
 
     def _status_changed(self, event: RecordedEvent) -> None:
-        #: From the payload, so a replay writes what was recorded.
+        #: From the payload, so replays agree.
         self.amend(PlayerGame, event.aggregate_id, status=event.payload["status"])
 
     handles: ClassVar[HandlerMap] = {

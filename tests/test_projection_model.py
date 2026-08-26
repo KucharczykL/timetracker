@@ -128,7 +128,7 @@ def test_a_constant_default_is_allowed():
 
 @isolate_apps("games")
 def test_an_empty_container_default_is_allowed():
-    """The idiom Django asks for, and it returns one value."""
+    """The idiom Django asks for."""
 
     class Collected(ProjectionModel):
         id = models.UUIDField(primary_key=True)
@@ -143,7 +143,7 @@ def test_an_empty_container_default_is_allowed():
 
 @isolate_apps("games")
 def test_a_callable_default_of_another_kind_is_refused():
-    """E005 and E006 name two factories; this catches the rest."""
+    """The rest, beyond E005 and E006."""
 
     ranks = itertools.count()
 
@@ -240,15 +240,14 @@ def test_an_unmanaged_twin_is_not_checked():
     assert check(Live) == []
 
 
-#: Every constant a projection column starts at. A rebuild reproduces these, so
-#: an edit here rewrites the rows no event has ever touched.
+#: Every constant a projection column starts at.
 PINNED_DEFAULTS: dict[str, dict[str, object]] = {
     "games.PlayerGame": {"status": "unplayed"},
 }
 
 
 def test_every_projection_default_is_pinned():
-    """A default is code, so a change to one is a reviewed diff."""
+    """A change to a default is reviewed."""
     found = {
         model._meta.label: {
             field.name: field.default

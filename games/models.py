@@ -1289,12 +1289,10 @@ class ProjectionModel(models.Model):
 
 
 class PlayerGameStatus(models.TextChoices):
-    """What a library says about a game it tracks.
+    """The status a library gives a game.
 
-    The charter's six, and full words rather than the single letters of
-    `Game.Status`. A recorded payload cannot be upcast, because the event
-    registry refuses a version above 1, so an event recording `f` would mean
-    Completed for as long as the stream exists.
+    Full words, not the letters of `Game.Status`: a recorded payload cannot be
+    upcast, so an event recording `f` would mean Completed forever.
     """
 
     UNPLAYED = "unplayed", "Unplayed"
@@ -1323,8 +1321,8 @@ class PlayerGame(ProjectionModel):
     )
     #: The creation event's recorded_at.
     tracked_at = models.DateTimeField(editable=False)
-    #: No event states it at creation, so it carries a constant. The default
-    #: also keeps status out of the creation fold's DO UPDATE list, so a
+    #: No event states it: a constant default.
+    #: A default is also absent from the creation fold's DO UPDATE list, so a
     #: re-fold of that event keeps a status a later event set.
     status = models.CharField(
         max_length=9,

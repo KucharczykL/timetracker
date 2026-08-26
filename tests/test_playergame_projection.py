@@ -252,7 +252,7 @@ def test_the_status_event_writes_the_status(owned_user, owned_library, tracked_g
 def test_folding_the_creation_event_again_keeps_a_later_status(
     owned_user, owned_library, tracked_game
 ):
-    """The default keeps status out of the DO UPDATE list."""
+    """A default is absent from DO UPDATE."""
     identity = uuid.uuid7()
     append_created(owned_library, owned_user, tracked_game, identity=identity)
     append_status(owned_library, owned_user, identity, "completed")
@@ -296,7 +296,7 @@ def test_a_replay_reproduces_the_status(owned_user, owned_library, tracked_game)
 
 @pytest.mark.django_db(transaction=True)
 def test_a_rebuild_reproduces_the_status(owned_user, owned_library, tracked_game):
-    """Replay parity over a row an amendment changed."""
+    """Replay parity over an amended row."""
     identity = uuid.uuid7()
     append_created(owned_library, owned_user, tracked_game, identity=identity)
     append_status(owned_library, owned_user, identity, "completed")
