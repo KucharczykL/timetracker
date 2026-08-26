@@ -115,7 +115,7 @@ def only_shadow_writes() -> AbstractContextManager[None]:
 def _refuse_a_live_write(
     execute: Any, sql: str, params: Any, many: bool, context: Any
 ) -> Any:
-    for target in _write_targets(sql):
+    for target in write_targets(sql):
         if not target.endswith(SHADOW_SUFFIX):
             raise LiveWriteRefused(
                 f"This statement writes {target!r}, which is not a shadow table. "
@@ -126,8 +126,12 @@ def _refuse_a_live_write(
     return execute(sql, params, many, context)
 
 
-def _write_targets(statement: str) -> tuple[TableName, ...]:
-    """Every table written; unreadable means refused."""
+def write_targets(statement: str) -> tuple[TableName, ...]:
+    """Every table written; unreadable means refused.
+
+    Public because the benchmark counts the same statements this guard
+    refuses, and two regexes for one job would drift.
+    """
     stripped = _LEADING_COMMENTS.sub("", statement).lstrip()
     keyword = stripped.split(maxsplit=1)[0].upper() if stripped else ""
     if keyword == _CTE_KEYWORD:
