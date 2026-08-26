@@ -4,6 +4,44 @@ Issue [#670](https://github.com/KucharczykL/timetracker/issues/670), phase
 [#601](https://github.com/KucharczykL/timetracker/issues/601). Architecture: the
 [overhaul charter](https://github.com/KucharczykL/timetracker/blob/codex/player-history-architecture/docs/superpowers/specs/2026-08-09-timetracker-overhaul-design.md).
 
+## Status: parked until #671
+
+**This specification is not ready to implement.** The dependency is
+`#671 -> #670`: the benchmark harness is built against #671's real commands,
+projector families, and projection tables, not against a synthetic stand-in.
+
+An adversarial review of the draft below found that most of its complexity, and
+one bias in its numbers, come from having no real consumer to measure. #601
+already required this tooling to be reviewed with a real command/projector
+consumer; sequencing it after #671 satisfies that by construction instead of by
+promising a later re-record.
+
+What changes when #671 lands:
+
+| Draft section | Effect of #671 |
+| --- | --- |
+| The synthetic workload and its `CommandName` members | **Deleted.** All six `TEST_COMMAND_*` members are already claimed by `tests/test_command_dispatch.py`, and a second definition site raises `TypeError`, so a synthetic workload would need new placeholders in production code. Real commands need none |
+| The workload's projection table | **Deleted.** #671 ships real projection tables by migration. The draft's isolated `Apps` registry, its runtime `schema_editor` DDL, and the clash with `test_the_application_declares_no_projection_table_yet` all go with it |
+| The `--workload` plug point | **Deleted.** With a real default it is unused generality |
+| Scratch teardown | **Shrinks** to the scratch user, which `delete_user_library` already handles |
+| `--library` read-only mode | **Becomes worth having.** A real library holds real projections, so `CHECK` on a production copy is genuine parity evidence rather than an empty diff |
+| Reference-carrying events | **Required.** #671's events reference Devices and catalog rows, so seeding must create resolvable ones. A reference-free stream understates both measurements: `LibraryEventReference` rows are written on every append, and `require_resolvable_references` runs before every fold |
+
+What survives unchanged: the four scenarios, nearest-rank percentiles, the
+scaled-and-withheld budget rule, the row counter, the `--gate` contract, the
+environment block, and `docs/event-benchmarks.md`.
+
+Six review findings are independent of #671 and still apply to the draft:
+`rebuild._write_targets()` is private and reusing it does change #667's module;
+teardown of a large scratch library cannot go through the ORM collector, because
+`LibraryEventReference` blocks a fast delete; `--iterations` and the bulk event
+count have no defaults; `Budget.passed` is meaningless when `gated` is false and
+should be a three-way verdict; the environment block omits RAM and PostgreSQL
+`shared_buffers`/`work_mem`; and no scenario measures concurrency, which is a
+limit to state rather than to fix.
+
+Everything below this section is the parked draft.
+
 ## What it is
 
 One management command, `manage.py benchmark_events`, and the measurement module
