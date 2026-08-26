@@ -3,7 +3,7 @@
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import ClassVar
+from typing import ClassVar, cast
 
 from django.db.models import Q
 
@@ -13,10 +13,14 @@ from games.events.dispatch import (
     CommandName,
     CommandRejected,
 )
-from games.events.playergame import PLAYERGAME_CREATED
+from games.events.playergame import (
+    PLAYERGAME_CREATED,
+    PLAYERGAME_STATUS_CHANGED,
+    StatusValue,
+)
 from games.events.references import capture_reference
 from games.events.vocabulary import NewEvent
-from games.models import Game, PlayerGame
+from games.models import Game, PlayerGame, PlayerGameStatus
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,4 +59,48 @@ class TrackGame(Command):
                 f"No game {self.game_id} this library can track. A library "
                 "tracks its own games and the shared catalog, and neither "
                 "offers an archived row."
+            ) from None
+
+
+@dataclass(frozen=True, slots=True)
+class SetPlayerGameStatus(Command):
+    """Give a game this library tracks a new status."""
+
+    command_name: ClassVar[CommandName] = CommandName.PLAYERGAME_SET_STATUS
+    #: A UUID, because Command fingerprints its fields.
+    game_id: uuid.UUID
+    #: A TextChoices member is a str, so json writes its value.
+    status: PlayerGameStatus
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent]:
+        tracked = self._tracked(context)
+        #: Under dispatch's lock: no concurrent duplicate.
+        if tracked.status == self.status:
+            raise CommandRejected(
+                f"This library already gives game {self.game_id} the status "
+                f"{self.status.value!r}. Whether a repeat should instead "
+                "succeed as a no-op is EV-23 (#906)."
+            )
+        return [
+            PLAYERGAME_STATUS_CHANGED.new(
+                aggregate_id=tracked.pk,
+                #: A test pins the Literal equal to the choices.
+                payload={"status": cast("StatusValue", self.status.value)},
+            )
+        ]
+
+    def _tracked(self, context: CommandContext) -> PlayerGame:
+        """The projection row, never the catalog.
+
+        A library that tracks a game may set its status, whatever became of
+        the catalog row afterwards. A game of another library resolves to no
+        row here, so the rejection tells the caller nothing about it.
+        """
+        try:
+            return PlayerGame.objects.get(library=context.library, game_id=self.game_id)
+        except PlayerGame.DoesNotExist:
+            raise CommandRejected(
+                f"This library tracks no game {self.game_id}. A status belongs "
+                "to a tracked game, and #676 backfills one for every game a "
+                "library has."
             ) from None
