@@ -37,9 +37,11 @@ validation), pytest.
   E004 to E007 refuse a db default and a callable default.
 - Payload validation is strict (`ConfigDict(extra="forbid", strict=True)`): no
   coercion, no extra keys.
-- `make format` reformats Python inside Markdown fences too. If it rewrites
-  this plan, revert the plan rather than the code, and note that Task 5 deletes
-  the plan *before* the final gate runs.
+- `make format` reformats Python inside Markdown fences too. Every fence here is
+  module-level for that reason, and the plan passes `format-check` as written. A
+  class-body snippet added to it would be de-indented to module level, which
+  corrupts the instruction: revert the plan rather than the code if that
+  happens.
 
 ---
 
@@ -101,14 +103,19 @@ In `games/models.py`, inside `PlayerGame`, below the `mastered` field:
 
 - [ ] **Step 4: Generate the migration**
 
-Run: `make makemigrations ARGS="games playergame_excluded_from_unfinished"`
+Run: `make makemigrations`
 
-Expected: `games/migrations/0031_playergame_excluded_from_unfinished.py`,
-holding one `AddField` for `excluded_from_unfinished` with `default=False`. Read
-it. It must add nothing else and must carry no `RunPython`: every existing row
-is the projection of a stream that states nothing about the exclusion, and the
-catalog holds no field to derive one from, so `False` is already correct for
-each.
+Take the target bare. It passes no `ARGS` (`Makefile:140-141` runs
+`manage.py makemigrations --noinput` and nothing else), so it regenerates for
+every app; check that this one field is all that appeared.
+
+Expected: `games/migrations/0031_playergame_excluded_from_unfinished.py`. Django
+names a single-operation migration after the operation, so `AddField` on
+`PlayerGame.excluded_from_unfinished` produces that filename without being told.
+It must hold one `AddField` with `default=False`, add nothing else, and carry no
+`RunPython`: every existing row is the projection of a stream that states
+nothing about the exclusion, and the catalog holds no field to derive one from,
+so `False` is already correct for each. Read the file and confirm this.
 
 - [ ] **Step 5: Apply it and run the tests**
 
@@ -395,15 +402,56 @@ from games.events.playergame import (
 
 Run: `make test ARGS="tests/test_playergame_projection.py -k exclusion"`
 
-Expected: FAIL. The append raises, because no family handles the type and
-`PlayerGames.handles` does not name it.
+Expected: FAIL, on the assertions rather than on the append. An event type no
+family claims is a silent no-op: `ProjectorRegistry.apply` iterates the handlers
+registered for the type and finds none
+(`games/events/projection.py:181`), and the append path calls nothing else
+(`games/events/append.py:211`). So the row keeps its default, and every test
+reports `False is not True`, except the statement-count one, which reports `[]
+!= ["UPDATE"]`.
 
 - [ ] **Step 3: Handle the event**
 
-In `games/projectors/playergame.py`, add the method below `_mastered_changed`
-and extend `handles`. The whole class body from `_mastered_changed` down reads:
+Rewrite `games/projectors/playergame.py` to the following. It is the whole file:
+the import gains one name, `_excluded_from_unfinished_changed` goes below
+`_mastered_changed`, and `handles` gains the last entry.
 
 ```python
+"""The current-state family for tracked games."""
+
+import uuid
+from typing import ClassVar
+
+from games.events.envelope import RecordedEvent
+from games.events.playergame import (
+    PLAYERGAME_CREATED,
+    PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED,
+    PLAYERGAME_MASTERED_CHANGED,
+    PLAYERGAME_STATUS_CHANGED,
+)
+from games.events.projection import HandlerMap, Projector, ProjectorFamily
+from games.models import PlayerGame
+
+
+class PlayerGames(Projector):
+    """One row per tracked game."""
+
+    family_name = ProjectorFamily.CURRENT_STATE
+
+    def _created(self, event: RecordedEvent) -> None:
+        self.project(
+            PlayerGame,
+            event.aggregate_id,
+            #: From the event, never a command's context.
+            library_id=event.library_id,
+            game_id=uuid.UUID(event.payload["game"]["id"]),
+            tracked_at=event.recorded_at,
+        )
+
+    def _status_changed(self, event: RecordedEvent) -> None:
+        #: From the payload, so replays agree.
+        self.amend(PlayerGame, event.aggregate_id, status=event.payload["status"])
+
     def _mastered_changed(self, event: RecordedEvent) -> None:
         #: From the payload, so replays agree.
         self.amend(PlayerGame, event.aggregate_id, mastered=event.payload["mastered"])
@@ -423,9 +471,6 @@ and extend `handles`. The whole class body from `_mastered_changed` down reads:
         PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED: _excluded_from_unfinished_changed,
     }
 ```
-
-Extend the module's import from `games.events.playergame` to name
-`PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED`.
 
 `amend()` and not `project()`: an event that changes one column knows nothing of
 the others, and a missing row must raise `ProjectionRowMissing` rather than
@@ -706,8 +751,8 @@ describes the purchase-based unfinished list, and no read changes here.
 
 - [ ] **Step 1: Delete this plan**
 
-The spec stays; the plan does not outlive the work. Delete it *before* the gate,
-so `format-check` never sees the Python in these fences.
+The spec stays; the plan does not outlive the work. Delete it before the gate
+rather than after, so `format-check` never has to be right about these fences.
 
 ```bash
 git rm docs/superpowers/plans/2026-08-26-issue-674-playergame-unfinished-exclusion.md
