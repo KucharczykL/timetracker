@@ -129,7 +129,7 @@ def test_discovery_passes_over_a_manufactured_twin():
 
 
 def test_the_application_declares_the_playergame_projection():
-    """The first real projection table, and so far the only one."""
+    """The one projection table so far."""
     assert projection_models() == (PlayerGame,)
 
 

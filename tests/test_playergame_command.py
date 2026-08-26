@@ -1,4 +1,4 @@
-"""Tracking a game: the first command that is not a placeholder."""
+"""Dispatching the command that tracks a game."""
 
 import uuid
 
@@ -64,7 +64,7 @@ def test_two_libraries_track_one_shared_game_independently(
 
     assert PlayerGame.objects.filter(game=shared_game).count() == 2
     assert PlayerGame.objects.filter(library=owned_library).count() == 1
-    #: One shared row, two private facts about it.
+    #: One shared row, two private facts.
     assert Game.objects.filter(pk=shared_game.pk).count() == 1
 
 
@@ -124,7 +124,7 @@ def test_tracking_the_same_game_twice_is_refused(owned_user, owned_library):
         idempotency_key="track-first",
     )
 
-    #: A different key, so this is a second intent rather than a repeat.
+    #: A different key: a second intent.
     with pytest.raises(CommandRejected):
         dispatch(
             TrackGame(game_id=game.pk),
@@ -167,8 +167,7 @@ def test_purging_the_library_takes_the_tracked_row_with_it(owned_user, owned_lib
         idempotency_key="track",
     )
 
-    #: RESTRICT refuses collateral, not a purge: the library, its games and its
-    #: projections are collected in one cascade.
+    #: A purge collects everything in one cascade.
     with purging_library():
         owned_user.delete()
 

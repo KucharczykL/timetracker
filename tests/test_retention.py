@@ -150,7 +150,7 @@ def test_a_referenced_game_is_archived(owned_library, game):
 def test_a_tracked_game_archives_and_keeps_its_projection_row(
     owned_user, owned_library
 ):
-    """A projection row is not collateral: a replay owns it."""
+    """A projection row is not collateral."""
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     dispatch(
         TrackGame(game_id=game.pk),
@@ -166,9 +166,8 @@ def test_a_tracked_game_archives_and_keeps_its_projection_row(
 
 
 def test_a_tracked_game_refuses_a_hard_delete(owned_user, owned_library):
-    """#653's rule, checked over the first payload that exercises it.
+    """The foreign key refuses before the tombstone.
 
-    Two refusals now guard the same row, and the foreign key gets there first:
     `Model.delete()` collects before it sends `pre_delete`, so RESTRICT raises
     while `refuse_to_delete_a_referenced_row` is still unreached. Pinned as it
     behaves rather than as it reads best, so that changing the order is a

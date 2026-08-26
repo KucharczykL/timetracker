@@ -50,6 +50,11 @@ head moved, the diff is advisory.
   `StreamSequenceMismatch`. The full attempt then runs again with a new shadow.
   Do not use `run_in_transaction` here. It sorts errors by SQLSTATE and refuses
   this one.
+- A shadow twin joins the registry of its live model and stays there. Thus each
+  relation of a twin uses `related_name="+"` and `on_delete=DO_NOTHING`. The
+  deletion collector reads hidden relations, and it skips `DO_NOTHING` only. A
+  different rule makes a later delete of a live row read a temp table that is
+  gone.
 - A projection model is a subclass of `ProjectionModel`. Each row must be a pure
   function of the events. Thus a projection model must not have an automatic
   primary key, a `db_default`, or a clock default.

@@ -94,12 +94,12 @@ def _rebuilt(
     """
     if field.remote_field is None:
         return field.__class__(*args, **kwargs)
-    #: A twin joins the live registry and stays there, while its temp table
-    #: lives only inside the rebuild that created it. `related_name` hides
-    #: the accessor, but the deletion collector reads hidden relations too,
-    #: so every later delete of a referenced live row would select a table
-    #: that exists on no connection. DO_NOTHING is the only spelling the
-    #: collector skips outright.
+    #: A twin is never collateral of a delete.
+    #:
+    #: A twin joins the live registry and stays there; its temp table does not.
+    #: `related_name` hides the accessor, but the deletion collector reads
+    #: hidden relations too, and skips DO_NOTHING alone. Any other rule makes a
+    #: later delete of a referenced live row read a table that is gone.
     kwargs = {**kwargs, "related_name": "+", "on_delete": models.DO_NOTHING}
     related = _projection_referenced_by(field)
     if related is not None:

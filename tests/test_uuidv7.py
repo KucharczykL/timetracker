@@ -118,9 +118,7 @@ def test_uuidv7_field_without_a_database_default_survives_a_clone():
 
 
 def test_uuidv7_field_without_a_minted_default_survives_a_clone():
-    # The same hazard as the db_default guard above, and the one that matters
-    # most: a projection key opts out so that a rebuild reproduces the identity
-    # the live table had, and the shadow model a rebuild writes to is a clone.
+    # The db_default hazard, on the minted default.
     field = UUIDv7Field(default=models.NOT_PROVIDED)
 
     assert field.deconstruct()[3]["default"] is models.NOT_PROVIDED

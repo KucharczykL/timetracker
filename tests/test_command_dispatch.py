@@ -95,12 +95,7 @@ def staff_user(django_user_model, db):
 
 
 class DispatchProbeName(CommandVocabulary):
-    """Names for the doubles that exercise dispatch itself.
-
-    Not in `CommandName`, because nothing here is a thing the application does.
-    A real command cannot stand in for them: no one command is simultaneously a
-    twin of another, temporal, not a dataclass, always rejecting, and flaky.
-    """
+    """Names for the doubles that exercise dispatch."""
 
     BASIC = "test.command.basic"
     TWIN = "test.command.twin"
@@ -580,10 +575,7 @@ def test_a_supplied_correlation_id_is_shared_across_dispatches(
 
 
 def test_the_allowlist_holds_real_commands_only():
-    #: The inventory is only readable if everything in it is a thing the system
-    #: does. This once demanded the placeholders be deleted; the first real
-    #: command showed they were never scaffolding, so they moved to a
-    #: vocabulary of their own instead.
+    #: Every entry is a thing the system does.
     assert not [name for name in CommandName if name.value.startswith("test.")], (
         f"CommandName holds {[name.value for name in CommandName]}. Names only "
         "a test uses belong in that test's own CommandVocabulary."
@@ -591,8 +583,7 @@ def test_the_allowlist_holds_real_commands_only():
 
 
 def test_two_vocabularies_cannot_claim_one_name():
-    #: What lets the doubles live outside CommandName without the allowlist
-    #: losing its meaning: the registry keys on the name, not the member.
+    #: The registry keys on the name, not the member.
     class Borrowed(CommandVocabulary):
         TRACK = CommandName.PLAYERGAME_TRACK.value
 

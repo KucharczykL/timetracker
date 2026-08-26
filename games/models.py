@@ -1275,16 +1275,13 @@ class PlayerGame(ProjectionModel):
     id = UUIDv7Field(
         primary_key=True,
         editable=False,
-        #: The creation event's aggregate_id. UUIDv7Field supplies both a minted
-        #: default and a database default; `games.checks` refuses each on a
-        #: projection, because a rebuild would evaluate them again.
+        #: The creation event's aggregate_id, evaluated once.
         default=models.NOT_PROVIDED,
         db_default=models.NOT_PROVIDED,
     )
     game = models.ForeignKey(
         Game,
-        #: Never collateral: a replay owns these rows, so nothing else may
-        #: cascade them away.
+        #: Never collateral: a replay owns these rows.
         on_delete=models.RESTRICT,
         related_name="player_games",
     )

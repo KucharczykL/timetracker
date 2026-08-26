@@ -167,12 +167,7 @@ def test_a_twins_relations_hide_their_reverse_accessors():
 
 @isolate_apps("games")
 def test_a_twins_relations_are_never_collateral_of_a_live_delete():
-    """A twin outlives the rebuild; its temp table does not.
-
-    `related_name="+"` hides the accessor, but the deletion collector reads
-    hidden relations too. Only `DO_NOTHING` keeps a live delete from
-    selecting a shadow table that exists on no connection.
-    """
+    """The twin outlives the temp table it names."""
     _, entry = declare_projection_models()
 
     twin = ShadowTarget().model(entry)

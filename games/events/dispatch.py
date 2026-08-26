@@ -10,11 +10,9 @@ does. It names itself with a member of a closed vocabulary, and that name is
 part of the fingerprint -- without it, one key reused across two command types
 whose fields coincide would replay one as the other.
 
-There is more than one vocabulary. `CommandName` is the application's, and it
-holds real commands only, so the inventory of what the system does stays
-readable; the doubles that exercise dispatch itself declare their own. The
-registry keys on the name rather than the member, so no two vocabularies can
-claim one name.
+There is more than one vocabulary. `CommandName` is the application's and holds
+real commands only; the doubles that exercise dispatch declare their own. The
+registry keys on the name, so two vocabularies cannot claim one name.
 
 Two properties of the registry below follow from keying it on a definition site
 rather than on class identity, and are limits rather than oversights:
@@ -62,12 +60,13 @@ IDEMPOTENCY_KEY_MAX_LENGTH: int = cast(
 
 
 class CommandVocabulary(StrEnum):
-    """A closed set of command names, of which there is more than one.
+    """A closed set of command names.
 
-    Members are stable domain symbols rather than Python paths, so moving or
-    renaming a class cannot invalidate idempotency keys already issued under it.
-    Requiring a member of *some* vocabulary still refuses a bare string typo,
-    while leaving the production allowlist free of names only a test uses.
+    There is more than one. Members are stable domain symbols rather than
+    Python paths, so moving or renaming a class cannot invalidate idempotency
+    keys already issued under it. Requiring a member of *some* vocabulary still
+    refuses a bare string typo, while leaving the production allowlist free of
+    names only a test uses.
     """
 
 

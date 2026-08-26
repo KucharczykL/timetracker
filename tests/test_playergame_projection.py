@@ -1,4 +1,4 @@
-"""The first projection: one row per catalog game a library tracks."""
+"""One row per catalog game a library tracks."""
 
 import uuid
 
@@ -29,7 +29,7 @@ def other_library(django_user_model, db):
 
 
 def test_playergame_is_a_pure_projection():
-    """Nothing in the row may come from anywhere but the event."""
+    """Nothing in the row predates the event."""
     complaints = [
         str(message.id)
         for message in check_projection_models()
@@ -40,8 +40,7 @@ def test_playergame_is_a_pure_projection():
 
 
 def test_the_identity_has_no_default():
-    #: UUIDv7Field mints one unless told not to. A projection key is the
-    #: event's aggregate_id, so a rebuild reproduces the identity it had.
+    #: The key is the event's aggregate_id.
     assert PlayerGame().id is None
 
 
@@ -53,9 +52,7 @@ def test_a_library_tracks_one_game_once(owned_library, tracked_game):
         tracked_at=timezone.now(),
     )
 
-    #: The savepoint is not decoration: an IntegrityError marks the test's
-    #: surrounding atomic block for rollback, and every later query in the
-    #: test would raise TransactionManagementError instead of running.
+    #: The savepoint keeps later queries runnable.
     with transaction.atomic(), pytest.raises(IntegrityError):
         PlayerGame.objects.create(
             id=uuid.uuid7(),
@@ -83,7 +80,7 @@ def test_two_libraries_track_one_shared_game_independently(
 
 
 def append_created(library, actor, game, *, identity, key="track"):
-    """Append one creation event the way a command would."""
+    """Append one creation event, as dispatch would."""
     with transaction.atomic():
         stream = lock_stream(library)
         return stream.append(
@@ -119,8 +116,7 @@ def test_the_creation_event_writes_the_tracked_row(
 def test_folding_the_stream_again_writes_no_second_row(
     owned_user, owned_library, tracked_game
 ):
-    #: A replay folds every event a second time. Keying the write on the
-    #: event's own identity is what makes that a no-op instead of a duplicate.
+    #: Keyed on the event's own identity.
     identity = uuid.uuid7()
     append_created(owned_library, owned_user, tracked_game, identity=identity)
 
@@ -132,9 +128,7 @@ def test_folding_the_stream_again_writes_no_second_row(
 
 @pytest.mark.django_db(transaction=True)
 def test_a_rebuild_leaves_later_deletes_alone(owned_user, owned_library, tracked_game):
-    #: A twin joins the live registry and stays there, so its foreign key to
-    #: a live model would make every later delete collect a temp table that
-    #: only existed inside the rebuild that created it.
+    #: The twin outlives the temp table it names.
     dispatch(
         TrackGame(game_id=tracked_game.pk),
         actor=owned_user,
@@ -150,7 +144,7 @@ def test_a_rebuild_leaves_later_deletes_alone(owned_user, owned_library, tracked
 
 @pytest.mark.django_db(transaction=True)
 def test_a_rebuild_reproduces_the_tracked_rows(owned_user, owned_library, tracked_game):
-    """Replay parity, stated as a test: the rebuild changes nothing."""
+    """Replay parity: the rebuild changes nothing."""
     dispatch(
         TrackGame(game_id=tracked_game.pk),
         actor=owned_user,

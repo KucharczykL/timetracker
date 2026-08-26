@@ -1,4 +1,4 @@
-"""The vocabulary a library uses to say it tracks a game."""
+"""The event vocabulary for a tracked game."""
 
 import uuid
 
@@ -26,9 +26,7 @@ def test_the_creation_event_is_in_the_application_vocabulary():
 
 
 def test_the_payload_declares_its_catalog_reference():
-    #: This declaration is the whole integration with the reference index: it
-    #: writes the LibraryEventReference row, protects the game from deletion,
-    #: and is checked before every fold.
+    #: This declaration is the reference index integration.
     assert DEFAULT_EVENT_TYPES.reference_fields_for(PLAYERGAME_CREATED.event_type) == {
         "game": ReferenceArity.SINGLE
     }

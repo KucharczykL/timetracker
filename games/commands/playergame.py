@@ -1,4 +1,4 @@
-"""Commands about the catalog games a library tracks."""
+"""Commands about the games a library tracks."""
 
 import uuid
 from collections.abc import Sequence
@@ -21,17 +21,15 @@ from games.models import Game, PlayerGame
 
 @dataclass(frozen=True, slots=True)
 class TrackGame(Command):
-    """Begin tracking one catalog game in this library."""
+    """Track one catalog game in this library."""
 
     command_name: ClassVar[CommandName] = CommandName.PLAYERGAME_TRACK
-    #: A UUID rather than a Game: a model instance has no canonical form to
-    #: fingerprint, so the row is re-read here, scoped to the library.
+    #: A UUID, because Command fingerprints its fields.
     game_id: uuid.UUID
 
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
         game = self._visible_game(context)
-        #: Both reads happen under the stream-head lock dispatch already took,
-        #: so no concurrent TrackGame can land between them and the append.
+        #: Under dispatch's lock: no concurrent duplicate.
         if PlayerGame.objects.filter(library=context.library, game=game).exists():
             raise CommandRejected(
                 f"This library already tracks {game.name}. Whether a repeat "
@@ -45,15 +43,14 @@ class TrackGame(Command):
         ]
 
     def _visible_game(self, context: CommandContext) -> Game:
-        """This library's own game, or one from the shared catalog."""
+        """Its own game, or a shared one."""
         try:
             return Game.objects.filter(
                 Q(library=context.library) | Q(library__isnull=True),
                 archived_at__isnull=True,
             ).get(pk=self.game_id)
         except Game.DoesNotExist:
-            #: Says nothing about whose it is. A refusal is not a place to
-            #: learn what another library holds.
+            #: Leaks nothing about another library's rows.
             raise CommandRejected(
                 f"No game {self.game_id} this library can track. A library "
                 "tracks its own games and the shared catalog, and neither "

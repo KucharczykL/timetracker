@@ -1,4 +1,4 @@
-"""The current-state family for the games a library tracks."""
+"""The current-state family for tracked games."""
 
 import uuid
 from typing import ClassVar
@@ -10,19 +10,17 @@ from games.models import PlayerGame
 
 
 class PlayerGames(Projector):
-    """One row per tracked game, from the events that track it."""
+    """One row per tracked game."""
 
     family_name = ProjectorFamily.CURRENT_STATE
 
     def _created(self, event: RecordedEvent) -> None:
-        #: `self.target.model`, never the imported model: a shadow rebuild
-        #: points the same family at its temp table.
+        #: Never the imported model: a rebuild redirects.
         projected = self.target.model(PlayerGame)
         projected.objects.update_or_create(
             id=event.aggregate_id,
             defaults={
-                #: From the event, never from a command's context. That is why
-                #: a replay reproduces the same ownership.
+                #: From the event, never a command's context.
                 "library_id": event.library_id,
                 "game_id": uuid.UUID(event.payload["game"]["id"]),
                 "tracked_at": event.recorded_at,
