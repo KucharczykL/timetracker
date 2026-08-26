@@ -3,7 +3,7 @@
  *
  * serialize: node tree -> canonical OperatorFilter JSON (single-key children,
  * never a mixed node). deserialize: arbitrary/legacy JSON -> node tree, faithfully
- * reproducing the backend fold order. See the design spec.
+ * reproducing the backend grouping order. See the design spec.
  */
 import {
   type Connective,

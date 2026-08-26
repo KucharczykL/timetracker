@@ -138,7 +138,7 @@ const registry: MetadataRegistry = {
 
 type Json = Record<string, unknown>;
 
-describe("deserialize — faithful fold", () => {
+describe("deserialize — faithful grouping", () => {
   it("root is always a group with criterion imported", () => {
     const tree = deserialize({ status: { value: ["f"], modifier: "INCLUDES" } }, "game", registry);
     expect(tree.kind).toBe("group");

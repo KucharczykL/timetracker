@@ -230,7 +230,7 @@ Python + minimal e2e.
 ## Divergences from issue #391 (recorded deliberately)
 
 - The issue says "SECRET_KEY rendered through the **masked-secret field**." This
-  design instead folds masking into the uniform `ReadonlySettingField` (masked
+  design instead merges masking into the uniform `ReadonlySettingField` (masked
   value slot, `secret_present: bool`) so the secret row matches every other row
   and still carries a source badge. `MaskedSecretField` stays for the kit
   preview. Same leak-proof guarantee, better layout consistency.

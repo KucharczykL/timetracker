@@ -143,8 +143,8 @@ EVENT_TYPES = EventTypeRegistry(reference_kinds=KINDS)
 for registered_spec in (DEVICE_RECORDED, EVERYTHING_RECORDED, PLATFORM_RECORDED):
     EVENT_TYPES.register(registered_spec)
 
-#: Which events a fold reached.
-FOLDED: list[int] = []
+#: Which events a replay reached.
+REPLAYED: list[int] = []
 
 REGISTRY = ProjectorRegistry()
 WIRING = EventWiring(event_types=EVENT_TYPES, projectors=REGISTRY)
@@ -154,7 +154,7 @@ class Recorder(Projector, registry=REGISTRY):
     family_name = ProjectorFamily.CURRENT_STATE
 
     def _recorded(self, event: RecordedEvent) -> None:
-        FOLDED.append(event.sequence)
+        REPLAYED.append(event.sequence)
 
     handles: ClassVar[HandlerMap] = {
         DEVICE_RECORDED: _recorded,
@@ -164,10 +164,10 @@ class Recorder(Projector, registry=REGISTRY):
 
 
 @pytest.fixture(autouse=True)
-def forget_folded_events():
-    FOLDED.clear()
+def forget_replayed_events():
+    REPLAYED.clear()
     yield
-    FOLDED.clear()
+    REPLAYED.clear()
 
 
 @pytest.fixture
@@ -563,20 +563,20 @@ def test_describing_a_gap_costs_two_more(
 # --- what a replay does with it ---------------------------------------------
 
 
-def test_a_replay_refuses_before_it_folds_anything(owned_library, device):
+def test_a_replay_refuses_before_it_touches_anything(owned_library, device):
     append(owned_library, [device_event(device), device_event(device)], key="two")
     strand(device)
-    FOLDED.clear()
+    REPLAYED.clear()
 
     with pytest.raises(UnresolvedReferences):
         replay(owned_library, wiring=WIRING)
 
-    assert FOLDED == []
+    assert REPLAYED == []
 
 
 def test_the_refusal_carries_every_gap(owned_library):
     stranded_many(owned_library, 3)
-    FOLDED.clear()
+    REPLAYED.clear()
 
     with pytest.raises(UnresolvedReferences) as raised:
         replay(owned_library, wiring=WIRING)
@@ -598,14 +598,14 @@ def test_the_refusal_names_the_remedy_and_the_rest(owned_library):
     assert message.count("first named by event #") == MESSAGE_GAP_LIMIT
 
 
-def test_a_library_whose_references_resolve_folds_as_before(owned_library, device):
+def test_a_library_whose_references_resolve_replays_as_before(owned_library, device):
     append(owned_library, [device_event(device), device_event(device)], key="two")
-    FOLDED.clear()
+    REPLAYED.clear()
 
     result = replay(owned_library, wiring=WIRING)
 
-    assert result.folded_through == 2
-    assert FOLDED == [1, 2]
+    assert result.replayed_through == 2
+    assert REPLAYED == [1, 2]
 
 
 def test_a_library_with_no_head_never_reconciles(
@@ -616,7 +616,7 @@ def test_a_library_with_no_head_never_reconciles(
         result = replay(owned_library, wiring=WIRING)
 
     assert result.stream_id is None
-    assert result.folded_through == 0
+    assert result.replayed_through == 0
 
 
 def test_another_library_strand_does_not_refuse_this_replay(
@@ -631,9 +631,9 @@ def test_another_library_strand_does_not_refuse_this_replay(
     append(owned_library, [device_event(device)])
     append(other_library, [device_event(other_device)], key="other-key")
     strand(other_device)
-    FOLDED.clear()
+    REPLAYED.clear()
 
-    assert replay(owned_library, wiring=WIRING).folded_through == 1
+    assert replay(owned_library, wiring=WIRING).replayed_through == 1
     with pytest.raises(UnresolvedReferences):
         replay(other_library, wiring=WIRING)
 

@@ -121,7 +121,7 @@ def test_the_creation_event_writes_the_tracked_row(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_folding_the_stream_again_writes_no_second_row(
+def test_replaying_the_stream_again_writes_no_second_row(
     owned_user, owned_library, tracked_game
 ):
     #: Keyed on the event's own identity.
@@ -135,14 +135,14 @@ def test_folding_the_stream_again_writes_no_second_row(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_folding_the_creation_event_costs_one_statement(
+def test_replaying_the_creation_event_costs_one_statement(
     owned_user, owned_library, tracked_game
 ):
     """The number #930 exists to reduce."""
     identity = uuid.uuid7()
     append_created(owned_library, owned_user, tracked_game, identity=identity)
     event = RecordedEvent.from_row(LibraryEvent.objects.get(aggregate_id=identity))
-    #: Measure the insert, which a replay folds.
+    #: Measure the insert, which a replay repeats.
     PlayerGame.objects.all().delete()
 
     with transaction.atomic(), CaptureQueriesContext(connection) as queries:
@@ -158,7 +158,7 @@ def test_a_second_identity_for_a_tracked_game_is_refused(
 ):
     """Keyed on identity, the pair still collides.
 
-    An update by primary key would fold the event into silence.
+    An update by primary key would swallow the event silently.
     """
     append_created(owned_library, owned_user, tracked_game, identity=uuid.uuid7())
 
@@ -249,7 +249,7 @@ def test_the_status_event_writes_the_status(owned_user, owned_library, tracked_g
 
 
 @pytest.mark.django_db(transaction=True)
-def test_folding_the_creation_event_again_keeps_a_later_status(
+def test_replaying_the_creation_event_again_keeps_a_later_status(
     owned_user, owned_library, tracked_game
 ):
     """A default is absent from DO UPDATE."""
@@ -266,7 +266,7 @@ def test_folding_the_creation_event_again_keeps_a_later_status(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_folding_the_status_event_costs_one_statement(
+def test_replaying_the_status_event_costs_one_statement(
     owned_user, owned_library, tracked_game
 ):
     identity = uuid.uuid7()

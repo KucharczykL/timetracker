@@ -214,7 +214,7 @@ the preset API stores **nothing** when size equals the default (#337: [games/api
 (`ts/elements/filter-url.ts`, `presets.ts`, `quick-filter-bar.ts`).
 **Deliverables:**
 - An explicit sub-decision: does "no stored size" mean *site default* or *the saving user's default*?
-  Then fold the per-user default into `FindFilter` resolution accordingly, updating the API
+  Then merge the per-user default into `FindFilter` resolution accordingly, updating the API
   store/omit semantics and the TS "empty = default" contract + its tests.
 **Acceptance:** per-user page size applies with no `?per_page=`/preset; preset round-trip is correct
 across users with different defaults; Python + vitest tests updated; `make check` green.

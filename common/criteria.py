@@ -614,7 +614,7 @@ class _SetCriterion(_Criterion):
     # alone ("5") is meaningless to the user. UI-built filters carry the label
     # inline as ``{id, label}`` dicts (see ``ts/elements/filter-widgets.ts``); a
     # filter built server-side (stats-page links) only knows the id, so it stashes
-    # the labels it has here and ``to_json`` folds them back into the ``{id, label}``
+    # the labels it has here and ``to_json`` merges them back into the ``{id, label}``
     # wire shape. The filter bar then prefills labelled pills straight from the URL
     # JSON with no extra DB round-trip.
     #
@@ -712,7 +712,7 @@ class _SetCriterion(_Criterion):
         return result
 
     def _labelled(self, item: Any) -> Any:
-        """Fold a known label back into the ``{id, label}`` wire shape (#224).
+        """Merge a known label back into the ``{id, label}`` wire shape (#224).
 
         Returns the bare id when no label is known, so unlabelled criteria
         serialize exactly as before.
@@ -725,7 +725,7 @@ class _SetCriterion(_Criterion):
         # ``excludes`` use ``default_factory``, the base never treats an empty
         # list as the default, so it would leak ``"value": []`` / ``"excludes":
         # []`` and a raw ``"labels": {}`` key onto the wire. This skips empty
-        # lists, never emits ``labels`` as its own key (labels are folded inline
+        # lists, never emits ``labels`` as its own key (labels are merged inline
         # per ``_labelled``), and — like the base — omits the default modifier.
         result: dict[str, Any] = {}
         if self.value:
@@ -1594,7 +1594,7 @@ class OperatorFilter:
 
         Generic for every concrete filter: walk the declarative ``fields`` table
         (each set criterion mapped to its ORM lookup/handler), then the
-        ``aggregates`` table, then fold in the imperative tail (``_extra_q``:
+        ``aggregates`` table, then merge in the imperative tail (``_extra_q``:
         M2M, free-text search, relation sub-filters), then the AND/OR/NOT
         operators and field comparisons.
         """

@@ -106,7 +106,7 @@ ID-09/#847 on GitHub), ordered cheapest-and-most-validating first:
 ID-07's rejected alternatives — including why filter nullability was fixed at
 the source rather than accepted as a temporary loss — are kept as a
 [decision record](2026-08-18-issue-845-platform-fk-uuid-design.md); its
-mechanics are folded into the checklist below rather than duplicated there.
+mechanics are merged into the checklist below rather than duplicated there.
 
 **Why ID-09 does not move `Purchase.games`.** Established by probe against the
 installed Django 6.0.7, during ID-09's design; the full argument is in its

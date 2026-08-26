@@ -1409,7 +1409,7 @@ git commit -m "fix: green make check for datetime-field zone following"
 
 ## Self-review round 2 (post adversarial-review fixes)
 
-A two-agent adversarial review (verify-against-the-real-code + find-defects) found real defects. Each is folded into the tasks above; this section records what changed and re-runs the checks over the edited plan.
+A two-agent adversarial review (verify-against-the-real-code + find-defects) found real defects. Each is merged into the tasks above; this section records what changed and re-runs the checks over the edited plan.
 
 **1. What changed, and why**
 

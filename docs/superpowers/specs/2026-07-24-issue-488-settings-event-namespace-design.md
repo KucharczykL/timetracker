@@ -132,4 +132,4 @@ A doc-comment block at the top of `ts/settings-events.ts` covering:
 
 ## Out of scope (filed separately)
 
-- **#497** — migrate `SettingSource`/`SETTING_SOURCES` and `SOURCE_METADATA`'s hand-written labels to the same `render_choice_vocabulary` codegen mechanism this issue introduces for `SettingNamespace`. Deliberately not folded in here: it touches a third file (badge UI label sourcing) beyond this issue's literal scope, and stands alone as a well-scoped follow-up now that the codegen precedent exists.
+- **#497** — migrate `SettingSource`/`SETTING_SOURCES` and `SOURCE_METADATA`'s hand-written labels to the same `render_choice_vocabulary` codegen mechanism this issue introduces for `SettingNamespace`. Deliberately not merged in here: it touches a third file (badge UI label sourcing) beyond this issue's literal scope, and stands alone as a well-scoped follow-up now that the codegen precedent exists.

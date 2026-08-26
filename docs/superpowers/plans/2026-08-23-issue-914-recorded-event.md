@@ -9,7 +9,7 @@ and re-saving an immutable event become impossible rather than discouraged.
 **Architecture:** One new module, `games/events/envelope.py`, holding
 `RecordedEvent` and its `from_row`. `games/events/projection.py` swaps its
 `LibraryEvent` references for it and stops importing the ORM entirely.
-`games/events/append.py` converts each row before folding. No migration, no
+`games/events/append.py` converts each row before running the handlers. No migration, no
 schema change, no data change.
 
 **Spec:** `docs/superpowers/specs/2026-08-23-issue-914-recorded-event-design.md`
@@ -43,7 +43,7 @@ a read; it cannot live in `append.py`, which already imports `projection`.
 (the import, the `BoundHandler` alias, `apply`'s parameter). After this the
 module has no ORM import at all.
 
-**Modify `games/events/append.py`** — convert each row before folding.
+**Modify `games/events/append.py`** — convert each row before running the handlers.
 
 **Create `tests/test_event_envelope.py`** — the value and the contract test.
 
@@ -109,7 +109,7 @@ module has no ORM import at all.
 
 - [ ] `BoundHandler` becomes `Callable[[RecordedEvent], None]`; `apply` takes a
       `RecordedEvent`; delete the `games.models` import.
-- [ ] `append` folds `registry.apply(RecordedEvent.from_row(row))` per row, in
+- [ ] `append` runs `registry.apply(RecordedEvent.from_row(row))` per row, in
       the same place and order as before.
 - [ ] Update the test module's handlers to take `RecordedEvent`, and add a
       `make_recorded_event(**overrides)` helper with sensible defaults so a test
@@ -129,7 +129,7 @@ module has no ORM import at all.
 
 - `projection.py` losing its ORM import is the point, not a side effect. If
   anything still needs `LibraryEvent` there, the conversion is in the wrong place.
-- The fold's position is unchanged: after the head advance, event-major. Only
+- The handlers' position is unchanged: after the head advance, event-major. Only
   what is passed changes.
 - `AppendResult.events` still carries rows. Tests asserting on `result.events`
   keep working and should not be converted.

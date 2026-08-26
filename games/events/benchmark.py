@@ -266,7 +266,7 @@ def one_pass_seconds(report: RebuildReport) -> Seconds:
 
 def rebuild_budget(report: RebuildReport) -> Budget:
     """60 s per 100,000 events, scaled."""
-    events = report.folded_through
+    events = report.replayed_through
     limit = REBUILD_BUDGET_SECONDS * events / REBUILD_BUDGET_EVENTS
     measured = one_pass_seconds(report)
     return Budget(
@@ -312,8 +312,8 @@ class BenchmarkReport:
     command: Timings | None
     #: Per command: the whole write path.
     amplification: WorkPerEvent | None
-    #: Per event: the fold alone.
-    fold: WorkPerEvent | None
+    #: Per event: the replay alone.
+    replay: WorkPerEvent | None
     rebuild: RebuildReport | None
     #: None when --keep was given.
     teardown_seconds: Seconds | None

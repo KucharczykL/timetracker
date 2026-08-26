@@ -44,7 +44,7 @@ UNHANDLED = "test.projector.unhandled"
 
 #: What each handler saw, in the order it saw it.
 CALLS: list[tuple[ProjectorFamily, str]] = []
-#: The same, for the families the append path folds through: which family, and
+#: The same, for the families the append path runs through: which family, and
 #: which event of the append.
 APPLIED: list[tuple[ProjectorFamily, int]] = []
 #: The values those handlers were handed, kept whole so a test can read the
@@ -422,7 +422,7 @@ def test_the_helper_writes_one_row_through_one_statement(owned_library):
 
 @pytest.mark.django_db
 def test_the_helper_rewrites_the_row_an_identity_already_has(owned_library):
-    """A re-fold upserts; it adds no row."""
+    """A repeat upserts; it adds no row."""
     identity = uuid.uuid7()
 
     for sequence in (1, 2):
@@ -456,7 +456,7 @@ def test_the_helper_keeps_the_columns_it_was_not_given(owned_library):
 
 @pytest.mark.django_db
 def test_the_helper_lets_the_database_fill_what_it_can(owned_library):
-    """created_at fills itself, so a fold need not name it."""
+    """created_at fills itself, so a handler need not name it."""
     project_registry.apply(make_event(library_id=owned_library.pk))
 
     assert Device.objects.get().created_at is not None
@@ -484,7 +484,7 @@ class PartialWriter(Projector, registry=partial_registry):
 @pytest.mark.django_db
 def test_the_helper_refuses_a_row_it_was_not_given_whole(owned_library):
     """A rebuild would null what the live path kept."""
-    with pytest.raises(TypeError, match="folded without name"):
+    with pytest.raises(TypeError, match="written without name"):
         partial_registry.apply(make_event(library_id=owned_library.pk))
 
     assert Device.objects.count() == 0
@@ -510,7 +510,7 @@ class AmendingWriter(Projector, registry=amend_registry):
 
 
 def created_row(library, identity: uuid.UUID) -> Device:
-    """The row a creation event folds."""
+    """The row a creation event writes."""
     return Device.objects.create(
         pk=identity, library_id=library.pk, name="created", type=Device.UNKNOWN
     )
@@ -640,7 +640,7 @@ quiet_wiring = wiring_over(quiet_registry)
 
 class QuietRecorder(Projector, registry=quiet_registry):
     """Reads the envelope and nothing else, so every query the append issues
-    while it is folding is the append's own."""
+    while it is running the handlers is the append's own."""
 
     family_name = ProjectorFamily.CURRENT_STATE
 
@@ -702,12 +702,12 @@ def append(library, wiring, count: int = 1, idempotency_key: str = "probe-key"):
 
 
 @pytest.mark.django_db
-def test_an_append_folds_one_event_at_a_time_through_every_family(owned_library):
+def test_an_append_runs_one_event_at_a_time_through_every_family(owned_library):
     with transaction.atomic():
         append(owned_library, append_wiring, count=2)
 
     #: Event-major: one event through the whole pipeline, then the next. The
-    #: append path and a replay fold identically only in this order.
+    #: append path and a replay agree only in this order.
     assert APPLIED == [
         (ProjectorFamily.CURRENT_STATE, 1),
         (ProjectorFamily.JOURNAL, 1),
@@ -748,7 +748,7 @@ def test_the_head_has_advanced_before_any_handler_runs(owned_library):
 
 
 @pytest.mark.django_db
-def test_a_replayed_append_folds_nothing(owned_library):
+def test_a_replayed_append_runs_nothing(owned_library):
     def build(stream):
         return [make_new_event()]
 
@@ -785,7 +785,7 @@ def test_a_failing_family_takes_an_earlier_familys_write_with_it(owned_library):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_dispatch_folds_through_the_registry_it_was_given(owned_user, owned_library):
+def test_dispatch_runs_through_the_registry_it_was_given(owned_user, owned_library):
     dispatch(
         BasicCommand(label="first", count=1),
         actor=owned_user,
@@ -844,7 +844,7 @@ def test_a_handler_cannot_traverse_to_the_actor(owned_library):
 
 
 @pytest.mark.django_db
-def test_folding_costs_the_append_no_query(owned_library, second_library):
+def test_the_handlers_cost_the_append_no_query(owned_library, second_library):
     """What the value type buys, as an assertion.
 
     A family reading the envelope adds nothing to the append, because there is

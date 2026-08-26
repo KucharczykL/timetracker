@@ -1,4 +1,4 @@
-"""Folding an existing stream through a registry.
+"""Replaying an existing stream through a registry.
 
 Every family here registers into a registry this module owns, so nothing
 declared for a test can reach `DEFAULT_REGISTRY` or another test.
@@ -101,7 +101,7 @@ class Recorder(Projector, registry=registry):
 
 
 class SecondRecorder(Projector, registry=registry):
-    """A second family on the same event type, so the fold's shape is visible:
+    """A second family on the same event type, so the replay's shape is visible:
     both families see event one before either sees event two."""
 
     family_name = ProjectorFamily.JOURNAL
@@ -139,7 +139,7 @@ def make_new_event(**overrides: Any) -> NewEvent:
 
 
 def append(library, events=None, **overrides: Any) -> AppendResult:
-    """One append, folded through this module's wiring."""
+    """One append, run through this module's wiring."""
     fields: dict[str, Any] = {
         "actor": None,
         "correlation_id": uuid.uuid7(),
@@ -187,7 +187,7 @@ def test_an_unregistered_event_type_refuses_the_replay(owned_library):
     with pytest.raises(UnregisteredEventType, match="library.probe.forgotten"):
         replay(owned_library, wiring=wiring)
 
-    #: Folded up to the row, nothing after.
+    #: Replayed up to the row, nothing after.
     assert [event.sequence for event in SEEN] == [1, 2]
 
 
@@ -229,7 +229,7 @@ def test_a_damaged_stream_is_refused_as_damaged_not_as_unreadable(owned_library)
         replay(owned_library, wiring=wiring)
 
 
-def test_a_stream_folds_every_event_in_sequence_order(owned_library):
+def test_a_stream_replays_every_event_in_sequence_order(owned_library):
     append_stream(owned_library, 3)
     SEEN.clear()
 
@@ -237,23 +237,23 @@ def test_a_stream_folds_every_event_in_sequence_order(owned_library):
 
     assert [event.sequence for event in SEEN] == [1, 2, 3]
     assert result == ReplayResult(
-        stream_id=owned_library.event_stream_head.id, folded_through=3
+        stream_id=owned_library.event_stream_head.id, replayed_through=3
     )
 
 
-def test_an_untouched_stream_folds_nothing(owned_library):
+def test_an_untouched_stream_replays_nothing(owned_library):
     head = LibraryEventStreamHead.objects.create(library=owned_library)
 
     result = replay(owned_library, wiring=wiring)
 
-    assert result == ReplayResult(stream_id=head.id, folded_through=0)
+    assert result == ReplayResult(stream_id=head.id, replayed_through=0)
     assert SEEN == []
 
 
 def test_a_library_that_never_appended_replays_to_nothing(owned_library):
     result = replay(owned_library, wiring=wiring)
 
-    assert result == ReplayResult(stream_id=None, folded_through=0)
+    assert result == ReplayResult(stream_id=None, replayed_through=0)
     assert SEEN == []
     #: A read that provisions rows is a read nobody can run safely.
     assert not LibraryEventStreamHead.objects.filter(library=owned_library).exists()
@@ -288,16 +288,16 @@ def test_a_stream_starting_after_one_refuses_the_replay(owned_library):
         replay(owned_library, wiring=wiring)
 
 
-def test_an_event_no_family_handles_is_folded_and_applied_to_nothing(owned_library):
+def test_an_event_no_family_handles_is_replayed_and_applied_to_nothing(owned_library):
     append(owned_library, [make_new_event(spec=PROBE_UNHANDLED)])
 
     result = replay(owned_library, wiring=wiring)
 
-    assert result.folded_through == 1
+    assert result.replayed_through == 1
     assert SEEN == []
 
 
-def test_a_replay_folds_what_the_append_folded(owned_library):
+def test_a_replay_repeats_what_the_append_did(owned_library):
     """The parity property: an event carries the same envelope, in the same
     order, whichever path reached the projector."""
     append_stream(owned_library, 3)
@@ -366,7 +366,7 @@ def test_a_payloads_lists_keep_the_order_they_were_written_in(owned_library):
     assert [item["zzz"] for item in appended["aaa"] if "zzz" in item] == [3]
 
 
-def test_replaying_twice_folds_the_same_events(owned_library):
+def test_replaying_twice_repeats_the_same_events(owned_library):
     append_stream(owned_library, 3)
 
     SEEN.clear()
@@ -379,7 +379,7 @@ def test_replaying_twice_folds_the_same_events(owned_library):
     assert SEEN == first
 
 
-def test_the_fold_is_event_major(owned_library):
+def test_the_replay_is_event_major(owned_library):
     append_stream(owned_library, 2)
     ORDER.clear()
 
@@ -412,19 +412,19 @@ def test_events_appended_after_a_replay_belong_to_the_next_one(owned_library):
     SEEN.clear()
     second = replay(owned_library, wiring=wiring)
 
-    assert first.folded_through == 2
-    assert second.folded_through == 4
+    assert first.replayed_through == 2
+    assert second.replayed_through == 4
     assert [event.sequence for event in SEEN] == [1, 2, 3, 4]
 
 
-def test_a_replay_folds_one_library_only(owned_library, second_library):
+def test_a_replay_covers_one_library_only(owned_library, second_library):
     append_stream(owned_library, 2)
     append_stream(second_library, 3)
     SEEN.clear()
 
     result = replay(second_library, wiring=wiring)
 
-    assert result.folded_through == 3
+    assert result.replayed_through == 3
     assert {event.library_id for event in SEEN} == {second_library.id}
 
 

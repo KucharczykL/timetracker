@@ -3,7 +3,7 @@
 Date: 2026-07-27
 Issue: https://github.com/KucharczykL/timetracker/issues/517
 
-Revised after adversarial review; the review's findings are folded in below
+Revised after adversarial review; the review's findings are merged in below
 rather than listed separately.
 
 ## Problem

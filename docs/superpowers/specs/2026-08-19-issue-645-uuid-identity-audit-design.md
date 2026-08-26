@@ -15,7 +15,7 @@ of the map is gone, so anything unverified now is unverifiable forever.
 ## Boundary
 
 No schema change and no migration. Wave E's promotions, the M2M through
-conversion, and the URL work stay in their own issues. One exception is folded
+conversion, and the URL work stay in their own issues. One exception is merged
 in deliberately, argued in decision 3: `anonymize_sample` produces data that
 violates the invariant this issue gates on, so the audit cannot be turned on
 without fixing the producer.

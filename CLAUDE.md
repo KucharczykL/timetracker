@@ -117,7 +117,7 @@ runs the Nix path**, so verify against `make check` before pushing when possible
 | Run every test except `e2e/` | `make test-fast` |
 | Sync uv.lock | `uv sync` (after editing pyproject.toml) |
 | Verify the UUID identity map | `make audit-uuid-identity` (read-only; fails on any violation) |
-| Benchmark commands, replay, and the fold | `make bench` (~1.7 min, seeds and removes a scratch library; **not** in `make check`) |
+| Benchmark commands, replay, and per-event cost | `make bench` (~1.7 min, seeds and removes a scratch library; **not** in `make check`) |
 | Load platform fixtures / sample data | `make loadplatforms` / `make loadsample` |
 | Regenerate sample data (anonymized prod) | `make anonymize-sample` (see Testing) |
 | Dump games data | `make dumpgames` |
@@ -151,7 +151,7 @@ docs/           — Additional documentation
 - **ExchangeRate** — cached FX rates per currency pair per year
 - **GameStatusChange** — audit log of status transitions, ordered by `-timestamp`
 - **FilterPreset** — saved filter config; `mode` (games/sessions/purchases/playevents), `find_filter`, `object_filter`, `ui_options` (all JSON). Follows Stash's SavedFilter pattern
-- **PlayerGame** — the first projection: one row per catalog game a library tracks, written only by the projector folding `library.playergame.created`. Both `UUIDv7Field` defaults are opted out (the pk is the event's `aggregate_id`); `game` is `RESTRICT`, so a projection row is never collateral
+- **PlayerGame** — the first projection: one row per catalog game a library tracks, written only by the projector handling `library.playergame.created`. Both `UUIDv7Field` defaults are opted out (the pk is the event's `aggregate_id`); `game` is `RESTRICT`, so a projection row is never collateral
 
 **A multi-game Purchase is an *unsplittable* bundle** — one price, whole-purchase
 refund (e.g. a Humble Bundle). Independently-refundable multi-item orders (e.g. a

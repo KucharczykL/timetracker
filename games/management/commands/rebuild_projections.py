@@ -80,7 +80,7 @@ class Command(BaseCommand):
         else:
             self.stdout.write(f"Stream {report.stream_id}")
         self.stdout.write(
-            f"Folded {report.folded_through} event(s) through "
+            f"Replayed {report.replayed_through} event(s) through "
             f"{len(report.tables)} table(s); head at diff {report.head_at_diff}."
         )
         for table in report.tables:
@@ -122,7 +122,7 @@ class Command(BaseCommand):
         self.stderr.write(REMEDY)
 
     def _write_check_outcome(self, report: RebuildReport) -> None:
-        if report.head_at_diff != report.folded_through:
+        if report.head_at_diff != report.replayed_through:
             #: No lock: the drift may be false.
             self.stdout.write(
                 self.style.WARNING(

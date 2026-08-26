@@ -43,7 +43,7 @@ The head can move, because `CHECK` takes no lock, so the diff is advisory.
   only the shadow has.
 - The swap does one `DELETE` and one `INSERT ... SELECT` for each table, in one
   transaction. Before the first write, `lock_stream` locks the stream and
-  `require_sequence` compares the head with `folded_through`. The order of the
+  `require_sequence` compares the head with `replayed_through`. The order of the
   tables is not important, because Django makes its foreign keys deferrable.
 - An event that lands during the work makes `require_sequence` raise
   `StreamSequenceMismatch`. The full attempt then runs again with a new shadow.

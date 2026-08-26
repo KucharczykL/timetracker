@@ -38,7 +38,7 @@ def run_benchmark(
     warmup: int,
     library: UserLibrary | None = None,
     keep: bool = False,
-    count_fold: bool = True,
+    count_replay: bool = True,
     announce_scratch_user: Callable[[str], None] | None = None,
 ) -> BenchmarkReport:
     """Seed a library, measure it, remove it.
@@ -51,7 +51,7 @@ def run_benchmark(
     the library behind, and the operator has to be told its name.
     """
     if library is not None:
-        return _measure_existing(library, count_fold=count_fold)
+        return _measure_existing(library, count_replay=count_replay)
     username = f"{SCRATCH_USERNAME_PREFIX}{uuid.uuid7()}"
     user = User.objects.create_user(username=username)
     if announce_scratch_user is not None:
@@ -63,7 +63,7 @@ def run_benchmark(
             seed=seed,
             iterations=iterations,
             warmup=warmup,
-            count_fold=count_fold,
+            count_replay=count_replay,
         )
         teardown = None if keep else purge_scratch_user(username)
         purged = True
@@ -78,7 +78,7 @@ def run_benchmark(
 
 
 def _measure_scratch(
-    user: User, *, seed: int, iterations: int, warmup: int, count_fold: bool
+    user: User, *, seed: int, iterations: int, warmup: int, count_replay: bool
 ) -> BenchmarkReport:
     library = user.library
     spares = 2 * iterations + warmup
@@ -91,8 +91,8 @@ def _measure_scratch(
     amplification = run_amplification_scenario(
         library, actor=user, games=games, iterations=iterations
     )
-    rebuild, fold = run_rebuild_scenario(
-        library, mode=RebuildMode.REBUILD, count_fold=count_fold
+    rebuild, replay = run_rebuild_scenario(
+        library, mode=RebuildMode.REBUILD, count_replay=count_replay
     )
     _refuse_a_diff(rebuild)
     return BenchmarkReport(
@@ -102,16 +102,16 @@ def _measure_scratch(
         seed=seeded,
         command=command,
         amplification=amplification,
-        fold=fold,
+        replay=replay,
         rebuild=rebuild,
         teardown_seconds=None,
         budgets=(command_budget(command), rebuild_budget(rebuild)),
     )
 
 
-def _measure_existing(library: UserLibrary, *, count_fold: bool) -> BenchmarkReport:
-    rebuild, fold = run_rebuild_scenario(
-        library, mode=RebuildMode.CHECK, count_fold=count_fold
+def _measure_existing(library: UserLibrary, *, count_replay: bool) -> BenchmarkReport:
+    rebuild, replay = run_rebuild_scenario(
+        library, mode=RebuildMode.CHECK, count_replay=count_replay
     )
     _refuse_a_diff(rebuild)
     return BenchmarkReport(
@@ -121,7 +121,7 @@ def _measure_existing(library: UserLibrary, *, count_fold: bool) -> BenchmarkRep
         seed=None,
         command=None,
         amplification=None,
-        fold=fold,
+        replay=replay,
         rebuild=rebuild,
         teardown_seconds=None,
         budgets=(rebuild_budget(rebuild),),

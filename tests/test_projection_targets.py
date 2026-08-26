@@ -115,7 +115,7 @@ def test_manufacturing_a_twin_leaves_every_check_clean():
 
 @isolate_apps("games")
 def test_a_twins_relation_to_a_projection_points_at_the_twin():
-    """A live read would fold pre-rebuild state in."""
+    """A live read would mix pre-rebuild state in."""
     shelf, entry = declare_projection_models()
     target = ShadowTarget()
 

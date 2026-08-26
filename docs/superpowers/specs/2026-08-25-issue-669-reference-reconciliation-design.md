@@ -8,7 +8,7 @@ in `games/events/reconcile.py`. The policy it reads back is in
 
 `require_resolvable_references(library, *, kinds)` refuses a library that records
 a reference to a row that no longer exists. `replay()` calls it after it reads
-the stream head and before it folds the first event. A library with no head
+the stream head and before it replays the first event. A library with no head
 returns before the check. There is no option to skip the check.
 
 `reconcile_references(library, *, kinds)` gives the same answer as a

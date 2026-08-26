@@ -159,11 +159,11 @@ def timings(p95: float, *, samples: int = 200) -> Timings:
 
 
 def attempt(
-    *, seconds: float, folded_through: int = 0, conflict: str | None = None
+    *, seconds: float, replayed_through: int = 0, conflict: str | None = None
 ) -> RebuildAttempt:
     """One pass whose phases sum to `seconds`."""
     return RebuildAttempt(
-        folded_through=folded_through,
+        replayed_through=replayed_through,
         replay_seconds=seconds * 0.8,
         diff_seconds=seconds * 0.15,
         swap_seconds=seconds * 0.05,
@@ -173,7 +173,7 @@ def attempt(
 
 def rebuild_report(
     *,
-    folded_through: int,
+    replayed_through: int,
     elapsed_seconds: float,
     attempts: tuple[RebuildAttempt, ...] | None = None,
 ) -> RebuildReport:
@@ -182,11 +182,11 @@ def rebuild_report(
         stream_id=uuid.uuid7(),
         mode=RebuildMode.REBUILD,
         swapped=True,
-        folded_through=folded_through,
-        head_at_diff=folded_through,
+        replayed_through=replayed_through,
+        head_at_diff=replayed_through,
         tables=(),
         attempts=(
-            (attempt(seconds=elapsed_seconds, folded_through=folded_through),)
+            (attempt(seconds=elapsed_seconds, replayed_through=replayed_through),)
             if attempts is None
             else attempts
         ),
@@ -208,15 +208,19 @@ def test_too_few_samples_is_not_gated_but_is_still_measured():
     assert budget.measured == 0.15
 
 
-def test_the_rebuild_budget_scales_to_the_events_actually_folded():
+def test_the_rebuild_budget_scales_to_the_events_actually_replayed():
     #: 60s per 100k, so 10k gets 6s.
-    budget = rebuild_budget(rebuild_report(folded_through=10_000, elapsed_seconds=5.9))
+    budget = rebuild_budget(
+        rebuild_report(replayed_through=10_000, elapsed_seconds=5.9)
+    )
     assert budget.limit == pytest.approx(6.0)
     assert budget.verdict is BudgetVerdict.PASSED
 
 
 def test_a_rebuild_over_its_scaled_budget_misses():
-    budget = rebuild_budget(rebuild_report(folded_through=10_000, elapsed_seconds=6.5))
+    budget = rebuild_budget(
+        rebuild_report(replayed_through=10_000, elapsed_seconds=6.5)
+    )
     assert budget.verdict is BudgetVerdict.MISSED
 
 
@@ -224,7 +228,7 @@ def test_a_retried_rebuild_is_charged_only_its_last_pass():
     """Three passes that met it are not one miss."""
     budget = rebuild_budget(
         rebuild_report(
-            folded_through=10_000,
+            replayed_through=10_000,
             elapsed_seconds=18.0,
             attempts=(
                 attempt(seconds=5.8, conflict="the head moved"),
@@ -239,7 +243,9 @@ def test_a_retried_rebuild_is_charged_only_its_last_pass():
 
 def test_a_rebuild_below_the_gating_floor_is_not_gated():
     #: Scaling is verified linear from 2,000 up.
-    budget = rebuild_budget(rebuild_report(folded_through=1_999, elapsed_seconds=99.0))
+    budget = rebuild_budget(
+        rebuild_report(replayed_through=1_999, elapsed_seconds=99.0)
+    )
     assert budget.verdict is BudgetVerdict.NOT_GATED
     assert budget.measured == pytest.approx(99.0)
 
@@ -251,7 +257,7 @@ def test_seeding_writes_the_events_and_the_projection_rows(owned_library):
     assert report.events == 25
     assert report.catalog_rows == 29
     assert LibraryEvent.objects.filter(library=owned_library).count() == 25
-    #: append() folds inline; the rows exist already.
+    #: append() runs inline; the rows exist already.
     assert PlayerGame.objects.filter(library=owned_library).count() == 25
 
 
@@ -354,45 +360,45 @@ def test_one_dispatch_writes_one_projection_row_through_one_statement(owned_libr
 
 
 @pytest.mark.django_db
-def test_folding_one_event_costs_one_statement(django_user_model):
-    """The fold is one upsert.
+def test_replaying_one_event_costs_one_statement(django_user_model):
+    """The replay is one upsert.
 
     A rebuild also pays 13 fixed statements, so ten events average 2.3. The
     slope between two sizes is the per-event number, and it is exact.
     """
     totals: dict[int, int] = {}
     for events in (10, 30):
-        user = django_user_model.objects.create_user(username=f"fold-{events}")
+        user = django_user_model.objects.create_user(username=f"replay-{events}")
         seed_library(user.library, actor=user, events=events, spares=0)
-        _report, fold = run_rebuild_scenario(
-            user.library, mode=RebuildMode.REBUILD, count_fold=True
+        _report, replay = run_rebuild_scenario(
+            user.library, mode=RebuildMode.REBUILD, count_replay=True
         )
-        assert fold is not None
-        totals[events] = fold.statements
+        assert replay is not None
+        totals[events] = replay.statements
     assert (totals[30] - totals[10]) / 20 == pytest.approx(1.0, abs=0.01)
 
 
 @pytest.mark.django_db
-def test_the_fold_counts_the_shadow_table_as_its_projection(owned_library):
+def test_the_replay_counts_the_shadow_table_as_its_projection(owned_library):
     """A replay writes the shadow; the swap writes live."""
     seed_library(owned_library, actor=owned_library.user, events=10, spares=0)
-    _report, fold = run_rebuild_scenario(
-        owned_library, mode=RebuildMode.REBUILD, count_fold=True
+    _report, replay = run_rebuild_scenario(
+        owned_library, mode=RebuildMode.REBUILD, count_replay=True
     )
-    assert fold is not None
+    assert replay is not None
     live = PlayerGame._meta.db_table
     shadow = f"{live}{SHADOW_SUFFIX}"
-    assert fold.statements_per_table[shadow] == 10
-    assert fold.projection_statements == (
-        fold.statements_per_table[shadow] + fold.statements_per_table[live]
+    assert replay.statements_per_table[shadow] == 10
+    assert replay.projection_statements == (
+        replay.statements_per_table[shadow] + replay.statements_per_table[live]
     )
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_run_folds_the_events_both_write_paths_produced():
+def test_a_run_replays_the_events_both_write_paths_produced():
     report = run_benchmark(seed=30, iterations=3, warmup=1, keep=True)
     #: 30 seeded, 4 dispatched, 3 amplified.
-    assert report.rebuild.folded_through == 37
+    assert report.rebuild.replayed_through == 37
     assert all(
         table.only_live == table.only_rebuilt == table.differing == 0
         for table in report.rebuild.tables
@@ -430,9 +436,9 @@ def test_a_kept_run_names_its_scratch_user_before_it_can_fail():
 
 
 @pytest.mark.django_db(transaction=True)
-def test_no_count_fold_leaves_the_fold_unmeasured():
-    report = run_benchmark(seed=5, iterations=1, warmup=0, count_fold=False)
-    assert report.fold is None
+def test_no_count_replay_leaves_the_replay_unmeasured():
+    report = run_benchmark(seed=5, iterations=1, warmup=0, count_replay=False)
+    assert report.replay is None
     assert report.rebuild is not None
 
 
@@ -470,7 +476,7 @@ def test_a_non_empty_rebuild_diff_fails_the_run(owned_library):
     PlayerGame.objects.create(
         id=uuid.uuid7(),
         library=owned_library,
-        game=Game.objects.create(library=owned_library, name="Unfolded"),
+        game=Game.objects.create(library=owned_library, name="Unreplayed"),
         tracked_at=timezone.now(),
     )
     with pytest.raises(RebuildDiffNotEmpty):
@@ -485,7 +491,7 @@ def test_the_report_carries_every_scenario_and_a_schema():
     assert report.seed is not None
     assert report.command is not None
     assert report.amplification is not None
-    assert report.fold is not None
+    assert report.replay is not None
     assert report.teardown_seconds is not None
     parsed = json.loads(report.as_json())
     assert parsed["schema"] == 1
@@ -495,7 +501,7 @@ def test_the_report_carries_every_scenario_and_a_schema():
         "seed",
         "command",
         "amplification",
-        "fold",
+        "replay",
         "rebuild",
         "teardown_seconds",
         "budgets",

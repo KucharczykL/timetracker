@@ -2367,7 +2367,7 @@ Do not push or open a PR without the user's go-ahead.
 
 ---
 
-## Self-review (performed while writing; findings folded in)
+## Self-review (performed while writing; findings merged in)
 
 **1. Spec coverage** — every checklist requirement maps to a task:
 
@@ -2397,7 +2397,7 @@ Do not push or open a PR without the user's go-ahead.
 
 ## Self-review round 2 (post adversarial-review fixes)
 
-A three-agent adversarial review found real defects. Each is folded into the tasks above; this section records what changed and re-runs the three checks over the edited plan.
+A three-agent adversarial review found real defects. Each is merged into the tasks above; this section records what changed and re-runs the three checks over the edited plan.
 
 **1. What changed, and why**
 

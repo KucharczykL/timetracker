@@ -1,6 +1,6 @@
-"""Folding a stream that already exists back through the projectors.
+"""Replaying a stream that already exists back through the projectors.
 
-The read counterpart of `append`, and the only other place the fold loop is
+The read counterpart of `append`, and the only other place the replay loop is
 written: one `registry.apply` per `RecordedEvent`, in sequence order. The two
 paths differ in where the row came from and in nothing else, which is what makes
 a rebuilt projection equal to the one the write path produced.
@@ -8,12 +8,12 @@ a rebuilt projection equal to the one the write path produced.
 The stream head is read first and its sequence bounds the read. Events are
 immutable and append-only, so that bound is a consistent snapshot without a lock,
 without a transaction, and without repeatable-read isolation: an append that
-lands while the fold is running sits above the bound and belongs to a later
-replay. `ReplayResult.folded_through` carries the bound out, so a caller that
+lands while the replay is running sits above the bound and belongs to a later
+replay. `ReplayResult.replayed_through` carries the bound out, so a caller that
 needs to know whether anything landed can ask the head again itself.
 
 A row the wired vocabulary cannot read -- an unregistered event type, or a
-payload recorded against another schema version -- refuses the whole fold rather
+payload recorded against another schema version -- refuses the whole replay rather
 than being skipped: a projection built from whichever events happened to be
 readable is not the one the append path produced.
 
@@ -21,7 +21,7 @@ A stream whose REQUIRED references name rows that no longer exist is refused for
 the same reason, and before the first row is read.
 
 Nothing here empties anything. Replaying onto a projection that already holds
-rows folds every event a second time, which is the caller's to prevent.
+rows replays every event a second time, which is the caller's to prevent.
 """
 
 import uuid
@@ -36,7 +36,7 @@ from games.events.vocabulary import EventTypeRegistry
 from games.events.wiring import DEFAULT_WIRING, EventWiring
 from games.models import LibraryEvent, LibraryEventStreamHead, UserLibrary
 
-#: Chunk size is a memory decision rather than a speed one: 500 and 10000 fold
+#: Chunk size is a memory decision rather than a speed one: 500 and 10000 replay
 #: 100k events within 2% of each other, at 1 MB against 22 MB.
 REPLAY_CHUNK_SIZE = 500
 
@@ -56,28 +56,28 @@ class PayloadVersionUnsupported(Exception):
 
 @dataclass(frozen=True, slots=True)
 class ReplayResult:
-    """Which prefix of which stream was folded.
+    """Which prefix of which stream was replayed.
 
     There is no event count: the contiguity contract makes the sequences exactly
-    `1..folded_through`, so a count could only ever agree with it.
+    `1..replayed_through`, so a count could only ever agree with it.
     """
 
     #: None when the library has never appended: an empty stream, not an error.
     stream_id: uuid.UUID | None
-    folded_through: int
+    replayed_through: int
 
 
 def replay(
     library: UserLibrary, *, wiring: EventWiring = DEFAULT_WIRING
 ) -> ReplayResult:
-    """Fold a library's recorded events, oldest first."""
+    """Replay a library's recorded events, oldest first."""
     head = LibraryEventStreamHead.objects.filter(library=library).first()
     if head is None:
         #: Never appended. A read that provisions its own head is a read nobody
         #: can run safely.
-        return ReplayResult(stream_id=None, folded_through=0)
+        return ReplayResult(stream_id=None, replayed_through=0)
 
-    #: One report, ahead of the whole fold.
+    #: One report, ahead of the whole replay.
     require_resolvable_references(library, kinds=wiring.event_types.reference_kinds)
 
     bound = head.current_sequence
@@ -113,9 +113,9 @@ def replay(
     if previous != bound:
         raise StreamNotContiguous(
             f"This stream ends at {previous}, but its head records {bound}. "
-            "The events above the last one folded are missing."
+            "The events above the last one replayed are missing."
         )
-    return ReplayResult(stream_id=head.id, folded_through=bound)
+    return ReplayResult(stream_id=head.id, replayed_through=bound)
 
 
 def _check_readable(event: RecordedEvent, event_types: EventTypeRegistry) -> None:
@@ -126,5 +126,5 @@ def _check_readable(event: RecordedEvent, event_types: EventTypeRegistry) -> Non
             f"Event #{event.sequence} records a {event.event_type} payload at "
             f"schema version {event.payload_schema_version}, but the vocabulary "
             f"holds version {spec.version}. Nothing upcasts a recorded payload "
-            "to another schema yet, so this stream cannot be folded."
+            "to another schema yet, so this stream cannot be replayed."
         )

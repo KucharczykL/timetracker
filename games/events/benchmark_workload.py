@@ -209,17 +209,17 @@ def run_amplification_scenario(
 
 
 def run_rebuild_scenario(
-    library: UserLibrary, *, mode: RebuildMode, count_fold: bool
+    library: UserLibrary, *, mode: RebuildMode, count_replay: bool
 ) -> tuple[RebuildReport, WorkPerEvent | None]:
     """Replay, diff, and swap.
 
     The counter is installed for the whole rebuild, so the gated time carries
     its own instrumentation. That makes a PASSED verdict conservative; pass
-    count_fold=False to re-measure a verdict inside the overhead.
+    count_replay=False to re-measure a verdict inside the overhead.
     """
-    if not count_fold:
+    if not count_replay:
         return rebuild_projections(library, mode=mode), None
     counter = StatementCounter()
     with connection.execute_wrapper(counter):
         report = rebuild_projections(library, mode=mode)
-    return report, counter.work(events=report.folded_through)
+    return report, counter.work(events=report.replayed_through)

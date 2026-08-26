@@ -136,10 +136,10 @@ library. A purge deletes the events, thus no recorded reference stays to resolve
 The check has two limits, and they are the limits of the index. The check reads
 the index, thus a reference that the index does not hold is not visible to it.
 The append writes the index in the same transaction as the events, which is what
-makes the index complete. The check also runs before the fold, thus it is not a
-lock. The guard keeps a referenced row, thus a usual delete cannot occur between
-the check and the fold. A purge of the full library can occur, and it deletes the
-events also.
+makes the index complete. The check also runs before the handlers, thus it is
+not a lock. The guard keeps a referenced row, thus a usual delete cannot occur
+between the check and the handlers. A purge of the full library can occur, and
+it deletes the events also.
 
 ## The guard
 

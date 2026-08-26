@@ -75,7 +75,7 @@ class DateTimePartValuesTest(SimpleTestCase):
         self.assertEqual(buffers["hour"], "02")
         self.assertEqual(buffers["day"], "08")
 
-    def test_folds_the_hour_and_labels_the_day_period_under_a_12_hour_profile(self):
+    def test_combines_the_hour_and_labels_the_day_period_under_a_12_hour_profile(self):
         buffers, display = datetime_part_values(
             "2026-07-27T14:30:00+00:00", _presentation(_MDY_12H_PROFILE)
         )
@@ -83,7 +83,7 @@ class DateTimePartValuesTest(SimpleTestCase):
         self.assertEqual(buffers["day_period"], "01")
         self.assertEqual(display["day_period"], "PM")
 
-    def test_midnight_and_noon_are_the_ends_of_the_12_hour_fold(self):
+    def test_midnight_and_noon_are_the_ends_of_the_12_hour_cycle(self):
         presentation = _presentation(_MDY_12H_PROFILE)
         midnight, _ = datetime_part_values("2026-07-27T00:05:00+00:00", presentation)
         noon, _ = datetime_part_values("2026-07-27T12:05:00+00:00", presentation)

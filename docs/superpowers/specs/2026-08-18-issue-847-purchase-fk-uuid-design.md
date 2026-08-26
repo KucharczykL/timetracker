@@ -98,13 +98,13 @@ coercion.
   anonymizer as a *lookup* problem — a per-game offset map keyed by the wrong
   identity. `related_game` is an *assignment*: the command reassigns each add-on
   purchase to a random game, so the pk→uuid translation is needed on the write
-  side. Folded into checklist item 4.
+  side. Merged into checklist item 4.
 - **The anonymizer and the loader are not independently green.** The plan
   expected the anonymizer task to pass on its own; it cannot.
   `test_output_reloads_via_loaddata` runs `load_sample_data` over the
   anonymizer's fresh output, so it stays red until the loader declares
   `reference_field="uuid"` — which the plan had scheduled as the next task. Also
-  folded into item 4.
+  merged into item 4.
 - **`Purchase` has no `Meta` at all**, so ID-07's constraint-cascade trap
   (checklist item 6) had nothing to take down and restore on the model. It does
   apply to `games_purchase_games`, whose auto-created `unique_together` is over

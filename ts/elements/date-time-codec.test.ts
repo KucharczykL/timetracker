@@ -90,7 +90,7 @@ describe("date-time codec encode", () => {
     expect(codec.encode(PARTS, true)).toBe("2026-07-27T14:30:41.123456+02:00");
   });
 
-  it("folds a 12-hour clock and its day period into a 24-hour wall clock", async () => {
+  it("combines a 12-hour clock and its day period into a 24-hour wall clock", async () => {
     const codec = await codecFor("Europe/Prague", "h12");
 
     const afternoon = { ...PARTS, hour: "02", minute: "30", day_period: "01" };
@@ -246,7 +246,7 @@ describe("pasted wall clock", () => {
     });
   });
 
-  it("folds a day period in the profile's own order", async () => {
+  it("combines a day period in the profile's own order", async () => {
     expect(await parse("07/27/2026 02:30 PM", MDY_DATE_PARTS, "h12")).toEqual({
       date: "2026-07-27",
       hour: "14",

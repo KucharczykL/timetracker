@@ -203,7 +203,7 @@ class DateTimeFieldElement extends HTMLElement {
         const parts = { ...current };
         if (pasted.date) Object.assign(parts, dateCodec.decode(pasted.date));
         if (pasted.hour) {
-          // Decoding a synthetic wire value is what folds a 24-hour clock into
+          // Decoding a synthetic wire value is what maps a 24-hour clock into
           // whichever segments this profile renders, day period included.
           const time = this.codec.decode(`2000-01-01T${pasted.hour}:${pasted.minute}`);
           Object.assign(parts, {

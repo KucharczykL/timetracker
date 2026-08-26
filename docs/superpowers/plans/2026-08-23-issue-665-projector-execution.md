@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Fold every appended event through an ordered set of projector families,
+**Goal:** Run every appended event through an ordered set of projector families,
 inside the append's own transaction, under the stream-head lock — with a registry
 that does not depend on import order and a payload rule that makes an append-time
 event equal to the one a replay reads.
@@ -53,7 +53,7 @@ of real families. Two importable modules called `projectors` is a standing trap.
 what belongs in it. #671 adds the first family.
 
 **Modify `games/events/append.py`** — `PayloadNotCanonical`, `canonical_json`, the
-`registry` parameter, the guard, and the fold.
+`registry` parameter, the guard, and the loop.
 
 **Modify `games/events/idempotency.py` and `games/events/dispatch.py`** — one
 defaulted parameter each, passed straight down. Nothing else.
@@ -192,7 +192,7 @@ No database. Everything here is definition-time behaviour.
 **Steps:**
 
 - [ ] `LockedStream.append` gains `registry: ProjectorRegistry = DEFAULT_REGISTRY`
-      and, after `head.save(...)`, folds the rows: `for event in rows:
+      and, after `head.save(...)`, runs the rows: `for event in rows:
       registry.apply(event)` — event-major, in the order the rows were built.
 - [ ] `idempotent_append` and `dispatch` gain the same defaulted parameter and
       pass it down. They do nothing else with it.
@@ -216,9 +216,9 @@ No database. Everything here is definition-time behaviour.
   `django_db(transaction=True)`; the ordinary `django_db` fixture wraps the test
   in a transaction and `run_in_transaction` refuses to nest. `tests/test_event_retry.py`
   already does this throughout.
-- Fold **after** the head advance, so a handler reading the head sees the
+- Run **after** the head advance, so a handler reading the head sees the
   post-append value. The test above pins this.
-- The fold happens before `AppendResult` is constructed but operates on the same
+- The run happens before `AppendResult` is constructed but operates on the same
   row objects the result will carry.
 - `import games.projectors` in `ready()` is a no-op today. It is there so the
   seam is exercised, not because it does anything yet.
@@ -274,7 +274,7 @@ No database. Everything here is definition-time behaviour.
       - `ProjectorPhase` — an ordered phase enum giving families a per-append
         aggregate hook, plus a decision about what a batch means during replay.
       - Relation prefetching on the replay read, so a family touching
-        `event.actor` is not an N+1 across a rebuild. Fold into #667 if #667's
+        `event.actor` is not an N+1 across a rebuild. Merge into #667 if #667's
         own planning already owns it.
 - [ ] Comment on #665 linking the spec and this plan.
 

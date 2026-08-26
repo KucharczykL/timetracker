@@ -31,7 +31,7 @@ Do not add `whitespace-nowrap`, a sticky column, a scroll region, a caption, or 
 ## What shipped, and where it deviated
 
 All five tasks landed in #525. Four places where the shipped code is not what the
-task steps originally said — the first three are folded into the steps below,
+task steps originally said — the first three are merged into the steps below,
 since as written they could not pass:
 
 - **The mobile-only assertion scans cells, not the whole document.** The first

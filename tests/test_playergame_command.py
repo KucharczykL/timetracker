@@ -185,7 +185,7 @@ def track(actor, library, game):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_setting_a_status_records_it_and_folds_it(owned_user, owned_library):
+def test_setting_a_status_records_it_and_projects_it(owned_user, owned_library):
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     track(owned_user, owned_library, game)
 

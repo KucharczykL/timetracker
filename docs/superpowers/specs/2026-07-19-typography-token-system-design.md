@@ -44,7 +44,7 @@ Defined in `common/input.css` `@theme`. **10 roles** (dialog kept separate from 
 | `text-type-micro-caps` | 12px / 500 / uppercase, tracking-wide | `MICRO_LABEL_CLASS` |
 | `text-type-input` | 16px / 400 | `INPUT_CLASS` / `SELECT_CLASS` / `TEXTAREA_CLASS` (flat 16) |
 
-**Badge** folds into these for **size** — sm→`text-type-micro` (12), base→`text-type-body` (14), lg→`text-type-heading` (24) — and keeps its composed `font-semibold`. No Badge-local scale, no `# type-ok` marker needed.
+**Badge** maps onto these for **size** — sm→`text-type-micro` (12), base→`text-type-body` (14), lg→`text-type-heading` (24) — and keeps its composed `font-semibold`. No Badge-local scale, no `# type-ok` marker needed.
 
 **Tokens own size + weight + leading + tracking only — never color.** Color stays on the existing `text-heading`/`text-body`/`text-body-subtle` color utilities, composed alongside the type token (e.g. a label is `text-type-label text-heading`). The two namespaces coexist precisely because the type roles are prefixed.
 
@@ -91,7 +91,7 @@ Defined in `common/input.css` `@theme`. **10 roles** (dialog kept separate from 
 - **Update the 2 test pins P1 breaks:** `tests/test_components.py:916` (button CQ `text-xs`/`@md:text-sm`), `tests/test_search_select.py:913` (`class="block text-sm"`).
 
 ### P2 — legacy kill (dovetails #409)
-- `.responsive-table` typography (`text-xl` headers, inherited 16px cells) → StyledTable tokens (`text-type-body`/`text-type-micro`). Coordinate with / fold #409.
+- `.responsive-table` typography (`text-xl` headers, inherited 16px cells) → StyledTable tokens (`text-type-body`/`text-type-micro`). Coordinate with / merge #409.
 
 ### P3 — enforce
 - Add a test that greps for raw **size** utilities (`text-xs|sm|base|lg|xl|2xl|...` and arbitrary `text-[...]`) — **not** `font-*`, which stays legal for weight-only emphasis composition. Allow a per-line `# type-ok: <reason>` marker for the sanctioned exceptions (wordmark, Badge-local scale).
@@ -126,7 +126,7 @@ Each phase is independently reviewable and leaves the app green.
 
 1. **Dialog vs H2:** kept as two distinct 24px tokens — `text-type-heading` (700, H2) and `text-type-dialog` (500, modal titles). Preserves #426's medium dialog weight. No collapse.
 2. **H3:** kept distinct as `text-type-subheading` (20/700). No shrink to section. `text-type-section` (18/600) is for block/section headings only.
-3. **Badge:** folds into type tokens for size (sm→micro, base→body, lg→heading), keeps composed `font-semibold`. No Badge-local scale.
+3. **Badge:** maps onto type tokens for size (sm→micro, base→body, lg→heading), keeps composed `font-semibold`. No Badge-local scale.
 4. **Stale comment:** fix `input.css`'s `--font-condensed` "no current uses" note (Badge/dense surfaces use it) while in the file.
 
 ## Issue coordination

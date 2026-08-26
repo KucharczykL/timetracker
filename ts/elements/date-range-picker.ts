@@ -54,7 +54,7 @@ import {
 // Fired whenever a committed bound actually changes — segment typing or a
 // calendar/preset pick (issue #192). The flat filter bar reads the hidden inputs
 // at serialize time (pull), but the nested filter builder's date leaf needs a push
-// signal to fold the new value into its tree node. detail carries both ISO bounds
+// signal to merge the new value into its tree node. detail carries both ISO bounds
 // ("" when a side is empty) so a consumer needn't re-query the DOM.
 export const DATE_RANGE_CHANGE_EVENT = "date-range:change";
 

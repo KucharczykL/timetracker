@@ -2,8 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Fold an existing library stream through a projector registry the same
-way `append` folds the events it just wrote, so a projection can be rebuilt from
+**Goal:** Replay an existing library stream through a projector registry the same
+way `append` runs the events it just wrote, so a projection can be rebuilt from
 the event store and proven identical to what the write path produced.
 
 **Architecture:** One new module, `games/events/replay.py`, holding
@@ -40,7 +40,7 @@ order.
 ## File structure
 
 **Create `games/events/replay.py`** — the whole deliverable. It is the read
-counterpart of `append.py` and the only other place the fold loop is written.
+counterpart of `append.py` and the only other place the replay loop is written.
 
 **Create `tests/test_event_replay.py`** — families declared at module level
 against a registry the module owns, exactly as `tests/test_event_projectors.py`
@@ -69,7 +69,7 @@ class StreamNotContiguous(Exception): ...
 @dataclass(frozen=True, slots=True)
 class ReplayResult:
     stream_id: uuid.UUID | None
-    folded_through: int
+    replayed_through: int
 
 
 def replay(
@@ -88,7 +88,7 @@ def replay(
       Every test below drives that registry, never `DEFAULT_REGISTRY`.
 - [ ] `replay` reads the head with
       `LibraryEventStreamHead.objects.filter(library=library).first()`. `None`
-      returns `ReplayResult(stream_id=None, folded_through=0)` **without creating
+      returns `ReplayResult(stream_id=None, replayed_through=0)` **without creating
       a head row**.
 - [ ] Bound the read at the head's `current_sequence`, read
       `LibraryEvent.objects.filter(stream_id=head.id, sequence__lte=bound)
@@ -102,16 +102,16 @@ def replay(
       and the one found.
 - [ ] After the loop: `previous` must equal the bound, or raise
       `StreamNotContiguous` naming the sequence the head promised and the one the
-      fold reached.
+      replay reached.
 - [ ] Return `ReplayResult(head.id, bound)`.
 
 **Tests (write each before the code it covers):**
 
-- [ ] a single-append stream folds every event, in sequence order, into the
+- [ ] a single-append stream replays every event, in sequence order, into the
       module's recorder
-- [ ] the result carries the stream id and `folded_through` equal to the head's
+- [ ] the result carries the stream id and `replayed_through` equal to the head's
       `current_sequence`
-- [ ] a head at sequence zero folds nothing and returns that stream id with zero
+- [ ] a head at sequence zero replays nothing and returns that stream id with zero
 - [ ] a library with no head returns `(None, 0)` **and**
       `LibraryEventStreamHead.objects.filter(library=library).exists()` is still
       false afterwards
@@ -119,7 +119,7 @@ def replay(
       missing sequence, and the recorder holds exactly the events before the gap
 - [ ] deleting the last event raises, and the message names the sequence the head
       promised
-- [ ] an event type no family handles is folded and applied to nothing
+- [ ] an event type no family handles is replayed and applied to nothing
 - [ ] a handler raising `KeyError` propagates as `KeyError`, with
       `error.__notes__` naming the family, the event type, and the sequence
 
@@ -188,9 +188,9 @@ Task 1; `lock_stream`/`NewEvent` from `games.events.append`;
 
 **Tests:**
 
-- [ ] **fold parity**: append several events (one `append` call with three
+- [ ] **replay parity**: append several events (one `append` call with three
       `NewEvent`s, plus a second append, so the stream spans two actions), keep
-      the list the append fold recorded, clear the sink, `replay(library)`, and
+      the list the append run recorded, clear the sink, `replay(library)`, and
       assert the replayed list **equals** the appended list — full
       `RecordedEvent` values, in order. This is the issue's acceptance criterion.
 - [ ] **determinism**: clear the sink, replay again, assert the second recording
@@ -203,10 +203,10 @@ Task 1; `lock_stream`/`NewEvent` from `games.events.append`;
       `DECLARE`, whatever N is. The `FETCH`es are not logged, and the count is the
       same transactional or not
 - [ ] **the bound**: replay, then append two more events, and assert the first
-      result's `folded_through` is the old head; a second replay covers the new
+      result's `replayed_through` is the old head; a second replay covers the new
       events and reports the new head
 - [ ] **isolation**: two libraries with streams of different lengths; replaying
-      one folds only its own events (assert on the `library_id` of everything the
+      one replays only its own events (assert on the `library_id` of everything the
       recorder saw)
 
 **Gotchas:**
@@ -245,7 +245,7 @@ Task 1; `lock_stream`/`NewEvent` from `games.events.append`;
 
 ## Self-review notes
 
-- **The fold loop is the deliverable, not the read.** Everything else in the
+- **The replay loop is the deliverable, not the read.** Everything else in the
   module exists to make `registry.apply(RecordedEvent.from_row(row))` happen once
   per event in sequence order. A reviewer should be able to see that the loop is
   the append's loop with a different source of rows.

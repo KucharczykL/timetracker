@@ -153,7 +153,7 @@ become tuples (`frozendict.deepfreeze`).
 What remains is narrow and was already narrowed by #665: the payload is a fresh
 round-tripped dict, and the row is already inserted, so a mutation cannot reach
 the command or the database. The whole exposure is one family mutating what a
-later family in the same fold reads — reviewable, and symmetric between append
+later family in the same run reads — reviewable, and symmetric between append
 and replay because both decode a fresh dict.
 
 The docstring says the dicts are read-only. That is discipline, and it is the one
@@ -291,7 +291,7 @@ and should solve with a per-rebuild cache rather than by restoring the relation.
 
 **Nested payload mutation.** Not closed, and cannot be closed cheaply; see the
 measurement above. `event.payload["nested"]["x"] = 1` still succeeds and the next
-family in the fold sees it.
+family in the run sees it.
 
 **A projector holding a queryset from the event.** Also deliberate: a family that
 wants the event's siblings should be given a reason to ask for them explicitly,

@@ -191,7 +191,7 @@ class CalendarControlButtonTest(SimpleTestCase):
                 self.assertIn("disabled:opacity-50", classes)
 
     def test_every_day_variant_is_rounded(self):
-        """Rounding, fill and dimming are orthogonal. Folding them into one
+        """Rounding, fill and dimming are orthogonal. Merging them into one
         if/else chain is exactly what left selected and adjacent-month cells
         square, so each variant must carry the radius independently."""
         from common.components.date_range_picker import CALENDAR_DAY_CLASSES

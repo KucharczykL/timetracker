@@ -62,8 +62,8 @@ class Command(BaseCommand):
             "--keep", action="store_true", help="Leave the scratch library."
         )
         parser.add_argument(
-            "--no-count-fold",
-            dest="count_fold",
+            "--no-count-replay",
+            dest="count_replay",
             action="store_false",
             help="Do not instrument the rebuild; use for a verdict inside the overhead.",
         )
@@ -87,7 +87,7 @@ class Command(BaseCommand):
                 warmup=options["warmup"],
                 library=library,
                 keep=options["keep"],
-                count_fold=options["count_fold"],
+                count_replay=options["count_replay"],
                 announce_scratch_user=(
                     self._announce_scratch_user if options["keep"] else None
                 ),
@@ -169,8 +169,8 @@ class Command(BaseCommand):
             )
         if report.amplification is not None:
             self._write_work("Per command", report.amplification)
-        if report.fold is not None:
-            self._write_work("Per folded event", report.fold)
+        if report.replay is not None:
+            self._write_work("Per replayed event", report.replay)
         if report.rebuild is not None:
             self._write_rebuild(report.rebuild)
         if report.teardown_seconds is not None:
@@ -208,7 +208,7 @@ class Command(BaseCommand):
 
     def _write_rebuild(self, rebuild: RebuildReport) -> None:
         self.stdout.write(
-            f"Rebuild: folded {rebuild.folded_through} event(s) through "
+            f"Rebuild: replayed {rebuild.replayed_through} event(s) through "
             f"{len(rebuild.tables)} table(s) in {rebuild.elapsed_seconds:.2f}s "
             f"over {len(rebuild.attempts)} attempt(s)."
         )

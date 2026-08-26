@@ -47,7 +47,7 @@ error.
 ## The verdicts
 
 A budget gives `PASSED`, `MISSED` or `NOT_GATED`. The rebuild budget scales on
-`folded_through`. Below 2,000 folded events, or below 20 samples, the tool
+`replayed_through`. Below 2,000 replayed events, or below 20 samples, the tool
 reports the measurement but no verdict. Linear scaling holds from 2,000 events
 up.
 
@@ -64,7 +64,7 @@ lock names none, so a count per table alone hides the cost.
 shadow-write guard uses it too. A statement against `<table>__shadow` counts
 against `<table>`.
 
-`--no-count-fold` removes the counter from the rebuild. Use it when a verdict lands
+`--no-count-replay` removes the counter from the rebuild. Use it when a verdict lands
 inside the cost of the instrument.
 
 ## Limits

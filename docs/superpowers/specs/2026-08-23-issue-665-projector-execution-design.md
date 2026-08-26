@@ -16,7 +16,7 @@ Django projection models. They do not replay events during requests."
 ## What it is
 
 A registry of ordered projector families, and one call inside the append path
-that folds every appended event through them — under the stream-head lock, in the
+that runs every appended event through them — under the stream-head lock, in the
 command's transaction, in an order that does not depend on import order.
 
 ## Ownership boundary
@@ -82,7 +82,7 @@ identity result is its twin: a family mutating `event.payload` would mutate the
 
 ### Projectors run inside `LockedStream.append`
 
-`append` writes the rows, advances the head, and then folds those rows through
+`append` writes the rows, advances the head, and then runs those rows through
 the registry — all before returning, all under the lock it was already holding,
 all in the caller's transaction.
 
@@ -156,7 +156,7 @@ so #671 may add, rename, or reorder members freely. That is the difference from
 A family claiming a member another class already claimed raises at class
 definition, guarded on `(module, qualname)` the way `_COMMAND_REGISTRY` is.
 
-### The fold is event-major
+### The loop is event-major
 
 ```
 for event in appended order:
@@ -166,14 +166,14 @@ for event in appended order:
 
 Appending N events and replaying those same N events therefore run the identical
 sequence of applications. Parity is structural rather than tested-and-hoped, and
-it is the only shape that streams — #666 folding a hundred thousand events cannot
+it is the only shape that streams — #666 replaying a hundred thousand events cannot
 buffer them to hand a family a whole batch.
 
 Family-major would coalesce writes: one Journal row per action instead of one per
 event. The charter already supplies that without a batch, because "a compound
 user action shares a correlation ID… this lets the Journal render one meaningful
 entry", and `correlation_id` is a column on every event row. One row per action is
-an upsert keyed on it — expressible event-major, and replay-safe, since re-folding
+an upsert keyed on it — expressible event-major, and replay-safe, since re-running
 upserts the same row. This is what Marten calls slicing: a grouping key, not a
 transaction boundary. Marten's own async daemon re-batches events into arbitrary
 pages precisely so no projection can depend on the original grouping.
@@ -443,12 +443,12 @@ Payload canonicality:
 
 ## What this shape forecloses
 
-**A per-append aggregate phase.** A family folds one event at a time and has no
+**A per-append aggregate phase.** A family handles one event at a time and has no
 hook that sees a whole action. The escape hatch is your ordered enum:
 `ProjectorPhase` with members in run order, each handler declaring its phase, the
 loop becoming phase-major over event-major. It is purely additive — every existing
 family reads as `PER_EVENT` — which is exactly why it is not built now. What it
-does not do is answer the hard part: what "a batch" means when #666 folds an
+does not do is answer the hard part: what "a batch" means when #666 replays an
 existing stream. Filed as a follow-up.
 
 **Pointing a family at a different write target.** A family is instantiated with
@@ -459,7 +459,7 @@ makes that a change to one class instead of to every projector.
 **A projector observing another projector.** Families see events, never each
 other's output events, because a projector cannot append. Deliberate: a projector
 that emitted events would need its own place in the sequence, its own idempotency
-story, and would make replay a fixpoint rather than a fold.
+story, and would make replay a fixpoint rather than a single pass.
 
 The refusal is enforced, but obliquely: a projector calling `dispatch` is already
 inside `run_in_transaction`'s transaction, so it raises
@@ -497,8 +497,8 @@ Filed and listed in #601 under "Follow-ups from the projector boundary", so the
 phase tracks them rather than this document alone:
 
 - #913 — `ProjectorPhase`, an ordered phase enum giving families a per-append
-  aggregate hook. It must first answer what a batch means when replay folds an
+  aggregate hook. It must first answer what a batch means when replay covers an
   existing stream, which is the reason it is not built here.
 - #914 — relation prefetching on the replay read, so a family touching
-  `event.actor` is not an N+1 across a rebuild. Close as folded in if #667's own
+  `event.actor` is not an N+1 across a rebuild. Close as merged in if #667's own
   specification already covers it.

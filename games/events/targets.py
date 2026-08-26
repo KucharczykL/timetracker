@@ -17,7 +17,7 @@ type ModelNamespace = dict[str, Any]
 
 
 class ProjectionTarget(Protocol):
-    """The tables one fold writes."""
+    """The tables one handler writes."""
 
     def model[M: ProjectionModel](self, model: type[M]) -> type[M]: ...
 

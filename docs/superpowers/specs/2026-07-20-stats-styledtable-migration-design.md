@@ -124,7 +124,7 @@ Imports: drop `Table`, `Tbody`, `Td`, `Th`, `Thead`, `Tr`; add `StyledTable`, `C
   all" buttons, Unfinished shows Name/Date/Price (Date hides below `sm`, Price stays), no
   indigo/slate anywhere, no play-icon underline.
 
-## Update — card-grid redesign folded in (split reversed)
+## Update — card-grid redesign merged in (split reversed)
 
 The split was **reversed** after live review: on the kept single-column layout the `w-full`
 StyledTables read poorly (values floating mid-width, headings hard against the table below,

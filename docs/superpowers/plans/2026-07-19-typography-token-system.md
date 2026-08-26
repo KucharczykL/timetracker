@@ -503,7 +503,7 @@ Expected: FAIL.
 
 - [ ] **Step 3: Migrate the table type**
 
-In `common/input.css`, change `.responsive-table thead th { @apply ... text-xl; }` → drop `text-xl` (headers inherit token size from the migrated markup). In `games/views/stats_content.py` `_table()`, add `text-type-micro` to header cells and `text-type-body` to body cells (or, if folding #409, migrate the whole table to `StyledTable` — out of scope here unless #409 is done jointly; the minimal P2 is the type only).
+In `common/input.css`, change `.responsive-table thead th { @apply ... text-xl; }` → drop `text-xl` (headers inherit token size from the migrated markup). In `games/views/stats_content.py` `_table()`, add `text-type-micro` to header cells and `text-type-body` to body cells (or, if merging #409, migrate the whole table to `StyledTable` — out of scope here unless #409 is done jointly; the minimal P2 is the type only).
 
 - [ ] **Step 4: Rebuild + run**
 

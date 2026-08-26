@@ -98,7 +98,7 @@ _NAV_BUTTON_GEOMETRY_CLASS = "w-11 shrink-0"
 # 42 cells are cloned client-side — see date_calendar_shell's day template.
 #
 # Rounding is applied to EVERY variant, not just the unselected one: rounding,
-# fill and dimming are orthogonal, and folding them into one if/else chain is
+# fill and dimming are orthogonal, and merging them into one if/else chain is
 # exactly what left selected and adjacent-month cells square.
 type CalendarDayVariant = str  # e.g. "selected"
 CALENDAR_DAY_CLASSES: dict[CalendarDayVariant, str] = {
@@ -174,7 +174,7 @@ def date_segment_input(
     segment_id: str = "",
 ) -> Node:
     """One typed digit-entry segment (e.g. the ``YYYY`` part). ``side_label``
-    ("from"/"to" for a range side) is folded into the segment's aria-label;
+    ("from"/"to" for a range side) is merged into the segment's aria-label;
     empty for a single-date field. ``segment_id`` stamps a DOM id on this one
     segment — used to put the field's real id on the first segment so a
     ``<label for=>`` focuses it (single-date fields only; range sides have no

@@ -192,7 +192,7 @@ export interface DigitEntry {
   complete: boolean;
 }
 
-// Fold a freshly typed digit into a part's buffer, clamping to the part's max
+// Merge a freshly typed digit into a part's buffer, clamping to the part's max
 // and deciding whether to auto-advance. A digit that cannot validly extend the
 // current value (e.g. 9 into a ≤12 month, or a second digit pushing past the
 // max) commits as a zero-padded single digit and completes; an ambiguous digit

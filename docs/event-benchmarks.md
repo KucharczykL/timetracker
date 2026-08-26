@@ -47,10 +47,10 @@ Per command: 9.0 statement(s), 1.0 to projections (1.0 row(s)), 4.0 to the event
     games_libraryeventstreamhead: 200 statement(s), 200 row(s)
     games_libraryidempotencyrecord: 200 statement(s), 200 row(s)
     games_playergame: 200 statement(s), 200 row(s)
-Per folded event: 1.0 statement(s), 1.0 to projections (3.0 row(s)), 0.0 to the event store (0.0 row(s)), over 100410 event(s).
+Per replayed event: 1.0 statement(s), 1.0 to projections (3.0 row(s)), 0.0 to the event store (0.0 row(s)), over 100410 event(s).
     games_playergame: 2 statement(s), 200820 row(s)
     games_playergame__shadow: 100410 statement(s), 100410 row(s)
-Rebuild: folded 100410 event(s) through 1 table(s) in 16.26s over 1 attempt(s).
+Rebuild: replayed 100410 event(s) through 1 table(s) in 16.26s over 1 attempt(s).
     attempt 1: replay 15.31s, diff 0.07s, swap 0.87s
     games_playergame: 100410 live, 100410 rebuilt, no difference
 Teardown: 50.42s.
@@ -64,25 +64,25 @@ rebuild: 16.258s against 60.246s -- passed
 events is 60.246 s; the run took 16.258 s.
 
 The previous recording took 60.223 s and passed by 23 milliseconds. Issue
-**#930** named the reason: the fold was an `update_or_create`, which PostgreSQL
+**#930** named the reason: the handler was an `update_or_create`, which PostgreSQL
 saw as `SAVEPOINT`, `SELECT ... FOR UPDATE`, `SAVEPOINT`, `INSERT`, `RELEASE`,
 `RELEASE`. Five of those six statements searched a shadow table that a replay
-starts empty. The fold is now one `INSERT ... ON CONFLICT (id) DO UPDATE`, and
+starts empty. The handler is now one `INSERT ... ON CONFLICT (id) DO UPDATE`, and
 the replay phase alone fell from 59.24 s to 15.31 s.
 
 The run was repeated with the statement counter switched off, as the previous
 recording was:
 
 ```
-make bench ARGS="--gate --no-count-fold"
+make bench ARGS="--gate --no-count-replay"
 
-Rebuild: folded 100410 event(s) through 1 table(s) in 16.59s over 1 attempt(s).
+Rebuild: replayed 100410 event(s) through 1 table(s) in 16.59s over 1 attempt(s).
     attempt 1: replay 15.57s, diff 0.07s, swap 0.95s
     games_playergame: 100410 live, 100410 rebuilt, no difference
 rebuild: 16.591s against 60.246s -- passed
 ```
 
-Uninstrumented, the fold takes **16.59 s** — slower than the instrumented run,
+Uninstrumented, the replay takes **16.59 s** — slower than the instrumented run,
 which is what run-to-run noise looks like. At 6 statements an event
 `connection.execute_wrapper` cost 600,000 Python calls and was worth separating
 from the verdict; at 1 it costs 100,410 and no longer shows.
@@ -90,7 +90,7 @@ from the verdict; at 1 it costs 100,410 and no longer shows.
 Read the number the way the previous recording asked to be read: **one projector
 family costs a quarter of the 60-second rebuild budget, not all of it.** That is
 the whole point of the change. JOURNAL and STATS are the two families the charter
-still expects, and nothing here promises they fold as cheaply — a family that
+still expects, and nothing here promises they cost as little — a family that
 reads before it writes pays for the read. What the budget now has is room to
 measure them in, rather than a deficit to argue about.
 
@@ -136,9 +136,9 @@ falls from 8.6 ms to 3.9 ms.
 Which plan a run got used to depend on how long its seed took. Autovacuum wakes
 once a minute; the previous recording's seed ran for 65 s, so an autoanalyze
 fired inside it and the command was measured against statistics that described
-the data. The cheaper fold seeds in 26 s, finishes inside one naptime, and first
+the data. The cheaper handler seeds in 26 s, finishes inside one naptime, and first
 recorded **8.6 ms** — a command latency twice the old one, produced entirely by
-making the fold five statements cheaper. The seed now analyzes what it wrote, so
+making the handler five statements cheaper. The seed now analyzes what it wrote, so
 the number stops depending on that race.
 
 ## Cost per event
@@ -147,22 +147,22 @@ the number stops depending on that race.
 | --- | --- |
 | Command p50 / p95 / max | 3.9 ms / 4.5 ms / 7.9 ms, against a 100 ms budget |
 | Statements per command | 9 — 4 to the event store, 1 to the projection, the rest lookups and transaction control |
-| Statements per folded event | 1.00 |
-| Rows per folded event | 1 |
+| Statements per replayed event | 1.00 |
+| Rows per replayed event | 1 |
 | Rebuild fixed cost | 13 statements, independent of the event count |
 
-The per-event fold cost is a **slope, not an average**. Measured at three sizes,
-the fold executes `1 × events + 13` statements exactly, so a 10-event rebuild
+The per-event replay cost is a **slope, not an average**. Measured at three sizes,
+the replay executes `1 × events + 13` statements exactly, so a 10-event rebuild
 averages 2.3 statements per event and a 100,410-event rebuild averages 1.0. Two
 of the 13 fixed statements are the swap itself, which is why a small rebuild's
 `games_playergame` line reports 2 statements against a shadow table's many.
 
 The command line counts a whole `dispatch`: the append, the reference rows, the
-stream head, the idempotency record, and the synchronous fold. It is the number
+stream head, the idempotency record, and the synchronous handlers. It is the number
 the 100 ms budget judges, and it is 22× under it.
 
 `project()` refuses a call that names less than the whole row, and pays for the
-check per fold. Measured directly: 19 ms for 100,410 calls, or 0.19 µs each. The
+check per event. Measured directly: 19 ms for 100,410 calls, or 0.19 µs each. The
 columns a model requires are resolved once and held per model, which is why a
 rule enforced on every event does not appear in the rebuild time.
 

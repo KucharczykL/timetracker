@@ -3,7 +3,7 @@ does with an event.
 
 A family is one class owning one projection concern. It declares the event types
 it handles as a mapping keyed on their `EventSpec` constants, and the append path
-folds every appended event through every family that claims its type -- in the
+runs every appended event through every family that claims its type -- in the
 same transaction, under the same stream-head lock.
 
 A family is handed a `RecordedEvent`, never the row, so nothing here holds a
@@ -193,11 +193,11 @@ DEFAULT_REGISTRY = ProjectorRegistry()
 
 
 def _required_columns(model: type[ProjectionModel]) -> tuple[ColumnNames, ...]:
-    """Every column that nothing but a fold fills.
+    """Every column that nothing but a handler fills.
 
     A key, a generated column, a default and an `auto_now` stamp all arrive
     without being named. Everything else arrives as a null. Resolved once per
-    model, because a replay asks this of every event it folds.
+    model, because a replay asks this of every event it replays.
     """
     resolved = _REQUIRED_COLUMNS.get(model)
     if resolved is None:
@@ -263,8 +263,8 @@ class Projector(ABC):
         unfilled = _unfilled_columns(projected, columns)
         if unfilled:
             raise TypeError(
-                f"{model.__qualname__} was folded without "
-                f"{', '.join(unfilled)}. A fold writes the whole row: the live "
+                f"{model.__qualname__} was written without "
+                f"{', '.join(unfilled)}. A handler writes the whole row: the live "
                 "path keeps what it is not given, and a rebuild inserts a null "
                 "in its place, so the two paths would disagree."
             )
@@ -286,7 +286,7 @@ class Projector(ABC):
         `project()` cannot serve this: an event that changes one column knows
         nothing of the columns the creation event wrote.
 
-        A missing row is refused rather than inserted. A replay folds a stream
+        A missing row is refused rather than inserted. A replay goes through a stream
         in sequence order, so an insert here would write a part-row that a
         rebuild could not reproduce.
         """
@@ -297,7 +297,7 @@ class Projector(ABC):
         if changed != 1:
             raise ProjectionRowMissing(
                 f"{model.__qualname__} has no row {identity} to amend. An event "
-                "that changes part of a row is folded after the event that "
+                "that changes part of a row is handled after the event that "
                 "created it, so a missing row is a broken stream rather than a "
                 "first write."
             )

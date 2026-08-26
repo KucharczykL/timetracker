@@ -16,9 +16,9 @@ would mean Completed forever.
 ## How a projection row gets its columns
 
 This rule applies to each projection of the phase. A column an event states has
-no default, and the creating fold must name it. A column no event states has a
+no default, and the creating handler must name it. A column no event states has a
 constant default: `PlayerGame.status` starts at `unplayed`. The default also
-makes the creation fold safe to repeat, because `project()` names its columns in
+makes the creation handler safe to repeat, because `project()` names its columns in
 `update_fields`.
 
 A creation payload does not grow a column later. #675, #694 and #727 each add
@@ -37,7 +37,7 @@ primary key, through the target's model, with no read. `project()`
 cannot serve this, because an event that changes one column knows nothing of
 the others.
 
-A missing row raises `ProjectionRowMissing`. A replay folds in sequence order,
+A missing row raises `ProjectionRowMissing`. A replay runs in sequence order,
 so the row exists already; an insert here would write a part-row a rebuild
 cannot reproduce.
 

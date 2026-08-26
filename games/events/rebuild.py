@@ -161,7 +161,7 @@ def replay_into_shadow(
     *,
     wiring: EventWiring = DEFAULT_WIRING,
 ) -> ReplayResult:
-    """Fold the stream into the shadow tables."""
+    """Replay the stream into the shadow tables."""
     tables = list(models)
     _require_shadow_tables(tables)
     shadow_wiring = replace(
@@ -295,12 +295,12 @@ _INSERT_REBUILT_ROWS = (
 def swap_in(
     library: UserLibrary,
     models: Iterable[type[ProjectionModel]],
-    folded_through: int,
+    replayed_through: int,
 ) -> None:
     """Put the rebuilt rows in place."""
     with transaction.atomic():
         stream = lock_stream(library)
-        stream.require_sequence(folded_through)
+        stream.require_sequence(replayed_through)
         with connection.cursor() as cursor:
             for model in models:
                 table = connection.ops.quote_name(model._meta.db_table)
@@ -335,7 +335,7 @@ class RebuildMode(StrEnum):
 class RebuildAttempt:
     """One pass through the phases, timed."""
 
-    folded_through: int
+    replayed_through: int
     replay_seconds: float
     diff_seconds: float
     #: None when the swap was not reached.
@@ -353,7 +353,7 @@ class RebuildReport:
     stream_id: uuid.UUID | None
     mode: RebuildMode
     swapped: bool
-    folded_through: int
+    replayed_through: int
     #: A moved head makes a check advisory.
     head_at_diff: int
     tables: tuple[TableDiff, ...]
@@ -363,7 +363,7 @@ class RebuildReport:
 
 @dataclass(frozen=True, slots=True)
 class _StagedRebuild:
-    """One attempt, folded and diffed, not swapped."""
+    """One attempt, replayed and diffed, not swapped."""
 
     replayed: ReplayResult
     replay_seconds: float
@@ -375,7 +375,7 @@ class _StagedRebuild:
         self, *, swap_seconds: float | None, conflict: str | None
     ) -> RebuildAttempt:
         return RebuildAttempt(
-            folded_through=self.replayed.folded_through,
+            replayed_through=self.replayed.replayed_through,
             replay_seconds=self.replay_seconds,
             diff_seconds=self.diff_seconds,
             swap_seconds=swap_seconds,
@@ -397,7 +397,7 @@ class _StagedRebuild:
             stream_id=stream_id,
             mode=mode,
             swapped=swapped,
-            folded_through=self.replayed.folded_through,
+            replayed_through=self.replayed.replayed_through,
             head_at_diff=self.head_at_diff,
             tables=self.tables,
             attempts=tuple(attempts),
@@ -461,7 +461,7 @@ def rebuild_projections(
 
             swap_started = monotonic()
             try:
-                swap_in(library, models, staged.replayed.folded_through)
+                swap_in(library, models, staged.replayed.replayed_through)
             except StreamSequenceMismatch as conflict:
                 attempts.append(
                     staged.attempt(swap_seconds=None, conflict=str(conflict))

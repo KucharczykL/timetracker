@@ -69,7 +69,7 @@ matches at `-04:00`).
 ### Second verification pass
 
 A later reviewer re-checked every claim against the code. Seven corrections are
-folded in below and flagged inline as **[corrected]**; the rest confirmed. The two
+merged in below and flagged inline as **[corrected]**; the rest confirmed. The two
 substantive ones: phase 2a's "byte-identical markup" and its ARIA work were
 contradictory as written, and one quoted contrast figure was attributed to the
 wrong token.

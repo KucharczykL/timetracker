@@ -41,7 +41,7 @@ and the time.
 
 The `Reference` type connects the event to the reference registry. `append`
 writes a `LibraryEventReference` row. The tombstone then refuses a hard delete
-of the game. A fold refuses a reference that resolves to nothing.
+of the game. A handler refuses a reference that resolves to nothing.
 
 ## The command
 
@@ -62,7 +62,7 @@ event.
 The handler calls `self.project(PlayerGame, ...)`, which asks the target for the
 model. A shadow rebuild then sends the write to its temp table.
 
-The handler keys the write on the event's `aggregate_id`, so a second fold
+The handler keys the write on the event's `aggregate_id`, so a second run
 writes no second row.
 
 The handler reads the library from the event, so a replay reproduces the same

@@ -38,7 +38,7 @@
       }
     },
     {
-      "description": "mixed name OR status (faithful fold)",
+      "description": "mixed name OR status (faithful grouping)",
       "model": "game",
       "filter": {
         "name": { "value": "zelda", "modifier": "INCLUDES" },

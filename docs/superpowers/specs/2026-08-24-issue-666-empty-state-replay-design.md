@@ -1,11 +1,11 @@
 # Deterministic empty-state replay
 
-[#665](https://github.com/KucharczykL/timetracker/issues/665) folds an appended
+[#665](https://github.com/KucharczykL/timetracker/issues/665) runs an appended
 event through the projector registry, and
 [#914](https://github.com/KucharczykL/timetracker/issues/914) fixed what a family
 is handed: a `RecordedEvent`, the envelope by value. Both operate on events the
 current transaction just wrote. Nothing can take a stream that already exists and
-fold it again.
+replay it again.
 
 This issue adds that read. It is the property the
 [overhaul architectural charter](https://github.com/KucharczykL/timetracker/blob/codex/player-history-architecture/docs/superpowers/specs/2026-08-09-timetracker-overhaul-design.md)
@@ -15,7 +15,7 @@ state", and the machinery every later rebuild is built on.
 ## What it is
 
 One function. It reads a library's stream in sequence order, converts each row to
-a `RecordedEvent`, and folds it through a registry -- the same value, in the same
+a `RecordedEvent`, and runs it through a registry -- the same value, in the same
 order, through the same call as an append. Streaming, so a hundred-thousand-event
 stream costs the application under a megabyte rather than 223 MB, and bounded, so
 it can say exactly which prefix of the stream it covered.
@@ -32,7 +32,7 @@ it can say exactly which prefix of the stream it covered.
 | Rebuild benchmarking against the charter's 60-second budget | #670 |
 | A per-append aggregate phase | #913 |
 
-This issue owns the bounded ordered read, the contiguity contract, the fold, and
+This issue owns the bounded ordered read, the contiguity contract, the replay, and
 the result value.
 
 **It empties nothing.** "From an empty state" is the caller's precondition, not
@@ -57,7 +57,7 @@ declared in the test module, registered into a registry the test module owns.
 
 ### Measured, not assumed
 
-A probe built one library a hundred thousand events and folded them through an
+A probe built one library a hundred thousand events and replayed them through an
 empty registry, on PostgreSQL 18:
 
 | Read | Time | Queries | Peak allocation |
@@ -69,16 +69,16 @@ empty registry, on PostgreSQL 18:
 
 Three results decide the design.
 
-**Chunk size buys no time.** A twentyfold change moves the fold by 2%, which is
+**Chunk size buys no time.** A twentyfold change moves the replay by 2%, which is
 inside the noise; it moves memory by a factor of twenty-three. The knob is
 therefore not a knob.
 
 **The bound is free.** `sequence <= current_sequence` and no bound at all produce
 the identical plan -- an index scan on `unique_library_event_stream_sequence`, no
-sort, 18 ms of database time for 100k rows -- and the identical fold time. The
+sort, 18 ms of database time for 100k rows -- and the identical replay time. The
 snapshot semantics below cost nothing to buy.
 
-**The fold is not where the time goes.** Of 17.4 µs per event, the ORM row
+**The replay is not where the time goes.** Of 17.4 µs per event, the ORM row
 hydration is roughly 15 and `from_row` under 3. A rebuild's budget will be spent
 by families, not by this read: 1.74 s of the charter's 60 s, with every projector
 still to come.
@@ -108,16 +108,16 @@ def replay(
 ) -> ReplayResult
 ```
 
-One function that folds, in `games/events/replay.py` -- the read counterpart of
-`append.py`, and the only other place the fold loop is written.
+One function that replays, in `games/events/replay.py` -- the read counterpart of
+`append.py`, and the only other place the replay loop is written.
 
-The alternatives both split the read from the fold: a `StreamReplay` object
-exposing an iterator beside a `fold`, or a bare generator with the loop left to
-callers. They are more flexible and neither is worth it. The fold's shape --
+The alternatives both split the read from the replay: a `StreamReplay` object
+exposing an iterator beside a `replay`, or a bare generator with the loop left to
+callers. They are more flexible and neither is worth it. The replay's shape --
 event-major, one `registry.apply` per event, `RecordedEvent.from_row` as the sole
 constructor -- **is** the parity property this issue exists to establish. Handing
 it out as a two-line idiom for callers to retype is how it drifts. #667, the only
-planned caller, wants exactly what this signature returns: fold into a registry,
+planned caller, wants exactly what this signature returns: replay into a registry,
 learn which prefix was covered.
 
 The `registry` parameter defaults the way `policy` and `registry` already default
@@ -136,7 +136,7 @@ events = (
 )
 ```
 
-Read the head first, fold everything at or below what it said. Events are
+Read the head first, replay everything at or below what it said. Events are
 immutable and append-only, so that bound is a consistent snapshot without a lock,
 without a transaction, and without repeatable-read isolation. A concurrent append
 lands above the bound and is simply not this replay's.
@@ -150,7 +150,7 @@ strongest guarantee and would block every write to the library for the length of
 the rebuild, which forecloses the online shadow-and-swap that is the whole point
 of #667.
 
-`ReplayResult.folded_through` carries the bound outward, so a caller can compare
+`ReplayResult.replayed_through` carries the bound outward, so a caller can compare
 it against the head afterwards. #667's swap and #901's concurrency check are both
 that comparison; neither belongs here.
 
@@ -159,13 +159,13 @@ mid-replay, or a command running concurrently, is not detected. Re-reading the
 head at the end and refusing when it moved would catch both -- and would fire on
 precisely the case #667 is specified to support, an online rebuild against a
 library still taking writes. Reporting the drift without refusing is the same
-information the caller already has from `folded_through`, plus a field that goes
+information the caller already has from `replayed_through`, plus a field that goes
 unchecked.
 
 ### Streaming, at a size nobody chooses
 
 ```python
-#: Chunk size is a memory decision, not a speed one: 500 and 10000 fold 100k
+#: Chunk size is a memory decision, not a speed one: 500 and 10000 replay 100k
 #: events within 2% of each other, at 0.96 MB against 22 MB.
 REPLAY_CHUNK_SIZE = 500
 ```
@@ -186,7 +186,7 @@ event. `select_related` is unnecessary for the mirror-image reason -- the value
 carries relations as ids and nothing downstream can traverse -- so the read needs
 no joins at all.
 
-### The fold is the append's fold
+### The replay is the append's run
 
 ```python
 for row in events:
@@ -225,7 +225,7 @@ tell anyone. The check is one integer comparison per event -- unmeasurable besid
 the first missing sequence.
 
 Checking only the final count would catch the same two faults for even less, and
-report "expected 40,000, folded 39,999" without saying where.
+report "expected 40,000, replayed 39,999" without saying where.
 
 `StreamNotContiguous` derives from `Exception` and deliberately not from
 `IntegrityError` or `OperationalError`. It would in fact survive
@@ -259,7 +259,7 @@ A head sitting at sequence zero is the same answer with the stream's id.
 ### The result carries the bound and nothing derivable from it
 
 There is no `event_count`. The contiguity contract makes the sequences exactly
-`1..folded_through`, each once, so a count would equal `folded_through` for every
+`1..replayed_through`, each once, so a count would equal `replayed_through` for every
 stream that does not raise -- a second field that can only ever agree with the
 first, and that a reader would eventually be tempted to check against it.
 
@@ -279,7 +279,7 @@ too would restate a constraint the database keeps.
 `append` and `retry` reach for `router.db_for_write`. No router exists, so this
 is inert today. It is worth stating because the snapshot argument assumes a
 primary read: against a replica, `current_sequence` would be a lagged bound, and
-`folded_through` would name a prefix newer than the replica actually holds.
+`replayed_through` would name a prefix newer than the replica actually holds.
 
 ### A projector's exception passes through untouched
 
@@ -303,11 +303,11 @@ class StreamNotContiguous(Exception):
 
 @dataclass(frozen=True, slots=True)
 class ReplayResult:
-    """Which prefix of which stream was folded."""
+    """Which prefix of which stream was replayed."""
 
     #: None when the library has never appended: an empty stream, not an error.
     stream_id: uuid.UUID | None
-    folded_through: int
+    replayed_through: int
 
 
 def replay(
@@ -325,30 +325,30 @@ a registry the module owns, as `tests/test_event_projectors.py` established.
 
 Parity and determinism:
 
-- **fold parity**: dispatch a command appending several events, capture the
-  `RecordedEvent`s the append fold saw, then replay into a fresh recorder and
+- **replay parity**: dispatch a command appending several events, capture the
+  `RecordedEvent`s the append run saw, then replay into a fresh recorder and
   assert the two lists are equal -- every field of every event, in order. This is
   the issue's acceptance criterion as one assertion.
 - **determinism**: two consecutive replays produce identical recordings
 - several families handling one event type all run, in `ProjectorFamily` order,
   event-major across a multi-event stream
-- an event type no family handles is folded and applied to nothing
+- an event type no family handles is replayed and applied to nothing
 
 The read:
 
 - **exactly two queries regardless of event count** (`django_assert_num_queries`):
   the head, and the cursor. Pinned at two stream lengths so an N+1 introduced later
   cannot pass
-- `folded_through` equals the head's sequence at call time; events appended after
-  that are not folded and need a second replay
-- a second library's stream is not folded
+- `replayed_through` equals the head's sequence at call time; events appended after
+  that are not replayed and need a second replay
+- a second library's stream is not replayed
 
 Damaged and empty streams:
 
 - deleting a middle event raises `StreamNotContiguous` naming the missing
   sequence, and the families applied everything before it
 - deleting the last event raises, naming the sequence the head promised
-- a head at sequence zero folds nothing and returns that stream id
+- a head at sequence zero replays nothing and returns that stream id
 - a library with no head returns `(None, 0)` and creates no head row
 
 Errors:
@@ -360,7 +360,7 @@ Errors:
 
 **Catch-up replay from a sequence.** There is no `from_sequence`, so a projection
 that fell behind cannot be advanced -- only rebuilt from one. Adding the parameter
-is trivial; deciding what it means is not, because "fold events 5,000 onward" is
+is trivial; deciding what it means is not, because "replay events 5,000 onward" is
 only correct against a target that already holds the first 4,999, which is a
 claim replay cannot check. #667 owns rebuild, and a real catch-up needs a stored
 per-projection position first.
@@ -370,7 +370,7 @@ them writes the loop, and the loop is where the interesting decisions live --
 ordering, failure handling, parallelism -- none of which this issue can answer
 without a real rebuild consumer.
 
-**Progress and cancellation.** A hundred-thousand-event fold is 1.74 s of read;
+**Progress and cancellation.** A hundred-thousand-event replay is 1.74 s of read;
 when families make it minutes, #667 will want a callback or a generator, and will
 know what it should report.
 

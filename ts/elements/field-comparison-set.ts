@@ -343,7 +343,7 @@ export function wireComparisonRowListeners(row: HTMLElement, columns: Column[]):
 
 /** Read one comparison row into its complete value, or null when incomplete (a
  * missing column/operator, or the two columns equal). The reusable single-row read
- * the set folds over — the nested builder's comparison leaf (#246) reads its lone
+ * the set loops over — the nested builder's comparison leaf (#246) reads its lone
  * row directly. `granularity` is emitted only when a non-raw packed operator is
  * selected, keeping the filter JSON compact. */
 export function readComparisonRow(row: HTMLElement): ComparisonRow | null {

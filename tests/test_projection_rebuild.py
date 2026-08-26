@@ -585,7 +585,7 @@ def test_the_replay_fills_the_shadow_and_leaves_the_live_rows_alone(owned_librar
         assert shelf_rows(twin) == live_rows
 
     assert shelf_rows(shelf) == live_rows
-    assert result.folded_through == head_sequence(owned_library)
+    assert result.replayed_through == head_sequence(owned_library)
 
 
 @pytest.mark.django_db
@@ -615,7 +615,7 @@ def test_a_hole_in_the_stream_refuses_the_replay_as_itself(owned_library):
 
 @pytest.mark.django_db
 @isolate_apps("games")
-def test_a_library_that_never_appended_folds_nothing(owned_library):
+def test_a_library_that_never_appended_replays_nothing(owned_library):
     shelf = declare_and_create_shelf()
     twin = ShadowTarget().model(shelf)
 
@@ -624,7 +624,7 @@ def test_a_library_that_never_appended_folds_nothing(owned_library):
 
         assert shelf_rows(twin) == []
 
-    assert result == ReplayResult(stream_id=None, folded_through=0)
+    assert result == ReplayResult(stream_id=None, replayed_through=0)
 
 
 @pytest.mark.django_db
@@ -830,7 +830,7 @@ def test_the_swap_replaces_the_live_rows_with_the_rebuilt_ones(owned_library):
 
     with shadow_tables([shelf]):
         replayed = replay_into_shadow(owned_library, [shelf], wiring=SHADOW_WIRING)
-        swap_in(owned_library, [shelf], replayed.folded_through)
+        swap_in(owned_library, [shelf], replayed.replayed_through)
 
     assert shelf_rows(shelf) == correct
     assert not shelf.objects.filter(pk=stray.pk).exists()
@@ -848,7 +848,7 @@ def test_another_librarys_rows_come_through_the_swap_untouched(
 
     with shadow_tables([shelf]):
         replayed = replay_into_shadow(owned_library, [shelf], wiring=SHADOW_WIRING)
-        swap_in(owned_library, [shelf], replayed.folded_through)
+        swap_in(owned_library, [shelf], replayed.replayed_through)
 
     #: Every column: a wide scope loses rows.
     assert every_column(shelf, second_library) == theirs
@@ -868,7 +868,7 @@ def test_a_foreign_row_in_the_shadow_is_left_behind(owned_library, second_librar
         twin.objects.create(
             id=uuid4(), library_id=second_library.pk, title="not mine", played_seconds=0
         )
-        swap_in(owned_library, [shelf], replayed.folded_through)
+        swap_in(owned_library, [shelf], replayed.replayed_through)
 
     assert not shelf.objects.filter(library_id=second_library.pk).exists()
     assert [title for _, title in shelf_rows(shelf)] == ["one"]
@@ -887,9 +887,9 @@ def test_an_event_that_landed_during_the_rebuild_refuses_the_swap(owned_library)
         live_rows = shelf_rows(shelf)
 
         with pytest.raises(StreamSequenceMismatch) as conflict:
-            swap_in(owned_library, [shelf], replayed.folded_through)
+            swap_in(owned_library, [shelf], replayed.replayed_through)
 
-    assert conflict.value.expected == replayed.folded_through
+    assert conflict.value.expected == replayed.replayed_through
     assert conflict.value.actual == head_sequence(owned_library)
     assert shelf_rows(shelf) == live_rows
 
@@ -903,7 +903,7 @@ def test_a_library_that_never_appended_is_swapped_empty(owned_library):
 
     with shadow_tables([shelf]):
         replayed = replay_into_shadow(owned_library, [shelf], wiring=SHADOW_WIRING)
-        swap_in(owned_library, [shelf], replayed.folded_through)
+        swap_in(owned_library, [shelf], replayed.replayed_through)
 
     assert shelf_rows(shelf) == []
     assert head_sequence(owned_library) == 0
@@ -925,7 +925,7 @@ def test_the_swap_empties_and_refills_every_table_it_is_given(owned_library):
         replayed = replay_into_shadow(
             owned_library, [shelf, entry], wiring=SHADOW_WIRING
         )
-        swap_in(owned_library, [shelf, entry], replayed.folded_through)
+        swap_in(owned_library, [shelf, entry], replayed.replayed_through)
 
     #: A given table is replaced, not extended.
     assert entry.objects.count() == 0
@@ -947,7 +947,7 @@ def test_the_swap_costs_the_same_statements_at_any_size(
         with django_assert_num_queries(
             SWAP_FIXED_STATEMENTS + SWAP_STATEMENTS_PER_TABLE
         ):
-            swap_in(owned_library, [shelf], replayed.folded_through)
+            swap_in(owned_library, [shelf], replayed.replayed_through)
 
 
 # --- The attempt loop and the report ----------------------------------------
@@ -1006,7 +1006,7 @@ def test_an_append_between_the_replay_and_the_swap_redoes_the_attempt(
     assert report.attempts[0].swap_seconds is None
     assert report.attempts[1].conflict is None
     assert report.attempts[1].swap_seconds is not None
-    assert report.folded_through == head_sequence(owned_library) == 2
+    assert report.replayed_through == head_sequence(owned_library) == 2
     assert len(delays) == 1
     assert 0 <= delays[0] <= policy.base_delay
     assert shelf_diff(report).differing == 0
@@ -1076,7 +1076,7 @@ def test_check_mode_reports_the_head_it_diffed_against(owned_library, monkeypatc
         owned_library, wiring=SHADOW_WIRING, apps=shelf._meta.apps
     )
 
-    assert report.folded_through == 1
+    assert report.replayed_through == 1
     assert report.head_at_diff == 2
 
 
@@ -1090,7 +1090,7 @@ def test_a_library_that_never_appended_has_no_stream_to_check(owned_library):
     )
 
     assert report.stream_id is None
-    assert report.folded_through == 0
+    assert report.replayed_through == 0
     assert report.head_at_diff == 0
     assert report.tables == (
         no_difference(ENTRY_TABLE, rows=0),
@@ -1140,7 +1140,7 @@ def canned_report(**overrides) -> RebuildReport:
         stream_id=uuid7(),
         mode=RebuildMode.CHECK,
         swapped=False,
-        folded_through=12,
+        replayed_through=12,
         head_at_diff=12,
         tables=(
             no_difference(ENTRY_TABLE, rows=3),
@@ -1156,7 +1156,7 @@ def canned_report(**overrides) -> RebuildReport:
         ),
         attempts=(
             RebuildAttempt(
-                folded_through=12,
+                replayed_through=12,
                 replay_seconds=0.1,
                 diff_seconds=0.2,
                 swap_seconds=None,
@@ -1231,7 +1231,7 @@ def test_a_rebuild_that_never_swapped_fails_the_command(owned_library, monkeypat
         swapped=False,
         attempts=(
             RebuildAttempt(
-                folded_through=12,
+                replayed_through=12,
                 replay_seconds=0.1,
                 diff_seconds=0.2,
                 swap_seconds=None,
