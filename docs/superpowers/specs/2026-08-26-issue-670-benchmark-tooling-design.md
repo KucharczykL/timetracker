@@ -176,7 +176,19 @@ The order is part of the contract, not an implementation detail.
 | --- | --- | --- | --- |
 | 1 | `command` | `dispatch(TrackGame(...))`, `warmup + iterations` times, each with its own idempotency key, against the seeded library | 100 ms p95 |
 | 2 | `amplification` | `dispatch(TrackGame(...))` `iterations` times under the statement counter | recorded, never gated |
-| 3 | `rebuild` | `rebuild_projections(REBUILD)` | 60 s per 100,000 events |
+| 3 | `rebuild` | `rebuild_projections(REBUILD)`, under the statement counter | 60 s per 100,000 events |
+
+Scenario 2 measures what one **command** costs: every statement the whole write
+path issues, the append and the idempotency record included. Scenario 3 measures
+what one **event** costs to **fold**, which is the narrower number — no append,
+no idempotency, just the projector — and the one that explains the rebuild time.
+They are different quantities and the report keeps them apart.
+
+The counter is installed for the whole of scenario 3, so the gated time carries
+its own instrumentation: a per-statement Python call over roughly six statements
+an event. That makes a `PASSED` verdict conservative, and a `MISSED` verdict
+possibly within the instrument's own cost. `--no-count-fold` re-runs the rebuild
+uninstrumented when a verdict lands that close.
 
 Seeding is timed and reported alongside them, and its time is never inside a
 measured window.
@@ -360,6 +372,11 @@ A `connection.execute_wrapper` names the table each statement writes, adds
 statement count. Rows and statements are then classified by whether the table
 belongs to `projection_models()`, to the event store, or to neither.
 
+It also counts **every** statement, including the ones that name no table. That
+total is not decoration: four of the fold's six statements are savepoints, so a
+per-table count alone would report the fold as one statement an event and miss
+the entire finding. Statements that name no table appear only in the total.
+
 Counting statements rather than diffing `COUNT(*)` before and after is what makes
 an update or a delete visible: a family that rewrites one row per event has an
 amplification of one, and a before/after count would report zero. #671's
@@ -367,10 +384,10 @@ projector uses `update_or_create`, so this distinction is load-bearing from the
 first family measured.
 
 **Counting statements as well as rows is what makes the number diagnostic.** For
-#671's family the row count is 1 per event and the statement count is 6; the
-second is the one that explains a 59-second rebuild. A future family that halves
-its rows while doubling its statements would look like an improvement under the
-charter's metric alone.
+#671's family the row count is 1 per event and the fold's statement count is 6;
+the second is the one that explains a 59-second rebuild. A future family that
+halves its rows while doubling its statements would look like an improvement
+under the charter's metric alone.
 
 **The statement parser is shared, not copied.** `games/events/rebuild.py` already
 parses a statement's write targets for the shadow-write guard, in
@@ -440,7 +457,10 @@ class WorkPerEvent:
     """What one event cost, in rows and in statements."""
 
     events: int
+    #: Every statement in the window, savepoints included.
+    statements: int
     rows_per_table: Mapping[TableName, int]
+    #: Only statements that name a table they write.
     statements_per_table: Mapping[TableName, int]
     projection_rows: int
     projection_statements: int
@@ -486,7 +506,10 @@ class BenchmarkReport:
     #: None in --library mode.
     seed: SeedReport | None
     command: Timings | None
+    #: Per command: the whole write path.
     amplification: WorkPerEvent | None
+    #: Per event: the fold alone.
+    fold: WorkPerEvent | None
     rebuild: RebuildReport | None
     #: None when --keep was given.
     teardown_seconds: Seconds | None
@@ -501,6 +524,7 @@ def run_benchmark(
     warmup: int,
     library: UserLibrary | None = None,
     keep: bool = False,
+    count_fold: bool = True,
 ) -> BenchmarkReport: ...
 ```
 
@@ -538,9 +562,14 @@ suite:
 - the counter attributes an insert, an update, and a delete to the right table,
   separates projection from event-store totals, and reports rows and statements
   independently;
-- one dispatched `TrackGame` writes exactly one `games_playergame` row and
-  six statements, which pins the `CURRENT_STATE` family's cost and is the
-  assertion that fails when a family gets cheaper or dearer;
+- one dispatched `TrackGame` writes exactly one `games_playergame` row through
+  exactly one statement naming that table, and one row into each of the four
+  event-store tables — the command's shape, pinned;
+- folding one event during a rebuild costs **six** statements, which pins the
+  `CURRENT_STATE` family's cost and is the assertion that fails when #930 makes
+  it cheaper or a later family makes it dearer;
+- `--no-count-fold` produces a report whose `fold` is `None` and whose rebuild
+  timing and diff are otherwise unchanged;
 - a seeded run's rebuild diff is empty, and covers events written by both
   `LockedStream.append` and `dispatch` — parity, at a small event count;
 - a run purges its scratch user, and purges it after a scenario raises. The
