@@ -17,7 +17,7 @@ from games.events.projection import DEFAULT_REGISTRY
 from games.events.rebuild import RebuildMode, rebuild_projections
 from games.events.references import capture_reference
 from games.events.replay import replay
-from games.models import Game, LibraryEvent, PlayerGame
+from games.models import Game, LibraryEvent, PlayerGame, PlayerGameStatus
 
 
 @pytest.fixture
@@ -45,6 +45,11 @@ def test_playergame_is_a_pure_projection():
 def test_the_identity_has_no_default():
     #: The key is the event's aggregate_id.
     assert PlayerGame().id is None
+
+
+def test_a_tracked_game_starts_unplayed():
+    """The creation event states no status."""
+    assert PlayerGame().status == PlayerGameStatus.UNPLAYED
 
 
 def test_a_library_tracks_one_game_once(owned_library, tracked_game):

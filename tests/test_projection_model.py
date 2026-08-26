@@ -4,6 +4,7 @@ import datetime
 import itertools
 import uuid
 
+from django.apps import apps as global_apps
 from django.core.checks import CheckMessage
 from django.db import models
 from django.test.utils import isolate_apps
@@ -237,6 +238,30 @@ def test_an_unmanaged_twin_is_not_checked():
 
     #: A twin would report each offence twice.
     assert check(Live) == []
+
+
+#: Every constant a projection column starts at. A rebuild reproduces these, so
+#: an edit here rewrites the rows no event has ever touched.
+PINNED_DEFAULTS: dict[str, dict[str, object]] = {
+    "games.PlayerGame": {"status": "unplayed"},
+}
+
+
+def test_every_projection_default_is_pinned():
+    """A default is code, so a change to one is a reviewed diff."""
+    found = {
+        model._meta.label: {
+            field.name: field.default
+            for field in model._meta.concrete_fields
+            if field.has_default()
+        }
+        for model in global_apps.get_models()
+        if issubclass(model, ProjectionModel) and model._meta.managed
+    }
+
+    assert {label: columns for label, columns in found.items() if columns} == (
+        PINNED_DEFAULTS
+    )
 
 
 @isolate_apps("games")
