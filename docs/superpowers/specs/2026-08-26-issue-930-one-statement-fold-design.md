@@ -35,8 +35,15 @@ a generated column.
 `DO UPDATE` writes only the columns that it names. A partial call is correct
 against a row that exists. Against a row that is absent, the same call inserts
 nulls and defaults: a `NOT NULL` column makes an error, and a nullable column
-makes a quiet loss of data. Django refuses an empty set of columns, because
-`update_fields` cannot be empty.
+makes a quiet loss of data. The two paths then disagree, because a live fold
+finds the row and a rebuild does not. A rebuild swaps the shadow table in, so
+the nulls replace the live values.
+
+`project()` refuses that call. `_required_columns` reads the model and keeps
+each column that only a fold fills. A key, a generated column, a column with a
+default and an `auto_now` stamp are all filled by something else. A call that
+omits any other column makes a `TypeError`, which names the columns. The result
+is held per model, and the check costs 0.19 µs.
 
 ## Idempotency
 

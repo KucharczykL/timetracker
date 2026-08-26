@@ -453,6 +453,42 @@ def test_the_helper_keeps_the_columns_it_was_not_given(owned_library):
     assert Device.objects.get(pk=identity).created_at == created_at
 
 
+@pytest.mark.django_db
+def test_the_helper_lets_the_database_fill_what_it_can(owned_library):
+    """created_at fills itself, so a fold need not name it."""
+    project_registry.apply(make_event(library_id=owned_library.pk))
+
+    assert Device.objects.get().created_at is not None
+
+
+partial_registry = ProjectorRegistry()
+
+
+class PartialWriter(Projector, registry=partial_registry):
+    """Leaves a column nothing else will fill."""
+
+    family_name = ProjectorFamily.CURRENT_STATE
+
+    def _recorded(self, event: RecordedEvent) -> None:
+        #: Device stands in for a projection table.
+        self.project(  # type: ignore[type-var]
+            Device,
+            event.aggregate_id,
+            library_id=event.library_id,
+        )
+
+    handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
+
+
+@pytest.mark.django_db
+def test_the_helper_refuses_a_row_it_was_not_given_whole(owned_library):
+    """A rebuild would null what the live path kept."""
+    with pytest.raises(TypeError, match="folded without name"):
+        partial_registry.apply(make_event(library_id=owned_library.pk))
+
+    assert Device.objects.count() == 0
+
+
 def wiring_over(projectors: ProjectorRegistry) -> EventWiring:
     """This module's wiring over the given families."""
     return EventWiring(projectors=projectors, event_types=EVENT_TYPES)
