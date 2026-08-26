@@ -133,7 +133,7 @@ class SetPlayerGameMastered(Command):
 
 @dataclass(frozen=True, slots=True)
 class SetPlayerGameExcludedFromUnfinished(Command):
-    """Keep a tracked game out of unfinished lists, or put it back."""
+    """State whether unfinished lists omit a game."""
 
     command_name: ClassVar[CommandName] = (
         CommandName.PLAYERGAME_SET_EXCLUDED_FROM_UNFINISHED

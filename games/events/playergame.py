@@ -66,7 +66,7 @@ DEFAULT_EVENT_TYPES.register(PLAYERGAME_MASTERED_CHANGED)
 
 @with_config(STRICT_SCHEMA)
 class PlayerGameExcludedFromUnfinishedChangedPayload(TypedDict):
-    """Whether this library keeps the game out of unfinished lists."""
+    """Whether unfinished lists now omit the game."""
 
     excluded_from_unfinished: bool
 

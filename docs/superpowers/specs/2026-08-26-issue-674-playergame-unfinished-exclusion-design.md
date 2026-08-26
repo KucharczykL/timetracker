@@ -20,7 +20,7 @@ from genre, catalog data, or a change of status.
 not name this one, thus a second run keeps a value a later event set.
 
 The migration adds the column with its default and needs no data step: no event
-states the exclusion, and the catalog holds no field to derive it from.
+states the exclusion.
 
 ## The event
 
