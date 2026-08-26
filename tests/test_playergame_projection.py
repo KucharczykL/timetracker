@@ -61,6 +61,11 @@ def test_a_tracked_game_starts_unmastered():
     assert PlayerGame().mastered is False
 
 
+def test_a_tracked_game_starts_in_unfinished_lists():
+    """The creation event states no exclusion."""
+    assert PlayerGame().excluded_from_unfinished is False
+
+
 def test_a_library_tracks_one_game_once(owned_library, tracked_game):
     PlayerGame.objects.create(
         id=uuid.uuid7(),
