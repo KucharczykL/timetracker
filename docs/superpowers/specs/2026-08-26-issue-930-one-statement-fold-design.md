@@ -1,72 +1,61 @@
 # A fold of one statement per event
 
 Issue [#930](https://github.com/KucharczykL/timetracker/issues/930). The code is
-in `games/events/projection.py`.
-
-A projector writes one row for one event. `Projector.project()` does that with
-one statement.
+in `games/events/projection.py`. The numbers are in
+[Event benchmarks](../../event-benchmarks.md), which costs a batched replay for
+[#932](https://github.com/KucharczykL/timetracker/issues/932).
 
 ## The method
 
-`project()` takes a model, an identity and the columns of the row. It asks its
-target for the model, builds the row, and puts the identity on the primary key.
-It then calls `bulk_create` with `update_conflicts=True`. PostgreSQL receives
-one statement:
+`Projector.project()` takes a model, an identity and the columns. It asks its
+target for the model, builds the row with the identity on the primary key, and
+calls `bulk_create` with `update_conflicts=True`. One statement reaches
+PostgreSQL: `INSERT ... ON CONFLICT ("id") DO UPDATE SET ...`.
 
-```sql
-INSERT INTO "games_playergame" ("library_id", "id", "game_id", "tracked_at")
-VALUES (%s, %s, %s, %s)
-ON CONFLICT("id") DO UPDATE SET "library_id" = EXCLUDED."library_id", ...
-```
-
-`unique_fields` holds `pk`, not `id`. Thus a projection whose key has a
-different name needs no exception. The identity goes on the instance after
-construction, because `Model(pk=...)` is not a valid constructor argument.
+`unique_fields` holds `pk`, not `id`, so a key with a different name needs no
+exception. The identity goes on the instance after construction, because
+`Model(pk=...)` is not a valid argument.
 
 `projection.py` holds no runtime ORM reference. `ProjectionModel` is imported
-under `TYPE_CHECKING`, because a PEP 695 bound is evaluated lazily. The manager
-arrives with the model that the family supplies.
+under `TYPE_CHECKING`, because a PEP 695 bound evaluates lazily.
 
 ## The whole row
 
-A call passes each column of the row. It does not pass the key. It does not pass
-a generated column.
+A call passes each column of the row, but not the key or a generated column.
 
-`DO UPDATE` writes only the columns that it names. A partial call is correct
-against a row that exists. Against a row that is absent, the same call inserts
-nulls and defaults: a `NOT NULL` column makes an error, and a nullable column
-makes a quiet loss of data. The two paths then disagree, because a live fold
-finds the row and a rebuild does not. A rebuild swaps the shadow table in, so
-the nulls replace the live values.
+`DO UPDATE` writes only the columns it names. A partial call is correct against
+a row that exists. Against an absent row it inserts nulls and defaults, where a
+`NOT NULL` column errors and a nullable one loses data quietly. A live fold
+finds the row and a rebuild does not, so the rebuild swaps nulls in over the
+live values.
 
-`project()` refuses that call. `_required_columns` reads the model and keeps
-each column that only a fold fills. A key, a generated column, a column with a
-default and an `auto_now` stamp are all filled by something else. A call that
-omits any other column makes a `TypeError`, which names the columns. The result
-is held per model, and the check costs 0.19 µs.
+`project()` refuses that call. `_required_columns` keeps each column that only a
+fold fills; a key, a generated column, a default and an `auto_now` stamp are
+filled by something else. A call that omits any other column raises a
+`TypeError` naming them. The check is cached per model and costs 0.19 µs.
 
-## Idempotency
-
-A second fold of one event writes the same row. The primary key enforces this.
-There is no read before the write.
+A second fold writes the same row, by primary key, with no read.
 
 ## One statement on both paths
 
-The live path and the shadow path give the same statement. `ProjectionTarget`
-supplies the model, so a rebuild writes `games_playergame__shadow`.
-`write_targets` reads that name, and `only_shadow_writes` sees what it guards.
-`LIKE ... INCLUDING ALL` copies the primary key index that `ON CONFLICT` infers.
+Both paths give the same statement. `ProjectionTarget` supplies the model, so a
+rebuild writes `games_playergame__shadow`; `write_targets` reads that name, and
+`only_shadow_writes` sees what it guards. `LIKE ... INCLUDING ALL` copies the
+primary key index that `ON CONFLICT` infers.
 
 There is no savepoint and no `SELECT`. `bulk_create` opens its transaction with
-`savepoint=False`, and a fold always runs inside one: `LockedStream.append`
-folds under the stream-head lock, and `replay_into_shadow` wraps the replay in
-`transaction.atomic()`.
+`savepoint=False`, and a fold always runs inside one: under the stream-head lock
+in `LockedStream.append`, and in `transaction.atomic()` in `replay_into_shadow`.
+
+`bulk_create` sends no `post_save`, and no receiver listens to a projection
+model. A receiver firing during a shadow replay would write a live table, which
+`only_shadow_writes` refuses.
 
 ## A second constraint
 
 `PlayerGame` has a second unique constraint, `(library, game)`. A fold with a
-new identity for a game that the library tracks violates it. `ON CONFLICT (id)`
-does not absorb a violation of a different index. The fold raises
+new identity for a game the library tracks violates it, and `ON CONFLICT (id)`
+does not absorb a violation of a different index: the fold raises
 `IntegrityError`.
 
 Do not answer that error with an update by primary key. That key is not in the
@@ -74,23 +63,10 @@ table. Zero rows change, no error leaves the handler, and the event folds into
 nothing.
 
 `is_retryable` retries a unique violation only for
-`LIBRARY_EVENT_SEQUENCE_CONSTRAINT`. A `(library, game)` collision fails the
-command on the first attempt.
-
-## Signals
-
-`bulk_create` sends no `post_save`. No receiver listens to a projection model. A
-receiver that fired during a shadow replay would write a live table, and
-`only_shadow_writes` refuses that statement.
-
-## The measured cost
-
-[Event benchmarks](../../event-benchmarks.md) holds the numbers, and costs a
-batched replay for
-[#932](https://github.com/KucharczykL/timetracker/issues/932).
+`LIBRARY_EVENT_SEQUENCE_CONSTRAINT`, so a `(library, game)` collision fails on
+the first attempt.
 
 ## Out of scope
 
-A handler that deletes a row, or that changes a subset of the columns of a row
-that another event created. The first such handler arrives with the untrack
-event, and it specifies its own shape.
+A handler that deletes a row, or changes a subset of the columns another event
+created. The first arrives with the untrack event, and specifies its shape.
