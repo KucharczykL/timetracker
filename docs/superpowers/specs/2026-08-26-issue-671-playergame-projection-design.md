@@ -60,8 +60,8 @@ a `CommandRejected`, which tells the caller nothing about another library.
 
 `PlayerGames` is in the `CURRENT_STATE` family.
 
-The handler writes `self.target.model(PlayerGame)`, not the imported model. A
-shadow rebuild then sends the write to its temp table.
+The handler calls `self.project(PlayerGame, ...)`, which asks the target for the
+model. A shadow rebuild then sends the write to its temp table.
 
 The handler keys the write on the `aggregate_id` of the event. A second fold of
 one event writes no second row.

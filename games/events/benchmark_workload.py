@@ -24,7 +24,15 @@ from games.events.dispatch import dispatch
 from games.events.playergame import PLAYERGAME_CREATED
 from games.events.rebuild import RebuildMode, RebuildReport, rebuild_projections
 from games.events.references import capture_reference
-from games.models import Game, UserLibrary
+from games.models import (
+    Game,
+    LibraryEvent,
+    LibraryEventReference,
+    LibraryEventStreamHead,
+    LibraryIdempotencyRecord,
+    PlayerGame,
+    UserLibrary,
+)
 
 #: The seeded rows, and the untracked spares.
 SEEDED_NAME_PREFIX = "Benchmark game "
@@ -38,6 +46,16 @@ SEED_IDEMPOTENCY_KEY = "benchmark-seed"
 
 #: capture_reference reads exactly these three.
 _CAPTURED_FIELDS = ("id", "name", "year_released")
+
+#: Every table the seed writes, for ANALYZE.
+_SEEDED_TABLES = (
+    Game,
+    LibraryEvent,
+    LibraryEventReference,
+    LibraryEventStreamHead,
+    LibraryIdempotencyRecord,
+    PlayerGame,
+)
 
 
 def seed_library(
@@ -66,6 +84,7 @@ def seed_library(
                 idempotency_key=SEED_IDEMPOTENCY_KEY,
             )
     append_seconds = monotonic() - append_started
+    _analyze()
 
     return SeedReport(
         catalog_rows=events + spares,
@@ -74,6 +93,19 @@ def seed_library(
         append_seconds=append_seconds,
         events_per_second=events / append_seconds if append_seconds else 0.0,
     )
+
+
+def _analyze() -> None:
+    """Leave statistics that describe the seeded rows.
+
+    Without this the command scenario races autovacuum's one-minute naptime,
+    and measures which index the planner guessed at. Named tables rather than
+    a bare `ANALYZE`, which would rewrite statistics for a whole database the
+    benchmark did not touch.
+    """
+    tables = ", ".join(f'"{model._meta.db_table}"' for model in _SEEDED_TABLES)
+    with connection.cursor() as cursor:
+        cursor.execute(f"ANALYZE {tables}")
 
 
 def _create_catalog(library: UserLibrary, *, prefix: str, count: int) -> None:

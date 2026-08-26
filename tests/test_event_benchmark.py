@@ -285,6 +285,21 @@ def test_seeding_leaves_the_spare_games_untracked(owned_library):
     assert not PlayerGame.objects.filter(game__in=spares).exists()
 
 
+@pytest.mark.django_db(transaction=True)
+def test_seeding_leaves_statistics_that_know_the_rows_exist(owned_library):
+    """Otherwise the command scenario races autovacuum's naptime."""
+    seed_library(owned_library, actor=owned_library.user, events=25, spares=0)
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT reltuples FROM pg_class WHERE relname = %s",
+            [PlayerGame._meta.db_table],
+        )
+        estimated = cursor.fetchone()[0]
+
+    assert estimated == 25
+
+
 @pytest.mark.django_db
 def test_seeding_reports_append_throughput(owned_library):
     report = seed_library(owned_library, actor=owned_library.user, events=25, spares=0)
@@ -339,13 +354,11 @@ def test_one_dispatch_writes_one_projection_row_through_one_statement(owned_libr
 
 
 @pytest.mark.django_db
-def test_folding_one_event_costs_six_statements(django_user_model):
-    """The number #930 exists to reduce.
+def test_folding_one_event_costs_one_statement(django_user_model):
+    """The fold is one upsert.
 
-    A rebuild also pays a fixed cost -- the temp tables, the reference
-    anti-joins, the diff, the swap, the drop -- measured at 17 statements.
-    The average at ten events is therefore 7.7, not 6. The slope between two
-    sizes is the per-event number, and it is exact.
+    A rebuild also pays 13 fixed statements, so ten events average 2.3. The
+    slope between two sizes is the per-event number, and it is exact.
     """
     totals: dict[int, int] = {}
     for events in (10, 30):
@@ -356,7 +369,7 @@ def test_folding_one_event_costs_six_statements(django_user_model):
         )
         assert fold is not None
         totals[events] = fold.statements
-    assert (totals[30] - totals[10]) / 20 == pytest.approx(6.0, abs=0.01)
+    assert (totals[30] - totals[10]) / 20 == pytest.approx(1.0, abs=0.01)
 
 
 @pytest.mark.django_db

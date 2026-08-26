@@ -15,14 +15,19 @@ is the package the real families live in. Two importable modules of one name are
 unambiguous to the interpreter and a trap for everyone else.
 """
 
+import uuid
 from abc import ABC
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Container, Mapping
 from enum import StrEnum
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
+from weakref import WeakKeyDictionary
 
 from games.events.envelope import RecordedEvent
 from games.events.targets import LIVE_TARGET, ProjectionTarget
 from games.events.vocabulary import EventSpec, EventType
+
+if TYPE_CHECKING:
+    from games.models import ProjectionModel
 
 type BoundHandler = Callable[[RecordedEvent], None]
 #: EventSpec keys; values are the handler functions, read out of the class body
@@ -33,6 +38,13 @@ type HandlerMap = Mapping[EventSpec[Any], Callable[..., None]]
 type FamilyHandler = tuple[ProjectorFamily, BoundHandler]
 #: Where a family was defined, as (module, qualified name).
 type DefinitionSite = tuple[str, str]  # ("games.projectors.journal", "Journal")
+#: One column, under both the names a caller may use.
+type ColumnNames = tuple[str, str]  # ("library", "library_id")
+
+#: Resolved per model, and no reason to outlive one.
+_REQUIRED_COLUMNS: WeakKeyDictionary[type[Any], tuple[ColumnNames, ...]] = (
+    WeakKeyDictionary()
+)
 
 
 class ProjectorFamily(StrEnum):
@@ -175,6 +187,38 @@ class ProjectorRegistry:
 DEFAULT_REGISTRY = ProjectorRegistry()
 
 
+def _required_columns(model: type[ProjectionModel]) -> tuple[ColumnNames, ...]:
+    """Every column that nothing but a fold fills.
+
+    A key, a generated column, a default and an `auto_now` stamp all arrive
+    without being named. Everything else arrives as a null. Resolved once per
+    model, because a replay asks this of every event it folds.
+    """
+    resolved = _REQUIRED_COLUMNS.get(model)
+    if resolved is None:
+        resolved = tuple(
+            (field.name, field.attname)
+            for field in model._meta.concrete_fields
+            if not field.primary_key
+            and not field.generated
+            and not field.has_default()
+            and not field.has_db_default()
+            and not getattr(field, "auto_now_add", False)
+            and not getattr(field, "auto_now", False)
+        )
+        _REQUIRED_COLUMNS[model] = resolved
+    return resolved
+
+
+def _unfilled_columns(model: type[ProjectionModel], named: Container[str]) -> list[str]:
+    """The columns of the row a call left out."""
+    return [
+        name
+        for name, attname in _required_columns(model)
+        if name not in named and attname not in named
+    ]
+
+
 class Projector(ABC):
     """One projection family.
 
@@ -197,6 +241,37 @@ class Projector(ABC):
 
     def __init__(self, target: ProjectionTarget = LIVE_TARGET) -> None:
         self.target = target
+
+    def project[M: ProjectionModel](
+        self, model: type[M], identity: uuid.UUID, **columns: Any
+    ) -> None:
+        """Write one whole row, keyed on identity.
+
+        Pass every column of the row except the key, any generated column, and
+        any column the database fills for itself. `DO UPDATE` writes only the
+        columns it names, so a partial call is right against a row that exists
+        and inserts nulls against one that does not -- which is every row of a
+        rebuild. `_unfilled_columns` refuses the difference.
+        """
+        #: Never the imported model: a rebuild redirects.
+        projected = self.target.model(model)
+        unfilled = _unfilled_columns(projected, columns)
+        if unfilled:
+            raise TypeError(
+                f"{model.__qualname__} was folded without "
+                f"{', '.join(unfilled)}. A fold writes the whole row: the live "
+                "path keeps what it is not given, and a rebuild inserts a null "
+                "in its place, so the two paths would disagree."
+            )
+        row = projected(**columns)
+        row.pk = identity
+        #: `objects` is a convention, not a promise.
+        projected._default_manager.bulk_create(
+            [row],
+            update_conflicts=True,
+            update_fields=list(columns),
+            unique_fields=["pk"],
+        )
 
     def __init_subclass__(
         cls,

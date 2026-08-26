@@ -97,8 +97,8 @@ class StatementCounter:
     Counting statements rather than diffing COUNT(*) is what makes an update
     visible: a family that rewrites one row an event amplifies by one, and a
     before-and-after count reports zero. The total matters as much as the
-    per-table breakdown, because four of the fold's six statements are
-    savepoints and name no table at all.
+    per-table breakdown, because a savepoint or a lock names no table and
+    still costs.
 
     Two limits: this sees one connection, so a family that opens its own is
     not counted, and under executemany `rowcount` is the batch's total.
