@@ -5,6 +5,7 @@ import uuid
 import pytest
 
 from games.commands.playergame import (
+    SetPlayerGameExcludedFromUnfinished,
     SetPlayerGameMastered,
     SetPlayerGameStatus,
     TrackGame,
@@ -412,6 +413,139 @@ def test_one_idempotency_key_records_one_mastery_change(owned_user, owned_librar
     assert (
         LibraryEvent.objects.filter(
             event_type="library.playergame.mastered_changed"
+        ).count()
+        == 1
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_excluding_a_game_records_it_and_projects_it(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+
+    dispatch(
+        SetPlayerGameExcludedFromUnfinished(
+            game_id=game.pk, excluded_from_unfinished=True
+        ),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="exclude-outer-wilds",
+    )
+
+    event = LibraryEvent.objects.get(
+        event_type="library.playergame.excluded_from_unfinished_changed"
+    )
+    assert event.payload == {"excluded_from_unfinished": True}
+    row = PlayerGame.objects.get()
+    assert event.aggregate_id == row.pk
+    assert row.excluded_from_unfinished is True
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_exclusion_leaves_the_rest_of_the_row_alone(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    dispatch(
+        SetPlayerGameMastered(game_id=game.pk, mastered=True),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="master-outer-wilds",
+    )
+    before = PlayerGame.objects.get()
+
+    dispatch(
+        SetPlayerGameExcludedFromUnfinished(
+            game_id=game.pk, excluded_from_unfinished=True
+        ),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="exclude-outer-wilds",
+    )
+
+    after = PlayerGame.objects.get()
+    assert (after.pk, after.game_id, after.tracked_at, after.status) == (
+        before.pk,
+        before.game_id,
+        before.tracked_at,
+        before.status,
+    )
+    assert after.mastered is True
+
+
+@pytest.mark.django_db(transaction=True)
+def test_excluding_an_untracked_game_is_refused(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Untracked")
+
+    with pytest.raises(CommandRejected, match="tracks no game"):
+        dispatch(
+            SetPlayerGameExcludedFromUnfinished(
+                game_id=game.pk, excluded_from_unfinished=True
+            ),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key="exclude-untracked",
+        )
+
+    assert not LibraryEvent.objects.filter(
+        event_type="library.playergame.excluded_from_unfinished_changed"
+    ).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_excluding_a_game_another_library_tracks_is_refused(
+    owned_user, owned_library, other_user, other_library, shared_game
+):
+    track(other_user, other_library, shared_game)
+
+    with pytest.raises(CommandRejected, match="tracks no game"):
+        dispatch(
+            SetPlayerGameExcludedFromUnfinished(
+                game_id=shared_game.pk, excluded_from_unfinished=True
+            ),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key="exclude-theirs",
+        )
+
+    assert PlayerGame.objects.get().excluded_from_unfinished is False
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_exclusion_a_game_already_records_is_refused(owned_user, owned_library):
+    """One convention for #906 to change."""
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+
+    with pytest.raises(CommandRejected, match="#906"):
+        dispatch(
+            SetPlayerGameExcludedFromUnfinished(
+                game_id=game.pk, excluded_from_unfinished=False
+            ),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key="include-outer-wilds",
+        )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_one_idempotency_key_records_one_exclusion_change(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    command = SetPlayerGameExcludedFromUnfinished(
+        game_id=game.pk, excluded_from_unfinished=True
+    )
+
+    first = dispatch(
+        command, actor=owned_user, library=owned_library, idempotency_key="exclude"
+    )
+    second = dispatch(
+        command, actor=owned_user, library=owned_library, idempotency_key="exclude"
+    )
+
+    assert (first.replayed, second.replayed) == (False, True)
+    assert (
+        LibraryEvent.objects.filter(
+            event_type="library.playergame.excluded_from_unfinished_changed"
         ).count()
         == 1
     )

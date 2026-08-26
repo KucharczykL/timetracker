@@ -80,6 +80,9 @@ class CommandName(CommandVocabulary):
     PLAYERGAME_TRACK = "library.playergame.track"
     PLAYERGAME_SET_STATUS = "library.playergame.set_status"
     PLAYERGAME_SET_MASTERED = "library.playergame.set_mastered"
+    PLAYERGAME_SET_EXCLUDED_FROM_UNFINISHED = (
+        "library.playergame.set_excluded_from_unfinished"
+    )
 
 
 @dataclass(frozen=True, slots=True)
