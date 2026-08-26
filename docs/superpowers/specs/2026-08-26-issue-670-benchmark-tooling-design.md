@@ -69,8 +69,9 @@ SAVEPOINT -> SELECT ... FOR UPDATE -> SAVEPOINT -> INSERT -> RELEASE -> RELEASE
 ```
 
 During a rebuild the shadow table **starts empty**, so that `SELECT ... FOR
-UPDATE` cannot match and four of the six statements are savepoint bookkeeping
-around an insert that was never in doubt. That is the whole of the fold's cost.
+UPDATE` cannot match: five of the six statements are a lock-and-look that finds
+nothing, wrapped in savepoints protecting an insert that was never in doubt.
+That is the whole of the fold's cost.
 
 Two things follow, and the design below acts on both:
 
@@ -132,7 +133,7 @@ re-measurement is the trigger; nothing extra needs tracking.
 
 | Not here | Owner |
 | --- | --- |
-| Making the fold cheaper than six statements an event | its own follow-up, below |
+| Making the fold cheaper than six statements an event | #930 |
 | The 200 ms Journal page query budget and its read model | phase 14 (#601) |
 | A chunked bulk command | the phase that needs one |
 | Deleting the `TEST_COMMAND_*` allowlist members | #907 |
@@ -593,12 +594,10 @@ removing them removes the feature. The single edit to existing code is the
 
 ## Follow-up issues
 
-- **A cheaper fold.** `update_or_create` costs six statements per event, four of
-  them savepoint bookkeeping around a `SELECT ... FOR UPDATE` that cannot match
-  during a rebuild, because the shadow table starts empty. A projector that knows
-  it is replaying into an empty table can insert directly. This is the follow-up
-  the first recorded run justifies; #670 records the number and does not open the
-  fix.
+- **#930, a cheaper fold.** `update_or_create` costs six statements per event,
+  five of them a lock-and-look that cannot match: the shadow table starts empty
+  during a rebuild, and a created aggregate's id is fresh on the live path. #670
+  records the number and does not fix it.
 - **#907** deletes the `TEST_COMMAND_*` members. This issue no longer touches
   them: with a real workload there is no synthetic command to name.
 - **#917** stays open. The harness names it in a failure rather than fixing it.
