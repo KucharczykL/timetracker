@@ -1,15 +1,18 @@
 from datetime import UTC, datetime
 
 import pytest
+from django.apps import apps
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import connection
 from django.utils import timezone
 
+from games.events.targets import SHADOW_SUFFIX, ShadowTarget
 from games.identity_audit import (
     RESIDUAL_INTEGER_PRIMARY_KEYS,
     RESIDUAL_INTEGER_RELATIONS,
     actual_column_types,
+    audited_models,
     check_identity_columns,
     check_ordering,
     check_referential_agreement,
@@ -19,7 +22,7 @@ from games.identity_audit import (
     primary_key_types,
     relation_columns,
 )
-from games.models import Game, GameStatusChange
+from games.models import Game, GameStatusChange, PlayerGame
 from timetracker.uuidv7 import uuid7_at
 
 pytestmark = pytest.mark.django_db
@@ -82,6 +85,29 @@ def test_relation_columns_cover_every_games_relation():
     assert {
         relation.key for relation in relation_columns()
     } == EXPECTED_RELATION_COLUMNS
+
+
+def test_a_manufactured_twin_stays_out_of_the_audit():
+    """A twin's table outlives no rebuild.
+
+    The twin joins the live registry and stays there for the process. Its
+    temp table does not, so an audit that read the twin would report every
+    column of it missing, in whatever test happened to run next.
+    """
+    twin = ShadowTarget().model(PlayerGame)
+
+    #: The pollution is made, not assumed.
+    assert twin in apps.get_app_config("games").get_models(include_auto_created=True)
+
+    assert twin not in audited_models()
+    assert {
+        relation.key for relation in relation_columns()
+    } == EXPECTED_RELATION_COLUMNS
+    assert not [
+        model
+        for model in identity_models()
+        if SHADOW_SUFFIX in model.model._meta.db_table
+    ]
 
 
 def test_type_agreement_is_clean_on_a_migrated_database(actual_types):
