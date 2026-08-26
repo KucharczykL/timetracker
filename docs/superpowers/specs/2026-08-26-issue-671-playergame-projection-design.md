@@ -62,12 +62,16 @@ class PlayerGame(ProjectionModel):
         default=models.NOT_PROVIDED,
         db_default=models.NOT_PROVIDED,
     )
-    game = models.ForeignKey(Game, on_delete=models.RESTRICT, related_name="player_games")
+    game = models.ForeignKey(
+        Game, on_delete=models.RESTRICT, related_name="player_games"
+    )
     tracked_at = models.DateTimeField(editable=False)
 
     class Meta:
         constraints = (
-            models.UniqueConstraint(fields=("library", "game"), name="unique_library_player_game"),
+            models.UniqueConstraint(
+                fields=("library", "game"), name="unique_library_player_game"
+            ),
         )
 ```
 

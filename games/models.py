@@ -1292,12 +1292,12 @@ class PlayerGame(ProjectionModel):
     tracked_at = models.DateTimeField(editable=False)
 
     class Meta:
-        constraints = [
+        constraints = (
             models.UniqueConstraint(
                 fields=("library", "game"),
                 name="unique_library_player_game",
             ),
-        ]
+        )
 
     def __str__(self) -> str:
         return f"{self.game} tracked by library {self.library_id}"

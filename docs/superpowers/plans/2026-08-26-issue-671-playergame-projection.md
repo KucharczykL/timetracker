@@ -223,7 +223,7 @@ set so that a wrong derivation cannot agree with itself. Two foreign keys arrive
 with this model, so two pairs join `EXPECTED_RELATION_COLUMNS`, in the set's
 existing alphabetical order — after the `games_platform` entry:
 
-```python
+```text
     ("games_platform", "library_id"),
     ("games_playergame", "game_id"),
     ("games_playergame", "library_id"),
@@ -733,9 +733,7 @@ def test_repeating_the_key_replays_rather_than_tracking_twice(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_purging_the_library_takes_the_tracked_row_with_it(
-    owned_user, owned_library
-):
+def test_purging_the_library_takes_the_tracked_row_with_it(owned_user, owned_library):
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     dispatch(
         TrackGame(game_id=game.pk),
@@ -1085,9 +1083,7 @@ rebuild_projections`):
 
 ```python
 @pytest.mark.django_db(transaction=True)
-def test_a_rebuild_reproduces_the_tracked_rows(
-    owned_user, owned_library, tracked_game
-):
+def test_a_rebuild_reproduces_the_tracked_rows(owned_user, owned_library, tracked_game):
     """Replay parity, stated as a test: the rebuild changes nothing."""
     dispatch(
         TrackGame(game_id=tracked_game.pk),

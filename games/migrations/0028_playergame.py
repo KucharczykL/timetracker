@@ -2,27 +2,54 @@
 
 import django.db.models.deletion
 import django.db.models.fields
-import timetracker.uuidv7
 from django.db import migrations, models
+
+import timetracker.uuidv7
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('games', '0027_archive_catalog_rows'),
+        ("games", "0027_archive_catalog_rows"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='PlayerGame',
+            name="PlayerGame",
             fields=[
-                ('id', timetracker.uuidv7.UUIDv7Field(db_default=django.db.models.fields.NOT_PROVIDED, default=django.db.models.fields.NOT_PROVIDED, editable=False, primary_key=True, serialize=False)),
-                ('tracked_at', models.DateTimeField(editable=False)),
-                ('game', models.ForeignKey(on_delete=django.db.models.deletion.RESTRICT, related_name='player_games', to='games.game')),
-                ('library', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='+', to='games.userlibrary')),
+                (
+                    "id",
+                    timetracker.uuidv7.UUIDv7Field(
+                        db_default=django.db.models.fields.NOT_PROVIDED,
+                        default=django.db.models.fields.NOT_PROVIDED,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("tracked_at", models.DateTimeField(editable=False)),
+                (
+                    "game",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.RESTRICT,
+                        related_name="player_games",
+                        to="games.game",
+                    ),
+                ),
+                (
+                    "library",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="+",
+                        to="games.userlibrary",
+                    ),
+                ),
             ],
             options={
-                'constraints': [models.UniqueConstraint(fields=('library', 'game'), name='unique_library_player_game')],
+                "constraints": [
+                    models.UniqueConstraint(
+                        fields=("library", "game"), name="unique_library_player_game"
+                    )
+                ],
             },
         ),
     ]
