@@ -150,7 +150,7 @@ def test_a_referenced_game_is_archived(owned_library, game):
 def test_a_tracked_game_archives_and_keeps_its_projection_row(
     owned_user, owned_library
 ):
-    """A projection row is not collateral."""
+    """Archiving must not delete a projection row."""
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     dispatch(
         TrackGame(game_id=game.pk),

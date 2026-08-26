@@ -26,11 +26,10 @@ libraries can track one shared game. Each library gets its own row.
 
 ## Retention
 
-A projection row is never collateral of a retirement. `archive_or_delete()`
-collects the rows that cascade from a game. It collects with
-`fail_on_restricted=False`. The projection rows stay, and the cascade runs. A
-replay writes those rows again. A delete would make the live table and the
-rebuilt table disagree.
+A retirement must not delete a projection row. `archive_or_delete()` collects
+the rows that cascade from a game. It collects with `fail_on_restricted=False`.
+The cascade then runs, and the projection rows stay. A replay writes those rows
+again. A delete would make the live table and the rebuilt table disagree.
 
 ## The event
 

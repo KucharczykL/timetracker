@@ -1281,7 +1281,7 @@ class PlayerGame(ProjectionModel):
     )
     game = models.ForeignKey(
         Game,
-        #: Never collateral: a replay owns these rows.
+        #: No cascade may delete a projection row.
         on_delete=models.RESTRICT,
         related_name="player_games",
     )

@@ -94,7 +94,7 @@ def _rebuilt(
     """
     if field.remote_field is None:
         return field.__class__(*args, **kwargs)
-    #: A twin is never collateral of a delete.
+    #: A live delete must not read twins.
     #:
     #: A twin joins the live registry and stays there; its temp table does not.
     #: `related_name` hides the accessor, but the deletion collector reads

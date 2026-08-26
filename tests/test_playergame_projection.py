@@ -128,7 +128,7 @@ def test_folding_the_stream_again_writes_no_second_row(
 
 @pytest.mark.django_db(transaction=True)
 def test_a_rebuild_leaves_later_deletes_alone(owned_user, owned_library, tracked_game):
-    #: The twin outlives the temp table it names.
+    #: A live delete must not read twins.
     dispatch(
         TrackGame(game_id=tracked_game.pk),
         actor=owned_user,

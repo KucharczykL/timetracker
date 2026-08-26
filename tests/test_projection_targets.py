@@ -166,8 +166,8 @@ def test_a_twins_relations_hide_their_reverse_accessors():
 
 
 @isolate_apps("games")
-def test_a_twins_relations_are_never_collateral_of_a_live_delete():
-    """The twin outlives the temp table it names."""
+def test_a_twins_relations_are_unreachable_from_a_live_delete():
+    """A live delete must not read twins."""
     _, entry = declare_projection_models()
 
     twin = ShadowTarget().model(entry)
