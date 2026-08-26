@@ -15,14 +15,18 @@ is the package the real families live in. Two importable modules of one name are
 unambiguous to the interpreter and a trap for everyone else.
 """
 
+import uuid
 from abc import ABC
 from collections.abc import Callable, Mapping
 from enum import StrEnum
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from games.events.envelope import RecordedEvent
 from games.events.targets import LIVE_TARGET, ProjectionTarget
 from games.events.vocabulary import EventSpec, EventType
+
+if TYPE_CHECKING:
+    from games.models import ProjectionModel
 
 type BoundHandler = Callable[[RecordedEvent], None]
 #: EventSpec keys; values are the handler functions, read out of the class body
@@ -197,6 +201,33 @@ class Projector(ABC):
 
     def __init__(self, target: ProjectionTarget = LIVE_TARGET) -> None:
         self.target = target
+
+    def project[M: ProjectionModel](
+        self, model: type[M], identity: uuid.UUID, **columns: Any
+    ) -> None:
+        """Write one whole row, keyed on the event's identity.
+
+        One statement: `INSERT ... ON CONFLICT (pk) DO UPDATE`. A re-fold
+        rewrites the row rather than reading for it first, so idempotency
+        costs the key's index rather than a `SELECT ... FOR UPDATE` and two
+        savepoints on every event.
+
+        Pass every column of the row except the key and any generated column.
+        `DO UPDATE` writes only the columns it names, so a partial call is
+        right against a row that exists and inserts nulls and defaults against
+        one that does not.
+        """
+        #: Never the imported model: a rebuild redirects.
+        projected = self.target.model(model)
+        row = projected(**columns)
+        row.pk = identity
+        #: The manager the model happens to name; `objects` is not promised.
+        projected._default_manager.bulk_create(
+            [row],
+            update_conflicts=True,
+            update_fields=list(columns),
+            unique_fields=["pk"],
+        )
 
     def __init_subclass__(
         cls,

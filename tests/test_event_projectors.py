@@ -377,6 +377,82 @@ def test_a_handler_writes_through_the_target_its_family_holds(owned_library):
     assert Device.objects.filter(name="projected").count() == 1
 
 
+project_registry = ProjectorRegistry()
+
+
+class ProjectingWriter(Projector, registry=project_registry):
+    """Writes its whole row through the helper."""
+
+    family_name = ProjectorFamily.CURRENT_STATE
+
+    def _recorded(self, event: RecordedEvent) -> None:
+        #: Device stands in for a projection table.
+        self.project(  # type: ignore[type-var]
+            Device,
+            event.aggregate_id,
+            library_id=event.library_id,
+            name=f"projected {event.sequence}",
+            type=Device.UNKNOWN,
+        )
+
+    handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
+
+
+@pytest.mark.django_db
+def test_the_helper_writes_through_the_target_its_family_holds(owned_library):
+    target = RecordingTarget()
+
+    project_registry.for_target(target).apply(make_event(library_id=owned_library.pk))
+
+    assert target.asked == ["Device"]
+    assert Device.objects.filter(name="projected 1").count() == 1
+
+
+@pytest.mark.django_db
+def test_the_helper_writes_one_row_through_one_statement(owned_library):
+    """The five statements #930 removes were a lock-and-look."""
+    with CaptureQueriesContext(connection) as queries:
+        project_registry.apply(make_event(library_id=owned_library.pk))
+
+    assert len(queries) == 1
+    assert queries[0]["sql"].startswith("INSERT INTO")
+    assert "ON CONFLICT" in queries[0]["sql"]
+
+
+@pytest.mark.django_db
+def test_the_helper_rewrites_the_row_an_identity_already_has(owned_library):
+    """A re-fold is an upsert, not a second row."""
+    identity = uuid.uuid7()
+
+    for sequence in (1, 2):
+        project_registry.apply(
+            make_event(
+                library_id=owned_library.pk,
+                aggregate_id=identity,
+                sequence=sequence,
+            )
+        )
+
+    assert Device.objects.count() == 1
+    assert Device.objects.get(pk=identity).name == "projected 2"
+
+
+@pytest.mark.django_db
+def test_the_helper_keeps_the_columns_it_was_not_given(owned_library):
+    """DO UPDATE writes the named columns and no others."""
+    identity = uuid.uuid7()
+    project_registry.apply(
+        make_event(library_id=owned_library.pk, aggregate_id=identity)
+    )
+    created_at = Device.objects.get(pk=identity).created_at
+
+    project_registry.apply(
+        make_event(library_id=owned_library.pk, aggregate_id=identity, sequence=2)
+    )
+
+    assert Device.objects.get(pk=identity).created_at == created_at
+
+
 def wiring_over(projectors: ProjectorRegistry) -> EventWiring:
     """This module's wiring over the given families."""
     return EventWiring(projectors=projectors, event_types=EVENT_TYPES)

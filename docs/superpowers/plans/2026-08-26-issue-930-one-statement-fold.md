@@ -143,9 +143,7 @@ class ProjectingWriter(Projector, registry=project_registry):
 def test_the_helper_writes_through_the_target_its_family_holds(owned_library):
     target = RecordingTarget()
 
-    project_registry.for_target(target).apply(
-        make_event(library_id=owned_library.pk)
-    )
+    project_registry.for_target(target).apply(make_event(library_id=owned_library.pk))
 
     assert target.asked == ["Device"]
     assert Device.objects.filter(name="projected 1").count() == 1
