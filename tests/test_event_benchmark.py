@@ -1,16 +1,20 @@
 """The benchmark harness: percentiles, counting, budgets, scenarios."""
 
+import json
 import uuid
 
 import pytest
 from django.contrib.auth.models import User
 from django.db import connection, transaction
+from django.utils import timezone
 
 from games.commands.playergame import TrackGame
 from games.events.append import lock_stream
 from games.events.benchmark import (
+    BenchmarkReport,
     BudgetVerdict,
     Environment,
+    RebuildDiffNotEmpty,
     SeedReport,
     StatementCounter,
     Timings,
@@ -20,14 +24,26 @@ from games.events.benchmark import (
     rebuild_budget,
     summarize,
 )
+from games.events.benchmark_run import run_benchmark
 from games.events.benchmark_workload import (
     purge_scratch_user,
+    run_amplification_scenario,
+    run_command_scenario,
+    run_rebuild_scenario,
     seed_library,
     spare_games,
 )
 from games.events.dispatch import dispatch
 from games.events.rebuild import RebuildAttempt, RebuildMode, RebuildReport
-from games.models import Game, LibraryEvent, LibraryEventStreamHead, PlayerGame
+from games.events.targets import SHADOW_SUFFIX
+from games.models import (
+    Game,
+    LibraryEvent,
+    LibraryEventReference,
+    LibraryEventStreamHead,
+    LibraryIdempotencyRecord,
+    PlayerGame,
+)
 
 
 def track_one_game(library, *, name: str = "Benchmark probe") -> Game:
@@ -283,3 +299,190 @@ def test_the_scratch_user_is_purged_and_the_purge_is_timed(owned_library):
     elapsed = purge_scratch_user(username)
     assert elapsed > 0
     assert not User.objects.filter(username=username).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_warmup_samples_are_additional_and_are_not_recorded(owned_library):
+    seed_library(owned_library, actor=owned_library.user, events=5, spares=7)
+    timings = run_command_scenario(
+        owned_library,
+        actor=owned_library.user,
+        games=spare_games(owned_library),
+        iterations=5,
+        warmup=2,
+    )
+    #: 7 dispatched, 5 recorded.
+    assert timings.samples == 5
+    assert PlayerGame.objects.filter(library=owned_library).count() == 12
+
+
+@pytest.mark.django_db(transaction=True)
+def test_one_dispatch_writes_one_projection_row_through_one_statement(owned_library):
+    seed_library(owned_library, actor=owned_library.user, events=0, spares=1)
+    work = run_amplification_scenario(
+        owned_library,
+        actor=owned_library.user,
+        games=spare_games(owned_library),
+        iterations=1,
+    )
+    assert work.projection_rows == 1
+    assert work.projection_statements == 1
+    rows = work.rows_per_table
+    assert rows[LibraryEvent._meta.db_table] == 1
+    assert rows[LibraryEventReference._meta.db_table] == 1
+    assert rows[LibraryIdempotencyRecord._meta.db_table] >= 1
+    #: events=0 seeded no head, so lock_stream inserts it and append
+    #: advances it: two head rows, not one.
+    assert rows[LibraryEventStreamHead._meta.db_table] == 2
+    assert work.event_store_rows == 4 + rows[LibraryIdempotencyRecord._meta.db_table]
+
+
+@pytest.mark.django_db
+def test_folding_one_event_costs_six_statements(django_user_model):
+    """The number #930 exists to reduce.
+
+    A rebuild also pays a fixed cost -- the temp tables, the reference
+    anti-joins, the diff, the swap, the drop -- measured at 17 statements.
+    The average at ten events is therefore 7.7, not 6. The slope between two
+    sizes is the per-event number, and it is exact.
+    """
+    totals: dict[int, int] = {}
+    for events in (10, 30):
+        user = django_user_model.objects.create_user(username=f"fold-{events}")
+        seed_library(user.library, actor=user, events=events, spares=0)
+        _report, fold = run_rebuild_scenario(
+            user.library, mode=RebuildMode.REBUILD, count_fold=True
+        )
+        assert fold is not None
+        totals[events] = fold.statements
+    assert (totals[30] - totals[10]) / 20 == pytest.approx(6.0, abs=0.01)
+
+
+@pytest.mark.django_db
+def test_the_fold_counts_the_shadow_table_as_its_projection(owned_library):
+    """A replay writes games_playergame__shadow; the swap writes the live one."""
+    seed_library(owned_library, actor=owned_library.user, events=10, spares=0)
+    _report, fold = run_rebuild_scenario(
+        owned_library, mode=RebuildMode.REBUILD, count_fold=True
+    )
+    assert fold is not None
+    live = PlayerGame._meta.db_table
+    shadow = f"{live}{SHADOW_SUFFIX}"
+    assert fold.statements_per_table[shadow] == 10
+    assert fold.projection_statements == (
+        fold.statements_per_table[shadow] + fold.statements_per_table[live]
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_run_folds_the_events_both_write_paths_produced():
+    report = run_benchmark(seed=30, iterations=3, warmup=1, keep=True)
+    #: 30 seeded, 3 + 1 by the command scenario, 3 by amplification.
+    assert report.rebuild.folded_through == 37
+    assert all(
+        table.only_live == table.only_rebuilt == table.differing == 0
+        for table in report.rebuild.tables
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_run_purges_its_scratch_user_after_a_scenario_raises(monkeypatch):
+    """Deleting the workload plug point left a monkeypatch as the only seam."""
+    from games.events import benchmark_run as run_module
+
+    def explode(*args, **kwargs):
+        raise RuntimeError("the scenario failed")
+
+    monkeypatch.setattr(run_module, "run_command_scenario", explode)
+    before = set(User.objects.values_list("username", flat=True))
+    with pytest.raises(RuntimeError, match="the scenario failed"):
+        run_benchmark(seed=5, iterations=2, warmup=0)
+    assert set(User.objects.values_list("username", flat=True)) == before
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_kept_run_names_its_scratch_user_before_it_can_fail():
+    """--keep must print the cleanup even for a run that raises."""
+    announced: list[str] = []
+    report = run_benchmark(
+        seed=5,
+        iterations=1,
+        warmup=0,
+        keep=True,
+        announce_scratch_user=announced.append,
+    )
+    assert announced == [report.scratch_username]
+    assert User.objects.filter(username=report.scratch_username).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_no_count_fold_leaves_the_fold_unmeasured():
+    report = run_benchmark(seed=5, iterations=1, warmup=0, count_fold=False)
+    assert report.fold is None
+    assert report.rebuild is not None
+
+
+@pytest.mark.django_db
+def test_library_mode_writes_no_persistent_row(owned_library):
+    seed_library(owned_library, actor=owned_library.user, events=6, spares=0)
+    before = set(
+        PlayerGame.objects.filter(library=owned_library).values_list("id", flat=True)
+    )
+    head_before = LibraryEventStreamHead.objects.get(
+        library=owned_library
+    ).current_sequence
+    report = run_benchmark(seed=0, iterations=0, warmup=0, library=owned_library)
+    assert report.seed is None
+    assert report.command is None
+    assert report.scratch_username is None
+    assert (
+        set(
+            PlayerGame.objects.filter(library=owned_library).values_list(
+                "id", flat=True
+            )
+        )
+        == before
+    )
+    assert (
+        LibraryEventStreamHead.objects.get(library=owned_library).current_sequence
+        == head_before
+    )
+
+
+@pytest.mark.django_db
+def test_a_non_empty_rebuild_diff_fails_the_run(owned_library):
+    seed_library(owned_library, actor=owned_library.user, events=6, spares=0)
+    #: A row the replay will not produce.
+    PlayerGame.objects.create(
+        id=uuid.uuid7(),
+        library=owned_library,
+        game=Game.objects.create(library=owned_library, name="Unfolded"),
+        tracked_at=timezone.now(),
+    )
+    with pytest.raises(RebuildDiffNotEmpty):
+        run_benchmark(seed=0, iterations=0, warmup=0, library=owned_library)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_report_carries_every_scenario_and_a_schema():
+    report = run_benchmark(seed=25, iterations=3, warmup=1)
+    assert isinstance(report, BenchmarkReport)
+    assert report.schema == 1
+    assert report.seed is not None
+    assert report.command is not None
+    assert report.amplification is not None
+    assert report.fold is not None
+    assert report.teardown_seconds is not None
+    parsed = json.loads(report.as_json())
+    assert parsed["schema"] == 1
+    assert set(parsed) >= {
+        "environment",
+        "scratch_username",
+        "seed",
+        "command",
+        "amplification",
+        "fold",
+        "rebuild",
+        "teardown_seconds",
+        "budgets",
+    }

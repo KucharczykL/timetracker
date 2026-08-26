@@ -10,16 +10,26 @@ Imports benchmark.py for its vocabulary and nothing from benchmark_run.py.
 import uuid
 from collections.abc import Iterator
 from io import StringIO
-from itertools import batched
+from itertools import batched, islice
 from time import monotonic
 
 from django.contrib.auth.models import User
 from django.core.management import call_command
-from django.db import transaction
+from django.db import connection, transaction
 
+from games.commands.playergame import TrackGame
 from games.events.append import lock_stream
-from games.events.benchmark import Seconds, SeedReport
+from games.events.benchmark import (
+    Seconds,
+    SeedReport,
+    StatementCounter,
+    Timings,
+    WorkPerEvent,
+    summarize,
+)
+from games.events.dispatch import dispatch
 from games.events.playergame import PLAYERGAME_CREATED
+from games.events.rebuild import RebuildMode, RebuildReport, rebuild_projections
 from games.events.references import capture_reference
 from games.models import Game, UserLibrary
 
@@ -131,3 +141,75 @@ def purge_scratch_user(username: str) -> Seconds:
         stdout=StringIO(),
     )
     return monotonic() - started
+
+
+def _track(library: UserLibrary, *, actor: User, game: Game) -> None:
+    dispatch(
+        TrackGame(game_id=game.pk),
+        actor=actor,
+        library=library,
+        idempotency_key=str(uuid.uuid7()),
+    )
+
+
+def run_command_scenario(
+    library: UserLibrary,
+    *,
+    actor: User,
+    games: Iterator[Game],
+    iterations: int,
+    warmup: int,
+) -> Timings:
+    """Dispatch against a library that already holds its seeded rows.
+
+    TrackGame's duplicate check queries the projection, so measuring it
+    against a full library is the measurement worth having. The warmup
+    dispatches are additional to `iterations` and are discarded: the first
+    one pays for connection setup and query planning no later one pays for.
+    """
+    for game in islice(games, warmup):
+        _track(library, actor=actor, game=game)
+    samples: list[Seconds] = []
+    for game in islice(games, iterations):
+        started = monotonic()
+        _track(library, actor=actor, game=game)
+        samples.append(monotonic() - started)
+    return summarize(samples)
+
+
+def run_amplification_scenario(
+    library: UserLibrary, *, actor: User, games: Iterator[Game], iterations: int
+) -> WorkPerEvent:
+    """What one whole command costs: append, idempotency, and the fold.
+
+    Counted in its own pass rather than during the command scenario, so the
+    wrapper's per-statement cost stays out of the latency being gated.
+    """
+    counter = StatementCounter()
+    dispatched = 0
+    with connection.execute_wrapper(counter):
+        for game in islice(games, iterations):
+            _track(library, actor=actor, game=game)
+            dispatched += 1
+    return counter.work(events=dispatched)
+
+
+def run_rebuild_scenario(
+    library: UserLibrary, *, mode: RebuildMode, count_fold: bool
+) -> tuple[RebuildReport, WorkPerEvent | None]:
+    """Replay, diff, and -- in REBUILD mode -- swap.
+
+    No CHECK pass runs first: a REBUILD already separates replay, diff and
+    swap in its RebuildAttempt, and already diffs before swapping, so the
+    second pass bought nothing and cost a third of the run.
+
+    The counter is installed for the whole rebuild, so the gated time carries
+    its own instrumentation. That makes a PASSED verdict conservative; pass
+    count_fold=False to re-measure a verdict that lands inside the overhead.
+    """
+    if not count_fold:
+        return rebuild_projections(library, mode=mode), None
+    counter = StatementCounter()
+    with connection.execute_wrapper(counter):
+        report = rebuild_projections(library, mode=mode)
+    return report, counter.work(events=report.folded_through)

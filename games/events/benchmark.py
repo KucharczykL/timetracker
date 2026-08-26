@@ -11,11 +11,12 @@ benchmark_workload or benchmark_run, and that is what keeps the three modules
 acyclic.
 """
 
+import json
 import math
 import os
 import platform as platform_module
 from collections.abc import Container, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from typing import Any
 
@@ -301,3 +302,32 @@ class SeedReport:
     append_seconds: Seconds
     #: The bulk-write number, in place of a bulk command.
     events_per_second: float
+
+
+class RebuildDiffNotEmpty(RuntimeError):
+    """The parity claim the run exists to make is false."""
+
+
+REPORT_SCHEMA = 1
+
+
+@dataclass(frozen=True, slots=True)
+class BenchmarkReport:
+    schema: int
+    environment: Environment
+    #: None in --library mode; --keep prints it.
+    scratch_username: str | None
+    #: None in --library mode.
+    seed: SeedReport | None
+    command: Timings | None
+    #: Per command: the whole write path.
+    amplification: WorkPerEvent | None
+    #: Per event: the fold alone.
+    fold: WorkPerEvent | None
+    rebuild: RebuildReport | None
+    #: None when --keep was given.
+    teardown_seconds: Seconds | None
+    budgets: tuple[Budget, ...]
+
+    def as_json(self) -> str:
+        return json.dumps(asdict(self), indent=2, default=str)
