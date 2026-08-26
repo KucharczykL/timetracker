@@ -27,6 +27,7 @@ which is the part nothing has exercised yet.
 | A `TrackGame` command reached by dispatch | Any view, form, or API that calls it |
 | Two-library isolation and replay-parity tests | Backfill (#676), write cutover (#677), read cutover (#678) |
 | One line of `games/retention.py`, so archiving survives the new foreign key | Any change to `Game.status`, `mastered`, or `playtime` |
+| Opening the command-name vocabulary, which the first real command forces | Any other change to dispatch, idempotency, or retry |
 
 Nothing outside the event path reads or writes the new table in this issue. That
 is what makes it independently reviewable: the projection can be wrong in
@@ -212,11 +213,37 @@ would be a cycle.
 `projection_models()` stops being empty, so
 `tests/test_projection_rebuild.py::test_the_application_declares_no_projection_table_yet`
 inverts: the application now declares exactly one. The foundation issues wrote
-that assertion knowing this issue would retire it. The docstrings in
+that assertion knowing this issue would retire it. The docstring in
 `games/projectors/__init__.py` ("Empty until the first evented domain lands")
-and on `CommandName` ("Placeholders exercising dispatch until real commands
-exist") both need a sentence adjusted rather than removed — the six placeholders
-remain placeholders.
+needs a sentence adjusted rather than removed.
+
+`CommandName` needs more than a sentence.
+`test_placeholders_do_not_outlive_the_first_real_command` is a tripwire a
+foundation issue planted for this moment: it holds that once a real command
+joins the allowlist, the six `TEST_COMMAND_*` members are undeleted scaffolding.
+The first real command proves the premise wrong. Those names back five test
+doubles for behaviour `TrackGame` cannot exercise — a twin whose fields coincide
+under a second name, an `effective_time`, a command that is not a dataclass, a
+rejection out of `build`, and a deadlock killed once and retried. Deleting them
+deletes dispatch's own coverage.
+
+The concern behind the tripwire is still right: a production allowlist is not a
+place for test-only entries. What is wrong is that the allowlist is the only
+place a command can get a name from. `Command.__init_subclass__` demands a
+`CommandName` member, and a `StrEnum` with members cannot be extended, so a
+double has nowhere else to go.
+
+So the vocabulary becomes open while each vocabulary stays closed. An empty
+`CommandVocabulary(StrEnum)` is the base every command-name enum inherits from;
+`CommandName` is the production one, and a test module declares its own.
+`__init_subclass__` requires a `CommandVocabulary` member, which still refuses a
+bare string typo and still reads as a fixed inventory per enum. The registry
+keys on the string value rather than the enum member, so two vocabularies cannot
+both claim one name. Nothing persists the member — only the fingerprint reads
+`.value` — so no idempotency key already issued changes meaning.
+
+The tripwire is then replaced by the assertion it was reaching for and could not
+state: `CommandName` holds real commands only.
 
 Two downstream issues get their first real subject: #670's benchmark harness no
 longer needs a synthetic workload, and #667's rebuild finally has a table to
@@ -239,6 +266,8 @@ rebuild.
   here because this is the first payload that exercises it), archives with its
   `PlayerGame` row intact, and takes that row with it when the whole library is
   purged.
+- `CommandName` holds real commands only, and a name claimed in one vocabulary
+  cannot be claimed again in another.
 - `tests/test_projection_model.py` gains `PlayerGame` passing the E001–E006
   checks — the regression guard on the two opted-out field defaults.
 - `manage.py makemigrations --check` stays clean.

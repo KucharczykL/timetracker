@@ -757,22 +757,118 @@ def test_purging_the_library_takes_the_tracked_row_with_it(
 Run: `make test ARGS="tests/test_playergame_command.py -x"`
 Expected: FAIL with `ModuleNotFoundError: No module named 'games.commands'`.
 
-- [ ] **Step 3: Add the command name**
+- [ ] **Step 3: Open the command-name vocabulary, then add the command name**
 
-In `games/events/dispatch.py`, inside `class CommandName`, after the six
-`TEST_COMMAND_*` members:
+`tests/test_command_dispatch.py::test_placeholders_do_not_outlive_the_first_real_command`
+fires the moment a real member joins `CommandName`, on the premise that the six
+`TEST_COMMAND_*` members are then undeleted scaffolding. They are not: they back
+five test doubles for behaviour `TrackGame` cannot exercise. The vocabulary opens
+instead, exactly as the spec's "What this changes elsewhere" section describes.
+
+In `games/events/dispatch.py`, above `class CommandName`:
 
 ```python
-    #: Placeholders exercising dispatch until real commands exist.
-    TEST_COMMAND_BASIC = "test.command.basic"
-    TEST_COMMAND_TWIN = "test.command.twin"
-    TEST_COMMAND_TEMPORAL = "test.command.temporal"
-    TEST_COMMAND_UNSHAPED = "test.command.unshaped"
-    TEST_COMMAND_REJECTING = "test.command.rejecting"
-    TEST_COMMAND_FLAKY = "test.command.flaky"
+class CommandVocabulary(StrEnum):
+    """A closed set of command names, of which there is more than one.
 
-    #: The library's own vocabulary.
+    Members are stable domain symbols rather than Python paths, so moving or
+    renaming a class cannot invalidate idempotency keys already issued under it.
+    Requiring a member of *some* vocabulary still refuses a bare string typo,
+    while leaving the production allowlist free of names only a test uses.
+    """
+```
+
+Then reduce `CommandName` to real commands only, and give it the new base:
+
+```python
+class CommandName(CommandVocabulary):
+    """Every command the application can run.
+
+    The readable inventory: one grep, and no entry that is not a thing the
+    system does. A test double names itself from its own vocabulary.
+    """
+
     PLAYERGAME_TRACK = "library.playergame.track"
+```
+
+Key the registry on the name rather than the member, so two vocabularies cannot
+both claim one string:
+
+```python
+_COMMAND_REGISTRY: dict[CommandNameValue, DefinitionSite] = {}
+```
+
+with the alias beside `DefinitionSite`:
+
+```python
+#: A command's stable domain symbol.
+type CommandNameValue = str  # "library.playergame.track"
+```
+
+and widen the check in `Command.__init_subclass__`:
+
+```python
+        name = getattr(cls, "command_name", None)
+        if not isinstance(name, CommandVocabulary):
+            raise TypeError(
+                f"{cls.__qualname__} declares no command_name. Every concrete "
+                "command names itself with a member of a CommandVocabulary."
+            )
+
+        definition_site = (cls.__module__, cls.__qualname__)
+        registered = _COMMAND_REGISTRY.get(name.value)
+        #: dataclass(slots=True) cannot add slots in place, so it rebuilds the
+        #: class and fires this a second time. One definition site registering
+        #: twice is that rebuild; a second site is a real collision.
+        if registered is not None and registered != definition_site:
+            raise TypeError(
+                f"{cls.__qualname__} claims {name.value!r}, already owned by "
+                f"{registered[0]}.{registered[1]}."
+            )
+        _COMMAND_REGISTRY[name.value] = definition_site
+```
+
+with `command_name: ClassVar[CommandVocabulary]` on `Command`.
+
+In `tests/test_command_dispatch.py`, declare the doubles' own vocabulary and
+repoint the six classes at it:
+
+```python
+class DispatchProbeName(CommandVocabulary):
+    """Names for the doubles that exercise dispatch itself.
+
+    Not in `CommandName`, because nothing here is a thing the application does.
+    """
+
+    BASIC = "test.command.basic"
+    TWIN = "test.command.twin"
+    TEMPORAL = "test.command.temporal"
+    UNSHAPED = "test.command.unshaped"
+    REJECTING = "test.command.rejecting"
+    FLAKY = "test.command.flaky"
+```
+
+Replace the tripwire with the assertion it was reaching for:
+
+```python
+def test_the_allowlist_holds_real_commands_only():
+    #: The inventory is only readable if everything in it is a thing the
+    #: system does. Doubles name themselves from DispatchProbeName.
+    assert not [name for name in CommandName if name.name.startswith("TEST_")]
+
+
+def test_two_vocabularies_cannot_claim_one_name():
+    class Borrowed(CommandVocabulary):
+        TRACK = CommandName.PLAYERGAME_TRACK.value
+
+    with pytest.raises(TypeError, match="already owned by"):
+
+        @dataclass(frozen=True, slots=True)
+        class Impostor(Command):
+            command_name: ClassVar[CommandVocabulary] = Borrowed.TRACK
+
+            def build(self, context: CommandContext) -> Sequence[NewEvent]:
+                return []
 ```
 
 - [ ] **Step 4: Write the command package**
