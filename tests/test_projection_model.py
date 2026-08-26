@@ -1,5 +1,7 @@
 """The projection base and its purity check."""
 
+import datetime
+import itertools
 import uuid
 
 from django.core.checks import CheckMessage
@@ -112,13 +114,66 @@ def test_a_constant_default_is_allowed():
     class Fixed(ProjectionModel):
         id = models.UUIDField(primary_key=True)
         origin = models.UUIDField(default=uuid.UUID(int=1))
-        tags = models.JSONField(default=dict)
+        status = models.CharField(max_length=9, default="unplayed")
+        mastered = models.BooleanField(default=False)
+        archived_at = models.DateTimeField(null=True, default=None)
 
         class Meta:
             app_label = "games"
 
     #: A constant reproduces itself, whatever its module.
     assert check(Fixed) == []
+
+
+@isolate_apps("games")
+def test_an_empty_container_default_is_allowed():
+    """The idiom Django asks for, and it returns one value."""
+
+    class Collected(ProjectionModel):
+        id = models.UUIDField(primary_key=True)
+        tags = models.JSONField(default=dict)
+        history = models.JSONField(default=list)
+
+        class Meta:
+            app_label = "games"
+
+    assert check(Collected) == []
+
+
+@isolate_apps("games")
+def test_a_callable_default_of_another_kind_is_refused():
+    """E005 and E006 name two factories; this catches the rest."""
+
+    ranks = itertools.count()
+
+    def next_rank() -> int:
+        return next(ranks)
+
+    class Ranked(ProjectionModel):
+        id = models.UUIDField(primary_key=True)
+        rank = models.IntegerField(default=next_rank)
+
+        class Meta:
+            app_label = "games"
+
+    assert check(Ranked) == ["games.E007"]
+
+
+@isolate_apps("games")
+def test_a_wrapped_clock_default_is_refused():
+    """The hole E006's own hint admitted to."""
+
+    def when() -> datetime.datetime:
+        return timezone.now()
+
+    class Wrapped(ProjectionModel):
+        id = models.UUIDField(primary_key=True)
+        seen_at = models.DateTimeField(default=when)
+
+        class Meta:
+            app_label = "games"
+
+    assert check(Wrapped) == ["games.E007"]
 
 
 @isolate_apps("games")
