@@ -9,14 +9,16 @@ Imports benchmark.py for its vocabulary and nothing from benchmark_run.py.
 
 import uuid
 from collections.abc import Iterator
+from io import StringIO
 from itertools import batched
 from time import monotonic
 
 from django.contrib.auth.models import User
+from django.core.management import call_command
 from django.db import transaction
 
 from games.events.append import lock_stream
-from games.events.benchmark import SeedReport
+from games.events.benchmark import Seconds, SeedReport
 from games.events.playergame import PLAYERGAME_CREATED
 from games.events.references import capture_reference
 from games.models import Game, UserLibrary
@@ -108,3 +110,24 @@ def _catalog(library: UserLibrary, prefix: str) -> Iterator[Game]:
             return
         yield from rows
         last_id = rows[-1].id
+
+
+def purge_scratch_user(username: str) -> Seconds:
+    """Delete the scratch user through the command that already knows how.
+
+    At 100,000 events this collects roughly 400,000 rows -- the events, their
+    reference rows, the catalog, and the projections -- and takes about a sixth
+    of the run. A second, raw-SQL copy of the cascade would be faster and would
+    be a second thing that can drift from `on_delete`.
+
+    delete_user_library walks the collector twice, once to print the scope and
+    once to delete. Both walks are inside this number.
+    """
+    started = monotonic()
+    call_command(
+        "delete_user_library",
+        user=username,
+        confirm=username,
+        stdout=StringIO(),
+    )
+    return monotonic() - started

@@ -477,6 +477,25 @@ def test_purging_one_library_leaves_the_others_rows(
     assert LibraryEventReference.objects.for_library(other_library).count() == 2
 
 
+def test_purging_a_library_takes_its_projection_rows_with_it(owned_library):
+    """PlayerGame.game is RESTRICT; CASCADE through the library clears it."""
+    user = owned_library.user
+    game = Game.objects.create(library=owned_library, name="Purged")
+    dispatch(
+        TrackGame(game_id=game.pk),
+        actor=user,
+        library=owned_library,
+        idempotency_key=str(uuid.uuid7()),
+    )
+    assert PlayerGame.objects.filter(library=owned_library).exists()
+
+    with transaction.atomic(), purging_library():
+        user.delete()
+
+    assert not PlayerGame.objects.filter(library=owned_library).exists()
+    assert not Game.objects.filter(pk=game.pk).exists()
+
+
 def test_the_exemption_does_not_outlive_the_purge(owned_library, game):
     name_in_an_event(owned_library, game)
     with purging_library():

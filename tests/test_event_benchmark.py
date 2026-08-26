@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+from django.contrib.auth.models import User
 from django.db import connection, transaction
 
 from games.commands.playergame import TrackGame
@@ -19,7 +20,11 @@ from games.events.benchmark import (
     rebuild_budget,
     summarize,
 )
-from games.events.benchmark_workload import seed_library, spare_games
+from games.events.benchmark_workload import (
+    purge_scratch_user,
+    seed_library,
+    spare_games,
+)
 from games.events.dispatch import dispatch
 from games.events.rebuild import RebuildAttempt, RebuildMode, RebuildReport
 from games.models import Game, LibraryEvent, LibraryEventStreamHead, PlayerGame
@@ -269,3 +274,12 @@ def test_seeding_reports_append_throughput(owned_library):
     assert report.append_seconds > 0
     #: Setup is timed apart from the measurement.
     assert report.catalog_seconds > 0
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_scratch_user_is_purged_and_the_purge_is_timed(owned_library):
+    username = owned_library.user.username
+    track_one_game(owned_library, name="Purged by the harness")
+    elapsed = purge_scratch_user(username)
+    assert elapsed > 0
+    assert not User.objects.filter(username=username).exists()
