@@ -53,6 +53,7 @@ from games.management.commands import rebuild_projections as rebuild_command
 from games.models import (
     LibraryEvent,
     LibraryEventStreamHead,
+    PlayerGame,
     ProjectionModel,
     UserLibrary,
 )
@@ -127,9 +128,9 @@ def test_discovery_passes_over_a_manufactured_twin():
     assert set(projection_models(shelf._meta.apps)) == {shelf, entry}
 
 
-def test_the_application_declares_no_projection_table_yet():
-    """No real projection table exists yet."""
-    assert projection_models() == ()
+def test_the_application_declares_the_playergame_projection():
+    """The one projection table so far."""
+    assert projection_models() == (PlayerGame,)
 
 
 @pytest.mark.django_db

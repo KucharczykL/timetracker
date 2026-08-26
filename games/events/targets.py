@@ -94,7 +94,13 @@ def _rebuilt(
     """
     if field.remote_field is None:
         return field.__class__(*args, **kwargs)
-    kwargs = {**kwargs, "related_name": "+"}
+    #: A live delete must not read twins.
+    #:
+    #: A twin joins the live registry and stays there; its temp table does not.
+    #: `related_name` hides the accessor, but the deletion collector reads
+    #: hidden relations too, and skips DO_NOTHING alone. Any other rule makes a
+    #: later delete of a referenced live row read a table that is gone.
+    kwargs = {**kwargs, "related_name": "+", "on_delete": models.DO_NOTHING}
     related = _projection_referenced_by(field)
     if related is not None:
         #: A twin points at a twin. Live rows are another rebuild's input.

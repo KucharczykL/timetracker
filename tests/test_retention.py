@@ -13,9 +13,12 @@ from typing import TypedDict
 import pytest
 from django.core.management import call_command
 from django.db import transaction
+from django.db.models.deletion import RestrictedError
 from pydantic import ConfigDict, with_config
 
+from games.commands.playergame import TrackGame
 from games.events.append import lock_stream
+from games.events.dispatch import dispatch
 from games.events.references import (
     DEFAULT_REFERENCE_KINDS,
     Reference,
@@ -32,6 +35,7 @@ from games.models import (
     LibraryEvent,
     LibraryEventReference,
     Platform,
+    PlayerGame,
     PlayEvent,
     Purchase,
     Release,
@@ -141,6 +145,62 @@ def test_a_referenced_game_is_archived(owned_library, game):
     retained = Game.objects.get(pk=game.pk)
     assert retained.archived_at is not None
     assert not Game.objects.for_library(owned_library).exists()
+
+
+def test_a_tracked_game_archives_and_keeps_its_projection_row(
+    owned_user, owned_library
+):
+    """Archiving must not delete a projection row."""
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    dispatch(
+        TrackGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="track",
+    )
+
+    assert archive_or_delete(game) is Retirement.ARCHIVED
+
+    assert Game.objects.get(pk=game.pk).archived_at is not None
+    assert PlayerGame.objects.filter(game=game).count() == 1
+
+
+def test_a_tracked_game_refuses_a_hard_delete(owned_user, owned_library):
+    #: The policy answers, not the foreign key.
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    dispatch(
+        TrackGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="track",
+    )
+
+    with pytest.raises(ReferencedRowDeletion, match="archive_or_delete"):
+        game.delete()
+
+    assert Game.objects.filter(pk=game.pk).exists()
+
+
+def test_a_bulk_delete_of_a_tracked_game_still_answers_restricted(
+    owned_user, owned_library
+):
+    """A queryset never reaches `Model.delete()`.
+
+    The limit of the override, written down rather than found. Every path a
+    person takes deletes one row, so the message they read is the policy's.
+    """
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    dispatch(
+        TrackGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="track",
+    )
+
+    with pytest.raises(RestrictedError):
+        Game.objects.filter(pk=game.pk).delete()
+
+    assert Game.objects.filter(pk=game.pk).exists()
 
 
 def test_a_referenced_platform_is_archived(owned_library, platform):

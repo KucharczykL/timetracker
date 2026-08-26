@@ -6,9 +6,13 @@ only thing that should.
 
 A command is a frozen dataclass whose fields *are* its canonical input, so the
 idempotency fingerprint cannot fall out of step with what the command actually
-does. It names itself with a member of a closed allowlist, and that name is part
-of the fingerprint -- without it, one key reused across two command types whose
-fields coincide would replay one as the other.
+does. It names itself with a member of a closed vocabulary, and that name is
+part of the fingerprint -- without it, one key reused across two command types
+whose fields coincide would replay one as the other.
+
+There is more than one vocabulary. `CommandName` is the application's and holds
+real commands only; the doubles that exercise dispatch declare their own. The
+registry keys on the name, so two vocabularies cannot claim one name.
 
 Two properties of the registry below follow from keying it on a definition site
 rather than on class identity, and are limits rather than oversights:
@@ -46,28 +50,34 @@ from timetracker.uuidv7 import parse_uuidv7
 #: Where a command class was defined, as (module, qualified name).
 type DefinitionSite = tuple[str, str]  # ("games.commands.session", "CreateSession")
 
+#: A command's stable domain symbol.
+type CommandNameValue = str  # "library.playergame.track"
+
 #: Read off the column, so the argument check and the constraint cannot drift.
 IDEMPOTENCY_KEY_MAX_LENGTH: int = cast(
     int, LibraryEvent._meta.get_field("idempotency_key").max_length
 )
 
 
-class CommandName(StrEnum):
-    """Every command the system can run.
+class CommandVocabulary(StrEnum):
+    """A closed set of command names.
 
-    A closed allowlist rather than a free string: the type rejects an unlisted
-    name before anything runs, and the vocabulary of the audit trail is one
-    grep. Members are stable domain symbols, not Python paths, so moving or
-    renaming a class cannot invalidate idempotency keys already issued under it.
+    There is more than one. Members are stable domain symbols rather than
+    Python paths, so moving or renaming a class cannot invalidate idempotency
+    keys already issued under it. Requiring a member of *some* vocabulary still
+    refuses a bare string typo, while leaving the production allowlist free of
+    names only a test uses.
     """
 
-    #: Placeholders exercising dispatch until real commands exist.
-    TEST_COMMAND_BASIC = "test.command.basic"
-    TEST_COMMAND_TWIN = "test.command.twin"
-    TEST_COMMAND_TEMPORAL = "test.command.temporal"
-    TEST_COMMAND_UNSHAPED = "test.command.unshaped"
-    TEST_COMMAND_REJECTING = "test.command.rejecting"
-    TEST_COMMAND_FLAKY = "test.command.flaky"
+
+class CommandName(CommandVocabulary):
+    """Every command the application can run.
+
+    The readable inventory: one grep, and no entry that is not a thing the
+    system does. A test double names itself from its own vocabulary.
+    """
+
+    PLAYERGAME_TRACK = "library.playergame.track"
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,7 +170,7 @@ def validate_idempotency_key(key: IdempotencyKey) -> None:
         )
 
 
-_COMMAND_REGISTRY: dict[CommandName, DefinitionSite] = {}
+_COMMAND_REGISTRY: dict[CommandNameValue, DefinitionSite] = {}
 
 
 class Command(ABC):
@@ -173,7 +183,7 @@ class Command(ABC):
     lookup.
     """
 
-    command_name: ClassVar[CommandName]
+    command_name: ClassVar[CommandVocabulary]
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
@@ -184,23 +194,28 @@ class Command(ABC):
             return
 
         name = getattr(cls, "command_name", None)
-        if not isinstance(name, CommandName):
+        if not isinstance(name, CommandVocabulary):
             raise TypeError(
                 f"{cls.__qualname__} declares no command_name. Every concrete "
-                "command names itself with a CommandName member."
+                "command names itself with a member of a CommandVocabulary."
             )
 
-        definition_site = (cls.__module__, cls.__qualname__)
-        registered = _COMMAND_REGISTRY.get(name)
+        #: The rebuilt class carries a bare __qualname__.
+        #:
         #: dataclass(slots=True) cannot add slots in place, so it rebuilds the
         #: class and fires this a second time. One definition site registering
-        #: twice is that rebuild; a second site is a real collision.
+        #: twice is that rebuild; a second site is a real collision. The rebuild
+        #: keeps __name__ and drops the `<locals>` prefix from __qualname__, so
+        #: keying on the qualified name makes a command declared inside a
+        #: function collide with itself.
+        definition_site = (cls.__module__, cls.__name__)
+        registered = _COMMAND_REGISTRY.get(name.value)
         if registered is not None and registered != definition_site:
             raise TypeError(
                 f"{cls.__qualname__} claims {name.value!r}, already owned by "
                 f"{registered[0]}.{registered[1]}."
             )
-        _COMMAND_REGISTRY[name] = definition_site
+        _COMMAND_REGISTRY[name.value] = definition_site
 
     @abstractmethod
     def build(self, context: CommandContext) -> Sequence[NewEvent]:

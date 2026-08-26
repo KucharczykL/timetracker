@@ -117,6 +117,14 @@ def test_uuidv7_field_without_a_database_default_survives_a_clone():
     assert field.clone().has_db_default() is False
 
 
+def test_uuidv7_field_without_a_minted_default_survives_a_clone():
+    # The db_default hazard, on the minted default.
+    field = UUIDv7Field(default=models.NOT_PROVIDED)
+
+    assert field.deconstruct()[3]["default"] is models.NOT_PROVIDED
+    assert field.clone().has_default() is False
+
+
 def test_uuidv7_field_rejects_an_unsupported_backend():
     with pytest.raises(NotSupportedError, match="PostgreSQL"):
         UUIDv7Field().db_type(SimpleNamespace(vendor="mysql"))

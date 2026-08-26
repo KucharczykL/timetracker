@@ -166,6 +166,18 @@ def test_a_twins_relations_hide_their_reverse_accessors():
 
 
 @isolate_apps("games")
+def test_a_twins_relations_are_unreachable_from_a_live_delete():
+    """A live delete must not read twins."""
+    _, entry = declare_projection_models()
+
+    twin = ShadowTarget().model(entry)
+
+    for name in ("library", "shelf"):
+        relation = twin._meta.get_field(name).remote_field
+        assert relation.on_delete is models.DO_NOTHING
+
+
+@isolate_apps("games")
 def test_a_generated_column_survives_onto_the_twin():
     shelf, _ = declare_projection_models()
 

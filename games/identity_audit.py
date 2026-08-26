@@ -124,7 +124,12 @@ def audited_models() -> list[type[Model]]:
     `include_auto_created` is not optional: `games_purchase_games` carries the
     permanent bigint through-row primary-key exemption and is invisible without it.
     """
-    return list(apps.get_app_config("games").get_models(include_auto_created=True))
+    #: `managed` is what excludes the manufactured twins.
+    return [
+        model
+        for model in apps.get_app_config("games").get_models(include_auto_created=True)
+        if model._meta.managed
+    ]
 
 
 def relation_columns() -> list[RelationColumn]:

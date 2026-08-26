@@ -53,6 +53,25 @@ class ArchivableQuerySet(LibraryOwnedQuerySet):
         return super().for_library(library).alive()
 
 
+class ReferencedRow(models.Model):
+    """A row an event may name."""
+
+    class Meta:
+        abstract = True
+
+    def delete(self, *args, **kwargs):
+        #: The policy runs before the collector.
+        #:
+        #: `Model.delete()` collects before it sends `pre_delete`, so a
+        #: RESTRICT relation would refuse first and say only which foreign key
+        #: held the row. The receiver stays the backstop for the paths that
+        #: never reach here: a queryset delete and a cascade.
+        from games.retention import refuse_to_delete_a_referenced_row
+
+        refuse_to_delete_a_referenced_row(self)
+        return super().delete(*args, **kwargs)
+
+
 class GameQuerySet(ArchivableQuerySet):
     def visible_to(self, library):
         return self.filter(Q(library__isnull=True) | Q(library=library)).alive()
@@ -76,7 +95,7 @@ def _validate_related_library(
         )
 
 
-class Game(models.Model):
+class Game(ReferencedRow):
     class Meta:
         #: Both partial on `archived_at`.
         #: An archived name is free again.
@@ -275,7 +294,7 @@ class PlatformQuerySet(ArchivableQuerySet):
         return self.filter(Q(library__isnull=True) | Q(library=library)).alive()
 
 
-class Platform(models.Model):
+class Platform(ReferencedRow):
     class Meta:
         #: Both partial, as on Game.Meta.
         constraints = (
@@ -1000,7 +1019,7 @@ class Session(models.Model):
         super().save(*args, **kwargs)
 
 
-class Device(models.Model):
+class Device(ReferencedRow):
     #: Archivable: `device` is a REQUIRED reference kind.
     objects = ArchivableQuerySet.as_manager()
 
@@ -1267,6 +1286,37 @@ class ProjectionModel(models.Model):
 
     class Meta:
         abstract = True
+
+
+class PlayerGame(ProjectionModel):
+    """One catalog game a library tracks, projected from its events."""
+
+    id = UUIDv7Field(
+        primary_key=True,
+        editable=False,
+        #: The creation event's aggregate_id, evaluated once.
+        default=models.NOT_PROVIDED,
+        db_default=models.NOT_PROVIDED,
+    )
+    game = models.ForeignKey(
+        Game,
+        #: No cascade may delete a projection row.
+        on_delete=models.RESTRICT,
+        related_name="player_games",
+    )
+    #: The creation event's recorded_at.
+    tracked_at = models.DateTimeField(editable=False)
+
+    class Meta:
+        constraints = (
+            models.UniqueConstraint(
+                fields=("library", "game"),
+                name="unique_library_player_game",
+            ),
+        )
+
+    def __str__(self) -> str:
+        return f"{self.game} tracked by library {self.library_id}"
 
 
 class UserLibraryPreferences(models.Model):

@@ -15,6 +15,7 @@ from games.events.dispatch import (
     CommandName,
     CommandNotPermitted,
     CommandRejected,
+    CommandVocabulary,
     authorize,
     canonical_command_input,
     dispatch,
@@ -93,9 +94,20 @@ def staff_user(django_user_model, db):
     )
 
 
+class DispatchProbeName(CommandVocabulary):
+    """Names for the doubles that exercise dispatch."""
+
+    BASIC = "test.command.basic"
+    TWIN = "test.command.twin"
+    TEMPORAL = "test.command.temporal"
+    UNSHAPED = "test.command.unshaped"
+    REJECTING = "test.command.rejecting"
+    FLAKY = "test.command.flaky"
+
+
 @dataclass(frozen=True, slots=True)
 class BasicCommand(Command):
-    command_name: ClassVar[CommandName] = CommandName.TEST_COMMAND_BASIC
+    command_name: ClassVar[CommandVocabulary] = DispatchProbeName.BASIC
     label: str
     count: int
 
@@ -120,7 +132,7 @@ class TwinCommand(Command):
     """BasicCommand's fields exactly, under another name, so a shared key can
     be shown to be refused on the name alone."""
 
-    command_name: ClassVar[CommandName] = CommandName.TEST_COMMAND_TWIN
+    command_name: ClassVar[CommandVocabulary] = DispatchProbeName.TWIN
     label: str
     count: int
 
@@ -135,7 +147,7 @@ class TwinCommand(Command):
 
 @dataclass(frozen=True, slots=True)
 class TemporalCommand(Command):
-    command_name: ClassVar[CommandName] = CommandName.TEST_COMMAND_TEMPORAL
+    command_name: ClassVar[CommandVocabulary] = DispatchProbeName.TEMPORAL
     when: TemporalValue
 
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
@@ -151,7 +163,7 @@ class TemporalCommand(Command):
 class UnshapedCommand(Command):
     """A command that is not a dataclass, and so has no fields to fingerprint."""
 
-    command_name: ClassVar[CommandName] = CommandName.TEST_COMMAND_UNSHAPED
+    command_name: ClassVar[CommandVocabulary] = DispatchProbeName.UNSHAPED
 
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
         return []
@@ -159,7 +171,7 @@ class UnshapedCommand(Command):
 
 @dataclass(frozen=True, slots=True)
 class RejectingCommand(Command):
-    command_name: ClassVar[CommandName] = CommandName.TEST_COMMAND_REJECTING
+    command_name: ClassVar[CommandVocabulary] = DispatchProbeName.REJECTING
 
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
         raise CommandRejected("Current state does not permit this.")
@@ -176,7 +188,7 @@ class FlakyCommand(Command):
     once and then succeed.
     """
 
-    command_name: ClassVar[CommandName] = CommandName.TEST_COMMAND_FLAKY
+    command_name: ClassVar[CommandVocabulary] = DispatchProbeName.FLAKY
     attempts: ClassVar[int] = 0
 
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
@@ -212,7 +224,7 @@ def test_two_classes_cannot_claim_one_name():
 
         @dataclass(frozen=True, slots=True)
         class Impostor(Command):
-            command_name: ClassVar[CommandName] = CommandName.TEST_COMMAND_BASIC
+            command_name: ClassVar[CommandVocabulary] = DispatchProbeName.BASIC
 
             def build(self, context: CommandContext) -> Sequence[NewEvent]:
                 return []
@@ -562,20 +574,58 @@ def test_a_supplied_correlation_id_is_shared_across_dispatches(
     assert correlation_ids == {shared}
 
 
-def test_placeholders_do_not_outlive_the_first_real_command():
-    #: The placeholders are inert only while nothing real shares the allowlist
-    #: with them. Once a domain command lands, a leftover TEST_ member is an
-    #: undeleted scaffold sitting in the list that is supposed to be the
-    #: readable inventory of everything the system can do.
-    placeholders = [name for name in CommandName if name.name.startswith("TEST_")]
-    real = [name for name in CommandName if not name.name.startswith("TEST_")]
-
-    assert not (placeholders and real), (
-        f"CommandName lists real commands {[name.value for name in real]} "
-        f"alongside placeholders {[name.value for name in placeholders]}. The "
-        "placeholders exist only to exercise dispatch before any real command "
-        "did; delete them and repoint these tests."
+def test_the_allowlist_holds_real_commands_only():
+    #: Every entry is a thing the system does.
+    assert not [name for name in CommandName if name.value.startswith("test.")], (
+        f"CommandName holds {[name.value for name in CommandName]}. Names only "
+        "a test uses belong in that test's own CommandVocabulary."
     )
+
+
+def test_two_vocabularies_cannot_claim_one_name():
+    """A borrowed value is a collision, not a new name.
+
+    `BasicCommand` owns this value already, through a member of another
+    vocabulary under another member name. The open base exists so a test can
+    declare its own names, not so it can re-declare one that is taken.
+    """
+
+    class Borrowed(CommandVocabulary):
+        BORROWED = DispatchProbeName.BASIC.value
+
+    #: One value, two vocabularies, two member names.
+    assert Borrowed.BORROWED.name != DispatchProbeName.BASIC.name
+    assert Borrowed.BORROWED == DispatchProbeName.BASIC
+
+    with pytest.raises(TypeError, match="already owned by"):
+
+        @dataclass(frozen=True, slots=True)
+        class Impostor(Command):
+            command_name: ClassVar[CommandVocabulary] = Borrowed.BORROWED
+
+            def build(self, context: CommandContext) -> Sequence[NewEvent]:
+                return []
+
+
+def test_a_command_declared_inside_a_function_is_not_its_own_impostor():
+    """The rebuilt class carries a bare `__qualname__`.
+
+    `dataclass(slots=True)` rebuilds the class and drops the `<locals>`
+    prefix. A registry keyed on the qualified name reads the rebuild as a
+    second definition site and refuses the only definition there is.
+    """
+
+    class Local(CommandVocabulary):
+        ONLY = "test.command.function_local"
+
+    @dataclass(frozen=True, slots=True)
+    class DeclaredInAFunction(Command):
+        command_name: ClassVar[CommandVocabulary] = Local.ONLY
+
+        def build(self, context: CommandContext) -> Sequence[NewEvent]:
+            return []
+
+    assert DeclaredInAFunction.command_name is Local.ONLY
 
 
 def test_the_context_carries_no_stream():

@@ -136,10 +136,12 @@ class UUIDv7Field(models.UUIDField):
 
     def deconstruct(self):
         name, path, args, kwargs = super().deconstruct()
-        # Field.deconstruct() records a db_default only when one exists, so a
+        # Field.deconstruct() records either default only when one exists, so a
         # field that deliberately has none would come back from clone() with
         # __init__'s generated default re-applied — and migration state would
         # disagree with the model forever. Record the absence explicitly.
+        if not self.has_default():
+            kwargs["default"] = models.NOT_PROVIDED
         if not self.has_db_default():
             kwargs["db_default"] = models.NOT_PROVIDED
         return name, path, args, kwargs
