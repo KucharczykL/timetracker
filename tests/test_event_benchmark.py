@@ -339,12 +339,12 @@ def test_one_dispatch_writes_one_projection_row_through_one_statement(owned_libr
 
 
 @pytest.mark.django_db
-def test_folding_one_event_costs_six_statements(django_user_model):
-    """The number #930 exists to reduce.
+def test_folding_one_event_costs_one_statement(django_user_model):
+    """The fold is an upsert: no lock, no look, no savepoint.
 
     A rebuild also pays a fixed cost -- the temp tables, the reference
     anti-joins, the diff, the swap, the drop -- measured at 17 statements.
-    The average at ten events is therefore 7.7, not 6. The slope between two
+    The average at ten events is therefore 2.7, not 1. The slope between two
     sizes is the per-event number, and it is exact.
     """
     totals: dict[int, int] = {}
@@ -356,7 +356,7 @@ def test_folding_one_event_costs_six_statements(django_user_model):
         )
         assert fold is not None
         totals[events] = fold.statements
-    assert (totals[30] - totals[10]) / 20 == pytest.approx(6.0, abs=0.01)
+    assert (totals[30] - totals[10]) / 20 == pytest.approx(1.0, abs=0.01)
 
 
 @pytest.mark.django_db

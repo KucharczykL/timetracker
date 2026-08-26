@@ -3,18 +3,21 @@
 import uuid
 
 import pytest
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, transaction
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from games.checks import check_projection_models
 from games.commands.playergame import TrackGame
 from games.events.append import lock_stream
 from games.events.dispatch import dispatch
+from games.events.envelope import RecordedEvent
 from games.events.playergame import PLAYERGAME_CREATED
+from games.events.projection import DEFAULT_REGISTRY
 from games.events.rebuild import RebuildMode, rebuild_projections
 from games.events.references import capture_reference
 from games.events.replay import replay
-from games.models import Game, PlayerGame
+from games.models import Game, LibraryEvent, PlayerGame
 
 
 @pytest.fixture
@@ -124,6 +127,47 @@ def test_folding_the_stream_again_writes_no_second_row(
 
     assert PlayerGame.objects.count() == 1
     assert PlayerGame.objects.get().pk == identity
+
+
+@pytest.mark.django_db(transaction=True)
+def test_folding_the_creation_event_costs_one_statement(
+    owned_user, owned_library, tracked_game
+):
+    """The number #930 exists to reduce, at its source."""
+    identity = uuid.uuid7()
+    append_created(owned_library, owned_user, tracked_game, identity=identity)
+    event = RecordedEvent.from_row(LibraryEvent.objects.get(aggregate_id=identity))
+    #: Measure the insert, which is what a replay folds.
+    PlayerGame.objects.all().delete()
+
+    with transaction.atomic(), CaptureQueriesContext(connection) as queries:
+        DEFAULT_REGISTRY.apply(event)
+
+    assert [query["sql"].split(maxsplit=1)[0] for query in queries] == ["INSERT"]
+    assert PlayerGame.objects.count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_second_identity_for_a_tracked_game_is_refused(
+    owned_user, owned_library, tracked_game
+):
+    """The upsert keys on the identity, so the pair still collides.
+
+    An `IntegrityError` fallback to an update by primary key would have found
+    no row, changed nothing, and folded the event into silence.
+    """
+    append_created(owned_library, owned_user, tracked_game, identity=uuid.uuid7())
+
+    with pytest.raises(IntegrityError):
+        append_created(
+            owned_library,
+            owned_user,
+            tracked_game,
+            identity=uuid.uuid7(),
+            key="again",
+        )
+
+    assert PlayerGame.objects.count() == 1
 
 
 @pytest.mark.django_db(transaction=True)

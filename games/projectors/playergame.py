@@ -15,16 +15,13 @@ class PlayerGames(Projector):
     family_name = ProjectorFamily.CURRENT_STATE
 
     def _created(self, event: RecordedEvent) -> None:
-        #: Never the imported model: a rebuild redirects.
-        projected = self.target.model(PlayerGame)
-        projected.objects.update_or_create(
-            id=event.aggregate_id,
-            defaults={
-                #: From the event, never a command's context.
-                "library_id": event.library_id,
-                "game_id": uuid.UUID(event.payload["game"]["id"]),
-                "tracked_at": event.recorded_at,
-            },
+        self.project(
+            PlayerGame,
+            event.aggregate_id,
+            #: From the event, never a command's context.
+            library_id=event.library_id,
+            game_id=uuid.UUID(event.payload["game"]["id"]),
+            tracked_at=event.recorded_at,
         )
 
     handles: ClassVar[HandlerMap] = {PLAYERGAME_CREATED: _created}
