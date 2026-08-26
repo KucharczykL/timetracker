@@ -154,12 +154,50 @@ averages 2.3 statements per event and a 100,410-event rebuild averages 1.0. Two
 of the 13 fixed statements are the swap itself, which is why a small rebuild's
 `games_playergame` line reports 2 statements against a shadow table's many.
 
-One statement an event is the floor for a fold that writes a row at a time.
-Anything cheaper has to write more than one row per statement.
-
 The command line counts a whole `dispatch`: the append, the reference rows, the
 stream head, the idempotency record, and the synchronous fold. It is the number
 the 100 ms budget judges, and it is 25× under it.
+
+## What a batched replay would buy
+
+One statement an event is a floor, not the floor: anything cheaper has to write
+more than one row a statement. The measurement below is what a perfectly batched
+replay could not beat — the same 100,410 rows, the same
+`INSERT ... ON CONFLICT` into the same shadow table, in one transaction, with no
+events read and no handlers called.
+
+| Writing 100,410 shadow rows | Time |
+| --- | --- |
+| 500 rows a statement, 201 statements | 1.18 s |
+| 1 row a statement, 100,410 statements | 10.47 s |
+| The replay, which also reads and dispatches the events | 14.80 s |
+
+Two gaps, and they are different problems. **9.29 s** separates the two write
+shapes: that is round trips and one SQL compilation per call, bought by batching
+alone. **4.33 s** separates the second from the real replay: reading
+`LibraryEvent` rows, `RecordedEvent.from_row`, payload validation, and the
+registry dispatch — per-event Python that batching does not touch. So the
+ceiling on a batched replay is roughly 6 s against today's 14.80 s, and no
+arrangement of statements goes below it.
+
+**Batching would not change a single handler.** `ProjectionTarget` already owns
+where a family writes — `LIVE_TARGET` returns the model, `ShadowTarget` returns
+its temp twin — and `Projector.project` asks the target for the model before it
+writes. A target that buffers rows and flushes them in chunks is a third
+implementation of that one method's contract. Handlers do not have to return
+rows, and `_created` reads the same either way.
+
+Two conditions bound it, both already visible in the code:
+
+- **A family that reads current state must see what an earlier family wrote.**
+  JOURNAL and STATS run after CURRENT_STATE in the same transaction, so a
+  buffering target has to flush before a read reaches the table it is holding
+  rows out of.
+- **Phase 3 diffs the shadow tables.** `diff_tables` runs a `FULL OUTER JOIN`
+  against them, so the last flush has to land before the replay phase returns.
+
+Neither is a new invariant. Both are reasons a buffering target is a piece of
+work with a design rather than a patch.
 
 ## Seeding, which has no budget
 
