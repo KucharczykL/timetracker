@@ -439,11 +439,13 @@ pooler, rather than reading as a replay bug.
 #: TableName and RebuildReport come from games.events.rebuild.
 type Seconds = float
 
+
 class BudgetVerdict(StrEnum):
     PASSED = "passed"
     MISSED = "missed"
     #: The run was too small to judge.
     NOT_GATED = "not_gated"
+
 
 @dataclass(frozen=True, slots=True)
 class Timings:
@@ -451,6 +453,7 @@ class Timings:
     p50: Seconds
     p95: Seconds
     maximum: Seconds
+
 
 @dataclass(frozen=True, slots=True)
 class WorkPerEvent:
@@ -467,6 +470,7 @@ class WorkPerEvent:
     event_store_rows: int
     event_store_statements: int
 
+
 @dataclass(frozen=True, slots=True)
 class Budget:
     name: str
@@ -475,6 +479,7 @@ class Budget:
     #: Always recorded; only the verdict is withheld.
     measured: float
     verdict: BudgetVerdict
+
 
 @dataclass(frozen=True, slots=True)
 class Environment:
@@ -490,6 +495,7 @@ class Environment:
     work_mem: str
     debug: bool
 
+
 @dataclass(frozen=True, slots=True)
 class SeedReport:
     catalog_rows: int
@@ -499,8 +505,10 @@ class SeedReport:
     #: The bulk-write number, in place of a bulk command.
     events_per_second: float
 
+
 class RebuildDiffNotEmpty(RuntimeError):
     """The parity claim the run exists to make is false."""
+
 
 @dataclass(frozen=True, slots=True)
 class BenchmarkReport:
@@ -521,6 +529,7 @@ class BenchmarkReport:
     budgets: tuple[Budget, ...]
 
     def as_json(self) -> str: ...
+
 
 def run_benchmark(
     *,

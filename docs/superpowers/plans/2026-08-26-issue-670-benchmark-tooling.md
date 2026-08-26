@@ -144,8 +144,10 @@ at line 29).
         ),
         ('SELECT 1 FROM "games_playergame"', ()),
         ("SAVEPOINT s1", ()),
-        ('UPDATE ONLY pg_temp."games_playergame__shadow" SET id = id',
-         ("games_playergame__shadow",)),
+        (
+            'UPDATE ONLY pg_temp."games_playergame__shadow" SET id = id',
+            ("games_playergame__shadow",),
+        ),
     ],
 )
 def test_write_targets_names_every_table_a_statement_writes(statement, expected):
@@ -541,7 +543,9 @@ class StatementCounter:
                 self.statements_per_table.get(table, 0) + 1
             )
             if rowcount > 0:
-                self.rows_per_table[table] = self.rows_per_table.get(table, 0) + rowcount
+                self.rows_per_table[table] = (
+                    self.rows_per_table.get(table, 0) + rowcount
+                )
         return result
 
     def work(self, *, events: int) -> WorkPerEvent:
@@ -677,7 +681,7 @@ def environment() -> Environment:
 def _total_memory() -> int | None:
     try:
         return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
-    except (AttributeError, ValueError, OSError):
+    except AttributeError, ValueError, OSError:
         #: Windows, and any POSIX that declines to answer.
         return None
 ```
@@ -1477,7 +1481,11 @@ def test_library_mode_writes_no_persistent_row(owned_library):
     assert report.command is None
     assert report.scratch_username is None
     assert (
-        set(PlayerGame.objects.filter(library=owned_library).values_list("id", flat=True))
+        set(
+            PlayerGame.objects.filter(library=owned_library).values_list(
+                "id", flat=True
+            )
+        )
         == before
     )
     assert (
@@ -1513,8 +1521,15 @@ def test_the_report_carries_every_scenario_and_a_schema():
     parsed = json.loads(report.as_json())
     assert parsed["schema"] == 1
     assert set(parsed) >= {
-        "environment", "scratch_username", "seed", "command", "amplification",
-        "fold", "rebuild", "teardown_seconds", "budgets",
+        "environment",
+        "scratch_username",
+        "seed",
+        "command",
+        "amplification",
+        "fold",
+        "rebuild",
+        "teardown_seconds",
+        "budgets",
     }
 ```
 
@@ -1983,10 +1998,18 @@ class Command(BaseCommand):
         )
         parser.add_argument("--library", help="Check this library instead; read-only.")
         parser.add_argument("--iterations", type=int, default=200)
-        parser.add_argument("--warmup", type=int, default=10, help="Additional, discarded.")
-        parser.add_argument("--gate", action="store_true", help="Exit non-zero on a missed budget.")
-        parser.add_argument("--json", action="store_true", help="Print the report as JSON.")
-        parser.add_argument("--keep", action="store_true", help="Leave the scratch library.")
+        parser.add_argument(
+            "--warmup", type=int, default=10, help="Additional, discarded."
+        )
+        parser.add_argument(
+            "--gate", action="store_true", help="Exit non-zero on a missed budget."
+        )
+        parser.add_argument(
+            "--json", action="store_true", help="Print the report as JSON."
+        )
+        parser.add_argument(
+            "--keep", action="store_true", help="Leave the scratch library."
+        )
         parser.add_argument(
             "--no-count-fold",
             dest="count_fold",
@@ -2073,17 +2096,15 @@ leaves a library behind, and the operator needs its name either way:
 `_write_estimate` takes the resolved numbers, never the raw options:
 
 ```python
-    def _write_estimate(self, *, seed: int, iterations: int, warmup: int) -> None:
-        estimate = seed * (
-            SECONDS_PER_SEEDED_EVENT
-            + SECONDS_PER_REBUILT_EVENT
-            + SECONDS_PER_PURGED_EVENT
-        )
-        self.stdout.write(
-            f"About to create a scratch user, {seed} events and "
-            f"{seed + 2 * iterations + warmup} catalog rows, then remove them. "
-            f"Estimate: {estimate / 60:.1f} minute(s)."
-        )
+def _write_estimate(self, *, seed: int, iterations: int, warmup: int) -> None:
+    estimate = seed * (
+        SECONDS_PER_SEEDED_EVENT + SECONDS_PER_REBUILT_EVENT + SECONDS_PER_PURGED_EVENT
+    )
+    self.stdout.write(
+        f"About to create a scratch user, {seed} events and "
+        f"{seed + 2 * iterations + warmup} catalog rows, then remove them. "
+        f"Estimate: {estimate / 60:.1f} minute(s)."
+    )
 ```
 
 `_write_report` prints, in order: the environment, the seed (with
