@@ -583,18 +583,49 @@ def test_the_allowlist_holds_real_commands_only():
 
 
 def test_two_vocabularies_cannot_claim_one_name():
-    #: The registry keys on the name, not the member.
+    """A borrowed value is a collision, not a new name.
+
+    `BasicCommand` owns this value already, through a member of another
+    vocabulary under another member name. The open base exists so a test can
+    declare its own names, not so it can re-declare one that is taken.
+    """
+
     class Borrowed(CommandVocabulary):
-        TRACK = CommandName.PLAYERGAME_TRACK.value
+        BORROWED = DispatchProbeName.BASIC.value
+
+    #: One value, two vocabularies, two member names.
+    assert Borrowed.BORROWED.name != DispatchProbeName.BASIC.name
+    assert Borrowed.BORROWED == DispatchProbeName.BASIC
 
     with pytest.raises(TypeError, match="already owned by"):
 
         @dataclass(frozen=True, slots=True)
         class Impostor(Command):
-            command_name: ClassVar[CommandVocabulary] = Borrowed.TRACK
+            command_name: ClassVar[CommandVocabulary] = Borrowed.BORROWED
 
             def build(self, context: CommandContext) -> Sequence[NewEvent]:
                 return []
+
+
+def test_a_command_declared_inside_a_function_is_not_its_own_impostor():
+    """The rebuilt class carries a bare `__qualname__`.
+
+    `dataclass(slots=True)` rebuilds the class and drops the `<locals>`
+    prefix. A registry keyed on the qualified name reads the rebuild as a
+    second definition site and refuses the only definition there is.
+    """
+
+    class Local(CommandVocabulary):
+        ONLY = "test.command.function_local"
+
+    @dataclass(frozen=True, slots=True)
+    class DeclaredInAFunction(Command):
+        command_name: ClassVar[CommandVocabulary] = Local.ONLY
+
+        def build(self, context: CommandContext) -> Sequence[NewEvent]:
+            return []
+
+    assert DeclaredInAFunction.command_name is Local.ONLY
 
 
 def test_the_context_carries_no_stream():

@@ -200,11 +200,16 @@ class Command(ABC):
                 "command names itself with a member of a CommandVocabulary."
             )
 
-        definition_site = (cls.__module__, cls.__qualname__)
-        registered = _COMMAND_REGISTRY.get(name.value)
+        #: The rebuilt class carries a bare __qualname__.
+        #:
         #: dataclass(slots=True) cannot add slots in place, so it rebuilds the
         #: class and fires this a second time. One definition site registering
-        #: twice is that rebuild; a second site is a real collision.
+        #: twice is that rebuild; a second site is a real collision. The rebuild
+        #: keeps __name__ and drops the `<locals>` prefix from __qualname__, so
+        #: keying on the qualified name makes a command declared inside a
+        #: function collide with itself.
+        definition_site = (cls.__module__, cls.__name__)
+        registered = _COMMAND_REGISTRY.get(name.value)
         if registered is not None and registered != definition_site:
             raise TypeError(
                 f"{cls.__qualname__} claims {name.value!r}, already owned by "
