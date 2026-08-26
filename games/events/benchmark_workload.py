@@ -66,6 +66,7 @@ def seed_library(
                 idempotency_key=SEED_IDEMPOTENCY_KEY,
             )
     append_seconds = monotonic() - append_started
+    _analyze()
 
     return SeedReport(
         catalog_rows=events + spares,
@@ -74,6 +75,20 @@ def seed_library(
         append_seconds=append_seconds,
         events_per_second=events / append_seconds if append_seconds else 0.0,
     )
+
+
+def _analyze() -> None:
+    """Leave statistics that describe the rows just written.
+
+    Autovacuum wakes once a minute, so whether the planner knows the seeded
+    library exists depends on how long the seed took. It read the duplicate
+    check's 100,000 rows through the `library_id` index at 6 ms a command
+    while it believed the projection was empty, and 0.01 ms once told
+    otherwise. That is a fact about the naptime, not about the write path
+    under measurement.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute("ANALYZE")
 
 
 def _create_catalog(library: UserLibrary, *, prefix: str, count: int) -> None:

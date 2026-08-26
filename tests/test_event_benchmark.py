@@ -285,6 +285,21 @@ def test_seeding_leaves_the_spare_games_untracked(owned_library):
     assert not PlayerGame.objects.filter(game__in=spares).exists()
 
 
+@pytest.mark.django_db(transaction=True)
+def test_seeding_leaves_statistics_that_know_the_rows_exist(owned_library):
+    """Otherwise the command scenario races autovacuum's naptime."""
+    seed_library(owned_library, actor=owned_library.user, events=25, spares=0)
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT reltuples FROM pg_class WHERE relname = %s",
+            [PlayerGame._meta.db_table],
+        )
+        estimated = cursor.fetchone()[0]
+
+    assert estimated == 25
+
+
 @pytest.mark.django_db
 def test_seeding_reports_append_throughput(owned_library):
     report = seed_library(owned_library, actor=owned_library.user, events=25, spares=0)
@@ -343,8 +358,8 @@ def test_folding_one_event_costs_one_statement(django_user_model):
     """The fold is an upsert: no lock, no look, no savepoint.
 
     A rebuild also pays a fixed cost -- the temp tables, the reference
-    anti-joins, the diff, the swap, the drop -- measured at 17 statements.
-    The average at ten events is therefore 2.7, not 1. The slope between two
+    anti-joins, the diff, the swap, the drop -- measured at 13 statements.
+    The average at ten events is therefore 2.3, not 1. The slope between two
     sizes is the per-event number, and it is exact.
     """
     totals: dict[int, int] = {}
