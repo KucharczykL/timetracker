@@ -176,6 +176,17 @@ a ceiling for a batched replay.
 Both numbers go in the benchmark document. A follow-up issue then opens with a
 measured ceiling rather than an estimate.
 
+The costing also records where such a change would go, because the issue's
+estimate of it is too high. Batching does not need handlers to return rows.
+`ProjectionTarget` already owns where a family writes, so a target that buffers
+rows and flushes them per chunk leaves every handler as written.
+
+Two conditions bound that, and the follow-up specification owns them. Families
+run in a fixed order because the journal and statistics families read the
+current-state rows an earlier family wrote in the same transaction, and a
+buffered row is not readable: such a target flushes before a read. The diff also
+reads the shadow tables, so the last flush precedes phase 3.
+
 ## What would falsify this
 
 Statements are not the only cost in a replay. If the re-recorded rebuild still
