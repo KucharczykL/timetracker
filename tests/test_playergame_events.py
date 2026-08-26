@@ -7,6 +7,7 @@ import pytest
 
 from games.events.playergame import (
     PLAYERGAME_CREATED,
+    PLAYERGAME_MASTERED_CHANGED,
     PLAYERGAME_STATUS_CHANGED,
     StatusValue,
 )
@@ -83,5 +84,42 @@ def test_the_status_payload_carries_no_reference():
     """The creation event holds the one reference."""
     assert (
         DEFAULT_EVENT_TYPES.reference_fields_for(PLAYERGAME_STATUS_CHANGED.event_type)
+        == {}
+    )
+
+
+def test_the_mastered_event_is_in_the_application_vocabulary():
+    registered = DEFAULT_EVENT_TYPES.spec_for("library.playergame.mastered_changed")
+
+    assert registered is PLAYERGAME_MASTERED_CHANGED
+    assert registered.aggregate_type == "playergame"
+
+
+def test_the_mastered_payload_states_the_value_it_sets():
+    """One type states both directions."""
+    validated = DEFAULT_EVENT_TYPES.validate(
+        PLAYERGAME_MASTERED_CHANGED.event_type, {"mastered": False}
+    )
+
+    assert validated == {"mastered": False}
+
+
+def test_a_mastered_payload_of_a_string_is_refused():
+    """Strict validation takes no truthy string."""
+    with pytest.raises(PayloadInvalid):
+        DEFAULT_EVENT_TYPES.validate(
+            PLAYERGAME_MASTERED_CHANGED.event_type, {"mastered": "true"}
+        )
+
+
+def test_a_mastered_payload_stating_nothing_is_refused():
+    with pytest.raises(PayloadInvalid):
+        DEFAULT_EVENT_TYPES.validate(PLAYERGAME_MASTERED_CHANGED.event_type, {})
+
+
+def test_the_mastered_payload_carries_no_reference():
+    """The creation event holds the one reference."""
+    assert (
+        DEFAULT_EVENT_TYPES.reference_fields_for(PLAYERGAME_MASTERED_CHANGED.event_type)
         == {}
     )
