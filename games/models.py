@@ -1269,6 +1269,40 @@ class ProjectionModel(models.Model):
         abstract = True
 
 
+class PlayerGame(ProjectionModel):
+    """One catalog game a library tracks, projected from its events."""
+
+    id = UUIDv7Field(
+        primary_key=True,
+        editable=False,
+        #: The creation event's aggregate_id. UUIDv7Field supplies both a minted
+        #: default and a database default; `games.checks` refuses each on a
+        #: projection, because a rebuild would evaluate them again.
+        default=models.NOT_PROVIDED,
+        db_default=models.NOT_PROVIDED,
+    )
+    game = models.ForeignKey(
+        Game,
+        #: Never collateral: a replay owns these rows, so nothing else may
+        #: cascade them away.
+        on_delete=models.RESTRICT,
+        related_name="player_games",
+    )
+    #: The creation event's recorded_at.
+    tracked_at = models.DateTimeField(editable=False)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("library", "game"),
+                name="unique_library_player_game",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.game} tracked by library {self.library_id}"
+
+
 class UserLibraryPreferences(models.Model):
     library = models.OneToOneField(
         UserLibrary,
