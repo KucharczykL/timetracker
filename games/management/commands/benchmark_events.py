@@ -19,9 +19,9 @@ from games.models import UserLibrary
 DEFAULT_SEED_EVENTS = 100_000
 
 #: Measured; see docs/event-benchmarks.md.
-SECONDS_PER_SEEDED_EVENT = 65 / 100_000
-SECONDS_PER_REBUILT_EVENT = 59 / 100_000
-SECONDS_PER_PURGED_EVENT = 52 / 100_000
+SECONDS_PER_SEEDED_EVENT = 32 / 100_000
+SECONDS_PER_REBUILT_EVENT = 16 / 100_000
+SECONDS_PER_PURGED_EVENT = 50 / 100_000
 
 CURSOR_UNDER_A_POOLER = (
     "The replay's server-side cursor did not survive. A transaction-pooling "

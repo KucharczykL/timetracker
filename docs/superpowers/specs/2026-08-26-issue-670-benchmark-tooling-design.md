@@ -57,8 +57,8 @@ non-zero always. A rebuild that is quick and wrong is not a measurement.
 ## Cost per event
 
 A `connection.execute_wrapper` counts each statement and each affected row, per
-table. Statements that name no table go in the total only. Four of the fold's
-six statements are savepoints, so a count per table alone hides the cost.
+table. Statements that name no table go in the total only. A savepoint or a
+lock names no table, so a count per table alone hides the cost.
 
 `write_targets` in `games/events/rebuild.py` parses the targets, and the
 shadow-write guard uses the same function. A statement against
