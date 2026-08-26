@@ -7,6 +7,10 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from games.checks import check_projection_models
+from games.events.append import lock_stream
+from games.events.playergame import PLAYERGAME_CREATED
+from games.events.references import capture_reference
+from games.events.replay import replay
 from games.models import Game, PlayerGame
 
 
@@ -73,3 +77,51 @@ def test_two_libraries_track_one_shared_game_independently(
         )
 
     assert PlayerGame.objects.filter(game=shared).count() == 2
+
+
+def append_created(library, actor, game, *, identity, key="track"):
+    """Append one creation event the way a command would."""
+    with transaction.atomic():
+        stream = lock_stream(library)
+        return stream.append(
+            [
+                PLAYERGAME_CREATED.new(
+                    aggregate_id=identity,
+                    payload={"game": capture_reference(game)},
+                )
+            ],
+            actor=actor,
+            correlation_id=uuid.uuid7(),
+            idempotency_key=key,
+        )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_creation_event_writes_the_tracked_row(
+    owned_user, owned_library, tracked_game
+):
+    identity = uuid.uuid7()
+
+    appended = append_created(
+        owned_library, owned_user, tracked_game, identity=identity
+    )
+
+    row = PlayerGame.objects.get(pk=identity)
+    assert row.library_id == owned_library.pk
+    assert row.game_id == tracked_game.pk
+    assert row.tracked_at == appended.events[0].recorded_at
+
+
+@pytest.mark.django_db(transaction=True)
+def test_folding_the_stream_again_writes_no_second_row(
+    owned_user, owned_library, tracked_game
+):
+    #: A replay folds every event a second time. Keying the write on the
+    #: event's own identity is what makes that a no-op instead of a duplicate.
+    identity = uuid.uuid7()
+    append_created(owned_library, owned_user, tracked_game, identity=identity)
+
+    replay(owned_library)
+
+    assert PlayerGame.objects.count() == 1
+    assert PlayerGame.objects.get().pk == identity
