@@ -131,6 +131,24 @@ def test_folding_the_stream_again_writes_no_second_row(
 
 
 @pytest.mark.django_db(transaction=True)
+def test_a_rebuild_leaves_later_deletes_alone(owned_user, owned_library, tracked_game):
+    #: A twin joins the live registry and stays there, so its foreign key to
+    #: a live model would make every later delete collect a temp table that
+    #: only existed inside the rebuild that created it.
+    dispatch(
+        TrackGame(game_id=tracked_game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="track",
+    )
+    rebuild_projections(owned_library, mode=RebuildMode.CHECK)
+
+    Game.objects.create(library=owned_library, name="Untracked").delete()
+
+    assert not Game.objects.filter(name="Untracked").exists()
+
+
+@pytest.mark.django_db(transaction=True)
 def test_a_rebuild_reproduces_the_tracked_rows(owned_user, owned_library, tracked_game):
     """Replay parity, stated as a test: the rebuild changes nothing."""
     dispatch(
