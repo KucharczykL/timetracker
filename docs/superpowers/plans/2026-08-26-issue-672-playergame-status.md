@@ -63,9 +63,7 @@ def test_an_amendment_changes_the_columns_it_names(owned_library):
         pk=identity, library_id=owned_library.pk, name="created", type=Device.UNKNOWN
     )
 
-    amend_registry.apply(
-        make_event(library_id=owned_library.pk, aggregate_id=identity)
-    )
+    amend_registry.apply(make_event(library_id=owned_library.pk, aggregate_id=identity))
 
     row = Device.objects.get(pk=identity)
     assert (row.name, row.type) == ("amended 1", Device.UNKNOWN)
@@ -450,9 +448,7 @@ def test_an_unknown_status_is_refused():
 def test_the_status_payload_carries_no_reference():
     """The creation event holds this aggregate's one reference."""
     assert (
-        DEFAULT_EVENT_TYPES.reference_fields_for(
-            PLAYERGAME_STATUS_CHANGED.event_type
-        )
+        DEFAULT_EVENT_TYPES.reference_fields_for(PLAYERGAME_STATUS_CHANGED.event_type)
         == {}
     )
 ```
@@ -599,9 +595,7 @@ def test_a_game_another_library_tracks_is_refused(
 
     with pytest.raises(CommandRejected, match="tracks no game"):
         dispatch(
-            SetPlayerGameStatus(
-                game_id=shared_game.pk, status=PlayerGameStatus.PLAYED
-            ),
+            SetPlayerGameStatus(game_id=shared_game.pk, status=PlayerGameStatus.PLAYED),
             actor=owned_user,
             library=owned_library,
             idempotency_key="play-theirs",
@@ -702,9 +696,7 @@ class SetPlayerGameStatus(Command):
         so the refusal tells the caller nothing about it.
         """
         try:
-            return PlayerGame.objects.get(
-                library=context.library, game_id=self.game_id
-            )
+            return PlayerGame.objects.get(library=context.library, game_id=self.game_id)
         except PlayerGame.DoesNotExist:
             raise CommandRejected(
                 f"This library tracks no game {self.game_id}. A status "
@@ -833,9 +825,7 @@ def test_a_rebuild_reproduces_the_status(owned_user, owned_library, tracked_game
         idempotency_key="track",
     )
     dispatch(
-        SetPlayerGameStatus(
-            game_id=tracked_game.pk, status=PlayerGameStatus.COMPLETED
-        ),
+        SetPlayerGameStatus(game_id=tracked_game.pk, status=PlayerGameStatus.COMPLETED),
         actor=owned_user,
         library=owned_library,
         idempotency_key="complete",
@@ -866,14 +856,15 @@ Expected: FAIL — the status event has no handler, so `PlayerGame.status` stays
 In `games/projectors/playergame.py`:
 
 ```python
-    def _status_changed(self, event: RecordedEvent) -> None:
-        #: From the event, so a replay writes what was recorded.
-        self.amend(PlayerGame, event.aggregate_id, status=event.payload["status"])
+def _status_changed(self, event: RecordedEvent) -> None:
+    #: From the event, so a replay writes what was recorded.
+    self.amend(PlayerGame, event.aggregate_id, status=event.payload["status"])
 
-    handles: ClassVar[HandlerMap] = {
-        PLAYERGAME_CREATED: _created,
-        PLAYERGAME_STATUS_CHANGED: _status_changed,
-    }
+
+handles: ClassVar[HandlerMap] = {
+    PLAYERGAME_CREATED: _created,
+    PLAYERGAME_STATUS_CHANGED: _status_changed,
+}
 ```
 
 Add `PLAYERGAME_STATUS_CHANGED` to the module's import from `games.events.playergame`.

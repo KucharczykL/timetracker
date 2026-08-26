@@ -52,10 +52,16 @@ A rebuild reproduces a constant default. It does not reproduce a change to that
 constant: an edit would rewrite the status of every game no event has touched.
 
 Two guards answer this. `games.checks` E007 refuses a callable default on a
-projection field, so only a constant qualifies. E007 tests `has_default()`
-first, because `models.NOT_PROVIDED` is a class and therefore callable. It makes
-E005 and E006 special cases of one rule and closes the wrapper hole E006's hint
-admits.
+projection field, so only a constant qualifies. It makes E005 and E006 special
+cases of one rule and closes the wrapper hole E006's hint admits.
+
+E007 allows the empty-container builtins — `dict`, `list`, `set`, `tuple`,
+`frozenset` — and the scalar ones beside them. Django asks for a callable there
+rather than a shared mutable default, and each returns one value every call. A
+callable of any other kind is refused.
+
+E007 tests `has_default()` before `callable()`, because `models.NOT_PROVIDED` is
+a class and therefore callable.
 
 A test pins the defaults. It reads every `ProjectionModel` subclass and compares
 each defaulted column to a literal in the test. An edit to a default is then a
