@@ -4,7 +4,11 @@ import uuid
 
 import pytest
 
-from games.commands.playergame import SetPlayerGameStatus, TrackGame
+from games.commands.playergame import (
+    SetPlayerGameMastered,
+    SetPlayerGameStatus,
+    TrackGame,
+)
 from games.events.dispatch import CommandRejected, dispatch
 from games.models import Game, LibraryEvent, PlayerGame, PlayerGameStatus
 from games.retention import purging_library
@@ -290,6 +294,124 @@ def test_one_idempotency_key_records_one_status_change(owned_user, owned_library
     assert (
         LibraryEvent.objects.filter(
             event_type="library.playergame.status_changed"
+        ).count()
+        == 1
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_mastering_a_game_records_it_and_projects_it(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+
+    dispatch(
+        SetPlayerGameMastered(game_id=game.pk, mastered=True),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="master-outer-wilds",
+    )
+
+    event = LibraryEvent.objects.get(event_type="library.playergame.mastered_changed")
+    assert event.payload == {"mastered": True}
+    row = PlayerGame.objects.get()
+    assert event.aggregate_id == row.pk
+    assert row.mastered is True
+
+
+@pytest.mark.django_db(transaction=True)
+def test_mastery_leaves_the_rest_of_the_row_alone(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    dispatch(
+        SetPlayerGameStatus(game_id=game.pk, status=PlayerGameStatus.COMPLETED),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="complete-outer-wilds",
+    )
+    before = PlayerGame.objects.get()
+
+    dispatch(
+        SetPlayerGameMastered(game_id=game.pk, mastered=True),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="master-outer-wilds",
+    )
+
+    after = PlayerGame.objects.get()
+    assert (after.pk, after.game_id, after.tracked_at, after.status) == (
+        before.pk,
+        before.game_id,
+        before.tracked_at,
+        PlayerGameStatus.COMPLETED,
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_mastery_of_an_untracked_game_is_refused(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Untracked")
+
+    with pytest.raises(CommandRejected, match="tracks no game"):
+        dispatch(
+            SetPlayerGameMastered(game_id=game.pk, mastered=True),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key="master-untracked",
+        )
+
+    assert not LibraryEvent.objects.filter(
+        event_type="library.playergame.mastered_changed"
+    ).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_mastery_of_a_game_another_library_tracks_is_refused(
+    owned_user, owned_library, other_user, other_library, shared_game
+):
+    track(other_user, other_library, shared_game)
+
+    with pytest.raises(CommandRejected, match="tracks no game"):
+        dispatch(
+            SetPlayerGameMastered(game_id=shared_game.pk, mastered=True),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key="master-theirs",
+        )
+
+    assert PlayerGame.objects.get().mastered is False
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_mastery_a_game_already_records_is_refused(owned_user, owned_library):
+    """One convention for #906 to change."""
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+
+    with pytest.raises(CommandRejected, match="#906"):
+        dispatch(
+            SetPlayerGameMastered(game_id=game.pk, mastered=False),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key="unmaster-outer-wilds",
+        )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_one_idempotency_key_records_one_mastery_change(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    command = SetPlayerGameMastered(game_id=game.pk, mastered=True)
+
+    first = dispatch(
+        command, actor=owned_user, library=owned_library, idempotency_key="master"
+    )
+    second = dispatch(
+        command, actor=owned_user, library=owned_library, idempotency_key="master"
+    )
+
+    assert (first.replayed, second.replayed) == (False, True)
+    assert (
+        LibraryEvent.objects.filter(
+            event_type="library.playergame.mastered_changed"
         ).count()
         == 1
     )

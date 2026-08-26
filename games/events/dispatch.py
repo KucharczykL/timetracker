@@ -79,6 +79,7 @@ class CommandName(CommandVocabulary):
 
     PLAYERGAME_TRACK = "library.playergame.track"
     PLAYERGAME_SET_STATUS = "library.playergame.set_status"
+    PLAYERGAME_SET_MASTERED = "library.playergame.set_mastered"
 
 
 @dataclass(frozen=True, slots=True)
