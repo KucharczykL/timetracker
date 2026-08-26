@@ -15,6 +15,7 @@ from games.events.dispatch import (
 )
 from games.events.playergame import (
     PLAYERGAME_CREATED,
+    PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED,
     PLAYERGAME_MASTERED_CHANGED,
     PLAYERGAME_STATUS_CHANGED,
     StatusValue,
@@ -126,5 +127,36 @@ class SetPlayerGameMastered(Command):
             PLAYERGAME_MASTERED_CHANGED.new(
                 aggregate_id=tracked.pk,
                 payload={"mastered": self.mastered},
+            )
+        ]
+
+
+@dataclass(frozen=True, slots=True)
+class SetPlayerGameExcludedFromUnfinished(Command):
+    """State whether unfinished lists omit a game."""
+
+    command_name: ClassVar[CommandName] = (
+        CommandName.PLAYERGAME_SET_EXCLUDED_FROM_UNFINISHED
+    )
+    #: A UUID, because Command fingerprints its fields.
+    game_id: uuid.UUID
+    excluded_from_unfinished: bool
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent]:
+        tracked = _tracked_game(context, self.game_id)
+        #: Under dispatch's lock: no concurrent duplicate.
+        if tracked.excluded_from_unfinished == self.excluded_from_unfinished:
+            recorded = (
+                "excluded from" if self.excluded_from_unfinished else "included in"
+            )
+            raise CommandRejected(
+                f"This library already records game {self.game_id} as "
+                f"{recorded} unfinished lists. Whether a repeat should instead "
+                "succeed as a no-op is EV-23 (#906)."
+            )
+        return [
+            PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED.new(
+                aggregate_id=tracked.pk,
+                payload={"excluded_from_unfinished": self.excluded_from_unfinished},
             )
         ]

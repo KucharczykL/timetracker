@@ -62,3 +62,19 @@ PLAYERGAME_MASTERED_CHANGED = EventSpec(
 )
 
 DEFAULT_EVENT_TYPES.register(PLAYERGAME_MASTERED_CHANGED)
+
+
+@with_config(STRICT_SCHEMA)
+class PlayerGameExcludedFromUnfinishedChangedPayload(TypedDict):
+    """Whether unfinished lists now omit the game."""
+
+    excluded_from_unfinished: bool
+
+
+PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED = EventSpec(
+    "library.playergame.excluded_from_unfinished_changed",
+    aggregate_type="playergame",
+    payload=PlayerGameExcludedFromUnfinishedChangedPayload,
+)
+
+DEFAULT_EVENT_TYPES.register(PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED)

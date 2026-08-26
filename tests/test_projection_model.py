@@ -242,7 +242,11 @@ def test_an_unmanaged_twin_is_not_checked():
 
 #: Every constant a projection column starts at.
 PINNED_DEFAULTS: dict[str, dict[str, object]] = {
-    "games.PlayerGame": {"status": "unplayed", "mastered": False},
+    "games.PlayerGame": {
+        "status": "unplayed",
+        "mastered": False,
+        "excluded_from_unfinished": False,
+    },
 }
 
 

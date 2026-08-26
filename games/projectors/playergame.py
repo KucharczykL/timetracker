@@ -6,6 +6,7 @@ from typing import ClassVar
 from games.events.envelope import RecordedEvent
 from games.events.playergame import (
     PLAYERGAME_CREATED,
+    PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED,
     PLAYERGAME_MASTERED_CHANGED,
     PLAYERGAME_STATUS_CHANGED,
 )
@@ -36,8 +37,17 @@ class PlayerGames(Projector):
         #: From the payload, so replays agree.
         self.amend(PlayerGame, event.aggregate_id, mastered=event.payload["mastered"])
 
+    def _excluded_from_unfinished_changed(self, event: RecordedEvent) -> None:
+        #: From the payload, so replays agree.
+        self.amend(
+            PlayerGame,
+            event.aggregate_id,
+            excluded_from_unfinished=event.payload["excluded_from_unfinished"],
+        )
+
     handles: ClassVar[HandlerMap] = {
         PLAYERGAME_CREATED: _created,
         PLAYERGAME_STATUS_CHANGED: _status_changed,
         PLAYERGAME_MASTERED_CHANGED: _mastered_changed,
+        PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED: _excluded_from_unfinished_changed,
     }
