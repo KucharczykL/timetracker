@@ -18,7 +18,7 @@ from games.views.deletion import confirm_and_apply
 
 
 def retention_message(noun: str, label: str, count: int) -> str:
-    """What the page says when a row leaves a tombstone."""
+    """What the page says when a row is tombstoned."""
     return (
         f"{count} recorded event(s) reference {label}, and their history has to "
         f"stay readable. The {noun} will be removed from your library along "

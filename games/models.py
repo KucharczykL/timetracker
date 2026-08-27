@@ -40,7 +40,7 @@ class LibraryOwnedQuerySet(models.QuerySet):
 
 
 class TombstonableQuerySet(LibraryOwnedQuerySet):
-    """A referenced row outlives its deletion, as a tombstone.
+    """A referenced row outlives its deletion as a tombstone.
 
     `for_library` and `visible_to` are how the application asks for
     rows. A caller that must see tombstoned rows uses the plain manager.
@@ -368,7 +368,7 @@ class Platform(ReferencedRow):
 class EditionQuerySet(models.QuerySet):
     """A tombstone is inherited from Game.
 
-    An Edition has no visibility of its own to lose.
+    An Edition has no visibility of its own.
     """
 
     def for_library(self, library):

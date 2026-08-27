@@ -35,9 +35,9 @@ gives both words. The catalog wave specification, #653 and #669 all say
 tombstone. Retention takes the word that only fits it, and the player act keeps
 the word that describes a choice.
 
-The rename stops at the column in no place. `archive_or_delete()` is the act
-itself. If it kept the word, it would become the one thing named "archive" that
-does not archive, which is the defect this issue removes.
+The rename does not stop at the column. `archive_or_delete()` is the act itself.
+If it kept the word, it would become the one thing named "archive" that does not
+archive, which is the defect this issue removes.
 
 `Retirement.DELETED` stays because the row really was deleted. "Purge" is
 already the whole-library delete, thus it is not a substitute.
@@ -58,10 +58,9 @@ rename a column that no live schema has.
 This is the one condition under which a migration is rewritten. A migration is
 otherwise a record of what occurred, and `0027` has occurred nowhere.
 
-**A developer database that already applied `0023` or later is now wrong.** It
-holds a column named `archived_at` while the migration state claims
-`tombstoned_at`, and no command detects the difference. Drop that database and
-migrate again.
+**A developer database that already applied `0023` or later is wrong.** It holds
+a column named `archived_at` while the migration state claims `tombstoned_at`,
+and no command detects the difference. `make reset-db` is the repair.
 
 **Do not reach for `make makemigrations` to produce a rename instead.** That
 target passes `--noinput`, the non-interactive questioner answers no to every
@@ -74,8 +73,11 @@ The gate is the full `make check`. The drift guard proves that the models and
 the edited `0027` agree, and a fresh `make migrate` proves that the edited file
 applies.
 
-**Grep for `archived_at`, and for `Archiv`.** One hit is correct:
-`tests/test_projection_model.py`. Any second hit is a missed reference.
+**Grep for `archiv`.** Three files keep the word for their own reasons:
+`tests/test_projection_model.py` declares the name on a synthetic model,
+`tests/test_ensure_postgres.py` means a tar archive, and
+`tests/test_returns_classification.py` names a route #675 adds. The naming rule
+cites `archived_at` as an example. Any other hit is a missed reference.
 
 ## Scope
 
