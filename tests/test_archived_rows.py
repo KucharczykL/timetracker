@@ -30,7 +30,7 @@ def make_game(library, name="Baldur's Gate 3", **overrides):
 
 
 def archive(instance):
-    type(instance).objects.filter(pk=instance.pk).update(archived_at=ARCHIVED)
+    type(instance).objects.filter(pk=instance.pk).update(tombstoned_at=ARCHIVED)
     instance.refresh_from_db()
     return instance
 
@@ -179,7 +179,7 @@ def test_a_live_shared_platform_still_shadows(owned_library):
 def test_the_add_game_form_accepts_an_archived_duplicate(owned_library):
     """The form and the constraint agree.
 
-    Without the `archived_at` exclusion fix, the form would also
+    Without the `tombstoned_at` exclusion fix, the form would also
     accept a live duplicate. See `docs/event-retention.md`.
     """
     archive(make_game(owned_library, name="Tetris"))

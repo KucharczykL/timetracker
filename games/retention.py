@@ -129,8 +129,8 @@ def archive_or_delete(instance: Model) -> Retirement:
         stamp = now()
         #: A stamp, not an edit.
         #: `save()` would run `clean()` and a receiver.
-        model._default_manager.filter(pk=instance.pk).update(archived_at=stamp)
-        instance.archived_at = stamp  # type: ignore[attr-defined]
+        model._default_manager.filter(pk=instance.pk).update(tombstoned_at=stamp)
+        instance.tombstoned_at = stamp  # type: ignore[attr-defined]
         return Retirement.ARCHIVED
 
 

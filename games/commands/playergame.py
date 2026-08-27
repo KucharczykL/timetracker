@@ -65,7 +65,7 @@ class TrackGame(Command):
         try:
             return Game.objects.filter(
                 Q(library=context.library) | Q(library__isnull=True),
-                archived_at__isnull=True,
+                tombstoned_at__isnull=True,
             ).get(pk=self.game_id)
         except Game.DoesNotExist:
             #: Leaks nothing about another library's rows.

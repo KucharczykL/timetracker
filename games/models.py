@@ -47,7 +47,7 @@ class ArchivableQuerySet(LibraryOwnedQuerySet):
     """
 
     def alive(self):
-        return self.filter(archived_at__isnull=True)
+        return self.filter(tombstoned_at__isnull=True)
 
     def for_library(self, library):
         return super().for_library(library).alive()
@@ -97,18 +97,18 @@ def _validate_related_library(
 
 class Game(ReferencedRow):
     class Meta:
-        #: Both partial on `archived_at`.
+        #: Both partial on `tombstoned_at`.
         #: An archived name is free again.
         #: `unique_together` cannot carry a condition.
         constraints = (
             models.UniqueConstraint(
                 fields=("library", "name", "platform", "year_released"),
-                condition=Q(archived_at__isnull=True),
+                condition=Q(tombstoned_at__isnull=True),
                 name="unique_library_game_name_platform_year",
             ),
             models.UniqueConstraint(
                 fields=("library", "name", "year_released"),
-                condition=Q(platform__isnull=True) & Q(archived_at__isnull=True),
+                condition=Q(platform__isnull=True) & Q(tombstoned_at__isnull=True),
                 name="unique_library_platformless_game_name_year",
             ),
         )
@@ -206,7 +206,7 @@ class Game(ReferencedRow):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     #: Set instead of deleting a referenced row.
-    archived_at = models.DateTimeField(
+    tombstoned_at = models.DateTimeField(
         null=True, blank=True, default=None, editable=False
     )
 
@@ -301,14 +301,14 @@ class Platform(ReferencedRow):
             models.UniqueConstraint(
                 Lower(Trim("name")),
                 Lower(Trim("group")),
-                condition=Q(library__isnull=True) & Q(archived_at__isnull=True),
+                condition=Q(library__isnull=True) & Q(tombstoned_at__isnull=True),
                 name="unique_shared_platform_normalized_name_group",
             ),
             models.UniqueConstraint(
                 F("library"),
                 Lower(Trim("name")),
                 Lower(Trim("group")),
-                condition=Q(library__isnull=False) & Q(archived_at__isnull=True),
+                condition=Q(library__isnull=False) & Q(tombstoned_at__isnull=True),
                 name="unique_private_platform_normalized_name_group",
             ),
         )
@@ -329,7 +329,7 @@ class Platform(ReferencedRow):
     icon = models.SlugField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     #: Set instead of deleting a referenced row.
-    archived_at = models.DateTimeField(
+    tombstoned_at = models.DateTimeField(
         null=True, blank=True, default=None, editable=False
     )
 
@@ -372,12 +372,12 @@ class EditionQuerySet(models.QuerySet):
     """
 
     def for_library(self, library):
-        return self.filter(game__library=library, game__archived_at__isnull=True)
+        return self.filter(game__library=library, game__tombstoned_at__isnull=True)
 
     def visible_to(self, library):
         return self.filter(
             Q(game__library__isnull=True) | Q(game__library=library),
-            game__archived_at__isnull=True,
+            game__tombstoned_at__isnull=True,
         )
 
 
@@ -407,13 +407,13 @@ class ReleaseQuerySet(models.QuerySet):
     def for_library(self, library):
         return self.filter(
             edition__game__library=library,
-            edition__game__archived_at__isnull=True,
+            edition__game__tombstoned_at__isnull=True,
         )
 
     def visible_to(self, library):
         return self.filter(
             Q(edition__game__library__isnull=True) | Q(edition__game__library=library),
-            edition__game__archived_at__isnull=True,
+            edition__game__tombstoned_at__isnull=True,
         )
 
 
@@ -1046,7 +1046,7 @@ class Device(ReferencedRow):
     type = models.CharField(max_length=255, choices=DEVICE_TYPES, default=UNKNOWN)
     created_at = models.DateTimeField(auto_now_add=True)
     #: Set instead of deleting a referenced row.
-    archived_at = models.DateTimeField(
+    tombstoned_at = models.DateTimeField(
         null=True, blank=True, default=None, editable=False
     )
 

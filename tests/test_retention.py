@@ -143,7 +143,7 @@ def test_a_referenced_game_is_archived(owned_library, game):
     assert archive_or_delete(game) is Retirement.ARCHIVED
 
     retained = Game.objects.get(pk=game.pk)
-    assert retained.archived_at is not None
+    assert retained.tombstoned_at is not None
     assert not Game.objects.for_library(owned_library).exists()
 
 
@@ -161,7 +161,7 @@ def test_a_tracked_game_archives_and_keeps_its_projection_row(
 
     assert archive_or_delete(game) is Retirement.ARCHIVED
 
-    assert Game.objects.get(pk=game.pk).archived_at is not None
+    assert Game.objects.get(pk=game.pk).tombstoned_at is not None
     assert PlayerGame.objects.filter(game=game).count() == 1
 
 
@@ -208,7 +208,7 @@ def test_a_referenced_platform_is_archived(owned_library, platform):
 
     assert archive_or_delete(platform) is Retirement.ARCHIVED
 
-    assert Platform.objects.get(pk=platform.pk).archived_at is not None
+    assert Platform.objects.get(pk=platform.pk).tombstoned_at is not None
 
 
 def test_a_referenced_device_is_archived(owned_library, device):
@@ -216,7 +216,7 @@ def test_a_referenced_device_is_archived(owned_library, device):
 
     assert archive_or_delete(device) is Retirement.ARCHIVED
 
-    assert Device.objects.get(pk=device.pk).archived_at is not None
+    assert Device.objects.get(pk=device.pk).tombstoned_at is not None
 
 
 def test_a_shared_platform_one_library_referenced_is_retained_for_everyone(
