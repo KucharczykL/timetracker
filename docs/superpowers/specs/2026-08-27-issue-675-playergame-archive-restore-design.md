@@ -96,6 +96,12 @@ rejects an archive and a live row rejects a restore.
 [#906](https://github.com/KucharczykL/timetracker/issues/906) decides whether a
 no-op must instead succeed.
 
+The idempotency key must name the request and not the pair. `idempotent_append`
+reads the key before `build()` runs, thus a repeat key replays the first record
+and appends no event. A caller that makes one key from the command and the game
+archives, restores, and then archives again with no second event, and reads a
+success. #677 gives the first caller and takes this requirement.
+
 ## A restore reads the projection only
 
 Neither command asks whether the catalog game is tombstoned. `TrackGame` asks,
