@@ -45,7 +45,7 @@ class Retirement(StrEnum):
     """What retiring a row meant."""
 
     DELETED = "deleted"
-    ARCHIVED = "archived"
+    TOMBSTONED = "tombstoned"
 
 
 def reference_count(
@@ -75,7 +75,7 @@ def resolve_reference(
 ) -> Model:
     """The row a reference names."""
     kind = kinds.kind_for(reference["kind"])
-    #: The plain manager. It sees archived rows.
+    #: The plain manager. It sees tombstoned rows.
     try:
         return kind.model._default_manager.get(pk=reference["id"])
     except kind.model.DoesNotExist:
@@ -109,14 +109,14 @@ def detach_game_from_purchases(game: Game) -> None:
 
 
 #: What a delete does that no cascade does.
-#: Archiving never fires the `pre_delete` receiver.
+#: A tombstone never fires the `pre_delete` receiver.
 _UNCASCADED_COLLATERAL: dict[type[Model], Callable[[Any], None]] = {
     Game: detach_game_from_purchases,
 }
 
 
-def archive_or_delete(instance: Model) -> Retirement:
-    """Delete the row, or archive it."""
+def tombstone_or_delete(instance: Model) -> Retirement:
+    """Delete the row, or leave a tombstone."""
     with transaction.atomic():
         if not must_be_retained(instance):
             instance.delete()
@@ -129,9 +129,9 @@ def archive_or_delete(instance: Model) -> Retirement:
         stamp = now()
         #: A stamp, not an edit.
         #: `save()` would run `clean()` and a receiver.
-        model._default_manager.filter(pk=instance.pk).update(archived_at=stamp)
-        instance.archived_at = stamp  # type: ignore[attr-defined]
-        return Retirement.ARCHIVED
+        model._default_manager.filter(pk=instance.pk).update(tombstoned_at=stamp)
+        instance.tombstoned_at = stamp  # type: ignore[attr-defined]
+        return Retirement.TOMBSTONED
 
 
 def _delete_everything_but(instance: Model) -> None:
@@ -181,6 +181,6 @@ def refuse_to_delete_a_referenced_row(instance: Model) -> None:
             f"{instance} cannot be deleted: "
             f"{reference_count(instance)} recorded event(s) reference it, and a "
             "replay must still be able to resolve them. Retire it with "
-            "games.retention.archive_or_delete, which removes it from the "
+            "games.retention.tombstone_or_delete, which removes it from the "
             "library and keeps the row."
         )

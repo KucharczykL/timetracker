@@ -92,11 +92,11 @@ def test_another_librarys_private_game_cannot_be_tracked(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_an_archived_game_cannot_be_tracked(owned_user, owned_library):
+def test_a_tombstoned_game_cannot_be_tracked(owned_user, owned_library):
     from django.utils import timezone
 
     game = Game.objects.create(
-        library=owned_library, name="Retired", archived_at=timezone.now()
+        library=owned_library, name="Retired", tombstoned_at=timezone.now()
     )
 
     with pytest.raises(CommandRejected):

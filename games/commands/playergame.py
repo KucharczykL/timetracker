@@ -65,14 +65,14 @@ class TrackGame(Command):
         try:
             return Game.objects.filter(
                 Q(library=context.library) | Q(library__isnull=True),
-                archived_at__isnull=True,
+                tombstoned_at__isnull=True,
             ).get(pk=self.game_id)
         except Game.DoesNotExist:
             #: Leaks nothing about another library's rows.
             raise CommandRejected(
                 f"No game {self.game_id} this library can track. A library "
                 "tracks its own games and the shared catalog, and neither "
-                "offers an archived row."
+                "offers a tombstoned row."
             ) from None
 
 

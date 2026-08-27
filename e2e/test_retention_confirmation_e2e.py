@@ -91,4 +91,4 @@ def test_deleting_a_referenced_game_says_the_record_is_kept(
     page.click('button:has-text("Delete")')
     page.wait_for_url(f"{live_server.url}{reverse('games:list_games')}**")
     expect(page.get_by_text("Remembered")).to_have_count(0)
-    assert Game.objects.get(pk=game.pk).archived_at is not None
+    assert Game.objects.get(pk=game.pk).tombstoned_at is not None

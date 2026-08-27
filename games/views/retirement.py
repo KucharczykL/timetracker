@@ -13,12 +13,12 @@ from django.http import HttpRequest, HttpResponse
 
 from common.components.core import Children
 from common.returns import UrlName
-from games.retention import archive_or_delete, reference_count
+from games.retention import reference_count, tombstone_or_delete
 from games.views.deletion import confirm_and_apply
 
 
 def retention_message(noun: str, label: str, count: int) -> str:
-    """What the page says when archiving."""
+    """What the page says when a row is tombstoned."""
     return (
         f"{count} recorded event(s) reference {label}, and their history has to "
         f"stay readable. The {noun} will be removed from your library along "
@@ -48,7 +48,7 @@ def confirm_and_retire(
     referencing = reference_count(instance)
     return confirm_and_apply(
         request,
-        action=partial(archive_or_delete, instance),
+        action=partial(tombstone_or_delete, instance),
         title=title,
         message=(
             retention_message(noun, label, referencing) if referencing else message
