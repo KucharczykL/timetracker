@@ -498,6 +498,9 @@ chromium` once. All JS is vendored, so the tests run fully offline. A bare
 
 - **Never write to `GeneratedField`s** (`duration_calculated`, `duration_total`,
   `price_per_game`, `days_to_finish`).
+- **One act, one verb** — an event type, its command and its projection column
+  share one verb, and the column is `<act>_at`: a nullable `DateTimeField` whose
+  null is the live state. See [Naming](docs/event-retention.md#naming).
 - **Name variables with complete words** — unabbreviated identifiers in Python and
   TypeScript (`template` not `tpl`, `event` not `e`, `element` not `el`,
   `removeButton` not `removeBtn`, `option`/`value` not single letters in loops).

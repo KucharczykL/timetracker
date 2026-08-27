@@ -11,14 +11,14 @@ This is the policy that keeps the promise. The code is in
 ## The two outcomes
 
 A delete of a `Game`, a `Platform` or a `Device` calls
-`archive_or_delete(instance)`. The function gives the outcome.
+`tombstone_or_delete(instance)`. The function gives the outcome.
 
 | Outcome | Condition | Result |
 |---|---|---|
 | `DELETED` | No event names the row | Nothing stays. The usual delete |
-| `ARCHIVED` | An event names the row under a `REQUIRED` kind | The row stays, with `archived_at` set. All other data goes |
+| `TOMBSTONED` | An event names the row under a `REQUIRED` kind | The row stays, with `tombstoned_at` set. All other data goes |
 
-An archived row is not a smaller delete. All the work of the delete occurs:
+A tombstoned row is not a smaller delete. All the work of the delete occurs:
 the sessions, the play events, the purchase counts and the `SET_NULL`s. Only
 the row stays.
 
@@ -32,7 +32,7 @@ The append writes the index in the same transaction as the events, under the
 same lock. Thus a row is protected at the moment the event that names it
 commits. There is no interval in which the guard permits a delete of that row.
 
-## What archiving does
+## What a tombstone does
 
 `_delete_everything_but` asks the Django collector which rows a delete
 collects. It then removes the root from the collection and deletes the
@@ -41,50 +41,50 @@ each `on_delete`. The two copies can become different. The result of a
 difference is a row that stays in a list view with no parent.
 
 The collector does not know about one thing. The purchase count of a `Game` is
-maintained in a `pre_delete` receiver. Archiving does not delete the row, thus
+maintained in a `pre_delete` receiver. A tombstone does not delete the row, thus
 the receiver does not operate. `detach_game_from_purchases` holds that logic.
-The receiver and the archive path both call it. There is one implementation.
+The receiver and the tombstone path both call it. There is one implementation.
 
-`archive_or_delete` sets `archived_at` with a queryset update. It does not call
+`tombstone_or_delete` sets `tombstoned_at` with a queryset update. It does not call
 `save()`. This is a stamp and not a change of the record. `Platform.save()`
 operates `clean()` again, and `Game.save()` operates the status-change
 receiver. Neither is applicable to a row that leaves the library.
 
 The equivalence is a test, not a claim:
-`tests/test_retention.py::test_archiving_leaves_exactly_what_deleting_would`
+`tests/test_retention.py::test_tombstoning_leaves_exactly_what_deleting_would`
 puts the same data in two libraries. One game is referenced and one game is
 not. The two libraries must keep equal state.
 
-## Where an archived row is not visible
+## Where a tombstoned row is not visible
 
-`for_library()` and `visible_to()` exclude an archived row. All reads for a
+`for_library()` and `visible_to()` exclude a tombstoned row. All reads for a
 user go through these two methods. A list, a form, a filter and an API
 response do not each apply the exclusion.
 
-`Edition` and `Release` have no `archived_at` column. They also have no
+`Edition` and `Release` have no `tombstoned_at` column. They also have no
 visibility of their own. Their querysets read the column of the parent `Game`.
 
 Each uniqueness constraint on `Game` and on `Platform` has the condition
-`archived_at IS NULL`. An archived row is not in the library. Thus it must not
+`tombstoned_at IS NULL`. A tombstoned row is not in the library. Thus it must not
 prevent the entry of the same name again. `Platform.clean()` applies the same
 condition, so the message to the user agrees with the constraint.
 
 The conditions have one effect that is easy to miss. Django does not validate a
 conditional constraint in a form when the condition names an excluded field.
-`archived_at` is not editable, thus a form always excludes it. Without a
+`tombstoned_at` is not editable, thus a form always excludes it. Without a
 correction, no constraint here operates during form validation, and a duplicate
 becomes an `IntegrityError` and not a field error.
 `_LibraryBoundConstraintValidationMixin` in `games/forms.py` keeps
-`archived_at` out of the exclusions. A row that a form reaches is a live row,
+`tombstoned_at` out of the exclusions. A row that a form reaches is a live row,
 thus the value is always NULL, which is the value the condition expects.
 
-Three readers see archived rows. They use the plain manager: the resolver, this
+Three readers see tombstoned rows. They use the plain manager: the resolver, this
 policy, and the audit inventories.
 
 ## Resolving a reference
 
 `resolve_reference(reference)` gives the row that a recorded reference names.
-The row can be archived. The function reads through `_default_manager`, which
+The row can be tombstoned. The function reads through `_default_manager`, which
 is the plain manager on all three models.
 
 If no row answers, the function raises `UnresolvableReference`. The exception
@@ -93,7 +93,7 @@ reference did not resolve.
 
 `unresolved_among(kind, references)` answers the same question for a set of index
 rows. It is in this module, beside the resolver. One module owns what resolves.
-If the two rules were in two modules, an archived row could pass one and fail the
+If the two rules were in two modules, a tombstoned row could pass one and fail the
 other.
 
 ## The replay check
@@ -105,7 +105,7 @@ the stream head and before it reads the first event. The code is in
 
 The check reads the index and not the payloads. It takes the kind names that the
 index holds. For each `REQUIRED` kind it makes one anti-join against the model of
-that kind, through the plain manager. Thus an archived row resolves. The check
+that kind, through the plain manager. Thus a tombstoned row resolves. The check
 does not query an `EVIDENCE_ONLY` kind, because for that kind the snapshot is
 sufficient.
 
@@ -146,7 +146,7 @@ it deletes the events also.
 A `pre_delete` receiver on the three models raises `ReferencedRowDeletion`. The
 receiver is in `games/signals.py`. It is not in the three delete views, because
 a shell, a script and a management command must obey the same policy. The
-delete views call `archive_or_delete` and do not see this exception.
+delete views call `tombstone_or_delete` and do not see this exception.
 
 A receiver on `Platform` and on `Device` prevents the Django fast delete for
 those models. Only a purge of a full library deletes them in quantity, thus the
@@ -160,7 +160,7 @@ policy before it calls `Model.delete()`.
 `Model.delete()` collects the related rows before it sends `pre_delete`. A
 `RESTRICT` relation, such as `PlayerGame.game`, thus refuses first and raises
 `RestrictedError`. That error names a foreign key. It does not tell the caller
-to use `archive_or_delete`. The override makes the policy speak first, and the
+to use `tombstone_or_delete`. The override makes the policy speak first, and the
 receiver stays the backstop for the paths that do not call `Model.delete()`.
 
 A queryset delete is one such path. `Game.objects.filter(...).delete()` still
@@ -181,10 +181,31 @@ go to a different thread.
 
 `games/views/retirement.py` is the delete control for these three models. It
 asks the policy what the POST does, and the page gives that text. A promise to
-delete, followed by an archive, is worse than each of the two outcomes.
+delete, followed by a tombstone, is worse than each of the two outcomes.
+
+## Naming
+
+One act takes one verb. The event type, the command and the projection column
+all use that verb.
+
+The column names the act in the past participle: `<act>_at`, and a name for what
+the act touches can come first. It is a nullable `DateTimeField`, and null is
+the live state. Thus `tombstoned_at`, `archived_at`, `voided_at`,
+`access_ended_at`.
+
+A fact about the world and a retraction of a record are two acts, thus they take
+two verbs. An end of access and a refund are facts. A void and a deletion are
+retractions.
+
+`Retirement` is outside the rule. The rule governs an event, a command and a
+column, and retention has none of the three: the enum reports which of two
+outcomes a delete had. A hard delete leaves no row and thus no column, so
+`deleted_at` on a projection always means the reversible act.
+
+`Purchase.date_refunded` is older than the rule.
 
 ## Not in this contract
 
-- A Trash or recovery screen (#795). An archive in place, and not a stub
+- A Trash or recovery screen (#795). A tombstone in place, and not a stub
   record, keeps that screen possible: the `Edition` and `Release` rows and all
   external references stay correct.
