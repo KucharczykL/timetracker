@@ -14,9 +14,11 @@ from games.events.dispatch import (
     CommandRejected,
 )
 from games.events.playergame import (
+    PLAYERGAME_ARCHIVED,
     PLAYERGAME_CREATED,
     PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED,
     PLAYERGAME_MASTERED_CHANGED,
+    PLAYERGAME_RESTORED,
     PLAYERGAME_STATUS_CHANGED,
     StatusValue,
 )
@@ -160,3 +162,47 @@ class SetPlayerGameExcludedFromUnfinished(Command):
                 payload={"excluded_from_unfinished": self.excluded_from_unfinished},
             )
         ]
+
+
+@dataclass(frozen=True, slots=True)
+class ArchivePlayerGame(Command):
+    """Archive a tracked game."""
+
+    command_name: ClassVar[CommandName] = CommandName.PLAYERGAME_ARCHIVE
+    #: A UUID, because Command fingerprints its fields.
+    game_id: uuid.UUID
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent]:
+        tracked = _tracked_game(context, self.game_id)
+        #: Under dispatch's lock: no concurrent duplicate.
+        if tracked.archived_at is not None:
+            raise CommandRejected(
+                f"This library already archives game {self.game_id}. Whether a "
+                "repeat should instead succeed as a no-op is EV-23 (#906)."
+            )
+        return [PLAYERGAME_ARCHIVED.new(aggregate_id=tracked.pk, payload={})]
+
+
+@dataclass(frozen=True, slots=True)
+class RestorePlayerGame(Command):
+    """Restore a game this library archived.
+
+    The catalog is not consulted. A delete of a tracked game tombstones the
+    catalog row and keeps this one, so an archived game may outlive the row it
+    names; refusing would leave the library a game it can neither see nor
+    recover.
+    """
+
+    command_name: ClassVar[CommandName] = CommandName.PLAYERGAME_RESTORE
+    #: A UUID, because Command fingerprints its fields.
+    game_id: uuid.UUID
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent]:
+        tracked = _tracked_game(context, self.game_id)
+        #: Under dispatch's lock: no concurrent duplicate.
+        if tracked.archived_at is None:
+            raise CommandRejected(
+                f"This library does not archive game {self.game_id}. Whether a "
+                "repeat should instead succeed as a no-op is EV-23 (#906)."
+            )
+        return [PLAYERGAME_RESTORED.new(aggregate_id=tracked.pk, payload={})]

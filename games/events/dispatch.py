@@ -83,6 +83,8 @@ class CommandName(CommandVocabulary):
     PLAYERGAME_SET_EXCLUDED_FROM_UNFINISHED = (
         "library.playergame.set_excluded_from_unfinished"
     )
+    PLAYERGAME_ARCHIVE = "library.playergame.archive"
+    PLAYERGAME_RESTORE = "library.playergame.restore"
 
 
 @dataclass(frozen=True, slots=True)
