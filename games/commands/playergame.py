@@ -50,7 +50,13 @@ class TrackGame(Command):
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
         game = self._visible_game(context)
         #: Under dispatch's lock: no concurrent duplicate.
-        if PlayerGame.objects.filter(library=context.library, game=game).exists():
+        tracked = PlayerGame.objects.filter(library=context.library, game=game).first()
+        if tracked is not None:
+            if tracked.archived_at is not None:
+                raise CommandRejected(
+                    f"This library archives {game.name} rather than tracking it. "
+                    "An archived game is restored, not tracked again."
+                )
             raise CommandRejected(
                 f"This library already tracks {game.name}. Whether a repeat "
                 "should instead succeed as a no-op is EV-23 (#906)."
