@@ -75,18 +75,22 @@ class PlayerGame(ProjectionModel):
 
     #: An explicit preference, never inferred from status.
     excluded_from_unfinished = models.BooleanField(default=False)
-    #: The archive event's recorded_at. Null means the library shows it.
-    #: Not `archived_at`: retention owns that name, and there it marks a
-    #: gutted row. A hidden row keeps every fact, because a restore gives
-    #: back the game the library had.
+    #: The archive event's recorded_at; null means live.
+    #: The player's own act, not retention's tombstoned_at.
     archived_at = models.DateTimeField(null=True, default=None, editable=False)
 ```
+
+Two short lines, as the columns above it have. The full argument for the name is the spec's own section; the comment only has to stop the next reader from "fixing" the inconsistency.
+
+`editable=False` matches `tracked_at`, the other column a projector writes. `default=None` is explicit rather than omitted so that `has_default()` is true and the start value has to pass through `PINNED_DEFAULTS`.
 
 - [ ] **Step 4: Generate the migration**
 
 Run: `make makemigrations`
 
-Expected: `games/migrations/0032_playergame_archived_at.py`, holding one `AddField` and nothing else:
+Take the target bare. It passes no `ARGS` (`Makefile:140-141` runs `manage.py makemigrations --noinput` and nothing else), so it regenerates for every app; check that this one field is all that appeared.
+
+Expected: `games/migrations/0032_playergame_archived_at.py`. Django names a single-operation migration after the operation, so `AddField` on `PlayerGame.archived_at` produces that filename without being told. Read the file and confirm it holds one `AddField`, adds nothing else, and carries no `RunPython`:
 
 ```python
 class Migration(migrations.Migration):
@@ -174,12 +178,9 @@ def test_the_restore_payload_states_nothing_but_its_type():
 def test_a_restore_payload_stating_a_direction_is_refused():
     with pytest.raises(PayloadInvalid):
         DEFAULT_EVENT_TYPES.validate(PLAYERGAME_RESTORED.event_type, {"restored": True})
-
-
-def test_the_two_types_are_not_one_type():
-    """A replay reads the name, so the pair may not collide."""
-    assert PLAYERGAME_ARCHIVED.event_type != PLAYERGAME_RESTORED.event_type
 ```
+
+Seven tests, not eight: a test that the two `event_type` strings differ would be two adjacent literals asserting about each other, and `EventTypeRegistry.register` already refuses a name it holds.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -226,7 +227,7 @@ An empty `TypedDict` is a real schema here, not a placeholder: `STRICT_SCHEMA` i
 
 Run: `make test ARGS="tests/test_playergame_events.py"`
 
-Expected: PASS, all eight new tests plus the existing ones.
+Expected: PASS, all seven new tests plus the existing ones.
 
 - [ ] **Step 5: Commit**
 
@@ -351,7 +352,7 @@ def test_a_replay_reproduces_the_archive(owned_user, owned_library, tracked_game
 def test_a_replay_reproduces_an_archive_and_its_undoing(
     owned_user, owned_library, tracked_game
 ):
-    """Order decides, so the pair must fold in sequence."""
+    """Order decides, so the pair must replay in sequence."""
     identity = uuid.uuid7()
     append_created(owned_library, owned_user, tracked_game, identity=identity)
     append_archived(owned_library, owned_user, identity)
@@ -392,7 +393,7 @@ def test_a_rebuild_reproduces_the_archive(owned_user, owned_library, tracked_gam
 
 Run: `make test ARGS="tests/test_playergame_projection.py -k 'hide or archive or restore'"`
 
-Expected: FAIL. The appends succeed — the types are registered — but no handler runs, so `archived_at` stays `None` and `test_the_archive_event_writes_its_own_time` fails on the comparison. `test_replaying_the_archive_event_costs_one_statement` fails with an empty query list.
+Expected: FAIL, on the assertions rather than on the append. An event type no family claims is a silent no-op: `ProjectorRegistry.apply` iterates the handlers registered for the type and finds none (`games/events/projection.py:181`), and the append path calls nothing else (`games/events/append.py:211`). So the appends succeed, `archived_at` stays `None`, and each test reports `None != <timestamp>` or `None is not None` — except the statement-count one, which reports `[] != ["UPDATE"]`.
 
 - [ ] **Step 3: Add the two handlers**
 
@@ -633,7 +634,7 @@ def test_one_idempotency_key_records_one_archive(owned_user, owned_library):
     )
 ```
 
-The last one is worth more here than in the sibling slices: a repeat under one key must return the recorded result, and the state check added in this task would reject it if the idempotency record were consulted second.
+The last one repeats what the three sibling slices each pin, and `dispatch` hands `build` to `idempotent_append` as a callback (`games/events/dispatch.py:278-291`), so the ordering it depends on is already proven. It is here for symmetry with them, not because it covers new ground.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -744,7 +745,7 @@ def test_tracking_an_archived_game_names_the_restore(owned_user, owned_library):
         idempotency_key="archive-outer-wilds",
     )
 
-    with pytest.raises(CommandRejected, match="restored rather than tracked"):
+    with pytest.raises(CommandRejected, match="restored, not tracked again"):
         dispatch(
             TrackGame(game_id=game.pk),
             actor=owned_user,
@@ -753,6 +754,23 @@ def test_tracking_an_archived_game_names_the_restore(owned_user, owned_library):
         )
 
     assert PlayerGame.objects.count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_tracking_a_live_game_twice_still_says_the_library_tracks_it(
+    owned_user, owned_library
+):
+    """The rare case may not blunt the common one."""
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+
+    with pytest.raises(CommandRejected, match="already tracks Outer Wilds"):
+        dispatch(
+            TrackGame(game_id=game.pk),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key="track-again",
+        )
 
 
 @pytest.mark.django_db(transaction=True)
@@ -783,23 +801,28 @@ def test_a_game_whose_catalog_row_is_tombstoned_is_still_restored(
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `make test ARGS="tests/test_playergame_command.py -k 'names_the_restore or catalog_row_is_archived'"`
+Run: `make test ARGS="tests/test_playergame_command.py -k 'names_the_restore or says_the_library_tracks_it or catalog_row_is_archived'"`
 
-Expected: the first FAILS, because the current message says "already tracks" and the `match=` does not find "restored rather than tracked". The second PASSES already — it is a characterisation test for behaviour Task 4 delivered, and it is here because the spec commits to that behaviour and nothing else pins it.
+Expected: the first FAILS, because the current message says "already tracks" and the `match=` does not find "restored, not tracked again". The other two PASS already. `test_tracking_a_shown_game_twice_still_says_the_library_tracks_it` is a regression guard written before the change it guards against: it pins the wording this task must *not* damage. `test_a_game_whose_catalog_row_is_archived_is_still_restored` characterises behaviour Task 4 delivered, and is here because the spec commits to it and nothing else pins it.
 
-- [ ] **Step 3: Change the message**
+- [ ] **Step 3: Branch the message**
 
-In `games/commands/playergame.py`, in `TrackGame.build`, replace the body of the existing duplicate rejection:
+In `games/commands/playergame.py`, in `TrackGame.build`, replace the existing duplicate rejection:
 
 ```python
 def build(self, context: CommandContext) -> Sequence[NewEvent]:
     game = self._visible_game(context)
     #: Under dispatch's lock: no concurrent duplicate.
-    if PlayerGame.objects.filter(library=context.library, game=game).exists():
+    tracked = PlayerGame.objects.filter(library=context.library, game=game).first()
+    if tracked is not None:
+        if tracked.archived_at is not None:
+            raise CommandRejected(
+                f"This library hides {game.name} rather than tracking it. A "
+                "hidden game is restored, not tracked again."
+            )
         raise CommandRejected(
-            f"This library has a row for {game.name} already. A hidden game "
-            "is restored rather than tracked again. Whether a repeat should "
-            "instead succeed as a no-op is EV-23 (#906)."
+            f"This library already tracks {game.name}. Whether a repeat "
+            "should instead succeed as a no-op is EV-23 (#906)."
         )
     return [
         PLAYERGAME_CREATED.new(
@@ -808,6 +831,10 @@ def build(self, context: CommandContext) -> Sequence[NewEvent]:
         )
     ]
 ```
+
+Two messages rather than one amended message. A single text would have to describe hiding to somebody whose game is not hidden, and the shown case is the common one. `.exists()` becomes `.first()`, which is the same one query.
+
+The `#906` citation stays on the shown branch only. There it is honest: EV-23 may decide that a repeat succeeds as a no-op. On the hidden branch it would be wrong — tracking a hidden game is not a repeat of anything, and the remedy is `RestorePlayerGame`, which exists.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -824,21 +851,42 @@ git commit -m "Send a repeat track to the restore"
 
 ---
 
-### Task 6: The gate
+### Task 6: The gate and the record
 
-**Files:** none. This task only runs and reports.
+**Files:**
+- Delete: `docs/superpowers/plans/2026-08-27-issue-675-playergame-archive-restore.md`
 
-- [ ] **Step 1: Run the full gate**
+**Interfaces:**
+- Consumes: every task above.
+- Produces: nothing the code imports.
+
+`CLAUDE.md` needs no edit. #673 changed the `PlayerGame` bullet to say the row is "written only by the `PlayerGames` projector", which stays true with a sixth event type, and #674 added its column without touching the bullet. `docs/STATUSES.md` and `docs/event-retention.md` also stay as they are: the first describes the purchase-based unfinished list, and the second describes retention's `archived_at`, which this issue deliberately does not touch.
+
+- [ ] **Step 1: Delete this plan**
+
+The spec stays; the plan does not outlive the work. Delete it before the gate rather than after, so `format-check` never has to be right about these fences.
+
+```bash
+git rm docs/superpowers/plans/2026-08-27-issue-675-playergame-archive-restore.md
+```
+
+- [ ] **Step 2: Run the full gate**
 
 Run: `make check`
 
 Expected: green. It runs lint, format check, mypy, the TypeScript checks, vitest, the migration drift guard (`check-migrations`, which fails if the model and `0032` disagree), and the whole pytest suite including `e2e/`.
 
-A hand-picked subset is not the gate. If `make check` is red on `main` before you start, check `python --version` first: it must be 3.14.x.
+A hand-picked subset is not the gate. If the formatter rewraps a line, commit that with the rest. If `make check` is red before you start, check `python --version` first: it must be 3.14.x.
 
-- [ ] **Step 2: Report**
+- [ ] **Step 3: Commit**
 
-State the result plainly, with the output if anything failed. Then hand back for the documentation sweep: the spec stays, this plan is retired, and the sibling slices each did that in one commit.
+```bash
+git commit -m "Retire the plan for the archive and restore slice"
+```
+
+- [ ] **Step 4: Report**
+
+State the result plainly, with the output if anything failed.
 
 ---
 
