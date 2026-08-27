@@ -50,9 +50,10 @@ The file becomes `0027_tombstone_catalog_rows.py`, and the dependency string in
 `0028_playergame.py` follows it.
 
 **The column has never existed.** The only durable database stops at
-`0022_external_references`. Migrations `0023` to `0031` are the event work, and
-no deployment has run them. Thus `archived_at` holds no data anywhere, and a
-`RenameField` would rename a column that no live schema has.
+`0022_external_references`, and `information_schema` shows no column of either
+name. Migrations `0023` to `0031` are the event work, and no deployment has run
+them. Thus `archived_at` holds no data anywhere, and a `RenameField` would
+rename a column that no live schema has.
 
 This is the one condition under which a migration is rewritten. A migration is
 otherwise a record of what occurred, and `0027` has occurred nowhere.
