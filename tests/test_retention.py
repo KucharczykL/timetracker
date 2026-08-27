@@ -46,11 +46,11 @@ from games.retention import (
     ReferencedRowDeletion,
     Retirement,
     UnresolvableReference,
-    archive_or_delete,
     must_be_retained,
     purging_library,
     reference_count,
     resolve_reference,
+    tombstone_or_delete,
 )
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -117,19 +117,19 @@ def device(owned_library):
 
 
 def test_an_unreferenced_game_is_deleted(game):
-    assert archive_or_delete(game) is Retirement.DELETED
+    assert tombstone_or_delete(game) is Retirement.DELETED
 
     assert not Game.objects.filter(pk=game.pk).exists()
 
 
 def test_an_unreferenced_platform_is_deleted(platform):
-    assert archive_or_delete(platform) is Retirement.DELETED
+    assert tombstone_or_delete(platform) is Retirement.DELETED
 
     assert not Platform.objects.filter(pk=platform.pk).exists()
 
 
 def test_an_unreferenced_device_is_deleted(device):
-    assert archive_or_delete(device) is Retirement.DELETED
+    assert tombstone_or_delete(device) is Retirement.DELETED
 
     assert not Device.objects.filter(pk=device.pk).exists()
 
@@ -137,20 +137,20 @@ def test_an_unreferenced_device_is_deleted(device):
 # --- a referenced row is retained --------------------------------------------
 
 
-def test_a_referenced_game_is_archived(owned_library, game):
+def test_a_referenced_game_is_tombstoned(owned_library, game):
     name_in_an_event(owned_library, game)
 
-    assert archive_or_delete(game) is Retirement.ARCHIVED
+    assert tombstone_or_delete(game) is Retirement.TOMBSTONED
 
     retained = Game.objects.get(pk=game.pk)
     assert retained.tombstoned_at is not None
     assert not Game.objects.for_library(owned_library).exists()
 
 
-def test_a_tracked_game_archives_and_keeps_its_projection_row(
+def test_a_tracked_game_is_tombstoned_and_keeps_its_projection_row(
     owned_user, owned_library
 ):
-    """Archiving must not delete a projection row."""
+    """A tombstone must not delete a projection row."""
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     dispatch(
         TrackGame(game_id=game.pk),
@@ -159,7 +159,7 @@ def test_a_tracked_game_archives_and_keeps_its_projection_row(
         idempotency_key="track",
     )
 
-    assert archive_or_delete(game) is Retirement.ARCHIVED
+    assert tombstone_or_delete(game) is Retirement.TOMBSTONED
 
     assert Game.objects.get(pk=game.pk).tombstoned_at is not None
     assert PlayerGame.objects.filter(game=game).count() == 1
@@ -175,7 +175,7 @@ def test_a_tracked_game_refuses_a_hard_delete(owned_user, owned_library):
         idempotency_key="track",
     )
 
-    with pytest.raises(ReferencedRowDeletion, match="archive_or_delete"):
+    with pytest.raises(ReferencedRowDeletion, match="tombstone_or_delete"):
         game.delete()
 
     assert Game.objects.filter(pk=game.pk).exists()
@@ -203,18 +203,18 @@ def test_a_bulk_delete_of_a_tracked_game_still_answers_restricted(
     assert Game.objects.filter(pk=game.pk).exists()
 
 
-def test_a_referenced_platform_is_archived(owned_library, platform):
+def test_a_referenced_platform_is_tombstoned(owned_library, platform):
     name_in_an_event(owned_library, platform)
 
-    assert archive_or_delete(platform) is Retirement.ARCHIVED
+    assert tombstone_or_delete(platform) is Retirement.TOMBSTONED
 
     assert Platform.objects.get(pk=platform.pk).tombstoned_at is not None
 
 
-def test_a_referenced_device_is_archived(owned_library, device):
+def test_a_referenced_device_is_tombstoned(owned_library, device):
     name_in_an_event(owned_library, device)
 
-    assert archive_or_delete(device) is Retirement.ARCHIVED
+    assert tombstone_or_delete(device) is Retirement.TOMBSTONED
 
     assert Device.objects.get(pk=device.pk).tombstoned_at is not None
 
@@ -227,7 +227,7 @@ def test_a_shared_platform_one_library_referenced_is_retained_for_everyone(
     name_in_an_event(owned_library, shared)
 
     assert must_be_retained(shared)
-    assert archive_or_delete(shared) is Retirement.ARCHIVED
+    assert tombstone_or_delete(shared) is Retirement.TOMBSTONED
 
 
 def test_reference_count_counts_events_not_rows(owned_library, device):
@@ -309,22 +309,22 @@ def snapshot(library, bundle, bystander) -> LibraryState:
     )
 
 
-def test_archiving_leaves_exactly_what_deleting_would(owned_library, other_library):
-    """Archiving did not change product behaviour.
+def test_tombstoning_leaves_exactly_what_deleting_would(owned_library, other_library):
+    """The tombstone did not change product behaviour.
 
-    The same fixture in two libraries. One game is archived, one is
+    The same fixture in two libraries. One game is tombstoned, one is
     deleted. What the two libraries have left must match.
     """
     deleted_game, deleted_bundle, deleted_bystander = populate(owned_library)
-    archived_game, archived_bundle, archived_bystander = populate(other_library)
-    name_in_an_event(other_library, archived_game)
+    tombstoned_game, tombstoned_bundle, tombstoned_bystander = populate(other_library)
+    name_in_an_event(other_library, tombstoned_game)
 
-    assert archive_or_delete(deleted_game) is Retirement.DELETED
-    assert archive_or_delete(archived_game) is Retirement.ARCHIVED
+    assert tombstone_or_delete(deleted_game) is Retirement.DELETED
+    assert tombstone_or_delete(tombstoned_game) is Retirement.TOMBSTONED
 
     after_delete = snapshot(owned_library, deleted_bundle, deleted_bystander)
-    after_archive = snapshot(other_library, archived_bundle, archived_bystander)
-    assert after_archive == after_delete
+    after_tombstone = snapshot(other_library, tombstoned_bundle, tombstoned_bystander)
+    assert after_tombstone == after_delete
     #: Not vacuous: the fixture had things to lose.
     assert after_delete == LibraryState(
         sessions=1,
@@ -337,7 +337,7 @@ def test_archiving_leaves_exactly_what_deleting_would(owned_library, other_libra
     )
 
 
-def test_archiving_a_platform_nulls_what_deleting_would(owned_library, platform):
+def test_tombstoning_a_platform_nulls_what_deleting_would(owned_library, platform):
     game = Game.objects.create(
         library=owned_library, name="Tetris", year_released=1984, platform=platform
     )
@@ -353,14 +353,14 @@ def test_archiving_a_platform_nulls_what_deleting_would(owned_library, platform)
     )
     name_in_an_event(owned_library, platform)
 
-    archive_or_delete(platform)
+    tombstone_or_delete(platform)
 
     assert Game.objects.get(pk=game.pk).platform_id is None
     assert Purchase.objects.get(pk=purchase.pk).platform_id is None
     assert Release.objects.get(pk=release.pk).platform_id is None
 
 
-def test_archiving_a_device_nulls_what_deleting_would(owned_library, game, device):
+def test_tombstoning_a_device_nulls_what_deleting_would(owned_library, game, device):
     session = Session.objects.create(
         game=game,
         device=device,
@@ -371,7 +371,7 @@ def test_archiving_a_device_nulls_what_deleting_would(owned_library, game, devic
     preferences.set_default_device(device)
     name_in_an_event(owned_library, device)
 
-    archive_or_delete(device)
+    tombstone_or_delete(device)
 
     assert Session.objects.get(pk=session.pk).device_id is None
     preferences.refresh_from_db()
@@ -381,10 +381,10 @@ def test_archiving_a_device_nulls_what_deleting_would(owned_library, game, devic
 # --- the reference still resolves --------------------------------------------
 
 
-def test_an_archived_row_still_resolves(owned_library, game):
+def test_a_tombstoned_row_still_resolves(owned_library, game):
     reference = name_in_an_event(owned_library, game)
 
-    archive_or_delete(game)
+    tombstone_or_delete(game)
 
     assert resolve_reference(reference) == game
 
@@ -414,7 +414,7 @@ def test_a_raw_delete_of_a_referenced_row_is_refused(owned_library, request, fix
     instance = request.getfixturevalue(fixture)
     name_in_an_event(owned_library, instance)
 
-    with pytest.raises(ReferencedRowDeletion, match="archive_or_delete"):
+    with pytest.raises(ReferencedRowDeletion, match="tombstone_or_delete"):
         instance.delete()
 
     assert type(instance).objects.filter(pk=instance.pk).exists()

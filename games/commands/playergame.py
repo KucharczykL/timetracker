@@ -72,7 +72,7 @@ class TrackGame(Command):
             raise CommandRejected(
                 f"No game {self.game_id} this library can track. A library "
                 "tracks its own games and the shared catalog, and neither "
-                "offers an archived row."
+                "offers a tombstoned row."
             ) from None
 
 

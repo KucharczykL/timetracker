@@ -39,11 +39,11 @@ class LibraryOwnedQuerySet(models.QuerySet):
         return self.filter(library=library)
 
 
-class ArchivableQuerySet(LibraryOwnedQuerySet):
-    """A referenced row outlives its deletion, archived.
+class TombstonableQuerySet(LibraryOwnedQuerySet):
+    """A referenced row outlives its deletion, as a tombstone.
 
     `for_library` and `visible_to` are how the application asks for
-    rows. A caller that must see archived rows uses the plain manager.
+    rows. A caller that must see tombstoned rows uses the plain manager.
     """
 
     def alive(self):
@@ -72,7 +72,7 @@ class ReferencedRow(models.Model):
         return super().delete(*args, **kwargs)
 
 
-class GameQuerySet(ArchivableQuerySet):
+class GameQuerySet(TombstonableQuerySet):
     def visible_to(self, library):
         return self.filter(Q(library__isnull=True) | Q(library=library)).alive()
 
@@ -98,7 +98,7 @@ def _validate_related_library(
 class Game(ReferencedRow):
     class Meta:
         #: Both partial on `tombstoned_at`.
-        #: An archived name is free again.
+        #: A tombstoned name is free again.
         #: `unique_together` cannot carry a condition.
         constraints = (
             models.UniqueConstraint(
@@ -289,7 +289,7 @@ class Game(ReferencedRow):
         return self.status == self.Status.UNPLAYED
 
 
-class PlatformQuerySet(ArchivableQuerySet):
+class PlatformQuerySet(TombstonableQuerySet):
     def visible_to(self, library):
         return self.filter(Q(library__isnull=True) | Q(library=library)).alive()
 
@@ -339,7 +339,7 @@ class Platform(ReferencedRow):
     def clean(self):
         super().clean()
         duplicates = (
-            #: An archived Platform shadows nothing.
+            #: A tombstoned Platform shadows nothing.
             Platform.objects.alive()
             .exclude(pk=self.pk)
             .annotate(
@@ -366,9 +366,9 @@ class Platform(ReferencedRow):
 
 
 class EditionQuerySet(models.QuerySet):
-    """Archival is inherited from Game.
+    """A tombstone is inherited from Game.
 
-    An Edition has no visibility of its own to archive.
+    An Edition has no visibility of its own to lose.
     """
 
     def for_library(self, library):
@@ -402,7 +402,7 @@ class Edition(models.Model):
 
 
 class ReleaseQuerySet(models.QuerySet):
-    """Archival is inherited from Game."""
+    """A tombstone is inherited from Game."""
 
     def for_library(self, library):
         return self.filter(
@@ -1020,8 +1020,8 @@ class Session(models.Model):
 
 
 class Device(ReferencedRow):
-    #: Archivable: `device` is a REQUIRED reference kind.
-    objects = ArchivableQuerySet.as_manager()
+    #: Tombstonable: `device` is a REQUIRED reference kind.
+    objects = TombstonableQuerySet.as_manager()
 
     id = UUIDv7Field(primary_key=True, editable=False)
     library = models.ForeignKey(

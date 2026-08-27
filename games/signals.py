@@ -95,7 +95,7 @@ def update_num_purchases(sender, instance, action, reverse, **kwargs):
 def update_purchase_counts_on_game_delete(sender, instance, **kwargs):
     """Keep purchase counts right.
 
-    The work is in `games.retention`. Archiving needs it too.
+    The work is in `games.retention`. A tombstone needs it too.
     """
     detach_game_from_purchases(instance)
 

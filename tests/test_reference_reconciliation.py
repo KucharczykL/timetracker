@@ -48,9 +48,9 @@ from games.events.wiring import EventWiring
 from games.models import Device, Game, LibraryEvent, LibraryEventReference, Platform
 from games.retention import (
     UnresolvableReference,
-    archive_or_delete,
     purging_library,
     resolve_reference,
+    tombstone_or_delete,
     unresolved_among,
 )
 
@@ -252,11 +252,11 @@ def test_a_live_row_resolves(owned_library, device):
     assert reconciliation.kinds_checked == ("device",)
 
 
-def test_an_archived_row_resolves(owned_library, device):
+def test_a_tombstoned_row_resolves(owned_library, device):
     """The retention policy's whole point, read back."""
     append(owned_library, [device_event(device)])
 
-    archive_or_delete(device)
+    tombstone_or_delete(device)
 
     #: Gone from the library, still stored.
     assert not Device.objects.for_library(owned_library).filter(pk=device.pk).exists()
@@ -456,7 +456,7 @@ def test_the_set_rule_agrees_with_the_single_row_rule(
 ):
     """One rule, two callers."""
     append(owned_library, [everything_event(game, device, [platform])])
-    archive_or_delete(game)
+    tombstone_or_delete(game)
     strand(platform)
 
     index = LibraryEventReference.objects.for_library(owned_library)
