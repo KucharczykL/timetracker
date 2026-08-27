@@ -157,6 +157,18 @@ sqlmigrate: ensure-postgres
 migrate: ensure-postgres makemigrations
 	uv run --frozen python manage.py migrate $(ARGS)
 
+# Drop the development database and build it again from the migrations.
+#
+# A migration that no deployment has run may still be edited in place, and the
+# event-era ones qualify. A database that already applied the old file keeps the
+# old column names while the migration state claims the new ones, and nothing
+# reports it: `check-migrations` compares the models against the migration
+# files, never against the schema. This target is the repair. The data is
+# disposable -- `loadplatforms` and `loadsample` put it back.
+reset-db: ensure-postgres
+	uv run --frozen python manage.py reset_db --noinput
+	$(MAKE) migrate
+
 devlogin: migrate
 	uv run --frozen python manage.py devlogin
 
