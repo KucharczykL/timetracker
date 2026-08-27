@@ -5,9 +5,11 @@ from typing import ClassVar
 
 from games.events.envelope import RecordedEvent
 from games.events.playergame import (
+    PLAYERGAME_ARCHIVED,
     PLAYERGAME_CREATED,
     PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED,
     PLAYERGAME_MASTERED_CHANGED,
+    PLAYERGAME_RESTORED,
     PLAYERGAME_STATUS_CHANGED,
 )
 from games.events.projection import HandlerMap, Projector, ProjectorFamily
@@ -45,9 +47,18 @@ class PlayerGames(Projector):
             excluded_from_unfinished=event.payload["excluded_from_unfinished"],
         )
 
+    def _archived(self, event: RecordedEvent) -> None:
+        #: The event's own time, so replays agree.
+        self.amend(PlayerGame, event.aggregate_id, archived_at=event.recorded_at)
+
+    def _restored(self, event: RecordedEvent) -> None:
+        self.amend(PlayerGame, event.aggregate_id, archived_at=None)
+
     handles: ClassVar[HandlerMap] = {
         PLAYERGAME_CREATED: _created,
         PLAYERGAME_STATUS_CHANGED: _status_changed,
         PLAYERGAME_MASTERED_CHANGED: _mastered_changed,
         PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED: _excluded_from_unfinished_changed,
+        PLAYERGAME_ARCHIVED: _archived,
+        PLAYERGAME_RESTORED: _restored,
     }
