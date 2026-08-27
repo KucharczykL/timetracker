@@ -1333,6 +1333,9 @@ class PlayerGame(ProjectionModel):
     mastered = models.BooleanField(default=False)
     #: An explicit preference, never inferred from status.
     excluded_from_unfinished = models.BooleanField(default=False)
+    #: The archive event's recorded_at; null means live.
+    #: The player's own act, not retention's tombstoned_at.
+    archived_at = models.DateTimeField(null=True, default=None, editable=False)
 
     class Meta:
         constraints = (
