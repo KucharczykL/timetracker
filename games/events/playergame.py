@@ -78,3 +78,31 @@ PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED = EventSpec(
 )
 
 DEFAULT_EVENT_TYPES.register(PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED)
+
+
+@with_config(STRICT_SCHEMA)
+class PlayerGameArchivedPayload(TypedDict):
+    """The library now archives the game."""
+
+
+PLAYERGAME_ARCHIVED = EventSpec(
+    "library.playergame.archived",
+    aggregate_type="playergame",
+    payload=PlayerGameArchivedPayload,
+)
+
+DEFAULT_EVENT_TYPES.register(PLAYERGAME_ARCHIVED)
+
+
+@with_config(STRICT_SCHEMA)
+class PlayerGameRestoredPayload(TypedDict):
+    """The library restores the game."""
+
+
+PLAYERGAME_RESTORED = EventSpec(
+    "library.playergame.restored",
+    aggregate_type="playergame",
+    payload=PlayerGameRestoredPayload,
+)
+
+DEFAULT_EVENT_TYPES.register(PLAYERGAME_RESTORED)

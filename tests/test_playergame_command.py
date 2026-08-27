@@ -5,6 +5,8 @@ import uuid
 import pytest
 
 from games.commands.playergame import (
+    ArchivePlayerGame,
+    RestorePlayerGame,
     SetPlayerGameExcludedFromUnfinished,
     SetPlayerGameMastered,
     SetPlayerGameStatus,
@@ -12,7 +14,7 @@ from games.commands.playergame import (
 )
 from games.events.dispatch import CommandRejected, dispatch
 from games.models import Game, LibraryEvent, PlayerGame, PlayerGameStatus
-from games.retention import purging_library
+from games.retention import Retirement, purging_library, tombstone_or_delete
 
 
 @pytest.fixture
@@ -549,3 +551,250 @@ def test_one_idempotency_key_records_one_exclusion_change(owned_user, owned_libr
         ).count()
         == 1
     )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_archiving_a_game_records_it_and_projects_it(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+
+    dispatch(
+        ArchivePlayerGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="archive-outer-wilds",
+    )
+
+    event = LibraryEvent.objects.get(event_type="library.playergame.archived")
+    assert event.payload == {}
+    row = PlayerGame.objects.get()
+    assert event.aggregate_id == row.pk
+    assert row.archived_at == event.recorded_at
+
+
+@pytest.mark.django_db(transaction=True)
+def test_restoring_a_game_returns_it(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    dispatch(
+        ArchivePlayerGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="archive-outer-wilds",
+    )
+
+    dispatch(
+        RestorePlayerGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="restore-outer-wilds",
+    )
+
+    assert LibraryEvent.objects.get(event_type="library.playergame.restored")
+    assert PlayerGame.objects.get().archived_at is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_archiving_a_game_leaves_the_rest_of_the_row_alone(owned_user, owned_library):
+    """A restore gives back the game the library had."""
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    dispatch(
+        SetPlayerGameStatus(game_id=game.pk, status=PlayerGameStatus.PLAYED),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="play-outer-wilds",
+    )
+    dispatch(
+        SetPlayerGameMastered(game_id=game.pk, mastered=True),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="master-outer-wilds",
+    )
+    before = PlayerGame.objects.get()
+
+    dispatch(
+        ArchivePlayerGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="archive-outer-wilds",
+    )
+
+    after = PlayerGame.objects.get()
+    assert (after.pk, after.game_id, after.tracked_at, after.status) == (
+        before.pk,
+        before.game_id,
+        before.tracked_at,
+        before.status,
+    )
+    assert after.mastered is True
+
+
+@pytest.mark.django_db(transaction=True)
+def test_archiving_an_untracked_game_is_refused(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Untracked")
+
+    with pytest.raises(CommandRejected, match="tracks no game"):
+        dispatch(
+            ArchivePlayerGame(game_id=game.pk),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key="archive-untracked",
+        )
+
+    assert not LibraryEvent.objects.filter(
+        event_type="library.playergame.archived"
+    ).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_archiving_a_game_another_library_tracks_is_refused(
+    owned_user, owned_library, other_user, other_library, shared_game
+):
+    track(other_user, other_library, shared_game)
+
+    with pytest.raises(CommandRejected, match="tracks no game"):
+        dispatch(
+            ArchivePlayerGame(game_id=shared_game.pk),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key="archive-theirs",
+        )
+
+    assert PlayerGame.objects.get().archived_at is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_archiving_a_game_the_library_already_archives_is_refused(
+    owned_user, owned_library
+):
+    """One convention for #906 to change."""
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    dispatch(
+        ArchivePlayerGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="archive-outer-wilds",
+    )
+
+    with pytest.raises(CommandRejected, match="#906"):
+        dispatch(
+            ArchivePlayerGame(game_id=game.pk),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key="archive-outer-wilds-again",
+        )
+
+    assert (
+        LibraryEvent.objects.filter(event_type="library.playergame.archived").count()
+        == 1
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_restoring_a_game_the_library_does_not_archive_is_refused(
+    owned_user, owned_library
+):
+    """One convention for #906 to change."""
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+
+    with pytest.raises(CommandRejected, match="#906"):
+        dispatch(
+            RestorePlayerGame(game_id=game.pk),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key="restore-outer-wilds",
+        )
+
+    assert not LibraryEvent.objects.filter(
+        event_type="library.playergame.restored"
+    ).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_one_idempotency_key_records_one_archive(owned_user, owned_library):
+    """The key answers before the state check does."""
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    command = ArchivePlayerGame(game_id=game.pk)
+
+    first = dispatch(
+        command, actor=owned_user, library=owned_library, idempotency_key="archive"
+    )
+    second = dispatch(
+        command, actor=owned_user, library=owned_library, idempotency_key="archive"
+    )
+
+    assert (first.replayed, second.replayed) == (False, True)
+    assert (
+        LibraryEvent.objects.filter(event_type="library.playergame.archived").count()
+        == 1
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_tracking_an_archived_game_names_the_restore(owned_user, owned_library):
+    """The message a person reads must match what they see."""
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    dispatch(
+        ArchivePlayerGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="archive-outer-wilds",
+    )
+
+    with pytest.raises(CommandRejected, match="restored, not tracked again"):
+        dispatch(
+            TrackGame(game_id=game.pk),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key="track-again",
+        )
+
+    assert PlayerGame.objects.count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_tracking_a_live_game_twice_still_says_the_library_tracks_it(
+    owned_user, owned_library
+):
+    """The rare case may not blunt the common one."""
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+
+    with pytest.raises(CommandRejected, match="already tracks Outer Wilds"):
+        dispatch(
+            TrackGame(game_id=game.pk),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key="track-again",
+        )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_game_whose_catalog_row_is_tombstoned_is_still_restored(
+    owned_user, owned_library
+):
+    """The projection answers, not the catalog."""
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    dispatch(
+        ArchivePlayerGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="archive-outer-wilds",
+    )
+    #: A delete of a tracked game keeps the projection row.
+    assert tombstone_or_delete(game) is Retirement.TOMBSTONED
+
+    dispatch(
+        RestorePlayerGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="restore-outer-wilds",
+    )
+
+    assert PlayerGame.objects.get().archived_at is None

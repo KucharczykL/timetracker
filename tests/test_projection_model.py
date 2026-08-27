@@ -246,6 +246,7 @@ PINNED_DEFAULTS: dict[str, dict[str, object]] = {
         "status": "unplayed",
         "mastered": False,
         "excluded_from_unfinished": False,
+        "archived_at": None,
     },
 }
 
