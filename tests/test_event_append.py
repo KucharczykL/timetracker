@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from threading import Event, Thread
 from typing import Any, TypedDict
@@ -180,6 +180,45 @@ def test_multi_event_append_is_contiguous_and_shares_one_envelope(owned_library)
     assert [event.sequence for event in stored] == [1, 2, 3]
     assert {event.correlation_id for event in stored} == {correlation_id}
     assert len({event.recorded_at for event in stored}) == 1
+
+
+def test_an_event_carries_its_recorded_at_in_its_identity(owned_library):
+    """A UUIDv7 minted at any moment other than the row's own is a violation.
+
+    `check_ordering` in the identity audit holds every event's identity to its
+    `recorded_at` order, and no database constraint enforces it. An append that
+    is given a `recorded_at` is therefore given the moment to mint from too.
+    """
+    moment = datetime(2019, 7, 1, 12, 0, 0, 123_456, tzinfo=UTC)
+
+    with transaction.atomic():
+        result = append(owned_library, recorded_at=moment)
+
+    (event,) = result.events
+    embedded = datetime(1970, 1, 1, tzinfo=UTC) + timedelta(
+        milliseconds=event.id.int >> 80
+    )
+    assert embedded == moment.replace(microsecond=123_000)
+
+
+def test_backdated_appends_order_by_recorded_at_below_the_millisecond(owned_library):
+    """Two moments one millisecond apart still order the way they happened.
+
+    The sample fixture loads hundreds of games in a few milliseconds, so the
+    identity has to separate them on the microsecond the row records, not on
+    the order the backfill happens to append them in.
+    """
+    earlier = datetime(2021, 3, 4, 5, 6, 7, 800_500, tzinfo=UTC)
+    later = datetime(2021, 3, 4, 5, 6, 7, 800_900, tzinfo=UTC)
+
+    with transaction.atomic():
+        append(owned_library, recorded_at=later, idempotency_key="later")
+    with transaction.atomic():
+        append(owned_library, recorded_at=earlier, idempotency_key="earlier")
+
+    assert list(
+        LibraryEvent.objects.order_by("id").values_list("recorded_at", flat=True)
+    ) == [earlier, later]
 
 
 def test_two_appends_on_one_locked_stream_continue_the_range(owned_library):
