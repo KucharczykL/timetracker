@@ -11,6 +11,7 @@ from games.models import (
     PlayerGame,
     PlayerGameStatus,
     PlayEvent,
+    Purchase,
     Session,
 )
 from games.writes.playergame import new_correlation_id, track_game
@@ -248,3 +249,68 @@ def test_editing_a_play_event_records_completed_too(
     )
 
     assert PlayerGame.objects.get().status == PlayerGameStatus.COMPLETED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_refunding_abandons_every_game_under_one_correlation_id(
+    logged_in, owned_user, owned_library
+):
+    games = []
+    for name in ("Outer Wilds", "Tunic"):
+        game = Game.objects.create(library=owned_library, name=name, status="p")
+        track_game(owned_user, game, correlation_id=new_correlation_id())
+        games.append(game)
+    purchase = Purchase.objects.create(
+        library=owned_library,
+        price=0,
+        price_currency="CZK",
+        date_purchased=timezone.now(),
+    )
+    purchase.games.set(games)
+
+    response = logged_in.post(reverse("games:refund_purchase", args=[purchase.id]))
+
+    assert response.status_code == 200
+    assert set(PlayerGame.objects.values_list("status", flat=True)) == {
+        PlayerGameStatus.ABANDONED
+    }
+    correlation_ids = set(
+        LibraryEvent.objects.filter(
+            event_type="library.playergame.status_changed"
+        ).values_list("correlation_id", flat=True)
+    )
+    #: One button press is one act, whatever number of games it moves.
+    assert len(correlation_ids) == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_failed_refund_answers_409_and_swaps_nothing(
+    logged_in, owned_user, owned_library, monkeypatch
+):
+    from games.writes.playergame import PlayerGameWriteFailed
+
+    game = Game.objects.create(library=owned_library, name="Outer Wilds", status="p")
+    track_game(owned_user, game, correlation_id=new_correlation_id())
+    purchase = Purchase.objects.create(
+        library=owned_library,
+        price=0,
+        price_currency="CZK",
+        date_purchased=timezone.now(),
+    )
+    purchase.games.set([game])
+
+    def refuse(*args, **kwargs):
+        raise PlayerGameWriteFailed("Nothing was recorded; try again.", 409)
+
+    #: The view calls record_facts_for_request, which is the one caller of
+    #: record_facts, so the patch goes where the call is made.
+    monkeypatch.setattr("games.views.playergame_writes.record_facts", refuse)
+    response = logged_in.post(reverse("games:refund_purchase", args=[purchase.id]))
+
+    #: htmx swaps nothing outside 2xx, so the row keeps what it shows and
+    #: the modal stays open. A redirect would swap a whole page into a cell.
+    assert response.status_code == 409
+    assert response.content == b""
+    assert "show-toast" in response.headers["HX-Trigger"]
+    purchase.refresh_from_db()
+    assert purchase.date_refunded is None

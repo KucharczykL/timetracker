@@ -67,7 +67,9 @@ from games.sorting import (
 )
 from games.views.deletion import confirm_and_delete
 from games.views.filtering import warn_unknown_sort
+from games.views.playergame_writes import record_facts_for_request
 from games.views.returns import origin_from, return_url
+from games.writes.playergame import new_correlation_id
 
 
 def _render_purchase_buttons(
@@ -552,9 +554,19 @@ def refund_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
         Purchase.objects.for_library(library), library, id=purchase_id
     )
 
+    correlation_id = new_correlation_id()
     for game in purchase.games.all():
-        game.status = Game.Status.ABANDONED
-        game.save()
+        if not record_facts_for_request(
+            request,
+            game,
+            status=Game.Status.ABANDONED,
+            correlation_id=correlation_id,
+        ):
+            #: No redirect: this answers a table row and an out-of-band
+            #: modal close, so a whole page would be swapped into a cell.
+            #: htmx swaps nothing outside 2xx, and the toast rides the
+            #: HX-Trigger header the middleware sets from the message.
+            return HttpResponse(status=409)
 
     purchase.refund()
 

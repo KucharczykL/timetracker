@@ -10,6 +10,7 @@ import re
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import pytest
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase
@@ -147,15 +148,34 @@ class DataTableGateTest(TestCase):
         note_header = next(cell for cell in header_cells if ">Note<" in cell)
         self.assertNotIn("whitespace-nowrap", note_header)
 
-    def test_refunded_row_fragment_keeps_the_tables_policy(self) -> None:
-        """The refund endpoint re-renders one row outside the list view. A
-        fragment built without the column list renders under a different width
-        policy than the rows it lands between."""
-        purchase = Purchase.objects.first()
-        assert purchase is not None
-        response = self.client.post(
-            reverse("games:refund_purchase", args=[purchase.pk])
-        )
-        row = response.content.decode()
-        self.assertIn("max-md:max-w-0", row)
-        self.assertIn("whitespace-nowrap", row.split("<td", 1)[1])
+
+@pytest.mark.django_db(transaction=True)
+def test_refunded_row_fragment_keeps_the_tables_policy(client, owned_user) -> None:
+    """The refund endpoint re-renders one row outside the list view.
+
+    A fragment built without the column list renders under a different width
+    policy than the rows it lands between.
+    """
+    #: Moved out of DataTableGateTest by #677: the refund now dispatches a
+    #: command for the game it covers, and run_in_transaction refuses to open
+    #: a transaction inside the one a TestCase wraps every test in.
+    client.force_login(owned_user)
+    library = owned_user.library
+    platform = Platform.objects.create(
+        library=library, name="PC", icon="pc", group="PC"
+    )
+    game = Game.objects.create(library=library, name="A Game", platform=platform)
+    purchase = Purchase.objects.create(
+        platform=platform,
+        date_purchased=BASE,
+        price=10,
+        price_currency="USD",
+        library=library,
+    )
+    purchase.games.add(game)
+
+    response = client.post(reverse("games:refund_purchase", args=[purchase.pk]))
+
+    row = response.content.decode()
+    assert "max-md:max-w-0" in row
+    assert "whitespace-nowrap" in row.split("<td", 1)[1]
