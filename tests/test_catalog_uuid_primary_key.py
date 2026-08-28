@@ -16,7 +16,7 @@ from django.test import Client
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 
-from games.models import Device, Game, Platform, Session
+from games.models import Device, Game, Platform, PlayerGameStatus, Session
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -366,7 +366,7 @@ def test_game_bearing_endpoints_accept_the_new_identity(library_client):
     assert (
         client.patch(
             f"/api/games/{game.pk}/status",
-            json.dumps({"status": Game.Status.PLAYED}),
+            json.dumps({"status": PlayerGameStatus.PLAYED}),
             content_type="application/json",
         ).status_code
         == 204
@@ -395,7 +395,7 @@ def test_game_bearing_endpoints_reject_a_non_v7_uuid(library_client):
 
     status_update = client.patch(
         f"/api/games/{invalid_id}/status",
-        json.dumps({"status": Game.Status.PLAYED}),
+        json.dumps({"status": PlayerGameStatus.PLAYED}),
         content_type="application/json",
     )
     playevent_create = client.post(

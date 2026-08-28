@@ -5,7 +5,14 @@ from django.urls import reverse
 
 from games.external_references import save_external_reference
 from games.forms import GameForm
-from games.models import Edition, ExternalReference, Game, Platform, Release
+from games.models import (
+    Edition,
+    ExternalReference,
+    Game,
+    Platform,
+    PlayerGameStatus,
+    Release,
+)
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -41,7 +48,7 @@ def game_payload(**overrides):
         "platform": "",
         "year_released": "2002",
         "original_year_released": "2001",
-        "status": Game.Status.PLAYED,
+        "status": PlayerGameStatus.PLAYED,
         "mastered": "on",
         "wikidata": "Q123",
     }

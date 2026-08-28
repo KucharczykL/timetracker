@@ -14,11 +14,11 @@ from games.models import (
     Purchase,
     Session,
 )
-from games.writes.playergame import new_correlation_id, track_game
+from games.writes.playergame import new_correlation_id, record_facts, track_game
 
 pytestmark = pytest.mark.untracked_games
 
-GAME_PAYLOAD = {"name": "Outer Wilds", "status": "u", "wikidata": ""}
+GAME_PAYLOAD = {"name": "Outer Wilds", "status": "unplayed", "wikidata": ""}
 
 
 @pytest.fixture
@@ -37,7 +37,8 @@ def tracked_game(owned_user, owned_library):
 @pytest.mark.django_db(transaction=True)
 def test_adding_a_game_tracks_it_and_records_its_facts(logged_in, owned_library):
     response = logged_in.post(
-        reverse("games:add_game"), {**GAME_PAYLOAD, "status": "f", "mastered": "on"}
+        reverse("games:add_game"),
+        {**GAME_PAYLOAD, "status": "completed", "mastered": "on"},
     )
 
     assert response.status_code == 302
@@ -52,14 +53,14 @@ def test_a_game_created_as_finished_records_no_status_change(logged_in):
     #: The audit signal skips a first save, so a game created
     #: as finished records no transition. Assigning before the
     #: save is what keeps that true.
-    logged_in.post(reverse("games:add_game"), {**GAME_PAYLOAD, "status": "f"})
+    logged_in.post(reverse("games:add_game"), {**GAME_PAYLOAD, "status": "completed"})
 
     assert GameStatusChange.objects.count() == 0
 
 
 @pytest.mark.django_db(transaction=True)
 def test_adding_a_game_records_one_creation_event(logged_in, owned_library):
-    logged_in.post(reverse("games:add_game"), {**GAME_PAYLOAD, "status": "u"})
+    logged_in.post(reverse("games:add_game"), {**GAME_PAYLOAD, "status": "unplayed"})
 
     types = list(
         LibraryEvent.objects.filter(library=owned_library).values_list(
@@ -78,7 +79,7 @@ def test_editing_a_games_status_records_the_event_and_the_audit_row(
 
     logged_in.post(
         reverse("games:edit_game", args=[game.id]),
-        {**GAME_PAYLOAD, "status": "p"},
+        {**GAME_PAYLOAD, "status": "played"},
     )
 
     game.refresh_from_db()
@@ -89,14 +90,22 @@ def test_editing_a_games_status_records_the_event_and_the_audit_row(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_the_edit_form_shows_the_games_current_status(logged_in, owned_library):
-    game = Game.objects.create(library=owned_library, name="Outer Wilds", status="f")
+def test_the_edit_form_shows_the_games_current_status(
+    logged_in, owned_user, tracked_game
+):
+    record_facts(
+        owned_user,
+        tracked_game,
+        status=PlayerGameStatus.COMPLETED,
+        correlation_id=new_correlation_id(),
+    )
 
-    response = logged_in.get(reverse("games:edit_game", args=[game.id]))
+    response = logged_in.get(reverse("games:edit_game", args=[tracked_game.id]))
 
-    #: They left Meta.fields, so the form seeds them itself.
+    #: They left Meta.fields, so the form seeds them itself —
+    #: from the projection row, which is where the word lives.
     #: Read from the HTML: render_page() returns no context.
-    assert '<option value="f" selected>' in response.content.decode()
+    assert '<option value="completed" selected>' in response.content.decode()
 
 
 @pytest.mark.django_db(transaction=True)
@@ -105,7 +114,7 @@ def test_the_status_api_records_the_fact(logged_in, owned_library):
 
     response = logged_in.patch(
         f"/api/games/{game.id}/status",
-        data={"status": "f"},
+        data={"status": "completed"},
         content_type="application/json",
     )
 
@@ -146,7 +155,7 @@ def test_a_failed_status_write_answers_409_with_a_toast(
     monkeypatch.setattr("games.api.record_facts", refuse)
     response = logged_in.patch(
         f"/api/games/{game.id}/status",
-        data={"status": "f"},
+        data={"status": "completed"},
         content_type="application/json",
     )
 
@@ -184,7 +193,6 @@ def test_editing_a_session_records_played_too(logged_in, owned_library, tracked_
     #: An edit binds the checkbox too, so it re-applies the
     #: flip. Session and PlayEvent derive their library.
     session = Session.objects.create(game=tracked_game, timestamp_start=timezone.now())
-    Game.objects.filter(pk=tracked_game.pk).update(status="u")
 
     logged_in.post(
         reverse("games:edit_session", args=[session.id]),
@@ -195,14 +203,20 @@ def test_editing_a_session_records_played_too(logged_in, owned_library, tracked_
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_session_leaves_a_finished_game_alone(logged_in, owned_library, tracked_game):
-    Game.objects.filter(pk=tracked_game.pk).update(status="f")
+def test_a_session_leaves_a_finished_game_alone(
+    logged_in, owned_user, owned_library, tracked_game
+):
+    record_facts(
+        owned_user,
+        tracked_game,
+        status=PlayerGameStatus.COMPLETED,
+        correlation_id=new_correlation_id(),
+    )
 
     logged_in.post(reverse("games:add_session"), _session_payload(tracked_game))
 
-    #: The guard reads the catalog, as every read does.
-    tracked_game.refresh_from_db()
-    assert tracked_game.status == "f"
+    #: The guard reads the projection, as every read now does.
+    assert PlayerGame.objects.get().status == PlayerGameStatus.COMPLETED
 
 
 @pytest.mark.django_db(transaction=True)
@@ -228,7 +242,6 @@ def test_editing_a_play_event_records_completed_too(
     logged_in, owned_library, tracked_game
 ):
     play_event = PlayEvent.objects.create(game=tracked_game)
-    Game.objects.filter(pk=tracked_game.pk).update(status="u")
 
     logged_in.post(
         reverse("games:edit_playevent", args=[play_event.id]),
@@ -318,7 +331,8 @@ def test_a_failed_add_leaves_the_row_at_the_defaults(
 
     monkeypatch.setattr("games.views.playergame_writes.record_facts", refuse)
     response = logged_in.post(
-        reverse("games:add_game"), {**GAME_PAYLOAD, "status": "f", "mastered": "on"}
+        reverse("games:add_game"),
+        {**GAME_PAYLOAD, "status": "completed", "mastered": "on"},
     )
 
     assert response.status_code == 302
@@ -343,7 +357,7 @@ def test_a_failed_edit_re_renders_the_form(logged_in, tracked_game, monkeypatch)
     monkeypatch.setattr("games.views.playergame_writes.record_facts", refuse)
     response = logged_in.post(
         reverse("games:edit_game", args=[tracked_game.id]),
-        {**GAME_PAYLOAD, "status": "f"},
+        {**GAME_PAYLOAD, "status": "completed"},
     )
 
     #: A redirect would read as a save that landed.

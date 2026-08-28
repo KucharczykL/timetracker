@@ -1,0 +1,112 @@
+"""A status travels as a word from the widget to the projection."""
+
+import pytest
+from django.urls import reverse
+from django.utils import timezone
+
+from games.models import Game, PlayerGame, PlayerGameStatus
+from games.playergame_status import SETTABLE_PLAYER_STATUSES
+from games.writes.playergame import (
+    PlayerGameWriteFailed,
+    new_correlation_id,
+    record_facts,
+)
+
+
+@pytest.fixture
+def logged_in(client, owned_user):
+    client.force_login(owned_user)
+    return client
+
+
+def test_only_the_words_a_letter_holds_are_settable():
+    assert [value for value, _label in SETTABLE_PLAYER_STATUSES] == [
+        PlayerGameStatus.UNPLAYED,
+        PlayerGameStatus.PLAYED,
+        PlayerGameStatus.COMPLETED,
+        PlayerGameStatus.RETIRED,
+        PlayerGameStatus.ABANDONED,
+    ]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_form_posts_a_word(logged_in, owned_library):
+    response = logged_in.post(
+        reverse("games:add_game"),
+        {
+            "name": "Outer Wilds",
+            "status": "completed",
+            "mastered": "on",
+            "wikidata": "",
+        },
+    )
+
+    assert response.status_code == 302
+    game = Game.objects.get(name="Outer Wilds")
+    row = PlayerGame.objects.get(library=owned_library, game=game)
+    assert row.status == PlayerGameStatus.COMPLETED
+    assert row.mastered is True
+    #: The mirror keeps the catalog current for the surfaces A leaves.
+    game.refresh_from_db()
+    assert (game.status, game.mastered) == ("f", True)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_endpoint_takes_a_word(logged_in, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+
+    response = logged_in.patch(
+        f"/api/games/{game.pk}/status",
+        {"status": "played"},
+        content_type="application/json",
+    )
+
+    assert response.status_code == 204
+    row = PlayerGame.objects.get(library=owned_library, game=game)
+    assert row.status == PlayerGameStatus.PLAYED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_shelved_is_refused_before_anything_is_recorded(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+
+    with pytest.raises(PlayerGameWriteFailed) as refusal:
+        record_facts(
+            owned_user,
+            game,
+            status=PlayerGameStatus.SHELVED,
+            correlation_id=new_correlation_id(),
+        )
+
+    assert refusal.value.status_code == 409
+    row = PlayerGame.objects.get(library=owned_library, game=game)
+    assert row.status == PlayerGameStatus.UNPLAYED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_session_marks_an_unplayed_game_played(logged_in, owned_library):
+    """_record_played reads the row, not the catalog column.
+
+    The catalog says played and the projection says unplayed, so a
+    view that still read the column would record nothing.
+    """
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    Game.objects.filter(pk=game.pk).update(status="p")
+    started = timezone.now().replace(microsecond=0)
+
+    logged_in.post(
+        reverse("games:add_session"),
+        {
+            "game": str(game.pk),
+            "timestamp_start": started.strftime("%Y-%m-%d %H:%M"),
+            "timestamp_start_timezone": "",
+            "timestamp_end": "",
+            "timestamp_end_timezone": "",
+            "duration_manual": "",
+            "note": "",
+            "mark_as_played": "on",
+        },
+    )
+
+    row = PlayerGame.objects.get(library=owned_library, game=game)
+    assert row.status == PlayerGameStatus.PLAYED

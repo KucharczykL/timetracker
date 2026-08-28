@@ -35,7 +35,7 @@ def test_a_status_reaches_the_event_the_projection_and_the_catalog(
     record_facts(
         owned_user,
         tracked_game,
-        status=Game.Status.FINISHED,
+        status=PlayerGameStatus.COMPLETED,
         correlation_id=new_correlation_id(),
     )
 
@@ -57,7 +57,7 @@ def test_the_mirror_writes_the_fold_and_not_the_request(
     record_facts(
         owned_user,
         tracked_game,
-        status=Game.Status.PLAYED,
+        status=PlayerGameStatus.PLAYED,
         correlation_id=new_correlation_id(),
     )
     Game.objects.filter(pk=tracked_game.pk).update(status=Game.Status.RETIRED)
@@ -65,7 +65,7 @@ def test_the_mirror_writes_the_fold_and_not_the_request(
     record_facts(
         owned_user,
         tracked_game,
-        status=Game.Status.PLAYED,
+        status=PlayerGameStatus.PLAYED,
         correlation_id=new_correlation_id(),
     )
 
@@ -80,7 +80,7 @@ def test_an_untracked_game_heals_and_records(owned_user, owned_library):
     record_facts(
         owned_user,
         game,
-        status=Game.Status.PLAYED,
+        status=PlayerGameStatus.PLAYED,
         correlation_id=new_correlation_id(),
     )
 
@@ -100,7 +100,7 @@ def test_one_act_shares_one_correlation_id(owned_user, owned_library):
     correlation_id = new_correlation_id()
 
     record_facts(
-        owned_user, game, status=Game.Status.PLAYED, correlation_id=correlation_id
+        owned_user, game, status=PlayerGameStatus.PLAYED, correlation_id=correlation_id
     )
 
     #: The heal and its retry are one act, so one id.
@@ -124,7 +124,7 @@ def test_the_heal_does_not_loop(owned_user, owned_library, monkeypatch):
         record_facts(
             owned_user,
             game,
-            status=Game.Status.PLAYED,
+            status=PlayerGameStatus.PLAYED,
             correlation_id=new_correlation_id(),
         )
     assert failure.value.status_code == 409
@@ -152,7 +152,7 @@ def test_an_actor_who_may_not_command_is_not_found(owned_user, tracked_game):
         record_facts(
             owned_user,
             tracked_game,
-            status=Game.Status.PLAYED,
+            status=PlayerGameStatus.PLAYED,
             correlation_id=new_correlation_id(),
         )
 
@@ -169,7 +169,7 @@ def test_an_exhausted_retry_budget_asks_the_player_to_try_again(
         record_facts(
             owned_user,
             tracked_game,
-            status=Game.Status.PLAYED,
+            status=PlayerGameStatus.PLAYED,
             correlation_id=new_correlation_id(),
         )
     assert failure.value.status_code == 409
@@ -188,7 +188,7 @@ def test_a_reused_key_over_different_input_says_it_will_never_work(
         record_facts(
             owned_user,
             tracked_game,
-            status=Game.Status.PLAYED,
+            status=PlayerGameStatus.PLAYED,
             correlation_id=new_correlation_id(),
         )
     assert failure.value.status_code == 409

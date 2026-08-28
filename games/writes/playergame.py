@@ -27,9 +27,8 @@ from games.events.idempotency import IdempotencyKeyMismatch
 from games.events.retry import RetryBudgetExhausted
 from games.models import Game, PlayerGame, PlayerGameStatus, UserLibrary
 from games.playergame_status import (
-    LegacyStatus,
+    PLAYER_STATUS_TO_LEGACY_STATUS,
     legacy_status_for,
-    player_status_for,
 )
 
 
@@ -107,19 +106,34 @@ def record_facts(
     actor: User,
     game: Game,
     *,
-    status: LegacyStatus | None = None,
+    status: PlayerGameStatus | None = None,
     mastered: bool | None = None,
     correlation_id: uuid.UUID,
 ) -> None:
     """State one fact or two, then mirror.
 
-    status is a Game.Status letter, because every caller holds one. None
-    means this act does not state that fact.
+    None means this act does not state that fact.
     """
+    if status is not None:
+        #: A form field and a Ninja schema each hand over the word as
+        #: a plain str. The command reads `.value`, so the member is
+        #: what crosses this boundary.
+        status = PlayerGameStatus(status)
+        if status not in PLAYER_STATUS_TO_LEGACY_STATUS:
+            #: Refused before dispatch, not after: _mirror() raising on
+            #: the way out would leave a committed event whose word the
+            #: catalog cannot hold.
+            raise PlayerGameWriteFailed(
+                f"{status.label} cannot be recorded yet. The catalog columns "
+                "still mirror the projection and no catalog status states "
+                "this one; #678 D removes the mirror and the restriction "
+                "with it.",
+                409,
+            )
     library = actor.library
     command = RecordPlayerGameFacts(
         game_id=game.pk,
-        status=None if status is None else player_status_for(status),
+        status=status,
         mastered=mastered,
     )
     with _translated():

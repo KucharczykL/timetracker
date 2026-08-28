@@ -72,7 +72,7 @@ def test_non_htmx_request_with_message_gets_hx_trigger(client, owned_user):
 
     response = client.patch(
         f"/api/games/{game.id}/status",
-        data=json.dumps({"status": "p"}),
+        data=json.dumps({"status": "played"}),
         content_type="application/json",
     )
 

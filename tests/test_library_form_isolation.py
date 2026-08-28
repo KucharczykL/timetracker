@@ -24,6 +24,7 @@ from games.models import (
     Game,
     GameStatusChange,
     Platform,
+    PlayerGameStatus,
     PlayEvent,
     Purchase,
     Session,
@@ -121,7 +122,7 @@ def test_library_preferences_default_device_is_a_scoped_model_choice(world):
             {
                 "name": "New private game",
                 "platform": "",
-                "status": Game.Status.UNPLAYED,
+                "status": PlayerGameStatus.UNPLAYED,
             },
             Game,
         ),
@@ -146,7 +147,7 @@ def test_shared_platform_is_selectable_but_foreign_private_platform_is_rejected(
         data={
             "name": "Shared platform game",
             "platform": world.shared_platform.pk,
-            "status": Game.Status.UNPLAYED,
+            "status": PlayerGameStatus.UNPLAYED,
         },
         library=world.owner_library,
     )
@@ -154,7 +155,7 @@ def test_shared_platform_is_selectable_but_foreign_private_platform_is_rejected(
         data={
             "name": "Foreign platform game",
             "platform": world.foreign_platform.pk,
-            "status": Game.Status.UNPLAYED,
+            "status": PlayerGameStatus.UNPLAYED,
         },
         library=world.owner_library,
     )
@@ -177,7 +178,7 @@ def test_library_bound_forms_validate_constraints_with_implicit_owner(world):
             "name": "Platformless duplicate",
             "platform": "",
             "year_released": 1999,
-            "status": Game.Status.UNPLAYED,
+            "status": PlayerGameStatus.UNPLAYED,
         },
         library=world.owner_library,
     )
@@ -284,7 +285,7 @@ def test_add_game_post_with_foreign_platform_is_rejected_without_mutation(world)
         {
             "name": "Rejected game",
             "platform": world.foreign_platform.pk,
-            "status": Game.Status.UNPLAYED,
+            "status": PlayerGameStatus.UNPLAYED,
         },
     )
 
