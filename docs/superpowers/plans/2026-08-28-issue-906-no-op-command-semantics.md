@@ -136,10 +136,18 @@ In the same class's `Meta.constraints`, delete the
 
 ```python
 #: Both columns, or neither. #740 removes this with the model.
+#: The second branch tests nullness rather than leaving it to the
+#: comparisons: one column absent makes those NULL, and a check
+#: constraint admits a NULL as satisfied.
 models.CheckConstraint(
     condition=(
         Q(first_sequence__isnull=True, last_sequence__isnull=True)
-        | Q(first_sequence__gte=1, last_sequence__gte=F("first_sequence"))
+        | Q(
+            first_sequence__isnull=False,
+            last_sequence__isnull=False,
+            first_sequence__gte=1,
+            last_sequence__gte=F("first_sequence"),
+        )
     ),
     name="library_idempotency_range_whole",
 )

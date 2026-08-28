@@ -81,6 +81,8 @@ def test_two_libraries_may_use_the_same_key(owned_library, second_library):
             {"first_sequence": 0, "last_sequence": 0}, id="sequence-below-one"
         ),
         pytest.param({"first_sequence": 3, "last_sequence": 2}, id="range-inverted"),
+        pytest.param({"first_sequence": None}, id="only-the-first-absent"),
+        pytest.param({"last_sequence": None}, id="only-the-last-absent"),
         pytest.param({"idempotency_key": ""}, id="empty-key"),
         pytest.param({"request_fingerprint": ""}, id="empty-fingerprint"),
         pytest.param({"fingerprint_version": 0}, id="version-below-one"),
@@ -89,6 +91,14 @@ def test_two_libraries_may_use_the_same_key(owned_library, second_library):
 def test_rejected_records(owned_library, overrides: dict[str, Any]):
     with pytest.raises(IntegrityError), transaction.atomic():
         make_record(owned_library, **overrides)
+
+
+def test_a_record_may_carry_no_range_at_all(owned_library):
+    """A command that changed nothing still claims its key."""
+    record = make_record(owned_library, first_sequence=None, last_sequence=None)
+
+    record.refresh_from_db()
+    assert (record.first_sequence, record.last_sequence) == (None, None)
 
 
 @with_config(ConfigDict(extra="forbid", strict=True))
