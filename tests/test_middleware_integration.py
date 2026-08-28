@@ -2,6 +2,7 @@ import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import pytest
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import Client, TestCase
@@ -30,22 +31,6 @@ class MiddlewareIntegrationTest(TestCase):
             library=self.user.library, name="Test Game", platform=self.platform
         )
         self.game.save()
-
-    def test_non_htmx_request_with_message_gets_hx_trigger(self):
-        """
-        Regression test: vanilla fetch() requests that set Django messages
-        must receive HX-Trigger so fetchWithHtmxTriggers can read them.
-        """
-        response = self.client.patch(
-            f"/api/games/{self.game.id}/status",
-            data=json.dumps({"status": "p"}),
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 204)
-        self.assertIn("HX-Trigger", response)
-        data = json.loads(response["HX-Trigger"])
-        self.assertIn("show-toast", data)
-        self.assertEqual(data["show-toast"]["type"], "success")
 
     def test_session_device_api_endpoint_sends_hx_trigger(self):
         """
@@ -106,3 +91,28 @@ class MiddlewareIntegrationTest(TestCase):
         # Verify the purchase is actually refunded
         purchase.refresh_from_db()
         self.assertIsNotNone(purchase.date_refunded)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_non_htmx_request_with_message_gets_hx_trigger(client, owned_user):
+    """A vanilla fetch() that sets a message still gets HX-Trigger.
+
+    fetchWithHtmxTriggers reads the header, so the toast depends on it.
+    """
+    #: Moved out of MiddlewareIntegrationTest by #677: the PATCH now
+    #: dispatches a command, and run_in_transaction refuses to open a
+    #: transaction inside the one a TestCase wraps every test in. Making the
+    #: whole class transactional would truncate between each of its tests to
+    #: serve one.
+    client.force_login(owned_user)
+    game = Game.objects.create(library=owned_user.library, name="Test Game")
+
+    response = client.patch(
+        f"/api/games/{game.id}/status",
+        data=json.dumps({"status": "p"}),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 204
+    trigger = json.loads(response["HX-Trigger"])
+    assert trigger["show-toast"]["type"] == "success"

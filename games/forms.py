@@ -7,7 +7,6 @@ from zoneinfo import ZoneInfo
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.models import User
-from django.db import transaction
 from django.db.models import QuerySet
 from django.utils import timezone
 
@@ -634,13 +633,9 @@ class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
         )
 
     def save(self, commit=True):
+        #: The mark_as_played flip moved to the views in #677: a fact is
+        #: stated as a command, and a form has no actor to state it as.
         session = super().save(commit=False)
-        if self.cleaned_data.get("mark_as_played"):
-            game_instance = session.game
-            if game_instance.status == "u":
-                game_instance.status = "p"
-            if commit:
-                game_instance.save()
         if commit:
             session.save()
         return session
@@ -977,14 +972,14 @@ class PlayEventForm(PrimitiveWidgetsMixin, forms.ModelForm):
         fields = ("game", "started", "ended", "note", "mark_as_finished")
 
     def save(self, commit=True):
-        with transaction.atomic():
-            session = super().save(commit=False)
-            if self.cleaned_data.get("mark_as_finished"):
-                game_instance = session.game
-                game_instance.status = "f"
-                game_instance.save()
-            session.save()
-        return session
+        #: The mark_as_finished flip moved to the views in #677, and the
+        #: transaction.atomic() that wrapped the two saves went with it: a
+        #: dispatch inside it would raise NestedTransactionNotSupported, and
+        #: one remaining save needs no block.
+        play_event = super().save(commit=False)
+        if commit:
+            play_event.save()
+        return play_event
 
 
 class GameStatusChangeForm(PrimitiveWidgetsMixin, forms.ModelForm):

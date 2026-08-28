@@ -2,6 +2,7 @@
 
 import pytest
 from django.urls import reverse
+from django.utils import timezone
 
 from games.models import (
     Game,
@@ -9,7 +10,10 @@ from games.models import (
     LibraryEvent,
     PlayerGame,
     PlayerGameStatus,
+    PlayEvent,
+    Session,
 )
+from games.writes.playergame import new_correlation_id, track_game
 
 GAME_PAYLOAD = {"name": "Outer Wilds", "status": "u", "wikidata": ""}
 
@@ -18,6 +22,13 @@ GAME_PAYLOAD = {"name": "Outer Wilds", "status": "u", "wikidata": ""}
 def logged_in(client, owned_user):
     client.force_login(owned_user)
     return client
+
+
+@pytest.fixture
+def tracked_game(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds", status="u")
+    track_game(owned_user, game, correlation_id=new_correlation_id())
+    return game
 
 
 @pytest.mark.django_db(transaction=True)
@@ -144,3 +155,96 @@ def test_a_failed_status_write_answers_409_with_a_toast(
     #: The dropdown reverts itself on any non-ok response and shows whatever
     #: the trigger header carries, so the sentence must ride along.
     assert "show-toast" in response.headers["HX-Trigger"]
+
+
+def _session_payload(game, **overrides):
+    started = timezone.now().replace(microsecond=0)
+    return {
+        "game": str(game.id),
+        "timestamp_start": started.strftime("%Y-%m-%d %H:%M"),
+        "timestamp_start_timezone": "",
+        "timestamp_end": "",
+        "timestamp_end_timezone": "",
+        "duration_manual": "",
+        "note": "",
+        "mark_as_played": "on",
+        **overrides,
+    }
+
+
+@pytest.mark.django_db(transaction=True)
+def test_adding_a_session_records_played(logged_in, owned_library, tracked_game):
+    logged_in.post(reverse("games:add_session"), _session_payload(tracked_game))
+
+    assert PlayerGame.objects.get().status == PlayerGameStatus.PLAYED
+    tracked_game.refresh_from_db()
+    assert tracked_game.status == "p"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_editing_a_session_records_played_too(logged_in, owned_library, tracked_game):
+    #: The checkbox is a field of the form and an edit binds it, so an edit
+    #: re-applies the flip today. Covering only the add view would be a
+    #: silent regression rather than a smaller change.
+    #: Session and PlayEvent take no library kwarg; each derives it from
+    #: the game.
+    session = Session.objects.create(game=tracked_game, timestamp_start=timezone.now())
+    Game.objects.filter(pk=tracked_game.pk).update(status="u")
+
+    logged_in.post(
+        reverse("games:edit_session", args=[session.id]),
+        _session_payload(tracked_game),
+    )
+
+    assert PlayerGame.objects.get().status == PlayerGameStatus.PLAYED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_session_leaves_a_finished_game_alone(logged_in, owned_library, tracked_game):
+    Game.objects.filter(pk=tracked_game.pk).update(status="f")
+
+    logged_in.post(reverse("games:add_session"), _session_payload(tracked_game))
+
+    #: The guard reads the catalog, because every read reads the catalog
+    #: until #678. Without it a completed game falls back to played.
+    tracked_game.refresh_from_db()
+    assert tracked_game.status == "f"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_adding_a_play_event_records_completed(logged_in, owned_library, tracked_game):
+    logged_in.post(
+        reverse("games:add_playevent"),
+        {
+            "game": str(tracked_game.id),
+            "started": "",
+            "ended": "",
+            "note": "",
+            "mark_as_finished": "on",
+        },
+    )
+
+    assert PlayerGame.objects.get().status == PlayerGameStatus.COMPLETED
+    tracked_game.refresh_from_db()
+    assert tracked_game.status == "f"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_editing_a_play_event_records_completed_too(
+    logged_in, owned_library, tracked_game
+):
+    play_event = PlayEvent.objects.create(game=tracked_game)
+    Game.objects.filter(pk=tracked_game.pk).update(status="u")
+
+    logged_in.post(
+        reverse("games:edit_playevent", args=[play_event.id]),
+        {
+            "game": str(tracked_game.id),
+            "started": "",
+            "ended": "",
+            "note": "",
+            "mark_as_finished": "on",
+        },
+    )
+
+    assert PlayerGame.objects.get().status == PlayerGameStatus.COMPLETED
