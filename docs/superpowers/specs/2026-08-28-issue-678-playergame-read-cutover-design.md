@@ -306,7 +306,9 @@ tombstoned game leaves behind, still claiming the library tracks it. Which
 button means which, and what the confirmation page should say, is one decision
 about the whole project. Settling it inside a read cutover would settle it in
 one place and leave the other six models disagreeing, so it gets its own issue
-and its own spec. This one moves reads and changes no removal behaviour.
+and its own spec: [#944](https://github.com/KucharczykL/timetracker/issues/944)
+makes removal one act, named remove, that destroys nothing. This one moves
+reads and changes no removal behaviour.
 
 `PlayerGame.excluded_from_unfinished` gains no reader either. #674 hands that
 fact to the Purchase cutover, and the unfinished and dropped statistics keep
