@@ -57,6 +57,11 @@ from games.sorting import (
     parse_find_filter,
     parse_per_page_override,
 )
+from games.writes.playergame import (
+    PlayerGameWriteFailed,
+    new_correlation_id,
+    record_facts,
+)
 from timetracker.config import SettingSource
 from timetracker.settings_commands import (
     SettingLockedError,
@@ -82,6 +87,19 @@ from timetracker.uuidv7 import UUIDv7
 logger = logging.getLogger("games")
 
 api = NinjaAPI(auth=django_auth)
+
+
+@api.exception_handler(PlayerGameWriteFailed)
+def _playergame_write_failed(request, failure: PlayerGameWriteFailed):
+    #: The message goes through Django messages, so the htmx middleware turns
+    #: it into the HX-Trigger the toast store reads. The status code is what
+    #: makes the dropdown revert its optimistic label.
+    messages.error(request, failure.message)
+    return api.create_response(
+        request, {"detail": failure.message}, status=failure.status_code
+    )
+
+
 playevent_router = Router()
 game_router = Router()
 device_router = Router()
@@ -93,7 +111,10 @@ PAGE_SIZE = 10
 
 
 class GameStatusUpdate(Schema):
-    status: str
+    #: The enum rather than str: Ninja refuses an unknown member with a 422
+    #: before the view runs. Game.save() calls clean() and not full_clean(),
+    #: so nothing downstream checks choices.
+    status: Game.Status
 
 
 class PlayEventIn(Schema):
@@ -180,8 +201,12 @@ def search_games(request, q: str = "", limit: int = 10):
 def partial_update_game(request, game_id: UUIDv7, payload: GameStatusUpdate):
     library = cast(User, request.user).library
     game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
-    game.status = payload.status
-    game.save()
+    record_facts(
+        cast("User", request.user),
+        game,
+        status=payload.status,
+        correlation_id=new_correlation_id(),
+    )
     messages.success(request, "Status updated")
     return Status(204, None)
 
