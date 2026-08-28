@@ -77,11 +77,11 @@ def test_search_select_adds_include_pill(authenticated_page: Page, live_server):
     open_status_facet(page)
 
     widget = status_filter_widget(page)
-    widget.locator('[data-search-select-option][data-label="Finished"]').click()
+    widget.locator('[data-search-select-option][data-label="Completed"]').click()
 
     pill = widget.locator("[data-search-select-pills] [data-pill]")
     expect(pill).to_have_count(1)
-    expect(pill).to_contain_text("Finished")
+    expect(pill).to_contain_text("Completed")
 
 
 def test_number_filter_between_reveals_second_input(

@@ -2699,11 +2699,15 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             # column: a hop through a nullable relation leaves the fields beyond
             # it absent, so ``platform__group`` is nullable even though
             # ``Platform.group`` is not.
-            nullable = (
-                _lookup_is_nullable(model, resolved_lookup)
-                if resolved_lookup is not None
-                else False
-            )
+            # When ``metadata_lookup`` names a different path from the one
+            # ``to_q`` emits, that path's own hops say nothing about what the
+            # query can return, so nullability comes from the terminal column.
+            if field_spec is not None and field_spec.metadata_lookup is not None:
+                nullable = bool(getattr(model_field, "null", False))
+            elif resolved_lookup is not None:
+                nullable = _lookup_is_nullable(model, resolved_lookup)
+            else:
+                nullable = False
             # Value-widget config (issue #242). ``field_spec`` is None for
             # aggregates (no ``fields`` entry) — guard it. ``is_m2m`` is derived
             # from the resolved model field, so a future FK set field needs no flag.

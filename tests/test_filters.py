@@ -819,15 +819,15 @@ class TestGameFilterToQ:
 
     def test_status_choice_includes(self):
         gf = GameFilter.from_json(
-            {"status": {"value": ["f", "p"], "modifier": "INCLUDES"}}
+            {"status": {"value": ["completed", "played"], "modifier": "INCLUDES"}}
         )
         q = gf.to_q()
-        assert q == Q(status__in=["f", "p"])
+        assert q == Q(tracked__status__in=["completed", "played"])
 
     def test_status_not_null(self):
         gf = GameFilter.from_json({"status": {"modifier": "NOT_NULL"}})
         q = gf.to_q()
-        assert q == Q(status__isnull=False)
+        assert q == Q(tracked__status__isnull=False)
 
 
 def _games_bar(filter_json: str = "") -> str:
@@ -881,14 +881,14 @@ class TestFilterBarRendering:
             json.dumps(
                 {
                     "status": {
-                        "value": [{"id": "f", "label": "Finished"}],
+                        "value": [{"id": "completed", "label": "Completed"}],
                         "modifier": "INCLUDES",
                     }
                 }
             )
         )
-        assert 'data-value="f"' in html
-        assert "Finished" in html
+        assert 'data-value="completed"' in html
+        assert "Completed" in html
 
     def test_no_hx_get(self):
         html = _games_bar()
@@ -1092,7 +1092,11 @@ class TestExpandedFiltersAgainstDB:
         data = self._setup_entities()
         # Find platforms with games that are finished
         pf = PlatformFilter.from_json(
-            {"game_filter": {"status": {"value": ["f"], "modifier": "INCLUDES"}}}
+            {
+                "game_filter": {
+                    "status": {"value": ["completed"], "modifier": "INCLUDES"}
+                }
+            }
         )
         results = list(Platform.objects.filter(pf.to_q(UNRESTRICTED_FILTER_CONTEXT)))
         assert data["plat"] in results
@@ -5194,11 +5198,11 @@ class TestFieldMetadata:
         ]
 
     def test_static_choices_game_status(self):
-        from games.models import Game
+        from games.models import PlayerGame
 
         entry = self._by_name(GameFilter)["status"]
         assert entry["kind"] == "set"
-        assert entry["choices"] == self._expected_choices(Game, "status")
+        assert entry["choices"] == self._expected_choices(PlayerGame, "status")
 
     def test_static_choices_purchase(self):
         from games.models import Purchase

@@ -58,7 +58,7 @@ def _played_only_path() -> str:
     return (
         reverse("games:list_games")
         + "?filter="
-        + quote(json.dumps({"status": {"modifier": "INCLUDES", "value": ["p"]}}))
+        + quote(json.dumps({"status": {"modifier": "INCLUDES", "value": ["played"]}}))
     )
 
 

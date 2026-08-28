@@ -78,8 +78,8 @@ def test_builder_page_elements_load_and_initialize(
     )
 
     # The filter JSON seeds the filter-group tree AND the leaf's value widget
-    # (#263 hydration): status INCLUDES finished ("f").
-    filter_json = {"status": {"modifier": "INCLUDES", "value": ["f"]}}
+    # (#263 hydration): status INCLUDES completed.
+    filter_json = {"status": {"modifier": "INCLUDES", "value": ["completed"]}}
     filter_param = _encode_filter(filter_json)
 
     builder_url = (
@@ -145,7 +145,7 @@ def test_apply_navigates_to_game_list(
         library=e2e_library, name="PlayGame", platform=platform, status="p"
     )
 
-    filter_json = {"status": {"modifier": "INCLUDES", "value": ["f"]}}
+    filter_json = {"status": {"modifier": "INCLUDES", "value": ["completed"]}}
     filter_param = _encode_filter(filter_json)
 
     builder_url = (
@@ -174,9 +174,10 @@ def test_game_list_filter_narrows_results(
 ) -> None:
     """The game list URL with ?filter=<JSON> narrows results end-to-end.
 
-    The JSON {"status": {"modifier": "INCLUDES", "value": ["f"]}} is a valid
-    GameFilter JSON whose to_q() produces Q(status__in=["f"]), matching only
-    games with status="f" (Finished).  This round-trip proves the Django backend
+    The JSON {"status": {"modifier": "INCLUDES", "value": ["completed"]}} is a
+    valid GameFilter JSON whose to_q() produces
+    Q(tracked__status__in=["completed"]), matching only games the library
+    tracks as completed.  This round-trip proves the Django backend
     correctly filters the queryset from the URL parameter."""
     page = authenticated_page
 
@@ -190,7 +191,7 @@ def test_game_list_filter_narrows_results(
 
     # Navigate directly to the game list with the status=Finished filter.
     # This is the same JSON the builder's Apply would send if the widget were set.
-    filter_json = {"status": {"modifier": "INCLUDES", "value": ["f"]}}
+    filter_json = {"status": {"modifier": "INCLUDES", "value": ["completed"]}}
     filter_param = _encode_filter(filter_json)
 
     game_list_url = (
@@ -223,8 +224,9 @@ def test_prefill_apply_roundtrip_carries_filter(
         library=e2e_library, name="PlayGame", platform=platform, status="p"
     )
 
-    # Same filter JSON used by the other tests in this file: status INCLUDES "f".
-    filter_json = {"status": {"modifier": "INCLUDES", "value": ["f"]}}
+    # Same filter JSON used by the other tests in this file: status INCLUDES
+    # "completed".
+    filter_json = {"status": {"modifier": "INCLUDES", "value": ["completed"]}}
     filter_param = _encode_filter(filter_json)
 
     builder_url = (
@@ -430,9 +432,9 @@ def test_field_layout_value_widget_hosts_on_inline_combobox(
     """
     page = authenticated_page
 
-    # Prefill a game filter with a status (enum set) criterion: "p" included.
+    # Prefill a game filter with a status (enum set) criterion: "played" included.
     filter_json = _encode_filter(
-        {"AND": [{"status": {"value": ["p"], "modifier": "INCLUDES"}}]}
+        {"AND": [{"status": {"value": ["played"], "modifier": "INCLUDES"}}]}
     )
     page.goto(
         f"{live_server.url}"
@@ -460,16 +462,16 @@ def test_field_layout_value_widget_hosts_on_inline_combobox(
 
     # attachMenu owns visibility via the `hidden` attribute: closed until focus.
     expect(panel).to_be_hidden()
-    expect(pills).to_have_count(1)  # the prefilled "p" include pill
+    expect(pills).to_have_count(1)  # the prefilled "played" include pill
 
     # Focus the search input → the host opens the panel.
     search.click()
     expect(search).to_be_focused()  # guards the Escape-dismiss target below
     expect(panel).to_be_visible(timeout=5_000)
 
-    # Include a second status (Finished) → a new include pill lands.
+    # Include a second status (Completed) → a new include pill lands.
     panel.locator(
-        "[data-search-select-option][data-value='f'] "
+        "[data-search-select-option][data-value='completed'] "
         "[data-search-select-action='include']"
     ).click()
     expect(pills).to_have_count(2)
