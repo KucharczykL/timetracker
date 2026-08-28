@@ -130,6 +130,21 @@ def test_a_failed_transfer_leaves_no_dump_behind(tooling, monkeypatch, tmp_path)
     assert list(tmp_path.iterdir()) == []
 
 
+def test_a_container_without_pg_dump_names_the_likely_mistake(
+    tooling, monkeypatch, tmp_path
+):
+    """127 is a missing program, and the application container is the one
+    whose name comes to mind."""
+
+    def command_not_found(command, **kwargs):
+        raise subprocess.CalledProcessError(127, command)
+
+    monkeypatch.setattr(tooling, "run", command_not_found)
+
+    with pytest.raises(tooling.DumpError, match="not the application container"):
+        tooling.fetch(_source(tooling), tmp_path / "timetracker.dump")
+
+
 def test_the_newest_dump_is_used_when_none_is_named(tooling, tmp_path):
     older = tmp_path / "timetracker-2026-08-01.dump"
     newer = tmp_path / "timetracker-2026-08-28.dump"

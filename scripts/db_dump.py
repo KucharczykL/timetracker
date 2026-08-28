@@ -145,6 +145,21 @@ def newest_dump(directory: Path) -> Path:
     return dumps[-1]
 
 
+def _fetch_hint(error: Exception) -> str:
+    """Name the likely cause of the one failure that reads as something else.
+
+    A shell answers a missing program with 127, and the container runtime
+    passes that back. The application container is the one whose name comes to
+    mind, and it has no `pg_dump`.
+    """
+    if getattr(error, "returncode", None) != 127:
+        return ""
+    return (
+        ". PROD_DB_CONTAINER must name the container running PostgreSQL, not "
+        "the application container."
+    )
+
+
 def fetch(source: ProductionSource, destination: Path) -> Path:
     """Stream the deployed database into `destination`, whole or not at all."""
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -156,7 +171,9 @@ def fetch(source: ProductionSource, destination: Path) -> Path:
             run(fetch_command(source), stdout=sink)
     except (subprocess.CalledProcessError, OSError) as error:
         partial.unlink(missing_ok=True)
-        raise DumpError(f"Could not read the deployed database: {error}") from error
+        raise DumpError(
+            f"Could not read the deployed database: {error}{_fetch_hint(error)}"
+        ) from error
     partial.replace(destination)
     return destination
 
