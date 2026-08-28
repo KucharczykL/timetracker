@@ -554,13 +554,24 @@ def refund_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
     )
 
     correlation_id = new_correlation_id()
-    for game in purchase.games.all():
+    games = list(purchase.games.all())
+    for abandoned, game in enumerate(games):
         if not record_facts_for_request(
             request,
             game,
             status=Game.Status.ABANDONED,
             correlation_id=correlation_id,
         ):
+            if abandoned:
+                #: Say how far it went: the earlier games are
+                #: abandoned already and no rollback takes them
+                #: back. Refunding again restates the same fact,
+                #: which build() absorbs, so a retry is safe.
+                messages.error(
+                    request,
+                    f"{abandoned} of {len(games)} games were abandoned before "
+                    "this one. Refunding again is safe.",
+                )
             #: A redirect would swap into a cell.
             #: htmx swaps nothing outside 2xx.
             #: The toast rides the middleware's header.

@@ -13,22 +13,42 @@
 
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 
 const CHUNK_SIZE = 200;
 const EXTENSIONS = ["*.md", "*.py", "*.ts"];
 
-const binary = path.join(
-  "node_modules",
-  ".bin",
-  process.platform === "win32" ? "vale.cmd" : "vale",
-);
-
-if (!existsSync(binary)) {
+function missing() {
   console.error("==> vale is not installed. Run `make npm`.");
   console.error("    The binary arrives through @vvago/vale's postinstall, so");
   console.error("    an install with lifecycle scripts disabled leaves none.");
   process.exit(1);
+}
+
+// The package's own executable, not the node_modules/.bin shim. On Windows
+// that shim is a .cmd, and since Node 18.20 spawning one without a shell
+// throws EINVAL — so the shim would break `make check` on the documented
+// Windows path. Resolving the package also survives a hoisting change.
+function locateBinary() {
+  const require = createRequire(import.meta.url);
+  let manifest;
+  try {
+    manifest = require.resolve("@vvago/vale/package.json");
+  } catch {
+    missing();
+  }
+  return path.join(
+    path.dirname(manifest),
+    "bin",
+    process.platform === "win32" ? "vale.exe" : "vale",
+  );
+}
+
+const binary = locateBinary();
+
+if (!existsSync(binary)) {
+  missing();
 }
 
 const tracked = spawnSync("git", ["ls-files", "-z", ...EXTENSIONS], {

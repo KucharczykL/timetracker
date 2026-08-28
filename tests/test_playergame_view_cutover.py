@@ -303,3 +303,88 @@ def test_a_failed_refund_answers_409_and_swaps_nothing(
     assert "show-toast" in response.headers["HX-Trigger"]
     purchase.refresh_from_db()
     assert purchase.date_refunded is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_failed_add_leaves_the_row_at_the_defaults(
+    logged_in, owned_library, monkeypatch
+):
+    from games.writes.playergame import PlayerGameWriteFailed
+
+    def refuse(*args, **kwargs):
+        raise PlayerGameWriteFailed("Nothing was recorded; try again.", 409)
+
+    monkeypatch.setattr("games.views.playergame_writes.record_facts", refuse)
+    response = logged_in.post(
+        reverse("games:add_game"), {**GAME_PAYLOAD, "status": "f", "mastered": "on"}
+    )
+
+    assert response.status_code == 302
+    game = Game.objects.get(name="Outer Wilds")
+    #: The catalog agrees with the projection, which the failed
+    #: command left where tracking put it.
+    assert (game.status, game.mastered) == ("u", False)
+    row = PlayerGame.objects.get(library=owned_library, game=game)
+    assert (row.status, row.mastered) == (PlayerGameStatus.UNPLAYED, False)
+    #: The reset skips the audit signal, so nothing invents a
+    #: transition the player never made.
+    assert GameStatusChange.objects.count() == 0
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_failed_edit_re_renders_the_form(logged_in, tracked_game, monkeypatch):
+    from games.writes.playergame import PlayerGameWriteFailed
+
+    def refuse(*args, **kwargs):
+        raise PlayerGameWriteFailed("Nothing was recorded; try again.", 409)
+
+    monkeypatch.setattr("games.views.playergame_writes.record_facts", refuse)
+    response = logged_in.post(
+        reverse("games:edit_game", args=[tracked_game.id]),
+        {**GAME_PAYLOAD, "status": "f"},
+    )
+
+    #: A redirect would read as a save that landed.
+    assert response.status_code == 200
+    assert "show-toast" in response.headers["HX-Trigger"]
+    row = PlayerGame.objects.get(game=tracked_game)
+    assert row.status == PlayerGameStatus.UNPLAYED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_partly_applied_refund_says_how_far_it_went(
+    logged_in, owned_user, owned_library, monkeypatch
+):
+    from games.views import playergame_writes
+    from games.writes.playergame import PlayerGameWriteFailed
+
+    games = []
+    for name in ("Outer Wilds", "Tunic"):
+        game = Game.objects.create(library=owned_library, name=name, status="p")
+        track_game(owned_user, game, correlation_id=new_correlation_id())
+        games.append(game)
+    purchase = Purchase.objects.create(
+        library=owned_library,
+        price=0,
+        price_currency="CZK",
+        date_purchased=timezone.now(),
+    )
+    purchase.games.set(games)
+
+    record_facts = playergame_writes.record_facts
+    calls = []
+
+    def refuse_the_second(*args, **kwargs):
+        calls.append(None)
+        if len(calls) > 1:
+            raise PlayerGameWriteFailed("Nothing was recorded; try again.", 409)
+        return record_facts(*args, **kwargs)
+
+    monkeypatch.setattr(playergame_writes, "record_facts", refuse_the_second)
+    response = logged_in.post(reverse("games:refund_purchase", args=[purchase.id]))
+
+    assert response.status_code == 409
+    #: The first game is abandoned and stays that way, so the
+    #: toast has to say so rather than claim nothing landed.
+    assert "1 of 2 games were abandoned" in response.headers["HX-Trigger"]
+    assert PlayerGame.objects.filter(status=PlayerGameStatus.ABANDONED).count() == 1
