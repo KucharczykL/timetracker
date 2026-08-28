@@ -68,8 +68,9 @@ from games.filters import (
 )
 from games.formatting import session_time_range
 from games.forms import GameForm
-from games.models import Game, GameStatusChange, Session
+from games.models import Game, GameStatusChange, PlayerGameStatus, Session
 from games.ownership import owned_or_404
+from games.playergame_status import SETTABLE_PLAYER_STATUSES, player_status_for
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
 from games.views.filtering import (
     apply_structured_filter,
@@ -164,7 +165,12 @@ def list_games(request: HttpRequest) -> HttpResponse:
                     durations,
                     id_scope=f"game-{game.pk}-playtime",
                 ),
-                GameStatusSelector(game, Game.Status.choices, get_token(request)),
+                GameStatusSelector(
+                    game,
+                    SETTABLE_PLAYER_STATUSES,
+                    get_token(request),
+                    current=player_status_for(game.status),
+                ),
                 Link(
                     href=external_reference_url(
                         provider="wikidata",
@@ -484,11 +490,13 @@ def _game_history(
         else:
             prefix = "At some point changed"
         old_status = GameStatus(
-            status=change.old_status or "u",
+            status=player_status_for(change.old_status)
+            if change.old_status
+            else PlayerGameStatus.UNPLAYED,
             children=[change.get_old_status_display() if change.old_status else "-"],
         )
         new_status = GameStatus(
-            status=change.new_status,
+            status=player_status_for(change.new_status),
             children=[change.get_new_status_display()],
         )
         edit = Link(
@@ -639,7 +647,14 @@ def _game_header(
         ),
         _meta_row(
             "Status",
-            Span()[GameStatusSelector(game, Game.Status.choices, get_token(request))],
+            Span()[
+                GameStatusSelector(
+                    game,
+                    SETTABLE_PLAYER_STATUSES,
+                    get_token(request),
+                    current=player_status_for(game.status),
+                )
+            ],
             "👑" if game.mastered else "",
         ),
         _played_row(game, request, origin),
