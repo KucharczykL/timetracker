@@ -817,6 +817,11 @@ class GameForm(
         self.fields["platform"].widget.options_resolver = partial(
             _platform_options, library=library
         )
+        #: model_to_dict no longer covers these two, because they left
+        #: Meta.fields, so an edit form would open at the column defaults.
+        if self.instance.pk is not None:
+            self.initial.setdefault("status", self.instance.status)
+            self.initial.setdefault("mastered", self.instance.mastered)
 
     platform = forms.ModelChoiceField(
         queryset=Platform.objects.order_by("name"),
@@ -825,6 +830,40 @@ class GameForm(
             search_url="/api/platforms/search", options_resolver=_platform_options
         ),
     )
+
+    #: Plain form fields rather than model fields: form.save() must not write
+    #: either column. The write path is the single writer, and #678 deletes
+    #: these two when the reads move to the projection.
+    status = forms.ChoiceField(choices=Game.Status.choices, required=True)
+    mastered = forms.BooleanField(required=False)
+
+    #: A declared field naming no model field is appended after the model
+    #: fields, so without this the two would drop to the bottom of the form.
+    field_order = (
+        "name",
+        "sort_name",
+        "platform",
+        "year_released",
+        "original_year_released",
+        "status",
+        "mastered",
+        "wikidata",
+    )
+
+    def save(self, commit=True):
+        game = super().save(commit=False)
+        #: A new row starts at the state the form states, so the mirror finds
+        #: the catalog and the projection already equal. Creating it at the
+        #: column default and letting the mirror move it would append a
+        #: GameStatusChange that does not exist today: the pre_save audit
+        #: signal returns early when no previous row exists.
+        if game._state.adding:
+            game.status = self.cleaned_data["status"]
+            game.mastered = self.cleaned_data["mastered"]
+        if commit:
+            game.save()
+            self.save_m2m()
+        return game
 
     def clean_wikidata(self) -> str:
         value = self.cleaned_data["wikidata"]
@@ -859,8 +898,6 @@ class GameForm(
             "platform",
             "year_released",
             "original_year_released",
-            "status",
-            "mastered",
             "wikidata",
         )
         widgets: ClassVar[dict[str, forms.Widget]] = {"name": autofocus_input_widget}

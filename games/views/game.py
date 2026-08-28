@@ -76,9 +76,14 @@ from games.views.filtering import (
     builder_url_for,
     warn_unknown_sort,
 )
+from games.views.playergame_writes import (
+    record_facts_for_request,
+    track_game_for_request,
+)
 from games.views.playevent import create_playevent_tabledata
 from games.views.retirement import confirm_and_retire
 from games.views.returns import origin_from, return_url
+from games.writes.playergame import new_correlation_id
 
 WIKIDATA_CONFLICT_MESSAGE = "This Wikidata entity ID already belongs to another game."
 
@@ -228,6 +233,22 @@ def add_game(request: HttpRequest) -> HttpResponse:
     if form.is_valid():
         game = _save_game_form_or_add_wikidata_error(form)
         if game is not None:
+            correlation_id = new_correlation_id()
+            recorded = track_game_for_request(
+                request, game, correlation_id=correlation_id
+            ) and record_facts_for_request(
+                request,
+                game,
+                status=form.cleaned_data["status"],
+                mastered=form.cleaned_data["mastered"],
+                correlation_id=correlation_id,
+            )
+            if not recorded:
+                #: The catalog row stands and the facts do not. Re-rendering
+                #: the form would invite a resubmit that creates a second
+                #: game, and chaining onward would hide the error, so the
+                #: player lands on the list with the toast.
+                return redirect(return_url(request, fallback="games:list_games"))
             origin = origin_from(request)
             if "submit_and_redirect" in request.POST:
                 return redirect(
@@ -302,6 +323,15 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
     game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
     form = GameForm(request.POST or None, instance=game, library=library)
     if form.is_valid() and _save_game_form_or_add_wikidata_error(form) is not None:
+        #: Both outcomes land in the same place, so a failure needs no branch
+        #: of its own: the toast the helper adds carries the difference.
+        record_facts_for_request(
+            request,
+            game,
+            status=form.cleaned_data["status"],
+            mastered=form.cleaned_data["mastered"],
+            correlation_id=new_correlation_id(),
+        )
         return redirect(return_url(request, fallback="games:list_games"))
     return render_page(
         request,

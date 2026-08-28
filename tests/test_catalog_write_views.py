@@ -8,7 +8,7 @@ from games.forms import GameForm
 from games.models import Edition, ExternalReference, Game, Platform, Release
 from timetracker.temporal import TemporalValue
 
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class AnchorCollector(HTMLParser):

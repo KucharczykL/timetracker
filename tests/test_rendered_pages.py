@@ -11,10 +11,12 @@ from datetime import datetime
 from html.parser import HTMLParser
 from zoneinfo import ZoneInfo
 
+import pytest
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from pytest_django.asserts import assertRedirects
 
 from games.models import Game, GameStatusChange, Platform, Purchase, Session
 
@@ -263,21 +265,6 @@ class RenderedPagesTest(TestCase):
         self.assertIn("mb-2.5 text-type-label text-heading", html)  # _LABEL_CLASS
         self.assertIn("bg-neutral-secondary-medium", html)  # INPUT_CLASS surface
         self.assertNoEscapedTags(html)
-
-    def test_add_game_submit_and_create_session_redirects(self):
-        response = self.client.post(
-            reverse("games:add_game"),
-            {
-                "name": "New Session Game",
-                "status": "u",
-                "submit_and_create_session": "",
-            },
-        )
-        game = Game.objects.get(name="New Session Game")
-        self.assertRedirects(
-            response,
-            reverse("games:add_session_for_game", kwargs={"game_id": game.id}),
-        )
 
     def test_form_errors_render_with_component_class(self):
         """Invalid submits re-render field errors via FormFields' own class, not
@@ -850,3 +837,23 @@ class GameListSessionFilterBoundaryTest(TestCase):
         self.assertIn("PLAYED-MARKER", html)
         self.assertIn("UNPLAYED-MARKER", html)
         self.assertIn("Ignored invalid filter", html)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_add_game_submit_and_create_session_redirects(client, owned_user):
+    #: Moved out of RenderedPagesTest by #677: the POST now dispatches a
+    #: command, and run_in_transaction refuses to open a transaction inside
+    #: the one a TestCase wraps every test in. Making the whole class
+    #: transactional would truncate between each of its tests to serve one.
+    client.force_login(owned_user)
+
+    response = client.post(
+        reverse("games:add_game"),
+        {"name": "New Session Game", "status": "u", "submit_and_create_session": ""},
+    )
+
+    game = Game.objects.get(name="New Session Game")
+    assertRedirects(
+        response,
+        reverse("games:add_session_for_game", kwargs={"game_id": game.id}),
+    )

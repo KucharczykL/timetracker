@@ -8,6 +8,12 @@ from games.models import Game
 
 GAME_FORM = {"name": "Renamed", "status": "u"}
 
+#: Transactional, because a switched view dispatches a command and
+#: run_in_transaction refuses to open a transaction inside the rolled-back one
+#: pytest-django wraps a test in. The db fixture defers to transactional_db
+#: when both are requested, so no fixture needs an edit.
+pytestmark = pytest.mark.django_db(transaction=True)
+
 
 @pytest.fixture
 def logged_in(client, owned_user):
