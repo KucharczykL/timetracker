@@ -259,10 +259,11 @@ untranslated, or a conflict subclass that would render as "try again".
 
 **Returning no events is a programming error, not a refusal.**
 `LockedStream.append` raises `ValueError` on an empty sequence, and #662 chose
-that deliberately to mark it a bug. So a command that finds nothing to do raises
-`CommandRejected`; it does not return `[]`. Whether a genuinely idempotent no-op
-("set status to `f` when it is already `f`") deserves a *success* outcome
-instead is a real question with no real command to answer it — filed for #671.
+that deliberately to mark it a bug. So a command never returns `[]`. One that
+finds nothing to do returns `Unchanged`, which #906 settled: an idempotent no-op
+("set status to `f` when it is already `f`") is a *success*, reported as
+`CommandOutcome.UNCHANGED` with no range. `CommandRejected` keeps the
+precondition nothing satisfies.
 
 ### The command receives a context, and the context does not contain the stream
 
@@ -561,8 +562,9 @@ Needing a real command first, so they follow #671:
 
 - #905 — map `CommandConflict` to an HTTP status, page, or toast at the first
   evented view.
-- #906 — decide what a no-op command means: `CommandRejected`, or a success
-  result with an empty range.
+- #906 — decided: an idempotent no-op is a success with no range, and it claims
+  its idempotency key. See
+  `docs/superpowers/specs/2026-08-28-issue-906-no-op-command-semantics-design.md`.
 - #907 — delete the `TEST_COMMAND_*` allowlist members.
 
 Independent of #671:
