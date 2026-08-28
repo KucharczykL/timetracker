@@ -307,3 +307,94 @@ def backfill_library(
             run_time=resolved_run_time,
         )
     return counts
+
+
+@dataclass(frozen=True, slots=True)
+class Mismatch:
+    """One reason the backfill must not commit."""
+
+    code: str
+    game_id: str
+    detail: str
+
+    def as_dict(self) -> dict[str, str]:
+        return {"code": self.code, "detail": self.detail, "game_id": self.game_id}
+
+
+def unmapped_statuses(library: UserLibrary) -> list[Mismatch]:
+    """Every legacy letter the map does not know, found before any append.
+
+    A pre-flight rather than a KeyError mid-run: an unmapped letter is a
+    reconciliation mismatch, reported with its neighbours and rolled back.
+    """
+    known = set(LEGACY_STATUS_TO_PLAYER_STATUS)
+    mismatches = [
+        Mismatch(
+            code="unmapped_legacy_status",
+            game_id=str(game_id),
+            detail=f"catalog status {status!r}",
+        )
+        for game_id, status in Game.objects.filter(library=library)
+        .exclude(status__in=known)
+        .order_by("pk")
+        .values_list("pk", "status")
+    ]
+    mismatches.extend(
+        Mismatch(
+            code="unmapped_legacy_status",
+            game_id=str(game_id),
+            detail=f"status change {change_id} records {status!r}",
+        )
+        for change_id, game_id, status in GameStatusChange.objects.filter(
+            game__library=library
+        )
+        .exclude(new_status__in=known)
+        .order_by("pk")
+        .values_list("pk", "game_id", "new_status")
+    )
+    return mismatches
+
+
+def reconcile(library: UserLibrary) -> list[Mismatch]:
+    """Compare every live game against the row its events folded to."""
+    rows = {
+        row.game_id: row
+        for row in PlayerGame.objects.filter(library=library).only(
+            "game_id", "status", "mastered"
+        )
+    }
+    mismatches: list[Mismatch] = []
+    live = Game.objects.filter(library=library, tombstoned_at__isnull=True).order_by(
+        "pk"
+    )
+    for game in live.iterator(chunk_size=200):
+        row = rows.get(game.pk)
+        if row is None:
+            mismatches.append(
+                Mismatch(
+                    code="missing_projection_row",
+                    game_id=str(game.pk),
+                    detail="the backfill covered this game and no row folded",
+                )
+            )
+            continue
+        expected_status = player_status_for(game.status)
+        if row.status != expected_status:
+            mismatches.append(
+                Mismatch(
+                    code="status_disagreement",
+                    game_id=str(game.pk),
+                    detail=f"catalog says {expected_status.value!r}, "
+                    f"the fold says {row.status!r}",
+                )
+            )
+        if row.mastered != game.mastered:
+            mismatches.append(
+                Mismatch(
+                    code="mastered_disagreement",
+                    game_id=str(game.pk),
+                    detail=f"catalog says {game.mastered}, "
+                    f"the fold says {row.mastered}",
+                )
+            )
+    return mismatches

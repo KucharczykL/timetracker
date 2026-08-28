@@ -8,11 +8,14 @@ from django.utils import timezone
 
 from games.backfill.playergame import (
     LEGACY_STATUS_TO_PLAYER_STATUS,
+    Mismatch,
     UnmappedLegacyStatus,
     backfill_game,
     backfill_library,
     player_status_for,
+    reconcile,
     transition_effective_time,
+    unmapped_statuses,
 )
 from games.events.rebuild import RebuildMode, rebuild_projections
 from games.models import (
@@ -494,3 +497,100 @@ def test_the_projection_replays_from_the_backfilled_log_without_drift(
         for table in checked.tables
     ]
     assert drift == [(0, 0, 0)]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_clean_backfill_reconciles_with_no_mismatch(owned_user, owned_library):
+    for name, status in (("Outer Wilds", "f"), ("Tunic", "u"), ("Hades", "a")):
+        Game.objects.create(library=owned_library, name=name, status=status)
+
+    backfill_library(owned_library)
+
+    assert reconcile(owned_library) == []
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_game_with_no_projection_row_is_a_mismatch(owned_user, owned_library):
+    Game.objects.create(library=owned_library, name="Outer Wilds")
+    #: Not backfilled: the row is simply absent.
+
+    codes = [mismatch.code for mismatch in reconcile(owned_library)]
+
+    assert codes == ["missing_projection_row"]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_status_the_fold_missed_is_a_mismatch(owned_user, owned_library):
+    game = Game.objects.create(
+        library=owned_library, name="Outer Wilds", status=Game.Status.UNPLAYED
+    )
+    backfill_library(owned_library)
+    #: Move the catalog behind the projection's back.
+    Game.objects.filter(pk=game.pk).update(status=Game.Status.FINISHED)
+
+    mismatches = reconcile(owned_library)
+
+    assert [mismatch.code for mismatch in mismatches] == ["status_disagreement"]
+    assert mismatches[0].game_id == str(game.pk)
+    assert "completed" in mismatches[0].detail
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_mastery_the_fold_missed_is_a_mismatch(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    backfill_library(owned_library)
+    Game.objects.filter(pk=game.pk).update(mastered=True)
+
+    assert [mismatch.code for mismatch in reconcile(owned_library)] == [
+        "mastered_disagreement"
+    ]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_unmapped_catalog_letter_is_found_before_anything_is_appended(
+    owned_user, owned_library
+):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    Game.objects.filter(pk=game.pk).update(status="z")
+
+    mismatches = unmapped_statuses(owned_library)
+
+    assert [mismatch.code for mismatch in mismatches] == ["unmapped_legacy_status"]
+    assert mismatches[0].game_id == str(game.pk)
+    assert LibraryEvent.objects.count() == 0
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_unmapped_history_letter_is_found_too(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    change = GameStatusChange.objects.create(
+        game=game, old_status="u", new_status="u", timestamp=timezone.now()
+    )
+    GameStatusChange.objects.filter(pk=change.pk).update(new_status="z")
+
+    mismatches = unmapped_statuses(owned_library)
+
+    assert [mismatch.code for mismatch in mismatches] == ["unmapped_legacy_status"]
+    assert str(change.pk) in mismatches[0].detail
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_mapped_library_pre_flights_clean(owned_user, owned_library):
+    game = Game.objects.create(
+        library=owned_library, name="Outer Wilds", status=Game.Status.FINISHED
+    )
+    GameStatusChange.objects.create(
+        game=game, old_status="u", new_status="f", timestamp=timezone.now()
+    )
+
+    assert unmapped_statuses(owned_library) == []
+
+
+def test_a_mismatch_serializes_to_sorted_json_safe_keys():
+    mismatch = Mismatch(code="status_disagreement", game_id="abc", detail="x")
+
+    assert mismatch.as_dict() == {
+        "code": "status_disagreement",
+        "detail": "x",
+        "game_id": "abc",
+    }
