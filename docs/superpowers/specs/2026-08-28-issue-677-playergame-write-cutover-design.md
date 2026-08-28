@@ -165,10 +165,45 @@ review recorded why it is wrong: `idempotent_append` reads the key before
 `build()` runs, thus archive, restore and archive under one key append one event
 and report success for an archive that did not happen.
 
-A fresh key means a resubmitted browser POST is a second request and appends a
-second event. Nothing here defends against that, and nothing did before. A
-client-supplied token would, and it is a separate change to every form and to
-the dropdown's fetch; #740 is the issue that will want it.
+**A per-request key deduplicates nothing, and this section states that rather
+than implying otherwise.** A retry inside `run_in_transaction` re-presents its
+key to a table its own rollback emptied. A rejection rolls back before the key is
+claimed, which is what makes the heal's second attempt legal. A resubmitted POST
+and a second click each carry a new key. No layer recognises a repeat.
+
+What absorbs a repeat is #906. Every command this issue dispatches compares
+against the projection in `build()` and returns `Unchanged` when the state
+already holds, thus a double submit records nothing whether or not a key would
+have caught it. The key is bookkeeping and the state comparison is the defence.
+
+One case is left open, and it is the one #906 closed. #906 has a no-op claim its
+key, so that a stale delivery of request K answers `UNCHANGED` even after another
+writer has moved the state, rather than reverting them. That closure needs a key
+that survives two deliveries of one request, thus a per-request key declines it.
+The window needs a stale resubmit and an interleaved write together, which is two
+tabs or a click that timed out client-side after landing. A client-supplied token
+closes it, and it is a change to every form, to the dropdown's fetch, and to what
+a form re-rendered after a failure mints. #740 owns it.
+
+Nothing prunes `LibraryIdempotencyRecord`. Every write leaves a permanent row,
+which is a few thousand a year here and is a retention question rather than this
+issue's.
+
+## One correlation id per request
+
+`dispatch()` takes a `correlation_id` and mints one when the caller brings none,
+thus every dispatch is its own act unless a caller says otherwise. This issue is
+the first with callers that dispatch more than once for one thing a player did.
+
+`record_facts` and `track_game` therefore take a correlation id, and each view
+mints one and passes it to every dispatch it makes. A refund of a three-game
+purchase becomes one act of three events rather than three coincidences, and the
+heal's rejected attempt, its `TrackGame` and its retry read as the one save they
+are.
+
+This is not deduplication and does not stand in for the key. It is what makes the
+stream legible to #740's audit history and to anyone reading events after an
+incident.
 
 ## The form
 
@@ -379,6 +414,8 @@ and only when it appears today.
 - `record_facts` with neither fact stated raises, and appends no idempotency
   record.
 - The check refuses `ATOMIC_REQUESTS`, and `make check` runs it.
+- A refund of a two-game purchase writes both events under one correlation id,
+  and the heal writes its `TrackGame` and its status event under one.
 - Both `edit_session` and `edit_playevent` record the fact their checkbox
   states, not only the two add views.
 - Creating a game as Played records no `GameStatusChange`, as today.
