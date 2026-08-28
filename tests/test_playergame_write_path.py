@@ -13,6 +13,8 @@ from games.writes.playergame import (
     track_game,
 )
 
+pytestmark = pytest.mark.untracked_games
+
 
 @pytest.fixture
 def other_user(django_user_model, db):

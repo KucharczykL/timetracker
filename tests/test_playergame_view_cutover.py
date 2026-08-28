@@ -16,6 +16,8 @@ from games.models import (
 )
 from games.writes.playergame import new_correlation_id, track_game
 
+pytestmark = pytest.mark.untracked_games
+
 GAME_PAYLOAD = {"name": "Outer Wilds", "status": "u", "wikidata": ""}
 
 

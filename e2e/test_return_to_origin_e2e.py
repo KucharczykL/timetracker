@@ -70,6 +70,7 @@ def test_editing_from_a_filtered_list_returns_to_it(
     expect(authenticated_page.locator("table")).not_to_contain_text("Zeta Unplayed")
 
 
+@pytest.mark.untracked_games
 def test_deleting_a_game_from_its_detail_page_lands_on_the_list(
     authenticated_page, live_server, world
 ):

@@ -355,6 +355,7 @@ def test_one_event_naming_a_row_twice_is_one_event(owned_library, game, platform
     assert gap.event_count == 1
 
 
+@pytest.mark.untracked_games
 def test_a_sequence_field_names_its_key_and_its_entry(
     owned_library, game, device, platform
 ):

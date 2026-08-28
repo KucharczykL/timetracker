@@ -303,6 +303,7 @@ def test_foreign_delete_posts_return_404_without_mutation(
         ("games:delete_statuschange", "own_statuschange", GameStatusChange),
     ],
 )
+@pytest.mark.untracked_games
 def test_owned_delete_posts_work(world, url_name, object_name, model):
     obj = getattr(world, object_name)
 

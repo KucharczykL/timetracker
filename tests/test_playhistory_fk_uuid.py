@@ -230,6 +230,7 @@ def test_game_reverse_accessors_expose_playevents_and_status_changes(game):
     assert list(game.status_changes.all()) == [change]
 
 
+@pytest.mark.untracked_games
 def test_deleting_a_game_cascades_to_playevents_and_status_changes(game):
     playevent = PlayEvent.objects.create(game=game)
     change = GameStatusChange.objects.create(

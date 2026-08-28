@@ -26,6 +26,8 @@ from games.events.references import capture_reference
 from games.events.replay import replay
 from games.models import Game, LibraryEvent, PlayerGame, PlayerGameStatus
 
+pytestmark = pytest.mark.untracked_games
+
 
 @pytest.fixture
 def tracked_game(owned_library):

@@ -53,7 +53,10 @@ from games.retention import (
     tombstone_or_delete,
 )
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.untracked_games,
+]
 
 
 @with_config(ConfigDict(extra="forbid", strict=True))

@@ -196,6 +196,7 @@ def test_game_and_release_preserve_year_precision(owned_library):
     ) == (date(1998, 1, 1), date(1998, 12, 31), "atomic", "year")
 
 
+@pytest.mark.untracked_games
 def test_catalog_hierarchy_delete_behavior_is_explicit(owned_library):
     platform = Platform.objects.create(name="Delete Platform")
     game = Game.objects.create(library=owned_library, name="Delete Game")

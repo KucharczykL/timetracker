@@ -18,6 +18,8 @@ from games.events.references import Reference, ReferenceArity
 from games.events.vocabulary import DEFAULT_EVENT_TYPES, PayloadInvalid
 from games.models import PlayerGameStatus
 
+pytestmark = pytest.mark.untracked_games
+
 
 def a_game_reference() -> Reference:
     return Reference(

@@ -18,6 +18,8 @@ from games.events.dispatch import CommandOutcome, CommandRejected, dispatch
 from games.models import Game, LibraryEvent, PlayerGame, PlayerGameStatus
 from games.retention import Retirement, purging_library, tombstone_or_delete
 
+pytestmark = pytest.mark.untracked_games
+
 
 @pytest.fixture
 def other_user(django_user_model, db):

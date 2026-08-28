@@ -1,9 +1,12 @@
 import os
 import shutil
 import sys
+import uuid
 from pathlib import Path
 
 import pytest
+from django.db.models.signals import post_save
+from django.utils import timezone
 
 from timetracker import config as config_module
 from timetracker import settings_resolver
@@ -38,6 +41,48 @@ def e2e_user(django_user_model, live_server):
 @pytest.fixture
 def e2e_library(e2e_user):
     return e2e_user.library
+
+
+@pytest.fixture(autouse=True)
+def _track_created_games(request):
+    """Give every game a test creates the projection row a read needs.
+
+    games/views/game.py dispatches TrackGame, migration
+    0033_playergame_baseline_backfill covers a restored dump, and
+    load_sample_data calls backfill_library(). A test is the fourth source of a
+    game and leaves no row, so the inner join in ``GameQuerySet.tracked_by()``
+    would hide it.
+
+    A direct write, not ``backfill_game()``: the backfill needs an actor and a
+    run time, opens its own transaction and appends events. The row is what the
+    join wants, so the row is what this writes. The divergence from production
+    is real and deliberate; tests/test_playergame_write_path.py covers the
+    event path.
+
+    Duplicated from tests/conftest.py: the two suites share no conftest, and
+    importing across them would make e2e depend on the unit suite's collection.
+    """
+    from games.models import Game, PlayerGame
+
+    if "untracked_games" in request.keywords:
+        yield
+        return
+
+    def track(sender, instance, created, raw, **kwargs):
+        #: raw is a loaddata row: the library may not exist yet.
+        if raw or not created or instance.library_id is None:
+            return
+        PlayerGame.objects.get_or_create(
+            library_id=instance.library_id,
+            game=instance,
+            defaults={"pk": uuid.uuid7(), "tracked_at": timezone.now()},
+        )
+
+    post_save.connect(track, sender=Game, dispatch_uid="test-track-created-games")
+    try:
+        yield
+    finally:
+        post_save.disconnect(sender=Game, dispatch_uid="test-track-created-games")
 
 
 def _find_system_chrome() -> str | None:

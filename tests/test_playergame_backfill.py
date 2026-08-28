@@ -29,6 +29,8 @@ from games.playergame_status import (
 )
 from games.retention import Retirement, tombstone_or_delete
 
+pytestmark = pytest.mark.untracked_games
+
 
 def test_every_legacy_status_letter_is_mapped():
     #: A sixth letter added to Game.Status fails here rather than at run time.
