@@ -31,7 +31,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass, fields, is_dataclass
 from enum import StrEnum
-from typing import Any, ClassVar, cast
+from typing import Any, ClassVar, NamedTuple, cast
 
 from django.contrib.auth.models import User
 
@@ -39,10 +39,11 @@ from games.events.append import AppendResult, LockedStream, SourceMetadata
 from games.events.idempotency import (
     IdempotencyKey,
     ReplayedAppend,
+    UnchangedAppend,
     idempotent_append,
 )
 from games.events.retry import run_in_transaction
-from games.events.vocabulary import NewEvent
+from games.events.vocabulary import NewEvent, Unchanged
 from games.events.wiring import DEFAULT_WIRING, EventWiring
 from games.models import LibraryEvent, UserLibrary
 from timetracker.uuidv7 import parse_uuidv7
@@ -104,21 +105,45 @@ class CommandContext:
     actor: User
 
 
+class CommandOutcome(StrEnum):
+    """What one dispatch did.
+
+    Three members rather than two booleans: a boolean pair describes four
+    states where three exist.
+    """
+
+    APPENDED = "appended"
+    REPLAYED = "replayed"
+    UNCHANGED = "unchanged"
+
+
+class SequenceRange(NamedTuple):
+    """The stream sequences one append occupied, first and last included."""
+
+    first: int
+    last: int
+
+
 @dataclass(frozen=True, slots=True)
 class CommandResult:
     """What one dispatch did, whether or not it was the dispatch that did it.
 
-    `replayed` collapses the append/replay union at this boundary, so a caller
-    branches on "did this change anything" rather than on which class it got.
-    The events themselves do not escape: projections run inside the command's
+    `outcome` collapses the append/replay/unchanged union at this boundary, so
+    a caller branches on what happened rather than on which class it got. The
+    events themselves do not escape: projections run inside the command's
     transaction, and a read taken after the lock is released is a different
     read.
     """
 
     stream_id: uuid.UUID
-    first_sequence: int
-    last_sequence: int
-    replayed: bool
+    outcome: CommandOutcome
+    #: None exactly when the outcome is UNCHANGED: nothing was appended, so
+    #: there is no range to name.
+    sequences: SequenceRange | None
+    #: A sentence only for a build that ran and returned Unchanged. Absent for
+    #: an appended outcome, a replayed one, and a no-op whose key was already
+    #: claimed. Nothing user-facing may depend on it.
+    reason: str | None
     correlation_id: uuid.UUID
 
 
@@ -225,8 +250,13 @@ class Command(ABC):
         _COMMAND_REGISTRY[name.value] = definition_site
 
     @abstractmethod
-    def build(self, context: CommandContext) -> Sequence[NewEvent]:
-        """Validate against current state and describe what happened."""
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        """Validate against current state and describe what happened.
+
+        Two questions, in order. Does the state the caller asks for already
+        hold? Return `Unchanged`: to do nothing is to reach it. Can it be
+        reached from here? A no raises `CommandRejected`.
+        """
 
 
 def canonical_command_input(command: Command) -> dict[str, Any]:
@@ -277,7 +307,7 @@ def dispatch(
     resolved_correlation_id = resolve_correlation_id(correlation_id)
     command_input = canonical_command_input(command)
 
-    def build(stream: LockedStream) -> Sequence[NewEvent]:
+    def build(stream: LockedStream) -> Sequence[NewEvent] | Unchanged:
         #: The stream is required by this signature and deliberately dropped:
         #: withholding it is what stops a command appending on its own and
         #: leaving events outside the range its key replays.
@@ -285,7 +315,7 @@ def dispatch(
         #: cannot hand its model instances to the next one.
         return command.build(CommandContext(library=library, actor=actor))
 
-    def run() -> AppendResult | ReplayedAppend:
+    def run() -> AppendResult | ReplayedAppend | UnchangedAppend:
         return idempotent_append(
             library,
             idempotency_key=idempotency_key,
@@ -298,10 +328,22 @@ def dispatch(
         )
 
     outcome = run_in_transaction(run, policy=wiring.retry_policy)
+    if isinstance(outcome, UnchangedAppend):
+        return CommandResult(
+            stream_id=outcome.stream_id,
+            outcome=CommandOutcome.UNCHANGED,
+            sequences=None,
+            reason=outcome.reason,
+            correlation_id=resolved_correlation_id,
+        )
     return CommandResult(
         stream_id=outcome.stream_id,
-        first_sequence=outcome.first_sequence,
-        last_sequence=outcome.last_sequence,
-        replayed=isinstance(outcome, ReplayedAppend),
+        outcome=(
+            CommandOutcome.REPLAYED
+            if isinstance(outcome, ReplayedAppend)
+            else CommandOutcome.APPENDED
+        ),
+        sequences=SequenceRange(outcome.first_sequence, outcome.last_sequence),
+        reason=None,
         correlation_id=resolved_correlation_id,
     )
