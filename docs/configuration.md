@@ -380,6 +380,25 @@ Compose's `mode: 0400` does not change a file-backed secret's host ownership,
 so set the host file owner/read permission accordingly; the CI smoke test
 checks that the image user can read the mounted `DATABASE_URL__FILE`.
 
+## Dump tooling variables
+
+These are read by [`scripts/db_dump.py`](../scripts/db_dump.py) behind
+`make fetch-dump` / `restore-dump` / `verify-dump`, **not** by Django. They go
+through the same `config()` chain as everything above, so `.env` is the place
+for them. Only the first two are required, and only on a machine that fetches
+dumps.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `PROD_SSH_HOST` | required | ssh target of the host that runs the database container. |
+| `PROD_DB_CONTAINER` | required | Name of that container. `pg_dump` runs inside it through `podman exec`. |
+| `PROD_DB_NAME` | `timetracker` | Database to dump. |
+| `PROD_DB_USER` | `timetracker` | Role `pg_dump` connects as. |
+| `DUMP_DIR` | `.dumps` | Where fetched dumps land. Git ignores it; it holds real user data. |
+
+See [Deployment](deployment.md) for the commands these targets run and for the
+rules a restore obeys.
+
 ## Migrating from the old config
 
 - `PROD=1` → `DEBUG=false`. `PROD` still works as a **deprecated alias** for

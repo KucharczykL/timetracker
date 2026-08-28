@@ -86,6 +86,24 @@ dropdb --maintenance-db='postgresql://<admin>@<host>/postgres' \
   timetracker_restore_verify
 ```
 
+### From a checkout
+
+`make fetch-dump`, `make restore-dump`, and `make verify-dump` run the same
+round trip from a development machine, filling the blanks above from `.env`
+(`PROD_SSH_HOST`, `PROD_DB_CONTAINER`; see
+[Configuration](configuration.md#dump-tooling-variables)). `fetch-dump` runs
+`pg_dump` inside the database container over ssh and writes
+`.dumps/timetracker-<today>.dump`; `restore-dump` loads the newest dump into a
+scratch database created from `template0` under the
+[database contract](database.md) and prints its URL; `verify-dump` restores,
+migrates the copy, and drops it only if the migration succeeded (`KEEP=1` keeps
+it). A restore refuses to name the development database or a maintenance one.
+
+The one difference from the commands above: `verify-dump` **applies** the
+migrations rather than running `migrate --check`, because a checkout is usually
+ahead of the deployment. That answers the stronger question — whether this
+revision can migrate that dump — and is the pre-deploy rehearsal.
+
 Run `dropdb` only after every preceding command succeeds. On failure, leave the
 verification database for inspection. Never restore into the live database.
 

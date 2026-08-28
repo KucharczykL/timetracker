@@ -10,6 +10,9 @@ dist/
 .DS_Store
 .python-version
 
+# Dumps of the deployed database (make fetch-dump). Real user data.
+/.dumps/
+
 # Local configuration (may contain secrets); examples are committed instead
 .env
 /settings.ini

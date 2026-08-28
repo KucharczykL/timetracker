@@ -275,6 +275,35 @@ qcluster-prod: ensure-postgres
 dumpgames: ensure-postgres
 	uv run --frozen python manage.py dumpdata --format yaml games --output tracker_fixture.yaml
 
+# The deployed database, on a local scratch copy. docs/deployment.md writes the
+# raw commands out for an operator with no checkout; these fill in the blanks
+# from .env (PROD_SSH_HOST, PROD_DB_CONTAINER) and guard the ones worth
+# guarding — a restore never lands in the development database, and a copy is
+# dropped only after its migration succeeded.
+#
+#   make fetch-dump                 -> .dumps/timetracker-<today>.dump
+#   make restore-dump               -> newest dump into $(DUMP_DB), prints its URL
+#   make verify-dump                -> restore, migrate, drop
+#   make verify-dump KEEP=1         -> ... and keep the copy to look at
+#
+# DUMP=<path> names a dump other than the newest; DUMP_DB=<name> names the
+# scratch database. Rehearse anything else against the copy by passing the URL
+# restore-dump printed: make migrate DATABASE_URL=<url>
+DUMP ?=
+DUMP_DB ?= timetracker_restore_verify
+
+fetch-dump:
+	uv run --frozen python scripts/db_dump.py fetch $(if $(strip $(OUT)),--output "$(OUT)")
+
+restore-dump: ensure-postgres
+	uv run --frozen python scripts/db_dump.py restore \
+		$(if $(strip $(DUMP)),--dump "$(DUMP)") --database "$(DUMP_DB)"
+
+verify-dump: ensure-postgres
+	uv run --frozen python scripts/db_dump.py verify \
+		$(if $(strip $(DUMP)),--dump "$(DUMP)") --database "$(DUMP_DB)" \
+		$(if $(strip $(KEEP)),--keep)
+
 loadplatforms: ensure-postgres
 	uv run --frozen python manage.py loadplatforms
 
