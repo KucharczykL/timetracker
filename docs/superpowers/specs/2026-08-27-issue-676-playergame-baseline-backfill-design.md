@@ -26,7 +26,7 @@ Per game, in this order:
 | 4 | `library.playergame.status_changed`, corrective | Only when 3 does not fold to `Game.status` |
 
 Event 1 carries `{"game": capture_reference(game)}` and mints the aggregate
-identity with `uuid.uuid7()`. Events 2 to 4 read that identity back off the
+identity with `uuid.uuid7()`. Events 2 to 4 read that identity from the
 projection row, which the projector wrote synchronously inside this
 transaction. That is the same lookup `_tracked_game()` makes, and it is why
 event 1 is always sequenced first: `amend()` raises `ProjectionRowMissing`
@@ -38,9 +38,9 @@ catalog knows no archived game.
 
 ## Recorded time and effective time
 
-The charter separates the two, and the separation is the whole of this
-section. A recorded time says when the system learned a fact. An effective time
-says when the fact was true. `LibraryEvent` holds both: `recorded_at`, and
+The charter separates the two, and this section is only about that separation.
+A recorded time says when the system learned a fact. An effective time says
+when the fact was true. `LibraryEvent` holds both: `recorded_at`, and
 `effective_time` as a `TemporalValueField`.
 
 | # | `recorded_at` | `effective_time` |
@@ -56,8 +56,8 @@ game added in April 2023 reads as tracked since April 2023. Nothing is invented:
 the column already held that instant.
 
 Event 3 is different, and the charter says so directly. A non-null legacy
-`GameStatusChange.timestamp` is the effective transition time, not merely a
-migration recording time. Live signals wrote the moment of the player's action,
+`GameStatusChange.timestamp` is the effective transition time, not a migration
+recording time. Live signals wrote the moment of the player's action,
 and the original data migration deliberately used the earliest Session, the
 refund or drop date, or the PlayEvent completion date. So it enters
 `effective_time` at day precision, computed with `timezone.localtime`.
@@ -66,15 +66,15 @@ A null legacy timestamp stays unknown. It is not coerced to `Game.created_at`.
 The charter puts an undated transition in the Game Journal's approximate
 history, and only an unknown effective time can land there.
 `TemporalValue.unknown()` serializes to `None`, so an unknown effective time and
-an unstated one are one column value; the distinction is in what the emitter
-meant, and events 1 and 2 mean the second.
+an unstated one are one column value. Only the emitter knows which it meant, and
+events 1 and 2 mean the unstated one.
 
 Event 4 states a status whose transition date nobody recorded. Dating it with
 `Game.updated_at` would be a fabrication: that column is `auto_now`, so it holds
 the last time *any* field of the game changed, which is not when the status
 changed. The charter's fourth verification requirement forbids fabricated
-temporal precision. So the event says what is true — we recorded, at migration
-time, that the status is this — and leaves the transition date unknown.
+temporal precision. So the event says what is true — the migration recorded this
+status at its run time — and leaves the transition date unknown.
 
 ### The timezone is baked once
 
@@ -83,8 +83,8 @@ introduces the per-library setting with a Journal rebuild behind it. A rebuild
 moves projections; it cannot move an immutable event. So the day this backfill
 computes for event 3 is permanent, and a transition at `2023-06-02T23:30Z`
 recorded as `2023-06-02` under `Europe/Prague` stays `2023-06-02` if the setting
-later changes. The charter prescribes the owner's display timezone and this is
-the one that exists, so the choice is conformant and it is one-way.
+later changes. The charter prescribes the owner's display timezone, and this is
+the only one that exists. The choice conforms, and it is one-way.
 
 ## Ordering and the fold
 
@@ -113,12 +113,12 @@ payload cannot be upcast. The map is `u` to `unplayed`, `p` to `played`, `f` to
 
 `shelved` has no legacy source and is never emitted. A test iterates
 `Game.Status.values` and asserts each maps, so a sixth letter added later fails
-the suite instead of reaching a mismatch record. An unmapped letter met at run
+the suite instead of reaching a mismatch record. An unmapped letter found at run
 time is a reconciliation mismatch, not a `KeyError`.
 
 ## Which games are skipped
 
-A tombstoned game is skipped. Retention gutted the row and kept it only for the
+A tombstoned game is skipped. Retention emptied the row and kept it only for the
 events that name it, so there is nothing left for a library to track.
 
 A shared game — `library` is null — is skipped. `GameForm.__init__` always
@@ -157,9 +157,10 @@ so the backfill composes the same append and idempotency machinery without
 borrowing a command's refusals.
 
 `run_in_transaction` is also not used. Its retry answers a concurrent writer,
-and a migration has none. The migration's own transaction is the atomic block
-`lock_stream` requires; the repeated `SELECT ... FOR UPDATE` on one stream head
-inside it is a no-op after the first.
+and a migration has none. `backfill_game` opens the atomic block `lock_stream`
+requires, so one game's facts are recorded whole or not at all; inside the
+migration's transaction that block is a savepoint, and the repeated
+`SELECT ... FOR UPDATE` on one stream head is a no-op after the first.
 
 ## The actor and the correlation IDs
 
@@ -209,8 +210,8 @@ has no reason to keep it once it has run.
 It follows `0020_catalog_hierarchy_backfill`, which is the house precedent. It
 runs the backfill, runs it a second time, and reconciles. The second pass
 appends nothing and proves it: every key is already recorded, so the pass is
-lookups. It doubles the run time of a job that is dominated by roughly two
-appends per game, which is seconds.
+lookups. It doubles the run time of a job of roughly two appends per game, which
+is seconds.
 
 Reconciliation emits one machine line and one human line, as 0020 does:
 
@@ -220,8 +221,9 @@ PGAME baseline reconciliation: games=… tracked=… created_events=… …
 ```
 
 The summary counts games, tracked rows, events of each of the four kinds,
-unknown effective times, skipped tombstoned games, skipped shared games, and
-mismatches. A nonzero mismatch count raises `RuntimeError`, and PostgreSQL rolls
+unknown effective times, skipped tombstoned games, and mismatches. Shared games
+are one global count, not a per-library one: a count of the games no library
+owns means nothing under a library heading. A nonzero mismatch count raises `RuntimeError`, and PostgreSQL rolls
 the migration back.
 
 A mismatch is one of: `unmapped_legacy_status`, a letter the map does not know;
@@ -234,12 +236,23 @@ A mismatch is one of: `unmapped_legacy_status`, a letter the map does not know;
 
 `load_sample_data` calls the backfill after it loads the fixture, so a
 development database gets the same baseline. The fixture carries
-`GameStatusChange` rows, so events 3 and 4 both exercise there.
+`GameStatusChange` rows, so events 3 and 4 both occur there.
 
 `make anonymize-sample` is unchanged. It omits `GameStatusChange` from its dump
 labels and regenerates the rows, which is upstream of this and stays that way.
 
 ## Consequences outside the backfill
+
+**A backdated recording backdates its identity.** The identity audit holds every
+`LibraryEvent` row's UUIDv7 to its `recorded_at` order, and no constraint
+enforces it. This backfill is the first writer to record a past moment, so
+`LockedStream.append()` mints each row's identity from the `recorded_at` it was
+handed, with the `uuid7_at` every Wave B backfill used. The microseconds below
+the millisecond go in the 12-bit field RFC 9562 reserves for a same-millisecond
+counter, because `Game.created_at` is `auto_now_add` and the sample fixture
+loads hundreds of games inside a few milliseconds. A live append is unaffected:
+its `recorded_at` is already now. This does not make `recorded_at` monotonic
+with `sequence`, which nothing requires.
 
 **Deleting a game changes shape.** `catalog.game` is a `REQUIRED` reference
 kind, so after the backfill every live game is named by at least one event.
@@ -299,6 +312,9 @@ The gate is the full `make check`, over tests for:
 - `source_metadata` carrying `status_change_id` on event 3 and omitting it
   elsewhere
 - a delete after the backfill: tombstoned rather than deleted
+- a backdated append: an identity that orders by `recorded_at`, and two moments
+  one millisecond apart that still order the way they happened
+- the committed sample fixture: the whole identity audit, after the loader ran
 - the migration itself, 0032 to 0033, through the `MigrationExecutor` harness
   `tests/test_catalog_hierarchy_migration.py` established
 
@@ -313,8 +329,8 @@ optional here: the run is unrepeatable and unrehearsed anywhere else.
 revert is the commits.
 
 The failure mode is a migration that raises. Django wraps each migration in its
-own transaction on PostgreSQL, so a reconciliation `RuntimeError` rolls back 0033 alone
-and stops the deploy with the migrations before it committed. That state is the
+own transaction on PostgreSQL, so a reconciliation `RuntimeError` rolls back 0033
+alone and stops the deploy with the migrations before it committed. That state is the
 database as it was, plus prior migrations, and it is recoverable by fixing the
 backfill and running `migrate` again — the idempotency keys make a partial
 first attempt impossible, because the rollback took the records with it.

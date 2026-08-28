@@ -36,7 +36,7 @@ from games.models import (
 )
 from timetracker.temporal import TemporalValue
 
-#: Names the issue in every key and every source_metadata blob.
+#: Named in every key and every source_metadata value.
 PGAME_ISSUE = 676
 KEY_PREFIX = "backfill:676:playergame"
 
@@ -70,7 +70,7 @@ def player_status_for(legacy_status: LegacyStatus) -> PlayerGameStatus:
 
 
 def transition_effective_time(timestamp: datetime | None) -> TemporalValue:
-    """When the transition happened, at the precision that is honest.
+    """When the transition happened, at an honest precision.
 
     A non-null legacy timestamp is the effective transition time rather than
     a recording time: live signals wrote the moment of the player's action,
@@ -288,7 +288,7 @@ def backfill_library(
 
     A shared game -- library is null -- is never reached: the query scopes to
     the library, and #677 gives a player the way to track one. A tombstoned
-    game is skipped and counted: retention gutted the row and kept it only for
+    game is skipped and counted: retention emptied the row and kept it only for
     the events that name it, so there is nothing left to track.
     """
     resolved_run_time = run_time or timezone.now()

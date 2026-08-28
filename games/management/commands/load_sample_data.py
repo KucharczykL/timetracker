@@ -147,7 +147,8 @@ class Command(BaseCommand):
 
             #: The same baseline a migrated database gets: every loaded game
             #: becomes a tracked game, recorded as events and folded by the
-            #: projector. lock_stream requires this atomic block.
+            #: projector. Inside this block, so a load either lands tracked or
+            #: does not land.
             backfill_library(user.library)
 
         self.stdout.write(

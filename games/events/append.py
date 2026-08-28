@@ -87,17 +87,17 @@ def identity_at(recorded_at: datetime) -> uuid.UUID:
     """Mint an event identity that sorts by `recorded_at`.
 
     The identity audit holds every event row's UUIDv7 to its `recorded_at`
-    order, and no constraint enforces it. An append may be handed a moment
-    from the past -- a backfill recording what a catalog already said -- where
-    `uuid.uuid7()` would stamp the row with now and silently break that order.
+    order, and no constraint enforces it. An append may be handed a moment from
+    the past -- a backfill recording what a catalog already said -- where
+    `uuid.uuid7()` would stamp the row with now and break that order silently.
 
     A UUIDv7 carries milliseconds only, so the microseconds below that go in
     the 12-bit field RFC 9562 reserves for a same-millisecond counter. A
-    remainder is not a counter, but it fits (0-999 of the 4096 values the
-    field holds) and it needs no state: two rows a microsecond apart sort the
-    way they were recorded, whatever order they were appended in. Rows sharing
-    a microsecond sort by their random tail, which is the tie the audit breaks
-    by primary key -- the identity itself -- so the two orders still agree.
+    remainder is not a counter, but it fits (0-999 of the field's 4096 values)
+    and it needs no state: two rows a microsecond apart sort the way they were
+    recorded, whatever order they were appended in. Rows sharing a microsecond
+    sort by their random tail, and the audit breaks that same tie by primary
+    key -- the identity itself -- so the two orders still agree.
     """
     return uuid7_at(recorded_at, sequence=recorded_at.microsecond % 1000)
 
