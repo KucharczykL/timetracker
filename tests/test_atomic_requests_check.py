@@ -1,4 +1,4 @@
-"""ATOMIC_REQUESTS is what makes every command dispatch legal."""
+"""ATOMIC_REQUESTS would make every dispatch raise."""
 
 from django.test import override_settings
 

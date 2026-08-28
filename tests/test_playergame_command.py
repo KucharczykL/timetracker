@@ -895,7 +895,7 @@ def test_recording_only_the_fact_that_differs(owned_user, owned_library):
         idempotency_key="first",
     )
 
-    #: Same status, new mastery: the status event must not be repeated.
+    #: Same status, new mastery: no repeated status event.
     dispatch(
         RecordPlayerGameFacts(
             game_id=game.pk, status=PlayerGameStatus.PLAYED, mastered=True
@@ -950,8 +950,7 @@ def test_recording_facts_for_an_untracked_game_is_its_own_rejection(
 ):
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
 
-    #: PlayerGameNotTracked rather than CommandRejected, because the write
-    #: path heals this one case and must not match on a message to find it.
+    #: Its own class, because the write path heals this case.
     with pytest.raises(PlayerGameNotTracked):
         dispatch(
             RecordPlayerGameFacts(

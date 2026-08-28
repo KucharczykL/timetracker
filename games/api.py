@@ -91,9 +91,8 @@ api = NinjaAPI(auth=django_auth)
 
 @api.exception_handler(PlayerGameWriteFailed)
 def _playergame_write_failed(request, failure: PlayerGameWriteFailed):
-    #: The message goes through Django messages, so the htmx middleware turns
-    #: it into the HX-Trigger the toast store reads. The status code is what
-    #: makes the dropdown revert its optimistic label.
+    #: The message rides the middleware's header.
+    #: The status code reverts the optimistic label.
     messages.error(request, failure.message)
     return api.create_response(
         request, {"detail": failure.message}, status=failure.status_code
@@ -111,9 +110,8 @@ PAGE_SIZE = 10
 
 
 class GameStatusUpdate(Schema):
-    #: The enum rather than str: Ninja refuses an unknown member with a 422
-    #: before the view runs. Game.save() calls clean() and not full_clean(),
-    #: so nothing downstream checks choices.
+    #: The enum, so Ninja refuses unknown members.
+    #: Game.save() calls clean(), which checks no choices.
     status: Game.Status
 
 

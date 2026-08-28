@@ -841,10 +841,8 @@ class GameListSessionFilterBoundaryTest(TestCase):
 
 @pytest.mark.django_db(transaction=True)
 def test_add_game_submit_and_create_session_redirects(client, owned_user):
-    #: Moved out of RenderedPagesTest by #677: the POST now dispatches a
-    #: command, and run_in_transaction refuses to open a transaction inside
-    #: the one a TestCase wraps every test in. Making the whole class
-    #: transactional would truncate between each of its tests to serve one.
+    #: Out of the TestCase, because the POST dispatches.
+    #: A transactional class truncates for all to serve one.
     client.force_login(owned_user)
 
     response = client.post(

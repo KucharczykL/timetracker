@@ -28,11 +28,10 @@ from games.models import Game, PlayerGame, PlayerGameStatus
 
 
 class PlayerGameNotTracked(CommandRejected):
-    """This library has no projection row for the game.
+    """The library tracks no such game.
 
-    Its own class because the write path heals exactly this case, by tracking
-    the game and dispatching again. Matching on a message is the alternative
-    and it is not one.
+    Its own class, because the write path heals exactly this case.
+    Matching on a message is the alternative, and is not one.
     """
 
 
@@ -212,19 +211,17 @@ class RestorePlayerGame(Command):
 
 @dataclass(frozen=True, slots=True)
 class RecordPlayerGameFacts(Command):
-    """State the status, the mastery, or both, as one act.
+    """State a status, a mastery, or both.
 
-    The game form states both facts on every save whether or not the player
-    touched either, so the two travel as one command rather than two. Which of
-    them already holds is decided in build, under the stream-head lock, rather
-    than from a form's changed_data, where a stale initial reaches it.
+    The game form states both facts at every save, so the two travel as
+    one command. build() decides which already holds, under the lock,
+    where a form's stale initial cannot reach it.
     """
 
     command_name: ClassVar[CommandName] = CommandName.PLAYERGAME_RECORD_FACTS
     #: A UUID, because Command fingerprints its fields.
     game_id: uuid.UUID
-    #: None means this act does not state the fact, and is a field value like
-    #: any other, so it enters the fingerprint.
+    #: None states no fact, and it fingerprints.
     status: PlayerGameStatus | None
     mastered: bool | None
 

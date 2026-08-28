@@ -185,11 +185,10 @@ def check_atomic_requests(
     databases: Sequence[str] | None = None,
     **kwargs: Any,
 ) -> list[CheckMessage]:
-    """Refuse a wrapping transaction the command dispatcher cannot nest in.
+    """Refuse a transaction dispatches cannot nest in.
 
-    Registered with no tag rather than Tags.database, because a
-    database-tagged check is skipped unless a database is requested and this
-    one reads only settings.
+    Untagged, because a database tag would skip it: it reads only
+    settings, and a tagged check runs only when a database is asked for.
     """
     wrapped = sorted(
         alias

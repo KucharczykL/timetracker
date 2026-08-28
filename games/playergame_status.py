@@ -1,10 +1,4 @@
-"""Both directions of the map between the catalog's status letter and the
-event vocabulary's word.
-
-Issue #677. #676 needed one direction and kept it inside the backfill. The
-write path holds both vocabularies at once, so both directions live here and
-#678 deletes this module with the mirror that needs it.
-"""
+"""The status map: letter to word."""
 
 from collections.abc import Mapping
 
@@ -15,15 +9,14 @@ type LegacyStatus = str  # "f"
 
 
 class UnmappedLegacyStatus(ValueError):
-    """Raised for a legacy letter the map does not know."""
+    """Raised for a letter the map lacks."""
 
 
 class UnmappedPlayerStatus(ValueError):
-    """Raised for a player status the catalog column cannot hold."""
+    """Raised for a status no letter holds."""
 
 
-#: A recorded payload cannot be upcast, so the letters become words here and
-#: never reach an event. SHELVED is absent: no legacy column states it.
+#: SHELVED is absent: no letter states it.
 LEGACY_STATUS_TO_PLAYER_STATUS: Mapping[LegacyStatus, PlayerGameStatus] = {
     Game.Status.UNPLAYED: PlayerGameStatus.UNPLAYED,
     Game.Status.PLAYED: PlayerGameStatus.PLAYED,
@@ -32,7 +25,7 @@ LEGACY_STATUS_TO_PLAYER_STATUS: Mapping[LegacyStatus, PlayerGameStatus] = {
     Game.Status.ABANDONED: PlayerGameStatus.ABANDONED,
 }
 
-#: Inverted rather than written twice, so the two cannot fall out of step.
+#: Inverted, so the two cannot disagree.
 PLAYER_STATUS_TO_LEGACY_STATUS: Mapping[PlayerGameStatus, LegacyStatus] = {
     player_status: legacy_status
     for legacy_status, player_status in LEGACY_STATUS_TO_PLAYER_STATUS.items()
@@ -40,7 +33,7 @@ PLAYER_STATUS_TO_LEGACY_STATUS: Mapping[PlayerGameStatus, LegacyStatus] = {
 
 
 def player_status_for(legacy_status: LegacyStatus) -> PlayerGameStatus:
-    """The word a recorded payload carries for one legacy letter."""
+    """The word one legacy letter records as."""
     try:
         return LEGACY_STATUS_TO_PLAYER_STATUS[legacy_status]
     except KeyError:
@@ -51,7 +44,7 @@ def player_status_for(legacy_status: LegacyStatus) -> PlayerGameStatus:
 
 
 def legacy_status_for(player_status: PlayerGameStatus) -> LegacyStatus:
-    """The letter the catalog column holds for one recorded word."""
+    """The catalog letter for one word."""
     try:
         return PLAYER_STATUS_TO_LEGACY_STATUS[player_status]
     except KeyError:

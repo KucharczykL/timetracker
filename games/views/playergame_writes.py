@@ -1,8 +1,6 @@
-"""The request-shaped half of the PlayerGame write path.
+"""The request-shaped half of the write path.
 
-Issue #677. games/writes/playergame.py takes an actor and raises; this takes a
-request, shows the failure as a toast, and says whether the view should carry
-on. #678 deletes both.
+games/writes/playergame.py raises; this toasts and answers False.
 """
 
 import uuid
@@ -24,7 +22,7 @@ from games.writes.playergame import (
 def track_game_for_request(
     request: HttpRequest, game: Game, *, correlation_id: uuid.UUID
 ) -> bool:
-    """Track the game. Message the player and answer False on a failure."""
+    """Track the game; False on failure."""
     try:
         track_game(cast("User", request.user), game, correlation_id=correlation_id)
     except PlayerGameWriteFailed as failure:
@@ -41,7 +39,7 @@ def record_facts_for_request(
     mastered: bool | None = None,
     correlation_id: uuid.UUID,
 ) -> bool:
-    """State the facts. Message the player and answer False on a failure."""
+    """State the facts; False on failure."""
     try:
         record_facts(
             cast("User", request.user),

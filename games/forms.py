@@ -633,8 +633,7 @@ class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
         )
 
     def save(self, commit=True):
-        #: The mark_as_played flip moved to the views in #677: a fact is
-        #: stated as a command, and a form has no actor to state it as.
+        #: Moved to the views: no actor here.
         session = super().save(commit=False)
         if commit:
             session.save()
@@ -812,8 +811,7 @@ class GameForm(
         self.fields["platform"].widget.options_resolver = partial(
             _platform_options, library=library
         )
-        #: model_to_dict no longer covers these two, because they left
-        #: Meta.fields, so an edit form would open at the column defaults.
+        #: They left Meta.fields, so model_to_dict misses them.
         if self.instance.pk is not None:
             self.initial.setdefault("status", self.instance.status)
             self.initial.setdefault("mastered", self.instance.mastered)
@@ -826,14 +824,11 @@ class GameForm(
         ),
     )
 
-    #: Plain form fields rather than model fields: form.save() must not write
-    #: either column. The write path is the single writer, and #678 deletes
-    #: these two when the reads move to the projection.
+    #: Plain fields, so form.save() writes neither column.
     status = forms.ChoiceField(choices=Game.Status.choices, required=True)
     mastered = forms.BooleanField(required=False)
 
-    #: A declared field naming no model field is appended after the model
-    #: fields, so without this the two would drop to the bottom of the form.
+    #: Declared fields otherwise sink below model fields.
     field_order = (
         "name",
         "sort_name",
@@ -847,11 +842,11 @@ class GameForm(
 
     def save(self, commit=True):
         game = super().save(commit=False)
-        #: A new row starts at the state the form states, so the mirror finds
-        #: the catalog and the projection already equal. Creating it at the
-        #: column default and letting the mirror move it would append a
-        #: GameStatusChange that does not exist today: the pre_save audit
-        #: signal returns early when no previous row exists.
+        #: The row starts where the form says.
+        #: The mirror writes nothing. Starting at the default and
+        #: letting the mirror move it would append a GameStatusChange
+        #: that does not exist today: the audit signal skips a
+        #: first save.
         if game._state.adding:
             game.status = self.cleaned_data["status"]
             game.mastered = self.cleaned_data["mastered"]
@@ -972,10 +967,7 @@ class PlayEventForm(PrimitiveWidgetsMixin, forms.ModelForm):
         fields = ("game", "started", "ended", "note", "mark_as_finished")
 
     def save(self, commit=True):
-        #: The mark_as_finished flip moved to the views in #677, and the
-        #: transaction.atomic() that wrapped the two saves went with it: a
-        #: dispatch inside it would raise NestedTransactionNotSupported, and
-        #: one remaining save needs no block.
+        #: Moved to the views, with its atomic().
         play_event = super().save(commit=False)
         if commit:
             play_event.save()

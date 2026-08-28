@@ -151,14 +151,12 @@ class DataTableGateTest(TestCase):
 
 @pytest.mark.django_db(transaction=True)
 def test_refunded_row_fragment_keeps_the_tables_policy(client, owned_user) -> None:
-    """The refund endpoint re-renders one row outside the list view.
+    """The refund re-renders one row alone.
 
     A fragment built without the column list renders under a different width
     policy than the rows it lands between.
     """
-    #: Moved out of DataTableGateTest by #677: the refund now dispatches a
-    #: command for the game it covers, and run_in_transaction refuses to open
-    #: a transaction inside the one a TestCase wraps every test in.
+    #: Out of the TestCase, because the refund dispatches.
     client.force_login(owned_user)
     library = owned_user.library
     platform = Platform.objects.create(

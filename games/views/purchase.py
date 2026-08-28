@@ -302,8 +302,7 @@ def _pricing_controls() -> Node:
     ]
 
 
-#: No command may be dispatched inside this block: run_in_transaction
-#: refuses to nest, so a dispatch here raises at request time.
+#: No dispatch here: run_in_transaction refuses to nest.
 @transaction.atomic
 def _create_separate_purchases(form: PurchaseForm, post) -> None:
     """Create one single-game Purchase per selected game from the shared form
@@ -562,10 +561,9 @@ def refund_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
             status=Game.Status.ABANDONED,
             correlation_id=correlation_id,
         ):
-            #: No redirect: this answers a table row and an out-of-band
-            #: modal close, so a whole page would be swapped into a cell.
-            #: htmx swaps nothing outside 2xx, and the toast rides the
-            #: HX-Trigger header the middleware sets from the message.
+            #: A redirect would swap into a cell.
+            #: htmx swaps nothing outside 2xx.
+            #: The toast rides the middleware's header.
             return HttpResponse(status=409)
 
     purchase.refund()
@@ -631,8 +629,7 @@ def split_purchase_confirmation(
 
 @login_required
 @require_POST
-#: No command may be dispatched inside this block: run_in_transaction
-#: refuses to nest, so a dispatch here raises at request time.
+#: No dispatch here: run_in_transaction refuses to nest.
 @transaction.atomic
 def split_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
     """Replace one multi-game (unsplittable-style) purchase with one single-game

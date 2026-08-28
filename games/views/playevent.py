@@ -317,7 +317,7 @@ def add_playevent(request: HttpRequest, game_id: UUID | None = None) -> HttpResp
 
 
 def _record_completed(request: HttpRequest, play_event: PlayEvent) -> None:
-    """State Completed for the game this playthrough finished."""
+    """State Completed for the game just finished."""
     record_facts_for_request(
         request,
         play_event.game,

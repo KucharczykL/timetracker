@@ -10,10 +10,9 @@ from games.models import Game, Purchase
 
 ORIGIN = "/tracker/purchase/list?page=2"
 
-#: Transactional, because a refund dispatches a command and
-#: run_in_transaction refuses to open a transaction inside the rolled-back one
-#: pytest-django wraps a test in. The db fixture defers to transactional_db
-#: when both are requested, so no fixture needs an edit.
+#: Transactional: a refund dispatches, and a dispatch cannot
+#: nest in the transaction pytest-django rolls back. The db
+#: fixture defers to transactional_db when both are asked for.
 pytestmark = pytest.mark.django_db(transaction=True)
 
 

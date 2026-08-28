@@ -244,10 +244,9 @@ def add_game(request: HttpRequest) -> HttpResponse:
                 correlation_id=correlation_id,
             )
             if not recorded:
-                #: The catalog row stands and the facts do not. Re-rendering
-                #: the form would invite a resubmit that creates a second
-                #: game, and chaining onward would hide the error, so the
-                #: player lands on the list with the toast.
+                #: The row stands; the facts do not.
+                #: Re-rendering would invite a resubmit that creates
+                #: a second game.
                 return redirect(return_url(request, fallback="games:list_games"))
             origin = origin_from(request)
             if "submit_and_redirect" in request.POST:
@@ -323,8 +322,7 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
     game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
     form = GameForm(request.POST or None, instance=game, library=library)
     if form.is_valid() and _save_game_form_or_add_wikidata_error(form) is not None:
-        #: Both outcomes land in the same place, so a failure needs no branch
-        #: of its own: the toast the helper adds carries the difference.
+        #: One landing place, so no failure branch.
         record_facts_for_request(
             request,
             game,

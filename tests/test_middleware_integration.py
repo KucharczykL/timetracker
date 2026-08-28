@@ -61,15 +61,12 @@ class MiddlewareIntegrationTest(TestCase):
 
 @pytest.mark.django_db(transaction=True)
 def test_non_htmx_request_with_message_gets_hx_trigger(client, owned_user):
-    """A vanilla fetch() that sets a message still gets HX-Trigger.
+    """A plain fetch() still gets HX-Trigger.
 
     fetchWithHtmxTriggers reads the header, so the toast depends on it.
     """
-    #: Moved out of MiddlewareIntegrationTest by #677: the PATCH now
-    #: dispatches a command, and run_in_transaction refuses to open a
-    #: transaction inside the one a TestCase wraps every test in. Making the
-    #: whole class transactional would truncate between each of its tests to
-    #: serve one.
+    #: Out of the TestCase, because the PATCH dispatches.
+    #: A transactional class truncates for all to serve one.
     client.force_login(owned_user)
     game = Game.objects.create(library=owned_user.library, name="Test Game")
 
@@ -86,14 +83,11 @@ def test_non_htmx_request_with_message_gets_hx_trigger(client, owned_user):
 
 @pytest.mark.django_db(transaction=True)
 def test_refund_purchase_returns_updated_row_with_hx_trigger(client, owned_user):
-    """The refund answers the updated row, so the page swaps it in place.
+    """The refund answers a row, never a page.
 
     A navigation would lose the URL and its query parameters.
     """
-    #: Moved out of MiddlewareIntegrationTest by #677: the refund now
-    #: dispatches a command for every game it covers, and run_in_transaction
-    #: refuses to open a transaction inside the one a TestCase wraps every
-    #: test in.
+    #: Out of the TestCase, because the refund dispatches.
     client.force_login(owned_user)
     platform = Platform.objects.create(library=owned_user.library, name="Test Platform")
     game = Game.objects.create(

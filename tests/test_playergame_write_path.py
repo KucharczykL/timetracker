@@ -1,4 +1,4 @@
-"""The dual write: state the fact as a command, mirror the fold back."""
+"""State the fact, then mirror the fold."""
 
 import pytest
 from django.http import Http404
@@ -50,10 +50,8 @@ def test_a_status_reaches_the_event_the_projection_and_the_catalog(
 def test_the_mirror_writes_the_fold_and_not_the_request(
     owned_user, owned_library, tracked_game
 ):
-    #: A catalog column moved behind the projection's back is corrected to
-    #: what the events fold to, not to what this call asked for. The command
-    #: finds the projection already Played, returns Unchanged, and the mirror
-    #: still repairs the catalog.
+    #: A column moved behind the projection's back is repaired
+    #: to the fold, not to what this call asked for.
     record_facts(
         owned_user,
         tracked_game,
@@ -103,8 +101,7 @@ def test_one_act_shares_one_correlation_id(owned_user, owned_library):
         owned_user, game, status=Game.Status.PLAYED, correlation_id=correlation_id
     )
 
-    #: The heal's TrackGame and the retried facts are one act, so the stream
-    #: says so rather than recording two coincidences.
+    #: The heal and its retry are one act, so one id.
     recorded = set(
         LibraryEvent.objects.filter(library=owned_library).values_list(
             "correlation_id", flat=True
@@ -117,8 +114,7 @@ def test_one_act_shares_one_correlation_id(owned_user, owned_library):
 def test_the_heal_does_not_loop(owned_user, owned_library, monkeypatch):
     game = Game.objects.create(library=owned_library, name="Tunic")
 
-    #: A TrackGame that records nothing leaves the row still missing. The
-    #: heal must give up on the second rejection rather than recurse.
+    #: The heal gives up on a second rejection, never recurses.
     monkeypatch.setattr(
         "games.writes.playergame.track_game", lambda *args, **kwargs: None
     )
@@ -136,9 +132,8 @@ def test_the_heal_does_not_loop(owned_user, owned_library, monkeypatch):
 def test_another_librarys_game_is_refused(other_user, owned_library):
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
 
-    #: The actor names the library, so this actor gets their own and the game
-    #: is simply not one it can track. The six view sites answer 404 before
-    #: reaching here; this proves the write path records nothing regardless.
+    #: The actor names the library, so this one gets their own
+    #: and cannot track the game. The views answer 404 first.
     with pytest.raises(PlayerGameWriteFailed) as failure:
         track_game(other_user, game, correlation_id=new_correlation_id())
     assert failure.value.status_code == 409
@@ -147,8 +142,7 @@ def test_another_librarys_game_is_refused(other_user, owned_library):
 
 @pytest.mark.django_db(transaction=True)
 def test_an_actor_who_may_not_command_is_not_found(owned_user, tracked_game):
-    #: A 404 rather than a 403: the charter says an object the actor may not
-    #: reach is absent, not forbidden.
+    #: A 404: an unreachable object is absent, not forbidden.
     owned_user.is_active = False
     owned_user.save(update_fields=["is_active"])
 

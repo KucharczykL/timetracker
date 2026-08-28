@@ -179,9 +179,8 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
 
 
 def _record_played(request: HttpRequest, session: Session) -> None:
-    """State Played for a game the session says was unplayed."""
-    #: The guard reads the catalog, because every read reads the catalog
-    #: until #678. Without it a completed game falls back to played.
+    """State Played for a game read unplayed."""
+    #: Reads the catalog, as every read does.
     if session.game.status != Game.Status.UNPLAYED:
         return
     record_facts_for_request(

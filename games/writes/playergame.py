@@ -1,16 +1,10 @@
-"""State a PlayerGame fact as a command, then mirror the fold onto the catalog.
+"""State a fact, then mirror the fold.
 
-Issue #677. A projector folding these events into Game.status would be one
-write path rather than two, and cannot be built: only_shadow_writes() refuses
-every statement a rebuild makes against a live table. So the mirror is a dual
-write at the call site, and it copies the projection rather than what the
-caller asked for -- a mirror that reads the fold cannot disagree with it, and
-#906 made a declined request an ordinary outcome.
-
-This module takes an actor rather than a request, because authorize() checks
-library.user_id == actor.pk and the actor therefore already names the library.
-games/views/playergame_writes.py is the half that knows about requests and
-toasts. #678 deletes both.
+The mirror cannot be a projector: only_shadow_writes() refuses every
+statement a rebuild makes against a live table. So it is a dual write at
+the call site. Takes an actor, not a request, because authorize() reads
+library.user_id == actor.pk. games/views/playergame_writes.py is the
+request half. #678 deletes both.
 """
 
 import uuid
@@ -42,11 +36,10 @@ from games.playergame_status import (
 
 
 class PlayerGameWriteFailed(Exception):
-    """A fact the player stated could not be recorded.
+    """A stated fact could not be recorded.
 
-    It carries the status code as well as the sentence, because the two
-    conflict leaves disagree about what to do next and the API answers with
-    the number while a page answers with the words.
+    It carries a status code as well as a sentence, because the two
+    conflict leaves disagree about what to do next.
     """
 
     def __init__(self, message: str, status_code: int) -> None:
@@ -56,21 +49,17 @@ class PlayerGameWriteFailed(Exception):
 
 
 def new_correlation_id() -> uuid.UUID:
-    """One per request.
-
-    A refund dispatches once per game of the purchase and a heal dispatches
-    three times. Without a shared id the stream records each as its own act.
-    """
+    """One per request, however many dispatches."""
     return uuid.uuid7()
 
 
 @contextmanager
 def _translated() -> Iterator[None]:
-    """Turn every command failure into something a view can answer with."""
+    """Turn a command failure into an answer."""
     try:
         yield
     except CommandNotPermitted as error:
-        #: The charter: another library's object is absent, not forbidden.
+        #: Another library's object is absent, not forbidden.
         raise Http404("No such game.") from error
     except RetryBudgetExhausted as error:
         raise PlayerGameWriteFailed(
@@ -78,8 +67,7 @@ def _translated() -> Iterator[None]:
             409,
         ) from error
     except IdempotencyKeyMismatch as error:
-        #: Unreachable while every key is minted per request. Handled anyway,
-        #: so a future keyed caller meets a 409 rather than a 500.
+        #: Unreachable per-request. Handled for a keyed caller.
         raise PlayerGameWriteFailed(
             "This request cannot be retried, because its key already belongs "
             "to a different one.",
@@ -100,15 +88,14 @@ def _dispatch(
         command,
         actor=actor,
         library=library,
-        #: Per request, thus it deduplicates nothing; #906's state comparison
-        #: is what absorbs a repeat. See the design's key section.
+        #: Deduplicates nothing; build()'s comparison absorbs a repeat.
         idempotency_key=str(uuid.uuid7()),
         correlation_id=correlation_id,
     )
 
 
 def track_game(actor: User, game: Game, *, correlation_id: uuid.UUID) -> None:
-    """Track one catalog game in the actor's library."""
+    """Track one catalog game for the actor."""
     with _translated():
         _dispatch(
             TrackGame(game_id=game.pk),
@@ -126,9 +113,9 @@ def record_facts(
     mastered: bool | None = None,
     correlation_id: uuid.UUID,
 ) -> None:
-    """State one fact or two, then mirror the fold onto the catalog.
+    """State one fact or two, then mirror.
 
-    status is a letter of Game.Status, because every caller holds one. A None
+    status is a Game.Status letter, because every caller holds one. None
     means this act does not state that fact.
     """
     library = actor.library
@@ -143,13 +130,10 @@ def record_facts(
                 command, actor=actor, library=library, correlation_id=correlation_id
             )
         except PlayerGameNotTracked:
-            #: #676 backfilled a row for every game a library held and
-            #: add_game tracks each new one, so this means the two fell out of
-            #: step: a TrackGame that did not commit, a restored dump, a game
-            #: the sample loader made. Creating the catalog row and tracking it
-            #: are two commits, because run_in_transaction refuses a nested
-            #: transaction, so the gap is reachable.
-            #: One retry, never a loop: a second rejection is a real one.
+            #: One retry, never a loop.
+            #: Reachable because creating a game and tracking it are two
+            #: commits: run_in_transaction refuses to nest, so a view
+            #: cannot hold both. A restored dump gets here too.
             track_game(actor, game, correlation_id=correlation_id)
             _dispatch(
                 command, actor=actor, library=library, correlation_id=correlation_id
@@ -158,17 +142,14 @@ def record_facts(
 
 
 def _mirror(game: Game, library: UserLibrary) -> None:
-    """Copy the folded row onto the catalog columns #678 has not moved yet."""
+    """Copy the folded row onto the catalog."""
     row = PlayerGame.objects.get(library=library, game=game)
     status = legacy_status_for(PlayerGameStatus(row.status))
-    #: Reread first: the caller's instance predates the command, so comparing
-    #: against it would call the catalog correct on the strength of a stale
-    #: copy and skip the repair.
+    #: Reread first: a stale instance skips the repair.
     game.refresh_from_db(fields=["status", "mastered"])
     if (game.status, game.mastered) == (status, row.mastered):
         return
     game.status = status
     game.mastered = row.mastered
-    #: A full field save, so the pre_save audit signal fires and legacy
-    #: GameStatusChange history continues exactly as today.
+    #: A field save, so the audit signal still fires.
     game.save(update_fields=["status", "mastered"])

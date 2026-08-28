@@ -1,4 +1,4 @@
-"""Both directions of the map between Game.Status and PlayerGameStatus."""
+"""Both directions of the status map."""
 
 import pytest
 
@@ -18,9 +18,8 @@ def test_every_legacy_status_maps_and_round_trips(legacy_status):
 
 
 def test_shelved_has_no_legacy_status():
-    #: Game.Status holds five members and PlayerGameStatus holds six. The
-    #: catalog cannot store the sixth, so the mirror must raise rather than
-    #: invent a letter.
+    #: The catalog cannot store the sixth member, so the
+    #: mirror raises rather than invent a letter.
     with pytest.raises(UnmappedPlayerStatus, match="SHELVED"):
         legacy_status_for(PlayerGameStatus.SHELVED)
 
@@ -31,6 +30,5 @@ def test_an_unknown_letter_is_refused():
 
 
 def test_finished_is_completed():
-    #: The two vocabularies disagree on the word for this one state, which is
-    #: the reason the map exists at all.
+    #: The one state the two vocabularies name differently.
     assert player_status_for(Game.Status.FINISHED) is PlayerGameStatus.COMPLETED

@@ -1,4 +1,4 @@
-"""Every switched view states its fact as a command."""
+"""Each switched view states its fact."""
 
 import pytest
 from django.urls import reverse
@@ -47,9 +47,9 @@ def test_adding_a_game_tracks_it_and_records_its_facts(logged_in, owned_library)
 
 @pytest.mark.django_db(transaction=True)
 def test_a_game_created_as_finished_records_no_status_change(logged_in):
-    #: The pre_save audit signal returns early when no previous row exists,
-    #: so a game created at a non-default status records no transition today.
-    #: Assigning the two values before the first save keeps that exactly true.
+    #: The audit signal skips a first save, so a game created
+    #: as finished records no transition. Assigning before the
+    #: save is what keeps that true.
     logged_in.post(reverse("games:add_game"), {**GAME_PAYLOAD, "status": "f"})
 
     assert GameStatusChange.objects.count() == 0
@@ -64,8 +64,7 @@ def test_adding_a_game_records_one_creation_event(logged_in, owned_library):
             "event_type", flat=True
         )
     )
-    #: The row is created at the state the form states, so the composite
-    #: finds both facts already holding and appends nothing.
+    #: The row starts where the form says, so nothing changes.
     assert types == ["library.playergame.created"]
 
 
@@ -93,10 +92,8 @@ def test_the_edit_form_shows_the_games_current_status(logged_in, owned_library):
 
     response = logged_in.get(reverse("games:edit_game", args=[game.id]))
 
-    #: status and mastered left Meta.fields, so ModelForm no longer seeds
-    #: their initial from the instance and the form must do it. Asserted on
-    #: the HTML rather than a form object: the view renders through
-    #: render_page(), which returns no template context to read.
+    #: They left Meta.fields, so the form seeds them itself.
+    #: Read from the HTML: render_page() returns no context.
     assert '<option value="f" selected>' in response.content.decode()
 
 
@@ -126,9 +123,8 @@ def test_the_status_api_refuses_a_status_that_is_not_one(logged_in, owned_librar
         content_type="application/json",
     )
 
-    #: Today the value reaches the column: Game.save() calls clean() and not
-    #: full_clean(), and neither checks choices. Typing the schema field is
-    #: what makes Ninja refuse it before the view runs.
+    #: Game.save() checks no choices, so the typed schema
+    #: field is what refuses this before the view runs.
     assert response.status_code == 422
     game.refresh_from_db()
     assert game.status == "u"
@@ -153,8 +149,7 @@ def test_a_failed_status_write_answers_409_with_a_toast(
     )
 
     assert response.status_code == 409
-    #: The dropdown reverts itself on any non-ok response and shows whatever
-    #: the trigger header carries, so the sentence must ride along.
+    #: The dropdown reverts on non-ok and shows the header.
     assert "show-toast" in response.headers["HX-Trigger"]
 
 
@@ -184,11 +179,8 @@ def test_adding_a_session_records_played(logged_in, owned_library, tracked_game)
 
 @pytest.mark.django_db(transaction=True)
 def test_editing_a_session_records_played_too(logged_in, owned_library, tracked_game):
-    #: The checkbox is a field of the form and an edit binds it, so an edit
-    #: re-applies the flip today. Covering only the add view would be a
-    #: silent regression rather than a smaller change.
-    #: Session and PlayEvent take no library kwarg; each derives it from
-    #: the game.
+    #: An edit binds the checkbox too, so it re-applies the
+    #: flip. Session and PlayEvent derive their library.
     session = Session.objects.create(game=tracked_game, timestamp_start=timezone.now())
     Game.objects.filter(pk=tracked_game.pk).update(status="u")
 
@@ -206,8 +198,7 @@ def test_a_session_leaves_a_finished_game_alone(logged_in, owned_library, tracke
 
     logged_in.post(reverse("games:add_session"), _session_payload(tracked_game))
 
-    #: The guard reads the catalog, because every read reads the catalog
-    #: until #678. Without it a completed game falls back to played.
+    #: The guard reads the catalog, as every read does.
     tracked_game.refresh_from_db()
     assert tracked_game.status == "f"
 
@@ -279,7 +270,7 @@ def test_refunding_abandons_every_game_under_one_correlation_id(
             event_type="library.playergame.status_changed"
         ).values_list("correlation_id", flat=True)
     )
-    #: One button press is one act, whatever number of games it moves.
+    #: One press is one act, however many games.
     assert len(correlation_ids) == 1
 
 
@@ -302,13 +293,11 @@ def test_a_failed_refund_answers_409_and_swaps_nothing(
     def refuse(*args, **kwargs):
         raise PlayerGameWriteFailed("Nothing was recorded; try again.", 409)
 
-    #: The view calls record_facts_for_request, which is the one caller of
-    #: record_facts, so the patch goes where the call is made.
+    #: Patched where the call is made, not where it is named.
     monkeypatch.setattr("games.views.playergame_writes.record_facts", refuse)
     response = logged_in.post(reverse("games:refund_purchase", args=[purchase.id]))
 
-    #: htmx swaps nothing outside 2xx, so the row keeps what it shows and
-    #: the modal stays open. A redirect would swap a whole page into a cell.
+    #: htmx swaps nothing outside 2xx, so the row stands.
     assert response.status_code == 409
     assert response.content == b""
     assert "show-toast" in response.headers["HX-Trigger"]
