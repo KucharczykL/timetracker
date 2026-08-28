@@ -6,12 +6,34 @@ expressed as events and folded by the PlayerGames projector, because a
 projection row is written by its projector and by nothing else.
 """
 
-from collections.abc import Mapping
+import uuid
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, replace
 from datetime import datetime
+from typing import Any, cast
 
+from django.contrib.auth.models import User
+from django.db import transaction
+from django.db.models import F
 from django.utils import timezone
 
-from games.models import Game, PlayerGameStatus
+from games.events.append import LockedStream, SourceMetadata
+from games.events.idempotency import ReplayedAppend, idempotent_append
+from games.events.playergame import (
+    PLAYERGAME_CREATED,
+    PLAYERGAME_MASTERED_CHANGED,
+    PLAYERGAME_STATUS_CHANGED,
+    StatusValue,
+)
+from games.events.references import capture_reference
+from games.events.vocabulary import NewEvent
+from games.models import (
+    Game,
+    GameStatusChange,
+    PlayerGame,
+    PlayerGameStatus,
+    UserLibrary,
+)
 from timetracker.temporal import TemporalValue
 
 #: Names the issue in every key and every source_metadata blob.
@@ -59,3 +81,201 @@ def transition_effective_time(timestamp: datetime | None) -> TemporalValue:
     if timestamp is None:
         return TemporalValue.unknown()
     return TemporalValue.from_day(timezone.localtime(timestamp).date())
+
+
+@dataclass(frozen=True, slots=True)
+class BackfillCounts:
+    """What one pass did, summable across games and libraries."""
+
+    games: int = 0
+    tracked: int = 0
+    created_events: int = 0
+    status_events: int = 0
+    mastered_events: int = 0
+    corrective_events: int = 0
+    unknown_effective_times: int = 0
+    skipped_tombstoned: int = 0
+
+    def __add__(self, other: "BackfillCounts") -> "BackfillCounts":
+        return BackfillCounts(
+            games=self.games + other.games,
+            tracked=self.tracked + other.tracked,
+            created_events=self.created_events + other.created_events,
+            status_events=self.status_events + other.status_events,
+            mastered_events=self.mastered_events + other.mastered_events,
+            corrective_events=self.corrective_events + other.corrective_events,
+            unknown_effective_times=(
+                self.unknown_effective_times + other.unknown_effective_times
+            ),
+            skipped_tombstoned=self.skipped_tombstoned + other.skipped_tombstoned,
+        )
+
+
+#: The value an accumulation starts from.
+NO_COUNTS = BackfillCounts()
+
+
+def _append(
+    library: UserLibrary,
+    event: NewEvent,
+    *,
+    actor: User,
+    idempotency_key: str,
+    command_input: dict[str, Any],
+    recorded_at: datetime,
+    source_metadata: SourceMetadata,
+) -> bool:
+    """Append one event, or replay its key. True when it appended.
+
+    One append per event, never one append per game: LockedStream.append()
+    stamps one recorded_at across every row of a call, and these events carry
+    four different dates.
+
+    dispatch() is not used. It needs a Command, and a command validates
+    against current state to refuse a duplicate -- SetPlayerGameStatus rejects
+    the status a game already has, which is the ordinary case here.
+    run_in_transaction is not used either: its retry answers a concurrent
+    writer, and a backfill has none.
+    """
+
+    def build(stream: LockedStream) -> Sequence[NewEvent]:
+        #: The append contract passes it; nothing here consults it.
+        del stream
+        return [event]
+
+    outcome = idempotent_append(
+        library,
+        idempotency_key=idempotency_key,
+        command_input=command_input,
+        build=build,
+        actor=actor,
+        #: Its own, per event. #685 pairs these with lifecycle facts later, and
+        #: adopts these ids rather than mutating an immutable column.
+        correlation_id=uuid.uuid7(),
+        source_metadata=source_metadata,
+        recorded_at=recorded_at,
+    )
+    return not isinstance(outcome, ReplayedAppend)
+
+
+def _legacy_changes(game: Game) -> list[GameStatusChange]:
+    """One game's status history, oldest first, undated first.
+
+    The order is stated rather than inherited: GameStatusChange.Meta.ordering
+    is -timestamp, and a descending fold would end on the oldest fact.
+    """
+    return list(
+        GameStatusChange.objects.filter(game=game).order_by(
+            F("timestamp").asc(nulls_first=True), "pk"
+        )
+    )
+
+
+def backfill_game(
+    game: Game, *, library: UserLibrary, actor: User, run_time: datetime
+) -> BackfillCounts:
+    """Record the baseline facts for one game this library holds.
+
+    The atomic block is this function's own: lock_stream refuses to take the
+    head lock outside a transaction, and one game's facts are recorded whole
+    or not at all. Inside a caller's transaction it is a savepoint, so a
+    migration still rolls the whole run back.
+    """
+    metadata: SourceMetadata = {"origin": "backfill", "issue": PGAME_ISSUE}
+    counts = BackfillCounts(games=1, tracked=1)
+
+    with transaction.atomic():
+        #: Always first. amend() raises ProjectionRowMissing against a row no
+        #: creation event made, so every later fact depends on this one.
+        if _append(
+            library,
+            PLAYERGAME_CREATED.new(
+                aggregate_id=uuid.uuid7(),
+                payload={"game": capture_reference(game)},
+            ),
+            actor=actor,
+            idempotency_key=f"{KEY_PREFIX}:created:{game.pk}",
+            command_input={"fact": "created", "game_id": str(game.pk)},
+            #: A real recording time: the row was written then, and the
+            #: projector takes tracked_at from it.
+            recorded_at=game.created_at,
+            source_metadata=metadata,
+        ):
+            counts = replace(counts, created_events=1)
+
+        #: The projector wrote the row synchronously, inside this transaction.
+        tracked_id: uuid.UUID = PlayerGame.objects.values_list("pk", flat=True).get(
+            library=library, game=game
+        )
+
+        if game.mastered and _append(
+            library,
+            PLAYERGAME_MASTERED_CHANGED.new(
+                aggregate_id=tracked_id,
+                payload={"mastered": True},
+            ),
+            actor=actor,
+            idempotency_key=f"{KEY_PREFIX}:mastered:{game.pk}",
+            command_input={"fact": "mastered", "game_id": str(game.pk)},
+            recorded_at=game.created_at,
+            source_metadata=metadata,
+        ):
+            counts = replace(counts, mastered_events=1)
+
+        folded = PlayerGameStatus.UNPLAYED
+        for change in _legacy_changes(game):
+            status = player_status_for(change.new_status)
+            effective_time = transition_effective_time(change.timestamp)
+            if _append(
+                library,
+                PLAYERGAME_STATUS_CHANGED.new(
+                    aggregate_id=tracked_id,
+                    #: A test pins Literal and choices equal.
+                    payload={"status": cast("StatusValue", status.value)},
+                    effective_time=effective_time,
+                ),
+                actor=actor,
+                idempotency_key=f"{KEY_PREFIX}:status:{change.pk}",
+                command_input={"fact": "status", "status_change_id": str(change.pk)},
+                recorded_at=change.timestamp or game.created_at,
+                source_metadata={**metadata, "status_change_id": str(change.pk)},
+            ):
+                counts = replace(counts, status_events=counts.status_events + 1)
+                if effective_time.is_unknown:
+                    counts = replace(
+                        counts,
+                        unknown_effective_times=counts.unknown_effective_times + 1,
+                    )
+            #: old_status is ignored: the fold sets a value rather than
+            #: applying a delta, so a broken chain cannot change the result.
+            folded = status
+
+        current = player_status_for(game.status)
+        if folded != current and _append(
+            library,
+            PLAYERGAME_STATUS_CHANGED.new(
+                aggregate_id=tracked_id,
+                payload={"status": cast("StatusValue", current.value)},
+                #: Game.updated_at is auto_now -- the last time any field moved
+                #: -- so dating this with it would fabricate precision the
+                #: charter forbids. The status is known; when it changed is not.
+                effective_time=TemporalValue.unknown(),
+            ),
+            actor=actor,
+            idempotency_key=f"{KEY_PREFIX}:status:current:{game.pk}",
+            command_input={
+                "fact": "status_current",
+                "game_id": str(game.pk),
+                #: Named, so a changed current status is a loud mismatch.
+                "status": current.value,
+            },
+            recorded_at=run_time,
+            source_metadata=metadata,
+        ):
+            counts = replace(
+                counts,
+                corrective_events=1,
+                unknown_effective_times=counts.unknown_effective_times + 1,
+            )
+
+    return counts
