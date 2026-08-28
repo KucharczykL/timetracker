@@ -107,6 +107,35 @@ revision can migrate that dump — and is the pre-deploy rehearsal.
 Run `dropdb` only after every preceding command succeeds. On failure, leave the
 verification database for inspection. Never restore into the live database.
 
+### Dumps taken before migration 0034
+
+A dump opens with an empty `search_path`, which the `timetracker_temporal_*`
+functions did not carry their own setting against until
+`0034_temporal_functions_search_path`. Restoring an older dump therefore fails
+on the first temporal value:
+
+```text
+value for domain public.temporal_value violates check constraint "temporal_value_valid"
+```
+
+Restore it in three parts and give the functions their reach between the first
+two:
+
+```bash
+pg_restore --exit-on-error --no-owner --no-privileges --section=pre-data \
+  --dbname="$SCRATCH_URL" /path/to/timetracker.dump
+psql "$SCRATCH_URL" -c "ALTER FUNCTION timetracker_temporal_is_valid(text)
+  SET search_path = pg_catalog, public"
+pg_restore --exit-on-error --no-owner --no-privileges --section=data \
+  --dbname="$SCRATCH_URL" /path/to/timetracker.dump
+pg_restore --exit-on-error --no-owner --no-privileges --section=post-data \
+  --dbname="$SCRATCH_URL" /path/to/timetracker.dump
+```
+
+Apply the helper reach to every `timetracker_temporal_*` function if the data
+section still fails; migrating the copy afterwards makes the setting permanent.
+Any dump taken after that migration restores in one command.
+
 ## UUIDv7
 
 Identity columns use the `uuid_v7` domain over PostgreSQL's `uuid` type. Tools

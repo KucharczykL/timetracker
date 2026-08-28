@@ -331,6 +331,11 @@ createsuperuser: ensure-postgres
 shell: ensure-postgres
 	uv run --frozen python manage.py shell
 
+# psql against the development database. Reads stdin, so a heredoc or a pipe
+# runs a one-off query without spelling the URL out again.
+dbshell: ensure-postgres
+	uv run --frozen python manage.py dbshell $(ARGS)
+
 collectstatic: ensure-postgres
 	uv run --frozen python manage.py collectstatic --clear --no-input
 
