@@ -92,9 +92,9 @@ stream-head lock and give one event each. `CommandName.PLAYERGAME_ARCHIVE` is
 `library.playergame.restore`.
 
 `_tracked_game()` rejects a game the library does not track. An archived row
-rejects an archive and a live row rejects a restore.
-[#906](https://github.com/KucharczykL/timetracker/issues/906) decides whether a
-no-op must instead succeed.
+rejected an archive and a live row rejected a restore.
+[#906](https://github.com/KucharczykL/timetracker/issues/906) settled that:
+both now return `Unchanged`, a success that records no event.
 
 The idempotency key must name the request and not the pair. `idempotent_append`
 reads the key before `build()` runs, thus a repeat key replays the first record

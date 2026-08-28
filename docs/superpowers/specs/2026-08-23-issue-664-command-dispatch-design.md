@@ -259,10 +259,11 @@ untranslated, or a conflict subclass that would render as "try again".
 
 **Returning no events is a programming error, not a refusal.**
 `LockedStream.append` raises `ValueError` on an empty sequence, and #662 chose
-that deliberately to mark it a bug. So a command that finds nothing to do raises
-`CommandRejected`; it does not return `[]`. Whether a genuinely idempotent no-op
-("set status to `f` when it is already `f`") deserves a *success* outcome
-instead is a real question with no real command to answer it — filed for #671.
+that deliberately to mark it a bug. So a command never returns `[]`. One that
+finds nothing to do returns `Unchanged`, which #906 settled: an idempotent no-op
+("set status to `f` when it is already `f`") is a *success*, reported as
+`CommandOutcome.UNCHANGED` with no range. `CommandRejected` keeps the
+precondition nothing satisfies.
 
 ### The command receives a context, and the context does not contain the stream
 
@@ -305,7 +306,7 @@ the next one.
 ### The result collapses the union
 
 `dispatch` returns
-`CommandResult(stream_id, first_sequence, last_sequence, replayed, correlation_id)`.
+`CommandResult(stream_id, outcome, sequences, reason, correlation_id)`.
 
 #662 chose `AppendResult | ReplayedAppend` so that running projections against a
 replay is a type error rather than a review catch, and said the union should not
@@ -313,8 +314,11 @@ propagate past the command boundary. This is that boundary. Projectors (#665)
 run *inside* the transaction, so no caller outside needs the event objects, and
 letting them escape invites reads taken after the lock is gone.
 
-`replayed: bool` rather than a nullable events tuple: outside callers branch on
-"did this actually do something", not on which class they got.
+An `outcome` rather than a nullable events tuple: outside callers branch on what
+happened, not on which class they got. #906 made it a three-member
+`CommandOutcome` in place of the `replayed` boolean this document first
+described, and paired it with a `sequences: SequenceRange | None` that is absent
+exactly when nothing was appended.
 
 `correlation_id` is on the result because `dispatch` may have generated it. The
 charter's compound action — "a compound user action shares a correlation ID.
@@ -402,9 +406,9 @@ class CommandContext:
 @dataclass(frozen=True, slots=True)
 class CommandResult:
     stream_id: uuid.UUID
-    first_sequence: int
-    last_sequence: int
-    replayed: bool
+    outcome: CommandOutcome
+    sequences: SequenceRange | None
+    reason: str | None
     correlation_id: uuid.UUID
 
 
@@ -412,7 +416,7 @@ class Command(ABC):
     command_name: ClassVar[CommandName]
 
     @abstractmethod
-    def build(self, context: CommandContext) -> Sequence[NewEvent]: ...
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged: ...
 
 
 def dispatch(
@@ -458,10 +462,11 @@ Definition-time guards (no database):
 
 Dispatch:
 
-- happy path returns `replayed=False` and appends a contiguous range; the events
-  carry the library, actor, correlation ID, idempotency key, and source metadata
-- the same key with the same command returns `replayed=True`, the original
-  range, and appends nothing
+- happy path returns `CommandOutcome.APPENDED` and appends a contiguous range;
+  the events carry the library, actor, correlation ID, idempotency key, and
+  source metadata
+- the same key with the same command returns `CommandOutcome.REPLAYED`, the
+  original range, and appends nothing
 - the same key with a changed field value raises `IdempotencyKeyMismatch`
 - **the same key and identical field values under a different `CommandName`
   raises `IdempotencyKeyMismatch`** — `TEST_COMMAND_TWIN` exists to be the twin
@@ -561,8 +566,9 @@ Needing a real command first, so they follow #671:
 
 - #905 — map `CommandConflict` to an HTTP status, page, or toast at the first
   evented view.
-- #906 — decide what a no-op command means: `CommandRejected`, or a success
-  result with an empty range.
+- #906 — decided: an idempotent no-op is a success with no range, and it claims
+  its idempotency key. See
+  `docs/superpowers/specs/2026-08-28-issue-906-no-op-command-semantics-design.md`.
 - #907 — delete the `TEST_COMMAND_*` allowlist members.
 
 Independent of #671:

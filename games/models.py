@@ -1592,8 +1592,9 @@ class LibraryIdempotencyRecordQuerySet(LibraryOwnedQuerySet):
 
 
 class LibraryIdempotencyRecord(models.Model):
-    """What one command key already produced, so repeating the key returns that
-    range instead of appending a second time.
+    """What one command key already produced, so repeating the key answers from
+    that instead of appending a second time. A key claimed by a command that
+    changed nothing produced no events, and so carries no range.
 
     The events table cannot carry this: one append writes many rows sharing a
     key, so the pair could never be unique there.
@@ -1605,13 +1606,21 @@ class LibraryIdempotencyRecord(models.Model):
                 fields=("library", "idempotency_key"),
                 name="unique_library_idempotency_key",
             ),
+            #: Both columns, or neither. #740 removes this with the model.
+            #: The second branch tests nullness rather than leaving it to the
+            #: comparisons: one column absent makes those NULL, and a check
+            #: constraint admits a NULL as satisfied.
             models.CheckConstraint(
-                condition=Q(first_sequence__gte=1),
-                name="library_idempotency_first_sequence_positive",
-            ),
-            models.CheckConstraint(
-                condition=Q(last_sequence__gte=F("first_sequence")),
-                name="library_idempotency_range_ordered",
+                condition=(
+                    Q(first_sequence__isnull=True, last_sequence__isnull=True)
+                    | Q(
+                        first_sequence__isnull=False,
+                        last_sequence__isnull=False,
+                        first_sequence__gte=1,
+                        last_sequence__gte=F("first_sequence"),
+                    )
+                ),
+                name="library_idempotency_range_whole",
             ),
             models.CheckConstraint(
                 condition=~Q(idempotency_key=""),
@@ -1637,8 +1646,11 @@ class LibraryIdempotencyRecord(models.Model):
     request_fingerprint = models.CharField(max_length=64)
     #: No default: a row must never claim a version it was not hashed under.
     fingerprint_version = models.PositiveSmallIntegerField()
-    first_sequence = models.PositiveBigIntegerField()
-    last_sequence = models.PositiveBigIntegerField()
+    #: Absent when the command changed nothing: nothing was appended, so there
+    #: is no range to replay. #740 removes the nullability along with this
+    #: whole model, which it replaces with a record of the request itself.
+    first_sequence = models.PositiveBigIntegerField(null=True)
+    last_sequence = models.PositiveBigIntegerField(null=True)
     created_at = models.DateTimeField(default=timezone.now, editable=False)
 
     objects = LibraryIdempotencyRecordQuerySet.as_manager()

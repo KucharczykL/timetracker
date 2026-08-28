@@ -48,10 +48,9 @@ behind the stream-head lock and gives one event.
 `CommandName.PLAYERGAME_SET_EXCLUDED_FROM_UNFINISHED` is
 `library.playergame.set_excluded_from_unfinished`.
 
-`_tracked_game()` rejects a game the library does not track, and an unchanged
-value rejects.
-[#906](https://github.com/KucharczykL/timetracker/issues/906) decides whether a
-no-op must instead succeed.
+`_tracked_game()` rejects a game the library does not track. An unchanged value
+rejected too; [#906](https://github.com/KucharczykL/timetracker/issues/906)
+settled that, and it now returns `Unchanged`, a success that records no event.
 
 ## The hand-off from Purchase.infinite
 

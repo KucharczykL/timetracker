@@ -66,9 +66,9 @@ resolves to no row, so the rejection says nothing about it.
 A game the library does not track rejects. #676 backfills a row for each before
 #677 wires a caller.
 
-A status equal to the current one also rejects, as a repeated `TrackGame` does.
-[#906](https://github.com/KucharczykL/timetracker/issues/906) decides whether a
-no-op should.
+A status equal to the current one rejected too, as a repeated `TrackGame` did.
+[#906](https://github.com/KucharczykL/timetracker/issues/906) settled that:
+both now return `Unchanged`, a success that records no event.
 
 ## Out of scope
 

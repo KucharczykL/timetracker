@@ -14,6 +14,7 @@ from games.events.dispatch import (
     CommandContext,
     CommandName,
     CommandNotPermitted,
+    CommandOutcome,
     CommandRejected,
     CommandVocabulary,
     authorize,
@@ -24,7 +25,7 @@ from games.events.dispatch import (
 )
 from games.events.idempotency import IdempotencyKeyMismatch, fingerprint_command_input
 from games.events.retry import NestedTransactionNotSupported
-from games.events.vocabulary import EventSpec, EventTypeRegistry, NewEvent
+from games.events.vocabulary import EventSpec, EventTypeRegistry, NewEvent, Unchanged
 from games.events.wiring import EventWiring
 from games.models import LibraryEvent
 from timetracker.temporal import TemporalValue
@@ -103,6 +104,7 @@ class DispatchProbeName(CommandVocabulary):
     UNSHAPED = "test.command.unshaped"
     REJECTING = "test.command.rejecting"
     FLAKY = "test.command.flaky"
+    UNCHANGED = "test.command.unchanged"
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,6 +177,14 @@ class RejectingCommand(Command):
 
     def build(self, context: CommandContext) -> Sequence[NewEvent]:
         raise CommandRejected("Current state does not permit this.")
+
+
+@dataclass(frozen=True, slots=True)
+class UnchangedCommand(Command):
+    command_name: ClassVar[CommandVocabulary] = DispatchProbeName.UNCHANGED
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        return Unchanged("The state the caller asks for already holds.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -361,8 +371,8 @@ def test_a_dispatched_command_appends_its_events(owned_user, owned_library):
         wiring=WIRING,
     )
 
-    assert result.replayed is False
-    assert (result.first_sequence, result.last_sequence) == (1, 1)
+    assert result.outcome is CommandOutcome.APPENDED
+    assert result.sequences == (1, 1)
 
     event = LibraryEvent.objects.get(library=owned_library)
     assert event.sequence == 1
@@ -390,11 +400,8 @@ def test_repeating_a_key_replays_the_original_range(owned_user, owned_library):
         wiring=WIRING,
     )
 
-    assert second.replayed is True
-    assert (second.first_sequence, second.last_sequence) == (
-        first.first_sequence,
-        first.last_sequence,
-    )
+    assert second.outcome is CommandOutcome.REPLAYED
+    assert second.sequences == first.sequences
     assert LibraryEvent.objects.filter(library=owned_library).count() == 1
 
 
@@ -472,6 +479,69 @@ def test_a_rejected_command_appends_nothing(owned_user, owned_library):
 
 
 @pytest.mark.django_db(transaction=True)
+def test_a_command_that_changes_nothing_reports_it(owned_user, owned_library):
+    result = dispatch(
+        UnchangedCommand(),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="first",
+        wiring=WIRING,
+    )
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+    assert result.sequences is None
+    assert result.reason == "The state the caller asks for already holds."
+    assert not LibraryEvent.objects.filter(library=owned_library).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_repeated_no_op_reports_unchanged_without_a_reason(owned_user, owned_library):
+    for _ in range(2):
+        result = dispatch(
+            UnchangedCommand(),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key="same",
+            wiring=WIRING,
+        )
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+    assert result.sequences is None
+    assert result.reason is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_only_an_unchanged_outcome_has_no_range(owned_user, owned_library):
+    appended = dispatch(
+        BasicCommand(label="x", count=1),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="first",
+        wiring=WIRING,
+    )
+    replayed = dispatch(
+        BasicCommand(label="x", count=1),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="first",
+        wiring=WIRING,
+    )
+    unchanged = dispatch(
+        UnchangedCommand(),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="second",
+        wiring=WIRING,
+    )
+
+    for result in (appended, replayed, unchanged):
+        assert (result.sequences is None) == (
+            result.outcome is CommandOutcome.UNCHANGED
+        )
+    assert (appended.reason, replayed.reason) == (None, None)
+
+
+@pytest.mark.django_db(transaction=True)
 def test_authorization_precedes_any_query(
     owned_user, other_library, django_assert_num_queries
 ):
@@ -513,7 +583,7 @@ def test_a_retryable_failure_is_retried_into_one_append(owned_user, owned_librar
     )
 
     assert FlakyCommand.attempts == 2
-    assert result.replayed is False
+    assert result.outcome is CommandOutcome.APPENDED
     events = LibraryEvent.objects.filter(library=owned_library)
     assert [event.payload["attempt"] for event in events] == [2]
 

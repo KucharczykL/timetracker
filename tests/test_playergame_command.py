@@ -12,7 +12,7 @@ from games.commands.playergame import (
     SetPlayerGameStatus,
     TrackGame,
 )
-from games.events.dispatch import CommandRejected, dispatch
+from games.events.dispatch import CommandOutcome, CommandRejected, dispatch
 from games.models import Game, LibraryEvent, PlayerGame, PlayerGameStatus
 from games.retention import Retirement, purging_library, tombstone_or_delete
 
@@ -44,7 +44,7 @@ def test_tracking_a_game_records_it_and_projects_it(owned_user, owned_library):
         idempotency_key="track-outer-wilds",
     )
 
-    assert result.replayed is False
+    assert result.outcome is CommandOutcome.APPENDED
     event = LibraryEvent.objects.get(library=owned_library)
     assert event.event_type == "library.playergame.created"
     assert event.payload["game"]["id"] == str(game.pk)
@@ -122,7 +122,7 @@ def test_a_game_nobody_has_cannot_be_tracked(owned_user, owned_library):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_tracking_the_same_game_twice_is_refused(owned_user, owned_library):
+def test_tracking_the_same_game_twice_changes_nothing(owned_user, owned_library):
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     dispatch(
         TrackGame(game_id=game.pk),
@@ -131,15 +131,15 @@ def test_tracking_the_same_game_twice_is_refused(owned_user, owned_library):
         idempotency_key="track-first",
     )
 
-    #: A different key: a second intent.
-    with pytest.raises(CommandRejected):
-        dispatch(
-            TrackGame(game_id=game.pk),
-            actor=owned_user,
-            library=owned_library,
-            idempotency_key="track-again",
-        )
+    #: A different key: a second intent, not a repeated delivery.
+    result = dispatch(
+        TrackGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="track-again",
+    )
 
+    assert result.outcome is CommandOutcome.UNCHANGED
     assert PlayerGame.objects.count() == 1
 
 
@@ -156,11 +156,8 @@ def test_repeating_the_key_replays_rather_than_tracking_twice(
         command, actor=owned_user, library=owned_library, idempotency_key="once"
     )
 
-    assert second.replayed is True
-    assert (second.first_sequence, second.last_sequence) == (
-        first.first_sequence,
-        first.last_sequence,
-    )
+    assert second.outcome is CommandOutcome.REPLAYED
+    assert second.sequences == first.sequences
     assert PlayerGame.objects.count() == 1
 
 
@@ -266,18 +263,22 @@ def test_a_status_for_a_game_another_library_tracks_is_refused(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_the_status_a_game_already_has_is_refused(owned_user, owned_library):
-    """One convention for #906 to change."""
+def test_the_status_a_game_already_has_changes_nothing(owned_user, owned_library):
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     track(owned_user, owned_library, game)
 
-    with pytest.raises(CommandRejected, match="#906"):
-        dispatch(
-            SetPlayerGameStatus(game_id=game.pk, status=PlayerGameStatus.UNPLAYED),
-            actor=owned_user,
-            library=owned_library,
-            idempotency_key="unplay-outer-wilds",
-        )
+    result = dispatch(
+        SetPlayerGameStatus(game_id=game.pk, status=PlayerGameStatus.UNPLAYED),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="unplay-outer-wilds",
+    )
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+    assert "already gives" in result.reason
+    assert not LibraryEvent.objects.filter(
+        event_type="library.playergame.status_changed"
+    ).exists()
 
 
 @pytest.mark.django_db(transaction=True)
@@ -293,7 +294,10 @@ def test_one_idempotency_key_records_one_status_change(owned_user, owned_library
         command, actor=owned_user, library=owned_library, idempotency_key="complete"
     )
 
-    assert (first.replayed, second.replayed) == (False, True)
+    assert (first.outcome, second.outcome) == (
+        CommandOutcome.APPENDED,
+        CommandOutcome.REPLAYED,
+    )
     assert (
         LibraryEvent.objects.filter(
             event_type="library.playergame.status_changed"
@@ -384,18 +388,22 @@ def test_mastery_of_a_game_another_library_tracks_is_refused(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_the_mastery_a_game_already_records_is_refused(owned_user, owned_library):
-    """One convention for #906 to change."""
+def test_the_mastery_a_game_already_records_changes_nothing(owned_user, owned_library):
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     track(owned_user, owned_library, game)
 
-    with pytest.raises(CommandRejected, match="#906"):
-        dispatch(
-            SetPlayerGameMastered(game_id=game.pk, mastered=False),
-            actor=owned_user,
-            library=owned_library,
-            idempotency_key="unmaster-outer-wilds",
-        )
+    result = dispatch(
+        SetPlayerGameMastered(game_id=game.pk, mastered=False),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="unmaster-outer-wilds",
+    )
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+    assert "not mastered" in result.reason
+    assert not LibraryEvent.objects.filter(
+        event_type="library.playergame.mastered_changed"
+    ).exists()
 
 
 @pytest.mark.django_db(transaction=True)
@@ -411,7 +419,10 @@ def test_one_idempotency_key_records_one_mastery_change(owned_user, owned_librar
         command, actor=owned_user, library=owned_library, idempotency_key="master"
     )
 
-    assert (first.replayed, second.replayed) == (False, True)
+    assert (first.outcome, second.outcome) == (
+        CommandOutcome.APPENDED,
+        CommandOutcome.REPLAYED,
+    )
     assert (
         LibraryEvent.objects.filter(
             event_type="library.playergame.mastered_changed"
@@ -513,20 +524,26 @@ def test_excluding_a_game_another_library_tracks_is_refused(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_the_exclusion_a_game_already_records_is_refused(owned_user, owned_library):
-    """One convention for #906 to change."""
+def test_the_exclusion_a_game_already_records_changes_nothing(
+    owned_user, owned_library
+):
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     track(owned_user, owned_library, game)
 
-    with pytest.raises(CommandRejected, match="#906"):
-        dispatch(
-            SetPlayerGameExcludedFromUnfinished(
-                game_id=game.pk, excluded_from_unfinished=False
-            ),
-            actor=owned_user,
-            library=owned_library,
-            idempotency_key="include-outer-wilds",
-        )
+    result = dispatch(
+        SetPlayerGameExcludedFromUnfinished(
+            game_id=game.pk, excluded_from_unfinished=False
+        ),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="include-outer-wilds",
+    )
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+    assert "included in" in result.reason
+    assert not LibraryEvent.objects.filter(
+        event_type="library.playergame.excluded_from_unfinished_changed"
+    ).exists()
 
 
 @pytest.mark.django_db(transaction=True)
@@ -544,7 +561,10 @@ def test_one_idempotency_key_records_one_exclusion_change(owned_user, owned_libr
         command, actor=owned_user, library=owned_library, idempotency_key="exclude"
     )
 
-    assert (first.replayed, second.replayed) == (False, True)
+    assert (first.outcome, second.outcome) == (
+        CommandOutcome.APPENDED,
+        CommandOutcome.REPLAYED,
+    )
     assert (
         LibraryEvent.objects.filter(
             event_type="library.playergame.excluded_from_unfinished_changed"
@@ -665,10 +685,9 @@ def test_archiving_a_game_another_library_tracks_is_refused(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_archiving_a_game_the_library_already_archives_is_refused(
+def test_archiving_a_game_the_library_already_archives_changes_nothing(
     owned_user, owned_library
 ):
-    """One convention for #906 to change."""
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     track(owned_user, owned_library, game)
     dispatch(
@@ -678,14 +697,14 @@ def test_archiving_a_game_the_library_already_archives_is_refused(
         idempotency_key="archive-outer-wilds",
     )
 
-    with pytest.raises(CommandRejected, match="#906"):
-        dispatch(
-            ArchivePlayerGame(game_id=game.pk),
-            actor=owned_user,
-            library=owned_library,
-            idempotency_key="archive-outer-wilds-again",
-        )
+    result = dispatch(
+        ArchivePlayerGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="archive-outer-wilds-again",
+    )
 
+    assert result.outcome is CommandOutcome.UNCHANGED
     assert (
         LibraryEvent.objects.filter(event_type="library.playergame.archived").count()
         == 1
@@ -693,21 +712,20 @@ def test_archiving_a_game_the_library_already_archives_is_refused(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_restoring_a_game_the_library_does_not_archive_is_refused(
+def test_restoring_a_game_the_library_does_not_archive_changes_nothing(
     owned_user, owned_library
 ):
-    """One convention for #906 to change."""
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     track(owned_user, owned_library, game)
 
-    with pytest.raises(CommandRejected, match="#906"):
-        dispatch(
-            RestorePlayerGame(game_id=game.pk),
-            actor=owned_user,
-            library=owned_library,
-            idempotency_key="restore-outer-wilds",
-        )
+    result = dispatch(
+        RestorePlayerGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="restore-outer-wilds",
+    )
 
+    assert result.outcome is CommandOutcome.UNCHANGED
     assert not LibraryEvent.objects.filter(
         event_type="library.playergame.restored"
     ).exists()
@@ -727,7 +745,10 @@ def test_one_idempotency_key_records_one_archive(owned_user, owned_library):
         command, actor=owned_user, library=owned_library, idempotency_key="archive"
     )
 
-    assert (first.replayed, second.replayed) == (False, True)
+    assert (first.outcome, second.outcome) == (
+        CommandOutcome.APPENDED,
+        CommandOutcome.REPLAYED,
+    )
     assert (
         LibraryEvent.objects.filter(event_type="library.playergame.archived").count()
         == 1
@@ -758,20 +779,20 @@ def test_tracking_an_archived_game_names_the_restore(owned_user, owned_library):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_tracking_a_live_game_twice_still_says_the_library_tracks_it(
-    owned_user, owned_library
-):
+def test_tracking_a_live_game_twice_still_names_the_game(owned_user, owned_library):
     """The rare case may not blunt the common one."""
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     track(owned_user, owned_library, game)
 
-    with pytest.raises(CommandRejected, match="already tracks Outer Wilds"):
-        dispatch(
-            TrackGame(game_id=game.pk),
-            actor=owned_user,
-            library=owned_library,
-            idempotency_key="track-again",
-        )
+    result = dispatch(
+        TrackGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="track-again",
+    )
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+    assert "already tracks Outer Wilds" in result.reason
 
 
 @pytest.mark.django_db(transaction=True)

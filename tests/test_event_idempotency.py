@@ -16,16 +16,17 @@ from django.db import (
 from django.db.migrations.loader import MigrationLoader
 from pydantic import ConfigDict, with_config
 
-from games.events.append import AppendResult, lock_stream
+from games.events.append import AppendResult, LockedStream, lock_stream
 from games.events.conflicts import CommandConflict
 from games.events.idempotency import (
     FINGERPRINT_VERSION,
     IdempotencyKeyMismatch,
     ReplayedAppend,
+    UnchangedAppend,
     fingerprint_command_input,
     idempotent_append,
 )
-from games.events.vocabulary import EventSpec, EventTypeRegistry, NewEvent
+from games.events.vocabulary import EventSpec, EventTypeRegistry, NewEvent, Unchanged
 from games.events.wiring import EventWiring
 from games.models import (
     LibraryEvent,
@@ -81,6 +82,8 @@ def test_two_libraries_may_use_the_same_key(owned_library, second_library):
             {"first_sequence": 0, "last_sequence": 0}, id="sequence-below-one"
         ),
         pytest.param({"first_sequence": 3, "last_sequence": 2}, id="range-inverted"),
+        pytest.param({"first_sequence": None}, id="only-the-first-absent"),
+        pytest.param({"last_sequence": None}, id="only-the-last-absent"),
         pytest.param({"idempotency_key": ""}, id="empty-key"),
         pytest.param({"request_fingerprint": ""}, id="empty-fingerprint"),
         pytest.param({"fingerprint_version": 0}, id="version-below-one"),
@@ -89,6 +92,14 @@ def test_two_libraries_may_use_the_same_key(owned_library, second_library):
 def test_rejected_records(owned_library, overrides: dict[str, Any]):
     with pytest.raises(IntegrityError), transaction.atomic():
         make_record(owned_library, **overrides)
+
+
+def test_a_record_may_carry_no_range_at_all(owned_library):
+    """A command that changed nothing still claims its key."""
+    record = make_record(owned_library, first_sequence=None, last_sequence=None)
+
+    record.refresh_from_db()
+    assert (record.first_sequence, record.last_sequence) == (None, None)
 
 
 @with_config(ConfigDict(extra="forbid", strict=True))
@@ -226,6 +237,59 @@ def test_a_command_recording_nothing_claims_no_key(owned_library):
         result = run_command(owned_library)
 
     assert result.first_sequence == 1
+
+
+def test_a_command_that_changes_nothing_records_no_event(owned_library):
+    with transaction.atomic():
+        result = run_command(
+            owned_library, build=lambda _stream: Unchanged("nothing to do")
+        )
+
+    assert isinstance(result, UnchangedAppend)
+    assert result.reason == "nothing to do"
+    assert not LibraryEvent.objects.exists()
+    assert LibraryEventStreamHead.objects.get().current_sequence == 0
+
+
+def test_a_command_that_changes_nothing_still_claims_its_key(owned_library):
+    with transaction.atomic():
+        run_command(owned_library, build=lambda _stream: Unchanged("nothing to do"))
+
+    record = LibraryIdempotencyRecord.objects.get()
+    assert (record.first_sequence, record.last_sequence) == (None, None)
+    assert record.request_fingerprint == fingerprint_command_input({"probe": True})
+    assert record.fingerprint_version == FINGERPRINT_VERSION
+
+
+def test_a_claimed_no_op_key_cannot_append_after_the_state_moves(owned_library):
+    """The lost update the record exists to close."""
+    with transaction.atomic():
+        run_command(owned_library, build=lambda _stream: Unchanged("nothing to do"))
+
+    #: The state has moved under the same key, so this build would append.
+    with transaction.atomic():
+        replay = run_command(owned_library, build=lambda _stream: [make_new_event()])
+
+    assert isinstance(replay, UnchangedAppend)
+    #: The build never ran, so there is no sentence to hand back.
+    assert replay.reason is None
+    assert not LibraryEvent.objects.exists()
+    assert LibraryIdempotencyRecord.objects.count() == 1
+
+
+def test_a_no_op_never_rebuilds_on_a_repeat(owned_library):
+    builds: list[str] = []
+
+    def build(_stream: LockedStream) -> Unchanged:
+        builds.append("built")
+        return Unchanged("nothing to do")
+
+    with transaction.atomic():
+        run_command(owned_library, build=build)
+    with transaction.atomic():
+        run_command(owned_library, build=build)
+
+    assert builds == ["built"]
 
 
 def test_a_rolled_back_command_leaves_its_key_usable(owned_library):

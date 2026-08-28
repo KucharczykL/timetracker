@@ -93,6 +93,19 @@ class NewEvent:
 
 
 @dataclass(frozen=True, slots=True)
+class Unchanged:
+    """The state the caller asks for already holds, so there is nothing to
+    record. The other thing a command's build may return.
+
+    `reason` is for a log line and for a test that must name which branch
+    decided. Nothing user-facing may depend on it: a repeated delivery answers
+    from the idempotency record, before the build that writes the sentence runs.
+    """
+
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
 class RegisteredType:
     """A registered spec, its adapter, its references."""
 

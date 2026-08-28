@@ -23,7 +23,7 @@ from games.events.playergame import (
     StatusValue,
 )
 from games.events.references import capture_reference
-from games.events.vocabulary import NewEvent
+from games.events.vocabulary import NewEvent, Unchanged
 from games.models import Game, PlayerGame, PlayerGameStatus
 
 
@@ -47,7 +47,7 @@ class TrackGame(Command):
     #: A UUID, because Command fingerprints its fields.
     game_id: uuid.UUID
 
-    def build(self, context: CommandContext) -> Sequence[NewEvent]:
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         game = self._visible_game(context)
         #: Under dispatch's lock: no concurrent duplicate.
         tracked = PlayerGame.objects.filter(library=context.library, game=game).first()
@@ -57,10 +57,7 @@ class TrackGame(Command):
                     f"This library archives {game.name} rather than tracking it. "
                     "An archived game is restored, not tracked again."
                 )
-            raise CommandRejected(
-                f"This library already tracks {game.name}. Whether a repeat "
-                "should instead succeed as a no-op is EV-23 (#906)."
-            )
+            return Unchanged(f"This library already tracks {game.name}.")
         return [
             PLAYERGAME_CREATED.new(
                 aggregate_id=uuid.uuid7(),
@@ -94,14 +91,13 @@ class SetPlayerGameStatus(Command):
     #: A TextChoices member is a str.
     status: PlayerGameStatus
 
-    def build(self, context: CommandContext) -> Sequence[NewEvent]:
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         tracked = _tracked_game(context, self.game_id)
         #: Under dispatch's lock: no concurrent duplicate.
         if tracked.status == self.status:
-            raise CommandRejected(
+            return Unchanged(
                 f"This library already gives game {self.game_id} the status "
-                f"{self.status.value!r}. Whether a repeat should instead "
-                "succeed as a no-op is EV-23 (#906)."
+                f"{self.status.value!r}."
             )
         return [
             PLAYERGAME_STATUS_CHANGED.new(
@@ -121,15 +117,13 @@ class SetPlayerGameMastered(Command):
     game_id: uuid.UUID
     mastered: bool
 
-    def build(self, context: CommandContext) -> Sequence[NewEvent]:
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         tracked = _tracked_game(context, self.game_id)
         #: Under dispatch's lock: no concurrent duplicate.
         if tracked.mastered == self.mastered:
             recorded = "mastered" if self.mastered else "not mastered"
-            raise CommandRejected(
-                f"This library already records game {self.game_id} as "
-                f"{recorded}. Whether a repeat should instead succeed as a "
-                "no-op is EV-23 (#906)."
+            return Unchanged(
+                f"This library already records game {self.game_id} as {recorded}."
             )
         return [
             PLAYERGAME_MASTERED_CHANGED.new(
@@ -150,17 +144,16 @@ class SetPlayerGameExcludedFromUnfinished(Command):
     game_id: uuid.UUID
     excluded_from_unfinished: bool
 
-    def build(self, context: CommandContext) -> Sequence[NewEvent]:
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         tracked = _tracked_game(context, self.game_id)
         #: Under dispatch's lock: no concurrent duplicate.
         if tracked.excluded_from_unfinished == self.excluded_from_unfinished:
             recorded = (
                 "excluded from" if self.excluded_from_unfinished else "included in"
             )
-            raise CommandRejected(
-                f"This library already records game {self.game_id} as "
-                f"{recorded} unfinished lists. Whether a repeat should instead "
-                "succeed as a no-op is EV-23 (#906)."
+            return Unchanged(
+                f"This library already records game {self.game_id} as {recorded} "
+                "unfinished lists."
             )
         return [
             PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED.new(
@@ -178,14 +171,11 @@ class ArchivePlayerGame(Command):
     #: A UUID, because Command fingerprints its fields.
     game_id: uuid.UUID
 
-    def build(self, context: CommandContext) -> Sequence[NewEvent]:
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         tracked = _tracked_game(context, self.game_id)
         #: Under dispatch's lock: no concurrent duplicate.
         if tracked.archived_at is not None:
-            raise CommandRejected(
-                f"This library already archives game {self.game_id}. Whether a "
-                "repeat should instead succeed as a no-op is EV-23 (#906)."
-            )
+            return Unchanged(f"This library already archives game {self.game_id}.")
         return [PLAYERGAME_ARCHIVED.new(aggregate_id=tracked.pk, payload={})]
 
 
@@ -203,12 +193,9 @@ class RestorePlayerGame(Command):
     #: A UUID, because Command fingerprints its fields.
     game_id: uuid.UUID
 
-    def build(self, context: CommandContext) -> Sequence[NewEvent]:
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         tracked = _tracked_game(context, self.game_id)
         #: Under dispatch's lock: no concurrent duplicate.
         if tracked.archived_at is None:
-            raise CommandRejected(
-                f"This library does not archive game {self.game_id}. Whether a "
-                "repeat should instead succeed as a no-op is EV-23 (#906)."
-            )
+            return Unchanged(f"This library does not archive game {self.game_id}.")
         return [PLAYERGAME_RESTORED.new(aggregate_id=tracked.pk, payload={})]

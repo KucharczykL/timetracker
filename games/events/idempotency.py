@@ -1,8 +1,9 @@
 """Command idempotency: what a key already produced, and whether the input
 behind it is still the same one.
 
-A command names itself with a key. Repeating that key returns the sequence range
-the first attempt was given rather than appending a second time; repeating it
+A command names itself with a key. Repeating that key answers from what the
+first attempt did rather than appending a second time: the sequence range it was
+given, or, for a command that changed nothing, no range at all. Repeating a key
 over different input is refused.
 """
 
@@ -24,7 +25,7 @@ from games.events.append import (
     lock_stream,
 )
 from games.events.conflicts import CommandConflict
-from games.events.vocabulary import NewEvent
+from games.events.vocabulary import NewEvent, Unchanged
 from games.events.wiring import DEFAULT_WIRING, EventWiring
 from games.models import LibraryIdempotencyRecord, UserLibrary
 from timetracker.temporal import TemporalValue
@@ -55,6 +56,16 @@ class ReplayedAppend:
     stream_id: uuid.UUID
     first_sequence: int
     last_sequence: int
+
+
+@dataclass(frozen=True, slots=True)
+class UnchangedAppend:
+    """A command that found its work already done. It carries no range, because
+    it appended nothing, and no events for the same reason."""
+
+    stream_id: uuid.UUID
+    #: None when a claimed key answered, so no build ran to explain itself.
+    reason: str | None
 
 
 def _encode_command_value(value: Any) -> str | None:
@@ -94,20 +105,41 @@ def fingerprint_command_input(command_input: dict[str, Any]) -> RequestFingerpri
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _record_range(
+    library: UserLibrary,
+    *,
+    idempotency_key: IdempotencyKey,
+    fingerprint: RequestFingerprint,
+    first_sequence: int | None,
+    last_sequence: int | None,
+) -> None:
+    """Claim the key. Both sequences, or neither: a command that changed
+    nothing claims its key just as firmly as one that appended."""
+    LibraryIdempotencyRecord.objects.create(
+        library=library,
+        idempotency_key=idempotency_key,
+        request_fingerprint=fingerprint,
+        fingerprint_version=FINGERPRINT_VERSION,
+        first_sequence=first_sequence,
+        last_sequence=last_sequence,
+    )
+
+
 def idempotent_append(
     library: UserLibrary,
     *,
     idempotency_key: IdempotencyKey,
     command_input: dict[str, Any],
-    build: Callable[[LockedStream], Sequence[NewEvent]],
+    build: Callable[[LockedStream], Sequence[NewEvent] | Unchanged],
     actor: User | None,
     correlation_id: uuid.UUID,
     source_metadata: SourceMetadata | None = None,
     recorded_at: datetime | None = None,
     wiring: EventWiring = DEFAULT_WIRING,
-) -> AppendResult | ReplayedAppend:
+) -> AppendResult | ReplayedAppend | UnchangedAppend:
     """Append the events `build` describes, unless `idempotency_key` already
-    produced some -- in which case return the range it produced.
+    answered -- in which case return what it produced: the range of the append,
+    or no range at all where the command changed nothing.
 
     `build` runs under the stream-head lock, after the key has been checked, so
     a command validates against projections that cannot move and a duplicate
@@ -135,14 +167,31 @@ def idempotent_append(
                 f"Idempotency key {idempotency_key!r} already recorded a "
                 f"different command for library {library.pk}."
             )
+        #: The constraint takes both columns or neither; testing both is what
+        #: narrows the pair for the type checker.
+        if record.first_sequence is None or record.last_sequence is None:
+            return UnchangedAppend(stream_id=stream.stream_id, reason=None)
         return ReplayedAppend(
             stream_id=stream.stream_id,
             first_sequence=record.first_sequence,
             last_sequence=record.last_sequence,
         )
 
+    built = build(stream)
+    if isinstance(built, Unchanged):
+        #: Claimed, so a repeat of this request cannot append once another
+        #: writer has moved the state out from under it.
+        _record_range(
+            library,
+            idempotency_key=idempotency_key,
+            fingerprint=fingerprint,
+            first_sequence=None,
+            last_sequence=None,
+        )
+        return UnchangedAppend(stream_id=stream.stream_id, reason=built.reason)
+
     result = stream.append(
-        build(stream),
+        built,
         actor=actor,
         correlation_id=correlation_id,
         idempotency_key=idempotency_key,
@@ -150,11 +199,10 @@ def idempotent_append(
         recorded_at=recorded_at,
         wiring=wiring,
     )
-    LibraryIdempotencyRecord.objects.create(
-        library=library,
+    _record_range(
+        library,
         idempotency_key=idempotency_key,
-        request_fingerprint=fingerprint,
-        fingerprint_version=FINGERPRINT_VERSION,
+        fingerprint=fingerprint,
         first_sequence=result.first_sequence,
         last_sequence=result.last_sequence,
     )

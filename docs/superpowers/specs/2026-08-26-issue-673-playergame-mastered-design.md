@@ -48,9 +48,9 @@ created row. An absent row raises `ProjectionRowMissing`.
 gives one event. `CommandName.PLAYERGAME_SET_MASTERED` is
 `library.playergame.set_mastered`.
 
-A game the library does not track rejects, as does an unchanged value.
-[#906](https://github.com/KucharczykL/timetracker/issues/906) decides whether a
-no-op must instead succeed.
+A game the library does not track rejects. An unchanged value rejected too;
+[#906](https://github.com/KucharczykL/timetracker/issues/906) settled that,
+and it now returns `Unchanged`, a success that records no event.
 
 `SetPlayerGameStatus._tracked()` becomes a module-level
 `_tracked_game(context, game_id)` that both commands call. Its rejection says
@@ -63,8 +63,10 @@ The default covers a row that no event touched, and not the catalog's
 library mastered, or a rebuild loses the flag.
 
 A form that saves several facts is one command emitting several events under one
-lock, which the charter permits. #677 thus needs #906: a save with nothing
-changed emits nothing, and an empty append raises.
+lock, which the charter permits. #677 thus needed #906: a save with nothing
+changed emits nothing, and an empty append raises. #906 gave that save its
+answer — a `build` with nothing to record returns `Unchanged` rather than the
+empty list `append` refuses.
 
 ## Verification and reversibility
 
