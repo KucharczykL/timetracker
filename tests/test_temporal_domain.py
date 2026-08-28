@@ -28,6 +28,7 @@ PRIVATE_FUNCTIONS = {
     "_timetracker_temporal_atom_precision": ("text", "i"),
 }
 ALL_FUNCTIONS = PUBLIC_FUNCTIONS | PRIVATE_FUNCTIONS
+SEARCH_PATH = "pg_catalog, public"
 
 
 def temporal_domain_base_type() -> str | None:
@@ -80,6 +81,20 @@ def temporal_function_metadata(functions):
         }
 
 
+def temporal_function_settings(functions):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT p.proname, p.proconfig
+            FROM pg_proc AS p
+            WHERE p.pronamespace = current_schema()::regnamespace
+              AND p.proname = ANY(%s)
+            """,
+            [list(functions)],
+        )
+        return dict(cursor)
+
+
 def python_projection(canonical):
     value = TemporalValue.parse(canonical)
     start = value.start
@@ -112,6 +127,46 @@ def test_temporal_domain_uses_fixed_varchar_and_named_constraint():
 
 def test_temporal_functions_have_stable_return_types_and_are_immutable():
     assert temporal_function_metadata(PUBLIC_FUNCTIONS) == PUBLIC_FUNCTIONS
+
+
+def test_temporal_functions_carry_the_search_path_their_bodies_need():
+    """Every body calls its helpers by bare name, and a restore supplies none."""
+    assert temporal_function_settings(ALL_FUNCTIONS) == {
+        name: [f"search_path={SEARCH_PATH}"] for name in ALL_FUNCTIONS
+    }
+
+
+def test_temporal_domain_accepts_a_value_under_the_search_path_a_dump_sets():
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute("SET LOCAL search_path = ''")
+        cursor.execute("SELECT %s::public.temporal_value", ["2024-02"])
+        assert cursor.fetchone() == ("2024-02",)
+
+
+def test_temporal_domain_rejects_a_value_under_the_search_path_a_dump_sets():
+    with (
+        pytest.raises(DatabaseError),
+        transaction.atomic(),
+        connection.cursor() as cursor,
+    ):
+        cursor.execute("SET LOCAL search_path = ''")
+        cursor.execute("SELECT %s::public.temporal_value", ["2024-13"])
+
+
+def test_a_helper_out_of_reach_is_reported_rather_than_read_as_invalid_data():
+    """The handler that hid this defect once now lets it through."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "ALTER FUNCTION public.timetracker_temporal_is_valid(text) "
+            "RESET search_path"
+        )
+    with (
+        pytest.raises(DatabaseError),
+        transaction.atomic(),
+        connection.cursor() as cursor,
+    ):
+        cursor.execute("SET LOCAL search_path = ''")
+        cursor.execute("SELECT public.timetracker_temporal_is_valid('2024-02')")
 
 
 @pytest.mark.parametrize(
