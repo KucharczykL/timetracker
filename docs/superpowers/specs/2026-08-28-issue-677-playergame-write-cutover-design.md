@@ -52,7 +52,10 @@ the actor already names the library, and a test needs no HTTP.
 
 A single stated fact dispatches `SetPlayerGameStatus` or
 `SetPlayerGameMastered`. Two stated facts dispatch the composite below, so the
-form's two facts stay one act.
+form's two facts stay one act. No stated fact is a caller bug and raises
+`ValueError` before any dispatch: a command that asks for nothing would still
+claim an idempotency key and write a record for a request that expressed no
+intent.
 
 The game form always states both facts, whether or not the player touched
 either. Filtering by `form.changed_data` would give `SetPlayerGameMastered` its
@@ -130,6 +133,29 @@ refuses a nested transaction (`games/events/retry.py:113`) and a view therefore
 cannot hold both in one. The heal makes the second commit's failure a delay
 rather than a dead row.
 
+## Nothing may open the transaction first
+
+`run_in_transaction` opens the transaction it retries, thus it refuses to run
+inside one and offers no escape. Every dispatch this issue adds therefore
+requires that nothing above it has already opened a transaction, and this is the
+first issue where that requirement reaches a view.
+
+Three places satisfy it today and none of them states that it must. No switched
+view carries `@transaction.atomic`; `refund_purchase` in particular does not,
+which is why its loop can dispatch at all. `PlayEventForm.save` carries one and
+loses it here. And `ATOMIC_REQUESTS` is unset, thus it is `False`.
+
+The third is the one to guard. It is a plausible hardening for somebody to reach
+for, it is a global, and turning it on breaks every write path at request time
+with a `NestedTransactionNotSupported` rather than at check time.
+`games/checks.py` gains a check that refuses `ATOMIC_REQUESTS` on any database
+alias, and names this constraint in the message.
+
+`_create_separate_purchases` and `split_purchase` keep their `@transaction.atomic`
+and are unaffected, because neither dispatches. They are also the shape of the
+next mistake, thus each takes a comment saying a dispatch cannot be added inside
+it.
+
 ## The keys name the request
 
 Each dispatch takes `str(uuid.uuid7())`, as #670's benchmark already does.
@@ -173,9 +199,16 @@ it was, never the other way round.
 | `partial_update_game` | `record_facts(status=payload.status)`, then 204 |
 | `add_game` | assign, `form.save()`, `track_game()`, `record_facts(status, mastered)` |
 | `edit_game` | `form.save()`, then `record_facts(status, mastered)` |
-| session views | `record_facts(status=PLAYED)` when `mark_as_played` and the game reads unplayed |
-| play-event views | `record_facts(status=FINISHED)` when `mark_as_finished` |
+| `add_session`, `edit_session` | `record_facts(status=PLAYED)` when `mark_as_played` and the game reads unplayed |
+| `add_playevent`, `edit_playevent` | `record_facts(status=FINISHED)` when `mark_as_finished` |
 | `refund_purchase` | `record_facts(status=ABANDONED)` per game, then the refund |
+
+Two forms lose a flip and four views take it: `form.save()` is called at
+`games/views/session.py:201` and `:260`, and once in each of `add_playevent` and
+`edit_playevent`. The edit views are not an oversight to trim. Both re-apply the
+flip today, because the checkbox is a field of the form and an edit binds it, so
+covering only the two add views is a silent regression rather than a smaller
+change.
 
 `SessionForm.save` and `PlayEventForm.save` lose their status flips, and
 `PlayEventForm.save` loses the `transaction.atomic()` that wrapped them: a
@@ -216,14 +249,30 @@ one says try again and one says this will never work. A mismatch is unreachable
 under per-request keys and is handled anyway, so that a future keyed caller
 meets a 409 rather than a 500.
 
-The API registers one Ninja exception handler. The four view sites catch
-`PlayerGameWriteFailed` themselves, add `messages.error`, and redirect through
-`return_url(request, fallback=…)`, each with its own fallback.
+The API registers one Ninja exception handler. `refund_purchase` answers in a
+third shape, below. The remaining six views catch `PlayerGameWriteFailed`
+themselves, add `messages.error`, and redirect through `return_url(request,
+fallback=…)`, each with its own fallback.
 
-They redirect rather than re-render, including the two form views. A failure
-reaches them only after the catalog row was saved, thus re-rendering the form
-would invite a resubmit that creates a second game. The row stands, the facts
-were not recorded, and the toast says so.
+They redirect rather than re-render, including the two game-form views. A
+failure reaches them only after the catalog row was saved, thus re-rendering the
+form would invite a resubmit that creates a second game. The row stands, the
+facts were not recorded, and the toast says so.
+
+`refund_purchase` redirects nowhere, because it never did. It answers a POST
+from the confirmation modal with the purchase's table row plus an
+out-of-band template that closes the modal, and a redirect would swap a whole
+page into one row. On a failure it answers **409 with no body**: htmx swaps
+nothing for a status outside 2xx, thus the row keeps the values it shows, the
+modal stays open, and the toast rides the `HX-Trigger` header the middleware
+sets. The middleware sets it on any response that carries no `HX-Redirect`, thus
+the status code does not suppress the message.
+
+The dropdown needs nothing added for its own 409. `ts/elements/behaviors/select.ts`
+snapshots the pre-click label and reverts it whenever the response is not `ok`,
+and `fetchWithHtmxTriggers` dispatches the toast whatever the status. The
+optimistic update already undoes itself; this issue supplies the status code and
+the sentence.
 
 An `UNCHANGED` outcome is a quiet success. The player asked for a state and the
 state holds, thus the screen says what it says for a change. `CommandResult.reason`
@@ -270,6 +319,43 @@ that is recorded rather than fixed.
 `SetPlayerGameMastered` waits for a second mastery writer: the game form is the
 only one, and it states two facts, thus the composite answers it.
 
+## The tests that already drive these writes
+
+The nesting refusal reaches the existing suite, and this is the largest piece of
+work in the issue. pytest-django's default wraps a test in a transaction and
+rolls it back, thus every test that drives a switched write path through a
+successful POST stops at the first dispatch with `NestedTransactionNotSupported`.
+The failure is loud rather than subtle, and the fix is per file rather than
+global.
+
+| File | What it drives |
+|---|---|
+| `tests/test_rendered_pages.py:267` | a successful `add_game` POST |
+| `tests/test_catalog_write_views.py:222`, `:239`, `:258` | three successful `add_game` POSTs |
+| `tests/test_returns_views.py:24`, `:31`, `:39`, `:50` | `add_game` and `edit_game` POSTs |
+| `tests/test_purchase_runtime_identity.py:100`, `:123` | a `refund_purchase` POST |
+| `tests/test_library_form_isolation.py:281`, `:296` | `add_game` and `add_session` POSTs |
+
+Most take `@pytest.mark.django_db(transaction=True)`, as every test in
+`tests/test_playergame_command.py` already does.
+
+`tests/test_rendered_pages.py` is the exception and needs naming, because it is
+not a marker edit. The POST is a method of `RenderedPagesTest`, a
+`django.test.TestCase`, thus the test moves out of that class rather than the
+class becoming a `TransactionTestCase`: the class holds most of the file and
+truncating between each of its tests to serve one of them is the wrong trade.
+The neighbouring `test_form_errors_render_with_component_class` POSTs an invalid
+payload, thus it never saves, never dispatches, and stays where it is.
+
+Two costs follow and neither is avoidable. A transactional test truncates
+instead of rolling back, thus it is slower, and `PYTEST_WORKERS` amplifies the
+difference. And `tests/conftest.py` resets the settings caches both before and
+after each test, thus the commit signals that a transactional test does fire
+leak nowhere; the fixture already covers the direction its docstring does not
+describe.
+
+The e2e suite needs nothing. `live_server` is transactional already.
+
 ## Verification
 
 Per call site: the event lands with the payload expected, the projection holds
@@ -289,6 +375,12 @@ and only when it appears today.
 - A game of another library answers 404 through every one of the six sites.
 - Each of the five failures renders as its row of the table states, including
   the API's 422 for an unknown status string.
+- A failed refund answers 409, swaps no row, and carries the toast header.
+- `record_facts` with neither fact stated raises, and appends no idempotency
+  record.
+- The check refuses `ATOMIC_REQUESTS`, and `make check` runs it.
+- Both `edit_session` and `edit_playevent` record the fact their checkbox
+  states, not only the two add views.
 - Creating a game as Played records no `GameStatusChange`, as today.
 - e2e over the status dropdown, the add and edit forms, mark-as-played,
   mark-as-finished, and a refund of a two-game purchase.
