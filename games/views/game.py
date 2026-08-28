@@ -108,7 +108,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
     durations = duration_presentation_for_request(request)
     origin = request.get_full_path()
-    games = Game.objects.for_library(library).select_related("platform")
+    games = Game.objects.tracked_by(library).select_related("platform")
 
     # Playtime column sums only the sessions matching the active session
     # sub-filter; an empty Q matches every session, so with no session filter the
@@ -169,7 +169,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
                     game,
                     SETTABLE_PLAYER_STATUSES,
                     get_token(request),
-                    current=player_status_for(game.status),
+                    current=game.tracked_status,
                 ),
                 Link(
                     href=external_reference_url(
@@ -652,10 +652,10 @@ def _game_header(
                     game,
                     SETTABLE_PLAYER_STATUSES,
                     get_token(request),
-                    current=player_status_for(game.status),
+                    current=game.tracked_status,
                 )
             ],
-            "👑" if game.mastered else "",
+            "👑" if game.tracked_mastered else "",
         ),
         _played_row(game, request, origin),
         _meta_row(
@@ -821,7 +821,7 @@ def _history_section(
 @login_required
 def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
     library = cast(User, request.user).library
-    game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
+    game = owned_or_404(Game.objects.tracked_by(library), library, id=game_id)
     if slug != game.url_slug:
         return _canonical_game_redirect(request, game)
     presentation = date_time_presentation_for_request(request)
@@ -845,7 +845,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
         request,
         content,
         title=f"Game Overview - {game.name}",
-        mastered=game.mastered,
+        mastered=game.tracked_mastered,
     )
 
 

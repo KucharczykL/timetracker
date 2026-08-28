@@ -1,6 +1,6 @@
 import logging
 from datetime import timedelta
-from typing import ClassVar, Final
+from typing import TYPE_CHECKING, ClassVar, Final
 from uuid import UUID
 
 import requests
@@ -144,6 +144,13 @@ def _validate_related_library(
 
 
 class Game(ReferencedRow):
+    if TYPE_CHECKING:
+        #: Annotations, not columns: GameQuerySet.tracked_by() puts the
+        #: library's two projection facts here, and only a queryset from
+        #: it carries them.
+        tracked_status: str
+        tracked_mastered: bool
+
     class Meta:
         #: Both partial on `tombstoned_at`.
         #: A tombstoned name is free again.
