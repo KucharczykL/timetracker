@@ -7,7 +7,7 @@ projection row is written by its projector and by nothing else.
 """
 
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, cast
@@ -34,39 +34,15 @@ from games.models import (
     PlayerGameStatus,
     UserLibrary,
 )
+from games.playergame_status import (
+    LEGACY_STATUS_TO_PLAYER_STATUS,
+    player_status_for,
+)
 from timetracker.temporal import TemporalValue
 
 #: Named in every key and every source_metadata value.
 PGAME_ISSUE = 676
 KEY_PREFIX = "backfill:676:playergame"
-
-#: One letter of Game.Status.
-type LegacyStatus = str  # "f"
-
-#: A recorded payload cannot be upcast, so the letters become words here and
-#: never reach an event. SHELVED is absent: no legacy column states it.
-LEGACY_STATUS_TO_PLAYER_STATUS: Mapping[LegacyStatus, PlayerGameStatus] = {
-    Game.Status.UNPLAYED: PlayerGameStatus.UNPLAYED,
-    Game.Status.PLAYED: PlayerGameStatus.PLAYED,
-    Game.Status.FINISHED: PlayerGameStatus.COMPLETED,
-    Game.Status.RETIRED: PlayerGameStatus.RETIRED,
-    Game.Status.ABANDONED: PlayerGameStatus.ABANDONED,
-}
-
-
-class UnmappedLegacyStatus(ValueError):
-    """Raised for a legacy letter the map does not know."""
-
-
-def player_status_for(legacy_status: LegacyStatus) -> PlayerGameStatus:
-    """The word a recorded payload carries for one legacy letter."""
-    try:
-        return LEGACY_STATUS_TO_PLAYER_STATUS[legacy_status]
-    except KeyError:
-        raise UnmappedLegacyStatus(
-            f"{legacy_status!r} is not a legacy status this backfill maps. "
-            "Every member of Game.Status names a PlayerGameStatus."
-        ) from None
 
 
 def transition_effective_time(timestamp: datetime | None) -> TemporalValue:

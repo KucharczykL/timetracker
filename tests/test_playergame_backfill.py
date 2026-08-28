@@ -7,12 +7,9 @@ import pytest
 from django.utils import timezone
 
 from games.backfill.playergame import (
-    LEGACY_STATUS_TO_PLAYER_STATUS,
     Mismatch,
-    UnmappedLegacyStatus,
     backfill_game,
     backfill_library,
-    player_status_for,
     reconcile,
     transition_effective_time,
     unmapped_statuses,
@@ -24,6 +21,11 @@ from games.models import (
     LibraryEvent,
     PlayerGame,
     PlayerGameStatus,
+)
+from games.playergame_status import (
+    LEGACY_STATUS_TO_PLAYER_STATUS,
+    UnmappedLegacyStatus,
+    player_status_for,
 )
 from games.retention import Retirement, tombstone_or_delete
 
