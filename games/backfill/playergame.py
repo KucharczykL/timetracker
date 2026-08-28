@@ -279,3 +279,31 @@ def backfill_game(
             )
 
     return counts
+
+
+def backfill_library(
+    library: UserLibrary, *, run_time: datetime | None = None
+) -> BackfillCounts:
+    """Record baseline facts for every live game this library holds.
+
+    A shared game -- library is null -- is never reached: the query scopes to
+    the library, and #677 gives a player the way to track one. A tombstoned
+    game is skipped and counted: retention gutted the row and kept it only for
+    the events that name it, so there is nothing left to track.
+    """
+    resolved_run_time = run_time or timezone.now()
+    actor = library.user
+    counts = NO_COUNTS
+    #: Deterministic, so two runs order the stream identically.
+    games = Game.objects.filter(library=library).order_by("created_at", "pk")
+    for game in games.iterator(chunk_size=200):
+        if game.tombstoned_at is not None:
+            counts = counts + BackfillCounts(games=1, skipped_tombstoned=1)
+            continue
+        counts = counts + backfill_game(
+            game,
+            library=library,
+            actor=actor,
+            run_time=resolved_run_time,
+        )
+    return counts

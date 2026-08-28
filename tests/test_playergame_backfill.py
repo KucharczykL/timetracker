@@ -10,9 +10,11 @@ from games.backfill.playergame import (
     LEGACY_STATUS_TO_PLAYER_STATUS,
     UnmappedLegacyStatus,
     backfill_game,
+    backfill_library,
     player_status_for,
     transition_effective_time,
 )
+from games.events.rebuild import RebuildMode, rebuild_projections
 from games.models import (
     Game,
     GameStatusChange,
@@ -372,3 +374,123 @@ def test_each_baseline_event_gets_its_own_correlation_id(owned_user, owned_libra
     )
     assert len(correlation_ids) == len(set(correlation_ids)) == 2
     assert all(isinstance(value, uuid.UUID) for value in correlation_ids)
+
+
+@pytest.fixture
+def other_user(django_user_model, db):
+    return django_user_model.objects.create_user(username="other-owner", password="p")
+
+
+@pytest.fixture
+def other_library(other_user):
+    return other_user.library
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_library_tracks_every_live_game_it_holds(owned_user, owned_library):
+    for name in ("Outer Wilds", "Tunic", "Hades"):
+        Game.objects.create(library=owned_library, name=name)
+
+    counts = backfill_library(owned_library)
+
+    assert (counts.games, counts.tracked, counts.created_events) == (3, 3, 3)
+    assert PlayerGame.objects.filter(library=owned_library).count() == 3
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_tombstoned_game_is_skipped(owned_user, owned_library):
+    Game.objects.create(library=owned_library, name="Outer Wilds")
+    husk = Game.objects.create(library=owned_library, name="Deleted")
+    Game.objects.filter(pk=husk.pk).update(tombstoned_at=timezone.now())
+
+    counts = backfill_library(owned_library)
+
+    assert (counts.games, counts.tracked, counts.skipped_tombstoned) == (2, 1, 1)
+    assert not PlayerGame.objects.filter(game_id=husk.pk).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_shared_game_is_not_tracked_by_the_backfill(owned_user, owned_library):
+    #: No library: the shared catalog. #677 gives a player the way to track it.
+    Game.objects.create(name="Shared Title")
+
+    counts = backfill_library(owned_library)
+
+    assert (counts.games, counts.tracked) == (0, 0)
+    assert PlayerGame.objects.count() == 0
+
+
+@pytest.mark.django_db(transaction=True)
+def test_one_librarys_backfill_leaves_another_alone(
+    owned_user, owned_library, other_user, other_library
+):
+    Game.objects.create(library=owned_library, name="Mine")
+    Game.objects.create(library=other_library, name="Theirs")
+
+    backfill_library(owned_library)
+
+    assert PlayerGame.objects.filter(library=other_library).count() == 0
+    assert LibraryEvent.objects.filter(library=other_library).count() == 0
+    assert PlayerGame.objects.get().library_id == owned_library.pk
+
+
+@pytest.mark.django_db(transaction=True)
+def test_running_a_library_twice_appends_nothing_the_second_time(
+    owned_user, owned_library
+):
+    for name in ("Outer Wilds", "Tunic"):
+        Game.objects.create(
+            library=owned_library, name=name, status=Game.Status.FINISHED
+        )
+
+    first = backfill_library(owned_library)
+    before = LibraryEvent.objects.count()
+    second = backfill_library(owned_library)
+
+    assert first.created_events == 2
+    assert LibraryEvent.objects.count() == before
+    assert (second.tracked, second.created_events) == (2, 0)
+    assert (second.status_events, second.corrective_events) == (0, 0)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_games_are_processed_oldest_first(owned_user, owned_library):
+    now = timezone.now()
+    newer = Game.objects.create(library=owned_library, name="Newer")
+    older = Game.objects.create(library=owned_library, name="Older")
+    Game.objects.filter(pk=newer.pk).update(created_at=now - timedelta(days=10))
+    Game.objects.filter(pk=older.pk).update(created_at=now - timedelta(days=100))
+
+    backfill_library(owned_library)
+
+    ordered = list(
+        LibraryEvent.objects.filter(event_type="library.playergame.created")
+        .order_by("sequence")
+        .values_list("payload", flat=True)
+    )
+    assert [payload["game"]["id"] for payload in ordered] == [
+        str(older.pk),
+        str(newer.pk),
+    ]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_projection_replays_from_the_backfilled_log_without_drift(
+    owned_user, owned_library
+):
+    added = timezone.now() - timedelta(days=300)
+    for name, status in (("Outer Wilds", "f"), ("Tunic", "p"), ("Hades", "u")):
+        game = Game.objects.create(library=owned_library, name=name, status=status)
+        Game.objects.filter(pk=game.pk).update(created_at=added)
+        GameStatusChange.objects.create(
+            game=game, old_status="u", new_status=status, timestamp=None
+        )
+
+    backfill_library(owned_library)
+    checked = rebuild_projections(owned_library, mode=RebuildMode.CHECK)
+
+    drift = [
+        (table.only_live, table.only_rebuilt, table.differing)
+        for table in checked.tables
+    ]
+    assert drift == [(0, 0, 0)]
