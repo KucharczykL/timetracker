@@ -96,7 +96,7 @@ class BackfillCounts:
     unknown_effective_times: int = 0
     skipped_tombstoned: int = 0
 
-    def __add__(self, other: "BackfillCounts") -> "BackfillCounts":
+    def __add__(self, other: BackfillCounts) -> BackfillCounts:
         return BackfillCounts(
             games=self.games + other.games,
             tracked=self.tracked + other.tracked,

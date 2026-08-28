@@ -1,7 +1,7 @@
 """Backfilling the baseline events a library's tracked games fold from."""
 
 import uuid
-from datetime import datetime, timedelta, timezone as datetime_timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from django.utils import timezone
@@ -25,6 +25,7 @@ from games.models import (
     PlayerGame,
     PlayerGameStatus,
 )
+from games.retention import Retirement, tombstone_or_delete
 
 
 def test_every_legacy_status_letter_is_mapped():
@@ -58,7 +59,7 @@ def test_a_null_timestamp_stays_unknown():
 
 def test_a_dated_timestamp_becomes_the_local_day():
     #: 23:30 UTC is already the next day in Europe/Prague.
-    timestamp = datetime(2023, 6, 2, 23, 30, tzinfo=datetime_timezone.utc)
+    timestamp = datetime(2023, 6, 2, 23, 30, tzinfo=UTC)
     expected = timezone.localtime(timestamp).date().isoformat()
     assert transition_effective_time(timestamp).serialize() == expected
 
@@ -607,3 +608,25 @@ def test_the_sample_loader_leaves_every_loaded_game_tracked(owned_user):
     assert live > 0
     assert PlayerGame.objects.filter(library=library).count() == live
     assert reconcile(library) == []
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_backfilled_game_is_tombstoned_rather_than_deleted(owned_library):
+    #: catalog.game is a REQUIRED reference kind, so after the backfill every
+    #: live game is named by its creation event and retention must keep the row.
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    backfill_library(owned_library)
+
+    outcome = tombstone_or_delete(game)
+
+    assert outcome is Retirement.TOMBSTONED
+    game.refresh_from_db()
+    assert game.tombstoned_at is not None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_game_with_no_events_is_still_deleted_outright(owned_library):
+    game = Game.objects.create(library=owned_library, name="Never Tracked")
+
+    assert tombstone_or_delete(game) is Retirement.DELETED
+    assert not Game.objects.filter(pk=game.pk).exists()
