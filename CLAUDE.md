@@ -134,7 +134,8 @@ declared runtime dependency, not just Ninja's transitive one: the event vocabula
 (`games/events/vocabulary.py`) validates every event payload with a `TypeAdapter`.
 
 ```
-games/          — Django app: models, views, templates, forms, signals, tasks, API, filters
+games/          — Django app: models, views, templates, forms, signals, tasks, API,
+                  filters, writes/ (the command-backed write path for PlayerGame)
 common/         — Shared utilities: time formatting, component system, criteria, layout, icons
 timetracker/    — Django project: settings, URL root, ASGI/WSGI
 tests/          — Pytest tests
@@ -607,3 +608,13 @@ chromium` once. All JS is vendored, so the tests run fully offline. A bare
 - **Inline Alpine.js** remains only in the pre-existing domain components
   (`GameStatusSelector`, `SessionDeviceSelector`): `x-data="{...}"` plus
   `fetchWithHtmxTriggers()` for PATCH calls. New behavior goes in a custom element.
+- **A PlayerGame fact is stated as a command** — never assign `Game.status` or
+  `Game.mastered` directly. Call `record_facts()` / `track_game()` from
+  `games/writes/playergame.py`, or their request-shaped wrappers in
+  `games/views/playergame_writes.py`. The catalog columns are a mirror of the
+  projection until #678 moves the reads.
+- **No dispatch inside a transaction** — `run_in_transaction` opens the
+  transaction it retries and refuses to nest, so a view that dispatches carries
+  no `@transaction.atomic` and calls no helper that does. `games.E008` refuses
+  `ATOMIC_REQUESTS`. A test that POSTs through such a view needs
+  `@pytest.mark.django_db(transaction=True)`.
