@@ -29,7 +29,8 @@ flag.
 `Unchanged` is a frozen dataclass beside `NewEvent` in `vocabulary.py`. The two
 members of a `build` return live in one module, and that module is a leaf that
 `idempotency.py` and `dispatch.py` already import, thus no import cycle occurs.
-`dispatch.py` re-exports it, thus a command author has one import site.
+A command imports both halves of its return type from that one module, as
+`playergame.py` does.
 
 ```python
 @dataclass(frozen=True, slots=True)

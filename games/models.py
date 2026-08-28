@@ -1592,8 +1592,9 @@ class LibraryIdempotencyRecordQuerySet(LibraryOwnedQuerySet):
 
 
 class LibraryIdempotencyRecord(models.Model):
-    """What one command key already produced, so repeating the key returns that
-    range instead of appending a second time.
+    """What one command key already produced, so repeating the key answers from
+    that instead of appending a second time. A key claimed by a command that
+    changed nothing produced no events, and so carries no range.
 
     The events table cannot carry this: one append writes many rows sharing a
     key, so the pair could never be unique there.

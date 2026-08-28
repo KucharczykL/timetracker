@@ -306,7 +306,7 @@ the next one.
 ### The result collapses the union
 
 `dispatch` returns
-`CommandResult(stream_id, first_sequence, last_sequence, replayed, correlation_id)`.
+`CommandResult(stream_id, outcome, sequences, reason, correlation_id)`.
 
 #662 chose `AppendResult | ReplayedAppend` so that running projections against a
 replay is a type error rather than a review catch, and said the union should not
@@ -314,8 +314,11 @@ propagate past the command boundary. This is that boundary. Projectors (#665)
 run *inside* the transaction, so no caller outside needs the event objects, and
 letting them escape invites reads taken after the lock is gone.
 
-`replayed: bool` rather than a nullable events tuple: outside callers branch on
-"did this actually do something", not on which class they got.
+An `outcome` rather than a nullable events tuple: outside callers branch on what
+happened, not on which class they got. #906 made it a three-member
+`CommandOutcome` in place of the `replayed` boolean this document first
+described, and paired it with a `sequences: SequenceRange | None` that is absent
+exactly when nothing was appended.
 
 `correlation_id` is on the result because `dispatch` may have generated it. The
 charter's compound action — "a compound user action shares a correlation ID.
@@ -403,9 +406,9 @@ class CommandContext:
 @dataclass(frozen=True, slots=True)
 class CommandResult:
     stream_id: uuid.UUID
-    first_sequence: int
-    last_sequence: int
-    replayed: bool
+    outcome: CommandOutcome
+    sequences: SequenceRange | None
+    reason: str | None
     correlation_id: uuid.UUID
 
 
@@ -413,7 +416,7 @@ class Command(ABC):
     command_name: ClassVar[CommandName]
 
     @abstractmethod
-    def build(self, context: CommandContext) -> Sequence[NewEvent]: ...
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged: ...
 
 
 def dispatch(
@@ -459,10 +462,11 @@ Definition-time guards (no database):
 
 Dispatch:
 
-- happy path returns `replayed=False` and appends a contiguous range; the events
-  carry the library, actor, correlation ID, idempotency key, and source metadata
-- the same key with the same command returns `replayed=True`, the original
-  range, and appends nothing
+- happy path returns `CommandOutcome.APPENDED` and appends a contiguous range;
+  the events carry the library, actor, correlation ID, idempotency key, and
+  source metadata
+- the same key with the same command returns `CommandOutcome.REPLAYED`, the
+  original range, and appends nothing
 - the same key with a changed field value raises `IdempotencyKeyMismatch`
 - **the same key and identical field values under a different `CommandName`
   raises `IdempotencyKeyMismatch`** — `TEST_COMMAND_TWIN` exists to be the twin

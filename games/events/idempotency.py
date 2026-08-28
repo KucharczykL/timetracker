@@ -1,8 +1,9 @@
 """Command idempotency: what a key already produced, and whether the input
 behind it is still the same one.
 
-A command names itself with a key. Repeating that key returns the sequence range
-the first attempt was given rather than appending a second time; repeating it
+A command names itself with a key. Repeating that key answers from what the
+first attempt did rather than appending a second time: the sequence range it was
+given, or, for a command that changed nothing, no range at all. Repeating a key
 over different input is refused.
 """
 
@@ -137,7 +138,8 @@ def idempotent_append(
     wiring: EventWiring = DEFAULT_WIRING,
 ) -> AppendResult | ReplayedAppend | UnchangedAppend:
     """Append the events `build` describes, unless `idempotency_key` already
-    produced some -- in which case return the range it produced.
+    answered -- in which case return what it produced: the range of the append,
+    or no range at all where the command changed nothing.
 
     `build` runs under the stream-head lock, after the key has been checked, so
     a command validates against projections that cannot move and a duplicate
