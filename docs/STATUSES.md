@@ -17,7 +17,7 @@ Games have a `status` field with the following values:
 - Status changes are tracked in `GameStatusChange` model
 - Refunding a purchase always marks its games as abandoned
 - Code states a status as a command (`games/writes/playergame.py`), which
-  appends an event and mirrors the fold onto this column. Do not assign
+  appends an event and mirrors the projection onto this column. Do not assign
   `Game.status` directly.
 
 ---

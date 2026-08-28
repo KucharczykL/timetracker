@@ -35,7 +35,8 @@ one more time. The heal makes one attempt.
 ## The mirror
 
 The mirror reads the projection row back and writes the mapped values onto the
-catalog. A command can decline what a caller asks, thus only the fold is correct.
+catalog. A command can decline what a caller asks, thus only the recorded
+row is correct.
 
 The mirror is not a projector. `only_shadow_writes()` refuses each statement
 that writes outside a shadow table, thus a projector cannot write `games_game`.

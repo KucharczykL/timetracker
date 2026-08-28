@@ -1,4 +1,4 @@
-"""State a fact, then mirror the fold.
+"""State a fact, then mirror the row.
 
 The mirror cannot be a projector: only_shadow_writes() refuses every
 statement a rebuild makes against a live table. So it is a dual write at
@@ -142,7 +142,7 @@ def record_facts(
 
 
 def _mirror(game: Game, library: UserLibrary) -> None:
-    """Copy the folded row onto the catalog."""
+    """Copy the projection row onto the catalog."""
     row = PlayerGame.objects.get(library=library, game=game)
     status = legacy_status_for(PlayerGameStatus(row.status))
     #: Reread first: a stale instance skips the repair.

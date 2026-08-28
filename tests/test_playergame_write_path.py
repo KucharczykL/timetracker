@@ -1,4 +1,4 @@
-"""State the fact, then mirror the fold."""
+"""State the fact, then mirror the row."""
 
 import pytest
 from django.http import Http404
@@ -51,7 +51,7 @@ def test_the_mirror_writes_the_fold_and_not_the_request(
     owned_user, owned_library, tracked_game
 ):
     #: A column moved behind the projection's back is repaired
-    #: to the fold, not to what this call asked for.
+    #: to what the events recorded, not to what this call asked.
     record_facts(
         owned_user,
         tracked_game,
