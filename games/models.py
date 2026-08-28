@@ -86,6 +86,24 @@ class GameQuerySet(TombstonableQuerySet):
     def visible_to(self, library):
         return self.filter(Q(library__isnull=True) | Q(library=library)).alive()
 
+    def annotated_for_filtering(self, library=None):
+        """The `tracked` alias and the two facts, with no row dropped.
+
+        Separate from `tracked_by()` because a filter needs the names
+        it reads to resolve on a queryset that selects nothing: a
+        validation-only context and a test that builds its own
+        queryset both compile `tracked__status` without executing it.
+        No library states every library, which is what an unscoped
+        caller means.
+        """
+        condition = Q() if library is None else Q(player_games__library=library)
+        return self.annotate(
+            tracked=FilteredRelation("player_games", condition=condition)
+        ).annotate(
+            tracked_status=F("tracked__status"),
+            tracked_mastered=F("tracked__mastered"),
+        )
+
     def tracked_by(self, library):
         """Every live game this library tracks, with its two facts read.
 
@@ -117,16 +135,8 @@ class GameQuerySet(TombstonableQuerySet):
         """
         return (
             self.alive()
-            .annotate(
-                tracked=FilteredRelation(
-                    "player_games", condition=Q(player_games__library=library)
-                )
-            )
+            .annotated_for_filtering(library)
             .filter(tracked__isnull=False, tracked__archived_at__isnull=True)
-            .annotate(
-                tracked_status=F("tracked__status"),
-                tracked_mastered=F("tracked__mastered"),
-            )
         )
 
 

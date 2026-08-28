@@ -1329,6 +1329,21 @@ class AggregateSpec:
 QuerysetResolver = Callable[[type[models.Model]], models.QuerySet[Any]]
 
 
+def with_filter_aliases[M: models.Model](
+    queryset: models.QuerySet[M],
+) -> models.QuerySet[M]:
+    """Add whatever aliases this model's filter fields name.
+
+    A lookup a FilterField emits may be an annotation rather than a
+    column, and then it resolves on an annotated queryset alone. A
+    queryset states its own by defining `annotated_for_filtering()`;
+    one that defines nothing names only columns and is returned as
+    it came.
+    """
+    annotate = getattr(queryset, "annotated_for_filtering", None)
+    return queryset if annotate is None else annotate()
+
+
 @dataclass(frozen=True)
 class FilterQueryContext:
     """Explicit source of authorization-scoped querysets for filter compilation."""
@@ -1352,7 +1367,7 @@ class FilterQueryContext:
     @classmethod
     def for_validation(cls) -> Self:
         return cls(
-            lambda model: model._default_manager.none(),
+            lambda model: with_filter_aliases(model._default_manager.none()),
             authorization_scoped=False,
         )
 

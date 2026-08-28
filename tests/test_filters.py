@@ -55,6 +55,7 @@ from common.criteria import (
     filter_from_json,
     filter_to_json,
     search_q,
+    with_filter_aliases,
 )
 from common.filter_execution import contains_regex_modifier
 from games.filters import (
@@ -73,7 +74,7 @@ from games.filters import (
 )
 
 UNRESTRICTED_FILTER_CONTEXT = FilterQueryContext(
-    lambda model: model._default_manager.all()
+    lambda model: with_filter_aliases(model._default_manager.all())
 )
 
 
@@ -794,6 +795,28 @@ class TestGameFilterFromJson:
 
 
 class TestGameFilterToQ:
+    def test_a_nested_game_status_validates(self):
+        """A nested game status compiles against the validation context.
+
+        `filter_from_json` validates every parsed filter by calling
+        `to_q()` with `FilterQueryContext.for_validation()`, and a
+        relation criterion builds its subquery from the queryset that
+        context hands out. The status lookup is an alias, so an
+        unannotated queryset cannot resolve it and the parse raises —
+        on user input, in every list view that accepts a nested game
+        filter.
+        """
+        from common.criteria import filter_from_json
+        from games.filters import PurchaseFilter
+
+        parsed = filter_from_json(
+            PurchaseFilter,
+            '{"game_filter": {"status": {"value": ["completed"],'
+            ' "modifier": "INCLUDES"}}}',
+        )
+
+        assert parsed is not None
+
     def test_status_choice_includes(self):
         gf = GameFilter.from_json(
             {"status": {"value": ["f", "p"], "modifier": "INCLUDES"}}

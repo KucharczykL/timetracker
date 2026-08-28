@@ -134,3 +134,16 @@ def test_a_sort_returns_the_same_order(
     assert ordered_ids(old.order_by(f"{prefix}{old_expression}", "id")) == ordered_ids(
         new.order_by(f"{prefix}{new_expression}", "id")
     )
+
+
+@pytest.mark.django_db
+def test_an_unscoped_annotation_drops_no_game(owned_library, a_library_of_every_status):
+    """`annotated_for_filtering()` annotates; it does not select.
+
+    `tracked_by()` is the one that filters. The unscoped form exists
+    so a filter can compile its lookups against a queryset that
+    executes nothing, which means it must leave the row set alone.
+    """
+    annotated = Game.objects.annotated_for_filtering()
+
+    assert ids(annotated) == ids(Game.objects.all())
