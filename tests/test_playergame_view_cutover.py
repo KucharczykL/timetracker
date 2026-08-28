@@ -203,6 +203,48 @@ def test_editing_a_session_records_played_too(logged_in, owned_library, tracked_
 
 
 @pytest.mark.django_db(transaction=True)
+def test_a_session_on_an_untracked_game_tracks_it_and_records_played(
+    logged_in, owned_library
+):
+    #: No row is a defect, not a state. record_facts() heals it, and
+    #: the catalog is what says whether the game was unplayed.
+    game = Game.objects.create(library=owned_library, name="Outer Wilds", status="u")
+
+    logged_in.post(reverse("games:add_session"), _session_payload(game))
+
+    assert PlayerGame.objects.get().status == PlayerGameStatus.PLAYED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_session_on_an_untracked_finished_game_leaves_it_alone(
+    logged_in, owned_library
+):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds", status="f")
+
+    logged_in.post(reverse("games:add_session"), _session_payload(game))
+
+    assert not PlayerGame.objects.exists()
+    game.refresh_from_db()
+    assert game.status == "f"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_game_no_command_could_track_is_not_left_behind(
+    logged_in, owned_library, monkeypatch
+):
+    #: A game with no projection row is off the list and 404s on its
+    #: page, while its name goes on holding the unique constraint.
+    monkeypatch.setattr(
+        "games.views.game.track_game_for_request",
+        lambda request, game, *, correlation_id: False,
+    )
+
+    logged_in.post(reverse("games:add_game"), GAME_PAYLOAD)
+
+    assert not Game.objects.filter(name="Outer Wilds").exists()
+
+
+@pytest.mark.django_db(transaction=True)
 def test_a_session_leaves_a_finished_game_alone(
     logged_in, owned_user, owned_library, tracked_game
 ):

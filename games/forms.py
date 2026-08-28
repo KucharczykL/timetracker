@@ -39,7 +39,11 @@ from games.models import (
     Session,
     UserLibrary,
 )
-from games.playergame_status import SETTABLE_PLAYER_STATUSES, legacy_status_for
+from games.playergame_status import (
+    SETTABLE_PLAYER_STATUSES,
+    legacy_status_for,
+    player_status_for,
+)
 from timetracker.settings_registry import DISPLAY_TIME_ZONE_CHOICES
 from timetracker.settings_resolver import resolve_str_for_user
 
@@ -822,6 +826,14 @@ class GameForm(
             if tracked is not None:
                 self.initial.setdefault("status", tracked.status)
                 self.initial.setdefault("mastered", tracked.mastered)
+            else:
+                #: No row yet: the catalog mirror is the only statement of
+                #: these two facts, and an unseeded select posts the first
+                #: option over whatever it says.
+                self.initial.setdefault(
+                    "status", player_status_for(self.instance.status)
+                )
+                self.initial.setdefault("mastered", self.instance.mastered)
 
     platform = forms.ModelChoiceField(
         queryset=Platform.objects.order_by("name"),

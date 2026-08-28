@@ -51,6 +51,7 @@ from games.models import (
     UserLibrary,
 )
 from games.ownership import owned_or_404
+from games.playergame_status import player_status_for
 from games.sorting import (
     SESSION_DEFAULT_SORT,
     SESSION_SORTS,
@@ -190,7 +191,15 @@ def _record_played(request: HttpRequest, session: Session) -> None:
     tracked = PlayerGame.objects.filter(
         library=cast(User, request.user).library, game=session.game
     ).first()
-    if tracked is None or tracked.status != PlayerGameStatus.UNPLAYED:
+    #: No row is a defect, not a state. record_facts() tracks the game
+    #: and records, which is the heal the two sibling write paths get,
+    #: and until it runs the catalog mirror is what states the fact.
+    current = (
+        PlayerGameStatus(tracked.status)
+        if tracked is not None
+        else player_status_for(session.game.status)
+    )
+    if current != PlayerGameStatus.UNPLAYED:
         return
     record_facts_for_request(
         request,

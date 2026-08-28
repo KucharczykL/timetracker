@@ -39,6 +39,16 @@ def test_a_removed_game_is_absent(owned_library):
 
 
 @pytest.mark.django_db
+def test_an_archived_game_is_absent(owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    PlayerGame.objects.filter(library=owned_library, game=game).update(
+        archived_at=timezone.now()
+    )
+
+    assert not Game.objects.tracked_by(owned_library).exists()
+
+
+@pytest.mark.django_db
 def test_another_library_sees_nothing(owned_library, other_library):
     Game.objects.create(library=owned_library, name="Outer Wilds")
 

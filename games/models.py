@@ -109,6 +109,11 @@ class GameQuerySet(TombstonableQuerySet):
         `alive()` comes first, and it is what keeps a removed game
         off the list: since #676 a game delete leaves the catalog row
         tombstoned and the projection row beside it.
+
+        An archived row is not a tracked game. Nothing archives yet,
+        so the condition costs nothing today and spares a stuck state
+        later: TrackGame refuses to track an archived game again, so a
+        game the list still showed could not be got rid of.
         """
         return (
             self.alive()
@@ -117,7 +122,7 @@ class GameQuerySet(TombstonableQuerySet):
                     "player_games", condition=Q(player_games__library=library)
                 )
             )
-            .filter(tracked__isnull=False)
+            .filter(tracked__isnull=False, tracked__archived_at__isnull=True)
             .annotate(
                 tracked_status=F("tracked__status"),
                 tracked_mastered=F("tracked__mastered"),

@@ -808,10 +808,19 @@ def filter_queryset_for_library(model_name: ModelKey, library: UserLibrary) -> Q
     Every model reachable from the filter builder implements ``for_library``;
     notably, Platform uses the private-management scope here rather than
     ``visible_to`` because the destination list manages private Platforms only.
+
+    Game is the exception: its list counts the games this library tracks, so
+    counting anything else here would answer the builder's live count with a
+    number the destination list cannot show.
     """
     from django.apps import apps
 
-    return apps.get_model("games", model_name).objects.for_library(library)
+    from games.models import Game
+
+    model = apps.get_model("games", model_name)
+    if model is Game:
+        return Game.objects.tracked_by(library)
+    return model.objects.for_library(library)
 
 
 def filter_query_context_for_library(library: UserLibrary) -> FilterQueryContext:
