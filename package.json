@@ -10,6 +10,7 @@
     "@tailwindcss/forms": "^0.5.7",
     "@tailwindcss/typography": "^0.5.13",
     "@types/node": "^26.0.1",
+    "@vvago/vale": "^3.17.1",
     "concurrently": "^8.2.2",
     "jsdom": "^30.0.1",
     "npm-check-updates": "^22.2.9",
@@ -21,5 +22,10 @@
   "dependencies": {
     "@tailwindcss/cli": "^4.1.18",
     "flowbite": "^4.0.2"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@vvago/vale"
+    ]
   }
 }

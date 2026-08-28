@@ -1,0 +1,15 @@
+---
+extends: substitution
+message: "Say '%s', not '%s'."
+link: docs/vocabulary.md
+level: error
+ignorecase: true
+# Prose only. A refused word is fine as part of a name: `folder`, a URL, a
+# quoted flag. Word boundaries handle the first, the scope handles the rest.
+scope:
+  - ~code
+  - ~heading
+swap:
+  # A projector replays events; the row it leaves is the projection. "Fold"
+  # named that act and also named merging two values, so it said neither.
+  'fold(s|ed|ing)?': replay

@@ -110,9 +110,10 @@ runs the Nix path**, so verify against `make check` before pushing when possible
 | Dev login (superuser + prefill) | `make devlogin` (idempotent `admin`/`admin`; pairs with `DEV_LOGIN_PREFILL`) |
 | Format / lint Python | `make format` / `make lint` / `make lint-fix` |
 | Type check (mypy) | `make typecheck` |
+| Lint prose (docs + code comments) | `make vale` (terminology; see [Vocabulary](docs/vocabulary.md)) |
 | Codegen element types (TS props) | `make gen-element-types` |
 | Codegen icon nodes | `make gen-icons` (after editing `games/templates/icons/*.html`) |
-| Lint + format check + mypy + ts-check + vitest + tests | `make check` (CI runs exactly this) |
+| Lint + format check + mypy + vale + ts-check + vitest + tests | `make check` (CI runs exactly this) |
 | Same aggregate minus `e2e/`, for iterating | `make check-fast` (**not** the verification gate) |
 | Run every test except `e2e/` | `make test-fast` |
 | Sync uv.lock | `uv sync` (after editing pyproject.toml) |
@@ -407,7 +408,11 @@ provides `pnpm_10`, while CI and Docker explicitly install the `pnpm@10.33.0`
 declared in `package.json`'s `packageManager` field. To bump pnpm, update that field
 and every explicit install command — `scripts/bootstrap-cloud-env.sh` reads the
 field, so it needs no edit. pnpm disables dependency lifecycle scripts by default
-(opt in via `pnpm.onlyBuiltDependencies`).
+(opt in via `pnpm.onlyBuiltDependencies`). One dependency is on that list:
+`@vvago/vale` ships a platform binary its postinstall downloads. pnpm links the
+`bin` before running that script, so a plain `pnpm install` leaves no `vale` —
+`make npm` and the CI step both follow it with `pnpm rebuild @vvago/vale`. The
+Docker stages keep `--ignore-scripts` and never fetch it; nothing there lints.
 
 ### Database
 
@@ -505,6 +510,11 @@ chromium` once. All JS is vendored, so the tests run fully offline. A bare
 - **One act, one verb** — an event type, its command and its projection column
   share one verb, and the column is `<act>_at`: a nullable `DateTimeField` whose
   null is the live state. See [Naming](docs/event-retention.md#naming).
+- **Some words are refused** — a projector *replays* events; the row it leaves is
+  the *projection*. `make vale` enforces the list over docs and over code
+  comments, and [Vocabulary](docs/vocabulary.md) says why each word is refused
+  and how to add one. Code is out of scope, so an identifier or a flag name that
+  contains a refused word is fine.
 - **Name variables with complete words** — unabbreviated identifiers in Python and
   TypeScript (`template` not `tpl`, `event` not `e`, `element` not `el`,
   `removeButton` not `removeBtn`, `option`/`value` not single letters in loops).
