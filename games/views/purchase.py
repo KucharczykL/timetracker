@@ -300,6 +300,8 @@ def _pricing_controls() -> Node:
     ]
 
 
+#: No command may be dispatched inside this block: run_in_transaction
+#: refuses to nest, so a dispatch here raises at request time.
 @transaction.atomic
 def _create_separate_purchases(form: PurchaseForm, post) -> None:
     """Create one single-game Purchase per selected game from the shared form
@@ -617,6 +619,8 @@ def split_purchase_confirmation(
 
 @login_required
 @require_POST
+#: No command may be dispatched inside this block: run_in_transaction
+#: refuses to nest, so a dispatch here raises at request time.
 @transaction.atomic
 def split_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
     """Replace one multi-game (unsplittable-style) purchase with one single-game

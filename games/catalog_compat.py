@@ -15,6 +15,8 @@ def _year_value(year: int | None) -> TemporalValue | None:
     return TemporalValue.from_year(year) if year is not None else None
 
 
+#: No command may be dispatched inside this block: run_in_transaction
+#: refuses to nest, so a dispatch here raises at request time.
 @transaction.atomic
 def save_legacy_game_form(form: GameForm) -> Game:
     game = form.save(commit=False)
