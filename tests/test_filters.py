@@ -796,15 +796,13 @@ class TestGameFilterFromJson:
 
 class TestGameFilterToQ:
     def test_a_nested_game_status_validates(self):
-        """A nested game status compiles against the validation context.
+        """A nested game status compiles when validated.
 
-        `filter_from_json` validates every parsed filter by calling
-        `to_q()` with `FilterQueryContext.for_validation()`, and a
-        relation criterion builds its subquery from the queryset that
-        context hands out. The status lookup is an alias, so an
-        unannotated queryset cannot resolve it and the parse raises —
-        on user input, in every list view that accepts a nested game
-        filter.
+        `filter_from_json` calls `to_q()` with
+        `FilterQueryContext.for_validation()`, and a relation
+        criterion builds its subquery from that context's queryset.
+        The status lookup is an alias, so an unannotated queryset
+        raises on user input in every list view.
         """
         from common.criteria import filter_from_json
         from games.filters import PurchaseFilter

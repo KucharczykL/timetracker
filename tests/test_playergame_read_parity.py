@@ -6,7 +6,11 @@ queries here rather than calling a view, so it holds before, during
 and after each child re-points its surface.
 """
 
+import uuid
+
 import pytest
+from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 from games.models import Game, PlayerGame, PlayerGameStatus
 from games.playergame_status import (
@@ -41,9 +45,8 @@ def a_library_of_every_status(owned_library):
     return games
 
 
-#: The catalog column each projection alias replaced. GAME_SORTS
-#: names the projection from #678 B on, so the old side is stated
-#: here rather than read back out of the map under test.
+#: The catalog column each alias replaced. GAME_SORTS names
+#: the projection now, so the old side is stated here.
 CATALOG_SORT_EXPRESSIONS = {"tracked_status": "status"}
 
 
@@ -144,12 +147,23 @@ def test_a_sort_returns_the_same_order(
 
 @pytest.mark.django_db
 def test_an_unscoped_annotation_drops_no_game(owned_library, a_library_of_every_status):
-    """`annotated_for_filtering()` annotates; it does not select.
+    """Unscoped annotates every library; it drops nothing.
 
-    `tracked_by()` is the one that filters. The unscoped form exists
-    so a filter can compile its lookups against a queryset that
-    executes nothing, which means it must leave the row set alone.
+    A filter compiles `tracked__status` against a queryset it never
+    executes, so this takes no library and filters nothing. With no
+    library the join has no condition, so a game two libraries track
+    comes back twice. `tracked_by()` is the scoped read.
     """
+    other = (
+        get_user_model().objects.create_user(username="second", password="x").library
+    )
+    shared = Game.objects.create(library=None, name="Shared Title")
+    for library in (owned_library, other):
+        PlayerGame.objects.create(
+            pk=uuid.uuid7(), library=library, game=shared, tracked_at=timezone.now()
+        )
+
     annotated = Game.objects.annotated_for_filtering()
 
     assert ids(annotated) == ids(Game.objects.all())
+    assert annotated.count() == Game.objects.count() + 1

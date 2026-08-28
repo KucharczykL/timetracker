@@ -1334,11 +1334,9 @@ def with_filter_aliases[M: models.Model](
 ) -> models.QuerySet[M]:
     """Add whatever aliases this model's filter fields name.
 
-    A lookup a FilterField emits may be an annotation rather than a
-    column, and then it resolves on an annotated queryset alone. A
-    queryset states its own by defining `annotated_for_filtering()`;
-    one that defines nothing names only columns and is returned as
-    it came.
+    A FilterField may emit an annotation, not a column, and that
+    resolves on an annotated queryset alone. A queryset states its
+    own by defining `annotated_for_filtering()`.
     """
     annotate = getattr(queryset, "annotated_for_filtering", None)
     return queryset if annotate is None else annotate()
@@ -2699,9 +2697,8 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             # column: a hop through a nullable relation leaves the fields beyond
             # it absent, so ``platform__group`` is nullable even though
             # ``Platform.group`` is not.
-            # When ``metadata_lookup`` names a different path from the one
-            # ``to_q`` emits, that path's own hops say nothing about what the
-            # query can return, so nullability comes from the terminal column.
+            # A metadata_lookup path is not the queried path, so its
+            # hops say nothing; read the terminal column.
             if field_spec is not None and field_spec.metadata_lookup is not None:
                 nullable = bool(getattr(model_field, "null", False))
             elif resolved_lookup is not None:

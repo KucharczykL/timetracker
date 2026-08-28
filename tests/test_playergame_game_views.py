@@ -183,12 +183,11 @@ def test_an_owned_games_page_still_shows_its_own_rows(logged_in, owned_library):
 
 @pytest.mark.django_db
 def test_the_tracking_fixture_states_the_games_facts(owned_library):
-    """A test's projection row says what the game it was created for says.
+    """The projection row says what the game says.
 
-    The fixture stands in for `track_game()`, which production calls.
-    A row that took the column defaults would say `unplayed` for a
-    finished game, and every filter reading the projection would then
-    select nothing in every test that sets a status.
+    The fixture stands in for `track_game()`. A row taking the column
+    defaults would say `unplayed` for a finished game, and every
+    filter on the projection would then select nothing.
     """
     game = Game.objects.create(
         library=owned_library,
