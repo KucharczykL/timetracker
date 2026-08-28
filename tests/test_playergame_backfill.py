@@ -594,3 +594,16 @@ def test_a_mismatch_serializes_to_sorted_json_safe_keys():
         "detail": "x",
         "game_id": "abc",
     }
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_sample_loader_leaves_every_loaded_game_tracked(owned_user):
+    from django.core.management import call_command
+
+    call_command("load_sample_data", user=owned_user.username, verbosity=0)
+
+    library = owned_user.library
+    live = Game.objects.filter(library=library, tombstoned_at__isnull=True).count()
+    assert live > 0
+    assert PlayerGame.objects.filter(library=library).count() == live
+    assert reconcile(library) == []

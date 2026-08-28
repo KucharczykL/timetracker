@@ -14,6 +14,7 @@ from django.core.serializers.base import DeserializationError
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 
+from games.backfill.playergame import backfill_library
 from games.conversion import _request_conversion_for_locked_state
 from games.models import (
     Device,
@@ -143,6 +144,11 @@ class Command(BaseCommand):
                     state,
                     state.requested_currency,
                 )
+
+            #: The same baseline a migrated database gets: every loaded game
+            #: becomes a tracked game, recorded as events and folded by the
+            #: projector. lock_stream requires this atomic block.
+            backfill_library(user.library)
 
         self.stdout.write(
             self.style.SUCCESS(
