@@ -1,0 +1,18 @@
+---
+# Every other sense. Not an error, because the word is not always wrong — it is
+# imprecise. Whatever it names here, a plainer word names better: two values
+# merge, two ranges merge, a sheet of paper folds.
+#
+# A match that Terminology already reported as an error is dropped by
+# scripts/run-vale.mjs, so the settled sense reads as one finding rather than
+# two. Go's regexp has no lookahead, so the rule cannot exclude it itself.
+extends: existence
+message: "'%s' is imprecise. Say what merges, or 'replay' for events."
+link: docs/vocabulary.md
+level: warning
+ignorecase: true
+scope:
+  - ~code
+  - ~heading
+tokens:
+  - 'fold(s|ed|ing)?'

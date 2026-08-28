@@ -514,7 +514,11 @@ chromium` once. All JS is vendored, so the tests run fully offline. A bare
   the *projection*. `make vale` enforces the list over docs and over code
   comments, and [Vocabulary](docs/vocabulary.md) says why each word is refused
   and how to add one. Code is out of scope, so an identifier or a flag name that
-  contains a refused word is fine.
+  contains a refused word is fine. The check grades by meaning: the domain sense
+  — the word next to an event, a projector, or the row it writes — is an
+  **error** with one named replacement, and every other sense is a **warning**
+  that prints without failing the build, because there the right word depends on
+  what is joined.
 - **Name variables with complete words** — unabbreviated identifiers in Python and
   TypeScript (`template` not `tpl`, `event` not `e`, `element` not `el`,
   `removeButton` not `removeBtn`, `option`/`value` not single letters in loops).
