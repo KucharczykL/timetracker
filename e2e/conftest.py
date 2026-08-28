@@ -63,6 +63,7 @@ def _track_created_games(request):
     importing across them would make e2e depend on the unit suite's collection.
     """
     from games.models import Game, PlayerGame
+    from games.playergame_status import player_status_for
 
     if "untracked_games" in request.keywords:
         yield
@@ -75,7 +76,12 @@ def _track_created_games(request):
         PlayerGame.objects.get_or_create(
             library_id=instance.library_id,
             game=instance,
-            defaults={"pk": uuid.uuid7(), "tracked_at": timezone.now()},
+            defaults={
+                "pk": uuid.uuid7(),
+                "tracked_at": timezone.now(),
+                "status": player_status_for(instance.status),
+                "mastered": instance.mastered,
+            },
         )
 
     post_save.connect(track, sender=Game, dispatch_uid="test-track-created-games")

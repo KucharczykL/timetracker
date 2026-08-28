@@ -244,9 +244,11 @@ git commit -m "State a game's facts on the row a test tracks it with"
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `tests/test_filters.py`, in `TestGameFilterToQ`:
+Add one method to `TestGameFilterToQ` in `tests/test_filters.py`. The class
+header is shown so the snippet reads as the file does; only the method is new:
 
 ```python
+class TestGameFilterToQ:
     def test_a_nested_game_status_validates(self):
         """A nested game status compiles against the validation context.
 
@@ -259,6 +261,7 @@ Add to `tests/test_filters.py`, in `TestGameFilterToQ`:
         filter.
         """
         from common.criteria import filter_from_json
+        from games.filters import PurchaseFilter
 
         parsed = filter_from_json(
             PurchaseFilter,
@@ -269,8 +272,8 @@ Add to `tests/test_filters.py`, in `TestGameFilterToQ`:
         assert parsed is not None
 ```
 
-`PurchaseFilter` is imported in the module's function bodies elsewhere; add
-`from games.filters import PurchaseFilter` inside this test to match.
+The module imports `PurchaseFilter` inside function bodies elsewhere, which is
+why this one does too.
 
 This test passes today — `status` is still a plain column. It fails the moment
 Task 4 lands, which is the point: it is the guard that says why Task 2 exists.
@@ -583,9 +586,11 @@ intermediate state is green.
 - [ ] **Step 1: Write the failing tests**
 
 Change the three existing assertions in `tests/test_filters.py` to state the
-target. In `TestGameFilterToQ`:
+target. Two of them live in `TestGameFilterToQ`; the class header is shown so
+the snippet reads as the file does, but only the two methods change:
 
 ```python
+class TestGameFilterToQ:
     def test_status_choice_includes(self):
         gf = GameFilter.from_json(
             {"status": {"value": ["completed", "played"], "modifier": "INCLUDES"}}
@@ -599,9 +604,10 @@ target. In `TestGameFilterToQ`:
         assert q == Q(tracked__status__isnull=False)
 ```
 
-In `TestFieldMetadata`:
+The third is in `TestFieldMetadata`:
 
 ```python
+class TestFieldMetadata:
     def test_static_choices_game_status(self):
         from games.models import PlayerGame
 
@@ -681,11 +687,14 @@ from games.models import PlayerGameStatus, Purchase
 ```
 
 ```python
+def _abandoned_or_refunded() -> PurchaseFilter:
     purchase_filter = PurchaseFilter(
         game_filter=GameFilter(
             status=ChoiceCriterion(value=[PlayerGameStatus.ABANDONED])
         )
     )
+    purchase_filter.OR = [PurchaseFilter(is_refunded=BoolCriterion(value=True))]
+    return purchase_filter
 ```
 
 ```python
@@ -721,9 +730,17 @@ two in agreement. Child C moves the computation.
 Every one of these is a letter that must become a word, or a label that changes
 with it (`Finished` → `Completed`, `f` → `completed`, `p` → `played`).
 
-`tests/test_filters.py`, in `test_platform_filter_and_cross_entity`:
+`tests/test_filters.py`, in `test_platform_filter_and_cross_entity` — only the
+`from_json` argument changes:
 
 ```python
+class TestExpandedFiltersAgainstDB:
+    def test_platform_filter_and_cross_entity(self):
+        from games.filters import PlatformFilter
+        from games.models import Platform
+
+        data = self._setup_entities()
+        # Find platforms with games that are finished
         pf = PlatformFilter.from_json(
             {
                 "game_filter": {
@@ -731,6 +748,8 @@ with it (`Finished` → `Completed`, `f` → `completed`, `p` → `played`).
                 }
             }
         )
+        results = list(Platform.objects.filter(pf.to_q(UNRESTRICTED_FILTER_CONTEXT)))
+        assert data["plat"] in results
 ```
 
 `tests/test_filters.py`, in `test_status_prefilled`:

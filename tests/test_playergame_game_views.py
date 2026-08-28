@@ -179,3 +179,25 @@ def test_an_owned_games_page_still_shows_its_own_rows(logged_in, owned_library):
     response = logged_in.get(game.get_absolute_url())
 
     assert "No sessions yet." not in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_the_tracking_fixture_states_the_games_facts(owned_library):
+    """A test's projection row says what the game it was created for says.
+
+    The fixture stands in for `track_game()`, which production calls.
+    A row that took the column defaults would say `unplayed` for a
+    finished game, and every filter reading the projection would then
+    select nothing in every test that sets a status.
+    """
+    game = Game.objects.create(
+        library=owned_library,
+        name="Outer Wilds",
+        status=Game.Status.FINISHED,
+        mastered=True,
+    )
+
+    tracked = PlayerGame.objects.get(library=owned_library, game=game)
+
+    assert tracked.status == PlayerGameStatus.COMPLETED
+    assert tracked.mastered is True
