@@ -25,7 +25,7 @@ from games.identity_audit import (
 from games.models import Game, GameStatusChange, PlayerGame
 from timetracker.uuidv7 import uuid7_at
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.untracked_games]
 
 # Pinned rather than re-derived: a test that recomputes the expectation the same
 # way the code does cannot fail when the derivation itself is wrong.

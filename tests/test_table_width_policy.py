@@ -8,6 +8,7 @@ which render through the same component, stay out.
 
 import re
 from datetime import datetime, timedelta
+from uuid import uuid7
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -15,12 +16,14 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from games.models import (
     Device,
     Game,
     GameStatusChange,
     Platform,
+    PlayerGame,
     PlayEvent,
     Purchase,
     Session,
@@ -73,6 +76,11 @@ class DataTableGateTest(TestCase):
         )
         device = Device.objects.create(library=library, name="Desktop", type="p")
         game = Game.objects.create(library=library, name="A Game", platform=platform)
+        # setUpTestData runs at class scope, before the autouse fixture that
+        # tracks a created game, so the games list would find nothing to clip.
+        PlayerGame.objects.create(
+            pk=uuid7(), library=library, game=game, tracked_at=timezone.now()
+        )
         Session.objects.create(
             game=game,
             device=device,

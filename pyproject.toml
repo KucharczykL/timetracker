@@ -100,3 +100,6 @@ ignore_missing_imports = true
 DJANGO_SETTINGS_MODULE = "timetracker.settings"
 addopts = "-p timetracker.pytest_topology"
 python_files = ["test_*.py"]
+markers = [
+    "untracked_games: do not auto-create a PlayerGame row for a game this test creates. For the modules that exercise TrackGame, the backfill or a rebuild, where a pre-existing row is the bug.",
+]

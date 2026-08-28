@@ -5,7 +5,7 @@ from games.catalog_compat import save_legacy_game_form
 from games.catalog_writes import save_private_game
 from games.external_references import save_external_reference
 from games.forms import GameForm
-from games.models import ExternalReference, Game, Release
+from games.models import ExternalReference, Game, PlayerGameStatus, Release
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db
@@ -18,7 +18,7 @@ def game_form(*, library, instance=None, **overrides) -> GameForm:
         "platform": "",
         "year_released": "2002",
         "original_year_released": "2001",
-        "status": Game.Status.PLAYED,
+        "status": PlayerGameStatus.PLAYED,
         "mastered": "on",
         "wikidata": "Q123",
     }

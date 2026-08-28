@@ -43,6 +43,7 @@ from games.models import (
     FilterPreset,
     Game,
     Platform,
+    PlayerGameStatus,
     PlayEvent,
     Purchase,
     PurchaseConversionState,
@@ -110,9 +111,10 @@ PAGE_SIZE = 10
 
 
 class GameStatusUpdate(Schema):
-    #: The enum, so Ninja refuses unknown members.
-    #: Game.save() calls clean(), which checks no choices.
-    status: Game.Status
+    #: The enum, so Ninja refuses unknown members. SHELVED is a
+    #: member and reaches record_facts(), which answers 409 while
+    #: the mirror still needs a letter.
+    status: PlayerGameStatus
 
 
 class PlayEventIn(Schema):

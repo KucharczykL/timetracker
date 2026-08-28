@@ -10,7 +10,10 @@ from django.utils import timezone
 
 #: The migration is reached through MigrationExecutor, never imported: a
 #: module whose name starts with a digit is not an importable identifier.
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.untracked_games,
+]
 
 BEFORE_BASELINE = ("games", "0032_playergame_archived_at")
 WITH_BASELINE = ("games", "0033_playergame_baseline_backfill")

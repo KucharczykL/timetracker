@@ -2,12 +2,14 @@
 
 import json
 import re
+import uuid
 
 import pytest
 from django.urls import reverse
+from django.utils import timezone
 from playwright.sync_api import Page, expect
 
-from games.models import Device, Game
+from games.models import Device, Game, PlayerGame
 
 
 @pytest.fixture
@@ -86,8 +88,22 @@ def authenticated_page(
         library=user.library, name="Steam Deck", type=Device.HANDHELD
     )
     user.library.preferences.set_default_device(preferred)
-    Game.objects.bulk_create(
+    games = Game.objects.bulk_create(
         [Game(library=user.library, name=f"Game {index:02}") for index in range(51)]
+    )
+    #: bulk_create sends no post_save, so the conftest fixture that tracks a
+    #: created game never runs and the list this page's page size drives
+    #: would come back empty.
+    PlayerGame.objects.bulk_create(
+        [
+            PlayerGame(
+                pk=uuid.uuid7(),
+                library=user.library,
+                game=game,
+                tracked_at=timezone.now(),
+            )
+            for game in games
+        ]
     )
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")

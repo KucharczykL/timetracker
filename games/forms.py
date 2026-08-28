@@ -32,10 +32,17 @@ from games.models import (
     Game,
     GameStatusChange,
     Platform,
+    PlayerGame,
+    PlayerGameStatus,
     PlayEvent,
     Purchase,
     Session,
     UserLibrary,
+)
+from games.playergame_status import (
+    SETTABLE_PLAYER_STATUSES,
+    legacy_status_for,
+    player_status_for,
 )
 from timetracker.settings_registry import DISPLAY_TIME_ZONE_CHOICES
 from timetracker.settings_resolver import resolve_str_for_user
@@ -813,8 +820,20 @@ class GameForm(
         )
         #: They left Meta.fields, so model_to_dict misses them.
         if self.instance.pk is not None:
-            self.initial.setdefault("status", self.instance.status)
-            self.initial.setdefault("mastered", self.instance.mastered)
+            tracked = PlayerGame.objects.filter(
+                library=library, game=self.instance
+            ).first()
+            if tracked is not None:
+                self.initial.setdefault("status", tracked.status)
+                self.initial.setdefault("mastered", tracked.mastered)
+            else:
+                #: No row yet: the catalog mirror is the only statement of
+                #: these two facts, and an unseeded select posts the first
+                #: option over whatever it says.
+                self.initial.setdefault(
+                    "status", player_status_for(self.instance.status)
+                )
+                self.initial.setdefault("mastered", self.instance.mastered)
 
     platform = forms.ModelChoiceField(
         queryset=Platform.objects.order_by("name"),
@@ -825,7 +844,7 @@ class GameForm(
     )
 
     #: Plain fields, so form.save() writes neither column.
-    status = forms.ChoiceField(choices=Game.Status.choices, required=True)
+    status = forms.ChoiceField(choices=SETTABLE_PLAYER_STATUSES, required=True)
     mastered = forms.BooleanField(required=False)
 
     #: Declared fields otherwise sink below model fields.
@@ -845,8 +864,11 @@ class GameForm(
         #: The row starts where the form says. Starting at the default
         #: and letting the mirror move it would append a GameStatusChange
         #: that does not exist today: the audit signal skips a first save.
+        #: The form speaks words and the column holds letters until #678 D.
         if game._state.adding:
-            game.status = self.cleaned_data["status"]
+            game.status = legacy_status_for(
+                PlayerGameStatus(self.cleaned_data["status"])
+            )
             game.mastered = self.cleaned_data["mastered"]
         if commit:
             game.save()

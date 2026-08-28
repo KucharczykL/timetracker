@@ -57,7 +57,7 @@ from common.layout import render_page
 from common.returns import OriginUrl, action_url
 from common.utils import label_with_details, paginate
 from games.forms import PurchaseForm
-from games.models import Game, PlayEvent, Purchase
+from games.models import Game, PlayerGameStatus, PlayEvent, Purchase
 from games.ownership import owned_or_404
 from games.sorting import (
     PURCHASE_DEFAULT_SORT,
@@ -559,7 +559,7 @@ def refund_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
         if not record_facts_for_request(
             request,
             game,
-            status=Game.Status.ABANDONED,
+            status=PlayerGameStatus.ABANDONED,
             correlation_id=correlation_id,
         ):
             if abandoned:

@@ -10,6 +10,8 @@ from games.playergame_status import (
     player_status_for,
 )
 
+pytestmark = pytest.mark.untracked_games
+
 
 @pytest.mark.parametrize("legacy_status", [member.value for member in Game.Status])
 def test_every_legacy_status_maps_and_round_trips(legacy_status):

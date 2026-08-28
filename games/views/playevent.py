@@ -43,7 +43,7 @@ from common.returns import OriginUrl, action_url
 from common.utils import paginate
 from games.filters import filter_query_context_for_library, parse_playevent_filter
 from games.forms import PlayEventForm
-from games.models import Game, PlayEvent, Session
+from games.models import Game, PlayerGameStatus, PlayEvent, Session
 from games.ownership import owned_or_404
 from games.sorting import (
     PLAYEVENT_DEFAULT_SORT,
@@ -321,7 +321,7 @@ def _record_completed(request: HttpRequest, play_event: PlayEvent) -> None:
     record_facts_for_request(
         request,
         play_event.game,
-        status=Game.Status.FINISHED,
+        status=PlayerGameStatus.COMPLETED,
         correlation_id=new_correlation_id(),
     )
 

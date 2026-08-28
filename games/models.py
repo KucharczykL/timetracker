@@ -1,13 +1,23 @@
 import logging
 from datetime import timedelta
-from typing import ClassVar, Final
+from typing import TYPE_CHECKING, ClassVar, Final
 from uuid import UUID
 
 import requests
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
-from django.db.models import Case, ExpressionWrapper, F, Func, Q, Sum, Value, When
+from django.db.models import (
+    Case,
+    ExpressionWrapper,
+    F,
+    FilteredRelation,
+    Func,
+    Q,
+    Sum,
+    Value,
+    When,
+)
 from django.db.models.fields.generated import GeneratedField
 from django.db.models.functions import Coalesce, Lower, NullIf, Trim
 from django.template.defaultfilters import floatformat, pluralize, slugify
@@ -76,6 +86,49 @@ class GameQuerySet(TombstonableQuerySet):
     def visible_to(self, library):
         return self.filter(Q(library__isnull=True) | Q(library=library)).alive()
 
+    def tracked_by(self, library):
+        """Every live game this library tracks, with its two facts read.
+
+        No `library=library`: a shared catalog game this library
+        tracks belongs on the list, because a list of tracked games
+        is what the page claims to be.
+
+        A FilteredRelation, not a plain path. Django opens a join per
+        filter() call on a multi-valued relation, and a list applies
+        its scope and its criteria in separate calls; on a plain path
+        the second join carries no library condition. The alias
+        copies its condition into every join it opens, and
+        `unique_library_player_game` allows at most one row per pair,
+        so the joins cannot disagree. The pairing is the guarantee,
+        not the alias alone.
+
+        The alias by itself selects no column, so the two facts are
+        annotated as well. `tracked_status` and `tracked_mastered`
+        avoid the catalog columns' names.
+
+        `alive()` comes first, and it is what keeps a removed game
+        off the list: since #676 a game delete leaves the catalog row
+        tombstoned and the projection row beside it.
+
+        An archived row is not a tracked game. Nothing archives yet,
+        so the condition costs nothing today and spares a stuck state
+        later: TrackGame refuses to track an archived game again, so a
+        game the list still showed could not be got rid of.
+        """
+        return (
+            self.alive()
+            .annotate(
+                tracked=FilteredRelation(
+                    "player_games", condition=Q(player_games__library=library)
+                )
+            )
+            .filter(tracked__isnull=False, tracked__archived_at__isnull=True)
+            .annotate(
+                tracked_status=F("tracked__status"),
+                tracked_mastered=F("tracked__mastered"),
+            )
+        )
+
 
 def _validate_related_library(
     owner_library_id, related, field_name: str, *, allow_shared: bool = False
@@ -96,6 +149,13 @@ def _validate_related_library(
 
 
 class Game(ReferencedRow):
+    if TYPE_CHECKING:
+        #: Annotations, not columns: GameQuerySet.tracked_by() puts the
+        #: library's two projection facts here, and only a queryset from
+        #: it carries them.
+        tracked_status: str
+        tracked_mastered: bool
+
     class Meta:
         #: Both partial on `tombstoned_at`.
         #: A tombstoned name is free again.

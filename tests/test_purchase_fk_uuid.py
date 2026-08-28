@@ -252,6 +252,7 @@ def test_addon_purchases_reverse_accessor_reaches_the_purchase(base_game, dlc_pu
     assert list(base_game.addon_purchases.all()) == [dlc_purchase]
 
 
+@pytest.mark.untracked_games
 def test_deleting_the_base_game_clears_the_link_without_deleting_the_purchase(
     base_game, dlc_purchase
 ):

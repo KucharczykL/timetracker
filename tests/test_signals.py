@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import pytest
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core import serializers
@@ -16,6 +17,7 @@ ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 
 
 class SignalsTest(TestCase):
+    @pytest.mark.untracked_games
     def test_deleting_game_with_sessions_does_not_raise(self):
         library = get_user_model().objects.create_user(username="signals").library
         # Create a game and attach a session to it
@@ -61,6 +63,7 @@ class RawFixtureLoadTest(TestCase):
         path.write_text(serializers.serialize("json", objects))
         return str(path)
 
+    @pytest.mark.untracked_games
     def test_playtime_from_the_fixture_survives_the_load(self):
         game = Game.objects.create(library=self.library, name="Fixture Game")
         Session.objects.create(

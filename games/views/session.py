@@ -42,8 +42,16 @@ from common.returns import OriginUrl
 from common.utils import paginate
 from games.formatting import session_time_range
 from games.forms import SESSION_TIMEZONE_EMBEDS, SessionForm
-from games.models import Device, Game, Session, UserLibrary
+from games.models import (
+    Device,
+    Game,
+    PlayerGame,
+    PlayerGameStatus,
+    Session,
+    UserLibrary,
+)
 from games.ownership import owned_or_404
+from games.playergame_status import player_status_for
 from games.sorting import (
     SESSION_DEFAULT_SORT,
     SESSION_SORTS,
@@ -179,14 +187,24 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
 
 
 def _record_played(request: HttpRequest, session: Session) -> None:
-    """State Played for a game read unplayed."""
-    #: Reads the catalog, as every read does.
-    if session.game.status != Game.Status.UNPLAYED:
+    """State Played for a game the projection calls unplayed."""
+    tracked = PlayerGame.objects.filter(
+        library=cast(User, request.user).library, game=session.game
+    ).first()
+    #: No row is a defect, not a state. record_facts() tracks the game
+    #: and records, which is the heal the two sibling write paths get,
+    #: and until it runs the catalog mirror is what states the fact.
+    current = (
+        PlayerGameStatus(tracked.status)
+        if tracked is not None
+        else player_status_for(session.game.status)
+    )
+    if current != PlayerGameStatus.UNPLAYED:
         return
     record_facts_for_request(
         request,
         session.game,
-        status=Game.Status.PLAYED,
+        status=PlayerGameStatus.PLAYED,
         correlation_id=new_correlation_id(),
     )
 

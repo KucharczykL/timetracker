@@ -10,8 +10,7 @@ from django.contrib import messages
 from django.contrib.auth.models import User
 from django.http import HttpRequest
 
-from games.models import Game
-from games.playergame_status import LegacyStatus
+from games.models import Game, PlayerGameStatus
 from games.writes.playergame import (
     PlayerGameWriteFailed,
     record_facts,
@@ -35,7 +34,7 @@ def record_facts_for_request(
     request: HttpRequest,
     game: Game,
     *,
-    status: LegacyStatus | None = None,
+    status: PlayerGameStatus | None = None,
     mastered: bool | None = None,
     correlation_id: uuid.UUID,
 ) -> bool:

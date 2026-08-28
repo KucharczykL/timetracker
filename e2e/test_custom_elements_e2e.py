@@ -50,14 +50,14 @@ def test_game_status_selector_opens_and_patches(
             lambda r: "/status" in r.url and r.request.method == "PATCH"
         ),
     ):
-        host.locator('[data-option][data-value="f"]').click()
+        host.locator('[data-option][data-value="completed"]').click()
     expect(host.locator("[data-menu]")).to_be_hidden()
     # Client effects of the pick: toggle label swapped, selection reflected.
-    expect(host.locator("[data-label]")).to_contain_text("Finished")
-    expect(host.locator('[data-option][data-value="f"]')).to_have_attribute(
+    expect(host.locator("[data-label]")).to_contain_text("Completed")
+    expect(host.locator('[data-option][data-value="completed"]')).to_have_attribute(
         "aria-selected", "true"
     )
-    expect(host.locator('[data-option][data-value="u"]')).to_have_attribute(
+    expect(host.locator('[data-option][data-value="unplayed"]')).to_have_attribute(
         "aria-selected", "false"
     )
     # The htmx refresh swapped in the re-rendered History section: the audit
@@ -139,11 +139,11 @@ def test_status_selector_reverts_on_failed_patch(
 
     host = page.locator('drop-down[behavior="select"]').first
     host.locator("[data-toggle]").click()
-    host.locator('[data-option][data-value="f"]').click()
+    host.locator('[data-option][data-value="completed"]').click()
 
-    # The optimistic pick reverts: label back to Unplayed, "f" no longer selected.
+    # The optimistic pick reverts: label back to Unplayed, Completed unselected.
     expect(host.locator("[data-label]")).to_contain_text("Unplayed")
-    expect(host.locator('[data-option][data-value="f"]')).to_have_attribute(
+    expect(host.locator('[data-option][data-value="completed"]')).to_have_attribute(
         "aria-selected", "false"
     )
     expect(page.get_by_text("Couldn't save your change")).to_be_visible()

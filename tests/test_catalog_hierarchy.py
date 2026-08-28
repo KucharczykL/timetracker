@@ -14,6 +14,7 @@ from games.models import (
     Edition,
     Game,
     Platform,
+    PlayerGameStatus,
     PlayEvent,
     Purchase,
     Release,
@@ -196,6 +197,7 @@ def test_game_and_release_preserve_year_precision(owned_library):
     ) == (date(1998, 1, 1), date(1998, 12, 31), "atomic", "year")
 
 
+@pytest.mark.untracked_games
 def test_catalog_hierarchy_delete_behavior_is_explicit(owned_library):
     platform = Platform.objects.create(name="Delete Platform")
     game = Game.objects.create(library=owned_library, name="Delete Game")
@@ -289,7 +291,7 @@ def test_legacy_game_form_remains_authoritative_and_creates_no_graph(
             "platform": str(platform.pk),
             "year_released": "2001",
             "original_year_released": "2000",
-            "status": Game.Status.UNPLAYED,
+            "status": PlayerGameStatus.UNPLAYED,
             "wikidata": "",
         },
         library=owned_library,

@@ -305,6 +305,7 @@ def test_reverse_accessors_reach_sessions_from_game_and_device(game, device):
     assert list(device.session_set.all()) == [session]
 
 
+@pytest.mark.untracked_games
 def test_deleting_a_game_cascades_and_deleting_a_device_clears_the_session(
     game, device
 ):

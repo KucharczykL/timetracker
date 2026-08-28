@@ -35,6 +35,7 @@ def test_get_confirms_without_deleting(logged_in, game):
     assert Game.objects.filter(id=game.id).exists()
 
 
+@pytest.mark.untracked_games
 def test_post_deletes_and_returns_to_the_origin(logged_in, game):
     origin = f"{reverse('games:list_games')}?page=2"
     response = logged_in.post(action_url("games:delete_game", game.id, origin=origin))
@@ -42,6 +43,7 @@ def test_post_deletes_and_returns_to_the_origin(logged_in, game):
     assert not Game.objects.filter(id=game.id).exists()
 
 
+@pytest.mark.untracked_games
 def test_post_drops_an_origin_naming_the_deleted_game(logged_in, game):
     origin = game.get_absolute_url()
     response = logged_in.post(action_url("games:delete_game", game.id, origin=origin))

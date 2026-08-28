@@ -271,7 +271,7 @@ class RenderedPagesTest(TestCase):
         Django's .errorlist (which no longer exists in the CSS)."""
         # Non-empty but invalid (name is required) so the form binds and
         # re-renders with errors — an empty {} POST is falsy and stays unbound.
-        response = self.client.post(reverse("games:add_game"), {"status": "u"})
+        response = self.client.post(reverse("games:add_game"), {"status": "unplayed"})
         html = response.content.decode()
         self.assertIn("bg-danger", html)  # _FIELD_ERROR_CLASS
         self.assertNotIn('class="errorlist"', html)
@@ -847,7 +847,11 @@ def test_add_game_submit_and_create_session_redirects(client, owned_user):
 
     response = client.post(
         reverse("games:add_game"),
-        {"name": "New Session Game", "status": "u", "submit_and_create_session": ""},
+        {
+            "name": "New Session Game",
+            "status": "unplayed",
+            "submit_and_create_session": "",
+        },
     )
 
     game = Game.objects.get(name="New Session Game")

@@ -32,6 +32,22 @@ PLAYER_STATUS_TO_LEGACY_STATUS: Mapping[PlayerGameStatus, LegacyStatus] = {
 }
 
 
+#: (value, label) per status, for a widget that sets one. The same
+#: shape as common.components.LabeledOption, declared apart: this is
+#: a domain module, and importing the component package for a pair
+#: of strings would point the dependency the wrong way.
+type LabeledStatus = tuple[str, str]
+
+#: Every word a letter holds, in Game.Status declaration order.
+#: SHELVED is absent, because _mirror() would have no letter to
+#: write and would raise after the event had already committed.
+#: #678 D removes the mirror and this list with it.
+SETTABLE_PLAYER_STATUSES: tuple[LabeledStatus, ...] = tuple(
+    (player_status.value, player_status.label)
+    for player_status in PLAYER_STATUS_TO_LEGACY_STATUS
+)
+
+
 def player_status_for(legacy_status: LegacyStatus) -> PlayerGameStatus:
     """The word one legacy letter records as."""
     try:
