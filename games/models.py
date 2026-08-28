@@ -87,19 +87,20 @@ class GameQuerySet(TombstonableQuerySet):
         return self.filter(Q(library__isnull=True) | Q(library=library)).alive()
 
     def annotated_for_filtering(self, library=None):
-        """Annotate the alias and both facts; drop nothing.
+        """Register the alias only; drop no row.
+
+        A filter names `tracked__status`, which needs the alias and
+        nothing else. The two facts are selected by `tracked_by()`
+        after it filters, because an F() before the filter opens a
+        second join Django cannot merge.
 
         No library leaves the join unconditional, so a game two
         libraries track comes back once per library. Unscoped is for
-        compiling a lookup, not for executing one; `tracked_by()`
-        is the scoped read.
+        compiling a lookup, not for executing one.
         """
         condition = Q() if library is None else Q(player_games__library=library)
         return self.annotate(
             tracked=FilteredRelation("player_games", condition=condition)
-        ).annotate(
-            tracked_status=F("tracked__status"),
-            tracked_mastered=F("tracked__mastered"),
         )
 
     def tracked_by(self, library):
@@ -127,6 +128,10 @@ class GameQuerySet(TombstonableQuerySet):
             self.alive()
             .annotated_for_filtering(library)
             .filter(tracked__isnull=False, tracked__archived_at__isnull=True)
+            .annotate(
+                tracked_status=F("tracked__status"),
+                tracked_mastered=F("tracked__mastered"),
+            )
         )
 
 

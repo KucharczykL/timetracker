@@ -147,12 +147,13 @@ def test_a_sort_returns_the_same_order(
 
 @pytest.mark.django_db
 def test_an_unscoped_annotation_drops_no_game(owned_library, a_library_of_every_status):
-    """Unscoped annotates every library; it drops nothing.
+    """Registering the alias alone changes no result.
 
     A filter compiles `tracked__status` against a queryset it never
-    executes, so this takes no library and filters nothing. With no
-    library the join has no condition, so a game two libraries track
-    comes back twice. `tracked_by()` is the scoped read.
+    executes, so this takes no library and filters nothing. Naming
+    the alias is what opens the join, and unscoped it has no
+    condition: a game two libraries track then comes back twice.
+    `tracked_by()` is the scoped read.
     """
     other = (
         get_user_model().objects.create_user(username="second", password="x").library
@@ -166,4 +167,6 @@ def test_an_unscoped_annotation_drops_no_game(owned_library, a_library_of_every_
     annotated = Game.objects.annotated_for_filtering()
 
     assert ids(annotated) == ids(Game.objects.all())
-    assert annotated.count() == Game.objects.count() + 1
+    assert annotated.count() == Game.objects.count()
+    named = annotated.filter(tracked__isnull=False)
+    assert named.count() == Game.objects.count() + 1

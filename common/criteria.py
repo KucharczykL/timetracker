@@ -1457,7 +1457,7 @@ class OperatorFilter:
         annotation, so the same value can target an int / string / date / set
         field without naming the criterion type::
 
-            GameFilter.where(year_released__gt=2010, status=["f", "p"])
+            GameFilter.where(year_released__gt=2010, status=["completed", "played"])
 
         Suffix → modifier follows ``_SUFFIX_MODIFIER``; a missing suffix means
         EQUALS for scalars and INCLUDES for set criteria. ``between`` /
