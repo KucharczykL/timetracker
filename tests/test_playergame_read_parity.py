@@ -41,6 +41,12 @@ def a_library_of_every_status(owned_library):
     return games
 
 
+#: The catalog column each projection alias replaced. GAME_SORTS
+#: names the projection from #678 B on, so the old side is stated
+#: here rather than read back out of the map under test.
+CATALOG_SORT_EXPRESSIONS = {"tracked_status": "status"}
+
+
 def ids(queryset):
     return set(queryset.values_list("id", flat=True))
 
@@ -119,8 +125,8 @@ def test_a_sort_returns_the_same_order(
         library=owned_library, status=PlayerGameStatus.SHELVED
     ).game_id
     spec = GAME_SORTS[sort_key]
-    old_expression = spec.expression
-    new_expression = "tracked_status" if old_expression == "status" else old_expression
+    new_expression = spec.expression
+    old_expression = CATALOG_SORT_EXPRESSIONS.get(new_expression, new_expression)
     prefix = "-" if descending else ""
 
     old = Game.objects.for_library(owned_library).exclude(pk=shelved)

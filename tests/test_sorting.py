@@ -150,7 +150,7 @@ class TestApplySortGames:
         )
 
         result = apply_sort(
-            Game.objects.filter(pk__in=[second.pk, first.pk]),
+            Game.objects.tracked_by(owned_library).filter(pk__in=[second.pk, first.pk]),
             _find("status"),
             GAME_SORTS,
             GAME_DEFAULT_SORT,
