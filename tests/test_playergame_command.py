@@ -6,6 +6,8 @@ import pytest
 
 from games.commands.playergame import (
     ArchivePlayerGame,
+    PlayerGameNotTracked,
+    RecordPlayerGameFacts,
     RestorePlayerGame,
     SetPlayerGameExcludedFromUnfinished,
     SetPlayerGameMastered,
@@ -819,3 +821,142 @@ def test_a_game_whose_catalog_row_is_tombstoned_is_still_restored(
     )
 
     assert PlayerGame.objects.get().archived_at is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_recording_both_facts_appends_two_events(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    dispatch(
+        TrackGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="track",
+    )
+
+    result = dispatch(
+        RecordPlayerGameFacts(
+            game_id=game.pk, status=PlayerGameStatus.COMPLETED, mastered=True
+        ),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="facts",
+    )
+
+    assert result.outcome is CommandOutcome.APPENDED
+    assert result.sequences is not None
+    assert result.sequences.last - result.sequences.first == 1
+    row = PlayerGame.objects.get()
+    assert (row.status, row.mastered) == (PlayerGameStatus.COMPLETED, True)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_recording_one_fact_appends_one_event(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    dispatch(
+        TrackGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="track",
+    )
+
+    dispatch(
+        RecordPlayerGameFacts(
+            game_id=game.pk, status=PlayerGameStatus.PLAYED, mastered=None
+        ),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="facts",
+    )
+
+    types = list(
+        LibraryEvent.objects.filter(library=owned_library)
+        .order_by("sequence")
+        .values_list("event_type", flat=True)
+    )
+    assert types == ["library.playergame.created", "library.playergame.status_changed"]
+    assert PlayerGame.objects.get().mastered is False
+
+
+@pytest.mark.django_db(transaction=True)
+def test_recording_only_the_fact_that_differs(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    dispatch(
+        TrackGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="track",
+    )
+    dispatch(
+        RecordPlayerGameFacts(
+            game_id=game.pk, status=PlayerGameStatus.PLAYED, mastered=None
+        ),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="first",
+    )
+
+    #: Same status, new mastery: no repeated status event.
+    dispatch(
+        RecordPlayerGameFacts(
+            game_id=game.pk, status=PlayerGameStatus.PLAYED, mastered=True
+        ),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="second",
+    )
+
+    assert (
+        LibraryEvent.objects.filter(
+            library=owned_library, event_type="library.playergame.status_changed"
+        ).count()
+        == 1
+    )
+    assert PlayerGame.objects.get().mastered is True
+
+
+@pytest.mark.django_db(transaction=True)
+def test_recording_facts_that_already_hold_is_unchanged(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    dispatch(
+        TrackGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="track",
+    )
+    before = LibraryEvent.objects.filter(library=owned_library).count()
+
+    result = dispatch(
+        RecordPlayerGameFacts(
+            game_id=game.pk, status=PlayerGameStatus.UNPLAYED, mastered=False
+        ),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="facts",
+    )
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+    assert result.sequences is None
+    assert LibraryEvent.objects.filter(library=owned_library).count() == before
+
+
+def test_a_command_that_states_no_fact_cannot_be_built():
+    with pytest.raises(ValueError, match="states no fact"):
+        RecordPlayerGameFacts(game_id=uuid.uuid7(), status=None, mastered=None)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_recording_facts_for_an_untracked_game_is_its_own_rejection(
+    owned_user, owned_library
+):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+
+    #: Its own class, because the write path heals this case.
+    with pytest.raises(PlayerGameNotTracked):
+        dispatch(
+            RecordPlayerGameFacts(
+                game_id=game.pk, status=PlayerGameStatus.PLAYED, mastered=None
+            ),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key="facts",
+        )

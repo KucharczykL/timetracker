@@ -9,6 +9,7 @@ from typing import Any
 from django.apps import AppConfig
 from django.apps import apps as global_apps
 from django.apps.registry import Apps
+from django.conf import settings
 from django.core.checks import CheckMessage, Error, Tags, register
 from django.db import models
 from django.utils import timezone
@@ -175,3 +176,36 @@ def _check_callable_default(
         obj=model,
         id="games.E007",
     )
+
+
+@register()
+def check_atomic_requests(
+    *,
+    app_configs: Sequence[AppConfig] | None = None,
+    databases: Sequence[str] | None = None,
+    **kwargs: Any,
+) -> list[CheckMessage]:
+    """Refuse a transaction dispatches cannot nest in.
+
+    Untagged, because a database tag would skip it: it reads only
+    settings, and a tagged check runs only when a database is asked for.
+    """
+    wrapped = sorted(
+        alias
+        for alias, config in settings.DATABASES.items()
+        if config.get("ATOMIC_REQUESTS")
+    )
+    if not wrapped:
+        return []
+    return [
+        Error(
+            f"ATOMIC_REQUESTS is on for {', '.join(wrapped)}.",
+            hint=(
+                "run_in_transaction opens the transaction it retries, so it "
+                "refuses to run inside one: every view that dispatches a "
+                "command would raise NestedTransactionNotSupported at request "
+                "time. Wrap the work that needs a transaction, not the request."
+            ),
+            id="games.E008",
+        )
+    ]

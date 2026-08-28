@@ -58,7 +58,9 @@ from games.views.filtering import (
     builder_url_for,
     warn_unknown_sort,
 )
+from games.views.playergame_writes import record_facts_for_request
 from games.views.returns import return_url
+from games.writes.playergame import new_correlation_id
 
 logger = logging.getLogger("games")
 
@@ -291,8 +293,10 @@ def add_playevent(request: HttpRequest, game_id: UUID | None = None) -> HttpResp
         presentation=date_time_presentation_for_request(request),
     )
     if form.is_valid():
-        form.save()
-        game = form.instance.game
+        play_event = form.save()
+        if form.cleaned_data.get("mark_as_finished"):
+            _record_completed(request, play_event)
+        game = play_event.game
         return redirect(
             return_url(
                 request,
@@ -312,6 +316,16 @@ def add_playevent(request: HttpRequest, game_id: UUID | None = None) -> HttpResp
     )
 
 
+def _record_completed(request: HttpRequest, play_event: PlayEvent) -> None:
+    """State Completed for the game just finished."""
+    record_facts_for_request(
+        request,
+        play_event.game,
+        status=Game.Status.FINISHED,
+        correlation_id=new_correlation_id(),
+    )
+
+
 @login_required
 def edit_playevent(request: HttpRequest, playevent_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
@@ -325,7 +339,9 @@ def edit_playevent(request: HttpRequest, playevent_id: UUID) -> HttpResponse:
         presentation=date_time_presentation_for_request(request),
     )
     if form.is_valid():
-        form.save()
+        play_event = form.save()
+        if form.cleaned_data.get("mark_as_finished"):
+            _record_completed(request, play_event)
         return redirect(
             return_url(
                 request,

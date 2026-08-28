@@ -1,4 +1,4 @@
-"""Backfilling the baseline events a library's tracked games fold from."""
+"""Backfilling the baseline events a tracked game replays from."""
 
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -7,12 +7,9 @@ import pytest
 from django.utils import timezone
 
 from games.backfill.playergame import (
-    LEGACY_STATUS_TO_PLAYER_STATUS,
     Mismatch,
-    UnmappedLegacyStatus,
     backfill_game,
     backfill_library,
-    player_status_for,
     reconcile,
     transition_effective_time,
     unmapped_statuses,
@@ -24,6 +21,11 @@ from games.models import (
     LibraryEvent,
     PlayerGame,
     PlayerGameStatus,
+)
+from games.playergame_status import (
+    LEGACY_STATUS_TO_PLAYER_STATUS,
+    UnmappedLegacyStatus,
+    player_status_for,
 )
 from games.retention import Retirement, tombstone_or_delete
 
@@ -244,7 +246,7 @@ def test_an_undated_transition_records_an_unknown_effective_time(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_undated_transitions_are_folded_before_dated_ones(owned_user, owned_library):
+def test_undated_transitions_are_replayed_before_dated_ones(owned_user, owned_library):
     added = timezone.now() - timedelta(days=500)
     game = backdate(
         Game.objects.create(

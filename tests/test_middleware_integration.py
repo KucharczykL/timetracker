@@ -2,6 +2,7 @@ import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import pytest
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import Client, TestCase
@@ -31,22 +32,6 @@ class MiddlewareIntegrationTest(TestCase):
         )
         self.game.save()
 
-    def test_non_htmx_request_with_message_gets_hx_trigger(self):
-        """
-        Regression test: vanilla fetch() requests that set Django messages
-        must receive HX-Trigger so fetchWithHtmxTriggers can read them.
-        """
-        response = self.client.patch(
-            f"/api/games/{self.game.id}/status",
-            data=json.dumps({"status": "p"}),
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 204)
-        self.assertIn("HX-Trigger", response)
-        data = json.loads(response["HX-Trigger"])
-        self.assertIn("show-toast", data)
-        self.assertEqual(data["show-toast"]["type"], "success")
-
     def test_session_device_api_endpoint_sends_hx_trigger(self):
         """
         Verify the session device API endpoint also produces HX-Trigger.
@@ -73,36 +58,62 @@ class MiddlewareIntegrationTest(TestCase):
         self.assertIn("show-toast", data)
         self.assertEqual(data["show-toast"]["message"], "Device updated")
 
-    def test_refund_purchase_returns_updated_row_with_hx_trigger(
-        self,
-    ):
-        """
-        Verify the refund endpoint returns the updated row HTML so the page
-        swaps it in place without navigating away (preserving URL/query params).
-        """
-        purchase = Purchase.objects.create(
-            price_currency="CZK",
-            library=self.user.library,
-            date_purchased=datetime(2023, 1, 1),
-            platform=self.platform,
-        )
-        purchase.games.set([self.game])
-        response = self.client.post(
-            f"/tracker/purchase/{purchase.id}/refund",
-            data={"set_abandoned": ""},
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertNotIn("HX-Redirect", response)
-        self.assertIn("HX-Trigger", response)
-        data = json.loads(response["HX-Trigger"])
-        self.assertIn("show-toast", data)
-        self.assertEqual(data["show-toast"]["message"], "Purchase refunded")
-        # Verify the row HTML contains the updated row id
-        body = response.content.decode()
-        self.assertIn(f"purchase-row-{purchase.id}", body)
-        # Verify OoO modal close element
-        self.assertIn("hx-swap-oob", body)
-        self.assertIn("refund-confirmation-modal", body)
-        # Verify the purchase is actually refunded
-        purchase.refresh_from_db()
-        self.assertIsNotNone(purchase.date_refunded)
+
+@pytest.mark.django_db(transaction=True)
+def test_non_htmx_request_with_message_gets_hx_trigger(client, owned_user):
+    """A plain fetch() still gets HX-Trigger.
+
+    fetchWithHtmxTriggers reads the header, so the toast depends on it.
+    """
+    #: Out of the TestCase, because the PATCH dispatches.
+    #: A transactional class truncates for all to serve one.
+    client.force_login(owned_user)
+    game = Game.objects.create(library=owned_user.library, name="Test Game")
+
+    response = client.patch(
+        f"/api/games/{game.id}/status",
+        data=json.dumps({"status": "p"}),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 204
+    trigger = json.loads(response["HX-Trigger"])
+    assert trigger["show-toast"]["type"] == "success"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_refund_purchase_returns_updated_row_with_hx_trigger(client, owned_user):
+    """The refund answers a row, never a page.
+
+    A navigation would lose the URL and its query parameters.
+    """
+    #: Out of the TestCase, because the refund dispatches.
+    client.force_login(owned_user)
+    platform = Platform.objects.create(library=owned_user.library, name="Test Platform")
+    game = Game.objects.create(
+        library=owned_user.library, name="Test Game", platform=platform
+    )
+    purchase = Purchase.objects.create(
+        price_currency="CZK",
+        library=owned_user.library,
+        date_purchased=datetime(2023, 1, 1),
+        platform=platform,
+    )
+    purchase.games.set([game])
+
+    response = client.post(
+        f"/tracker/purchase/{purchase.id}/refund",
+        data={"set_abandoned": ""},
+    )
+
+    assert response.status_code == 200
+    assert "HX-Redirect" not in response
+    trigger = json.loads(response["HX-Trigger"])
+    assert trigger["show-toast"]["message"] == "Purchase refunded"
+    body = response.content.decode()
+    assert f"purchase-row-{purchase.id}" in body
+    #: The out-of-band template that closes the modal.
+    assert "hx-swap-oob" in body
+    assert "refund-confirmation-modal" in body
+    purchase.refresh_from_db()
+    assert purchase.date_refunded is not None

@@ -146,7 +146,7 @@ class Command(BaseCommand):
                 )
 
             #: The same baseline a migrated database gets: every loaded game
-            #: becomes a tracked game, recorded as events and folded by the
+            #: becomes a tracked game, recorded as events and replayed by the
             #: projector. Inside this block, so a load either lands tracked or
             #: does not land.
             backfill_library(user.library)

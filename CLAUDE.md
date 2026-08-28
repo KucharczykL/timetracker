@@ -110,9 +110,10 @@ runs the Nix path**, so verify against `make check` before pushing when possible
 | Dev login (superuser + prefill) | `make devlogin` (idempotent `admin`/`admin`; pairs with `DEV_LOGIN_PREFILL`) |
 | Format / lint Python | `make format` / `make lint` / `make lint-fix` |
 | Type check (mypy) | `make typecheck` |
+| Lint prose (docs + code comments) | `make vale` (terminology; see [Vocabulary](docs/vocabulary.md)) |
 | Codegen element types (TS props) | `make gen-element-types` |
 | Codegen icon nodes | `make gen-icons` (after editing `games/templates/icons/*.html`) |
-| Lint + format check + mypy + ts-check + vitest + tests | `make check` (CI runs exactly this) |
+| Lint + format check + mypy + vale + ts-check + vitest + tests | `make check` (CI runs exactly this) |
 | Same aggregate minus `e2e/`, for iterating | `make check-fast` (**not** the verification gate) |
 | Run every test except `e2e/` | `make test-fast` |
 | Sync uv.lock | `uv sync` (after editing pyproject.toml) |
@@ -134,7 +135,8 @@ declared runtime dependency, not just Ninja's transitive one: the event vocabula
 (`games/events/vocabulary.py`) validates every event payload with a `TypeAdapter`.
 
 ```
-games/          — Django app: models, views, templates, forms, signals, tasks, API, filters
+games/          — Django app: models, views, templates, forms, signals, tasks, API,
+                  filters, writes/ (the command-backed write path for PlayerGame)
 common/         — Shared utilities: time formatting, component system, criteria, layout, icons
 timetracker/    — Django project: settings, URL root, ASGI/WSGI
 tests/          — Pytest tests
@@ -406,7 +408,11 @@ provides `pnpm_10`, while CI and Docker explicitly install the `pnpm@10.33.0`
 declared in `package.json`'s `packageManager` field. To bump pnpm, update that field
 and every explicit install command — `scripts/bootstrap-cloud-env.sh` reads the
 field, so it needs no edit. pnpm disables dependency lifecycle scripts by default
-(opt in via `pnpm.onlyBuiltDependencies`).
+(opt in via `pnpm.onlyBuiltDependencies`). One dependency is on that list:
+`@vvago/vale` ships a platform binary its postinstall downloads. pnpm links the
+`bin` before running that script, so a plain `pnpm install` leaves no `vale` —
+`make npm` and the CI step both follow it with `pnpm rebuild @vvago/vale`. The
+Docker stages keep `--ignore-scripts` and never fetch it; nothing there lints.
 
 ### Database
 
@@ -504,6 +510,15 @@ chromium` once. All JS is vendored, so the tests run fully offline. A bare
 - **One act, one verb** — an event type, its command and its projection column
   share one verb, and the column is `<act>_at`: a nullable `DateTimeField` whose
   null is the live state. See [Naming](docs/event-retention.md#naming).
+- **Some words are refused** — a projector *replays* events; the row it leaves is
+  the *projection*. `make vale` enforces the list over docs and over code
+  comments, and [Vocabulary](docs/vocabulary.md) says why each word is refused
+  and how to add one. Code is out of scope, so an identifier or a flag name that
+  contains a refused word is fine. The check grades by meaning: the domain sense
+  — the word next to an event, a projector, or the row it writes — is an
+  **error** with one named replacement, and every other sense is a **warning**
+  that prints without failing the build, because there the right word depends on
+  what is joined.
 - **Name variables with complete words** — unabbreviated identifiers in Python and
   TypeScript (`template` not `tpl`, `event` not `e`, `element` not `el`,
   `removeButton` not `removeBtn`, `option`/`value` not single letters in loops).
@@ -607,3 +622,13 @@ chromium` once. All JS is vendored, so the tests run fully offline. A bare
 - **Inline Alpine.js** remains only in the pre-existing domain components
   (`GameStatusSelector`, `SessionDeviceSelector`): `x-data="{...}"` plus
   `fetchWithHtmxTriggers()` for PATCH calls. New behavior goes in a custom element.
+- **A PlayerGame fact is stated as a command** — never assign `Game.status` or
+  `Game.mastered` directly. Call `record_facts()` / `track_game()` from
+  `games/writes/playergame.py`, or their request-shaped wrappers in
+  `games/views/playergame_writes.py`. The catalog columns are a mirror of the
+  projection until #678 moves the reads.
+- **No dispatch inside a transaction** — `run_in_transaction` opens the
+  transaction it retries and refuses to nest, so a view that dispatches carries
+  no `@transaction.atomic` and calls no helper that does. `games.E008` refuses
+  `ATOMIC_REQUESTS`. A test that POSTs through such a view needs
+  `@pytest.mark.django_db(transaction=True)`.

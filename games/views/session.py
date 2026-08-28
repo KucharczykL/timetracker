@@ -52,7 +52,9 @@ from games.sorting import (
 )
 from games.views.deletion import confirm_and_apply, confirm_and_delete
 from games.views.filtering import warn_unknown_sort
+from games.views.playergame_writes import record_facts_for_request
 from games.views.returns import return_url
+from games.writes.playergame import new_correlation_id
 
 
 def session_row_data(
@@ -176,6 +178,19 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
     )
 
 
+def _record_played(request: HttpRequest, session: Session) -> None:
+    """State Played for a game read unplayed."""
+    #: Reads the catalog, as every read does.
+    if session.game.status != Game.Status.UNPLAYED:
+        return
+    record_facts_for_request(
+        request,
+        session.game,
+        status=Game.Status.PLAYED,
+        correlation_id=new_correlation_id(),
+    )
+
+
 @login_required
 def add_session(request: HttpRequest, game_id: UUID | None = None) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
@@ -198,7 +213,9 @@ def add_session(request: HttpRequest, game_id: UUID | None = None) -> HttpRespon
             presentation=presentation,
         )
         if form.is_valid():
-            form.save()
+            session = form.save()
+            if form.cleaned_data.get("mark_as_played"):
+                _record_played(request, session)
             return redirect(return_url(request, fallback="games:list_sessions"))
     else:
         if game_id:
@@ -257,7 +274,9 @@ def edit_session(request: HttpRequest, session_id: UUID) -> HttpResponse:
         presentation=date_time_presentation_for_request(request),
     )
     if form.is_valid():
-        form.save()
+        session = form.save()
+        if form.cleaned_data.get("mark_as_played"):
+            _record_played(request, session)
         return redirect(return_url(request, fallback="games:list_sessions"))
     return render_page(
         request,

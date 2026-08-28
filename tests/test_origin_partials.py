@@ -10,6 +10,11 @@ from games.models import Game, Purchase
 
 ORIGIN = "/tracker/purchase/list?page=2"
 
+#: Transactional: a refund dispatches, and a dispatch cannot
+#: nest in the transaction pytest-django rolls back. The db
+#: fixture defers to transactional_db when both are asked for.
+pytestmark = pytest.mark.django_db(transaction=True)
+
 
 @pytest.fixture
 def purchase(owned_library):

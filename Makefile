@@ -120,8 +120,15 @@ endif
 ensure-node-deps: ensure-node-runtime
 	@pnpm exec node scripts/check-typescript-pin.mjs
 
+# The rebuild is not redundant. @vvago/vale declares a `bin` that its own
+# postinstall creates, so pnpm tries to link a file that does not exist yet,
+# warns, and leaves no `vale` on PATH — even with the package allowlisted in
+# `pnpm.onlyBuiltDependencies`. Running the script afterwards fixes the order.
+# Named explicitly rather than a bare `pnpm rebuild`, so this stays the one
+# dependency permitted to run code at install time.
 npm: ensure-node-runtime
 	pnpm install
+	pnpm rebuild @vvago/vale
 
 css: ensure-node-deps common/input.css
 	pnpm tailwindcss -i ./common/input.css -o  ./games/static/base.css
@@ -195,6 +202,12 @@ gen-icons: ensure-postgres
 
 check-icons: ensure-postgres
 	uv run --frozen python manage.py gen_icons --check
+
+# Prose, in docs and in comments. The words this codebase refuses live in
+# .vale/styles; docs/vocabulary.md says why each one is refused. Through pnpm
+# like every other node target, so a box without Nix gets the same binary.
+vale: ensure-node-deps
+	pnpm exec node scripts/run-vale.mjs
 
 ts: ensure-node-deps gen-element-types
 	pnpm exec tsc
@@ -405,12 +418,12 @@ format-check:
 typecheck:
 	uv run --frozen mypy .
 
-check: ensure-python lint format-check typecheck ts-check check-icons check-migrations test-ts test
+check: ensure-python lint format-check typecheck vale ts-check check-icons check-migrations test-ts test
 
 # Same gate minus the browser suite, for iterating. NOT the verification gate:
 # `check` is, and only it can catch e2e breakage. Run this while working, `check`
 # before pushing.
-check-fast: ensure-python lint format-check typecheck ts-check check-icons check-migrations test-ts test-fast
+check-fast: ensure-python lint format-check typecheck vale ts-check check-icons check-migrations test-ts test-fast
 
 date:
 	uv run --frozen python scripts/print_local_time.py

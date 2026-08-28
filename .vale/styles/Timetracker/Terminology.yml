@@ -1,0 +1,25 @@
+---
+# The settled sense: running events through a projector. Vale cannot read a
+# word's meaning, so the sense is inferred from the words around it. Each
+# pattern below is one phrasing this repo actually used before #677 removed
+# them. A use this misses is still caught by DiscouragedTerms, one level down.
+extends: existence
+message: "Say 'replay': a projector replays events. Found '%s'."
+link: docs/vocabulary.md
+level: error
+ignorecase: true
+scope:
+  - ~code
+  - ~heading
+tokens:
+  # fold the events / folded the status history
+  - 'fold(s|ed|ing)?\s+(the\s+)?(events?|stream|log|history|transitions?)'
+  # folded row / folds to the current status / folded into a projection.
+  # The object noun carries the sense, not the preposition: "fold into" alone
+  # is just as likely to be the merge sense, and would earn the wrong advice.
+  - 'fold(s|ed|ing)?\s+((in)?to\s+)?(a\s+|the\s+)?(\w+\s+)?(row|projection|status|state)\b'
+  - 'fold(s|ed|ing)?\s+by\s+'
+  # the fold says / mirror the fold / before the fold
+  - '(the|a)\s+fold\b'
+  # the projector folds / an event folds
+  - '(events?|projectors?|projections?|stream)\s+fold(s|ed|ing)?\b'

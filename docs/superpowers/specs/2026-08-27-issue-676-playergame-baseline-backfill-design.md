@@ -7,7 +7,7 @@ a new `games/backfill/` package, a data migration, and one call added to
 
 Every catalog game a library holds becomes a game the library *tracks*. The
 projection is written only by its projector, so the backfill states facts as
-events and lets `PlayerGames` fold them. Nothing writes `PlayerGame` directly.
+events and lets `PlayerGames` replay them. Nothing writes `PlayerGame` directly.
 
 `games/commands/playergame.py` already names this issue: `_tracked_game()`
 rejects a game with no projection row, and says #676 backfills one for every
@@ -23,7 +23,7 @@ Per game, in this order:
 | 1 | `library.playergame.created` | Always |
 | 2 | `library.playergame.mastered_changed`, `{"mastered": true}` | Only when `Game.mastered` |
 | 3 | `library.playergame.status_changed`, one per `GameStatusChange` row | Per legacy row, in order |
-| 4 | `library.playergame.status_changed`, corrective | Only when 3 does not fold to `Game.status` |
+| 4 | `library.playergame.status_changed`, corrective | Only when 3 does not replay to `Game.status` |
 
 Event 1 carries `{"game": capture_reference(game)}` and mints the aggregate
 identity with `uuid.uuid7()`. Events 2 to 4 read that identity from the
@@ -86,21 +86,21 @@ recorded as `2023-06-02` under `Europe/Prague` stays `2023-06-02` if the setting
 later changes. The charter prescribes the owner's display timezone, and this is
 the only one that exists. The choice conforms, and it is one-way.
 
-## Ordering and the fold
+## Ordering and the replay
 
 Legacy rows are read ordered by `timestamp` with nulls first, tie-broken by
 primary key. The query states that order explicitly, because
 `GameStatusChange.Meta.ordering` is `-timestamp` and an inherited descending
-order would fold the history backwards.
+order would replay the history backwards.
 
-`old_status` is ignored. The fold sets a value rather than applying a delta, so
+`old_status` is ignored. The projector sets a value rather than applying a delta, so
 a legacy row whose `old_status` disagrees with the previous row's `new_status`
 changes nothing about the result. Reconciliation checks the result, not the
 chain.
 
 Games are processed ordered by `created_at` then primary key, so a run is
 deterministic. Within one aggregate the sequence order is the chronological
-order, which is what the fold needs. Across the stream it is not:
+order, which is what the replay needs. Across the stream it is not:
 game B's creation event can carry an earlier `recorded_at` than game A's status
 events. No constraint requires `recorded_at` to be monotonic with `sequence`,
 and none is added. The log orders by `sequence`.
@@ -227,7 +227,7 @@ owns means nothing under a library heading. A nonzero mismatch count raises `Run
 the migration back.
 
 A mismatch is one of: `unmapped_legacy_status`, a letter the map does not know;
-`status_disagreement`, a folded `PlayerGame.status` that is not the mapped
+`status_disagreement`, a recorded `PlayerGame.status` that is not the mapped
 `Game.status`; `mastered_disagreement`, the same for the flag;
 `missing_projection_row`, a game the backfill covered with no row behind it; and
 `count_drift`, a second pass that appended an event.
@@ -273,7 +273,7 @@ event.
 The divergence is real and bounded. `GameStatusChangeForm` writes
 `GameStatusChange` only; it never touches `Game.status`. So an edit rewrites
 history, not current state, and `PlayerGame.status` cannot drift — event 4 pins
-the fold to `Game.status` at run time. Only intermediate transitions can
+the replay to `Game.status` at run time. Only intermediate transitions can
 disagree, and nothing reads them from the log until the Journal wave. Making the
 form read-only is a write-path change, which this issue's boundary assigns
 elsewhere.
@@ -296,8 +296,8 @@ The gate is the full `make check`, over tests for:
 - an unplayed game with no history: one event, one row, status unplayed
 - a non-unplayed game with no history: creation plus a corrective event whose
   effective time is unknown
-- dated history that folds to the current status: no corrective event
-- dated history that does not: a corrective event, and a folded status equal to
+- dated history that reaches the current status: no corrective event
+- dated history that does not: a corrective event, and a recorded status equal to
   `Game.status`
 - a null legacy timestamp: a null `effective_time`, and `recorded_at` at
   `Game.created_at`

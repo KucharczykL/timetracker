@@ -86,6 +86,7 @@ class CommandName(CommandVocabulary):
     )
     PLAYERGAME_ARCHIVE = "library.playergame.archive"
     PLAYERGAME_RESTORE = "library.playergame.restore"
+    PLAYERGAME_RECORD_FACTS = "library.playergame.record_facts"
 
 
 @dataclass(frozen=True, slots=True)

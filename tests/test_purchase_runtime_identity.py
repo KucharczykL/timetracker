@@ -9,7 +9,9 @@ from django.urls import NoReverseMatch, Resolver404, resolve, reverse
 
 from games.models import Game, Purchase
 
-pytestmark = pytest.mark.django_db
+#: Transactional: a refund dispatches, and a dispatch cannot
+#: nest in the transaction pytest-django rolls back.
+pytestmark = pytest.mark.django_db(transaction=True)
 
 ROUTE_UUID = UUID("018f5e66-e800-7000-8000-000000000001")
 UUID4 = UUID("018f5e66-e800-4000-8000-000000000001")

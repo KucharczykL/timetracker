@@ -7,7 +7,6 @@ from zoneinfo import ZoneInfo
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.models import User
-from django.db import transaction
 from django.db.models import QuerySet
 from django.utils import timezone
 
@@ -634,13 +633,8 @@ class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
         )
 
     def save(self, commit=True):
+        #: Moved to the views: no actor here.
         session = super().save(commit=False)
-        if self.cleaned_data.get("mark_as_played"):
-            game_instance = session.game
-            if game_instance.status == "u":
-                game_instance.status = "p"
-            if commit:
-                game_instance.save()
         if commit:
             session.save()
         return session
@@ -817,6 +811,10 @@ class GameForm(
         self.fields["platform"].widget.options_resolver = partial(
             _platform_options, library=library
         )
+        #: They left Meta.fields, so model_to_dict misses them.
+        if self.instance.pk is not None:
+            self.initial.setdefault("status", self.instance.status)
+            self.initial.setdefault("mastered", self.instance.mastered)
 
     platform = forms.ModelChoiceField(
         queryset=Platform.objects.order_by("name"),
@@ -825,6 +823,35 @@ class GameForm(
             search_url="/api/platforms/search", options_resolver=_platform_options
         ),
     )
+
+    #: Plain fields, so form.save() writes neither column.
+    status = forms.ChoiceField(choices=Game.Status.choices, required=True)
+    mastered = forms.BooleanField(required=False)
+
+    #: Declared fields otherwise sink below model fields.
+    field_order = (
+        "name",
+        "sort_name",
+        "platform",
+        "year_released",
+        "original_year_released",
+        "status",
+        "mastered",
+        "wikidata",
+    )
+
+    def save(self, commit=True):
+        game = super().save(commit=False)
+        #: The row starts where the form says. Starting at the default
+        #: and letting the mirror move it would append a GameStatusChange
+        #: that does not exist today: the audit signal skips a first save.
+        if game._state.adding:
+            game.status = self.cleaned_data["status"]
+            game.mastered = self.cleaned_data["mastered"]
+        if commit:
+            game.save()
+            self.save_m2m()
+        return game
 
     def clean_wikidata(self) -> str:
         value = self.cleaned_data["wikidata"]
@@ -859,8 +886,6 @@ class GameForm(
             "platform",
             "year_released",
             "original_year_released",
-            "status",
-            "mastered",
             "wikidata",
         )
         widgets: ClassVar[dict[str, forms.Widget]] = {"name": autofocus_input_widget}
@@ -940,14 +965,11 @@ class PlayEventForm(PrimitiveWidgetsMixin, forms.ModelForm):
         fields = ("game", "started", "ended", "note", "mark_as_finished")
 
     def save(self, commit=True):
-        with transaction.atomic():
-            session = super().save(commit=False)
-            if self.cleaned_data.get("mark_as_finished"):
-                game_instance = session.game
-                game_instance.status = "f"
-                game_instance.save()
-            session.save()
-        return session
+        #: Moved to the views, with its atomic().
+        play_event = super().save(commit=False)
+        if commit:
+            play_event.save()
+        return play_event
 
 
 class GameStatusChangeForm(PrimitiveWidgetsMixin, forms.ModelForm):

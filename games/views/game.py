@@ -76,9 +76,14 @@ from games.views.filtering import (
     builder_url_for,
     warn_unknown_sort,
 )
+from games.views.playergame_writes import (
+    record_facts_for_request,
+    track_game_for_request,
+)
 from games.views.playevent import create_playevent_tabledata
 from games.views.retirement import confirm_and_retire
 from games.views.returns import origin_from, return_url
+from games.writes.playergame import new_correlation_id
 
 WIKIDATA_CONFLICT_MESSAGE = "This Wikidata entity ID already belongs to another game."
 
@@ -228,6 +233,28 @@ def add_game(request: HttpRequest) -> HttpResponse:
     if form.is_valid():
         game = _save_game_form_or_add_wikidata_error(form)
         if game is not None:
+            correlation_id = new_correlation_id()
+            recorded = track_game_for_request(
+                request, game, correlation_id=correlation_id
+            ) and record_facts_for_request(
+                request,
+                game,
+                status=form.cleaned_data["status"],
+                mastered=form.cleaned_data["mastered"],
+                correlation_id=correlation_id,
+            )
+            if not recorded:
+                #: The row stands at the defaults; the facts do not.
+                #: The form already wrote the asked-for status, which
+                #: would leave the catalog disagreeing with a projection
+                #: that says unplayed. update() skips the audit signal,
+                #: so no GameStatusChange invents a transition.
+                #: Re-rendering would invite a resubmit that creates
+                #: a second game.
+                Game.objects.filter(pk=game.pk).update(
+                    status=Game.Status.UNPLAYED, mastered=False
+                )
+                return redirect(return_url(request, fallback="games:list_games"))
             origin = origin_from(request)
             if "submit_and_redirect" in request.POST:
                 return redirect(
@@ -301,8 +328,21 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
     form = GameForm(request.POST or None, instance=game, library=library)
-    if form.is_valid() and _save_game_form_or_add_wikidata_error(form) is not None:
+    if (
+        form.is_valid()
+        and _save_game_form_or_add_wikidata_error(form) is not None
+        and record_facts_for_request(
+            request,
+            game,
+            status=form.cleaned_data["status"],
+            mastered=form.cleaned_data["mastered"],
+            correlation_id=new_correlation_id(),
+        )
+    ):
         return redirect(return_url(request, fallback="games:list_games"))
+    #: A failed command lands here too: redirecting would read as
+    #: a save. An edit resubmits onto the same row, so re-rendering
+    #: invites no duplicate.
     return render_page(
         request,
         AddForm(form, request=request),

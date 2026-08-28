@@ -8,6 +8,11 @@ from games.models import Game
 
 GAME_FORM = {"name": "Renamed", "status": "u"}
 
+#: Transactional: these views dispatch, and a dispatch cannot
+#: nest in the transaction pytest-django rolls back. The db
+#: fixture defers to transactional_db when both are asked for.
+pytestmark = pytest.mark.django_db(transaction=True)
+
 
 @pytest.fixture
 def logged_in(client, owned_user):

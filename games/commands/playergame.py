@@ -27,12 +27,20 @@ from games.events.vocabulary import NewEvent, Unchanged
 from games.models import Game, PlayerGame, PlayerGameStatus
 
 
+class PlayerGameNotTracked(CommandRejected):
+    """The library tracks no such game.
+
+    Its own class, because the write path heals exactly this case.
+    Matching on a message is the alternative, and is not one.
+    """
+
+
 def _tracked_game(context: CommandContext, game_id: uuid.UUID) -> PlayerGame:
     """The projection row, never the catalog."""
     try:
         return PlayerGame.objects.get(library=context.library, game_id=game_id)
     except PlayerGame.DoesNotExist:
-        raise CommandRejected(
+        raise PlayerGameNotTracked(
             f"This library tracks no game {game_id}. A recorded fact belongs "
             "to a tracked game, and #676 backfills one for every game a "
             "library has."
@@ -199,3 +207,54 @@ class RestorePlayerGame(Command):
         if tracked.archived_at is None:
             return Unchanged(f"This library does not archive game {self.game_id}.")
         return [PLAYERGAME_RESTORED.new(aggregate_id=tracked.pk, payload={})]
+
+
+@dataclass(frozen=True, slots=True)
+class RecordPlayerGameFacts(Command):
+    """State a status, a mastery, or both.
+
+    The game form states both facts at every save, so the two travel as
+    one command. build() decides which already holds, under the lock,
+    where a form's stale initial cannot reach it.
+    """
+
+    command_name: ClassVar[CommandName] = CommandName.PLAYERGAME_RECORD_FACTS
+    #: A UUID, because Command fingerprints its fields.
+    game_id: uuid.UUID
+    #: None states no fact, and it fingerprints.
+    status: PlayerGameStatus | None
+    mastered: bool | None
+
+    def __post_init__(self) -> None:
+        if self.status is None and self.mastered is None:
+            raise ValueError(
+                "RecordPlayerGameFacts states no fact. A command that asks for "
+                "nothing would still claim an idempotency key and write a "
+                "record for a request that expressed no intent."
+            )
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        tracked = _tracked_game(context, self.game_id)
+        #: Under dispatch's lock: no concurrent duplicate.
+        events: list[NewEvent] = []
+        if self.status is not None and tracked.status != self.status:
+            events.append(
+                PLAYERGAME_STATUS_CHANGED.new(
+                    aggregate_id=tracked.pk,
+                    #: A test pins Literal and choices equal.
+                    payload={"status": cast("StatusValue", self.status.value)},
+                )
+            )
+        if self.mastered is not None and tracked.mastered != self.mastered:
+            events.append(
+                PLAYERGAME_MASTERED_CHANGED.new(
+                    aggregate_id=tracked.pk,
+                    payload={"mastered": self.mastered},
+                )
+            )
+        if not events:
+            return Unchanged(
+                f"This library already records the stated facts for game "
+                f"{self.game_id}."
+            )
+        return events

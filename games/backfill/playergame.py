@@ -2,12 +2,12 @@
 
 Issue #676. The catalog states which games a library has; the event log
 states nothing until this runs. Every live game becomes a tracked game,
-expressed as events and folded by the PlayerGames projector, because a
+expressed as events and replayed by the PlayerGames projector, because a
 projection row is written by its projector and by nothing else.
 """
 
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, cast
@@ -34,39 +34,15 @@ from games.models import (
     PlayerGameStatus,
     UserLibrary,
 )
+from games.playergame_status import (
+    LEGACY_STATUS_TO_PLAYER_STATUS,
+    player_status_for,
+)
 from timetracker.temporal import TemporalValue
 
 #: Named in every key and every source_metadata value.
 PGAME_ISSUE = 676
 KEY_PREFIX = "backfill:676:playergame"
-
-#: One letter of Game.Status.
-type LegacyStatus = str  # "f"
-
-#: A recorded payload cannot be upcast, so the letters become words here and
-#: never reach an event. SHELVED is absent: no legacy column states it.
-LEGACY_STATUS_TO_PLAYER_STATUS: Mapping[LegacyStatus, PlayerGameStatus] = {
-    Game.Status.UNPLAYED: PlayerGameStatus.UNPLAYED,
-    Game.Status.PLAYED: PlayerGameStatus.PLAYED,
-    Game.Status.FINISHED: PlayerGameStatus.COMPLETED,
-    Game.Status.RETIRED: PlayerGameStatus.RETIRED,
-    Game.Status.ABANDONED: PlayerGameStatus.ABANDONED,
-}
-
-
-class UnmappedLegacyStatus(ValueError):
-    """Raised for a legacy letter the map does not know."""
-
-
-def player_status_for(legacy_status: LegacyStatus) -> PlayerGameStatus:
-    """The word a recorded payload carries for one legacy letter."""
-    try:
-        return LEGACY_STATUS_TO_PLAYER_STATUS[legacy_status]
-    except KeyError:
-        raise UnmappedLegacyStatus(
-            f"{legacy_status!r} is not a legacy status this backfill maps. "
-            "Every member of Game.Status names a PlayerGameStatus."
-        ) from None
 
 
 def transition_effective_time(timestamp: datetime | None) -> TemporalValue:
@@ -162,7 +138,7 @@ def _legacy_changes(game: Game) -> list[GameStatusChange]:
     """One game's status history, oldest first, undated first.
 
     The order is stated rather than inherited: GameStatusChange.Meta.ordering
-    is -timestamp, and a descending fold would end on the oldest fact.
+    is -timestamp, and a descending replay would end on the oldest fact.
     """
     return list(
         GameStatusChange.objects.filter(game=game).order_by(
@@ -222,7 +198,7 @@ def backfill_game(
         ):
             counts = replace(counts, mastered_events=1)
 
-        folded = PlayerGameStatus.UNPLAYED
+        recorded = PlayerGameStatus.UNPLAYED
         for change in _legacy_changes(game):
             status = player_status_for(change.new_status)
             effective_time = transition_effective_time(change.timestamp)
@@ -246,12 +222,12 @@ def backfill_game(
                         counts,
                         unknown_effective_times=counts.unknown_effective_times + 1,
                     )
-            #: old_status is ignored: the fold sets a value rather than
-            #: applying a delta, so a broken chain cannot change the result.
-            folded = status
+            #: old_status is ignored: the projector sets a value rather
+            #: than applying a delta, so a broken chain changes nothing.
+            recorded = status
 
         current = player_status_for(game.status)
-        if folded != current and _append(
+        if recorded != current and _append(
             library,
             PLAYERGAME_STATUS_CHANGED.new(
                 aggregate_id=tracked_id,
@@ -356,7 +332,7 @@ def unmapped_statuses(library: UserLibrary) -> list[Mismatch]:
 
 
 def reconcile(library: UserLibrary) -> list[Mismatch]:
-    """Compare every live game against the row its events folded to."""
+    """Compare every live game against the row its events made."""
     rows = {
         row.game_id: row
         for row in PlayerGame.objects.filter(library=library).only(
@@ -374,7 +350,7 @@ def reconcile(library: UserLibrary) -> list[Mismatch]:
                 Mismatch(
                     code="missing_projection_row",
                     game_id=str(game.pk),
-                    detail="the backfill covered this game and no row folded",
+                    detail="the backfill covered this game and no row appeared",
                 )
             )
             continue
@@ -385,7 +361,7 @@ def reconcile(library: UserLibrary) -> list[Mismatch]:
                     code="status_disagreement",
                     game_id=str(game.pk),
                     detail=f"catalog says {expected_status.value!r}, "
-                    f"the fold says {row.status!r}",
+                    f"the events say {row.status!r}",
                 )
             )
         if row.mastered != game.mastered:
@@ -394,7 +370,7 @@ def reconcile(library: UserLibrary) -> list[Mismatch]:
                     code="mastered_disagreement",
                     game_id=str(game.pk),
                     detail=f"catalog says {game.mastered}, "
-                    f"the fold says {row.mastered}",
+                    f"the events say {row.mastered}",
                 )
             )
     return mismatches

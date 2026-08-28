@@ -62,7 +62,7 @@ def _summary(counts, libraries, shared_games, mismatch_count):
 
 
 def backfill_playergame_baseline(apps, schema_editor):
-    """Record the baseline events every library's games fold from.
+    """Record the baseline events every library's games replay from.
 
     The live models and the live event machinery, deliberately: historical
     models cannot run a projector or validate a payload, so an apps.get_model

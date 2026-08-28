@@ -57,6 +57,11 @@ from games.sorting import (
     parse_find_filter,
     parse_per_page_override,
 )
+from games.writes.playergame import (
+    PlayerGameWriteFailed,
+    new_correlation_id,
+    record_facts,
+)
 from timetracker.config import SettingSource
 from timetracker.settings_commands import (
     SettingLockedError,
@@ -82,6 +87,18 @@ from timetracker.uuidv7 import UUIDv7
 logger = logging.getLogger("games")
 
 api = NinjaAPI(auth=django_auth)
+
+
+@api.exception_handler(PlayerGameWriteFailed)
+def _playergame_write_failed(request, failure: PlayerGameWriteFailed):
+    #: The message rides the middleware's header.
+    #: The status code reverts the optimistic label.
+    messages.error(request, failure.message)
+    return api.create_response(
+        request, {"detail": failure.message}, status=failure.status_code
+    )
+
+
 playevent_router = Router()
 game_router = Router()
 device_router = Router()
@@ -93,7 +110,9 @@ PAGE_SIZE = 10
 
 
 class GameStatusUpdate(Schema):
-    status: str
+    #: The enum, so Ninja refuses unknown members.
+    #: Game.save() calls clean(), which checks no choices.
+    status: Game.Status
 
 
 class PlayEventIn(Schema):
@@ -180,8 +199,12 @@ def search_games(request, q: str = "", limit: int = 10):
 def partial_update_game(request, game_id: UUIDv7, payload: GameStatusUpdate):
     library = cast(User, request.user).library
     game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
-    game.status = payload.status
-    game.save()
+    record_facts(
+        cast("User", request.user),
+        game,
+        status=payload.status,
+        correlation_id=new_correlation_id(),
+    )
     messages.success(request, "Status updated")
     return Status(204, None)
 

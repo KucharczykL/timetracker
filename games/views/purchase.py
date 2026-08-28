@@ -67,7 +67,9 @@ from games.sorting import (
 )
 from games.views.deletion import confirm_and_delete
 from games.views.filtering import warn_unknown_sort
+from games.views.playergame_writes import record_facts_for_request
 from games.views.returns import origin_from, return_url
+from games.writes.playergame import new_correlation_id
 
 
 def _render_purchase_buttons(
@@ -300,6 +302,7 @@ def _pricing_controls() -> Node:
     ]
 
 
+#: No dispatch here: run_in_transaction refuses to nest.
 @transaction.atomic
 def _create_separate_purchases(form: PurchaseForm, post) -> None:
     """Create one single-game Purchase per selected game from the shared form
@@ -550,9 +553,29 @@ def refund_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
         Purchase.objects.for_library(library), library, id=purchase_id
     )
 
-    for game in purchase.games.all():
-        game.status = Game.Status.ABANDONED
-        game.save()
+    correlation_id = new_correlation_id()
+    games = list(purchase.games.all())
+    for abandoned, game in enumerate(games):
+        if not record_facts_for_request(
+            request,
+            game,
+            status=Game.Status.ABANDONED,
+            correlation_id=correlation_id,
+        ):
+            if abandoned:
+                #: Say how far it went: the earlier games are
+                #: abandoned already and no rollback takes them
+                #: back. Refunding again restates the same fact,
+                #: which build() absorbs, so a retry is safe.
+                messages.error(
+                    request,
+                    f"{abandoned} of {len(games)} games were abandoned before "
+                    "this one. Refunding again is safe.",
+                )
+            #: A redirect would swap into a cell.
+            #: htmx swaps nothing outside 2xx.
+            #: The toast rides the middleware's header.
+            return HttpResponse(status=409)
 
     purchase.refund()
 
@@ -617,6 +640,7 @@ def split_purchase_confirmation(
 
 @login_required
 @require_POST
+#: No dispatch here: run_in_transaction refuses to nest.
 @transaction.atomic
 def split_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
     """Replace one multi-game (unsplittable-style) purchase with one single-game

@@ -46,8 +46,14 @@ jobs:
         with:
           node-version: "26"
 
+      # --ignore-scripts stays: one dependency ships a binary rather than
+      # JavaScript, and `pnpm rebuild` names it, so nothing else runs code at
+      # install time. Without the rebuild `make check` has no vale to run.
       - name: Install pnpm and JS dependencies
-        run: npm install --global pnpm@10.33.0 && pnpm install --frozen-lockfile --ignore-scripts
+        run: |
+          npm install --global pnpm@10.33.0
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm rebuild @vvago/vale
 
       - name: Install Playwright browsers
         run: uv run playwright install --with-deps chromium
