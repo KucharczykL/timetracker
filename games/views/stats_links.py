@@ -32,7 +32,7 @@ from games.filters import (
     PurchaseFilter,
     SessionFilter,
 )
-from games.models import Game, Purchase
+from games.models import PlayerGameStatus, Purchase
 
 
 def _is_year(year) -> bool:
@@ -158,7 +158,7 @@ def purchases_finished(year) -> PurchaseFilter:
             game_filter=GameFilter(playevent_filter=_ended_in_scope(year))
         )
     # All-time `.finished()`: game status FINISHED *or* any ended playevent.
-    game_filter = GameFilter(status=ChoiceCriterion(value=[Game.Status.FINISHED]))
+    game_filter = GameFilter(status=ChoiceCriterion(value=[PlayerGameStatus.COMPLETED]))
     game_filter.OR = [GameFilter(playevent_filter=_ended_in_scope(year))]
     return PurchaseFilter(game_filter=game_filter)
 
@@ -183,7 +183,9 @@ def purchases_bought_and_finished(year) -> PurchaseFilter:
 
 def _abandoned_or_refunded() -> PurchaseFilter:
     purchase_filter = PurchaseFilter(
-        game_filter=GameFilter(status=ChoiceCriterion(value=[Game.Status.ABANDONED]))
+        game_filter=GameFilter(
+            status=ChoiceCriterion(value=[PlayerGameStatus.ABANDONED])
+        )
     )
     purchase_filter.OR = [PurchaseFilter(is_refunded=BoolCriterion(value=True))]
     return purchase_filter
@@ -195,7 +197,7 @@ def purchases_dropped(year) -> PurchaseFilter:
         type=[Purchase.GAME, Purchase.DLC],
         **_purchase_bounds(year),
     )
-    purchase_filter.game_filter = _not_finished_game(year, [Game.Status.FINISHED])
+    purchase_filter.game_filter = _not_finished_game(year, [PlayerGameStatus.COMPLETED])
     purchase_filter.AND = [_abandoned_or_refunded()]
     return purchase_filter
 
@@ -209,7 +211,11 @@ def purchases_unfinished(year) -> PurchaseFilter:
     )
     purchase_filter.game_filter = _not_finished_game(
         year,
-        [Game.Status.FINISHED, Game.Status.RETIRED, Game.Status.ABANDONED],
+        [
+            PlayerGameStatus.COMPLETED,
+            PlayerGameStatus.RETIRED,
+            PlayerGameStatus.ABANDONED,
+        ],
     )
     return purchase_filter
 
@@ -223,7 +229,7 @@ def purchases_backlog_decrease(year) -> PurchaseFilter:
         date_purchased=DateCriterion(value=f"{year}-01-01", modifier=Modifier.LESS_THAN)
     )
     purchase_filter.game_filter = GameFilter(
-        status=ChoiceCriterion(value=[Game.Status.FINISHED]),
+        status=ChoiceCriterion(value=[PlayerGameStatus.COMPLETED]),
         playevent_filter=_ended_in_scope(year),
     )
     return purchase_filter

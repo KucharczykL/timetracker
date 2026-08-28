@@ -55,6 +55,7 @@ from common.criteria import (
     filter_from_json,
     filter_to_json,
     search_q,
+    with_filter_aliases,
 )
 from common.filter_execution import contains_regex_modifier
 from games.filters import (
@@ -73,7 +74,7 @@ from games.filters import (
 )
 
 UNRESTRICTED_FILTER_CONTEXT = FilterQueryContext(
-    lambda model: model._default_manager.all()
+    lambda model: with_filter_aliases(model._default_manager.all())
 )
 
 
@@ -794,17 +795,37 @@ class TestGameFilterFromJson:
 
 
 class TestGameFilterToQ:
+    def test_a_nested_game_status_validates(self):
+        """A nested game status compiles when validated.
+
+        `filter_from_json` calls `to_q()` with
+        `FilterQueryContext.for_validation()`, and a relation
+        criterion builds its subquery from that context's queryset.
+        The status lookup is an alias, so an unannotated queryset
+        raises on user input in every list view.
+        """
+        from common.criteria import filter_from_json
+        from games.filters import PurchaseFilter
+
+        parsed = filter_from_json(
+            PurchaseFilter,
+            '{"game_filter": {"status": {"value": ["completed"],'
+            ' "modifier": "INCLUDES"}}}',
+        )
+
+        assert parsed is not None
+
     def test_status_choice_includes(self):
         gf = GameFilter.from_json(
-            {"status": {"value": ["f", "p"], "modifier": "INCLUDES"}}
+            {"status": {"value": ["completed", "played"], "modifier": "INCLUDES"}}
         )
         q = gf.to_q()
-        assert q == Q(status__in=["f", "p"])
+        assert q == Q(tracked__status__in=["completed", "played"])
 
     def test_status_not_null(self):
         gf = GameFilter.from_json({"status": {"modifier": "NOT_NULL"}})
         q = gf.to_q()
-        assert q == Q(status__isnull=False)
+        assert q == Q(tracked__status__isnull=False)
 
 
 def _games_bar(filter_json: str = "") -> str:
@@ -858,14 +879,14 @@ class TestFilterBarRendering:
             json.dumps(
                 {
                     "status": {
-                        "value": [{"id": "f", "label": "Finished"}],
+                        "value": [{"id": "completed", "label": "Completed"}],
                         "modifier": "INCLUDES",
                     }
                 }
             )
         )
-        assert 'data-value="f"' in html
-        assert "Finished" in html
+        assert 'data-value="completed"' in html
+        assert "Completed" in html
 
     def test_no_hx_get(self):
         html = _games_bar()
@@ -1069,7 +1090,11 @@ class TestExpandedFiltersAgainstDB:
         data = self._setup_entities()
         # Find platforms with games that are finished
         pf = PlatformFilter.from_json(
-            {"game_filter": {"status": {"value": ["f"], "modifier": "INCLUDES"}}}
+            {
+                "game_filter": {
+                    "status": {"value": ["completed"], "modifier": "INCLUDES"}
+                }
+            }
         )
         results = list(Platform.objects.filter(pf.to_q(UNRESTRICTED_FILTER_CONTEXT)))
         assert data["plat"] in results
@@ -5171,11 +5196,11 @@ class TestFieldMetadata:
         ]
 
     def test_static_choices_game_status(self):
-        from games.models import Game
+        from games.models import PlayerGame
 
         entry = self._by_name(GameFilter)["status"]
         assert entry["kind"] == "set"
-        assert entry["choices"] == self._expected_choices(Game, "status")
+        assert entry["choices"] == self._expected_choices(PlayerGame, "status")
 
     def test_static_choices_purchase(self):
         from games.models import Purchase

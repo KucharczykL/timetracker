@@ -145,8 +145,12 @@ class GameFilter(OperatorFilter):
         "original_year_released": FilterField(),
         "wikidata": FilterField(),
         "platform": FilterField("platform__id", search_url="/api/platforms/search"),
-        "status": FilterField(),
-        "mastered": FilterField(),
+        "status": FilterField(
+            "tracked__status", metadata_lookup="player_games__status"
+        ),
+        "mastered": FilterField(
+            "tracked__mastered", metadata_lookup="player_games__mastered"
+        ),
         "playtime_hours": FilterField(handler=duration_hours_handler("playtime")),
         "created_at": FilterField("created_at__date"),
         "updated_at": FilterField("updated_at__date"),

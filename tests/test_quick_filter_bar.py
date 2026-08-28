@@ -155,7 +155,7 @@ class QuickFilterBarRenderingTest(TestCase):
         filter_json = json.dumps(
             {
                 "status": {
-                    "value": [{"id": "f", "label": "Finished"}],
+                    "value": [{"id": "completed", "label": "Completed"}],
                     "modifier": "INCLUDES",
                 }
             }
@@ -164,7 +164,7 @@ class QuickFilterBarRenderingTest(TestCase):
             QuickFilterBar(mode="games", filter_json=filter_json, builder_url="/x")
         )
         self.assertIn("<quick-filter-bar", html)
-        self.assertIn("Finished", html)
+        self.assertIn("Completed", html)
 
     def test_round_trip_guarantee_serializer_shape_is_editable(self):
         """A filter shaped exactly like ts/elements/quick-filter-bar.ts emits

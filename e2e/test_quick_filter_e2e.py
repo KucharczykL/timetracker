@@ -64,13 +64,13 @@ def test_quick_facet_apply_filters_the_list(
 
     page.locator("#quick-status-dropdownLink").click()
     widget = page.locator('quick-filter-bar search-select[name="status"]')
-    widget.locator('[data-search-select-option][data-label="Finished"]').click()
+    widget.locator('[data-search-select-option][data-label="Completed"]').click()
     _quick_apply(page)
 
     page.wait_for_url("**filter=**")
     assert _filter_from_url(page.url) == {
         "status": {
-            "value": [{"id": "f", "label": "Finished"}],
+            "value": [{"id": "completed", "label": "Completed"}],
             "excludes": [],
             "modifier": "INCLUDES",
         }
@@ -86,7 +86,7 @@ def test_quick_facet_apply_filters_the_list(
     # picked value rendered as an include pill (the round-trip guarantee).
     pill = page.locator("quick-filter-bar [data-search-select-pills] [data-pill]")
     expect(pill).to_have_count(1)
-    expect(pill).to_contain_text("Finished")
+    expect(pill).to_contain_text("Completed")
 
 
 def test_quick_scalar_facet_filters_sessions(
@@ -139,7 +139,7 @@ def test_advanced_filter_shows_degraded_pill(authenticated_page: Page, live_serv
     """A filter with operator nesting renders the read-only pill (with working
     Edit-in-builder / Clear links) instead of facet widgets."""
     filter_json = json.dumps(
-        {"AND": [{"status": {"value": [{"id": "f", "label": "Finished"}]}}]}
+        {"AND": [{"status": {"value": [{"id": "completed", "label": "Completed"}]}}]}
     )
     page = authenticated_page
     list_url = reverse("games:list_games")

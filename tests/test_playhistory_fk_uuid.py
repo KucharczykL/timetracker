@@ -7,7 +7,13 @@ from django.db import IntegrityError, connection, transaction
 from django.db.migrations.executor import MigrationExecutor
 from django.utils import timezone
 
-from common.criteria import FilterQueryContext, Modifier, RelationMatch, StringCriterion
+from common.criteria import (
+    FilterQueryContext,
+    Modifier,
+    RelationMatch,
+    StringCriterion,
+    with_filter_aliases,
+)
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
@@ -21,7 +27,7 @@ PRESENTATION = DateTimePresentation(
 )
 
 UNRESTRICTED_FILTER_CONTEXT = FilterQueryContext(
-    lambda model: model._default_manager.all()
+    lambda model: with_filter_aliases(model._default_manager.all())
 )
 
 pytestmark = pytest.mark.django_db(transaction=True)

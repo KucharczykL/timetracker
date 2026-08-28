@@ -86,42 +86,47 @@ class GameQuerySet(TombstonableQuerySet):
     def visible_to(self, library):
         return self.filter(Q(library__isnull=True) | Q(library=library)).alive()
 
+    def annotated_for_filtering(self, library=None):
+        """Register the alias only; drop no row.
+
+        A filter names `tracked__status`, which needs the alias and
+        nothing else. The two facts are selected by `tracked_by()`
+        after it filters, because an F() before the filter opens a
+        second join Django cannot merge.
+
+        No library leaves the join unconditional, so a game two
+        libraries track comes back once per library. Unscoped is for
+        compiling a lookup, not for executing one.
+        """
+        condition = Q() if library is None else Q(player_games__library=library)
+        return self.annotate(
+            tracked=FilteredRelation("player_games", condition=condition)
+        )
+
     def tracked_by(self, library):
-        """Every live game this library tracks, with its two facts read.
+        """Every live game this library tracks, facts read.
 
         No `library=library`: a shared catalog game this library
-        tracks belongs on the list, because a list of tracked games
-        is what the page claims to be.
+        tracks belongs on the list.
 
         A FilteredRelation, not a plain path. Django opens a join per
         filter() call on a multi-valued relation, and a list applies
         its scope and its criteria in separate calls; on a plain path
         the second join carries no library condition. The alias
-        copies its condition into every join it opens, and
-        `unique_library_player_game` allows at most one row per pair,
-        so the joins cannot disagree. The pairing is the guarantee,
-        not the alias alone.
+        copies its condition into every join, and
+        `unique_library_player_game` allows one row per pair, so the
+        joins cannot disagree.
 
-        The alias by itself selects no column, so the two facts are
-        annotated as well. `tracked_status` and `tracked_mastered`
-        avoid the catalog columns' names.
+        `alive()` comes first: since #676 a game delete leaves the
+        catalog row tombstoned and the projection row beside it.
 
-        `alive()` comes first, and it is what keeps a removed game
-        off the list: since #676 a game delete leaves the catalog row
-        tombstoned and the projection row beside it.
-
-        An archived row is not a tracked game. Nothing archives yet,
-        so the condition costs nothing today and spares a stuck state
-        later: TrackGame refuses to track an archived game again, so a
-        game the list still showed could not be got rid of.
+        An archived row is not tracked. TrackGame refuses to track an
+        archived game again, so a game the list still showed could not
+        be got rid of.
         """
         return (
             self.alive()
-            .annotate(
-                tracked=FilteredRelation(
-                    "player_games", condition=Q(player_games__library=library)
-                )
-            )
+            .annotated_for_filtering(library)
             .filter(tracked__isnull=False, tracked__archived_at__isnull=True)
             .annotate(
                 tracked_status=F("tracked__status"),

@@ -25,15 +25,15 @@
     {
       "description": "single criterion",
       "model": "game",
-      "filter": { "status": { "value": ["f"], "modifier": "INCLUDES" } }
+      "filter": { "status": { "value": ["completed"], "modifier": "INCLUDES" } }
     },
     {
       "description": "canonical OR",
       "model": "game",
       "filter": {
         "OR": [
-          { "status": { "value": ["f"], "modifier": "INCLUDES" } },
-          { "status": { "value": ["p"], "modifier": "INCLUDES" } }
+          { "status": { "value": ["completed"], "modifier": "INCLUDES" } },
+          { "status": { "value": ["played"], "modifier": "INCLUDES" } }
         ]
       }
     },
@@ -42,15 +42,15 @@
       "model": "game",
       "filter": {
         "name": { "value": "zelda", "modifier": "INCLUDES" },
-        "OR": [{ "status": { "value": ["f"], "modifier": "INCLUDES" } }]
+        "OR": [{ "status": { "value": ["completed"], "modifier": "INCLUDES" } }]
       }
     },
     {
       "description": "OR with NOT",
       "model": "game",
       "filter": {
-        "OR": [{ "status": { "value": ["f"], "modifier": "INCLUDES" } }],
-        "NOT": [{ "status": { "value": ["p"], "modifier": "INCLUDES" } }]
+        "OR": [{ "status": { "value": ["completed"], "modifier": "INCLUDES" } }],
+        "NOT": [{ "status": { "value": ["played"], "modifier": "INCLUDES" } }]
       }
     },
     {
@@ -60,8 +60,8 @@
         "NOT": [
           {
             "OR": [
-              { "status": { "value": ["f"], "modifier": "INCLUDES" } },
-              { "status": { "value": ["p"], "modifier": "INCLUDES" } }
+              { "status": { "value": ["completed"], "modifier": "INCLUDES" } },
+              { "status": { "value": ["played"], "modifier": "INCLUDES" } }
             ]
           }
         ]
@@ -72,7 +72,7 @@
       "model": "game",
       "filter": {
         "NOT": [
-          { "status": { "value": ["f"], "modifier": "INCLUDES" } },
+          { "status": { "value": ["completed"], "modifier": "INCLUDES" } },
           { "name": { "value": "x", "modifier": "INCLUDES" } }
         ]
       }
@@ -99,7 +99,7 @@
       "model": "game",
       "filter": {
         "name": { "value": "x", "modifier": "INCLUDES" },
-        "OR": [ { "status": { "value": ["f"], "modifier": "INCLUDES" } } ],
+        "OR": [ { "status": { "value": ["completed"], "modifier": "INCLUDES" } } ],
         "field_comparisons": [ { "left": "original_year_released", "right": "year_released", "modifier": "LESS_THAN" } ]
       }
     },

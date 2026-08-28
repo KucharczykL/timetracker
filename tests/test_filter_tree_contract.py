@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from common.criteria import FilterQueryContext, filter_from_json
+from common.criteria import FilterQueryContext, filter_from_json, with_filter_aliases
 from games.filters import GameFilter, PlayEventFilter, PurchaseFilter, SessionFilter
 
 FILTER_TREE_DIR = (
@@ -32,7 +32,7 @@ FILTER_FOR_MODEL = {
 
 # Map each original fixture to its TS-emitted canonical form, by description.
 UNRESTRICTED_FILTER_CONTEXT = FilterQueryContext(
-    lambda model: model._default_manager.all()
+    lambda model: with_filter_aliases(model._default_manager.all())
 )
 
 if CANONICAL_PATH.exists():

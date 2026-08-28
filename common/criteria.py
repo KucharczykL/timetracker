@@ -1329,6 +1329,19 @@ class AggregateSpec:
 QuerysetResolver = Callable[[type[models.Model]], models.QuerySet[Any]]
 
 
+def with_filter_aliases[M: models.Model](
+    queryset: models.QuerySet[M],
+) -> models.QuerySet[M]:
+    """Add whatever aliases this model's filter fields name.
+
+    A FilterField may emit an annotation, not a column, and that
+    resolves on an annotated queryset alone. A queryset states its
+    own by defining `annotated_for_filtering()`.
+    """
+    annotate = getattr(queryset, "annotated_for_filtering", None)
+    return queryset if annotate is None else annotate()
+
+
 @dataclass(frozen=True)
 class FilterQueryContext:
     """Explicit source of authorization-scoped querysets for filter compilation."""
@@ -1352,7 +1365,7 @@ class FilterQueryContext:
     @classmethod
     def for_validation(cls) -> Self:
         return cls(
-            lambda model: model._default_manager.none(),
+            lambda model: with_filter_aliases(model._default_manager.none()),
             authorization_scoped=False,
         )
 
@@ -1444,7 +1457,7 @@ class OperatorFilter:
         annotation, so the same value can target an int / string / date / set
         field without naming the criterion type::
 
-            GameFilter.where(year_released__gt=2010, status=["f", "p"])
+            GameFilter.where(year_released__gt=2010, status=["completed", "played"])
 
         Suffix → modifier follows ``_SUFFIX_MODIFIER``; a missing suffix means
         EQUALS for scalars and INCLUDES for set criteria. ``between`` /
@@ -2684,11 +2697,14 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             # column: a hop through a nullable relation leaves the fields beyond
             # it absent, so ``platform__group`` is nullable even though
             # ``Platform.group`` is not.
-            nullable = (
-                _lookup_is_nullable(model, resolved_lookup)
-                if resolved_lookup is not None
-                else False
-            )
+            # A metadata_lookup path is not the queried path, so its
+            # hops say nothing; read the terminal column.
+            if field_spec is not None and field_spec.metadata_lookup is not None:
+                nullable = bool(getattr(model_field, "null", False))
+            elif resolved_lookup is not None:
+                nullable = _lookup_is_nullable(model, resolved_lookup)
+            else:
+                nullable = False
             # Value-widget config (issue #242). ``field_spec`` is None for
             # aggregates (no ``fields`` entry) — guard it. ``is_m2m`` is derived
             # from the resolved model field, so a future FK set field needs no flag.

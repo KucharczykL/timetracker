@@ -6,7 +6,11 @@ queries here rather than calling a view, so it holds before, during
 and after each child re-points its surface.
 """
 
+import uuid
+
 import pytest
+from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 from games.models import Game, PlayerGame, PlayerGameStatus
 from games.playergame_status import (
@@ -39,6 +43,11 @@ def a_library_of_every_status(owned_library):
             )
         games.append(game)
     return games
+
+
+#: The catalog column each alias replaced. GAME_SORTS names
+#: the projection now, so the old side is stated here.
+CATALOG_SORT_EXPRESSIONS = {"tracked_status": "status"}
 
 
 def ids(queryset):
@@ -119,8 +128,8 @@ def test_a_sort_returns_the_same_order(
         library=owned_library, status=PlayerGameStatus.SHELVED
     ).game_id
     spec = GAME_SORTS[sort_key]
-    old_expression = spec.expression
-    new_expression = "tracked_status" if old_expression == "status" else old_expression
+    new_expression = spec.expression
+    old_expression = CATALOG_SORT_EXPRESSIONS.get(new_expression, new_expression)
     prefix = "-" if descending else ""
 
     old = Game.objects.for_library(owned_library).exclude(pk=shelved)
@@ -134,3 +143,30 @@ def test_a_sort_returns_the_same_order(
     assert ordered_ids(old.order_by(f"{prefix}{old_expression}", "id")) == ordered_ids(
         new.order_by(f"{prefix}{new_expression}", "id")
     )
+
+
+@pytest.mark.django_db
+def test_an_unscoped_annotation_drops_no_game(owned_library, a_library_of_every_status):
+    """Registering the alias alone changes no result.
+
+    A filter compiles `tracked__status` against a queryset it never
+    executes, so this takes no library and filters nothing. Naming
+    the alias is what opens the join, and unscoped it has no
+    condition: a game two libraries track then comes back twice.
+    `tracked_by()` is the scoped read.
+    """
+    other = (
+        get_user_model().objects.create_user(username="second", password="x").library
+    )
+    shared = Game.objects.create(library=None, name="Shared Title")
+    for library in (owned_library, other):
+        PlayerGame.objects.create(
+            pk=uuid.uuid7(), library=library, game=shared, tracked_at=timezone.now()
+        )
+
+    annotated = Game.objects.annotated_for_filtering()
+
+    assert ids(annotated) == ids(Game.objects.all())
+    assert annotated.count() == Game.objects.count()
+    named = annotated.filter(tracked__isnull=False)
+    assert named.count() == Game.objects.count() + 1
