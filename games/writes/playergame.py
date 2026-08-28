@@ -1,10 +1,8 @@
 """State a fact, then mirror the row.
 
-The mirror cannot be a projector: only_shadow_writes() refuses every
-statement a rebuild makes against a live table. So it is a dual write at
-the call site. Takes an actor, not a request, because authorize() reads
-library.user_id == actor.pk. games/views/playergame_writes.py is the
-request half. #678 deletes both.
+only_shadow_writes() refuses a live-table write, so the mirror cannot be a
+projector and is a dual write here. Takes an actor, not a request;
+games/views/playergame_writes.py is the request half. #678 deletes both.
 """
 
 import uuid
@@ -130,10 +128,9 @@ def record_facts(
                 command, actor=actor, library=library, correlation_id=correlation_id
             )
         except PlayerGameNotTracked:
-            #: One retry, never a loop.
-            #: Reachable because creating a game and tracking it are two
-            #: commits: run_in_transaction refuses to nest, so a view
-            #: cannot hold both. A restored dump gets here too.
+            #: One retry, never a loop. Creating a game and tracking it
+            #: are two commits, since run_in_transaction refuses to nest.
+            #: A restored dump reaches here too.
             track_game(actor, game, correlation_id=correlation_id)
             _dispatch(
                 command, actor=actor, library=library, correlation_id=correlation_id

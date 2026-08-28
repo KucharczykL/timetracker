@@ -842,11 +842,9 @@ class GameForm(
 
     def save(self, commit=True):
         game = super().save(commit=False)
-        #: The row starts where the form says.
-        #: The mirror writes nothing. Starting at the default and
-        #: letting the mirror move it would append a GameStatusChange
-        #: that does not exist today: the audit signal skips a
-        #: first save.
+        #: The row starts where the form says. Starting at the default
+        #: and letting the mirror move it would append a GameStatusChange
+        #: that does not exist today: the audit signal skips a first save.
         if game._state.adding:
             game.status = self.cleaned_data["status"]
             game.mastered = self.cleaned_data["mastered"]
