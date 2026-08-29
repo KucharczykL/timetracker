@@ -42,10 +42,11 @@ projection default instead:
 - `GameForm.__init__` seeds the status select. With no row it offered the
   catalog letter; it now offers `Unplayed`, which is what tracking the game
   would create and therefore what saving the form will record.
-- `_record_played` decides whether a new session marks a game played. With no
-  row and a catalog letter of `p` it recorded nothing; it now records `Played`,
-  which tracks the game on the way through. This is the heal the two sibling
-  write paths already get.
+- `_record_played` answers a session the player saved with "Set game status to
+  Played if Unplayed" ticked. With no row and a catalog letter of `p` it
+  recorded nothing; it now records `Played`, which tracks the game on the way
+  through. This is the heal the two sibling write paths already get. An unticked
+  box still records nothing, as before.
 
 `add_game`'s rollback is the third catalog line the spec counts, and it is a
 write: it reset the columns the form had written. With the form no longer
@@ -259,8 +260,12 @@ of `f`, the form offers `Unplayed` and an unchecked mastery. Rename it to say
 that.
 
 Add the session case: an untracked game whose catalog column says `p`, a POST to
-`add_session` with `mark_as_played`, and the assertion that the library now
-tracks it at `Played`. Before this task it recorded nothing.
+`add_session` with `mark_as_played` ticked, and the assertion that the library
+now tracks it at `Played`. Before this task it recorded nothing.
+
+No test covers the unticked box on either side of this change. Add that one
+too, since the task widens what a ticked box does: an unticked box records
+nothing and tracks nothing.
 
 - [ ] **Step 4: Verify and commit**
 
