@@ -1,9 +1,11 @@
 """Request-free stats computation: the data half of the stats page.
 
-`compute_stats(library, year)` returns a `StatsData` dict (the documented seam between
-*computing* metrics and *rendering* them in `stats_content`). Today it computes
-from the ORM; this is also the function a future materialization job would call,
-and the shape it would populate from a pre-calculated table.
+`compute_stats(library, year)` computes the metrics and returns them as a
+`StatsData` dict; `stats_content` renders that dict. It takes the library
+because a status now lives on the library's own `PlayerGame` row, not on the
+catalog game. Today it computes from the ORM; this is also the function a future
+materialization job would call, and the shape it would populate from a
+pre-calculated table.
 
 `year=None` means all-time; otherwise the metrics are scoped to that calendar
 year. The two scopes genuinely diverge (different aggregations, and all-time
