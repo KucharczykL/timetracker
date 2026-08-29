@@ -118,9 +118,14 @@ command, so the rename moves no data and needs no retired-event tier (#919).
 ## Denormalized columns
 
 `Game.playtime` is a signal-maintained sum over `game.sessions`. It becomes a
-sum over `game.sessions.alive()`. `remove()` stamps through
-`save(update_fields=["removed_at"])`, so `post_save` fires and the sum is
-recomputed.
+sum over `game.sessions.alive()`.
+
+`remove()` stamps with an `update()`, not a `save()`. Game, Platform, Session
+and Purchase each override `save()` to call `clean()`, and a stamp must not
+revalidate a row the user is taking out. An `update()` fires no `post_save`, so
+`remove()` carries a small map of what a receiver would have done: a removed
+Session recomputes its game's playtime, and a removed Game recounts its
+purchases.
 
 Nine reads reach a child through a reverse accessor rather than through
 `for_library()`. They are in `games/signals.py`, `games/views/game.py` and
