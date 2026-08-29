@@ -182,15 +182,19 @@ so there is no fingerprint for the new canonicalizer to disagree with.
 Development databases hold rows and do not count — they are rebuilt, and a
 mismatch in one is a message on a screen rather than a refused write.
 
-**This is conditional on the deployment order, and that is the only condition.**
-The table and the new canonicalizer must arrive together. If a deployment runs
-`0024` before this lands, production begins writing records under the old
-canonicalizer, every one of them becomes incomparable, and the bump becomes
-required rather than wrong. Landing this before the next deployment is
-therefore part of the change, not a preference about timing.
+**The condition is the deployment, and it is met with room to spare.** The next
+one is planned for after #599 completes, so `0024` reaches production alongside
+every command the overhaul writes, this canonicalizer among them. No production
+record can predate it.
 
-The window closes twice over: at that deployment, and at #725/#726, the first
-commands to carry a price.
+That deployment is also what freezes the canonical form. Until it runs, any
+change to the canonicalizer is free; after it, every change needs a bump.
+#725/#726 does not enter into it — this issue still belongs before the first
+price-carrying command, so that no command is designed against a canonicalizer
+known to be wrong, but that is a reason of order rather than of cost.
+
+The fact the rule turns on — whether a deployment has run `0024` — cannot be
+read from the code, so the constant's comment is where it has to live.
 
 ### The comment the constant carries
 
@@ -201,8 +205,10 @@ for nothing or stops believing the comment.
 
 The rewritten comment states the condition that actually forces a bump: a change
 that could give a *different digest for input a deployed record already holds*.
-A canonicalizer edit made before any deployment has the table does not qualify,
-and this issue is the worked example.
+It also states the fact that condition turns on, because nothing in the code
+does — no deployment has run `0024`, so no record exists to hold anything, and
+every canonicalizer change until the first one that does is free. This issue is
+the worked example.
 
 ## Verification
 
