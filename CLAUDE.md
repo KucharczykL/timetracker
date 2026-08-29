@@ -656,6 +656,12 @@ chromium` once. All JS is vendored, so the tests run fully offline. A bare
   wrong. A new conflict type goes in `CONFLICT_ANSWERS`, `ANSWERED_DIRECTLY` or
   `NOT_ANSWERED`, or `tests/test_command_answers.py` fails. Never translate one
   at a call site.
+- **A rejection carries two sentences** — `raise CommandRejected(message,
+  sentence=…)`. The argument explains the refusal to whoever reads a log or a
+  traceback and may name an id or an issue; `sentence` is the only thing a
+  person is shown. The boundary never reads `str(error)`, so a raise site that
+  states no `sentence` is answered with `REFUSED` and logged, rather than
+  leaking. Write one for every new raise site.
 - **No dispatch inside a transaction** — `run_in_transaction` opens the
   transaction it retries and refuses to nest, so a view that dispatches carries
   no `@transaction.atomic` and calls no helper that does. `games.E008` refuses

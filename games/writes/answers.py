@@ -4,6 +4,7 @@ One module for every evented domain, so the sentences and the
 status codes cannot drift apart between them.
 """
 
+import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import NamedTuple
@@ -19,6 +20,8 @@ from games.events.conflicts import CommandConflict
 from games.events.dispatch import CommandNotPermitted, CommandRejected
 from games.events.idempotency import IdempotencyKeyMismatch
 from games.events.retry import NestedTransactionNotSupported, RetryBudgetExhausted
+
+logger = logging.getLogger("games")
 
 #: The record a sentence names.
 type SubjectNoun = str  # e.g. "game"
@@ -49,6 +52,9 @@ class ConflictAnswer(NamedTuple):
 _COLLIDED = (
     "Another change reached this {subject} first. Nothing was recorded; try again."
 )
+
+#: What a rejection that states no sentence of its own says.
+REFUSED = "This {subject} cannot take that change. Reload the page and try again."
 
 #: Not clauses: a test reads a mapping.
 CONFLICT_ANSWERS: dict[type[CommandConflict], ConflictAnswer] = {
@@ -102,4 +108,10 @@ def answered(subject: SubjectNoun) -> Iterator[None]:
             answer.sentence.format(subject=subject), answer.status_code
         ) from error
     except CommandRejected as error:
-        raise CommandFailed(str(error), CONFLICT_STATUS) from error
+        #: Never str(error): the argument is written for a developer
+        #: and names ids and issues. A raise site that states no
+        #: sentence gets a plain one, so a new one cannot leak.
+        if error.sentence is None:
+            logger.warning("[answers]: a rejection stated no sentence: %s", error)
+        sentence = error.sentence or REFUSED.format(subject=subject)
+        raise CommandFailed(sentence, CONFLICT_STATUS) from error

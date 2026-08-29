@@ -10,6 +10,7 @@ from games.writes.playergame import (
     new_correlation_id,
     record_facts,
     track_game,
+    untrack_game,
 )
 
 pytestmark = pytest.mark.untracked_games
@@ -116,6 +117,10 @@ def test_tracking_first_does_not_loop(owned_user, owned_library, monkeypatch):
             correlation_id=new_correlation_id(),
         )
     assert failure.value.status_code == 409
+    #: The argument names #676 and a raw id; a person reads neither.
+    assert failure.value.message == (
+        "This game is not tracked yet. Reload the page and try again."
+    )
 
 
 @pytest.mark.django_db(transaction=True)
@@ -127,7 +132,20 @@ def test_another_librarys_game_is_refused(other_user, owned_library):
     with pytest.raises(CommandFailed) as failure:
         track_game(other_user, game, correlation_id=new_correlation_id())
     assert failure.value.status_code == 409
+    #: Says nothing of the other library, and no id.
+    assert failure.value.message == "That game is not available to track."
     assert not LibraryEvent.objects.filter(library=other_user.library).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_removed_game_is_restored_rather_than_tracked(owned_user, tracked_game):
+    untrack_game(owned_user, tracked_game, correlation_id=new_correlation_id())
+
+    with pytest.raises(CommandFailed) as failure:
+        track_game(owned_user, tracked_game, correlation_id=new_correlation_id())
+    assert failure.value.message == (
+        "This library removed Outer Wilds. Restore it instead of tracking it again."
+    )
 
 
 @pytest.mark.django_db(transaction=True)

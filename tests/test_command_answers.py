@@ -15,6 +15,7 @@ from games.writes.answers import (
     ANSWERED_DIRECTLY,
     CONFLICT_ANSWERS,
     NOT_ANSWERED,
+    REFUSED,
     CommandFailed,
     answer_for,
     answered,
@@ -54,8 +55,9 @@ def test_the_subject_noun_reaches_the_sentence():
 
 def test_every_sentence_interpolates_and_leaves_no_brace():
     #: A mistyped placeholder fails here, not later.
-    for answer in CONFLICT_ANSWERS.values():
-        rendered = answer.sentence.format(subject="probe")
+    sentences = [answer.sentence for answer in CONFLICT_ANSWERS.values()]
+    for sentence in [*sentences, REFUSED]:
+        rendered = sentence.format(subject="probe")
         assert "{" not in rendered and "}" not in rendered
 
 
@@ -67,12 +69,51 @@ def test_an_actor_who_may_not_command_is_not_found():
     assert "No such game." in str(refusal.value)
 
 
-def test_a_rejected_command_carries_its_own_sentence():
+#: What a raise site writes for a developer, and never for a person.
+_FOR_A_DEVELOPER = (
+    "This library tracks no game 0192f3d4-0000-7000-8000-000000000000. A "
+    "recorded fact belongs to a tracked game, and #676 backfills one."
+)
+
+
+def test_a_rejection_states_the_sentence_a_person_reads():
     with pytest.raises(CommandFailed) as failure, answered("game"):
-        raise CommandRejected("The library tracks no such game.")
+        raise CommandRejected(
+            _FOR_A_DEVELOPER, sentence="That game is not available to track."
+        )
 
     assert failure.value.status_code == 409
-    assert failure.value.message == "The library tracks no such game."
+    assert failure.value.message == "That game is not available to track."
+
+
+def test_a_rejection_that_states_none_says_nothing_of_the_program():
+    #: The argument names a row by id and an issue by number.
+    with pytest.raises(CommandFailed) as failure, answered("game"):
+        raise CommandRejected(_FOR_A_DEVELOPER)
+
+    assert failure.value.status_code == 409
+    assert "0192f3d4" not in failure.value.message
+    assert "#676" not in failure.value.message
+    assert failure.value.message == REFUSED.format(subject="game")
+
+
+def test_the_subject_noun_reaches_a_rejection_that_states_none():
+    with pytest.raises(CommandFailed) as failure, answered("playthrough"):
+        raise CommandRejected(_FOR_A_DEVELOPER)
+
+    assert "This playthrough" in failure.value.message
+
+
+def test_the_argument_a_person_never_reads_is_logged(capture_games_logger):
+    with (
+        capture_games_logger() as caplog,
+        pytest.raises(CommandFailed),
+        answered("game"),
+    ):
+        raise CommandRejected(_FOR_A_DEVELOPER)
+
+    #: Dropped from the toast, kept where it helps.
+    assert "#676" in caplog.text
 
 
 def test_a_subclass_of_a_mapped_leaf_takes_its_parents_answer():
