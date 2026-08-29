@@ -1,5 +1,8 @@
 """A refused command becomes an answer."""
 
+import importlib
+import pkgutil
+
 import pytest
 from django.http import Http404
 
@@ -8,7 +11,13 @@ from games.events.conflicts import CommandConflict
 from games.events.dispatch import CommandNotPermitted, CommandRejected
 from games.events.idempotency import IdempotencyKeyMismatch
 from games.events.retry import RetryBudgetExhausted
-from games.writes.answers import CONFLICT_ANSWERS, CommandFailed, answered
+from games.writes.answers import (
+    ANSWERED_DIRECTLY,
+    CONFLICT_ANSWERS,
+    NOT_ANSWERED,
+    CommandFailed,
+    answered,
+)
 
 
 def test_an_exhausted_budget_asks_for_another_attempt():
@@ -87,3 +96,74 @@ def test_an_unmapped_conflict_leaves_unchanged():
 def test_nothing_raised_is_nothing_answered():
     with answered("game"):
         pass
+
+
+def _import_every_games_module() -> None:
+    """__subclasses__ sees a class only once imported."""
+    import games
+
+    for module in pkgutil.walk_packages(games.__path__, prefix="games."):
+        if ".migrations" in module.name:
+            continue
+        importlib.import_module(module.name)
+
+
+def _descendants(root: type) -> set[type]:
+    """Every subclass, at any depth."""
+    found: set[type] = set()
+    for child in root.__subclasses__():
+        found.add(child)
+        found |= _descendants(child)
+    return found
+
+
+def test_every_conflict_leaf_of_the_application_has_an_answer():
+    """The walk is the test.
+
+    Without it this reads only the import graph of the module under
+    test, which holds exactly the leaves that module maps, so the
+    assertion compares a set with itself and passes whatever the
+    code does.
+    """
+    _import_every_games_module()
+    #: A subclass a test declares is not the application's.
+    leaves = {
+        leaf
+        for leaf in _descendants(CommandConflict)
+        if leaf.__module__.startswith("games.")
+    }
+
+    unanswered = leaves - set(CONFLICT_ANSWERS)
+    assert not unanswered, (
+        f"{sorted(leaf.__name__ for leaf in unanswered)} reach a person as a "
+        "500. Add each to CONFLICT_ANSWERS in games/writes/answers.py."
+    )
+
+
+def test_every_boundary_exception_is_classified():
+    """A sibling outside the hierarchy is the other way to be missed.
+
+    CommandNotPermitted and CommandRejected are that shape already.
+    """
+    from games.events import append, conflicts, dispatch, idempotency, retry
+
+    boundary = (conflicts, dispatch, retry, idempotency, append)
+    #: The base is answered through its leaves.
+    classified = set(CONFLICT_ANSWERS) | ANSWERED_DIRECTLY | NOT_ANSWERED
+    classified.add(CommandConflict)
+
+    declared = {
+        value
+        for module in boundary
+        for value in vars(module).values()
+        if isinstance(value, type)
+        and issubclass(value, Exception)
+        and value.__module__ == module.__name__
+    }
+
+    unclassified = declared - classified
+    assert not unclassified, (
+        f"{sorted(item.__name__ for item in unclassified)} are raised by the "
+        "dispatch boundary and named nowhere in games/writes/answers.py. Put "
+        "each in CONFLICT_ANSWERS, ANSWERED_DIRECTLY, or NOT_ANSWERED."
+    )
