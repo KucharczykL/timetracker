@@ -267,10 +267,29 @@ No test covers the unticked box on either side of this change. Add that one
 too, since the task widens what a ticked box does: an unticked box records
 nothing and tracks nothing.
 
-- [ ] **Step 4: Verify and commit**
+- [ ] **Step 4: the checkbox's own default**
+
+`mark_as_played` is declared `initial={"mark_as_played": True}` — a dict where a
+bool belongs. `CheckboxInput.check_test` treats any value that is not `False`,
+`None` or `""` as checked, so a non-empty dict renders the box ticked and the
+field has always behaved as intended. It is right by accident, and the accident
+is one falsy edit away from silently unticking the default on every add-session
+page.
+
+Make it `initial=True`. Nothing reads the field's initial anywhere else — the
+two call sites read `cleaned_data`, and no view passes an `initial` for it.
+
+No test renders this checkbox, which is why the shape survived. Add one: an
+unbound `SessionForm` renders `mark_as_played` checked. Replacing `True` with
+`False` must fail it.
+
+- [ ] **Step 5: Verify and commit**
 
     make check-fast >/tmp/check.log 2>&1 && echo CLEAN || tail -60 /tmp/check.log
     git commit -m "Read no fact out of a column nothing maintains"
+
+The checkbox fix is one line and its test is the same subject — the played
+marking — so it rides in this commit rather than a second one.
 
 ## Task 5: read back what the parity suite covered
 
