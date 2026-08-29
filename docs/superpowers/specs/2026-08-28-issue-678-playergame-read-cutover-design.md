@@ -190,10 +190,21 @@ purchases.filter(
 )
 ```
 
-Behaviour is preserved exactly, quirks included. `~Q(games__status="f")` over a
-multi-game purchase is already subtle, and a cutover is the wrong moment to
-settle what it should mean. The parity suite is the arbiter: a difference it
-reports is reverted to match the old result, not argued to be an improvement.
+Behaviour is preserved exactly, quirks included, with one exception below.
+`~Q(games__status="f")` over a multi-game purchase is already subtle, and a
+cutover is the wrong moment to settle what it should mean. The parity suite is
+the arbiter: a difference it reports is reverted to match the old result, not
+argued to be an improvement.
+
+**The exception: retired joins completed as the finished state.** Agreed with
+the user during child C. Retired means done with a game that has no ending, so
+a retired game is one the player is done with, but the statistics count it in
+no bucket at all — `finished` selects `completed` or an ended play event,
+`unfinished` drops it from the backlog, and `dropped` selects only `abandoned`
+or refunded. It falls out of all three. `DONE_STATUSES` in `games/models.py`
+holds the pair, and `stats_data.py` and `stats_links.py` both read it. Child C
+moves the reads in one commit and changes this answer in the next, so the two
+are separable. Every other predicate keeps its result.
 
 ## The write path after the mirror
 

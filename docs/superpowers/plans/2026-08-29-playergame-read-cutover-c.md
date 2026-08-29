@@ -3,8 +3,8 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** The stats page reads a library's game status from its `PlayerGame`
-row, the games API patches only a game the library tracks, and the seven dead
-catalog readers go.
+row, a retired game counts as finished, the games API patches only a game the
+library tracks, and the seven dead catalog readers go.
 
 **Architecture:** A statistic is a Purchase query that names a game's status. A
 queryset method holds no library, so each `games__status=` predicate becomes
@@ -16,6 +16,24 @@ same `filter()` call, which opens one join instead of two.
 
 **Spec:** `docs/superpowers/specs/2026-08-28-issue-678-playergame-read-cutover-design.md`
 
+## One deliberate behaviour change
+
+The spec says C preserves behaviour exactly, quirks included. It now carries one
+exception, agreed with the user and recorded in the spec:
+
+**Retired joins completed as the finished state.** Retired means done with a
+game that has no ending, so a retired game is a game the player is done with.
+The statistics count it in no bucket at all today — `finished` selects
+`completed` or an ended play event, `unfinished` drops it from the backlog, and
+`dropped` selects only `abandoned` or refunded. It falls out of all three. Task 3
+puts it with `completed`.
+
+Every other predicate keeps its result, and the parity suite is still the
+arbiter for those: a difference it reports there is reverted to match the old
+result, not argued to be an improvement. Task 2 moves the reads with no change
+in what they select; Task 3 changes what one of them selects. Two commits, so a
+reviewer can see which is which.
+
 ## What child A and child B already did
 
 The spec's C list is four items long, and two of them landed early. Read this
@@ -25,7 +43,7 @@ before starting, or you will look for work that is not there.
 |---|---|
 | The four `stats_data` predicates | **C does this** |
 | The three `PurchaseQueryset` methods | **C does this** — one converted, two deleted |
-| The five `stats_links` builders | Done in B. They build a `GameFilter`, and B re-pointed `GameFilter.status` at `tracked__status`, so the builders already name `PlayerGameStatus` words. C adds a test that they and `compute_stats` cannot drift apart. |
+| The five `stats_links` builders | Done in B. They build a `GameFilter`, and B re-pointed `GameFilter.status` at `tracked__status`, so the builders already name `PlayerGameStatus` words. C adds a test that they and `compute_stats` cannot drift apart, and Task 3 moves three of them onto the done pair. |
 | `GameStatusUpdate` and `PATCH /api/games/{id}/status` | The schema took `PlayerGameStatus` in A. C moves the endpoint's lookup from `for_library()` to `tracked_by()`. |
 
 ## Global Constraints
@@ -58,15 +76,17 @@ before starting, or you will look for work that is not there.
 
 | File | Change |
 |---|---|
-| `games/models.py` | `GameQuerySet.tracked_by()` takes extra conditions. `PurchaseQueryset.finished()` takes a library. `PurchaseQueryset.abandoned()`, `.dropped()` and five `Game` instance methods are deleted. |
-| `games/views/stats_data.py` | Four `games__status=` predicates become subquery membership; the private computation takes the library. |
+| `games/models.py` | `GameQuerySet.tracked_by()` takes extra conditions. **New name:** `DONE_STATUSES`, the two statuses that mean the player is done. `PurchaseQueryset.finished()` takes a library and counts that pair. `PurchaseQueryset.abandoned()`, `.dropped()` and five `Game` instance methods are deleted. |
+| `games/views/stats_data.py` | Four `games__status=` predicates become subquery membership; the private computation takes the library; the finished set becomes the done pair. |
+| `games/views/stats_links.py` | Three builders name the done pair, so a link still lands on the number it was clicked from. |
 | `games/api.py` | `partial_update_game` looks the game up with `tracked_by()`. |
 | `tests/test_playergame_tracked_by.py` | The new keyword slot: it filters, and it opens one join. |
 | `tests/test_playergame_read_parity.py` | Letter predicate against word predicate, per letter, positive and negated. Deleted by D with the rest of the file. |
-| `tests/test_stats_reads_the_projection.py` | **New.** With the catalog and the projection disagreeing, a statistic follows the projection. Survives D. |
-| `tests/test_stats_links.py` | The same disagreement, applied to the existing parity fixtures: a link's count still equals the number it was clicked from. |
+| `tests/test_stats_reads_the_projection.py` | **New.** With the catalog and the projection disagreeing, a statistic follows the projection. Then: a retired game is finished. Survives D. |
+| `tests/test_stats_links.py` | The same disagreement, applied to the existing parity fixtures, plus a retired purchase: a link's count still equals the number it was clicked from. |
 | `tests/test_playergame_status_word_setters.py` | The endpoint refuses an untracked game and accepts a tracked shared one. |
 | `docs/STATUSES.md` | The status table, the two purchase predicates and the query patterns. |
+| `docs/superpowers/specs/2026-08-28-issue-678-playergame-read-cutover-design.md` | The behaviour exception, so D does not read a rule C broke. |
 
 ---
 
@@ -80,7 +100,7 @@ before starting, or you will look for work that is not there.
 - Consumes: `GameQuerySet.annotated_for_filtering(library)` (child B).
 - Produces: `tracked_by(library, **conditions)` — conditions are lookup
   keywords applied in the same `filter()` call as the tracked-row conditions.
-  Task 2 and Task 4 call it.
+  Task 2 and Task 5 call it.
 
 **Why a keyword slot and not a second `.filter()`:** Django opens a join per
 `filter()` call on a multi-valued relation, and B's review found exactly this
@@ -199,6 +219,9 @@ git commit -m "Let the tracked row take a condition of its own"
 - Produces: `PurchaseQueryset.finished(library)`;
   `_games_at_status(library, *statuses)` in `stats_data.py`;
   `_compute_stats_from_scoped_querysets(…, library=…)`.
+
+This task selects exactly what the old code selected. Task 3 is where the answer
+changes.
 
 **The four predicates and their replacements:**
 
@@ -385,7 +408,7 @@ FAILS.
 - [ ] **Step 5: Give `PurchaseQueryset.finished()` a library**
 
 In `games/models.py`, replace the three-line `finished()` body. The two dead
-neighbours — `abandoned()` and `dropped()` — are Task 3's; leave them for now so
+neighbours — `abandoned()` and `dropped()` — are Task 4's; leave them for now so
 this commit is one idea.
 
 ```
@@ -446,7 +469,7 @@ make test ARGS="tests/test_stats_reads_the_projection.py tests/test_stats.py tes
 
 Expected: PASS, all four files. `test_stats_links.py` passes because the autouse
 fixture writes the projection row from the game's catalog letter, so the two
-agree in every test that does not force them apart. Task 5 removes that comfort.
+agree in every test that does not force them apart. Task 6 removes that comfort.
 
 - [ ] **Step 8: Run the whole fast suite**
 
@@ -469,7 +492,229 @@ git commit -m "Count the statistics from the row the library keeps"
 
 ---
 
-## Task 3: Delete the seven dead catalog readers
+## Task 3: A retired game is a finished game
+
+**Files:**
+- Modify: `games/models.py` (add `DONE_STATUSES`; `PurchaseQueryset.finished`)
+- Modify: `games/views/stats_data.py` (the finished set, the redundant exclusion)
+- Modify: `games/views/stats_links.py` (three builders)
+- Test: `tests/test_stats_reads_the_projection.py`
+- Test: `tests/test_stats_links.py`
+
+**Interfaces:**
+- Produces: `DONE_STATUSES` in `games/models.py`, imported by `stats_data.py`
+  and `stats_links.py`.
+
+This is the one commit in C that changes a number on the page. It follows Task 2
+rather than riding inside it so a reviewer reads the move and the change apart.
+
+**Why one constant and not two lists.** The statistics and the links must select
+the same set or `tests/test_stats_links.py` goes red, and a parity test that
+catches a drift is worse than a name that cannot drift. `DONE_STATUSES` goes in
+`games/models.py`, beside `PlayerGameStatus`, and both modules import it from
+there. Not `games/playergame_status.py`, which is the letter-to-word map and
+imports `games.models` — a constant there would need a deferred import back
+into the model layer to be readable from `PurchaseQueryset.finished()`.
+
+**What the change reaches.** `finished`, and through it everything defined as
+not-finished:
+
+| Statistic | Retired today | Retired after |
+|---|---|---|
+| `all_finished_this_year_count` (per year) | needs an ended play event | unchanged — the per-year list is still play-event dated |
+| `backlog_decrease_count` (all time) | absent | counted |
+| `backlog_decrease_count` (per year) | absent | counted, if a play event ended in the year |
+| `purchased_unfinished_count` | absent already, through the trailing exclusion | absent, now through `not_finished_q` |
+| `dropped_count` | absent | absent |
+
+The per-year finished list stays play-event dated because it has a date column
+to fill; a retired game with no play event has no finish date to show. That is
+not a quirk left standing, it is what the column means.
+
+**The one knock-on.** `dropped` reads `not_finished_q`, so a purchase that is
+both refunded and retired stops counting as dropped and starts counting as
+finished. Refunding marks a game abandoned, so the pair should not occur; the
+docs record it in Task 7 rather than the code guarding against it.
+
+**Why `unfinished` loses a term.** After the change `not_finished_q` already
+excludes every retired game, so the trailing
+`~Q(games__in=_games_at_status(library, RETIRED, ABANDONED))` keeps only its
+abandoned half. The composite exclusion is unchanged — retired moves from the
+trailing filter into `not_finished_q` — which is why
+`test_two_negated_statuses_merge_into_one` stays green and stays relevant.
+
+- [ ] **Step 1: Write the failing tests**
+
+Append to `tests/test_stats_reads_the_projection.py`:
+
+```python
+def test_a_retired_row_leaves_the_backlog(a_bought_game):
+    """Retired means done, so it is not still waiting to be played."""
+    library, game = a_bought_game
+    PlayerGame.objects.filter(library=library, game=game).update(
+        status=PlayerGameStatus.RETIRED
+    )
+
+    assert compute_stats(library, YEAR)["purchased_unfinished_count"] == 0
+
+
+def test_a_retired_row_is_finished(a_bought_game):
+    """It used to leave the backlog and arrive nowhere."""
+    library, game = a_bought_game
+    assert compute_stats(library)["backlog_decrease_count"] == 0
+
+    PlayerGame.objects.filter(library=library, game=game).update(
+        status=PlayerGameStatus.RETIRED
+    )
+
+    assert compute_stats(library)["backlog_decrease_count"] == 1
+
+
+def test_a_retired_row_is_not_dropped(a_bought_game):
+    library, game = a_bought_game
+    PlayerGame.objects.filter(library=library, game=game).update(
+        status=PlayerGameStatus.RETIRED
+    )
+
+    assert compute_stats(library, YEAR)["dropped_count"] == 0
+```
+
+Append to `tests/test_stats_links.py`, which proves the links moved with the
+statistics rather than only that the statistics moved:
+
+```python
+@pytest.fixture
+def a_retired_purchase(world):
+    library = world["library"]
+    game = Game.objects.create(
+        library=library, name="Retired", status=Game.Status.RETIRED
+    )
+    Purchase.objects.create(
+        library=library,
+        price_currency="CZK",
+        date_purchased=_dt(YEAR, 6, 5),
+        type=Purchase.GAME,
+    ).games.set([game])
+    return world
+
+
+@pytest.mark.parametrize(
+    ("builder", "stat_key"),
+    [
+        ("purchases_finished", "all_finished_this_year_count"),
+        ("purchases_dropped", "dropped_count"),
+        ("purchases_unfinished", "purchased_unfinished_count"),
+        ("purchases_backlog_decrease", "backlog_decrease_count"),
+    ],
+)
+def test_a_retired_purchase_links_to_the_same_count(
+    a_retired_purchase, builder, stat_key
+):
+    library = a_retired_purchase["library"]
+    stats = compute_stats(library, YEAR)
+
+    assert (
+        _count(getattr(stats_links, builder)(YEAR), Purchase, library)
+        == stats[stat_key]
+    )
+```
+
+- [ ] **Step 2: Run them and watch them fail**
+
+```
+make test ARGS="tests/test_stats_reads_the_projection.py tests/test_stats_links.py" PYTEST_WORKERS=0
+```
+
+Expected: `test_a_retired_row_is_finished` FAILS at the second assertion (the
+count stays 0). `test_a_retired_row_leaves_the_backlog` and
+`test_a_retired_row_is_not_dropped` PASS already — retired falls out of both
+today for the wrong reason, and they are here so Task 3 cannot silently move it
+into the wrong bucket. The link cases pass too, because both sides still say
+`completed`; they go red the moment one side changes without the other.
+
+- [ ] **Step 3: Name the done pair**
+
+In `games/models.py`, directly after the `PlayerGameStatus` class:
+
+```python
+#: The player is done with the game. Completed means the objective
+#: they were playing for is met; retired means the game has no
+#: ending to reach. The statistics count both as finished.
+DONE_STATUSES: tuple[PlayerGameStatus, ...] = (
+    PlayerGameStatus.COMPLETED,
+    PlayerGameStatus.RETIRED,
+)
+```
+
+`PlayerGameStatus` is declared after `PurchaseQueryset` in the module, so this
+constant is too. `finished()` reads it when the method runs, the same way it
+already reads `Game` and `PlayerGameStatus`.
+
+- [ ] **Step 4: Widen the finished set**
+
+In `games/models.py`, `PurchaseQueryset.finished()` selects the pair:
+
+```
+tracked__status__in=DONE_STATUSES
+```
+
+In `games/views/stats_data.py`:
+
+1. Import `DONE_STATUSES` from `games.models`, beside `Game`.
+2. Rename `completed` to `done` and widen it:
+   `done = Game.objects.tracked_by(library, tracked__status__in=DONE_STATUSES)`.
+   It no longer goes through `_games_at_status`, which takes a variadic; keep
+   that helper for the two single-status calls.
+3. `not_finished_q = ~Q(games__in=done) & ~ended_q`.
+4. The per-year `backlog_decrease_count` filters `games__in=done`.
+5. In `unfinished`, drop `PlayerGameStatus.RETIRED` from the trailing
+   `_games_at_status(…)` call, leaving `ABANDONED` alone.
+
+In `games/views/stats_links.py`:
+
+1. Import `DONE_STATUSES` from `games.models`, beside `PlayerGameStatus`.
+2. `purchases_finished()`'s all-time branch: `ChoiceCriterion(value=list(DONE_STATUSES))`.
+3. `purchases_dropped()`: `_not_finished_game(year, list(DONE_STATUSES))`.
+4. `purchases_backlog_decrease()`: `ChoiceCriterion(value=list(DONE_STATUSES))`.
+5. `purchases_unfinished()` passes `[*DONE_STATUSES, PlayerGameStatus.ABANDONED]`
+   — the same three words it lists today, now sourced from the one constant.
+6. `_not_finished_game`'s docstring says the exclusions "always include
+   FINISHED". Say the done pair instead, and point at `DONE_STATUSES`.
+
+`ChoiceCriterion(value=…)` wants a list; `DONE_STATUSES` is a tuple so nothing
+can append to it. `list(...)` at each call site is the conversion.
+
+- [ ] **Step 5: Run them and watch them pass**
+
+```
+make test ARGS="tests/test_stats_reads_the_projection.py tests/test_stats_links.py tests/test_stats.py tests/test_stats_content_links.py" PYTEST_WORKERS=0
+```
+
+Expected: PASS. A red case in `test_stats_links.py` that is *not* the new one
+means a builder and `stats_data` disagree; the builder is the likelier half,
+because `stats_data` has three call sites and `stats_links` has four.
+
+- [ ] **Step 6: Run the whole fast suite**
+
+```
+make check-fast >/tmp/c.log 2>&1 && echo CLEAN || tail -60 /tmp/c.log
+```
+
+Expected: CLEAN. A red assertion in `tests/test_stats.py` naming a finished or
+backlog count is this change reaching a fixture with a retired game in it —
+read the fixture, confirm the new number is the right one, and update the
+assertion with a comment saying retired now counts.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add games/models.py games/views/stats_data.py games/views/stats_links.py tests/test_stats_reads_the_projection.py tests/test_stats_links.py
+git commit -m "Count a retired game as finished"
+```
+
+---
+
+## Task 4: Delete the seven dead catalog readers
 
 **Files:**
 - Modify: `games/models.py:338-354` (five `Game` methods),
@@ -485,7 +730,7 @@ even compute the `dropped` statistic it appears to name — `stats_data` adds
 not-finished, not-infinite and games-or-DLC on top. Keeping it invites a wrong
 reuse. #770 has seven fewer catalog readers to find.
 
-`docs/STATUSES.md` documents four of them under "Query Patterns". Task 6 owns
+`docs/STATUSES.md` documents four of them under "Query Patterns". Task 7 owns
 the whole document; do not edit it here.
 
 - [ ] **Step 1: Prove they are dead**
@@ -521,7 +766,7 @@ git commit -m "Drop seven status readers nothing reads"
 
 ---
 
-## Task 4: The API patches a game the library tracks
+## Task 5: The API patches a game the library tracks
 
 **Files:**
 - Modify: `games/api.py:200-211` (`partial_update_game`)
@@ -622,7 +867,7 @@ git commit -m "Patch the status of a game the library tracks"
 
 ---
 
-## Task 5: Scramble the catalog and the links still land
+## Task 6: Scramble the catalog and the links still land
 
 **Files:**
 - Test: `tests/test_stats_links.py`
@@ -693,31 +938,35 @@ git commit -m "Scramble the letters and check the links still land"
 
 ---
 
-## Task 6: Documentation and the gate
+## Task 7: Documentation and the gate
 
 **Files:**
 - Modify: `docs/STATUSES.md`
+- Modify: `docs/superpowers/specs/2026-08-28-issue-678-playergame-read-cutover-design.md`
 - Modify: `games/views/stats_data.py:1-11` (module docstring)
 
 **Interfaces:** none produced.
 
-`docs/STATUSES.md` is now wrong in four ways C created and one it inherited:
+`docs/STATUSES.md` is now wrong in five ways C created and one it inherited:
 
 1. The Game Statuses table lists five letters as the field. The projection holds
    six words and the letters are a mirror #770 removes.
 2. "Finished" and "Dropped" are defined as `Game.status == "f"` / `"a"`.
-3. "Query Patterns" shows `game.finished()`, `game.abandoned()` and
+3. "Finished" is one status; it is now two.
+4. "Query Patterns" shows `game.finished()`, `game.abandoned()` and
    `Purchase.objects.dropped()`, all deleted, and `Purchase.objects.finished()`
    without its library.
-4. Inherited and false, independent of this work: the Summary Table's **Dropped**
+5. The Edge Cases bullet "Retired games are considered **dropped**" was already
+   false and Task 3 makes it false in a new direction.
+6. Inherited and false, independent of this work: the Summary Table's **Dropped**
    row says "Finished OR Abandoned/Retired". Dropped is *not* finished. Fix it
    while the surrounding lines are being rewritten rather than leave a known
    contradiction two paragraphs from its own correct definition; say so in the
    pull request body.
 
 Rewrite those sections. Do not rewrite the document — the transition-state
-discussion, the edge cases and the unfinished-versus-dropped comparison are
-still accurate and belong to no task here.
+discussion, the other edge cases and the unfinished-versus-dropped comparison
+are still accurate and belong to no task here.
 
 - [ ] **Step 1: Update the status table**
 
@@ -746,15 +995,14 @@ mirror of that row, kept current by `games/writes/playergame.py` and removed by
 with one naming the command path; the audit table stops being the record in
 #678 D and its storage goes in #771.
 
-**Do not make the statistics agree with these words.** The spec preserves
-behaviour exactly, quirks included, and one quirk is now named rather than
-fixed — Step 4 writes it down.
-
 - [ ] **Step 2: Update the two predicates**
 
-"Finished" becomes `PlayerGame.status == "completed"` OR a PlayEvent with an
-`ended` date. "Dropped" becomes `PlayerGame.status == "abandoned"` OR
-`Purchase.date_refunded IS NOT NULL`.
+"Finished" becomes: `PlayerGame.status` is one of `DONE_STATUSES` — `completed`
+or `retired` — or the game has a PlayEvent with an `ended` date. Name the
+constant and say where it lives, because the statistics and the stats links both
+read it and a reader chasing one will want the other. "Dropped" becomes
+`PlayerGame.status == "abandoned"` OR `Purchase.date_refunded IS NOT NULL`, and
+not finished.
 
 - [ ] **Step 3: Update the query patterns**
 
@@ -766,30 +1014,29 @@ Purchase.objects.for_library(library).finished(library)
 Game.objects.tracked_by(library, tracked__status=PlayerGameStatus.ABANDONED)
 ```
 
-- [ ] **Step 4: Say where the statistics disagree with the words**
-
-Two claims in the document are false against the code, and one of them is the
-reason this step exists rather than a code change.
+- [ ] **Step 4: Say that retired is finished**
 
 Fix the Summary Table's **Dropped** row, which says "Finished OR
 Abandoned/Retired". It is `NOT finished, AND (abandoned OR refunded)`.
 
-Fix the Edge Cases bullet "Retired games are considered **dropped**".
-`stats_data` never counts a retired game as dropped: `dropped` selects
-`abandoned` or refunded. Replace the bullet with what the code does, and add
-that this is a known disagreement:
+Replace the Edge Cases bullet "Retired games are considered **dropped**", which
+was never what the code did, with what it does now:
 
-> **Retired counts as nothing.** Retired means done with a game that has no
-> ending, so a retired game belongs with the completed ones. The statistics do
-> not put it there: `finished` counts `completed` or an ended play event, so a
-> retired game is not finished; `unfinished` excludes it from the backlog; and
-> `dropped` selects only `abandoned` or refunded. It falls out of all three
-> counts. #678 C moved these reads to the projection without changing what they
-> select — see #<issue> for the question of what they should select.
+> **Retired counts as finished.** Retired means done with a game that has no
+> ending, so it belongs with the completed ones and `DONE_STATUSES` holds both.
+> A retired game leaves the backlog, adds to the all-time backlog decrease, and
+> is not dropped. It joins a year's finished list only through a play event,
+> because that list is dated by the play event and a retired game with none has
+> no date to show. Until #678 C it counted for nothing: not finished, not in the
+> backlog, not dropped.
 
-Leave `shelved` alone: it is unfinished and not final, `unfinished` excludes
-only `completed`, `retired` and `abandoned`, so a shelved game stays in the
-backlog. That is already what the words ask for.
+Add one line where refunds are discussed: a refund marks a game abandoned, so a
+purchase that is both refunded and retired should not arise; if one does, it
+counts as finished, not dropped.
+
+Leave `shelved` alone: it is unfinished and not final, and `unfinished` excludes
+only the done pair and `abandoned`, so a shelved game stays in the backlog. That
+is already what the words ask for.
 
 - [ ] **Step 5: Say `stats_data`'s first paragraph in normal words**
 
@@ -798,7 +1045,15 @@ computing metrics and rendering them". Say what it is: the function that
 computes the metrics, and `stats_content` renders them. While there, say that it
 takes the library because a status now lives on the library's own row.
 
-- [ ] **Step 6: Lint the prose**
+- [ ] **Step 6: Record the exception in the spec**
+
+`docs/superpowers/specs/2026-08-28-issue-678-playergame-read-cutover-design.md`
+says C preserves behaviour exactly, quirks included, and that the parity suite
+is the arbiter. Child D reads that document. Add the exception under the
+Statistics section: retired joins completed as the finished state, agreed with
+the user during C, and the rule holds for every other predicate.
+
+- [ ] **Step 7: Lint the prose**
 
 ```
 make vale >/tmp/vale.log 2>&1 && echo CLEAN || cat /tmp/vale.log
@@ -807,7 +1062,7 @@ make vale >/tmp/vale.log 2>&1 && echo CLEAN || cat /tmp/vale.log
 Expected: CLEAN, or warnings only. An **error** names a refused word with one
 replacement; take the replacement.
 
-- [ ] **Step 7: Run the gate**
+- [ ] **Step 8: Run the gate**
 
 ```
 make check >/tmp/check.log 2>&1 && echo CLEAN || tail -80 /tmp/check.log
@@ -823,23 +1078,14 @@ and `e2e/test_quick_filter_e2e.py::test_date_dropdown_facet_preset_flow`. Both
 depend on the wall clock and on the display time zone. Confirm any failure is
 one of those two by stashing and re-running it; never assume.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add docs/STATUSES.md games/views/stats_data.py
+git add docs/STATUSES.md docs/superpowers/specs games/views/stats_data.py
 git commit -m "Say what a status is where the docs still say a letter"
 ```
 
 ---
-
-## Before Task 6
-
-**Agree the "retired counts as nothing" issue with the user and file it**, so
-Step 4 has a number to cite instead of a forward reference. Do not draft its
-body alone — ask what it should say first. It is a behaviour question the read
-cutover deliberately does not answer: whether `retired` should join `completed`
-in the finished count and the backlog decrease, and whether the answer differs
-for a game whose statistics come from a play event instead.
 
 ## After the tasks
 
@@ -848,14 +1094,18 @@ for a game whose statistics come from a play event instead.
    what breaks, and the pull request lists the exceptions with reasons. Delete
    this plan document in the same commit. The #678 spec stays: child D still
    reads it.
-2. **File the issue**, then open the pull request against
-   `codex/playergame-read-cutover` with `Implements #<issue>` in the body. The
-   base is not the default branch, so GitHub will not close the issue on merge
-   — close it by hand, with a comment saying why.
-3. **Say what diverged from the spec** in the pull request body: the five
-   `stats_links` builders were already word-based after B, the API schema was
-   already word-based after A, and two of the three `PurchaseQueryset` methods
-   were deleted rather than converted because nothing called them.
+2. **Open the pull request** against `codex/playergame-read-cutover`. The base is
+   not the default branch, so GitHub will not close an issue on merge — close it
+   by hand, with a comment saying why.
+3. **Lead the pull request body with the behaviour change.** A retired game now
+   counts as finished: it adds to the all-time backlog decrease and, through a
+   play event, to a year's. Say that Task 2 moved the reads with no change in
+   what they select and Task 3 changed one, and that the spec was amended to
+   record the exception.
+4. **Say what else diverged from the spec:** the five `stats_links` builders were
+   already word-based after B, the API schema was already word-based after A, and
+   two of the three `PurchaseQueryset` methods were deleted rather than converted
+   because nothing called them.
 
 ## What C does not touch
 
@@ -866,3 +1116,4 @@ for a game whose statistics come from a play event instead.
   no reader asking for it.
 - `GameStatusChange` and the History section. Child D.
 - `Game.status` and `Game.mastered` themselves. #770.
+- The `shelved` status, which still has no letter and so cannot be set. Child D.
