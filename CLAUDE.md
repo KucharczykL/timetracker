@@ -647,6 +647,11 @@ chromium` once. All JS is vendored, so the tests run fully offline. A bare
   `games/views/playergame_writes.py`. Nothing maintains the `Game.status` and
   `Game.mastered` columns any more, and #770 drops them: a command is the only
   way to state either fact, and the projection is the only place to read it.
+- **A refused command becomes an answer** — `answered(subject)` in
+  `games/writes/answers.py` turns every `CommandConflict`, `CommandNotPermitted`
+  and `CommandRejected` into a sentence and a status. A new conflict type goes
+  in `CONFLICT_ANSWERS`, `ANSWERED_DIRECTLY` or `NOT_ANSWERED`, or
+  `tests/test_command_answers.py` fails. Never translate one at a call site.
 - **No dispatch inside a transaction** — `run_in_transaction` opens the
   transaction it retries and refuses to nest, so a view that dispatches carries
   no `@transaction.atomic` and calls no helper that does. `games.E008` refuses
