@@ -462,8 +462,7 @@ def test_an_unsupported_value_is_refused():
     ],
 )
 def test_a_decimal_is_the_number_not_the_text(written: str, same_value: str):
-    """A form renders 12.50, the browser retries with 12.5, and one honest
-    retry must not be answered as a conflict."""
+    """One honest retry is not a conflict."""
     assert fingerprint_command_input(
         {"price": Decimal(written)}
     ) == fingerprint_command_input({"price": Decimal(same_value)})
@@ -476,9 +475,11 @@ def test_two_decimals_that_differ_keep_separate_digests():
 
 
 def test_a_decimal_differing_past_the_context_precision_is_a_different_input():
-    """normalize() rounds to the context's 28 digits, so both of these would
-    reach one canonical form and the second command would be answered with the
-    first one's range. No shorter pair catches that."""
+    """normalize() would give these one digest.
+
+    The context rounds at 28 digits, so no shorter pair catches a revert
+    to it.
+    """
     assert fingerprint_command_input(
         {"price": Decimal("1.000000000000000000000000000000001")}
     ) != fingerprint_command_input(
@@ -487,8 +488,7 @@ def test_a_decimal_differing_past_the_context_precision_is_a_different_input():
 
 
 def test_a_decimal_digest_ignores_the_active_context():
-    """The canonical form is read from the value, so no thread-local setting
-    in this process can move it."""
+    """No thread-local setting moves the canonical form."""
     price = Decimal("1.100000001")
 
     with localcontext() as context:
@@ -500,18 +500,16 @@ def test_a_decimal_digest_ignores_the_active_context():
 
 @pytest.mark.parametrize("value", ["NaN", "sNaN", "Infinity", "-Infinity"])
 def test_a_non_finite_decimal_is_refused(value: str):
-    """sNaN is here because it signals on comparison: the refusal has to be
-    reached before anything compares the value."""
+    """sNaN must be refused before any comparison."""
     with pytest.raises(TypeError):
         fingerprint_command_input({"price": Decimal(value)})
 
 
 def test_one_instant_in_two_offsets_is_one_input():
-    """USE_TZ is on and TIME_ZONE is Europe/Prague, so a local-aware value and
-    a UTC one for the same moment are an ordinary pair to hold.
+    """One moment in two offsets is one input.
 
-    This also pins the branch order: datetime subclasses date, and a date-first
-    branch never applies the UTC canonical form.
+    This also pins the branch order: a date-first branch skips the UTC
+    canonical form and fails here.
     """
     utc_noon = datetime(2026, 8, 22, 12, tzinfo=UTC)
     prague_afternoon = datetime(2026, 8, 22, 14, tzinfo=timezone(timedelta(hours=2)))
@@ -523,8 +521,7 @@ def test_one_instant_in_two_offsets_is_one_input():
 
 
 def test_a_naive_datetime_is_refused():
-    """astimezone() on a naive value reads the machine's timezone, so its
-    canonical form would differ between processes."""
+    """astimezone() would read the machine's timezone."""
     naive = datetime(2026, 8, 22, 12)  # noqa: DTZ001 -- the value under test
 
     with pytest.raises(TypeError):
@@ -532,8 +529,11 @@ def test_a_naive_datetime_is_refused():
 
 
 def test_the_tag_words_are_the_wire_form():
-    """Renaming one moves every digest that carries that type, which is a
-    FINGERPRINT_VERSION bump. Nothing else in this file would notice."""
+    """The words are the wire form.
+
+    Renaming one moves every digest of that type, and nothing else in this
+    file would notice.
+    """
     identifier = uuid.uuid7()
 
     assert _encode_command_value(datetime(2026, 8, 22, 12, tzinfo=UTC)) == (
@@ -551,7 +551,7 @@ def test_the_tag_words_are_the_wire_form():
 
 
 def test_a_value_and_its_own_text_are_not_the_same_input():
-    """Without the word, a key issued for one replays the other."""
+    """Without the word, one key replays both."""
     identifier = uuid.uuid7()
     day = date(2026, 8, 22)
     pairs = [
@@ -567,7 +567,7 @@ def test_a_value_and_its_own_text_are_not_the_same_input():
 
 
 def test_a_date_and_a_temporal_value_for_that_day_differ():
-    """Both canonicalize to 2026-08-22, so only the word keeps them apart."""
+    """Both read 2026-08-22; the word separates them."""
     day = date(2026, 8, 22)
 
     assert fingerprint_command_input({"when": day}) != fingerprint_command_input(
@@ -576,16 +576,14 @@ def test_a_date_and_a_temporal_value_for_that_day_differ():
 
 
 def test_an_unknown_temporal_value_and_an_unset_field_differ():
-    """An unknown time encodes as None, which json writes as the null an unset
-    field also writes."""
+    """An unknown time and an unset field both write null."""
     assert fingerprint_command_input(
         {"when": TemporalValue.unknown()}
     ) != fingerprint_command_input({"when": None})
 
 
 def test_a_decimal_and_an_int_of_the_same_value_differ():
-    """Decimal(1) == 1, and they are still two different inputs: the digest
-    identifies a value's type as well as its meaning."""
+    """Equal values, two types, two digests."""
     assert fingerprint_command_input(
         {"count": Decimal(1)}
     ) != fingerprint_command_input({"count": 1})

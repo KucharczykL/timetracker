@@ -34,11 +34,10 @@ type IdempotencyKey = str  # "session-create-01J8Z3K4M5N6P7Q8R9S0T1U2V3"
 type RequestFingerprint = str  # "9f86d081884c7d65..." (sha256 hex)
 type TaggedValue = tuple[str, str | None]  # ("decimal", "11E-1")
 
-#: Stamped on every record. Bump it when a change could give a different digest
-#: for input a deployed record already holds: those records are no longer
-#: comparable and replay unchecked, rather than rejecting every retry that
-#: predates the change. No deployment has run 0024, so no record holds anything
-#: and every canonicalizer change until the first one that does is free.
+#: Bump when a deployed record's digest changes.
+#:
+#: No deployment has run 0024, so no record holds a fingerprint and every
+#: change to the canonical form is free until one does.
 FINGERPRINT_VERSION = 1
 
 
@@ -72,21 +71,15 @@ class UnchangedAppend:
 
 
 def _canonical_decimal(value: Decimal) -> str:
-    """The number, not the text it was written as: 1.1 and 1.10 are one value
-    and must reach one digest.
+    """The number, not its spelling.
 
-    Read from as_tuple() rather than normalize(), which is an arithmetic
-    operation: it rounds to the active context's precision, so two values
-    differing past the 28th digit would share a canonical form and the second
-    command would be answered with the first one's range. The context is also
-    thread-local, so the same value would canonicalize two ways in two
-    processes.
+    Not normalize(): it rounds to the thread-local context, so two values
+    differing past 28 digits reach one digest.
     """
     sign, digits, exponent = value.as_tuple()
     if not isinstance(exponent, int):
-        #: The exponent is 'n', 'N' or 'F' for exactly NaN, sNaN and Infinity.
-        #: Testing its type refuses them before anything compares the value,
-        #: which sNaN signals on, and narrows the exponent for the checker.
+        #: A string exponent means NaN or Infinity.
+        #: Refused before comparison, which sNaN signals on.
         raise TypeError(
             f"{value} has no canonical form for an idempotency fingerprint. "
             "Convert it at the call site: a NaN is not equal to itself, so a "
@@ -97,9 +90,7 @@ def _canonical_decimal(value: Decimal) -> str:
         digits = digits[:-1]
         exponent += 1
     if digits == (0,):
-        #: -0.00 == 0 and the sign survives as_tuple(), so without this the
-        #: pair would be -0E0 against 0E0. CPython stores every zero with one
-        #: digit, so the loop above never runs for one.
+        #: -0.00 equals 0 and keeps its sign.
         return "0"
     prefix = "-" if sign else ""
     coefficient = "".join(str(digit) for digit in digits)
@@ -107,13 +98,10 @@ def _canonical_decimal(value: Decimal) -> str:
 
 
 def _canonical_datetime(value: datetime) -> str:
-    """One instant, one text: 12:00+00:00 and 13:00+01:00 are the same moment
-    and must reach one digest.
+    """One instant, one text.
 
-    A naive value is refused rather than assumed. astimezone() on one reads the
-    machine's timezone, so the same value would canonicalize as +01:00 on a
-    Europe/Prague host and +00:00 on a UTC one -- the variance this function
-    exists to prevent, arriving as a wrong answer rather than a refusal.
+    A naive value is refused: astimezone() reads the machine's timezone, so
+    the digest would change between hosts.
     """
     if value.tzinfo is None or value.tzinfo.utcoffset(value) is None:
         raise TypeError(
@@ -125,20 +113,12 @@ def _canonical_datetime(value: datetime) -> str:
 
 
 def _encode_command_value(value: Any) -> TaggedValue:
-    """What the value is, then what it means.
+    """The type word, then the canonical text.
 
-    The word is what keeps a value and its own text apart: without it a uuid
-    and the string of that uuid are one input, and a key issued for either
-    replays the other. json writes the pair as an array, which a string can
-    never be written as.
-
-    The words are the wire form. Renaming one moves every digest that carries
-    that type, so they are written out rather than read from the class -- a
-    rename is then a visible canonicalizer change rather than a silent one.
+    The words are the wire form: a rename moves every digest of that type,
+    so they are written out rather than read from the class.
     """
-    #: datetime before date -- datetime subclasses date, and the date branch
-    #: never applies the UTC canonical form, so the reverse order would give
-    #: one instant two digests.
+    #: datetime first: the date branch skips UTC.
     if isinstance(value, datetime):
         return ("datetime", _canonical_datetime(value))
     if isinstance(value, date):
@@ -148,7 +128,7 @@ def _encode_command_value(value: Any) -> TaggedValue:
     if isinstance(value, Decimal):
         return ("decimal", _canonical_decimal(value))
     if isinstance(value, TemporalValue):
-        #: None for an unknown time, which json renders as null inside the pair.
+        #: None for an unknown time.
         return ("temporal", value.canonical)
     raise TypeError(
         f"{type(value).__name__} has no canonical form for an idempotency "
