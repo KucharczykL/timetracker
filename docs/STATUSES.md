@@ -25,13 +25,17 @@ mirror of that row, kept current by `games/writes/playergame.py` and removed by
 (#678 D).
 
 **Setting game status:**
-- Users explicitly set game status via the UI (finish/drop purchase buttons, status change form)
+- Users explicitly set game status via the UI (the status dropdown on the game
+  page and the games list, the game form, finish/drop purchase buttons)
 - Code states a status as a command (`record_facts()` in
   `games/writes/playergame.py`), which appends an event and lets the projector
   write the row. Do not assign `Game.status` directly.
 - Refunding a purchase always marks its games as abandoned
-- `GameStatusChange` still records each change, but the events are the record
-  from #678 D onwards; where that audit table is stored is #771
+- The events are the record. `games/reads/playergame_history.py` replays a
+  library's status events into the History section of the game page, so the
+  history is scoped to one library. `GameStatusChange` keeps its old rows,
+  which the baseline backfill reads, but nothing writes or reads it otherwise;
+  #771 takes the table
 
 ---
 
