@@ -829,9 +829,8 @@ class GameForm(
         ),
     )
 
-    #: Plain fields: no save of this form writes a column.
-    #: The initial states the default a tracking would create,
-    #: rather than leaving the browser to post the first option.
+    #: Plain fields: this form writes no column.
+    #: The initial is what tracking would create.
     status = forms.ChoiceField(
         choices=PlayerGameStatus.choices,
         required=True,

@@ -146,10 +146,7 @@ def test_a_condition_opens_one_join(owned_library):
 def test_an_unscoped_annotation_drops_no_game(owned_library, other_library):
     """Registering the alias alone changes no result.
 
-    A filter compiles `tracked__status` against a queryset it never
-    executes, so this takes no library and filters nothing. Naming
-    the alias is what opens the join, and unscoped it has no
-    condition: a game two libraries track then comes back twice.
+    Unscoped, a game two libraries track duplicates.
     `tracked_by()` is the scoped read.
     """
     shared = Game.objects.create(library=None, name="Shared Title")

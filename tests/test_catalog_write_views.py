@@ -102,7 +102,7 @@ def test_add_game_writes_legacy_and_default_catalog_graph(
         2002,
         platform,
     )
-    #: Status and mastery are the projection's, not this graph's.
+    #: Status and mastery belong to the projection.
     assert (game.sort_name, game.wikidata) == ("Form game, Legacy", "Q123")
 
 

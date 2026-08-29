@@ -1,4 +1,4 @@
-"""Letter to word, the one direction that remains."""
+"""Letter to word, the direction that remains."""
 
 import pytest
 

@@ -43,7 +43,7 @@ def test_the_form_posts_a_word(logged_in, owned_library):
     row = PlayerGame.objects.get(library=owned_library, game=game)
     assert row.status == PlayerGameStatus.COMPLETED
     assert row.mastered is True
-    #: An add states the facts to the row, and to nothing else.
+    #: An add states the facts nowhere else.
     game.refresh_from_db()
     assert (game.status, game.mastered) == ("u", False)
 
@@ -65,7 +65,7 @@ def test_the_endpoint_takes_a_word(logged_in, owned_library):
 
 @pytest.mark.django_db(transaction=True)
 def test_the_endpoint_takes_the_word_no_letter_held(logged_in, owned_library):
-    #: Shelved was refused for as long as a letter had to hold it.
+    #: Refused while a letter held the status.
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
 
     response = logged_in.patch(

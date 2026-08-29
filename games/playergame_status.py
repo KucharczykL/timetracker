@@ -1,7 +1,7 @@
-"""The status map: letter to word, one way.
+"""Letter to word, the one direction left.
 
-The baseline backfill reads catalog letters, and so do the test
-fixtures that stand in for it. Nothing writes a letter any more.
+The backfill reads letters, and so do the
+fixtures that stand in for it.
 """
 
 from collections.abc import Mapping
@@ -16,8 +16,8 @@ class UnmappedLegacyStatus(ValueError):
     """Raised for a letter the map lacks."""
 
 
-#: SHELVED is absent: no letter states it. A fact
-#: about the letters, not about the words.
+#: SHELVED is absent: no letter states it.
+#: A fact about letters, not about words.
 LEGACY_STATUS_TO_PLAYER_STATUS: Mapping[LegacyStatus, PlayerGameStatus] = {
     Game.Status.UNPLAYED: PlayerGameStatus.UNPLAYED,
     Game.Status.PLAYED: PlayerGameStatus.PLAYED,

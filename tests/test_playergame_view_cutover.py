@@ -187,8 +187,8 @@ def test_editing_a_session_records_played_too(logged_in, owned_library, tracked_
 def test_a_session_on_an_untracked_game_tracks_it_and_records_played(
     logged_in, owned_library
 ):
-    #: No row is a defect, not a state, and states nothing
-    #: either way. record_facts() tracks the game and records.
+    #: A missing row is a defect.
+    #: record_facts() tracks the game and records.
     game = Game.objects.create(library=owned_library, name="Outer Wilds", status="u")
 
     logged_in.post(reverse("games:add_session"), _session_payload(game))
@@ -198,8 +198,8 @@ def test_a_session_on_an_untracked_game_tracks_it_and_records_played(
 
 @pytest.mark.django_db(transaction=True)
 def test_a_session_on_an_untracked_game_ignores_the_letter(logged_in, owned_library):
-    #: The letter said finished and used to hold the session back.
-    #: Nothing maintains it, so the row it would have vetoed wins.
+    #: The letter once held the session back.
+    #: Nothing maintains it, so the row wins.
     game = Game.objects.create(library=owned_library, name="Outer Wilds", status="f")
 
     logged_in.post(reverse("games:add_session"), _session_payload(game))
@@ -209,7 +209,7 @@ def test_a_session_on_an_untracked_game_ignores_the_letter(logged_in, owned_libr
 
 @pytest.mark.django_db
 def test_the_box_comes_up_ticked(logged_in):
-    #: A falsy initial would untick it everywhere, quietly.
+    #: A falsy initial would untick it everywhere.
     response = logged_in.get(reverse("games:add_session"))
 
     match = re.search(r'<input[^>]*name="mark_as_played"[^>]*>', response.text)
@@ -220,7 +220,7 @@ def test_the_box_comes_up_ticked(logged_in):
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.untracked_games
 def test_an_unticked_box_records_nothing_and_tracks_nothing(logged_in, owned_library):
-    #: The heal is the checkbox's, not the session's.
+    #: The checkbox owns the heal, not sessions.
     game = Game.objects.create(library=owned_library, name="Outer Wilds", status="u")
 
     logged_in.post(
@@ -380,7 +380,7 @@ def test_a_failed_add_leaves_the_row_at_the_defaults(
 
     assert response.status_code == 302
     game = Game.objects.get(name="Outer Wilds")
-    #: The failed command left the row where tracking put it.
+    #: The failed command left the row untouched.
     row = PlayerGame.objects.get(library=owned_library, game=game)
     assert (row.status, row.mastered) == (PlayerGameStatus.UNPLAYED, False)
 

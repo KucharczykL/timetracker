@@ -1,8 +1,6 @@
-"""The status and mastery filters select on the projection.
+"""Status and mastery select on the projection.
 
-The read-parity suite was the only cover for these two fields, and it
-compared each against a catalog column. It is gone with the column, so
-they are stated here on their own terms.
+The retired parity suite was their cover.
 """
 
 from datetime import date
@@ -20,7 +18,7 @@ from games.models import Game, PlayerGame, PlayerGameStatus, Purchase
 
 @pytest.fixture
 def one_game_per_word(owned_library):
-    """A game per status word, mastered on every other one."""
+    """A game per word, mastered alternately."""
     games = {}
     for index, status in enumerate(PlayerGameStatus):
         game = Game.objects.create(library=owned_library, name=f"Game {index}")
@@ -62,8 +60,8 @@ def a_purchase_of(library, game):
 @pytest.mark.django_db
 @pytest.mark.parametrize("status", list(PlayerGameStatus))
 def test_a_word_selects_its_game(owned_library, one_game_per_word, status):
-    #: Shelved among them: no letter states it, so the old suite
-    #: had to leave the one word out that only a word can hold.
+    #: Shelved among them: no letter states it,
+    #: so the retired suite skipped it.
     matched = matching_games(owned_library, GameFilter.where(status=[status]))
 
     assert list(matched) == [one_game_per_word[status]]
@@ -101,7 +99,7 @@ def test_mastery_selects_the_rows_that_hold_it(
 def test_a_purchase_is_found_by_the_word_its_game_holds(
     owned_library, one_game_per_word
 ):
-    #: The purchase side reads the projection through a subquery.
+    #: The purchase side reads through a subquery.
     shelved = a_purchase_of(owned_library, one_game_per_word[PlayerGameStatus.SHELVED])
     a_purchase_of(owned_library, one_game_per_word[PlayerGameStatus.PLAYED])
 

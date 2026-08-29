@@ -39,7 +39,7 @@ def _selected_status(html: str) -> str | None:
 
 
 def _mastered_input(html: str) -> str:
-    """The one input tag the mastery checkbox renders."""
+    """The mastery checkbox's one input tag."""
     match = re.search(r'<input[^>]*name="mastered"[^>]*>', html)
     assert match is not None
     return match.group(0)
@@ -142,8 +142,8 @@ def test_an_archived_game_is_off_the_list(logged_in, owned_library):
 @pytest.mark.django_db
 @pytest.mark.untracked_games
 def test_the_edit_form_offers_the_default_with_no_row(logged_in, owned_library):
-    #: No row states nothing, so the form offers what tracking
-    #: would create rather than a column nothing maintains.
+    #: No row states nothing, so the form
+    #: offers what tracking would create.
     game = Game.objects.create(
         library=owned_library, name="Outer Wilds", status="f", mastered=True
     )

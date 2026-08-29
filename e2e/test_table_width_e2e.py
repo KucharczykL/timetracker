@@ -120,8 +120,8 @@ def populated(e2e_user, e2e_library) -> None:
     PlayEvent.objects.create(
         game=game, started=BASE, ended=BASE + timedelta(days=3), note=LONG_NOTE
     )
-    #: Stated as a command, so the History section has an entry:
-    #: it reads the event stream, which no direct write reaches.
+    #: A command, so History has an entry:
+    #: it reads events, not this direct write.
     track_game(e2e_user, game, correlation_id=new_correlation_id())
     record_facts(
         e2e_user,
@@ -175,8 +175,8 @@ def test_no_game_detail_mini_table_cell_wraps(
     page = authenticated_page
     game = Game.objects.get(name=LONG_NAME)
     page.goto(f"{live_server.url}{game.get_absolute_url()}")
-    #: Preconditions, so the page measured is the populated one: three
-    #: tables, and beside them a History section with an entry in it.
+    #: The page measured is the populated one:
+    #: three tables, and History with an entry.
     expect(page.locator('[role="region"] table')).to_have_count(3)
     expect(page.locator("#history-container li")).to_have_count(1)
     for width in VIEWPORTS:

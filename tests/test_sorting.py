@@ -378,10 +378,10 @@ class TestListGamesSort:
     def test_status_orders_by_the_word_the_projection_holds(
         self, logged_client, owned_library
     ):
-        """Shelved sorts where no catalog letter could put it.
+        """Shelved sorts where no letter could.
 
-        By word the order is retired, shelved, unplayed; the names run
-        the other way, so a fallback to the default sort fails here.
+        The names run the other way,
+        so a default-sort fallback fails.
         """
         for name, status in (
             ("Zeta", PlayerGameStatus.RETIRED),

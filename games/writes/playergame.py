@@ -1,7 +1,7 @@
 """State a fact; answer a refused one.
 
-Takes an actor, not a request; games/views/playergame_writes.py is the
-request half, which turns the answer into a toast.
+Takes an actor, not a request.
+The view half makes it a toast.
 """
 
 import uuid
@@ -107,7 +107,7 @@ def record_facts(
 ) -> None:
     """State one fact or two.
 
-    None means this act does not state that fact.
+    None leaves that fact unstated.
     """
     if status is not None:
         #: A form field and a Ninja schema each hand over the word as
