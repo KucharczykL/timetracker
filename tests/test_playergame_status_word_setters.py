@@ -1,5 +1,7 @@
 """A status travels as a word from the widget to the projection."""
 
+import uuid
+
 import pytest
 from django.urls import reverse
 from django.utils import timezone
@@ -63,6 +65,42 @@ def test_the_endpoint_takes_a_word(logged_in, owned_library):
 
     assert response.status_code == 204
     row = PlayerGame.objects.get(library=owned_library, game=game)
+    assert row.status == PlayerGameStatus.PLAYED
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.untracked_games
+def test_the_endpoint_refuses_a_game_no_row_names(logged_in, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+
+    response = logged_in.patch(
+        f"/api/games/{game.pk}/status",
+        {"status": "played"},
+        content_type="application/json",
+    )
+
+    assert response.status_code == 404
+    assert not PlayerGame.objects.filter(game=game).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_endpoint_takes_a_shared_game_this_library_tracks(logged_in, owned_library):
+    shared = Game.objects.create(library=None, name="Shared")
+    PlayerGame.objects.create(
+        pk=uuid.uuid7(),
+        library=owned_library,
+        game=shared,
+        tracked_at=timezone.now(),
+    )
+
+    response = logged_in.patch(
+        f"/api/games/{shared.pk}/status",
+        {"status": "played"},
+        content_type="application/json",
+    )
+
+    assert response.status_code == 204
+    row = PlayerGame.objects.get(library=owned_library, game=shared)
     assert row.status == PlayerGameStatus.PLAYED
 
 
