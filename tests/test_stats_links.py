@@ -453,3 +453,76 @@ def test_finished_link_round_trips_to_same_count_as_stat(world):
         )
         == stats["all_finished_this_year_count"]
     )
+
+
+@pytest.fixture
+def a_retired_purchase(world):
+    library = world["library"]
+    game = Game.objects.create(
+        library=library, name="Retired", status=Game.Status.RETIRED
+    )
+    Purchase.objects.create(
+        library=library,
+        price_currency="CZK",
+        date_purchased=_dt(YEAR, 6, 5),
+        type=Purchase.GAME,
+    ).games.set([game])
+
+    #: Bought earlier, ended in scope.
+    earlier = Game.objects.create(
+        library=library, name="Retired earlier", status=Game.Status.RETIRED
+    )
+    PlayEvent.objects.create(game=earlier, ended=_dt(YEAR, 8, 2))
+    Purchase.objects.create(
+        library=library,
+        price_currency="CZK",
+        date_purchased=_dt(YEAR - 1, 6, 5),
+        type=Purchase.GAME,
+    ).games.set([earlier])
+    return world
+
+
+@pytest.mark.parametrize(
+    ("builder", "stat_key"),
+    [
+        ("purchases_finished", "all_finished_this_year_count"),
+        ("purchases_dropped", "dropped_count"),
+        ("purchases_unfinished", "purchased_unfinished_count"),
+        ("purchases_backlog_decrease", "backlog_decrease_count"),
+    ],
+)
+def test_a_retired_purchase_links_to_the_same_count(
+    a_retired_purchase, builder, stat_key
+):
+    library = a_retired_purchase["library"]
+    stats = compute_stats(library, YEAR)
+
+    assert (
+        _count(getattr(stats_links, builder)(YEAR), Purchase, library)
+        == stats[stat_key]
+    )
+
+
+@pytest.mark.parametrize(
+    ("builder", "stat_key"),
+    [
+        ("purchases_dropped", "dropped_count"),
+        ("purchases_unfinished", "purchased_unfinished_count"),
+        ("purchases_backlog_decrease", "backlog_decrease_count"),
+    ],
+)
+def test_a_link_lands_when_the_catalog_disagrees(world, builder, stat_key):
+    """Both sides read the projection, so a wrong column changes nothing.
+
+    The fixture writes each row from the game's letter, which would
+    let a catalog reader pass. Setting every letter to `u` leaves
+    only the projection saying anything true.
+    """
+    library = world["library"]
+    Game.objects.filter(library=library).update(status=Game.Status.UNPLAYED)
+
+    stats = compute_stats(library, YEAR)
+    assert (
+        _count(getattr(stats_links, builder)(YEAR), Purchase, library)
+        == stats[stat_key]
+    )

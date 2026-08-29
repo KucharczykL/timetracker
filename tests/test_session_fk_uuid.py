@@ -10,7 +10,13 @@ from django.test import Client
 from django.urls import reverse
 from django.utils import timezone
 
-from common.criteria import FilterQueryContext, Modifier, RelationMatch, StringCriterion
+from common.criteria import (
+    FilterQueryContext,
+    Modifier,
+    RelationMatch,
+    StringCriterion,
+    with_filter_aliases,
+)
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
@@ -24,7 +30,7 @@ PRESENTATION = DateTimePresentation(
 )
 
 UNRESTRICTED_FILTER_CONTEXT = FilterQueryContext(
-    lambda model: model._default_manager.all()
+    lambda model: with_filter_aliases(model._default_manager.all())
 )
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -305,6 +311,7 @@ def test_reverse_accessors_reach_sessions_from_game_and_device(game, device):
     assert list(device.session_set.all()) == [session]
 
 
+@pytest.mark.untracked_games
 def test_deleting_a_game_cascades_and_deleting_a_device_clears_the_session(
     game, device
 ):

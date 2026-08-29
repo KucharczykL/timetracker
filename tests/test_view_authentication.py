@@ -14,7 +14,6 @@ from games import urls as games_urls
 from games.models import (
     Device,
     Game,
-    GameStatusChange,
     Platform,
     PlayEvent,
     Purchase,
@@ -43,9 +42,6 @@ def world(owned_library):
             game=game, timestamp_start=datetime(2024, 6, 1, 12, tzinfo=UTC)
         ).id,
         "playevent_id": PlayEvent.objects.create(game=game).id,
-        "statuschange_id": GameStatusChange.objects.create(
-            game=game, new_status="p"
-        ).id,
         "device_id": Device.objects.create(library=owned_library, name="Desk").id,
         "platform_id": Platform.objects.create(
             library=owned_library, name="Private"
@@ -57,7 +53,6 @@ def world(owned_library):
 
 
 def test_every_route_requires_login(client, world):
-    world["pk"] = world["statuschange_id"]
     unprotected = []
     for pattern in games_urls.urlpatterns:
         if pattern.name is None:

@@ -50,25 +50,23 @@ def test_game_status_selector_opens_and_patches(
             lambda r: "/status" in r.url and r.request.method == "PATCH"
         ),
     ):
-        host.locator('[data-option][data-value="f"]').click()
+        host.locator('[data-option][data-value="completed"]').click()
     expect(host.locator("[data-menu]")).to_be_hidden()
     # Client effects of the pick: toggle label swapped, selection reflected.
-    expect(host.locator("[data-label]")).to_contain_text("Finished")
-    expect(host.locator('[data-option][data-value="f"]')).to_have_attribute(
+    expect(host.locator("[data-label]")).to_contain_text("Completed")
+    expect(host.locator('[data-option][data-value="completed"]')).to_have_attribute(
         "aria-selected", "true"
     )
-    expect(host.locator('[data-option][data-value="u"]')).to_have_attribute(
+    expect(host.locator('[data-option][data-value="unplayed"]')).to_have_attribute(
         "aria-selected", "false"
     )
-    # The htmx refresh swapped in the re-rendered History section: the audit
-    # entry for the status change is now server-rendered on the page.
+    # The refresh swapped in a History entry.
     history_entries = page.locator("#history-container li")
     expect(history_entries).to_have_count(1)
     expect(history_entries).to_contain_text("Changed status from")
     expect(history_entries).to_contain_text("Unplayed")
-    expect(history_entries).to_contain_text("Finished")
-    game.refresh_from_db()
-    assert game.status == "f"
+    # The word it carries, not the letter.
+    expect(history_entries).to_contain_text("Completed")
 
 
 def test_session_device_selector_patches(
@@ -123,7 +121,7 @@ def test_status_selector_reverts_on_failed_patch(
 ):
     """A rejected PATCH (mocked 422) reverts the optimistic label + aria-selected
     and surfaces an error toast — the server value never silently diverges."""
-    from games.models import Game, Platform
+    from games.models import Game, Platform, PlayerGame, PlayerGameStatus
 
     platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
     game = Game.objects.create(
@@ -139,16 +137,17 @@ def test_status_selector_reverts_on_failed_patch(
 
     host = page.locator('drop-down[behavior="select"]').first
     host.locator("[data-toggle]").click()
-    host.locator('[data-option][data-value="f"]').click()
+    host.locator('[data-option][data-value="completed"]').click()
 
-    # The optimistic pick reverts: label back to Unplayed, "f" no longer selected.
+    # The optimistic pick reverts: label back to Unplayed, Completed unselected.
     expect(host.locator("[data-label]")).to_contain_text("Unplayed")
-    expect(host.locator('[data-option][data-value="f"]')).to_have_attribute(
+    expect(host.locator('[data-option][data-value="completed"]')).to_have_attribute(
         "aria-selected", "false"
     )
     expect(page.get_by_text("Couldn't save your change")).to_be_visible()
-    game.refresh_from_db()
-    assert game.status == "u"  # server unchanged
+    # The projection is what "unchanged" means now.
+    row = PlayerGame.objects.get(library=e2e_library, game=game)
+    assert row.status == PlayerGameStatus.UNPLAYED
 
 
 def test_play_event_row_increments(authenticated_page: Page, live_server, e2e_library):

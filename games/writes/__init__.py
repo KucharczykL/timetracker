@@ -1,1 +1,1 @@
-"""Dual writes: state a fact, then mirror."""
+"""Command-backed writes, one fact at a time."""

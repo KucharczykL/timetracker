@@ -5,6 +5,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from uuid import UUID
 
+import pytest
 import yaml
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
@@ -309,6 +310,7 @@ class AnonymizeSampleTest(TestCase):
         secret.refresh_from_db()
         self.assertEqual(secret.name, "Real Secret Title")  # source DB untouched
 
+    @pytest.mark.untracked_games
     def test_exports_only_the_selected_library_with_portable_owner_markers(self):
         _build_dataset()
         outsider = get_user_model().objects.create_user(username="sample-outsider")

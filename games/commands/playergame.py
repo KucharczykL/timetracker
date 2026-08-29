@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import ClassVar, cast
 
 from django.db.models import Q
+from django.utils import timezone
 
 from games.events.dispatch import (
     Command,
@@ -25,6 +26,12 @@ from games.events.playergame import (
 from games.events.references import capture_reference
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import Game, PlayerGame, PlayerGameStatus
+from timetracker.temporal import TemporalValue
+
+
+def _stated_now() -> TemporalValue:
+    """A live change happens when recorded."""
+    return TemporalValue.from_day(timezone.localdate())
 
 
 class PlayerGameNotTracked(CommandRejected):
@@ -112,6 +119,7 @@ class SetPlayerGameStatus(Command):
                 aggregate_id=tracked.pk,
                 #: A test pins Literal and choices equal.
                 payload={"status": cast("StatusValue", self.status.value)},
+                effective_time=_stated_now(),
             )
         ]
 
@@ -243,6 +251,7 @@ class RecordPlayerGameFacts(Command):
                     aggregate_id=tracked.pk,
                     #: A test pins Literal and choices equal.
                     payload={"status": cast("StatusValue", self.status.value)},
+                    effective_time=_stated_now(),
                 )
             )
         if self.mastered is not None and tracked.mastered != self.mastered:

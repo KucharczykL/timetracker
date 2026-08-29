@@ -530,6 +530,16 @@ def test_filter_count_applies_filter(auth_client):
     assert response.json() == {"count": expected}
 
 
+@pytest.mark.untracked_games
+def test_filter_count_counts_only_tracked_games(auth_client):
+    # The builder's live count is a promise about the list it navigates to,
+    # and that list joins the projection.
+    _make_games("Hades", "Celeste")
+    response = auth_client.get(COUNT_URL, {"model": "game"})
+    assert response.status_code == 200
+    assert response.json() == {"count": 0}
+
+
 def test_filter_count_non_game_model(auth_client):
     # The endpoint's whole point is genericity — prove a non-game model key
     # resolves its own filter class + queryset, not just "game".

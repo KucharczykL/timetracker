@@ -88,14 +88,14 @@ class TestFieldWidgetKindDispatch:
 
     def test_enum_options_render_in_model_choice_order(self):
         # The enum widget's options come from FieldMeta["choices"] (the model
-        # field's choices). Assert all Game.Status options render, in order, with
-        # their labels — a regression in choice sourcing/order would slip past the
-        # bare data-kind check.
-        from games.models import Game
+        # field's choices). Assert all PlayerGameStatus options render, in order,
+        # with their labels — a regression in choice sourcing/order would slip
+        # past the bare data-kind check.
+        from games.models import PlayerGameStatus
 
         html = str(field_widget(GameFilter, "status"))
         positions = []
-        for value, label in Game.Status.choices:
+        for value, label in PlayerGameStatus.choices:
             assert f'data-value="{value}"' in html, f"missing option {value!r}"
             assert label in html, f"missing label {label!r}"
             positions.append(html.index(f'data-value="{value}"'))

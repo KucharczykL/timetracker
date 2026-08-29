@@ -19,7 +19,7 @@ from uuid import UUID
 import pytest
 from django.contrib.auth import get_user_model
 
-from common.criteria import FilterQueryContext
+from common.criteria import FilterQueryContext, with_filter_aliases
 from games.filters import (
     parse_game_filter,
     parse_purchase_filter,
@@ -28,7 +28,7 @@ from games.filters import (
 from games.models import Device, Game, Platform, PlayEvent, Purchase, Session
 
 UNRESTRICTED_FILTER_CONTEXT = FilterQueryContext(
-    lambda model: model._default_manager.all()
+    lambda model: with_filter_aliases(model._default_manager.all())
 )
 
 

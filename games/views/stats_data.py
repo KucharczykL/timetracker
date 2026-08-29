@@ -1,9 +1,10 @@
 """Request-free stats computation: the data half of the stats page.
 
-`compute_stats(library, year)` returns a `StatsData` dict (the documented seam between
-*computing* metrics and *rendering* them in `stats_content`). Today it computes
-from the ORM; this is also the function a future materialization job would call,
-and the shape it would populate from a pre-calculated table.
+`compute_stats(library, year)` computes the metrics as a `StatsData` dict;
+`stats_content` renders that dict. The library scopes it: a status is per
+library. Today it computes from the ORM; this is also the function a future
+materialization job would call, and the shape it would populate from a
+pre-calculated table.
 
 `year=None` means all-time; otherwise the metrics are scoped to that calendar
 year. The two scopes genuinely diverge (different aggregations, and all-time
@@ -30,7 +31,9 @@ from django.db.models.functions import TruncDate, TruncMonth
 from common.time import available_stats_year_range
 from common.utils import safe_division
 from games.models import (
+    DONE_STATUSES,
     Game,
+    PlayerGameStatus,
     Purchase,
     PurchaseConversionState,
     PurchaseQueryset,
@@ -99,6 +102,11 @@ def _days_played_percent(unique_days: int, first: date, last: date) -> int:
     return min(int(unique_days / span * 100), 100)
 
 
+def _games_at_status(library: UserLibrary, *statuses: PlayerGameStatus):
+    """The library's tracked games at these statuses."""
+    return Game.objects.tracked_by(library, tracked__status__in=statuses)
+
+
 def compute_stats(library: UserLibrary, year: int | None = None) -> StatsData:
     published_currency = (
         PurchaseConversionState.objects.only("published_currency")
@@ -106,6 +114,7 @@ def compute_stats(library: UserLibrary, year: int | None = None) -> StatsData:
         .published_currency
     )
     return _compute_stats_from_scoped_querysets(
+        library=library,
         sessions=Session.objects.for_library(library),
         purchases=Purchase.objects.for_library(library),
         year=year,
@@ -115,6 +124,7 @@ def compute_stats(library: UserLibrary, year: int | None = None) -> StatsData:
 
 def _compute_stats_from_scoped_querysets(
     *,
+    library: UserLibrary,
     sessions: SessionQuerySet,
     purchases: PurchaseQueryset,
     year: int | None,
@@ -146,7 +156,8 @@ def _compute_stats_from_scoped_querysets(
             "sessions", filter=Q(sessions__timestamp_start__year=year)
         )
 
-    not_finished_q = ~Q(games__status=Game.Status.FINISHED) & ~ended_q
+    done = _games_at_status(library, *DONE_STATUSES)
+    not_finished_q = ~Q(games__in=done) & ~ended_q
 
     # ── Session superlatives ─────────────────────────────────────────────────
     longest_session = (
@@ -213,14 +224,15 @@ def _compute_stats_from_scoped_querysets(
         without_refunded.filter(not_finished_q)
         .filter(infinite=False)
         .filter(only_games_and_dlc)
-        .filter(
-            ~Q(games__status=Game.Status.RETIRED)
-            & ~Q(games__status=Game.Status.ABANDONED)
-        )
+        #: not_finished_q already excludes retired.
+        .filter(~Q(games__in=_games_at_status(library, PlayerGameStatus.ABANDONED)))
     )
     dropped = (
         purchases.filter(not_finished_q)
-        .filter(Q(games__status=Game.Status.ABANDONED) | Q(date_refunded__isnull=False))
+        .filter(
+            Q(games__in=_games_at_status(library, PlayerGameStatus.ABANDONED))
+            | Q(date_refunded__isnull=False)
+        )
         .filter(infinite=False)
         .filter(only_games_and_dlc)
     )
@@ -231,7 +243,7 @@ def _compute_stats_from_scoped_querysets(
 
     # ── Finished purchases (scope-divergent) ─────────────────────────────────
     if is_alltime:
-        finished = library_purchases.finished().annotate(
+        finished = library_purchases.finished(library).annotate(
             date_finished=Subquery(
                 library_purchases.filter(pk=OuterRef("pk"))
                 .annotate(max_ended=Max("games__playevents__ended"))
@@ -242,7 +254,7 @@ def _compute_stats_from_scoped_querysets(
         backlog_decrease_count = finished.count()
     else:
         finished = (
-            library_purchases.finished()
+            library_purchases.finished(library)
             .filter(games__playevents__ended__year=year)
             .annotate(
                 game_name=F("games__name"), date_finished=F("games__playevents__ended")
@@ -260,7 +272,7 @@ def _compute_stats_from_scoped_querysets(
         )
         backlog_decrease_count = (
             library_purchases.filter(date_purchased__year__lt=year)
-            .filter(games__status=Game.Status.FINISHED)
+            .filter(games__in=done)
             .filter(games__playevents__ended__year=year)
             .count()
         )

@@ -42,7 +42,14 @@ from common.returns import OriginUrl
 from common.utils import paginate
 from games.formatting import session_time_range
 from games.forms import SESSION_TIMEZONE_EMBEDS, SessionForm
-from games.models import Device, Game, Session, UserLibrary
+from games.models import (
+    Device,
+    Game,
+    PlayerGame,
+    PlayerGameStatus,
+    Session,
+    UserLibrary,
+)
 from games.ownership import owned_or_404
 from games.sorting import (
     SESSION_DEFAULT_SORT,
@@ -179,14 +186,18 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
 
 
 def _record_played(request: HttpRequest, session: Session) -> None:
-    """State Played for a game read unplayed."""
-    #: Reads the catalog, as every read does.
-    if session.game.status != Game.Status.UNPLAYED:
+    """State Played for a game the projection calls unplayed."""
+    tracked = PlayerGame.objects.filter(
+        library=cast(User, request.user).library, game=session.game
+    ).first()
+    #: No row states nothing. record_facts() tracks it,
+    #: the same heal both sibling paths get.
+    if tracked is not None and tracked.status != PlayerGameStatus.UNPLAYED:
         return
     record_facts_for_request(
         request,
         session.game,
-        status=Game.Status.PLAYED,
+        status=PlayerGameStatus.PLAYED,
         correlation_id=new_correlation_id(),
     )
 

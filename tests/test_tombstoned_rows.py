@@ -187,7 +187,12 @@ def test_the_add_game_form_accepts_a_tombstoned_duplicate(owned_library):
     tombstone(make_game(owned_library, name="Tetris"))
 
     form = GameForm(
-        data={"name": "Tetris", "platform": "", "year_released": 2023, "status": "u"},
+        data={
+            "name": "Tetris",
+            "platform": "",
+            "year_released": 2023,
+            "status": "unplayed",
+        },
         library=owned_library,
     )
 

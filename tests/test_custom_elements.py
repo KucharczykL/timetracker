@@ -101,13 +101,18 @@ class GameStatusSelectorRenderTest(unittest.TestCase):
 
         game = SimpleNamespace(id=7, status="f", get_status_display=lambda: "Finished")
         html = render(
-            GameStatusSelector(game, [("u", "Unplayed"), ("f", "Finished")], "tok")
+            GameStatusSelector(
+                game,
+                [("unplayed", "Unplayed"), ("completed", "Completed")],
+                "tok",
+                current="unplayed",
+            )
         )
         self.assertIn('behavior="select"', html)
         self.assertIn('role="listbox"', html)
         self.assertIn('data-patch-url="/api/games/7/status"', html)
         self.assertIn('data-body-key="status"', html)
-        self.assertIn('data-value="u"', html)
+        self.assertIn('data-value="unplayed"', html)
         self.assertNotIn("data-empty-is-null=", html)
         self.assertNotIn("<game-status-selector", html)  # element retired
 

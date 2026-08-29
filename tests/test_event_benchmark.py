@@ -49,6 +49,8 @@ from games.models import (
     PlayerGame,
 )
 
+pytestmark = pytest.mark.untracked_games
+
 
 def track_one_game(library, *, name: str = "Benchmark probe") -> Game:
     """Dispatch one TrackGame against a fresh row.

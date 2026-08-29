@@ -5,7 +5,14 @@ from django.urls import reverse
 
 from games.external_references import save_external_reference
 from games.forms import GameForm
-from games.models import Edition, ExternalReference, Game, Platform, Release
+from games.models import (
+    Edition,
+    ExternalReference,
+    Game,
+    Platform,
+    PlayerGameStatus,
+    Release,
+)
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -41,7 +48,7 @@ def game_payload(**overrides):
         "platform": "",
         "year_released": "2002",
         "original_year_released": "2001",
-        "status": Game.Status.PLAYED,
+        "status": PlayerGameStatus.PLAYED,
         "mastered": "on",
         "wikidata": "Q123",
     }
@@ -95,12 +102,8 @@ def test_add_game_writes_legacy_and_default_catalog_graph(
         2002,
         platform,
     )
-    assert (game.sort_name, game.status, game.mastered, game.wikidata) == (
-        "Form game, Legacy",
-        Game.Status.PLAYED,
-        True,
-        "Q123",
-    )
+    #: Status and mastery belong to the projection.
+    assert (game.sort_name, game.wikidata) == ("Form game, Legacy", "Q123")
 
 
 def test_edit_game_updates_then_clears_legacy_and_canonical_values(

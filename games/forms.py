@@ -30,8 +30,9 @@ from games.models import (
     Device,
     ExternalReference,
     Game,
-    GameStatusChange,
     Platform,
+    PlayerGame,
+    PlayerGameStatus,
     PlayEvent,
     Purchase,
     Session,
@@ -596,7 +597,7 @@ class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
 
     mark_as_played = forms.BooleanField(
         required=False,
-        initial={"mark_as_played": True},
+        initial=True,
         label="Set game status to Played if Unplayed",
     )
 
@@ -813,8 +814,12 @@ class GameForm(
         )
         #: They left Meta.fields, so model_to_dict misses them.
         if self.instance.pk is not None:
-            self.initial.setdefault("status", self.instance.status)
-            self.initial.setdefault("mastered", self.instance.mastered)
+            tracked = PlayerGame.objects.filter(
+                library=library, game=self.instance
+            ).first()
+            if tracked is not None:
+                self.initial.setdefault("status", tracked.status)
+                self.initial.setdefault("mastered", tracked.mastered)
 
     platform = forms.ModelChoiceField(
         queryset=Platform.objects.order_by("name"),
@@ -824,8 +829,13 @@ class GameForm(
         ),
     )
 
-    #: Plain fields, so form.save() writes neither column.
-    status = forms.ChoiceField(choices=Game.Status.choices, required=True)
+    #: Plain fields: this form writes no column.
+    #: The initial is what tracking would create.
+    status = forms.ChoiceField(
+        choices=PlayerGameStatus.choices,
+        required=True,
+        initial=PlayerGameStatus.UNPLAYED,
+    )
     mastered = forms.BooleanField(required=False)
 
     #: Declared fields otherwise sink below model fields.
@@ -842,12 +852,6 @@ class GameForm(
 
     def save(self, commit=True):
         game = super().save(commit=False)
-        #: The row starts where the form says. Starting at the default
-        #: and letting the mirror move it would append a GameStatusChange
-        #: that does not exist today: the audit signal skips a first save.
-        if game._state.adding:
-            game.status = self.cleaned_data["status"]
-            game.mastered = self.cleaned_data["mastered"]
         if commit:
             game.save()
             self.save_m2m()
@@ -970,40 +974,6 @@ class PlayEventForm(PrimitiveWidgetsMixin, forms.ModelForm):
         if commit:
             play_event.save()
         return play_event
-
-
-class GameStatusChangeForm(PrimitiveWidgetsMixin, forms.ModelForm):
-    def __init__(
-        self,
-        *args,
-        library: UserLibrary,
-        presentation: DateTimePresentation,
-        **kwargs,
-    ):
-        super().__init__(*args, **kwargs)
-        self.library = library
-        cast(
-            forms.ModelChoiceField, self.fields["game"]
-        ).queryset = Game.objects.for_library(library).order_by("sort_name")
-        self.fields["timestamp"].widget = DateTimeFieldWidget(
-            presentation=presentation,
-            label=str(self.fields["timestamp"].label or "timestamp"),
-        )
-
-    class Meta:
-        # timestamp gets DateTimeFieldWidget in __init__ (needs the
-        # per-request presentation, unavailable to a class body); the field
-        # class is declarative because it depends on nothing.
-        field_classes: ClassVar[dict[str, type[forms.Field]]] = {
-            "timestamp": AwareDateTimeField
-        }
-        model = GameStatusChange
-        fields = (
-            "game",
-            "old_status",
-            "new_status",
-            "timestamp",
-        )
 
 
 class LoginForm(PrimitiveWidgetsMixin, AuthenticationForm):

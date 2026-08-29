@@ -1,4 +1,4 @@
-"""Timezone binding for the Session/GameStatusChange datetime fields.
+"""Timezone binding for the Session datetime fields.
 
 These fields used to be native ``<input type="datetime-local">`` and are now
 the segmented ``<date-time-field>`` widget (issue #511). The widget submits an
@@ -22,7 +22,7 @@ from common.date_time_presentation import (
     zone_or_none,
 )
 from common.middleware import TimezoneActivationMiddleware
-from games.forms import DateTimeFieldWidget, GameStatusChangeForm, SessionForm
+from games.forms import DateTimeFieldWidget, SessionForm
 from games.models import Game, Session, UserPreferences
 from timetracker import settings_resolver
 
@@ -130,7 +130,7 @@ def test_offset_qualified_input_binds_to_the_instant_it_names(db):
     assert captured["timestamp_start"] == datetime(2025, 12, 31, 20, 30, tzinfo=UTC)
 
 
-def test_session_and_game_status_change_use_the_segmented_datetime_widget(db):
+def test_session_uses_the_segmented_datetime_widget(db):
     """Issue #511: these were the last native date/time controls in the app."""
     presentation = _presentation("UTC")
     library = _library()
@@ -139,13 +139,6 @@ def test_session_and_game_status_change_use_the_segmented_datetime_widget(db):
         assert isinstance(
             session_form.fields[field_name].widget, DateTimeFieldWidget
         ), field_name
-
-    status_change_form = GameStatusChangeForm(
-        library=library, presentation=presentation
-    )
-    assert isinstance(
-        status_change_form.fields["timestamp"].widget, DateTimeFieldWidget
-    )
 
 
 def test_an_ambiguous_stored_timestamp_survives_an_untouched_edit(db):
@@ -234,11 +227,6 @@ def test_session_datetime_widgets_name_their_paired_zone_row(db):
     form = SessionForm(library=library, presentation=_presentation("Europe/Prague"))
     assert 'zone-field-name="timestamp_start_timezone"' in str(form["timestamp_start"])
     assert 'zone-field-name="timestamp_end_timezone"' in str(form["timestamp_end"])
-    # The GameStatusChange form has no zone rows: its widget stays unpaired.
-    status_form = GameStatusChangeForm(
-        library=library, presentation=_presentation("Europe/Prague")
-    )
-    assert 'zone-field-name=""' in str(status_form["timestamp"])
 
 
 def test_naive_input_is_interpreted_in_the_selected_zone(db):

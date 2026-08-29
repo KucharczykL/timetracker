@@ -1,21 +1,22 @@
-import json
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import pytest
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core import serializers
 from django.core.management import call_command
 from django.test import TestCase
 
-from games.models import Game, GameStatusChange, Session, UserLibrary
+from games.models import Game, Session, UserLibrary
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 
 
 class SignalsTest(TestCase):
+    @pytest.mark.untracked_games
     def test_deleting_game_with_sessions_does_not_raise(self):
         library = get_user_model().objects.create_user(username="signals").library
         # Create a game and attach a session to it
@@ -61,6 +62,7 @@ class RawFixtureLoadTest(TestCase):
         path.write_text(serializers.serialize("json", objects))
         return str(path)
 
+    @pytest.mark.untracked_games
     def test_playtime_from_the_fixture_survives_the_load(self):
         game = Game.objects.create(library=self.library, name="Fixture Game")
         Session.objects.create(
@@ -80,21 +82,6 @@ class RawFixtureLoadTest(TestCase):
         call_command("loaddata", fixture, verbosity=0)
 
         self.assertEqual(Game.objects.get(pk=game.pk).playtime, timedelta(hours=5))
-
-    def test_status_in_a_fixture_is_not_an_audited_transition(self):
-        game = Game.objects.create(
-            library=self.library, name="Fixture Game", status="u"
-        )
-        fixture = self._write_fixture([game])
-        loaded = json.loads(Path(fixture).read_text())
-        loaded[0]["fields"]["status"] = "f"
-        Path(fixture).write_text(json.dumps(loaded))
-
-        GameStatusChange.objects.all().delete()
-        call_command("loaddata", fixture, verbosity=0)
-
-        self.assertEqual(Game.objects.get(pk=game.pk).status, "f")
-        self.assertEqual(GameStatusChange.objects.count(), 0)
 
     def test_user_fixture_does_not_provision_a_library(self):
         user = get_user_model().objects.create_user(username="fixture-user")

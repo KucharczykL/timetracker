@@ -20,7 +20,7 @@ from common.components.primitives import (
     TruncatedText,
     Ul,
 )
-from games.models import Game, Purchase, Session
+from games.models import Game, PlayerGameStatus, Purchase, Session
 
 if TYPE_CHECKING:
     from common.duration_presentation import DurationPresentation
@@ -40,22 +40,25 @@ def GameLink(
     ]
 
 
-_STATUS_COLORS = {
-    "u": "bg-gray-500",
-    "p": "bg-orange-400",
-    "f": "bg-green-500",
-    "a": "bg-red-500",
-    "r": "bg-purple-500",
+#: Keyed on str, not on the enum: the value reaching GameStatus() is a
+#: plain word off a queryset annotation as often as it is a member.
+_STATUS_COLORS: dict[str, str] = {
+    PlayerGameStatus.UNPLAYED: "bg-gray-500",
+    PlayerGameStatus.PLAYED: "bg-orange-400",
+    PlayerGameStatus.COMPLETED: "bg-green-500",
+    PlayerGameStatus.RETIRED: "bg-purple-500",
+    PlayerGameStatus.SHELVED: "bg-sky-500",
+    PlayerGameStatus.ABANDONED: "bg-red-500",
 }
 
 
 def GameStatus(
     children: Children = None,
-    status: str = "u",
+    status: str = PlayerGameStatus.UNPLAYED,
     display: str = "",
     class_: str = "",
 ) -> Node:
-    """Colored status dot with label. Status codes: u/p/f/a/r.
+    """Colored status dot with label. Status is a PlayerGameStatus value.
 
     The dot is sized in the `cap` unit (`w-[1cap]`), so it is exactly one
     cap-height tall in whatever font renders it — the browser computes the
@@ -79,7 +82,7 @@ def GameStatus(
     `whitespace-nowrap` keeps the dot and its label on the same line.
     """
     children = children or []
-    dot_color = _STATUS_COLORS.get(status, _STATUS_COLORS["u"])
+    dot_color = _STATUS_COLORS.get(status, _STATUS_COLORS[PlayerGameStatus.UNPLAYED])
     dot_base = f"inline-block rounded-full w-[1cap] h-[1cap] {dot_color}"
 
     if display == "flex":
@@ -278,21 +281,35 @@ def PurchasePrice(purchase) -> Node:
     )
 
 
-def GameStatusSelector(game, game_statuses, csrf_token: str, class_: str = "") -> Node:
-    """Status value-selector: a listbox that PATCHes /api/games/<id>/status."""
+def GameStatusSelector(
+    game,
+    game_statuses,
+    csrf_token: str,
+    class_: str = "",
+    *,
+    current: str,
+) -> Node:
+    """Status value-selector: a listbox that PATCHes /api/games/<id>/status.
+
+    ``current`` is the status the page shows, taken from the library's
+    projection row. It is a parameter rather than a read off ``game``
+    because it arrives as a queryset annotation, which is not an
+    attribute of the model instance.
+    """
     from common.components.custom_elements import SelectDropdown, SelectOption
 
+    labels = dict(game_statuses)
     options: list[SelectOption] = [
         SelectOption(
             value,
             GameStatus([label], status=value, display="flex"),
-            value == game.status,
+            value == current,
         )
         for value, label in game_statuses
     ]
     return SelectDropdown(
         current_label=GameStatus(
-            [game.get_status_display()], status=game.status, display="flex"
+            [labels.get(current, current)], status=current, display="flex"
         ),
         options=options,
         id=f"game-{game.id}-status",

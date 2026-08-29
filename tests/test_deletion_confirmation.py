@@ -6,7 +6,7 @@ import pytest
 from django.urls import reverse
 
 from common.returns import action_url
-from games.models import Game, GameStatusChange, Platform, PlayEvent, Session
+from games.models import Game, Platform, PlayEvent, Session
 
 
 @pytest.fixture
@@ -35,6 +35,7 @@ def test_get_confirms_without_deleting(logged_in, game):
     assert Game.objects.filter(id=game.id).exists()
 
 
+@pytest.mark.untracked_games
 def test_post_deletes_and_returns_to_the_origin(logged_in, game):
     origin = f"{reverse('games:list_games')}?page=2"
     response = logged_in.post(action_url("games:delete_game", game.id, origin=origin))
@@ -42,6 +43,7 @@ def test_post_deletes_and_returns_to_the_origin(logged_in, game):
     assert not Game.objects.filter(id=game.id).exists()
 
 
+@pytest.mark.untracked_games
 def test_post_drops_an_origin_naming_the_deleted_game(logged_in, game):
     origin = game.get_absolute_url()
     response = logged_in.post(action_url("games:delete_game", game.id, origin=origin))
@@ -82,7 +84,6 @@ def deletables(owned_library):
         "platform": Platform.objects.create(library=owned_library, name="Doomed"),
         "device": Device.objects.create(library=owned_library, name="Doomed"),
         "playevent": PlayEvent.objects.create(game=owned),
-        "statuschange": GameStatusChange.objects.create(game=owned, new_status="p"),
     }
 
 
@@ -109,13 +110,12 @@ def test_every_delete_confirms_first(logged_in, deletables, url_name, key, fallb
     "url_name,key",
     [
         ("games:delete_playevent", "playevent"),
-        ("games:delete_statuschange", "statuschange"),
     ],
 )
 def test_every_delete_confirms_first_with_owning_game_fallback(
     logged_in, deletables, url_name, key
 ):
-    """These two fall back to the owning game's page, not a bare list URL."""
+    """This one falls back to the game."""
     instance = deletables[key]
     owning_game = deletables["game"]
     url = reverse(url_name, args=[instance.pk])

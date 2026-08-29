@@ -1,12 +1,13 @@
 """Each switched view states its fact."""
 
+import re
+
 import pytest
 from django.urls import reverse
 from django.utils import timezone
 
 from games.models import (
     Game,
-    GameStatusChange,
     LibraryEvent,
     PlayerGame,
     PlayerGameStatus,
@@ -14,9 +15,11 @@ from games.models import (
     Purchase,
     Session,
 )
-from games.writes.playergame import new_correlation_id, track_game
+from games.writes.playergame import new_correlation_id, record_facts, track_game
 
-GAME_PAYLOAD = {"name": "Outer Wilds", "status": "u", "wikidata": ""}
+pytestmark = pytest.mark.untracked_games
+
+GAME_PAYLOAD = {"name": "Outer Wilds", "status": "unplayed", "wikidata": ""}
 
 
 @pytest.fixture
@@ -35,29 +38,19 @@ def tracked_game(owned_user, owned_library):
 @pytest.mark.django_db(transaction=True)
 def test_adding_a_game_tracks_it_and_records_its_facts(logged_in, owned_library):
     response = logged_in.post(
-        reverse("games:add_game"), {**GAME_PAYLOAD, "status": "f", "mastered": "on"}
+        reverse("games:add_game"),
+        {**GAME_PAYLOAD, "status": "completed", "mastered": "on"},
     )
 
     assert response.status_code == 302
     game = Game.objects.get(name="Outer Wilds")
-    assert (game.status, game.mastered) == ("f", True)
     row = PlayerGame.objects.get(library=owned_library, game=game)
     assert (row.status, row.mastered) == (PlayerGameStatus.COMPLETED, True)
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_game_created_as_finished_records_no_status_change(logged_in):
-    #: The audit signal skips a first save, so a game created
-    #: as finished records no transition. Assigning before the
-    #: save is what keeps that true.
-    logged_in.post(reverse("games:add_game"), {**GAME_PAYLOAD, "status": "f"})
-
-    assert GameStatusChange.objects.count() == 0
-
-
-@pytest.mark.django_db(transaction=True)
 def test_adding_a_game_records_one_creation_event(logged_in, owned_library):
-    logged_in.post(reverse("games:add_game"), {**GAME_PAYLOAD, "status": "u"})
+    logged_in.post(reverse("games:add_game"), {**GAME_PAYLOAD, "status": "unplayed"})
 
     types = list(
         LibraryEvent.objects.filter(library=owned_library).values_list(
@@ -69,48 +62,49 @@ def test_adding_a_game_records_one_creation_event(logged_in, owned_library):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_editing_a_games_status_records_the_event_and_the_audit_row(
-    logged_in, owned_library
-):
+def test_editing_a_games_status_records_the_event(logged_in, owned_library):
     game = Game.objects.create(library=owned_library, name="Outer Wilds", status="u")
 
     logged_in.post(
         reverse("games:edit_game", args=[game.id]),
-        {**GAME_PAYLOAD, "status": "p"},
+        {**GAME_PAYLOAD, "status": "played"},
     )
 
-    game.refresh_from_db()
-    assert game.status == "p"
     assert PlayerGame.objects.get().status == PlayerGameStatus.PLAYED
-    #: Legacy history is unchanged by the cutover.
-    assert GameStatusChange.objects.filter(game=game, new_status="p").count() == 1
 
 
 @pytest.mark.django_db(transaction=True)
-def test_the_edit_form_shows_the_games_current_status(logged_in, owned_library):
-    game = Game.objects.create(library=owned_library, name="Outer Wilds", status="f")
+def test_the_edit_form_shows_the_games_current_status(
+    logged_in, owned_user, tracked_game
+):
+    record_facts(
+        owned_user,
+        tracked_game,
+        status=PlayerGameStatus.COMPLETED,
+        correlation_id=new_correlation_id(),
+    )
 
-    response = logged_in.get(reverse("games:edit_game", args=[game.id]))
+    response = logged_in.get(reverse("games:edit_game", args=[tracked_game.id]))
 
-    #: They left Meta.fields, so the form seeds them itself.
+    #: They left Meta.fields, so the form seeds them itself —
+    #: from the projection row, which is where the word lives.
     #: Read from the HTML: render_page() returns no context.
-    assert '<option value="f" selected>' in response.content.decode()
+    assert '<option value="completed" selected>' in response.content.decode()
 
 
 @pytest.mark.django_db(transaction=True)
-def test_the_status_api_records_the_fact(logged_in, owned_library):
-    game = Game.objects.create(library=owned_library, name="Outer Wilds", status="u")
+def test_the_status_api_records_the_fact(logged_in, owned_library, tracked_game):
+    #: The endpoint needs the tracked row.
+    game = tracked_game
 
     response = logged_in.patch(
         f"/api/games/{game.id}/status",
-        data={"status": "f"},
+        data={"status": "completed"},
         content_type="application/json",
     )
 
     assert response.status_code == 204
     assert PlayerGame.objects.get().status == PlayerGameStatus.COMPLETED
-    game.refresh_from_db()
-    assert game.status == "f"
 
 
 @pytest.mark.django_db(transaction=True)
@@ -132,11 +126,11 @@ def test_the_status_api_refuses_a_status_that_is_not_one(logged_in, owned_librar
 
 @pytest.mark.django_db(transaction=True)
 def test_a_failed_status_write_answers_409_with_a_toast(
-    logged_in, owned_library, monkeypatch
+    logged_in, owned_library, tracked_game, monkeypatch
 ):
     from games.writes.playergame import PlayerGameWriteFailed
 
-    game = Game.objects.create(library=owned_library, name="Outer Wilds", status="u")
+    game = tracked_game
 
     def refuse(*args, **kwargs):
         raise PlayerGameWriteFailed("Nothing was recorded; try again.", 409)
@@ -144,7 +138,7 @@ def test_a_failed_status_write_answers_409_with_a_toast(
     monkeypatch.setattr("games.api.record_facts", refuse)
     response = logged_in.patch(
         f"/api/games/{game.id}/status",
-        data={"status": "f"},
+        data={"status": "completed"},
         content_type="application/json",
     )
 
@@ -173,8 +167,6 @@ def test_adding_a_session_records_played(logged_in, owned_library, tracked_game)
     logged_in.post(reverse("games:add_session"), _session_payload(tracked_game))
 
     assert PlayerGame.objects.get().status == PlayerGameStatus.PLAYED
-    tracked_game.refresh_from_db()
-    assert tracked_game.status == "p"
 
 
 @pytest.mark.django_db(transaction=True)
@@ -182,7 +174,6 @@ def test_editing_a_session_records_played_too(logged_in, owned_library, tracked_
     #: An edit binds the checkbox too, so it re-applies the
     #: flip. Session and PlayEvent derive their library.
     session = Session.objects.create(game=tracked_game, timestamp_start=timezone.now())
-    Game.objects.filter(pk=tracked_game.pk).update(status="u")
 
     logged_in.post(
         reverse("games:edit_session", args=[session.id]),
@@ -193,14 +184,84 @@ def test_editing_a_session_records_played_too(logged_in, owned_library, tracked_
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_session_leaves_a_finished_game_alone(logged_in, owned_library, tracked_game):
-    Game.objects.filter(pk=tracked_game.pk).update(status="f")
+def test_a_session_on_an_untracked_game_tracks_it_and_records_played(
+    logged_in, owned_library
+):
+    #: A missing row is a defect.
+    #: record_facts() tracks the game and records.
+    game = Game.objects.create(library=owned_library, name="Outer Wilds", status="u")
+
+    logged_in.post(reverse("games:add_session"), _session_payload(game))
+
+    assert PlayerGame.objects.get().status == PlayerGameStatus.PLAYED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_session_on_an_untracked_game_ignores_the_letter(logged_in, owned_library):
+    #: The letter once held the session back.
+    #: Nothing maintains it, so the row wins.
+    game = Game.objects.create(library=owned_library, name="Outer Wilds", status="f")
+
+    logged_in.post(reverse("games:add_session"), _session_payload(game))
+
+    assert PlayerGame.objects.get().status == PlayerGameStatus.PLAYED
+
+
+@pytest.mark.django_db
+def test_the_box_comes_up_ticked(logged_in):
+    #: A falsy initial would untick it everywhere.
+    response = logged_in.get(reverse("games:add_session"))
+
+    match = re.search(r'<input[^>]*name="mark_as_played"[^>]*>', response.text)
+    assert match is not None
+    assert "checked" in match.group(0)
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.untracked_games
+def test_an_unticked_box_records_nothing_and_tracks_nothing(logged_in, owned_library):
+    #: The checkbox owns the heal, not sessions.
+    game = Game.objects.create(library=owned_library, name="Outer Wilds", status="u")
+
+    logged_in.post(
+        reverse("games:add_session"), _session_payload(game, mark_as_played="")
+    )
+
+    assert Session.objects.filter(game=game).exists()
+    assert not PlayerGame.objects.exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_game_no_command_could_track_is_not_left_behind(
+    logged_in, owned_library, monkeypatch
+):
+    #: A game with no projection row is off the list and 404s on its
+    #: page, while its name goes on holding the unique constraint.
+    monkeypatch.setattr(
+        "games.views.game.track_game_for_request",
+        lambda request, game, *, correlation_id: False,
+    )
+
+    logged_in.post(reverse("games:add_game"), GAME_PAYLOAD)
+
+    assert not Game.objects.filter(name="Outer Wilds").exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_session_leaves_a_finished_game_alone(
+    logged_in, owned_user, owned_library, tracked_game
+):
+    record_facts(
+        owned_user,
+        tracked_game,
+        status=PlayerGameStatus.COMPLETED,
+        correlation_id=new_correlation_id(),
+    )
 
     logged_in.post(reverse("games:add_session"), _session_payload(tracked_game))
 
-    #: The guard reads the catalog, as every read does.
-    tracked_game.refresh_from_db()
-    assert tracked_game.status == "f"
+    #: The guard reads the projection, as every read now does.
+    assert PlayerGame.objects.get().status == PlayerGameStatus.COMPLETED
 
 
 @pytest.mark.django_db(transaction=True)
@@ -217,8 +278,6 @@ def test_adding_a_play_event_records_completed(logged_in, owned_library, tracked
     )
 
     assert PlayerGame.objects.get().status == PlayerGameStatus.COMPLETED
-    tracked_game.refresh_from_db()
-    assert tracked_game.status == "f"
 
 
 @pytest.mark.django_db(transaction=True)
@@ -226,7 +285,6 @@ def test_editing_a_play_event_records_completed_too(
     logged_in, owned_library, tracked_game
 ):
     play_event = PlayEvent.objects.create(game=tracked_game)
-    Game.objects.filter(pk=tracked_game.pk).update(status="u")
 
     logged_in.post(
         reverse("games:edit_playevent", args=[play_event.id]),
@@ -316,19 +374,15 @@ def test_a_failed_add_leaves_the_row_at_the_defaults(
 
     monkeypatch.setattr("games.views.playergame_writes.record_facts", refuse)
     response = logged_in.post(
-        reverse("games:add_game"), {**GAME_PAYLOAD, "status": "f", "mastered": "on"}
+        reverse("games:add_game"),
+        {**GAME_PAYLOAD, "status": "completed", "mastered": "on"},
     )
 
     assert response.status_code == 302
     game = Game.objects.get(name="Outer Wilds")
-    #: The catalog agrees with the projection, which the failed
-    #: command left where tracking put it.
-    assert (game.status, game.mastered) == ("u", False)
+    #: The failed command left the row untouched.
     row = PlayerGame.objects.get(library=owned_library, game=game)
     assert (row.status, row.mastered) == (PlayerGameStatus.UNPLAYED, False)
-    #: The reset skips the audit signal, so nothing invents a
-    #: transition the player never made.
-    assert GameStatusChange.objects.count() == 0
 
 
 @pytest.mark.django_db(transaction=True)
@@ -341,7 +395,7 @@ def test_a_failed_edit_re_renders_the_form(logged_in, tracked_game, monkeypatch)
     monkeypatch.setattr("games.views.playergame_writes.record_facts", refuse)
     response = logged_in.post(
         reverse("games:edit_game", args=[tracked_game.id]),
-        {**GAME_PAYLOAD, "status": "f"},
+        {**GAME_PAYLOAD, "status": "completed"},
     )
 
     #: A redirect would read as a save that landed.

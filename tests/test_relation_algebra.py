@@ -22,12 +22,13 @@ from common.criteria import (
     RelationMatch,
     StringCriterion,
     UUIDMultiCriterion,
+    with_filter_aliases,
 )
 from games.filters import GameFilter, PurchaseFilter, SessionFilter
 from games.models import Device, Game, Platform, Purchase, Session
 
 UNRESTRICTED_FILTER_CONTEXT = FilterQueryContext(
-    lambda model: model._default_manager.all()
+    lambda model: with_filter_aliases(model._default_manager.all())
 )
 
 

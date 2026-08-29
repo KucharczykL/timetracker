@@ -29,6 +29,8 @@ from games.playergame_status import (
 )
 from games.retention import Retirement, tombstone_or_delete
 
+pytestmark = pytest.mark.untracked_games
+
 
 def test_every_legacy_status_letter_is_mapped():
     #: A sixth letter added to Game.Status fails here rather than at run time.
@@ -235,13 +237,14 @@ def test_an_undated_transition_records_an_unknown_effective_time(
     GameStatusChange.objects.create(
         game=game, old_status="u", new_status="p", timestamp=None
     )
+    run_time = timezone.now()
 
-    counts = run_for(game, owned_user, owned_library)
+    counts = run_for(game, owned_user, owned_library, run_time=run_time)
 
     event = LibraryEvent.objects.get(event_type="library.playergame.status_changed")
     assert event.effective_time is None
-    #: Not coerced to a date; only the recording falls back to created_at.
-    assert event.recorded_at == added
+    #: The game's date would invent a transition.
+    assert event.recorded_at == run_time
     assert counts.unknown_effective_times == 1
 
 

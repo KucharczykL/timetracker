@@ -1,7 +1,10 @@
 import contextlib
 import logging
+import uuid
 
 import pytest
+from django.db.models.signals import post_save
+from django.utils import timezone
 
 from timetracker import config as config_module
 from timetracker import settings_resolver
@@ -99,3 +102,48 @@ def capture_client_errors_logger(caplog):
             client_logger.removeHandler(caplog.handler)
 
     return _capture
+
+
+@pytest.fixture(autouse=True)
+def _track_created_games(request):
+    """Give every game a test creates the projection row a read needs.
+
+    games/views/game.py dispatches TrackGame, migration
+    0033_playergame_baseline_backfill covers a restored dump, and
+    load_sample_data calls backfill_library(). A test is the fourth source of a
+    game and leaves no row, so the inner join in ``GameQuerySet.tracked_by()``
+    would hide it.
+
+    A direct write, not ``backfill_game()``: the backfill needs an actor and a
+    run time, opens its own transaction and appends events. The row is what the
+    join wants, so the row is what this writes. The divergence from production
+    is real and deliberate; tests/test_playergame_write_path.py covers the
+    event path.
+    """
+    from games.models import Game, PlayerGame
+    from games.playergame_status import player_status_for
+
+    if "untracked_games" in request.keywords:
+        yield
+        return
+
+    def track(sender, instance, created, raw, **kwargs):
+        #: raw is a loaddata row: the library may not exist yet.
+        if raw or not created or instance.library_id is None:
+            return
+        PlayerGame.objects.get_or_create(
+            library_id=instance.library_id,
+            game=instance,
+            defaults={
+                "pk": uuid.uuid7(),
+                "tracked_at": timezone.now(),
+                "status": player_status_for(instance.status),
+                "mastered": instance.mastered,
+            },
+        )
+
+    post_save.connect(track, sender=Game, dispatch_uid="test-track-created-games")
+    try:
+        yield
+    finally:
+        post_save.disconnect(sender=Game, dispatch_uid="test-track-created-games")

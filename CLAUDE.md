@@ -147,16 +147,16 @@ docs/           — Additional documentation
 
 ### Models (in `games/models.py`)
 
-- **Game** — `name`, `platform` (FK), `status` (u/p/f/r/a), `mastered`, `playtime` (DurationField updated via signal), `year_released`, `sort_name`, `wikidata`
+- **Game** — the catalog row: `name`, `platform` (FK), `playtime` (DurationField updated via signal), `year_released`, `sort_name`, `wikidata`. `status` (u/p/f/r/a) and `mastered` are stranded columns since #678 D2 — nothing writes them, nothing reads them, #770 drops them
 - **Platform** — `name`, `group`, `icon` (slug, auto-generated from name)
 - **Purchase** — ownership type, prices, currency conversion (`converted_price`, `price_per_game` is a `GeneratedField`), M2M to Game. `num_purchases` counts linked games. DLC/SeasonPass/BattlePass must have a `related_game` (reverse accessor `game.addon_purchases`)
 - **Session** — `timestamp_start`/`timestamp_end`, `duration_manual`, `device` (FK), `note`, `emulated`. `duration_calculated`/`duration_total` are `GeneratedField`s
 - **Device** — `name`, `type` (PC/Console/Handheld/Mobile/SBC/Unknown)
 - **PlayEvent** — marks when a game was started/finished (separate from Sessions); `days_to_finish` is a `GeneratedField`
 - **ExchangeRate** — cached FX rates per currency pair per year
-- **GameStatusChange** — audit log of status transitions, ordered by `-timestamp`
+- **GameStatusChange** — the legacy audit log of status transitions, ordered by `-timestamp`. Nothing writes or reads it since #678 D1: the event stream is the record and `games/reads/playergame_history.py` is the one reader. The backfill still reads the old rows; #771 takes the table
 - **FilterPreset** — saved filter config; `mode` (games/sessions/purchases/playevents), `find_filter`, `object_filter`, `ui_options` (all JSON). Follows Stash's SavedFilter pattern
-- **PlayerGame** — the first projection: one row per catalog game a library tracks, written only by the `PlayerGames` projector. Both `UUIDv7Field` defaults are opted out (the pk is the event's `aggregate_id`); `game` is `RESTRICT`, so a projection row is never collateral
+- **PlayerGame** — the first projection: one row per catalog game a library tracks, written only by the `PlayerGames` projector. It states the library's `status` (the six `PlayerGameStatus` words) and `mastered`, and since #678 D2 it is the only place either is stated or read. Both `UUIDv7Field` defaults are opted out (the pk is the event's `aggregate_id`); `game` is `RESTRICT`, so a projection row is never collateral
 
 **A multi-game Purchase is an *unsplittable* bundle** — one price, whole-purchase
 refund (e.g. a Humble Bundle). Independently-refundable multi-item orders (e.g. a
@@ -313,7 +313,6 @@ the shared combobox dropdown (#297).
 - `pre_delete` on Game: decrements `num_purchases` on related Purchases (deletes the
   Purchase if the count reaches 0)
 - `post_save`/`post_delete` on Session: recalculates `Game.playtime` from the aggregate
-- `pre_save` on Game: creates `GameStatusChange` audit records on status change
 
 **Background tasks**: a django-q2 cluster (1 worker, 60s timeout, 120s retry, ORM
 broker) runs `games.tasks.convert_prices()` on a schedule, fetching rates from
@@ -625,8 +624,9 @@ chromium` once. All JS is vendored, so the tests run fully offline. A bare
 - **A PlayerGame fact is stated as a command** — never assign `Game.status` or
   `Game.mastered` directly. Call `record_facts()` / `track_game()` from
   `games/writes/playergame.py`, or their request-shaped wrappers in
-  `games/views/playergame_writes.py`. The catalog columns are a mirror of the
-  projection until #678 moves the reads.
+  `games/views/playergame_writes.py`. Nothing maintains the `Game.status` and
+  `Game.mastered` columns any more, and #770 drops them: a command is the only
+  way to state either fact, and the projection is the only place to read it.
 - **No dispatch inside a transaction** — `run_in_transaction` opens the
   transaction it retries and refuses to nest, so a view that dispatches carries
   no `@transaction.atomic` and calls no helper that does. `games.E008` refuses

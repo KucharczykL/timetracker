@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from datetime import timedelta
 from typing import Any, NoReturn, cast
 from uuid import UUID
@@ -68,8 +69,17 @@ from games.filters import (
 )
 from games.formatting import session_time_range
 from games.forms import GameForm
-from games.models import Game, GameStatusChange, Session
+from games.models import (
+    Game,
+    PlayerGameStatus,
+    PlayEvent,
+    Purchase,
+    Session,
+    SessionQuerySet,
+    UserLibrary,
+)
 from games.ownership import owned_or_404
+from games.reads.playergame_history import StatusEntry, status_history
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
 from games.views.filtering import (
     apply_structured_filter,
@@ -107,7 +117,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
     durations = duration_presentation_for_request(request)
     origin = request.get_full_path()
-    games = Game.objects.for_library(library).select_related("platform")
+    games = Game.objects.tracked_by(library).select_related("platform")
 
     # Playtime column sums only the sessions matching the active session
     # sub-filter; an empty Q matches every session, so with no session filter the
@@ -164,7 +174,12 @@ def list_games(request: HttpRequest) -> HttpResponse:
                     durations,
                     id_scope=f"game-{game.pk}-playtime",
                 ),
-                GameStatusSelector(game, Game.Status.choices, get_token(request)),
+                GameStatusSelector(
+                    game,
+                    PlayerGameStatus.choices,
+                    get_token(request),
+                    current=game.tracked_status,
+                ),
                 Link(
                     href=external_reference_url(
                         provider="wikidata",
@@ -234,9 +249,16 @@ def add_game(request: HttpRequest) -> HttpResponse:
         game = _save_game_form_or_add_wikidata_error(form)
         if game is not None:
             correlation_id = new_correlation_id()
-            recorded = track_game_for_request(
-                request, game, correlation_id=correlation_id
-            ) and record_facts_for_request(
+            if not track_game_for_request(request, game, correlation_id=correlation_id):
+                #: Nothing tracks it, so no read reaches it: the list
+                #: joins the projection and the detail page answers
+                #: 404, while the name goes on holding the unique
+                #: constraint against a second attempt. Undo the
+                #: insert rather than leave a row only the database
+                #: can see. No event names it, so this really deletes.
+                game.delete()
+                return redirect(return_url(request, fallback="games:list_games"))
+            recorded = record_facts_for_request(
                 request,
                 game,
                 status=form.cleaned_data["status"],
@@ -244,16 +266,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
                 correlation_id=correlation_id,
             )
             if not recorded:
-                #: The row stands at the defaults; the facts do not.
-                #: The form already wrote the asked-for status, which
-                #: would leave the catalog disagreeing with a projection
-                #: that says unplayed. update() skips the audit signal,
-                #: so no GameStatusChange invents a transition.
-                #: Re-rendering would invite a resubmit that creates
-                #: a second game.
-                Game.objects.filter(pk=game.pk).update(
-                    status=Game.Status.UNPLAYED, mastered=False
-                )
+                #: Re-rendering would invite a second game.
                 return redirect(return_url(request, fallback="games:list_games"))
             origin = origin_from(request)
             if "submit_and_redirect" in request.POST:
@@ -473,41 +486,20 @@ def _game_action_buttons(game: Game, origin: OriginUrl | None) -> Node:
 
 
 def _game_history(
-    statuschanges: QuerySet[GameStatusChange],
-    presentation: DateTimePresentation,
-    origin: OriginUrl | None,
+    entries: Sequence[StatusEntry], presentation: DateTimePresentation
 ) -> Node:
     items = []
-    for change in statuschanges:
-        if change.timestamp:
-            prefix = f"{presentation.format(change.timestamp, 'datetime')}: Changed"
+    for entry in entries:
+        if entry.recorded_at:
+            prefix = f"{presentation.format(entry.recorded_at, 'datetime')}: Changed"
         else:
             prefix = "At some point changed"
-        old_status = GameStatus(
-            status=change.old_status or "u",
-            children=[change.get_old_status_display() if change.old_status else "-"],
-        )
-        new_status = GameStatus(
-            status=change.new_status,
-            children=[change.get_new_status_display()],
-        )
-        edit = Link(
-            href=action_url("games:edit_statuschange", change.id, origin=origin)
-        )["Edit"]
-        delete = Link(
-            href=action_url("games:delete_statuschange", change.id, origin=origin)
-        )["Delete"]
         items.append(
             Li(class_="text-slate-500")[
                 f"{prefix} status from",
-                old_status,
+                GameStatus(status=entry.previous, children=[entry.previous.label]),
                 "to",
-                new_status,
-                "(",
-                edit,
-                ", ",
-                delete,
-                ")",
+                GameStatus(status=entry.current, children=[entry.current.label]),
             ]
         )
     return Ul(class_="list-disc list-inside")[*items]
@@ -543,10 +535,9 @@ def _game_section(
     ]
 
 
-def _game_overview_metrics(game: Game) -> dict[str, Any]:
+def _game_overview_metrics(sessions: SessionQuerySet) -> dict[str, Any]:
     """Request-free header metrics: total session count, play range, and the
     per-session average (excluding manually-logged sessions)."""
-    sessions = game.sessions
     session_count = sessions.count()
     session_count_without_manual = sessions.without_manual().count()
 
@@ -639,8 +630,15 @@ def _game_header(
         ),
         _meta_row(
             "Status",
-            Span()[GameStatusSelector(game, Game.Status.choices, get_token(request))],
-            "👑" if game.mastered else "",
+            Span()[
+                GameStatusSelector(
+                    game,
+                    PlayerGameStatus.choices,
+                    get_token(request),
+                    current=game.tracked_status,
+                )
+            ],
+            "👑" if game.tracked_mastered else "",
         ),
         _played_row(game, request, origin),
         _meta_row(
@@ -659,9 +657,12 @@ def _game_header(
 
 
 def _purchases_section(
-    game: Game, presentation: DateTimePresentation, origin: OriginUrl | None
+    game: Game,
+    purchases: QuerySet[Purchase],
+    presentation: DateTimePresentation,
+    origin: OriginUrl | None,
 ) -> Node:
-    purchases = game.purchases.order_by("date_purchased")
+    purchases = purchases.order_by("date_purchased")
     rows = [
         make_row(
             LinkedPurchase(purchase),
@@ -712,10 +713,11 @@ def _purchases_section(
 
 def _sessions_section(
     game: Game,
+    sessions: SessionQuerySet,
     presentation: DateTimePresentation,
     durations: DurationPresentation,
 ) -> Node:
-    sessions = game.sessions.select_related("device").order_by("-timestamp_start")
+    sessions = sessions.select_related("device").order_by("-timestamp_start")
     session_count = sessions.count()
     rows = [
         make_row(
@@ -750,9 +752,11 @@ def _sessions_section(
 
 
 def _playevents_section(
-    game: Game, presentation: DateTimePresentation, origin: OriginUrl | None
+    game: Game,
+    playevents: QuerySet[PlayEvent],
+    presentation: DateTimePresentation,
+    origin: OriginUrl | None,
 ) -> Node:
-    playevents = game.playevents.all()
     data = create_playevent_tabledata(
         playevents, presentation, exclude_columns=["Game"], origin=origin
     )
@@ -786,10 +790,11 @@ def _playevents_section(
 
 
 def _history_section(
-    game: Game, presentation: DateTimePresentation, origin: OriginUrl | None
+    game: Game, library: UserLibrary, presentation: DateTimePresentation
 ) -> Node:
-    statuschanges: QuerySet[GameStatusChange] = game.status_changes.all()
-    count = statuschanges.count()
+    #: A stream belongs to one library.
+    entries = status_history(library, game)
+    count = len(entries)
     return Div(
         class_="mb-6 flex flex-col gap-4",
         id="history-container",
@@ -799,38 +804,46 @@ def _history_section(
         hx_swap="outerHTML",
     )[
         PageHeading(children=["History"], badge=str(count) if count else ""),
-        _game_history(statuschanges, presentation, origin),
+        _game_history(entries, presentation),
     ]
 
 
 @login_required
 def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
     library = cast(User, request.user).library
-    game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
+    game = owned_or_404(Game.objects.tracked_by(library), library, id=game_id)
     if slug != game.url_slug:
         return _canonical_game_redirect(request, game)
     presentation = date_time_presentation_for_request(request)
     durations = duration_presentation_for_request(request)
     origin = request.get_full_path()
+    #: Scoped, not `game.sessions` and friends: tracked_by() admits a
+    #: shared catalog game, and a shared game's reverse accessors reach
+    #: every library that ever wrote against it.
+    sessions = cast(
+        SessionQuerySet, Session.objects.for_library(library).filter(game=game)
+    )
+    purchases = Purchase.objects.for_library(library).filter(games=game)
+    playevents = PlayEvent.objects.for_library(library).filter(game=game)
     content = ContentContainer(class_="dark:text-white")[
         _game_header(
             game,
             request,
-            _game_overview_metrics(game),
+            _game_overview_metrics(sessions),
             presentation,
             durations,
             origin,
         ),
-        _purchases_section(game, presentation, origin),
-        _sessions_section(game, presentation, durations),
-        _playevents_section(game, presentation, origin),
-        _history_section(game, presentation, origin),
+        _purchases_section(game, purchases, presentation, origin),
+        _sessions_section(game, sessions, presentation, durations),
+        _playevents_section(game, playevents, presentation, origin),
+        _history_section(game, library, presentation),
     ]
     return render_page(
         request,
         content,
         title=f"Game Overview - {game.name}",
-        mastered=game.mastered,
+        mastered=game.tracked_mastered,
     )
 
 

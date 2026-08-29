@@ -27,6 +27,7 @@ from games.models import (
     FilterPreset,
     Game,
     Platform,
+    PlayerGameStatus,
     PlayEvent,
     Purchase,
     Session,
@@ -272,7 +273,7 @@ def test_shared_and_foreign_game_status_ids_are_undisclosed_and_unchanged(
         _patch(
             world["client_a"],
             f"/api/games/{game.id}/status",
-            {"status": Game.Status.ABANDONED},
+            {"status": PlayerGameStatus.ABANDONED},
         )
         for game in (world["shared_game"], world["game_b"])
     ]

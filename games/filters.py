@@ -145,8 +145,12 @@ class GameFilter(OperatorFilter):
         "original_year_released": FilterField(),
         "wikidata": FilterField(),
         "platform": FilterField("platform__id", search_url="/api/platforms/search"),
-        "status": FilterField(),
-        "mastered": FilterField(),
+        "status": FilterField(
+            "tracked__status", metadata_lookup="player_games__status"
+        ),
+        "mastered": FilterField(
+            "tracked__mastered", metadata_lookup="player_games__mastered"
+        ),
         "playtime_hours": FilterField(handler=duration_hours_handler("playtime")),
         "created_at": FilterField("created_at__date"),
         "updated_at": FilterField("updated_at__date"),
@@ -808,10 +812,19 @@ def filter_queryset_for_library(model_name: ModelKey, library: UserLibrary) -> Q
     Every model reachable from the filter builder implements ``for_library``;
     notably, Platform uses the private-management scope here rather than
     ``visible_to`` because the destination list manages private Platforms only.
+
+    Game is the exception: its list counts the games this library tracks, so
+    counting anything else here would answer the builder's live count with a
+    number the destination list cannot show.
     """
     from django.apps import apps
 
-    return apps.get_model("games", model_name).objects.for_library(library)
+    from games.models import Game
+
+    model = apps.get_model("games", model_name)
+    if model is Game:
+        return Game.objects.tracked_by(library)
+    return model.objects.for_library(library)
 
 
 def filter_query_context_for_library(library: UserLibrary) -> FilterQueryContext:
@@ -819,7 +832,10 @@ def filter_query_context_for_library(library: UserLibrary) -> FilterQueryContext
     from games.models import Device, Game, Platform, PlayEvent, Purchase, Session
 
     scoped_querysets: dict[builtins.type, QuerySet] = {
-        Game: Game.objects.for_library(library),
+        #: tracked_by, not for_library: a nested game filter resolves
+        #: from the games this library tracks, and its criteria read
+        #: the projection through the `tracked` alias.
+        Game: Game.objects.tracked_by(library),
         Session: Session.objects.for_library(library),
         Purchase: Purchase.objects.for_library(library),
         PlayEvent: PlayEvent.objects.for_library(library),

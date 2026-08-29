@@ -1,13 +1,23 @@
 import logging
 from datetime import timedelta
-from typing import ClassVar, Final
+from typing import TYPE_CHECKING, ClassVar, Final
 from uuid import UUID
 
 import requests
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
-from django.db.models import Case, ExpressionWrapper, F, Func, Q, Sum, Value, When
+from django.db.models import (
+    Case,
+    ExpressionWrapper,
+    F,
+    FilteredRelation,
+    Func,
+    Q,
+    Sum,
+    Value,
+    When,
+)
 from django.db.models.fields.generated import GeneratedField
 from django.db.models.functions import Coalesce, Lower, NullIf, Trim
 from django.template.defaultfilters import floatformat, pluralize, slugify
@@ -76,6 +86,60 @@ class GameQuerySet(TombstonableQuerySet):
     def visible_to(self, library):
         return self.filter(Q(library__isnull=True) | Q(library=library)).alive()
 
+    def annotated_for_filtering(self, library=None):
+        """Register the alias only; drop no row.
+
+        A filter names `tracked__status`, which needs the alias and
+        nothing else. The two facts are selected by `tracked_by()`
+        after it filters, because an F() before the filter opens a
+        second join Django cannot merge.
+
+        No library leaves the join unconditional, so a game two
+        libraries track comes back once per library. Unscoped is for
+        compiling a lookup, not for executing one.
+        """
+        condition = Q() if library is None else Q(player_games__library=library)
+        return self.annotate(
+            tracked=FilteredRelation("player_games", condition=condition)
+        )
+
+    def tracked_by(self, library, **conditions):
+        """Every live game this library tracks, facts read.
+
+        No `library=library`: a shared catalog game this library
+        tracks belongs on the list.
+
+        Extra conditions ride in that same filter() call.
+
+        A FilteredRelation, not a plain path. Django opens a join per
+        filter() call on a multi-valued relation, and a list applies
+        its scope and its criteria in separate calls; on a plain path
+        the second join carries no library condition. The alias
+        copies its condition into every join, and
+        `unique_library_player_game` allows one row per pair, so the
+        joins cannot disagree.
+
+        `alive()` comes first: since #676 a game delete leaves the
+        catalog row tombstoned and the projection row beside it.
+
+        An archived row is not tracked. TrackGame refuses to track an
+        archived game again, so a game the list still showed could not
+        be got rid of.
+        """
+        return (
+            self.alive()
+            .annotated_for_filtering(library)
+            .filter(
+                tracked__isnull=False,
+                tracked__archived_at__isnull=True,
+                **conditions,
+            )
+            .annotate(
+                tracked_status=F("tracked__status"),
+                tracked_mastered=F("tracked__mastered"),
+            )
+        )
+
 
 def _validate_related_library(
     owner_library_id, related, field_name: str, *, allow_shared: bool = False
@@ -96,6 +160,13 @@ def _validate_related_library(
 
 
 class Game(ReferencedRow):
+    if TYPE_CHECKING:
+        #: Annotations, not columns: GameQuerySet.tracked_by() puts the
+        #: library's two projection facts here, and only a queryset from
+        #: it carries them.
+        tracked_status: str
+        tracked_mastered: bool
+
     class Meta:
         #: Both partial on `tombstoned_at`.
         #: A tombstoned name is free again.
@@ -269,24 +340,6 @@ class Game(ReferencedRow):
         return label_with_details(
             self.name, self.platform or "Unspecified", self.year_released
         )
-
-    def finished(self):
-        return (
-            self.status == self.Status.FINISHED
-            or self.playevents.filter(ended__isnull=False).exists()
-        )
-
-    def abandoned(self):
-        return self.status == self.Status.ABANDONED
-
-    def retired(self):
-        return self.status == self.Status.RETIRED
-
-    def played(self):
-        return self.status == self.Status.PLAYED
-
-    def unplayed(self):
-        return self.status == self.Status.UNPLAYED
 
 
 class PlatformQuerySet(TombstonableQuerySet):
@@ -710,17 +763,15 @@ class PurchaseQueryset(LibraryOwnedQuerySet):
     def games_only(self):
         return self.filter(type=Purchase.GAME)
 
-    def finished(self):
+    def finished(self, library):
+        #: The status lives on the library's row.
         return self.filter(
-            Q(games__status="f") | Q(games__playevents__ended__isnull=False)
-        ).distinct()
-
-    def abandoned(self):
-        return self.filter(games__status="a").distinct()
-
-    def dropped(self):
-        return self.filter(
-            Q(games__status="a") | Q(date_refunded__isnull=False)
+            Q(
+                games__in=Game.objects.tracked_by(
+                    library, tracked__status__in=DONE_STATUSES
+                )
+            )
+            | Q(games__playevents__ended__isnull=False)
         ).distinct()
 
 
@@ -1301,6 +1352,13 @@ class PlayerGameStatus(models.TextChoices):
     RETIRED = "retired", "Retired"
     SHELVED = "shelved", "Shelved"
     ABANDONED = "abandoned", "Abandoned"
+
+
+#: Done with the game: completed or retired.
+DONE_STATUSES: tuple[PlayerGameStatus, ...] = (
+    PlayerGameStatus.COMPLETED,
+    PlayerGameStatus.RETIRED,
+)
 
 
 class PlayerGame(ProjectionModel):

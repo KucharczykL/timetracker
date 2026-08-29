@@ -990,6 +990,11 @@ class FilterField:
     # ``FilterField("lookup")`` calls are unaffected.
     search_url: str | None = None
     imperative: bool = False
+    # The path ``field_metadata`` walks, when it differs from the path ``to_q``
+    # emits. A query may read an annotation alias (``tracked__status``), which
+    # names no model column, while the widget still needs the real column's
+    # choices and nullability (``player_games__status``). Ignored by ``to_q``.
+    metadata_lookup: ORMLookup | None = None
 
     def __post_init__(self) -> None:
         # Same loud-at-import contract as the lookup/handler check: reject the
@@ -1016,6 +1021,12 @@ class FilterField:
             # set-field widget input) has no consumer.
             raise ValueError(
                 "FilterField search_url has no effect on a handler-mapped field"
+            )
+        if self.metadata_lookup is not None and self.handler is not None:
+            # Handler-mapped fields skip column resolution, so metadata_lookup
+            # has no consumer.
+            raise ValueError(
+                "FilterField metadata_lookup has no effect on a handler-mapped field"
             )
 
     def to_q(self, attr_name: AttrName, criterion: _Criterion) -> Q:
@@ -1318,6 +1329,19 @@ class AggregateSpec:
 QuerysetResolver = Callable[[type[models.Model]], models.QuerySet[Any]]
 
 
+def with_filter_aliases[M: models.Model](
+    queryset: models.QuerySet[M],
+) -> models.QuerySet[M]:
+    """Add whatever aliases this model's filter fields name.
+
+    A FilterField may emit an annotation, not a column, and that
+    resolves on an annotated queryset alone. A queryset states its
+    own by defining `annotated_for_filtering()`.
+    """
+    annotate = getattr(queryset, "annotated_for_filtering", None)
+    return queryset if annotate is None else annotate()
+
+
 @dataclass(frozen=True)
 class FilterQueryContext:
     """Explicit source of authorization-scoped querysets for filter compilation."""
@@ -1341,7 +1365,7 @@ class FilterQueryContext:
     @classmethod
     def for_validation(cls) -> Self:
         return cls(
-            lambda model: model._default_manager.none(),
+            lambda model: with_filter_aliases(model._default_manager.none()),
             authorization_scoped=False,
         )
 
@@ -1433,7 +1457,7 @@ class OperatorFilter:
         annotation, so the same value can target an int / string / date / set
         field without naming the criterion type::
 
-            GameFilter.where(year_released__gt=2010, status=["f", "p"])
+            GameFilter.where(year_released__gt=2010, status=["completed", "played"])
 
         Suffix → modifier follows ``_SUFFIX_MODIFIER``; a missing suffix means
         EQUALS for scalars and INCLUDES for set criteria. ``between`` /
@@ -2643,6 +2667,9 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             # lookup raises here (matching ``criterion_kind`` / ``resolve_path_kind``'s
             # loud-failure contract) instead of silently degrading to an empty
             # picker, while the legitimately-columnless fields never hit the None.
+            # ``metadata_lookup`` wins where it is set: the query may read an
+            # annotation alias that resolves to no column, and the widget still
+            # needs the real one.
             model_field: models.Field | None = None
             resolved_lookup: ORMLookup | None = None
             field_spec = filter_cls.fields.get(name)
@@ -2651,7 +2678,7 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
                 and field_spec.handler is None
                 and model is not None
             ):
-                lookup = field_spec.lookup or name
+                lookup = field_spec.metadata_lookup or field_spec.lookup or name
                 resolved_lookup = lookup
                 model_field = _resolve_model_field(model, lookup)
                 if model_field is None:
@@ -2670,11 +2697,14 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             # column: a hop through a nullable relation leaves the fields beyond
             # it absent, so ``platform__group`` is nullable even though
             # ``Platform.group`` is not.
-            nullable = (
-                _lookup_is_nullable(model, resolved_lookup)
-                if resolved_lookup is not None
-                else False
-            )
+            # A metadata_lookup path is not the queried path, so its
+            # hops say nothing; read the terminal column.
+            if field_spec is not None and field_spec.metadata_lookup is not None:
+                nullable = bool(getattr(model_field, "null", False))
+            elif resolved_lookup is not None:
+                nullable = _lookup_is_nullable(model, resolved_lookup)
+            else:
+                nullable = False
             # Value-widget config (issue #242). ``field_spec`` is None for
             # aggregates (no ``fields`` entry) — guard it. ``is_m2m`` is derived
             # from the resolved model field, so a future FK set field needs no flag.

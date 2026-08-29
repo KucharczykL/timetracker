@@ -240,7 +240,6 @@ def test_pages_render_only_the_authenticated_library(parity_world):
             "games:list_purchases",
             "games:list_devices",
             "games:list_playevents",
-            "games:list_statuschanges",
             "games:stats_by_year",
         ):
             args = [YEAR] if url_name == "games:stats_by_year" else None

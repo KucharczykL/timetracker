@@ -7,7 +7,13 @@ from django.db import IntegrityError, connection, transaction
 from django.db.migrations.executor import MigrationExecutor
 from django.utils import timezone
 
-from common.criteria import FilterQueryContext, Modifier, RelationMatch, StringCriterion
+from common.criteria import (
+    FilterQueryContext,
+    Modifier,
+    RelationMatch,
+    StringCriterion,
+    with_filter_aliases,
+)
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
@@ -21,7 +27,7 @@ PRESENTATION = DateTimePresentation(
 )
 
 UNRESTRICTED_FILTER_CONTEXT = FilterQueryContext(
-    lambda model: model._default_manager.all()
+    lambda model: with_filter_aliases(model._default_manager.all())
 )
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -230,6 +236,7 @@ def test_game_reverse_accessors_expose_playevents_and_status_changes(game):
     assert list(game.status_changes.all()) == [change]
 
 
+@pytest.mark.untracked_games
 def test_deleting_a_game_cascades_to_playevents_and_status_changes(game):
     playevent = PlayEvent.objects.create(game=game)
     change = GameStatusChange.objects.create(

@@ -23,8 +23,10 @@ def test_no_suffix_defaults_to_equals_for_scalar():
 
 
 def test_no_suffix_defaults_to_includes_for_set_criterion():
-    assert GameFilter.where(status=["f", "p"]) == GameFilter(
-        status=ChoiceCriterion(value=["f", "p"], modifier=Modifier.INCLUDES)
+    assert GameFilter.where(status=["completed", "played"]) == GameFilter(
+        status=ChoiceCriterion(
+            value=["completed", "played"], modifier=Modifier.INCLUDES
+        )
     )
 
 

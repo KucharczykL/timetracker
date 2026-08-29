@@ -12,7 +12,6 @@ from common.date_time_presentation import (
 from games.forms import (
     DeviceForm,
     GameForm,
-    GameStatusChangeForm,
     LibraryPreferencesForm,
     PlatformForm,
     PlayEventForm,
@@ -22,8 +21,8 @@ from games.forms import (
 from games.models import (
     Device,
     Game,
-    GameStatusChange,
     Platform,
+    PlayerGameStatus,
     PlayEvent,
     Purchase,
     Session,
@@ -80,16 +79,12 @@ def test_form_relationship_querysets_are_explicitly_library_bound(world):
     )
     game = GameForm(library=world.owner_library)
     playevent = PlayEventForm(library=world.owner_library, presentation=PRESENTATION)
-    statuschange = GameStatusChangeForm(
-        library=world.owner_library, presentation=PRESENTATION
-    )
 
     assert _ids(session.fields["game"].queryset) == {world.own_game.pk}
     assert _ids(session.fields["device"].queryset) == {world.own_device.pk}
     assert _ids(purchase.fields["games"].queryset) == {world.own_game.pk}
     assert _ids(purchase.fields["related_game"].queryset) == {world.own_game.pk}
     assert _ids(playevent.fields["game"].queryset) == {world.own_game.pk}
-    assert _ids(statuschange.fields["game"].queryset) == {world.own_game.pk}
     visible_platforms = {world.shared_platform.pk, world.own_platform.pk}
     assert _ids(game.fields["platform"].queryset) == visible_platforms
     assert _ids(purchase.fields["platform"].queryset) == visible_platforms
@@ -121,7 +116,7 @@ def test_library_preferences_default_device_is_a_scoped_model_choice(world):
             {
                 "name": "New private game",
                 "platform": "",
-                "status": Game.Status.UNPLAYED,
+                "status": PlayerGameStatus.UNPLAYED,
             },
             Game,
         ),
@@ -146,7 +141,7 @@ def test_shared_platform_is_selectable_but_foreign_private_platform_is_rejected(
         data={
             "name": "Shared platform game",
             "platform": world.shared_platform.pk,
-            "status": Game.Status.UNPLAYED,
+            "status": PlayerGameStatus.UNPLAYED,
         },
         library=world.owner_library,
     )
@@ -154,7 +149,7 @@ def test_shared_platform_is_selectable_but_foreign_private_platform_is_rejected(
         data={
             "name": "Foreign platform game",
             "platform": world.foreign_platform.pk,
-            "status": Game.Status.UNPLAYED,
+            "status": PlayerGameStatus.UNPLAYED,
         },
         library=world.owner_library,
     )
@@ -177,7 +172,7 @@ def test_library_bound_forms_validate_constraints_with_implicit_owner(world):
             "name": "Platformless duplicate",
             "platform": "",
             "year_released": 1999,
-            "status": Game.Status.UNPLAYED,
+            "status": PlayerGameStatus.UNPLAYED,
         },
         library=world.owner_library,
     )
@@ -249,32 +244,22 @@ def test_purchase_form_rejects_foreign_relationships_without_saving(world):
     assert world.foreign_platform.name not in html
 
 
-@pytest.mark.parametrize(
-    ("form_class", "extra"),
-    [
-        (PlayEventForm, {"started": "2026-08-14", "ended": "", "note": ""}),
-        (
-            GameStatusChangeForm,
-            {
-                "old_status": Game.Status.UNPLAYED,
-                "new_status": Game.Status.PLAYED,
-                "timestamp": "2026-08-14T12:00:00+00:00",
-            },
-        ),
-    ],
-)
-def test_derived_forms_reject_a_foreign_game(world, form_class, extra):
-    model = PlayEvent if form_class is PlayEventForm else GameStatusChange
-    before = model.objects.count()
-    form = form_class(
-        data={"game": world.foreign_game.pk, **extra},
+def test_the_play_event_form_rejects_a_foreign_game(world):
+    before = PlayEvent.objects.count()
+    form = PlayEventForm(
+        data={
+            "game": world.foreign_game.pk,
+            "started": "2026-08-14",
+            "ended": "",
+            "note": "",
+        },
         library=world.owner_library,
         presentation=PRESENTATION,
     )
 
     assert not form.is_valid()
     assert "game" in form.errors
-    assert model.objects.count() == before
+    assert PlayEvent.objects.count() == before
     assert world.foreign_game.name not in str(form)
 
 
@@ -284,7 +269,7 @@ def test_add_game_post_with_foreign_platform_is_rejected_without_mutation(world)
         {
             "name": "Rejected game",
             "platform": world.foreign_platform.pk,
-            "status": Game.Status.UNPLAYED,
+            "status": PlayerGameStatus.UNPLAYED,
         },
     )
 

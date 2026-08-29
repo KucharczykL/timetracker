@@ -59,6 +59,8 @@ from games.models import (
     UserLibrary,
 )
 
+pytestmark = pytest.mark.untracked_games
+
 
 def create_tables(*models: type[ProjectionModel]) -> None:
     """The tables, rolled back with the test."""

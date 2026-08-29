@@ -1,8 +1,7 @@
-"""State a fact, then mirror the row.
+"""State a fact; answer a refused one.
 
-only_shadow_writes() refuses a live-table write, so the mirror cannot be a
-projector and is a dual write here. Takes an actor, not a request;
-games/views/playergame_writes.py is the request half. #678 deletes both.
+Takes an actor, not a request.
+The view half makes it a toast.
 """
 
 import uuid
@@ -25,12 +24,7 @@ from games.events.dispatch import (
 )
 from games.events.idempotency import IdempotencyKeyMismatch
 from games.events.retry import RetryBudgetExhausted
-from games.models import Game, PlayerGame, PlayerGameStatus, UserLibrary
-from games.playergame_status import (
-    LegacyStatus,
-    legacy_status_for,
-    player_status_for,
-)
+from games.models import Game, PlayerGameStatus, UserLibrary
 
 
 class PlayerGameWriteFailed(Exception):
@@ -107,19 +101,23 @@ def record_facts(
     actor: User,
     game: Game,
     *,
-    status: LegacyStatus | None = None,
+    status: PlayerGameStatus | None = None,
     mastered: bool | None = None,
     correlation_id: uuid.UUID,
 ) -> None:
-    """State one fact or two, then mirror.
+    """State one fact or two.
 
-    status is a Game.Status letter, because every caller holds one. None
-    means this act does not state that fact.
+    None leaves that fact unstated.
     """
+    if status is not None:
+        #: A form field and a Ninja schema each hand over the word as
+        #: a plain str. The command reads `.value`, so the member is
+        #: what crosses this boundary.
+        status = PlayerGameStatus(status)
     library = actor.library
     command = RecordPlayerGameFacts(
         game_id=game.pk,
-        status=None if status is None else player_status_for(status),
+        status=status,
         mastered=mastered,
     )
     with _translated():
@@ -135,18 +133,3 @@ def record_facts(
             _dispatch(
                 command, actor=actor, library=library, correlation_id=correlation_id
             )
-    _mirror(game, library)
-
-
-def _mirror(game: Game, library: UserLibrary) -> None:
-    """Copy the projection row onto the catalog."""
-    row = PlayerGame.objects.get(library=library, game=game)
-    status = legacy_status_for(PlayerGameStatus(row.status))
-    #: Reread first: a stale instance skips the repair.
-    game.refresh_from_db(fields=["status", "mastered"])
-    if (game.status, game.mastered) == (status, row.mastered):
-        return
-    game.status = status
-    game.mastered = row.mastered
-    #: A field save, so the audit signal still fires.
-    game.save(update_fields=["status", "mastered"])

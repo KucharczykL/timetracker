@@ -6,7 +6,7 @@ from django.urls import reverse
 from common.returns import action_url
 from games.models import Game
 
-GAME_FORM = {"name": "Renamed", "status": "u"}
+GAME_FORM = {"name": "Renamed", "status": "unplayed"}
 
 #: Transactional: these views dispatch, and a dispatch cannot
 #: nest in the transaction pytest-django rolls back. The db
@@ -42,7 +42,7 @@ def test_a_chained_form_forwards_the_origin(logged_in, db):
     origin = f"{reverse('games:list_games')}?page=3"
     response = logged_in.post(
         action_url("games:add_game", origin=origin),
-        {"name": "Chained", "status": "u", "submit_and_create_session": "1"},
+        {"name": "Chained", "status": "unplayed", "submit_and_create_session": "1"},
     )
     created = Game.objects.get(name="Chained")
     assert response["Location"] == action_url(

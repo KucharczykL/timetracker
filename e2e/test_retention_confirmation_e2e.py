@@ -61,6 +61,7 @@ def name_in_an_event(library, instance) -> None:
         )
 
 
+@pytest.mark.untracked_games
 def test_deleting_an_unreferenced_game_promises_a_delete(
     authenticated_page: Page, live_server, e2e_library
 ):

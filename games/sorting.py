@@ -80,7 +80,7 @@ GAME_SORTS: SortMap = {
     "name": SortSpec("name"),
     "sort_name": SortSpec("sort_name"),
     "year": SortSpec("year_released"),
-    "status": SortSpec("status"),
+    "status": SortSpec("tracked_status"),
     "wikidata": SortSpec("wikidata"),
     "created": SortSpec("created_at"),
     "playtime": SortSpec(

@@ -18,7 +18,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from pytest_django.asserts import assertRedirects
 
-from games.models import Game, GameStatusChange, Platform, Purchase, Session
+from games.models import Game, Platform, Purchase, Session
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 
@@ -271,7 +271,7 @@ class RenderedPagesTest(TestCase):
         Django's .errorlist (which no longer exists in the CSS)."""
         # Non-empty but invalid (name is required) so the form binds and
         # re-renders with errors — an empty {} POST is falsy and stays unbound.
-        response = self.client.post(reverse("games:add_game"), {"status": "u"})
+        response = self.client.post(reverse("games:add_game"), {"status": "unplayed"})
         html = response.content.decode()
         self.assertIn("bg-danger", html)  # _FIELD_ERROR_CLASS
         self.assertNotIn('class="errorlist"', html)
@@ -480,25 +480,6 @@ class RenderedPagesTest(TestCase):
         self.assertIn(f"/session/{running.id}/reset", html)
         self.assertNotIn(f"/session/{self.session.id}/finish", html)
         self.assertNotIn(f"/session/{self.session.id}/reset", html)
-
-    # --- statuschange --------------------------------------------------------
-
-    def test_statuschange_list_and_delete(self):
-        change = GameStatusChange.objects.create(
-            game=self.game,
-            new_status="f",
-            timestamp=self.session.timestamp_start,
-        )
-        list_html = self.get("games:list_statuschanges").content.decode()
-        self.assertIn("<table", list_html)
-        self.assertIn(self.game.name, list_html)
-        self.assertNoEscapedTags(list_html)
-
-        confirm_html = self.get("games:delete_statuschange", change.id).content.decode()
-        self.assertIn("Permanently delete this status change?", confirm_html)
-        self.assertIn("Delete", confirm_html)
-        self.assertIn("Cancel", confirm_html)
-        self.assertNoEscapedTags(confirm_html)
 
     # --- login ---------------------------------------------------------------
 
@@ -847,7 +828,11 @@ def test_add_game_submit_and_create_session_redirects(client, owned_user):
 
     response = client.post(
         reverse("games:add_game"),
-        {"name": "New Session Game", "status": "u", "submit_and_create_session": ""},
+        {
+            "name": "New Session Game",
+            "status": "unplayed",
+            "submit_and_create_session": "",
+        },
     )
 
     game = Game.objects.get(name="New Session Game")

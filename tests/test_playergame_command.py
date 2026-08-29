@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+from django.utils import timezone
 
 from games.commands.playergame import (
     ArchivePlayerGame,
@@ -17,6 +18,9 @@ from games.commands.playergame import (
 from games.events.dispatch import CommandOutcome, CommandRejected, dispatch
 from games.models import Game, LibraryEvent, PlayerGame, PlayerGameStatus
 from games.retention import Retirement, purging_library, tombstone_or_delete
+from timetracker.temporal import TemporalValue
+
+pytestmark = pytest.mark.untracked_games
 
 
 @pytest.fixture
@@ -207,6 +211,59 @@ def test_setting_a_status_records_it_and_projects_it(owned_user, owned_library):
     row = PlayerGame.objects.get()
     assert event.aggregate_id == row.pk
     assert row.status == PlayerGameStatus.COMPLETED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_live_status_change_states_the_day_it_happened(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+
+    dispatch(
+        SetPlayerGameStatus(game_id=game.pk, status=PlayerGameStatus.COMPLETED),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="complete-outer-wilds",
+    )
+
+    event = LibraryEvent.objects.get(event_type="library.playergame.status_changed")
+    #: None would mean nobody knows when.
+    assert event.effective_time == TemporalValue.from_day(timezone.localdate())
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_recorded_status_fact_states_the_day_too(owned_user, owned_library):
+    #: The game form dispatches this one.
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+
+    dispatch(
+        RecordPlayerGameFacts(
+            game_id=game.pk, status=PlayerGameStatus.PLAYED, mastered=None
+        ),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="play-outer-wilds",
+    )
+
+    event = LibraryEvent.objects.get(event_type="library.playergame.status_changed")
+    assert event.effective_time == TemporalValue.from_day(timezone.localdate())
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_mastery_fact_still_states_no_time(owned_user, owned_library):
+    #: Only the status event states a time.
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+
+    dispatch(
+        RecordPlayerGameFacts(game_id=game.pk, status=None, mastered=True),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="master-outer-wilds",
+    )
+
+    event = LibraryEvent.objects.get(event_type="library.playergame.mastered_changed")
+    assert event.effective_time is None
 
 
 @pytest.mark.django_db(transaction=True)
