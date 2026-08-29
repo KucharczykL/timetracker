@@ -37,8 +37,9 @@ def _stated_now() -> TemporalValue:
 class PlayerGameNotTracked(CommandRejected):
     """The library tracks no such game.
 
-    Its own class, because the write path heals exactly this case.
-    Matching on a message is the alternative, and is not one.
+    Its own class, because the write path answers this one case by
+    tracking the game and stating the fact again. Matching on a
+    message is the alternative, and is not one.
     """
 
 
@@ -50,7 +51,8 @@ def _tracked_game(context: CommandContext, game_id: uuid.UUID) -> PlayerGame:
         raise PlayerGameNotTracked(
             f"This library tracks no game {game_id}. A recorded fact belongs "
             "to a tracked game, and #676 backfills one for every game a "
-            "library has."
+            "library has.",
+            sentence="This game is not tracked yet. Reload the page and try again.",
         ) from None
 
 
@@ -70,7 +72,11 @@ class TrackGame(Command):
             if tracked.removed_at is not None:
                 raise CommandRejected(
                     f"This library removed {game.name} rather than tracking it. "
-                    "A removed game is restored, not tracked again."
+                    "A removed game is restored, not tracked again.",
+                    sentence=(
+                        f"This library removed {game.name}. Restore it instead "
+                        "of tracking it again."
+                    ),
                 )
             return Unchanged(f"This library already tracks {game.name}.")
         return [
@@ -92,7 +98,9 @@ class TrackGame(Command):
             raise CommandRejected(
                 f"No game {self.game_id} this library can track. A library "
                 "tracks its own games and the shared catalog, and neither "
-                "offers a removed row."
+                "offers a removed row.",
+                #: Names no id: a refusal is not a place to learn one.
+                sentence="That game is not available to track.",
             ) from None
 
 

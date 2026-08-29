@@ -128,12 +128,12 @@ def test_the_status_api_refuses_a_status_that_is_not_one(logged_in, owned_librar
 def test_a_failed_status_write_answers_409_with_a_toast(
     logged_in, owned_library, tracked_game, monkeypatch
 ):
-    from games.writes.playergame import PlayerGameWriteFailed
+    from games.writes.answers import CommandFailed
 
     game = tracked_game
 
     def refuse(*args, **kwargs):
-        raise PlayerGameWriteFailed("Nothing was recorded; try again.", 409)
+        raise CommandFailed("Nothing was recorded; try again.", 409)
 
     monkeypatch.setattr("games.api.record_facts", refuse)
     response = logged_in.patch(
@@ -220,7 +220,7 @@ def test_the_box_comes_up_ticked(logged_in):
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.untracked_games
 def test_an_unticked_box_records_nothing_and_tracks_nothing(logged_in, owned_library):
-    #: The checkbox owns the heal, not sessions.
+    #: The checkbox owns the tracking, not sessions.
     game = Game.objects.create(library=owned_library, name="Outer Wilds", status="u")
 
     logged_in.post(
@@ -336,7 +336,7 @@ def test_refunding_abandons_every_game_under_one_correlation_id(
 def test_a_failed_refund_answers_409_and_swaps_nothing(
     logged_in, owned_user, owned_library, monkeypatch
 ):
-    from games.writes.playergame import PlayerGameWriteFailed
+    from games.writes.answers import CommandFailed
 
     game = Game.objects.create(library=owned_library, name="Outer Wilds", status="p")
     track_game(owned_user, game, correlation_id=new_correlation_id())
@@ -349,7 +349,7 @@ def test_a_failed_refund_answers_409_and_swaps_nothing(
     purchase.games.set([game])
 
     def refuse(*args, **kwargs):
-        raise PlayerGameWriteFailed("Nothing was recorded; try again.", 409)
+        raise CommandFailed("Nothing was recorded; try again.", 409)
 
     #: Patched where the call is made, not where it is named.
     monkeypatch.setattr("games.views.playergame_writes.record_facts", refuse)
@@ -367,10 +367,10 @@ def test_a_failed_refund_answers_409_and_swaps_nothing(
 def test_a_failed_add_leaves_the_row_at_the_defaults(
     logged_in, owned_library, monkeypatch
 ):
-    from games.writes.playergame import PlayerGameWriteFailed
+    from games.writes.answers import CommandFailed
 
     def refuse(*args, **kwargs):
-        raise PlayerGameWriteFailed("Nothing was recorded; try again.", 409)
+        raise CommandFailed("Nothing was recorded; try again.", 409)
 
     monkeypatch.setattr("games.views.playergame_writes.record_facts", refuse)
     response = logged_in.post(
@@ -387,10 +387,10 @@ def test_a_failed_add_leaves_the_row_at_the_defaults(
 
 @pytest.mark.django_db(transaction=True)
 def test_a_failed_edit_re_renders_the_form(logged_in, tracked_game, monkeypatch):
-    from games.writes.playergame import PlayerGameWriteFailed
+    from games.writes.answers import CommandFailed
 
     def refuse(*args, **kwargs):
-        raise PlayerGameWriteFailed("Nothing was recorded; try again.", 409)
+        raise CommandFailed("Nothing was recorded; try again.", 409)
 
     monkeypatch.setattr("games.views.playergame_writes.record_facts", refuse)
     response = logged_in.post(
@@ -410,7 +410,7 @@ def test_a_partly_applied_refund_says_how_far_it_went(
     logged_in, owned_user, owned_library, monkeypatch
 ):
     from games.views import playergame_writes
-    from games.writes.playergame import PlayerGameWriteFailed
+    from games.writes.answers import CommandFailed
 
     games = []
     for name in ("Outer Wilds", "Tunic"):
@@ -431,7 +431,7 @@ def test_a_partly_applied_refund_says_how_far_it_went(
     def refuse_the_second(*args, **kwargs):
         calls.append(None)
         if len(calls) > 1:
-            raise PlayerGameWriteFailed("Nothing was recorded; try again.", 409)
+            raise CommandFailed("Nothing was recorded; try again.", 409)
         return record_facts(*args, **kwargs)
 
     monkeypatch.setattr(playergame_writes, "record_facts", refuse_the_second)

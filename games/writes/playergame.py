@@ -5,11 +5,8 @@ The view half makes it a toast.
 """
 
 import uuid
-from collections.abc import Iterator
-from contextlib import contextmanager
 
 from django.contrib.auth.models import User
-from django.http import Http404
 
 from games.commands.playergame import (
     PlayerGameNotTracked,
@@ -17,57 +14,14 @@ from games.commands.playergame import (
     RemovePlayerGame,
     TrackGame,
 )
-from games.events.dispatch import (
-    Command,
-    CommandNotPermitted,
-    CommandRejected,
-    dispatch,
-)
-from games.events.idempotency import IdempotencyKeyMismatch
-from games.events.retry import RetryBudgetExhausted
+from games.events.dispatch import Command, dispatch
 from games.models import Game, PlayerGameStatus, UserLibrary
-
-
-class PlayerGameWriteFailed(Exception):
-    """A stated fact could not be recorded.
-
-    It carries a status code as well as a sentence, because the two
-    conflict leaves disagree about what to do next.
-    """
-
-    def __init__(self, message: str, status_code: int) -> None:
-        super().__init__(message)
-        self.message = message
-        self.status_code = status_code
+from games.writes.answers import answered
 
 
 def new_correlation_id() -> uuid.UUID:
     """One per request, however many dispatches."""
     return uuid.uuid7()
-
-
-@contextmanager
-def _translated() -> Iterator[None]:
-    """Turn a command failure into an answer."""
-    try:
-        yield
-    except CommandNotPermitted as error:
-        #: Another library's object is absent, not forbidden.
-        raise Http404("No such game.") from error
-    except RetryBudgetExhausted as error:
-        raise PlayerGameWriteFailed(
-            "Another change reached this game first. Nothing was recorded; try again.",
-            409,
-        ) from error
-    except IdempotencyKeyMismatch as error:
-        #: Unreachable per-request. Handled for a keyed caller.
-        raise PlayerGameWriteFailed(
-            "This request cannot be retried, because its key already belongs "
-            "to a different one.",
-            409,
-        ) from error
-    except CommandRejected as error:
-        raise PlayerGameWriteFailed(str(error), 409) from error
 
 
 def _dispatch(
@@ -89,7 +43,7 @@ def _dispatch(
 
 def track_game(actor: User, game: Game, *, correlation_id: uuid.UUID) -> None:
     """Track one catalog game for the actor."""
-    with _translated():
+    with answered("game"):
         _dispatch(
             TrackGame(game_id=game.pk),
             actor=actor,
@@ -100,7 +54,7 @@ def track_game(actor: User, game: Game, *, correlation_id: uuid.UUID) -> None:
 
 def untrack_game(actor: User, game: Game, *, correlation_id: uuid.UUID) -> None:
     """State that the library stopped tracking it."""
-    with _translated():
+    with answered("game"):
         try:
             _dispatch(
                 RemovePlayerGame(game_id=game.pk),
@@ -136,7 +90,7 @@ def record_facts(
         status=status,
         mastered=mastered,
     )
-    with _translated():
+    with answered("game"):
         try:
             _dispatch(
                 command, actor=actor, library=library, correlation_id=correlation_id

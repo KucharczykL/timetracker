@@ -1,0 +1,22 @@
+---
+# Every other sense. Not an error, because a pattern cannot tell which act is
+# meant, and the two the word covered take different replacements: one creates
+# what was missing, the other corrects what was stale.
+#
+# `health` and `healthy` do not match. Vale bounds each token with `\b`, so the
+# pattern stops at the end of `heal` and finds a letter rather than a boundary.
+#
+# A match that Heal already reported as an error is dropped by
+# scripts/run-vale.mjs, so the settled sense reads as one finding rather than
+# two. Go's regexp has no lookahead, so the rule cannot exclude it itself.
+extends: existence
+message: "'%s' is a metaphor. Name the act: what is created, or what is corrected?"
+link: docs/vocabulary.md
+level: warning
+ignorecase: true
+scope:
+  - ~code
+  - ~heading
+tokens:
+  - 'heal(s|ed|ing)?'
+  - 'self[-\s]heal(s|ed|ing)?'

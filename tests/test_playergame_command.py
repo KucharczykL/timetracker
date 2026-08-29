@@ -1008,7 +1008,7 @@ def test_recording_facts_for_an_untracked_game_is_its_own_rejection(
 ):
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
 
-    #: Its own class, because the write path heals this case.
+    #: Its own class: the write path tracks it first.
     with pytest.raises(PlayerGameNotTracked):
         dispatch(
             RecordPlayerGameFacts(

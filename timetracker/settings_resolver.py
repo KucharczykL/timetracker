@@ -90,8 +90,8 @@ def _site_settings() -> dict[str, object]:
         fresh = _load_snapshot()
     except (OperationalError, ProgrammingError) as error:
         # Any read failure (missing table on a fresh/mid-migration DB, but also a
-        # transient lock/IO fault) degrades to "no overrides". Not cached, so it
-        # self-heals on the next read instead of crashing every resolve.
+        # transient lock/IO fault) degrades to "no overrides". Not cached, so the
+        # next read tries again instead of crashing every resolve.
         logger.warning(
             "[settings_resolver]: SiteSetting unreadable, using defaults: %s", error
         )

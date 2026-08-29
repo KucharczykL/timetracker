@@ -59,11 +59,8 @@ from games.sorting import (
     parse_find_filter,
     parse_per_page_override,
 )
-from games.writes.playergame import (
-    PlayerGameWriteFailed,
-    new_correlation_id,
-    record_facts,
-)
+from games.writes.answers import CommandFailed
+from games.writes.playergame import new_correlation_id, record_facts
 from timetracker.config import SettingSource
 from timetracker.settings_commands import (
     SettingLockedError,
@@ -91,8 +88,8 @@ logger = logging.getLogger("games")
 api = NinjaAPI(auth=django_auth)
 
 
-@api.exception_handler(PlayerGameWriteFailed)
-def _playergame_write_failed(request, failure: PlayerGameWriteFailed):
+@api.exception_handler(CommandFailed)
+def _command_failed(request, failure: CommandFailed):
     #: The message rides the middleware's header.
     #: The status code reverts the optimistic label.
     messages.error(request, failure.message)

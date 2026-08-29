@@ -126,6 +126,36 @@ Not warned as a bare word. Hundreds of correct uses name `.delete()`, a
 deleted file or a deleted branch, and a rule that flagged them all would be
 read as noise and then ignored.
 
+### `heal` → name the act
+
+Two unrelated acts wore this word, and it described neither.
+
+- The write path **tracks the game first**, then states the fact.
+  `RecordPlayerGameFacts` is refused when the library tracks no such game, so
+  `record_facts` tracks it and dispatches once more.
+- A stale stored value is **corrected on the next read**. A saved sort key or
+  page size that no longer resolves falls back to the default, and an
+  unreadable settings table degrades to no overrides until the read after it.
+
+Neither is a wound closing. The metaphor stood in for the whole shape of each
+act, so a reader who had not met it learned nothing, and one who had met it
+pictured a body. There is no single replacement, and that is the point: say
+what the code creates, or say what it corrects.
+
+Error when the sentence names the domain — a case, a record, a stored value,
+or the write path that answers it:
+
+| Instead of | Write |
+|---|---|
+| `the write path heals this case` | the write path tracks the game first |
+| `heals an untracked game` | tracks the game, then states the fact |
+| `the heal and its retry` | tracking and the retry |
+| `self-heals on the next read` | the next read tries again |
+
+Warning everywhere else, because only a reader knows what was missing and what
+was merely stale. `health` and `healthy` are not matched: Vale bounds every
+token, so the pattern needs a word ending where those two continue.
+
 ## Adding a rule
 
 Put the settled meaning in a rule file under `.vale/styles/Timetracker/` as

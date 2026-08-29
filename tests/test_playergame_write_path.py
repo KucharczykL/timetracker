@@ -3,14 +3,14 @@
 import pytest
 from django.http import Http404
 
-from games.events.idempotency import IdempotencyKeyMismatch
 from games.events.retry import RetryBudgetExhausted
 from games.models import Game, LibraryEvent, PlayerGame, PlayerGameStatus
+from games.writes.answers import CommandFailed
 from games.writes.playergame import (
-    PlayerGameWriteFailed,
     new_correlation_id,
     record_facts,
     track_game,
+    untrack_game,
 )
 
 pytestmark = pytest.mark.untracked_games
@@ -65,7 +65,7 @@ def test_the_catalog_column_is_left_where_it_stood(owned_user, owned_library):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_an_untracked_game_heals_and_records(owned_user, owned_library):
+def test_an_untracked_game_is_tracked_then_recorded(owned_user, owned_library):
     game = Game.objects.create(library=owned_library, name="Tunic")
 
     record_facts(
@@ -92,7 +92,7 @@ def test_one_act_shares_one_correlation_id(owned_user, owned_library):
         owned_user, game, status=PlayerGameStatus.PLAYED, correlation_id=correlation_id
     )
 
-    #: The heal and its retry are one act, so one id.
+    #: Tracking and the retry are one act, so one id.
     recorded = set(
         LibraryEvent.objects.filter(library=owned_library).values_list(
             "correlation_id", flat=True
@@ -102,14 +102,14 @@ def test_one_act_shares_one_correlation_id(owned_user, owned_library):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_the_heal_does_not_loop(owned_user, owned_library, monkeypatch):
+def test_tracking_first_does_not_loop(owned_user, owned_library, monkeypatch):
     game = Game.objects.create(library=owned_library, name="Tunic")
 
-    #: The heal gives up on a second rejection, never recurses.
+    #: A second rejection stops it. It never recurses.
     monkeypatch.setattr(
         "games.writes.playergame.track_game", lambda *args, **kwargs: None
     )
-    with pytest.raises(PlayerGameWriteFailed) as failure:
+    with pytest.raises(CommandFailed) as failure:
         record_facts(
             owned_user,
             game,
@@ -117,6 +117,10 @@ def test_the_heal_does_not_loop(owned_user, owned_library, monkeypatch):
             correlation_id=new_correlation_id(),
         )
     assert failure.value.status_code == 409
+    #: The argument names #676 and a raw id; a person reads neither.
+    assert failure.value.message == (
+        "This game is not tracked yet. Reload the page and try again."
+    )
 
 
 @pytest.mark.django_db(transaction=True)
@@ -125,10 +129,23 @@ def test_another_librarys_game_is_refused(other_user, owned_library):
 
     #: The actor names the library, so this one gets their own
     #: and cannot track the game. The views answer 404 first.
-    with pytest.raises(PlayerGameWriteFailed) as failure:
+    with pytest.raises(CommandFailed) as failure:
         track_game(other_user, game, correlation_id=new_correlation_id())
     assert failure.value.status_code == 409
+    #: Says nothing of the other library, and no id.
+    assert failure.value.message == "That game is not available to track."
     assert not LibraryEvent.objects.filter(library=other_user.library).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_removed_game_is_restored_rather_than_tracked(owned_user, tracked_game):
+    untrack_game(owned_user, tracked_game, correlation_id=new_correlation_id())
+
+    with pytest.raises(CommandFailed) as failure:
+        track_game(owned_user, tracked_game, correlation_id=new_correlation_id())
+    assert failure.value.message == (
+        "This library removed Outer Wilds. Restore it instead of tracking it again."
+    )
 
 
 @pytest.mark.django_db(transaction=True)
@@ -154,7 +171,7 @@ def test_an_exhausted_retry_budget_asks_the_player_to_try_again(
         raise RetryBudgetExhausted(3)
 
     monkeypatch.setattr("games.writes.playergame.dispatch", exhausted)
-    with pytest.raises(PlayerGameWriteFailed) as failure:
+    with pytest.raises(CommandFailed) as failure:
         record_facts(
             owned_user,
             tracked_game,
@@ -163,22 +180,3 @@ def test_an_exhausted_retry_budget_asks_the_player_to_try_again(
         )
     assert failure.value.status_code == 409
     assert "try again" in failure.value.message
-
-
-@pytest.mark.django_db(transaction=True)
-def test_a_reused_key_over_different_input_says_it_will_never_work(
-    owned_user, tracked_game, monkeypatch
-):
-    def mismatched(*args, **kwargs):
-        raise IdempotencyKeyMismatch("that key belongs to another request")
-
-    monkeypatch.setattr("games.writes.playergame.dispatch", mismatched)
-    with pytest.raises(PlayerGameWriteFailed) as failure:
-        record_facts(
-            owned_user,
-            tracked_game,
-            status=PlayerGameStatus.PLAYED,
-            correlation_id=new_correlation_id(),
-        )
-    assert failure.value.status_code == 409
-    assert "cannot be retried" in failure.value.message

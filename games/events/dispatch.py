@@ -162,7 +162,16 @@ class CommandRejected(Exception):
     Raised by a command's `build`, which is the only place that can tell. Also
     not a `CommandConflict`, and distinct from `CommandNotPermitted`: this is
     about what was asked rather than about who asked.
+
+    Two sentences, for two readers. The argument explains the refusal to
+    whoever reads a log or a traceback, and may name an id or an issue.
+    `sentence` is what a person is shown; a raise site that states none
+    gets the boundary's own, because nothing here belongs in a toast.
     """
+
+    def __init__(self, message: str, *, sentence: str | None = None) -> None:
+        super().__init__(message)
+        self.sentence = sentence
 
 
 def authorize(actor: User, library: UserLibrary) -> None:

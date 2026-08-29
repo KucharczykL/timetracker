@@ -1,0 +1,29 @@
+---
+# The settled sense: a write path that meets missing state, creates it, and
+# acts again. Vale cannot read a word's meaning, so the sense is inferred from
+# the words around it. Each pattern below is one phrasing this repo used before
+# the word was refused. A use this misses is still caught by HealTerms, one
+# level down.
+#
+# There is no single replacement, which is why the message asks for the act
+# rather than naming a word: two unrelated acts wore this one metaphor, and a
+# reader cannot tell them apart from the word alone.
+extends: existence
+message: "Name the act: track the game first, or correct the stored value. Found '%s'."
+link: docs/vocabulary.md
+level: error
+ignorecase: true
+scope:
+  - ~code
+  - ~heading
+tokens:
+  # the write path heals / the resolver heals
+  - '(write\s+path|projector|projection|command|resolver|view)\s+heals?'
+  # heals an untracked game / heals the stored value
+  - 'heal(s|ed|ing)?\s+(a|an|the)\s+(\w+\s+)?(game|row|record|session|purchase|preset|value|setting|case)'
+  # heals exactly this case / heals it
+  - 'heal(s|ed|ing)?\s+(exactly\s+)?(this|that|it)\b'
+  # the heal and its retry / owns the heal / the same heal
+  - '(the|a)\s+(same\s+)?heal\b'
+  # self-heals on the next read
+  - 'self[-\s]heal(s|ed|ing)?'
