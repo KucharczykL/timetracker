@@ -342,24 +342,6 @@ class Game(ReferencedRow):
             self.name, self.platform or "Unspecified", self.year_released
         )
 
-    def finished(self):
-        return (
-            self.status == self.Status.FINISHED
-            or self.playevents.filter(ended__isnull=False).exists()
-        )
-
-    def abandoned(self):
-        return self.status == self.Status.ABANDONED
-
-    def retired(self):
-        return self.status == self.Status.RETIRED
-
-    def played(self):
-        return self.status == self.Status.PLAYED
-
-    def unplayed(self):
-        return self.status == self.Status.UNPLAYED
-
 
 class PlatformQuerySet(TombstonableQuerySet):
     def visible_to(self, library):
@@ -792,14 +774,6 @@ class PurchaseQueryset(LibraryOwnedQuerySet):
                 )
             )
             | Q(games__playevents__ended__isnull=False)
-        ).distinct()
-
-    def abandoned(self):
-        return self.filter(games__status="a").distinct()
-
-    def dropped(self):
-        return self.filter(
-            Q(games__status="a") | Q(date_refunded__isnull=False)
         ).distinct()
 
 
