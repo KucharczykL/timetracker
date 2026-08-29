@@ -32,7 +32,6 @@ from games.models import (
     Game,
     Platform,
     PlayerGame,
-    PlayerGameStatus,
     PlayEvent,
     Purchase,
     Session,
@@ -40,7 +39,6 @@ from games.models import (
 )
 from games.playergame_status import (
     SETTABLE_PLAYER_STATUSES,
-    legacy_status_for,
     player_status_for,
 )
 from timetracker.settings_registry import DISPLAY_TIME_ZONE_CHOICES
@@ -842,7 +840,7 @@ class GameForm(
         ),
     )
 
-    #: Plain fields, so form.save() writes neither column.
+    #: Plain fields: no save of this form writes a column.
     status = forms.ChoiceField(choices=SETTABLE_PLAYER_STATUSES, required=True)
     mastered = forms.BooleanField(required=False)
 
@@ -860,12 +858,6 @@ class GameForm(
 
     def save(self, commit=True):
         game = super().save(commit=False)
-        #: The row starts where the form says.
-        if game._state.adding:
-            game.status = legacy_status_for(
-                PlayerGameStatus(self.cleaned_data["status"])
-            )
-            game.mastered = self.cleaned_data["mastered"]
         if commit:
             game.save()
             self.save_m2m()

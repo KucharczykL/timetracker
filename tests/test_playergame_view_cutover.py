@@ -42,7 +42,6 @@ def test_adding_a_game_tracks_it_and_records_its_facts(logged_in, owned_library)
 
     assert response.status_code == 302
     game = Game.objects.get(name="Outer Wilds")
-    assert (game.status, game.mastered) == ("f", True)
     row = PlayerGame.objects.get(library=owned_library, game=game)
     assert (row.status, row.mastered) == (PlayerGameStatus.COMPLETED, True)
 
@@ -357,9 +356,7 @@ def test_a_failed_add_leaves_the_row_at_the_defaults(
 
     assert response.status_code == 302
     game = Game.objects.get(name="Outer Wilds")
-    #: The catalog agrees with the projection, which the failed
-    #: command left where tracking put it.
-    assert (game.status, game.mastered) == ("u", False)
+    #: The failed command left the row where tracking put it.
     row = PlayerGame.objects.get(library=owned_library, game=game)
     assert (row.status, row.mastered) == (PlayerGameStatus.UNPLAYED, False)
 

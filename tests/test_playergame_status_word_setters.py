@@ -43,9 +43,9 @@ def test_the_form_posts_a_word(logged_in, owned_library):
     row = PlayerGame.objects.get(library=owned_library, game=game)
     assert row.status == PlayerGameStatus.COMPLETED
     assert row.mastered is True
-    #: The mirror keeps the catalog current for the surfaces A leaves.
+    #: An add states the facts to the row, and to nothing else.
     game.refresh_from_db()
-    assert (game.status, game.mastered) == ("f", True)
+    assert (game.status, game.mastered) == ("u", False)
 
 
 @pytest.mark.django_db(transaction=True)

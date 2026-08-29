@@ -102,12 +102,8 @@ def test_add_game_writes_legacy_and_default_catalog_graph(
         2002,
         platform,
     )
-    assert (game.sort_name, game.status, game.mastered, game.wikidata) == (
-        "Form game, Legacy",
-        Game.Status.PLAYED,
-        True,
-        "Q123",
-    )
+    #: Status and mastery are the projection's, not this graph's.
+    assert (game.sort_name, game.wikidata) == ("Form game, Legacy", "Q123")
 
 
 def test_edit_game_updates_then_clears_legacy_and_canonical_values(

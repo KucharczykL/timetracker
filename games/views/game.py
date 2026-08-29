@@ -266,11 +266,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
                 correlation_id=correlation_id,
             )
             if not recorded:
-                #: The form already wrote the asked-for status.
                 #: Re-rendering would invite a second game.
-                Game.objects.filter(pk=game.pk).update(
-                    status=Game.Status.UNPLAYED, mastered=False
-                )
                 return redirect(return_url(request, fallback="games:list_games"))
             origin = origin_from(request)
             if "submit_and_redirect" in request.POST:
