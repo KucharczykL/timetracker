@@ -226,15 +226,13 @@ def test_a_live_status_change_states_the_day_it_happened(owned_user, owned_libra
     )
 
     event = LibraryEvent.objects.get(event_type="library.playergame.status_changed")
-    #: A reader takes None to mean nobody knows when. A live change
-    #: happens as it is recorded, so leaving it None would say the
-    #: one thing that is certainly false.
+    #: None would mean nobody knows when.
     assert event.effective_time == TemporalValue.from_day(timezone.localdate())
 
 
 @pytest.mark.django_db(transaction=True)
 def test_a_recorded_status_fact_states_the_day_too(owned_user, owned_library):
-    #: The game form dispatches this one, not SetPlayerGameStatus.
+    #: The game form dispatches this one.
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     track(owned_user, owned_library, game)
 
@@ -253,8 +251,7 @@ def test_a_recorded_status_fact_states_the_day_too(owned_user, owned_library):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_mastery_fact_still_states_no_time(owned_user, owned_library):
-    #: Only the status event was given a time. Widening the rest is
-    #: a change of its own, and no reader asks them for one yet.
+    #: Only the status event states a time.
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     track(owned_user, owned_library, game)
 

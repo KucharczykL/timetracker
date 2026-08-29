@@ -174,9 +174,8 @@ def test_non_default_presentation_reaches_every_server_display_path(
     assert "2022-09-26" not in title_parser.title
 
     game_html = client.get(game.get_absolute_url()).content.decode()
-    #: The History section formats a datetime the same way the session
-    #: line above does, and only an event dates one — which needs a
-    #: backfill this test has no other reason to run.
+    #: The History datetime shares the session
+    #: line's format, and only events date one.
     for expected in (
         "2022.26.09 @ 12h58",
         "2022.26.09",

@@ -30,13 +30,7 @@ from timetracker.temporal import TemporalValue
 
 
 def _stated_now() -> TemporalValue:
-    """Today: a live change happens as it is recorded.
-
-    Day is the finest TemporalPrecision, so recorded_at keeps the
-    instant. Stating this is what lets a reader take an unknown
-    effective time to mean nobody knows when, rather than nobody
-    said.
-    """
+    """A live change happens when recorded."""
     return TemporalValue.from_day(timezone.localdate())
 
 

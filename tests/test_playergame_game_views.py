@@ -182,12 +182,7 @@ def test_a_shared_games_page_shows_no_librarys_sessions(logged_in, owned_library
 def test_a_shared_games_page_shows_no_librarys_history(
     logged_in, owned_user, django_user_model
 ):
-    """History is scoped like every other section of the page.
-
-    ``game.status_changes`` reached every library that ever wrote
-    against a shared game, so the page was the one place showing
-    another library's transitions.
-    """
+    """History is scoped like every other section."""
     shared = Game.objects.create(library=None, name="Shared Title")
     other_user = django_user_model.objects.create_user(
         username="other-owner", password="p"
@@ -207,8 +202,7 @@ def test_a_shared_games_page_shows_no_librarys_history(
         correlation_id=new_correlation_id(),
     )
 
-    #: Both words are on the page regardless: the status dropdown
-    #: lists every one of them.
+    #: The dropdown lists both words regardless.
     history = _history_markup(logged_in.get(shared.get_absolute_url()).content.decode())
 
     assert "Played" in history

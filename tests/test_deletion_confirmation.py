@@ -115,7 +115,7 @@ def test_every_delete_confirms_first(logged_in, deletables, url_name, key, fallb
 def test_every_delete_confirms_first_with_owning_game_fallback(
     logged_in, deletables, url_name, key
 ):
-    """This one falls back to the owning game's page, not a bare list URL."""
+    """This one falls back to the game."""
     instance = deletables[key]
     owning_game = deletables["game"]
     url = reverse(url_name, args=[instance.pk])

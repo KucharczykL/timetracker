@@ -266,11 +266,8 @@ def add_game(request: HttpRequest) -> HttpResponse:
                 correlation_id=correlation_id,
             )
             if not recorded:
-                #: The row stands at the defaults; the facts do not.
-                #: The form already wrote the asked-for status, which
-                #: would leave the catalog disagreeing with a projection
-                #: that says unplayed. Re-rendering would invite a
-                #: resubmit that creates a second game.
+                #: The form already wrote the asked-for status.
+                #: Re-rendering would invite a second game.
                 Game.objects.filter(pk=game.pk).update(
                     status=Game.Status.UNPLAYED, mastered=False
                 )
@@ -799,8 +796,7 @@ def _playevents_section(
 def _history_section(
     game: Game, library: UserLibrary, presentation: DateTimePresentation
 ) -> Node:
-    #: Scoped like every other section: a stream belongs to one library,
-    #: where game.status_changes reached every library that wrote here.
+    #: A stream belongs to one library.
     entries = status_history(library, game)
     count = len(entries)
     return Div(

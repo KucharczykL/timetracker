@@ -243,8 +243,7 @@ def test_an_undated_transition_records_an_unknown_effective_time(
 
     event = LibraryEvent.objects.get(event_type="library.playergame.status_changed")
     assert event.effective_time is None
-    #: Appended now. Dating it from the game would invent a
-    #: transition time, which a reader cannot tell from a real one.
+    #: The game's date would invent a transition.
     assert event.recorded_at == run_time
     assert counts.unknown_effective_times == 1
 

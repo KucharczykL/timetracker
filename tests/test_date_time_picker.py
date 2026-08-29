@@ -275,9 +275,8 @@ class DateTimeFieldWidgetTest(TestCase):
         self.assertIn('data-date-time-copy="timestamp_start"', end)
 
     def test_a_stored_null_timestamp_renders_an_empty_field(self):
-        # Session.timestamp_end is null=True, so an edit form can be handed
-        # None — which must render empty segments rather than the string "None".
-        # Distinct from the unbound blank above: this value comes off a row.
+        # A stored None renders empty.
+        # Distinct from the unbound blank above.
         session = Session.objects.create(
             game=Game.objects.create(library=self.library, name="Hades"),
             timestamp_start=datetime(2026, 7, 27, 14, 30, tzinfo=UTC),
