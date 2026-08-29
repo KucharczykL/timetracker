@@ -258,7 +258,7 @@ event went unnoticed.
 
     make test ARGS="tests/test_playergame_history_read.py" PYTEST_WORKERS=0
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
     git commit -m "Read the status history off the library's own stream"
 
@@ -322,7 +322,7 @@ heading. Both survive. `tests/test_rendered_pages.py:486` is the statuschange
 
     make test ARGS="tests/test_rendered_pages.py tests/test_playergame_history_read.py e2e/test_custom_elements_e2e.py" PYTEST_WORKERS=0
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
     git commit -m "Show the history the stream records"
 

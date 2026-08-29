@@ -30,7 +30,6 @@ from games.models import (
     Device,
     ExternalReference,
     Game,
-    GameStatusChange,
     Platform,
     PlayerGame,
     PlayerGameStatus,
@@ -992,40 +991,6 @@ class PlayEventForm(PrimitiveWidgetsMixin, forms.ModelForm):
         if commit:
             play_event.save()
         return play_event
-
-
-class GameStatusChangeForm(PrimitiveWidgetsMixin, forms.ModelForm):
-    def __init__(
-        self,
-        *args,
-        library: UserLibrary,
-        presentation: DateTimePresentation,
-        **kwargs,
-    ):
-        super().__init__(*args, **kwargs)
-        self.library = library
-        cast(
-            forms.ModelChoiceField, self.fields["game"]
-        ).queryset = Game.objects.for_library(library).order_by("sort_name")
-        self.fields["timestamp"].widget = DateTimeFieldWidget(
-            presentation=presentation,
-            label=str(self.fields["timestamp"].label or "timestamp"),
-        )
-
-    class Meta:
-        # timestamp gets DateTimeFieldWidget in __init__ (needs the
-        # per-request presentation, unavailable to a class body); the field
-        # class is declarative because it depends on nothing.
-        field_classes: ClassVar[dict[str, type[forms.Field]]] = {
-            "timestamp": AwareDateTimeField
-        }
-        model = GameStatusChange
-        fields = (
-            "game",
-            "old_status",
-            "new_status",
-            "timestamp",
-        )
 
 
 class LoginForm(PrimitiveWidgetsMixin, AuthenticationForm):

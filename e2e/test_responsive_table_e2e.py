@@ -18,7 +18,6 @@ from e2e.helpers import settle_layout
 from games.models import (
     Device,
     Game,
-    GameStatusChange,
     Platform,
     PlayEvent,
     Purchase,
@@ -90,7 +89,6 @@ def populated(e2e_library) -> None:
     PlayEvent.objects.create(
         game=game, started=BASE, ended=BASE + timedelta(days=3), note=LONG_NOTE
     )
-    GameStatusChange.objects.create(game=game, new_status="p", timestamp=BASE)
 
 
 @pytest.fixture
@@ -143,7 +141,6 @@ LIST_PAGES = [
     "games:list_playevents",
     "games:list_devices",
     "games:list_platforms",
-    "games:list_statuschanges",
 ]
 
 

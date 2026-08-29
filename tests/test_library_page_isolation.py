@@ -12,7 +12,6 @@ from common.returns import action_url
 from games.models import (
     Device,
     Game,
-    GameStatusChange,
     Platform,
     PlayEvent,
     Purchase,
@@ -155,18 +154,6 @@ def world(client, django_user_model):
     foreign_playevent = PlayEvent.objects.create(
         game=foreign_game, started=now.date(), note="Foreign event"
     )
-    own_statuschange = GameStatusChange.objects.create(
-        game=own_game,
-        old_status=Game.Status.UNPLAYED,
-        new_status=Game.Status.PLAYED,
-        timestamp=now,
-    )
-    foreign_statuschange = GameStatusChange.objects.create(
-        game=foreign_game,
-        old_status=Game.Status.UNPLAYED,
-        new_status=Game.Status.PLAYED,
-        timestamp=now,
-    )
     return SimpleNamespace(**locals())
 
 
@@ -179,7 +166,6 @@ def world(client, django_user_model):
         ("games:list_devices", "Owner device", "Foreign device"),
         ("games:list_platforms", "Owner private platform", "Foreign private platform"),
         ("games:list_playevents", "Owner game", "Foreign game"),
-        ("games:list_statuschanges", "Owner game", "Foreign game"),
     ],
 )
 def test_lists_show_owned_rows_and_omit_foreign_rows(
@@ -228,8 +214,6 @@ def _object_url(url_name, obj):
         ("games:delete_platform", "shared_platform"),
         ("games:edit_playevent", "foreign_playevent"),
         ("games:delete_playevent", "foreign_playevent"),
-        ("games:edit_statuschange", "foreign_statuschange"),
-        ("games:delete_statuschange", "foreign_statuschange"),
     ],
 )
 def test_foreign_detail_edit_and_delete_reads_return_404(world, url_name, object_name):
@@ -258,8 +242,6 @@ def test_foreign_detail_edit_and_delete_reads_return_404(world, url_name, object
         ("games:delete_platform", "own_platform"),
         ("games:edit_playevent", "own_playevent"),
         ("games:delete_playevent", "own_playevent"),
-        ("games:edit_statuschange", "own_statuschange"),
-        ("games:delete_statuschange", "own_statuschange"),
     ],
 )
 def test_owned_detail_edit_and_delete_reads_work(world, url_name, object_name):
@@ -277,7 +259,6 @@ def test_owned_detail_edit_and_delete_reads_work(world, url_name, object_name):
         ("games:delete_device", "foreign_device", Device),
         ("games:delete_platform", "foreign_platform", Platform),
         ("games:delete_playevent", "foreign_playevent", PlayEvent),
-        ("games:delete_statuschange", "foreign_statuschange", GameStatusChange),
     ],
 )
 def test_foreign_delete_posts_return_404_without_mutation(
@@ -300,7 +281,6 @@ def test_foreign_delete_posts_return_404_without_mutation(
         ("games:delete_device", "own_device", Device),
         ("games:delete_platform", "own_platform", Platform),
         ("games:delete_playevent", "own_playevent", PlayEvent),
-        ("games:delete_statuschange", "own_statuschange", GameStatusChange),
     ],
 )
 @pytest.mark.untracked_games

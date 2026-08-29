@@ -12,7 +12,6 @@ from common.date_time_presentation import build_format_profile
 from games.models import (
     Device,
     Game,
-    GameStatusChange,
     Platform,
     PlayEvent,
     Purchase,
@@ -112,13 +111,6 @@ def test_non_default_presentation_reaches_every_server_display_path(
         started=date(2022, 9, 24),
         ended=date(2022, 9, 25),
     )
-    GameStatusChange.objects.create(
-        game=game,
-        old_status=Game.Status.UNPLAYED,
-        new_status=Game.Status.PLAYED,
-        timestamp=datetime(2022, 9, 23, 10, 30, tzinfo=UTC),
-    )
-
     created_values = (
         (Game, game.pk, datetime(2022, 10, 1, tzinfo=UTC)),
         (Platform, platform.pk, datetime(2022, 10, 2, tzinfo=UTC)),
@@ -152,7 +144,6 @@ def test_non_default_presentation_reaches_every_server_display_path(
             "2022.25.09",
             "2022.06.10",
         ),
-        reverse("games:list_statuschanges"): ("2022.23.09",),
         reverse("games:stats_alltime"): ("2022.26.09",),
         reverse("games:stats_by_year", args=[2022]): (
             "září",
@@ -183,11 +174,13 @@ def test_non_default_presentation_reaches_every_server_display_path(
     assert "2022-09-26" not in title_parser.title
 
     game_html = client.get(game.get_absolute_url()).content.decode()
+    #: The History section formats a datetime the same way the session
+    #: line above does, and only an event dates one — which needs a
+    #: backfill this test has no other reason to run.
     for expected in (
         "2022.26.09 @ 12h58",
         "2022.26.09",
         "2022.24.09",
-        "2022.23.09 @ 10h30",
         "září 2022",
     ):
         assert expected in game_html

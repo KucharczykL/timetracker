@@ -6,7 +6,7 @@ import pytest
 from django.urls import reverse
 
 from common.returns import action_url
-from games.models import Game, GameStatusChange, Platform, PlayEvent, Session
+from games.models import Game, Platform, PlayEvent, Session
 
 
 @pytest.fixture
@@ -84,7 +84,6 @@ def deletables(owned_library):
         "platform": Platform.objects.create(library=owned_library, name="Doomed"),
         "device": Device.objects.create(library=owned_library, name="Doomed"),
         "playevent": PlayEvent.objects.create(game=owned),
-        "statuschange": GameStatusChange.objects.create(game=owned, new_status="p"),
     }
 
 
@@ -111,13 +110,12 @@ def test_every_delete_confirms_first(logged_in, deletables, url_name, key, fallb
     "url_name,key",
     [
         ("games:delete_playevent", "playevent"),
-        ("games:delete_statuschange", "statuschange"),
     ],
 )
 def test_every_delete_confirms_first_with_owning_game_fallback(
     logged_in, deletables, url_name, key
 ):
-    """These two fall back to the owning game's page, not a bare list URL."""
+    """This one falls back to the owning game's page, not a bare list URL."""
     instance = deletables[key]
     owning_game = deletables["game"]
     url = reverse(url_name, args=[instance.pk])

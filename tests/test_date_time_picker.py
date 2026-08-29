@@ -28,8 +28,8 @@ from common.date_time_presentation import (
     DateTimeFormatProfile,
     DateTimePresentation,
 )
-from games.forms import GameStatusChangeForm, SessionForm
-from games.models import Game, GameStatusChange
+from games.forms import SessionForm
+from games.models import Game, Session
 
 _ESCAPED_TAG_MARKERS = ["&lt;div", "&lt;span", "&lt;button", "&lt;input"]
 
@@ -274,35 +274,15 @@ class DateTimeFieldWidgetTest(TestCase):
         self.assertIn('data-date-time-copy="timestamp_end"', start)
         self.assertIn('data-date-time-copy="timestamp_start"', end)
 
-    def test_a_null_status_change_timestamp_renders_an_empty_field(self):
-        # GameStatusChange.timestamp is null=True, so an edit form can be handed
+    def test_a_stored_null_timestamp_renders_an_empty_field(self):
+        # Session.timestamp_end is null=True, so an edit form can be handed
         # None — which must render empty segments rather than the string "None".
-        change = GameStatusChange.objects.create(
+        # Distinct from the unbound blank above: this value comes off a row.
+        session = Session.objects.create(
             game=Game.objects.create(library=self.library, name="Hades"),
-            new_status="p",
-            timestamp=None,
+            timestamp_start=datetime(2026, 7, 27, 14, 30, tzinfo=UTC),
+            timestamp_end=None,
         )
-        html = str(
-            GameStatusChangeForm(
-                library=self.library, instance=change, presentation=_ISO_PRESENTATION
-            )["timestamp"]
-        )
+        html = str(self._session_form(instance=session)["timestamp_end"])
         self.assertIn('data-date-time-hidden=""', html)
         self.assertNotIn("None", html)
-
-    def test_a_stored_status_change_timestamp_round_trips_into_segments(self):
-        change = GameStatusChange.objects.create(
-            game=Game.objects.create(library=self.library, name="Hades"),
-            new_status="p",
-            timestamp=datetime(2026, 7, 27, 14, 30, tzinfo=UTC),
-        )
-        with timezone.override(ZoneInfo("UTC")):
-            html = str(
-                GameStatusChangeForm(
-                    library=self.library,
-                    instance=change,
-                    presentation=_ISO_PRESENTATION,
-                )["timestamp"]
-            )
-        self.assertIn('value="2026-07-27T14:30:00+00:00"', html)
-        self.assertIn('value="14"', html)

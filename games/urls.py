@@ -10,7 +10,6 @@ from games.views import (
     playevent,
     purchase,
     session,
-    statuschange,
 )
 from timetracker.uuidv7 import UUIDv7Converter
 
@@ -158,26 +157,6 @@ urlpatterns = [
         name="delete_session",
     ),
     path("session/list", session.list_sessions, name="list_sessions"),
-    path(
-        "statuschange/add",
-        statuschange.add_statuschange,
-        name="add_statuschange",
-    ),
-    path(
-        "statuschange/edit/<uuidv7:statuschange_id>",
-        statuschange.edit_statuschange,
-        name="edit_statuschange",
-    ),
-    path(
-        "statuschange/delete/<uuidv7:pk>",
-        statuschange.delete_statuschange,
-        name="delete_statuschange",
-    ),
-    path(
-        "statuschange/list",
-        statuschange.list_statuschanges,
-        name="list_statuschanges",
-    ),
     path("stats/", general.stats_alltime, name="stats_alltime"),
     path("stats/<int:year>", general.stats, name="stats_by_year"),
     path("<str:model>/filter", general.filter_builder, name="filter_builder"),
