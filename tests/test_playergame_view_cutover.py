@@ -1,5 +1,7 @@
 """Each switched view states its fact."""
 
+import re
+
 import pytest
 from django.urls import reverse
 from django.utils import timezone
@@ -42,7 +44,6 @@ def test_adding_a_game_tracks_it_and_records_its_facts(logged_in, owned_library)
 
     assert response.status_code == 302
     game = Game.objects.get(name="Outer Wilds")
-    assert (game.status, game.mastered) == ("f", True)
     row = PlayerGame.objects.get(library=owned_library, game=game)
     assert (row.status, row.mastered) == (PlayerGameStatus.COMPLETED, True)
 
@@ -69,8 +70,6 @@ def test_editing_a_games_status_records_the_event(logged_in, owned_library):
         {**GAME_PAYLOAD, "status": "played"},
     )
 
-    game.refresh_from_db()
-    assert game.status == "p"
     assert PlayerGame.objects.get().status == PlayerGameStatus.PLAYED
 
 
@@ -106,8 +105,6 @@ def test_the_status_api_records_the_fact(logged_in, owned_library, tracked_game)
 
     assert response.status_code == 204
     assert PlayerGame.objects.get().status == PlayerGameStatus.COMPLETED
-    game.refresh_from_db()
-    assert game.status == "f"
 
 
 @pytest.mark.django_db(transaction=True)
@@ -170,8 +167,6 @@ def test_adding_a_session_records_played(logged_in, owned_library, tracked_game)
     logged_in.post(reverse("games:add_session"), _session_payload(tracked_game))
 
     assert PlayerGame.objects.get().status == PlayerGameStatus.PLAYED
-    tracked_game.refresh_from_db()
-    assert tracked_game.status == "p"
 
 
 @pytest.mark.django_db(transaction=True)
@@ -192,8 +187,8 @@ def test_editing_a_session_records_played_too(logged_in, owned_library, tracked_
 def test_a_session_on_an_untracked_game_tracks_it_and_records_played(
     logged_in, owned_library
 ):
-    #: No row is a defect, not a state. record_facts() heals it, and
-    #: the catalog is what says whether the game was unplayed.
+    #: A missing row is a defect.
+    #: record_facts() tracks the game and records.
     game = Game.objects.create(library=owned_library, name="Outer Wilds", status="u")
 
     logged_in.post(reverse("games:add_session"), _session_payload(game))
@@ -202,16 +197,38 @@ def test_a_session_on_an_untracked_game_tracks_it_and_records_played(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_session_on_an_untracked_finished_game_leaves_it_alone(
-    logged_in, owned_library
-):
+def test_a_session_on_an_untracked_game_ignores_the_letter(logged_in, owned_library):
+    #: The letter once held the session back.
+    #: Nothing maintains it, so the row wins.
     game = Game.objects.create(library=owned_library, name="Outer Wilds", status="f")
 
     logged_in.post(reverse("games:add_session"), _session_payload(game))
 
+    assert PlayerGame.objects.get().status == PlayerGameStatus.PLAYED
+
+
+@pytest.mark.django_db
+def test_the_box_comes_up_ticked(logged_in):
+    #: A falsy initial would untick it everywhere.
+    response = logged_in.get(reverse("games:add_session"))
+
+    match = re.search(r'<input[^>]*name="mark_as_played"[^>]*>', response.text)
+    assert match is not None
+    assert "checked" in match.group(0)
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.untracked_games
+def test_an_unticked_box_records_nothing_and_tracks_nothing(logged_in, owned_library):
+    #: The checkbox owns the heal, not sessions.
+    game = Game.objects.create(library=owned_library, name="Outer Wilds", status="u")
+
+    logged_in.post(
+        reverse("games:add_session"), _session_payload(game, mark_as_played="")
+    )
+
+    assert Session.objects.filter(game=game).exists()
     assert not PlayerGame.objects.exists()
-    game.refresh_from_db()
-    assert game.status == "f"
 
 
 @pytest.mark.django_db(transaction=True)
@@ -261,8 +278,6 @@ def test_adding_a_play_event_records_completed(logged_in, owned_library, tracked
     )
 
     assert PlayerGame.objects.get().status == PlayerGameStatus.COMPLETED
-    tracked_game.refresh_from_db()
-    assert tracked_game.status == "f"
 
 
 @pytest.mark.django_db(transaction=True)
@@ -365,9 +380,7 @@ def test_a_failed_add_leaves_the_row_at_the_defaults(
 
     assert response.status_code == 302
     game = Game.objects.get(name="Outer Wilds")
-    #: The catalog agrees with the projection, which the failed
-    #: command left where tracking put it.
-    assert (game.status, game.mastered) == ("u", False)
+    #: The failed command left the row untouched.
     row = PlayerGame.objects.get(library=owned_library, game=game)
     assert (row.status, row.mastered) == (PlayerGameStatus.UNPLAYED, False)
 

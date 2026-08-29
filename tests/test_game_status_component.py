@@ -5,7 +5,6 @@ from uuid import uuid7
 
 from common.components import GameStatus, GameStatusSelector, render
 from games.models import PlayerGameStatus
-from games.playergame_status import SETTABLE_PLAYER_STATUSES
 
 
 def test_every_status_has_its_own_colour():
@@ -20,7 +19,7 @@ def test_the_selector_marks_the_projection_status_current():
     html = render(
         GameStatusSelector(
             game,
-            SETTABLE_PLAYER_STATUSES,
+            PlayerGameStatus.choices,
             "tok",
             current=PlayerGameStatus.COMPLETED,
         )
@@ -29,3 +28,5 @@ def test_the_selector_marks_the_projection_status_current():
     assert "Completed" in html
     #: The catalog letter on the instance is not what is shown.
     assert 'data-value="completed"' in html
+    #: Every word the projection holds, Shelved included.
+    assert html.count("data-value=") == len(PlayerGameStatus)

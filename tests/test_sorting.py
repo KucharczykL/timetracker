@@ -16,6 +16,8 @@ from games.models import (
     Device,
     Game,
     Platform,
+    PlayerGame,
+    PlayerGameStatus,
     PlayEvent,
     Purchase,
     Session,
@@ -372,6 +374,31 @@ class TestListGamesSort:
         response = logged_client.get(reverse("games:list_games"), {"sort": "name"})
         warnings = [str(message) for message in get_messages(response.wsgi_request)]
         assert warnings == []
+
+    def test_status_orders_by_the_word_the_projection_holds(
+        self, logged_client, owned_library
+    ):
+        """Shelved sorts where no letter could.
+
+        The names run the other way,
+        so a default-sort fallback fails.
+        """
+        for name, status in (
+            ("Zeta", PlayerGameStatus.RETIRED),
+            ("Mu", PlayerGameStatus.SHELVED),
+            ("Alpha", PlayerGameStatus.UNPLAYED),
+        ):
+            game = Game.objects.create(library=owned_library, name=name)
+            PlayerGame.objects.filter(library=owned_library, game=game).update(
+                status=status
+            )
+
+        body = logged_client.get(reverse("games:list_games"), {"sort": "status"}).text
+        rows = re.search(r"<tbody[^>]*>(.*?)</tbody>", body, re.DOTALL)
+        assert rows is not None
+
+        listed = rows.group(1)
+        assert listed.index("Zeta") < listed.index("Mu") < listed.index("Alpha")
 
 
 class TestListSessionsSort:

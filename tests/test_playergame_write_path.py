@@ -1,4 +1,4 @@
-"""State the fact, then mirror the row."""
+"""State the fact; leave the catalog alone."""
 
 import pytest
 from django.http import Http404
@@ -29,7 +29,7 @@ def tracked_game(owned_user, owned_library):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_status_reaches_the_event_the_projection_and_the_catalog(
+def test_a_status_reaches_the_event_and_the_projection(
     owned_user, owned_library, tracked_game
 ):
     record_facts(
@@ -44,33 +44,24 @@ def test_a_status_reaches_the_event_the_projection_and_the_catalog(
     )
     assert event.payload == {"status": "completed"}
     assert PlayerGame.objects.get().status == PlayerGameStatus.COMPLETED
-    tracked_game.refresh_from_db()
-    assert tracked_game.status == Game.Status.FINISHED
 
 
 @pytest.mark.django_db(transaction=True)
-def test_the_mirror_writes_the_fold_and_not_the_request(
-    owned_user, owned_library, tracked_game
-):
-    #: A column moved behind the projection's back is repaired
-    #: to what the events recorded, not to what this call asked.
-    record_facts(
-        owned_user,
-        tracked_game,
-        status=PlayerGameStatus.PLAYED,
-        correlation_id=new_correlation_id(),
-    )
-    Game.objects.filter(pk=tracked_game.pk).update(status=Game.Status.RETIRED)
+def test_the_catalog_column_is_left_where_it_stood(owned_user, owned_library):
+    #: Nothing copies the row onto the game.
+    game = Game.objects.create(library=owned_library, name="Tunic", status="u")
+    track_game(owned_user, game, correlation_id=new_correlation_id())
 
     record_facts(
         owned_user,
-        tracked_game,
-        status=PlayerGameStatus.PLAYED,
+        game,
+        status=PlayerGameStatus.COMPLETED,
         correlation_id=new_correlation_id(),
     )
 
-    tracked_game.refresh_from_db()
-    assert tracked_game.status == Game.Status.PLAYED
+    assert PlayerGame.objects.get().status == PlayerGameStatus.COMPLETED
+    game.refresh_from_db()
+    assert game.status == "u"
 
 
 @pytest.mark.django_db(transaction=True)
@@ -90,8 +81,6 @@ def test_an_untracked_game_heals_and_records(owned_user, owned_library):
         .values_list("event_type", flat=True)
     )
     assert types == ["library.playergame.created", "library.playergame.status_changed"]
-    game.refresh_from_db()
-    assert game.status == Game.Status.PLAYED
 
 
 @pytest.mark.django_db(transaction=True)

@@ -1,5 +1,6 @@
 """The games list and the game page show the projection, not the catalog."""
 
+import re
 import uuid
 from html.parser import HTMLParser
 
@@ -35,6 +36,13 @@ def _selected_status(html: str) -> str | None:
     parser = _Options()
     parser.feed(html)
     return parser.selected
+
+
+def _mastered_input(html: str) -> str:
+    """The mastery checkbox's one input tag."""
+    match = re.search(r'<input[^>]*name="mastered"[^>]*>', html)
+    assert match is not None
+    return match.group(0)
 
 
 def _history_markup(html: str) -> str:
@@ -133,9 +141,9 @@ def test_an_archived_game_is_off_the_list(logged_in, owned_library):
 
 @pytest.mark.django_db
 @pytest.mark.untracked_games
-def test_the_edit_form_falls_back_to_the_catalog_with_no_row(logged_in, owned_library):
-    #: An unseeded select posts its first option, which would record
-    #: Unplayed over a game the catalog calls finished.
+def test_the_edit_form_offers_the_default_with_no_row(logged_in, owned_library):
+    #: No row states nothing, so the form
+    #: offers what tracking would create.
     game = Game.objects.create(
         library=owned_library, name="Outer Wilds", status="f", mastered=True
     )
@@ -143,8 +151,9 @@ def test_the_edit_form_falls_back_to_the_catalog_with_no_row(logged_in, owned_li
     response = logged_in.get(reverse("games:edit_game", args=[game.pk]))
 
     body = response.content.decode()
-    assert '<option value="completed" selected>' in body
-    assert 'name="mastered"' in body and "checked" in body
+    assert '<option value="unplayed" selected>' in body
+    assert '<option value="completed" selected>' not in body
+    assert "checked" not in _mastered_input(body)
 
 
 @pytest.mark.django_db

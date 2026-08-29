@@ -7,12 +7,6 @@ from django.urls import reverse
 from django.utils import timezone
 
 from games.models import Game, PlayerGame, PlayerGameStatus
-from games.playergame_status import SETTABLE_PLAYER_STATUSES
-from games.writes.playergame import (
-    PlayerGameWriteFailed,
-    new_correlation_id,
-    record_facts,
-)
 
 
 @pytest.fixture
@@ -21,12 +15,13 @@ def logged_in(client, owned_user):
     return client
 
 
-def test_only_the_words_a_letter_holds_are_settable():
-    assert [value for value, _label in SETTABLE_PLAYER_STATUSES] == [
+def test_every_word_is_settable():
+    assert [value for value, _label in PlayerGameStatus.choices] == [
         PlayerGameStatus.UNPLAYED,
         PlayerGameStatus.PLAYED,
         PlayerGameStatus.COMPLETED,
         PlayerGameStatus.RETIRED,
+        PlayerGameStatus.SHELVED,
         PlayerGameStatus.ABANDONED,
     ]
 
@@ -48,9 +43,9 @@ def test_the_form_posts_a_word(logged_in, owned_library):
     row = PlayerGame.objects.get(library=owned_library, game=game)
     assert row.status == PlayerGameStatus.COMPLETED
     assert row.mastered is True
-    #: The mirror keeps the catalog current for the surfaces A leaves.
+    #: An add states the facts nowhere else.
     game.refresh_from_db()
-    assert (game.status, game.mastered) == ("f", True)
+    assert (game.status, game.mastered) == ("u", False)
 
 
 @pytest.mark.django_db(transaction=True)
@@ -66,6 +61,22 @@ def test_the_endpoint_takes_a_word(logged_in, owned_library):
     assert response.status_code == 204
     row = PlayerGame.objects.get(library=owned_library, game=game)
     assert row.status == PlayerGameStatus.PLAYED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_endpoint_takes_the_word_no_letter_held(logged_in, owned_library):
+    #: Refused while a letter held the status.
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+
+    response = logged_in.patch(
+        f"/api/games/{game.pk}/status",
+        {"status": "shelved"},
+        content_type="application/json",
+    )
+
+    assert response.status_code == 204
+    row = PlayerGame.objects.get(library=owned_library, game=game)
+    assert row.status == PlayerGameStatus.SHELVED
 
 
 @pytest.mark.django_db(transaction=True)
@@ -102,23 +113,6 @@ def test_the_endpoint_takes_a_shared_game_this_library_tracks(logged_in, owned_l
     assert response.status_code == 204
     row = PlayerGame.objects.get(library=owned_library, game=shared)
     assert row.status == PlayerGameStatus.PLAYED
-
-
-@pytest.mark.django_db(transaction=True)
-def test_shelved_is_refused_before_anything_is_recorded(owned_user, owned_library):
-    game = Game.objects.create(library=owned_library, name="Outer Wilds")
-
-    with pytest.raises(PlayerGameWriteFailed) as refusal:
-        record_facts(
-            owned_user,
-            game,
-            status=PlayerGameStatus.SHELVED,
-            correlation_id=new_correlation_id(),
-        )
-
-    assert refusal.value.status_code == 409
-    row = PlayerGame.objects.get(library=owned_library, game=game)
-    assert row.status == PlayerGameStatus.UNPLAYED
 
 
 @pytest.mark.django_db(transaction=True)

@@ -71,6 +71,7 @@ from games.formatting import session_time_range
 from games.forms import GameForm
 from games.models import (
     Game,
+    PlayerGameStatus,
     PlayEvent,
     Purchase,
     Session,
@@ -78,7 +79,6 @@ from games.models import (
     UserLibrary,
 )
 from games.ownership import owned_or_404
-from games.playergame_status import SETTABLE_PLAYER_STATUSES
 from games.reads.playergame_history import StatusEntry, status_history
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
 from games.views.filtering import (
@@ -176,7 +176,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
                 ),
                 GameStatusSelector(
                     game,
-                    SETTABLE_PLAYER_STATUSES,
+                    PlayerGameStatus.choices,
                     get_token(request),
                     current=game.tracked_status,
                 ),
@@ -266,11 +266,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
                 correlation_id=correlation_id,
             )
             if not recorded:
-                #: The form already wrote the asked-for status.
                 #: Re-rendering would invite a second game.
-                Game.objects.filter(pk=game.pk).update(
-                    status=Game.Status.UNPLAYED, mastered=False
-                )
                 return redirect(return_url(request, fallback="games:list_games"))
             origin = origin_from(request)
             if "submit_and_redirect" in request.POST:
@@ -637,7 +633,7 @@ def _game_header(
             Span()[
                 GameStatusSelector(
                     game,
-                    SETTABLE_PLAYER_STATUSES,
+                    PlayerGameStatus.choices,
                     get_token(request),
                     current=game.tracked_status,
                 )

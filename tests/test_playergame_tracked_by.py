@@ -140,3 +140,24 @@ def test_a_condition_opens_one_join(owned_library):
     )
 
     assert sql.count('JOIN "games_playergame"') == 1
+
+
+@pytest.mark.django_db
+def test_an_unscoped_annotation_drops_no_game(owned_library, other_library):
+    """Registering the alias alone changes no result.
+
+    Unscoped, a game two libraries track duplicates.
+    `tracked_by()` is the scoped read.
+    """
+    shared = Game.objects.create(library=None, name="Shared Title")
+    for library in (owned_library, other_library):
+        PlayerGame.objects.create(
+            pk=uuid.uuid7(), library=library, game=shared, tracked_at=timezone.now()
+        )
+
+    annotated = Game.objects.annotated_for_filtering()
+
+    assert set(annotated) == set(Game.objects.all())
+    assert annotated.count() == Game.objects.count()
+    named = annotated.filter(tracked__isnull=False)
+    assert named.count() == Game.objects.count() + 1
