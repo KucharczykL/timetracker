@@ -316,17 +316,15 @@ def delete_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
     return confirm_and_retire(
         request,
         game,
-        title="Delete game",
-        noun="game",
-        label=game.name,
-        message=f"This will permanently delete {game.name} and all associated data:",
-        details=_deleted_with_game(game),
+        title="Remove game",
+        message=f"Remove {game.name} from your library?",
+        details=_removed_with_game(game),
         fallback="games:list_games",
         detail_url=game.get_absolute_url(),
     )
 
 
-def _deleted_with_game(game: Game) -> Node:
+def _removed_with_game(game: Game) -> Node:
     counts = [
         (game.sessions.count(), "session"),
         (game.purchases.count(), "purchase"),

@@ -36,11 +36,11 @@ def test_get_confirms_without_deleting(logged_in, game):
 
 
 @pytest.mark.untracked_games
-def test_post_deletes_and_returns_to_the_origin(logged_in, game):
+def test_post_acts_and_returns_to_the_origin(logged_in, game):
     origin = f"{reverse('games:list_games')}?page=2"
     response = logged_in.post(action_url("games:delete_game", game.id, origin=origin))
     assert response["Location"] == origin
-    assert not Game.objects.filter(id=game.id).exists()
+    assert not Game.objects.for_library(game.library).filter(id=game.id).exists()
 
 
 @pytest.mark.untracked_games
@@ -92,8 +92,6 @@ def deletables(owned_library):
     [
         ("games:delete_session", "session", "games:list_sessions"),
         ("games:delete_purchase", "purchase", "games:list_purchases"),
-        ("games:delete_platform", "platform", "games:list_platforms"),
-        ("games:delete_device", "device", "games:list_devices"),
     ],
 )
 def test_every_delete_confirms_first(logged_in, deletables, url_name, key, fallback):
@@ -104,6 +102,27 @@ def test_every_delete_confirms_first(logged_in, deletables, url_name, key, fallb
     response = logged_in.post(url)
     assert response["Location"] == reverse(fallback)
     assert not type(instance).objects.filter(pk=instance.pk).exists()
+
+
+@pytest.mark.parametrize(
+    "url_name,key,fallback",
+    [
+        ("games:delete_platform", "platform", "games:list_platforms"),
+        ("games:delete_device", "device", "games:list_devices"),
+    ],
+)
+def test_every_removal_confirms_first(
+    logged_in, owned_library, deletables, url_name, key, fallback
+):
+    """The row stays; the library stops showing it."""
+    instance = deletables[key]
+    url = reverse(url_name, args=[instance.pk])
+    assert logged_in.get(url).status_code == 200
+    response = logged_in.post(url)
+    assert response["Location"] == reverse(fallback)
+    manager = type(instance).objects
+    assert manager.filter(pk=instance.pk).exists()
+    assert not manager.for_library(owned_library).filter(pk=instance.pk).exists()
 
 
 @pytest.mark.parametrize(

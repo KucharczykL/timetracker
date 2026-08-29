@@ -404,11 +404,11 @@ from typing import Any
 from django.db.models import Model
 from django.utils.timezone import now
 
-from games.models import Game, Session
+from games.models import Device, Game, Platform
 
 #: Every model a user can remove. PlayerGame is absent: it is a
 #: projection, and only its projector writes it.
-REMOVABLE_MODELS: tuple[type[Model], ...] = (Game,)
+REMOVABLE_MODELS: tuple[type[Model], ...] = (Game, Platform, Device)
 
 
 def _recount_purchases(game: Game) -> None:
@@ -490,15 +490,17 @@ In `games/signals.py`, extract the sum so removal can call it:
 ```python
 def recalculate_playtime(game: Game) -> None:
     """The sum over the sessions still in the library."""
-    total = game.sessions.alive().aggregate(
-        total=Sum(F("duration_calculated") + F("duration_manual"))
-    )["total"]
-    game.playtime = total if total else timedelta(0)
+    total_playtime = game.sessions.aggregate(
+        total_playtime=Sum(F("duration_calculated") + F("duration_manual"))
+    )["total_playtime"]
+    game.playtime = total_playtime if total_playtime else timedelta(0)
     game.save(update_fields=["playtime"])
 ```
 
-`update_game_playtime` calls it. Task 5 adds `Session: recalculate_playtime` to
-`_AFTER_STAMP`.
+`update_game_playtime` calls it. The sum stays over every session for now:
+`Session.removed_at` arrives in Task 5, and `alive()` against a column that does
+not exist yet is a `FieldError` on the write path. Task 5 adds the `.alive()`
+and `Session: recalculate_playtime` to `_AFTER_STAMP` in the same step.
 
 - [ ] **Step 7: Turn the equivalence test around**
 
@@ -720,6 +722,8 @@ Without the condition a removed preset holds its own name against the next one.
 ```python
 REMOVABLE_MODELS: tuple[type[Model], ...] = (
     Game,
+    Platform,
+    Device,
     Session,
     PlayEvent,
     Purchase,

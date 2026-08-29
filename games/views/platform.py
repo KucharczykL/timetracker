@@ -146,14 +146,12 @@ def delete_platform(request: HttpRequest, platform_id: UUID) -> HttpResponse:
     return confirm_and_retire(
         request,
         platform,
-        title="Delete platform",
-        noun="platform",
-        label=platform.name,
-        message=f"Permanently delete {platform.name}?",
+        title="Remove platform",
+        message=f"Remove {platform.name} from your library?",
         details=Ul()[
             Li()[
                 f"{platform.game_set.count()} game(s) and "
-                f"{platform.purchase_set.count()} purchase(s) become platformless"
+                f"{platform.purchase_set.count()} purchase(s) still name it"
             ]
         ],
         fallback="games:list_platforms",

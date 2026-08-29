@@ -26,10 +26,7 @@ from games.models import (
     UserLibraryPreferences,
     UserPreferences,
 )
-from games.retention import (
-    detach_game_from_purchases,
-    refuse_to_delete_a_referenced_row,
-)
+from games.retention import refuse_to_delete_a_referenced_row
 from timetracker.settings_resolver import clear_cache as clear_settings_cache
 
 logger = logging.getLogger("games")
@@ -90,15 +87,6 @@ def update_num_purchases(sender, instance, action, reverse, **kwargs):
 
 
 @receiver(pre_delete, sender=Game)
-def update_purchase_counts_on_game_delete(sender, instance, **kwargs):
-    """Keep purchase counts right.
-
-    The work is in `games.retention`. A tombstone needs it too.
-    """
-    detach_game_from_purchases(instance)
-
-
-@receiver(pre_delete, sender=Game)
 @receiver(pre_delete, sender=Platform)
 @receiver(pre_delete, sender=Device)
 def refuse_to_delete_a_row_an_event_references(sender, instance, **kwargs):
@@ -107,6 +95,15 @@ def refuse_to_delete_a_row_an_event_references(sender, instance, **kwargs):
     Here, not in the views, so every call path is held to it.
     """
     refuse_to_delete_a_referenced_row(instance)
+
+
+def recalculate_playtime(game: Game) -> None:
+    """The sum over the sessions still in the library."""
+    total_playtime = game.sessions.aggregate(
+        total_playtime=Sum(F("duration_calculated") + F("duration_manual"))
+    )["total_playtime"]
+    game.playtime = total_playtime if total_playtime else timedelta(0)
+    game.save(update_fields=["playtime"])
 
 
 @receiver([post_save, post_delete], sender=Session)
@@ -125,8 +122,4 @@ def update_game_playtime(sender, instance, **kwargs):
     if not game:
         return
 
-    total_playtime = game.sessions.aggregate(
-        total_playtime=Sum(F("duration_calculated") + F("duration_manual"))
-    )["total_playtime"]
-    game.playtime = total_playtime if total_playtime else timedelta(0)
-    game.save(update_fields=["playtime"])
+    recalculate_playtime(game)

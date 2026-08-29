@@ -290,7 +290,8 @@ def test_owned_delete_posts_work(world, url_name, object_name, model):
     response = world.client.post(reverse(url_name, args=[obj.pk]))
 
     assert response.status_code == 302
-    assert not model.objects.filter(pk=obj.pk).exists()
+    #: Out of the library, whether the row went or only its mark.
+    assert not model.objects.for_library(world.owner_library).filter(pk=obj.pk).exists()
 
 
 @pytest.mark.parametrize(

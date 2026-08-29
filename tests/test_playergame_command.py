@@ -17,7 +17,8 @@ from games.commands.playergame import (
 )
 from games.events.dispatch import CommandOutcome, CommandRejected, dispatch
 from games.models import Game, LibraryEvent, PlayerGame, PlayerGameStatus
-from games.retention import Retirement, purging_library, tombstone_or_delete
+from games.removal import remove
+from games.retention import purging_library
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.untracked_games
@@ -100,7 +101,7 @@ def test_another_librarys_private_game_cannot_be_tracked(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_tombstoned_game_cannot_be_tracked(owned_user, owned_library):
+def test_a_removed_game_cannot_be_tracked(owned_user, owned_library):
     from django.utils import timezone
 
     game = Game.objects.create(
@@ -855,7 +856,7 @@ def test_tracking_a_live_game_twice_still_names_the_game(owned_user, owned_libra
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_game_whose_catalog_row_is_tombstoned_is_still_restored(
+def test_a_game_whose_catalog_row_is_removed_is_still_restored(
     owned_user, owned_library
 ):
     """The projection answers, not the catalog."""
@@ -867,8 +868,8 @@ def test_a_game_whose_catalog_row_is_tombstoned_is_still_restored(
         library=owned_library,
         idempotency_key="remove-outer-wilds",
     )
-    #: A delete of a tracked game keeps the projection row.
-    assert tombstone_or_delete(game) is Retirement.TOMBSTONED
+    #: Removing a tracked game keeps the projection row.
+    remove(game)
 
     dispatch(
         RestorePlayerGame(game_id=game.pk),

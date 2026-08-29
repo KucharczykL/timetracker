@@ -976,9 +976,10 @@ class Purchase(models.Model):
                 )
 
 
-class SessionQuerySet(models.QuerySet):
+class SessionQuerySet(RemovableMixin, models.QuerySet):
     def for_library(self, library):
-        return self.filter(game__library=library)
+        """A live session of a game still in the library."""
+        return self.filter(game__library=library, game__removed_at__isnull=True)
 
     def total_duration_unformatted(self):
         result = self.aggregate(
@@ -1167,9 +1168,10 @@ def get_or_create_rate(currency_from: str, currency_to: str, year: int) -> float
     return exchange_rate
 
 
-class PlayEventQuerySet(models.QuerySet):
+class PlayEventQuerySet(RemovableMixin, models.QuerySet):
     def for_library(self, library):
-        return self.filter(game__library=library)
+        """A live play event of a game still in the library."""
+        return self.filter(game__library=library, game__removed_at__isnull=True)
 
 
 class PlayEvent(models.Model):
@@ -1215,7 +1217,8 @@ class PlayEvent(models.Model):
 
 class GameStatusChangeQuerySet(models.QuerySet):
     def for_library(self, library):
-        return self.filter(game__library=library)
+        """No screen removes one, and #771 takes the table."""
+        return self.filter(game__library=library, game__removed_at__isnull=True)
 
 
 class GameStatusChange(models.Model):

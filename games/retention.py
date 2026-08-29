@@ -4,15 +4,11 @@ The policy is in `docs/event-retention.md`.
 """
 
 import contextvars
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from contextlib import contextmanager
-from enum import StrEnum
 from typing import Any
 
-from django.db import router, transaction
 from django.db.models import Exists, Model, OuterRef, QuerySet
-from django.db.models.deletion import Collector
-from django.utils.timezone import now
 
 from games.events.references import (
     DEFAULT_REFERENCE_KINDS,
@@ -21,7 +17,7 @@ from games.events.references import (
     ReferenceKindRegistry,
     Resolution,
 )
-from games.models import Game, LibraryEventReference
+from games.models import LibraryEventReference
 
 
 class ReferencedRowDeletion(Exception):
@@ -39,13 +35,6 @@ class UnresolvableReference(LookupError):
             "REQUIRED reference is retained rather than deleted, so this is a "
             "row that left outside the retention policy."
         )
-
-
-class Retirement(StrEnum):
-    """What retiring a row meant."""
-
-    DELETED = "deleted"
-    TOMBSTONED = "tombstoned"
 
 
 def reference_count(
@@ -75,7 +64,7 @@ def resolve_reference(
 ) -> Model:
     """The row a reference names."""
     kind = kinds.kind_for(reference["kind"])
-    #: The plain manager. It sees tombstoned rows.
+    #: The plain manager. It sees removed rows.
     try:
         return kind.model._default_manager.get(pk=reference["id"])
     except kind.model.DoesNotExist:
@@ -90,70 +79,6 @@ def unresolved_among(
     return references.filter(
         ~Exists(kind.model._default_manager.filter(pk=OuterRef("referenced_id")))
     )
-
-
-def detach_game_from_purchases(game: Game) -> None:
-    """Take a game out of its purchases.
-
-    `m2m_changed` does not fire for a deletion. A purchase with no
-    games left is deleted.
-    """
-    for purchase in game.purchases.all():
-        if purchase.num_purchases > 0:
-            purchase.num_purchases -= 1
-            if purchase.num_purchases == 0:
-                purchase.delete()
-            else:
-                purchase.updated_at = now()
-                purchase.save(update_fields=["num_purchases", "updated_at"])
-
-
-#: What a delete does that no cascade does.
-#: A tombstone never fires the `pre_delete` receiver.
-_UNCASCADED_COLLATERAL: dict[type[Model], Callable[[Any], None]] = {
-    Game: detach_game_from_purchases,
-}
-
-
-def tombstone_or_delete(instance: Model) -> Retirement:
-    """Delete the row, or leave a tombstone."""
-    with transaction.atomic():
-        if not must_be_retained(instance):
-            instance.delete()
-            return Retirement.DELETED
-        model = type(instance)
-        collateral = _UNCASCADED_COLLATERAL.get(model)
-        if collateral is not None:
-            collateral(instance)
-        _delete_everything_but(instance)
-        stamp = now()
-        #: A stamp, not an edit.
-        #: `save()` would run `clean()` and a receiver.
-        model._default_manager.filter(pk=instance.pk).update(removed_at=stamp)
-        instance.removed_at = stamp  # type: ignore[attr-defined]
-        return Retirement.TOMBSTONED
-
-
-def _delete_everything_but(instance: Model) -> None:
-    """Run the delete, and keep the row."""
-    model = type(instance)
-    collector = Collector(using=router.db_for_write(model, instance=instance))
-    #: A cascade may leave projection rows alone.
-    collector.collect([instance], fail_on_restricted=False)
-    collected = collector.data.get(model)
-    if collected is not None:
-        remaining = {row for row in collected if row.pk != instance.pk}
-        if remaining:
-            collector.data[model] = remaining
-        else:
-            del collector.data[model]
-    #: The guard rules this out.
-    #: Do not depend on that.
-    collector.fast_deletes = [
-        queryset.exclude(pk=instance.pk) if queryset.model is model else queryset
-        for queryset in collector.fast_deletes
-    ]
-    collector.delete()
 
 
 _purging = contextvars.ContextVar("purging_library", default=False)
@@ -180,7 +105,6 @@ def refuse_to_delete_a_referenced_row(instance: Model) -> None:
         raise ReferencedRowDeletion(
             f"{instance} cannot be deleted: "
             f"{reference_count(instance)} recorded event(s) reference it, and a "
-            "replay must still be able to resolve them. Retire it with "
-            "games.retention.tombstone_or_delete, which removes it from the "
-            "library and keeps the row."
+            "replay must still be able to resolve them. Take it out of the "
+            "library with games.removal.remove, which keeps the row."
         )

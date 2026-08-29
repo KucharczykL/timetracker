@@ -155,13 +155,9 @@ def delete_device(request: HttpRequest, device_id: UUID) -> HttpResponse:
     return confirm_and_retire(
         request,
         device,
-        title="Delete device",
-        noun="device",
-        label=device.name,
-        message=f"Permanently delete {device.name}?",
-        details=Ul()[
-            Li()[f"{device.session_set.count()} session(s) lose their device"]
-        ],
+        title="Remove device",
+        message=f"Remove {device.name} from your library?",
+        details=Ul()[Li()[f"{device.session_set.count()} session(s) still name it"]],
         fallback="games:list_devices",
     )
 
