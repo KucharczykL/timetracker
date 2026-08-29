@@ -111,9 +111,7 @@ PAGE_SIZE = 10
 
 
 class GameStatusUpdate(Schema):
-    #: The enum, so Ninja refuses unknown members. SHELVED is a
-    #: member and reaches record_facts(), which answers 409 while
-    #: the mirror still needs a letter.
+    #: The enum, so Ninja refuses unknown members.
     status: PlayerGameStatus
 
 

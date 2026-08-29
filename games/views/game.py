@@ -71,6 +71,7 @@ from games.formatting import session_time_range
 from games.forms import GameForm
 from games.models import (
     Game,
+    PlayerGameStatus,
     PlayEvent,
     Purchase,
     Session,
@@ -78,7 +79,6 @@ from games.models import (
     UserLibrary,
 )
 from games.ownership import owned_or_404
-from games.playergame_status import SETTABLE_PLAYER_STATUSES
 from games.reads.playergame_history import StatusEntry, status_history
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
 from games.views.filtering import (
@@ -176,7 +176,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
                 ),
                 GameStatusSelector(
                     game,
-                    SETTABLE_PLAYER_STATUSES,
+                    PlayerGameStatus.choices,
                     get_token(request),
                     current=game.tracked_status,
                 ),
@@ -633,7 +633,7 @@ def _game_header(
             Span()[
                 GameStatusSelector(
                     game,
-                    SETTABLE_PLAYER_STATUSES,
+                    PlayerGameStatus.choices,
                     get_token(request),
                     current=game.tracked_status,
                 )

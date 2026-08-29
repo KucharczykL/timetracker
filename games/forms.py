@@ -32,15 +32,13 @@ from games.models import (
     Game,
     Platform,
     PlayerGame,
+    PlayerGameStatus,
     PlayEvent,
     Purchase,
     Session,
     UserLibrary,
 )
-from games.playergame_status import (
-    SETTABLE_PLAYER_STATUSES,
-    player_status_for,
-)
+from games.playergame_status import player_status_for
 from timetracker.settings_registry import DISPLAY_TIME_ZONE_CHOICES
 from timetracker.settings_resolver import resolve_str_for_user
 
@@ -841,7 +839,7 @@ class GameForm(
     )
 
     #: Plain fields: no save of this form writes a column.
-    status = forms.ChoiceField(choices=SETTABLE_PLAYER_STATUSES, required=True)
+    status = forms.ChoiceField(choices=PlayerGameStatus.choices, required=True)
     mastered = forms.BooleanField(required=False)
 
     #: Declared fields otherwise sink below model fields.

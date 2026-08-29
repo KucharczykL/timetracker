@@ -7,7 +7,6 @@ from django.urls import reverse
 from django.utils import timezone
 
 from games.models import Game, PlayerGame, PlayerGameStatus
-from games.playergame_status import SETTABLE_PLAYER_STATUSES
 
 
 @pytest.fixture
@@ -16,12 +15,13 @@ def logged_in(client, owned_user):
     return client
 
 
-def test_only_the_words_a_letter_holds_are_settable():
-    assert [value for value, _label in SETTABLE_PLAYER_STATUSES] == [
+def test_every_word_is_settable():
+    assert [value for value, _label in PlayerGameStatus.choices] == [
         PlayerGameStatus.UNPLAYED,
         PlayerGameStatus.PLAYED,
         PlayerGameStatus.COMPLETED,
         PlayerGameStatus.RETIRED,
+        PlayerGameStatus.SHELVED,
         PlayerGameStatus.ABANDONED,
     ]
 
@@ -61,6 +61,22 @@ def test_the_endpoint_takes_a_word(logged_in, owned_library):
     assert response.status_code == 204
     row = PlayerGame.objects.get(library=owned_library, game=game)
     assert row.status == PlayerGameStatus.PLAYED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_endpoint_takes_the_word_no_letter_held(logged_in, owned_library):
+    #: Shelved was refused for as long as a letter had to hold it.
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+
+    response = logged_in.patch(
+        f"/api/games/{game.pk}/status",
+        {"status": "shelved"},
+        content_type="application/json",
+    )
+
+    assert response.status_code == 204
+    row = PlayerGame.objects.get(library=owned_library, game=game)
+    assert row.status == PlayerGameStatus.SHELVED
 
 
 @pytest.mark.django_db(transaction=True)
