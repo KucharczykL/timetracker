@@ -5,7 +5,7 @@ from datetime import timedelta
 import pytest
 from django.utils import timezone
 
-from games.models import Game, Session
+from games.models import Game, PlayEvent, Session
 from games.removal import remove, restore
 
 pytestmark = pytest.mark.django_db
@@ -63,3 +63,15 @@ def test_removing_a_session_drops_the_playtime(owned_library):
 
     game.refresh_from_db()
     assert game.playtime == timedelta(0)
+
+
+def test_the_api_removes_a_play_event_rather_than_destroying_it(client, owned_user):
+    """DELETE is the transport's word, not the library's act."""
+    play_event = PlayEvent.objects.create(game=make_game(owned_user.library))
+    client.force_login(owned_user)
+
+    response = client.delete(f"/api/playevent/{play_event.pk}")
+
+    assert response.status_code == 204
+    play_event.refresh_from_db()
+    assert play_event.removed_at is not None

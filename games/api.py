@@ -50,6 +50,7 @@ from games.models import (
     Session,
 )
 from games.ownership import owned_or_404
+from games.removal import remove
 from games.sorting import (
     MODE_SORTS,
     SESSION_DEFAULT_SORT,
@@ -246,13 +247,14 @@ def partial_update_playevent(request, playevent_id: UUIDv7, payload: UpdatePlayE
     return playevent
 
 
+#: DELETE is the transport's word, not the library's act.
 @playevent_router.delete("/{playevent_id}", response={204: None})
-def delete_playevent(request, playevent_id: UUIDv7):
+def remove_playevent(request, playevent_id: UUIDv7):
     library = cast(User, request.user).library
     playevent = owned_or_404(
         PlayEvent.objects.for_library(library), library, id=playevent_id
     )
-    playevent.delete()
+    remove(playevent)
     return Status(204, None)
 
 
@@ -765,9 +767,10 @@ def save_preset(request, payload: PresetIn):
     return Status(201 if created else 200, None)
 
 
+#: DELETE is the transport's word, not the library's act.
 @preset_router.delete("/{preset_id}", response={204: None})
-def delete_preset(request, preset_id: UUIDv7):
-    """Delete one of the current library's presets.
+def remove_preset(request, preset_id: UUIDv7):
+    """Take one of the current library's presets out.
 
     Scoped to request.user.library so it cannot touch another library's preset (404
     instead). DELETE-only by routing; CSRF is enforced by django_auth.
@@ -776,7 +779,7 @@ def delete_preset(request, preset_id: UUIDv7):
     preset = owned_or_404(
         FilterPreset.objects.for_library(library), library, id=preset_id
     )
-    preset.delete()
+    remove(preset)
     return Status(204, None)
 
 

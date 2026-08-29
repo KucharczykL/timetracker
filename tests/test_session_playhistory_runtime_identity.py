@@ -111,7 +111,8 @@ def test_playevent_api_uses_uuidv7_paths(
 
     assert response.status_code == expected_status
     if method == "delete":
-        assert not PlayEvent.objects.filter(pk=event.pk).exists()
+        event.refresh_from_db()
+        assert event.removed_at is not None
     else:
         assert response.json()["id"] == str(event.pk)
 

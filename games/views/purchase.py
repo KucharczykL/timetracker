@@ -59,6 +59,7 @@ from common.utils import label_with_details, paginate
 from games.forms import PurchaseForm
 from games.models import Game, PlayerGameStatus, PlayEvent, Purchase
 from games.ownership import owned_or_404
+from games.removal import remove
 from games.sorting import (
     PURCHASE_DEFAULT_SORT,
     PURCHASE_SORTS,
@@ -671,7 +672,8 @@ def split_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
             )
             new_purchase.save()
             new_purchase.games.set([game])
-        purchase.delete()
+        #: The parts carry the facts now, so the bundle leaves.
+        remove(purchase)
         messages.success(request, f"Split into {count} purchases")
 
     response = HttpResponse(status=204)

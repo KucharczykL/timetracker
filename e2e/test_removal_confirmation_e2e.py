@@ -6,9 +6,10 @@ browser, not only against the view.
 
 import pytest
 from django.urls import reverse
+from django.utils import timezone
 from playwright.sync_api import Page, expect
 
-from games.models import Game
+from games.models import Game, Session
 
 
 @pytest.fixture
@@ -37,3 +38,21 @@ def test_the_confirmation_promises_a_removal(
     page.wait_for_url(f"{live_server.url}{reverse('games:list_games')}**")
     expect(page.get_by_text("Forgettable")).to_have_count(0)
     assert Game.objects.get(pk=game.pk).removed_at is not None
+
+
+@pytest.mark.untracked_games
+def test_removing_a_game_empties_it_from_the_session_list(
+    authenticated_page: Page, live_server, e2e_library
+):
+    """A removed game takes its sessions out of sight, and keeps them."""
+    game = Game.objects.create(library=e2e_library, name="Sessioned")
+    Session.objects.create(game=game, timestamp_start=timezone.now())
+
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:remove_game', args=[game.pk])}")
+    page.click('button:has-text("Remove")')
+    page.wait_for_url(f"{live_server.url}{reverse('games:list_games')}**")
+
+    page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
+    expect(page.get_by_text("Sessioned")).to_have_count(0)
+    assert Session.objects.filter(game=game).exists()

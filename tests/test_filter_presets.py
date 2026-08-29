@@ -62,7 +62,7 @@ def _presets_url() -> str:
 
 
 def _delete_url(preset_id) -> str:
-    return reverse("api-1.0.0:delete_preset", args=[preset_id])
+    return reverse("api-1.0.0:remove_preset", args=[preset_id])
 
 
 def _save(client, *, name, mode="games", filter=None, sort=None, per_page=None):
@@ -469,19 +469,22 @@ def test_delete_requires_ownership(auth_client, second_auth_client):
     preset = _make_preset(auth_client)
     response = second_auth_client.delete(_delete_url(preset.id))
     assert response.status_code == 404
-    assert FilterPreset.objects.filter(id=preset.id).exists()  # not deleted
+    assert FilterPreset.objects.filter(id=preset.id).exists()  # untouched
 
 
-def test_owner_can_delete(auth_client):
+def test_owner_can_remove(auth_client):
     preset = _make_preset(auth_client)
     response = auth_client.delete(_delete_url(preset.id))
     assert response.status_code == 204
-    assert not FilterPreset.objects.filter(id=preset.id).exists()
+    #: The row stays; the library stops showing it.
+    assert FilterPreset.objects.filter(id=preset.id).exists()
+    visible = FilterPreset.objects.for_library(preset.library)
+    assert not visible.filter(id=preset.id).exists()
 
 
 @pytest.mark.parametrize("method", ["get", "post"])
 def test_delete_url_rejects_non_delete_methods(auth_client, method):
-    # DELETE-only: a GET (e.g. <img src=.../>) must not delete (CSRF-via-GET).
+    # DELETE-only: a GET (e.g. <img src=.../>) must not remove (CSRF-via-GET).
     preset = _make_preset(auth_client)
     response = getattr(auth_client, method)(_delete_url(preset.id))
     assert response.status_code == 405
