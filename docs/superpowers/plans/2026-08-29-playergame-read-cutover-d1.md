@@ -54,33 +54,125 @@ own event, which is a write-path change and belongs in D2 or later, not here.
 
 ## What time an entry shows
 
-This is the one part that needs a rule rather than a translation.
+Today the signal writes `timestamp=now()`, so an entry shows when the change was
+recorded, and a legacy row with a null timestamp renders "At some point
+changed". The event carries two time fields, and the read needs both:
 
-Today the signal writes `timestamp=now()`, so a live entry shows when the change
-was recorded, and a legacy row with a null timestamp renders "At some point
-changed". Two event fields are candidates and each is wrong alone:
+- **`recorded_at`** is a `DateTimeField`. It holds the instant, which is what
+  the page prints.
+- **`effective_time`** is a `TemporalValueField`. `TemporalPrecision` stops at
+  `DAY`, so it cannot hold an instant — but it can say the time is **unknown**,
+  which is what the page needs to know.
 
-| Field | Live event | Backfilled, legacy timestamp | Backfilled, null timestamp |
+So the two fields answer different questions, and the rule wants one of each:
+**does anyone know when this happened, and at what instant.**
+
+    if event.effective_time is None:  "At some point changed"
+    else:                             recorded_at
+
+`TemporalValue.unknown().serialize()` is `None` and the column is nullable, so
+an unknown effective time and an unset one are the same `NULL` and both read
+back as `None`. One check covers both.
+
+### Why this needs two small write-path fixes first
+
+The rule above is correct only once "unknown" means unknown. Three of the four
+event kinds already say the right thing; the live command does not.
+
+| Event | Knows when? | `effective_time` today | Right? |
 |---|---|---|---|
-| `recorded_at` | append time ✅ | the legacy timestamp ✅ | `game.created_at` ❌ invented |
-| `effective_time` | unknown ❌ | that day, no time ❌ lossy | unknown ✅ |
+| Live status change | yes, now | unknown | ❌ **false** |
+| Backfilled, legacy timestamp | yes, that day | that day | ✅ |
+| Backfilled, null timestamp | no | unknown | ✅ |
+| Backfill's corrective event | no | unknown | ✅ |
 
-Migration `0033` set `recorded_at=change.timestamp or game.created_at`, so
-`recorded_at` reproduces today's display exactly except in the last column,
-where it substitutes a time the original never claimed.
+A live status change happens at the moment it is recorded, so claiming its
+effective time is unknown is simply wrong, independently of this read. Task 1
+fixes it.
 
-**The rule: show `recorded_at`, unless the event is backfilled and its effective
-time is unknown, which renders "At some point changed".** Backfilled means
-`source_metadata` carries a `status_change_id`; the backfill puts it there.
-Live events also have an unknown effective time, so `is_unknown` alone does not
-separate the two.
+The fourth row is the one that killed the first draft of this plan. When the
+walked chain disagrees with `Game.status`, the backfill appends a **corrective**
+event whose comment says it plainly:
 
-Nothing is lost and nothing is invented. #683 gives the command an effective
-time of its own, and this rule collapses to reading it.
+> `Game.updated_at` is auto_now — the last time any field moved — so dating this
+> with it would fabricate precision the charter forbids. The status is known;
+> when it changed is not.
+
+That event carries `recorded_at=run_time` and **no** `status_change_id`, so the
+rule this plan first proposed — "backfilled means `source_metadata` names a
+`status_change_id`" — would have read it as live and printed the backfill's run
+time as a transition time. Reading `effective_time` gets it right for free,
+because the backfill already stated it correctly.
+
+Second fix: `games/backfill/playergame.py:216` sets
+`recorded_at=change.timestamp or game.created_at`. Under the new rule that
+`game.created_at` is never read, but it is still a fabricated time sitting in
+the log. It becomes `run_time`, which is true: the event was appended then. This
+is the part that needs the migration to be unapplied, and `0033` is.
 
 ---
 
-## Task 1: An entry per status event
+## Task 1: A live change states when it happened
+
+**Files:**
+- Modify: `games/commands/playergame.py`, `games/backfill/playergame.py`
+- Test: `tests/test_playergame_command.py`, `tests/test_playergame_backfill.py`
+
+**Interfaces produced:** none. This makes `effective_time is None` mean
+"nobody knows when", which Task 2 reads.
+
+- [ ] **Step 1: The live command states today**
+
+Two builders append `PLAYERGAME_STATUS_CHANGED`: `SetPlayerGameStatus.build()`
+at `games/commands/playergame.py:108` and `RecordPlayerGameFacts.build()` at
+`:241`. Both pass `effective_time=TemporalValue.from_day(timezone.localdate())`.
+
+Day precision, not the instant, because that is the finest the field has.
+`recorded_at` keeps the instant, so nothing is lost — the two fields say "we
+know it was this day" and "appended at this moment", which for a live event are
+the same event seen at two precisions.
+
+Reading the clock in `build()` is safe: `idempotent_append` fingerprints
+`command_input`, never `build()`'s output, so a retry across midnight compares
+nothing and just records the retry's date.
+
+- [ ] **Step 2: The backfill stops inventing a time**
+
+`games/backfill/playergame.py:216`, `recorded_at=change.timestamp or
+game.created_at` becomes `recorded_at=change.timestamp or run_time`. `run_time`
+is already in scope — the corrective event below it uses exactly that.
+
+Leave the `created` and `mastered` events alone. Their `recorded_at=game.created
+_at` is a defensible claim for `created` and is read by nobody for `mastered`;
+neither is history's business.
+
+- [ ] **Step 3: Test both**
+
+- A `SetPlayerGameStatus` dispatch records an event whose `effective_time` is
+  today, not `None`.
+- The same for `RecordPlayerGameFacts` stating a status. **Both, not one** —
+  they are separate builders and the game form goes through the second.
+- A `RecordPlayerGameFacts` stating only `mastered` still records an unknown
+  effective time on the mastered event, so this task widened nothing.
+- The backfill's undated transition records `recorded_at` at the run time.
+  `tests/test_playergame_backfill.py:227` already covers the unknown effective
+  time; extend it rather than adding a neighbour.
+
+- [ ] **Step 4: Run them**
+
+    make test ARGS="tests/test_playergame_command.py tests/test_playergame_backfill.py tests/test_playergame_backfill_migration.py" PYTEST_WORKERS=0
+
+`test_playergame_backfill_migration.py:75` asserts
+`unknown_effective_times == 1`. That count is unchanged — this task moves
+`recorded_at`, not the effective time — so if it moves, something is wrong.
+
+- [ ] **Step 5: Commit**
+
+    git commit -m "Say when a live status change happened"
+
+---
+
+## Task 2: An entry per status event
 
 **Files:**
 - Create: `games/reads/playergame_history.py`
@@ -126,10 +218,13 @@ chain is only a chain in sequence order.
 
 - [ ] **Step 3: Walk the chain**
 
-Carry the previous status forward, starting at `unplayed`. Read the new status
-out of `payload["status"]`. Apply the time rule from above:
-`event.effective_time.is_unknown and "status_change_id" in event.source_metadata`
-gives `recorded_at=None`, everything else gives `event.recorded_at`.
+Carry the previous status forward, starting at `unplayed`. `PLAYERGAME_CREATED`
+carries no status and the column defaults to `unplayed`, so that start is a
+fact, not an assumption. Read the new status out of `payload["status"]`.
+
+The time rule is one line: `event.effective_time is None` gives
+`recorded_at=None`, anything else gives `event.recorded_at`. Task 1 is what
+makes that true, so do not reorder these two.
 
 Return newest first, matching `GameStatusChange.Meta.ordering = ["-timestamp"]`,
 so the page order does not change. Reverse the walked list rather than sorting;
@@ -142,17 +237,22 @@ the chain is built oldest-first and its order is already right.
 - A tracked game with no status event gives no entries.
 - Three status commands give three entries, newest first, each `previous`
   equal to the one before it and the first `previous` `unplayed`.
-- An event whose `source_metadata` names a `status_change_id` and whose
-  effective time is unknown gives `recorded_at=None`.
-- The same event with a known effective time gives its `recorded_at`.
-- A live event, no `status_change_id`, unknown effective time, gives its
-  `recorded_at`. **This is the test that fails if the rule is written as
-  `is_unknown` alone.**
+- A live event gives its `recorded_at`, because Task 1 gave it an effective
+  time.
+- A backfilled event from a dated legacy row gives its `recorded_at`, and the
+  instant survives — **assert the time of day, not just the date**, since the
+  whole reason the rule reads two fields is that `effective_time` would flatten
+  it.
+- A backfilled event from an undated legacy row gives `recorded_at=None`.
+- **The backfill's corrective event gives `recorded_at=None`.** This is the case
+  that the first draft of this plan got wrong. Reach it by leaving `Game.status`
+  disagreeing with the last legacy row, which is what appends it.
 - Another library tracking the same game sees only its own entries.
 
-Build events through `record_facts()` where a live event is wanted, and
-`LibraryEvent.objects.create` is not available — use the append path, or the
-backfill, so a test cannot record an event the writer could not.
+Build events through the writers: `record_facts()` for a live event and
+`backfill_library()` for the rest. Do not hand-build a `LibraryEvent`, or a test
+can record an event no writer could produce — which is exactly how the corrective
+event went unnoticed.
 
 - [ ] **Step 5: Run it**
 
@@ -164,7 +264,7 @@ backfill, so a test cannot record an event the writer could not.
 
 ---
 
-## Task 2: The detail page renders the entries
+## Task 3: The detail page renders the entries
 
 **Files:**
 - Modify: `games/views/game.py` (`_game_history`, `_history_section`)
@@ -192,7 +292,7 @@ second query.
 - [ ] **Step 3: Drop the two links**
 
 The Edit and Delete links named `edit_statuschange` and `delete_statuschange`
-by row id. An entry has no row id, and Task 3 deletes the routes. Remove them
+by row id. An entry has no row id, and Task 4 deletes the routes. Remove them
 and the trailing "(", ", ", ")" furniture with them. `origin` becomes unused in
 `_game_history`; drop the parameter rather than leaving it.
 
@@ -216,7 +316,7 @@ the only proof the read works from a browser. Keep both words.
 
 `tests/test_rendered_pages.py:361-367` asserts `id="history-container"` and the
 heading. Both survive. `tests/test_rendered_pages.py:486` is the statuschange
-**list** page, not this section — Task 3 deletes it.
+**list** page, not this section — Task 4 deletes it.
 
 - [ ] **Step 5: Run the page tests**
 
@@ -228,7 +328,7 @@ heading. Both survive. `tests/test_rendered_pages.py:486` is the statuschange
 
 ---
 
-## Task 3: The four routes and the form retire
+## Task 4: The four routes and the form retire
 
 **Files:**
 - Delete: `games/views/statuschange.py`
@@ -238,7 +338,7 @@ heading. Both survive. `tests/test_rendered_pages.py:486` is the statuschange
 **Interfaces:** none produced.
 
 Nothing links to them. `add_statuschange` was already unreachable from the UI,
-and Task 2 removed the only links to `edit` and `delete`. The list page was
+and Task 3 removed the only links to `edit` and `delete`. The list page was
 reachable by typing the URL.
 
 - [ ] **Step 1: Delete the views and the form**
@@ -317,7 +417,7 @@ before declaring the list complete.
 
 ---
 
-## Task 4: The audit signal stops writing
+## Task 5: The audit signal stops writing
 
 **Files:**
 - Modify: `games/signals.py`
@@ -370,7 +470,7 @@ lists all three, and `games/views/statuschange.py` besides.
 
 ---
 
-## Task 5: Documentation and the gate
+## Task 6: Documentation and the gate
 
 **Files:**
 - Modify: `docs/STATUSES.md`, `docs/superpowers/specs/2026-08-28-issue-678-playergame-read-cutover-design.md`
