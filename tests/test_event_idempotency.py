@@ -1,7 +1,7 @@
 import contextlib
 import uuid
 from datetime import UTC, date, datetime
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from threading import Event, Thread
 from typing import Any, TypedDict
 
@@ -450,6 +450,59 @@ def test_a_datetime_and_its_date_differ():
 def test_an_unsupported_value_is_refused():
     with pytest.raises(TypeError):
         fingerprint_command_input({"platforms": {"pc", "switch"}})
+
+
+@pytest.mark.parametrize(
+    ("written", "same_value"),
+    [
+        pytest.param("1.1", "1.10", id="trailing-zero"),
+        pytest.param("100", "1E+2", id="exponent-form"),
+        pytest.param("0.00", "-0.00", id="signed-zero"),
+    ],
+)
+def test_a_decimal_is_the_number_not_the_text(written: str, same_value: str):
+    """A form renders 12.50, the browser retries with 12.5, and one honest
+    retry must not be answered as a conflict."""
+    assert fingerprint_command_input(
+        {"price": Decimal(written)}
+    ) == fingerprint_command_input({"price": Decimal(same_value)})
+
+
+def test_two_decimals_that_differ_keep_separate_digests():
+    assert fingerprint_command_input(
+        {"price": Decimal("1.1")}
+    ) != fingerprint_command_input({"price": Decimal("1.11")})
+
+
+def test_a_decimal_differing_past_the_context_precision_is_a_different_input():
+    """normalize() rounds to the context's 28 digits, so both of these would
+    reach one canonical form and the second command would be answered with the
+    first one's range. No shorter pair catches that."""
+    assert fingerprint_command_input(
+        {"price": Decimal("1.000000000000000000000000000000001")}
+    ) != fingerprint_command_input(
+        {"price": Decimal("1.000000000000000000000000000000002")}
+    )
+
+
+def test_a_decimal_digest_ignores_the_active_context():
+    """The canonical form is read from the value, so no thread-local setting
+    in this process can move it."""
+    price = Decimal("1.100000001")
+
+    with localcontext() as context:
+        context.prec = 5
+        narrowed = fingerprint_command_input({"price": price})
+
+    assert narrowed == fingerprint_command_input({"price": price})
+
+
+@pytest.mark.parametrize("value", ["NaN", "sNaN", "Infinity", "-Infinity"])
+def test_a_non_finite_decimal_is_refused(value: str):
+    """sNaN is here because it signals on comparison: the refusal has to be
+    reached before anything compares the value."""
+    with pytest.raises(TypeError):
+        fingerprint_command_input({"price": Decimal(value)})
 
 
 def test_the_idempotency_migration_is_reversible():

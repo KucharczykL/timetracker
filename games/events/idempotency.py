@@ -68,6 +68,41 @@ class UnchangedAppend:
     reason: str | None
 
 
+def _canonical_decimal(value: Decimal) -> str:
+    """The number, not the text it was written as: 1.1 and 1.10 are one value
+    and must reach one digest.
+
+    Read from as_tuple() rather than normalize(), which is an arithmetic
+    operation: it rounds to the active context's precision, so two values
+    differing past the 28th digit would share a canonical form and the second
+    command would be answered with the first one's range. The context is also
+    thread-local, so the same value would canonicalize two ways in two
+    processes.
+    """
+    sign, digits, exponent = value.as_tuple()
+    if not isinstance(exponent, int):
+        #: The exponent is 'n', 'N' or 'F' for exactly NaN, sNaN and Infinity.
+        #: Testing its type refuses them before anything compares the value,
+        #: which sNaN signals on, and narrows the exponent for the checker.
+        raise TypeError(
+            f"{value} has no canonical form for an idempotency fingerprint. "
+            "Convert it at the call site: a NaN is not equal to itself, so a "
+            "digest that matched would claim an identity the values deny, and "
+            "an infinity is no more a price than a NaN is."
+        )
+    while len(digits) > 1 and digits[-1] == 0:
+        digits = digits[:-1]
+        exponent += 1
+    if digits == (0,):
+        #: -0.00 == 0 and the sign survives as_tuple(), so without this the
+        #: pair would be -0E0 against 0E0. CPython stores every zero with one
+        #: digit, so the loop above never runs for one.
+        return "0"
+    prefix = "-" if sign else ""
+    coefficient = "".join(str(digit) for digit in digits)
+    return f"{prefix}{coefficient}E{exponent}"
+
+
 def _encode_command_value(value: Any) -> str | None:
     #: datetime before date -- datetime subclasses date, so the reverse order
     #: would silently reduce every timestamp to its calendar day.
@@ -78,7 +113,7 @@ def _encode_command_value(value: Any) -> str | None:
     if isinstance(value, uuid.UUID):
         return str(value)
     if isinstance(value, Decimal):
-        return str(value)
+        return _canonical_decimal(value)
     if isinstance(value, TemporalValue):
         #: None for an unknown time, which json renders as null.
         return value.canonical
