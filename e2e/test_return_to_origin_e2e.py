@@ -90,6 +90,6 @@ def test_deleting_a_game_from_its_detail_page_lands_on_the_list(
     expect(authenticated_page).to_have_url(
         f"{live_server.url}{reverse('games:list_games')}"
     )
-    #: Removal keeps the row. What the list shows is the assertion.
+    #: Assert on the list, not the row.
     expect(authenticated_page.locator("table")).not_to_contain_text("Alpha")
     assert Game.objects.get(id=world.id).removed_at is not None

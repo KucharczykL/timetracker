@@ -57,7 +57,7 @@ def record_facts_for_request(
 
 
 def remove_game_for_request(request: HttpRequest, game: Game) -> bool:
-    """Untrack it, then take the catalog row out.
+    """Untrack it, then take the row out.
 
     This order, and no transaction around it: dispatch opens its own
     and refuses to nest. A failure between the two leaves a game no

@@ -868,7 +868,7 @@ def test_a_game_whose_catalog_row_is_removed_is_still_restored(
         library=owned_library,
         idempotency_key="remove-outer-wilds",
     )
-    #: Removing a tracked game keeps the projection row.
+    #: Removal keeps the projection row.
     remove(game)
 
     dispatch(

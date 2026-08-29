@@ -247,7 +247,7 @@ def partial_update_playevent(request, playevent_id: UUIDv7, payload: UpdatePlayE
     return playevent
 
 
-#: DELETE is the transport's word, not the library's act.
+#: DELETE is the transport's word, not ours.
 @playevent_router.delete("/{playevent_id}", response={204: None})
 def remove_playevent(request, playevent_id: UUIDv7):
     library = cast(User, request.user).library
@@ -767,10 +767,10 @@ def save_preset(request, payload: PresetIn):
     return Status(201 if created else 200, None)
 
 
-#: DELETE is the transport's word, not the library's act.
+#: DELETE is the transport's word, not ours.
 @preset_router.delete("/{preset_id}", response={204: None})
 def remove_preset(request, preset_id: UUIDv7):
-    """Take one of the current library's presets out.
+    """Take one of the library's presets out.
 
     Scoped to request.user.library so it cannot touch another library's preset (404
     instead). DELETE-only by routing; CSRF is enforced by django_auth.

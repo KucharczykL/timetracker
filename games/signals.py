@@ -98,7 +98,7 @@ def refuse_to_delete_a_row_an_event_references(sender, instance, **kwargs):
 
 
 def recalculate_playtime(game: Game) -> None:
-    """The sum over the sessions still in the library."""
+    """The sum over the live sessions."""
     total_playtime = game.sessions.alive().aggregate(
         total_playtime=Sum(F("duration_calculated") + F("duration_manual"))
     )["total_playtime"]

@@ -672,7 +672,7 @@ def split_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
             )
             new_purchase.save()
             new_purchase.games.set([game])
-        #: The parts carry the facts now, so the bundle leaves.
+        #: The parts carry the facts now.
         remove(purchase)
         messages.success(request, f"Split into {count} purchases")
 

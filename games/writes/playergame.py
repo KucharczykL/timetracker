@@ -99,7 +99,7 @@ def track_game(actor: User, game: Game, *, correlation_id: uuid.UUID) -> None:
 
 
 def untrack_game(actor: User, game: Game, *, correlation_id: uuid.UUID) -> None:
-    """State that the library no longer tracks the game."""
+    """State that the library stopped tracking it."""
     with _translated():
         try:
             _dispatch(
@@ -109,7 +109,7 @@ def untrack_game(actor: User, game: Game, *, correlation_id: uuid.UUID) -> None:
                 correlation_id=correlation_id,
             )
         except PlayerGameNotTracked:
-            #: Nothing tracks it, so the catalog stamp is the whole act.
+            #: Untracked: the catalog stamp is the act.
             pass
 
 

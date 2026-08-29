@@ -1,4 +1,4 @@
-"""Removing a record takes it out; it destroys nothing."""
+"""Removal takes a record out, destroying nothing."""
 
 from datetime import timedelta
 
@@ -66,7 +66,7 @@ def test_removing_a_session_drops_the_playtime(owned_library):
 
 
 def test_the_api_removes_a_play_event_rather_than_destroying_it(client, owned_user):
-    """DELETE is the transport's word, not the library's act."""
+    """DELETE is the transport's word, not ours."""
     play_event = PlayEvent.objects.create(game=make_game(owned_user.library))
     client.force_login(owned_user)
 

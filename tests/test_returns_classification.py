@@ -51,5 +51,5 @@ def test_no_name_is_in_two_buckets():
 
 
 def test_no_route_is_named_delete():
-    """One act, one word: the routes say remove."""
+    """One act, one word: routes say remove."""
     assert not [name for name in _routed_names() if "delete" in name]

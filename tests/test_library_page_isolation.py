@@ -292,8 +292,7 @@ def test_owned_removal_posts_work(world, url_name, object_name, model):
     assert not model.objects.for_library(world.owner_library).filter(pk=obj.pk).exists()
 
 
-#: Its own test: removing a game states a fact, and a dispatch opens
-#: the transaction it retries, which refuses to nest.
+#: A dispatch opens its own transaction.
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.untracked_games
 def test_owned_game_removal_post_works(world):

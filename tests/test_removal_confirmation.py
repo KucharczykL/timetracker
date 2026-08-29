@@ -1,4 +1,4 @@
-"""Removals confirm on GET, act on POST, and return to where they started."""
+"""Confirm on GET, act on POST, return."""
 
 from datetime import UTC, datetime
 
@@ -35,7 +35,7 @@ def test_get_confirms_without_removing(logged_in, game):
     assert Game.objects.for_library(game.library).filter(id=game.id).exists()
 
 
-#: Removing a game states a fact, and a dispatch opens its own transaction.
+#: A dispatch opens its own transaction.
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.untracked_games
 def test_post_acts_and_returns_to_the_origin(logged_in, game):
@@ -102,7 +102,7 @@ def removables(owned_library):
 def test_every_removal_confirms_first(
     logged_in, owned_library, removables, url_name, key, fallback
 ):
-    """The row stays; the library stops showing it."""
+    """The row stays; the library hides it."""
     instance = removables[key]
     manager = type(instance).objects
     url = reverse(url_name, args=[instance.pk])

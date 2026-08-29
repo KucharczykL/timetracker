@@ -476,7 +476,7 @@ def test_owner_can_remove(auth_client):
     preset = _make_preset(auth_client)
     response = auth_client.delete(_delete_url(preset.id))
     assert response.status_code == 204
-    #: The row stays; the library stops showing it.
+    #: The row stays; the library hides it.
     assert FilterPreset.objects.filter(id=preset.id).exists()
     visible = FilterPreset.objects.for_library(preset.library)
     assert not visible.filter(id=preset.id).exists()

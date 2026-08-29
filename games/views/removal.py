@@ -27,8 +27,7 @@ from games.views.returns import return_url
 def confirm_and_apply(
     request: HttpRequest,
     *,
-    # Whatever the action returns is discarded; a removal that reports
-    # whether it landed is why this is `object` rather than `None`.
+    #: `object`, because the return is discarded.
     action: Callable[[], object],
     title: str,
     message: str,
@@ -83,7 +82,7 @@ def confirm_and_remove(
     detail_url: str | None = None,
     action: Callable[[], object] | None = None,
 ) -> HttpResponse:
-    """Confirm on GET, remove on POST, then return to the origin.
+    """Confirm on GET, remove on POST, return.
 
     ``detail_url`` is the removed row's own page: an origin naming it
     would turn a successful removal into a 404, so it is refused.

@@ -35,7 +35,7 @@ class Migration(migrations.Migration):
                 blank=True, default=None, editable=False, null=True
             ),
         ),
-        #: Without the condition a removed preset holds its own name.
+        #: A removed preset must free its name.
         migrations.RemoveConstraint(
             model_name="filterpreset",
             name="unique_library_mode_name_preset",

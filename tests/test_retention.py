@@ -1,4 +1,4 @@
-"""What removal does, and what the guard still refuses.
+"""What removal does; what the guard refuses.
 
 Nothing a user reaches destroys a row. The guard is what stops a
 `.delete()` from a shell or a script stranding a reference.
@@ -115,7 +115,7 @@ def device(owned_library):
     )
 
 
-# --- a removed row is kept, referenced or not --------------------------------
+# --- a removed row stays, referenced or not --------------------------------
 
 
 def test_an_unreferenced_game_is_kept(owned_library, game):
@@ -235,7 +235,7 @@ def test_reference_count_counts_events_not_rows(owned_library, device):
 
 
 class LibraryState(TypedDict):
-    """What a library holds after a game goes."""
+    """What stays after a game goes."""
 
     sessions: int
     play_events: int
@@ -319,7 +319,7 @@ def test_removing_leaves_every_child_row(owned_library, other_library):
     after_referenced = snapshot(owned_library, referenced_bundle, referenced_bystander)
     after_plain = snapshot(other_library, plain_bundle, plain_bystander)
     assert after_referenced == after_plain
-    #: Not vacuous: a delete would have taken all of this.
+    #: Not vacuous: a delete took all this.
     assert after_plain == LibraryState(
         sessions=2,
         play_events=1,
@@ -329,7 +329,7 @@ def test_removing_leaves_every_child_row(owned_library, other_library):
         bundle_count=1,
         other_game_playtime=timedelta(hours=1),
     )
-    #: The removed game is out of the library, and still there.
+    #: Out of the library, and still there.
     assert Game.objects.for_library(other_library).count() == 1
     assert Game.objects.get(pk=plain_game.pk).removed_at is not None
 

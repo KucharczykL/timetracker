@@ -52,7 +52,7 @@ class LibraryOwnedQuerySet(models.QuerySet):
 
 
 class RemovableMixin:
-    """A removed row stays; the reads leave it out.
+    """The row stays; the reads skip it.
 
     `alive()` asks about this row only. A parent's own removal is a
     condition of `for_library()`, because a child keeps no stamp.
@@ -768,8 +768,9 @@ class ExternalReference(models.Model):
 
 class PurchaseQueryset(RemovableLibraryQuerySet):
     def for_library(self, library):
-        #: A bundle stays while one of its games stays. A purchase that
-        #: names no game is untouched by removal, so it stays too.
+        #: One live game keeps a bundle.
+        #: A purchase that names no game
+        #: is untouched by removal, so it stays.
         linked = Game.objects.filter(purchases=OuterRef("pk"))
         return (
             super()
@@ -994,7 +995,7 @@ class Purchase(models.Model):
 
 class SessionQuerySet(RemovableMixin, models.QuerySet):
     def for_library(self, library):
-        """A live session of a game still in the library."""
+        """A live session of a live game."""
         return self.filter(game__library=library, game__removed_at__isnull=True).alive()
 
     def total_duration_unformatted(self):
@@ -1190,7 +1191,7 @@ def get_or_create_rate(currency_from: str, currency_to: str, year: int) -> float
 
 class PlayEventQuerySet(RemovableMixin, models.QuerySet):
     def for_library(self, library):
-        """A live play event of a game still in the library."""
+        """A live event of a live game."""
         return self.filter(game__library=library, game__removed_at__isnull=True).alive()
 
 
@@ -1241,7 +1242,7 @@ class PlayEvent(models.Model):
 
 class GameStatusChangeQuerySet(models.QuerySet):
     def for_library(self, library):
-        """No screen removes one, and #771 takes the table."""
+        """No screen removes one. #771 takes it."""
         return self.filter(game__library=library, game__removed_at__isnull=True)
 
 
@@ -1436,7 +1437,7 @@ class PlayerGame(ProjectionModel):
     #: An explicit preference, never inferred from status.
     excluded_from_unfinished = models.BooleanField(default=False)
     #: The remove event's recorded_at; null means live.
-    #: The player's own act, not the catalog row's.
+    #: The player's act, not the catalog's.
     removed_at = models.DateTimeField(null=True, default=None, editable=False)
 
     class Meta:

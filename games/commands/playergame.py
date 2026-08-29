@@ -181,7 +181,7 @@ class SetPlayerGameExcludedFromUnfinished(Command):
 
 @dataclass(frozen=True, slots=True)
 class RemovePlayerGame(Command):
-    """Take a tracked game out of the library."""
+    """Take a tracked game out."""
 
     command_name: ClassVar[CommandName] = CommandName.PLAYERGAME_REMOVE
     #: A UUID, because Command fingerprints its fields.

@@ -26,7 +26,7 @@ def authenticated_page(live_server, page: Page, e2e_user) -> Page:
 def test_the_confirmation_promises_a_removal(
     authenticated_page: Page, live_server, e2e_library
 ):
-    """One act, whether or not an event names the row."""
+    """One act, event or no event."""
     game = Game.objects.create(library=e2e_library, name="Forgettable")
 
     page = authenticated_page
@@ -44,7 +44,7 @@ def test_the_confirmation_promises_a_removal(
 def test_removing_a_game_empties_it_from_the_session_list(
     authenticated_page: Page, live_server, e2e_library
 ):
-    """A removed game takes its sessions out of sight, and keeps them."""
+    """Its sessions leave sight, and stay."""
     game = Game.objects.create(library=e2e_library, name="Sessioned")
     Session.objects.create(game=game, timestamp_start=timezone.now())
 

@@ -617,8 +617,7 @@ def test_the_sample_loader_leaves_every_loaded_game_tracked(owned_user):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_backfilled_game_is_kept(owned_library):
-    #: catalog.game is a REQUIRED reference kind, so after the backfill the
-    #: creation event names the row and removal must keep it.
+    #: An event names it; removal keeps it.
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     backfill_library(owned_library)
 

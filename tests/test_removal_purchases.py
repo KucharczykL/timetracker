@@ -1,4 +1,4 @@
-"""A purchase lives while one of its games lives."""
+"""A purchase lives while one game lives."""
 
 from datetime import date
 
