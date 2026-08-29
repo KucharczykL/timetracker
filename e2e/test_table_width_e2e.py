@@ -17,12 +17,13 @@ from e2e.helpers import settle_layout
 from games.models import (
     Device,
     Game,
-    GameStatusChange,
     Platform,
+    PlayerGameStatus,
     PlayEvent,
     Purchase,
     Session,
 )
+from games.writes.playergame import new_correlation_id, record_facts, track_game
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 BASE = datetime(2025, 3, 1, 10, 0, tzinfo=ZONEINFO)
@@ -76,7 +77,7 @@ COUNT_WRAPPED_CELLS = """
 
 
 @pytest.fixture
-def populated(e2e_library) -> None:
+def populated(e2e_user, e2e_library) -> None:
     platform = Platform.objects.create(
         library=e2e_library, name="PC", icon="pc", group="PC"
     )
@@ -119,7 +120,15 @@ def populated(e2e_library) -> None:
     PlayEvent.objects.create(
         game=game, started=BASE, ended=BASE + timedelta(days=3), note=LONG_NOTE
     )
-    GameStatusChange.objects.create(game=game, new_status="p", timestamp=BASE)
+    #: Stated as a command, so the History section has an entry:
+    #: it reads the event stream, which no direct write reaches.
+    track_game(e2e_user, game, correlation_id=new_correlation_id())
+    record_facts(
+        e2e_user,
+        game,
+        status=PlayerGameStatus.PLAYED,
+        correlation_id=new_correlation_id(),
+    )
 
 
 @pytest.fixture
@@ -166,6 +175,10 @@ def test_no_game_detail_mini_table_cell_wraps(
     page = authenticated_page
     game = Game.objects.get(name=LONG_NAME)
     page.goto(f"{live_server.url}{game.get_absolute_url()}")
+    #: Preconditions, so the page measured is the populated one: three
+    #: tables, and beside them a History section with an entry in it.
+    expect(page.locator('[role="region"] table')).to_have_count(3)
+    expect(page.locator("#history-container li")).to_have_count(1)
     for width in VIEWPORTS:
         page.set_viewport_size({"width": width, "height": 900})
         settle_layout(page)
