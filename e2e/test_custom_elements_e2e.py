@@ -60,13 +60,14 @@ def test_game_status_selector_opens_and_patches(
     expect(host.locator('[data-option][data-value="unplayed"]')).to_have_attribute(
         "aria-selected", "false"
     )
-    # The htmx refresh swapped in the re-rendered History section: the audit
-    # entry for the status change is now server-rendered on the page.
+    # The htmx refresh swapped in the re-rendered History section: the event
+    # the PATCH recorded is now read back and server-rendered on the page.
     history_entries = page.locator("#history-container li")
     expect(history_entries).to_have_count(1)
     expect(history_entries).to_contain_text("Changed status from")
     expect(history_entries).to_contain_text("Unplayed")
-    expect(history_entries).to_contain_text("Finished")
+    # The word the status carries, where the five-letter mirror said Finished.
+    expect(history_entries).to_contain_text("Completed")
     game.refresh_from_db()
     assert game.status == "f"
 

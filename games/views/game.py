@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from datetime import timedelta
 from typing import Any, NoReturn, cast
 from uuid import UUID
@@ -70,15 +71,15 @@ from games.formatting import session_time_range
 from games.forms import GameForm
 from games.models import (
     Game,
-    GameStatusChange,
-    PlayerGameStatus,
     PlayEvent,
     Purchase,
     Session,
     SessionQuerySet,
+    UserLibrary,
 )
 from games.ownership import owned_or_404
-from games.playergame_status import SETTABLE_PLAYER_STATUSES, player_status_for
+from games.playergame_status import SETTABLE_PLAYER_STATUSES
+from games.reads.playergame_history import StatusEntry, status_history
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
 from games.views.filtering import (
     apply_structured_filter,
@@ -494,43 +495,20 @@ def _game_action_buttons(game: Game, origin: OriginUrl | None) -> Node:
 
 
 def _game_history(
-    statuschanges: QuerySet[GameStatusChange],
-    presentation: DateTimePresentation,
-    origin: OriginUrl | None,
+    entries: Sequence[StatusEntry], presentation: DateTimePresentation
 ) -> Node:
     items = []
-    for change in statuschanges:
-        if change.timestamp:
-            prefix = f"{presentation.format(change.timestamp, 'datetime')}: Changed"
+    for entry in entries:
+        if entry.recorded_at:
+            prefix = f"{presentation.format(entry.recorded_at, 'datetime')}: Changed"
         else:
             prefix = "At some point changed"
-        old_status = GameStatus(
-            status=player_status_for(change.old_status)
-            if change.old_status
-            else PlayerGameStatus.UNPLAYED,
-            children=[change.get_old_status_display() if change.old_status else "-"],
-        )
-        new_status = GameStatus(
-            status=player_status_for(change.new_status),
-            children=[change.get_new_status_display()],
-        )
-        edit = Link(
-            href=action_url("games:edit_statuschange", change.id, origin=origin)
-        )["Edit"]
-        delete = Link(
-            href=action_url("games:delete_statuschange", change.id, origin=origin)
-        )["Delete"]
         items.append(
             Li(class_="text-slate-500")[
                 f"{prefix} status from",
-                old_status,
+                GameStatus(status=entry.previous, children=[entry.previous.label]),
                 "to",
-                new_status,
-                "(",
-                edit,
-                ", ",
-                delete,
-                ")",
+                GameStatus(status=entry.current, children=[entry.current.label]),
             ]
         )
     return Ul(class_="list-disc list-inside")[*items]
@@ -821,10 +799,12 @@ def _playevents_section(
 
 
 def _history_section(
-    game: Game, presentation: DateTimePresentation, origin: OriginUrl | None
+    game: Game, library: UserLibrary, presentation: DateTimePresentation
 ) -> Node:
-    statuschanges: QuerySet[GameStatusChange] = game.status_changes.all()
-    count = statuschanges.count()
+    #: Scoped like every other section: a stream belongs to one library,
+    #: where game.status_changes reached every library that wrote here.
+    entries = status_history(library, game)
+    count = len(entries)
     return Div(
         class_="mb-6 flex flex-col gap-4",
         id="history-container",
@@ -834,7 +814,7 @@ def _history_section(
         hx_swap="outerHTML",
     )[
         PageHeading(children=["History"], badge=str(count) if count else ""),
-        _game_history(statuschanges, presentation, origin),
+        _game_history(entries, presentation),
     ]
 
 
@@ -867,7 +847,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
         _purchases_section(game, purchases, presentation, origin),
         _sessions_section(game, sessions, presentation, durations),
         _playevents_section(game, playevents, presentation, origin),
-        _history_section(game, presentation, origin),
+        _history_section(game, library, presentation),
     ]
     return render_page(
         request,
