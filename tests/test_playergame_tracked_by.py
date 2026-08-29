@@ -113,3 +113,30 @@ def test_two_filter_calls_stay_in_one_library(owned_library, other_library):
         .filter(tracked__mastered=True)
     )
     assert not matched.exists()
+
+
+@pytest.mark.django_db
+def test_a_condition_selects_the_matching_games(owned_library):
+    completed = Game.objects.create(library=owned_library, name="Outer Wilds")
+    Game.objects.create(library=owned_library, name="Tunic")
+    PlayerGame.objects.filter(library=owned_library, game=completed).update(
+        status=PlayerGameStatus.COMPLETED
+    )
+
+    matched = Game.objects.tracked_by(
+        owned_library, tracked__status=PlayerGameStatus.COMPLETED
+    )
+
+    assert list(matched) == [completed]
+
+
+@pytest.mark.django_db
+def test_a_condition_opens_one_join(owned_library):
+    """One filter() call, so one join."""
+    sql = str(
+        Game.objects.tracked_by(
+            owned_library, tracked__status=PlayerGameStatus.COMPLETED
+        ).query
+    )
+
+    assert sql.count('JOIN "games_playergame"') == 1

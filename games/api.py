@@ -200,7 +200,7 @@ def search_games(request, q: str = "", limit: int = 10):
 @game_router.patch("/{game_id}/status", response={204: None})
 def partial_update_game(request, game_id: UUIDv7, payload: GameStatusUpdate):
     library = cast(User, request.user).library
-    game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
+    game = owned_or_404(Game.objects.tracked_by(library), library, id=game_id)
     record_facts(
         cast("User", request.user),
         game,

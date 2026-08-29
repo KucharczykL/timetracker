@@ -103,11 +103,13 @@ class GameQuerySet(TombstonableQuerySet):
             tracked=FilteredRelation("player_games", condition=condition)
         )
 
-    def tracked_by(self, library):
+    def tracked_by(self, library, **conditions):
         """Every live game this library tracks, facts read.
 
         No `library=library`: a shared catalog game this library
         tracks belongs on the list.
+
+        Extra conditions ride in that same filter() call.
 
         A FilteredRelation, not a plain path. Django opens a join per
         filter() call on a multi-valued relation, and a list applies
@@ -127,7 +129,11 @@ class GameQuerySet(TombstonableQuerySet):
         return (
             self.alive()
             .annotated_for_filtering(library)
-            .filter(tracked__isnull=False, tracked__archived_at__isnull=True)
+            .filter(
+                tracked__isnull=False,
+                tracked__archived_at__isnull=True,
+                **conditions,
+            )
             .annotate(
                 tracked_status=F("tracked__status"),
                 tracked_mastered=F("tracked__mastered"),
@@ -334,24 +340,6 @@ class Game(ReferencedRow):
         return label_with_details(
             self.name, self.platform or "Unspecified", self.year_released
         )
-
-    def finished(self):
-        return (
-            self.status == self.Status.FINISHED
-            or self.playevents.filter(ended__isnull=False).exists()
-        )
-
-    def abandoned(self):
-        return self.status == self.Status.ABANDONED
-
-    def retired(self):
-        return self.status == self.Status.RETIRED
-
-    def played(self):
-        return self.status == self.Status.PLAYED
-
-    def unplayed(self):
-        return self.status == self.Status.UNPLAYED
 
 
 class PlatformQuerySet(TombstonableQuerySet):
@@ -775,17 +763,15 @@ class PurchaseQueryset(LibraryOwnedQuerySet):
     def games_only(self):
         return self.filter(type=Purchase.GAME)
 
-    def finished(self):
+    def finished(self, library):
+        #: The status lives on the library's row.
         return self.filter(
-            Q(games__status="f") | Q(games__playevents__ended__isnull=False)
-        ).distinct()
-
-    def abandoned(self):
-        return self.filter(games__status="a").distinct()
-
-    def dropped(self):
-        return self.filter(
-            Q(games__status="a") | Q(date_refunded__isnull=False)
+            Q(
+                games__in=Game.objects.tracked_by(
+                    library, tracked__status__in=DONE_STATUSES
+                )
+            )
+            | Q(games__playevents__ended__isnull=False)
         ).distinct()
 
 
@@ -1366,6 +1352,13 @@ class PlayerGameStatus(models.TextChoices):
     RETIRED = "retired", "Retired"
     SHELVED = "shelved", "Shelved"
     ABANDONED = "abandoned", "Abandoned"
+
+
+#: Done with the game: completed or retired.
+DONE_STATUSES: tuple[PlayerGameStatus, ...] = (
+    PlayerGameStatus.COMPLETED,
+    PlayerGameStatus.RETIRED,
+)
 
 
 class PlayerGame(ProjectionModel):

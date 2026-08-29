@@ -109,8 +109,9 @@ def test_the_edit_form_shows_the_games_current_status(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_the_status_api_records_the_fact(logged_in, owned_library):
-    game = Game.objects.create(library=owned_library, name="Outer Wilds", status="u")
+def test_the_status_api_records_the_fact(logged_in, owned_library, tracked_game):
+    #: The endpoint needs the tracked row.
+    game = tracked_game
 
     response = logged_in.patch(
         f"/api/games/{game.id}/status",
@@ -143,11 +144,11 @@ def test_the_status_api_refuses_a_status_that_is_not_one(logged_in, owned_librar
 
 @pytest.mark.django_db(transaction=True)
 def test_a_failed_status_write_answers_409_with_a_toast(
-    logged_in, owned_library, monkeypatch
+    logged_in, owned_library, tracked_game, monkeypatch
 ):
     from games.writes.playergame import PlayerGameWriteFailed
 
-    game = Game.objects.create(library=owned_library, name="Outer Wilds", status="u")
+    game = tracked_game
 
     def refuse(*args, **kwargs):
         raise PlayerGameWriteFailed("Nothing was recorded; try again.", 409)
