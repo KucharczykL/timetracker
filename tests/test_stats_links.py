@@ -453,3 +453,39 @@ def test_finished_link_round_trips_to_same_count_as_stat(world):
         )
         == stats["all_finished_this_year_count"]
     )
+
+
+@pytest.fixture
+def a_retired_purchase(world):
+    library = world["library"]
+    game = Game.objects.create(
+        library=library, name="Retired", status=Game.Status.RETIRED
+    )
+    Purchase.objects.create(
+        library=library,
+        price_currency="CZK",
+        date_purchased=_dt(YEAR, 6, 5),
+        type=Purchase.GAME,
+    ).games.set([game])
+    return world
+
+
+@pytest.mark.parametrize(
+    ("builder", "stat_key"),
+    [
+        ("purchases_finished", "all_finished_this_year_count"),
+        ("purchases_dropped", "dropped_count"),
+        ("purchases_unfinished", "purchased_unfinished_count"),
+        ("purchases_backlog_decrease", "backlog_decrease_count"),
+    ],
+)
+def test_a_retired_purchase_links_to_the_same_count(
+    a_retired_purchase, builder, stat_key
+):
+    library = a_retired_purchase["library"]
+    stats = compute_stats(library, YEAR)
+
+    assert (
+        _count(getattr(stats_links, builder)(YEAR), Purchase, library)
+        == stats[stat_key]
+    )

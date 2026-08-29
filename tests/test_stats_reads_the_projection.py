@@ -58,3 +58,34 @@ def test_an_abandoned_row_is_dropped(a_bought_game):
     )
 
     assert compute_stats(library, YEAR)["dropped_count"] == 1
+
+
+def test_a_retired_row_leaves_the_backlog(a_bought_game):
+    """Retired means done, so it is not still waiting to be played."""
+    library, game = a_bought_game
+    PlayerGame.objects.filter(library=library, game=game).update(
+        status=PlayerGameStatus.RETIRED
+    )
+
+    assert compute_stats(library, YEAR)["purchased_unfinished_count"] == 0
+
+
+def test_a_retired_row_is_finished(a_bought_game):
+    """It used to leave the backlog and arrive nowhere."""
+    library, game = a_bought_game
+    assert compute_stats(library)["backlog_decrease_count"] == 0
+
+    PlayerGame.objects.filter(library=library, game=game).update(
+        status=PlayerGameStatus.RETIRED
+    )
+
+    assert compute_stats(library)["backlog_decrease_count"] == 1
+
+
+def test_a_retired_row_is_not_dropped(a_bought_game):
+    library, game = a_bought_game
+    PlayerGame.objects.filter(library=library, game=game).update(
+        status=PlayerGameStatus.RETIRED
+    )
+
+    assert compute_stats(library, YEAR)["dropped_count"] == 0

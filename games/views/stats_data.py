@@ -30,6 +30,7 @@ from django.db.models.functions import TruncDate, TruncMonth
 from common.time import available_stats_year_range
 from common.utils import safe_division
 from games.models import (
+    DONE_STATUSES,
     Game,
     PlayerGameStatus,
     Purchase,
@@ -154,8 +155,8 @@ def _compute_stats_from_scoped_querysets(
             "sessions", filter=Q(sessions__timestamp_start__year=year)
         )
 
-    completed = _games_at_status(library, PlayerGameStatus.COMPLETED)
-    not_finished_q = ~Q(games__in=completed) & ~ended_q
+    done = _games_at_status(library, *DONE_STATUSES)
+    not_finished_q = ~Q(games__in=done) & ~ended_q
 
     # ── Session superlatives ─────────────────────────────────────────────────
     longest_session = (
@@ -222,13 +223,9 @@ def _compute_stats_from_scoped_querysets(
         without_refunded.filter(not_finished_q)
         .filter(infinite=False)
         .filter(only_games_and_dlc)
-        .filter(
-            ~Q(
-                games__in=_games_at_status(
-                    library, PlayerGameStatus.RETIRED, PlayerGameStatus.ABANDONED
-                )
-            )
-        )
+        #: Not retired too: not_finished_q already excludes it, since
+        #: retired is one of the done statuses.
+        .filter(~Q(games__in=_games_at_status(library, PlayerGameStatus.ABANDONED)))
     )
     dropped = (
         purchases.filter(not_finished_q)
@@ -275,7 +272,7 @@ def _compute_stats_from_scoped_querysets(
         )
         backlog_decrease_count = (
             library_purchases.filter(date_purchased__year__lt=year)
-            .filter(games__in=completed)
+            .filter(games__in=done)
             .filter(games__playevents__ended__year=year)
             .count()
         )

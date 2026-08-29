@@ -788,7 +788,7 @@ class PurchaseQueryset(LibraryOwnedQuerySet):
         return self.filter(
             Q(
                 games__in=Game.objects.tracked_by(
-                    library, tracked__status=PlayerGameStatus.COMPLETED
+                    library, tracked__status__in=DONE_STATUSES
                 )
             )
             | Q(games__playevents__ended__isnull=False)
@@ -1380,6 +1380,16 @@ class PlayerGameStatus(models.TextChoices):
     RETIRED = "retired", "Retired"
     SHELVED = "shelved", "Shelved"
     ABANDONED = "abandoned", "Abandoned"
+
+
+#: The player is done with the game. Completed means the objective
+#: they were playing for is met; retired means the game has no ending
+#: to reach. The statistics count both as finished, and stats_links
+#: reads the same name so a link cannot select a different set.
+DONE_STATUSES: tuple[PlayerGameStatus, ...] = (
+    PlayerGameStatus.COMPLETED,
+    PlayerGameStatus.RETIRED,
+)
 
 
 class PlayerGame(ProjectionModel):
