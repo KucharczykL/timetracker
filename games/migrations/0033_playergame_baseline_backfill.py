@@ -14,7 +14,7 @@ SUMMARY_KEYS = (
     "mastered_events",
     "corrective_events",
     "unknown_effective_times",
-    "skipped_tombstoned",
+    "skipped_removed",
     "shared_games",
     "mismatches",
 )
@@ -55,7 +55,7 @@ def _summary(counts, libraries, shared_games, mismatch_count):
         "mastered_events": counts.mastered_events,
         "corrective_events": counts.corrective_events,
         "unknown_effective_times": counts.unknown_effective_times,
-        "skipped_tombstoned": counts.skipped_tombstoned,
+        "skipped_removed": counts.skipped_removed,
         "shared_games": shared_games,
         "mismatches": mismatch_count,
     }

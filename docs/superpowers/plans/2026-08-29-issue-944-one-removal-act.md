@@ -51,8 +51,18 @@ Vale.
   `add_game`'s rollback of its own insert in `games/views/game.py`. Neither is
   a removal; leave both alone.
 - **`make makemigrations` passes `--noinput`**, so its questioner answers no to
-  every rename and emits `RemoveField` + `AddField`. Every rename migration in
-  this plan is written by hand.
+  every rename and emits `RemoveField` + `AddField`. Every migration in this
+  plan is written by hand.
+- **`make check-migrations` is the drift check.** `make makemigrations` and
+  `make test-fast` ignore `ARGS`, so `make makemigrations ARGS="--check
+  --dry-run"` writes a migration file instead of checking for one.
+- **The event-era migrations may be edited in place.** No deployment has run
+  them — `git ls-tree v1.8.1 games/migrations/` shows a different `0031`–`0033`
+  — and the Makefile's `reset-db` comment states the policy. `0033` replays the
+  backfill through *live* model code, so a column it reaches must already carry
+  its final name by then. Both renames in this plan therefore edit the
+  migration that added the column, and `make reset-db` repairs a development
+  database that applied the old file.
 
 ---
 
@@ -70,20 +80,22 @@ differently.
 - Modify: `games/retention.py`, `games/signals.py`, `games/forms.py`,
   `games/views/retirement.py`, `games/backfill/playergame.py`,
   `games/commands/playergame.py`, `common/import_data.py`
-- Create: `games/migrations/0036_rename_removed_at.py`
+- Rename: `games/migrations/0027_tombstone_catalog_rows.py` →
+  `0027_removable_catalog_rows.py`, edited in place
+- Modify: `games/migrations/0028_playergame.py` (its dependency) and
+  `games/migrations/0033_playergame_baseline_backfill.py` (`skipped_removed`)
 - Rename: `tests/test_tombstoned_rows.py` → `tests/test_removed_rows.py`
 - Modify: `tests/test_retention.py`, `tests/test_reference_reconciliation.py`,
   `tests/test_playergame_backfill.py`, `tests/test_playergame_command.py`,
   `tests/test_playergame_game_views.py`, `tests/test_playergame_tracked_by.py`,
   `e2e/test_retention_confirmation_e2e.py`,
   `e2e/test_games_list_projection_e2e.py`, `e2e/test_return_to_origin_e2e.py`
-- Leave alone: `games/migrations/0027_tombstone_catalog_rows.py`, `0028`, `0032`,
-  `0033` and `tests/test_playergame_backfill_migration.py`, which name a
-  migration by its historical title
+- Leave alone: `0032`, and `tests/test_playergame_backfill_migration.py`'s
+  `BEFORE_BASELINE`, which names a migration by its historical title
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `RemovableQuerySet.alive()`, `RemovableLibraryQuerySet.for_library()`,
+- Produces: `RemovableMixin.alive()`, `RemovableLibraryQuerySet.for_library()`,
   and the column name `removed_at` on `Game`, `Platform`, `Device`.
 
 - [ ] **Step 1: Split the queryset base**
@@ -91,23 +103,30 @@ differently.
 In `games/models.py`, replace `TombstonableQuerySet` with two classes:
 
 ```python
-class RemovableQuerySet(models.QuerySet):
+class RemovableMixin:
     """A removed row stays; the reads leave it out.
 
     `alive()` asks about this row only. A parent's own removal is a
     condition of `for_library()`, because a child keeps no stamp.
+
+    A mixin rather than a queryset: two queryset bases give
+    django-stubs two `as_manager` return types to disagree over.
     """
 
     def alive(self):
         return self.filter(removed_at__isnull=True)
 
 
-class RemovableLibraryQuerySet(RemovableQuerySet, LibraryOwnedQuerySet):
+class RemovableLibraryQuerySet(RemovableMixin, LibraryOwnedQuerySet):
     """A library-owned row a user can remove."""
 
     def for_library(self, library):
         return super().for_library(library).alive()
 ```
+
+`RemovableMixin` is deliberately not a `QuerySet`. With two `QuerySet` bases,
+django-stubs generates a `ManagerFromRemovableLibraryQuerySet` that mypy reads
+as incompatible with `LibraryOwnedQuerySet.as_manager`'s return type.
 
 `GameQuerySet` and `PlatformQuerySet` now extend `RemovableLibraryQuerySet`;
 `Device.objects = TombstonableQuerySet.as_manager()` becomes
@@ -120,71 +139,46 @@ Four constraint conditions (`Game` twice, `Platform` twice) take the new name,
 as do `Platform.clean()`, `EditionQuerySet`, `ReleaseQuerySet` and
 `GameQuerySet.tracked_by`'s `alive()` comment. Then sweep the callers:
 
-Run: `grep -rn "tombston" --include=*.py --include=*.md --include=*.ts . | grep -v migrations/0027`
+Run: `grep -rn "tombston" --include=*.py --include=*.md --include=*.ts .`
 
-Every hit outside `games/migrations/0027_tombstone_catalog_rows.py` changes.
-That migration keeps its historical name — it is a record of what ran.
+Every hit changes, the migration that introduced the column included — see the
+next step for why.
 
-- [ ] **Step 3: Write the migration by hand**
+- [ ] **Step 3: Edit migration 0027 in place**
 
-`games/migrations/0036_rename_removed_at.py`:
+Do **not** add a rename migration on top. `0033_playergame_baseline_backfill.py`
+imports live model and backfill code by design ("pinned to the application as it
+stands when it runs"), so at its point in the graph the column must already
+answer to its current name. A 0036 that renames afterwards makes a fresh
+`migrate` fail with `column games_game.removed_at does not exist`.
 
-Four constraints name the column in their condition. Each needs a
-`RemoveConstraint` and an `AddConstraint`, because Postgres cannot alter a
-partial index's predicate:
+The event-era migrations are unreleased, and the Makefile's `reset-db` comment
+states the policy: "A migration that no deployment has run may still be edited
+in place, and the event-era ones qualify." `git ls-tree v1.8.1
+games/migrations/` confirms it — the released tag has an entirely different
+`0031`–`0033`.
 
-| Model | Constraint |
-| --- | --- |
-| Game | `unique_library_game_name_platform_year` |
-| Game | `unique_library_platformless_game_name_year` |
-| Platform | `unique_shared_platform_normalized_name_group` |
-| Platform | `unique_private_platform_normalized_name_group` |
-
-```python
-from django.db import migrations, models
-from django.db.models import F, Q
-from django.db.models.functions import Lower, Trim
-
-
-class Migration(migrations.Migration):
-    dependencies = [("games", "0035_idempotency_record_optional_range")]
-
-    operations = [
-        migrations.RemoveConstraint("game", "unique_library_game_name_platform_year"),
-        migrations.RemoveConstraint(
-            "game", "unique_library_platformless_game_name_year"
-        ),
-        migrations.RemoveConstraint(
-            "platform", "unique_shared_platform_normalized_name_group"
-        ),
-        migrations.RemoveConstraint(
-            "platform", "unique_private_platform_normalized_name_group"
-        ),
-        migrations.RenameField("game", "tombstoned_at", "removed_at"),
-        migrations.RenameField("platform", "tombstoned_at", "removed_at"),
-        migrations.RenameField("device", "tombstoned_at", "removed_at"),
-        migrations.AddConstraint(
-            "game",
-            models.UniqueConstraint(
-                fields=("library", "name", "platform", "year_released"),
-                condition=Q(removed_at__isnull=True),
-                name="unique_library_game_name_platform_year",
-            ),
-        ),
-        # …one AddConstraint per row of the table above. Copy each body
-        # verbatim from games/models.py after Step 2, changing only the
-        # column name in its condition.
-    ]
+```bash
+git mv games/migrations/0027_tombstone_catalog_rows.py \
+       games/migrations/0027_removable_catalog_rows.py
+sed -i s/tombstoned_at/removed_at/g games/migrations/0027_removable_catalog_rows.py
 ```
 
-Drop the constraints before the rename and add them after: a `RenameField`
-against a column a partial index names is what fails otherwise.
+Then point `games/migrations/0028_playergame.py`'s dependency at
+`("games", "0027_removable_catalog_rows")`, and rename
+`0033_playergame_baseline_backfill.py`'s `skipped_tombstoned` summary key to
+`skipped_removed`, because it reads a live `BackfillCounts`.
 
-- [ ] **Step 4: Prove the schema and the models agree**
+Because the four partial-unique conditions live in `0027` too, the `sed`
+rewrites them with the column. No `RemoveConstraint`/`AddConstraint` pair is
+needed.
 
-Run: `make makemigrations ARGS="--check --dry-run"`
-Expected: no changes detected. A detected change means a constraint condition in
-the migration does not match the model.
+- [ ] **Step 4: Rebuild the development database and prove it agrees**
+
+Run: `make reset-db`, then `make check-migrations`
+Expected: a clean replay, then "No changes detected". `make check-migrations` is
+the drift check — `make makemigrations ARGS="--check --dry-run"` ignores `ARGS`
+and writes a migration file.
 
 - [ ] **Step 5: Run the suite**
 
@@ -210,14 +204,17 @@ Also mechanical, and the last task before behaviour changes.
 - Modify: `games/events/playergame.py`, `games/events/dispatch.py`
   (`CommandName`), `games/commands/playergame.py`,
   `games/projectors/playergame.py`, `games/backfill/playergame.py`
-- Create: `games/migrations/0037_rename_playergame_removed_at.py`
+- Rename: `games/migrations/0032_playergame_archived_at.py` →
+  `0032_playergame_removed_at.py`, edited in place
+- Modify: `games/migrations/0033_playergame_baseline_backfill.py` (its
+  dependency), `tests/test_playergame_backfill_migration.py`
+  (`BEFORE_BASELINE`)
 - Modify: `tests/test_playergame_command.py`,
   `tests/test_playergame_projection.py`, `tests/test_playergame_events.py`,
   `tests/test_playergame_tracked_by.py`, `tests/test_playergame_backfill.py`,
   `tests/test_playergame_game_views.py`, `tests/test_projection_model.py`,
   `tests/test_returns_classification.py`
-- Leave alone: `games/migrations/0032_playergame_archived_at.py`, `0033`, and
-  `tests/test_playergame_backfill_migration.py`
+- Leave alone: `0033`'s body, which names the act nowhere
 
 **Interfaces:**
 - Consumes: Task 1's `removed_at` naming.
@@ -278,33 +275,36 @@ search-replaced:
 - `RestorePlayerGame`'s docstring: *"Removing a tracked game stamps the catalog
   row and keeps this one, so a removed game may outlive the row it names."*
 
-- [ ] **Step 4: Write the migration by hand**
+- [ ] **Step 4: Edit migration 0032 in place**
 
-```python
-class Migration(migrations.Migration):
-    dependencies = [("games", "0036_rename_removed_at")]
+For Task 1's reason: `0033` replays the backfill through live model code, so a
+rename layered after it breaks a fresh `migrate`. The column is added by an
+unreleased migration, so the `AddField` states the new name from the start.
 
-    operations = [
-        migrations.RenameField("playergame", "archived_at", "removed_at"),
-    ]
+```bash
+git mv games/migrations/0032_playergame_archived_at.py \
+       games/migrations/0032_playergame_removed_at.py
+sed -i s/archived_at/removed_at/g games/migrations/0032_playergame_removed_at.py
 ```
 
-No data moves. No library has recorded an event of the archive type, because
-nothing dispatched the command.
+Then point `0033`'s dependency and the migration test's `BEFORE_BASELINE` at
+`("games", "0032_playergame_removed_at")`.
+
+No data moves either way. No library has recorded an event of the archive type,
+because nothing dispatched the command.
 
 - [ ] **Step 5: Run the tests**
 
-Run: `make test ARGS="tests/test_playergame_command.py -x"`, then
-`make check-fast`.
-Expected: PASS.
+Run: `make reset-db`, then `make test ARGS="tests/test_playergame_command.py
+-x"`, then `make check-fast` and `make check-migrations`.
+Expected: PASS, and "No changes detected".
 
 - [ ] **Step 6: Prove the word is gone**
 
 Run: `grep -rli "archiv" --include=*.py --include=*.ts --include=*.md . | grep -v node_modules`
-Expected: only the two historical migrations (`0032`, `0033`), the migration
-test that names them, and four files that mean a tar archive or Postgres
-archive mode — `scripts/db_dump.py`, `scripts/ensure_postgres.py`,
-`tests/test_db_dump.py`, `tests/test_ensure_postgres.py`.
+Expected: only four files that mean a tar archive or Postgres archive mode —
+`scripts/db_dump.py`, `scripts/ensure_postgres.py`, `tests/test_db_dump.py`,
+`tests/test_ensure_postgres.py`.
 
 - [ ] **Step 7: Commit**
 
@@ -624,7 +624,7 @@ git commit -m "Keep a purchase while one of its games stays"
 
 **Files:**
 - Modify: `games/models.py` (`Session`, `PlayEvent`, `Purchase`, `FilterPreset`)
-- Create: `games/migrations/0038_removable_records.py`
+- Create: `games/migrations/0036_removable_records.py`
 - Modify: `games/removal.py` (`REMOVABLE_MODELS`, `_AFTER_STAMP`)
 - Modify: `games/views/game.py:331-333`, `games/views/game.py:388`,
   `games/views/playevent.py:156,250,256,272` (reverse accessors)
@@ -679,10 +679,8 @@ Expected: FAIL — `Session` is not in `REMOVABLE_MODELS`.
 Each gets the same field, beside the other bookkeeping columns:
 
 ```python
-    #: Set instead of destroying the row.
-    removed_at = models.DateTimeField(
-        null=True, blank=True, default=None, editable=False
-    )
+#: Set instead of destroying the row.
+removed_at = models.DateTimeField(null=True, blank=True, default=None, editable=False)
 ```
 
 `Purchase` and `FilterPreset` switch to `RemovableLibraryQuerySet`.
@@ -692,27 +690,27 @@ condition Task 3 added:
 ```python
 class PlayEventQuerySet(RemovableQuerySet):
     def for_library(self, library):
-        return self.filter(
-            game__library=library, game__removed_at__isnull=True
-        ).alive()
+        return self.filter(game__library=library, game__removed_at__isnull=True).alive()
 ```
 
 `SessionQuerySet` the same.
 
 - [ ] **Step 4: Write the migration**
 
-`0038_removable_records.py` — four `AddField`s, plus the preset constraint:
+`0036_removable_records.py` — four `AddField`s, plus the preset constraint:
 
 ```python
-migrations.RemoveConstraint("filterpreset", "unique_library_mode_name_preset"),
-migrations.AddConstraint(
-    "filterpreset",
-    models.UniqueConstraint(
-        fields=("library", "mode", "name"),
-        condition=models.Q(removed_at__isnull=True),
-        name="unique_library_mode_name_preset",
+(migrations.RemoveConstraint("filterpreset", "unique_library_mode_name_preset"),)
+(
+    migrations.AddConstraint(
+        "filterpreset",
+        models.UniqueConstraint(
+            fields=("library", "mode", "name"),
+            condition=models.Q(removed_at__isnull=True),
+            name="unique_library_mode_name_preset",
+        ),
     ),
-),
+)
 ```
 
 Without the condition a removed preset holds its own name against the next one.
@@ -1160,7 +1158,7 @@ git commit -m "Refuse tombstone, archive and the domain delete"
       (`scripts/db_dump.py`, `scripts/ensure_postgres.py`,
       `tests/test_db_dump.py`, `tests/test_ensure_postgres.py`).
 - [ ] `make audit-uuid-identity` passes.
-- [ ] `make migrate` applies 0036, 0037 and 0038 on a fresh database, and
-      `make verify-dump` applies them to a copy of the deployed data.
+- [ ] `make reset-db` replays the whole graph, the two edited event-era
+      migrations included, and `make migrate` then applies 0036 on top.
 - [ ] Every acceptance line in #944 is answered, except the undo line the issue
       edit moves to #695.

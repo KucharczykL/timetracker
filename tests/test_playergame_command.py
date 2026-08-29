@@ -104,7 +104,7 @@ def test_a_tombstoned_game_cannot_be_tracked(owned_user, owned_library):
     from django.utils import timezone
 
     game = Game.objects.create(
-        library=owned_library, name="Retired", tombstoned_at=timezone.now()
+        library=owned_library, name="Retired", removed_at=timezone.now()
     )
 
     with pytest.raises(CommandRejected):

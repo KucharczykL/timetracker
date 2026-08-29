@@ -37,7 +37,7 @@ def test_a_removed_game_is_not_listed(
     authenticated_page: Page, live_server, e2e_library
 ):
     game = Game.objects.create(library=e2e_library, name="Outer Wilds")
-    Game.objects.filter(pk=game.pk).update(tombstoned_at=timezone.now())
+    Game.objects.filter(pk=game.pk).update(removed_at=timezone.now())
 
     authenticated_page.goto(list_url(live_server))
 

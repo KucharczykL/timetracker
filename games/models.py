@@ -49,15 +49,26 @@ class LibraryOwnedQuerySet(models.QuerySet):
         return self.filter(library=library)
 
 
-class TombstonableQuerySet(LibraryOwnedQuerySet):
-    """A referenced row outlives its deletion as a tombstone.
+class RemovableMixin:
+    """A removed row stays; the reads leave it out.
 
-    `for_library` and `visible_to` are how the application asks for
-    rows. A caller that must see tombstoned rows uses the plain manager.
+    `alive()` asks about this row only. A parent's own removal is a
+    condition of `for_library()`, because a child keeps no stamp.
+
+    A mixin rather than a queryset: two queryset bases give
+    django-stubs two `as_manager` return types to disagree over.
     """
 
     def alive(self):
-        return self.filter(tombstoned_at__isnull=True)
+        return self.filter(removed_at__isnull=True)
+
+
+class RemovableLibraryQuerySet(RemovableMixin, LibraryOwnedQuerySet):
+    """A library-owned row a user can remove.
+
+    `for_library` and `visible_to` are how the application asks for
+    rows. A caller that must see removed rows uses the plain manager.
+    """
 
     def for_library(self, library):
         return super().for_library(library).alive()
@@ -82,7 +93,7 @@ class ReferencedRow(models.Model):
         return super().delete(*args, **kwargs)
 
 
-class GameQuerySet(TombstonableQuerySet):
+class GameQuerySet(RemovableLibraryQuerySet):
     def visible_to(self, library):
         return self.filter(Q(library__isnull=True) | Q(library=library)).alive()
 
@@ -120,7 +131,7 @@ class GameQuerySet(TombstonableQuerySet):
         joins cannot disagree.
 
         `alive()` comes first: since #676 a game delete leaves the
-        catalog row tombstoned and the projection row beside it.
+        catalog row removed and the projection row beside it.
 
         An archived row is not tracked. TrackGame refuses to track an
         archived game again, so a game the list still showed could not
@@ -168,18 +179,18 @@ class Game(ReferencedRow):
         tracked_mastered: bool
 
     class Meta:
-        #: Both partial on `tombstoned_at`.
-        #: A tombstoned name is free again.
+        #: Both partial on `removed_at`.
+        #: A removed name is free again.
         #: `unique_together` cannot carry a condition.
         constraints = (
             models.UniqueConstraint(
                 fields=("library", "name", "platform", "year_released"),
-                condition=Q(tombstoned_at__isnull=True),
+                condition=Q(removed_at__isnull=True),
                 name="unique_library_game_name_platform_year",
             ),
             models.UniqueConstraint(
                 fields=("library", "name", "year_released"),
-                condition=Q(platform__isnull=True) & Q(tombstoned_at__isnull=True),
+                condition=Q(platform__isnull=True) & Q(removed_at__isnull=True),
                 name="unique_library_platformless_game_name_year",
             ),
         )
@@ -277,7 +288,7 @@ class Game(ReferencedRow):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     #: Set instead of deleting a referenced row.
-    tombstoned_at = models.DateTimeField(
+    removed_at = models.DateTimeField(
         null=True, blank=True, default=None, editable=False
     )
 
@@ -342,7 +353,7 @@ class Game(ReferencedRow):
         )
 
 
-class PlatformQuerySet(TombstonableQuerySet):
+class PlatformQuerySet(RemovableLibraryQuerySet):
     def visible_to(self, library):
         return self.filter(Q(library__isnull=True) | Q(library=library)).alive()
 
@@ -354,14 +365,14 @@ class Platform(ReferencedRow):
             models.UniqueConstraint(
                 Lower(Trim("name")),
                 Lower(Trim("group")),
-                condition=Q(library__isnull=True) & Q(tombstoned_at__isnull=True),
+                condition=Q(library__isnull=True) & Q(removed_at__isnull=True),
                 name="unique_shared_platform_normalized_name_group",
             ),
             models.UniqueConstraint(
                 F("library"),
                 Lower(Trim("name")),
                 Lower(Trim("group")),
-                condition=Q(library__isnull=False) & Q(tombstoned_at__isnull=True),
+                condition=Q(library__isnull=False) & Q(removed_at__isnull=True),
                 name="unique_private_platform_normalized_name_group",
             ),
         )
@@ -382,7 +393,7 @@ class Platform(ReferencedRow):
     icon = models.SlugField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     #: Set instead of deleting a referenced row.
-    tombstoned_at = models.DateTimeField(
+    removed_at = models.DateTimeField(
         null=True, blank=True, default=None, editable=False
     )
 
@@ -392,7 +403,7 @@ class Platform(ReferencedRow):
     def clean(self):
         super().clean()
         duplicates = (
-            #: A tombstoned Platform shadows nothing.
+            #: A removed Platform shadows nothing.
             Platform.objects.alive()
             .exclude(pk=self.pk)
             .annotate(
@@ -419,18 +430,18 @@ class Platform(ReferencedRow):
 
 
 class EditionQuerySet(models.QuerySet):
-    """A tombstone is inherited from Game.
+    """Removal is inherited from Game.
 
     An Edition has no visibility of its own.
     """
 
     def for_library(self, library):
-        return self.filter(game__library=library, game__tombstoned_at__isnull=True)
+        return self.filter(game__library=library, game__removed_at__isnull=True)
 
     def visible_to(self, library):
         return self.filter(
             Q(game__library__isnull=True) | Q(game__library=library),
-            game__tombstoned_at__isnull=True,
+            game__removed_at__isnull=True,
         )
 
 
@@ -455,18 +466,18 @@ class Edition(models.Model):
 
 
 class ReleaseQuerySet(models.QuerySet):
-    """A tombstone is inherited from Game."""
+    """Removal is inherited from Game."""
 
     def for_library(self, library):
         return self.filter(
             edition__game__library=library,
-            edition__game__tombstoned_at__isnull=True,
+            edition__game__removed_at__isnull=True,
         )
 
     def visible_to(self, library):
         return self.filter(
             Q(edition__game__library__isnull=True) | Q(edition__game__library=library),
-            edition__game__tombstoned_at__isnull=True,
+            edition__game__removed_at__isnull=True,
         )
 
 
@@ -1071,8 +1082,8 @@ class Session(models.Model):
 
 
 class Device(ReferencedRow):
-    #: Tombstonable: `device` is a REQUIRED reference kind.
-    objects = TombstonableQuerySet.as_manager()
+    #: Removable: `device` is a REQUIRED reference kind.
+    objects = RemovableLibraryQuerySet.as_manager()
 
     id = UUIDv7Field(primary_key=True, editable=False)
     library = models.ForeignKey(
@@ -1097,7 +1108,7 @@ class Device(ReferencedRow):
     type = models.CharField(max_length=255, choices=DEVICE_TYPES, default=UNKNOWN)
     created_at = models.DateTimeField(auto_now_add=True)
     #: Set instead of deleting a referenced row.
-    tombstoned_at = models.DateTimeField(
+    removed_at = models.DateTimeField(
         null=True, blank=True, default=None, editable=False
     )
 
@@ -1392,7 +1403,7 @@ class PlayerGame(ProjectionModel):
     #: An explicit preference, never inferred from status.
     excluded_from_unfinished = models.BooleanField(default=False)
     #: The archive event's recorded_at; null means live.
-    #: The player's own act, not retention's tombstoned_at.
+    #: The player's own act, not the catalog row's.
     archived_at = models.DateTimeField(null=True, default=None, editable=False)
 
     class Meta:

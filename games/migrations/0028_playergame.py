@@ -9,7 +9,7 @@ import timetracker.uuidv7
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("games", "0027_tombstone_catalog_rows"),
+        ("games", "0027_removable_catalog_rows"),
     ]
 
     operations = [

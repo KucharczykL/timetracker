@@ -70,7 +70,7 @@ class BackfillCounts:
     mastered_events: int = 0
     corrective_events: int = 0
     unknown_effective_times: int = 0
-    skipped_tombstoned: int = 0
+    skipped_removed: int = 0
 
     def __add__(self, other: BackfillCounts) -> BackfillCounts:
         return BackfillCounts(
@@ -83,7 +83,7 @@ class BackfillCounts:
             unknown_effective_times=(
                 self.unknown_effective_times + other.unknown_effective_times
             ),
-            skipped_tombstoned=self.skipped_tombstoned + other.skipped_tombstoned,
+            skipped_removed=self.skipped_removed + other.skipped_removed,
         )
 
 
@@ -264,7 +264,7 @@ def backfill_library(
     """Record baseline facts for every live game this library holds.
 
     A shared game -- library is null -- is never reached: the query scopes to
-    the library, and #677 gives a player the way to track one. A tombstoned
+    the library, and #677 gives a player the way to track one. A removed
     game is skipped and counted: retention emptied the row and kept it only for
     the events that name it, so there is nothing left to track.
     """
@@ -274,8 +274,8 @@ def backfill_library(
     #: Deterministic, so two runs order the stream identically.
     games = Game.objects.filter(library=library).order_by("created_at", "pk")
     for game in games.iterator(chunk_size=200):
-        if game.tombstoned_at is not None:
-            counts = counts + BackfillCounts(games=1, skipped_tombstoned=1)
+        if game.removed_at is not None:
+            counts = counts + BackfillCounts(games=1, skipped_removed=1)
             continue
         counts = counts + backfill_game(
             game,
@@ -341,9 +341,7 @@ def reconcile(library: UserLibrary) -> list[Mismatch]:
         )
     }
     mismatches: list[Mismatch] = []
-    live = Game.objects.filter(library=library, tombstoned_at__isnull=True).order_by(
-        "pk"
-    )
+    live = Game.objects.filter(library=library, removed_at__isnull=True).order_by("pk")
     for game in live.iterator(chunk_size=200):
         row = rows.get(game.pk)
         if row is None:

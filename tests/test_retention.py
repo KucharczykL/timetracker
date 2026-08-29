@@ -146,7 +146,7 @@ def test_a_referenced_game_is_tombstoned(owned_library, game):
     assert tombstone_or_delete(game) is Retirement.TOMBSTONED
 
     retained = Game.objects.get(pk=game.pk)
-    assert retained.tombstoned_at is not None
+    assert retained.removed_at is not None
     assert not Game.objects.for_library(owned_library).exists()
 
 
@@ -164,7 +164,7 @@ def test_a_tracked_game_is_tombstoned_and_keeps_its_projection_row(
 
     assert tombstone_or_delete(game) is Retirement.TOMBSTONED
 
-    assert Game.objects.get(pk=game.pk).tombstoned_at is not None
+    assert Game.objects.get(pk=game.pk).removed_at is not None
     assert PlayerGame.objects.filter(game=game).count() == 1
 
 
@@ -211,7 +211,7 @@ def test_a_referenced_platform_is_tombstoned(owned_library, platform):
 
     assert tombstone_or_delete(platform) is Retirement.TOMBSTONED
 
-    assert Platform.objects.get(pk=platform.pk).tombstoned_at is not None
+    assert Platform.objects.get(pk=platform.pk).removed_at is not None
 
 
 def test_a_referenced_device_is_tombstoned(owned_library, device):
@@ -219,7 +219,7 @@ def test_a_referenced_device_is_tombstoned(owned_library, device):
 
     assert tombstone_or_delete(device) is Retirement.TOMBSTONED
 
-    assert Device.objects.get(pk=device.pk).tombstoned_at is not None
+    assert Device.objects.get(pk=device.pk).removed_at is not None
 
 
 def test_a_shared_platform_one_library_referenced_is_retained_for_everyone(

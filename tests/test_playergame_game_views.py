@@ -105,7 +105,7 @@ def test_an_untracked_game_is_off_the_list(logged_in, owned_library):
 @pytest.mark.django_db
 def test_a_removed_game_is_off_the_list(logged_in, owned_library):
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
-    Game.objects.filter(pk=game.pk).update(tombstoned_at=timezone.now())
+    Game.objects.filter(pk=game.pk).update(removed_at=timezone.now())
 
     response = logged_in.get(reverse("games:list_games"))
 

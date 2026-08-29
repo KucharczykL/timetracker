@@ -93,4 +93,4 @@ def test_deleting_a_game_from_its_detail_page_lands_on_the_list(
     #: A tracked game is named in an event, so the row stays as a
     #: tombstone. What the list shows is the assertion either way.
     expect(authenticated_page.locator("table")).not_to_contain_text("Alpha")
-    assert Game.objects.get(id=world.id).tombstoned_at is not None
+    assert Game.objects.get(id=world.id).removed_at is not None
