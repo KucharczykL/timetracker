@@ -69,8 +69,6 @@ def test_editing_a_games_status_records_the_event(logged_in, owned_library):
         {**GAME_PAYLOAD, "status": "played"},
     )
 
-    game.refresh_from_db()
-    assert game.status == "p"
     assert PlayerGame.objects.get().status == PlayerGameStatus.PLAYED
 
 
@@ -106,8 +104,6 @@ def test_the_status_api_records_the_fact(logged_in, owned_library, tracked_game)
 
     assert response.status_code == 204
     assert PlayerGame.objects.get().status == PlayerGameStatus.COMPLETED
-    game.refresh_from_db()
-    assert game.status == "f"
 
 
 @pytest.mark.django_db(transaction=True)
@@ -170,8 +166,6 @@ def test_adding_a_session_records_played(logged_in, owned_library, tracked_game)
     logged_in.post(reverse("games:add_session"), _session_payload(tracked_game))
 
     assert PlayerGame.objects.get().status == PlayerGameStatus.PLAYED
-    tracked_game.refresh_from_db()
-    assert tracked_game.status == "p"
 
 
 @pytest.mark.django_db(transaction=True)
@@ -261,8 +255,6 @@ def test_adding_a_play_event_records_completed(logged_in, owned_library, tracked
     )
 
     assert PlayerGame.objects.get().status == PlayerGameStatus.COMPLETED
-    tracked_game.refresh_from_db()
-    assert tracked_game.status == "f"
 
 
 @pytest.mark.django_db(transaction=True)

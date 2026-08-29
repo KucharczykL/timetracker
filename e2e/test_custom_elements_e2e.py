@@ -67,8 +67,6 @@ def test_game_status_selector_opens_and_patches(
     expect(history_entries).to_contain_text("Unplayed")
     # The word it carries, not the letter.
     expect(history_entries).to_contain_text("Completed")
-    game.refresh_from_db()
-    assert game.status == "f"
 
 
 def test_session_device_selector_patches(
@@ -123,7 +121,7 @@ def test_status_selector_reverts_on_failed_patch(
 ):
     """A rejected PATCH (mocked 422) reverts the optimistic label + aria-selected
     and surfaces an error toast — the server value never silently diverges."""
-    from games.models import Game, Platform
+    from games.models import Game, Platform, PlayerGame, PlayerGameStatus
 
     platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
     game = Game.objects.create(
@@ -147,8 +145,9 @@ def test_status_selector_reverts_on_failed_patch(
         "aria-selected", "false"
     )
     expect(page.get_by_text("Couldn't save your change")).to_be_visible()
-    game.refresh_from_db()
-    assert game.status == "u"  # server unchanged
+    # The projection is what "unchanged" means now.
+    row = PlayerGame.objects.get(library=e2e_library, game=game)
+    assert row.status == PlayerGameStatus.UNPLAYED
 
 
 def test_play_event_row_increments(authenticated_page: Page, live_server, e2e_library):

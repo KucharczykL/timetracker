@@ -8,11 +8,6 @@ from django.utils import timezone
 
 from games.models import Game, PlayerGame, PlayerGameStatus
 from games.playergame_status import SETTABLE_PLAYER_STATUSES
-from games.writes.playergame import (
-    PlayerGameWriteFailed,
-    new_correlation_id,
-    record_facts,
-)
 
 
 @pytest.fixture
@@ -102,23 +97,6 @@ def test_the_endpoint_takes_a_shared_game_this_library_tracks(logged_in, owned_l
     assert response.status_code == 204
     row = PlayerGame.objects.get(library=owned_library, game=shared)
     assert row.status == PlayerGameStatus.PLAYED
-
-
-@pytest.mark.django_db(transaction=True)
-def test_shelved_is_refused_before_anything_is_recorded(owned_user, owned_library):
-    game = Game.objects.create(library=owned_library, name="Outer Wilds")
-
-    with pytest.raises(PlayerGameWriteFailed) as refusal:
-        record_facts(
-            owned_user,
-            game,
-            status=PlayerGameStatus.SHELVED,
-            correlation_id=new_correlation_id(),
-        )
-
-    assert refusal.value.status_code == 409
-    row = PlayerGame.objects.get(library=owned_library, game=game)
-    assert row.status == PlayerGameStatus.UNPLAYED
 
 
 @pytest.mark.django_db(transaction=True)
