@@ -982,7 +982,7 @@ def test_preset_removal_flow_takes_the_row_out(
 
     doomed_row.locator("[data-search-select-action='delete']").click()
 
-    # Refetch after the DELETE: the deleted row is gone, the other remains,
+    # Refetch after the DELETE: the row is out of the list, the other remains,
     # the dialog is still open with the search box focused.
     expect(doomed_row).not_to_be_attached(timeout=5_000)
     expect(

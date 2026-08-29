@@ -1,0 +1,23 @@
+---
+# Every other sense. Not an error, because neither word is always wrong: a tar
+# file is an archive, and Postgres has an archive mode. Nothing in a library is
+# either one.
+#
+# `delete` is absent on purpose. It is the right word for Django's `.delete()`,
+# a deleted branch and a deleted file, so a bare-word rule would print hundreds
+# of correct usages. Removal.yml's narrow patterns are the whole rule.
+#
+# A match that Removal already reported as an error is dropped by
+# scripts/run-vale.mjs, so the settled sense reads as one finding rather than
+# two. Go's regexp has no lookahead, so the rule cannot exclude it itself.
+extends: existence
+message: "'%s' is imprecise. Say 'remove', or name what is stored."
+link: docs/vocabulary.md
+level: warning
+ignorecase: true
+scope:
+  - ~code
+  - ~heading
+tokens:
+  - 'tombston(e|es|ed|ing)?'
+  - 'archiv(e|es|ed|ing|al)?'

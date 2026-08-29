@@ -1084,7 +1084,14 @@ git commit -m "Stamp in the API and the split, and sweep the callers"
 
 - [ ] **Step 1: Add the error patterns**
 
-In `Terminology.yml`, beside the `fold` tokens:
+**Deviation, applied:** two new files, `Removal.yml` and `RemovalTerms.yml`,
+rather than more tokens in the two existing ones. A rule file carries one
+message, and `Terminology.yml`'s says "Say 'replay'" — the right advice for
+`fold` and the wrong advice for every pattern below. One pair of files per word
+family. `scripts/run-vale.mjs` drops a covered warning by span overlap, not by
+rule name, so the two levels still read as one finding.
+
+The patterns themselves, unchanged:
 
 ```yaml
   # tombstone / tombstoned row — one act, one word, and it is remove
@@ -1113,6 +1120,12 @@ purpose to say why they are refused. Both live under `docs/superpowers/`. Add
 that directory to `.vale.ini`'s exclusions if it is not there already: a design
 record describes the words a codebase gave up, and a linter that forbids naming
 them makes the record unwritable.
+
+**Deviation, applied:** the exception turns off the two removal rules for that
+directory rather than every rule — the earlier rules still hold there, because
+only removal is what the record has to name. `CHANGELOG.md` gets the same
+narrow exception, for the same reason: an entry describes a release that
+shipped under the word it used, and editing it would misstate what shipped.
 
 - [ ] **Step 3: Write the vocabulary sections**
 

@@ -118,7 +118,7 @@ def test_sessions_section_is_read_only(game, rendered):
     # No canonical interactive list row (id + htmx device-changed swap)
     assert "session-row-" not in rendered
     assert "device-changed" not in rendered
-    # No per-row edit/delete session actions
+    # No per-row edit/remove session actions
     assert reverse("games:edit_session", args=[session.pk]) not in rendered
     assert reverse("games:remove_session", args=[session.pk]) not in rendered
     # No section-header resume button. Scope to the page body: the navbar's log

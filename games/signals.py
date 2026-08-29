@@ -60,7 +60,7 @@ def invalidate_settings_cache(sender, instance, **kwargs):
     # on_commit, not inline: firing inside the atomic block would let a racing
     # thread re-cache the old value, or cache a rolled-back phantom.
     #
-    # Known TTL-bounded gap: deleting a Device nulls a referencing
+    # Known TTL-bounded gap: destroying a Device nulls a referencing
     # default_device via a bulk UPDATE that fires no UserPreferences signal, so a
     # per-user snapshot can serve the dangling id until the TTL lapses.
     transaction.on_commit(clear_settings_cache)

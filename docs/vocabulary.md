@@ -10,6 +10,11 @@ fenced block and an inline `code` span are all skipped, so `folder` and
 `--no-count-replay` need no exception. That is also how this page can name the
 words it refuses — each one below is written as code.
 
+Two paths are held to the earlier rules but not the removal ones:
+`CHANGELOG.md` and `docs/superpowers/`. A changelog entry describes a release
+that shipped under the word it used, and a design record has to name the words
+a codebase gave up. Neither can be edited into the present tense.
+
 ## Two levels
 
 A word is refused for one meaning and merely imprecise for the rest, so the
@@ -60,13 +65,75 @@ Warning everywhere else, where the plainer word depends on what is joined:
 | `folded into the label` | included in the label |
 | `folding them into one branch` | combining them into one branch |
 
+### `tombstone` → remove
+
+A user **removes** a record. The row stays, `removed_at` says when, and
+`restore` puts it back.
+
+The word named a husk: a row emptied of everything but its name, kept so a
+foreign key had something to point at. #944 ended that shape. Nothing is
+emptied now, so nothing is a `tombstone`, and a word for a thing that no longer
+exists can only describe the current code by accident.
+
+Error when the sentence names a row or a record:
+
+| Instead of | Write |
+|---|---|
+| `a tombstoned row` | a removed row |
+| `write a tombstone` | remove the record |
+| `the tombstone keeps the name` | the removed row keeps its name |
+
+Warning everywhere else. The word has no other sense in this codebase, so a
+warning here means a sentence the pattern could not read.
+
+### `archive` → remove
+
+Same act, second name. `PlayerGame.archived_at` and the `ArchivePlayerGame`
+command said `archive` while every screen said delete, and neither word was
+the one a user read. #944 renamed the column, the command and the event to
+`remove`, because one act may have only one word.
+
+Error when the sentence names a row or a record:
+
+| Instead of | Write |
+|---|---|
+| `archive the game` | remove the game |
+| `an archived purchase` | a removed purchase |
+
+Warning everywhere else: a tar file is an `archive`, and Postgres has an
+`archive` mode. Neither is a record in a library.
+
+### `delete` → remove, purge, destroy
+
+`delete` is Django's word. `Model.delete()` deletes, a branch is deleted, a
+file is deleted. None of those is a library's act.
+
+- A user **removes** a record and may **restore** it.
+- **Purge** is the whole library at once, and it is the only act that destroys.
+- **Destroy** describes what a shell or a script does to a row, which no screen
+  can do.
+
+Error only next to a record noun — row, record, game, session, purchase,
+preset, play event, device, platform — or in `permanently delete`:
+
+| Instead of | Write |
+|---|---|
+| `deleting a game` | removing a game |
+| `permanently delete` | purge |
+| `the deleted row` | the removed row |
+
+Not warned as a bare word. Hundreds of correct uses name `.delete()`, a
+deleted file or a deleted branch, and a rule that flagged them all would be
+read as noise and then ignored.
+
 ## Adding a rule
 
-Put the settled meaning in `.vale/styles/Timetracker/Terminology.yml` as
-patterns that need a neighbouring domain word, and the bare word in
-`DiscouragedTerms.yml`. Add a section here saying why the word is refused. A
-rule with no reason written down is a rule the next person who wants the word
-reverts.
+Put the settled meaning in a rule file under `.vale/styles/Timetracker/` as
+patterns that need a neighbouring domain word, and the bare word in a second
+file at warning level. One pair of files per word family, because the error
+message names the one replacement and each family has its own. Add a section
+here saying why the word is refused. A rule with no reason written down is a
+rule the next person who wants the word reverts.
 
 Go's regular expressions have no lookahead, so the broad pattern cannot exclude
 the narrow one and both report the same words. `scripts/run-vale.mjs` drops a

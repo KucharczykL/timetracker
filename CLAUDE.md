@@ -156,7 +156,19 @@ docs/           — Additional documentation
 - **ExchangeRate** — cached FX rates per currency pair per year
 - **GameStatusChange** — the legacy audit log of status transitions, ordered by `-timestamp`. Nothing writes or reads it since #678 D1: the event stream is the record and `games/reads/playergame_history.py` is the one reader. The backfill still reads the old rows; #771 takes the table
 - **FilterPreset** — saved filter config; `mode` (games/sessions/purchases/playevents), `find_filter`, `object_filter`, `ui_options` (all JSON). Follows Stash's SavedFilter pattern
-- **PlayerGame** — the first projection: one row per catalog game a library tracks, written only by the `PlayerGames` projector. It states the library's `status` (the six `PlayerGameStatus` words) and `mastered`, and since #678 D2 it is the only place either is stated or read. Both `UUIDv7Field` defaults are opted out (the pk is the event's `aggregate_id`); `game` is `RESTRICT`, so a projection row is never collateral
+- **PlayerGame** — the first projection: one row per catalog game a library tracks, written only by the `PlayerGames` projector. Its `removed_at` is the projector's, stated by a `RemovePlayerGame` command, and separate from the catalog row's. It states the library's `status` (the six `PlayerGameStatus` words) and `mastered`, and since #678 D2 it is the only place either is stated or read. Both `UUIDv7Field` defaults are opted out (the pk is the event's `aggregate_id`); `game` is `RESTRICT`, so a projection row is never collateral
+
+**Nothing a user removes is destroyed** (#944). The seven removable models —
+Game, Platform, Device, Session, PlayEvent, Purchase, FilterPreset — each carry a
+nullable `removed_at`, listed in `REMOVABLE_MODELS` in `games/removal.py`.
+`remove(instance)` stamps it, `restore(instance)` clears it, and both use an
+`UPDATE` rather than `save()`, so a stamp revalidates nothing and fires no
+`post_save`. What a signal would have done, `_AFTER_STAMP` does by hand: a
+removed Game recounts its purchases, a removed Session recalculates the
+playtime. `for_library()`/`visible_to()` call `.alive()`, so a removed row
+leaves every list, form, filter and API response at once; the plain manager
+still sees it. A Purchase is live while any of its games is, or while it names
+none. Only a whole-library purge destroys anything.
 
 **A multi-game Purchase is an *unsplittable* bundle** — one price, whole-purchase
 refund (e.g. a Humble Bundle). Independently-refundable multi-item orders (e.g. a
@@ -212,7 +224,7 @@ Submodules re-exported via `common/components/__init__.py`:
   `Input()`, `Checkbox()`, `Radio()`, `Pill()`, `Icon()`, `Popover()`,
   `TruncatedText()`, `SearchField()`, `PageHeading()` (badge heading; the plain
   `<h1>` is the generated `H1`), `Modal()`, `ConfirmPage()` (full-page POST
-  confirmation — the canonical delete affordance; `details` is a block slot beside
+  confirmation — the canonical removal affordance; `details` is a block slot beside
   `message`, which renders inside a `<p>`), `StyledTable()`, `TableRow()`,
   `TableTd()`, `TableHeader()`, `ContentContainer()` (the page-body width container,
   `w-full max-w-7xl self-center` — every list/detail/stats body sits in one),
@@ -295,8 +307,10 @@ organized by domain entity:
 - `returns.py` — route classification (`READ_ONLY` / `ORIGIN_AWARE` / `CONFIRMATION`
   / `IN_PLACE`, guarded for completeness against the route table) plus
   `origin_from()` and `return_url()`, the app-bound half of `common/returns.py`
-- `deletion.py` — `confirm_and_delete()`: GET renders a `ConfirmPage`, POST deletes
-  and returns to the origin. Every delete view is one call to it
+- `removal.py` — `confirm_and_remove()`: GET renders a `ConfirmPage`, POST stamps
+  `removed_at` and returns to the origin. Every `remove_*` view is one call to it,
+  over `confirm_and_apply()`, which the same module keeps for any other
+  confirmed POST
 - `stats_data.py` — `compute_stats(year)` → a `StatsData` TypedDict; pure computation
 - `stats_content.py` — renders stats page content from a `StatsData`
 - `stats_links.py` — pure filter-link builders for stats rows/counts (#65);
@@ -309,9 +323,8 @@ the shared combobox dropdown (#297).
 **Signals** (`games/signals.py`):
 - `pre_save` on Purchase: snapshots old price/currency for change detection
 - `post_save` on Purchase: sets `needs_price_update` if price/currency changed
-- `m2m_changed` on Purchase.games: updates `num_purchases`
-- `pre_delete` on Game: decrements `num_purchases` on related Purchases (deletes the
-  Purchase if the count reaches 0)
+- `m2m_changed` on Purchase.games: updates `num_purchases` from the live games
+  (`games.removal` recounts after a stamp, which fires no signal)
 - `post_save`/`post_delete` on Session: recalculates `Game.playtime` from the aggregate
 
 **Background tasks**: a django-q2 cluster (1 worker, 60s timeout, 120s retry, ORM
@@ -331,7 +344,8 @@ present. Rendering is client-side (`games/static/js/toast.js`).
 - `GET /api/presets/` — the user's presets for a mode, shaped as combobox options
   (`limit=0` = unbounded)
 - `POST /api/presets/` — upsert on (user, mode, name); 201 create / 200 update
-- `DELETE /api/presets/{id}` — delete an owned preset (404 for non-owner)
+- `DELETE /api/presets/{id}` — remove an owned preset (404 for non-owner). DELETE
+  is the transport's word; the row stays and `removed_at` is set
 
 ### Templates
 
@@ -571,10 +585,10 @@ chromium` once. All JS is vendored, so the tests run fully offline. A bare
   parameter — never the session, never a form body — and is validated against the
   `READ_ONLY` route set, so it can never name a mutating target. It is `origin`
   rather than `next` because Django's auth views own `next`.
-- **No route mutates on GET** — deletes answer GET with a `ConfirmPage` and act on
-  POST at the same URL (which is what lets `?origin=` ride through the confirmation
-  for free); write them as one `confirm_and_delete()` call. Anything else that
-  changes state is POST-only.
+- **No route mutates on GET** — a removal answers GET with a `ConfirmPage` and acts
+  on POST at the same URL (which is what lets `?origin=` ride through the
+  confirmation for free); write them as one `confirm_and_remove()` call. Anything
+  else that changes state is POST-only.
 - **Signals handle side-effects** — do not manually recalculate `Game.playtime` or
   `Purchase.num_purchases`.
 - **Buttons are `ControlButton`** — colors: `blue` (primary), `red` (destructive),
@@ -621,6 +635,12 @@ chromium` once. All JS is vendored, so the tests run fully offline. A bare
 - **Inline Alpine.js** remains only in the pre-existing domain components
   (`GameStatusSelector`, `SessionDeviceSelector`): `x-data="{...}"` plus
   `fetchWithHtmxTriggers()` for PATCH calls. New behavior goes in a custom element.
+- **Nothing destroys a record** — call `remove()`/`restore()` from
+  `games/removal.py`, never `instance.delete()`, and write a confirmation as one
+  `confirm_and_remove()` call. A new removable model needs `removed_at`, a place
+  in `REMOVABLE_MODELS`, and a builder in `tests/test_removable_models.py`, which
+  fails until it has one. `delete` is Django's word, not the library's: see
+  [Vocabulary](docs/vocabulary.md), which `make vale` enforces.
 - **A PlayerGame fact is stated as a command** — never assign `Game.status` or
   `Game.mastered` directly. Call `record_facts()` / `track_game()` from
   `games/writes/playergame.py`, or their request-shaped wrappers in
