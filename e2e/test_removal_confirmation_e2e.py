@@ -29,7 +29,7 @@ def test_the_confirmation_promises_a_removal(
     game = Game.objects.create(library=e2e_library, name="Forgettable")
 
     page = authenticated_page
-    page.goto(f"{live_server.url}{reverse('games:delete_game', args=[game.pk])}")
+    page.goto(f"{live_server.url}{reverse('games:remove_game', args=[game.pk])}")
 
     expect(page.get_by_text("Remove Forgettable from your library?")).to_be_visible()
 

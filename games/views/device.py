@@ -43,7 +43,7 @@ from games.views.filtering import (
     builder_url_for,
     warn_unknown_sort,
 )
-from games.views.retirement import confirm_and_retire
+from games.views.removal import confirm_and_remove
 from games.views.returns import return_url
 
 
@@ -98,7 +98,7 @@ def list_devices(request: HttpRequest) -> HttpResponse:
                         },
                         {
                             "href": action_url(
-                                "games:delete_device", device.pk, origin=origin
+                                "games:remove_device", device.pk, origin=origin
                             ),
                             "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
                             "color": "red",
@@ -149,10 +149,10 @@ def edit_device(request: HttpRequest, device_id: UUID) -> HttpResponse:
 
 
 @login_required
-def delete_device(request: HttpRequest, device_id: UUID) -> HttpResponse:
+def remove_device(request: HttpRequest, device_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     device = owned_or_404(Device.objects.for_library(library), library, id=device_id)
-    return confirm_and_retire(
+    return confirm_and_remove(
         request,
         device,
         title="Remove device",

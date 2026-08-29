@@ -42,7 +42,7 @@ from games.views.filtering import (
     builder_url_for,
     warn_unknown_sort,
 )
-from games.views.retirement import confirm_and_retire
+from games.views.removal import confirm_and_remove
 from games.views.returns import return_url
 
 
@@ -99,7 +99,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
                         },
                         {
                             "href": action_url(
-                                "games:delete_platform", platform.pk, origin=origin
+                                "games:remove_platform", platform.pk, origin=origin
                             ),
                             "slot": Icon("delete"),
                             "color": "red",
@@ -138,12 +138,12 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def delete_platform(request: HttpRequest, platform_id: UUID) -> HttpResponse:
+def remove_platform(request: HttpRequest, platform_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     platform = owned_or_404(
         Platform.objects.for_library(library), library, id=platform_id
     )
-    return confirm_and_retire(
+    return confirm_and_remove(
         request,
         platform,
         title="Remove platform",

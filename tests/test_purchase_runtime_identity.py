@@ -18,7 +18,7 @@ UUID4 = UUID("018f5e66-e800-4000-8000-000000000001")
 
 PURCHASE_IDENTITY_ROUTES = [
     ("games:edit_purchase", "purchase_id"),
-    ("games:delete_purchase", "purchase_id"),
+    ("games:remove_purchase", "purchase_id"),
     ("games:view_purchase", "purchase_id"),
     ("games:refund_purchase_confirmation", "purchase_id"),
     ("games:refund_purchase", "purchase_id"),
@@ -96,7 +96,7 @@ def runtime_world(db):
     ("method", "route_name", "expected_status"),
     [
         ("get", "games:edit_purchase", 200),
-        ("get", "games:delete_purchase", 200),
+        ("get", "games:remove_purchase", 200),
         ("get", "games:view_purchase", 200),
         ("get", "games:refund_purchase_confirmation", 200),
         ("post", "games:refund_purchase", 200),
@@ -119,7 +119,7 @@ def test_purchase_identity_routes_accept_owned_uuidv7s(
     ("method", "route_name"),
     [
         ("get", "games:edit_purchase"),
-        ("get", "games:delete_purchase"),
+        ("get", "games:remove_purchase"),
         ("get", "games:view_purchase"),
         ("get", "games:refund_purchase_confirmation"),
         ("post", "games:refund_purchase"),

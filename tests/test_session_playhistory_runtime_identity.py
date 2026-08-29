@@ -17,12 +17,12 @@ UUID4 = UUID("018f5e66-e800-4000-8000-000000000001")
 
 HTML_IDENTITY_ROUTES = [
     ("games:edit_playevent", "playevent_id"),
-    ("games:delete_playevent", "playevent_id"),
+    ("games:remove_playevent", "playevent_id"),
     ("games:list_sessions_start_session_from_session", "session_id"),
     ("games:edit_session", "session_id"),
     ("games:finish_session", "session_id"),
     ("games:reset_session", "session_id"),
-    ("games:delete_session", "session_id"),
+    ("games:remove_session", "session_id"),
 ]
 
 

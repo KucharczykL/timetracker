@@ -42,7 +42,7 @@ def runtime_world():
     return locals()
 
 
-@pytest.mark.parametrize("route_name", ["games:edit_device", "games:delete_device"])
+@pytest.mark.parametrize("route_name", ["games:edit_device", "games:remove_device"])
 def test_device_html_routes_use_uuidv7(route_name):
     identity = uuid.uuid7()
     url = reverse(route_name, args=[identity])

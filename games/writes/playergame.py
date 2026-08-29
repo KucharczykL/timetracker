@@ -14,6 +14,7 @@ from django.http import Http404
 from games.commands.playergame import (
     PlayerGameNotTracked,
     RecordPlayerGameFacts,
+    RemovePlayerGame,
     TrackGame,
 )
 from games.events.dispatch import (
@@ -95,6 +96,21 @@ def track_game(actor: User, game: Game, *, correlation_id: uuid.UUID) -> None:
             library=actor.library,
             correlation_id=correlation_id,
         )
+
+
+def untrack_game(actor: User, game: Game, *, correlation_id: uuid.UUID) -> None:
+    """State that the library no longer tracks the game."""
+    with _translated():
+        try:
+            _dispatch(
+                RemovePlayerGame(game_id=game.pk),
+                actor=actor,
+                library=actor.library,
+                correlation_id=correlation_id,
+            )
+        except PlayerGameNotTracked:
+            #: Nothing tracks it, so the catalog stamp is the whole act.
+            pass
 
 
 def record_facts(

@@ -37,7 +37,7 @@ urlpatterns = [
     ),
     path("device/add", device.add_device, name="add_device"),
     path(
-        "device/delete/<uuidv7:device_id>", device.delete_device, name="delete_device"
+        "device/<uuidv7:device_id>/remove", device.remove_device, name="remove_device"
     ),
     path("device/edit/<uuidv7:device_id>", device.edit_device, name="edit_device"),
     path("device/list", device.list_devices, name="list_devices"),
@@ -52,7 +52,7 @@ urlpatterns = [
         game.view_game,
         name="view_game",
     ),
-    path("game/<uuidv7:game_id>/delete", game.delete_game, name="delete_game"),
+    path("game/<uuidv7:game_id>/remove", game.remove_game, name="remove_game"),
     path("game/list", game.list_games, name="list_games"),
     path("platform/add", platform.add_platform, name="add_platform"),
     path(
@@ -61,9 +61,9 @@ urlpatterns = [
         name="edit_platform",
     ),
     path(
-        "platform/<uuidv7:platform_id>/delete",
-        platform.delete_platform,
-        name="delete_platform",
+        "platform/<uuidv7:platform_id>/remove",
+        platform.remove_platform,
+        name="remove_platform",
     ),
     path("platform/list", platform.list_platforms, name="list_platforms"),
     path("playevent/list", playevent.list_playevents, name="list_playevents"),
@@ -79,9 +79,9 @@ urlpatterns = [
         name="edit_playevent",
     ),
     path(
-        "playevent/delete/<uuidv7:playevent_id>",
-        playevent.delete_playevent,
-        name="delete_playevent",
+        "playevent/<uuidv7:playevent_id>/remove",
+        playevent.remove_playevent,
+        name="remove_playevent",
     ),
     path("purchase/add", purchase.add_purchase, name="add_purchase"),
     path(
@@ -95,9 +95,9 @@ urlpatterns = [
         name="edit_purchase",
     ),
     path(
-        "purchase/<uuidv7:purchase_id>/delete",
-        purchase.delete_purchase,
-        name="delete_purchase",
+        "purchase/<uuidv7:purchase_id>/remove",
+        purchase.remove_purchase,
+        name="remove_purchase",
     ),
     path(
         "purchase/<uuidv7:purchase_id>/view",
@@ -152,9 +152,9 @@ urlpatterns = [
         name="reset_session",
     ),
     path(
-        "session/<uuidv7:session_id>/delete",
-        session.delete_session,
-        name="delete_session",
+        "session/<uuidv7:session_id>/remove",
+        session.remove_session,
+        name="remove_session",
     ),
     path("session/list", session.list_sessions, name="list_sessions"),
     path("stats/", general.stats_alltime, name="stats_alltime"),

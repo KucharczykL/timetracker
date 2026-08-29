@@ -3,11 +3,12 @@
 Both live on the same URL, so the ``?origin=`` value rides through the
 confirmation into the POST with nothing to thread by hand.
 
-Deleting is the common case and keeps its own wrapper, but the flow itself is
+Removing is the common case and keeps its own wrapper, but the flow itself is
 indifferent to what the POST does — reset uses it too.
 """
 
 from collections.abc import Callable, Sequence
+from functools import partial
 from typing import Any
 
 from django.db.models import Model
@@ -19,14 +20,15 @@ from common.components import ConfirmPage
 from common.components.core import Children
 from common.layout import render_page
 from common.returns import UrlName
+from games.removal import remove
 from games.views.returns import return_url
 
 
 def confirm_and_apply(
     request: HttpRequest,
     *,
-    # Whatever the action returns is discarded; Model.delete's tuple is the
-    # reason this is `object` rather than `None`.
+    # Whatever the action returns is discarded; a removal that reports
+    # whether it landed is why this is `object` rather than `None`.
     action: Callable[[], object],
     title: str,
     message: str,
@@ -69,7 +71,7 @@ def confirm_and_apply(
     )
 
 
-def confirm_and_delete(
+def confirm_and_remove(
     request: HttpRequest,
     instance: Model,
     *,
@@ -79,18 +81,22 @@ def confirm_and_delete(
     fallback_args: Sequence[Any] = (),
     details: Children = None,
     detail_url: str | None = None,
+    action: Callable[[], object] | None = None,
 ) -> HttpResponse:
-    """Confirm on GET, delete on POST, then return to the origin.
+    """Confirm on GET, remove on POST, then return to the origin.
 
-    ``detail_url`` is the deleted object's own page: an origin naming it would
-    turn a successful delete into a 404, so it is refused.
+    ``detail_url`` is the removed row's own page: an origin naming it
+    would turn a successful removal into a 404, so it is refused.
+
+    ``action`` is for a record whose removal is more than a stamp: a
+    game states a fact to its projection first.
     """
     return confirm_and_apply(
         request,
-        action=instance.delete,
+        action=action or partial(remove, instance),
         title=title,
         message=message,
-        confirm_label="Delete",
+        confirm_label="Remove",
         fallback=fallback,
         fallback_args=fallback_args,
         details=details,

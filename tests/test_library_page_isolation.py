@@ -197,23 +197,23 @@ def _object_url(url_name, obj):
     [
         ("games:view_game", "foreign_game"),
         ("games:edit_game", "foreign_game"),
-        ("games:delete_game", "foreign_game"),
+        ("games:remove_game", "foreign_game"),
         ("games:edit_session", "foreign_session"),
         ("games:reset_session", "foreign_session"),
-        ("games:delete_session", "foreign_session"),
+        ("games:remove_session", "foreign_session"),
         ("games:view_purchase", "foreign_purchase"),
         ("games:edit_purchase", "foreign_purchase"),
-        ("games:delete_purchase", "foreign_purchase"),
+        ("games:remove_purchase", "foreign_purchase"),
         ("games:refund_purchase_confirmation", "foreign_purchase"),
         ("games:split_purchase_confirmation", "foreign_purchase"),
         ("games:edit_device", "foreign_device"),
-        ("games:delete_device", "foreign_device"),
+        ("games:remove_device", "foreign_device"),
         ("games:edit_platform", "foreign_platform"),
-        ("games:delete_platform", "foreign_platform"),
+        ("games:remove_platform", "foreign_platform"),
         ("games:edit_platform", "shared_platform"),
-        ("games:delete_platform", "shared_platform"),
+        ("games:remove_platform", "shared_platform"),
         ("games:edit_playevent", "foreign_playevent"),
-        ("games:delete_playevent", "foreign_playevent"),
+        ("games:remove_playevent", "foreign_playevent"),
     ],
 )
 def test_foreign_detail_edit_and_delete_reads_return_404(world, url_name, object_name):
@@ -227,24 +227,24 @@ def test_foreign_detail_edit_and_delete_reads_return_404(world, url_name, object
     [
         ("games:view_game", "own_game"),
         ("games:edit_game", "own_game"),
-        ("games:delete_game", "own_game"),
+        ("games:remove_game", "own_game"),
         ("games:edit_session", "own_session"),
         ("games:reset_session", "own_session"),
-        ("games:delete_session", "own_session"),
+        ("games:remove_session", "own_session"),
         ("games:view_purchase", "own_purchase"),
         ("games:edit_purchase", "own_purchase"),
-        ("games:delete_purchase", "own_purchase"),
+        ("games:remove_purchase", "own_purchase"),
         ("games:refund_purchase_confirmation", "own_purchase"),
         ("games:split_purchase_confirmation", "own_purchase"),
         ("games:edit_device", "own_device"),
-        ("games:delete_device", "own_device"),
+        ("games:remove_device", "own_device"),
         ("games:edit_platform", "own_platform"),
-        ("games:delete_platform", "own_platform"),
+        ("games:remove_platform", "own_platform"),
         ("games:edit_playevent", "own_playevent"),
-        ("games:delete_playevent", "own_playevent"),
+        ("games:remove_playevent", "own_playevent"),
     ],
 )
-def test_owned_detail_edit_and_delete_reads_work(world, url_name, object_name):
+def test_owned_detail_edit_and_remove_reads_work(world, url_name, object_name):
     obj = getattr(world, object_name)
 
     assert world.client.get(_object_url(url_name, obj)).status_code == 200
@@ -253,15 +253,15 @@ def test_owned_detail_edit_and_delete_reads_work(world, url_name, object_name):
 @pytest.mark.parametrize(
     ("url_name", "object_name", "model"),
     [
-        ("games:delete_game", "foreign_game", Game),
-        ("games:delete_session", "foreign_session", Session),
-        ("games:delete_purchase", "foreign_purchase", Purchase),
-        ("games:delete_device", "foreign_device", Device),
-        ("games:delete_platform", "foreign_platform", Platform),
-        ("games:delete_playevent", "foreign_playevent", PlayEvent),
+        ("games:remove_game", "foreign_game", Game),
+        ("games:remove_session", "foreign_session", Session),
+        ("games:remove_purchase", "foreign_purchase", Purchase),
+        ("games:remove_device", "foreign_device", Device),
+        ("games:remove_platform", "foreign_platform", Platform),
+        ("games:remove_playevent", "foreign_playevent", PlayEvent),
     ],
 )
-def test_foreign_delete_posts_return_404_without_mutation(
+def test_foreign_removal_posts_return_404_without_mutation(
     world, url_name, object_name, model
 ):
     obj = getattr(world, object_name)
@@ -275,23 +275,34 @@ def test_foreign_delete_posts_return_404_without_mutation(
 @pytest.mark.parametrize(
     ("url_name", "object_name", "model"),
     [
-        ("games:delete_game", "own_game", Game),
-        ("games:delete_session", "own_session", Session),
-        ("games:delete_purchase", "own_purchase", Purchase),
-        ("games:delete_device", "own_device", Device),
-        ("games:delete_platform", "own_platform", Platform),
-        ("games:delete_playevent", "own_playevent", PlayEvent),
+        ("games:remove_session", "own_session", Session),
+        ("games:remove_purchase", "own_purchase", Purchase),
+        ("games:remove_device", "own_device", Device),
+        ("games:remove_platform", "own_platform", Platform),
+        ("games:remove_playevent", "own_playevent", PlayEvent),
     ],
 )
 @pytest.mark.untracked_games
-def test_owned_delete_posts_work(world, url_name, object_name, model):
+def test_owned_removal_posts_work(world, url_name, object_name, model):
     obj = getattr(world, object_name)
 
     response = world.client.post(reverse(url_name, args=[obj.pk]))
 
     assert response.status_code == 302
-    #: Out of the library, whether the row went or only its mark.
     assert not model.objects.for_library(world.owner_library).filter(pk=obj.pk).exists()
+
+
+#: Its own test: removing a game states a fact, and a dispatch opens
+#: the transaction it retries, which refuses to nest.
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.untracked_games
+def test_owned_game_removal_post_works(world):
+    game = world.own_game
+
+    response = world.client.post(reverse("games:remove_game", args=[game.pk]))
+
+    assert response.status_code == 302
+    assert not Game.objects.for_library(world.owner_library).filter(pk=game.pk).exists()
 
 
 @pytest.mark.parametrize(

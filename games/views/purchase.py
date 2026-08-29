@@ -65,9 +65,9 @@ from games.sorting import (
     apply_sort,
     parse_find_filter,
 )
-from games.views.deletion import confirm_and_delete
 from games.views.filtering import warn_unknown_sort
 from games.views.playergame_writes import record_facts_for_request
+from games.views.removal import confirm_and_remove
 from games.views.returns import origin_from, return_url
 from games.writes.playergame import new_correlation_id
 
@@ -108,7 +108,7 @@ def _render_purchase_buttons(
                 "color": "gray",
             },
             {
-                "href": action_url("games:delete_purchase", purchase_id, origin=origin),
+                "href": action_url("games:remove_purchase", purchase_id, origin=origin),
                 "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
                 "title": "Delete",
                 "color": "red",
@@ -432,16 +432,16 @@ def edit_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
 
 
 @login_required
-def delete_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
+def remove_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     purchase = owned_or_404(
         Purchase.objects.for_library(library), library, id=purchase_id
     )
-    return confirm_and_delete(
+    return confirm_and_remove(
         request,
         purchase,
-        title="Delete purchase",
-        message=f"Permanently delete this purchase of {purchase.first_game}?",
+        title="Remove purchase",
+        message=f"Remove this purchase of {purchase.first_game}?",
         fallback="games:list_purchases",
         detail_url=reverse("games:view_purchase", args=[purchase_id]),
     )
