@@ -11,7 +11,7 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AddField(
             model_name="playergame",
-            name="archived_at",
+            name="removed_at",
             field=models.DateTimeField(default=None, editable=False, null=True),
         ),
     ]

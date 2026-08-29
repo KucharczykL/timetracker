@@ -15,10 +15,10 @@ from games.events.dispatch import (
     CommandRejected,
 )
 from games.events.playergame import (
-    PLAYERGAME_ARCHIVED,
     PLAYERGAME_CREATED,
     PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED,
     PLAYERGAME_MASTERED_CHANGED,
+    PLAYERGAME_REMOVED,
     PLAYERGAME_RESTORED,
     PLAYERGAME_STATUS_CHANGED,
     StatusValue,
@@ -67,10 +67,10 @@ class TrackGame(Command):
         #: Under dispatch's lock: no concurrent duplicate.
         tracked = PlayerGame.objects.filter(library=context.library, game=game).first()
         if tracked is not None:
-            if tracked.archived_at is not None:
+            if tracked.removed_at is not None:
                 raise CommandRejected(
-                    f"This library archives {game.name} rather than tracking it. "
-                    "An archived game is restored, not tracked again."
+                    f"This library removed {game.name} rather than tracking it. "
+                    "A removed game is restored, not tracked again."
                 )
             return Unchanged(f"This library already tracks {game.name}.")
         return [
@@ -180,29 +180,28 @@ class SetPlayerGameExcludedFromUnfinished(Command):
 
 
 @dataclass(frozen=True, slots=True)
-class ArchivePlayerGame(Command):
-    """Archive a tracked game."""
+class RemovePlayerGame(Command):
+    """Take a tracked game out of the library."""
 
-    command_name: ClassVar[CommandName] = CommandName.PLAYERGAME_ARCHIVE
+    command_name: ClassVar[CommandName] = CommandName.PLAYERGAME_REMOVE
     #: A UUID, because Command fingerprints its fields.
     game_id: uuid.UUID
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         tracked = _tracked_game(context, self.game_id)
         #: Under dispatch's lock: no concurrent duplicate.
-        if tracked.archived_at is not None:
-            return Unchanged(f"This library already archives game {self.game_id}.")
-        return [PLAYERGAME_ARCHIVED.new(aggregate_id=tracked.pk, payload={})]
+        if tracked.removed_at is not None:
+            return Unchanged(f"This library already removed game {self.game_id}.")
+        return [PLAYERGAME_REMOVED.new(aggregate_id=tracked.pk, payload={})]
 
 
 @dataclass(frozen=True, slots=True)
 class RestorePlayerGame(Command):
-    """Restore a game this library archived.
+    """Restore a game this library removed.
 
-    The catalog is not consulted. A delete of a tracked game tombstones the
-    catalog row and keeps this one, so an archived game may outlive the row it
-    names; refusing would leave the library a game it can neither see nor
-    recover.
+    The catalog is not consulted. Removing a tracked game stamps the catalog
+    row and keeps this one, so a removed game may outlive the row it names;
+    refusing would leave the library a game it can neither see nor recover.
     """
 
     command_name: ClassVar[CommandName] = CommandName.PLAYERGAME_RESTORE
@@ -212,8 +211,8 @@ class RestorePlayerGame(Command):
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         tracked = _tracked_game(context, self.game_id)
         #: Under dispatch's lock: no concurrent duplicate.
-        if tracked.archived_at is None:
-            return Unchanged(f"This library does not archive game {self.game_id}.")
+        if tracked.removed_at is None:
+            return Unchanged(f"This library did not remove game {self.game_id}.")
         return [PLAYERGAME_RESTORED.new(aggregate_id=tracked.pk, payload={})]
 
 

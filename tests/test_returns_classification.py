@@ -2,7 +2,7 @@
 
 Guarding on a name prefix (add_/edit_/delete_/…) does not hold: the session
 clone route is named for where it is launched from, and a future clone_/reset_/
-archive_ route would pass silently. Completeness against the real route table
+merge_ route would pass silently. Completeness against the real route table
 has no such hole, and READ_ONLY doubles as the origin allow-list.
 """
 

@@ -125,7 +125,7 @@ def backfill_playergame_baseline(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-    dependencies = [("games", "0032_playergame_archived_at")]
+    dependencies = [("games", "0032_playergame_removed_at")]
 
     operations = [
         migrations.RunPython(

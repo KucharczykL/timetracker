@@ -306,7 +306,7 @@ def test_an_unmastered_game_records_no_mastery_fact(owned_user, owned_library):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_no_exclusion_or_archive_fact_is_invented(owned_user, owned_library):
+def test_no_exclusion_or_removal_fact_is_invented(owned_user, owned_library):
     game = Game.objects.create(
         library=owned_library, name="Signalis", status=Game.Status.RETIRED
     )
@@ -315,8 +315,8 @@ def test_no_exclusion_or_archive_fact_is_invented(owned_user, owned_library):
 
     recorded = set(LibraryEvent.objects.values_list("event_type", flat=True))
     assert "library.playergame.excluded_from_unfinished_changed" not in recorded
-    assert "library.playergame.archived" not in recorded
-    assert PlayerGame.objects.get().archived_at is None
+    assert "library.playergame.removed" not in recorded
+    assert PlayerGame.objects.get().removed_at is None
 
 
 @pytest.mark.django_db(transaction=True)

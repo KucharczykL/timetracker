@@ -133,8 +133,8 @@ class GameQuerySet(RemovableLibraryQuerySet):
         `alive()` comes first: since #676 a game delete leaves the
         catalog row removed and the projection row beside it.
 
-        An archived row is not tracked. TrackGame refuses to track an
-        archived game again, so a game the list still showed could not
+        A removed row is not tracked. TrackGame refuses to track a
+        removed game again, so a game the list still showed could not
         be got rid of.
         """
         return (
@@ -142,7 +142,7 @@ class GameQuerySet(RemovableLibraryQuerySet):
             .annotated_for_filtering(library)
             .filter(
                 tracked__isnull=False,
-                tracked__archived_at__isnull=True,
+                tracked__removed_at__isnull=True,
                 **conditions,
             )
             .annotate(
@@ -1402,9 +1402,9 @@ class PlayerGame(ProjectionModel):
     mastered = models.BooleanField(default=False)
     #: An explicit preference, never inferred from status.
     excluded_from_unfinished = models.BooleanField(default=False)
-    #: The archive event's recorded_at; null means live.
+    #: The remove event's recorded_at; null means live.
     #: The player's own act, not the catalog row's.
-    archived_at = models.DateTimeField(null=True, default=None, editable=False)
+    removed_at = models.DateTimeField(null=True, default=None, editable=False)
 
     class Meta:
         constraints = (

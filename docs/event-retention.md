@@ -190,8 +190,7 @@ all use that verb.
 
 The column names the act in the past participle: `<act>_at`, and a name for what
 the act touches can come first. It is a nullable `DateTimeField`, and null is
-the live state. Thus `tombstoned_at`, `archived_at`, `voided_at`,
-`access_ended_at`.
+the live state. Thus `removed_at`, `voided_at`, `access_ended_at`.
 
 A fact about the world and a retraction of a record are two acts, thus they take
 two verbs. An end of access and a refund are facts. A void and a deletion are

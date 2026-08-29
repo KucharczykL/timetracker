@@ -15,7 +15,7 @@ pytestmark = [
     pytest.mark.untracked_games,
 ]
 
-BEFORE_BASELINE = ("games", "0032_playergame_archived_at")
+BEFORE_BASELINE = ("games", "0032_playergame_removed_at")
 WITH_BASELINE = ("games", "0033_playergame_baseline_backfill")
 
 

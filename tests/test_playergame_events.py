@@ -6,10 +6,10 @@ from typing import get_args
 import pytest
 
 from games.events.playergame import (
-    PLAYERGAME_ARCHIVED,
     PLAYERGAME_CREATED,
     PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED,
     PLAYERGAME_MASTERED_CHANGED,
+    PLAYERGAME_REMOVED,
     PLAYERGAME_RESTORED,
     PLAYERGAME_STATUS_CHANGED,
     StatusValue,
@@ -175,29 +175,27 @@ def test_the_exclusion_payload_carries_no_reference():
     )
 
 
-def test_the_archive_event_is_in_the_application_vocabulary():
-    registered = DEFAULT_EVENT_TYPES.spec_for("library.playergame.archived")
+def test_the_remove_event_is_in_the_application_vocabulary():
+    registered = DEFAULT_EVENT_TYPES.spec_for("library.playergame.removed")
 
-    assert registered is PLAYERGAME_ARCHIVED
+    assert registered is PLAYERGAME_REMOVED
     assert registered.aggregate_type == "playergame"
 
 
-def test_the_archive_payload_states_nothing_but_its_type():
+def test_the_remove_payload_states_nothing_but_its_type():
     """Two facts take two types, so no key states a direction."""
-    assert DEFAULT_EVENT_TYPES.validate(PLAYERGAME_ARCHIVED.event_type, {}) == {}
+    assert DEFAULT_EVENT_TYPES.validate(PLAYERGAME_REMOVED.event_type, {}) == {}
 
 
-def test_an_archive_payload_stating_a_direction_is_refused():
+def test_a_remove_payload_stating_a_direction_is_refused():
     """A key nobody declared could disagree with the type."""
     with pytest.raises(PayloadInvalid):
-        DEFAULT_EVENT_TYPES.validate(PLAYERGAME_ARCHIVED.event_type, {"archived": True})
+        DEFAULT_EVENT_TYPES.validate(PLAYERGAME_REMOVED.event_type, {"removed": True})
 
 
-def test_the_archive_payload_carries_no_reference():
+def test_the_remove_payload_carries_no_reference():
     """The creation event holds the one reference."""
-    assert (
-        DEFAULT_EVENT_TYPES.reference_fields_for(PLAYERGAME_ARCHIVED.event_type) == {}
-    )
+    assert DEFAULT_EVENT_TYPES.reference_fields_for(PLAYERGAME_REMOVED.event_type) == {}
 
 
 def test_the_restore_event_is_in_the_application_vocabulary():
