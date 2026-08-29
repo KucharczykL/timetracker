@@ -103,11 +103,14 @@ class GameQuerySet(TombstonableQuerySet):
             tracked=FilteredRelation("player_games", condition=condition)
         )
 
-    def tracked_by(self, library):
+    def tracked_by(self, library, **conditions):
         """Every live game this library tracks, facts read.
 
         No `library=library`: a shared catalog game this library
         tracks belongs on the list.
+
+        Extra conditions ride in that same filter() call, because a
+        second call on the relation opens a second join.
 
         A FilteredRelation, not a plain path. Django opens a join per
         filter() call on a multi-valued relation, and a list applies
@@ -127,7 +130,11 @@ class GameQuerySet(TombstonableQuerySet):
         return (
             self.alive()
             .annotated_for_filtering(library)
-            .filter(tracked__isnull=False, tracked__archived_at__isnull=True)
+            .filter(
+                tracked__isnull=False,
+                tracked__archived_at__isnull=True,
+                **conditions,
+            )
             .annotate(
                 tracked_status=F("tracked__status"),
                 tracked_mastered=F("tracked__mastered"),
