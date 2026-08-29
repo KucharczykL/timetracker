@@ -1,6 +1,6 @@
 import contextlib
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta, timezone
 from decimal import Decimal, localcontext
 from threading import Event, Thread
 from typing import Any, TypedDict
@@ -438,7 +438,7 @@ def test_accepted_command_input_values(value: Any):
 
 
 def test_a_datetime_and_its_date_differ():
-    """datetime subclasses date, so a date-first branch would collapse them."""
+    """The same calendar day is not the same input as a moment within it."""
     day = date(2026, 8, 22)
     moment = datetime(2026, 8, 22, tzinfo=UTC)
 
@@ -503,6 +503,31 @@ def test_a_non_finite_decimal_is_refused(value: str):
     reached before anything compares the value."""
     with pytest.raises(TypeError):
         fingerprint_command_input({"price": Decimal(value)})
+
+
+def test_one_instant_in_two_offsets_is_one_input():
+    """USE_TZ is on and TIME_ZONE is Europe/Prague, so a local-aware value and
+    a UTC one for the same moment are an ordinary pair to hold.
+
+    This also pins the branch order: datetime subclasses date, and a date-first
+    branch never applies the UTC canonical form.
+    """
+    utc_noon = datetime(2026, 8, 22, 12, tzinfo=UTC)
+    prague_afternoon = datetime(2026, 8, 22, 14, tzinfo=timezone(timedelta(hours=2)))
+
+    assert utc_noon == prague_afternoon
+    assert fingerprint_command_input({"when": utc_noon}) == (
+        fingerprint_command_input({"when": prague_afternoon})
+    )
+
+
+def test_a_naive_datetime_is_refused():
+    """astimezone() on a naive value reads the machine's timezone, so its
+    canonical form would differ between processes."""
+    naive = datetime(2026, 8, 22, 12)  # noqa: DTZ001 -- the value under test
+
+    with pytest.raises(TypeError):
+        fingerprint_command_input({"when": naive})
 
 
 def test_the_idempotency_migration_is_reversible():

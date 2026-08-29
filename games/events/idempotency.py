@@ -12,7 +12,7 @@ import json
 import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -103,11 +103,30 @@ def _canonical_decimal(value: Decimal) -> str:
     return f"{prefix}{coefficient}E{exponent}"
 
 
+def _canonical_datetime(value: datetime) -> str:
+    """One instant, one text: 12:00+00:00 and 13:00+01:00 are the same moment
+    and must reach one digest.
+
+    A naive value is refused rather than assumed. astimezone() on one reads the
+    machine's timezone, so the same value would canonicalize as +01:00 on a
+    Europe/Prague host and +00:00 on a UTC one -- the variance this function
+    exists to prevent, arriving as a wrong answer rather than a refusal.
+    """
+    if value.tzinfo is None or value.tzinfo.utcoffset(value) is None:
+        raise TypeError(
+            "A naive datetime has no canonical form for an idempotency "
+            "fingerprint: reading the machine's timezone would vary the digest "
+            "between processes. Make it aware at the call site."
+        )
+    return value.astimezone(UTC).isoformat()
+
+
 def _encode_command_value(value: Any) -> str | None:
-    #: datetime before date -- datetime subclasses date, so the reverse order
-    #: would silently reduce every timestamp to its calendar day.
+    #: datetime before date -- datetime subclasses date, and the date branch
+    #: never applies the UTC canonical form, so the reverse order would give
+    #: one instant two digests.
     if isinstance(value, datetime):
-        return value.isoformat()
+        return _canonical_datetime(value)
     if isinstance(value, date):
         return value.isoformat()
     if isinstance(value, uuid.UUID):
