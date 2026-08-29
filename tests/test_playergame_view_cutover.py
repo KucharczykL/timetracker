@@ -220,7 +220,7 @@ def test_the_box_comes_up_ticked(logged_in):
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.untracked_games
 def test_an_unticked_box_records_nothing_and_tracks_nothing(logged_in, owned_library):
-    #: The checkbox owns the heal, not sessions.
+    #: The checkbox owns the tracking, not sessions.
     game = Game.objects.create(library=owned_library, name="Outer Wilds", status="u")
 
     logged_in.post(

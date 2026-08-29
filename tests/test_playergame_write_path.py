@@ -64,7 +64,7 @@ def test_the_catalog_column_is_left_where_it_stood(owned_user, owned_library):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_an_untracked_game_heals_and_records(owned_user, owned_library):
+def test_an_untracked_game_is_tracked_then_recorded(owned_user, owned_library):
     game = Game.objects.create(library=owned_library, name="Tunic")
 
     record_facts(
@@ -91,7 +91,7 @@ def test_one_act_shares_one_correlation_id(owned_user, owned_library):
         owned_user, game, status=PlayerGameStatus.PLAYED, correlation_id=correlation_id
     )
 
-    #: The heal and its retry are one act, so one id.
+    #: Tracking and the retry are one act, so one id.
     recorded = set(
         LibraryEvent.objects.filter(library=owned_library).values_list(
             "correlation_id", flat=True
@@ -101,10 +101,10 @@ def test_one_act_shares_one_correlation_id(owned_user, owned_library):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_the_heal_does_not_loop(owned_user, owned_library, monkeypatch):
+def test_tracking_first_does_not_loop(owned_user, owned_library, monkeypatch):
     game = Game.objects.create(library=owned_library, name="Tunic")
 
-    #: The heal gives up on a second rejection, never recurses.
+    #: A second rejection stops it. It never recurses.
     monkeypatch.setattr(
         "games.writes.playergame.track_game", lambda *args, **kwargs: None
     )

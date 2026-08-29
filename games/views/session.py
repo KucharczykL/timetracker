@@ -190,8 +190,8 @@ def _record_played(request: HttpRequest, session: Session) -> None:
     tracked = PlayerGame.objects.filter(
         library=cast(User, request.user).library, game=session.game
     ).first()
-    #: No row states nothing. record_facts() tracks it,
-    #: the same heal both sibling paths get.
+    #: No row states nothing. record_facts() tracks it
+    #: first, as it does for both sibling paths.
     if tracked is not None and tracked.status != PlayerGameStatus.UNPLAYED:
         return
     record_facts_for_request(

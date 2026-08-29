@@ -37,8 +37,9 @@ def _stated_now() -> TemporalValue:
 class PlayerGameNotTracked(CommandRejected):
     """The library tracks no such game.
 
-    Its own class, because the write path heals exactly this case.
-    Matching on a message is the alternative, and is not one.
+    Its own class, because the write path answers this one case by
+    tracking the game and stating the fact again. Matching on a
+    message is the alternative, and is not one.
     """
 
 
