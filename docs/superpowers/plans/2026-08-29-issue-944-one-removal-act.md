@@ -584,16 +584,24 @@ Expected: FAIL on the second test — the purchase is still listed.
 ```python
 class PurchaseQueryset(RemovableLibraryQuerySet):
     def for_library(self, library):
-        #: A bundle stays while one of its games stays.
+        #: A bundle stays while one of its games stays. A purchase that
+        #: names no game is untouched by removal, so it stays too.
+        linked = Game.objects.filter(purchases=OuterRef("pk"))
         return (
             super()
             .for_library(library)
-            .filter(Exists(Game.objects.alive().filter(purchases=OuterRef("pk"))))
+            .filter(~Exists(linked) | Exists(linked.alive()))
         )
 ```
 
 `RemovableLibraryQuerySet.for_library` needs `Purchase.removed_at`, which Task 5
 adds; until then extend `LibraryOwnedQuerySet` and add the `Exists` only.
+
+**Deviation, applied:** the spec said one bare `EXISTS`. That also hides a
+purchase that names no game at all, which removal never touched — the model
+permits one (`price_per_game` is documented as null until games are linked) and
+five tests build one. The predicate therefore reads "no games, or one live
+game". `Exists` and `OuterRef` join the `django.db.models` import list.
 
 - [ ] **Step 4: Count the live games**
 

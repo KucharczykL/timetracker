@@ -153,7 +153,7 @@ def _get_formatted_playtime_for_game_sessions_in_range(
     it uses the earliest and latest session start times for the game.
     Returns "0h 00m" if no sessions exist for the game or if the range is invalid.
     """
-    sessions_queryset = game.sessions.all()
+    sessions_queryset = game.sessions.alive()
 
     if not sessions_queryset.exists():
         return "0h 00m"
@@ -247,13 +247,13 @@ def add_playevent(request: HttpRequest, game_id: UUID | None = None) -> HttpResp
         initial["game"] = game
         try:
             # First, try to get the latest session. If no sessions, then no playtime.
-            latest_session = game.sessions.latest("timestamp_start")
+            latest_session = game.sessions.alive().latest("timestamp_start")
             latest_session_ts = latest_session.timestamp_start
 
             # Now, determine the start date for the new playevent.
             # This will be either the day after the last playevent ended, or the earliest session.
             try:
-                latest_playevent = game.playevents.latest("ended")
+                latest_playevent = game.playevents.alive().latest("ended")
             except PlayEvent.DoesNotExist:
                 latest_playevent = None
 
@@ -269,9 +269,9 @@ def add_playevent(request: HttpRequest, game_id: UUID | None = None) -> HttpResp
             else:
                 # No previous playevent (or none with an end date), so the new
                 # playevent starts from the earliest session.
-                earliest_session_ts = game.sessions.earliest(
-                    "timestamp_start"
-                ).timestamp_start
+                earliest_session_ts = (
+                    game.sessions.alive().earliest("timestamp_start").timestamp_start
+                )
                 initial["started"] = earliest_session_ts.date()
                 playtime_calc_start_ts = earliest_session_ts
 

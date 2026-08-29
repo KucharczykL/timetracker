@@ -39,7 +39,6 @@ def test_restoring_a_game_brings_its_sessions_back(owned_library):
     assert Session.objects.for_library(owned_library).count() == 1
 
 
-@pytest.mark.xfail(reason="Session.removed_at arrives in Task 5", strict=True)
 def test_a_session_removed_by_itself_stays_removed(owned_library):
     game = make_game(owned_library)
     session = Session.objects.create(game=game, timestamp_start=timezone.now())
@@ -49,3 +48,18 @@ def test_a_session_removed_by_itself_stays_removed(owned_library):
     restore(game)
 
     assert not Session.objects.for_library(owned_library).exists()
+
+
+def test_removing_a_session_drops_the_playtime(owned_library):
+    game = make_game(owned_library)
+    started = timezone.now()
+    Session.objects.create(
+        game=game, timestamp_start=started, timestamp_end=started + timedelta(hours=2)
+    )
+    game.refresh_from_db()
+    assert game.playtime == timedelta(hours=2)
+
+    remove(Session.objects.get(game=game))
+
+    game.refresh_from_db()
+    assert game.playtime == timedelta(0)

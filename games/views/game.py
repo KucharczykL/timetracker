@@ -326,9 +326,9 @@ def delete_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
 
 def _removed_with_game(game: Game) -> Node:
     counts = [
-        (game.sessions.count(), "session"),
-        (game.purchases.count(), "purchase"),
-        (game.playevents.count(), "play event"),
+        (game.sessions.alive().count(), "session"),
+        (game.purchases.alive().count(), "purchase"),
+        (game.playevents.alive().count(), "play event"),
     ]
     present = [Li()[f"{count} {label}(s)"] for count, label in counts if count]
     return Ul()[*(present or [Li()["No associated data"]])]
@@ -383,7 +383,7 @@ def _played_row(game: Game, request: HttpRequest, origin: OriginUrl | None) -> N
     )
     from common.components.custom_elements import _PlayEventRow
 
-    played = game.playevents.count()
+    played = game.playevents.alive().count()
 
     count_button = ControlButton(
         [("class", "rounded-s-lg")],

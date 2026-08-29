@@ -289,7 +289,7 @@ class Game(ReferencedRow):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    #: Set instead of deleting a referenced row.
+    #: Set instead of destroying the row.
     removed_at = models.DateTimeField(
         null=True, blank=True, default=None, editable=False
     )
@@ -394,7 +394,7 @@ class Platform(ReferencedRow):
     group = models.CharField(max_length=255, blank=True, default="")
     icon = models.SlugField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    #: Set instead of deleting a referenced row.
+    #: Set instead of destroying the row.
     removed_at = models.DateTimeField(
         null=True, blank=True, default=None, editable=False
     )
@@ -766,7 +766,7 @@ class ExternalReference(models.Model):
         super().save(*args, **kwargs)
 
 
-class PurchaseQueryset(LibraryOwnedQuerySet):
+class PurchaseQueryset(RemovableLibraryQuerySet):
     def for_library(self, library):
         #: A bundle stays while one of its games stays. A purchase that
         #: names no game is untouched by removal, so it stays too.
@@ -877,6 +877,10 @@ class Purchase(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    #: Set instead of destroying the row.
+    removed_at = models.DateTimeField(
+        null=True, blank=True, default=None, editable=False
+    )
 
     @property
     def standardized_price(self):
@@ -991,7 +995,7 @@ class Purchase(models.Model):
 class SessionQuerySet(RemovableMixin, models.QuerySet):
     def for_library(self, library):
         """A live session of a game still in the library."""
-        return self.filter(game__library=library, game__removed_at__isnull=True)
+        return self.filter(game__library=library, game__removed_at__isnull=True).alive()
 
     def total_duration_unformatted(self):
         result = self.aggregate(
@@ -1066,6 +1070,10 @@ class Session(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
+    #: Set instead of destroying the row.
+    removed_at = models.DateTimeField(
+        null=True, blank=True, default=None, editable=False
+    )
 
     objects = SessionQuerySet.as_manager()
 
@@ -1120,7 +1128,7 @@ class Device(ReferencedRow):
     name = models.CharField(max_length=255)
     type = models.CharField(max_length=255, choices=DEVICE_TYPES, default=UNKNOWN)
     created_at = models.DateTimeField(auto_now_add=True)
-    #: Set instead of deleting a referenced row.
+    #: Set instead of destroying the row.
     removed_at = models.DateTimeField(
         null=True, blank=True, default=None, editable=False
     )
@@ -1183,7 +1191,7 @@ def get_or_create_rate(currency_from: str, currency_to: str, year: int) -> float
 class PlayEventQuerySet(RemovableMixin, models.QuerySet):
     def for_library(self, library):
         """A live play event of a game still in the library."""
-        return self.filter(game__library=library, game__removed_at__isnull=True)
+        return self.filter(game__library=library, game__removed_at__isnull=True).alive()
 
 
 class PlayEvent(models.Model):
@@ -1218,6 +1226,10 @@ class PlayEvent(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    #: Set instead of destroying the row.
+    removed_at = models.DateTimeField(
+        null=True, blank=True, default=None, editable=False
+    )
 
 
 # class PlayMarker(models.Model):
@@ -1267,13 +1279,15 @@ class FilterPreset(models.Model):
     class Meta:
         ordering: ClassVar[list[str]] = ["name"]
         constraints = (
+            #: Partial: a removed preset frees its name.
             models.UniqueConstraint(
                 fields=("library", "mode", "name"),
+                condition=Q(removed_at__isnull=True),
                 name="unique_library_mode_name_preset",
             ),
         )
 
-    objects = LibraryOwnedQuerySet.as_manager()
+    objects = RemovableLibraryQuerySet.as_manager()
 
     id = UUIDv7Field(primary_key=True, editable=False)
 
@@ -1297,6 +1311,10 @@ class FilterPreset(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    #: Set instead of destroying the row.
+    removed_at = models.DateTimeField(
+        null=True, blank=True, default=None, editable=False
+    )
 
     def __str__(self):
         return f"{self.name} ({self.get_mode_display()})"

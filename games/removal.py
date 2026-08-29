@@ -10,11 +10,28 @@ from typing import Any
 from django.db.models import Model
 from django.utils.timezone import now
 
-from games.models import Device, Game, Platform
+from games.models import (
+    Device,
+    FilterPreset,
+    Game,
+    Platform,
+    PlayEvent,
+    Purchase,
+    Session,
+)
+from games.signals import recalculate_playtime
 
 #: Every model a user can remove. PlayerGame is absent: it is a
 #: projection, and only its projector writes it.
-REMOVABLE_MODELS: tuple[type[Model], ...] = (Game, Platform, Device)
+REMOVABLE_MODELS: tuple[type[Model], ...] = (
+    Game,
+    Platform,
+    Device,
+    Session,
+    PlayEvent,
+    Purchase,
+    FilterPreset,
+)
 
 
 def _recount_purchases(game: Game) -> None:
@@ -25,8 +42,16 @@ def _recount_purchases(game: Game) -> None:
         purchase.save(update_fields=["num_purchases", "updated_at"])
 
 
+def _recalculate_the_games_playtime(session: Session) -> None:
+    """A stamp fires no session signal."""
+    recalculate_playtime(session.game)
+
+
 #: What a stamp does not do by itself.
-_AFTER_STAMP: dict[type[Model], Callable[[Any], None]] = {Game: _recount_purchases}
+_AFTER_STAMP: dict[type[Model], Callable[[Any], None]] = {
+    Game: _recount_purchases,
+    Session: _recalculate_the_games_playtime,
+}
 
 
 def _stamp(instance: Model, value: Any) -> None:
