@@ -1,7 +1,7 @@
 import contextlib
 import uuid
-from datetime import UTC, date, datetime
-from decimal import Decimal
+from datetime import UTC, date, datetime, timedelta, timezone
+from decimal import Decimal, localcontext
 from threading import Event, Thread
 from typing import Any, TypedDict
 
@@ -23,6 +23,7 @@ from games.events.idempotency import (
     IdempotencyKeyMismatch,
     ReplayedAppend,
     UnchangedAppend,
+    _encode_command_value,
     fingerprint_command_input,
     idempotent_append,
 )
@@ -438,7 +439,7 @@ def test_accepted_command_input_values(value: Any):
 
 
 def test_a_datetime_and_its_date_differ():
-    """datetime subclasses date, so a date-first branch would collapse them."""
+    """The same calendar day is not the same input as a moment within it."""
     day = date(2026, 8, 22)
     moment = datetime(2026, 8, 22, tzinfo=UTC)
 
@@ -450,6 +451,142 @@ def test_a_datetime_and_its_date_differ():
 def test_an_unsupported_value_is_refused():
     with pytest.raises(TypeError):
         fingerprint_command_input({"platforms": {"pc", "switch"}})
+
+
+@pytest.mark.parametrize(
+    ("written", "same_value"),
+    [
+        pytest.param("1.1", "1.10", id="trailing-zero"),
+        pytest.param("100", "1E+2", id="exponent-form"),
+        pytest.param("0.00", "-0.00", id="signed-zero"),
+    ],
+)
+def test_a_decimal_is_the_number_not_the_text(written: str, same_value: str):
+    """One honest retry is not a conflict."""
+    assert fingerprint_command_input(
+        {"price": Decimal(written)}
+    ) == fingerprint_command_input({"price": Decimal(same_value)})
+
+
+def test_two_decimals_that_differ_keep_separate_digests():
+    assert fingerprint_command_input(
+        {"price": Decimal("1.1")}
+    ) != fingerprint_command_input({"price": Decimal("1.11")})
+
+
+def test_a_decimal_differing_past_the_context_precision_is_a_different_input():
+    """normalize() would give these one digest.
+
+    The context rounds at 28 digits, so no shorter pair catches a revert
+    to it.
+    """
+    assert fingerprint_command_input(
+        {"price": Decimal("1.000000000000000000000000000000001")}
+    ) != fingerprint_command_input(
+        {"price": Decimal("1.000000000000000000000000000000002")}
+    )
+
+
+def test_a_decimal_digest_ignores_the_active_context():
+    """No thread-local setting moves the canonical form."""
+    price = Decimal("1.100000001")
+
+    with localcontext() as context:
+        context.prec = 5
+        narrowed = fingerprint_command_input({"price": price})
+
+    assert narrowed == fingerprint_command_input({"price": price})
+
+
+@pytest.mark.parametrize("value", ["NaN", "sNaN", "Infinity", "-Infinity"])
+def test_a_non_finite_decimal_is_refused(value: str):
+    """sNaN must be refused before any comparison."""
+    with pytest.raises(TypeError):
+        fingerprint_command_input({"price": Decimal(value)})
+
+
+def test_one_instant_in_two_offsets_is_one_input():
+    """One moment in two offsets is one input.
+
+    This also pins the branch order: a date-first branch skips the UTC
+    canonical form and fails here.
+    """
+    utc_noon = datetime(2026, 8, 22, 12, tzinfo=UTC)
+    prague_afternoon = datetime(2026, 8, 22, 14, tzinfo=timezone(timedelta(hours=2)))
+
+    assert utc_noon == prague_afternoon
+    assert fingerprint_command_input({"when": utc_noon}) == (
+        fingerprint_command_input({"when": prague_afternoon})
+    )
+
+
+def test_a_naive_datetime_is_refused():
+    """astimezone() would read the machine's timezone."""
+    naive = datetime(2026, 8, 22, 12)  # noqa: DTZ001 -- the value under test
+
+    with pytest.raises(TypeError):
+        fingerprint_command_input({"when": naive})
+
+
+def test_the_tag_words_are_the_wire_form():
+    """The words are the wire form.
+
+    Renaming one moves every digest of that type, and nothing else in this
+    file would notice.
+    """
+    identifier = uuid.uuid7()
+
+    assert _encode_command_value(datetime(2026, 8, 22, 12, tzinfo=UTC)) == (
+        "datetime",
+        "2026-08-22T12:00:00+00:00",
+    )
+    assert _encode_command_value(date(2026, 8, 22)) == ("date", "2026-08-22")
+    assert _encode_command_value(identifier) == ("uuid", str(identifier))
+    assert _encode_command_value(Decimal("1.10")) == ("decimal", "11E-1")
+    assert _encode_command_value(TemporalValue.from_year(2026)) == (
+        "temporal",
+        "2026",
+    )
+    assert _encode_command_value(TemporalValue.unknown()) == ("temporal", None)
+
+
+def test_a_value_and_its_own_text_are_not_the_same_input():
+    """Without the word, one key replays both."""
+    identifier = uuid.uuid7()
+    day = date(2026, 8, 22)
+    pairs = [
+        (Decimal("1.10"), "11E-1"),
+        (identifier, str(identifier)),
+        (day, day.isoformat()),
+    ]
+
+    for value, text in pairs:
+        assert fingerprint_command_input({"field": value}) != (
+            fingerprint_command_input({"field": text})
+        )
+
+
+def test_a_date_and_a_temporal_value_for_that_day_differ():
+    """Both read 2026-08-22; the word separates them."""
+    day = date(2026, 8, 22)
+
+    assert fingerprint_command_input({"when": day}) != fingerprint_command_input(
+        {"when": TemporalValue.from_day(day)}
+    )
+
+
+def test_an_unknown_temporal_value_and_an_unset_field_differ():
+    """An unknown time and an unset field both write null."""
+    assert fingerprint_command_input(
+        {"when": TemporalValue.unknown()}
+    ) != fingerprint_command_input({"when": None})
+
+
+def test_a_decimal_and_an_int_of_the_same_value_differ():
+    """Equal values, two types, two digests."""
+    assert fingerprint_command_input(
+        {"count": Decimal(1)}
+    ) != fingerprint_command_input({"count": 1})
 
 
 def test_the_idempotency_migration_is_reversible():

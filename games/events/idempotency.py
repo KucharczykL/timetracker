@@ -12,7 +12,7 @@ import json
 import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -32,10 +32,12 @@ from timetracker.temporal import TemporalValue
 
 type IdempotencyKey = str  # "session-create-01J8Z3K4M5N6P7Q8R9S0T1U2V3"
 type RequestFingerprint = str  # "9f86d081884c7d65..." (sha256 hex)
+type TaggedValue = tuple[str, str | None]  # ("decimal", "11E-1")
 
-#: Stamped on every record. Bump it when _encode_command_value or the canonical
-#: form changes: records written under another version are no longer comparable
-#: and replay unchecked, rather than rejecting every retry that predates it.
+#: Bump when a deployed record's digest changes.
+#:
+#: No deployment has run 0024, so no record holds a fingerprint and every
+#: change to the canonical form is free until one does.
 FINGERPRINT_VERSION = 1
 
 
@@ -68,20 +70,66 @@ class UnchangedAppend:
     reason: str | None
 
 
-def _encode_command_value(value: Any) -> str | None:
-    #: datetime before date -- datetime subclasses date, so the reverse order
-    #: would silently reduce every timestamp to its calendar day.
+def _canonical_decimal(value: Decimal) -> str:
+    """The number, not its spelling.
+
+    Not normalize(): it rounds to the thread-local context, so two values
+    differing past 28 digits reach one digest.
+    """
+    sign, digits, exponent = value.as_tuple()
+    if not isinstance(exponent, int):
+        #: A string exponent means NaN or Infinity.
+        #: Refused before comparison, which sNaN signals on.
+        raise TypeError(
+            f"{value} has no canonical form for an idempotency fingerprint. "
+            "Convert it at the call site: a NaN is not equal to itself, so a "
+            "digest that matched would claim an identity the values deny, and "
+            "an infinity is no more a price than a NaN is."
+        )
+    while len(digits) > 1 and digits[-1] == 0:
+        digits = digits[:-1]
+        exponent += 1
+    if digits == (0,):
+        #: -0.00 equals 0 and keeps its sign.
+        return "0"
+    prefix = "-" if sign else ""
+    coefficient = "".join(str(digit) for digit in digits)
+    return f"{prefix}{coefficient}E{exponent}"
+
+
+def _canonical_datetime(value: datetime) -> str:
+    """One instant, one text.
+
+    A naive value is refused: astimezone() reads the machine's timezone, so
+    the digest would change between hosts.
+    """
+    if value.tzinfo is None or value.tzinfo.utcoffset(value) is None:
+        raise TypeError(
+            "A naive datetime has no canonical form for an idempotency "
+            "fingerprint: reading the machine's timezone would vary the digest "
+            "between processes. Make it aware at the call site."
+        )
+    return value.astimezone(UTC).isoformat()
+
+
+def _encode_command_value(value: Any) -> TaggedValue:
+    """The type word, then the canonical text.
+
+    The words are the wire form: a rename moves every digest of that type,
+    so they are written out rather than read from the class.
+    """
+    #: datetime first: the date branch skips UTC.
     if isinstance(value, datetime):
-        return value.isoformat()
+        return ("datetime", _canonical_datetime(value))
     if isinstance(value, date):
-        return value.isoformat()
+        return ("date", value.isoformat())
     if isinstance(value, uuid.UUID):
-        return str(value)
+        return ("uuid", str(value))
     if isinstance(value, Decimal):
-        return str(value)
+        return ("decimal", _canonical_decimal(value))
     if isinstance(value, TemporalValue):
-        #: None for an unknown time, which json renders as null.
-        return value.canonical
+        #: None for an unknown time.
+        return ("temporal", value.canonical)
     raise TypeError(
         f"{type(value).__name__} has no canonical form for an idempotency "
         "fingerprint. Convert it at the call site: a repr() fallback would "
