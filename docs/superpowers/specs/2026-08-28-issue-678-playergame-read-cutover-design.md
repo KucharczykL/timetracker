@@ -248,14 +248,13 @@ reading frozen letters for two pull requests.
 Something must still turn a `CommandRejected` into a toast and a redirect.
 `games/writes/playergame.py` keeps that job, minus the mirror: it takes an
 actor and not a request, which is what lets the API call it.
-`games/views/playergame_writes.py` is deleted, and each view calls
-`games/writes/playergame.py` and catches `PlayerGameWriteFailed`.
 
-So one module is deleted and two are trimmed —
-`games/writes/playergame.py` loses `_mirror()` and
-`games/playergame_status.py` loses its reverse direction. The #677 note
-forecast three deletions; the backfill and the migration keep the letter map
-alive, and the request wrapper is the only module with nothing left to do.
+This section forecast that `games/views/playergame_writes.py` would go with the
+mirror, leaving one module deleted and two trimmed. D2 kept it — see [What D2
+settled](#what-d2-settled) — so no module was deleted: `games/writes/
+playergame.py` lost `_mirror()` and `games/playergame_status.py` lost its
+reverse direction, and the backfill and the migration keep the forward letter
+map alive.
 
 ## The test gap
 
@@ -310,10 +309,11 @@ readable before the mirror goes and a mirror removal wants a diff of its own.
 
 - **D1 — history, then the retirement.** History from events, the four
   `statuschange` routes, `GameStatusChangeForm`, and the audit signal.
-- **D2 — the mirror.** `_mirror()`, `games/views/playergame_writes.py`, the
-  reverse half of `games/playergame_status.py`, the three catalog fallbacks
-  that read `Game.status` where no projection row exists, `shelved` becoming
-  settable, and the deletion of the parity suite.
+- **D2 — the mirror.** `_mirror()`, the reverse half of
+  `games/playergame_status.py`, the three catalog fallbacks that read
+  `Game.status` where no projection row exists, `shelved` becoming settable,
+  and the deletion of the parity suite. It also took `GameForm.save()`'s
+  catalog write and kept `games/views/playergame_writes.py`.
 
 The mirror goes last because A to C each leave catalog readers behind them.
 
@@ -337,6 +337,52 @@ the status the reloaded page shows.
 Each child pull request ends on a full `make check`. The merge to `main` adds
 the wave's integration gate, including the rehearsal against a restored
 production copy.
+
+## What D2 settled
+
+D2 landed, so the mirror is gone and nothing maintains `Game.status` or
+`Game.mastered`. Three calls departed from the plan above, and #770 inherits
+all three.
+
+**`games/views/playergame_writes.py` stays.** The D2 bullet lists it for
+deletion, and the module's own docstring promised as much. Both sentences were
+written when the mirror was its reason for existing, and it is not:
+`record_facts()` still dispatches, still heals an untracked game, and still
+turns four command failures into an answer, and the view half still turns that
+answer into a toast. Deleting the pair would copy one `try/except
+PlayerGameWriteFailed` into five views. D2 removed the promise instead, and
+rewrote both docstrings to say what the code does.
+
+**`GameForm.save()` stopped writing the catalog.** This spec names three
+catalog reads and neither this write nor the `add_game` rollback that answered
+it. Keeping them would leave the columns current for a game just added and
+stale for every game before it — a worse record than plainly stale, and one
+that reads as if something still maintains them.
+
+**A session on an untracked game heals it, whatever the letter says.** The
+`_record_played` catalog arm used to leave a game the catalog called finished
+untracked. That arm is gone, so the game is tracked and recorded `Played`. The
+alternative — no row, no statement — would keep the letter from being written
+over, but an untracked game is invisible in every list and on its own page, so
+tracking it is a repair and `Played` is what just happened. Nothing writes the
+letter in any case.
+
+`shelved` is settable everywhere the other five words are, which is what the
+mirror was holding back.
+
+### The e2e fixture the plan misread
+
+D2's plan called `e2e/test_table_width_e2e.py` a D1 escape: its `populated`
+fixture seeded a `GameStatusChange` row that D1 had stopped reading, and the
+plan concluded that `test_no_game_detail_mini_table_cell_wraps` had been
+measuring two tables where its docstring claims three.
+
+It had not. History renders a `<ul>`, not a table, and the counter walks
+`[role="region"] table` only, so History was never among the three. The three
+are Sessions, Purchases and Play Events, all seeded and all present — now
+asserted, so the docstring's claim is checked rather than trusted. What was
+real is that the seed had stopped feeding the History section: D2 replaced it
+with a `record_facts()` statement, which #771 no longer has to.
 
 ## What this issue does not remove
 

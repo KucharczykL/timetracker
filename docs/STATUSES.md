@@ -19,10 +19,10 @@ are both done — the second is for a game that offers nothing to complete.
 **Shelved** and **Abandoned** are both unfinished — the second is final.
 
 The status lives on `PlayerGame`, one row per library per game, so two libraries
-can hold different statuses for one catalog game. `Game.status` is a five-letter
-mirror of that row, kept current by `games/writes/playergame.py` and removed by
-#770. `shelved` has no letter, so nothing can set it until the mirror goes
-(#678 D).
+can hold different statuses for one catalog game. It is the only place a status
+is stated or read: since #678 D2 nothing maintains the five-letter `Game.status`
+column, which #770 drops. `shelved` is settable everywhere the other five are,
+because no letter has to hold it any more.
 
 **Setting game status:**
 - Users explicitly set game status via the UI (the status dropdown on the game
