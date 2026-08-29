@@ -10,9 +10,10 @@ import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.db.models import Q
 from django.utils import timezone
 
-from games.models import Game, PlayerGame, PlayerGameStatus
+from games.models import Game, PlayerGame, PlayerGameStatus, Purchase
 from games.playergame_status import (
     LEGACY_STATUS_TO_PLAYER_STATUS,
     legacy_status_for,
@@ -143,6 +144,71 @@ def test_a_sort_returns_the_same_order(
     assert ordered_ids(old.order_by(f"{prefix}{old_expression}", "id")) == ordered_ids(
         new.order_by(f"{prefix}{new_expression}", "id")
     )
+
+
+def _one_purchase_per_game(owned_library, games):
+    #: Not the shelved game. No letter says shelved, so its column
+    #: sits at the `u` default and the letter side would read it as
+    #: unplayed. Excluded from both sides, as everywhere else here.
+    shelved = PlayerGame.objects.get(
+        library=owned_library, status=PlayerGameStatus.SHELVED
+    ).game_id
+    for game in games:
+        if game.pk == shelved:
+            continue
+        purchase = Purchase.objects.create(
+            library=owned_library,
+            price_currency="CZK",
+            type=Purchase.GAME,
+            date_purchased=timezone.now(),
+        )
+        purchase.games.set([game])
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("legacy_status", "player_status"),
+    sorted(LEGACY_STATUS_TO_PLAYER_STATUS.items()),
+)
+def test_a_purchase_predicate_selects_the_same_purchases(
+    owned_library, a_library_of_every_status, legacy_status, player_status
+):
+    """A letter over the catalog, a word over the projection.
+
+    Both directions: a statistic negates three of its four
+    predicates, and a negation over a join is the shape most likely
+    to differ.
+    """
+    _one_purchase_per_game(owned_library, a_library_of_every_status)
+
+    purchases = Purchase.objects.for_library(owned_library)
+    old = Q(games__status=legacy_status)
+    new = Q(
+        games__in=Game.objects.tracked_by(owned_library, tracked__status=player_status)
+    )
+
+    assert ids(purchases.filter(old)) == ids(purchases.filter(new))
+    assert ids(purchases.filter(~old)) == ids(purchases.filter(~new))
+
+
+@pytest.mark.django_db
+def test_two_negated_statuses_merge_into_one(owned_library, a_library_of_every_status):
+    """`~a & ~b` is `~(a or b)`, and the second reads one column."""
+    _one_purchase_per_game(owned_library, a_library_of_every_status)
+
+    purchases = Purchase.objects.for_library(owned_library)
+    old = ~Q(games__status="r") & ~Q(games__status="a")
+    new = ~Q(
+        games__in=Game.objects.tracked_by(
+            owned_library,
+            tracked__status__in=[
+                PlayerGameStatus.RETIRED,
+                PlayerGameStatus.ABANDONED,
+            ],
+        )
+    )
+
+    assert ids(purchases.filter(old)) == ids(purchases.filter(new))
 
 
 @pytest.mark.django_db

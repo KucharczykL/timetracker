@@ -782,9 +782,16 @@ class PurchaseQueryset(LibraryOwnedQuerySet):
     def games_only(self):
         return self.filter(type=Purchase.GAME)
 
-    def finished(self):
+    def finished(self, library):
+        #: A queryset method holds no library, and the status now
+        #: lives on the library's own row, so it takes one.
         return self.filter(
-            Q(games__status="f") | Q(games__playevents__ended__isnull=False)
+            Q(
+                games__in=Game.objects.tracked_by(
+                    library, tracked__status=PlayerGameStatus.COMPLETED
+                )
+            )
+            | Q(games__playevents__ended__isnull=False)
         ).distinct()
 
     def abandoned(self):

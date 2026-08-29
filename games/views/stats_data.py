@@ -31,6 +31,7 @@ from common.time import available_stats_year_range
 from common.utils import safe_division
 from games.models import (
     Game,
+    PlayerGameStatus,
     Purchase,
     PurchaseConversionState,
     PurchaseQueryset,
@@ -99,6 +100,11 @@ def _days_played_percent(unique_days: int, first: date, last: date) -> int:
     return min(int(unique_days / span * 100), 100)
 
 
+def _games_at_status(library: UserLibrary, *statuses: PlayerGameStatus):
+    """The library's tracked games at one of these statuses."""
+    return Game.objects.tracked_by(library, tracked__status__in=statuses)
+
+
 def compute_stats(library: UserLibrary, year: int | None = None) -> StatsData:
     published_currency = (
         PurchaseConversionState.objects.only("published_currency")
@@ -106,6 +112,7 @@ def compute_stats(library: UserLibrary, year: int | None = None) -> StatsData:
         .published_currency
     )
     return _compute_stats_from_scoped_querysets(
+        library=library,
         sessions=Session.objects.for_library(library),
         purchases=Purchase.objects.for_library(library),
         year=year,
@@ -115,6 +122,7 @@ def compute_stats(library: UserLibrary, year: int | None = None) -> StatsData:
 
 def _compute_stats_from_scoped_querysets(
     *,
+    library: UserLibrary,
     sessions: SessionQuerySet,
     purchases: PurchaseQueryset,
     year: int | None,
@@ -146,7 +154,8 @@ def _compute_stats_from_scoped_querysets(
             "sessions", filter=Q(sessions__timestamp_start__year=year)
         )
 
-    not_finished_q = ~Q(games__status=Game.Status.FINISHED) & ~ended_q
+    completed = _games_at_status(library, PlayerGameStatus.COMPLETED)
+    not_finished_q = ~Q(games__in=completed) & ~ended_q
 
     # ── Session superlatives ─────────────────────────────────────────────────
     longest_session = (
@@ -214,13 +223,19 @@ def _compute_stats_from_scoped_querysets(
         .filter(infinite=False)
         .filter(only_games_and_dlc)
         .filter(
-            ~Q(games__status=Game.Status.RETIRED)
-            & ~Q(games__status=Game.Status.ABANDONED)
+            ~Q(
+                games__in=_games_at_status(
+                    library, PlayerGameStatus.RETIRED, PlayerGameStatus.ABANDONED
+                )
+            )
         )
     )
     dropped = (
         purchases.filter(not_finished_q)
-        .filter(Q(games__status=Game.Status.ABANDONED) | Q(date_refunded__isnull=False))
+        .filter(
+            Q(games__in=_games_at_status(library, PlayerGameStatus.ABANDONED))
+            | Q(date_refunded__isnull=False)
+        )
         .filter(infinite=False)
         .filter(only_games_and_dlc)
     )
@@ -231,7 +246,7 @@ def _compute_stats_from_scoped_querysets(
 
     # ── Finished purchases (scope-divergent) ─────────────────────────────────
     if is_alltime:
-        finished = library_purchases.finished().annotate(
+        finished = library_purchases.finished(library).annotate(
             date_finished=Subquery(
                 library_purchases.filter(pk=OuterRef("pk"))
                 .annotate(max_ended=Max("games__playevents__ended"))
@@ -242,7 +257,7 @@ def _compute_stats_from_scoped_querysets(
         backlog_decrease_count = finished.count()
     else:
         finished = (
-            library_purchases.finished()
+            library_purchases.finished(library)
             .filter(games__playevents__ended__year=year)
             .annotate(
                 game_name=F("games__name"), date_finished=F("games__playevents__ended")
@@ -260,7 +275,7 @@ def _compute_stats_from_scoped_querysets(
         )
         backlog_decrease_count = (
             library_purchases.filter(date_purchased__year__lt=year)
-            .filter(games__status=Game.Status.FINISHED)
+            .filter(games__in=completed)
             .filter(games__playevents__ended__year=year)
             .count()
         )
