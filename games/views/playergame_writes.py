@@ -12,8 +12,8 @@ from django.http import HttpRequest
 
 from games.models import Game, PlayerGameStatus
 from games.removal import remove
+from games.writes.answers import CommandFailed
 from games.writes.playergame import (
-    PlayerGameWriteFailed,
     new_correlation_id,
     record_facts,
     track_game,
@@ -27,7 +27,7 @@ def track_game_for_request(
     """Track the game; False on failure."""
     try:
         track_game(cast("User", request.user), game, correlation_id=correlation_id)
-    except PlayerGameWriteFailed as failure:
+    except CommandFailed as failure:
         messages.error(request, failure.message)
         return False
     return True
@@ -50,7 +50,7 @@ def record_facts_for_request(
             mastered=mastered,
             correlation_id=correlation_id,
         )
-    except PlayerGameWriteFailed as failure:
+    except CommandFailed as failure:
         messages.error(request, failure.message)
         return False
     return True
@@ -67,7 +67,7 @@ def remove_game_for_request(request: HttpRequest, game: Game) -> bool:
         untrack_game(
             cast("User", request.user), game, correlation_id=new_correlation_id()
         )
-    except PlayerGameWriteFailed as failure:
+    except CommandFailed as failure:
         messages.error(request, failure.message)
         return False
     remove(game)

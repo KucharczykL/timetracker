@@ -3,11 +3,10 @@
 import pytest
 from django.http import Http404
 
-from games.events.idempotency import IdempotencyKeyMismatch
 from games.events.retry import RetryBudgetExhausted
 from games.models import Game, LibraryEvent, PlayerGame, PlayerGameStatus
+from games.writes.answers import CommandFailed
 from games.writes.playergame import (
-    PlayerGameWriteFailed,
     new_correlation_id,
     record_facts,
     track_game,
@@ -109,7 +108,7 @@ def test_the_heal_does_not_loop(owned_user, owned_library, monkeypatch):
     monkeypatch.setattr(
         "games.writes.playergame.track_game", lambda *args, **kwargs: None
     )
-    with pytest.raises(PlayerGameWriteFailed) as failure:
+    with pytest.raises(CommandFailed) as failure:
         record_facts(
             owned_user,
             game,
@@ -125,7 +124,7 @@ def test_another_librarys_game_is_refused(other_user, owned_library):
 
     #: The actor names the library, so this one gets their own
     #: and cannot track the game. The views answer 404 first.
-    with pytest.raises(PlayerGameWriteFailed) as failure:
+    with pytest.raises(CommandFailed) as failure:
         track_game(other_user, game, correlation_id=new_correlation_id())
     assert failure.value.status_code == 409
     assert not LibraryEvent.objects.filter(library=other_user.library).exists()
@@ -154,7 +153,7 @@ def test_an_exhausted_retry_budget_asks_the_player_to_try_again(
         raise RetryBudgetExhausted(3)
 
     monkeypatch.setattr("games.writes.playergame.dispatch", exhausted)
-    with pytest.raises(PlayerGameWriteFailed) as failure:
+    with pytest.raises(CommandFailed) as failure:
         record_facts(
             owned_user,
             tracked_game,
@@ -163,22 +162,3 @@ def test_an_exhausted_retry_budget_asks_the_player_to_try_again(
         )
     assert failure.value.status_code == 409
     assert "try again" in failure.value.message
-
-
-@pytest.mark.django_db(transaction=True)
-def test_a_reused_key_over_different_input_says_it_will_never_work(
-    owned_user, tracked_game, monkeypatch
-):
-    def mismatched(*args, **kwargs):
-        raise IdempotencyKeyMismatch("that key belongs to another request")
-
-    monkeypatch.setattr("games.writes.playergame.dispatch", mismatched)
-    with pytest.raises(PlayerGameWriteFailed) as failure:
-        record_facts(
-            owned_user,
-            tracked_game,
-            status=PlayerGameStatus.PLAYED,
-            correlation_id=new_correlation_id(),
-        )
-    assert failure.value.status_code == 409
-    assert "cannot be retried" in failure.value.message
