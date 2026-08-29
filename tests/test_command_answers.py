@@ -52,7 +52,7 @@ def test_the_subject_noun_reaches_the_sentence():
 
 
 def test_every_sentence_interpolates_and_leaves_no_brace():
-    #: A mistyped placeholder fails here, not in a request.
+    #: A mistyped placeholder fails here, not later.
     for answer in CONFLICT_ANSWERS.values():
         rendered = answer.sentence.format(subject="probe")
         assert "{" not in rendered and "}" not in rendered
@@ -85,7 +85,7 @@ def test_a_subclass_of_a_mapped_leaf_takes_its_parents_answer():
 
 
 def test_an_unmapped_conflict_leaves_unchanged():
-    #: A wrong sentence is worse than a reported failure.
+    #: A wrong sentence is worse than none.
     class UnmappedConflict(CommandConflict):
         pass
 
@@ -126,7 +126,7 @@ def test_every_conflict_leaf_of_the_application_has_an_answer():
     code does.
     """
     _import_every_games_module()
-    #: A subclass a test declares is not the application's.
+    #: A test's subclass is not the application's.
     leaves = {
         leaf
         for leaf in _descendants(CommandConflict)

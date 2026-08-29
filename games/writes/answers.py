@@ -50,7 +50,7 @@ _COLLIDED = (
     "Another change reached this {subject} first. Nothing was recorded; try again."
 )
 
-#: A mapping rather than clauses, so a test can read it.
+#: Not clauses: a test reads a mapping.
 CONFLICT_ANSWERS: dict[type[CommandConflict], ConflictAnswer] = {
     RetryBudgetExhausted: ConflictAnswer(_COLLIDED, CONFLICT_STATUS),
     StreamSequenceMismatch: ConflictAnswer(_COLLIDED, CONFLICT_STATUS),
@@ -61,12 +61,12 @@ CONFLICT_ANSWERS: dict[type[CommandConflict], ConflictAnswer] = {
     ),
 }
 
-#: Answered by a clause of their own. Neither is a CommandConflict.
+#: Own clause each. Not CommandConflict subclasses.
 ANSWERED_DIRECTLY: frozenset[type[Exception]] = frozenset(
     {CommandNotPermitted, CommandRejected}
 )
 
-#: A defect in the program, not a conflict a person can act on.
+#: Defects in the program, not conflicts.
 NOT_ANSWERED: frozenset[type[Exception]] = frozenset(
     {NestedTransactionNotSupported, TransactionRequired, PayloadNotCanonical}
 )
@@ -88,13 +88,12 @@ def answered(subject: SubjectNoun) -> Iterator[None]:
         yield
     except CommandNotPermitted as error:
         #: Absent, not forbidden: a refusal discloses nothing.
-        #: Http404 from the write layer is the cost #905 accepted;
-        #: the alternative replaces a 404 page with a toast.
+        #: The layering cost #905 weighed and accepted.
         raise Http404(f"No such {subject}.") from error
     except CommandConflict as error:
         answer = answer_for(error)
         if answer is None:
-            #: A wrong sentence is worse than a failure.
+            #: A wrong sentence is worse than none.
             raise
         raise CommandFailed(
             answer.sentence.format(subject=subject), answer.status_code
