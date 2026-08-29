@@ -23,6 +23,7 @@ from games.events.idempotency import (
     IdempotencyKeyMismatch,
     ReplayedAppend,
     UnchangedAppend,
+    _encode_command_value,
     fingerprint_command_input,
     idempotent_append,
 )
@@ -528,6 +529,66 @@ def test_a_naive_datetime_is_refused():
 
     with pytest.raises(TypeError):
         fingerprint_command_input({"when": naive})
+
+
+def test_the_tag_words_are_the_wire_form():
+    """Renaming one moves every digest that carries that type, which is a
+    FINGERPRINT_VERSION bump. Nothing else in this file would notice."""
+    identifier = uuid.uuid7()
+
+    assert _encode_command_value(datetime(2026, 8, 22, 12, tzinfo=UTC)) == (
+        "datetime",
+        "2026-08-22T12:00:00+00:00",
+    )
+    assert _encode_command_value(date(2026, 8, 22)) == ("date", "2026-08-22")
+    assert _encode_command_value(identifier) == ("uuid", str(identifier))
+    assert _encode_command_value(Decimal("1.10")) == ("decimal", "11E-1")
+    assert _encode_command_value(TemporalValue.from_year(2026)) == (
+        "temporal",
+        "2026",
+    )
+    assert _encode_command_value(TemporalValue.unknown()) == ("temporal", None)
+
+
+def test_a_value_and_its_own_text_are_not_the_same_input():
+    """Without the word, a key issued for one replays the other."""
+    identifier = uuid.uuid7()
+    day = date(2026, 8, 22)
+    pairs = [
+        (Decimal("1.10"), "11E-1"),
+        (identifier, str(identifier)),
+        (day, day.isoformat()),
+    ]
+
+    for value, text in pairs:
+        assert fingerprint_command_input({"field": value}) != (
+            fingerprint_command_input({"field": text})
+        )
+
+
+def test_a_date_and_a_temporal_value_for_that_day_differ():
+    """Both canonicalize to 2026-08-22, so only the word keeps them apart."""
+    day = date(2026, 8, 22)
+
+    assert fingerprint_command_input({"when": day}) != fingerprint_command_input(
+        {"when": TemporalValue.from_day(day)}
+    )
+
+
+def test_an_unknown_temporal_value_and_an_unset_field_differ():
+    """An unknown time encodes as None, which json writes as the null an unset
+    field also writes."""
+    assert fingerprint_command_input(
+        {"when": TemporalValue.unknown()}
+    ) != fingerprint_command_input({"when": None})
+
+
+def test_a_decimal_and_an_int_of_the_same_value_differ():
+    """Decimal(1) == 1, and they are still two different inputs: the digest
+    identifies a value's type as well as its meaning."""
+    assert fingerprint_command_input(
+        {"count": Decimal(1)}
+    ) != fingerprint_command_input({"count": 1})
 
 
 def test_the_idempotency_migration_is_reversible():

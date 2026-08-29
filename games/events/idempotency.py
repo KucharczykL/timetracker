@@ -32,10 +32,13 @@ from timetracker.temporal import TemporalValue
 
 type IdempotencyKey = str  # "session-create-01J8Z3K4M5N6P7Q8R9S0T1U2V3"
 type RequestFingerprint = str  # "9f86d081884c7d65..." (sha256 hex)
+type TaggedValue = tuple[str, str | None]  # ("decimal", "11E-1")
 
-#: Stamped on every record. Bump it when _encode_command_value or the canonical
-#: form changes: records written under another version are no longer comparable
-#: and replay unchecked, rather than rejecting every retry that predates it.
+#: Stamped on every record. Bump it when a change could give a different digest
+#: for input a deployed record already holds: those records are no longer
+#: comparable and replay unchecked, rather than rejecting every retry that
+#: predates the change. No deployment has run 0024, so no record holds anything
+#: and every canonicalizer change until the first one that does is free.
 FINGERPRINT_VERSION = 1
 
 
@@ -121,21 +124,32 @@ def _canonical_datetime(value: datetime) -> str:
     return value.astimezone(UTC).isoformat()
 
 
-def _encode_command_value(value: Any) -> str | None:
+def _encode_command_value(value: Any) -> TaggedValue:
+    """What the value is, then what it means.
+
+    The word is what keeps a value and its own text apart: without it a uuid
+    and the string of that uuid are one input, and a key issued for either
+    replays the other. json writes the pair as an array, which a string can
+    never be written as.
+
+    The words are the wire form. Renaming one moves every digest that carries
+    that type, so they are written out rather than read from the class -- a
+    rename is then a visible canonicalizer change rather than a silent one.
+    """
     #: datetime before date -- datetime subclasses date, and the date branch
     #: never applies the UTC canonical form, so the reverse order would give
     #: one instant two digests.
     if isinstance(value, datetime):
-        return _canonical_datetime(value)
+        return ("datetime", _canonical_datetime(value))
     if isinstance(value, date):
-        return value.isoformat()
+        return ("date", value.isoformat())
     if isinstance(value, uuid.UUID):
-        return str(value)
+        return ("uuid", str(value))
     if isinstance(value, Decimal):
-        return _canonical_decimal(value)
+        return ("decimal", _canonical_decimal(value))
     if isinstance(value, TemporalValue):
-        #: None for an unknown time, which json renders as null.
-        return value.canonical
+        #: None for an unknown time, which json renders as null inside the pair.
+        return ("temporal", value.canonical)
     raise TypeError(
         f"{type(value).__name__} has no canonical form for an idempotency "
         "fingerprint. Convert it at the call site: a repr() fallback would "
