@@ -81,7 +81,7 @@ def validate_purchase_game_ownership(sender, instance, action, model, pk_set, **
 @receiver(m2m_changed, sender=Purchase.games.through)
 def update_num_purchases(sender, instance, action, reverse, **kwargs):
     if not reverse and action.startswith("post_"):
-        instance.num_purchases = instance.games.count()
+        instance.num_purchases = instance.games.alive().count()
         instance.updated_at = now()
         instance.save(update_fields=["num_purchases", "updated_at"])
 

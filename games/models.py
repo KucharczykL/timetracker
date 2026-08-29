@@ -9,10 +9,12 @@ from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.db.models import (
     Case,
+    Exists,
     ExpressionWrapper,
     F,
     FilteredRelation,
     Func,
+    OuterRef,
     Q,
     Sum,
     Value,
@@ -765,6 +767,16 @@ class ExternalReference(models.Model):
 
 
 class PurchaseQueryset(LibraryOwnedQuerySet):
+    def for_library(self, library):
+        #: A bundle stays while one of its games stays. A purchase that
+        #: names no game is untouched by removal, so it stays too.
+        linked = Game.objects.filter(purchases=OuterRef("pk"))
+        return (
+            super()
+            .for_library(library)
+            .filter(~Exists(linked) | Exists(linked.alive()))
+        )
+
     def refunded(self):
         return self.filter(date_refunded__isnull=False)
 
