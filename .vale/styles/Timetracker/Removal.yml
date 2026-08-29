@@ -1,0 +1,25 @@
+---
+# The settled sense: taking a record out of a library. One act, one word,
+# and the word is remove. Vale cannot read a word's meaning, so the sense is
+# inferred from the words around it: each pattern below is one phrasing this
+# repo used before #944 replaced them. A use this misses is still caught by
+# RemovalTerms, one level down.
+extends: existence
+message: "Say 'remove': one act takes a record out. Found '%s'."
+link: docs/vocabulary.md
+level: error
+ignorecase: true
+scope:
+  - ~code
+  - ~heading
+tokens:
+  # tombstoned the row / a tombstone game
+  - '(tomb)?stoned?\s+(a\s+|the\s+)?(row|record|game|platform|device)'
+  # the tombstone says / write a tombstone
+  - '(a|the)\s+tombstone\b'
+  # archive the game / an archived record
+  - 'archiv(e|es|ed|ing)\s+(a\s+|the\s+)?(row|record|game|session|purchase)'
+  # delete the record — the domain sense only. Deleting a file, a branch or
+  # a queryset is the right word, and none of them is a library's record.
+  - 'delet(e|es|ed|ing)\s+(a\s+|the\s+)?(row|record|game|session|purchase|preset|play event|device|platform)'
+  - 'permanently\s+delete'

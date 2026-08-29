@@ -52,13 +52,13 @@ from games.sorting import (
     apply_sort,
     parse_find_filter,
 )
-from games.views.deletion import confirm_and_delete
 from games.views.filtering import (
     apply_structured_filter,
     builder_url_for,
     warn_unknown_sort,
 )
 from games.views.playergame_writes import record_facts_for_request
+from games.views.removal import confirm_and_remove
 from games.views.returns import return_url
 from games.writes.playergame import new_correlation_id
 
@@ -120,7 +120,7 @@ def create_playevent_tabledata(
                     },
                     {
                         "href": action_url(
-                            "games:delete_playevent", playevent.pk, origin=origin
+                            "games:remove_playevent", playevent.pk, origin=origin
                         ),
                         "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
                         "color": "red",
@@ -153,7 +153,7 @@ def _get_formatted_playtime_for_game_sessions_in_range(
     it uses the earliest and latest session start times for the game.
     Returns "0h 00m" if no sessions exist for the game or if the range is invalid.
     """
-    sessions_queryset = game.sessions.all()
+    sessions_queryset = game.sessions.alive()
 
     if not sessions_queryset.exists():
         return "0h 00m"
@@ -247,13 +247,13 @@ def add_playevent(request: HttpRequest, game_id: UUID | None = None) -> HttpResp
         initial["game"] = game
         try:
             # First, try to get the latest session. If no sessions, then no playtime.
-            latest_session = game.sessions.latest("timestamp_start")
+            latest_session = game.sessions.alive().latest("timestamp_start")
             latest_session_ts = latest_session.timestamp_start
 
             # Now, determine the start date for the new playevent.
             # This will be either the day after the last playevent ended, or the earliest session.
             try:
-                latest_playevent = game.playevents.latest("ended")
+                latest_playevent = game.playevents.alive().latest("ended")
             except PlayEvent.DoesNotExist:
                 latest_playevent = None
 
@@ -269,9 +269,9 @@ def add_playevent(request: HttpRequest, game_id: UUID | None = None) -> HttpResp
             else:
                 # No previous playevent (or none with an end date), so the new
                 # playevent starts from the earliest session.
-                earliest_session_ts = game.sessions.earliest(
-                    "timestamp_start"
-                ).timestamp_start
+                earliest_session_ts = (
+                    game.sessions.alive().earliest("timestamp_start").timestamp_start
+                )
                 initial["started"] = earliest_session_ts.date()
                 playtime_calc_start_ts = earliest_session_ts
 
@@ -362,16 +362,16 @@ def edit_playevent(request: HttpRequest, playevent_id: UUID) -> HttpResponse:
 
 
 @login_required
-def delete_playevent(request: HttpRequest, playevent_id: UUID) -> HttpResponse:
+def remove_playevent(request: HttpRequest, playevent_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     playevent = owned_or_404(
         PlayEvent.objects.for_library(library), library, id=playevent_id
     )
-    return confirm_and_delete(
+    return confirm_and_remove(
         request,
         playevent,
-        title="Delete playthrough",
-        message=f"Permanently delete this playthrough of {playevent.game}?",
+        title="Remove playthrough",
+        message=f"Remove this playthrough of {playevent.game}?",
         fallback="games:view_game",
         fallback_args=[playevent.game.id, playevent.game.url_slug],
     )

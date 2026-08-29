@@ -15,7 +15,7 @@ pytestmark = [
     pytest.mark.untracked_games,
 ]
 
-BEFORE_BASELINE = ("games", "0032_playergame_archived_at")
+BEFORE_BASELINE = ("games", "0032_playergame_removed_at")
 WITH_BASELINE = ("games", "0033_playergame_baseline_backfill")
 
 
@@ -123,14 +123,14 @@ def test_a_failed_migration_leaves_no_event_behind(baseline_migration_harness):
     assert LibraryEvent.objects.count() == 0
 
 
-def test_a_tombstoned_game_is_reported_as_skipped(baseline_migration_harness, capsys):
+def test_a_removed_game_is_reported_as_skipped(baseline_migration_harness, capsys):
     old_apps = baseline_migration_harness
     _, game = seed(old_apps, status="u")
     Game = old_apps.get_model("games", "Game")
-    Game.objects.filter(pk=game.pk).update(tombstoned_at=timezone.now())
+    Game.objects.filter(pk=game.pk).update(removed_at=timezone.now())
 
     migrate_to_baseline()
 
     payload = reconciliation_payload(capsys.readouterr())
-    assert payload["summary"]["skipped_tombstoned"] == 1
+    assert payload["summary"]["skipped_removed"] == 1
     assert payload["summary"]["tracked"] == 0

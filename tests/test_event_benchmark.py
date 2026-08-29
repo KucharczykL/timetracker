@@ -559,5 +559,5 @@ def test_json_output_parses_and_carries_the_schema():
 @pytest.mark.django_db(transaction=True)
 def test_keep_names_the_scratch_user_it_leaves_behind():
     output = run_command(seed=10, iterations=1, warmup=0, keep=True)
-    assert "delete_user_library" in output
+    assert "purge_user_library" in output
     assert User.objects.filter(username__startswith="benchmark-").exists()

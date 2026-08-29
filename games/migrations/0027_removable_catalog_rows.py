@@ -28,21 +28,21 @@ class Migration(migrations.Migration):
         ),
         migrations.AddField(
             model_name="device",
-            name="tombstoned_at",
+            name="removed_at",
             field=models.DateTimeField(
                 blank=True, default=None, editable=False, null=True
             ),
         ),
         migrations.AddField(
             model_name="game",
-            name="tombstoned_at",
+            name="removed_at",
             field=models.DateTimeField(
                 blank=True, default=None, editable=False, null=True
             ),
         ),
         migrations.AddField(
             model_name="platform",
-            name="tombstoned_at",
+            name="removed_at",
             field=models.DateTimeField(
                 blank=True, default=None, editable=False, null=True
             ),
@@ -50,7 +50,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="game",
             constraint=models.UniqueConstraint(
-                condition=models.Q(("tombstoned_at__isnull", True)),
+                condition=models.Q(("removed_at__isnull", True)),
                 fields=("library", "name", "platform", "year_released"),
                 name="unique_library_game_name_platform_year",
             ),
@@ -59,7 +59,7 @@ class Migration(migrations.Migration):
             model_name="game",
             constraint=models.UniqueConstraint(
                 condition=models.Q(
-                    ("platform__isnull", True), ("tombstoned_at__isnull", True)
+                    ("platform__isnull", True), ("removed_at__isnull", True)
                 ),
                 fields=("library", "name", "year_released"),
                 name="unique_library_platformless_game_name_year",
@@ -75,7 +75,7 @@ class Migration(migrations.Migration):
                     django.db.models.functions.text.Trim("group")
                 ),
                 condition=models.Q(
-                    ("library__isnull", True), ("tombstoned_at__isnull", True)
+                    ("library__isnull", True), ("removed_at__isnull", True)
                 ),
                 name="unique_shared_platform_normalized_name_group",
             ),
@@ -91,7 +91,7 @@ class Migration(migrations.Migration):
                     django.db.models.functions.text.Trim("group")
                 ),
                 condition=models.Q(
-                    ("library__isnull", False), ("tombstoned_at__isnull", True)
+                    ("library__isnull", False), ("removed_at__isnull", True)
                 ),
                 name="unique_private_platform_normalized_name_group",
             ),

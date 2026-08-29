@@ -13,10 +13,10 @@ from games.events.append import lock_stream
 from games.events.dispatch import dispatch
 from games.events.envelope import RecordedEvent
 from games.events.playergame import (
-    PLAYERGAME_ARCHIVED,
     PLAYERGAME_CREATED,
     PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED,
     PLAYERGAME_MASTERED_CHANGED,
+    PLAYERGAME_REMOVED,
     PLAYERGAME_RESTORED,
     PLAYERGAME_STATUS_CHANGED,
 )
@@ -72,8 +72,8 @@ def test_a_tracked_game_starts_in_unfinished_lists():
 
 
 def test_a_tracked_game_starts_live():
-    """The creation event archives nothing."""
-    assert PlayerGame().archived_at is None
+    """The creation event removes nothing."""
+    assert PlayerGame().removed_at is None
 
 
 def test_a_library_tracks_one_game_once(owned_library, tracked_game):
@@ -557,12 +557,12 @@ def test_a_rebuild_reproduces_the_exclusion(owned_user, owned_library, tracked_g
     assert PlayerGame.objects.get(pk=identity).excluded_from_unfinished is True
 
 
-def append_archived(library, actor, identity, *, key="archive"):
-    """Append one archive event, as dispatch would."""
+def append_removed(library, actor, identity, *, key="remove"):
+    """Append one remove event, as dispatch would."""
     with transaction.atomic():
         stream = lock_stream(library)
         return stream.append(
-            [PLAYERGAME_ARCHIVED.new(aggregate_id=identity, payload={})],
+            [PLAYERGAME_REMOVED.new(aggregate_id=identity, payload={})],
             actor=actor,
             correlation_id=uuid.uuid7(),
             idempotency_key=key,
@@ -582,15 +582,15 @@ def append_restored(library, actor, identity, *, key="restore"):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_the_archive_event_writes_its_own_time(owned_user, owned_library, tracked_game):
+def test_the_remove_event_writes_its_own_time(owned_user, owned_library, tracked_game):
     """The row takes recorded_at, not the clock."""
     identity = uuid.uuid7()
     append_created(owned_library, owned_user, tracked_game, identity=identity)
 
-    append_archived(owned_library, owned_user, identity)
+    append_removed(owned_library, owned_user, identity)
 
-    recorded = LibraryEvent.objects.get(event_type="library.playergame.archived")
-    assert PlayerGame.objects.get(pk=identity).archived_at == recorded.recorded_at
+    recorded = LibraryEvent.objects.get(event_type="library.playergame.removed")
+    assert PlayerGame.objects.get(pk=identity).removed_at == recorded.recorded_at
 
 
 @pytest.mark.django_db(transaction=True)
@@ -598,39 +598,39 @@ def test_the_restore_event_states_the_way_back(owned_user, owned_library, tracke
     """Two types, and the second clears the first."""
     identity = uuid.uuid7()
     append_created(owned_library, owned_user, tracked_game, identity=identity)
-    append_archived(owned_library, owned_user, identity)
+    append_removed(owned_library, owned_user, identity)
 
     append_restored(owned_library, owned_user, identity)
 
-    assert PlayerGame.objects.get(pk=identity).archived_at is None
+    assert PlayerGame.objects.get(pk=identity).removed_at is None
 
 
 @pytest.mark.django_db(transaction=True)
-def test_replaying_the_creation_event_again_keeps_a_later_archive(
+def test_replaying_the_creation_event_again_keeps_a_later_removal(
     owned_user, owned_library, tracked_game
 ):
     """A default is absent from DO UPDATE."""
     identity = uuid.uuid7()
     append_created(owned_library, owned_user, tracked_game, identity=identity)
-    append_archived(owned_library, owned_user, identity)
+    append_removed(owned_library, owned_user, identity)
     created = RecordedEvent.from_row(
         LibraryEvent.objects.get(event_type="library.playergame.created")
     )
 
     DEFAULT_REGISTRY.apply(created)
 
-    assert PlayerGame.objects.get(pk=identity).archived_at is not None
+    assert PlayerGame.objects.get(pk=identity).removed_at is not None
 
 
 @pytest.mark.django_db(transaction=True)
-def test_replaying_the_archive_event_costs_one_statement(
+def test_replaying_the_remove_event_costs_one_statement(
     owned_user, owned_library, tracked_game
 ):
     identity = uuid.uuid7()
     append_created(owned_library, owned_user, tracked_game, identity=identity)
-    append_archived(owned_library, owned_user, identity)
+    append_removed(owned_library, owned_user, identity)
     event = RecordedEvent.from_row(
-        LibraryEvent.objects.get(event_type="library.playergame.archived")
+        LibraryEvent.objects.get(event_type="library.playergame.removed")
     )
 
     with CaptureQueriesContext(connection) as queries:
@@ -640,42 +640,42 @@ def test_replaying_the_archive_event_costs_one_statement(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_replay_reproduces_the_archive(owned_user, owned_library, tracked_game):
+def test_a_replay_reproduces_the_removal(owned_user, owned_library, tracked_game):
     identity = uuid.uuid7()
     append_created(owned_library, owned_user, tracked_game, identity=identity)
-    append_archived(owned_library, owned_user, identity)
-    archived_at = PlayerGame.objects.get(pk=identity).archived_at
+    append_removed(owned_library, owned_user, identity)
+    removed_at = PlayerGame.objects.get(pk=identity).removed_at
     PlayerGame.objects.all().delete()
 
     replay(owned_library)
 
-    assert PlayerGame.objects.get(pk=identity).archived_at == archived_at
+    assert PlayerGame.objects.get(pk=identity).removed_at == removed_at
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_replay_reproduces_an_archive_and_its_undoing(
+def test_a_replay_reproduces_a_removal_and_its_undoing(
     owned_user, owned_library, tracked_game
 ):
     """Order decides, so the pair must replay in sequence."""
     identity = uuid.uuid7()
     append_created(owned_library, owned_user, tracked_game, identity=identity)
-    append_archived(owned_library, owned_user, identity)
+    append_removed(owned_library, owned_user, identity)
     append_restored(owned_library, owned_user, identity)
-    append_archived(owned_library, owned_user, identity, key="archive-again")
-    archived_at = PlayerGame.objects.get(pk=identity).archived_at
+    append_removed(owned_library, owned_user, identity, key="remove-again")
+    removed_at = PlayerGame.objects.get(pk=identity).removed_at
     PlayerGame.objects.all().delete()
 
     replay(owned_library)
 
-    assert PlayerGame.objects.get(pk=identity).archived_at == archived_at
+    assert PlayerGame.objects.get(pk=identity).removed_at == removed_at
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_rebuild_reproduces_the_archive(owned_user, owned_library, tracked_game):
+def test_a_rebuild_reproduces_the_removal(owned_user, owned_library, tracked_game):
     """Replay parity over a nullable column."""
     identity = uuid.uuid7()
     append_created(owned_library, owned_user, tracked_game, identity=identity)
-    append_archived(owned_library, owned_user, identity)
+    append_removed(owned_library, owned_user, identity)
 
     checked = rebuild_projections(owned_library, mode=RebuildMode.CHECK)
 
@@ -688,4 +688,4 @@ def test_a_rebuild_reproduces_the_archive(owned_user, owned_library, tracked_gam
     rebuilt = rebuild_projections(owned_library, mode=RebuildMode.REBUILD)
 
     assert rebuilt.swapped is True
-    assert PlayerGame.objects.get(pk=identity).archived_at is not None
+    assert PlayerGame.objects.get(pk=identity).removed_at is not None

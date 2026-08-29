@@ -954,13 +954,13 @@ def test_comparison_left_operand_survives_keystroke(
     assert "original_year_released" in _operand_option_values(comparison_row, "right")
 
 
-def test_preset_delete_flow_removes_row_and_db_record(
+def test_preset_removal_flow_takes_the_row_out(
     authenticated_page: Page, live_server, django_user_model
 ) -> None:
-    """The per-row delete ×: confirm → DELETE /api/presets/{id} → the row
-    vanishes on the refetch and the DB record is gone (#297). The panel must
-    survive the native confirm() — it stays open with focus in the search box,
-    showing the remaining preset."""
+    """The per-row × : confirm → DELETE /api/presets/{id} → the row
+    vanishes on the refetch and the preset leaves the library (#297). The
+    panel must survive the native confirm() — it stays open with focus in
+    the search box, showing the remaining preset."""
     user = django_user_model.objects.get(username="tester")
     keep = FilterPreset.objects.create(
         library=user.library, mode="games", name="keepme"
@@ -982,18 +982,19 @@ def test_preset_delete_flow_removes_row_and_db_record(
 
     doomed_row.locator("[data-search-select-action='delete']").click()
 
-    # Refetch after the DELETE: the deleted row is gone, the other remains,
+    # Refetch after the DELETE: the row is out of the list, the other remains,
     # the dialog is still open with the search box focused.
     expect(doomed_row).not_to_be_attached(timeout=5_000)
     expect(
         picker.locator("[data-search-select-option]").filter(has_text="keepme")
     ).to_be_visible()
     expect(picker.locator("[data-menu]")).to_be_visible()
-    assert not FilterPreset.objects.filter(id=doomed.id).exists()
-    assert FilterPreset.objects.filter(id=keep.id).exists()
+    visible = FilterPreset.objects.for_library(user.library)
+    assert not visible.filter(id=doomed.id).exists()
+    assert visible.filter(id=keep.id).exists()
 
 
-def test_deleting_last_picked_preset_does_not_resurrect(
+def test_removing_the_last_picked_preset_does_not_bring_it_back(
     authenticated_page: Page, live_server, django_user_model
 ) -> None:
     """Pick a preset, then delete that same preset on the next open: the row
@@ -1035,7 +1036,8 @@ def test_deleting_last_picked_preset_does_not_resurrect(
     expect(picker.locator("[data-search-select-no-results]")).to_have_text(
         "No saved presets"
     )
-    assert not FilterPreset.objects.filter(name="pickme").exists()
+    visible = FilterPreset.objects.for_library(user.library)
+    assert not visible.filter(name="pickme").exists()
 
 
 def test_preset_keyboard_pick_and_empty_enter(

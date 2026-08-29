@@ -26,10 +26,7 @@ from games.models import (
     UserLibraryPreferences,
     UserPreferences,
 )
-from games.retention import (
-    detach_game_from_purchases,
-    refuse_to_delete_a_referenced_row,
-)
+from games.retention import refuse_to_delete_a_referenced_row
 from timetracker.settings_resolver import clear_cache as clear_settings_cache
 
 logger = logging.getLogger("games")
@@ -63,7 +60,7 @@ def invalidate_settings_cache(sender, instance, **kwargs):
     # on_commit, not inline: firing inside the atomic block would let a racing
     # thread re-cache the old value, or cache a rolled-back phantom.
     #
-    # Known TTL-bounded gap: deleting a Device nulls a referencing
+    # Known TTL-bounded gap: destroying a Device nulls a referencing
     # default_device via a bulk UPDATE that fires no UserPreferences signal, so a
     # per-user snapshot can serve the dangling id until the TTL lapses.
     transaction.on_commit(clear_settings_cache)
@@ -84,18 +81,9 @@ def validate_purchase_game_ownership(sender, instance, action, model, pk_set, **
 @receiver(m2m_changed, sender=Purchase.games.through)
 def update_num_purchases(sender, instance, action, reverse, **kwargs):
     if not reverse and action.startswith("post_"):
-        instance.num_purchases = instance.games.count()
+        instance.num_purchases = instance.games.alive().count()
         instance.updated_at = now()
         instance.save(update_fields=["num_purchases", "updated_at"])
-
-
-@receiver(pre_delete, sender=Game)
-def update_purchase_counts_on_game_delete(sender, instance, **kwargs):
-    """Keep purchase counts right.
-
-    The work is in `games.retention`. A tombstone needs it too.
-    """
-    detach_game_from_purchases(instance)
 
 
 @receiver(pre_delete, sender=Game)
@@ -107,6 +95,15 @@ def refuse_to_delete_a_row_an_event_references(sender, instance, **kwargs):
     Here, not in the views, so every call path is held to it.
     """
     refuse_to_delete_a_referenced_row(instance)
+
+
+def recalculate_playtime(game: Game) -> None:
+    """The sum over the live sessions."""
+    total_playtime = game.sessions.alive().aggregate(
+        total_playtime=Sum(F("duration_calculated") + F("duration_manual"))
+    )["total_playtime"]
+    game.playtime = total_playtime if total_playtime else timedelta(0)
+    game.save(update_fields=["playtime"])
 
 
 @receiver([post_save, post_delete], sender=Session)
@@ -125,8 +122,4 @@ def update_game_playtime(sender, instance, **kwargs):
     if not game:
         return
 
-    total_playtime = game.sessions.aggregate(
-        total_playtime=Sum(F("duration_calculated") + F("duration_manual"))
-    )["total_playtime"]
-    game.playtime = total_playtime if total_playtime else timedelta(0)
-    game.save(update_fields=["playtime"])
+    recalculate_playtime(game)

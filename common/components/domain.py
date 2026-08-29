@@ -486,7 +486,7 @@ def SessionActions(session, csrf_token: str, origin: OriginUrl | None) -> Node:
                 "title": "Edit",
             },
             {
-                "href": action_url("games:delete_session", session.pk, origin=origin),
+                "href": action_url("games:remove_session", session.pk, origin=origin),
                 "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
                 "title": "Delete",
                 "color": "red",

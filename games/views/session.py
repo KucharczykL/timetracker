@@ -57,9 +57,9 @@ from games.sorting import (
     apply_sort,
     parse_find_filter,
 )
-from games.views.deletion import confirm_and_apply, confirm_and_delete
 from games.views.filtering import warn_unknown_sort
 from games.views.playergame_writes import record_facts_for_request
+from games.views.removal import confirm_and_apply, confirm_and_remove
 from games.views.returns import return_url
 from games.writes.playergame import new_correlation_id
 
@@ -388,13 +388,13 @@ def reset_session(request: HttpRequest, session_id: UUID) -> HttpResponse:
 
 
 @login_required
-def delete_session(request: HttpRequest, session_id: UUID) -> HttpResponse:
+def remove_session(request: HttpRequest, session_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
-    return confirm_and_delete(
+    return confirm_and_remove(
         request,
         session,
-        title="Delete session",
-        message=f"Permanently delete this session of {session.game}?",
+        title="Remove session",
+        message=f"Remove this session of {session.game}?",
         fallback="games:list_sessions",
     )

@@ -12,15 +12,16 @@ from games.retention import purging_library
 
 class Command(BaseCommand):
     help = (
-        "Show or execute the complete cascade caused by deleting one User and "
-        "their library. Dry-run is the default."
+        "Show or execute the complete cascade caused by purging one User and "
+        "their library. Dry-run is the default. This is the one act that "
+        "destroys rows: everything a screen offers only removes them."
     )
 
     def add_arguments(self, parser):
         parser.add_argument("--user", required=True, help="Username to inspect.")
         parser.add_argument(
             "--confirm",
-            help="Delete only when this value exactly matches --user.",
+            help="Purge only when this value exactly matches --user.",
         )
 
     def handle(self, *args, **options):
@@ -28,24 +29,24 @@ class Command(BaseCommand):
         confirmation = options["confirm"]
         if confirmation is None:
             user = self._get_user(username)
-            self._write_deletion_scope(self._deletion_counts(user))
+            self._write_purge_scope(self._purge_counts(user))
             self.stdout.write(
                 self.style.WARNING(
-                    f"DRY RUN: no data deleted. Re-run with --confirm {username}."
+                    f"DRY RUN: nothing purged. Re-run with --confirm {username}."
                 )
             )
             return
         if confirmation != username:
-            raise CommandError("--confirm must exactly match --user; nothing deleted.")
+            raise CommandError("--confirm must exactly match --user; nothing purged.")
 
         # A purge takes the events too.
         # Nothing is left to protect.
         with transaction.atomic(), purging_library():
             user = self._get_user(username, for_update=True)
-            self._write_deletion_scope(self._deletion_counts(user))
+            self._write_purge_scope(self._purge_counts(user))
             user.delete()
         self.stdout.write(
-            self.style.SUCCESS(f"DELETED User {username!r} and the scope above.")
+            self.style.SUCCESS(f"PURGED User {username!r} and the scope above.")
         )
 
     @staticmethod
@@ -59,19 +60,19 @@ class Command(BaseCommand):
         except user_model.DoesNotExist as error:
             raise CommandError(f"User {username!r} does not exist.") from error
 
-    def _write_deletion_scope(self, counts):
+    def _write_purge_scope(self, counts):
         self.stdout.write(
             self.style.WARNING(
-                "WARNING: deleting this User cascades through their library and "
+                "WARNING: purging this User cascades through their library and "
                 "all private library data."
             )
         )
-        self.stdout.write("Deletion scope:")
+        self.stdout.write("Purge scope:")
         for label, count in sorted(counts.items()):
             self.stdout.write(f"  {label}: {count}")
 
     @staticmethod
-    def _deletion_counts(user):
+    def _purge_counts(user):
         collector = Collector(using=DEFAULT_DB_ALIAS)
         collector.collect([user])
         counts = Counter()

@@ -1,4 +1,4 @@
-"""Deletes confirm on GET, act on POST, and return to where they started."""
+"""Confirm on GET, act on POST, return."""
 
 from datetime import UTC, datetime
 
@@ -28,45 +28,48 @@ def game(owned_library):
     return game
 
 
-def test_get_confirms_without_deleting(logged_in, game):
-    response = logged_in.get(reverse("games:delete_game", args=[game.id]))
+def test_get_confirms_without_removing(logged_in, game):
+    response = logged_in.get(reverse("games:remove_game", args=[game.id]))
     assert response.status_code == 200
     assert "Test Game" in response.content.decode()
-    assert Game.objects.filter(id=game.id).exists()
+    assert Game.objects.for_library(game.library).filter(id=game.id).exists()
 
 
+#: A dispatch opens its own transaction.
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.untracked_games
-def test_post_deletes_and_returns_to_the_origin(logged_in, game):
+def test_post_acts_and_returns_to_the_origin(logged_in, game):
     origin = f"{reverse('games:list_games')}?page=2"
-    response = logged_in.post(action_url("games:delete_game", game.id, origin=origin))
+    response = logged_in.post(action_url("games:remove_game", game.id, origin=origin))
     assert response["Location"] == origin
-    assert not Game.objects.filter(id=game.id).exists()
+    assert not Game.objects.for_library(game.library).filter(id=game.id).exists()
 
 
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.untracked_games
-def test_post_drops_an_origin_naming_the_deleted_game(logged_in, game):
+def test_post_drops_an_origin_naming_the_removed_game(logged_in, game):
     origin = game.get_absolute_url()
-    response = logged_in.post(action_url("games:delete_game", game.id, origin=origin))
+    response = logged_in.post(action_url("games:remove_game", game.id, origin=origin))
     assert response["Location"] == reverse("games:list_games")
 
 
 def test_the_confirmation_form_keeps_the_origin(logged_in, game):
     origin = f"{reverse('games:list_games')}?page=2"
     body = logged_in.get(
-        action_url("games:delete_game", game.id, origin=origin)
+        action_url("games:remove_game", game.id, origin=origin)
     ).content.decode()
     assert "origin=%2Ftracker%2Fgame%2Flist%3Fpage%3D2" in body
 
 
 @pytest.fixture
-def deletables(owned_library):
+def removables(owned_library):
     from datetime import date
 
     from games.models import Device, Purchase
 
     platform = Platform.objects.create(name="Console")
     owned = Game.objects.create(
-        library=owned_library, name="Deletable", platform=platform
+        library=owned_library, name="Removable", platform=platform
     )
     purchase = Purchase.objects.create(
         library=owned_library,
@@ -90,37 +93,38 @@ def deletables(owned_library):
 @pytest.mark.parametrize(
     "url_name,key,fallback",
     [
-        ("games:delete_session", "session", "games:list_sessions"),
-        ("games:delete_purchase", "purchase", "games:list_purchases"),
-        ("games:delete_platform", "platform", "games:list_platforms"),
-        ("games:delete_device", "device", "games:list_devices"),
+        ("games:remove_session", "session", "games:list_sessions"),
+        ("games:remove_purchase", "purchase", "games:list_purchases"),
+        ("games:remove_platform", "platform", "games:list_platforms"),
+        ("games:remove_device", "device", "games:list_devices"),
     ],
 )
-def test_every_delete_confirms_first(logged_in, deletables, url_name, key, fallback):
-    instance = deletables[key]
+def test_every_removal_confirms_first(
+    logged_in, owned_library, removables, url_name, key, fallback
+):
+    """The row stays; the library hides it."""
+    instance = removables[key]
+    manager = type(instance).objects
     url = reverse(url_name, args=[instance.pk])
     assert logged_in.get(url).status_code == 200
-    assert type(instance).objects.filter(pk=instance.pk).exists()
+    assert manager.for_library(owned_library).filter(pk=instance.pk).exists()
     response = logged_in.post(url)
     assert response["Location"] == reverse(fallback)
-    assert not type(instance).objects.filter(pk=instance.pk).exists()
+    assert manager.filter(pk=instance.pk).exists()
+    assert not manager.for_library(owned_library).filter(pk=instance.pk).exists()
 
 
-@pytest.mark.parametrize(
-    "url_name,key",
-    [
-        ("games:delete_playevent", "playevent"),
-    ],
-)
-def test_every_delete_confirms_first_with_owning_game_fallback(
-    logged_in, deletables, url_name, key
+def test_removal_confirms_first_with_owning_game_fallback(
+    logged_in, owned_library, removables
 ):
     """This one falls back to the game."""
-    instance = deletables[key]
-    owning_game = deletables["game"]
-    url = reverse(url_name, args=[instance.pk])
+    instance = removables["playevent"]
+    owning_game = removables["game"]
+    visible = PlayEvent.objects.for_library(owned_library)
+    url = reverse("games:remove_playevent", args=[instance.pk])
     assert logged_in.get(url).status_code == 200
-    assert type(instance).objects.filter(pk=instance.pk).exists()
+    assert visible.filter(pk=instance.pk).exists()
     response = logged_in.post(url)
     assert response["Location"] == owning_game.get_absolute_url()
-    assert not type(instance).objects.filter(pk=instance.pk).exists()
+    assert PlayEvent.objects.filter(pk=instance.pk).exists()
+    assert not visible.filter(pk=instance.pk).exists()

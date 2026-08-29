@@ -1,7 +1,7 @@
-"""What a delete does to referenced rows.
+"""What removal does; what the guard refuses.
 
-The load-bearing claim is not "the row stays". It is that
-everything else the delete would do still happens.
+Nothing a user reaches destroys a row. The guard is what stops a
+`.delete()` from a shell or a script stranding a reference.
 """
 
 import uuid
@@ -42,15 +42,14 @@ from games.models import (
     Session,
     UserLibraryPreferences,
 )
+from games.removal import remove
 from games.retention import (
     ReferencedRowDeletion,
-    Retirement,
     UnresolvableReference,
     must_be_retained,
     purging_library,
     reference_count,
     resolve_reference,
-    tombstone_or_delete,
 )
 
 pytestmark = [
@@ -116,44 +115,31 @@ def device(owned_library):
     )
 
 
-# --- an unreferenced row is still really deleted -----------------------------
+# --- a removed row stays, referenced or not --------------------------------
 
 
-def test_an_unreferenced_game_is_deleted(game):
-    assert tombstone_or_delete(game) is Retirement.DELETED
+def test_an_unreferenced_game_is_kept(owned_library, game):
+    """No reference, and the row still stays.
 
-    assert not Game.objects.filter(pk=game.pk).exists()
+    The condition that used to pick between two outcomes is gone.
+    """
+    remove(game)
 
-
-def test_an_unreferenced_platform_is_deleted(platform):
-    assert tombstone_or_delete(platform) is Retirement.DELETED
-
-    assert not Platform.objects.filter(pk=platform.pk).exists()
-
-
-def test_an_unreferenced_device_is_deleted(device):
-    assert tombstone_or_delete(device) is Retirement.DELETED
-
-    assert not Device.objects.filter(pk=device.pk).exists()
-
-
-# --- a referenced row is retained --------------------------------------------
-
-
-def test_a_referenced_game_is_tombstoned(owned_library, game):
-    name_in_an_event(owned_library, game)
-
-    assert tombstone_or_delete(game) is Retirement.TOMBSTONED
-
-    retained = Game.objects.get(pk=game.pk)
-    assert retained.tombstoned_at is not None
+    assert Game.objects.get(pk=game.pk).removed_at is not None
     assert not Game.objects.for_library(owned_library).exists()
 
 
-def test_a_tracked_game_is_tombstoned_and_keeps_its_projection_row(
-    owned_user, owned_library
-):
-    """A tombstone must not delete a projection row."""
+def test_a_referenced_game_is_kept(owned_library, game):
+    name_in_an_event(owned_library, game)
+
+    remove(game)
+
+    assert Game.objects.get(pk=game.pk).removed_at is not None
+    assert not Game.objects.for_library(owned_library).exists()
+
+
+def test_a_removed_game_keeps_its_projection_row(owned_user, owned_library):
+    """Removal must not delete a projection row."""
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     dispatch(
         TrackGame(game_id=game.pk),
@@ -162,9 +148,9 @@ def test_a_tracked_game_is_tombstoned_and_keeps_its_projection_row(
         idempotency_key="track",
     )
 
-    assert tombstone_or_delete(game) is Retirement.TOMBSTONED
+    remove(game)
 
-    assert Game.objects.get(pk=game.pk).tombstoned_at is not None
+    assert Game.objects.get(pk=game.pk).removed_at is not None
     assert PlayerGame.objects.filter(game=game).count() == 1
 
 
@@ -178,7 +164,7 @@ def test_a_tracked_game_refuses_a_hard_delete(owned_user, owned_library):
         idempotency_key="track",
     )
 
-    with pytest.raises(ReferencedRowDeletion, match="tombstone_or_delete"):
+    with pytest.raises(ReferencedRowDeletion, match="games.removal.remove"):
         game.delete()
 
     assert Game.objects.filter(pk=game.pk).exists()
@@ -206,20 +192,22 @@ def test_a_bulk_delete_of_a_tracked_game_still_answers_restricted(
     assert Game.objects.filter(pk=game.pk).exists()
 
 
-def test_a_referenced_platform_is_tombstoned(owned_library, platform):
+def test_a_referenced_platform_is_kept(owned_library, platform):
     name_in_an_event(owned_library, platform)
 
-    assert tombstone_or_delete(platform) is Retirement.TOMBSTONED
+    remove(platform)
 
-    assert Platform.objects.get(pk=platform.pk).tombstoned_at is not None
+    assert Platform.objects.get(pk=platform.pk).removed_at is not None
+    assert not Platform.objects.for_library(owned_library).exists()
 
 
-def test_a_referenced_device_is_tombstoned(owned_library, device):
+def test_a_referenced_device_is_kept(owned_library, device):
     name_in_an_event(owned_library, device)
 
-    assert tombstone_or_delete(device) is Retirement.TOMBSTONED
+    remove(device)
 
-    assert Device.objects.get(pk=device.pk).tombstoned_at is not None
+    assert Device.objects.get(pk=device.pk).removed_at is not None
+    assert not Device.objects.for_library(owned_library).exists()
 
 
 def test_a_shared_platform_one_library_referenced_is_retained_for_everyone(
@@ -230,7 +218,10 @@ def test_a_shared_platform_one_library_referenced_is_retained_for_everyone(
     name_in_an_event(owned_library, shared)
 
     assert must_be_retained(shared)
-    assert tombstone_or_delete(shared) is Retirement.TOMBSTONED
+
+    remove(shared)
+
+    assert Platform.objects.get(pk=shared.pk).removed_at is not None
 
 
 def test_reference_count_counts_events_not_rows(owned_library, device):
@@ -240,11 +231,11 @@ def test_reference_count_counts_events_not_rows(owned_library, device):
     assert reference_count(device) == 2
 
 
-# --- retiring is deleting, minus the row -------------------------------------
+# --- removal takes nothing else with it --------------------------------------
 
 
 class LibraryState(TypedDict):
-    """What a library has left after a game goes."""
+    """What stays after a game goes."""
 
     sessions: int
     play_events: int
@@ -258,8 +249,8 @@ class LibraryState(TypedDict):
 def populate(library):
     """One game with everything below it.
 
-    The bystander shares a bundle purchase, so the bundle survives
-    with a lower count and the single-game purchase does not.
+    The bystander shares a bundle purchase, so the bundle keeps a
+    lower count while the single-game purchase drops to zero.
     """
     platform = Platform.objects.create(library=library, name="Steam", group="PC")
     doomed = Game.objects.create(
@@ -312,35 +303,43 @@ def snapshot(library, bundle, bystander) -> LibraryState:
     )
 
 
-def test_tombstoning_leaves_exactly_what_deleting_would(owned_library, other_library):
-    """The tombstone did not change product behaviour.
+def test_removing_leaves_every_child_row(owned_library, other_library):
+    """A reference no longer picks an outcome.
 
-    The same fixture in two libraries. One game is tombstoned, one is
-    deleted. What the two libraries have left must match.
+    The same fixture in two libraries, one game referenced and one
+    not. Both are removed, and the two libraries must match.
     """
-    deleted_game, deleted_bundle, deleted_bystander = populate(owned_library)
-    tombstoned_game, tombstoned_bundle, tombstoned_bystander = populate(other_library)
-    name_in_an_event(other_library, tombstoned_game)
+    referenced_game, referenced_bundle, referenced_bystander = populate(owned_library)
+    plain_game, plain_bundle, plain_bystander = populate(other_library)
+    name_in_an_event(owned_library, referenced_game)
 
-    assert tombstone_or_delete(deleted_game) is Retirement.DELETED
-    assert tombstone_or_delete(tombstoned_game) is Retirement.TOMBSTONED
+    remove(referenced_game)
+    remove(plain_game)
 
-    after_delete = snapshot(owned_library, deleted_bundle, deleted_bystander)
-    after_tombstone = snapshot(other_library, tombstoned_bundle, tombstoned_bystander)
-    assert after_tombstone == after_delete
-    #: Not vacuous: the fixture had things to lose.
-    assert after_delete == LibraryState(
-        sessions=1,
-        play_events=0,
-        purchases=1,
-        editions=0,
-        releases=0,
+    after_referenced = snapshot(owned_library, referenced_bundle, referenced_bystander)
+    after_plain = snapshot(other_library, plain_bundle, plain_bystander)
+    assert after_referenced == after_plain
+    #: Not vacuous: a delete took all this.
+    assert after_plain == LibraryState(
+        sessions=2,
+        play_events=1,
+        purchases=2,
+        editions=1,
+        releases=1,
         bundle_count=1,
         other_game_playtime=timedelta(hours=1),
     )
+    #: Out of the library, and still there.
+    assert Game.objects.for_library(other_library).count() == 1
+    assert Game.objects.get(pk=plain_game.pk).removed_at is not None
 
 
-def test_tombstoning_a_platform_nulls_what_deleting_would(owned_library, platform):
+def test_removing_a_platform_keeps_what_names_it(owned_library, platform):
+    """A stamp nulls no foreign key.
+
+    The Collector surgery that did is gone with the husk. Restoring
+    the platform must give back the rows that named it.
+    """
     game = Game.objects.create(
         library=owned_library, name="Tetris", year_released=1984, platform=platform
     )
@@ -356,14 +355,14 @@ def test_tombstoning_a_platform_nulls_what_deleting_would(owned_library, platfor
     )
     name_in_an_event(owned_library, platform)
 
-    tombstone_or_delete(platform)
+    remove(platform)
 
-    assert Game.objects.get(pk=game.pk).platform_id is None
-    assert Purchase.objects.get(pk=purchase.pk).platform_id is None
-    assert Release.objects.get(pk=release.pk).platform_id is None
+    assert Game.objects.get(pk=game.pk).platform_id == platform.pk
+    assert Purchase.objects.get(pk=purchase.pk).platform_id == platform.pk
+    assert Release.objects.get(pk=release.pk).platform_id == platform.pk
 
 
-def test_tombstoning_a_device_nulls_what_deleting_would(owned_library, game, device):
+def test_removing_a_device_keeps_what_names_it(owned_library, game, device):
     session = Session.objects.create(
         game=game,
         device=device,
@@ -374,20 +373,20 @@ def test_tombstoning_a_device_nulls_what_deleting_would(owned_library, game, dev
     preferences.set_default_device(device)
     name_in_an_event(owned_library, device)
 
-    tombstone_or_delete(device)
+    remove(device)
 
-    assert Session.objects.get(pk=session.pk).device_id is None
+    assert Session.objects.get(pk=session.pk).device_id == device.pk
     preferences.refresh_from_db()
-    assert preferences.default_device_id is None
+    assert preferences.default_device_id == device.pk
 
 
 # --- the reference still resolves --------------------------------------------
 
 
-def test_a_tombstoned_row_still_resolves(owned_library, game):
+def test_a_removed_row_still_resolves(owned_library, game):
     reference = name_in_an_event(owned_library, game)
 
-    tombstone_or_delete(game)
+    remove(game)
 
     assert resolve_reference(reference) == game
 
@@ -417,7 +416,7 @@ def test_a_raw_delete_of_a_referenced_row_is_refused(owned_library, request, fix
     instance = request.getfixturevalue(fixture)
     name_in_an_event(owned_library, instance)
 
-    with pytest.raises(ReferencedRowDeletion, match="tombstone_or_delete"):
+    with pytest.raises(ReferencedRowDeletion, match="games.removal.remove"):
         instance.delete()
 
     assert type(instance).objects.filter(pk=instance.pk).exists()
@@ -444,7 +443,7 @@ def test_purging_a_library_takes_its_referenced_rows(owned_user, owned_library, 
     name_in_an_event(owned_library, game)
 
     call_command(
-        "delete_user_library",
+        "purge_user_library",
         user=owned_user.username,
         confirm=owned_user.username,
         stdout=StringIO(),
@@ -468,7 +467,7 @@ def test_purging_one_library_leaves_the_others_rows(
     name_in_an_event(other_library, shared, key="shared")
 
     call_command(
-        "delete_user_library",
+        "purge_user_library",
         user=owned_user.username,
         confirm=owned_user.username,
         stdout=StringIO(),

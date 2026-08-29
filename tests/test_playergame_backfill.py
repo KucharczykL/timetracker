@@ -27,7 +27,7 @@ from games.playergame_status import (
     UnmappedLegacyStatus,
     player_status_for,
 )
-from games.retention import Retirement, tombstone_or_delete
+from games.removal import remove
 
 pytestmark = pytest.mark.untracked_games
 
@@ -306,7 +306,7 @@ def test_an_unmastered_game_records_no_mastery_fact(owned_user, owned_library):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_no_exclusion_or_archive_fact_is_invented(owned_user, owned_library):
+def test_no_exclusion_or_removal_fact_is_invented(owned_user, owned_library):
     game = Game.objects.create(
         library=owned_library, name="Signalis", status=Game.Status.RETIRED
     )
@@ -315,8 +315,8 @@ def test_no_exclusion_or_archive_fact_is_invented(owned_user, owned_library):
 
     recorded = set(LibraryEvent.objects.values_list("event_type", flat=True))
     assert "library.playergame.excluded_from_unfinished_changed" not in recorded
-    assert "library.playergame.archived" not in recorded
-    assert PlayerGame.objects.get().archived_at is None
+    assert "library.playergame.removed" not in recorded
+    assert PlayerGame.objects.get().removed_at is None
 
 
 @pytest.mark.django_db(transaction=True)
@@ -407,15 +407,15 @@ def test_a_library_tracks_every_live_game_it_holds(owned_user, owned_library):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_tombstoned_game_is_skipped(owned_user, owned_library):
+def test_a_removed_game_is_skipped(owned_user, owned_library):
     Game.objects.create(library=owned_library, name="Outer Wilds")
-    husk = Game.objects.create(library=owned_library, name="Deleted")
-    Game.objects.filter(pk=husk.pk).update(tombstoned_at=timezone.now())
+    removed = Game.objects.create(library=owned_library, name="Removed")
+    Game.objects.filter(pk=removed.pk).update(removed_at=timezone.now())
 
     counts = backfill_library(owned_library)
 
-    assert (counts.games, counts.tracked, counts.skipped_tombstoned) == (2, 1, 1)
-    assert not PlayerGame.objects.filter(game_id=husk.pk).exists()
+    assert (counts.games, counts.tracked, counts.skipped_removed) == (2, 1, 1)
+    assert not PlayerGame.objects.filter(game_id=removed.pk).exists()
 
 
 @pytest.mark.django_db(transaction=True)
@@ -609,29 +609,19 @@ def test_the_sample_loader_leaves_every_loaded_game_tracked(owned_user):
     call_command("load_sample_data", user=owned_user.username, verbosity=0)
 
     library = owned_user.library
-    live = Game.objects.filter(library=library, tombstoned_at__isnull=True).count()
+    live = Game.objects.filter(library=library, removed_at__isnull=True).count()
     assert live > 0
     assert PlayerGame.objects.filter(library=library).count() == live
     assert reconcile(library) == []
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_backfilled_game_is_tombstoned_rather_than_deleted(owned_library):
-    #: catalog.game is a REQUIRED reference kind, so after the backfill every
-    #: live game is named by its creation event and retention must keep the row.
+def test_a_backfilled_game_is_kept(owned_library):
+    #: An event names it; removal keeps it.
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     backfill_library(owned_library)
 
-    outcome = tombstone_or_delete(game)
+    remove(game)
 
-    assert outcome is Retirement.TOMBSTONED
     game.refresh_from_db()
-    assert game.tombstoned_at is not None
-
-
-@pytest.mark.django_db(transaction=True)
-def test_a_game_with_no_events_is_still_deleted_outright(owned_library):
-    game = Game.objects.create(library=owned_library, name="Never Tracked")
-
-    assert tombstone_or_delete(game) is Retirement.DELETED
-    assert not Game.objects.filter(pk=game.pk).exists()
+    assert game.removed_at is not None

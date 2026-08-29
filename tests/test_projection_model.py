@@ -117,7 +117,7 @@ def test_a_constant_default_is_allowed():
         origin = models.UUIDField(default=uuid.UUID(int=1))
         status = models.CharField(max_length=9, default="unplayed")
         mastered = models.BooleanField(default=False)
-        archived_at = models.DateTimeField(null=True, default=None)
+        removed_at = models.DateTimeField(null=True, default=None)
 
         class Meta:
             app_label = "games"
@@ -246,7 +246,7 @@ PINNED_DEFAULTS: dict[str, dict[str, object]] = {
         "status": "unplayed",
         "mastered": False,
         "excluded_from_unfinished": False,
-        "archived_at": None,
+        "removed_at": None,
     },
 }
 

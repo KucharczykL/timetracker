@@ -444,8 +444,8 @@ class RenderedPagesTest(TestCase):
 
     # --- HTMX fragments ------------------------------------------------------
 
-    def test_delete_game_confirmation_page(self):
-        html = self.get("games:delete_game", self.game.id).content.decode()
+    def test_remove_game_confirmation_page(self):
+        html = self.get("games:remove_game", self.game.id).content.decode()
         self.assertIn(self.game.name, html)
         self.assertIn("session(s)", html)  # seeded session
         self.assertIn("purchase(s)", html)  # seeded purchase

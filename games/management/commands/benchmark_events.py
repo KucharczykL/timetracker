@@ -126,7 +126,7 @@ class Command(BaseCommand):
         """First: a run that raises leaves it."""
         self.stdout.write(
             "Keeping the scratch library. Remove it with: "
-            f"manage.py delete_user_library --user {username} --confirm {username}"
+            f"manage.py purge_user_library --user {username} --confirm {username}"
         )
 
     def _write_estimate(

@@ -81,17 +81,17 @@ DEFAULT_EVENT_TYPES.register(PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED)
 
 
 @with_config(STRICT_SCHEMA)
-class PlayerGameArchivedPayload(TypedDict):
-    """The library now archives the game."""
+class PlayerGameRemovedPayload(TypedDict):
+    """The library took the game out."""
 
 
-PLAYERGAME_ARCHIVED = EventSpec(
-    "library.playergame.archived",
+PLAYERGAME_REMOVED = EventSpec(
+    "library.playergame.removed",
     aggregate_type="playergame",
-    payload=PlayerGameArchivedPayload,
+    payload=PlayerGameRemovedPayload,
 )
 
-DEFAULT_EVENT_TYPES.register(PLAYERGAME_ARCHIVED)
+DEFAULT_EVENT_TYPES.register(PLAYERGAME_REMOVED)
 
 
 @with_config(STRICT_SCHEMA)

@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 from datetime import timedelta
+from functools import partial
 from typing import Any, NoReturn, cast
 from uuid import UUID
 
@@ -88,10 +89,11 @@ from games.views.filtering import (
 )
 from games.views.playergame_writes import (
     record_facts_for_request,
+    remove_game_for_request,
     track_game_for_request,
 )
 from games.views.playevent import create_playevent_tabledata
-from games.views.retirement import confirm_and_retire
+from games.views.removal import confirm_and_remove
 from games.views.returns import origin_from, return_url
 from games.writes.playergame import new_correlation_id
 
@@ -201,7 +203,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
                         },
                         {
                             "href": action_url(
-                                "games:delete_game", game.pk, origin=origin
+                                "games:remove_game", game.pk, origin=origin
                             ),
                             "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
                             "color": "red",
@@ -310,27 +312,26 @@ def add_game(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def delete_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
+def remove_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
-    return confirm_and_retire(
+    return confirm_and_remove(
         request,
         game,
-        title="Delete game",
-        noun="game",
-        label=game.name,
-        message=f"This will permanently delete {game.name} and all associated data:",
-        details=_deleted_with_game(game),
+        title="Remove game",
+        message=f"Remove {game.name} from your library?",
+        details=_removed_with_game(game),
         fallback="games:list_games",
         detail_url=game.get_absolute_url(),
+        action=partial(remove_game_for_request, request, game),
     )
 
 
-def _deleted_with_game(game: Game) -> Node:
+def _removed_with_game(game: Game) -> Node:
     counts = [
-        (game.sessions.count(), "session"),
-        (game.purchases.count(), "purchase"),
-        (game.playevents.count(), "play event"),
+        (game.sessions.alive().count(), "session"),
+        (game.purchases.alive().count(), "purchase"),
+        (game.playevents.alive().count(), "play event"),
     ]
     present = [Li()[f"{count} {label}(s)"] for count, label in counts if count]
     return Ul()[*(present or [Li()["No associated data"]])]
@@ -385,7 +386,7 @@ def _played_row(game: Game, request: HttpRequest, origin: OriginUrl | None) -> N
     )
     from common.components.custom_elements import _PlayEventRow
 
-    played = game.playevents.count()
+    played = game.playevents.alive().count()
 
     count_button = ControlButton(
         [("class", "rounded-s-lg")],
@@ -476,7 +477,7 @@ def _game_action_buttons(game: Game, origin: OriginUrl | None) -> Node:
                     "color": "gray",
                 },
                 {
-                    "href": action_url("games:delete_game", game.id, origin=origin),
+                    "href": action_url("games:remove_game", game.id, origin=origin),
                     "slot": "Delete",
                     "color": "red",
                 },
@@ -680,7 +681,7 @@ def _purchases_section(
                     },
                     {
                         "href": action_url(
-                            "games:delete_purchase", purchase.pk, origin=origin
+                            "games:remove_purchase", purchase.pk, origin=origin
                         ),
                         "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
                         "color": "red",

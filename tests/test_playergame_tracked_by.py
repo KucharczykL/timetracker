@@ -31,18 +31,18 @@ def test_an_untracked_game_is_absent(owned_library):
 
 
 @pytest.mark.django_db
-def test_a_removed_game_is_absent(owned_library):
+def test_a_removed_catalog_game_is_absent(owned_library):
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
-    Game.objects.filter(pk=game.pk).update(tombstoned_at=timezone.now())
+    Game.objects.filter(pk=game.pk).update(removed_at=timezone.now())
 
     assert not Game.objects.tracked_by(owned_library).exists()
 
 
 @pytest.mark.django_db
-def test_an_archived_game_is_absent(owned_library):
+def test_a_removed_tracked_game_is_absent(owned_library):
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     PlayerGame.objects.filter(library=owned_library, game=game).update(
-        archived_at=timezone.now()
+        removed_at=timezone.now()
     )
 
     assert not Game.objects.tracked_by(owned_library).exists()

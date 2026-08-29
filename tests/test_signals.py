@@ -34,7 +34,7 @@ class SignalsTest(TestCase):
         self.assertTrue(Game.objects.filter(pk=g.pk).exists())
         self.assertEqual(g.sessions.count(), 1)
 
-        # Deleting the game should not raise (signals run during cascade)
+        # Destroying the game should not raise (signals run during cascade)
         g.delete()
 
         # After deletion, the Game should be gone and no sessions remain

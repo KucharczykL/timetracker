@@ -113,16 +113,18 @@ class SplitPurchaseTest(TestCase):
         bundle.games.set(games)
         return bundle
 
-    def test_split_creates_per_game_purchases_and_deletes_original(self):
+    def test_split_creates_per_game_purchases_and_removes_original(self):
         bundle = self._bundle([self.game_a, self.game_b], price=30.0)
 
         response = self.client.post(reverse("games:split_purchase", args=[bundle.id]))
 
         self.assertEqual(response.status_code, 204)
         self.assertEqual(response["HX-Redirect"], reverse("games:list_purchases"))
-        self.assertFalse(Purchase.objects.filter(id=bundle.id).exists())
-        self.assertEqual(Purchase.objects.count(), 2)
-        for purchase in Purchase.objects.all():
+        visible = Purchase.objects.for_library(self.library)
+        self.assertTrue(Purchase.objects.filter(id=bundle.id).exists())
+        self.assertFalse(visible.filter(id=bundle.id).exists())
+        self.assertEqual(visible.count(), 2)
+        for purchase in visible:
             self.assertEqual(purchase.library, self.library)
             self.assertEqual(purchase.num_purchases, 1)
             self.assertEqual(purchase.price, 15.0)  # 30 / 2, split evenly
@@ -135,4 +137,4 @@ class SplitPurchaseTest(TestCase):
 
         self.assertEqual(response.status_code, 204)
         self.assertTrue(Purchase.objects.filter(id=single.id).exists())
-        self.assertEqual(Purchase.objects.count(), 1)
+        self.assertEqual(Purchase.objects.for_library(self.library).count(), 1)

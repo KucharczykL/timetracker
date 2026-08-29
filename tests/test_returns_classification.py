@@ -2,7 +2,7 @@
 
 Guarding on a name prefix (add_/edit_/delete_/…) does not hold: the session
 clone route is named for where it is launched from, and a future clone_/reset_/
-archive_ route would pass silently. Completeness against the real route table
+merge_ route would pass silently. Completeness against the real route table
 has no such hole, and READ_ONLY doubles as the origin allow-list.
 """
 
@@ -48,3 +48,8 @@ def test_no_name_is_in_two_buckets():
         for name in names:
             assert name not in seen, f"{name} in {seen.get(name)} and {bucket_name}"
             seen[name] = bucket_name
+
+
+def test_no_route_is_named_delete():
+    """One act, one word: routes say remove."""
+    assert not [name for name in _routed_names() if "delete" in name]
