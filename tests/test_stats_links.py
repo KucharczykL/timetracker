@@ -489,3 +489,28 @@ def test_a_retired_purchase_links_to_the_same_count(
         _count(getattr(stats_links, builder)(YEAR), Purchase, library)
         == stats[stat_key]
     )
+
+
+@pytest.mark.parametrize(
+    ("builder", "stat_key"),
+    [
+        ("purchases_dropped", "dropped_count"),
+        ("purchases_unfinished", "purchased_unfinished_count"),
+        ("purchases_backlog_decrease", "backlog_decrease_count"),
+    ],
+)
+def test_a_link_lands_when_the_catalog_disagrees(world, builder, stat_key):
+    """Both sides read the projection, so a wrong column changes nothing.
+
+    The fixture writes each row from the game's letter, which would
+    let a catalog reader pass. Setting every letter to `u` leaves
+    only the projection saying anything true.
+    """
+    library = world["library"]
+    Game.objects.filter(library=library).update(status=Game.Status.UNPLAYED)
+
+    stats = compute_stats(library, YEAR)
+    assert (
+        _count(getattr(stats_links, builder)(YEAR), Purchase, library)
+        == stats[stat_key]
+    )
