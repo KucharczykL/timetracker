@@ -145,7 +145,7 @@ takes one row, thus each message a person reads is the policy's.
 ### The one exemption
 
 `purging_library()` stops the guard for a purge of a full library.
-`delete_user_library` uses it. A purge also takes the events. After a purge
+`purge_user_library` uses it. A purge also takes the events. After a purge
 no recorded reference stays, thus no row needs retention. Without the
 exemption the guard stops the one operation that is permitted to leave nothing.
 

@@ -222,6 +222,6 @@ includes it.
 ## Teardown
 
 `50.42s` deletes roughly 400,000 rows — the events, their reference rows, the
-catalog, and the projections — through the same `delete_user_library` command an
+catalog, and the projections — through the same `purge_user_library` command an
 operator would use. A raw-SQL cascade would be faster and would be a second
 thing that can drift from `on_delete`, so the benchmark pays the time.

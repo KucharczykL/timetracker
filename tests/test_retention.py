@@ -443,7 +443,7 @@ def test_purging_a_library_takes_its_referenced_rows(owned_user, owned_library, 
     name_in_an_event(owned_library, game)
 
     call_command(
-        "delete_user_library",
+        "purge_user_library",
         user=owned_user.username,
         confirm=owned_user.username,
         stdout=StringIO(),
@@ -467,7 +467,7 @@ def test_purging_one_library_leaves_the_others_rows(
     name_in_an_event(other_library, shared, key="shared")
 
     call_command(
-        "delete_user_library",
+        "purge_user_library",
         user=owned_user.username,
         confirm=owned_user.username,
         stdout=StringIO(),

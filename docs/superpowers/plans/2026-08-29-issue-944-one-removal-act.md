@@ -1175,15 +1175,27 @@ git commit -m "Refuse tombstone, archive and the domain delete"
 
 ## Final verification
 
-- [ ] `make check` is green, `e2e/` included, from a clean tree.
-- [ ] `grep -rli "tombston\|archiv" --include=*.py --include=*.ts --include=*.md .`
-      returns only: the four historical migrations (`0027`, `0028`, `0032`,
-      `0033`), `tests/test_playergame_backfill_migration.py`, and the four
+**Deviation, applied:** `manage.py delete_user_library` is now
+`purge_user_library`, with its scope heading, dry-run line, error and success
+messages saying purge. The plan said only that `purging_library()` stays as it
+is. But #944 asks that purge be the library command in wording *and* in code,
+and the one command that destroys a library was the last place that said
+delete. The rename reaches `tests/test_library_commands.py`,
+`tests/test_retention.py`, `tests/test_event_benchmark.py`,
+`games/events/benchmark_workload.py`,
+`games/management/commands/benchmark_events.py`, `docs/event-retention.md` and
+`docs/event-benchmarks.md`.
+
+- [x] `make check` is green, `e2e/` included, from a clean tree.
+- [x] `grep -rli "tombston\|archiv" --include=*.py --include=*.ts --include=*.md .`
+      returns less than the plan expected: the historical migrations were
+      renamed in place by the earlier tasks, so what stays is
+      `docs/vocabulary.md`, the records under `docs/superpowers/`, and the
       files that mean a tar archive or Postgres archive mode
       (`scripts/db_dump.py`, `scripts/ensure_postgres.py`,
       `tests/test_db_dump.py`, `tests/test_ensure_postgres.py`).
-- [ ] `make audit-uuid-identity` passes.
-- [ ] `make reset-db` replays the whole graph, the two edited event-era
+- [x] `make audit-uuid-identity` passes.
+- [x] `make reset-db` replays the whole graph, the two edited event-era
       migrations included, and `make migrate` then applies 0036 on top.
-- [ ] Every acceptance line in #944 is answered, except the undo line the issue
+- [x] Every acceptance line in #944 is answered, except the undo line the issue
       edit moves to #695.

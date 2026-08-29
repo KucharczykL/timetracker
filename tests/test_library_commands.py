@@ -139,11 +139,11 @@ def test_audit_exits_nonzero_and_names_an_injected_cross_library_link(owner, out
 
 
 @pytest.mark.django_db
-def test_delete_user_library_is_a_warning_rich_dry_run_by_default(owner):
+def test_purge_user_library_is_a_warning_rich_dry_run_by_default(owner):
     _owned_graph(owner)
     output = StringIO()
 
-    call_command("delete_user_library", "--user", owner.username, stdout=output)
+    call_command("purge_user_library", "--user", owner.username, stdout=output)
 
     assert get_user_model().objects.filter(pk=owner.pk).exists()
     assert Game.objects.filter(library=owner.library).exists()
@@ -154,12 +154,12 @@ def test_delete_user_library_is_a_warning_rich_dry_run_by_default(owner):
 
 
 @pytest.mark.django_db
-def test_delete_user_library_rejects_a_mismatched_confirmation(owner):
+def test_purge_user_library_rejects_a_mismatched_confirmation(owner):
     _owned_graph(owner)
 
     with pytest.raises(CommandError, match="must exactly match"):
         call_command(
-            "delete_user_library",
+            "purge_user_library",
             "--user",
             owner.username,
             "--confirm",
@@ -170,12 +170,12 @@ def test_delete_user_library_rejects_a_mismatched_confirmation(owner):
 
 
 @pytest.mark.django_db
-def test_delete_user_library_cascades_private_data_but_keeps_shared_platform(owner):
+def test_purge_user_library_cascades_private_data_but_keeps_shared_platform(owner):
     platform, _, game, _ = _owned_graph(owner)
     output = StringIO()
 
     call_command(
-        "delete_user_library",
+        "purge_user_library",
         "--user",
         owner.username,
         "--confirm",
@@ -186,7 +186,7 @@ def test_delete_user_library_cascades_private_data_but_keeps_shared_platform(own
     assert not get_user_model().objects.filter(pk=owner.pk).exists()
     assert not Game.objects.filter(pk=game.pk).exists()
     assert Platform.objects.filter(pk=platform.pk, library__isnull=True).exists()
-    assert "DELETED" in output.getvalue()
+    assert "PURGED" in output.getvalue()
 
 
 @pytest.mark.django_db

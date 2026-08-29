@@ -146,10 +146,10 @@ def _catalog(library: UserLibrary, prefix: str) -> Iterator[Game]:
 
 
 def purge_scratch_user(username: str) -> Seconds:
-    """Delete the scratch user, through delete_user_library."""
+    """Purge the scratch user, through purge_user_library."""
     started = monotonic()
     call_command(
-        "delete_user_library",
+        "purge_user_library",
         user=username,
         confirm=username,
         stdout=StringIO(),
