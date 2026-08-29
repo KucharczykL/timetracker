@@ -10,7 +10,6 @@ from django.db.models.signals import (
     post_delete,
     post_save,
     pre_delete,
-    pre_save,
 )
 from django.dispatch import receiver
 from django.utils.timezone import now
@@ -18,7 +17,6 @@ from django.utils.timezone import now
 from games.models import (
     Device,
     Game,
-    GameStatusChange,
     Platform,
     Purchase,
     PurchaseConversionState,
@@ -132,35 +130,3 @@ def update_game_playtime(sender, instance, **kwargs):
     )["total_playtime"]
     game.playtime = total_playtime if total_playtime else timedelta(0)
     game.save(update_fields=["playtime"])
-
-
-@receiver(pre_save, sender=Game)
-def game_status_changed(sender, instance, **kwargs):
-    """
-    Signal handler to create a GameStatusChange record whenever a Game's status is updated.
-    """
-    # A fixture ships its own GameStatusChange rows; loading one is not a status
-    # transition, and the lookup below would query once per row.
-    if kwargs.get("raw"):
-        return
-    try:
-        old_instance = sender.objects.get(pk=instance.pk)
-        old_status = old_instance.status
-        logger.debug("[game_status_changed]: Previous status exists.")
-    except sender.DoesNotExist:
-        # Handle the case where the instance was deleted before the signal was sent
-        logger.debug("[game_status_changed]: Previous status does not exist.")
-        return
-
-    if old_status != instance.status:
-        logger.debug(
-            f"[game_status_changed]: Status changed from {old_status} to {instance.status}"
-        )
-        GameStatusChange.objects.create(
-            game=instance,
-            old_status=old_status,
-            new_status=instance.status,
-            timestamp=now(),
-        )
-    else:
-        logger.debug("[game_status_changed]: Status has not changed")

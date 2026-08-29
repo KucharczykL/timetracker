@@ -1,4 +1,3 @@
-import json
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -11,7 +10,7 @@ from django.core import serializers
 from django.core.management import call_command
 from django.test import TestCase
 
-from games.models import Game, GameStatusChange, Session, UserLibrary
+from games.models import Game, Session, UserLibrary
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 
@@ -83,21 +82,6 @@ class RawFixtureLoadTest(TestCase):
         call_command("loaddata", fixture, verbosity=0)
 
         self.assertEqual(Game.objects.get(pk=game.pk).playtime, timedelta(hours=5))
-
-    def test_status_in_a_fixture_is_not_an_audited_transition(self):
-        game = Game.objects.create(
-            library=self.library, name="Fixture Game", status="u"
-        )
-        fixture = self._write_fixture([game])
-        loaded = json.loads(Path(fixture).read_text())
-        loaded[0]["fields"]["status"] = "f"
-        Path(fixture).write_text(json.dumps(loaded))
-
-        GameStatusChange.objects.all().delete()
-        call_command("loaddata", fixture, verbosity=0)
-
-        self.assertEqual(Game.objects.get(pk=game.pk).status, "f")
-        self.assertEqual(GameStatusChange.objects.count(), 0)
 
     def test_user_fixture_does_not_provision_a_library(self):
         user = get_user_model().objects.create_user(username="fixture-user")

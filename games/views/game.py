@@ -269,10 +269,8 @@ def add_game(request: HttpRequest) -> HttpResponse:
                 #: The row stands at the defaults; the facts do not.
                 #: The form already wrote the asked-for status, which
                 #: would leave the catalog disagreeing with a projection
-                #: that says unplayed. update() skips the audit signal,
-                #: so no GameStatusChange invents a transition.
-                #: Re-rendering would invite a resubmit that creates
-                #: a second game.
+                #: that says unplayed. Re-rendering would invite a
+                #: resubmit that creates a second game.
                 Game.objects.filter(pk=game.pk).update(
                     status=Game.Status.UNPLAYED, mastered=False
                 )

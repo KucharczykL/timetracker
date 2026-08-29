@@ -860,10 +860,9 @@ class GameForm(
 
     def save(self, commit=True):
         game = super().save(commit=False)
-        #: The row starts where the form says. Starting at the default
-        #: and letting the mirror move it would append a GameStatusChange
-        #: that does not exist today: the audit signal skips a first save.
-        #: The form speaks words and the column holds letters until #678 D.
+        #: The row starts where the form says, rather than at the
+        #: default for the mirror to move afterwards. The form speaks
+        #: words and the column holds letters until #678 D.
         if game._state.adding:
             game.status = legacy_status_for(
                 PlayerGameStatus(self.cleaned_data["status"])
