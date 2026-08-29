@@ -1,13 +1,16 @@
 # PGAME-08 D2: the mirror goes
 
 Child D of #678, second of two pull requests. Branch
-`codex/playergame-read-cutover-d2`, onto `codex/playergame-read-cutover`.
+`codex/playergame-read-cutover-d2`, which sits on **D1's tip**, not on
+`codex/playergame-read-cutover` — D1's #952 is still open. The pull request
+targets the integration branch and rebases if D1 lands first.
 
 D1 moved the last read. D2 removes the **write** that kept the catalog columns
 agreeing with it: `_mirror()`, the refusal that existed only to protect the
-mirror, the reverse half of the status map, the three places that read
-`Game.status` where no projection row exists, and the parity suite that guarded
-the switch. `Game.status` and `Game.mastered` stay as columns; #770 drops them.
+mirror, the reverse half of the status map, the last places that ask
+`Game.status` what the library thinks, and the parity suite that guarded the
+switch. `Game.status` and `Game.mastered` stay as columns; #770 drops them.
+**No migration**: nothing about the schema changes here, only who writes it.
 
 After D2 the projection is the only statement of a library's status and mastery.
 The catalog columns hold whatever the baseline backfill read out of them, and
@@ -41,7 +44,11 @@ projection default instead:
 
 - `GameForm.__init__` seeds the status select. With no row it offered the
   catalog letter; it now offers `Unplayed`, which is what tracking the game
-  would create and therefore what saving the form will record.
+  would create and therefore what saving the form will record. Deleting the
+  branch is not enough to say that: with no initial at all, Django's `Select`
+  marks **no** option selected and the browser posts whichever comes first. The
+  field gets an explicit `initial`, so the page states the default rather than
+  leaving the browser to pick it.
 - `_record_played` answers a session the player saved with "Set game status to
   Played if Unplayed" ticked. With no row and a catalog letter of `p` it
   recorded nothing; it now records `Played`, which tracks the game on the way
@@ -55,7 +62,7 @@ writing them there is nothing to reset.
 **Nothing else.** Every read moved in A, B, C and D1. The catalog columns have
 had no reader outside these three since D1.
 
-## Two judgment calls, for review
+## Three judgment calls, for review
 
 **`games/views/playergame_writes.py` stays.** The spec's D2 bullet lists it, and
 `games/writes/playergame.py` says "#678 deletes both". Both sentences were
@@ -74,12 +81,27 @@ Leaving them means the columns are current for an added game and stale for every
 game after — a worse record than plainly stale, and one that reads as if
 something still maintains them. Both go.
 
+**A session on an untracked game heals it, whatever the letter says.** Today
+`test_a_session_on_an_untracked_finished_game_leaves_it_alone` states the
+opposite: a game the catalog calls finished is left untracked, because the
+catalog arm sees a letter that is not `u` and returns. Task 4 deletes that arm,
+so the game is tracked and recorded `Played` — the letter is never consulted.
+
+The alternative is to skip when there is no row: no row, no statement, so a
+session states nothing either. It keeps the letter from being overwritten. It
+is not the one taken, because an untracked game is invisible in every list and
+on its own page, so tracking it is a repair, and `Played` is what just
+happened. The letter is not overwritten in any case — after task 2 nothing
+writes it at all. Say so in review if the other reading is wanted; it is one
+condition either way.
+
 ## Order
 
 Each commit leaves a green tree, which fixes the order. `legacy_status_for` has
-three callers — the mirror, `GameForm.save()`, and the parity suite — so it
-cannot go until all three have. That puts the column writes before the status
-map, and the map before the reads that no longer need `player_status_for`.
+four callers — the mirror, `GameForm.save()`, the parity suite and the map's own
+test — so it cannot go until all four have. That puts the column writes before
+the status map, and the map before the reads that no longer need
+`player_status_for`.
 
 ## Task 1: take the mirror out
 
@@ -99,7 +121,12 @@ promises its own deletion; it states a fact and translates a failure.
 fires." D1 deleted that signal and missed this line. It leaves with the
 function.
 
-- [ ] **Step 2: `tests/test_playergame_write_path.py`**
+- [ ] **Step 2: `games/writes/__init__.py`**
+
+The package docstring is one line: "Dual writes: state a fact, then mirror."
+The writes stop being dual here. Rewrite it.
+
+- [ ] **Step 3: `tests/test_playergame_write_path.py`**
 
 The module docstring says "State the fact, then mirror the row." Rewrite.
 
@@ -112,7 +139,25 @@ Add the test that bites, in their place: record `Completed` on a tracked game
 whose catalog column says `u`, and assert the row says completed **and**
 `Game.status` is still `u`. Restoring the `_mirror()` call must fail it.
 
-- [ ] **Step 3: `tests/test_playergame_status_word_setters.py`**
+- [ ] **Step 4: `tests/test_playergame_view_cutover.py`**
+
+Four tests read the catalog back through the mirror, and all four go red on
+step 1. Delete the `refresh_from_db()` and the assertion under it in each:
+
+- `test_editing_a_games_status_records_the_event` — `game.status == "p"`
+- `test_the_status_api_records_the_fact` — `game.status == "f"`
+- `test_adding_a_session_records_played` — `tracked_game.status == "p"`
+- `test_adding_a_play_event_records_completed` — `tracked_game.status == "f"`
+
+Every one of them keeps a `PlayerGame` assertion above it, which is the fact
+the test is named for; the catalog line was the mirror's echo of it.
+
+Two more read the catalog and survive, because nothing writes those rows:
+`test_the_status_api_refuses_a_status_that_is_not_one` (`== "u"`, a game created
+at `u` and never written) and `test_a_session_on_an_untracked_finished_game_leaves_it_alone`,
+which task 4 rewrites. Leave both here.
+
+- [ ] **Step 5: `tests/test_playergame_status_word_setters.py`**
 
 `test_the_form_posts_a_word` asserts `(game.status, game.mastered) == ("f",
 True)` with the comment "The mirror keeps the catalog current for the surfaces A
@@ -123,21 +168,21 @@ takes it, where it is the point.
 `test_shelved_is_refused_before_anything_is_recorded` goes. Task 3 replaces it
 with the opposite.
 
-- [ ] **Step 4: `e2e/test_custom_elements_e2e.py`**
+- [ ] **Step 6: `e2e/test_custom_elements_e2e.py`**
 
 `test_game_status_selector_opens_and_patches` ends with `assert game.status ==
 "f"` after the PATCH. That is the mirror. Delete the two lines; the test already
 asserts the History entry the write produced, which is the server-rendered
 evidence the write landed.
 
-- [ ] **Step 5: Verify**
+- [ ] **Step 7: Verify**
 
     make check-fast >/tmp/check.log 2>&1 && echo CLEAN || tail -60 /tmp/check.log
     make test-e2e ARGS="-k custom_elements" >/tmp/e2e.log 2>&1 && echo CLEAN || tail -40 /tmp/e2e.log
 
-`check-fast` skips `e2e/`, and step 4 edits an e2e file.
+`check-fast` skips `e2e/`, and step 6 edits an e2e file.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 8: Commit**
 
     git commit -m "Stop copying the row onto the catalog"
 
@@ -163,15 +208,31 @@ still invite a second game — and keep that surviving reason as the comment.
 and mastered, and `Game.status` is still `u`. That is this task's bite test;
 restoring either write fails it.
 
-- [ ] **Step 4: Verify**
+- [ ] **Step 4: `tests/test_playergame_view_cutover.py`**
 
-Grep first, and expect nothing outside `games/backfill/`:
+`test_adding_a_game_tracks_it_and_records_its_facts` asserts `(game.status,
+game.mastered) == ("f", True)`. That is `GameForm.save()`, so it goes red on
+step 1 of this task, not on task 1. Delete the two lines; the `PlayerGame`
+assertion above them is the fact the test is named for.
+
+`test_a_failed_add_leaves_the_row_at_the_defaults` keeps passing — `("u",
+False)` is the column default and nothing writes over it — but its comment says
+"The catalog agrees with the projection, which the failed command left where
+tracking put it." The agreement is now a coincidence of two defaults, and step 2
+deletes the rollback that used to arrange it. Drop the catalog half of the
+assertion and the comment with it, leaving the projection assertion that is the
+test's subject.
+
+- [ ] **Step 5: Verify**
+
+Grep first, and expect nothing — not even the backfill, which writes projection
+rows and never these columns:
 
     grep -rn "game.status = \|status=Game.Status\|\.mastered = " --include=*.py games/ common/
 
     make check-fast >/tmp/check.log 2>&1 && echo CLEAN || tail -60 /tmp/check.log
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
     git commit -m "Leave the columns to the migration that drops them"
 
@@ -237,10 +298,18 @@ options, so a shortened list fails here as well as in the setter test.
 - [ ] **Step 1: `games/forms.py`**
 
 In `GameForm.__init__`, delete the `else` branch that seeds `status` and
-`mastered` from `self.instance`. With no projection row the form offers the
-select's first option, `Unplayed`, which is the status `TrackGame` creates and
-therefore the status saving the form records. Drop the `player_status_for`
-import.
+`mastered` from `self.instance`, and drop the `player_status_for` import.
+
+Then give the `status` field `initial=PlayerGameStatus.UNPLAYED`. Deleting the
+branch alone leaves the select with no initial, and Django then marks no option
+selected: the page states nothing and the browser posts whichever option is
+first. The posted value would be right by accident. With the explicit initial
+the form offers `Unplayed`, which is the status `TrackGame` creates and
+therefore the status saving the form records.
+
+This costs the tracked path nothing. `__init__` reaches it by
+`self.initial.setdefault(...)`, and an entry in `self.initial` outranks the
+field's own `initial`, so a tracked game still shows its row's word.
 
 - [ ] **Step 2: `games/views/session.py`**
 
@@ -259,9 +328,21 @@ asserts the branch just deleted. Turn it round: with no row and a catalog letter
 of `f`, the form offers `Unplayed` and an unchecked mastery. Rename it to say
 that.
 
-Add the session case: an untracked game whose catalog column says `p`, a POST to
-`add_session` with `mark_as_played` ticked, and the assertion that the library
-now tracks it at `Played`. Before this task it recorded nothing.
+`tests/test_playergame_view_cutover.py::test_a_session_on_an_untracked_finished_game_leaves_it_alone`
+is the session half of the same branch, and it is the third judgment call made
+concrete. It asserts `not PlayerGame.objects.exists()`. Turn it round: the
+library now tracks the game at `Played`, whatever the letter said. Rename it to
+say the letter no longer holds the session back, and drop the `game.status ==
+"f"` line — the column is not the subject and nothing writes it any more.
+
+That is this task's bite test on the session side. Restoring the catalog arm
+fails it. `test_a_session_on_an_untracked_game_tracks_it_and_records_played`
+keeps passing unchanged, but its comment says "the catalog is what says whether
+the game was unplayed" — no longer true. Rewrite it: no row states nothing.
+
+`test_a_session_leaves_a_finished_game_alone` covers the *tracked* finished
+game, which is the arm that stays. Leave it; it is what stops the rewrite above
+from reading as "sessions overwrite everything".
 
 No test covers the unticked box on either side of this change. Add that one
 too, since the task widens what a ticked box does: an unticked box records
@@ -279,9 +360,10 @@ page.
 Make it `initial=True`. Nothing reads the field's initial anywhere else — the
 two call sites read `cleaned_data`, and no view passes an `initial` for it.
 
-No test renders this checkbox, which is why the shape survived. Add one: an
-unbound `SessionForm` renders `mark_as_played` checked. Replacing `True` with
-`False` must fail it.
+`test_paths_return_200.py` renders the page the checkbox is on, but no test
+asserts it comes up ticked, which is why the shape survived. Add one: an unbound
+`SessionForm` renders `mark_as_played` checked. Replacing `True` with `False`
+must fail it.
 
 - [ ] **Step 5: Verify and commit**
 
@@ -304,11 +386,26 @@ test of its own now, and that nothing else says "parity" about this switch:
 A surface the suite was the only cover for is a hole it was hiding. It gets a
 test here, not a note.
 
-- [ ] **Step 2: the dead audit seed**
+- [ ] **Step 2: the audit seed that stopped feeding History**
 
-`e2e/test_table_width_e2e.py`'s `populated` fixture creates a `GameStatusChange`.
-No page under test renders one — the six list pages never did, and D1 took the
-route that would have. Delete the line and the import, so #771 does not have to.
+`e2e/test_table_width_e2e.py`'s `populated` fixture ends with
+`GameStatusChange.objects.create(game=game, new_status="p", timestamp=BASE)`.
+That row is no longer read: D1 pointed the History section at the event stream.
+
+It is not dead weight, though — deleting it is the wrong fix. The fixture feeds
+`test_no_game_detail_mini_table_cell_wraps`, whose own docstring says the detail
+page "stacks three data tables inside a narrower column than any list page
+gets, so it is where the rule is under the most pressure." History is the third
+table, and it has been **empty since D1**: the autouse `_track_created_games`
+fixture writes projection rows directly, so no status event exists and the
+section renders its empty state. The test has quietly been measuring two tables.
+
+So this is a D1 escape, and it is fixed here rather than filed. Replace the
+`GameStatusChange` line with a real statement — `record_facts(...)` with a
+status, as `e2e/test_return_to_origin_e2e.py` already does in this suite — and
+drop the `GameStatusChange` import, so #771 does not have to. Confirm the
+mini-table is populated before trusting the green: three tables on the page, and
+the History one with a row in it.
 
 - [ ] **Step 3: Verify and commit**
 
@@ -325,6 +422,11 @@ until #678 moves the reads." They are not, from this pull request. Say that
 nothing maintains them and that #770 drops them, and keep the rule itself — a
 fact is stated as a command — which is now the only way to state one.
 
+Two more lines in the same file describe the columns as live. The **Game** model
+bullet leads with `status (u/p/f/r/a)` and `mastered` among its fields, which
+now names a column nothing writes; the **PlayerGame** bullet is the one that
+should carry the status. Say which of the two states the library's status.
+
 - [ ] **Step 2: `docs/STATUSES.md`**
 
 One paragraph calls `Game.status` a "five-letter mirror… kept current by
@@ -336,7 +438,8 @@ rather than deleting.
 - [ ] **Step 3: the spec**
 
 `docs/superpowers/specs/2026-08-28-issue-678-playergame-read-cutover-design.md`.
-Record the two judgment calls above and that D2 landed. #770 reads this document
+Record the three judgment calls above, the D1 escape task 5 repaired, and that
+D2 landed. #770 reads this document
 next.
 
 - [ ] **Step 4: Lint the prose**
@@ -362,7 +465,7 @@ by stashing and re-running it; never assume.
    Plead an exception only where a plausible edit breaks quietly, and list the
    pleas in the pull request. Delete this plan document in the same commit.
 2. **Open the pull request** against `codex/playergame-read-cutover`. Lead with
-   the two judgment calls, since they are the parts a reviewer cannot derive
+   the three judgment calls, since they are the parts a reviewer cannot derive
    from the diff.
 3. **File the issue and close it**, as D1's #953 was.
 4. **Then merge the integration branch**, which closes #678, and decide whether
