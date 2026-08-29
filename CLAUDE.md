@@ -154,7 +154,7 @@ docs/           — Additional documentation
 - **Device** — `name`, `type` (PC/Console/Handheld/Mobile/SBC/Unknown)
 - **PlayEvent** — marks when a game was started/finished (separate from Sessions); `days_to_finish` is a `GeneratedField`
 - **ExchangeRate** — cached FX rates per currency pair per year
-- **GameStatusChange** — audit log of status transitions, ordered by `-timestamp`
+- **GameStatusChange** — the legacy audit log of status transitions, ordered by `-timestamp`. Nothing writes or reads it since #678 D1: the event stream is the record and `games/reads/playergame_history.py` is the one reader. The backfill still reads the old rows; #771 takes the table
 - **FilterPreset** — saved filter config; `mode` (games/sessions/purchases/playevents), `find_filter`, `object_filter`, `ui_options` (all JSON). Follows Stash's SavedFilter pattern
 - **PlayerGame** — the first projection: one row per catalog game a library tracks, written only by the `PlayerGames` projector. Both `UUIDv7Field` defaults are opted out (the pk is the event's `aggregate_id`); `game` is `RESTRICT`, so a projection row is never collateral
 
@@ -313,7 +313,6 @@ the shared combobox dropdown (#297).
 - `pre_delete` on Game: decrements `num_purchases` on related Purchases (deletes the
   Purchase if the count reaches 0)
 - `post_save`/`post_delete` on Session: recalculates `Game.playtime` from the aggregate
-- `pre_save` on Game: creates `GameStatusChange` audit records on status change
 
 **Background tasks**: a django-q2 cluster (1 worker, 60s timeout, 120s retry, ORM
 broker) runs `games.tasks.convert_prices()` on a schedule, fetching rates from

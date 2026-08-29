@@ -8,6 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from games.models import Game, PlayerGame, PlayerGameStatus, Session
+from games.writes.playergame import new_correlation_id, record_facts, track_game
 
 
 def _selected_status(html: str) -> str | None:
@@ -34,6 +35,12 @@ def _selected_status(html: str) -> str | None:
     parser = _Options()
     parser.feed(html)
     return parser.selected
+
+
+def _history_markup(html: str) -> str:
+    """The History section alone, heading through list."""
+    start = html.index('id="history-container"')
+    return html[start : html.index("</ul>", start)]
 
 
 @pytest.fixture
@@ -168,6 +175,38 @@ def test_a_shared_games_page_shows_no_librarys_sessions(logged_in, owned_library
     body = response.content.decode()
     assert response.status_code == 200
     assert "No sessions yet." in body
+
+
+@pytest.mark.untracked_games
+@pytest.mark.django_db(transaction=True)
+def test_a_shared_games_page_shows_no_librarys_history(
+    logged_in, owned_user, django_user_model
+):
+    """History is scoped like every other section."""
+    shared = Game.objects.create(library=None, name="Shared Title")
+    other_user = django_user_model.objects.create_user(
+        username="other-owner", password="p"
+    )
+    track_game(owned_user, shared, correlation_id=new_correlation_id())
+    track_game(other_user, shared, correlation_id=new_correlation_id())
+    record_facts(
+        owned_user,
+        shared,
+        status=PlayerGameStatus.PLAYED,
+        correlation_id=new_correlation_id(),
+    )
+    record_facts(
+        other_user,
+        shared,
+        status=PlayerGameStatus.ABANDONED,
+        correlation_id=new_correlation_id(),
+    )
+
+    #: The dropdown lists both words regardless.
+    history = _history_markup(logged_in.get(shared.get_absolute_url()).content.decode())
+
+    assert "Played" in history
+    assert "Abandoned" not in history
 
 
 @pytest.mark.django_db

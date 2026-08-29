@@ -18,7 +18,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from pytest_django.asserts import assertRedirects
 
-from games.models import Game, GameStatusChange, Platform, Purchase, Session
+from games.models import Game, Platform, Purchase, Session
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 
@@ -480,25 +480,6 @@ class RenderedPagesTest(TestCase):
         self.assertIn(f"/session/{running.id}/reset", html)
         self.assertNotIn(f"/session/{self.session.id}/finish", html)
         self.assertNotIn(f"/session/{self.session.id}/reset", html)
-
-    # --- statuschange --------------------------------------------------------
-
-    def test_statuschange_list_and_delete(self):
-        change = GameStatusChange.objects.create(
-            game=self.game,
-            new_status="f",
-            timestamp=self.session.timestamp_start,
-        )
-        list_html = self.get("games:list_statuschanges").content.decode()
-        self.assertIn("<table", list_html)
-        self.assertIn(self.game.name, list_html)
-        self.assertNoEscapedTags(list_html)
-
-        confirm_html = self.get("games:delete_statuschange", change.id).content.decode()
-        self.assertIn("Permanently delete this status change?", confirm_html)
-        self.assertIn("Delete", confirm_html)
-        self.assertIn("Cancel", confirm_html)
-        self.assertNoEscapedTags(confirm_html)
 
     # --- login ---------------------------------------------------------------
 

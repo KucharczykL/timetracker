@@ -8,7 +8,7 @@ from django.contrib.auth import get_user_model
 from django.test import Client
 from django.urls import NoReverseMatch, Resolver404, resolve, reverse
 
-from games.models import Device, Game, GameStatusChange, PlayEvent, Session
+from games.models import Device, Game, PlayEvent, Session
 
 pytestmark = pytest.mark.django_db
 
@@ -23,8 +23,6 @@ HTML_IDENTITY_ROUTES = [
     ("games:finish_session", "session_id"),
     ("games:reset_session", "session_id"),
     ("games:delete_session", "session_id"),
-    ("games:edit_statuschange", "statuschange_id"),
-    ("games:delete_statuschange", "pk"),
 ]
 
 
@@ -82,12 +80,6 @@ def runtime_world(db):
     )
     foreign_playevent = PlayEvent.objects.create(
         game=foreign_game, started=date(2026, 8, 20), note="Foreign event"
-    )
-    foreign_statuschange = GameStatusChange.objects.create(
-        game=foreign_game,
-        old_status=Game.Status.UNPLAYED,
-        new_status=Game.Status.PLAYED,
-        timestamp=datetime(2026, 8, 20, 10, tzinfo=UTC),
     )
     return SimpleNamespace(**locals())
 
@@ -213,7 +205,6 @@ def test_promoted_api_paths_reject_uuid4_ids(
             "games:list_sessions_start_session_from_session",
             "foreign_session",
         ),
-        ("get", "games:delete_statuschange", "foreign_statuschange"),
     ],
 )
 def test_promoted_html_views_keep_foreign_rows_undisclosed(

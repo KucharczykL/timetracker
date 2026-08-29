@@ -160,6 +160,7 @@ trusting it.
 
 The detail page's History section reads `library.playergame.status_changed`
 events on the game's stream. It stops reading `GameStatusChange`.
+`games/reads/playergame_history.py` holds the read.
 
 Migration `0033_playergame_baseline_backfill` recorded every legacy row as an
 event, with its effective time and its source `status_change_id`. The event log
@@ -176,6 +177,35 @@ The table and its rows stay. #771 removes the storage. #683 returns the ability
 to state a backdated transition, as a command with an effective time;
 `SetPlayerGameStatus` states neither today and gaining both is that issue's
 work, not this one's.
+
+### What time an entry shows
+
+A live status command states an effective time: the day it happened, which is
+the finest `TemporalPrecision` there is. `recorded_at` keeps the instant, and
+the section shows that. An unknown effective time therefore means nobody knows
+when the transition happened, not that nobody said — so the read shows no time
+for exactly those entries.
+
+The rule is one field check because of that. Reading `source_metadata` for a
+`status_change_id` would be wrong: the backfill's corrective event, appended
+where no legacy row says how a game reached its status, carries the run time
+and no `status_change_id`, and a run time is not a transition time.
+
+The chain follows `sequence`, never `recorded_at`. A backfilled event keeps its
+legacy row's date where the row had one and takes the run time where it did
+not, so `recorded_at` runs backwards through a mixed stream.
+
+### Three changes a player can see
+
+- **The history is scoped to one library.** `game.status_changes` reached every
+  library that ever wrote against a shared catalog game; a stream belongs to
+  one library, as every other section of the page already did.
+- **The chain is the record.** An entry's previous status is the one the
+  preceding event left, rather than a stored `old_status` that could disagree
+  with it. The first transition follows `unplayed`, which is where
+  `library.playergame.created` leaves the row.
+- **A game added at a status gains one entry.** The audit signal skipped a
+  first save and recorded none.
 
 ## Statistics
 
@@ -275,11 +305,17 @@ Each child is one bounded branch and pull request onto
 `PurchaseQuerySet` methods, the five `stats_links` builders,
 `GameStatusUpdate`, and `PATCH /api/games/{id}/status`.
 
-**D — history and the retirement.** History from events, the four
-`statuschange` routes and the audit signal, `_mirror()` and
-`games/views/playergame_writes.py`, the reverse half of
-`games/playergame_status.py`, and the deletion of the parity suite. The mirror
-goes last because A to C each leave catalog readers behind them.
+**D — history and the retirement.** Two pull requests, because the history is
+readable before the mirror goes and a mirror removal wants a diff of its own.
+
+- **D1 — history, then the retirement.** History from events, the four
+  `statuschange` routes, `GameStatusChangeForm`, and the audit signal.
+- **D2 — the mirror.** `_mirror()`, `games/views/playergame_writes.py`, the
+  reverse half of `games/playergame_status.py`, the three catalog fallbacks
+  that read `Game.status` where no projection row exists, `shelved` becoming
+  settable, and the deletion of the parity suite.
+
+The mirror goes last because A to C each leave catalog readers behind them.
 
 Creating the four issues is a mutating action. It follows the catalog wave's
 export, diff and read-back protocol, and it happens after this spec is

@@ -139,7 +139,6 @@ LIST_PAGES = [
     "games:list_playevents",
     "games:list_devices",
     "games:list_platforms",
-    "games:list_statuschanges",
 ]
 
 

@@ -12,7 +12,6 @@ from common.date_time_presentation import (
 from games.forms import (
     DeviceForm,
     GameForm,
-    GameStatusChangeForm,
     LibraryPreferencesForm,
     PlatformForm,
     PlayEventForm,
@@ -22,7 +21,6 @@ from games.forms import (
 from games.models import (
     Device,
     Game,
-    GameStatusChange,
     Platform,
     PlayerGameStatus,
     PlayEvent,
@@ -81,16 +79,12 @@ def test_form_relationship_querysets_are_explicitly_library_bound(world):
     )
     game = GameForm(library=world.owner_library)
     playevent = PlayEventForm(library=world.owner_library, presentation=PRESENTATION)
-    statuschange = GameStatusChangeForm(
-        library=world.owner_library, presentation=PRESENTATION
-    )
 
     assert _ids(session.fields["game"].queryset) == {world.own_game.pk}
     assert _ids(session.fields["device"].queryset) == {world.own_device.pk}
     assert _ids(purchase.fields["games"].queryset) == {world.own_game.pk}
     assert _ids(purchase.fields["related_game"].queryset) == {world.own_game.pk}
     assert _ids(playevent.fields["game"].queryset) == {world.own_game.pk}
-    assert _ids(statuschange.fields["game"].queryset) == {world.own_game.pk}
     visible_platforms = {world.shared_platform.pk, world.own_platform.pk}
     assert _ids(game.fields["platform"].queryset) == visible_platforms
     assert _ids(purchase.fields["platform"].queryset) == visible_platforms
@@ -250,32 +244,22 @@ def test_purchase_form_rejects_foreign_relationships_without_saving(world):
     assert world.foreign_platform.name not in html
 
 
-@pytest.mark.parametrize(
-    ("form_class", "extra"),
-    [
-        (PlayEventForm, {"started": "2026-08-14", "ended": "", "note": ""}),
-        (
-            GameStatusChangeForm,
-            {
-                "old_status": Game.Status.UNPLAYED,
-                "new_status": Game.Status.PLAYED,
-                "timestamp": "2026-08-14T12:00:00+00:00",
-            },
-        ),
-    ],
-)
-def test_derived_forms_reject_a_foreign_game(world, form_class, extra):
-    model = PlayEvent if form_class is PlayEventForm else GameStatusChange
-    before = model.objects.count()
-    form = form_class(
-        data={"game": world.foreign_game.pk, **extra},
+def test_the_play_event_form_rejects_a_foreign_game(world):
+    before = PlayEvent.objects.count()
+    form = PlayEventForm(
+        data={
+            "game": world.foreign_game.pk,
+            "started": "2026-08-14",
+            "ended": "",
+            "note": "",
+        },
         library=world.owner_library,
         presentation=PRESENTATION,
     )
 
     assert not form.is_valid()
     assert "game" in form.errors
-    assert model.objects.count() == before
+    assert PlayEvent.objects.count() == before
     assert world.foreign_game.name not in str(form)
 
 

@@ -30,7 +30,6 @@ from games.models import (
     Device,
     ExternalReference,
     Game,
-    GameStatusChange,
     Platform,
     PlayerGame,
     PlayerGameStatus,
@@ -861,10 +860,7 @@ class GameForm(
 
     def save(self, commit=True):
         game = super().save(commit=False)
-        #: The row starts where the form says. Starting at the default
-        #: and letting the mirror move it would append a GameStatusChange
-        #: that does not exist today: the audit signal skips a first save.
-        #: The form speaks words and the column holds letters until #678 D.
+        #: The row starts where the form says.
         if game._state.adding:
             game.status = legacy_status_for(
                 PlayerGameStatus(self.cleaned_data["status"])
@@ -992,40 +988,6 @@ class PlayEventForm(PrimitiveWidgetsMixin, forms.ModelForm):
         if commit:
             play_event.save()
         return play_event
-
-
-class GameStatusChangeForm(PrimitiveWidgetsMixin, forms.ModelForm):
-    def __init__(
-        self,
-        *args,
-        library: UserLibrary,
-        presentation: DateTimePresentation,
-        **kwargs,
-    ):
-        super().__init__(*args, **kwargs)
-        self.library = library
-        cast(
-            forms.ModelChoiceField, self.fields["game"]
-        ).queryset = Game.objects.for_library(library).order_by("sort_name")
-        self.fields["timestamp"].widget = DateTimeFieldWidget(
-            presentation=presentation,
-            label=str(self.fields["timestamp"].label or "timestamp"),
-        )
-
-    class Meta:
-        # timestamp gets DateTimeFieldWidget in __init__ (needs the
-        # per-request presentation, unavailable to a class body); the field
-        # class is declarative because it depends on nothing.
-        field_classes: ClassVar[dict[str, type[forms.Field]]] = {
-            "timestamp": AwareDateTimeField
-        }
-        model = GameStatusChange
-        fields = (
-            "game",
-            "old_status",
-            "new_status",
-            "timestamp",
-        )
 
 
 class LoginForm(PrimitiveWidgetsMixin, AuthenticationForm):

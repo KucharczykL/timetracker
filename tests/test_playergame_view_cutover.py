@@ -6,7 +6,6 @@ from django.utils import timezone
 
 from games.models import (
     Game,
-    GameStatusChange,
     LibraryEvent,
     PlayerGame,
     PlayerGameStatus,
@@ -49,16 +48,6 @@ def test_adding_a_game_tracks_it_and_records_its_facts(logged_in, owned_library)
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_game_created_as_finished_records_no_status_change(logged_in):
-    #: The audit signal skips a first save, so a game created
-    #: as finished records no transition. Assigning before the
-    #: save is what keeps that true.
-    logged_in.post(reverse("games:add_game"), {**GAME_PAYLOAD, "status": "completed"})
-
-    assert GameStatusChange.objects.count() == 0
-
-
-@pytest.mark.django_db(transaction=True)
 def test_adding_a_game_records_one_creation_event(logged_in, owned_library):
     logged_in.post(reverse("games:add_game"), {**GAME_PAYLOAD, "status": "unplayed"})
 
@@ -72,9 +61,7 @@ def test_adding_a_game_records_one_creation_event(logged_in, owned_library):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_editing_a_games_status_records_the_event_and_the_audit_row(
-    logged_in, owned_library
-):
+def test_editing_a_games_status_records_the_event(logged_in, owned_library):
     game = Game.objects.create(library=owned_library, name="Outer Wilds", status="u")
 
     logged_in.post(
@@ -85,8 +72,6 @@ def test_editing_a_games_status_records_the_event_and_the_audit_row(
     game.refresh_from_db()
     assert game.status == "p"
     assert PlayerGame.objects.get().status == PlayerGameStatus.PLAYED
-    #: Legacy history is unchanged by the cutover.
-    assert GameStatusChange.objects.filter(game=game, new_status="p").count() == 1
 
 
 @pytest.mark.django_db(transaction=True)
@@ -385,9 +370,6 @@ def test_a_failed_add_leaves_the_row_at_the_defaults(
     assert (game.status, game.mastered) == ("u", False)
     row = PlayerGame.objects.get(library=owned_library, game=game)
     assert (row.status, row.mastered) == (PlayerGameStatus.UNPLAYED, False)
-    #: The reset skips the audit signal, so nothing invents a
-    #: transition the player never made.
-    assert GameStatusChange.objects.count() == 0
 
 
 @pytest.mark.django_db(transaction=True)
