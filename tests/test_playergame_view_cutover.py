@@ -1,5 +1,7 @@
 """Each switched view states its fact."""
 
+import re
+
 import pytest
 from django.urls import reverse
 from django.utils import timezone
@@ -185,8 +187,8 @@ def test_editing_a_session_records_played_too(logged_in, owned_library, tracked_
 def test_a_session_on_an_untracked_game_tracks_it_and_records_played(
     logged_in, owned_library
 ):
-    #: No row is a defect, not a state. record_facts() heals it, and
-    #: the catalog is what says whether the game was unplayed.
+    #: No row is a defect, not a state, and states nothing
+    #: either way. record_facts() tracks the game and records.
     game = Game.objects.create(library=owned_library, name="Outer Wilds", status="u")
 
     logged_in.post(reverse("games:add_session"), _session_payload(game))
@@ -195,16 +197,38 @@ def test_a_session_on_an_untracked_game_tracks_it_and_records_played(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_session_on_an_untracked_finished_game_leaves_it_alone(
-    logged_in, owned_library
-):
+def test_a_session_on_an_untracked_game_ignores_the_letter(logged_in, owned_library):
+    #: The letter said finished and used to hold the session back.
+    #: Nothing maintains it, so the row it would have vetoed wins.
     game = Game.objects.create(library=owned_library, name="Outer Wilds", status="f")
 
     logged_in.post(reverse("games:add_session"), _session_payload(game))
 
+    assert PlayerGame.objects.get().status == PlayerGameStatus.PLAYED
+
+
+@pytest.mark.django_db
+def test_the_box_comes_up_ticked(logged_in):
+    #: A falsy initial would untick it everywhere, quietly.
+    response = logged_in.get(reverse("games:add_session"))
+
+    match = re.search(r'<input[^>]*name="mark_as_played"[^>]*>', response.text)
+    assert match is not None
+    assert "checked" in match.group(0)
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.untracked_games
+def test_an_unticked_box_records_nothing_and_tracks_nothing(logged_in, owned_library):
+    #: The heal is the checkbox's, not the session's.
+    game = Game.objects.create(library=owned_library, name="Outer Wilds", status="u")
+
+    logged_in.post(
+        reverse("games:add_session"), _session_payload(game, mark_as_played="")
+    )
+
+    assert Session.objects.filter(game=game).exists()
     assert not PlayerGame.objects.exists()
-    game.refresh_from_db()
-    assert game.status == "f"
 
 
 @pytest.mark.django_db(transaction=True)
