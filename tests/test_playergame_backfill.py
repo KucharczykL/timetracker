@@ -237,13 +237,15 @@ def test_an_undated_transition_records_an_unknown_effective_time(
     GameStatusChange.objects.create(
         game=game, old_status="u", new_status="p", timestamp=None
     )
+    run_time = timezone.now()
 
-    counts = run_for(game, owned_user, owned_library)
+    counts = run_for(game, owned_user, owned_library, run_time=run_time)
 
     event = LibraryEvent.objects.get(event_type="library.playergame.status_changed")
     assert event.effective_time is None
-    #: Not coerced to a date; only the recording falls back to created_at.
-    assert event.recorded_at == added
+    #: Appended now. Dating it from the game would invent a
+    #: transition time, which a reader cannot tell from a real one.
+    assert event.recorded_at == run_time
     assert counts.unknown_effective_times == 1
 
 

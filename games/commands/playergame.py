@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import ClassVar, cast
 
 from django.db.models import Q
+from django.utils import timezone
 
 from games.events.dispatch import (
     Command,
@@ -25,6 +26,18 @@ from games.events.playergame import (
 from games.events.references import capture_reference
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import Game, PlayerGame, PlayerGameStatus
+from timetracker.temporal import TemporalValue
+
+
+def _stated_now() -> TemporalValue:
+    """Today: a live change happens as it is recorded.
+
+    Day is the finest TemporalPrecision, so recorded_at keeps the
+    instant. Stating this is what lets a reader take an unknown
+    effective time to mean nobody knows when, rather than nobody
+    said.
+    """
+    return TemporalValue.from_day(timezone.localdate())
 
 
 class PlayerGameNotTracked(CommandRejected):
@@ -112,6 +125,7 @@ class SetPlayerGameStatus(Command):
                 aggregate_id=tracked.pk,
                 #: A test pins Literal and choices equal.
                 payload={"status": cast("StatusValue", self.status.value)},
+                effective_time=_stated_now(),
             )
         ]
 
@@ -243,6 +257,7 @@ class RecordPlayerGameFacts(Command):
                     aggregate_id=tracked.pk,
                     #: A test pins Literal and choices equal.
                     payload={"status": cast("StatusValue", self.status.value)},
+                    effective_time=_stated_now(),
                 )
             )
         if self.mastered is not None and tracked.mastered != self.mastered:

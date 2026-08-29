@@ -213,7 +213,8 @@ def backfill_game(
                 actor=actor,
                 idempotency_key=f"{KEY_PREFIX}:status:{change.pk}",
                 command_input={"fact": "status", "status_change_id": str(change.pk)},
-                recorded_at=change.timestamp or game.created_at,
+                #: An undated row is appended now, not dated from the game.
+                recorded_at=change.timestamp or run_time,
                 source_metadata={**metadata, "status_change_id": str(change.pk)},
             ):
                 counts = replace(counts, status_events=counts.status_events + 1)
