@@ -147,9 +147,7 @@ def test_a_sort_returns_the_same_order(
 
 
 def _one_purchase_per_game(owned_library, games):
-    #: Not the shelved game. No letter says shelved, so its column
-    #: sits at the `u` default and the letter side would read it as
-    #: unplayed. Excluded from both sides, as everywhere else here.
+    #: The shelved game has no letter.
     shelved = PlayerGame.objects.get(
         library=owned_library, status=PlayerGameStatus.SHELVED
     ).game_id
@@ -173,12 +171,7 @@ def _one_purchase_per_game(owned_library, games):
 def test_a_purchase_predicate_selects_the_same_purchases(
     owned_library, a_library_of_every_status, legacy_status, player_status
 ):
-    """A letter over the catalog, a word over the projection.
-
-    Both directions: a statistic negates three of its four
-    predicates, and a negation over a join is the shape most likely
-    to differ.
-    """
+    """Letter and word select the same purchases."""
     _one_purchase_per_game(owned_library, a_library_of_every_status)
 
     purchases = Purchase.objects.for_library(owned_library)
@@ -193,7 +186,7 @@ def test_a_purchase_predicate_selects_the_same_purchases(
 
 @pytest.mark.django_db
 def test_two_negated_statuses_merge_into_one(owned_library, a_library_of_every_status):
-    """`~a & ~b` is `~(a or b)`, and the second reads one column."""
+    """`~a & ~b` is `~(a or b)`."""
     _one_purchase_per_game(owned_library, a_library_of_every_status)
 
     purchases = Purchase.objects.for_library(owned_library)

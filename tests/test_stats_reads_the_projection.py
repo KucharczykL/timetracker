@@ -1,10 +1,4 @@
-"""A statistic follows the row the library keeps, not the catalog column.
-
-The mirror keeps the two in step, so only a direct column write can
-tell them apart. #770 deletes the column and this file stops being
-able to state the difference; until then it is the proof the read
-moved.
-"""
+"""Statistics read the row, not the column."""
 
 from datetime import UTC, datetime
 
@@ -44,8 +38,7 @@ def test_a_completed_row_leaves_the_backlog(a_bought_game):
 
 def test_a_completed_column_the_row_denies_counts_for_nothing(a_bought_game):
     library, game = a_bought_game
-    #: The one place a test writes the column: no command states a
-    #: fact the projection then disagrees with.
+    #: The only test that writes the column.
     Game.objects.filter(pk=game.pk).update(status="f")
 
     assert compute_stats(library, YEAR)["purchased_unfinished_count"] == 1
@@ -61,7 +54,7 @@ def test_an_abandoned_row_is_dropped(a_bought_game):
 
 
 def test_a_retired_row_leaves_the_backlog(a_bought_game):
-    """Retired means done, so it is not still waiting to be played."""
+    """Retired means done, so not waiting."""
     library, game = a_bought_game
     PlayerGame.objects.filter(library=library, game=game).update(
         status=PlayerGameStatus.RETIRED
@@ -71,7 +64,7 @@ def test_a_retired_row_leaves_the_backlog(a_bought_game):
 
 
 def test_a_retired_row_is_finished(a_bought_game):
-    """It used to leave the backlog and arrive nowhere."""
+    """It used to arrive nowhere."""
     library, game = a_bought_game
     assert compute_stats(library)["backlog_decrease_count"] == 0
 

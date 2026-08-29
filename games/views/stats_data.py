@@ -1,9 +1,8 @@
 """Request-free stats computation: the data half of the stats page.
 
-`compute_stats(library, year)` computes the metrics and returns them as a
-`StatsData` dict; `stats_content` renders that dict. It takes the library
-because a status now lives on the library's own `PlayerGame` row, not on the
-catalog game. Today it computes from the ORM; this is also the function a future
+`compute_stats(library, year)` computes the metrics as a `StatsData` dict;
+`stats_content` renders that dict. The library scopes it: a status is per
+library. Today it computes from the ORM; this is also the function a future
 materialization job would call, and the shape it would populate from a
 pre-calculated table.
 
@@ -104,7 +103,7 @@ def _days_played_percent(unique_days: int, first: date, last: date) -> int:
 
 
 def _games_at_status(library: UserLibrary, *statuses: PlayerGameStatus):
-    """The library's tracked games at one of these statuses."""
+    """The library's tracked games at these statuses."""
     return Game.objects.tracked_by(library, tracked__status__in=statuses)
 
 
@@ -225,8 +224,7 @@ def _compute_stats_from_scoped_querysets(
         without_refunded.filter(not_finished_q)
         .filter(infinite=False)
         .filter(only_games_and_dlc)
-        #: Not retired too: not_finished_q already excludes it, since
-        #: retired is one of the done statuses.
+        #: not_finished_q already excludes retired.
         .filter(~Q(games__in=_games_at_status(library, PlayerGameStatus.ABANDONED)))
     )
     dropped = (

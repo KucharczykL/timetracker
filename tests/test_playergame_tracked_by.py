@@ -132,12 +132,7 @@ def test_a_condition_selects_the_matching_games(owned_library):
 
 @pytest.mark.django_db
 def test_a_condition_opens_one_join(owned_library):
-    """The condition rides in the tracked row's own filter() call.
-
-    A second filter() call on a multi-valued relation opens a second
-    join. Both joins would be library-scoped and could not disagree,
-    so this reads the table once rather than fixing a wrong answer.
-    """
+    """One filter() call, so one join."""
     sql = str(
         Game.objects.tracked_by(
             owned_library, tracked__status=PlayerGameStatus.COMPLETED

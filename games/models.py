@@ -109,8 +109,7 @@ class GameQuerySet(TombstonableQuerySet):
         No `library=library`: a shared catalog game this library
         tracks belongs on the list.
 
-        Extra conditions ride in that same filter() call, because a
-        second call on the relation opens a second join.
+        Extra conditions ride in that same filter() call.
 
         A FilteredRelation, not a plain path. Django opens a join per
         filter() call on a multi-valued relation, and a list applies
@@ -765,8 +764,7 @@ class PurchaseQueryset(LibraryOwnedQuerySet):
         return self.filter(type=Purchase.GAME)
 
     def finished(self, library):
-        #: A queryset method holds no library, and the status now
-        #: lives on the library's own row, so it takes one.
+        #: The status lives on the library's row.
         return self.filter(
             Q(
                 games__in=Game.objects.tracked_by(
@@ -1356,10 +1354,7 @@ class PlayerGameStatus(models.TextChoices):
     ABANDONED = "abandoned", "Abandoned"
 
 
-#: The player is done with the game. Completed means the objective
-#: they were playing for is met; retired means the game has no ending
-#: to reach. The statistics count both as finished, and stats_links
-#: reads the same name so a link cannot select a different set.
+#: Done with the game: completed or retired.
 DONE_STATUSES: tuple[PlayerGameStatus, ...] = (
     PlayerGameStatus.COMPLETED,
     PlayerGameStatus.RETIRED,

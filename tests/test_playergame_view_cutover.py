@@ -110,8 +110,7 @@ def test_the_edit_form_shows_the_games_current_status(
 
 @pytest.mark.django_db(transaction=True)
 def test_the_status_api_records_the_fact(logged_in, owned_library, tracked_game):
-    #: The endpoint looks the game up through the tracked row, so
-    #: this file's untracked_games marker has to be undone here.
+    #: The endpoint needs the tracked row.
     game = tracked_game
 
     response = logged_in.patch(
