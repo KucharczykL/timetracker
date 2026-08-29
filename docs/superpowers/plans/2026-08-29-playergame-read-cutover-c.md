@@ -725,20 +725,30 @@ Replace the five-letter table with the six words of `PlayerGameStatus`:
 
 | Status | Value | Description |
 |---|---|---|
-| **Unplayed** | `unplayed` | Tracked but never played |
-| **Played** | `played` | Played, not completed |
-| **Completed** | `completed` | Played to a finish |
-| **Retired** | `retired` | Set aside on purpose — no longer reachable, or a collector's item |
-| **Shelved** | `shelved` | Paused, possibly to return to |
-| **Abandoned** | `abandoned` | Played and given up on |
+| **Unplayed** | `unplayed` | Tracked, never played |
+| **Played** | `played` | Being played, no verdict yet |
+| **Completed** | `completed` | You beat what you were playing it for — your objective, not the game's |
+| **Retired** | `retired` | Done with a game that has no ending |
+| **Shelved** | `shelved` | Stopped, and might be picked up again |
+| **Abandoned** | `abandoned` | Stopped, and staying that way |
 
-Under it: the status lives on `PlayerGame`, one row per library per game, so two
+Two axes, and the table should say so under it: whether the player is done, and
+for a game they are not done with, whether stopping was final. **Completed** and
+**Retired** are both done — the second is for a game that offers nothing to
+complete. **Shelved** and **Abandoned** are both unfinished — the second is
+final.
+
+Then: the status lives on `PlayerGame`, one row per library per game, so two
 libraries can hold different statuses for one catalog game. `Game.status` is a
 mirror of that row, kept current by `games/writes/playergame.py` and removed by
 #770. `shelved` has no letter, so nothing can set it until the mirror goes
 (#678 D). Replace the "Setting game status" bullet naming `GameStatusChange`
 with one naming the command path; the audit table stops being the record in
 #678 D and its storage goes in #771.
+
+**Do not make the statistics agree with these words.** The spec preserves
+behaviour exactly, quirks included, and one quirk is now named rather than
+fixed — Step 4 writes it down.
 
 - [ ] **Step 2: Update the two predicates**
 
@@ -756,9 +766,30 @@ Purchase.objects.for_library(library).finished(library)
 Game.objects.tracked_by(library, tracked__status=PlayerGameStatus.ABANDONED)
 ```
 
-- [ ] **Step 4: Fix the summary table's Dropped row**
+- [ ] **Step 4: Say where the statistics disagree with the words**
 
-`NOT finished, AND (abandoned OR refunded)`.
+Two claims in the document are false against the code, and one of them is the
+reason this step exists rather than a code change.
+
+Fix the Summary Table's **Dropped** row, which says "Finished OR
+Abandoned/Retired". It is `NOT finished, AND (abandoned OR refunded)`.
+
+Fix the Edge Cases bullet "Retired games are considered **dropped**".
+`stats_data` never counts a retired game as dropped: `dropped` selects
+`abandoned` or refunded. Replace the bullet with what the code does, and add
+that this is a known disagreement:
+
+> **Retired counts as nothing.** Retired means done with a game that has no
+> ending, so a retired game belongs with the completed ones. The statistics do
+> not put it there: `finished` counts `completed` or an ended play event, so a
+> retired game is not finished; `unfinished` excludes it from the backlog; and
+> `dropped` selects only `abandoned` or refunded. It falls out of all three
+> counts. #678 C moved these reads to the projection without changing what they
+> select — see #<issue> for the question of what they should select.
+
+Leave `shelved` alone: it is unfinished and not final, `unfinished` excludes
+only `completed`, `retired` and `abandoned`, so a shelved game stays in the
+backlog. That is already what the words ask for.
 
 - [ ] **Step 5: Say `stats_data`'s first paragraph in normal words**
 
@@ -800,6 +831,15 @@ git commit -m "Say what a status is where the docs still say a letter"
 ```
 
 ---
+
+## Before Task 6
+
+**Agree the "retired counts as nothing" issue with the user and file it**, so
+Step 4 has a number to cite instead of a forward reference. Do not draft its
+body alone — ask what it should say first. It is a behaviour question the read
+cutover deliberately does not answer: whether `retired` should join `completed`
+in the finished count and the backlog decrease, and whether the answer differs
+for a game whose statistics come from a play event instead.
 
 ## After the tasks
 
