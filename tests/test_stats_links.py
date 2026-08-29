@@ -467,6 +467,18 @@ def a_retired_purchase(world):
         date_purchased=_dt(YEAR, 6, 5),
         type=Purchase.GAME,
     ).games.set([game])
+
+    #: Bought earlier, ended in scope.
+    earlier = Game.objects.create(
+        library=library, name="Retired earlier", status=Game.Status.RETIRED
+    )
+    PlayEvent.objects.create(game=earlier, ended=_dt(YEAR, 8, 2))
+    Purchase.objects.create(
+        library=library,
+        price_currency="CZK",
+        date_purchased=_dt(YEAR - 1, 6, 5),
+        type=Purchase.GAME,
+    ).games.set([earlier])
     return world
 
 
