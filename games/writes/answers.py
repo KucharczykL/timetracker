@@ -72,9 +72,12 @@ NOT_ANSWERED: frozenset[type[Exception]] = frozenset(
 )
 
 
-def answer_for(error: CommandConflict) -> ConflictAnswer | None:
-    """The nearest mapped ancestor's answer, or none."""
-    for ancestor in type(error).__mro__:
+def answer_for(conflict: type[CommandConflict]) -> ConflictAnswer | None:
+    """The nearest mapped ancestor's answer, or none.
+
+    Takes the type, so a guard can ask about a class it never raises.
+    """
+    for ancestor in conflict.__mro__:
         answer = CONFLICT_ANSWERS.get(ancestor)
         if answer is not None:
             return answer
@@ -91,7 +94,7 @@ def answered(subject: SubjectNoun) -> Iterator[None]:
         #: The layering cost #905 weighed and accepted.
         raise Http404(f"No such {subject}.") from error
     except CommandConflict as error:
-        answer = answer_for(error)
+        answer = answer_for(type(error))
         if answer is None:
             #: A wrong sentence is worse than none.
             raise

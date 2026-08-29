@@ -16,6 +16,7 @@ from games.writes.answers import (
     CONFLICT_ANSWERS,
     NOT_ANSWERED,
     CommandFailed,
+    answer_for,
     answered,
 )
 
@@ -133,7 +134,8 @@ def test_every_conflict_leaf_of_the_application_has_an_answer():
         if leaf.__module__.startswith("games.")
     }
 
-    unanswered = leaves - set(CONFLICT_ANSWERS)
+    #: Through the real lookup: a parent's entry answers.
+    unanswered = {leaf for leaf in leaves if answer_for(leaf) is None}
     assert not unanswered, (
         f"{sorted(leaf.__name__ for leaf in unanswered)} reach a person as a "
         "500. Add each to CONFLICT_ANSWERS in games/writes/answers.py."

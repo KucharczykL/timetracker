@@ -142,7 +142,9 @@ Two tests in `tests/test_command_answers.py`, because two things can go wrong.
 
 **Every leaf of the hierarchy is answered.** The test imports every module of the
 `games` package with `pkgutil.walk_packages`, collects the subclasses of
-`CommandConflict` at any depth, and asserts each is in `CONFLICT_ANSWERS`.
+`CommandConflict` at any depth, and asserts `answer_for` resolves each one. It
+asks through the same function `answered` uses rather than reading the mapping's
+keys, so a leaf that a parent's entry answers passes, as it does at run time.
 
 The walk is what makes the test worth writing. `__subclasses__` sees a class only
 after its module is imported, and `games/writes/answers.py` imports exactly the
