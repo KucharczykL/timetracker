@@ -1,4 +1,6 @@
-from django.db import migrations
+from django.db import migrations, models
+
+import timetracker.temporal
 
 # A qualifier says how sure the writer is of a date. It does not say which days
 # the value covers, so `1984~` projects the bounds and the precision of `1984`.
@@ -413,5 +415,77 @@ class Migration(migrations.Migration):
         migrations.RunSQL(
             sql=ADD_QUALIFIER_SUPPORT,
             reverse_sql=REMOVE_QUALIFIER_SUPPORT,
+        ),
+        migrations.AddField(
+            model_name="game",
+            name="original_release_date_end_qualifier",
+            field=models.GeneratedField(
+                db_persist=True,
+                expression=timetracker.temporal.TemporalEndQualifier(
+                    "original_release_date"
+                ),
+                null=True,
+                output_field=models.CharField(max_length=11, null=True),
+                serialize=False,
+            ),
+        ),
+        migrations.AddField(
+            model_name="game",
+            name="original_release_date_qualifier",
+            field=models.GeneratedField(
+                db_persist=True,
+                expression=timetracker.temporal.TemporalQualifierValue(
+                    "original_release_date"
+                ),
+                null=True,
+                output_field=models.CharField(max_length=11, null=True),
+                serialize=False,
+            ),
+        ),
+        migrations.AddField(
+            model_name="game",
+            name="original_release_date_start_qualifier",
+            field=models.GeneratedField(
+                db_persist=True,
+                expression=timetracker.temporal.TemporalStartQualifier(
+                    "original_release_date"
+                ),
+                null=True,
+                output_field=models.CharField(max_length=11, null=True),
+                serialize=False,
+            ),
+        ),
+        migrations.AddField(
+            model_name="release",
+            name="release_date_end_qualifier",
+            field=models.GeneratedField(
+                db_persist=True,
+                expression=timetracker.temporal.TemporalEndQualifier("release_date"),
+                null=True,
+                output_field=models.CharField(max_length=11, null=True),
+                serialize=False,
+            ),
+        ),
+        migrations.AddField(
+            model_name="release",
+            name="release_date_qualifier",
+            field=models.GeneratedField(
+                db_persist=True,
+                expression=timetracker.temporal.TemporalQualifierValue("release_date"),
+                null=True,
+                output_field=models.CharField(max_length=11, null=True),
+                serialize=False,
+            ),
+        ),
+        migrations.AddField(
+            model_name="release",
+            name="release_date_start_qualifier",
+            field=models.GeneratedField(
+                db_persist=True,
+                expression=timetracker.temporal.TemporalStartQualifier("release_date"),
+                null=True,
+                output_field=models.CharField(max_length=11, null=True),
+                serialize=False,
+            ),
         ),
     ]

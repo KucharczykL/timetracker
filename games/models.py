@@ -33,11 +33,14 @@ from timetracker.settings_registry import THEME_CHOICES, SettingKey
 from timetracker.temporal import (
     TemporalEndKind,
     TemporalEndPrecision,
+    TemporalEndQualifier,
     TemporalKind,
     TemporalLowerBound,
     TemporalPrecisionValue,
+    TemporalQualifierValue,
     TemporalStartKind,
     TemporalStartPrecision,
+    TemporalStartQualifier,
     TemporalUpperBound,
     TemporalValueField,
 )
@@ -271,6 +274,30 @@ class Game(ReferencedRow):
     original_release_date_end_precision = models.GeneratedField(
         expression=TemporalEndPrecision("original_release_date"),
         output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    original_release_date_qualifier = models.GeneratedField(
+        expression=TemporalQualifierValue("original_release_date"),
+        output_field=models.CharField(max_length=11, null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    original_release_date_start_qualifier = models.GeneratedField(
+        expression=TemporalStartQualifier("original_release_date"),
+        output_field=models.CharField(max_length=11, null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    original_release_date_end_qualifier = models.GeneratedField(
+        expression=TemporalEndQualifier("original_release_date"),
+        output_field=models.CharField(max_length=11, null=True),
         null=True,
         serialize=False,
         db_persist=True,
@@ -568,6 +595,30 @@ class Release(models.Model):
     release_date_end_precision = models.GeneratedField(
         expression=TemporalEndPrecision("release_date"),
         output_field=models.CharField(max_length=7, null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    release_date_qualifier = models.GeneratedField(
+        expression=TemporalQualifierValue("release_date"),
+        output_field=models.CharField(max_length=11, null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    release_date_start_qualifier = models.GeneratedField(
+        expression=TemporalStartQualifier("release_date"),
+        output_field=models.CharField(max_length=11, null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    release_date_end_qualifier = models.GeneratedField(
+        expression=TemporalEndQualifier("release_date"),
+        output_field=models.CharField(max_length=11, null=True),
         null=True,
         serialize=False,
         db_persist=True,

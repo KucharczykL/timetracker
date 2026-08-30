@@ -37,11 +37,14 @@ from common.filter_execution import FilterQueryTimeout, run_with_statement_timeo
 from timetracker.temporal import (
     TemporalEndKind,
     TemporalEndPrecision,
+    TemporalEndQualifier,
     TemporalKind,
     TemporalLowerBound,
     TemporalPrecisionValue,
+    TemporalQualifierValue,
     TemporalStartKind,
     TemporalStartPrecision,
+    TemporalStartQualifier,
     TemporalUpperBound,
 )
 from timetracker.uuidv7 import UUIDv7ParseError, parse_uuidv7
@@ -55,6 +58,9 @@ _TEMPORAL_PROJECTION_EXPRESSIONS = (
     TemporalEndKind,
     TemporalStartPrecision,
     TemporalEndPrecision,
+    TemporalQualifierValue,
+    TemporalStartQualifier,
+    TemporalEndQualifier,
 )
 
 # ── Errors ─────────────────────────────────────────────────────────────────

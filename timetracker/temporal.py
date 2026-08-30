@@ -639,6 +639,21 @@ class TemporalEndPrecision(models.Func):
     output_field = models.CharField(max_length=7, null=True)
 
 
+class TemporalQualifierValue(models.Func):
+    function = "timetracker_temporal_qualifier"
+    output_field = models.CharField(max_length=11, null=True)
+
+
+class TemporalStartQualifier(models.Func):
+    function = "timetracker_temporal_start_qualifier"
+    output_field = models.CharField(max_length=11, null=True)
+
+
+class TemporalEndQualifier(models.Func):
+    function = "timetracker_temporal_end_qualifier"
+    output_field = models.CharField(max_length=11, null=True)
+
+
 type TemporalEndpointName = Literal["start", "end"]
 
 _KNOWN_YEAR_PRECISIONS = (
