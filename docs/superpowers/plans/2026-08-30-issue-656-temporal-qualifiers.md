@@ -892,21 +892,49 @@ def test_temporal_functions_carry_the_search_path_their_bodies_need():
     assert settings == {name: [f"search_path={SEARCH_PATH}"] for name in ALL_FUNCTIONS}
 ```
 
+In the same pass, widen line 129 from `PUBLIC_FUNCTIONS` to `ALL_FUNCTIONS`:
+
+```python
+def test_temporal_functions_have_stable_return_types_and_are_immutable():
+    assert temporal_function_metadata(ALL_FUNCTIONS) == ALL_FUNCTIONS
+```
+
+Today that assertion names the public nine only, and the three private helpers
+of 0017 are covered incidentally, by the reversal test's re-apply. The rewrite
+in the Seventh clause below narrows that re-apply to `FUNCTIONS_AT_0017`, so
+without this widening the two new private helpers would have their return type
+and their volatility asserted nowhere. That is not a bookkeeping loss.
+PostgreSQL does not read a plpgsql body to check the claim, so
+`ALTER FUNCTION _timetracker_temporal_atom_qualifier(text) VOLATILE` is accepted
+in silence, and a persisted generated column keeps writing over a function that
+no longer promises the same answer twice — the exact hazard 0017's own header
+warns about.
+
 Sixth, update the refusal list (lines 288-324): replace `"2024?"` with the
 qualified refusals the database must also reject:
 
 ```text
         "2024??",
         "2024?~",
+        "2024~~",
         "?2024",
         "2024-?02",
         "~/2025",
+        "1984/%",
         "..?/2025",
         "2001-21~",
         "0000~",
         "10000~",
         "2004-XX~",
+        "?",
+        "~",
+        "%",
 ```
+
+Every family Task 1's Python refusal table names appears here. The two tables
+say the same thing about the same strings, which is what stops them drifting
+apart: a bare symbol, a doubled symbol, a symbol on an empty endpoint, a symbol
+inside an atom, and a symbol on an atom that was already invalid without it.
 
 Seventh, point the reversal test (lines 359-371) at the 0017 constant:
 
@@ -923,6 +951,22 @@ def test_temporal_domain_migration_reverses_and_reapplies():
         assert temporal_domain_base_type() == "varchar"
         assert temporal_function_metadata(FUNCTIONS_AT_0017) == FUNCTIONS_AT_0017
         assert temporal_function_metadata(QUALIFIER_FUNCTIONS) == {}
+        assert temporal_projection("1984") == (
+            date(1984, 1, 1),
+            date(1984, 12, 31),
+            "atomic",
+            "year",
+            None,
+            None,
+            None,
+            None,
+        )
+        with (
+            pytest.raises(DatabaseError),
+            transaction.atomic(),
+            connection.cursor() as cursor,
+        ):
+            cursor.execute("SELECT %s::temporal_value", ["1984~"])
     finally:
         MigrationExecutor(connection).migrate(leaf_nodes)
 ```
@@ -934,8 +978,24 @@ QUALIFIER_FUNCTIONS = PUBLIC_QUALIFIER_FUNCTIONS | PRIVATE_QUALIFIER_FUNCTIONS
 ```
 
 Asserting only the public three would pass a reverse that restores the four
-bodies and forgets to drop the two private helpers, which is the likeliest way
-to get this wrong.
+bodies and forgets to drop the two private helpers, which is one way to get this
+wrong.
+
+The two assertions after it answer the other way, and it is the likelier one,
+because the drops are the part a writer remembers. A reverse that drops all five
+and forgets to `CREATE OR REPLACE` the four bodies back passes every metadata
+assertion above: `temporal_function_metadata` reads `prorettype` and
+`provolatility` out of `pg_proc`, and replacing a body changes neither. The
+schema it leaves is nonetheless unusable — `_timetracker_temporal_atom_precision`
+still calls `_timetracker_temporal_atom_qualifier`, which is now gone, so
+`SELECT timetracker_temporal_lower('1984')` raises `42883 undefined_function`.
+`timetracker_temporal_is_valid` does not even mask it, because 42883 is neither
+`raise_exception` nor `data_exception`. So the migration would report success and
+the next write of any temporal value at all would fail. Only reading a value back
+catches that, and reading one back is one line.
+
+`date` is already imported at line 1; `DatabaseError`, `pytest` and `transaction`
+at lines 3-4.
 
 Eighth, add a test that the new columns read the symbol of each position:
 
@@ -960,13 +1020,21 @@ def test_temporal_sql_reads_the_qualifier_of_each_position(canonical, expected):
     assert temporal_qualifier_projection(canonical) == expected
 
 
-@pytest.mark.parametrize("canonical", ["1984", "1984-06", "198X", "1984/1986"])
+@pytest.mark.parametrize(
+    "canonical", ["1984", "1984-06", "1984-06-11", "198X", "1984/1986"]
+)
 def test_a_qualifier_does_not_move_the_bounds_it_is_written_beside(canonical):
     for symbol in ("?", "~", "%"):
         qualified = canonical.replace("/", f"{symbol}/") + symbol
-        assert temporal_projection(qualified)[:2] == temporal_projection(canonical)[:2]
-        assert temporal_projection(qualified)[3] == temporal_projection(canonical)[3]
+        assert temporal_projection(qualified) == temporal_projection(canonical)
 ```
+
+Compare the whole eight-value tuple, not slices of it. A range projects `None`
+for `precision`, so comparing index 3 alone asserts `None == None` for every
+range case and proves nothing there; the two values a range qualifier could
+actually disturb are `start_precision` and `end_precision`, at indices 6 and 7.
+Comparing the tuple covers all eight, needs no index arithmetic, and cannot go
+stale if a projection is ever added.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -990,7 +1058,14 @@ from django.db import migrations
 # recorded for the same shape of change.
 #
 # The reverse below exists for the test suite, which drives the executor down
-# past this node in six modules. No deployment reverses it.
+# past this node in twenty modules. No deployment reverses it.
+#
+# A reverse does not revalidate what the schema already holds, on the same
+# reasoning as above. A row written as `1984~` therefore survives the reverse,
+# and its stored projections with it, but the domain no longer accepts the
+# string: the next UPDATE of that row raises `invalid temporal atom: 1984~`,
+# and the column cannot be retyped out of the way while a generated column
+# reads it. Restate the value before reversing, or do not reverse.
 
 ADD_QUALIFIER_SUPPORT = r"""
 CREATE FUNCTION _timetracker_temporal_atom_unqualified(value text)
@@ -1028,7 +1103,7 @@ BEGIN
         atom := value;
     END IF;
     IF atom ~ '[?~%]' THEN
-        RAISE EXCEPTION 'invalid temporal qualifier: %', value;
+        RAISE EXCEPTION 'misplaced temporal qualifier symbol: %', value;
     END IF;
     IF symbol IS NULL THEN
         RETURN NULL;
@@ -1420,10 +1495,28 @@ def test_an_event_time_stores_a_qualifier_it_projects_no_column_for(canonical):
 The value round-trips and nothing reads it apart, which is the whole of the
 decision: `LibraryEvent` gains no column in this issue.
 
-- [ ] **Step 7: Verify a dump of this schema restores**
+- [ ] **Step 7: Rehearse the migration against a copy of production**
 
 Run: `make verify-dump`
-Expected: the restored copy migrates clean and is dropped. This is the check the `SET search_path` clauses exist for; a missing one passes `make check` and fails here.
+Expected: the restored copy migrates clean and is dropped.
+
+This step rehearses *applying* 0038 to the schema production actually holds. It
+is **not** the check the `SET search_path` clauses exist for, and an executor who
+treats it as one will draw the wrong conclusion from a green run. `verify-dump`
+restores a **pre-0038** dump — whose functions already carry 0034's setting — and
+then migrates the copy forward. It never dumps the post-0038 schema, so a
+`SET search_path` this migration forgets to write is never in the file being
+restored and cannot fail here.
+
+What catches that is the rewritten
+`test_temporal_functions_carry_the_search_path_their_bodies_need` in Step 1,
+inside `make check`: it finds every temporal function by name pattern rather than
+from a list, so a new one cannot be omitted from the guard by being omitted from
+a constant. Keep the pattern. The failure it prevents is worth stating plainly,
+because it is silent — `pg_dump` writes its files with an empty `search_path`,
+so on restore a function missing the setting cannot resolve the helpers it calls
+by bare name, and `pg_restore` reports `errors ignored on restore: 1` and leaves
+the table **empty**. Data loss, exit code 0.
 
 If no production dump is available locally, skip this step and say so in the
 commit body — but do not skip it silently.
@@ -1929,5 +2022,10 @@ gains no column — it projects none today.
   SQL, not `RunSQL.noop`. A noop clears the `IrreversibleError` and leaves the
   widened functions behind, which lets
   `test_temporal_domain_migration_reverses_and_reapplies` pass for the wrong
-  reason. The `PUBLIC_QUALIFIER_FUNCTIONS == {}` assertion added in Task 3
-  Step 1 is what catches that.
+  reason. Three assertions added in Task 3 Step 1 catch the three ways to get it
+  wrong: `QUALIFIER_FUNCTIONS == {}` catches a reverse that leaves any of the
+  five new functions behind, reading `1984` back catches one that drops them
+  without restoring the four replaced bodies, and refusing `1984~` catches one
+  that leaves the grammar widened. The first is about what `pg_proc` holds; the
+  other two are about what the schema does, and only the second kind can see a
+  body that was never put back.
