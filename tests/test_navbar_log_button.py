@@ -5,6 +5,7 @@ screen-reader name its table's scroll region points at."""
 
 import re
 from datetime import datetime, timedelta
+from unittest import mock
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
@@ -63,6 +64,25 @@ class RecentSessionResumesTest(TestCase):
         # Newest first: G5, G4, G3, G2, G1 (G0 falls off the limit).
         names = [s.game.name for s in resumes]
         self.assertEqual(names, ["G5", "G4", "G3", "G2", "G1"])
+
+    def test_pages_past_a_boundary_with_a_tie_across_it(self) -> None:
+        """One start time straddles the page boundary."""
+        from common import layout
+
+        with mock.patch.object(layout, "RESUME_PAGE_SIZE", 2):
+            shared = BASE + timedelta(hours=3)
+            first = self._game("first")
+            second = self._game("second")
+            third = self._game("third")
+            self._session(first, BASE)
+            self._session(first, BASE + timedelta(hours=1))
+            self._session(second, shared)
+            self._session(third, shared)
+            self._session(third, BASE + timedelta(hours=5))
+            resumes = recent_session_resumes(self._request(authenticated=True))
+        self.assertEqual(
+            [session.game.name for session in resumes], ["third", "second", "first"]
+        )
 
     def test_query_has_no_obsolete_nullable_game_guard(self) -> None:
         self._session(self._game("Required game"), BASE)

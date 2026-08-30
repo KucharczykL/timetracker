@@ -407,6 +407,38 @@ def test_a_library_tracks_every_live_game_it_holds(owned_user, owned_library):
 
 
 @pytest.mark.django_db(transaction=True)
+def test_a_catalog_longer_than_one_page_is_backfilled_whole(
+    owned_user, owned_library, monkeypatch
+):
+    """Five games over pages of two."""
+    import games.backfill.playergame as backfill_module
+
+    monkeypatch.setattr(backfill_module, "BACKFILL_PAGE_SIZE", 2)
+    for index in range(5):
+        Game.objects.create(library=owned_library, name=f"Game {index}")
+
+    counts = backfill_module.backfill_library(owned_library)
+
+    assert (counts.games, counts.tracked) == (5, 5)
+    assert PlayerGame.objects.filter(library=owned_library).count() == 5
+
+
+@pytest.mark.django_db(transaction=True)
+def test_reconcile_reads_a_catalog_longer_than_one_page(
+    owned_user, owned_library, monkeypatch
+):
+    """A skipped page shows as a mismatch."""
+    import games.backfill.playergame as backfill_module
+
+    monkeypatch.setattr(backfill_module, "BACKFILL_PAGE_SIZE", 2)
+    for index in range(5):
+        Game.objects.create(library=owned_library, name=f"Game {index}")
+    backfill_module.backfill_library(owned_library)
+
+    assert backfill_module.reconcile(owned_library) == []
+
+
+@pytest.mark.django_db(transaction=True)
 def test_a_removed_game_is_skipped(owned_user, owned_library):
     Game.objects.create(library=owned_library, name="Outer Wilds")
     removed = Game.objects.create(library=owned_library, name="Removed")
@@ -463,12 +495,13 @@ def test_running_a_library_twice_appends_nothing_the_second_time(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_games_are_processed_oldest_first(owned_user, owned_library):
+def test_games_are_processed_in_insertion_order(owned_user, owned_library):
+    """Back-dating `created_at` no longer moves a game."""
     now = timezone.now()
-    newer = Game.objects.create(library=owned_library, name="Newer")
-    older = Game.objects.create(library=owned_library, name="Older")
-    Game.objects.filter(pk=newer.pk).update(created_at=now - timedelta(days=10))
-    Game.objects.filter(pk=older.pk).update(created_at=now - timedelta(days=100))
+    first = Game.objects.create(library=owned_library, name="First")
+    second = Game.objects.create(library=owned_library, name="Second")
+    Game.objects.filter(pk=first.pk).update(created_at=now - timedelta(days=10))
+    Game.objects.filter(pk=second.pk).update(created_at=now - timedelta(days=100))
 
     backfill_library(owned_library)
 
@@ -478,8 +511,8 @@ def test_games_are_processed_oldest_first(owned_user, owned_library):
         .values_list("payload", flat=True)
     )
     assert [payload["game"]["id"] for payload in ordered] == [
-        str(older.pk),
-        str(newer.pk),
+        str(first.pk),
+        str(second.pk),
     ]
 
 

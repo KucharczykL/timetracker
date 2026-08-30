@@ -667,3 +667,11 @@ chromium` once. All JS is vendored, so the tests run fully offline. A bare
   no `@transaction.atomic` and calls no helper that does. `games.E008` refuses
   `ATOMIC_REQUESTS`. A test that POSTs through such a view needs
   `@pytest.mark.django_db(transaction=True)`.
+- **Nothing opens a server-side cursor** — never `QuerySet.iterator()` or
+  `aiterator()`. A cursor belongs to one connection, and a pooler in transaction
+  or statement pooling mode hands the next `FETCH` a different one. Page with
+  `keyset_pages()` from `common/keyset.py`, keyed on fields that lie in one
+  index, last field unique. `tests/test_iterator_guard.py` walks the syntax tree
+  of `games/`, `common/`, `timetracker/`, `contrib/` and `scripts/` and fails on
+  a new call. `DISABLE_SERVER_SIDE_CURSORS` exists for the reads inside Django
+  that cannot be rewritten, not for ours.

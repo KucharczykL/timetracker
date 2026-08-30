@@ -24,10 +24,10 @@ SECONDS_PER_REBUILT_EVENT = 16 / 100_000
 SECONDS_PER_PURGED_EVENT = 50 / 100_000
 
 CURSOR_UNDER_A_POOLER = (
-    "The replay's server-side cursor did not survive. A transaction-pooling "
-    "connection pooler closes it between statements, and "
-    "DISABLE_SERVER_SIDE_CURSORS cannot be set yet -- that is issue #917. "
-    "Point this at a direct connection, not the pooler."
+    "A server-side cursor did not survive. A transaction-pooling connection "
+    "pooler closes one between statements. Our own reads page by key and open "
+    "none, so this came from inside Django: set DISABLE_SERVER_SIDE_CURSORS, or "
+    "point this at a direct connection rather than the pooler."
 )
 
 

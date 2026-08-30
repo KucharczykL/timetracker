@@ -40,6 +40,7 @@ from common.components.primitives import (
     Span,
     Title,
 )
+from common.keyset import keyset_pages
 from games.templatetags.version import version, version_modified_at
 from timetracker.config import SettingSource
 from timetracker.settings_registry import THEME_CHOICES
@@ -167,6 +168,9 @@ def _main_script(mastered: bool) -> str:
     return _MAIN_SCRIPT_A + ("true" if mastered else "false") + _MAIN_SCRIPT_B
 
 
+#: One page usually answers the whole scan.
+RESUME_PAGE_SIZE = 50
+
 # Shared classes for the plain navbar entries (Home/Stats/Log out).
 _NAV_LINK_CLASS = (
     "block py-2 px-3 rounded-base hover:bg-neutral-tertiary-medium "
@@ -182,18 +186,20 @@ def recent_session_resumes(request: HttpRequest, limit: int = 5) -> list[Session
 
     Anonymous requests get an empty list — the navbar log button is
     authenticated-only, so its recent-game names never render on the login page.
-    The scan early-exits after ``limit`` distinct games."""
+    The scan pages by key and early-exits after ``limit`` distinct games."""
     if not request.user.is_authenticated:
         return []
     from games.models import Session
 
     seen: set[UUID] = set()
     resumes: list[Session] = []
-    for session in (
-        Session.objects.for_library(cast(User, request.user).library)
-        .select_related("game")
-        .order_by("-timestamp_start")
-        .iterator()
+    for session in keyset_pages(
+        Session.objects.for_library(cast(User, request.user).library).select_related(
+            "game"
+        ),
+        key=("timestamp_start", "id"),
+        descending=True,
+        page_size=RESUME_PAGE_SIZE,
     ):
         game_id = session.game_id
         if game_id in seen:

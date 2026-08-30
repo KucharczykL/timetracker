@@ -10,6 +10,7 @@ from django.contrib.auth.models import User
 from django.core.management import call_command
 from django.db import connection, transaction
 
+from common.keyset import keyset_pages
 from games.commands.playergame import TrackGame
 from games.events.append import lock_stream
 from games.events.benchmark import (
@@ -127,22 +128,14 @@ def spare_games(library: UserLibrary) -> Iterator[Game]:
 
 
 def _catalog(library: UserLibrary, prefix: str) -> Iterator[Game]:
-    """Keyset pages, because callers commit mid-iteration.
-
-    `.iterator()` opens a server-side cursor, which a transaction-pooling
-    pooler closes under us -- issue #917. UUIDv7 primary keys sort in
-    insertion order, so `WHERE id > ?` pages just as lazily and survives.
-    """
-    last_id: uuid.UUID | None = None
-    while True:
-        page = Game.objects.filter(library=library, name__startswith=prefix)
-        if last_id is not None:
-            page = page.filter(id__gt=last_id)
-        rows = list(page.only(*_CAPTURED_FIELDS).order_by("id")[:CATALOG_BATCH])
-        if not rows:
-            return
-        yield from rows
-        last_id = rows[-1].id
+    """Pages by key, because callers commit mid-iteration."""
+    return keyset_pages(
+        Game.objects.filter(library=library, name__startswith=prefix).only(
+            *_CAPTURED_FIELDS
+        ),
+        key=("id",),
+        page_size=CATALOG_BATCH,
+    )
 
 
 def purge_scratch_user(username: str) -> Seconds:

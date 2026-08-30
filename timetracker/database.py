@@ -117,7 +117,13 @@ def required_database_settings() -> dict[str, object]:
             "DATABASE_URL is required. Run make init (or make ensure-postgres) "
             "for the disposable development database, or set a PostgreSQL URL."
         ) from exc
-    return database_settings_from_url(url)
+    settings = database_settings_from_url(url)
+    #: Only iterator() reads it, so only Django's.
+    #: Beside ENGINE: OPTIONS holds driver arguments.
+    settings["DISABLE_SERVER_SIDE_CURSORS"] = config(
+        "DISABLE_SERVER_SIDE_CURSORS", default=False, cast=bool
+    )
+    return settings
 
 
 def validate_default_connection(
