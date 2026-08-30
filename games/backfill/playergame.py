@@ -17,6 +17,7 @@ from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
 
+from common.keyset import keyset_pages
 from games.events.append import LockedStream, SourceMetadata
 from games.events.idempotency import ReplayedAppend, idempotent_append
 from games.events.playergame import (
@@ -43,6 +44,9 @@ from timetracker.temporal import TemporalValue
 #: Named in every key and every source_metadata value.
 PGAME_ISSUE = 676
 KEY_PREFIX = "backfill:676:playergame"
+
+#: A page rather than a cursor chunk: a cursor does not survive a pooler.
+BACKFILL_PAGE_SIZE = 200
 
 
 def transition_effective_time(timestamp: datetime | None) -> TemporalValue:
@@ -271,9 +275,11 @@ def backfill_library(
     resolved_run_time = run_time or timezone.now()
     actor = library.user
     counts = NO_COUNTS
-    #: Deterministic, so two runs order the stream identically.
-    games = Game.objects.filter(library=library).order_by("created_at", "pk")
-    for game in games.iterator(chunk_size=200):
+    #: Keyed on id, which is a UUIDv7 and therefore sorts in insertion order, so
+    #: two runs order the stream identically. Not (created_at, pk): Game indexes
+    #: neither, and that key re-sorts the library on every page.
+    games = Game.objects.filter(library=library)
+    for game in keyset_pages(games, key=("id",), page_size=BACKFILL_PAGE_SIZE):
         if game.removed_at is not None:
             counts = counts + BackfillCounts(games=1, skipped_removed=1)
             continue
@@ -341,8 +347,8 @@ def reconcile(library: UserLibrary) -> list[Mismatch]:
         )
     }
     mismatches: list[Mismatch] = []
-    live = Game.objects.filter(library=library, removed_at__isnull=True).order_by("pk")
-    for game in live.iterator(chunk_size=200):
+    live = Game.objects.filter(library=library, removed_at__isnull=True)
+    for game in keyset_pages(live, key=("id",), page_size=BACKFILL_PAGE_SIZE):
         row = rows.get(game.pk)
         if row is None:
             mismatches.append(
