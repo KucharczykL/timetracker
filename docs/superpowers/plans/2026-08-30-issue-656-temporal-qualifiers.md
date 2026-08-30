@@ -18,8 +18,8 @@
 - **Every new SQL function carries `SET search_path = pg_catalog, public`.** Migration 0034 added it because `pg_dump` opens a dump with an empty search path; a function that omits it makes the schema unrestorable.
 - **Every regex in `timetracker/temporal.py` carries `re.ASCII`.** Without it the parser accepts Arabic-Indic and full-width digits, which `tests/test_temporal_domain.py` feeds it.
 - **Name variables with complete words** — `qualifier` not `qual`, `element` not `el`.
-- **`make vale` grades prose in docs and code comments.** Do not write "fold", "tombstone", "archive", "delete", or "heal" in a comment or docstring.
-- **Migration reversibility is mandatory** even though no deployment reverses. Six test modules drive `MigrationExecutor.migrate()` down past this node; an irreversible operation turns a green run into 37 failures.
+- **`make vale` grades prose in docs and code comments.** Run it and read the refused list in [Vocabulary](../../vocabulary.md) before writing a comment; the domain sense of a refused word is an error, every other sense a warning.
+- **Migration reversibility is mandatory** even though no deployment reverses. **Twenty** test modules under `tests/` drive `MigrationExecutor.migrate()` to a node below 0038 — everything from `test_uuidv7_domain.py` (0001) to `test_playergame_backfill_migration.py` (0032). An irreversible operation in 0038 turns every one of them into an `IrreversibleError`. Confirm the count yourself with `grep -rl MigrationExecutor tests/ | wc -l` before deciding the reverse is optional.
 - **The qualifier never widens bounds.** `1984~` has the same `lower_bound`, `upper_bound`, and `precision` as `1984`.
 
 ---
@@ -139,6 +139,20 @@ def test_an_endpoint_without_a_value_answers_no_qualifier():
     assert TemporalEndpoint.open().qualifier is None
     assert TemporalValue.unknown().qualifier is None
     assert TemporalValue.unknown().is_approximate is False
+
+
+def test_how_precise_and_how_sure_are_two_questions():
+    """`1984-06-11%` is an exact day the writer is unsure of. Both are true."""
+    exact_but_unsure = TemporalValue.parse("1984-06-11%")
+
+    assert exact_but_unsure.is_exact_day is True
+    assert exact_but_unsure.is_complete_day is True
+    assert exact_but_unsure.has_known_day is True
+    assert exact_but_unsure.is_uncertain is True
+    assert exact_but_unsure.is_approximate is True
+
+    assert TemporalValue.parse("1984-06-11").is_exact_day is True
+    assert TemporalValue.parse("1984~").is_exact_day is False
 
 
 def test_named_constructors_write_the_symbol_they_are_given():
@@ -285,7 +299,7 @@ def _reject_unsupported_family(canonical: str) -> None:
                 f"Component temporal qualifiers are not supported: {canonical!r}.",
                 code="unsupported_component_qualifier",
             )
-    if len(tokens) > 1 and any(
+    if len(tokens) == 2 and any(
         qualifier is not None and atom in ("", "..") for atom, qualifier in split_tokens
     ):
         raise TemporalValueParseError(
@@ -322,6 +336,11 @@ string, so `[2020~]` is a set rather than a component qualifier. The
 double-symbol check runs before the component check, so `2024?~` is
 `invalid_qualifier` rather than `unsupported_component_qualifier`. The remaining
 three read `bare`/`unqualified`, which is the whole point of the task.
+
+The endpoint check is `len(tokens) == 2`, not `> 1`. A three-token string is not
+a range at all, and `_parse_range` refuses it with `invalid_range` downstream;
+`> 1` would tell someone who wrote `2024/2025/~` that their endpoint qualifier
+is the problem when their real problem is a third endpoint.
 
 - [ ] **Step 6: Carry the qualifier through the parse**
 
@@ -502,7 +521,33 @@ property:
         return None if self.value is None else self.value.qualifier
 ```
 
-- [ ] **Step 8: Retarget the one Python-only assertion in the field tests**
+- [ ] **Step 8: Stop the refusal sentence being read as a format string**
+
+The `invalid_qualifier` sentence contains a literal `%`, because the spec says it
+must name the symbol that means both. `_normalize_temporal_model_value()`
+(`timetracker/temporal.py:422`) currently wraps every parse error like this:
+
+```text
+        raise ValidationError(str(exc), code=exc.code, params={"value": value}) from exc
+```
+
+Django's `ValidationError.__iter__` runs `message %= error.params` whenever
+`params` is truthy, so any message holding a bare `%` raises `ValueError:
+unsupported format character` the moment something reads `.messages`,
+`.message_dict`, or `str()`. This is already latent on `main` for an input that
+itself contains `%`; Task 1 makes it fire for every double-symbol input, and
+`games/api.py` and `games/views/game.py` are the two live render sites waiting
+for it.
+
+No message in this module uses a `%(value)s` placeholder — each one f-strings
+the value in already — and nothing in the repo reads `ValidationError.params`.
+So drop it:
+
+```text
+        raise ValidationError(str(exc), code=exc.code) from exc
+```
+
+- [ ] **Step 9: Retarget the field-test assertions, and read the sentence**
 
 `tests/test_temporal_field.py:62-64` asserts that `2024?` is refused. It is now
 accepted. Change it to a value that is still refused, and to the code that
@@ -512,19 +557,28 @@ refusal now carries:
     with pytest.raises(ValidationError) as caught:
         field.to_python("2024??")
     assert caught.value.code == "invalid_qualifier"
+    assert "%" in caught.value.messages[0]
 ```
 
-- [ ] **Step 9: Run the tests to verify they pass**
+**The second assertion is the point.** `caught.value.code` resolves before
+Django's substitution, so a `.code`-only test passes green against an exception
+whose message cannot be rendered at all. Reading `.messages` is what fails
+before Step 8 and passes after it.
+
+- [ ] **Step 10: Run the tests to verify they pass**
 
 Run: `make test ARGS="tests/test_temporal.py tests/test_temporal_field.py -q"`
-Expected: PASS, except `test_temporal_field_round_trips_generated_projections_and_query_helpers`, which inserts `"2024?"` into a probe table and expects the database to refuse it. The database has not been taught the grammar yet, so it still refuses and that test still passes. If it fails, stop — something else changed.
+Expected: PASS. One test in that second file inserts `"2024?"` through a raw
+cursor into the `temporal_value` domain, which Task 1 does not touch — the
+database still refuses it, so that test is unaffected either way. Any failure
+here is a real one.
 
-- [ ] **Step 10: Verify the parser is the only thing that moved**
+- [ ] **Step 11: Verify the parser is the only thing that moved**
 
 Run: `make test ARGS="tests/test_temporal_domain.py -q"`
-Expected: PASS. `test_temporal_domain_rejects_invalid_or_unsupported_raw_values` parametrizes `"2024?"` and asserts both halves refuse it; Python now accepts it, so this run FAILS on that one case. That failure is expected and Task 3 fixes it. Record it and continue — do not weaken the test here.
+Expected: **FAIL, on exactly one case** — `test_temporal_domain_rejects_invalid_or_unsupported_raw_values[2024?]`. That test asserts both halves refuse the value; Python now accepts it and the database does not yet. The failure is correct and Task 3 Step 1 fixes it by replacing that parameter. **Do not weaken the test to make this green, and do not proceed if any other case fails** — a second failure means Task 1 changed something it should not have.
 
-- [ ] **Step 11: Lint, format, and commit**
+- [ ] **Step 12: Lint, format, type-check, and commit**
 
 ```bash
 make format
@@ -596,8 +650,8 @@ def test_an_endpoint_delegates_the_parts_of_the_value_it_holds():
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `make test ARGS="tests/test_temporal.py -k reads_apart -q"`
-Expected: FAIL with `AttributeError: 'TemporalValue' object has no attribute 'year'`.
+Run: `make test ARGS="tests/test_temporal.py -k 'reads_apart or delegates_the_parts' -q"`
+Expected: FAIL with `AttributeError: 'TemporalValue' object has no attribute 'year'`, on **both** tests. A `-k reads_apart` alone would never run the endpoint test, so an implementation that adds the four accessors to `TemporalValue` and forgets the four on `TemporalEndpoint` would clear this gate.
 
 - [ ] **Step 3: Add the accessors**
 
@@ -726,10 +780,9 @@ PRIVATE_QUALIFIER_FUNCTIONS = {
     "_timetracker_temporal_atom_qualifier": ("text", "i"),
     "_timetracker_temporal_atom_unqualified": ("text", "i"),
 }
+QUALIFIER_FUNCTIONS = PUBLIC_QUALIFIER_FUNCTIONS | PRIVATE_QUALIFIER_FUNCTIONS
 PUBLIC_FUNCTIONS = PUBLIC_FUNCTIONS_AT_0017 | PUBLIC_QUALIFIER_FUNCTIONS
-ALL_FUNCTIONS = (
-    FUNCTIONS_AT_0017 | PUBLIC_QUALIFIER_FUNCTIONS | PRIVATE_QUALIFIER_FUNCTIONS
-)
+ALL_FUNCTIONS = FUNCTIONS_AT_0017 | QUALIFIER_FUNCTIONS
 SEARCH_PATH = "pg_catalog, public"
 ```
 
@@ -869,13 +922,20 @@ def test_temporal_domain_migration_reverses_and_reapplies():
         MigrationExecutor(connection).migrate([WITH_TEMPORAL])
         assert temporal_domain_base_type() == "varchar"
         assert temporal_function_metadata(FUNCTIONS_AT_0017) == FUNCTIONS_AT_0017
-        assert temporal_function_metadata(PUBLIC_QUALIFIER_FUNCTIONS) == {}
+        assert temporal_function_metadata(QUALIFIER_FUNCTIONS) == {}
     finally:
         MigrationExecutor(connection).migrate(leaf_nodes)
 ```
 
-The added `== {}` line is what proves the reverse actually drops the new
-functions rather than leaving them behind.
+`QUALIFIER_FUNCTIONS` is all **five** new functions, public and private:
+
+```python
+QUALIFIER_FUNCTIONS = PUBLIC_QUALIFIER_FUNCTIONS | PRIVATE_QUALIFIER_FUNCTIONS
+```
+
+Asserting only the public three would pass a reverse that restores the four
+bodies and forgets to drop the two private helpers, which is the likeliest way
+to get this wrong.
 
 Eighth, add a test that the new columns read the symbol of each position:
 
@@ -1340,7 +1400,27 @@ Expected: PASS, all cases, including `test_temporal_domain_migration_reverses_an
 Run: `make test ARGS="tests/test_temporal.py tests/test_temporal_field.py tests/test_temporal_domain.py -q"`
 Expected: PASS. `test_temporal_field_round_trips_generated_projections_and_query_helpers` inserts `"2024?"` expecting the database to refuse it — it no longer does. Change that literal to `"2024??"` (which the qualifier helper still raises on) and re-run.
 
-- [ ] **Step 6: Verify a dump of this schema restores**
+- [ ] **Step 6: State what the widened domain now accepts on an event**
+
+`LibraryEvent.effective_time` is a `TemporalValueField` (`games/models.py:1673`),
+so widening the domain constraint makes `1984~` storable on every event row —
+even though the spec gives that model no qualifier column. That is an accept
+surface this task creates and no test names. Pin it, so the next reader learns
+it was decided rather than missed. Append to `tests/test_temporal_domain.py`:
+
+```python
+@pytest.mark.parametrize("canonical", ["1984~", "1984?/1986%"])
+def test_an_event_time_stores_a_qualifier_it_projects_no_column_for(canonical):
+    """The domain is one constraint. Widening it reaches every column that uses it."""
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT %s::public.temporal_value", [canonical])
+        assert cursor.fetchone() == (canonical,)
+```
+
+The value round-trips and nothing reads it apart, which is the whole of the
+decision: `LibraryEvent` gains no column in this issue.
+
+- [ ] **Step 7: Verify a dump of this schema restores**
 
 Run: `make verify-dump`
 Expected: the restored copy migrates clean and is dropped. This is the check the `SET search_path` clauses exist for; a missing one passes `make check` and fails here.
@@ -1348,11 +1428,12 @@ Expected: the restored copy migrates clean and is dropped. This is the check the
 If no production dump is available locally, skip this step and say so in the
 commit body — but do not skip it silently.
 
-- [ ] **Step 7: Lint, format, and commit**
+- [ ] **Step 8: Lint, format, type-check, and commit**
 
 ```bash
 make format
 make lint
+make typecheck
 git add games/migrations/0038_temporal_qualifiers.py tests/test_temporal_domain.py tests/test_temporal_field.py
 git commit -m "Split the symbol off before the database reads the atom"
 ```
@@ -1365,7 +1446,7 @@ git commit -m "Split the symbol off before the database reads the atom"
 - Modify: `timetracker/temporal.py` (three `models.Func` wrappers, beside `TemporalEndPrecision`)
 - Modify: `games/models.py` — `Game.original_release_date` block, `Release.release_date` block
 - Modify: `games/migrations/0038_temporal_qualifiers.py` (append six `AddField` operations)
-- Modify: `common/criteria.py:36-58`
+- Modify: `common/criteria.py:37-46` (the import) and `:49-58` (the tuple)
 - Test: `tests/test_catalog_hierarchy.py`
 
 **Interfaces:**
@@ -1409,7 +1490,7 @@ The module already imports `date`, `Edition`, `Game`, `Release`, and
 new import.
 
 Then add `Release` to the parametrize on the comparable-column guard
-(`tests/test_catalog_hierarchy.py:351`):
+(`tests/test_catalog_hierarchy.py:353`):
 
 ```text
 @pytest.mark.parametrize("model", [Game, Session, Purchase, PlayEvent, Platform, Release])
@@ -1507,49 +1588,46 @@ After the last `release_date_*` generated field on `Release`:
 ```
 
 `serialize=False` is what keeps a generated column out of
-`serializers.serialize`, which `tests/test_catalog_hierarchy.py:330` asserts.
+`serializers.serialize`, which `tests/test_catalog_hierarchy.py:348` asserts.
 
 - [ ] **Step 5: Generate the column operations and merge them into 0038**
 
-Run: `make makemigrations ARGS="games --name temporal_qualifier_columns"`
+Run: `make makemigrations`
 
-This writes `games/migrations/0039_temporal_qualifier_columns.py` holding six
-`AddField` operations. Move those six operations into the `operations` list of
-`0038_temporal_qualifiers.py`, **after** the `RunSQL` — the columns cannot be
-added before the functions they call exist — and remove the 0039 file.
+**The target takes no arguments** — `Makefile:147` runs a bare
+`manage.py makemigrations --noinput`, and `ARGS` is wired into `migrate`,
+`sqlmigrate`, and the `test` targets but not this one. Passing `ARGS="games
+--name …"` is silently dropped, so Django auto-names the file. Expect something
+like `games/migrations/0039_game_original_release_date_end_qualifier_and_more.py`
+and read the directory rather than guessing the name.
 
-The merged list reads:
+That file holds six `AddField` operations. Do this to it, mechanically:
 
-```text
-    operations = [
-        migrations.RunSQL(
-            sql=ADD_QUALIFIER_SUPPORT,
-            reverse_sql=REMOVE_QUALIFIER_SUPPORT,
-        ),
-        migrations.AddField(
-            model_name="game",
-            name="original_release_date_qualifier",
-            field=models.GeneratedField(
-                db_persist=True,
-                editable=False,
-                expression=timetracker.temporal.TemporalQualifierValue(
-                    "original_release_date"
-                ),
-                null=True,
-                output_field=models.CharField(max_length=11, null=True),
-            ),
-        ),
-        # ... the five remaining AddField operations, verbatim from 0039 ...
-    ]
-```
+1. Copy its whole `operations` list, unchanged, into
+   `0038_temporal_qualifiers.py`, **after** the `RunSQL` — the columns cannot be
+   added before the functions they call exist.
+2. Copy its import header (it imports `timetracker.temporal` and `django.db.models`)
+   into 0038's header.
+3. Remove the generated 0039 file.
 
-Keep whatever import header `makemigrations` wrote for
-`timetracker.temporal`. Do not hand-edit the expressions; copy them.
+**Do not retype the operations from this plan or from Step 4's model code.** The
+deconstructed form is not the model form: `GeneratedField.deconstruct()` drops
+`editable` and keeps `serialize`, so an `AddField` you write by hand will carry
+`editable=False` and omit `serialize=False`, and the resulting state mismatch is
+an `AlterField` that fails Step 6. Compare against the eight existing ones in
+`games/migrations/0018_catalog_hierarchy.py:186-195` if you want to see the shape
+before you move it.
 
 - [ ] **Step 6: Verify no migration is left pending**
 
-Run: `make makemigrations ARGS="--check --dry-run"`
+Run: `make check-migrations`
 Expected: exit 0, "No changes detected".
+
+Use this target, not `make makemigrations`. The bare target **writes** a new
+migration on drift and exits 0 — `Makefile:150-152` says so in as many words —
+which would turn this verification step into a gate that passes while leaving
+the schema wrong. `make check` runs `check-migrations`, so getting this wrong
+here surfaces at the gate instead.
 
 - [ ] **Step 7: Keep the new columns out of the filter picker**
 
@@ -1592,7 +1670,7 @@ nested filter builder renders, which is a filter surface this issue excludes.
 
 - [ ] **Step 8: Run the tests to verify they pass**
 
-Run: `make test ARGS="tests/test_catalog_hierarchy.py tests/test_criteria.py -q"`
+Run: `make test ARGS="tests/test_catalog_hierarchy.py tests/test_filters.py -q"`
 Expected: PASS.
 
 - [ ] **Step 9: Lint, format, type-check, and commit**
@@ -1649,27 +1727,9 @@ def test_temporal_qualifier_query_helpers_carry_the_kind_guard(helper, qualifier
         helper("")
 ```
 
-Then extend the round-trip probe. In
-`test_temporal_field_round_trips_generated_projections_and_query_helpers`, add
-three fields to the `Probe` model beside its other generated columns:
-
-```text
-        value_qualifier = models.GeneratedField(
-            expression=TemporalQualifierValue("value"),
-            output_field=models.CharField(max_length=11, null=True),
-            db_persist=True,
-        )
-        value_start_qualifier = models.GeneratedField(
-            expression=TemporalStartQualifier("value"),
-            output_field=models.CharField(max_length=11, null=True),
-            db_persist=True,
-        )
-        value_end_qualifier = models.GeneratedField(
-            expression=TemporalEndQualifier("value"),
-            output_field=models.CharField(max_length=11, null=True),
-            db_persist=True,
-        )
-```
+**Leave the existing `Probe` model alone.** The qualifier columns get their own
+probe below, so adding them to `Probe` as well would declare the same three
+fields twice with nothing reading the first copy.
 
 Add `TemporalQualifierValue`, `TemporalStartQualifier`, `TemporalEndQualifier`
 to the module's import block, and append this test to the file:
@@ -1837,7 +1897,7 @@ git commit -m "Ask how sure a stored date is, one position at a time"
 
 The spec's boundary section names two facts this plan deliberately leaves true:
 
-- `save_legacy_game_form()` in `games/catalog_compat.py:20-28` writes both
+- `save_legacy_game_form()` in `games/catalog_compat.py:20-29` writes both
   temporal fields from the integer year columns on every legacy Game form save,
   through `TemporalValue.from_year()`, which states no symbol. A qualifier
   stored by #893 is erased by the next legacy save. Do not fix this here — it is
