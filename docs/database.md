@@ -87,3 +87,38 @@ test database. Django creates, migrates, and removes these disposable databases.
 
 The Makefile chooses the normal worker count for the host. Set
 `PYTEST_WORKERS=0` only for CI, focused debugging, or an explicit serial run.
+
+## Connection pooling
+
+No deployment here runs a connection pooler. Connections go straight to
+PostgreSQL 18, and `make dev-prod` and the container both use a direct
+`DATABASE_URL`. This section says what would have to hold if one were adopted.
+
+A pooler in **transaction** or **statement** pooling mode gives consecutive
+statements different backend connections. Anything a statement leaves behind on
+its connection is gone by the next one.
+
+**Cursors.** `QuerySet.iterator()` declares a server-side cursor and then
+`FETCH`es from it. Under transaction pooling the `FETCH` arrives on a connection
+that never saw the `DECLARE`. No first-party code calls `iterator()`:
+`tests/test_iterator_guard.py` walks the syntax tree of `games/`, `common/`,
+`timetracker/`, `contrib/` and `scripts/` and fails on a new call. Large reads use
+`keyset_pages()` from `common/keyset.py`, which runs one ordinary query per page
+over an index and holds no connection state.
+
+Django opens cursors of its own that cannot be rewritten:
+`ModelChoiceIterator` (one plain `<select>` here —
+`LibraryPreferencesForm.default_device`), `dumpdata` (`make dumpgames`) and the
+serializers it uses, and `serialize_db_to_string` in the test database.
+`DISABLE_SERVER_SIDE_CURSORS=true` turns those off. It is not free: without a
+cursor, psycopg receives every row on `execute()` and
+`django/db/models/sql/compiler.py` materialises the lot, so the process holds the
+whole result. `chunk_size` then sizes `fetchmany()` calls over rows that already
+arrived and bounds nothing.
+
+**Temp tables.** `games/events/rebuild.py` creates a temp table per projection
+table, and its phases run in separate transactions on the same session —
+`_require_shadow_tables()` already states that dependence in its error text. A
+temp table belongs to a session. **Under transaction pooling the rebuild is
+broken whatever `DISABLE_SERVER_SIDE_CURSORS` says and whatever the reads do.**
+Adopting a pooler starts there, not with the setting.
