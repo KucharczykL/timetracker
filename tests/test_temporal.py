@@ -7,6 +7,7 @@ from timetracker.temporal import (
     TemporalEndpoint,
     TemporalEndpointKind,
     TemporalPrecision,
+    TemporalQualifier,
     TemporalValue,
     TemporalValueKind,
     TemporalValueParseError,
@@ -267,9 +268,27 @@ def test_temporal_values_and_endpoints_are_immutable():
         ("/..", "invalid_range"),
         ("/", "invalid_range"),
         ("2024/2025/2026", "invalid_range"),
-        ("2024?", "unsupported_qualifier"),
-        ("2024-02~", "unsupported_qualifier"),
-        ("2024-02-29%", "unsupported_qualifier"),
+        ("?2024", "unsupported_component_qualifier"),
+        ("2024-?02", "unsupported_component_qualifier"),
+        ("~2024-02-29", "unsupported_component_qualifier"),
+        ("2024?~", "invalid_qualifier"),
+        ("2024~?", "invalid_qualifier"),
+        ("2024??", "invalid_qualifier"),
+        ("2024-02-29~~", "invalid_qualifier"),
+        ("~/2025", "unsupported_endpoint_qualifier"),
+        ("..?/2025", "unsupported_endpoint_qualifier"),
+        ("2024/%", "unsupported_endpoint_qualifier"),
+        ("?", "invalid_syntax"),
+        ("~", "invalid_syntax"),
+        ("%", "invalid_syntax"),
+        ("2001-21~", "unsupported_season"),
+        ("[2020~]", "unsupported_set"),
+        ("2024-01-01T12:00~", "unsupported_timestamp"),
+        ("19X4~", "unsupported_unspecified_component"),
+        ("0000~", "unsupported_year"),
+        ("10000~", "unsupported_year"),
+        ("Y170000002~", "unsupported_year"),
+        ("-1985~", "unsupported_year"),
         ("2001-21", "unsupported_season"),
         ("[2020,2021]", "unsupported_set"),
         ("{2020,2021}", "unsupported_set"),
@@ -349,3 +368,154 @@ def test_atomic_and_unknown_values_do_not_alias_range_endpoints():
     assert TemporalValue.parse("2024").end is None
     assert TemporalValue.unknown().start is None
     assert TemporalValue.unknown().end is None
+
+
+@pytest.mark.parametrize(
+    ("canonical", "qualifier", "precision", "lower", "upper"),
+    [
+        (
+            "1984-06-11~",
+            TemporalQualifier.APPROXIMATE,
+            TemporalPrecision.DAY,
+            date(1984, 6, 11),
+            date(1984, 6, 11),
+        ),
+        (
+            "1984-06?",
+            TemporalQualifier.UNCERTAIN,
+            TemporalPrecision.MONTH,
+            date(1984, 6, 1),
+            date(1984, 6, 30),
+        ),
+        (
+            "1984%",
+            TemporalQualifier.BOTH,
+            TemporalPrecision.YEAR,
+            date(1984, 1, 1),
+            date(1984, 12, 31),
+        ),
+        (
+            "198X~",
+            TemporalQualifier.APPROXIMATE,
+            TemporalPrecision.DECADE,
+            date(1980, 1, 1),
+            date(1989, 12, 31),
+        ),
+        ("1984", None, TemporalPrecision.YEAR, date(1984, 1, 1), date(1984, 12, 31)),
+    ],
+)
+def test_a_qualifier_says_how_sure_and_never_moves_the_bounds(
+    canonical, qualifier, precision, lower, upper
+):
+    value = TemporalValue.parse(canonical)
+
+    assert value.canonical == canonical
+    assert value.qualifier is qualifier
+    assert value.precision is precision
+    assert value.lower_bound == lower
+    assert value.upper_bound == upper
+    assert value.kind is TemporalValueKind.ATOMIC
+    assert value.is_uncertain is (
+        qualifier in (TemporalQualifier.UNCERTAIN, TemporalQualifier.BOTH)
+    )
+    assert value.is_approximate is (
+        qualifier in (TemporalQualifier.APPROXIMATE, TemporalQualifier.BOTH)
+    )
+    assert TemporalValue.parse(value.serialize()) == value
+
+
+def test_a_range_qualifies_each_endpoint_on_its_own():
+    value = TemporalValue.parse("1984/1986~")
+
+    assert value.kind is TemporalValueKind.RANGE
+    assert value.qualifier is None
+    assert value.start is not None
+    assert value.end is not None
+    assert value.start.qualifier is None
+    assert value.end.qualifier is TemporalQualifier.APPROXIMATE
+    assert value.lower_bound == date(1984, 1, 1)
+    assert value.upper_bound == date(1986, 12, 31)
+
+
+def test_an_endpoint_without_a_value_answers_no_qualifier():
+    assert TemporalEndpoint.unknown().qualifier is None
+    assert TemporalEndpoint.open().qualifier is None
+    assert TemporalValue.unknown().qualifier is None
+    assert TemporalValue.unknown().is_approximate is False
+
+
+def test_how_precise_and_how_sure_are_two_questions():
+    """Exact day, and the writer is unsure."""
+    exact_but_unsure = TemporalValue.parse("1984-06-11%")
+
+    assert exact_but_unsure.is_exact_day is True
+    assert exact_but_unsure.is_complete_day is True
+    assert exact_but_unsure.has_known_day is True
+    assert exact_but_unsure.is_uncertain is True
+    assert exact_but_unsure.is_approximate is True
+
+    assert TemporalValue.parse("1984-06-11").is_exact_day is True
+    assert TemporalValue.parse("1984~").is_exact_day is False
+
+
+def test_named_constructors_write_the_symbol_they_are_given():
+    approximate = TemporalQualifier.APPROXIMATE
+    uncertain = TemporalQualifier.UNCERTAIN
+    both = TemporalQualifier.BOTH
+
+    assert (
+        TemporalValue.from_day(date(2024, 2, 29), qualifier=both).canonical
+        == "2024-02-29%"
+    )
+    assert (
+        TemporalValue.from_month(2024, 2, qualifier=uncertain).canonical == "2024-02?"
+    )
+    assert TemporalValue.from_year(2024, qualifier=approximate).canonical == "2024~"
+    assert TemporalValue.from_decade(1990, qualifier=approximate).canonical == "199X~"
+    assert TemporalValue.from_year(2024).canonical == "2024"
+
+    start = TemporalEndpoint.known(TemporalValue.from_year(1984, qualifier=approximate))
+    end = TemporalEndpoint.known(TemporalValue.from_year(1986, qualifier=approximate))
+    assert TemporalValue.range(start=start, end=end).canonical == "1984~/1986~"
+
+    with pytest.raises(TypeError):
+        TemporalValue.from_year(2024, qualifier="approximate")
+
+
+@pytest.mark.parametrize(
+    ("canonical", "year", "month", "day", "decade_start_year"),
+    [
+        ("1984-06-11", 1984, 6, 11, None),
+        ("1984-06-11~", 1984, 6, 11, None),
+        ("1984-06", 1984, 6, None, None),
+        ("1984", 1984, None, None, None),
+        ("198X", None, None, None, 1980),
+        ("198X~", None, None, None, 1980),
+        ("1984/1986", None, None, None, None),
+        (None, None, None, None, None),
+    ],
+)
+def test_a_value_reads_apart_into_the_parts_its_precision_knows(
+    canonical, year, month, day, decade_start_year
+):
+    value = TemporalValue.parse(canonical)
+
+    assert value.year == year
+    assert value.month == month
+    assert value.day == day
+    assert value.decade_start_year == decade_start_year
+
+
+def test_an_endpoint_delegates_the_parts_of_the_value_it_holds():
+    value = TemporalValue.parse("1984-06?")
+    known = TemporalEndpoint.known(value)
+
+    assert (known.year, known.month, known.day) == (1984, 6, None)
+    assert known.decade_start_year is None
+    assert known.qualifier is TemporalQualifier.UNCERTAIN
+
+    for endpoint in (TemporalEndpoint.unknown(), TemporalEndpoint.open()):
+        assert endpoint.year is None
+        assert endpoint.month is None
+        assert endpoint.day is None
+        assert endpoint.decade_start_year is None

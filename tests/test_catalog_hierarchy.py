@@ -350,7 +350,34 @@ def test_generated_temporal_projections_are_not_fixture_serialized(owned_library
     assert not any(name.startswith("release_date_") for name in release_payload)
 
 
-@pytest.mark.parametrize("model", [Game, Session, Purchase, PlayEvent, Platform])
+def test_qualifier_columns_project_beside_the_bounds_they_do_not_move(owned_library):
+    game = Game.objects.create(
+        library=owned_library,
+        name="Qualified Game",
+        original_release_date=TemporalValue.parse("198X~"),
+    )
+    release = Release.objects.create(
+        edition=Edition.objects.create(game=game),
+        release_date=TemporalValue.parse("1984?/1986%"),
+    )
+    game.refresh_from_db()
+    release.refresh_from_db()
+
+    assert game.original_release_date_qualifier == "approximate"
+    assert game.original_release_date_start_qualifier is None
+    assert game.original_release_date_end_qualifier is None
+    assert game.original_release_date_lower == date(1980, 1, 1)
+    assert game.original_release_date_upper == date(1989, 12, 31)
+    assert game.original_release_date_precision == "decade"
+
+    assert release.release_date_qualifier is None
+    assert release.release_date_start_qualifier == "uncertain"
+    assert release.release_date_end_qualifier == "both"
+
+
+@pytest.mark.parametrize(
+    "model", [Game, Session, Purchase, PlayEvent, Platform, Release]
+)
 def test_temporal_schema_does_not_expand_comparison_choices(model):
     values = {column["value"] for column in comparable_columns(model)}
     assert not any(
