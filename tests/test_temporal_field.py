@@ -60,8 +60,9 @@ def test_temporal_field_converts_and_prepares_only_canonical_scalars():
     assert field.get_prep_value(TemporalValue.unknown()) is None
 
     with pytest.raises(ValidationError) as caught:
-        field.to_python("2024?")
-    assert caught.value.code == "unsupported_qualifier"
+        field.to_python("2024??")
+    assert caught.value.code == "invalid_qualifier"
+    assert "%" in caught.value.messages[0]
 
 
 @pytest.mark.parametrize(

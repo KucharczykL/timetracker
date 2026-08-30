@@ -30,6 +30,12 @@ class TemporalEndpointKind(StrEnum):
     OPEN = "open"
 
 
+class TemporalQualifier(StrEnum):
+    UNCERTAIN = "uncertain"
+    APPROXIMATE = "approximate"
+    BOTH = "both"
+
+
 class TemporalValueParseError(ValueError):
     def __init__(self, message: str, *, code: str) -> None:
         super().__init__(message)
@@ -43,6 +49,7 @@ class _TemporalParts:
     upper_bound: date | None
     kind: TemporalValueKind
     precision: TemporalPrecision | None
+    qualifier: TemporalQualifier | None = None
     start: TemporalEndpoint | None = None
     end: TemporalEndpoint | None = None
 
@@ -82,6 +89,10 @@ class TemporalEndpoint:
         return None if self.value is None else self.value.precision
 
     @property
+    def qualifier(self) -> TemporalQualifier | None:
+        return None if self.value is None else self.value.qualifier
+
+    @property
     def is_known(self) -> bool:
         return self.kind is TemporalEndpointKind.KNOWN
 
@@ -113,6 +124,7 @@ class TemporalValue:
     upper_bound: date | None
     kind: TemporalValueKind
     precision: TemporalPrecision | None
+    qualifier: TemporalQualifier | None
     start: TemporalEndpoint | None
     end: TemporalEndpoint | None
 
@@ -123,6 +135,7 @@ class TemporalValue:
         object.__setattr__(self, "upper_bound", parsed.upper_bound)
         object.__setattr__(self, "kind", parsed.kind)
         object.__setattr__(self, "precision", parsed.precision)
+        object.__setattr__(self, "qualifier", parsed.qualifier)
         object.__setattr__(self, "start", parsed.start)
         object.__setattr__(self, "end", parsed.end)
 
@@ -135,30 +148,38 @@ class TemporalValue:
         return cls(None)
 
     @classmethod
-    def from_day(cls, value: date) -> TemporalValue:
+    def from_day(
+        cls, value: date, *, qualifier: TemporalQualifier | None = None
+    ) -> TemporalValue:
         if type(value) is not date:
             raise TypeError("A day temporal value requires a date.")
-        return cls(value.isoformat())
+        return cls(f"{value.isoformat()}{_qualifier_symbol(qualifier)}")
 
     @classmethod
-    def from_month(cls, year: int, month: int) -> TemporalValue:
+    def from_month(
+        cls, year: int, month: int, *, qualifier: TemporalQualifier | None = None
+    ) -> TemporalValue:
         _reject_boolean_integer(year, "year")
         _reject_boolean_integer(month, "month")
-        return cls(f"{year:04d}-{month:02d}")
+        return cls(f"{year:04d}-{month:02d}{_qualifier_symbol(qualifier)}")
 
     @classmethod
-    def from_year(cls, year: int) -> TemporalValue:
+    def from_year(
+        cls, year: int, *, qualifier: TemporalQualifier | None = None
+    ) -> TemporalValue:
         _reject_boolean_integer(year, "year")
-        return cls(f"{year:04d}")
+        return cls(f"{year:04d}{_qualifier_symbol(qualifier)}")
 
     @classmethod
-    def from_decade(cls, start_year: int) -> TemporalValue:
+    def from_decade(
+        cls, start_year: int, *, qualifier: TemporalQualifier | None = None
+    ) -> TemporalValue:
         _reject_boolean_integer(start_year, "start_year")
         if start_year % 10 or not 10 <= start_year <= 9990:
             raise ValueError(
                 "A decade must start on a ten-year boundary from 0010 through 9990."
             )
-        return cls(f"{start_year // 10:03d}X")
+        return cls(f"{start_year // 10:03d}X{_qualifier_symbol(qualifier)}")
 
     @classmethod
     def range(cls, *, start: TemporalEndpoint, end: TemporalEndpoint) -> TemporalValue:
@@ -178,6 +199,20 @@ class TemporalValue:
     @property
     def is_unknown(self) -> bool:
         return self.kind is TemporalValueKind.UNKNOWN
+
+    @property
+    def is_uncertain(self) -> bool:
+        return self.qualifier in (
+            TemporalQualifier.UNCERTAIN,
+            TemporalQualifier.BOTH,
+        )
+
+    @property
+    def is_approximate(self) -> bool:
+        return self.qualifier in (
+            TemporalQualifier.APPROXIMATE,
+            TemporalQualifier.BOTH,
+        )
 
     @property
     def has_known_year(self) -> bool:
@@ -215,6 +250,33 @@ _MONTH_RE = re.compile(r"([0-9]{4})-([0-9]{2})", re.ASCII)
 _YEAR_RE = re.compile(r"([0-9]{4})", re.ASCII)
 _DECADE_RE = re.compile(r"([0-9]{3})X", re.ASCII)
 
+_QUALIFIER_BY_SYMBOL: dict[str, TemporalQualifier] = {
+    "?": TemporalQualifier.UNCERTAIN,
+    "~": TemporalQualifier.APPROXIMATE,
+    "%": TemporalQualifier.BOTH,
+}
+_SYMBOL_BY_QUALIFIER: dict[TemporalQualifier, str] = {
+    qualifier: symbol for symbol, qualifier in _QUALIFIER_BY_SYMBOL.items()
+}
+
+
+def _split_qualifier(token: str) -> tuple[str, TemporalQualifier | None]:
+    """The token without its trailing symbol, and that symbol's meaning."""
+    if not token:
+        return token, None
+    qualifier = _QUALIFIER_BY_SYMBOL.get(token[-1])
+    if qualifier is None:
+        return token, None
+    return token[:-1], qualifier
+
+
+def _qualifier_symbol(qualifier: TemporalQualifier | None) -> str:
+    if qualifier is None:
+        return ""
+    if not isinstance(qualifier, TemporalQualifier):
+        raise TypeError("qualifier must be a TemporalQualifier or None.")
+    return _SYMBOL_BY_QUALIFIER[qualifier]
+
 
 def _parse_canonical(canonical: str | None) -> _TemporalParts:
     if canonical is None:
@@ -237,12 +299,6 @@ def _parse_canonical(canonical: str | None) -> _TemporalParts:
 
 
 def _reject_unsupported_family(canonical: str) -> None:
-    tokens = canonical.split("/")
-    if any(qualifier in canonical for qualifier in "?~%"):
-        raise TemporalValueParseError(
-            f"Temporal qualifiers are not supported: {canonical!r}.",
-            code="unsupported_qualifier",
-        )
     if canonical.startswith(("[", "{")) or canonical.endswith(("]", "}")):
         raise TemporalValueParseError(
             f"Temporal sets are not supported: {canonical!r}.",
@@ -253,22 +309,46 @@ def _reject_unsupported_family(canonical: str) -> None:
             f"Temporal timestamps are not supported: {canonical!r}.",
             code="unsupported_timestamp",
         )
-    if re.fullmatch(r"[0-9]{4}-(?:2[1-4])", canonical, re.ASCII):
+    tokens = canonical.split("/")
+    split_tokens = tuple(_split_qualifier(token) for token in tokens)
+    unqualified = tuple(atom for atom, _ in split_tokens)
+    for atom in unqualified:
+        if atom and atom[-1] in _QUALIFIER_BY_SYMBOL:
+            raise TemporalValueParseError(
+                "A temporal position takes one qualifier symbol, and '%' is the "
+                f"symbol for both: {canonical!r}.",
+                code="invalid_qualifier",
+            )
+        if any(symbol in atom for symbol in _QUALIFIER_BY_SYMBOL):
+            raise TemporalValueParseError(
+                f"Component temporal qualifiers are not supported: {canonical!r}.",
+                code="unsupported_component_qualifier",
+            )
+    if len(tokens) == 2 and any(
+        qualifier is not None and atom in ("", "..") for atom, qualifier in split_tokens
+    ):
+        raise TemporalValueParseError(
+            "An open or unknown temporal endpoint holds no date to qualify: "
+            f"{canonical!r}.",
+            code="unsupported_endpoint_qualifier",
+        )
+    bare = "/".join(unqualified)
+    if re.fullmatch(r"[0-9]{4}-(?:2[1-4])", bare, re.ASCII):
         raise TemporalValueParseError(
             f"Temporal seasons are not supported: {canonical!r}.",
             code="unsupported_season",
         )
-    if "X" in canonical and any(
-        "X" in token and not _DECADE_RE.fullmatch(token) for token in tokens
+    if "X" in bare and any(
+        "X" in atom and not _DECADE_RE.fullmatch(atom) for atom in unqualified
     ):
         raise TemporalValueParseError(
             f"Unspecified temporal components are not supported: {canonical!r}.",
             code="unsupported_unspecified_component",
         )
     if any(
-        token.startswith(("-", "Y"))
-        or re.match(r"(?:0000|[0-9]{5,})(?:$|-)", token, re.ASCII)
-        for token in tokens
+        atom.startswith(("-", "Y"))
+        or re.match(r"(?:0000|[0-9]{5,})(?:$|-)", atom, re.ASCII)
+        for atom in unqualified
     ):
         raise TemporalValueParseError(
             f"Unsupported, extended, or negative temporal year: {canonical!r}.",
@@ -277,7 +357,9 @@ def _reject_unsupported_family(canonical: str) -> None:
 
 
 def _parse_atom(canonical: str) -> _TemporalParts:
-    if match := _DAY_RE.fullmatch(canonical):
+    atom, qualifier = _split_qualifier(canonical)
+
+    if match := _DAY_RE.fullmatch(atom):
         year, month, day = (int(part) for part in match.groups())
         try:
             value = date(year, month, day)
@@ -285,9 +367,9 @@ def _parse_atom(canonical: str) -> _TemporalParts:
             raise TemporalValueParseError(
                 f"Invalid calendar day: {canonical}.", code="invalid_date"
             ) from exc
-        return _atomic_parts(canonical, value, value, TemporalPrecision.DAY)
+        return _atomic_parts(canonical, value, value, TemporalPrecision.DAY, qualifier)
 
-    if match := _MONTH_RE.fullmatch(canonical):
+    if match := _MONTH_RE.fullmatch(atom):
         year, month = (int(part) for part in match.groups())
         try:
             last_day = monthrange(year, month)[1]
@@ -297,9 +379,11 @@ def _parse_atom(canonical: str) -> _TemporalParts:
             raise TemporalValueParseError(
                 f"Invalid calendar month: {canonical}.", code="invalid_date"
             ) from exc
-        return _atomic_parts(canonical, lower, upper, TemporalPrecision.MONTH)
+        return _atomic_parts(
+            canonical, lower, upper, TemporalPrecision.MONTH, qualifier
+        )
 
-    if match := _YEAR_RE.fullmatch(canonical):
+    if match := _YEAR_RE.fullmatch(atom):
         year = int(match.group(1))
         try:
             lower = date(year, 1, 1)
@@ -308,9 +392,9 @@ def _parse_atom(canonical: str) -> _TemporalParts:
             raise TemporalValueParseError(
                 f"Invalid calendar year: {canonical}.", code="unsupported_year"
             ) from exc
-        return _atomic_parts(canonical, lower, upper, TemporalPrecision.YEAR)
+        return _atomic_parts(canonical, lower, upper, TemporalPrecision.YEAR, qualifier)
 
-    if match := _DECADE_RE.fullmatch(canonical):
+    if match := _DECADE_RE.fullmatch(atom):
         first_year = int(match.group(1)) * 10
         try:
             lower = date(first_year, 1, 1)
@@ -320,7 +404,9 @@ def _parse_atom(canonical: str) -> _TemporalParts:
                 f"Unsupported calendar decade: {canonical}.",
                 code="unsupported_year",
             ) from exc
-        return _atomic_parts(canonical, lower, upper, TemporalPrecision.DECADE)
+        return _atomic_parts(
+            canonical, lower, upper, TemporalPrecision.DECADE, qualifier
+        )
 
     raise TemporalValueParseError(
         f"Invalid temporal value syntax: {canonical!r}.", code="invalid_syntax"
@@ -332,6 +418,7 @@ def _atomic_parts(
     lower: date,
     upper: date,
     precision: TemporalPrecision,
+    qualifier: TemporalQualifier | None,
 ) -> _TemporalParts:
     return _TemporalParts(
         canonical=canonical,
@@ -339,6 +426,7 @@ def _atomic_parts(
         upper_bound=upper,
         kind=TemporalValueKind.ATOMIC,
         precision=precision,
+        qualifier=qualifier,
     )
 
 
@@ -419,7 +507,7 @@ def _normalize_temporal_model_value(value: object) -> TemporalValue | None:
     try:
         parsed = parse_temporal_value(value)
     except TemporalValueParseError as exc:
-        raise ValidationError(str(exc), code=exc.code, params={"value": value}) from exc
+        raise ValidationError(str(exc), code=exc.code) from exc
     return None if parsed.kind is TemporalValueKind.UNKNOWN else parsed
 
 
