@@ -117,7 +117,15 @@ def required_database_settings() -> dict[str, object]:
             "DATABASE_URL is required. Run make init (or make ensure-postgres) "
             "for the disposable development database, or set a PostgreSQL URL."
         ) from exc
-    return database_settings_from_url(url)
+    settings = database_settings_from_url(url)
+    #: Django reads this on QuerySet.iterator() and nowhere else. Our own reads
+    #: page by key and open no cursor; this governs the ones inside Django --
+    #: ModelChoiceIterator, dumpdata, and the test database's serializer. It sits
+    #: beside ENGINE rather than inside OPTIONS, which holds driver arguments.
+    settings["DISABLE_SERVER_SIDE_CURSORS"] = config(
+        "DISABLE_SERVER_SIDE_CURSORS", default=False, cast=bool
+    )
+    return settings
 
 
 def validate_default_connection(

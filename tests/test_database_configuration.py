@@ -86,6 +86,47 @@ def test_file_database_url_wins_over_plain_environment(monkeypatch, tmp_path):
         config_module.reset_caches()
 
 
+def _settings_with(monkeypatch, tmp_path, value: str | None):
+    from timetracker import config as config_module
+    from timetracker.database import required_database_settings
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql://timetracker@127.0.0.1/tracker")
+    monkeypatch.delenv("TIMETRACKER_MANAGED_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DISABLE_SERVER_SIDE_CURSORS", raising=False)
+    if value is not None:
+        monkeypatch.setenv("DISABLE_SERVER_SIDE_CURSORS", value)
+    monkeypatch.setenv("ENV_FILE", str(tmp_path / "missing.env"))
+    monkeypatch.setenv("INI_FILE", str(tmp_path / "missing.ini"))
+    config_module.reset_caches()
+    try:
+        return required_database_settings()
+    finally:
+        config_module.reset_caches()
+
+
+def test_server_side_cursors_stay_on_by_default(monkeypatch, tmp_path):
+    settings = _settings_with(monkeypatch, tmp_path, None)
+    assert settings["DISABLE_SERVER_SIDE_CURSORS"] is False
+
+
+def test_server_side_cursors_can_be_turned_off(monkeypatch, tmp_path):
+    settings = _settings_with(monkeypatch, tmp_path, "true")
+    assert settings["DISABLE_SERVER_SIDE_CURSORS"] is True
+
+
+def test_a_misspelled_value_reads_as_off(monkeypatch, tmp_path):
+    """cast=bool accepts true/1/yes/on and raises on nothing, so `ture` is off.
+    docs/configuration.md lists the four words for this reason."""
+    settings = _settings_with(monkeypatch, tmp_path, "ture")
+    assert settings["DISABLE_SERVER_SIDE_CURSORS"] is False
+
+
+def test_the_setting_sits_beside_engine_not_inside_options(monkeypatch, tmp_path):
+    settings = _settings_with(monkeypatch, tmp_path, "true")
+    assert "ENGINE" in settings
+    assert "DISABLE_SERVER_SIDE_CURSORS" not in settings["OPTIONS"]
+
+
 def test_connection_validation_rejects_a_contract_violation(monkeypatch):
     from timetracker.database import validate_default_connection
     from timetracker.postgres_contract import PostgresContractViolation
