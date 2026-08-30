@@ -251,7 +251,7 @@ def test_temporal_field_round_trips_generated_projections_and_query_helpers():
         ):
             cursor.execute(
                 'INSERT INTO "test_temporal_probe" ("value") VALUES (%s)',
-                ["2024?"],
+                ["2024??"],
             )
     finally:
         with connection.schema_editor() as schema_editor:

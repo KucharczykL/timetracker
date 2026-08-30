@@ -11,7 +11,7 @@ pytestmark = pytest.mark.django_db
 BEFORE_TEMPORAL = ("games", "0016_library_config_uuid_primary_key")
 WITH_TEMPORAL = ("games", "0017_temporal_value_domain")
 
-PUBLIC_FUNCTIONS = {
+PUBLIC_FUNCTIONS_AT_0017 = {
     "timetracker_temporal_is_valid": ("boolean", "i"),
     "timetracker_temporal_lower": ("date", "i"),
     "timetracker_temporal_upper": ("date", "i"),
@@ -22,12 +22,24 @@ PUBLIC_FUNCTIONS = {
     "timetracker_temporal_start_precision": ("text", "i"),
     "timetracker_temporal_end_precision": ("text", "i"),
 }
-PRIVATE_FUNCTIONS = {
+PRIVATE_FUNCTIONS_AT_0017 = {
     "_timetracker_temporal_atom_lower": ("date", "i"),
     "_timetracker_temporal_atom_upper": ("date", "i"),
     "_timetracker_temporal_atom_precision": ("text", "i"),
 }
-ALL_FUNCTIONS = PUBLIC_FUNCTIONS | PRIVATE_FUNCTIONS
+FUNCTIONS_AT_0017 = PUBLIC_FUNCTIONS_AT_0017 | PRIVATE_FUNCTIONS_AT_0017
+PUBLIC_QUALIFIER_FUNCTIONS = {
+    "timetracker_temporal_qualifier": ("text", "i"),
+    "timetracker_temporal_start_qualifier": ("text", "i"),
+    "timetracker_temporal_end_qualifier": ("text", "i"),
+}
+PRIVATE_QUALIFIER_FUNCTIONS = {
+    "_timetracker_temporal_atom_qualifier": ("text", "i"),
+    "_timetracker_temporal_atom_unqualified": ("text", "i"),
+}
+QUALIFIER_FUNCTIONS = PUBLIC_QUALIFIER_FUNCTIONS | PRIVATE_QUALIFIER_FUNCTIONS
+PUBLIC_FUNCTIONS = PUBLIC_FUNCTIONS_AT_0017 | PUBLIC_QUALIFIER_FUNCTIONS
+ALL_FUNCTIONS = FUNCTIONS_AT_0017 | QUALIFIER_FUNCTIONS
 SEARCH_PATH = "pg_catalog, public"
 
 
@@ -64,6 +76,20 @@ def temporal_projection(value):
         return cursor.fetchone()
 
 
+def temporal_qualifier_projection(value):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT
+                timetracker_temporal_qualifier(%s),
+                timetracker_temporal_start_qualifier(%s),
+                timetracker_temporal_end_qualifier(%s)
+            """,
+            [value] * 3,
+        )
+        return cursor.fetchone()
+
+
 def temporal_function_metadata(functions):
     with connection.cursor() as cursor:
         cursor.execute(
@@ -81,16 +107,16 @@ def temporal_function_metadata(functions):
         }
 
 
-def temporal_function_settings(functions):
+def temporal_function_settings():
+    """Every temporal function the schema holds, found by name rather than list."""
     with connection.cursor() as cursor:
         cursor.execute(
             """
             SELECT p.proname, p.proconfig
             FROM pg_proc AS p
             WHERE p.pronamespace = current_schema()::regnamespace
-              AND p.proname = ANY(%s)
-            """,
-            [list(functions)],
+              AND p.proname ~ '^_?timetracker_temporal_'
+            """
         )
         return dict(cursor)
 
@@ -108,6 +134,9 @@ def python_projection(canonical):
         None if end is None else end.kind.value,
         None if start is None or start.precision is None else start.precision.value,
         None if end is None or end.precision is None else end.precision.value,
+        None if value.qualifier is None else value.qualifier.value,
+        None if start is None or start.qualifier is None else start.qualifier.value,
+        None if end is None or end.qualifier is None else end.qualifier.value,
     )
 
 
@@ -126,14 +155,15 @@ def test_temporal_domain_uses_fixed_varchar_and_named_constraint():
 
 
 def test_temporal_functions_have_stable_return_types_and_are_immutable():
-    assert temporal_function_metadata(PUBLIC_FUNCTIONS) == PUBLIC_FUNCTIONS
+    assert temporal_function_metadata(ALL_FUNCTIONS) == ALL_FUNCTIONS
 
 
 def test_temporal_functions_carry_the_search_path_their_bodies_need():
     """Every body calls its helpers by bare name, and a restore supplies none."""
-    assert temporal_function_settings(ALL_FUNCTIONS) == {
-        name: [f"search_path={SEARCH_PATH}"] for name in ALL_FUNCTIONS
-    }
+    settings = temporal_function_settings()
+
+    assert set(settings) == set(ALL_FUNCTIONS)
+    assert settings == {name: [f"search_path={SEARCH_PATH}"] for name in ALL_FUNCTIONS}
 
 
 def test_temporal_domain_accepts_a_value_under_the_search_path_a_dump_sets():
@@ -279,10 +309,21 @@ def test_temporal_sql_projection_preserves_supported_values(canonical, expected)
         "/2001-03",
         "1999/..",
         "1999/",
+        "1984~",
+        "1984-06?",
+        "1984-06-11%",
+        "198X~",
+        "1984~/1986~",
+        "1984/1986~",
+        "1984?/..",
+        "../1986%",
+        "1984%/",
     ],
 )
 def test_temporal_sql_projection_matches_python_contract(canonical):
-    assert temporal_projection(canonical) == python_projection(canonical)
+    assert temporal_projection(canonical) + temporal_qualifier_projection(
+        canonical
+    ) == python_projection(canonical)
 
 
 @pytest.mark.parametrize(
@@ -301,7 +342,21 @@ def test_temporal_sql_projection_matches_python_contract(canonical):
         "../",
         "/..",
         "/",
-        "2024?",
+        "2024??",
+        "2024?~",
+        "2024~~",
+        "?2024",
+        "2024-?02",
+        "~/2025",
+        "1984/%",
+        "..?/2025",
+        "2001-21~",
+        "0000~",
+        "10000~",
+        "2004-XX~",
+        "?",
+        "~",
+        "%",
         "2001-21",
         "[2020,2021]",
         "2004-XX",
@@ -356,6 +411,35 @@ def test_temporal_projection_is_independent_of_datestyle_and_timezone():
         )
 
 
+@pytest.mark.parametrize(
+    ("canonical", "expected"),
+    [
+        (None, (None, None, None)),
+        ("1984", (None, None, None)),
+        ("1984~", ("approximate", None, None)),
+        ("1984-06?", ("uncertain", None, None)),
+        ("1984-06-11%", ("both", None, None)),
+        ("198X~", ("approximate", None, None)),
+        ("1984/1986", (None, None, None)),
+        ("1984~/1986~", (None, "approximate", "approximate")),
+        ("1984/1986~", (None, None, "approximate")),
+        ("1984?/..", (None, "uncertain", None)),
+        ("../1986%", (None, None, "both")),
+    ],
+)
+def test_temporal_sql_reads_the_qualifier_of_each_position(canonical, expected):
+    assert temporal_qualifier_projection(canonical) == expected
+
+
+@pytest.mark.parametrize(
+    "canonical", ["1984", "1984-06", "1984-06-11", "198X", "1984/1986"]
+)
+def test_a_qualifier_does_not_move_the_bounds_it_is_written_beside(canonical):
+    for symbol in ("?", "~", "%"):
+        qualified = canonical.replace("/", f"{symbol}/") + symbol
+        assert temporal_projection(qualified) == temporal_projection(canonical)
+
+
 @pytest.mark.django_db(transaction=True)
 def test_temporal_domain_migration_reverses_and_reapplies():
     leaf_nodes = MigrationExecutor(connection).loader.graph.leaf_nodes()
@@ -366,6 +450,31 @@ def test_temporal_domain_migration_reverses_and_reapplies():
 
         MigrationExecutor(connection).migrate([WITH_TEMPORAL])
         assert temporal_domain_base_type() == "varchar"
-        assert temporal_function_metadata(ALL_FUNCTIONS) == ALL_FUNCTIONS
+        assert temporal_function_metadata(FUNCTIONS_AT_0017) == FUNCTIONS_AT_0017
+        assert temporal_function_metadata(QUALIFIER_FUNCTIONS) == {}
+        assert temporal_projection("1984") == (
+            date(1984, 1, 1),
+            date(1984, 12, 31),
+            "atomic",
+            "year",
+            None,
+            None,
+            None,
+            None,
+        )
+        with (
+            pytest.raises(DatabaseError),
+            transaction.atomic(),
+            connection.cursor() as cursor,
+        ):
+            cursor.execute("SELECT %s::temporal_value", ["1984~"])
     finally:
         MigrationExecutor(connection).migrate(leaf_nodes)
+
+
+@pytest.mark.parametrize("canonical", ["1984~", "1984?/1986%"])
+def test_an_event_time_stores_a_qualifier_it_projects_no_column_for(canonical):
+    """The domain is one constraint. Widening it reaches every column that uses it."""
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT %s::public.temporal_value", [canonical])
+        assert cursor.fetchone() == (canonical,)
