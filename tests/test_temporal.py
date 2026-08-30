@@ -480,3 +480,42 @@ def test_named_constructors_write_the_symbol_they_are_given():
 
     with pytest.raises(TypeError):
         TemporalValue.from_year(2024, qualifier="approximate")
+
+
+@pytest.mark.parametrize(
+    ("canonical", "year", "month", "day", "decade_start_year"),
+    [
+        ("1984-06-11", 1984, 6, 11, None),
+        ("1984-06-11~", 1984, 6, 11, None),
+        ("1984-06", 1984, 6, None, None),
+        ("1984", 1984, None, None, None),
+        ("198X", None, None, None, 1980),
+        ("198X~", None, None, None, 1980),
+        ("1984/1986", None, None, None, None),
+        (None, None, None, None, None),
+    ],
+)
+def test_a_value_reads_apart_into_the_parts_its_precision_knows(
+    canonical, year, month, day, decade_start_year
+):
+    value = TemporalValue.parse(canonical)
+
+    assert value.year == year
+    assert value.month == month
+    assert value.day == day
+    assert value.decade_start_year == decade_start_year
+
+
+def test_an_endpoint_delegates_the_parts_of_the_value_it_holds():
+    value = TemporalValue.parse("1984-06?")
+    known = TemporalEndpoint.known(value)
+
+    assert (known.year, known.month, known.day) == (1984, 6, None)
+    assert known.decade_start_year is None
+    assert known.qualifier is TemporalQualifier.UNCERTAIN
+
+    for endpoint in (TemporalEndpoint.unknown(), TemporalEndpoint.open()):
+        assert endpoint.year is None
+        assert endpoint.month is None
+        assert endpoint.day is None
+        assert endpoint.decade_start_year is None

@@ -93,6 +93,22 @@ class TemporalEndpoint:
         return None if self.value is None else self.value.qualifier
 
     @property
+    def year(self) -> int | None:
+        return None if self.value is None else self.value.year
+
+    @property
+    def month(self) -> int | None:
+        return None if self.value is None else self.value.month
+
+    @property
+    def day(self) -> int | None:
+        return None if self.value is None else self.value.day
+
+    @property
+    def decade_start_year(self) -> int | None:
+        return None if self.value is None else self.value.decade_start_year
+
+    @property
     def is_known(self) -> bool:
         return self.kind is TemporalEndpointKind.KNOWN
 
@@ -235,6 +251,32 @@ class TemporalValue:
             self.kind is TemporalValueKind.ATOMIC
             and self.precision is TemporalPrecision.DAY
         )
+
+    @property
+    def year(self) -> int | None:
+        if self.lower_bound is None or not self.has_known_year:
+            return None
+        return self.lower_bound.year
+
+    @property
+    def month(self) -> int | None:
+        if self.lower_bound is None or not self.has_known_month:
+            return None
+        return self.lower_bound.month
+
+    @property
+    def day(self) -> int | None:
+        if self.lower_bound is None or not self.has_known_day:
+            return None
+        return self.lower_bound.day
+
+    @property
+    def decade_start_year(self) -> int | None:
+        if self.kind is not TemporalValueKind.ATOMIC:
+            return None
+        if self.precision is not TemporalPrecision.DECADE:
+            return None
+        return None if self.lower_bound is None else self.lower_bound.year
 
     @property
     def is_complete_day(self) -> bool:
