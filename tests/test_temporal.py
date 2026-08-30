@@ -445,7 +445,7 @@ def test_an_endpoint_without_a_value_answers_no_qualifier():
 
 
 def test_how_precise_and_how_sure_are_two_questions():
-    """`1984-06-11%` is an exact day the writer is unsure of. Both are true."""
+    """Exact day, and the writer is unsure."""
     exact_but_unsure = TemporalValue.parse("1984-06-11%")
 
     assert exact_but_unsure.is_exact_day is True

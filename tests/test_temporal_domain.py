@@ -108,7 +108,7 @@ def temporal_function_metadata(functions):
 
 
 def temporal_function_settings():
-    """Every temporal function the schema holds, found by name rather than list."""
+    """Found by name pattern, not a list."""
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -159,7 +159,7 @@ def test_temporal_functions_have_stable_return_types_and_are_immutable():
 
 
 def test_temporal_functions_carry_the_search_path_their_bodies_need():
-    """Every body calls its helpers by bare name, and a restore supplies none."""
+    """A restore supplies no search path."""
     settings = temporal_function_settings()
 
     assert set(settings) == set(ALL_FUNCTIONS)
@@ -474,7 +474,7 @@ def test_temporal_domain_migration_reverses_and_reapplies():
 
 @pytest.mark.parametrize("canonical", ["1984~", "1984?/1986%"])
 def test_an_event_time_stores_a_qualifier_it_projects_no_column_for(canonical):
-    """The domain is one constraint. Widening it reaches every column that uses it."""
+    """One domain constraint serves every temporal column."""
     with connection.cursor() as cursor:
         cursor.execute("SELECT %s::public.temporal_value", [canonical])
         assert cursor.fetchone() == (canonical,)

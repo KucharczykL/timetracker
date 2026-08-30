@@ -48,14 +48,12 @@ KEY_PREFIX = "backfill:676:playergame"
 #: A page, not a cursor chunk.
 BACKFILL_PAGE_SIZE = 200
 
-#: Every Game field this module reads, and no other.
+#: Every Game field this module reads.
 #:
-#: 0033 replays this code against the concrete model rather than the historical
-#: one, so a bare query would select the columns Game declares *today* while
-#: the schema is only as far along as 0033. Naming the fields keeps a column
-#: added by a later migration -- the temporal qualifiers of #656 were the first
-#: -- out of the SELECT. A field read here and missing from this tuple is
-#: deferred, and reading it raises the same UndefinedColumn one page later.
+#: 0033 replays this code against the concrete model, so a bare query selects
+#: the columns Game declares today while the schema stands at 0033. A field
+#: read here and missing from this tuple is deferred, and reading it raises
+#: UndefinedColumn one page later.
 _BACKFILL_GAME_FIELDS = (
     "created_at",
     "mastered",

@@ -2,24 +2,17 @@ from django.db import migrations, models
 
 import timetracker.temporal
 
-# A qualifier says how sure the writer is of a date. It does not say which days
-# the value covers, so `1984~` projects the bounds and the precision of `1984`.
+# A qualifier states certainty, never bounds.
 #
-# This widens the grammar. No stored string can carry a symbol -- the domain
-# refused one until now -- so every value the schema holds still parses to the
-# verdict it parsed to before. The domain constraint therefore stays and the
-# persisted generated columns are not rebuilt, on the same reasoning 0034
-# recorded for the same shape of change.
+# This widens the grammar, and no stored string can carry a symbol, so every
+# value the schema holds parses to the verdict it parsed to before. The domain
+# constraint therefore stays and the generated columns are not rebuilt, on the
+# reasoning 0034 recorded for the same shape of change.
 #
-# The reverse below exists for the test suite, which drives the executor down
-# past this node in twenty modules. No deployment reverses it.
-#
-# A reverse does not revalidate what the schema already holds, on the same
-# reasoning as above. A row written as `1984~` therefore survives the reverse,
-# and its stored projections with it, but the domain no longer accepts the
-# string: the next UPDATE of that row raises `invalid temporal atom: 1984~`,
-# and the column cannot be retyped out of the way while a generated column
-# reads it. Restate the value before reversing, or do not reverse.
+# The reverse serves the test suite, which drives the executor below this node
+# in twenty modules. A reverse revalidates nothing, so a row written as `1984~`
+# survives it, and the next UPDATE of that row then raises `invalid temporal
+# atom: 1984~`. Restate such a value before reversing, or do not reverse.
 
 ADD_QUALIFIER_SUPPORT = r"""
 CREATE FUNCTION _timetracker_temporal_atom_unqualified(value text)
@@ -272,8 +265,7 @@ $$;
 """.strip()
 
 
-# The four bodies below are the 0017 forms carrying the 0034 search_path and the
-# 0034 exception handler. Restore them before dropping what they would call.
+# Restore these before dropping what they call.
 REMOVE_QUALIFIER_SUPPORT = r"""
 CREATE OR REPLACE FUNCTION _timetracker_temporal_atom_precision(value text)
 RETURNS text

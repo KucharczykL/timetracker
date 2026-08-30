@@ -303,7 +303,7 @@ _SYMBOL_BY_QUALIFIER: dict[TemporalQualifier, str] = {
 
 
 def _split_qualifier(token: str) -> tuple[str, TemporalQualifier | None]:
-    """The token without its trailing symbol, and that symbol's meaning."""
+    """Splits the trailing symbol off a token."""
     if not token:
         return token, None
     qualifier = _QUALIFIER_BY_SYMBOL.get(token[-1])
