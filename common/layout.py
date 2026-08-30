@@ -168,8 +168,7 @@ def _main_script(mastered: bool) -> str:
     return _MAIN_SCRIPT_A + ("true" if mastered else "false") + _MAIN_SCRIPT_B
 
 
-#: The resume scan stops after `limit` distinct games, so a page this size
-#: usually answers in one query.
+#: One page usually answers the whole scan.
 RESUME_PAGE_SIZE = 50
 
 # Shared classes for the plain navbar entries (Home/Stats/Log out).
@@ -187,8 +186,7 @@ def recent_session_resumes(request: HttpRequest, limit: int = 5) -> list[Session
 
     Anonymous requests get an empty list — the navbar log button is
     authenticated-only, so its recent-game names never render on the login page.
-    The scan pages by key and early-exits after ``limit`` distinct games, so it
-    reads one page in the ordinary case and never opens a server-side cursor."""
+    The scan pages by key and early-exits after ``limit`` distinct games."""
     if not request.user.is_authenticated:
         return []
     from games.models import Session

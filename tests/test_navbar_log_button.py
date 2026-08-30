@@ -66,8 +66,7 @@ class RecentSessionResumesTest(TestCase):
         self.assertEqual(names, ["G5", "G4", "G3", "G2", "G1"])
 
     def test_pages_past_a_boundary_with_a_tie_across_it(self) -> None:
-        """More sessions than a page, several per game, and one start time on
-        both sides of the boundary -- the case a wrong comparison skips."""
+        """One start time straddles the page boundary."""
         from common import layout
 
         with mock.patch.object(layout, "RESUME_PAGE_SIZE", 2):

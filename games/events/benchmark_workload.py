@@ -128,12 +128,7 @@ def spare_games(library: UserLibrary) -> Iterator[Game]:
 
 
 def _catalog(library: UserLibrary, prefix: str) -> Iterator[Game]:
-    """Pages by key, because callers commit mid-iteration.
-
-    A server-side cursor would not survive that, nor a transaction-pooling
-    pooler. UUIDv7 primary keys sort in insertion order, so an id key pages just
-    as lazily.
-    """
+    """Pages by key, because callers commit mid-iteration."""
     return keyset_pages(
         Game.objects.filter(library=library, name__startswith=prefix).only(
             *_CAPTURED_FIELDS

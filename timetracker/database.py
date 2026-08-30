@@ -118,10 +118,8 @@ def required_database_settings() -> dict[str, object]:
             "for the disposable development database, or set a PostgreSQL URL."
         ) from exc
     settings = database_settings_from_url(url)
-    #: Django reads this on QuerySet.iterator() and nowhere else. Our own reads
-    #: page by key and open no cursor; this governs the ones inside Django --
-    #: ModelChoiceIterator, dumpdata, and the test database's serializer. It sits
-    #: beside ENGINE rather than inside OPTIONS, which holds driver arguments.
+    #: Only iterator() reads it, so only Django's.
+    #: Beside ENGINE: OPTIONS holds driver arguments.
     settings["DISABLE_SERVER_SIDE_CURSORS"] = config(
         "DISABLE_SERVER_SIDE_CURSORS", default=False, cast=bool
     )

@@ -242,8 +242,7 @@ def test_a_stream_replays_every_event_in_sequence_order(owned_library):
 
 
 def test_a_stream_longer_than_one_page_replays_whole(owned_library, monkeypatch):
-    """Five events over pages of two: three pages, the last one short. A
-    fixture inside one page never reaches the boundary code at all."""
+    """Five events over pages of two."""
     import games.events.replay as replay_module
 
     monkeypatch.setattr(replay_module, "REPLAY_CHUNK_SIZE", 2)

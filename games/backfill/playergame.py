@@ -45,7 +45,7 @@ from timetracker.temporal import TemporalValue
 PGAME_ISSUE = 676
 KEY_PREFIX = "backfill:676:playergame"
 
-#: A page rather than a cursor chunk: a cursor does not survive a pooler.
+#: A page, not a cursor chunk.
 BACKFILL_PAGE_SIZE = 200
 
 
@@ -275,9 +275,9 @@ def backfill_library(
     resolved_run_time = run_time or timezone.now()
     actor = library.user
     counts = NO_COUNTS
-    #: Keyed on id, which is a UUIDv7 and therefore sorts in insertion order, so
-    #: two runs order the stream identically. Not (created_at, pk): Game indexes
-    #: neither, and that key re-sorts the library on every page.
+    #: Keyed on id, a UUIDv7: insertion order.
+    #: Game indexes neither created_at nor (created_at, pk), and that key would
+    #: re-sort the library on every page.
     games = Game.objects.filter(library=library)
     for game in keyset_pages(games, key=("id",), page_size=BACKFILL_PAGE_SIZE):
         if game.removed_at is not None:

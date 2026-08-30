@@ -81,9 +81,7 @@ def replay(
     bound = head.current_sequence
     #: Filtering on the stream alone scopes the read to one library: a composite
     #: foreign key ties an event's stream and library together in the database.
-    #: Paged by key rather than read through a cursor: the unique constraint on
-    #: (stream, sequence) is the index, and no connection state is held between
-    #: pages.
+    #: Keyed on sequence, which a constraint indexes.
     rows = keyset_pages(
         LibraryEvent.objects.filter(stream_id=head.id, sequence__lte=bound),
         key=("sequence",),

@@ -115,8 +115,7 @@ def test_server_side_cursors_can_be_turned_off(monkeypatch, tmp_path):
 
 
 def test_a_misspelled_value_reads_as_off(monkeypatch, tmp_path):
-    """cast=bool accepts true/1/yes/on and raises on nothing, so `ture` is off.
-    docs/configuration.md lists the four words for this reason."""
+    """`cast=bool` raises on nothing: `ture` is off."""
     settings = _settings_with(monkeypatch, tmp_path, "ture")
     assert settings["DISABLE_SERVER_SIDE_CURSORS"] is False
 

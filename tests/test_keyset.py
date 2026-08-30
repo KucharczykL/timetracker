@@ -1,10 +1,4 @@
-"""Reading a queryset one indexed page at a time, without a server-side cursor.
-
-Two of these matter more than the rest. A tie that straddles a page boundary is
-what a wrong comparison breaks, and it breaks by skipping a row. The SQL form is
-what the `OR` spelling breaks, and it breaks by being slow while every row is
-still correct -- so a rows-only test passes on the wrong query.
-"""
+"""Paging a queryset by key."""
 
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -67,7 +61,7 @@ def test_two_fields_descending_read_from_the_newest(game):
 
 
 def test_a_tie_straddling_a_page_boundary_yields_every_row_once(game):
-    """Three sessions share one start time, and the page holds two of them."""
+    """Three rows share one start time."""
     _sessions(game, [0, 1, 1, 1, 2])
     rows = list(
         keyset_pages(
@@ -99,9 +93,10 @@ def test_one_row_and_no_rows(game):
 
 
 def test_a_composite_key_emits_a_row_value_comparison(game):
-    """PostgreSQL reads a row value as an index range condition. It cannot read
-    an OR that way, so the OR spelling is quadratic and this assertion is the
-    only thing that catches it."""
+    """Only the SQL catches the OR spelling.
+
+    It returns the same rows, slowly, so a rows-only test passes on it.
+    """
     _sessions(game, [0, 1, 2])
     with CaptureQueriesContext(connection) as captured:
         list(

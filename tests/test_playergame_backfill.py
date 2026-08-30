@@ -410,7 +410,7 @@ def test_a_library_tracks_every_live_game_it_holds(owned_user, owned_library):
 def test_a_catalog_longer_than_one_page_is_backfilled_whole(
     owned_user, owned_library, monkeypatch
 ):
-    """Five games over pages of two: three pages, the last one short."""
+    """Five games over pages of two."""
     import games.backfill.playergame as backfill_module
 
     monkeypatch.setattr(backfill_module, "BACKFILL_PAGE_SIZE", 2)
@@ -427,8 +427,7 @@ def test_a_catalog_longer_than_one_page_is_backfilled_whole(
 def test_reconcile_reads_a_catalog_longer_than_one_page(
     owned_user, owned_library, monkeypatch
 ):
-    """The second paged read. Every game is tracked, so nothing mismatches --
-    a page it skipped would show up as a missing projection row."""
+    """A skipped page shows as a mismatch."""
     import games.backfill.playergame as backfill_module
 
     monkeypatch.setattr(backfill_module, "BACKFILL_PAGE_SIZE", 2)
@@ -497,11 +496,7 @@ def test_running_a_library_twice_appends_nothing_the_second_time(
 
 @pytest.mark.django_db(transaction=True)
 def test_games_are_processed_in_insertion_order(owned_user, owned_library):
-    """The order is the primary key's, which is a UUIDv7 and therefore the order
-    rows were inserted. It is deliberately not `created_at`, which Game does not
-    index: keying on it would re-sort the whole library on every page. So a
-    back-dated `created_at` does not move a game, and both games below are
-    written in the order they were created."""
+    """Back-dating `created_at` no longer moves a game."""
     now = timezone.now()
     first = Game.objects.create(library=owned_library, name="First")
     second = Game.objects.create(library=owned_library, name="Second")
