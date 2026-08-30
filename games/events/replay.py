@@ -25,18 +25,16 @@ rows replays every event a second time, which is the caller's to prevent.
 """
 
 import uuid
-from collections.abc import Generator
-from contextlib import closing
 from dataclasses import dataclass
-from typing import cast
 
+from common.keyset import keyset_pages
 from games.events.envelope import RecordedEvent
 from games.events.reconcile import require_resolvable_references
 from games.events.vocabulary import EventTypeRegistry
 from games.events.wiring import DEFAULT_WIRING, EventWiring
 from games.models import LibraryEvent, LibraryEventStreamHead, UserLibrary
 
-#: Chunk size is a memory decision rather than a speed one: 500 and 10000 replay
+#: Page size is a memory decision rather than a speed one: 500 and 10000 replay
 #: 100k events within 2% of each other, at 1 MB against 22 MB.
 REPLAY_CHUNK_SIZE = 500
 
@@ -83,32 +81,28 @@ def replay(
     bound = head.current_sequence
     #: Filtering on the stream alone scopes the read to one library: a composite
     #: foreign key ties an event's stream and library together in the database.
-    #: The cast covers `iterator`, typed as returning a plain iterator while
-    #: returning a generator, whose `close` releases the cursor below.
-    rows = cast(
-        Generator[LibraryEvent],
-        LibraryEvent.objects.filter(stream_id=head.id, sequence__lte=bound)
-        .order_by("sequence")
-        .iterator(chunk_size=REPLAY_CHUNK_SIZE),
+    #: Paged by key rather than read through a cursor: the unique constraint on
+    #: (stream, sequence) is the index, and no connection state is held between
+    #: pages.
+    rows = keyset_pages(
+        LibraryEvent.objects.filter(stream_id=head.id, sequence__lte=bound),
+        key=("sequence",),
+        page_size=REPLAY_CHUNK_SIZE,
     )
 
     previous = 0
-    #: Closed explicitly: in autocommit the server-side cursor is declared WITH
-    #: HOLD, and a refusal below abandons the generator while the traceback keeps
-    #: its frame alive.
-    with closing(rows):
-        for row in rows:
-            event = RecordedEvent.from_row(row)
-            if event.sequence != previous + 1:
-                raise StreamNotContiguous(
-                    f"This stream records no event #{previous + 1}: sequence "
-                    f"{event.sequence} follows {previous}. Every sequence from 1 "
-                    f"to {bound} must be present for a replay to reach the state "
-                    "the append path did."
-                )
-            previous = event.sequence
-            _check_readable(event, wiring.event_types)
-            wiring.projectors.apply(event)
+    for row in rows:
+        event = RecordedEvent.from_row(row)
+        if event.sequence != previous + 1:
+            raise StreamNotContiguous(
+                f"This stream records no event #{previous + 1}: sequence "
+                f"{event.sequence} follows {previous}. Every sequence from 1 "
+                f"to {bound} must be present for a replay to reach the state "
+                "the append path did."
+            )
+        previous = event.sequence
+        _check_readable(event, wiring.event_types)
+        wiring.projectors.apply(event)
 
     if previous != bound:
         raise StreamNotContiguous(

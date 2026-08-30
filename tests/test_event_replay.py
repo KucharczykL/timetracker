@@ -241,6 +241,21 @@ def test_a_stream_replays_every_event_in_sequence_order(owned_library):
     )
 
 
+def test_a_stream_longer_than_one_page_replays_whole(owned_library, monkeypatch):
+    """Five events over pages of two: three pages, the last one short. A
+    fixture inside one page never reaches the boundary code at all."""
+    import games.events.replay as replay_module
+
+    monkeypatch.setattr(replay_module, "REPLAY_CHUNK_SIZE", 2)
+    append_stream(owned_library, 5)
+    SEEN.clear()
+
+    result = replay(owned_library, wiring=wiring)
+
+    assert [event.sequence for event in SEEN] == [1, 2, 3, 4, 5]
+    assert result.replayed_through == 5
+
+
 def test_an_untouched_stream_replays_nothing(owned_library):
     head = LibraryEventStreamHead.objects.create(library=owned_library)
 
