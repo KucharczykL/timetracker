@@ -666,6 +666,14 @@ _KNOWN_MONTH_PRECISIONS = (
     TemporalPrecision.MONTH.value,
 )
 _KNOWN_DAY_PRECISIONS = (TemporalPrecision.DAY.value,)
+_APPROXIMATE_QUALIFIERS = (
+    TemporalQualifier.APPROXIMATE.value,
+    TemporalQualifier.BOTH.value,
+)
+_UNCERTAIN_QUALIFIERS = (
+    TemporalQualifier.UNCERTAIN.value,
+    TemporalQualifier.BOTH.value,
+)
 
 
 def _temporal_component_q(
@@ -720,3 +728,40 @@ def temporal_exact_day_q(field_name: str) -> models.Q:
             f"{field_name}_precision": TemporalPrecision.DAY.value,
         }
     )
+
+
+def _temporal_qualifier_q(
+    field_name: str,
+    qualifiers: tuple[str, ...],
+    *,
+    endpoint: TemporalEndpointName | None,
+) -> models.Q:
+    if not isinstance(field_name, str) or not field_name:
+        raise ValueError("A temporal field name is required.")
+    if endpoint is None:
+        return models.Q(
+            **{
+                f"{field_name}_kind": TemporalValueKind.ATOMIC.value,
+                f"{field_name}_qualifier__in": qualifiers,
+            }
+        )
+    if endpoint not in ("start", "end"):
+        raise ValueError("endpoint must be 'start' or 'end'.")
+    return models.Q(
+        **{
+            f"{field_name}_{endpoint}_kind": TemporalEndpointKind.KNOWN.value,
+            f"{field_name}_{endpoint}_qualifier__in": qualifiers,
+        }
+    )
+
+
+def temporal_is_approximate_q(
+    field_name: str, *, endpoint: TemporalEndpointName | None = None
+) -> models.Q:
+    return _temporal_qualifier_q(field_name, _APPROXIMATE_QUALIFIERS, endpoint=endpoint)
+
+
+def temporal_is_uncertain_q(
+    field_name: str, *, endpoint: TemporalEndpointName | None = None
+) -> models.Q:
+    return _temporal_qualifier_q(field_name, _UNCERTAIN_QUALIFIERS, endpoint=endpoint)

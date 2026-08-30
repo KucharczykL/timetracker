@@ -11,11 +11,14 @@ from django.test.utils import isolate_apps
 from timetracker.temporal import (
     TemporalEndKind,
     TemporalEndPrecision,
+    TemporalEndQualifier,
     TemporalKind,
     TemporalLowerBound,
     TemporalPrecisionValue,
+    TemporalQualifierValue,
     TemporalStartKind,
     TemporalStartPrecision,
+    TemporalStartQualifier,
     TemporalUpperBound,
     TemporalValue,
     TemporalValueField,
@@ -23,6 +26,8 @@ from timetracker.temporal import (
     temporal_has_known_day_q,
     temporal_has_known_month_q,
     temporal_has_known_year_q,
+    temporal_is_approximate_q,
+    temporal_is_uncertain_q,
 )
 
 
@@ -256,3 +261,92 @@ def test_temporal_field_round_trips_generated_projections_and_query_helpers():
     finally:
         with connection.schema_editor() as schema_editor:
             schema_editor.delete_model(Probe)
+
+
+@pytest.mark.parametrize(
+    ("helper", "qualifiers"),
+    [
+        (temporal_is_approximate_q, ("approximate", "both")),
+        (temporal_is_uncertain_q, ("uncertain", "both")),
+    ],
+)
+def test_temporal_qualifier_query_helpers_carry_the_kind_guard(helper, qualifiers):
+    assert helper("released") == models.Q(
+        released_kind="atomic", released_qualifier__in=qualifiers
+    )
+    assert helper("released", endpoint="start") == models.Q(
+        released_start_kind="known", released_start_qualifier__in=qualifiers
+    )
+    assert helper("released", endpoint="end") == models.Q(
+        released_end_kind="known", released_end_qualifier__in=qualifiers
+    )
+
+    with pytest.raises(ValueError, match="start.*end"):
+        helper("released", endpoint="middle")
+    with pytest.raises(ValueError, match="field name"):
+        helper("")
+
+
+@pytest.mark.django_db(transaction=True)
+@isolate_apps("games")
+def test_temporal_qualifier_helpers_select_the_rows_they_name():
+    class QualifierProbe(models.Model):
+        value = TemporalValueField()
+        value_kind = models.GeneratedField(
+            expression=TemporalKind("value"),
+            output_field=models.CharField(max_length=7),
+            db_persist=True,
+        )
+        value_start_kind = models.GeneratedField(
+            expression=TemporalStartKind("value"),
+            output_field=models.CharField(max_length=7, null=True),
+            db_persist=True,
+        )
+        value_end_kind = models.GeneratedField(
+            expression=TemporalEndKind("value"),
+            output_field=models.CharField(max_length=7, null=True),
+            db_persist=True,
+        )
+        value_qualifier = models.GeneratedField(
+            expression=TemporalQualifierValue("value"),
+            output_field=models.CharField(max_length=11, null=True),
+            db_persist=True,
+        )
+        value_start_qualifier = models.GeneratedField(
+            expression=TemporalStartQualifier("value"),
+            output_field=models.CharField(max_length=11, null=True),
+            db_persist=True,
+        )
+        value_end_qualifier = models.GeneratedField(
+            expression=TemporalEndQualifier("value"),
+            output_field=models.CharField(max_length=11, null=True),
+            db_persist=True,
+        )
+
+        class Meta:
+            app_label = "games"
+            db_table = "test_temporal_qualifier_probe"
+
+    with connection.schema_editor() as schema_editor:
+        schema_editor.create_model(QualifierProbe)
+    try:
+        for canonical in ("1984", "1984~", "1984?", "1984%", "1984~/1986?", None):
+            QualifierProbe.objects.create(value=TemporalValue.parse(canonical))
+
+        def canonicals(condition):
+            return sorted(
+                row.value.canonical for row in QualifierProbe.objects.filter(condition)
+            )
+
+        assert canonicals(temporal_is_approximate_q("value")) == ["1984%", "1984~"]
+        assert canonicals(temporal_is_uncertain_q("value")) == ["1984%", "1984?"]
+        assert canonicals(temporal_is_approximate_q("value", endpoint="start")) == [
+            "1984~/1986?"
+        ]
+        assert canonicals(temporal_is_uncertain_q("value", endpoint="end")) == [
+            "1984~/1986?"
+        ]
+        assert canonicals(temporal_is_approximate_q("value", endpoint="end")) == []
+    finally:
+        with connection.schema_editor() as schema_editor:
+            schema_editor.delete_model(QualifierProbe)

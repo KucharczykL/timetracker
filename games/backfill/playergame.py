@@ -48,6 +48,26 @@ KEY_PREFIX = "backfill:676:playergame"
 #: A page, not a cursor chunk.
 BACKFILL_PAGE_SIZE = 200
 
+#: Every Game field this module reads, and no other.
+#:
+#: 0033 replays this code against the concrete model rather than the historical
+#: one, so a bare query would select the columns Game declares *today* while
+#: the schema is only as far along as 0033. Naming the fields keeps a column
+#: added by a later migration -- the temporal qualifiers of #656 were the first
+#: -- out of the SELECT. A field read here and missing from this tuple is
+#: deferred, and reading it raises the same UndefinedColumn one page later.
+_BACKFILL_GAME_FIELDS = (
+    "created_at",
+    "mastered",
+    "name",
+    "removed_at",
+    "status",
+    "year_released",
+)
+
+#: What reconcile() compares, which is less.
+_RECONCILE_GAME_FIELDS = ("mastered", "status")
+
 
 def transition_effective_time(timestamp: datetime | None) -> TemporalValue:
     """When the transition happened, at an honest precision.
@@ -278,7 +298,7 @@ def backfill_library(
     #: Keyed on id, a UUIDv7: insertion order.
     #: Game indexes neither created_at nor (created_at, pk), and that key would
     #: re-sort the library on every page.
-    games = Game.objects.filter(library=library)
+    games = Game.objects.filter(library=library).only(*_BACKFILL_GAME_FIELDS)
     for game in keyset_pages(games, key=("id",), page_size=BACKFILL_PAGE_SIZE):
         if game.removed_at is not None:
             counts = counts + BackfillCounts(games=1, skipped_removed=1)
@@ -347,7 +367,9 @@ def reconcile(library: UserLibrary) -> list[Mismatch]:
         )
     }
     mismatches: list[Mismatch] = []
-    live = Game.objects.filter(library=library, removed_at__isnull=True)
+    live = Game.objects.filter(library=library, removed_at__isnull=True).only(
+        *_RECONCILE_GAME_FIELDS
+    )
     for game in keyset_pages(live, key=("id",), page_size=BACKFILL_PAGE_SIZE):
         row = rows.get(game.pk)
         if row is None:
