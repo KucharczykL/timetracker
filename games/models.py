@@ -1018,6 +1018,11 @@ class SessionQuerySet(RemovableMixin, models.QuerySet):
 class Session(models.Model):
     class Meta:
         get_latest_by = "timestamp_start"
+        indexes = (
+            #: The navbar's resume read keys on both, descending. PostgreSQL
+            #: scans a btree either way, so one ascending index serves it.
+            models.Index(fields=("timestamp_start", "id"), name="session_start_id_idx"),
+        )
 
     id = UUIDv7Field(primary_key=True, editable=False)
     game = models.ForeignKey(
