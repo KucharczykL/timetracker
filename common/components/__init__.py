@@ -225,6 +225,7 @@ from common.components.settings_kit import (
     SettingSourceBadge,
     prepare_setting_fields,
 )
+from common.components.temporal_field import TemporalField
 from common.components.theme import ThemeSetting, ThemeToggle
 from common.components.time_zone_row import TimeZoneRow
 from common.utils import Truncation, truncate, truncate_info
@@ -400,6 +401,7 @@ __all__ = [
     "Tbody",
     "Td",
     "Template",
+    "TemporalField",
     "Th",
     "Thead",
     "ThemeSetting",
