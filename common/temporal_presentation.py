@@ -11,9 +11,12 @@ owns the order of the parts. This module decides only which parts there are.
 from datetime import date
 
 from common.date_time_presentation import DateTimePresentation
-from timetracker.temporal import TemporalPrecision, TemporalValue
+from timetracker.temporal import TemporalPrecision, TemporalQualifier, TemporalValue
 
 UNKNOWN_TEXT = "Unknown"
+
+_APPROXIMATE_PREFIX = "around "
+_UNCERTAIN_SUFFIX = " (uncertain)"
 
 
 def present_temporal_value(
@@ -22,7 +25,22 @@ def present_temporal_value(
     """The words for ``value``, or ``Unknown`` where it states nothing."""
     if value is None or value.is_unknown:
         return UNKNOWN_TEXT
-    return _at_precision(value, presentation)
+    return _present_atomic(value, presentation)
+
+
+def _present_atomic(value: TemporalValue, presentation: DateTimePresentation) -> str:
+    return _qualified(_at_precision(value, presentation), value.qualifier)
+
+
+def _qualified(words: str, qualifier: TemporalQualifier | None) -> str:
+    """A symbol is storage. A reader gets words."""
+    if qualifier is None:
+        return words
+    if qualifier is TemporalQualifier.APPROXIMATE:
+        return f"{_APPROXIMATE_PREFIX}{words}"
+    if qualifier is TemporalQualifier.UNCERTAIN:
+        return f"{words}{_UNCERTAIN_SUFFIX}"
+    return f"{_APPROXIMATE_PREFIX}{words}{_UNCERTAIN_SUFFIX}"
 
 
 def _at_precision(value: TemporalValue, presentation: DateTimePresentation) -> str:

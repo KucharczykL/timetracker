@@ -10,7 +10,7 @@ from common.date_time_presentation import (
     date_time_format_profile,
 )
 from common.temporal_presentation import present_temporal_value
-from timetracker.temporal import TemporalValue
+from timetracker.temporal import TemporalQualifier, TemporalValue
 
 
 def presentation(profile_id: str = "iso_8601") -> DateTimePresentation:
@@ -67,3 +67,35 @@ def test_a_decade_reads_with_a_trailing_letter() -> None:
 )
 def test_nothing_stored_reads_as_unknown(value: TemporalValue | None) -> None:
     assert present_temporal_value(value, presentation()) == "Unknown"
+
+
+@pytest.mark.parametrize(
+    ("qualifier", "expected"),
+    [
+        (TemporalQualifier.APPROXIMATE, "around 1984"),
+        (TemporalQualifier.UNCERTAIN, "1984 (uncertain)"),
+        (TemporalQualifier.BOTH, "around 1984 (uncertain)"),
+    ],
+)
+def test_a_qualifier_reads_in_words(
+    qualifier: TemporalQualifier, expected: str
+) -> None:
+    value = TemporalValue.from_year(1984, qualifier=qualifier)
+
+    assert present_temporal_value(value, presentation()) == expected
+
+
+def test_a_qualifier_wraps_the_words_of_any_precision() -> None:
+    value = TemporalValue.from_month(1984, 6, qualifier=TemporalQualifier.BOTH)
+
+    words = present_temporal_value(value, presentation())
+
+    assert words == "around June 1984 (uncertain)"
+
+
+def test_no_qualifier_adds_no_words() -> None:
+    value = TemporalValue.from_decade(1980)
+
+    words = present_temporal_value(value, presentation())
+
+    assert words == "1980s"
