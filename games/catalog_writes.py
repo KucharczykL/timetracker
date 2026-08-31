@@ -24,6 +24,9 @@ REMOVED_EDITION = "This edition is removed. Put it back before you change it."
 REMOVED_RELEASE = "This release is removed. Put it back before you change it."
 FOREIGN_PLATFORM = "Platform belongs to another library."
 DUPLICATE_EDITION_NAME = "Another edition of this game already has that name."
+DUPLICATE_RELEASE = (
+    "Another release of this edition already has that platform and date."
+)
 LAST_EDITION = "A game keeps one edition. Add another one before you remove this."
 DEFAULT_EDITION_HELD = (
     "This is the default edition. Make another one the default first."
@@ -129,11 +132,14 @@ def add_edition(
     """Add one Edition to a private Game.
 
     The same name twice gives back the Edition already there, thus
-    a repeated write leaves one row.
+    a repeated write leaves one row. No name is not a name: an
+    unnamed Edition matches nothing, and each add makes one.
     """
     owner = _writable_game(game.pk, library)
     wanted = name.strip()
-    standing = _live_editions(owner.pk).filter(name__iexact=wanted).first()
+    standing = (
+        _live_editions(owner.pk).filter(name__iexact=wanted).first() if wanted else None
+    )
     becomes_default = (
         is_default or not _live_editions(owner.pk).filter(is_default=True).exists()
     )
@@ -276,6 +282,15 @@ def update_release(
     _refuse_foreign_platform(library.pk, platform)
     if stored.is_default and not is_default:
         raise ValidationError(DEMOTED_RELEASE)
+    #: No update makes a pair `add_release` could not add.
+    taken = (
+        _live_releases(stored.edition_id)
+        .filter(platform=platform, release_date=release_date)
+        .exclude(pk=stored.pk)
+        .exists()
+    )
+    if taken:
+        raise ValidationError(DUPLICATE_RELEASE)
     if is_default and not stored.is_default:
         _clear_default_release(stored.edition_id)
     stored.platform = platform

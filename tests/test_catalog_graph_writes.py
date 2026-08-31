@@ -12,6 +12,7 @@ from games.catalog_writes import (
     add_release,
     remove_edition,
     remove_release,
+    save_private_game,
     update_edition,
     update_release,
 )
@@ -73,13 +74,32 @@ def test_add_edition_repeated_gives_back_the_same_edition(owned_library, game):
     assert Edition.objects.filter(game=game).count() == 1
 
 
-def test_add_edition_without_a_name_gives_back_the_unnamed_edition(owned_library, game):
+def test_add_edition_without_a_name_adds_another_one(owned_library, game):
+    """No name is not a name, thus it gives nothing back.
+
+    A Game the legacy form made already holds an unnamed Edition.
+    Matching on the empty name would answer every unnamed add with
+    that one, and nothing would be added.
+    """
     first = add_edition(game=game, library=owned_library)
 
-    again = add_edition(game=game, library=owned_library)
+    second = add_edition(game=game, library=owned_library)
 
-    assert again.pk == first.pk
-    assert Edition.objects.filter(game=game).count() == 1
+    assert second.pk != first.pk
+    assert Edition.objects.filter(game=game).count() == 2
+    assert (first.is_default, second.is_default) == (True, False)
+
+
+def test_add_edition_adds_beside_the_legacy_form_edition(owned_library):
+    stored = Game(library=owned_library, name="Thief")
+    graph = save_private_game(
+        game=stored, original_release_date=None, release_date=None, platform=None
+    )
+
+    added = add_edition(game=graph.game, library=owned_library)
+
+    assert added.pk != graph.edition.pk
+    assert Edition.objects.for_library(owned_library).count() == 2
 
 
 def test_add_edition_marks_a_default_when_the_old_one_is_removed(owned_library, game):
@@ -480,6 +500,57 @@ def test_update_release_refuses_another_librarys_release(
 
     release.refresh_from_db()
     assert release.release_date is None
+
+
+def test_update_release_refuses_a_sibling_platform_and_date(owned_library, edition):
+    """The pair that tells two Releases apart stays one row.
+
+    `add_release` gives the standing row back for a repeated pair,
+    thus an update must not make a pair it could never add.
+    """
+    first = add_release(
+        edition=edition,
+        library=owned_library,
+        platform=Platform.objects.create(name="PS4", library=owned_library),
+        release_date=TemporalValue.from_year(2001),
+    )
+    second = add_release(
+        edition=edition,
+        library=owned_library,
+        platform=Platform.objects.create(name="PC", library=owned_library),
+        release_date=TemporalValue.from_year(2001),
+    )
+
+    with pytest.raises(ValidationError, match="already has that platform and date"):
+        update_release(
+            release=second,
+            library=owned_library,
+            platform=first.platform,
+            release_date=TemporalValue.from_year(2001),
+            is_default=False,
+        )
+
+    second.refresh_from_db()
+    assert second.platform != first.platform
+
+
+def test_update_release_states_its_own_platform_and_date_again(owned_library, edition):
+    release = add_release(
+        edition=edition,
+        library=owned_library,
+        platform=Platform.objects.create(name="PS4", library=owned_library),
+        release_date=TemporalValue.from_year(2001),
+    )
+
+    stated = update_release(
+        release=release,
+        library=owned_library,
+        platform=release.platform,
+        release_date=TemporalValue.from_year(2001),
+        is_default=True,
+    )
+
+    assert stated.pk == release.pk
 
 
 # --- remove_release ----------------------------------------------------------

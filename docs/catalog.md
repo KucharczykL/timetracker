@@ -82,9 +82,17 @@ row already there rather than a second one. An Edition is matched by its name
 under one Game; a Release by its Platform and its date under one Edition, which
 is the pair that tells two Releases apart.
 
+An unnamed Edition matches nothing, and each unnamed add makes one. A Game the
+legacy form wrote already holds an unnamed Edition, so matching on the empty
+name would answer every unnamed add with that one and add nothing.
+
 `update_edition` and `update_release` take every field, not a patch. A partial
 update would need a sentinel to tell "leave this" from "make this empty", and
 an empty name and an unknown date are both things a writer states on purpose.
+
+Neither one writes a row its add verb could not have added: a name a live
+sibling holds, or a Platform and date pair a live sibling holds, is refused.
+A row that states its own name or its own pair again is fine.
 
 ## The legacy Game form
 
