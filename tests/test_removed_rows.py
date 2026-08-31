@@ -166,7 +166,7 @@ def test_restoring_a_game_leaves_a_separately_removed_child_out(owned_library):
 
 
 def test_a_removed_child_stays_for_the_plain_manager(owned_library):
-    game, edition, release = make_graph(owned_library)
+    _, edition, release = make_graph(owned_library)
     remove_row(edition)
     remove_row(release)
 

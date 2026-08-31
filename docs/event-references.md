@@ -59,16 +59,21 @@ holds the name. A command holds the model instance. The registry refuses a
 second kind with the same name, a second kind for the same model, and an empty
 name.
 
-The default registry has three kinds. All three are `REQUIRED`.
+The default registry has four kinds. All four are `REQUIRED`.
 
 | Name | Model | `label` | `detail` |
 |---|---|---|---|
 | `device` | `Device` | `name` | `type` |
 | `catalog.game` | `Game` | `name` | `year_released`, or `""` |
 | `catalog.platform` | `Platform` | `name` | `group` |
+| `catalog.release` | `Release` | the Game's `name` | `platform.name`, or `""` |
 
-`Edition` and `Release` have no kind. Neither model has a display field of its
-own. A snapshot of one of these models needs a join to a parent model.
+`Edition` has no kind. No event names one, and a kind with no event states a
+convention rather than a rule. `Release` has one from #966, before #690 records
+the first, so the retention policy covers a Release from the first day one can be
+named. Neither model has a display field of its own, thus capturing a Release
+reads its Edition's Game and its Platform; a caller capturing many selects them
+first.
 
 To make a reference, call `capture_reference(instance)`. This is the only call
 that a command makes.
