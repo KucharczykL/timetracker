@@ -164,8 +164,14 @@ check-migrations: ensure-postgres
 sqlmigrate: ensure-postgres
 	uv run --frozen python manage.py sqlmigrate $(ARGS)
 
+# Generating first is deliberate: an un-generated model change would otherwise
+# apply nothing and read as a clean run. It calls the command rather than the
+# `makemigrations` target, because that target reads ARGS too and this one's
+# ARGS names a migration — the autodetector would take it for an app label.
+#
 # Usage: make migrate ARGS="games 0024_libraryidempotencyrecord"
-migrate: ensure-postgres makemigrations
+migrate: ensure-postgres
+	uv run --frozen python manage.py makemigrations --noinput
 	uv run --frozen python manage.py migrate $(ARGS)
 
 # Drop the development database and build it again from the migrations.
