@@ -14,7 +14,11 @@ from common.temporal_presentation import (
     _decade,
     present_temporal_value,
 )
-from timetracker.temporal import TemporalQualifier, TemporalValue
+from timetracker.temporal import (
+    TemporalQualifier,
+    TemporalValue,
+    TemporalValueParseError,
+)
 
 
 def presentation(profile_id: str = "iso_8601") -> DateTimePresentation:
@@ -155,6 +159,13 @@ def test_an_unsaved_canonical_string_reads_as_words() -> None:
 
 def test_an_unparseable_string_reads_as_unknown() -> None:
     assert present_temporal_value("not a date", presentation()) == "Unknown"
+
+
+@pytest.mark.parametrize("value", [1984, date(1984, 6, 22)])
+def test_a_wrong_type_raises_rather_than_reading_as_unknown(value: object) -> None:
+    """A caller mistake must not read as a stored fact."""
+    with pytest.raises(TemporalValueParseError):
+        present_temporal_value(value, presentation())  # type: ignore[arg-type]
 
 
 def test_temporal_text_holds_the_same_words() -> None:

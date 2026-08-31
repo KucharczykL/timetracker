@@ -14,7 +14,9 @@ nothing, stores nothing, and adds no column.
 `DateTimePresentation`. It answers text. `StoredTemporal` admits a canonical
 string, because the field installs no descriptor and an unsaved assignment
 leaves a string on the instance. A string the parser refuses reads `Unknown`; a
-read path must not answer a page with a 500.
+read path must not answer a page with a 500. Only a string is forgiven. Another
+type raises, because the field types as `Any` and a caller mistake must not read
+as a stored fact.
 
 `TemporalText(value, presentation, class_=…)` answers a `Node` that holds the
 same words. A page calls the node. A title attribute, a log line, or an API

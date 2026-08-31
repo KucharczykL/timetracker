@@ -4,6 +4,7 @@ The value renders as its dataclass repr. This answers words.
 """
 
 from datetime import date
+from typing import assert_never
 
 from common.components.core import Node
 from common.components.elements import Span
@@ -54,10 +55,14 @@ def _as_temporal_value(value: StoredTemporal) -> TemporalValue | None:
     """An unsaved string must not answer a 500.
 
     The field installs no descriptor, so an assignment leaves the
-    canonical string on the instance until a save.
+    canonical string on the instance until a save. Only a string is
+    forgiven: a wrong type is the caller's mistake, and the field
+    types as ``Any``, so nothing else catches one.
     """
     if value is None or isinstance(value, TemporalValue):
         return value
+    if not isinstance(value, str):
+        return parse_temporal_value(value)
     try:
         return parse_temporal_value(value)
     except TemporalValueParseError:
@@ -96,24 +101,32 @@ def _endpoint_qualified(words: str, qualifier: TemporalQualifier | None) -> str:
     ``around 1984 – 1986`` reads as a whole approximate range. A
     suffix sits against the endpoint that carries it.
     """
-    if qualifier is None:
-        return words
-    if qualifier is TemporalQualifier.APPROXIMATE:
-        return f"{words}{_APPROXIMATE_SUFFIX}"
-    if qualifier is TemporalQualifier.UNCERTAIN:
-        return f"{words}{_UNCERTAIN_SUFFIX}"
-    return f"{words}{_BOTH_SUFFIX}"
+    match qualifier:
+        case None:
+            return words
+        case TemporalQualifier.APPROXIMATE:
+            return f"{words}{_APPROXIMATE_SUFFIX}"
+        case TemporalQualifier.UNCERTAIN:
+            return f"{words}{_UNCERTAIN_SUFFIX}"
+        case TemporalQualifier.BOTH:
+            return f"{words}{_BOTH_SUFFIX}"
+        case unhandled:
+            assert_never(unhandled)
 
 
 def _qualified(words: str, qualifier: TemporalQualifier | None) -> str:
     """A reader gets words, not a symbol."""
-    if qualifier is None:
-        return words
-    if qualifier is TemporalQualifier.APPROXIMATE:
-        return f"{_APPROXIMATE_PREFIX}{words}"
-    if qualifier is TemporalQualifier.UNCERTAIN:
-        return f"{words}{_UNCERTAIN_SUFFIX}"
-    return f"{_APPROXIMATE_PREFIX}{words}{_UNCERTAIN_SUFFIX}"
+    match qualifier:
+        case None:
+            return words
+        case TemporalQualifier.APPROXIMATE:
+            return f"{_APPROXIMATE_PREFIX}{words}"
+        case TemporalQualifier.UNCERTAIN:
+            return f"{words}{_UNCERTAIN_SUFFIX}"
+        case TemporalQualifier.BOTH:
+            return f"{_APPROXIMATE_PREFIX}{words}{_UNCERTAIN_SUFFIX}"
+        case unhandled:
+            assert_never(unhandled)
 
 
 def _at_precision(value: TemporalValue, presentation: DateTimePresentation) -> str:
@@ -126,8 +139,10 @@ def _at_precision(value: TemporalValue, presentation: DateTimePresentation) -> s
             return _four_digits(value.year)
         case TemporalPrecision.DECADE:
             return _decade(value.decade_start_year)
-        case _:
+        case None:
             return UNKNOWN_TEXT
+        case unhandled:
+            assert_never(unhandled)
 
 
 def _day_date(value: TemporalValue) -> date:
