@@ -20,6 +20,7 @@ from games.models import (
     Release,
     Session,
 )
+from games.removal import remove
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db
@@ -417,3 +418,65 @@ def test_a_catalog_child_indexes_the_live_children_of_one_parent():
         ["edition"],
         models.Q(removed_at__isnull=True),
     )
+
+
+# --- an Edition holds a name of its own --------------------------------------
+
+
+def test_an_edition_holds_an_optional_name(owned_library):
+    """A name is text, and no name is the ordinary case."""
+    game = Game.objects.create(library=owned_library, name="Deus Ex")
+
+    edition = Edition.objects.create(game=game)
+
+    assert edition.name == ""
+    assert Edition._meta.get_field("name").blank is True
+
+
+def test_an_unnamed_edition_presents_as_the_game(owned_library):
+    game = Game.objects.create(library=owned_library, name="Deus Ex")
+
+    unnamed = Edition.objects.create(game=game)
+    named = Edition.objects.create(game=game, name="Game of the Year")
+
+    assert unnamed.display_name == "Deus Ex"
+    assert named.display_name == "Game of the Year"
+
+
+def test_two_live_editions_of_one_game_cannot_share_a_name(owned_library):
+    """The comparison ignores case and surrounding space."""
+    game = Game.objects.create(library=owned_library, name="Deus Ex")
+    Edition.objects.create(game=game, name="Game of the Year")
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        Edition.objects.create(game=game, name=" game of the year ")
+
+
+def test_two_unnamed_editions_of_one_game_stay(owned_library):
+    """No name is not a name, thus it claims no slot."""
+    game = Game.objects.create(library=owned_library, name="Deus Ex")
+
+    Edition.objects.create(game=game)
+    Edition.objects.create(game=game)
+
+    assert Edition.objects.filter(game=game).count() == 2
+
+
+def test_two_games_may_hold_the_same_edition_name(owned_library):
+    first = Game.objects.create(library=owned_library, name="Deus Ex")
+    second = Game.objects.create(library=owned_library, name="Thief")
+
+    Edition.objects.create(game=first, name="Game of the Year")
+    Edition.objects.create(game=second, name="Game of the Year")
+
+    assert Edition.objects.filter(name="Game of the Year").count() == 2
+
+
+def test_a_removed_editions_name_is_free_again(owned_library):
+    game = Game.objects.create(library=owned_library, name="Deus Ex")
+    first = Edition.objects.create(game=game, name="Game of the Year")
+    remove(first)
+
+    second = Edition.objects.create(game=game, name="Game of the Year")
+
+    assert Edition.objects.for_library(owned_library).get() == second
