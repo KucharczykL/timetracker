@@ -67,7 +67,7 @@ integer columns follow the graph rather than argue with it. See
 One field name yields several inputs. `temporal_input_name(name, key)` builds
 each name from `TEMPORAL_INPUT_SUFFIXES`:
 
-```python
+```text
 temporal_input_name("release_date", "start_year")  # "release_date-year"
 temporal_input_name("release_date", "kind")        # "release_date-kind"
 ```
@@ -108,7 +108,7 @@ A widget renders to text, so the node tree ends at the widget and the element's
 `Media` never reaches `collect_media()`. The hosting view threads the script
 itself:
 
-```python
+```text
 scripts=ModuleScript("dist/elements/temporal-field.js")
 ```
 

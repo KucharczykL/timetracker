@@ -13,10 +13,12 @@ from django.urls import reverse
 from games import urls as games_urls
 from games.models import (
     Device,
+    Edition,
     Game,
     Platform,
     PlayEvent,
     Purchase,
+    Release,
     Session,
 )
 
@@ -34,8 +36,11 @@ def world(owned_library):
         type=Purchase.GAME,
     )
     purchase.games.set([game])
+    edition = Edition.objects.create(game=game, is_default=True)
     return {
         "game_id": game.id,
+        "edition_id": edition.id,
+        "release_id": Release.objects.create(edition=edition, is_default=True).id,
         "slug": game.url_slug,
         "purchase_id": purchase.id,
         "session_id": Session.objects.create(
