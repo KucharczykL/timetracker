@@ -283,3 +283,17 @@ def update_release(
     stored.is_default = is_default
     stored.save(update_fields=("platform", "release_date", "is_default"))
     return stored
+
+
+@transaction.atomic
+def remove_release(*, release: Release, library: UserLibrary) -> None:
+    """Take one Release out of a private Edition.
+
+    The last one goes and the default mark goes with it. A default
+    with a live sibling stays: the writer says which takes the mark.
+    """
+    stored = _writable_release(release, library)
+    siblings = _live_releases(stored.edition_id).exclude(pk=stored.pk)
+    if stored.is_default and siblings.exists():
+        raise ValidationError(DEFAULT_RELEASE_HELD)
+    remove(stored)

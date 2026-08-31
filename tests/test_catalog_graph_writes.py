@@ -11,6 +11,7 @@ from games.catalog_writes import (
     add_edition,
     add_release,
     remove_edition,
+    remove_release,
     update_edition,
     update_release,
 )
@@ -479,3 +480,85 @@ def test_update_release_refuses_another_librarys_release(
 
     release.refresh_from_db()
     assert release.release_date is None
+
+
+# --- remove_release ----------------------------------------------------------
+
+
+def test_remove_release_takes_a_sibling_out(owned_library, edition):
+    add_release(edition=edition, library=owned_library)
+    second = add_release(
+        edition=edition,
+        library=owned_library,
+        platform=Platform.objects.create(name="PC"),
+    )
+
+    remove_release(release=second, library=owned_library)
+
+    second.refresh_from_db()
+    assert second.removed_at is not None
+    assert Release.objects.for_library(owned_library).count() == 1
+    assert Release.objects.filter(edition=edition).count() == 2
+
+
+def test_remove_release_takes_the_last_one_and_its_mark(owned_library, edition):
+    """An Edition may hold no Release."""
+    only = add_release(edition=edition, library=owned_library)
+
+    remove_release(release=only, library=owned_library)
+
+    only.refresh_from_db()
+    assert only.removed_at is not None
+    assert not Release.objects.for_library(owned_library).exists()
+    assert Edition.objects.for_library(owned_library).get() == edition
+
+
+def test_remove_release_refuses_the_default_while_a_sibling_lives(
+    owned_library, edition
+):
+    first = add_release(edition=edition, library=owned_library)
+    add_release(
+        edition=edition,
+        library=owned_library,
+        platform=Platform.objects.create(name="PC"),
+    )
+
+    with pytest.raises(ValidationError, match="default release"):
+        remove_release(release=first, library=owned_library)
+
+    first.refresh_from_db()
+    assert first.removed_at is None
+
+
+def test_a_promoted_sibling_frees_the_old_default_for_removal(owned_library, edition):
+    first = add_release(edition=edition, library=owned_library)
+    second = add_release(
+        edition=edition,
+        library=owned_library,
+        platform=Platform.objects.create(name="PC"),
+    )
+
+    update_release(
+        release=second,
+        library=owned_library,
+        platform=second.platform,
+        release_date=None,
+        is_default=True,
+    )
+    remove_release(release=first, library=owned_library)
+
+    first.refresh_from_db()
+    assert first.removed_at is not None
+    assert Release.objects.for_library(owned_library).get() == second
+
+
+def test_remove_release_refuses_another_librarys_release(
+    owned_library, other_library, edition
+):
+    release = add_release(edition=edition, library=owned_library)
+
+    with pytest.raises(ValidationError, match="another library"):
+        remove_release(release=release, library=other_library)
+
+    release.refresh_from_db()
+    assert release.removed_at is None
