@@ -40,6 +40,10 @@ presenter reads; it writes nothing and adds no column.
   (`original_release_date_lower`, `_kind`, `_precision`, `_qualifier`, …).
 - ruff formats at 88 columns with the default rule set. Every code block below is
   already in that form; keep the magic trailing commas.
+- `make format-check` reads a ```` ```python ```` fence in this file as a module of
+  its own, so a snippet must be valid and already formatted at column zero. A
+  fragment quoted at its real indentation goes in a ```` ```text ```` fence
+  instead.
 - The branch is `claude/issue-963-temporal-presentation`, already created, with
   this plan already committed. The spec is already on `main`.
 - Commit messages: imperative mood, no `feat:`/`fix:` prefixes — match the log
@@ -667,6 +671,7 @@ Add to `tests/test_rendered_pages.py`, inside `RenderedPagesTest`, directly afte
 `test_view_game`:
 
 ```python
+class RenderedPagesTest(TestCase):
     def test_view_game_reads_the_original_release_date(self):
         self.game.original_release_date = TemporalValue.from_month(1984, 6)
         self.game.save()
@@ -714,9 +719,11 @@ In `games/views/game.py`, add the import beside the other `common` imports:
 from common.temporal_presentation import TemporalText
 ```
 
-Replace the first `_meta_row(...)` call inside `metadata` in `_game_header`:
+Replace the first `_meta_row(...)` call inside `metadata` in `_game_header`. Shown
+at its real indentation — twelve columns in, which is why the `TemporalText` call
+does not fit on one line:
 
-```python
+```text
         _meta_row(
             "Original release",
             TemporalText(
