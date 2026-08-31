@@ -2,6 +2,7 @@ from django.conf import settings
 from django.urls import path, register_converter
 
 from games.views import (
+    catalog,
     device,
     game,
     general,
@@ -54,6 +55,36 @@ urlpatterns = [
     ),
     path("game/<uuidv7:game_id>/remove", game.remove_game, name="remove_game"),
     path("game/list", game.list_games, name="list_games"),
+    path(
+        "game/<uuidv7:game_id>/edition/add",
+        catalog.add_edition,
+        name="add_edition",
+    ),
+    path(
+        "edition/<uuidv7:edition_id>/edit",
+        catalog.edit_edition,
+        name="edit_edition",
+    ),
+    path(
+        "edition/<uuidv7:edition_id>/remove",
+        catalog.remove_edition_view,
+        name="remove_edition",
+    ),
+    path(
+        "edition/<uuidv7:edition_id>/release/add",
+        catalog.add_release,
+        name="add_release",
+    ),
+    path(
+        "release/<uuidv7:release_id>/edit",
+        catalog.edit_release,
+        name="edit_release",
+    ),
+    path(
+        "release/<uuidv7:release_id>/remove",
+        catalog.remove_release_view,
+        name="remove_release",
+    ),
     path("platform/add", platform.add_platform, name="add_platform"),
     path(
         "platform/<uuidv7:platform_id>/edit",

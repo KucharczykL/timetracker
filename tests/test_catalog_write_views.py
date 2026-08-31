@@ -3,6 +3,7 @@ from html.parser import HTMLParser
 import pytest
 from django.urls import reverse
 
+from games.catalog_writes import LAST_EDITION
 from games.external_references import save_external_reference
 from games.forms import GameForm
 from games.models import (
@@ -13,6 +14,7 @@ from games.models import (
     PlayerGameStatus,
     Release,
 )
+from games.removal import remove
 from timetracker.temporal import TemporalValue, temporal_input_name
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -245,6 +247,158 @@ def test_add_game_hosts_the_temporal_element(client, owned_user, owned_library):
 
     assert "<temporal-field" in html
     assert "dist/elements/temporal-field.js" in html
+
+
+# --- the six catalog routes -------------------------------------------------
+
+
+@pytest.fixture
+def other_library(django_user_model):
+    return django_user_model.objects.create_user(
+        username="other-catalog-owner", password="p"
+    ).library
+
+
+@pytest.fixture
+def signed_in(client, owned_user):
+    client.force_login(owned_user)
+    return client
+
+
+def test_add_edition_writes_one_and_returns_to_the_game(signed_in, owned_library):
+    game = Game.objects.create(library=owned_library, name="Elite")
+    Edition.objects.create(game=game, is_default=True)
+
+    response = signed_in.post(
+        reverse("games:add_edition", args=[game.pk]), {"name": "Gold"}
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == game.get_absolute_url()
+    assert Edition.objects.filter(game=game, name="Gold").exists()
+
+
+def test_edit_edition_states_the_whole_row(signed_in, owned_library):
+    game = Game.objects.create(library=owned_library, name="Elite")
+    Edition.objects.create(game=game, is_default=True)
+    edition = Edition.objects.create(game=game, name="Gold")
+
+    signed_in.post(reverse("games:edit_edition", args=[edition.pk]), {"name": "Plus"})
+
+    edition.refresh_from_db()
+    assert edition.name == "Plus"
+
+
+def test_remove_edition_stamps_rather_than_destroys(signed_in, owned_library):
+    game = Game.objects.create(library=owned_library, name="Elite")
+    Edition.objects.create(game=game, is_default=True)
+    edition = Edition.objects.create(game=game, name="Gold")
+
+    signed_in.post(reverse("games:remove_edition", args=[edition.pk]))
+
+    edition.refresh_from_db()
+    assert edition.removed_at is not None
+
+
+def test_removing_the_last_edition_says_why_on_the_page(signed_in, owned_library):
+    game = Game.objects.create(library=owned_library, name="Elite")
+    edition = Edition.objects.create(game=game, is_default=True)
+
+    response = signed_in.post(reverse("games:remove_edition", args=[edition.pk]))
+
+    assert response.status_code == 409
+    assert LAST_EDITION in response.content.decode()
+    edition.refresh_from_db()
+    assert edition.removed_at is None
+
+
+def test_add_release_writes_one_under_its_edition(signed_in, owned_library):
+    platform = Platform.objects.create(library=owned_library, name="Amiga")
+    game = Game.objects.create(library=owned_library, name="Elite")
+    edition = Edition.objects.create(game=game, is_default=True)
+    posted = {"platform": str(platform.pk)} | temporal_payload(
+        "release_date", kind="date", start_year="1984"
+    )
+
+    signed_in.post(reverse("games:add_release", args=[edition.pk]), posted)
+
+    release = Release.objects.get(edition=edition)
+    assert release.release_date == TemporalValue.from_year(1984)
+    #: The flat columns followed it.
+    game.refresh_from_db()
+    assert (game.platform_id, game.year_released) == (platform.pk, 1984)
+
+
+def test_edit_release_states_the_whole_row(signed_in, owned_library):
+    platform = Platform.objects.create(library=owned_library, name="Amiga")
+    game = Game.objects.create(library=owned_library, name="Elite")
+    edition = Edition.objects.create(game=game, is_default=True)
+    release = Release.objects.create(
+        edition=edition,
+        platform=platform,
+        release_date=TemporalValue.from_year(1984),
+        is_default=True,
+    )
+
+    signed_in.post(
+        reverse("games:edit_release", args=[release.pk]),
+        {"platform": "", "is_default": "on"}
+        | temporal_payload("release_date", kind="date", start_year="1985"),
+    )
+
+    release.refresh_from_db()
+    assert release.release_date == TemporalValue.from_year(1985)
+    assert release.platform_id is None
+
+
+def test_remove_release_stamps_rather_than_destroys(signed_in, owned_library):
+    game = Game.objects.create(library=owned_library, name="Elite")
+    edition = Edition.objects.create(game=game, is_default=True)
+    Release.objects.create(edition=edition, is_default=True)
+    second = Release.objects.create(edition=edition)
+
+    signed_in.post(reverse("games:remove_release", args=[second.pk]))
+
+    second.refresh_from_db()
+    assert second.removed_at is not None
+
+
+def test_a_shared_game_answers_404_to_every_catalog_route(signed_in):
+    shared = Game.objects.create(library=None, name="Shared")
+    edition = Edition.objects.create(game=shared, is_default=True)
+    release = Release.objects.create(edition=edition, is_default=True)
+
+    for url in (
+        reverse("games:add_edition", args=[shared.pk]),
+        reverse("games:edit_edition", args=[edition.pk]),
+        reverse("games:remove_edition", args=[edition.pk]),
+        reverse("games:add_release", args=[edition.pk]),
+        reverse("games:edit_release", args=[release.pk]),
+        reverse("games:remove_release", args=[release.pk]),
+    ):
+        assert signed_in.get(url).status_code == 404, url
+
+
+def test_another_library_cannot_reach_an_edition(signed_in, other_library):
+    game = Game.objects.create(library=other_library, name="Theirs")
+    edition = Edition.objects.create(game=game, is_default=True)
+
+    assert (
+        signed_in.get(reverse("games:edit_edition", args=[edition.pk])).status_code
+        == 404
+    )
+
+
+def test_a_removed_game_hides_its_editions_from_the_routes(signed_in, owned_library):
+    """A Release reads its ancestors' marks, thus a removed Game hides both."""
+    game = Game.objects.create(library=owned_library, name="Elite")
+    edition = Edition.objects.create(game=game, is_default=True)
+    remove(game)
+
+    assert (
+        signed_in.get(reverse("games:add_release", args=[edition.pk])).status_code
+        == 404
+    )
 
 
 def test_game_views_canonicalize_wikidata_on_add_and_edit(
