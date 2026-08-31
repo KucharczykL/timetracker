@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import re
 from calendar import monthrange
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from enum import StrEnum
-from typing import Literal
+from typing import Final, Literal, TypedDict, assert_never
 
 from django.core.exceptions import ValidationError
 from django.db import NotSupportedError, models
@@ -541,6 +541,441 @@ def parse_temporal_value(value: object) -> TemporalValue:
 
 def validate_temporal_value(value: object) -> None:
     parse_temporal_value(value)
+
+
+@dataclass(slots=True)
+class TemporalEndpointDraft:
+    """One position's dimensions, each independently assignable.
+
+    Mutable on purpose. ``TemporalValue`` is frozen and parses from one
+    canonical string, so changing a month there means string surgery.
+    Here it is a field assignment, and ``build()`` reassembles the value.
+    """
+
+    year: int | None = None
+    month: int | None = None
+    day: int | None = None
+    decade_start_year: int | None = None
+    qualifier: TemporalQualifier | None = None
+
+    @property
+    def is_empty(self) -> bool:
+        """No dimension states anything."""
+        return (
+            self.year is None
+            and self.month is None
+            and self.day is None
+            and self.decade_start_year is None
+        )
+
+    @classmethod
+    def from_value(cls, value: TemporalValue | None) -> TemporalEndpointDraft:
+        """The dimensions an atomic value states."""
+        if value is None:
+            return cls()
+        return cls(
+            year=value.year,
+            month=value.month,
+            day=value.day,
+            decade_start_year=value.decade_start_year,
+            qualifier=value.qualifier,
+        )
+
+    def build(self) -> TemporalValue | None:
+        """The value these dimensions state, or nothing.
+
+        The precision is derived rather than stated: the deepest filled
+        part decides it. A part with no shallower part to sit on is a
+        disagreement, and a disagreement is refused with a sentence
+        rather than completed with an invented part.
+        """
+        self._refuse_disagreement()
+        if self.day is not None:
+            assert self.year is not None and self.month is not None
+            return _build_day(self.year, self.month, self.day, self.qualifier)
+        if self.month is not None:
+            assert self.year is not None
+            return TemporalValue.from_month(
+                self.year, self.month, qualifier=self.qualifier
+            )
+        if self.year is not None:
+            return _build_year(self.year, self.qualifier)
+        if self.decade_start_year is not None:
+            return _build_decade(self.decade_start_year, self.qualifier)
+        return None
+
+    def _refuse_disagreement(self) -> None:
+        if self.day is not None and (self.year is None or self.month is None):
+            raise TemporalValueParseError(
+                "A day needs a year and a month beside it.",
+                code="incomplete_day",
+            )
+        if self.month is not None and self.year is None:
+            raise TemporalValueParseError(
+                "A month needs a year beside it.", code="incomplete_month"
+            )
+        if self.decade_start_year is not None and not (
+            self.year is None and self.month is None and self.day is None
+        ):
+            raise TemporalValueParseError(
+                "State a decade or a date, not both.", code="decade_with_year"
+            )
+
+
+def _build_day(
+    year: int, month: int, day: int, qualifier: TemporalQualifier | None
+) -> TemporalValue:
+    """A refused calendar day carries a sentence."""
+    try:
+        return TemporalValue.from_day(date(year, month, day), qualifier=qualifier)
+    except ValueError as error:
+        raise TemporalValueParseError(
+            f"{year}-{month}-{day} is not a day the calendar holds.",
+            code="invalid_date",
+        ) from error
+
+
+def _build_year(year: int, qualifier: TemporalQualifier | None) -> TemporalValue:
+    """A refused year carries a sentence of this layer's own.
+
+    The parser's own wording names the grammar rather than the control,
+    and a person who reaches this typed into a year box.
+    """
+    try:
+        return TemporalValue.from_year(year, qualifier=qualifier)
+    except ValueError as error:
+        raise TemporalValueParseError(
+            "A year is a number from 1 to 9999.", code="invalid_year"
+        ) from error
+
+
+def _build_decade(
+    start_year: int, qualifier: TemporalQualifier | None
+) -> TemporalValue:
+    """A refused decade carries a sentence."""
+    try:
+        return TemporalValue.from_decade(start_year, qualifier=qualifier)
+    except ValueError as error:
+        raise TemporalValueParseError(
+            "A decade starts on a ten-year boundary, such as 1980.",
+            code="invalid_decade",
+        ) from error
+
+
+class TemporalDraftKind(StrEnum):
+    """The shape a person picks. The precision is derived."""
+
+    DATE = "date"
+    RANGE = "range"
+    SINCE = "since"
+    UNTIL = "until"
+    UNKNOWN = "unknown"
+
+
+#: Ordered as the select offers them.
+TEMPORAL_DRAFT_KIND_LABELS: Final[dict[TemporalDraftKind, str]] = {
+    TemporalDraftKind.DATE: "Date",
+    TemporalDraftKind.RANGE: "Range",
+    TemporalDraftKind.SINCE: "Since",
+    TemporalDraftKind.UNTIL: "Until",
+    TemporalDraftKind.UNKNOWN: "Unknown",
+}
+
+
+def temporal_qualifier(
+    *, approximate: bool, uncertain: bool
+) -> TemporalQualifier | None:
+    """The one qualifier two checkboxes name."""
+    if approximate and uncertain:
+        return TemporalQualifier.BOTH
+    if approximate:
+        return TemporalQualifier.APPROXIMATE
+    if uncertain:
+        return TemporalQualifier.UNCERTAIN
+    return None
+
+
+def _says_approximate(qualifier: TemporalQualifier | None) -> bool:
+    return qualifier in (TemporalQualifier.APPROXIMATE, TemporalQualifier.BOTH)
+
+
+def _says_uncertain(qualifier: TemporalQualifier | None) -> bool:
+    return qualifier in (TemporalQualifier.UNCERTAIN, TemporalQualifier.BOTH)
+
+
+@dataclass(slots=True)
+class TemporalDraft:
+    """A whole value's dimensions, held apart so a form can change one.
+
+    ``start`` and ``end`` are positional. A ``DATE`` draft states its
+    parts in ``start`` and leaves ``end`` empty; ``SINCE`` opens the end
+    and ``UNTIL`` opens the start, so no separate openness control is
+    needed and every shape is reachable through the kind alone.
+    """
+
+    kind: TemporalDraftKind = TemporalDraftKind.UNKNOWN
+    start: TemporalEndpointDraft = field(default_factory=TemporalEndpointDraft)
+    end: TemporalEndpointDraft = field(default_factory=TemporalEndpointDraft)
+
+    @classmethod
+    def from_value(cls, value: TemporalValue | None) -> TemporalDraft:
+        """The dimensions a stored value states."""
+        if value is None or value.is_unknown:
+            return cls()
+        if not value.is_range:
+            return cls(
+                kind=TemporalDraftKind.DATE,
+                start=TemporalEndpointDraft.from_value(value),
+            )
+        start, end = value.start, value.end
+        assert start is not None and end is not None
+        return cls(
+            kind=_range_draft_kind(start, end),
+            start=TemporalEndpointDraft.from_value(start.value),
+            end=TemporalEndpointDraft.from_value(end.value),
+        )
+
+    def build(self) -> TemporalValue:
+        """The one value these dimensions state."""
+        self._refuse_unread_parts()
+        match self.kind:
+            case TemporalDraftKind.UNKNOWN:
+                return TemporalValue.unknown()
+            case TemporalDraftKind.DATE:
+                built = self.start.build()
+                return TemporalValue.unknown() if built is None else built
+            case TemporalDraftKind.SINCE:
+                return TemporalValue.range(
+                    start=_known_endpoint(self.start), end=TemporalEndpoint.open()
+                )
+            case TemporalDraftKind.UNTIL:
+                return TemporalValue.range(
+                    start=TemporalEndpoint.open(), end=_known_endpoint(self.end)
+                )
+            case TemporalDraftKind.RANGE:
+                return TemporalValue.range(
+                    start=_endpoint_or_unknown(self.start),
+                    end=_endpoint_or_unknown(self.end),
+                )
+            case unhandled:
+                assert_never(unhandled)
+
+    def _refuse_unread_parts(self) -> None:
+        """A part the shape never reads is refused, not dropped.
+
+        Both endpoint rows stay visible whatever the shape is, so a
+        person can fill one the shape ignores. Silently building without
+        it would store a date nobody typed.
+        """
+        match self.kind:
+            case TemporalDraftKind.UNKNOWN:
+                filled = not (self.start.is_empty and self.end.is_empty)
+                sentence = "Pick a shape for the date you typed, or clear it."
+            case TemporalDraftKind.DATE:
+                filled = not self.end.is_empty
+                sentence = "A date reads the start only. Clear the end, or pick Range."
+            case TemporalDraftKind.SINCE:
+                filled = not self.end.is_empty
+                sentence = "Since runs to no end. Clear the end, or pick Range."
+            case TemporalDraftKind.UNTIL:
+                filled = not self.start.is_empty
+                sentence = "Until runs from no start. Clear the start, or pick Range."
+            case TemporalDraftKind.RANGE:
+                return
+            case unhandled:
+                assert_never(unhandled)
+        if filled:
+            raise TemporalValueParseError(sentence, code="unread_parts")
+
+
+def _range_draft_kind(
+    start: TemporalEndpoint, end: TemporalEndpoint
+) -> TemporalDraftKind:
+    if end.is_open:
+        return TemporalDraftKind.SINCE
+    if start.is_open:
+        return TemporalDraftKind.UNTIL
+    return TemporalDraftKind.RANGE
+
+
+def _known_endpoint(draft: TemporalEndpointDraft) -> TemporalEndpoint:
+    """An open range still needs a date at its other end."""
+    built = draft.build()
+    if built is None:
+        raise TemporalValueParseError(
+            "An open range needs a date at its other end.",
+            code="invalid_range",
+        )
+    return TemporalEndpoint.known(built)
+
+
+def _endpoint_or_unknown(draft: TemporalEndpointDraft) -> TemporalEndpoint:
+    built = draft.build()
+    if built is None:
+        return TemporalEndpoint.unknown()
+    return TemporalEndpoint.known(built)
+
+
+class TemporalDraftData(TypedDict):
+    """The raw strings one temporal control posts.
+
+    Strings, not numbers, because a refused submission must re-render
+    the characters a person typed rather than a normalized guess.
+    """
+
+    kind: str
+    start_year: str
+    start_month: str
+    start_day: str
+    start_decade: str
+    start_approximate: str
+    start_uncertain: str
+    end_year: str
+    end_month: str
+    end_day: str
+    end_decade: str
+    end_approximate: str
+    end_uncertain: str
+
+
+#: The first endpoint takes bare part names.
+TEMPORAL_INPUT_SUFFIXES: Final[dict[str, str]] = {
+    "kind": "kind",
+    "start_year": "year",
+    "start_month": "month",
+    "start_day": "day",
+    "start_decade": "decade",
+    "start_approximate": "approximate",
+    "start_uncertain": "uncertain",
+    "end_year": "end-year",
+    "end_month": "end-month",
+    "end_day": "end-day",
+    "end_decade": "end-decade",
+    "end_approximate": "end-approximate",
+    "end_uncertain": "end-uncertain",
+}
+
+EMPTY_TEMPORAL_DRAFT_DATA: Final[TemporalDraftData] = TemporalDraftData(
+    kind="",
+    start_year="",
+    start_month="",
+    start_day="",
+    start_decade="",
+    start_approximate="",
+    start_uncertain="",
+    end_year="",
+    end_month="",
+    end_day="",
+    end_decade="",
+    end_approximate="",
+    end_uncertain="",
+)
+
+
+def temporal_input_name(name: str, key: str) -> str:
+    """The posted input name one draft key travels under."""
+    return f"{name}-{TEMPORAL_INPUT_SUFFIXES[key]}"
+
+
+def temporal_draft_from_data(data: TemporalDraftData) -> TemporalDraft:
+    """The draft those posted strings state.
+
+    Each endpoint carries its own pair of boxes, because the grammar
+    qualifies each end separately. One shared pair would rewrite
+    ``1984/1986~`` as ``1984~/1986~`` on a save nobody asked for.
+    """
+    return TemporalDraft(
+        kind=_draft_kind_from_text(data["kind"]),
+        start=_endpoint_draft_from_text(
+            year=data["start_year"],
+            month=data["start_month"],
+            day=data["start_day"],
+            decade=data["start_decade"],
+            qualifier=temporal_qualifier(
+                approximate=bool(data["start_approximate"].strip()),
+                uncertain=bool(data["start_uncertain"].strip()),
+            ),
+        ),
+        end=_endpoint_draft_from_text(
+            year=data["end_year"],
+            month=data["end_month"],
+            day=data["end_day"],
+            decade=data["end_decade"],
+            qualifier=temporal_qualifier(
+                approximate=bool(data["end_approximate"].strip()),
+                uncertain=bool(data["end_uncertain"].strip()),
+            ),
+        ),
+    )
+
+
+def temporal_draft_data(draft: TemporalDraft) -> TemporalDraftData:
+    """The posted strings that state ``draft`` again."""
+    return TemporalDraftData(
+        kind=draft.kind.value,
+        start_year=_part_text(draft.start.year),
+        start_month=_part_text(draft.start.month),
+        start_day=_part_text(draft.start.day),
+        start_decade=_part_text(draft.start.decade_start_year),
+        start_approximate=_box_text(_says_approximate(draft.start.qualifier)),
+        start_uncertain=_box_text(_says_uncertain(draft.start.qualifier)),
+        end_year=_part_text(draft.end.year),
+        end_month=_part_text(draft.end.month),
+        end_day=_part_text(draft.end.day),
+        end_decade=_part_text(draft.end.decade_start_year),
+        end_approximate=_box_text(_says_approximate(draft.end.qualifier)),
+        end_uncertain=_box_text(_says_uncertain(draft.end.qualifier)),
+    )
+
+
+def _box_text(checked: bool) -> str:
+    """What a checked box posts, or nothing."""
+    return "on" if checked else ""
+
+
+def _draft_kind_from_text(text: str) -> TemporalDraftKind:
+    stripped = text.strip()
+    if not stripped:
+        return TemporalDraftKind.UNKNOWN
+    try:
+        return TemporalDraftKind(stripped)
+    except ValueError as error:
+        raise TemporalValueParseError(
+            f"{stripped!r} is not a shape this form offers.", code="invalid_kind"
+        ) from error
+
+
+def _endpoint_draft_from_text(
+    *,
+    year: str,
+    month: str,
+    day: str,
+    decade: str,
+    qualifier: TemporalQualifier | None,
+) -> TemporalEndpointDraft:
+    return TemporalEndpointDraft(
+        year=_part_number(year, "year"),
+        month=_part_number(month, "month"),
+        day=_part_number(day, "day"),
+        decade_start_year=_part_number(decade, "decade"),
+        qualifier=qualifier,
+    )
+
+
+def _part_number(text: str, part: str) -> int | None:
+    stripped = text.strip()
+    if not stripped:
+        return None
+    try:
+        return int(stripped)
+    except ValueError as error:
+        raise TemporalValueParseError(
+            f"The {part} must be a whole number.", code="invalid_number"
+        ) from error
+
+
+def _part_text(part: int | None) -> str:
+    return "" if part is None else str(part)
 
 
 def _normalize_temporal_model_value(value: object) -> TemporalValue | None:
