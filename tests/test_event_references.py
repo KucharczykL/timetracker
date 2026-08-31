@@ -28,7 +28,7 @@ from games.events.vocabulary import (
     PayloadInvalid,
 )
 from games.events.wiring import EventWiring
-from games.models import Device, Edition, Game, LibraryEvent, Platform
+from games.models import Device, Edition, Game, LibraryEvent, Platform, Release
 
 STRICT_CONFIG = ConfigDict(extra="forbid", strict=True)
 
@@ -236,6 +236,28 @@ def test_a_platform_captures_its_name_and_group(platform):
 
 
 @pytest.mark.django_db
+def test_a_release_captures_the_games_name_and_its_platform(game, platform):
+    """A Release has no words of its own; both are joins."""
+    release = Release.objects.create(
+        edition=Edition.objects.create(game=game), platform=platform
+    )
+
+    assert capture_reference(release) == Reference(
+        kind="catalog.release",
+        id=str(release.pk),
+        label="Baldur's Gate 3",
+        detail="Steam",
+    )
+
+
+@pytest.mark.django_db
+def test_a_release_on_no_platform_captures_an_empty_detail(game):
+    release = Release.objects.create(edition=Edition.objects.create(game=game))
+
+    assert capture_reference(release)["detail"] == ""
+
+
+@pytest.mark.django_db
 def test_every_captured_reference_validates_as_one(device, game, platform):
     for instance in (device, game, platform):
         payload = {"device": capture_reference(instance), "note": ""}
@@ -313,7 +335,7 @@ def test_an_unknown_kind_name_is_refused():
 
 
 def test_every_shipped_kind_must_resolve_at_replay():
-    for name in ("device", "catalog.game", "catalog.platform"):
+    for name in ("device", "catalog.game", "catalog.platform", "catalog.release"):
         assert DEFAULT_REFERENCE_KINDS.kind_for(name).resolution is Resolution.REQUIRED
 
 

@@ -115,6 +115,15 @@ def device(owned_library):
     )
 
 
+@pytest.fixture
+def release(game, platform):
+    return Release.objects.create(
+        edition=Edition.objects.create(game=game, is_default=True),
+        is_default=True,
+        platform=platform,
+    )
+
+
 # --- a removed row stays, referenced or not --------------------------------
 
 
@@ -391,6 +400,15 @@ def test_a_removed_row_still_resolves(owned_library, game):
     assert resolve_reference(reference) == game
 
 
+def test_a_removed_release_still_resolves(owned_library, release):
+    reference = name_in_an_event(owned_library, release)
+
+    remove(release)
+
+    assert resolve_reference(reference) == release
+    assert not Release.objects.for_library(owned_library).exists()
+
+
 def test_a_live_row_resolves(owned_library, platform):
     reference = name_in_an_event(owned_library, platform)
 
@@ -436,6 +454,37 @@ def test_a_cascade_that_would_take_a_referenced_row_is_refused(owned_library, ga
         owned_library.user.delete()
 
 
+def test_a_raw_delete_of_a_referenced_release_is_refused(owned_library, release):
+    name_in_an_event(owned_library, release)
+
+    with pytest.raises(ReferencedRowDeletion, match="games.removal.remove"):
+        release.delete()
+
+    assert Release.objects.filter(pk=release.pk).exists()
+
+
+def test_a_cascade_that_would_take_a_referenced_release_is_refused(
+    owned_library, release
+):
+    """The parent is unreferenced; the child is not."""
+    name_in_an_event(owned_library, release)
+
+    with pytest.raises(ReferencedRowDeletion):
+        release.edition.game.delete()
+
+    assert Release.objects.filter(pk=release.pk).exists()
+
+
+def test_an_edition_no_kind_captures_still_deletes(owned_library, release):
+    """No kind, thus no event can name it, thus nothing to keep."""
+    edition_id = release.edition_id
+
+    release.delete()
+    Edition.objects.get(pk=edition_id).delete()
+
+    assert not Edition.objects.filter(pk=edition_id).exists()
+
+
 # --- except during a whole-library purge -------------------------------------
 
 
@@ -451,6 +500,22 @@ def test_purging_a_library_takes_its_referenced_rows(owned_user, owned_library, 
 
     assert not Game.objects.filter(pk=game.pk).exists()
     assert not LibraryEvent.objects.exists()
+    assert not LibraryEventReference.objects.exists()
+
+
+def test_purging_a_library_takes_its_referenced_releases(
+    owned_user, owned_library, release
+):
+    name_in_an_event(owned_library, release)
+
+    call_command(
+        "purge_user_library",
+        user=owned_user.username,
+        confirm=owned_user.username,
+        stdout=StringIO(),
+    )
+
+    assert not Release.objects.filter(pk=release.pk).exists()
     assert not LibraryEventReference.objects.exists()
 
 

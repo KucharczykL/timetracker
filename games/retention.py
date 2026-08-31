@@ -16,6 +16,7 @@ from games.events.references import (
     ReferenceKind,
     ReferenceKindRegistry,
     Resolution,
+    UnmappedReferenceModel,
 )
 from games.models import LibraryEventReference
 
@@ -101,10 +102,16 @@ def refuse_to_delete_a_referenced_row(instance: Model) -> None:
     """The guard, called from `pre_delete`."""
     if _purging.get():
         return
-    if must_be_retained(instance):
-        raise ReferencedRowDeletion(
-            f"{instance} cannot be deleted: "
-            f"{reference_count(instance)} recorded event(s) reference it, and a "
-            "replay must still be able to resolve them. Take it out of the "
-            "library with games.removal.remove, which keeps the row."
-        )
+    try:
+        retained = must_be_retained(instance)
+    except UnmappedReferenceModel:
+        #: No kind, thus no event names it.
+        return
+    if not retained:
+        return
+    raise ReferencedRowDeletion(
+        f"{instance} cannot be deleted: "
+        f"{reference_count(instance)} recorded event(s) reference it, and a "
+        "replay must still be able to resolve them. Take it out of the "
+        "library with games.removal.remove, which keeps the row."
+    )

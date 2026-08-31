@@ -479,7 +479,7 @@ class EditionQuerySet(RemovableMixin, models.QuerySet):
         ).alive()
 
 
-class Edition(models.Model):
+class Edition(ReferencedRow):
     class Meta:
         constraints = (
             models.UniqueConstraint(
@@ -533,7 +533,7 @@ class ReleaseQuerySet(RemovableMixin, models.QuerySet):
         ).alive()
 
 
-class Release(models.Model):
+class Release(ReferencedRow):
     class Meta:
         constraints = (
             models.UniqueConstraint(
