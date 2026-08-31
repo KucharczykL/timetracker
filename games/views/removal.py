@@ -11,6 +11,7 @@ from collections.abc import Callable, Sequence
 from functools import partial
 from typing import Any
 
+from django.core.exceptions import ValidationError
 from django.db.models import Model
 from django.http import HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
@@ -42,13 +43,16 @@ def confirm_and_apply(
     ``reject`` names a page the action invalidates — the acted-on object's own
     detail page, say — so an origin pointing there is refused rather than
     followed into a 404.
+
+    An ``action`` that refuses puts its sentence back on the confirmation.
     """
-    if request.method != "POST":
+
+    def confirmation(refusal: str = "", status: int = 200) -> HttpResponse:
         return render_page(
             request,
             ConfirmPage(
                 title=title,
-                message=message,
+                message=f"{refusal} {message}" if refusal else message,
                 details=details,
                 post_url=request.get_full_path(),
                 csrf_token=get_token(request),
@@ -58,8 +62,18 @@ def confirm_and_apply(
                 confirm_label=confirm_label,
             ),
             title=title,
+            status=status,
         )
-    action()
+
+    if request.method != "POST":
+        return confirmation()
+    try:
+        action()
+    except ValidationError as refusal:
+        #: The service refuses on state, and state moves: another tab
+        #: may have taken the sibling this removal counted on. A 500
+        #: would read as our fault rather than as a stale page.
+        return confirmation(refusal.messages[0], status=409)
     return redirect(
         return_url(
             request,
