@@ -12,11 +12,13 @@ from django.utils.timezone import now
 
 from games.models import (
     Device,
+    Edition,
     FilterPreset,
     Game,
     Platform,
     PlayEvent,
     Purchase,
+    Release,
     Session,
 )
 from games.signals import recalculate_playtime
@@ -26,6 +28,8 @@ from games.signals import recalculate_playtime
 #: and only its projector writes it.
 REMOVABLE_MODELS: tuple[type[Model], ...] = (
     Game,
+    Edition,
+    Release,
     Platform,
     Device,
     Session,

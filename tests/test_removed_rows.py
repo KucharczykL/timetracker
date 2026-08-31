@@ -8,6 +8,7 @@ import pytest
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 
+from games.catalog_writes import PrivateGameGraph
 from games.forms import GameForm, PlatformForm
 from games.models import Device, Edition, Game, Platform, Release
 
@@ -33,6 +34,19 @@ def remove_row(instance):
     type(instance).objects.filter(pk=instance.pk).update(removed_at=REMOVED)
     instance.refresh_from_db()
     return instance
+
+
+def restore_row(instance):
+    type(instance).objects.filter(pk=instance.pk).update(removed_at=None)
+    instance.refresh_from_db()
+    return instance
+
+
+def make_graph(library, name="Baldur's Gate 3") -> PrivateGameGraph:
+    game = make_game(library, name=name)
+    edition = Edition.objects.create(game=game, is_default=True)
+    release = Release.objects.create(edition=edition, is_default=True)
+    return PrivateGameGraph(game=game, edition=edition, release=release)
 
 
 # --- the row leaves every library-scoped read --------------------------------
@@ -94,7 +108,7 @@ def test_alive_is_what_the_plain_manager_adds(owned_library):
     assert list(Game.objects.alive()) == [live]
 
 
-# --- Edition and Release inherit it, having no column of their own -----------
+# --- a child holds its own mark, under parents that hold theirs --------------
 
 
 def test_the_editions_of_a_removed_game_leave_with_it(owned_library):
@@ -113,6 +127,67 @@ def test_the_editions_of_a_removed_game_leave_with_it(owned_library):
     assert not Release.objects.visible_to(owned_library).exists()
     assert Edition.objects.filter(pk=edition.pk).exists()
     assert Release.objects.filter(pk=release.pk).exists()
+
+
+def test_a_removed_edition_takes_its_releases_with_it(owned_library):
+    graph = make_graph(owned_library)
+
+    remove_row(graph.edition)
+
+    assert not Edition.objects.for_library(owned_library).exists()
+    assert not Release.objects.for_library(owned_library).exists()
+    assert not Release.objects.visible_to(owned_library).exists()
+    assert Game.objects.for_library(owned_library).get() == graph.game
+    assert Release.objects.filter(pk=graph.release.pk).exists()
+
+
+def test_a_removed_release_leaves_its_edition_where_it_was(owned_library):
+    graph = make_graph(owned_library)
+
+    remove_row(graph.release)
+
+    assert not Release.objects.for_library(owned_library).exists()
+    assert Edition.objects.for_library(owned_library).get() == graph.edition
+    assert Game.objects.for_library(owned_library).get() == graph.game
+    assert Release.objects.filter(pk=graph.release.pk).exists()
+
+
+def test_restoring_a_game_leaves_a_separately_removed_child_out(owned_library):
+    """Two marks, two answers. The child keeps its own."""
+    graph = make_graph(owned_library)
+    second = Edition.objects.create(game=graph.game)
+    remove_row(graph.edition)
+    remove_row(graph.game)
+
+    restore_row(graph.game)
+
+    assert Edition.objects.for_library(owned_library).get() == second
+    assert not Release.objects.for_library(owned_library).exists()
+    assert Release.objects.filter(pk=graph.release.pk).exists()
+
+
+def test_a_removed_child_stays_for_the_plain_manager(owned_library):
+    graph = make_graph(owned_library)
+    remove_row(graph.edition)
+    remove_row(graph.release)
+
+    assert Edition.objects.count() == 1
+    assert Release.objects.count() == 1
+    assert list(Edition.objects.alive()) == []
+    assert list(Release.objects.alive()) == []
+
+
+def test_removing_a_child_in_one_library_leaves_the_other_alone(
+    owned_library, other_library
+):
+    mine = make_graph(owned_library, name="Mine")
+    theirs = make_graph(other_library, name="Theirs")
+
+    remove_row(mine.edition)
+
+    assert not Edition.objects.for_library(owned_library).exists()
+    assert Edition.objects.for_library(other_library).get() == theirs.edition
+    assert Release.objects.for_library(other_library).get() == theirs.release
 
 
 # --- the name comes back with the row gone -----------------------------------

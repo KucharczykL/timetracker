@@ -57,15 +57,23 @@ class LibraryOwnedQuerySet(models.QuerySet):
 class RemovableMixin:
     """The row stays; the reads skip it.
 
-    `alive()` asks about this row only. A parent's own removal is a
-    condition of `for_library()`, because a child keeps no stamp.
+    `alive()` asks about this row and about every row named in
+    `ancestor_marks`, because a catalog child sits under rows that
+    hold a mark of their own. A queryset states the path once, thus
+    a new level between two models is one edit.
 
     A mixin rather than a queryset: two queryset bases give
     django-stubs two `as_manager` return types to disagree over.
     """
 
+    #: Paths to the rows whose removal also hides this one.
+    ancestor_marks: tuple[str, ...] = ()
+
     def alive(self):
-        return self.filter(removed_at__isnull=True)
+        conditions = {"removed_at__isnull": True} | {
+            f"{path}__removed_at__isnull": True for path in self.ancestor_marks
+        }
+        return self.filter(**conditions)
 
 
 class RemovableLibraryQuerySet(RemovableMixin, LibraryOwnedQuerySet):
@@ -458,29 +466,41 @@ class Platform(ReferencedRow):
         super().save(*args, **kwargs)
 
 
-class EditionQuerySet(models.QuerySet):
-    """Removal is inherited from Game.
+class EditionQuerySet(RemovableMixin, models.QuerySet):
+    """An Edition holds a mark, under a Game that holds one.
 
-    An Edition has no visibility of its own.
+    A removed Game hides its Editions. An Edition keeps its own
+    mark through that, thus restoring the Game shows back only the
+    Editions nobody removed.
     """
 
+    ancestor_marks = ("game",)
+
     def for_library(self, library):
-        return self.filter(game__library=library, game__removed_at__isnull=True)
+        return self.filter(game__library=library).alive()
 
     def visible_to(self, library):
         return self.filter(
-            Q(game__library__isnull=True) | Q(game__library=library),
-            game__removed_at__isnull=True,
-        )
+            Q(game__library__isnull=True) | Q(game__library=library)
+        ).alive()
 
 
-class Edition(models.Model):
+class Edition(ReferencedRow):
     class Meta:
         constraints = (
+            #: A removed row holds no slot.
             models.UniqueConstraint(
                 fields=("game",),
-                condition=Q(is_default=True),
+                condition=Q(is_default=True) & Q(removed_at__isnull=True),
                 name="unique_default_edition_per_game",
+            ),
+        )
+        indexes = (
+            #: The live Editions of one Game.
+            models.Index(
+                fields=("game",),
+                condition=Q(removed_at__isnull=True),
+                name="live_edition_per_game_idx",
             ),
         )
 
@@ -492,31 +512,42 @@ class Edition(models.Model):
         related_name="editions",
     )
     is_default = models.BooleanField(default=False, editable=False)
+    #: Set instead of destroying the row.
+    removed_at = models.DateTimeField(
+        null=True, blank=True, default=None, editable=False
+    )
 
 
-class ReleaseQuerySet(models.QuerySet):
-    """Removal is inherited from Game."""
+class ReleaseQuerySet(RemovableMixin, models.QuerySet):
+    """A Release holds a mark, under two rows that hold one."""
+
+    ancestor_marks = ("edition", "edition__game")
 
     def for_library(self, library):
-        return self.filter(
-            edition__game__library=library,
-            edition__game__removed_at__isnull=True,
-        )
+        return self.filter(edition__game__library=library).alive()
 
     def visible_to(self, library):
         return self.filter(
-            Q(edition__game__library__isnull=True) | Q(edition__game__library=library),
-            edition__game__removed_at__isnull=True,
-        )
+            Q(edition__game__library__isnull=True) | Q(edition__game__library=library)
+        ).alive()
 
 
-class Release(models.Model):
+class Release(ReferencedRow):
     class Meta:
         constraints = (
+            #: A removed row holds no slot.
             models.UniqueConstraint(
                 fields=("edition",),
-                condition=Q(is_default=True),
+                condition=Q(is_default=True) & Q(removed_at__isnull=True),
                 name="unique_default_release_per_edition",
+            ),
+        )
+        indexes = (
+            #: The live Releases of one Edition.
+            models.Index(
+                fields=("edition",),
+                condition=Q(removed_at__isnull=True),
+                name="live_release_per_edition_idx",
             ),
         )
 
@@ -623,6 +654,10 @@ class Release(models.Model):
         serialize=False,
         db_persist=True,
         editable=False,
+    )
+    #: Set instead of destroying the row.
+    removed_at = models.DateTimeField(
+        null=True, blank=True, default=None, editable=False
     )
 
     def clean(self):

@@ -35,14 +35,27 @@ that row.
 go through these two methods. A list, a form, a filter and an API response do
 not each apply the exclusion.
 
-`Edition` and `Release` have no `removed_at` column. They also have no
-visibility of their own. Their querysets read the column of the parent `Game`.
+`Edition` and `Release` each hold a `removed_at` of their own, and each reads
+its ancestors' as well: an Edition is visible while neither it nor its `Game` is
+removed, and a Release while neither it, nor its `Edition`, nor that Game is. A
+child keeps its own mark through a parent's, thus restoring a Game shows back
+only the children nobody removed. A partial index on each parent key,
+conditional on `removed_at IS NULL`, serves the read for one parent's live
+children.
 
 Each uniqueness constraint on `Game`, on `Platform` and on `FilterPreset` has
 the condition `removed_at IS NULL`. A removed row is not in the library. Thus
 it must not prevent the entry of the same name again. `Platform.clean()`
 applies the same condition, so the message to the user agrees with the
 constraint.
+
+The default slot obeys the same rule. One Game holds one default Edition and
+one Edition holds one default Release, and both constraints carry
+`removed_at IS NULL` as well. A removed default holds no slot, thus the next
+write puts a new default in its place. `save_private_game()` looks the child up
+by that same condition, and not by `alive()`: `alive()` reads the ancestors'
+marks too, so under a removed Game it would miss the live default and write a
+second one, which is what the constraint refuses.
 
 The conditions have one effect that is easy to miss. Django does not validate a
 conditional constraint in a form when the condition names an excluded field.

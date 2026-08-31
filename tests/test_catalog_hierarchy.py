@@ -386,3 +386,34 @@ def test_temporal_schema_does_not_expand_comparison_choices(model):
 
     with pytest.raises(FilterError):
         _comparison_group_for(Game, "original_release_date_lower")
+
+
+def test_a_catalog_child_holds_a_mark_of_its_own():
+    """#967 removes one of many; the mark is where it lands."""
+    for model in (Edition, Release):
+        field = model._meta.get_field("removed_at")
+        assert (field.null, field.blank, field.default, field.editable) == (
+            True,
+            True,
+            None,
+            False,
+        )
+
+
+def _index_named(model, name):
+    return next(index for index in model._meta.indexes if index.name == name)
+
+
+def test_a_catalog_child_indexes_the_live_children_of_one_parent():
+    """A list reads one parent's live children, and nothing else."""
+    edition_index = _index_named(Edition, "live_edition_per_game_idx")
+    release_index = _index_named(Release, "live_release_per_edition_idx")
+
+    assert (edition_index.fields, edition_index.condition) == (
+        ["game"],
+        models.Q(removed_at__isnull=True),
+    )
+    assert (release_index.fields, release_index.condition) == (
+        ["edition"],
+        models.Q(removed_at__isnull=True),
+    )

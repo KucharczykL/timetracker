@@ -21,7 +21,7 @@ from typing import (
 from django.db import models
 from pydantic import AfterValidator, ConfigDict, with_config
 
-from games.models import Device, Game, Platform
+from games.models import Device, Game, Platform, Release
 from timetracker.uuidv7 import UUIDv7ParseError, parse_uuidv7
 
 type ReferenceKindName = str  # "catalog.game"
@@ -152,6 +152,10 @@ class ReferenceKindRegistry:
     def __contains__(self, name: ReferenceKindName) -> bool:
         return name in self._by_name
 
+    def __iter__(self) -> Iterator[ReferenceKind[Any]]:
+        """Every registered kind, for a caller checking coverage."""
+        return iter(self._by_name.values())
+
 
 def _capture_device(device: Device) -> Reference:
     return Reference(
@@ -174,6 +178,22 @@ def _capture_platform(platform: Platform) -> Reference:
         id=str(platform.pk),
         label=platform.name,
         detail=platform.group,
+    )
+
+
+def _capture_release(release: Release) -> Reference:
+    """A Release has no words of its own.
+
+    The label is the Game's name, thus a reader of a recorded
+    reference sees the work. The detail is the Platform, which is
+    what tells two Releases of one Game apart. Both are joins: a
+    caller capturing many selects them first.
+    """
+    return Reference(
+        kind="catalog.release",
+        id=str(release.pk),
+        label=release.edition.game.name,
+        detail="" if release.platform is None else release.platform.name,
     )
 
 
@@ -200,6 +220,14 @@ DEFAULT_REFERENCE_KINDS.register(
         name="catalog.platform",
         model=Platform,
         capture=_capture_platform,
+        resolution=Resolution.REQUIRED,
+    )
+)
+DEFAULT_REFERENCE_KINDS.register(
+    ReferenceKind(
+        name="catalog.release",
+        model=Release,
+        capture=_capture_release,
         resolution=Resolution.REQUIRED,
     )
 )

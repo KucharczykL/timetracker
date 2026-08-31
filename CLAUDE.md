@@ -158,9 +158,10 @@ docs/           — Additional documentation
 - **FilterPreset** — saved filter config; `mode` (games/sessions/purchases/playevents), `find_filter`, `object_filter`, `ui_options` (all JSON). Follows Stash's SavedFilter pattern
 - **PlayerGame** — the first projection: one row per catalog game a library tracks, written only by the `PlayerGames` projector. Its `removed_at` is the projector's, stated by a `RemovePlayerGame` command, and separate from the catalog row's. It states the library's `status` (the six `PlayerGameStatus` words) and `mastered`, and since #678 D2 it is the only place either is stated or read. Both `UUIDv7Field` defaults are opted out (the pk is the event's `aggregate_id`); `game` is `RESTRICT`, so a projection row is never collateral
 
-**Nothing a user removes is destroyed** (#944). The seven removable models —
-Game, Platform, Device, Session, PlayEvent, Purchase, FilterPreset — each carry a
-nullable `removed_at`, listed in `REMOVABLE_MODELS` in `games/removal.py`.
+**Nothing a user removes is destroyed** (#944). The nine removable models —
+Game, Edition, Release, Platform, Device, Session, PlayEvent, Purchase,
+FilterPreset — each carry a nullable `removed_at`, listed in `REMOVABLE_MODELS`
+in `games/removal.py`.
 `remove(instance)` stamps it, `restore(instance)` clears it, and both use an
 `UPDATE` rather than `save()`, so a stamp revalidates nothing and fires no
 `post_save`. What a signal would have done, `_AFTER_STAMP` does by hand: a
@@ -168,7 +169,9 @@ removed Game recounts its purchases, a removed Session recalculates the
 playtime. `for_library()`/`visible_to()` call `.alive()`, so a removed row
 leaves every list, form, filter and API response at once; the plain manager
 still sees it. A Purchase is live while any of its games is, or while it names
-none. Only a whole-library purge destroys anything.
+none. An Edition and a Release read their ancestors' marks as well as their own,
+so a removed Game hides both and restoring it leaves a separately removed child
+out (#966). Only a whole-library purge destroys anything.
 
 **A multi-game Purchase is an *unsplittable* bundle** — one price, whole-purchase
 refund (e.g. a Humble Bundle). Independently-refundable multi-item orders (e.g. a

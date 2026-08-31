@@ -11,9 +11,12 @@ from io import StringIO
 from typing import TypedDict
 
 import pytest
+from django.apps import apps
 from django.core.management import call_command
 from django.db import transaction
+from django.db.models import Model
 from django.db.models.deletion import RestrictedError
+from django.db.models.signals import pre_delete
 from pydantic import ConfigDict, with_config
 
 from games.commands.playergame import TrackGame
@@ -38,6 +41,7 @@ from games.models import (
     PlayerGame,
     PlayEvent,
     Purchase,
+    ReferencedRow,
     Release,
     Session,
     UserLibraryPreferences,
@@ -51,6 +55,7 @@ from games.retention import (
     reference_count,
     resolve_reference,
 )
+from games.signals import refuse_to_delete_a_row_an_event_references
 
 pytestmark = [
     pytest.mark.django_db(transaction=True),
@@ -112,6 +117,15 @@ def platform(owned_library):
 def device(owned_library):
     return Device.objects.create(
         library=owned_library, name="Steam Deck", type=Device.HANDHELD
+    )
+
+
+@pytest.fixture
+def release(game, platform):
+    return Release.objects.create(
+        edition=Edition.objects.create(game=game, is_default=True),
+        is_default=True,
+        platform=platform,
     )
 
 
@@ -391,6 +405,15 @@ def test_a_removed_row_still_resolves(owned_library, game):
     assert resolve_reference(reference) == game
 
 
+def test_a_removed_release_still_resolves(owned_library, release):
+    reference = name_in_an_event(owned_library, release)
+
+    remove(release)
+
+    assert resolve_reference(reference) == release
+    assert not Release.objects.for_library(owned_library).exists()
+
+
 def test_a_live_row_resolves(owned_library, platform):
     reference = name_in_an_event(owned_library, platform)
 
@@ -436,6 +459,37 @@ def test_a_cascade_that_would_take_a_referenced_row_is_refused(owned_library, ga
         owned_library.user.delete()
 
 
+def test_a_raw_delete_of_a_referenced_release_is_refused(owned_library, release):
+    name_in_an_event(owned_library, release)
+
+    with pytest.raises(ReferencedRowDeletion, match="games.removal.remove"):
+        release.delete()
+
+    assert Release.objects.filter(pk=release.pk).exists()
+
+
+def test_a_cascade_that_would_take_a_referenced_release_is_refused(
+    owned_library, release
+):
+    """The parent is unreferenced; the child is not."""
+    name_in_an_event(owned_library, release)
+
+    with pytest.raises(ReferencedRowDeletion):
+        release.edition.game.delete()
+
+    assert Release.objects.filter(pk=release.pk).exists()
+
+
+def test_an_edition_no_kind_captures_still_deletes(owned_library, release):
+    """No kind, thus no event can name it, thus nothing to keep."""
+    edition_id = release.edition_id
+
+    release.delete()
+    Edition.objects.get(pk=edition_id).delete()
+
+    assert not Edition.objects.filter(pk=edition_id).exists()
+
+
 # --- except during a whole-library purge -------------------------------------
 
 
@@ -451,6 +505,22 @@ def test_purging_a_library_takes_its_referenced_rows(owned_user, owned_library, 
 
     assert not Game.objects.filter(pk=game.pk).exists()
     assert not LibraryEvent.objects.exists()
+    assert not LibraryEventReference.objects.exists()
+
+
+def test_purging_a_library_takes_its_referenced_releases(
+    owned_user, owned_library, release
+):
+    name_in_an_event(owned_library, release)
+
+    call_command(
+        "purge_user_library",
+        user=owned_user.username,
+        confirm=owned_user.username,
+        stdout=StringIO(),
+    )
+
+    assert not Release.objects.filter(pk=release.pk).exists()
     assert not LibraryEventReference.objects.exists()
 
 
@@ -527,3 +597,54 @@ def test_an_evidence_only_kind_is_free_to_go(owned_library, device):
     assert reference_count(device, kinds=evidence_only) == 1
     assert must_be_retained(device)
     assert not must_be_retained(device, kinds=evidence_only)
+
+
+# --- nothing loses the guard by omission -------------------------------------
+
+#: A ReferencedRow no event can name.
+#:
+#: An Edition has no kind, so the guard permits its delete rather
+#: than asking a question the registry cannot answer. Adding a
+#: model here says an event will never name one of its rows.
+NO_KIND_BY_DESIGN = frozenset({Edition})
+
+
+def _referenced_rows() -> set[type[Model]]:
+    return {
+        model
+        for model in apps.get_models()
+        if issubclass(model, ReferencedRow) and not model._meta.abstract
+    }
+
+
+def test_a_referenced_row_has_a_kind_or_is_exempt():
+    """The blanket catch in the guard is what this holds shut.
+
+    `refuse_to_delete_a_referenced_row` answers an unmapped model by
+    permitting the delete. That is right for a row no event names
+    and wrong for one somebody forgot to register, so the two cases
+    are told apart here rather than at run time.
+    """
+    registered = {kind.model for kind in DEFAULT_REFERENCE_KINDS}
+
+    assert _referenced_rows() - NO_KIND_BY_DESIGN == registered
+
+
+def test_every_kind_keeps_its_guard_on_a_cascade():
+    """`ReferencedRow.delete()` misses a cascade and a bulk delete.
+
+    The receiver is the backstop for both, and its senders are
+    written out one by one.
+    """
+    for kind in DEFAULT_REFERENCE_KINDS:
+        receivers = pre_delete._live_receivers(sender=kind.model)[0]
+        assert refuse_to_delete_a_row_an_event_references in receivers, kind.name
+
+
+def test_an_exempt_row_is_still_a_referenced_row():
+    """Exempt from the kind, not from the base class.
+
+    An Edition sits under the same delete() as its siblings, so
+    giving it a kind later needs no change to the model.
+    """
+    assert NO_KIND_BY_DESIGN <= _referenced_rows()
