@@ -13,9 +13,13 @@ markup in `common/components/temporal_field.py`.
 A mutable dataclass. It holds a kind, and for each endpoint a year, a month, a
 day, a decade start year, and a qualifier.
 
-`TemporalDraft.from_value(value)` reads a stored value, and `to_value()` builds
-one. `to_value()` raises `TemporalValueParseError` on a combination the grammar
-refuses, and the field turns that into a field error with a sentence.
+`TemporalDraft.from_value(value)` reads a stored value, and `build()` builds one.
+`build()` raises `TemporalValueParseError` on a combination the grammar refuses,
+and the field turns that into a field error with a sentence.
+
+The kind is one of `Date`, `Range`, `Since`, `Until` and `Unknown`. `Since` opens
+the end and `Until` opens the start, thus an open endpoint needs no control of
+its own and every storable shape is reachable.
 
 The precision is derived, not stated: a filled day means day, else a filled month
 means month, else a filled year means year, else a filled decade means decade,

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import re
 from calendar import monthrange
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from enum import StrEnum
-from typing import Literal
+from typing import Final, Literal, assert_never
 
 from django.core.exceptions import ValidationError
 from django.db import NotSupportedError, models
@@ -646,6 +646,146 @@ def _build_decade(
             "A decade starts on a ten-year boundary, such as 1980.",
             code="invalid_decade",
         ) from error
+
+
+class TemporalDraftKind(StrEnum):
+    """The shape a person picks. The precision is derived."""
+
+    DATE = "date"
+    RANGE = "range"
+    SINCE = "since"
+    UNTIL = "until"
+    UNKNOWN = "unknown"
+
+
+#: Ordered as the select offers them.
+TEMPORAL_DRAFT_KIND_LABELS: Final[dict[TemporalDraftKind, str]] = {
+    TemporalDraftKind.DATE: "Date",
+    TemporalDraftKind.RANGE: "Range",
+    TemporalDraftKind.SINCE: "Since",
+    TemporalDraftKind.UNTIL: "Until",
+    TemporalDraftKind.UNKNOWN: "Unknown",
+}
+
+
+def temporal_qualifier(
+    *, approximate: bool, uncertain: bool
+) -> TemporalQualifier | None:
+    """The one qualifier two checkboxes name."""
+    if approximate and uncertain:
+        return TemporalQualifier.BOTH
+    if approximate:
+        return TemporalQualifier.APPROXIMATE
+    if uncertain:
+        return TemporalQualifier.UNCERTAIN
+    return None
+
+
+def _says_approximate(qualifier: TemporalQualifier | None) -> bool:
+    return qualifier in (TemporalQualifier.APPROXIMATE, TemporalQualifier.BOTH)
+
+
+def _says_uncertain(qualifier: TemporalQualifier | None) -> bool:
+    return qualifier in (TemporalQualifier.UNCERTAIN, TemporalQualifier.BOTH)
+
+
+@dataclass(slots=True)
+class TemporalDraft:
+    """A whole value's dimensions, held apart so a form can change one.
+
+    ``start`` and ``end`` are positional. A ``DATE`` draft states its
+    parts in ``start`` and leaves ``end`` empty; ``SINCE`` opens the end
+    and ``UNTIL`` opens the start, so no separate openness control is
+    needed and every shape is reachable through the kind alone.
+    """
+
+    kind: TemporalDraftKind = TemporalDraftKind.UNKNOWN
+    start: TemporalEndpointDraft = field(default_factory=TemporalEndpointDraft)
+    end: TemporalEndpointDraft = field(default_factory=TemporalEndpointDraft)
+
+    @property
+    def is_approximate(self) -> bool:
+        """Either endpoint makes the whole value approximate."""
+        return _says_approximate(self.start.qualifier) or _says_approximate(
+            self.end.qualifier
+        )
+
+    @property
+    def is_uncertain(self) -> bool:
+        """Either endpoint makes the whole value uncertain."""
+        return _says_uncertain(self.start.qualifier) or _says_uncertain(
+            self.end.qualifier
+        )
+
+    @classmethod
+    def from_value(cls, value: TemporalValue | None) -> TemporalDraft:
+        """The dimensions a stored value states."""
+        if value is None or value.is_unknown:
+            return cls()
+        if not value.is_range:
+            return cls(
+                kind=TemporalDraftKind.DATE,
+                start=TemporalEndpointDraft.from_value(value),
+            )
+        start, end = value.start, value.end
+        assert start is not None and end is not None
+        return cls(
+            kind=_range_draft_kind(start, end),
+            start=TemporalEndpointDraft.from_value(start.value),
+            end=TemporalEndpointDraft.from_value(end.value),
+        )
+
+    def build(self) -> TemporalValue:
+        """The one value these dimensions state."""
+        match self.kind:
+            case TemporalDraftKind.UNKNOWN:
+                return TemporalValue.unknown()
+            case TemporalDraftKind.DATE:
+                built = self.start.build()
+                return TemporalValue.unknown() if built is None else built
+            case TemporalDraftKind.SINCE:
+                return TemporalValue.range(
+                    start=_known_endpoint(self.start), end=TemporalEndpoint.open()
+                )
+            case TemporalDraftKind.UNTIL:
+                return TemporalValue.range(
+                    start=TemporalEndpoint.open(), end=_known_endpoint(self.end)
+                )
+            case TemporalDraftKind.RANGE:
+                return TemporalValue.range(
+                    start=_endpoint_or_unknown(self.start),
+                    end=_endpoint_or_unknown(self.end),
+                )
+            case unhandled:
+                assert_never(unhandled)
+
+
+def _range_draft_kind(
+    start: TemporalEndpoint, end: TemporalEndpoint
+) -> TemporalDraftKind:
+    if end.is_open:
+        return TemporalDraftKind.SINCE
+    if start.is_open:
+        return TemporalDraftKind.UNTIL
+    return TemporalDraftKind.RANGE
+
+
+def _known_endpoint(draft: TemporalEndpointDraft) -> TemporalEndpoint:
+    """An open range still needs a date at its other end."""
+    built = draft.build()
+    if built is None:
+        raise TemporalValueParseError(
+            "An open range needs a date at its other end.",
+            code="invalid_range",
+        )
+    return TemporalEndpoint.known(built)
+
+
+def _endpoint_or_unknown(draft: TemporalEndpointDraft) -> TemporalEndpoint:
+    built = draft.build()
+    if built is None:
+        return TemporalEndpoint.unknown()
+    return TemporalEndpoint.known(built)
 
 
 def _normalize_temporal_model_value(value: object) -> TemporalValue | None:
