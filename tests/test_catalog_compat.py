@@ -274,3 +274,45 @@ def test_legacy_save_writes_both_years_for_a_new_game(owned_library):
     stored = Game.objects.get(pk=game.pk)
     assert stored.original_release_date == TemporalValue.from_year(2001)
     assert stored_release(game).release_date == TemporalValue.from_year(2002)
+
+
+def test_legacy_save_keeps_the_year_of_a_stored_decade(owned_library):
+    create_form = game_form(library=owned_library)
+    assert create_form.is_valid()
+    game = save_legacy_game_form(create_form)
+    decade = TemporalValue.from_decade(1990)
+    Game.objects.filter(pk=game.pk).update(
+        original_release_date=decade, original_year_released=1990
+    )
+
+    edit_form = game_form(
+        library=owned_library,
+        instance=Game.objects.get(pk=game.pk),
+        original_year_released="2004",
+    )
+    assert edit_form.is_valid()
+    save_legacy_game_form(edit_form)
+
+    stored = Game.objects.get(pk=game.pk)
+    assert stored.original_release_date == decade
+    assert stored.original_year_released == 1990
+
+
+def test_legacy_save_keeps_the_year_of_a_stored_range(owned_library):
+    create_form = game_form(library=owned_library)
+    assert create_form.is_valid()
+    game = save_legacy_game_form(create_form)
+    span = TemporalValue.parse("2001-05/2003-06")
+    Release.objects.filter(pk=stored_release(game).pk).update(release_date=span)
+    Game.objects.filter(pk=game.pk).update(year_released=2001)
+
+    edit_form = game_form(
+        library=owned_library,
+        instance=Game.objects.get(pk=game.pk),
+        year_released="2005",
+    )
+    assert edit_form.is_valid()
+    save_legacy_game_form(edit_form)
+
+    assert stored_release(game).release_date == span
+    assert Game.objects.get(pk=game.pk).year_released == 2001

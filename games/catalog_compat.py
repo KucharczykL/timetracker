@@ -60,12 +60,15 @@ def _reconcile_year(
     """The form owns a bare year, and nothing richer.
 
     A stored value the persisted year already states is the form's
-    to rewrite. Anything else stays, and the year follows it.
+    to rewrite. Anything else stays, and the year follows it. A
+    decade and a range state no year, thus theirs stands as it is:
+    the form owns neither the value nor the column beside it.
     """
     if stored is not None and not (
         persisted_year is not None and stored == TemporalValue.from_year(persisted_year)
     ):
-        return _LegacyYear(value=stored, year=stored.year)
+        kept = stored.year if stored.has_known_year else persisted_year
+        return _LegacyYear(value=stored, year=kept)
     posted = None if posted_year is None else TemporalValue.from_year(posted_year)
     return _LegacyYear(value=posted, year=posted_year)
 

@@ -94,9 +94,9 @@ where it owns one: where the stored value is absent, or is the bare year the
 persisted integer column already states.
 
 Anything richer — a month, a day, a decade, a range, a qualifier — stays as it
-is, and the integer column is written from it instead. A range with an unknown
-start has no year, so the integer column is null, which is what an unknown
-start means to a legacy reader.
+is, and the integer column is written from it where it states a year. A decade
+and a range state none, so there the stored integer stands: a form that does
+not own the value does not own the column beside it either.
 
 The comparison is against the *persisted* integer, never the posted one.
 Against the posted one, an ordinary year edit would read as a disagreement and
