@@ -585,7 +585,7 @@ def _game_header(
                 [
                     Safe("&nbsp;"),
                     Popover(
-                        popover_content="Original release year",
+                        popover_content="Release year",
                         wrapped_classes="text-type-subheading text-slate-500",
                         id="popover-year",
                         children=[str(game.year_released)],
