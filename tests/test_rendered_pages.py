@@ -394,9 +394,7 @@ class RenderedPagesTest(TestCase):
     def test_view_game_says_unknown_for_no_original_release_date(self):
         html = self.client.get(self.game.get_absolute_url()).content.decode()
 
-        self.assertIn(
-            '<span class="text-black dark:text-slate-300">Unknown</span>', html
-        )
+        self.assertIn('<span class="text-heading">Unknown</span>', html)
 
     def test_view_game_uses_play_event_row_element(self):
         game = Game.objects.create(

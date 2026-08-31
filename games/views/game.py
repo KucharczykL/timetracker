@@ -102,8 +102,8 @@ from games.writes.playergame import new_correlation_id
 
 WIKIDATA_CONFLICT_MESSAGE = "This Wikidata entity ID already belongs to another game."
 
-#: The value half of a meta row, against the label's grey.
-META_VALUE_CLASS = "text-black dark:text-slate-300"
+#: The value half of a meta row, against the label's body.
+META_VALUE_CLASS = "text-heading"
 #: No Platform is a stated fact, not a blank.
 UNSPECIFIED_PLATFORM = "Unspecified"
 
@@ -664,7 +664,7 @@ def _game_header(
         ),
     ]
     metadata = Div(
-        class_="flex flex-col mb-6 text-gray-600 dark:text-slate-400 gap-y-4 text-type-body",
+        class_="flex flex-col mb-6 text-body gap-y-4 text-type-body",
     )[
         _meta_row(
             "Original release",

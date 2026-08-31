@@ -466,8 +466,8 @@ from games.reads.catalog_hierarchy import EditionEntry, game_hierarchy
 Beneath `WIKIDATA_CONFLICT_MESSAGE` (line 101), add:
 
 ```python
-#: The value half of a meta row, against the label's grey.
-META_VALUE_CLASS = "text-black dark:text-slate-300"
+#: The value half of a meta row, against the label's body.
+META_VALUE_CLASS = "text-heading"
 #: No Platform is a stated fact, not a blank.
 UNSPECIFIED_PLATFORM = "Unspecified"
 ```
@@ -541,7 +541,9 @@ def _game_header(
 ```
 
 Delete the `grey_value_class = "text-black dark:text-slate-300"` line (578) — the
-module constant replaces it — and replace the whole `title_span` assignment
+module constant replaces it, and states the pair in semantic tokens as
+[Visual conventions](../../visual-conventions.md) §1 asks — and replace the whole
+`title_span` assignment
 (579-598) with:
 
 ```text
@@ -560,7 +562,7 @@ rows:
 
 ```text
     metadata = Div(
-        class_="flex flex-col mb-6 text-gray-600 dark:text-slate-400 gap-y-4 text-type-body",
+        class_="flex flex-col mb-6 text-body gap-y-4 text-type-body",
     )[
         _meta_row(
             "Original release",
