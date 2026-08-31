@@ -200,3 +200,86 @@ def remove_edition(*, edition: Edition, library: UserLibrary) -> None:
     if stored.is_default:
         raise ValidationError(DEFAULT_EDITION_HELD)
     remove(stored)
+
+
+def _live_releases(edition_id) -> QuerySet[Release]:
+    """One Edition's Releases, by their own mark."""
+    return Release.objects.filter(edition_id=edition_id, removed_at__isnull=True)
+
+
+def _clear_default_release(edition_id) -> None:
+    """The old default steps down before the new one stands."""
+    _live_releases(edition_id).filter(is_default=True).update(is_default=False)
+
+
+def _writable_release(release: Release, library: UserLibrary) -> Release:
+    """The live Release this library may write."""
+    stored_edition = _writable_edition(release.edition, library)
+    stored = _live_releases(stored_edition.pk).filter(pk=release.pk).first()
+    if stored is None:
+        raise ValidationError(REMOVED_RELEASE)
+    return stored
+
+
+@transaction.atomic
+def add_release(
+    *,
+    edition: Edition,
+    library: UserLibrary,
+    platform: Platform | None = None,
+    release_date: TemporalValue | None = None,
+    is_default: bool = False,
+) -> Release:
+    """Add one Release to a private Edition.
+
+    The same Platform and date twice give back the Release there:
+    two alike would say nothing that tells them apart.
+    """
+    stored_edition = _writable_edition(edition, library)
+    _refuse_foreign_platform(library.pk, platform)
+    standing = (
+        _live_releases(stored_edition.pk)
+        .filter(platform=platform, release_date=release_date)
+        .first()
+    )
+    becomes_default = (
+        is_default
+        or not _live_releases(stored_edition.pk).filter(is_default=True).exists()
+    )
+    if standing is not None:
+        if becomes_default and not standing.is_default:
+            _clear_default_release(stored_edition.pk)
+            standing.is_default = True
+            standing.save(update_fields=("is_default",))
+        return standing
+    if becomes_default:
+        _clear_default_release(stored_edition.pk)
+    return Release.objects.create(
+        edition=stored_edition,
+        platform=platform,
+        release_date=release_date,
+        is_default=becomes_default,
+    )
+
+
+@transaction.atomic
+def update_release(
+    *,
+    release: Release,
+    library: UserLibrary,
+    platform: Platform | None,
+    release_date: TemporalValue | None,
+    is_default: bool,
+) -> Release:
+    """State a Release's whole Platform, date and default mark."""
+    stored = _writable_release(release, library)
+    _refuse_foreign_platform(library.pk, platform)
+    if stored.is_default and not is_default:
+        raise ValidationError(DEMOTED_RELEASE)
+    if is_default and not stored.is_default:
+        _clear_default_release(stored.edition_id)
+    stored.platform = platform
+    stored.release_date = release_date
+    stored.is_default = is_default
+    stored.save(update_fields=("platform", "release_date", "is_default"))
+    return stored

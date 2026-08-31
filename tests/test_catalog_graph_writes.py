@@ -7,9 +7,16 @@ Releases. Every verb refuses a write it must not make.
 import pytest
 from django.core.exceptions import ValidationError
 
-from games.catalog_writes import add_edition, remove_edition, update_edition
-from games.models import Edition, Game
+from games.catalog_writes import (
+    add_edition,
+    add_release,
+    remove_edition,
+    update_edition,
+    update_release,
+)
+from games.models import Edition, Game, Platform, Release
 from games.removal import remove
+from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db
 
@@ -261,3 +268,214 @@ def test_remove_edition_refuses_another_librarys_edition(
 
     second.refresh_from_db()
     assert second.removed_at is None
+
+
+# --- add_release -------------------------------------------------------------
+
+
+@pytest.fixture
+def edition(owned_library, game):
+    return add_edition(game=game, library=owned_library, name="Original")
+
+
+def test_add_release_marks_the_first_release_default(owned_library, edition):
+    platform = Platform.objects.create(name="PC")
+
+    release = add_release(
+        edition=edition,
+        library=owned_library,
+        platform=platform,
+        release_date=TemporalValue.from_year(2000),
+    )
+
+    release.refresh_from_db()
+    assert release.is_default is True
+    assert release.platform == platform
+    assert release.release_date == TemporalValue.from_year(2000)
+
+
+def test_add_release_leaves_an_unset_platform_and_date_unset(owned_library, edition):
+    """Neither is inferred from the Game or from a sibling."""
+    add_release(
+        edition=edition,
+        library=owned_library,
+        platform=Platform.objects.create(name="PC"),
+        release_date=TemporalValue.from_year(2000),
+    )
+
+    second = add_release(edition=edition, library=owned_library)
+
+    second.refresh_from_db()
+    assert second.platform is None
+    assert second.release_date is None
+
+
+def test_add_release_repeated_gives_back_the_same_release(owned_library, edition):
+    platform = Platform.objects.create(name="PC")
+
+    first = add_release(
+        edition=edition,
+        library=owned_library,
+        platform=platform,
+        release_date=TemporalValue.from_year(2000),
+    )
+    again = add_release(
+        edition=edition,
+        library=owned_library,
+        platform=platform,
+        release_date=TemporalValue.from_year(2000),
+    )
+
+    assert again.pk == first.pk
+    assert Release.objects.filter(edition=edition).count() == 1
+
+
+def test_add_release_keeps_one_default_when_the_writer_promotes(owned_library, edition):
+    first = add_release(edition=edition, library=owned_library)
+
+    second = add_release(
+        edition=edition,
+        library=owned_library,
+        platform=Platform.objects.create(name="PC"),
+        is_default=True,
+    )
+
+    first.refresh_from_db()
+    assert (first.is_default, second.is_default) == (False, True)
+    assert Release.objects.filter(edition=edition, is_default=True).count() == 1
+
+
+def test_add_release_refuses_another_librarys_platform(
+    owned_library, other_library, edition
+):
+    foreign = Platform.objects.create(library=other_library, name="Foreign")
+
+    with pytest.raises(ValidationError, match="another library"):
+        add_release(edition=edition, library=owned_library, platform=foreign)
+
+    assert not Release.objects.filter(edition=edition).exists()
+
+
+def test_add_release_refuses_a_shared_games_edition(owned_library):
+    shared = Game.objects.create(name="Shared work")
+    shared_edition = Edition.objects.create(game=shared, is_default=True)
+
+    with pytest.raises(ValidationError, match="shared game"):
+        add_release(edition=shared_edition, library=owned_library)
+
+    assert not Release.objects.filter(edition=shared_edition).exists()
+
+
+def test_add_release_refuses_a_removed_edition(owned_library, game, edition):
+    add_edition(game=game, library=owned_library, name="Director's Cut")
+    update_edition(
+        edition=edition, library=owned_library, name="Original", is_default=True
+    )
+    remove(edition)
+
+    with pytest.raises(ValidationError, match="edition is removed"):
+        add_release(edition=edition, library=owned_library)
+
+
+# --- update_release ----------------------------------------------------------
+
+
+def test_update_release_states_the_whole_row(owned_library, edition):
+    platform = Platform.objects.create(name="PC")
+    release = add_release(
+        edition=edition,
+        library=owned_library,
+        platform=platform,
+        release_date=TemporalValue.from_year(2000),
+    )
+
+    updated = update_release(
+        release=release,
+        library=owned_library,
+        platform=None,
+        release_date=None,
+        is_default=True,
+    )
+
+    updated.refresh_from_db()
+    assert updated.pk == release.pk
+    assert updated.platform is None
+    assert updated.release_date is None
+
+
+def test_update_release_repeated_changes_nothing(owned_library, edition):
+    release = add_release(edition=edition, library=owned_library)
+
+    for _ in range(2):
+        update_release(
+            release=release,
+            library=owned_library,
+            platform=None,
+            release_date=TemporalValue.from_year(1999),
+            is_default=True,
+        )
+
+    assert Release.objects.filter(edition=edition).count() == 1
+    assert Release.objects.filter(edition=edition, is_default=True).count() == 1
+
+
+def test_update_release_promotion_steps_the_old_default_down(owned_library, edition):
+    first = add_release(edition=edition, library=owned_library)
+    second = add_release(
+        edition=edition,
+        library=owned_library,
+        platform=Platform.objects.create(name="PC"),
+    )
+
+    update_release(
+        release=second,
+        library=owned_library,
+        platform=second.platform,
+        release_date=None,
+        is_default=True,
+    )
+
+    first.refresh_from_db()
+    second.refresh_from_db()
+    assert (first.is_default, second.is_default) == (False, True)
+
+
+def test_update_release_refuses_to_leave_an_edition_without_a_default(
+    owned_library, edition
+):
+    first = add_release(edition=edition, library=owned_library)
+    add_release(
+        edition=edition,
+        library=owned_library,
+        platform=Platform.objects.create(name="PC"),
+    )
+
+    with pytest.raises(ValidationError, match="default release"):
+        update_release(
+            release=first,
+            library=owned_library,
+            platform=None,
+            release_date=None,
+            is_default=False,
+        )
+
+    first.refresh_from_db()
+    assert first.is_default is True
+
+
+def test_update_release_refuses_another_librarys_release(
+    owned_library, other_library, edition
+):
+    release = add_release(edition=edition, library=owned_library)
+
+    with pytest.raises(ValidationError, match="another library"):
+        update_release(
+            release=release,
+            library=other_library,
+            platform=None,
+            release_date=TemporalValue.from_year(1999),
+            is_default=True,
+        )
+
+    release.refresh_from_db()
+    assert release.release_date is None
