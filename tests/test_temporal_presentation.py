@@ -126,12 +126,35 @@ def test_a_range_says_each_endpoint(canonical: str, expected: str) -> None:
     assert present_temporal_value(value, presentation()) == expected
 
 
-def test_each_endpoint_keeps_its_own_qualifier() -> None:
-    value = TemporalValue.parse("1984~/1986?")
+@pytest.mark.parametrize(
+    ("canonical", "expected"),
+    [
+        ("1984~/1986?", "1984 (approximate) – 1986 (uncertain)"),
+        ("1984~/1986", "1984 (approximate) – 1986"),
+        ("1984%/1986", "1984 (approximate, uncertain) – 1986"),
+        ("1984/..", "since 1984"),
+        ("1984~/..", "since 1984 (approximate)"),
+    ],
+)
+def test_each_endpoint_keeps_its_own_qualifier(canonical: str, expected: str) -> None:
+    value = TemporalValue.parse(canonical)
 
-    words = present_temporal_value(value, presentation())
+    assert present_temporal_value(value, presentation()) == expected
 
-    assert words == "around 1984 – 1986 (uncertain)"
+
+def test_a_range_never_says_the_prefix_form() -> None:
+    """A prefix would read as a whole approximate range."""
+    value = TemporalValue.parse("1984~/1986")
+
+    assert not present_temporal_value(value, presentation()).startswith("around")
+
+
+def test_an_unsaved_canonical_string_reads_as_words() -> None:
+    assert present_temporal_value("1984-06~", presentation()) == "around June 1984"
+
+
+def test_an_unparseable_string_reads_as_unknown() -> None:
+    assert present_temporal_value("not a date", presentation()) == "Unknown"
 
 
 def test_temporal_text_holds_the_same_words() -> None:

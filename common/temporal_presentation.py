@@ -13,34 +13,55 @@ from timetracker.temporal import (
     TemporalPrecision,
     TemporalQualifier,
     TemporalValue,
+    TemporalValueParseError,
+    parse_temporal_value,
 )
+
+type StoredTemporal = TemporalValue | str | None
 
 UNKNOWN_TEXT = "Unknown"
 
 _APPROXIMATE_PREFIX = "around "
 _UNCERTAIN_SUFFIX = " (uncertain)"
+_APPROXIMATE_SUFFIX = " (approximate)"
+_BOTH_SUFFIX = " (approximate, uncertain)"
 _RANGE_JOINER = " – "
 
 
 def present_temporal_value(
-    value: TemporalValue | None, presentation: DateTimePresentation
+    value: StoredTemporal, presentation: DateTimePresentation
 ) -> str:
     """The words for ``value``, or ``Unknown``."""
-    if value is None or value.is_unknown:
+    stored = _as_temporal_value(value)
+    if stored is None or stored.is_unknown:
         return UNKNOWN_TEXT
-    if value.is_range:
-        return _present_range(value, presentation)
-    return _present_atomic(value, presentation)
+    if stored.is_range:
+        return _present_range(stored, presentation)
+    return _present_atomic(stored, presentation)
 
 
 def TemporalText(
-    value: TemporalValue | None,
+    value: StoredTemporal,
     presentation: DateTimePresentation,
     *,
     class_: str = "",
 ) -> Node:
     """The same words, as a placeable span."""
     return Span(class_=class_)[present_temporal_value(value, presentation)]
+
+
+def _as_temporal_value(value: StoredTemporal) -> TemporalValue | None:
+    """An unsaved string must not answer a 500.
+
+    The field installs no descriptor, so an assignment leaves the
+    canonical string on the instance until a save.
+    """
+    if value is None or isinstance(value, TemporalValue):
+        return value
+    try:
+        return parse_temporal_value(value)
+    except TemporalValueParseError:
+        return None
 
 
 def _present_atomic(value: TemporalValue, presentation: DateTimePresentation) -> str:
@@ -65,7 +86,23 @@ def _present_endpoint(
 ) -> str:
     if endpoint.value is None:
         return UNKNOWN_TEXT
-    return _present_atomic(endpoint.value, presentation)
+    value = endpoint.value
+    return _endpoint_qualified(_at_precision(value, presentation), value.qualifier)
+
+
+def _endpoint_qualified(words: str, qualifier: TemporalQualifier | None) -> str:
+    """Parentheses bind a qualifier to one endpoint.
+
+    ``around 1984 – 1986`` reads as a whole approximate range. A
+    suffix sits against the endpoint that carries it.
+    """
+    if qualifier is None:
+        return words
+    if qualifier is TemporalQualifier.APPROXIMATE:
+        return f"{words}{_APPROXIMATE_SUFFIX}"
+    if qualifier is TemporalQualifier.UNCERTAIN:
+        return f"{words}{_UNCERTAIN_SUFFIX}"
+    return f"{words}{_BOTH_SUFFIX}"
 
 
 def _qualified(words: str, qualifier: TemporalQualifier | None) -> str:

@@ -10,8 +10,11 @@ nothing, stores nothing, and adds no column.
 
 ## Two entry points
 
-`present_temporal_value(value, presentation)` takes a `TemporalValue | None` and
-a `DateTimePresentation`. It answers text.
+`present_temporal_value(value, presentation)` takes a `StoredTemporal` and a
+`DateTimePresentation`. It answers text. `StoredTemporal` admits a canonical
+string, because the field installs no descriptor and an unsaved assignment
+leaves a string on the instance. A string the parser refuses reads `Unknown`; a
+read path must not answer a page with a 500.
 
 `TemporalText(value, presentation, class_=…)` answers a `Node` that holds the
 same words. A page calls the node. A title attribute, a log line, or an API
@@ -56,9 +59,14 @@ A range presents both endpoints, each at its own precision and with its own
 words, joined by an en dash. An open start reads `until <end>`. An open end
 reads `since <start>`. An unknown endpoint reads `Unknown`.
 
-The primitive qualifies each endpoint separately, thus `1984/1986~` presents as
-two differently qualified endpoints. The entry controls of #964 write one pair
-of qualifiers. The presenter still reads a value that they cannot write.
+A qualifier in a range takes the suffix form, thus `1984~/1986?` reads
+`1984 (approximate) – 1986 (uncertain)`. The prefix form is for an atomic value
+only: `around 1984 – 1986` reads as one approximate range, which is a different
+statement from an approximate start.
+
+The primitive qualifies each endpoint separately. The entry controls of #964
+write one pair of qualifiers. The presenter still reads a value that they cannot
+write.
 
 ## Callers
 
