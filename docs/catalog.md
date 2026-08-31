@@ -103,6 +103,22 @@ A shared Game's graph is shown. The page says nothing about who may change it,
 because the page offers no control either way. #969 adds controls, and only for
 a private Game.
 
+## The section is a placeholder
+
+The `Releases` section states that it is under construction, on the page, where
+a reader sees it.
+
+`Edition` and `Release` are the words the schema needs. #782 normalizes IGDB
+into these two levels, and IGDB has them. They are not words a reader wants.
+Nothing a person makes names either one: a Purchase, a Session, a PlayEvent and
+a PlayerGame each name a Game, and the only foreign keys to an Edition or a
+Release come from `ExternalReference`. On 858 real Games the split has never
+once carried a fact — one Game, one Edition, one Release, 858 times.
+
+The section worth having states what a person did with each edition, not what
+the catalog holds. That needs a Session that names a Release, which #690 adds.
+This shape is replaced then, and the notice goes with it.
+
 The Game's own `original_release_date` stays on the Game, because it is a fact
 of the work rather than of one Release. The flattened Platform row and the
 flattened release year left with this reading; #889 takes the columns.

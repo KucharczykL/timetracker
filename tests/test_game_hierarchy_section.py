@@ -196,6 +196,25 @@ def test_game_detail_heads_a_lone_edition_that_states_its_own_name(library, read
     assert 'text-type-subheading text-heading">Gold</span>' in html
 
 
+def test_game_detail_says_the_releases_section_is_under_construction(library, reader):
+    """The shape is a placeholder, thus it says so."""
+    game = two_releases(library)
+
+    html = reader(game)
+
+    assert "Under construction." in html
+    assert "no playtime is shown here" in html
+
+
+def test_game_detail_says_nothing_under_construction_on_a_plain_game(library, reader):
+    """No section, no notice: an ordinary Game is finished."""
+    game = one_release(library, release_date=TemporalValue.from_year(1984))
+
+    html = reader(game)
+
+    assert "Under construction." not in html
+
+
 def test_game_detail_gives_each_release_table_its_own_caption_id(library, reader):
     """A caption id is hashed, thus two alike collide.
 

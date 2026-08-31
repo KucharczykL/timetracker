@@ -44,6 +44,14 @@ the Game, from a sibling Release, or from a display default.
 work. The flattened Platform row and the flattened release year are gone from the
 page. The columns stay in the database until #889.
 
+## The section is a placeholder
+
+The section states on the page that it is under construction. `Edition` and
+`Release` are schema words that #782 needs for IGDB. No reader wants them, and
+nothing a person makes names either one. The section worth having states the
+playtime of each edition. That needs a Session that names a Release, which #690
+adds. This shape is replaced then.
+
 ## Boundary
 
 The page offers no control, thus it says nothing about who may change the graph.

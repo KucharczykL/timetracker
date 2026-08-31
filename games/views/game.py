@@ -33,6 +33,7 @@ from common.components import (
     ModuleScript,
     NameWithIcon,
     Node,
+    P,
     PageHeading,
     Popover,
     PurchasePrice,
@@ -106,6 +107,11 @@ WIKIDATA_CONFLICT_MESSAGE = "This Wikidata entity ID already belongs to another 
 META_VALUE_CLASS = "text-heading"
 #: No Platform is a fact, not blank.
 UNSPECIFIED_PLATFORM = "Unspecified"
+#: Said on the page, because the shape is not final.
+RELEASES_UNDER_CONSTRUCTION = (
+    "Under construction. These are catalog facts only. A session cannot name "
+    "an edition yet, so no playtime is shown here and this layout will change."
+)
 
 
 def _save_game_form_or_add_wikidata_error(form: GameForm) -> Game | None:
@@ -645,7 +651,16 @@ def _edition_block(
 def _releases_section(
     entries: Sequence[EditionEntry], presentation: DateTimePresentation
 ) -> Node:
-    """What the header's two rows cannot say."""
+    """What the header's two rows cannot say.
+
+    A placeholder, and it says so on the page. `Edition` and
+    `Release` are the words the schema needs for IGDB, not words
+    a reader wants: nothing a person makes names either one, and
+    every one of 858 real Games holds exactly one of each. The
+    section worth having states the playtime of each edition,
+    which #690 makes readable by letting a Session name a
+    Release. This shape is replaced then.
+    """
     if _reads_plainly(entries):
         return Fragment()
     count = sum(len(entry.releases) for entry in entries)
@@ -653,6 +668,10 @@ def _releases_section(
     several = len(entries) > 1
     return Div(class_="mb-6 flex flex-col gap-4")[
         PageHeading(children=["Releases"], badge=str(count) if count else ""),
+        P(
+            class_="text-type-body text-warning bg-warning-soft "
+            "border border-warning-subtle rounded px-3 py-2"
+        )[RELEASES_UNDER_CONSTRUCTION],
         *(
             _edition_block(
                 entry, presentation, named=several or bool(entry.edition.name)
