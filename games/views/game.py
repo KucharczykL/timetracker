@@ -102,9 +102,9 @@ from games.writes.playergame import new_correlation_id
 
 WIKIDATA_CONFLICT_MESSAGE = "This Wikidata entity ID already belongs to another game."
 
-#: The value half of a meta row, against the label's body.
+#: The value half of a meta row.
 META_VALUE_CLASS = "text-heading"
-#: No Platform is a stated fact, not a blank.
+#: No Platform is a fact, not blank.
 UNSPECIFIED_PLATFORM = "Unspecified"
 
 
@@ -567,18 +567,14 @@ def _game_overview_metrics(sessions: SessionQuerySet) -> dict[str, Any]:
 
 
 def _platform_words(release: Release | None) -> str:
-    """A Release says which Platform, or says nobody said."""
+    """The Platform a Release names, or Unspecified."""
     if release is None or release.platform is None:
         return UNSPECIFIED_PLATFORM
     return release.platform.name
 
 
 def _reads_plainly(entries: Sequence[EditionEntry]) -> bool:
-    """One unnamed Edition holding at most one Release.
-
-    That shape says everything in two rows, thus a section of
-    headings above them would be scaffolding around one fact.
-    """
+    """One unnamed Edition, at most one Release."""
     if len(entries) > 1:
         return False
     if not entries:
@@ -590,11 +586,7 @@ def _reads_plainly(entries: Sequence[EditionEntry]) -> bool:
 def _plain_release_rows(
     entries: Sequence[EditionEntry], presentation: DateTimePresentation
 ) -> list[Node]:
-    """The ordinary Game states its one Release in the header.
-
-    A richer graph states nothing here: the section below carries
-    every Edition and every Release instead.
-    """
+    """The header states an ordinary Game's Release."""
     if not _reads_plainly(entries):
         return []
     releases = entries[0].releases if entries else ()
@@ -618,7 +610,7 @@ def _plain_release_rows(
 def _release_table(
     releases: Sequence[Release], presentation: DateTimePresentation
 ) -> Node:
-    """Two facts per Release, as the sibling sections do."""
+    """Two facts per Release: Platform and date."""
     rows = [
         make_row(
             _platform_words(release),
@@ -637,11 +629,10 @@ def _release_table(
 def _edition_block(
     entry: EditionEntry, presentation: DateTimePresentation, *, named: bool
 ) -> Node:
-    """One Edition's Releases, named where a name tells them apart.
+    """One Edition's Releases, with an optional heading.
 
-    A lone unnamed Edition takes no heading: `display_name` falls
-    back to the Game, thus the heading would print the Game's own
-    name above the Game's own page.
+    `display_name` falls back to the Game, thus heading a lone
+    unnamed Edition prints the Game's name twice.
     """
     return Div(class_="flex flex-col gap-2")[
         Span(class_="text-type-subheading text-heading")[entry.edition.display_name]
@@ -656,11 +647,11 @@ def _edition_block(
 def _releases_section(
     entries: Sequence[EditionEntry], presentation: DateTimePresentation
 ) -> Node:
-    """Every Edition and every Release, where two rows cannot say it."""
+    """What the header's two rows cannot say."""
     if _reads_plainly(entries):
         return Fragment()
     count = sum(len(entry.releases) for entry in entries)
-    #: A sibling makes every name worth printing; alone, only its own.
+    #: A sibling makes every name worth printing.
     several = len(entries) > 1
     return Div(class_="mb-6 flex flex-col gap-4")[
         PageHeading(children=["Releases"], badge=str(count) if count else ""),
@@ -690,7 +681,6 @@ def _game_header(
         playrange = start if start == end else f"{start} — {end}"
     else:
         playrange = "N/A"
-    #: The year beside a name was one Release's, flattened.
     title_span = Span(class_="text-balance max-w-120")[
         Span(class_="text-type-title font-serif")[game.name],
     ]

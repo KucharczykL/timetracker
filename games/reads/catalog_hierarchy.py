@@ -1,4 +1,4 @@
-"""The Editions and Releases one library sees under one Game."""
+"""The Editions and Releases under one Game."""
 
 from typing import NamedTuple
 from uuid import UUID
@@ -17,12 +17,10 @@ class EditionEntry(NamedTuple):
 
 
 def game_hierarchy(game: Game, library: UserLibrary) -> tuple[EditionEntry, ...]:
-    """This Game's visible Editions, each with its Releases.
+    """This Game's visible Editions, each with Releases.
 
-    Two queries, and no reverse accessor: a shared Game's
-    accessors reach every library that ever wrote under it.
-    `visible_to()` calls `alive()`, thus a removed row and the
-    children of one both drop out.
+    No reverse accessor: a shared Game's accessors reach every
+    library that ever wrote under it.
     """
     editions = list(
         Edition.objects.visible_to(library)
@@ -34,7 +32,7 @@ def game_hierarchy(game: Game, library: UserLibrary) -> tuple[EditionEntry, ...]
         Release.objects.visible_to(library)
         .filter(edition__in=editions)
         .select_related("platform")
-        #: The default first, then the earliest day anyone knows.
+        #: Default first, then the earliest known day.
         .order_by(
             "-is_default",
             F("release_date_lower").asc(nulls_last=True),

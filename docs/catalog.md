@@ -99,9 +99,9 @@ page.
 A Release with no Platform reads as `Unspecified`. Nothing is inferred from the
 Game, from a sibling Release, or from a display default.
 
-A shared Game's graph is shown, and the page says nothing about who may change
-it. The page offers no control either way, thus there is nothing yet for such a
-word to explain. #969 adds controls, and only for a private Game.
+A shared Game's graph is shown. The page says nothing about who may change it,
+because the page offers no control either way. #969 adds controls, and only for
+a private Game.
 
 The Game's own `original_release_date` stays on the Game, because it is a fact
 of the work rather than of one Release. The flattened Platform row and the

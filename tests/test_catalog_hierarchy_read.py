@@ -97,11 +97,7 @@ def test_game_hierarchy_shows_a_shared_game_to_every_library(library, stranger):
 def test_game_hierarchy_carries_the_platform_and_the_name_with_it(
     library, django_assert_num_queries
 ):
-    """Two queries, whatever the graph holds.
-
-    `display_name` reads the Game and a row reads its Platform,
-    thus both are selected: a per-row read would grow with the list.
-    """
+    """Two queries, whatever the graph holds."""
     platform = Platform.objects.create(library=library, name="Amiga")
     game = Game.objects.create(library=library, name="Elite")
     first = Edition.objects.create(game=game, name="Gold")

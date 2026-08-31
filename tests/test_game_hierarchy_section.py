@@ -1,4 +1,4 @@
-"""What Game detail says about Editions and Releases."""
+"""What Game detail says about the graph."""
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -31,7 +31,7 @@ def reader(client, user):
 
 
 def one_release(library, *, platform=None, release_date=None, name=""):
-    """A Game shaped the way the legacy form leaves one."""
+    """The shape the legacy form leaves."""
     game = Game.objects.create(library=library, name="Elite")
     edition = Edition.objects.create(game=game, name=name, is_default=True)
     Release.objects.create(
@@ -76,11 +76,7 @@ def test_game_detail_says_unknown_for_a_release_with_no_date(library, reader):
 
 
 def test_game_detail_reads_no_release_at_all_without_falling_over(library, reader):
-    """A Game the service never touched still renders.
-
-    Nothing but a test makes one, and a 500 here would hide
-    every other assertion on the page.
-    """
+    """A Game the service never touched renders."""
     game = Game.objects.create(library=library, name="Bare")
 
     html = reader(game)
@@ -90,11 +86,7 @@ def test_game_detail_reads_no_release_at_all_without_falling_over(library, reade
 
 
 def test_game_detail_no_longer_reads_the_legacy_platform_column(library, reader):
-    """The column stays; this page stops believing it.
-
-    #889 drops it. Until then a Game may carry a column the
-    graph disagrees with, and the graph is what a Release states.
-    """
+    """The column stays; the page ignores it."""
     stale = Platform.objects.create(library=library, name="Stale Column")
     game = one_release(library)
     Game.objects.filter(pk=game.pk).update(platform=stale)
@@ -127,7 +119,7 @@ def test_game_detail_keeps_the_original_release_of_the_work(library, reader):
 
 
 def two_releases(library):
-    """One unnamed Edition, two Releases: the shape needs a table."""
+    """One unnamed Edition, two Releases: a table."""
     amiga = Platform.objects.create(library=library, name="Amiga")
     dos = Platform.objects.create(library=library, name="DOS")
     game = Game.objects.create(library=library, name="Elite")
@@ -156,7 +148,7 @@ def test_game_detail_tables_a_second_release(library, reader):
 
 
 def test_game_detail_gives_one_unnamed_edition_no_heading(library, reader):
-    """The Game's own name above its only Edition says nothing."""
+    """The Game's name above its only Edition."""
     game = two_releases(library)
 
     html = reader(game)
@@ -179,7 +171,7 @@ def test_game_detail_heads_each_of_two_editions(library, reader):
 
 
 def test_game_detail_heads_an_unnamed_sibling_with_the_work(library, reader):
-    """An unnamed Edition presents as the Game, per `display_name`."""
+    """An unnamed Edition presents as the Game."""
     game = Game.objects.create(library=library, name="Elite")
     Edition.objects.create(game=game, is_default=True)
     Edition.objects.create(game=game, name="Plus")
@@ -191,12 +183,7 @@ def test_game_detail_heads_an_unnamed_sibling_with_the_work(library, reader):
 
 
 def test_game_detail_heads_a_lone_edition_that_states_its_own_name(library, reader):
-    """The name that brings the section is the name it must print.
-
-    One named Edition reads richly, thus the header's two rows
-    cannot hold it. Suppressing the heading here would drop the
-    one fact that made the section necessary.
-    """
+    """The name that brings the section, printed."""
     platform = Platform.objects.create(library=library, name="Amiga")
     game = Game.objects.create(library=library, name="Elite")
     gold = Edition.objects.create(game=game, name="Gold", is_default=True)
