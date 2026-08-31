@@ -12,7 +12,7 @@ parts a person filled, which is why there is no precision control here.
 """
 
 from common.components.core import Node
-from common.components.elements import Div, Label, Option, Select
+from common.components.elements import Div, Fieldset, Label, Legend, Option, Select
 from common.components.primitives import Checkbox, Input, field_label_id
 from timetracker.temporal import (
     TEMPORAL_DRAFT_KIND_LABELS,
@@ -22,6 +22,7 @@ from timetracker.temporal import (
 )
 
 _GROUP_CLASS = "flex flex-col gap-3"
+_ENDPOINT_CLASS = "flex flex-col gap-1"
 _ROW_CLASS = "flex flex-row flex-wrap items-end gap-3"
 _PART_LABEL_CLASS = "flex flex-col gap-1 text-type-label text-heading"
 _LEGEND_CLASS = "text-type-label text-body"
@@ -54,7 +55,7 @@ def TemporalField(
         class_=_GROUP_CLASS,
     )[
         _kind_select(name=name, kind=data["kind"], input_id=input_id),
-        _endpoint_row(
+        _endpoint_group(
             name=name,
             endpoint="start",
             legend="Start",
@@ -63,7 +64,7 @@ def TemporalField(
             day=data["start_day"],
             decade=data["start_decade"],
         ),
-        _endpoint_row(
+        _endpoint_group(
             name=name,
             endpoint="end",
             legend="End",
@@ -85,10 +86,14 @@ def _kind_select(*, name: str, kind: str, input_id: str) -> Node:
     from games.forms import SELECT_CLASS
 
     selected = kind.strip() or TemporalDraftKind.UNKNOWN.value
+    offered = [draft_kind.value for draft_kind in TEMPORAL_DRAFT_KIND_LABELS]
     options = [
         Option(value=draft_kind.value, selected=draft_kind.value == selected)[text]
         for draft_kind, text in TEMPORAL_DRAFT_KIND_LABELS.items()
     ]
+    if selected not in offered:
+        # A refused shape echoes back, as a refused number does.
+        options.insert(0, Option(value=selected, selected=True)[selected])
     return Select(
         name=temporal_input_name(name, "kind"),
         id_=input_id or None,
@@ -96,7 +101,7 @@ def _kind_select(*, name: str, kind: str, input_id: str) -> Node:
     )[*options]
 
 
-def _endpoint_row(
+def _endpoint_group(
     *,
     name: str,
     endpoint: str,
@@ -106,44 +111,46 @@ def _endpoint_row(
     day: str,
     decade: str,
 ) -> Node:
-    return Div(class_=_ROW_CLASS, data_temporal_endpoint=endpoint)[
-        Div(class_=_LEGEND_CLASS)[legend],
-        _part_input(
-            name=name,
-            key=f"{endpoint}_year",
-            text=year,
-            label="Year",
-            minimum=1,
-            maximum=9999,
-            step=1,
-        ),
-        _part_input(
-            name=name,
-            key=f"{endpoint}_month",
-            text=month,
-            label="Month",
-            minimum=1,
-            maximum=12,
-            step=1,
-        ),
-        _part_input(
-            name=name,
-            key=f"{endpoint}_day",
-            text=day,
-            label="Day",
-            minimum=1,
-            maximum=31,
-            step=1,
-        ),
-        _part_input(
-            name=name,
-            key=f"{endpoint}_decade",
-            text=decade,
-            label="Decade",
-            minimum=10,
-            maximum=9990,
-            step=10,
-        ),
+    return Fieldset(class_=_ENDPOINT_CLASS, data_temporal_endpoint=endpoint)[
+        Legend(class_=_LEGEND_CLASS)[legend],
+        Div(class_=_ROW_CLASS)[
+            _part_input(
+                name=name,
+                key=f"{endpoint}_year",
+                text=year,
+                label="Year",
+                minimum=1,
+                maximum=9999,
+                step=1,
+            ),
+            _part_input(
+                name=name,
+                key=f"{endpoint}_month",
+                text=month,
+                label="Month",
+                minimum=1,
+                maximum=12,
+                step=1,
+            ),
+            _part_input(
+                name=name,
+                key=f"{endpoint}_day",
+                text=day,
+                label="Day",
+                minimum=1,
+                maximum=31,
+                step=1,
+            ),
+            _part_input(
+                name=name,
+                key=f"{endpoint}_decade",
+                text=decade,
+                label="Decade",
+                minimum=10,
+                maximum=9990,
+                step=10,
+            ),
+        ],
     ]
 
 

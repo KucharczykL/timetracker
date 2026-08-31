@@ -599,7 +599,7 @@ class TemporalEndpointDraft:
                 self.year, self.month, qualifier=self.qualifier
             )
         if self.year is not None:
-            return TemporalValue.from_year(self.year, qualifier=self.qualifier)
+            return _build_year(self.year, self.qualifier)
         if self.decade_start_year is not None:
             return _build_decade(self.decade_start_year, self.qualifier)
         return None
@@ -632,6 +632,20 @@ def _build_day(
         raise TemporalValueParseError(
             f"{year}-{month}-{day} is not a day the calendar holds.",
             code="invalid_date",
+        ) from error
+
+
+def _build_year(year: int, qualifier: TemporalQualifier | None) -> TemporalValue:
+    """A refused year carries a sentence of this layer's own.
+
+    The parser's own wording names the grammar rather than the control,
+    and a person who reaches this typed into a year box.
+    """
+    try:
+        return TemporalValue.from_year(year, qualifier=qualifier)
+    except ValueError as error:
+        raise TemporalValueParseError(
+            "A year is a number from 1 to 9999.", code="invalid_year"
         ) from error
 
 
@@ -737,6 +751,7 @@ class TemporalDraft:
 
     def build(self) -> TemporalValue:
         """The one value these dimensions state."""
+        self._refuse_unread_parts()
         match self.kind:
             case TemporalDraftKind.UNKNOWN:
                 return TemporalValue.unknown()
@@ -758,6 +773,33 @@ class TemporalDraft:
                 )
             case unhandled:
                 assert_never(unhandled)
+
+    def _refuse_unread_parts(self) -> None:
+        """A part the shape never reads is refused, not dropped.
+
+        Both endpoint rows stay visible whatever the shape is, so a
+        person can fill one the shape ignores. Silently building without
+        it would store a date nobody typed.
+        """
+        match self.kind:
+            case TemporalDraftKind.UNKNOWN:
+                filled = not (self.start.is_empty and self.end.is_empty)
+                sentence = "Pick a shape for the date you typed, or clear it."
+            case TemporalDraftKind.DATE:
+                filled = not self.end.is_empty
+                sentence = "A date reads the start only. Clear the end, or pick Range."
+            case TemporalDraftKind.SINCE:
+                filled = not self.end.is_empty
+                sentence = "Since runs to no end. Clear the end, or pick Range."
+            case TemporalDraftKind.UNTIL:
+                filled = not self.start.is_empty
+                sentence = "Until runs from no start. Clear the start, or pick Range."
+            case TemporalDraftKind.RANGE:
+                return
+            case unhandled:
+                assert_never(unhandled)
+        if filled:
+            raise TemporalValueParseError(sentence, code="unread_parts")
 
 
 def _range_draft_kind(

@@ -222,6 +222,73 @@ def test_a_range_that_ends_before_it_starts_is_refused() -> None:
     assert refusal.value.code == "invalid_range"
 
 
+def test_a_year_no_grammar_holds_is_refused() -> None:
+    """The sentence names the control, not the grammar."""
+    draft = TemporalEndpointDraft(year=0)
+
+    with pytest.raises(TemporalValueParseError) as refusal:
+        draft.build()
+
+    assert refusal.value.code == "invalid_year"
+    assert str(refusal.value) == "A year is a number from 1 to 9999."
+
+
+def test_a_part_an_unknown_shape_never_reads_is_refused() -> None:
+    """The shape a fresh control offers must not swallow a date."""
+    draft = TemporalDraft(start=TemporalEndpointDraft(year=1998))
+
+    with pytest.raises(TemporalValueParseError) as refusal:
+        draft.build()
+
+    assert refusal.value.code == "unread_parts"
+
+
+def test_an_end_a_date_never_reads_is_refused() -> None:
+    draft = TemporalDraft(
+        kind=TemporalDraftKind.DATE,
+        start=TemporalEndpointDraft(year=1984),
+        end=TemporalEndpointDraft(year=1986),
+    )
+
+    with pytest.raises(TemporalValueParseError) as refusal:
+        draft.build()
+
+    assert refusal.value.code == "unread_parts"
+
+
+def test_an_end_beside_since_is_refused() -> None:
+    draft = TemporalDraft(
+        kind=TemporalDraftKind.SINCE,
+        start=TemporalEndpointDraft(year=1984),
+        end=TemporalEndpointDraft(year=1986),
+    )
+
+    with pytest.raises(TemporalValueParseError) as refusal:
+        draft.build()
+
+    assert refusal.value.code == "unread_parts"
+
+
+def test_a_start_beside_until_is_refused() -> None:
+    draft = TemporalDraft(
+        kind=TemporalDraftKind.UNTIL,
+        start=TemporalEndpointDraft(year=1984),
+        end=TemporalEndpointDraft(year=1986),
+    )
+
+    with pytest.raises(TemporalValueParseError) as refusal:
+        draft.build()
+
+    assert refusal.value.code == "unread_parts"
+
+
+def test_a_qualifier_alone_leaves_an_unknown_draft_alone() -> None:
+    """A box modifies a date. With no date it states nothing."""
+    data = posted(kind="unknown", approximate="on")
+
+    assert temporal_draft_from_data(data).build() == TemporalValue.unknown()
+
+
 def test_a_date_draft_with_no_part_builds_unknown() -> None:
     draft = TemporalDraft(kind=TemporalDraftKind.DATE)
 

@@ -115,6 +115,25 @@ def test_an_unchecked_qualifier_leaves_its_box_alone() -> None:
     assert "checked" not in markup()
 
 
+def test_each_endpoint_names_its_own_parts() -> None:
+    """Otherwise a screen reader reads two spinbuttons named Year."""
+    html = markup()
+
+    assert (
+        '<fieldset class="flex flex-col gap-1" data-temporal-endpoint="start">' in html
+    )
+    assert '<legend class="text-type-label text-body">Start</legend>' in html
+    assert '<legend class="text-type-label text-body">End</legend>' in html
+
+
+def test_a_shape_the_form_never_offers_echoes_back() -> None:
+    """Showing Date instead would invent a shape nobody picked."""
+    html = markup(posted(kind="season"))
+
+    assert '<option value="season" selected' in html
+    assert html.count('selected="selected"') == 1
+
+
 def test_the_first_control_takes_the_label_target() -> None:
     assert 'id="id_release"' in markup()
 
@@ -213,6 +232,33 @@ def test_an_untouched_field_has_not_changed() -> None:
     data = temporal_draft_data(TemporalDraft.from_value(TemporalValue.parse("1984")))
 
     assert not field.has_changed(TemporalValue.parse("1984"), data)
+
+
+def test_a_disabled_field_has_not_changed() -> None:
+    """Nobody can touch a disabled control, so nothing it posts counts."""
+    field = TemporalFormField(label="Release date", required=False, disabled=True)
+    data = temporal_draft_data(TemporalDraft.from_value(TemporalValue.parse("1984-06")))
+
+    assert not field.has_changed(TemporalValue.parse("1984"), data)
+
+
+def test_a_part_the_shape_never_reads_is_a_field_error() -> None:
+    form = ReleaseForm(data=post(kind="date", year="1984", **{"end-year": "1986"}))
+
+    assert not form.is_valid()
+    assert form.errors["released"] == [
+        "A date reads the start only. Clear the end, or pick Range."
+    ]
+
+
+def test_a_typed_date_is_never_swallowed_by_the_default_shape() -> None:
+    """The shape a fresh control renders must refuse, not discard."""
+    form = ReleaseForm(data=post(kind="unknown", year="1998"))
+
+    assert not form.is_valid()
+    assert form.errors["released"] == [
+        "Pick a shape for the date you typed, or clear it."
+    ]
 
 
 def test_a_changed_part_has_changed() -> None:
