@@ -57,8 +57,9 @@ class LibraryOwnedQuerySet(models.QuerySet):
 class RemovableMixin:
     """The row stays; the reads skip it.
 
-    `alive()` asks about this row only. A parent's own removal is a
-    condition of `for_library()`, because a child keeps no stamp.
+    `alive()` asks about this row. A catalog child holds a mark and
+    sits under rows that hold one, so its queryset widens the
+    question to its ancestors.
 
     A mixin rather than a queryset: two queryset bases give
     django-stubs two `as_manager` return types to disagree over.
@@ -458,20 +459,24 @@ class Platform(ReferencedRow):
         super().save(*args, **kwargs)
 
 
-class EditionQuerySet(models.QuerySet):
-    """Removal is inherited from Game.
+class EditionQuerySet(RemovableMixin, models.QuerySet):
+    """An Edition holds a mark, under a Game that holds one.
 
-    An Edition has no visibility of its own.
+    A removed Game hides its Editions. An Edition keeps its own
+    mark through that, thus restoring the Game shows back only the
+    Editions nobody removed.
     """
 
+    def alive(self):
+        return super().alive().filter(game__removed_at__isnull=True)
+
     def for_library(self, library):
-        return self.filter(game__library=library, game__removed_at__isnull=True)
+        return self.filter(game__library=library).alive()
 
     def visible_to(self, library):
         return self.filter(
-            Q(game__library__isnull=True) | Q(game__library=library),
-            game__removed_at__isnull=True,
-        )
+            Q(game__library__isnull=True) | Q(game__library=library)
+        ).alive()
 
 
 class Edition(models.Model):
@@ -506,20 +511,26 @@ class Edition(models.Model):
     )
 
 
-class ReleaseQuerySet(models.QuerySet):
-    """Removal is inherited from Game."""
+class ReleaseQuerySet(RemovableMixin, models.QuerySet):
+    """A Release holds a mark, under two rows that hold one."""
+
+    def alive(self):
+        return (
+            super()
+            .alive()
+            .filter(
+                edition__removed_at__isnull=True,
+                edition__game__removed_at__isnull=True,
+            )
+        )
 
     def for_library(self, library):
-        return self.filter(
-            edition__game__library=library,
-            edition__game__removed_at__isnull=True,
-        )
+        return self.filter(edition__game__library=library).alive()
 
     def visible_to(self, library):
         return self.filter(
-            Q(edition__game__library__isnull=True) | Q(edition__game__library=library),
-            edition__game__removed_at__isnull=True,
-        )
+            Q(edition__game__library__isnull=True) | Q(edition__game__library=library)
+        ).alive()
 
 
 class Release(models.Model):
