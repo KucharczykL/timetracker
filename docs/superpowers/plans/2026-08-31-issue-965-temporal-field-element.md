@@ -367,7 +367,9 @@ def test_each_endpoint_has_an_unnamed_scratch_input() -> None:
     html = markup()
 
     assert '<input type="hidden" data-temporal-scratch="start">' in html
-    assert "name" not in html.split('data-temporal-scratch="start"')[0].rsplit("<", 1)[1]
+    assert (
+        "name" not in html.split('data-temporal-scratch="start"')[0].rsplit("<", 1)[1]
+    )
 
 
 def test_every_script_only_toggle_is_rendered_and_nameless() -> None:
@@ -402,7 +404,9 @@ def test_a_plain_stored_date_needs_no_disclosure() -> None:
 
 
 def test_a_stored_range_opens_expanded() -> None:
-    data = temporal_draft_data(TemporalDraft.from_value(TemporalValue.parse("1984/1986")))
+    data = temporal_draft_data(
+        TemporalDraft.from_value(TemporalValue.parse("1984/1986"))
+    )
 
     assert 'expanded="true"' in markup(data)
 
@@ -931,14 +935,12 @@ and in its `render()`, pass `presentation=self.presentation` to `TemporalField(.
 `TemporalFormField`:
 
 ```python
-    def __init__(
-        self, *, presentation: DateTimePresentation, label: str = "Date", **kwargs
-    ) -> None:
-        kwargs.setdefault(
-            "widget", TemporalWidget(presentation=presentation, label=label)
-        )
-        kwargs.setdefault("required", False)
-        super().__init__(label=label, **kwargs)
+def __init__(
+    self, *, presentation: DateTimePresentation, label: str = "Date", **kwargs
+) -> None:
+    kwargs.setdefault("widget", TemporalWidget(presentation=presentation, label=label))
+    kwargs.setdefault("required", False)
+    super().__init__(label=label, **kwargs)
 ```
 
 - [ ] **Step 6: Regenerate the element types and run the tests**

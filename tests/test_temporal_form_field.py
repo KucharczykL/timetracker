@@ -1,12 +1,17 @@
 """What the temporal control renders, and what it binds."""
 
 from typing import cast
+from zoneinfo import ZoneInfo
 
 import pytest
 from django import forms
 
 from common.components import collect_media, render
 from common.components.temporal_field import TemporalField
+from common.date_time_presentation import (
+    DEFAULT_DATE_TIME_FORMAT_PROFILE,
+    DateTimePresentation,
+)
 from games.forms import (
     INPUT_CLASS,
     TemporalFormField,
@@ -27,6 +32,12 @@ def posted(**overrides: str) -> TemporalDraftData:
     return cast(TemporalDraftData, dict(EMPTY_TEMPORAL_DRAFT_DATA) | overrides)
 
 
+def presentation() -> DateTimePresentation:
+    return DateTimePresentation(
+        DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
+    )
+
+
 def markup(
     data: TemporalDraftData | None = None,
     *,
@@ -37,6 +48,7 @@ def markup(
         name="release",
         data=data if data is not None else posted(kind="unknown"),
         label="Release date",
+        presentation=presentation(),
         input_id="id_release",
         required=required,
         invalid=invalid,
@@ -66,18 +78,116 @@ def test_every_posted_input_is_rendered(input_name: str) -> None:
     assert f'name="{input_name}"' in markup()
 
 
-def test_the_control_carries_no_script() -> None:
-    """The whole point: this works with scripting off."""
+def test_the_script_only_enhances() -> None:
+    """Every posted control is here, named, and shown."""
     node = TemporalField(
         name="release",
         data=posted(kind="unknown"),
         label="Release date",
+        presentation=presentation(),
         input_id="id_release",
     )
     media = collect_media(node)
 
-    assert media.js == ()
-    assert media.js_external == ()
+    assert media.js == ("dist/elements/temporal-field.js",)
+    assert 'name="release-year"' in str(render(node))
+
+
+def test_the_segments_wait_for_the_script() -> None:
+    """Shown before the upgrade, they would be a second date field."""
+    html = markup()
+
+    assert '<div data-temporal-segments="start" hidden' in html
+    assert '<div data-temporal-segments="end" hidden' in html
+
+
+def test_a_segment_carries_the_stored_part_zero_padded() -> None:
+    data = temporal_draft_data(
+        TemporalDraft.from_value(TemporalValue.parse("1984-06-22"))
+    )
+    segments = markup(data).split('data-temporal-segments="start"')[1]
+
+    assert 'value="1984" data-date-part="year" data-date-side="start"' in segments
+    assert 'value="06" data-date-part="month" data-date-side="start"' in segments
+    assert 'value="22" data-date-part="day" data-date-side="start"' in segments
+
+
+def test_a_stored_decade_renders_its_own_shape() -> None:
+    """An upgrade unhides this; it never rebuilds it."""
+    data = temporal_draft_data(TemporalDraft.from_value(TemporalValue.parse("198X")))
+    start = markup(data).split('data-temporal-segments="start"')[1]
+
+    assert 'value="1980" data-date-part="year"' in start
+    assert '<span data-temporal-part="month" hidden' in start
+    suffix = start.split('data-temporal-decade-suffix=""')[1].split("</span>")[0]
+    assert "hidden" not in suffix
+    assert suffix.endswith(">s")
+
+
+def test_each_endpoint_has_an_unnamed_scratch_input() -> None:
+    """Named, it would post a fourteenth thing the server cannot read."""
+    html = markup()
+
+    assert '<input data-temporal-scratch="start" type="hidden">' in html
+    assert '<input data-temporal-scratch="end" type="hidden">' in html
+
+
+def test_every_script_only_toggle_is_rendered_and_nameless() -> None:
+    """An empty name is never submitted, so these stay off the wire."""
+    html = markup()
+
+    for toggle in (
+        "whole_decade_start",
+        "whole_decade_end",
+        "add_end",
+        "open_start",
+        "open_end",
+    ):
+        assert f'data-temporal-toggle="{toggle}"' in html
+    assert html.count('name=""') == 5
+
+
+def test_the_posted_controls_carry_their_draft_key() -> None:
+    """The element addresses them by the key the server reads."""
+    html = markup()
+
+    assert 'data-temporal-input="kind"' in html
+    assert 'data-temporal-input="start_year"' in html
+    assert 'data-temporal-input="end_uncertain"' in html
+
+
+def test_a_plain_stored_date_needs_no_disclosure() -> None:
+    data = temporal_draft_data(
+        TemporalDraft.from_value(TemporalValue.parse("1984-06-22"))
+    )
+
+    assert 'expanded="false"' in markup(data)
+
+
+def test_a_stored_range_opens_expanded() -> None:
+    data = temporal_draft_data(
+        TemporalDraft.from_value(TemporalValue.parse("1984/1986"))
+    )
+
+    assert 'expanded="true"' in markup(data)
+
+
+def test_a_stored_qualifier_opens_expanded() -> None:
+    data = temporal_draft_data(TemporalDraft.from_value(TemporalValue.parse("1984~")))
+
+    assert 'expanded="true"' in markup(data)
+
+
+def test_text_a_segment_cannot_hold_keeps_the_native_controls() -> None:
+    """Segments take digits. Hiding them would swallow what was typed."""
+    html = markup(posted(kind="date", start_year="nineteen"))
+
+    assert "<temporal-field" not in html
+    assert 'name="release-year" value="nineteen"' in html
+
+
+def test_the_control_says_when_its_precision_changes() -> None:
+    assert 'data-temporal-announcement="" role="status" aria-live="polite"' in markup()
 
 
 def test_the_kind_select_offers_every_shape() -> None:
@@ -136,8 +246,8 @@ def test_each_endpoint_names_its_own_parts() -> None:
     assert (
         '<fieldset class="flex flex-col gap-1" data-temporal-endpoint="start">' in html
     )
-    assert '<legend class="text-type-label text-body">Start</legend>' in html
-    assert '<legend class="text-type-label text-body">End</legend>' in html
+    for legend in ("Start", "End"):
+        assert f'data-temporal-extra="" hidden="hidden">{legend}</legend>' in html
 
 
 def test_a_shape_the_form_never_offers_echoes_back() -> None:
@@ -163,7 +273,9 @@ def test_an_invalid_field_says_so() -> None:
 class ReleaseForm(forms.Form):
     """A plain form, so the field is tested and not a page."""
 
-    released = TemporalFormField(label="Release date", required=False)
+    released = TemporalFormField(
+        presentation=presentation(), label="Release date", required=False
+    )
 
 
 def post(**overrides: str) -> dict[str, str]:
@@ -235,14 +347,16 @@ def test_a_stored_value_renders_as_its_parts() -> None:
 
 
 def test_an_omitted_control_is_reported_as_omitted() -> None:
-    widget = TemporalWidget(label="Release date")
+    widget = TemporalWidget(presentation=presentation(), label="Release date")
 
     assert widget.value_omitted_from_data({}, {}, "released")
     assert not widget.value_omitted_from_data({"released-kind": "date"}, {}, "released")
 
 
 def test_an_untouched_field_has_not_changed() -> None:
-    field = TemporalFormField(label="Release date", required=False)
+    field = TemporalFormField(
+        presentation=presentation(), label="Release date", required=False
+    )
     data = temporal_draft_data(TemporalDraft.from_value(TemporalValue.parse("1984")))
 
     assert not field.has_changed(TemporalValue.parse("1984"), data)
@@ -250,7 +364,9 @@ def test_an_untouched_field_has_not_changed() -> None:
 
 def test_an_untouched_asymmetric_range_has_not_changed() -> None:
     """Re-saving a record must not widen a date nobody touched."""
-    field = TemporalFormField(label="Release date", required=False)
+    field = TemporalFormField(
+        presentation=presentation(), label="Release date", required=False
+    )
     value = TemporalValue.parse("1984/1986~")
     data = temporal_draft_data(TemporalDraft.from_value(value))
 
@@ -273,7 +389,9 @@ def test_one_end_alone_can_be_made_approximate() -> None:
 
 def test_a_disabled_field_has_not_changed() -> None:
     """Nobody can touch a disabled control, so nothing it posts counts."""
-    field = TemporalFormField(label="Release date", required=False, disabled=True)
+    field = TemporalFormField(
+        presentation=presentation(), label="Release date", required=False, disabled=True
+    )
     data = temporal_draft_data(TemporalDraft.from_value(TemporalValue.parse("1984-06")))
 
     assert not field.has_changed(TemporalValue.parse("1984"), data)
@@ -299,7 +417,9 @@ def test_a_typed_date_is_never_swallowed_by_the_default_shape() -> None:
 
 
 def test_a_changed_part_has_changed() -> None:
-    field = TemporalFormField(label="Release date", required=False)
+    field = TemporalFormField(
+        presentation=presentation(), label="Release date", required=False
+    )
     data = temporal_draft_data(TemporalDraft.from_value(TemporalValue.parse("1984-06")))
 
     assert field.has_changed(TemporalValue.parse("1984"), data)
@@ -315,7 +435,9 @@ def test_the_composite_widget_keeps_its_own_classes() -> None:
 
 def test_a_required_field_refuses_an_unknown_value() -> None:
     class RequiredReleaseForm(forms.Form):
-        released = TemporalFormField(label="Release date", required=True)
+        released = TemporalFormField(
+            presentation=presentation(), label="Release date", required=True
+        )
 
     form = RequiredReleaseForm(data={"released-kind": "unknown"})
 
