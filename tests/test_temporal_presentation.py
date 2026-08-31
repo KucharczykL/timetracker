@@ -9,7 +9,7 @@ from common.date_time_presentation import (
     DateTimePresentation,
     date_time_format_profile,
 )
-from common.temporal_presentation import present_temporal_value
+from common.temporal_presentation import TemporalText, present_temporal_value
 from timetracker.temporal import TemporalQualifier, TemporalValue
 
 
@@ -124,3 +124,21 @@ def test_each_endpoint_keeps_its_own_qualifier() -> None:
     words = present_temporal_value(value, presentation())
 
     assert words == "around 1984 – 1986 (uncertain)"
+
+
+def test_temporal_text_holds_the_same_words() -> None:
+    value = TemporalValue.from_year(1984)
+
+    assert str(TemporalText(value, presentation())) == "<span>1984</span>"
+
+
+def test_temporal_text_takes_the_caller_classes() -> None:
+    value = TemporalValue.from_year(1984)
+
+    node = TemporalText(value, presentation(), class_="text-slate-300")
+
+    assert str(node) == '<span class="text-slate-300">1984</span>'
+
+
+def test_temporal_text_says_unknown_for_nothing_stored() -> None:
+    assert str(TemporalText(None, presentation())) == "<span>Unknown</span>"

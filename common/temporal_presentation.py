@@ -10,6 +10,8 @@ owns the order of the parts. This module decides only which parts there are.
 
 from datetime import date
 
+from common.components.core import Node
+from common.components.elements import Span
 from common.date_time_presentation import DateTimePresentation
 from timetracker.temporal import (
     TemporalEndpoint,
@@ -34,6 +36,22 @@ def present_temporal_value(
     if value.is_range:
         return _present_range(value, presentation)
     return _present_atomic(value, presentation)
+
+
+def TemporalText(
+    value: TemporalValue | None,
+    presentation: DateTimePresentation,
+    *,
+    class_: str = "",
+) -> Node:
+    """The same words, as a span a page can place.
+
+    The words carry no markup of their own, so a screen reader says what a
+    sighted reader sees. This adds the element and the classes, and it adds no
+    second wording — a title attribute, a log line or an API answer calls
+    :func:`present_temporal_value` instead.
+    """
+    return Span(class_=class_)[present_temporal_value(value, presentation)]
 
 
 def _present_atomic(value: TemporalValue, presentation: DateTimePresentation) -> str:
