@@ -549,9 +549,11 @@ class SegmentedField {
       const target = event.target as Element;
       if (target.closest("input[data-date-part]")) return;
       // Any control in the field owns its own click and its own focus — the
-      // calendar toggle, a datetime field's copy arrow, whatever comes next.
-      // Only genuinely blank space redirects focus into the nearest segment.
-      if (target.closest("button")) return;
+      // calendar toggle, a datetime field's copy arrow, a checkbox beside the
+      // segments. Only genuinely blank space redirects focus into the nearest
+      // segment. A label counts: clicking one focuses the control it names.
+      if (target.closest("a, button, input, label, select, textarea, [tabindex]"))
+        return;
       event.preventDefault();
       this.nearestSegment(event as MouseEvent)?.focus();
     });

@@ -358,10 +358,19 @@ class TemporalWidget(forms.Widget):
     `value_from_datadict` reads them all back. What it returns is the raw
     posted text, not a parsed draft, so a submission the grammar refuses
     re-renders the characters a person typed.
+
+    A widget renders to text, so the node tree ends here and the custom
+    element's `Media` never reaches `collect_media()`. The hosting view
+    must thread `scripts=ModuleScript("dist/elements/temporal-field.js")`
+    itself, the way the purchase and play-event pages already do for the
+    date picker. #969 is the first page that hosts one.
     """
 
-    def __init__(self, *, label: str, attrs=None) -> None:
+    def __init__(
+        self, *, presentation: DateTimePresentation, label: str, attrs=None
+    ) -> None:
         super().__init__(attrs)
+        self.presentation = presentation
         self.label = label
 
     def _data(self, value) -> TemporalDraftData:
@@ -379,6 +388,7 @@ class TemporalWidget(forms.Widget):
                 name=name,
                 data=self._data(value),
                 label=self.label,
+                presentation=self.presentation,
                 input_id=str(final_attrs.get("id", "")),
                 required=bool(final_attrs.get("required")),
                 invalid=final_attrs.get("aria-invalid") == "true",
@@ -416,8 +426,12 @@ class TemporalFormField(forms.Field):
     stores for one — so a form and a column agree on what nothing is.
     """
 
-    def __init__(self, *, label: str = "Date", **kwargs) -> None:
-        kwargs.setdefault("widget", TemporalWidget(label=label))
+    def __init__(
+        self, *, presentation: DateTimePresentation, label: str = "Date", **kwargs
+    ) -> None:
+        kwargs.setdefault(
+            "widget", TemporalWidget(presentation=presentation, label=label)
+        )
         kwargs.setdefault("required", False)
         super().__init__(label=label, **kwargs)
 

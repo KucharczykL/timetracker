@@ -255,12 +255,16 @@ Submodules re-exported via `common/components/__init__.py`:
   `DateRangeCalendar()` custom element (wired by `ts/elements/date-range-picker.ts`)
 - **`temporal_field.py`** — `TemporalField()`, the native controls for a date at
   any precision: a shape select, then four number inputs and a qualifier pair per
-  endpoint. It carries **no** `Media` on purpose — the whole value round-trips
-  with scripting off, and #965's custom element only enhances that. The precision
-  is never picked from a menu; it is derived from which parts a person filled.
-  Its posted names and their draft keys live in `timetracker/temporal.py`
-  (`TemporalDraftData`, `temporal_input_name()`), which `TemporalWidget` in
-  `games/forms.py` reads back
+  endpoint. The whole value round-trips with scripting off; `<temporal-field>`
+  (#965) only enhances it, hiding the number inputs for a segmented date, a
+  whole-decade box, an open-start box, a three-way end-shape radio group, and a
+  disclosure that folds both ways. The precision is never picked from a menu; it
+  is derived from which parts a person filled. Its posted names and their draft
+  keys live in `timetracker/temporal.py` (`TemporalDraftData`,
+  `temporal_input_name()`), which `TemporalWidget` in `games/forms.py` reads
+  back. **A widget renders to text, so the element's `Media` never bubbles** —
+  the hosting view threads `scripts=ModuleScript("dist/elements/temporal-field.js")`,
+  as `purchase.py`/`playevent.py` already do for the date picker
 
 **Filter system** (`games/filters.py` + `common/criteria.py`): Stash-inspired
 structured filtering.

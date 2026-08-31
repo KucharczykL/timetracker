@@ -239,6 +239,15 @@ register_element("date-picker", "DatePicker", DatePickerProps)
 _DatePicker = custom_element_builder("date-picker")
 
 
+class TemporalFieldProps(TypedDict):
+    # The stored value needs the precision controls, so open showing them.
+    expanded: bool
+
+
+register_element("temporal-field", "TemporalField", TemporalFieldProps)
+_TemporalField = custom_element_builder("temporal-field")
+
+
 class FilterGroupProps(TypedDict):
     # Root model key (e.g. "game"); the deserializer selects its serialization model
     # from it and the client reads the root bundle as ``models[model]``.
