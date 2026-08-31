@@ -8,18 +8,20 @@ function endpointMarkup(
   endpoint: string,
   openLabel: string,
   openToggle: string,
+  storedYear = "",
 ): string {
   const cells = PARTS.map(
     (part, index) => `
       <span data-temporal-part="${part}">
         ${index > 0 ? '<span data-temporal-prefix="">-</span>' : ""}
         <input data-date-part="${part}" data-date-side="${endpoint}"
-               maxlength="${part === "year" ? 4 : 2}" value="">
+               maxlength="${part === "year" ? 4 : 2}"
+               value="${part === "year" ? storedYear : ""}">
       </span>`,
   ).join("");
   return `
     <fieldset data-temporal-endpoint="${endpoint}">
-      <legend data-temporal-extra="" hidden>${endpoint}</legend>
+      <legend data-temporal-extra="">${endpoint}</legend>
       <div data-temporal-native="">
         <input data-temporal-input="${endpoint}_year" value="">
         <input data-temporal-input="${endpoint}_month" value="">
@@ -33,16 +35,18 @@ function endpointMarkup(
           <span data-temporal-decade-suffix="" hidden>s</span>
         </span>
       </div>
-      <div data-temporal-extra="" hidden>
+      <div data-temporal-extra="">
         <input type="checkbox" data-temporal-input="${endpoint}_approximate">
         <input type="checkbox" data-temporal-input="${endpoint}_uncertain">
+      </div>
+      <div data-temporal-extra="" hidden>
         <input type="checkbox" data-temporal-toggle="whole_decade_${endpoint}">
         <input type="checkbox" data-temporal-toggle="${openToggle}" aria-label="${openLabel}">
       </div>
     </fieldset>`;
 }
 
-function mount(expanded = "false"): HTMLElement {
+function mount(expanded = "false", storedEndYear = ""): HTMLElement {
   document.body.innerHTML = `
     <temporal-field expanded="${expanded}">
       <div data-temporal-field="">
@@ -59,8 +63,8 @@ function mount(expanded = "false"): HTMLElement {
         <div data-temporal-extra="" hidden>
           <input type="checkbox" data-temporal-toggle="add_end">
         </div>
-        <div data-temporal-end-group="" hidden>
-          ${endpointMarkup("end", "Ongoing, no end date", "open_end")}
+        <div data-temporal-end-group="">
+          ${endpointMarkup("end", "Ongoing, no end date", "open_end", storedEndYear)}
         </div>
         <div hidden data-temporal-disclosure-row="">
           <button type="button" data-temporal-disclosure="" aria-expanded="false">
@@ -95,6 +99,16 @@ function type(
     target.dispatchEvent(new KeyboardEvent("keydown", { key: digit, bubbles: true }));
     target.dispatchEvent(new KeyboardEvent("keyup", { key: digit, bubbles: true }));
   }
+}
+
+function toggle(host: HTMLElement, name: string): HTMLInputElement {
+  return host.querySelector<HTMLInputElement>(`[data-temporal-toggle="${name}"]`)!;
+}
+
+function check(host: HTMLElement, name: string, checked = true): void {
+  const box = toggle(host, name);
+  box.checked = checked;
+  box.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 function named(host: HTMLElement, key: string): HTMLInputElement {
@@ -167,5 +181,75 @@ describe("temporal-field", () => {
     const host = mount();
 
     expect(named(host, "kind").value).toBe("unknown");
+  });
+
+  it("reveals the extras when somebody says they do not know", () => {
+    const host = mount();
+
+    host.querySelector<HTMLButtonElement>("[data-temporal-disclosure]")!.click();
+
+    host.querySelectorAll("[data-temporal-extra]").forEach((extra) => {
+      expect(extra.hasAttribute("hidden")).toBe(false);
+    });
+    expect(
+      host.querySelector("[data-temporal-disclosure-row]")!.hasAttribute("hidden"),
+    ).toBe(true);
+  });
+
+  it("opens already expanded when the stored value needs it", () => {
+    const host = mount("true");
+
+    expect(
+      host.querySelector("[data-temporal-disclosure-row]")!.hasAttribute("hidden"),
+    ).toBe(true);
+    expect(
+      toggle(host, "add_end").closest("[data-temporal-extra]")!.hasAttribute("hidden"),
+    ).toBe(false);
+  });
+
+  it("keeps the end field away until somebody adds one", () => {
+    const host = mount("true");
+
+    expect(
+      host.querySelector("[data-temporal-end-group]")!.hasAttribute("hidden"),
+    ).toBe(true);
+
+    check(host, "add_end");
+
+    expect(
+      host.querySelector("[data-temporal-end-group]")!.hasAttribute("hidden"),
+    ).toBe(false);
+  });
+
+  it("becomes a range once both ends say something", () => {
+    const host = mount("true");
+    check(host, "add_end");
+
+    type(host, "start", "year", "1984");
+    type(host, "end", "year", "1986");
+
+    expect(named(host, "kind").value).toBe("range");
+    expect(named(host, "end_year").value).toBe("1986");
+  });
+
+  it("forgets an end nobody wants any more", () => {
+    const host = mount("true");
+    check(host, "add_end");
+    type(host, "start", "year", "1984");
+    type(host, "end", "year", "1986");
+
+    check(host, "add_end", false);
+
+    expect(named(host, "end_year").value).toBe("");
+    expect(named(host, "kind").value).toBe("date");
+  });
+
+  it("adopts an end the server already stored", () => {
+    const host = mount("true", "1986");
+
+    expect(
+      host.querySelector("[data-temporal-end-group]")!.hasAttribute("hidden"),
+    ).toBe(false);
+    expect(toggle(host, "add_end").checked).toBe(true);
   });
 });

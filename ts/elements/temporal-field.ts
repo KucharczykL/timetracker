@@ -47,6 +47,21 @@ function scratchInput(
   );
 }
 
+function toggleBox(host: HTMLElement, toggle: string): HTMLInputElement | null {
+  return host.querySelector<HTMLInputElement>(`[data-temporal-toggle="${toggle}"]`);
+}
+
+export function isToggled(host: HTMLElement, toggle: string): boolean {
+  return toggleBox(host, toggle)?.checked ?? false;
+}
+
+/** Empty one end, so a shape that never reads it posts nothing. */
+function clearEndpoint(host: HTMLElement, endpoint: string): void {
+  segmentsForSide(host, endpoint).forEach((segment) => setSegmentBuffer(segment, ""));
+  const scratch = scratchInput(host, endpoint);
+  if (scratch) scratch.value = "";
+}
+
 /** Clear a part no coarser part can carry. */
 function enforceGrowth(host: HTMLElement, endpoint: string): void {
   const { values } = readSideParts(host, endpoint);
@@ -65,6 +80,7 @@ export function currentKind(host: HTMLElement): string {
   const start = endpointHasValue(host, "start");
   const end = endpointHasValue(host, "end");
   if (!start && !end) return "unknown";
+  if (isToggled(host, "add_end")) return "range";
   return start ? "date" : "unknown";
 }
 
@@ -118,6 +134,19 @@ function initField(host: HTMLElement): void {
     );
     if (segment) commitEndpoint(host, segment.dataset.dateSide ?? "start");
   });
+
+  function syncEndGroup(): void {
+    const wanted = isToggled(host, "add_end");
+    show(host.querySelector("[data-temporal-end-group]"), wanted);
+    if (!wanted) clearEndpoint(host, "end");
+    commitEndpoint(host, "end");
+  }
+
+  const addEnd = toggleBox(host, "add_end");
+  addEnd?.addEventListener("change", syncEndGroup);
+  // A stored end is the only thing that asks for one at load.
+  if (addEnd) addEnd.checked = endpointHasValue(host, "end");
+  show(host.querySelector("[data-temporal-end-group]"), isToggled(host, "add_end"));
 
   const disclosure = host.querySelector("[data-temporal-disclosure]");
   disclosure?.addEventListener("click", () => setExpanded(host, true));
