@@ -270,8 +270,9 @@ Run: `make test ARGS="tests/test_catalog_hierarchy_read.py"`
 Expected: 7 passed.
 
 If `test_game_hierarchy_orders_releases_by_their_earliest_day` fails on the
-undated row, check the `nulls_last=True`: PostgreSQL sorts NULL first ascending
-by default, which would put the undated Release ahead of both dated ones.
+undated row, check the `nulls_last=True`. It states the order rather than
+inheriting one: a plain `.asc()` leans on the database's own choice for where a
+NULL sorts, and that is not the read's to assume.
 
 - [ ] **Step 5: Type-check and commit**
 
