@@ -1,11 +1,14 @@
 """What Game detail says about the graph."""
 
 import re
+import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.urls import reverse
+from django.utils import timezone
 
-from games.models import Edition, Game, Platform, Release
+from games.models import Edition, Game, Platform, PlayerGame, PlayerGameStatus, Release
 from games.removal import remove
 from timetracker.temporal import TemporalValue
 
@@ -243,3 +246,103 @@ def test_game_detail_leaves_out_a_removed_edition(library, reader):
     html = reader(game)
 
     assert "Withdrawn" not in html
+
+
+# --- the controls a private game carries ---
+
+
+def test_a_plain_game_offers_one_control_row(library, reader):
+    game = one_release(library, release_date=TemporalValue.from_year(1984))
+    release = Release.objects.get(edition__game=game)
+
+    html = reader(game)
+
+    assert reverse("games:edit_release", args=[release.pk]) in html
+    assert reverse("games:add_edition", args=[game.pk]) in html
+
+
+def test_a_plain_game_with_no_release_offers_to_add_one(library, reader):
+    game = Game.objects.create(library=library, name="Bare")
+    edition = Edition.objects.create(game=game, is_default=True)
+
+    html = reader(game)
+
+    assert reverse("games:add_release", args=[edition.pk]) in html
+    assert "Add release" in html
+
+
+def test_a_release_row_offers_edit_and_remove(library, reader):
+    game = two_releases(library)
+    second = Release.objects.filter(edition__game=game, is_default=False).get()
+
+    html = reader(game)
+
+    assert reverse("games:edit_release", args=[second.pk]) in html
+    assert reverse("games:remove_release", args=[second.pk]) in html
+
+
+def test_the_last_release_of_an_edition_may_go(library, reader):
+    """An Edition holding no Release is an ordinary state."""
+    game = one_release(library, name="Gold")
+    only = Release.objects.get(edition__game=game)
+
+    html = reader(game)
+
+    assert reverse("games:remove_release", args=[only.pk]) in html
+
+
+def test_a_default_release_with_a_live_sibling_offers_no_removal(library, reader):
+    game = two_releases(library)
+    default = Release.objects.filter(edition__game=game, is_default=True).get()
+
+    html = reader(game)
+
+    assert reverse("games:remove_release", args=[default.pk]) not in html
+
+
+def test_the_only_edition_offers_no_removal(library, reader):
+    game = one_release(library, name="Gold")
+    edition = Edition.objects.get(game=game)
+
+    html = reader(game)
+
+    assert reverse("games:edit_edition", args=[edition.pk]) in html
+    assert reverse("games:remove_edition", args=[edition.pk]) not in html
+
+
+def test_a_non_default_sibling_edition_offers_removal(library, reader):
+    game = Game.objects.create(library=library, name="Elite")
+    default = Edition.objects.create(game=game, is_default=True)
+    sibling = Edition.objects.create(game=game, name="Gold")
+
+    html = reader(game)
+
+    assert reverse("games:remove_edition", args=[sibling.pk]) in html
+    #: The default holds the game while a sibling could take it.
+    assert reverse("games:remove_edition", args=[default.pk]) not in html
+
+
+def test_the_releases_section_offers_to_add_an_edition(library, reader):
+    game = two_releases(library)
+
+    html = reader(game)
+
+    assert reverse("games:add_edition", args=[game.pk]) in html
+
+
+def test_a_shared_game_offers_no_control_at_all(library, reader):
+    shared = Game.objects.create(library=None, name="Shared")
+    edition = Edition.objects.create(game=shared, is_default=True)
+    Release.objects.create(edition=edition, is_default=True)
+    PlayerGame.objects.create(
+        pk=uuid.uuid7(),
+        library=library,
+        game=shared,
+        tracked_at=timezone.now(),
+        status=PlayerGameStatus.PLAYED,
+    )
+
+    html = reader(shared)
+
+    assert "Add edition" not in html
+    assert reverse("games:add_release", args=[edition.pk]) not in html

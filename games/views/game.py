@@ -620,15 +620,87 @@ def _reads_plainly(entries: Sequence[EditionEntry]) -> bool:
     return not entry.edition.name and len(entry.releases) <= 1
 
 
+def _catalog_controls_visible(game: Game) -> bool:
+    """A shared Game is read-only for everyone."""
+    return game.library_id is not None
+
+
+def _release_actions(
+    release: Release, entry: EditionEntry, origin: OriginUrl | None
+) -> Node:
+    """Edit always; Remove where the service would allow it."""
+    buttons: list[dict[str, object]] = [
+        {
+            "href": action_url("games:edit_release", release.pk, origin=origin),
+            "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
+            "color": "gray",
+        }
+    ]
+    #: A default Release stays while a live sibling could take the
+    #: mark. Offering the button would only answer 409.
+    holds_the_mark = release.is_default and len(entry.releases) > 1
+    if not holds_the_mark:
+        buttons.append(
+            {
+                "href": action_url("games:remove_release", release.pk, origin=origin),
+                "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
+                "color": "red",
+            }
+        )
+    return ButtonGroup(buttons)
+
+
+def _edition_controls(
+    entry: EditionEntry, entries: Sequence[EditionEntry], origin: OriginUrl | None
+) -> Node:
+    """What one Edition offers below its Releases."""
+    edition = entry.edition
+    buttons: list[dict[str, object]] = [
+        {
+            "href": action_url("games:add_release", edition.pk, origin=origin),
+            "slot": "Add release",
+            "color": "gray",
+        },
+        {
+            "href": action_url("games:edit_edition", edition.pk, origin=origin),
+            "slot": "Edit edition",
+            "color": "gray",
+        },
+    ]
+    #: The last Edition stays, and so does a default one while a
+    #: sibling could take its mark. Together: promote first.
+    holds_the_game = len(entries) == 1 or edition.is_default
+    if not holds_the_game:
+        buttons.append(
+            {
+                "href": action_url("games:remove_edition", edition.pk, origin=origin),
+                "slot": "Remove edition",
+                "color": "red",
+            }
+        )
+    return ButtonGroup(buttons)
+
+
+def _add_edition_button(game: Game, origin: OriginUrl | None) -> Node:
+    return ControlButton(
+        href=action_url("games:add_edition", game.pk, origin=origin),
+        color="gray",
+    )["Add edition"]
+
+
 def _plain_release_rows(
-    entries: Sequence[EditionEntry], presentation: DateTimePresentation
+    entries: Sequence[EditionEntry],
+    presentation: DateTimePresentation,
+    *,
+    game: Game,
+    origin: OriginUrl | None,
 ) -> list[Node]:
     """The header states an ordinary Game's Release."""
     if not _reads_plainly(entries):
         return []
     releases = entries[0].releases if entries else ()
     release = releases[0] if releases else None
-    return [
+    rows: list[Node] = [
         _meta_row(
             "Platform",
             Span(class_=META_VALUE_CLASS)[_platform_words(release)],
@@ -642,19 +714,60 @@ def _plain_release_rows(
             ),
         ),
     ]
+    edition = entries[0].edition if entries else None
+    if not _catalog_controls_visible(game) or edition is None:
+        return rows
+    release_button: dict[str, object] = (
+        {
+            "href": action_url("games:edit_release", release.pk, origin=origin),
+            "slot": "Edit release",
+            "color": "gray",
+        }
+        if release is not None
+        else {
+            "href": action_url("games:add_release", edition.pk, origin=origin),
+            "slot": "Add release",
+            "color": "gray",
+        }
+    )
+    rows.append(
+        Div(class_="flex gap-2")[
+            ButtonGroup(
+                [
+                    release_button,
+                    {
+                        "href": action_url("games:add_edition", game.pk, origin=origin),
+                        "slot": "Add edition",
+                        "color": "gray",
+                    },
+                ]
+            )
+        ]
+    )
+    return rows
 
 
-def _release_table(entry: EditionEntry, presentation: DateTimePresentation) -> Node:
+def _release_table(
+    entry: EditionEntry,
+    presentation: DateTimePresentation,
+    origin: OriginUrl | None,
+    *,
+    controls: bool,
+) -> Node:
     """Two facts per Release: Platform and date."""
+    columns = [Column("Platform"), Column("Released")]
+    if controls:
+        columns.append(Column(""))
     rows = [
         make_row(
             _platform_words(release),
             TemporalText(release.release_date, presentation),
+            *((_release_actions(release, entry, origin),) if controls else ()),
         )
         for release in entry.releases
     ]
     return StyledTable(
-        columns=[Column("Platform"), Column("Released")],
+        columns=columns,
         rows=rows,
         data_table=True,
         caption=f"Releases of {entry.edition.display_name}",
@@ -664,7 +777,13 @@ def _release_table(entry: EditionEntry, presentation: DateTimePresentation) -> N
 
 
 def _edition_block(
-    entry: EditionEntry, presentation: DateTimePresentation, *, named: bool
+    entry: EditionEntry,
+    entries: Sequence[EditionEntry],
+    presentation: DateTimePresentation,
+    origin: OriginUrl | None,
+    *,
+    named: bool,
+    controls: bool,
 ) -> Node:
     """One Edition's Releases, with an optional heading.
 
@@ -675,12 +794,19 @@ def _edition_block(
         Span(class_="text-type-subheading text-heading")[entry.edition.display_name]
         if named
         else "",
-        _release_table(entry, presentation) if entry.releases else "No releases yet.",
+        _release_table(entry, presentation, origin, controls=controls)
+        if entry.releases
+        else "No releases yet.",
+        _edition_controls(entry, entries, origin) if controls else "",
     ]
 
 
 def _releases_section(
-    entries: Sequence[EditionEntry], presentation: DateTimePresentation
+    entries: Sequence[EditionEntry],
+    presentation: DateTimePresentation,
+    origin: OriginUrl | None,
+    *,
+    game: Game,
 ) -> Node:
     """What the header's two rows cannot say.
 
@@ -697,6 +823,7 @@ def _releases_section(
     count = sum(len(entry.releases) for entry in entries)
     #: A sibling makes every name worth printing.
     several = len(entries) > 1
+    controls = _catalog_controls_visible(game)
     return Div(class_="mb-6 flex flex-col gap-4")[
         PageHeading(children=["Releases"], badge=str(count) if count else ""),
         P(
@@ -705,10 +832,16 @@ def _releases_section(
         )[RELEASES_UNDER_CONSTRUCTION],
         *(
             _edition_block(
-                entry, presentation, named=several or bool(entry.edition.name)
+                entry,
+                entries,
+                presentation,
+                origin,
+                named=several or bool(entry.edition.name),
+                controls=controls,
             )
             for entry in entries
         ),
+        _add_edition_button(game, origin) if controls else "",
     ]
 
 
@@ -781,7 +914,7 @@ def _game_header(
             "👑" if game.tracked_mastered else "",
         ),
         _played_row(game, request, origin),
-        *_plain_release_rows(entries, presentation),
+        *_plain_release_rows(entries, presentation, game=game, origin=origin),
     ]
     return Div(id_="game-info", class_="mb-10")[
         Div(class_="flex gap-5 mb-3")[title_span],
@@ -971,7 +1104,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
             origin,
             hierarchy,
         ),
-        _releases_section(hierarchy, presentation),
+        _releases_section(hierarchy, presentation, origin, game=game),
         _purchases_section(game, purchases, presentation, origin),
         _sessions_section(game, sessions, presentation, durations),
         _playevents_section(game, playevents, presentation, origin),
