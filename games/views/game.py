@@ -57,6 +57,7 @@ from common.duration_presentation import (
 from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.returns import OriginUrl, action_url
+from common.temporal_presentation import TemporalText
 from common.utils import paginate, safe_division
 from games.catalog_compat import save_legacy_game_form
 from games.external_references import external_reference_url
@@ -584,7 +585,7 @@ def _game_header(
                 [
                     Safe("&nbsp;"),
                     Popover(
-                        popover_content="Original release year",
+                        popover_content="Release year",
                         wrapped_classes="text-type-subheading text-slate-500",
                         id="popover-year",
                         children=[str(game.year_released)],
@@ -626,8 +627,10 @@ def _game_header(
         class_="flex flex-col mb-6 text-gray-600 dark:text-slate-400 gap-y-4 text-type-body",
     )[
         _meta_row(
-            "Original year",
-            Span(class_=grey_value_class)[str(game.original_year_released)],
+            "Original release",
+            TemporalText(
+                game.original_release_date, presentation, class_=grey_value_class
+            ),
         ),
         _meta_row(
             "Status",

@@ -19,6 +19,7 @@ from django.urls import reverse
 from pytest_django.asserts import assertRedirects
 
 from games.models import Game, Platform, Purchase, Session
+from timetracker.temporal import TemporalValue
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 
@@ -354,7 +355,7 @@ class RenderedPagesTest(TestCase):
             self.game.name,
             "Total hours played",  # stat popover tooltip
             'id="popover-hours"',
-            "Original year",
+            "Original release",
             "Status",
             "Played",
             "Platform",
@@ -369,6 +370,23 @@ class RenderedPagesTest(TestCase):
             self.assertIn(marker, html)
         self.assertNoEscapedTags(html)
         self.assertEqual(html.count("<div"), html.count("</div>"))
+
+    def test_view_game_reads_the_original_release_date(self):
+        self.game.original_release_date = TemporalValue.from_month(1984, 6)
+        self.game.save()
+
+        html = self.client.get(self.game.get_absolute_url()).content.decode()
+
+        self.assertIn("Original release", html)
+        self.assertIn("June 1984", html)
+        self.assertNotIn("1984-06", html)
+
+    def test_view_game_says_unknown_for_no_original_release_date(self):
+        html = self.client.get(self.game.get_absolute_url()).content.decode()
+
+        self.assertIn(
+            '<span class="text-black dark:text-slate-300">Unknown</span>', html
+        )
 
     def test_view_game_uses_play_event_row_element(self):
         game = Game.objects.create(
