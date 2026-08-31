@@ -639,8 +639,9 @@ def _edition_block(
 ) -> Node:
     """One Edition's Releases, named where a name tells them apart.
 
-    A lone Edition takes no heading: `display_name` would print
-    the Game's own name above the Game's own page.
+    A lone unnamed Edition takes no heading: `display_name` falls
+    back to the Game, thus the heading would print the Game's own
+    name above the Game's own page.
     """
     return Div(class_="flex flex-col gap-2")[
         Span(class_="text-type-subheading text-heading")[entry.edition.display_name]
@@ -659,10 +660,16 @@ def _releases_section(
     if _reads_plainly(entries):
         return Fragment()
     count = sum(len(entry.releases) for entry in entries)
-    named = len(entries) > 1
+    #: A sibling makes every name worth printing; alone, only its own.
+    several = len(entries) > 1
     return Div(class_="mb-6 flex flex-col gap-4")[
         PageHeading(children=["Releases"], badge=str(count) if count else ""),
-        *(_edition_block(entry, presentation, named=named) for entry in entries),
+        *(
+            _edition_block(
+                entry, presentation, named=several or bool(entry.edition.name)
+            )
+            for entry in entries
+        ),
     ]
 
 

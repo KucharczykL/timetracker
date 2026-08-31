@@ -190,6 +190,23 @@ def test_game_detail_heads_an_unnamed_sibling_with_the_work(library, reader):
     assert 'text-type-subheading text-heading">Elite</span>' in html
 
 
+def test_game_detail_heads_a_lone_edition_that_states_its_own_name(library, reader):
+    """The name that brings the section is the name it must print.
+
+    One named Edition reads richly, thus the header's two rows
+    cannot hold it. Suppressing the heading here would drop the
+    one fact that made the section necessary.
+    """
+    platform = Platform.objects.create(library=library, name="Amiga")
+    game = Game.objects.create(library=library, name="Elite")
+    gold = Edition.objects.create(game=game, name="Gold", is_default=True)
+    Release.objects.create(edition=gold, platform=platform, is_default=True)
+
+    html = reader(game)
+
+    assert 'text-type-subheading text-heading">Gold</span>' in html
+
+
 def test_game_detail_leaves_out_a_removed_edition(library, reader):
     game = Game.objects.create(library=library, name="Elite")
     Edition.objects.create(game=game, is_default=True)
