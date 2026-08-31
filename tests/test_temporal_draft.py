@@ -1,14 +1,21 @@
 """What a temporal draft holds, and what it builds."""
 
+from typing import cast
+
 import pytest
 
 from timetracker.temporal import (
+    EMPTY_TEMPORAL_DRAFT_DATA,
     TemporalDraft,
+    TemporalDraftData,
     TemporalDraftKind,
     TemporalEndpointDraft,
     TemporalQualifier,
     TemporalValue,
     TemporalValueParseError,
+    temporal_draft_data,
+    temporal_draft_from_data,
+    temporal_input_name,
     temporal_qualifier,
 )
 
@@ -248,3 +255,80 @@ def test_two_checkboxes_name_one_qualifier(
     approximate: bool, uncertain: bool, expected: TemporalQualifier | None
 ) -> None:
     assert temporal_qualifier(approximate=approximate, uncertain=uncertain) is expected
+
+
+def posted(**overrides: str) -> TemporalDraftData:
+    """Empty posted data with the named keys replaced."""
+    return cast(TemporalDraftData, dict(EMPTY_TEMPORAL_DRAFT_DATA) | overrides)
+
+
+def test_an_empty_post_reads_as_an_unknown_draft() -> None:
+    assert temporal_draft_from_data(posted()).build() == TemporalValue.unknown()
+
+
+def test_posted_parts_read_as_numbers() -> None:
+    data = posted(kind="date", start_year="1984", start_month="6")
+
+    assert temporal_draft_from_data(data).build() == TemporalValue.from_month(1984, 6)
+
+
+def test_surrounding_space_is_ignored() -> None:
+    data = posted(kind="date", start_year=" 1984 ")
+
+    assert temporal_draft_from_data(data).build() == TemporalValue.from_year(1984)
+
+
+def test_a_part_that_is_not_a_number_is_refused() -> None:
+    data = posted(kind="date", start_year="nineteen")
+
+    with pytest.raises(TemporalValueParseError) as refusal:
+        temporal_draft_from_data(data)
+
+    assert refusal.value.code == "invalid_number"
+
+
+def test_a_kind_the_form_does_not_offer_is_refused() -> None:
+    data = posted(kind="season")
+
+    with pytest.raises(TemporalValueParseError) as refusal:
+        temporal_draft_from_data(data)
+
+    assert refusal.value.code == "invalid_kind"
+
+
+def test_a_checked_box_qualifies_both_endpoints() -> None:
+    data = posted(
+        kind="range",
+        start_year="1984",
+        end_year="1986",
+        approximate="on",
+        uncertain="on",
+    )
+
+    assert temporal_draft_from_data(data).build() == TemporalValue.parse("1984%/1986%")
+
+
+def test_an_unchecked_box_qualifies_nothing() -> None:
+    data = posted(kind="date", start_year="1984")
+
+    assert temporal_draft_from_data(data).build() == TemporalValue.from_year(1984)
+
+
+@pytest.mark.parametrize("canonical", TemporalDraftShapes.CANONICALS)
+def test_a_stored_value_survives_the_wire(canonical: str) -> None:
+    value = TemporalValue.parse(canonical)
+    data = temporal_draft_data(TemporalDraft.from_value(value))
+
+    assert temporal_draft_from_data(data).build() == value
+
+
+def test_the_wire_names_every_input_after_the_field() -> None:
+    assert temporal_input_name("release", "kind") == "release-kind"
+    assert temporal_input_name("release", "start_year") == "release-year"
+    assert temporal_input_name("release", "end_decade") == "release-end-decade"
+
+
+def test_the_wire_carries_a_kind_for_an_unknown_draft() -> None:
+    data = temporal_draft_data(TemporalDraft())
+
+    assert data["kind"] == "unknown"

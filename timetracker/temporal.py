@@ -5,7 +5,7 @@ from calendar import monthrange
 from dataclasses import dataclass, field
 from datetime import date
 from enum import StrEnum
-from typing import Final, Literal, assert_never
+from typing import Final, Literal, TypedDict, assert_never
 
 from django.core.exceptions import ValidationError
 from django.db import NotSupportedError, models
@@ -786,6 +786,153 @@ def _endpoint_or_unknown(draft: TemporalEndpointDraft) -> TemporalEndpoint:
     if built is None:
         return TemporalEndpoint.unknown()
     return TemporalEndpoint.known(built)
+
+
+class TemporalDraftData(TypedDict):
+    """The raw strings one temporal control posts.
+
+    Strings, not numbers, because a refused submission must re-render
+    the characters a person typed rather than a normalized guess.
+    """
+
+    kind: str
+    start_year: str
+    start_month: str
+    start_day: str
+    start_decade: str
+    end_year: str
+    end_month: str
+    end_day: str
+    end_decade: str
+    approximate: str
+    uncertain: str
+
+
+#: The first endpoint takes the bare part names.
+TEMPORAL_INPUT_SUFFIXES: Final[dict[str, str]] = {
+    "kind": "kind",
+    "start_year": "year",
+    "start_month": "month",
+    "start_day": "day",
+    "start_decade": "decade",
+    "end_year": "end-year",
+    "end_month": "end-month",
+    "end_day": "end-day",
+    "end_decade": "end-decade",
+    "approximate": "approximate",
+    "uncertain": "uncertain",
+}
+
+EMPTY_TEMPORAL_DRAFT_DATA: Final[TemporalDraftData] = TemporalDraftData(
+    kind="",
+    start_year="",
+    start_month="",
+    start_day="",
+    start_decade="",
+    end_year="",
+    end_month="",
+    end_day="",
+    end_decade="",
+    approximate="",
+    uncertain="",
+)
+
+
+def temporal_input_name(name: str, key: str) -> str:
+    """The posted input name one draft key travels under."""
+    return f"{name}-{TEMPORAL_INPUT_SUFFIXES[key]}"
+
+
+def temporal_draft_from_data(data: TemporalDraftData) -> TemporalDraft:
+    """The draft those posted strings state.
+
+    The two checkboxes name one qualifier, which is written onto both
+    endpoints. An asymmetric range stays storable and readable, and no
+    control here reaches it.
+    """
+    qualifier = temporal_qualifier(
+        approximate=bool(data["approximate"].strip()),
+        uncertain=bool(data["uncertain"].strip()),
+    )
+    return TemporalDraft(
+        kind=_draft_kind_from_text(data["kind"]),
+        start=_endpoint_draft_from_text(
+            year=data["start_year"],
+            month=data["start_month"],
+            day=data["start_day"],
+            decade=data["start_decade"],
+            qualifier=qualifier,
+        ),
+        end=_endpoint_draft_from_text(
+            year=data["end_year"],
+            month=data["end_month"],
+            day=data["end_day"],
+            decade=data["end_decade"],
+            qualifier=qualifier,
+        ),
+    )
+
+
+def temporal_draft_data(draft: TemporalDraft) -> TemporalDraftData:
+    """The posted strings that state ``draft`` again."""
+    return TemporalDraftData(
+        kind=draft.kind.value,
+        start_year=_part_text(draft.start.year),
+        start_month=_part_text(draft.start.month),
+        start_day=_part_text(draft.start.day),
+        start_decade=_part_text(draft.start.decade_start_year),
+        end_year=_part_text(draft.end.year),
+        end_month=_part_text(draft.end.month),
+        end_day=_part_text(draft.end.day),
+        end_decade=_part_text(draft.end.decade_start_year),
+        approximate="on" if draft.is_approximate else "",
+        uncertain="on" if draft.is_uncertain else "",
+    )
+
+
+def _draft_kind_from_text(text: str) -> TemporalDraftKind:
+    stripped = text.strip()
+    if not stripped:
+        return TemporalDraftKind.UNKNOWN
+    try:
+        return TemporalDraftKind(stripped)
+    except ValueError as error:
+        raise TemporalValueParseError(
+            f"{stripped!r} is not a shape this form offers.", code="invalid_kind"
+        ) from error
+
+
+def _endpoint_draft_from_text(
+    *,
+    year: str,
+    month: str,
+    day: str,
+    decade: str,
+    qualifier: TemporalQualifier | None,
+) -> TemporalEndpointDraft:
+    return TemporalEndpointDraft(
+        year=_part_number(year, "year"),
+        month=_part_number(month, "month"),
+        day=_part_number(day, "day"),
+        decade_start_year=_part_number(decade, "decade"),
+        qualifier=qualifier,
+    )
+
+
+def _part_number(text: str, part: str) -> int | None:
+    stripped = text.strip()
+    if not stripped:
+        return None
+    try:
+        return int(stripped)
+    except ValueError as error:
+        raise TemporalValueParseError(
+            f"The {part} must be a whole number.", code="invalid_number"
+        ) from error
+
+
+def _part_text(part: int | None) -> str:
+    return "" if part is None else str(part)
 
 
 def _normalize_temporal_model_value(value: object) -> TemporalValue | None:
