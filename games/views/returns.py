@@ -31,6 +31,7 @@ READ_ONLY: frozenset[UrlName] = frozenset(
         "games:settings_kit_preview",
         "games:stats_alltime",
         "games:stats_by_year",
+        "games:temporal_field_preview",
         "games:view_game",
         "games:view_purchase",
     }
@@ -88,6 +89,7 @@ DEBUG_ONLY: frozenset[UrlName] = frozenset(
     {
         "games:settings_kit_preview",
         "games:settings_kit_preview_patch",
+        "games:temporal_field_preview",
     }
 )
 
