@@ -12,11 +12,13 @@ from django.utils import timezone
 
 from games.models import (
     Device,
+    Edition,
     FilterPreset,
     Game,
     Platform,
     PlayEvent,
     Purchase,
+    Release,
     Session,
     UserLibrary,
 )
@@ -27,6 +29,14 @@ pytestmark = pytest.mark.django_db
 
 def _game(library: UserLibrary) -> Game:
     return Game.objects.create(library=library, name="Outer Wilds")
+
+
+def _edition(library: UserLibrary) -> Edition:
+    return Edition.objects.create(game=_game(library))
+
+
+def _release(library: UserLibrary) -> Release:
+    return Release.objects.create(edition=_edition(library))
 
 
 def _platform(library: UserLibrary) -> Platform:
@@ -68,6 +78,8 @@ Builder = Callable[[UserLibrary], Model]
 
 BUILDERS: dict[type[Model], Builder] = {
     Game: _game,
+    Edition: _edition,
+    Release: _release,
     Platform: _platform,
     Device: _device,
     Session: _session,
