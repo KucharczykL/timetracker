@@ -322,11 +322,13 @@ def _segment_row(
     for part in parts:
         children: list[Node] = []
         # The leading visible cell shows no separator before it.
-        if part.segmented.prefix and part is not shown[0]:
+        if part.segmented.prefix:
             children.append(
-                Span(data_temporal_prefix="", class_=_AFFIX_CLASS)[
-                    part.segmented.prefix
-                ]
+                Span(
+                    data_temporal_prefix="",
+                    hidden=part is shown[0],
+                    class_=_AFFIX_CLASS,
+                )[part.segmented.prefix]
             )
         children.append(
             date_segment_input(

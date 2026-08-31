@@ -20,7 +20,7 @@ import {
   segmentsForSide,
   setSegmentBuffer,
 } from "./date-field-core.js";
-import { coarsestPrefix, temporalCodec } from "./temporal-codec.js";
+import { coarsestPrefix, decadeStart, temporalCodec } from "./temporal-codec.js";
 
 const ENDPOINTS = ["start", "end"] as const;
 
@@ -84,14 +84,73 @@ export function currentKind(host: HTMLElement): string {
   return start ? "date" : "unknown";
 }
 
+/** What a person typed before the decade box swallowed it. */
+const typedYears = new WeakMap<HTMLElement, Record<string, string>>();
+
+function rememberYear(host: HTMLElement, endpoint: string, year: string): void {
+  const remembered = typedYears.get(host) ?? {};
+  remembered[endpoint] = year;
+  typedYears.set(host, remembered);
+}
+
+function yearSegmentFor(
+  host: HTMLElement,
+  endpoint: string,
+): HTMLInputElement | undefined {
+  return segmentsForSide(host, endpoint).find(
+    (segment) => segment.dataset.datePart === "year",
+  );
+}
+
+function endpointPart(
+  host: HTMLElement,
+  endpoint: string,
+  part: string,
+): Element | null {
+  return host.querySelector(
+    `[data-temporal-endpoint="${endpoint}"] [data-temporal-part="${part}"]`,
+  );
+}
+
+/** One cell, one glyph: the box reads YYYYs and states ten years. */
+function paintDecade(host: HTMLElement, endpoint: string, whole: boolean): void {
+  ["month", "day"].forEach((part) => show(endpointPart(host, endpoint, part), !whole));
+  const cells = Array.from(
+    host.querySelectorAll(`[data-temporal-endpoint="${endpoint}"] [data-temporal-part]`),
+  ).filter((cell) => !cell.hasAttribute("hidden"));
+  cells.forEach((cell, index) => {
+    show(cell.querySelector("[data-temporal-prefix]"), index > 0);
+  });
+  show(
+    host.querySelector(
+      `[data-temporal-endpoint="${endpoint}"] [data-temporal-decade-suffix]`,
+    ),
+    whole,
+  );
+}
+
+function snapYearToDecade(host: HTMLElement, endpoint: string): void {
+  const yearSegment = yearSegmentFor(host, endpoint);
+  if (!yearSegment) return;
+  const buffer = segmentBuffer(yearSegment);
+  if (buffer.length !== 4) return;
+  const snapped = decadeStart(buffer);
+  if (snapped && snapped !== buffer) setSegmentBuffer(yearSegment, snapped);
+}
+
 function writeNamedParts(host: HTMLElement, endpoint: string): void {
   const { values } = readSideParts(host, endpoint);
-  setNamed(host, `${endpoint}_year`, values.year ?? "");
-  setNamed(host, `${endpoint}_month`, values.month ?? "");
-  setNamed(host, `${endpoint}_day`, values.day ?? "");
+  const whole = isToggled(host, `whole_decade_${endpoint}`);
+  const year = values.year ?? "";
+  setNamed(host, `${endpoint}_year`, whole ? "" : year);
+  setNamed(host, `${endpoint}_month`, whole ? "" : (values.month ?? ""));
+  setNamed(host, `${endpoint}_day`, whole ? "" : (values.day ?? ""));
+  // A half-typed year states no decade; 19 is not the 10s.
+  setNamed(host, `${endpoint}_decade`, whole && year.length === 4 ? decadeStart(year) : "");
 }
 
 export function commitEndpoint(host: HTMLElement, endpoint: string): void {
+  if (isToggled(host, `whole_decade_${endpoint}`)) snapYearToDecade(host, endpoint);
   enforceGrowth(host, endpoint);
   ENDPOINTS.forEach((each) => writeNamedParts(host, each));
   setNamed(host, "kind", currentKind(host));
@@ -147,6 +206,21 @@ function initField(host: HTMLElement): void {
   // A stored end is the only thing that asks for one at load.
   if (addEnd) addEnd.checked = endpointHasValue(host, "end");
   show(host.querySelector("[data-temporal-end-group]"), isToggled(host, "add_end"));
+
+  ENDPOINTS.forEach((endpoint) => {
+    const box = toggleBox(host, `whole_decade_${endpoint}`);
+    box?.addEventListener("change", () => {
+      const whole = isToggled(host, `whole_decade_${endpoint}`);
+      const yearSegment = yearSegmentFor(host, endpoint);
+      if (yearSegment) {
+        if (whole) rememberYear(host, endpoint, segmentBuffer(yearSegment));
+        else setSegmentBuffer(yearSegment, typedYears.get(host)?.[endpoint] ?? "");
+      }
+      paintDecade(host, endpoint, whole);
+      commitEndpoint(host, endpoint);
+    });
+    paintDecade(host, endpoint, isToggled(host, `whole_decade_${endpoint}`));
+  });
 
   const disclosure = host.querySelector("[data-temporal-disclosure]");
   disclosure?.addEventListener("click", () => setExpanded(host, true));

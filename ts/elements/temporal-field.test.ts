@@ -244,6 +244,78 @@ describe("temporal-field", () => {
     expect(named(host, "kind").value).toBe("date");
   });
 
+  it("snaps the typed year down to the ten it belongs to", () => {
+    const host = mount("true");
+    type(host, "start", "year", "1982");
+
+    check(host, "whole_decade_start");
+
+    expect(segment(host, "start", "year").value).toBe("1980");
+    expect(named(host, "start_decade").value).toBe("1980");
+    expect(named(host, "start_year").value).toBe("");
+  });
+
+  it("shows one cell and the trailing letter", () => {
+    const host = mount("true");
+    type(host, "start", "year", "1982");
+
+    check(host, "whole_decade_start");
+
+    const cell = (part: string) =>
+      host.querySelector(
+        `[data-temporal-endpoint="start"] [data-temporal-part="${part}"]`,
+      )!;
+    expect(cell("month").hasAttribute("hidden")).toBe(true);
+    expect(cell("day").hasAttribute("hidden")).toBe(true);
+    expect(
+      host
+        .querySelector('[data-temporal-endpoint="start"] [data-temporal-decade-suffix]')!
+        .hasAttribute("hidden"),
+    ).toBe(false);
+  });
+
+  it("hides the separator the leading cell no longer needs", () => {
+    const host = mount("true");
+    type(host, "start", "year", "1982");
+
+    check(host, "whole_decade_start");
+
+    const prefixes = host.querySelectorAll(
+      '[data-temporal-endpoint="start"] [data-temporal-part]:not([hidden]) [data-temporal-prefix]',
+    );
+    prefixes.forEach((prefix) => expect(prefix.hasAttribute("hidden")).toBe(true));
+  });
+
+  it("gives back the year somebody actually typed", () => {
+    const host = mount("true");
+    type(host, "start", "year", "1982");
+    check(host, "whole_decade_start");
+
+    check(host, "whole_decade_start", false);
+
+    expect(segment(host, "start", "year").value).toBe("1982");
+    expect(named(host, "start_year").value).toBe("1982");
+    expect(named(host, "start_decade").value).toBe("");
+  });
+
+  it("keeps snapping a year typed while the box is checked", () => {
+    const host = mount("true");
+    check(host, "whole_decade_start");
+
+    type(host, "start", "year", "1975");
+
+    expect(named(host, "start_decade").value).toBe("1970");
+  });
+
+  it("states no decade until the year is whole", () => {
+    const host = mount("true");
+    check(host, "whole_decade_start");
+
+    type(host, "start", "year", "19");
+
+    expect(named(host, "start_decade").value).toBe("");
+  });
+
   it("adopts an end the server already stored", () => {
     const host = mount("true", "1986");
 
