@@ -37,13 +37,21 @@ def save_private_game(
 
     game.original_release_date = original_release_date
     game.save()
-    edition, _ = Edition.objects.select_for_update().get_or_create(
-        game=game,
-        is_default=True,
+    #: A removed child is not adopted back.
+    #:
+    #: The lookup reads the row's own mark, which is what the
+    #: default-slot constraint is conditional on. Reading `alive()`
+    #: would ask about the Game as well, and a second live default
+    #: under a removed Game is what the constraint refuses.
+    edition, _ = (
+        Edition.objects.select_for_update()
+        .filter(removed_at__isnull=True)
+        .get_or_create(game=game, is_default=True)
     )
-    release, _ = Release.objects.select_for_update().get_or_create(
-        edition=edition,
-        is_default=True,
+    release, _ = (
+        Release.objects.select_for_update()
+        .filter(removed_at__isnull=True)
+        .get_or_create(edition=edition, is_default=True)
     )
     release.platform = platform
     release.release_date = release_date

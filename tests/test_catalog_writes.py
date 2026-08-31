@@ -4,6 +4,7 @@ from django.db import IntegrityError, transaction
 
 from games.catalog_writes import save_private_game
 from games.models import Edition, Game, Platform, Release
+from games.removal import remove
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db
@@ -120,6 +121,60 @@ def test_save_private_game_does_not_adopt_unmarked_children(owned_library):
     assert graph.release.pk != unmarked_release.pk
     assert game.editions.filter(is_default=True).count() == 1
     assert Edition.objects.filter(game=game).count() == 2
+
+
+def test_save_private_game_does_not_adopt_a_removed_child(owned_library):
+    """A removed row is not in the library, so a write passes it by."""
+    game = Game.objects.create(library=owned_library, name="Removed Child")
+    first = save_private_game(
+        game=game, original_release_date=None, release_date=None, platform=None
+    )
+    remove(first.edition)
+
+    second = save_private_game(
+        game=first.game, original_release_date=None, release_date=None, platform=None
+    )
+
+    assert second.edition.pk != first.edition.pk
+    assert second.edition.removed_at is None
+    assert Edition.objects.for_library(owned_library).get() == second.edition
+    assert Release.objects.for_library(owned_library).get() == second.release
+
+
+def test_save_private_game_replaces_only_the_removed_release(owned_library):
+    game = Game.objects.create(library=owned_library, name="Removed Release")
+    first = save_private_game(
+        game=game, original_release_date=None, release_date=None, platform=None
+    )
+    remove(first.release)
+
+    second = save_private_game(
+        game=first.game, original_release_date=None, release_date=None, platform=None
+    )
+
+    assert second.edition.pk == first.edition.pk
+    assert second.release.pk != first.release.pk
+    assert Release.objects.for_library(owned_library).get() == second.release
+
+
+def test_a_removed_default_frees_the_slot(owned_library):
+    """The constraint reads the mark, thus a name comes back."""
+    game = Game.objects.create(library=owned_library, name="Slot")
+    first = Edition.objects.create(game=game, is_default=True)
+    remove(first)
+
+    second = Edition.objects.create(game=game, is_default=True)
+
+    assert Edition.objects.filter(game=game, is_default=True).count() == 2
+    assert Edition.objects.for_library(owned_library).get() == second
+
+
+def test_two_live_defaults_still_collide(owned_library):
+    game = Game.objects.create(library=owned_library, name="Collide")
+    Edition.objects.create(game=game, is_default=True)
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        Edition.objects.create(game=game, is_default=True)
 
 
 def test_save_private_game_rejects_a_foreign_private_platform(

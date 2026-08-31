@@ -400,10 +400,14 @@ def test_a_catalog_child_holds_a_mark_of_its_own():
         )
 
 
+def _index_named(model, name):
+    return next(index for index in model._meta.indexes if index.name == name)
+
+
 def test_a_catalog_child_indexes_the_live_children_of_one_parent():
     """A list reads one parent's live children, and nothing else."""
-    edition_index = Edition._meta.indexes[0]
-    release_index = Release._meta.indexes[0]
+    edition_index = _index_named(Edition, "live_edition_per_game_idx")
+    release_index = _index_named(Release, "live_release_per_edition_idx")
 
     assert (edition_index.fields, edition_index.condition) == (
         ["game"],

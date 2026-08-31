@@ -152,6 +152,10 @@ class ReferenceKindRegistry:
     def __contains__(self, name: ReferenceKindName) -> bool:
         return name in self._by_name
 
+    def __iter__(self) -> Iterator[ReferenceKind[Any]]:
+        """Every registered kind, for a caller checking coverage."""
+        return iter(self._by_name.values())
+
 
 def _capture_device(device: Device) -> Reference:
     return Reference(

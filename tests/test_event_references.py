@@ -110,6 +110,13 @@ def platform(owned_library):
     )
 
 
+@pytest.fixture
+def release(game, platform):
+    return Release.objects.create(
+        edition=Edition.objects.create(game=game), platform=platform
+    )
+
+
 # --- the identity text ------------------------------------------------------
 
 
@@ -236,12 +243,8 @@ def test_a_platform_captures_its_name_and_group(platform):
 
 
 @pytest.mark.django_db
-def test_a_release_captures_the_games_name_and_its_platform(game, platform):
+def test_a_release_captures_the_games_name_and_its_platform(release):
     """A Release has no words of its own; both are joins."""
-    release = Release.objects.create(
-        edition=Edition.objects.create(game=game), platform=platform
-    )
-
     assert capture_reference(release) == Reference(
         kind="catalog.release",
         id=str(release.pk),
@@ -258,8 +261,23 @@ def test_a_release_on_no_platform_captures_an_empty_detail(game):
 
 
 @pytest.mark.django_db
-def test_every_captured_reference_validates_as_one(device, game, platform):
-    for instance in (device, game, platform):
+def test_every_captured_reference_validates_as_one(device, game, platform, release):
+    """Dict equality says nothing about the recorded shape.
+
+    The schema is what refuses an uncanonical id or a label that is
+    not text, and a new kind reaches it because the registry says
+    which rows this test must build.
+    """
+    by_kind = {
+        "device": device,
+        "catalog.game": game,
+        "catalog.platform": platform,
+        "catalog.release": release,
+    }
+
+    assert by_kind.keys() == {kind.name for kind in DEFAULT_REFERENCE_KINDS}
+
+    for instance in by_kind.values():
         payload = {"device": capture_reference(instance), "note": ""}
         assert _validated(payload) == payload
 

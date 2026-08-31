@@ -57,16 +57,23 @@ class LibraryOwnedQuerySet(models.QuerySet):
 class RemovableMixin:
     """The row stays; the reads skip it.
 
-    `alive()` asks about this row. A catalog child holds a mark and
-    sits under rows that hold one, so its queryset widens the
-    question to its ancestors.
+    `alive()` asks about this row and about every row named in
+    `ancestor_marks`, because a catalog child sits under rows that
+    hold a mark of their own. A queryset states the path once, thus
+    a new level between two models is one edit.
 
     A mixin rather than a queryset: two queryset bases give
     django-stubs two `as_manager` return types to disagree over.
     """
 
+    #: Paths to the rows whose removal also hides this one.
+    ancestor_marks: tuple[str, ...] = ()
+
     def alive(self):
-        return self.filter(removed_at__isnull=True)
+        conditions = {"removed_at__isnull": True} | {
+            f"{path}__removed_at__isnull": True for path in self.ancestor_marks
+        }
+        return self.filter(**conditions)
 
 
 class RemovableLibraryQuerySet(RemovableMixin, LibraryOwnedQuerySet):
@@ -467,8 +474,7 @@ class EditionQuerySet(RemovableMixin, models.QuerySet):
     Editions nobody removed.
     """
 
-    def alive(self):
-        return super().alive().filter(game__removed_at__isnull=True)
+    ancestor_marks = ("game",)
 
     def for_library(self, library):
         return self.filter(game__library=library).alive()
@@ -482,9 +488,10 @@ class EditionQuerySet(RemovableMixin, models.QuerySet):
 class Edition(ReferencedRow):
     class Meta:
         constraints = (
+            #: A removed row holds no slot.
             models.UniqueConstraint(
                 fields=("game",),
-                condition=Q(is_default=True),
+                condition=Q(is_default=True) & Q(removed_at__isnull=True),
                 name="unique_default_edition_per_game",
             ),
         )
@@ -514,15 +521,7 @@ class Edition(ReferencedRow):
 class ReleaseQuerySet(RemovableMixin, models.QuerySet):
     """A Release holds a mark, under two rows that hold one."""
 
-    def alive(self):
-        return (
-            super()
-            .alive()
-            .filter(
-                edition__removed_at__isnull=True,
-                edition__game__removed_at__isnull=True,
-            )
-        )
+    ancestor_marks = ("edition", "edition__game")
 
     def for_library(self, library):
         return self.filter(edition__game__library=library).alive()
@@ -536,9 +535,10 @@ class ReleaseQuerySet(RemovableMixin, models.QuerySet):
 class Release(ReferencedRow):
     class Meta:
         constraints = (
+            #: A removed row holds no slot.
             models.UniqueConstraint(
                 fields=("edition",),
-                condition=Q(is_default=True),
+                condition=Q(is_default=True) & Q(removed_at__isnull=True),
                 name="unique_default_release_per_edition",
             ),
         )

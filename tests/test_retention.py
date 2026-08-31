@@ -11,9 +11,12 @@ from io import StringIO
 from typing import TypedDict
 
 import pytest
+from django.apps import apps
 from django.core.management import call_command
 from django.db import transaction
+from django.db.models import Model
 from django.db.models.deletion import RestrictedError
+from django.db.models.signals import pre_delete
 from pydantic import ConfigDict, with_config
 
 from games.commands.playergame import TrackGame
@@ -38,6 +41,7 @@ from games.models import (
     PlayerGame,
     PlayEvent,
     Purchase,
+    ReferencedRow,
     Release,
     Session,
     UserLibraryPreferences,
@@ -51,6 +55,7 @@ from games.retention import (
     reference_count,
     resolve_reference,
 )
+from games.signals import refuse_to_delete_a_row_an_event_references
 
 pytestmark = [
     pytest.mark.django_db(transaction=True),
@@ -592,3 +597,54 @@ def test_an_evidence_only_kind_is_free_to_go(owned_library, device):
     assert reference_count(device, kinds=evidence_only) == 1
     assert must_be_retained(device)
     assert not must_be_retained(device, kinds=evidence_only)
+
+
+# --- nothing loses the guard by omission -------------------------------------
+
+#: A ReferencedRow no event can name.
+#:
+#: An Edition has no kind, so the guard permits its delete rather
+#: than asking a question the registry cannot answer. Adding a
+#: model here says an event will never name one of its rows.
+NO_KIND_BY_DESIGN = frozenset({Edition})
+
+
+def _referenced_rows() -> set[type[Model]]:
+    return {
+        model
+        for model in apps.get_models()
+        if issubclass(model, ReferencedRow) and not model._meta.abstract
+    }
+
+
+def test_a_referenced_row_has_a_kind_or_is_exempt():
+    """The blanket catch in the guard is what this holds shut.
+
+    `refuse_to_delete_a_referenced_row` answers an unmapped model by
+    permitting the delete. That is right for a row no event names
+    and wrong for one somebody forgot to register, so the two cases
+    are told apart here rather than at run time.
+    """
+    registered = {kind.model for kind in DEFAULT_REFERENCE_KINDS}
+
+    assert _referenced_rows() - NO_KIND_BY_DESIGN == registered
+
+
+def test_every_kind_keeps_its_guard_on_a_cascade():
+    """`ReferencedRow.delete()` misses a cascade and a bulk delete.
+
+    The receiver is the backstop for both, and its senders are
+    written out one by one.
+    """
+    for kind in DEFAULT_REFERENCE_KINDS:
+        receivers = pre_delete._live_receivers(sender=kind.model)[0]
+        assert refuse_to_delete_a_row_an_event_references in receivers, kind.name
+
+
+def test_an_exempt_row_is_still_a_referenced_row():
+    """Exempt from the kind, not from the base class.
+
+    An Edition sits under the same delete() as its siblings, so
+    giving it a kind later needs no change to the model.
+    """
+    assert NO_KIND_BY_DESIGN <= _referenced_rows()
