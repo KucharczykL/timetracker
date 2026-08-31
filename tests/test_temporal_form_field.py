@@ -55,9 +55,11 @@ def markup(
         "release-end-year",
         "release-end-month",
         "release-end-day",
-        "release-end-decade",
         "release-approximate",
         "release-uncertain",
+        "release-end-decade",
+        "release-end-approximate",
+        "release-end-uncertain",
     ],
 )
 def test_every_posted_input_is_rendered(input_name: str) -> None:
@@ -109,6 +111,18 @@ def test_a_qualifier_checks_its_box() -> None:
     assert 'name="release-approximate" value="on"' in html
     assert 'name="release-uncertain" value="on"' in html
     assert html.count("checked") == 2
+
+
+def test_only_the_qualified_end_checks_its_box() -> None:
+    """A shared pair would tick the start too, and store it."""
+    data = temporal_draft_data(
+        TemporalDraft.from_value(TemporalValue.parse("1984/1986~"))
+    )
+    html = markup(data)
+    end_box = html.split('name="release-end-approximate"')[1].split(">")[0]
+
+    assert "checked" in end_box
+    assert html.count("checked") == 1
 
 
 def test_an_unchecked_qualifier_leaves_its_box_alone() -> None:
@@ -232,6 +246,29 @@ def test_an_untouched_field_has_not_changed() -> None:
     data = temporal_draft_data(TemporalDraft.from_value(TemporalValue.parse("1984")))
 
     assert not field.has_changed(TemporalValue.parse("1984"), data)
+
+
+def test_an_untouched_asymmetric_range_has_not_changed() -> None:
+    """Re-saving a record must not widen a date nobody touched."""
+    field = TemporalFormField(label="Release date", required=False)
+    value = TemporalValue.parse("1984/1986~")
+    data = temporal_draft_data(TemporalDraft.from_value(value))
+
+    assert not field.has_changed(value, data)
+    assert field.to_python(data) == value
+
+
+def test_one_end_alone_can_be_made_approximate() -> None:
+    form = ReleaseForm(
+        data=post(
+            kind="range",
+            year="1984",
+            **{"end-year": "1986", "end-approximate": "on"},
+        )
+    )
+
+    assert form.is_valid()
+    assert form.cleaned_data["released"] == TemporalValue.parse("1984/1986~")
 
 
 def test_a_disabled_field_has_not_changed() -> None:

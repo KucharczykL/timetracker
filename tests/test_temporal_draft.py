@@ -131,7 +131,7 @@ def test_nothing_reads_as_an_empty_endpoint() -> None:
 
 
 class TemporalDraftShapes:
-    """Every shape one pair of qualifier boxes can write."""
+    """Every shape these controls can write."""
 
     CANONICALS = (
         "1984",
@@ -143,6 +143,9 @@ class TemporalDraftShapes:
         "1984/1986",
         "1984-06/1986",
         "1984~/1986~",
+        "1984/1986~",
+        "1984?/1986",
+        "1984~/1986%",
         "1984/..",
         "../1986",
         "1984/",
@@ -284,7 +287,7 @@ def test_a_start_beside_until_is_refused() -> None:
 
 def test_a_qualifier_alone_leaves_an_unknown_draft_alone() -> None:
     """A box modifies a date. With no date it states nothing."""
-    data = posted(kind="unknown", approximate="on")
+    data = posted(kind="unknown", start_approximate="on")
 
     assert temporal_draft_from_data(data).build() == TemporalValue.unknown()
 
@@ -295,18 +298,20 @@ def test_a_date_draft_with_no_part_builds_unknown() -> None:
     assert draft.build() == TemporalValue.unknown()
 
 
-def test_an_asymmetric_range_survives_a_round_trip() -> None:
-    """No control writes it, and nothing here loses it."""
-    value = TemporalValue.parse("1984/1986~")
+def test_an_asymmetric_range_is_written_one_end_at_a_time() -> None:
+    """One shared pair would make the start approximate too."""
+    data = posted(
+        kind="range", start_year="1984", end_year="1986", end_approximate="on"
+    )
 
-    assert TemporalDraft.from_value(value).build() == value
+    assert temporal_draft_from_data(data).build() == TemporalValue.parse("1984/1986~")
 
 
-def test_either_endpoint_makes_the_whole_value_approximate() -> None:
+def test_each_endpoint_keeps_its_own_qualifier() -> None:
     draft = TemporalDraft.from_value(TemporalValue.parse("1984/1986~"))
 
-    assert draft.is_approximate
-    assert not draft.is_uncertain
+    assert draft.start.qualifier is None
+    assert draft.end.qualifier is TemporalQualifier.APPROXIMATE
 
 
 @pytest.mark.parametrize(
@@ -367,9 +372,11 @@ def test_a_checked_box_qualifies_both_endpoints() -> None:
     data = posted(
         kind="range",
         start_year="1984",
+        start_approximate="on",
+        start_uncertain="on",
         end_year="1986",
-        approximate="on",
-        uncertain="on",
+        end_approximate="on",
+        end_uncertain="on",
     )
 
     assert temporal_draft_from_data(data).build() == TemporalValue.parse("1984%/1986%")

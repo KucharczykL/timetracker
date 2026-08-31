@@ -717,20 +717,6 @@ class TemporalDraft:
     start: TemporalEndpointDraft = field(default_factory=TemporalEndpointDraft)
     end: TemporalEndpointDraft = field(default_factory=TemporalEndpointDraft)
 
-    @property
-    def is_approximate(self) -> bool:
-        """Either endpoint makes the whole value approximate."""
-        return _says_approximate(self.start.qualifier) or _says_approximate(
-            self.end.qualifier
-        )
-
-    @property
-    def is_uncertain(self) -> bool:
-        """Either endpoint makes the whole value uncertain."""
-        return _says_uncertain(self.start.qualifier) or _says_uncertain(
-            self.end.qualifier
-        )
-
     @classmethod
     def from_value(cls, value: TemporalValue | None) -> TemporalDraft:
         """The dimensions a stored value states."""
@@ -842,12 +828,14 @@ class TemporalDraftData(TypedDict):
     start_month: str
     start_day: str
     start_decade: str
+    start_approximate: str
+    start_uncertain: str
     end_year: str
     end_month: str
     end_day: str
     end_decade: str
-    approximate: str
-    uncertain: str
+    end_approximate: str
+    end_uncertain: str
 
 
 #: The first endpoint takes the bare part names.
@@ -857,12 +845,14 @@ TEMPORAL_INPUT_SUFFIXES: Final[dict[str, str]] = {
     "start_month": "month",
     "start_day": "day",
     "start_decade": "decade",
+    "start_approximate": "approximate",
+    "start_uncertain": "uncertain",
     "end_year": "end-year",
     "end_month": "end-month",
     "end_day": "end-day",
     "end_decade": "end-decade",
-    "approximate": "approximate",
-    "uncertain": "uncertain",
+    "end_approximate": "end-approximate",
+    "end_uncertain": "end-uncertain",
 }
 
 EMPTY_TEMPORAL_DRAFT_DATA: Final[TemporalDraftData] = TemporalDraftData(
@@ -871,12 +861,14 @@ EMPTY_TEMPORAL_DRAFT_DATA: Final[TemporalDraftData] = TemporalDraftData(
     start_month="",
     start_day="",
     start_decade="",
+    start_approximate="",
+    start_uncertain="",
     end_year="",
     end_month="",
     end_day="",
     end_decade="",
-    approximate="",
-    uncertain="",
+    end_approximate="",
+    end_uncertain="",
 )
 
 
@@ -888,14 +880,10 @@ def temporal_input_name(name: str, key: str) -> str:
 def temporal_draft_from_data(data: TemporalDraftData) -> TemporalDraft:
     """The draft those posted strings state.
 
-    The two checkboxes name one qualifier, which is written onto both
-    endpoints. An asymmetric range stays storable and readable, and no
-    control here reaches it.
+    Each endpoint carries its own pair of boxes, because the grammar
+    qualifies each end separately. One shared pair would rewrite
+    ``1984/1986~`` as ``1984~/1986~`` on a save nobody asked for.
     """
-    qualifier = temporal_qualifier(
-        approximate=bool(data["approximate"].strip()),
-        uncertain=bool(data["uncertain"].strip()),
-    )
     return TemporalDraft(
         kind=_draft_kind_from_text(data["kind"]),
         start=_endpoint_draft_from_text(
@@ -903,14 +891,20 @@ def temporal_draft_from_data(data: TemporalDraftData) -> TemporalDraft:
             month=data["start_month"],
             day=data["start_day"],
             decade=data["start_decade"],
-            qualifier=qualifier,
+            qualifier=temporal_qualifier(
+                approximate=bool(data["start_approximate"].strip()),
+                uncertain=bool(data["start_uncertain"].strip()),
+            ),
         ),
         end=_endpoint_draft_from_text(
             year=data["end_year"],
             month=data["end_month"],
             day=data["end_day"],
             decade=data["end_decade"],
-            qualifier=qualifier,
+            qualifier=temporal_qualifier(
+                approximate=bool(data["end_approximate"].strip()),
+                uncertain=bool(data["end_uncertain"].strip()),
+            ),
         ),
     )
 
@@ -923,13 +917,20 @@ def temporal_draft_data(draft: TemporalDraft) -> TemporalDraftData:
         start_month=_part_text(draft.start.month),
         start_day=_part_text(draft.start.day),
         start_decade=_part_text(draft.start.decade_start_year),
+        start_approximate=_box_text(_says_approximate(draft.start.qualifier)),
+        start_uncertain=_box_text(_says_uncertain(draft.start.qualifier)),
         end_year=_part_text(draft.end.year),
         end_month=_part_text(draft.end.month),
         end_day=_part_text(draft.end.day),
         end_decade=_part_text(draft.end.decade_start_year),
-        approximate="on" if draft.is_approximate else "",
-        uncertain="on" if draft.is_uncertain else "",
+        end_approximate=_box_text(_says_approximate(draft.end.qualifier)),
+        end_uncertain=_box_text(_says_uncertain(draft.end.qualifier)),
     )
+
+
+def _box_text(checked: bool) -> str:
+    """What a checked box posts, or nothing."""
+    return "on" if checked else ""
 
 
 def _draft_kind_from_text(text: str) -> TemporalDraftKind:

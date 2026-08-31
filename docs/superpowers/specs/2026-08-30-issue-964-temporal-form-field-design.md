@@ -25,10 +25,11 @@ The precision is derived, not stated: a filled day means day, else a filled mont
 means month, else a filled year means year, else a filled decade means decade,
 else the endpoint is unknown. A person thus never picks a precision from a menu.
 
-The draft holds a qualifier for each endpoint. The controls expose one pair for
-the whole value and write both endpoints. An asymmetric range stays storable,
-readable and presentable, and no control reaches it. A second control set is then
-additive.
+The draft holds a qualifier for each endpoint, and each endpoint carries its own
+pair of boxes. One pair for the whole value could not state "1984 to about 1986",
+and worse, it rewrote a stored `1984/1986~` as `1984~/1986~` the next time anyone
+saved that record. The grammar qualifies each end separately, thus so do the
+controls.
 
 ## The field and the widget
 
@@ -37,8 +38,8 @@ additive.
 in place of a native control, and reads its own inputs from the data dictionary.
 
 One field name yields several inputs. `{name}-kind`, `{name}-year`,
-`{name}-month`, `{name}-day`, `{name}-decade`, `{name}-approximate`,
-`{name}-uncertain`, and the same part names behind `{name}-end-` for the second
+`{name}-month`, `{name}-day`, `{name}-decade`, `{name}-approximate` and
+`{name}-uncertain`, and the same six names behind `{name}-end-` for the second
 endpoint of a range. `value_from_datadict()` builds the draft, and `clean()`
 turns it into the value.
 
@@ -49,8 +50,9 @@ not take the native control classes.
 ## Every combination works with no JavaScript
 
 The widget renders native controls: a select for the kind, number inputs for the
-parts, and checkboxes for the two qualifiers. A day, a month, a year, a decade, a
-range, and an unknown value each round-trip with scripting off.
+parts, and a pair of qualifier checkboxes inside each endpoint. A day, a month, a
+year, a decade, a range, an asymmetric range, and an unknown value each round-trip
+with scripting off.
 
 This is the contract #965 enhances. The element hides controls and binds
 segments; it introduces no input the server cannot read.

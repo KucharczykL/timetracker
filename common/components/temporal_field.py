@@ -2,8 +2,8 @@
 
 A person states a shape, the parts they know, and whether the date is
 approximate or uncertain. Nothing here needs a script: the controls are
-a select, four number inputs per endpoint, and two checkboxes, and the
-server rebuilds the value from what they post. That is the contract
+a select, then four number inputs and two checkboxes per endpoint, and
+the server rebuilds the value from what they post. That is the contract
 issue #965's custom element enhances, and removing the script leaves
 this working.
 
@@ -63,6 +63,8 @@ def TemporalField(
             month=data["start_month"],
             day=data["start_day"],
             decade=data["start_decade"],
+            approximate=data["start_approximate"],
+            uncertain=data["start_uncertain"],
         ),
         _endpoint_group(
             name=name,
@@ -72,11 +74,8 @@ def TemporalField(
             month=data["end_month"],
             day=data["end_day"],
             decade=data["end_decade"],
-        ),
-        _qualifier_row(
-            name=name,
-            approximate=data["approximate"],
-            uncertain=data["uncertain"],
+            approximate=data["end_approximate"],
+            uncertain=data["end_uncertain"],
         ),
     ]
 
@@ -110,7 +109,15 @@ def _endpoint_group(
     month: str,
     day: str,
     decade: str,
+    approximate: str,
+    uncertain: str,
 ) -> Node:
+    """One end's parts and the two boxes that qualify them.
+
+    The boxes sit inside the endpoint, because the grammar qualifies
+    each end on its own. One pair for the whole value could not state
+    "1984 to about 1986", and rewrote it on every save.
+    """
     return Fieldset(class_=_ENDPOINT_CLASS, data_temporal_endpoint=endpoint)[
         Legend(class_=_LEGEND_CLASS)[legend],
         Div(class_=_ROW_CLASS)[
@@ -151,6 +158,12 @@ def _endpoint_group(
                 step=10,
             ),
         ],
+        _qualifier_row(
+            name=name,
+            endpoint=endpoint,
+            approximate=approximate,
+            uncertain=uncertain,
+        ),
     ]
 
 
@@ -187,17 +200,19 @@ def _part_input(
     ]
 
 
-def _qualifier_row(*, name: str, approximate: str, uncertain: str) -> Node:
-    """One pair of boxes for the whole value."""
+def _qualifier_row(
+    *, name: str, endpoint: str, approximate: str, uncertain: str
+) -> Node:
+    """The two boxes that qualify one end."""
     return Div(class_=_ROW_CLASS)[
         Checkbox(
-            name=temporal_input_name(name, "approximate"),
+            name=temporal_input_name(name, f"{endpoint}_approximate"),
             label="Approximate",
             checked=bool(approximate.strip()),
             value="on",
         ),
         Checkbox(
-            name=temporal_input_name(name, "uncertain"),
+            name=temporal_input_name(name, f"{endpoint}_uncertain"),
             label="Uncertain",
             checked=bool(uncertain.strip()),
             value="on",

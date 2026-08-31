@@ -392,12 +392,16 @@ class TemporalWidget(forms.Widget):
             start_month=data.get(temporal_input_name(name, "start_month"), ""),
             start_day=data.get(temporal_input_name(name, "start_day"), ""),
             start_decade=data.get(temporal_input_name(name, "start_decade"), ""),
+            start_approximate=data.get(
+                temporal_input_name(name, "start_approximate"), ""
+            ),
+            start_uncertain=data.get(temporal_input_name(name, "start_uncertain"), ""),
             end_year=data.get(temporal_input_name(name, "end_year"), ""),
             end_month=data.get(temporal_input_name(name, "end_month"), ""),
             end_day=data.get(temporal_input_name(name, "end_day"), ""),
             end_decade=data.get(temporal_input_name(name, "end_decade"), ""),
-            approximate=data.get(temporal_input_name(name, "approximate"), ""),
-            uncertain=data.get(temporal_input_name(name, "uncertain"), ""),
+            end_approximate=data.get(temporal_input_name(name, "end_approximate"), ""),
+            end_uncertain=data.get(temporal_input_name(name, "end_uncertain"), ""),
         )
 
     def value_omitted_from_data(self, data, files, name) -> bool:
