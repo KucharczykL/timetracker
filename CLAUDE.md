@@ -103,7 +103,7 @@ runs the Nix path**, so verify against `make check` before pushing when possible
 | Run tests | `make test` (pytest; also runs vitest via its `test-ts` prereq) |
 | Run a subset of tests | `make test ARGS="tests/test_filters.py -k relation -x"` (same for `make test-e2e ARGS=…`) |
 | Run TypeScript tests | `make test-ts` (vitest over `ts/**/*.test.ts`) |
-| Make / apply migrations | `make makemigrations` / `make migrate` (`ARGS="games 0024_libraryidempotencyrecord"` targets one) |
+| Make / apply migrations | `make makemigrations` (`ARGS="games --name edition_name"` names the file) / `make migrate` (`ARGS="games 0024_libraryidempotencyrecord"` targets one) |
 | CSS (Tailwind) | `make css` |
 | Django shell | `make shell` |
 | Create superuser | `make createsuperuser` |
@@ -656,6 +656,13 @@ chromium` once. All JS is vendored, so the tests run fully offline. A bare
   in `REMOVABLE_MODELS`, and a builder in `tests/test_removable_models.py`, which
   fails until it has one. `delete` is Django's word, not the library's: see
   [Vocabulary](docs/vocabulary.md), which `make vale` enforces.
+- **A private catalog graph is written through the service** — call
+  `add_edition`, `update_edition`, `remove_edition`, `add_release`,
+  `update_release` or `remove_release` from `games/catalog_writes.py`, never
+  `Edition.objects.create()` or a hand-written default juggle. Each verb is one
+  transaction, states a whole row, and refuses a shared Game, another library's
+  row, and a removal that would leave a Game with no Edition. The contract is
+  [Catalog](docs/catalog.md).
 - **A PlayerGame fact is stated as a command** — never assign `Game.status` or
   `Game.mastered` directly. Call `record_facts()` / `track_game()` from
   `games/writes/playergame.py`, or their request-shaped wrappers in

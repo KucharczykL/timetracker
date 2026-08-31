@@ -144,8 +144,12 @@ css: ensure-node-deps common/input.css
 # a manual backfill migration wants anyway, and a genuinely un-migratable
 # change exits non-zero with the reason instead of waiting on an answer that
 # is never coming.
+#
+# Usage: make makemigrations ARGS="games --name edition_name"
+# Without a name, the autodetector titles the file after the first operation
+# and appends `_and_more`, which says nothing about the change.
 makemigrations: ensure-postgres
-	uv run --frozen python manage.py makemigrations --noinput
+	uv run --frozen python manage.py makemigrations --noinput $(ARGS)
 
 # Drift guard for the aggregates. Bare `makemigrations` is not a substitute: on
 # drift it writes a new migration and exits 0, so an un-regenerated model change
@@ -160,8 +164,14 @@ check-migrations: ensure-postgres
 sqlmigrate: ensure-postgres
 	uv run --frozen python manage.py sqlmigrate $(ARGS)
 
+# Generating first is deliberate: an un-generated model change would otherwise
+# apply nothing and read as a clean run. It calls the command rather than the
+# `makemigrations` target, because that target reads ARGS too and this one's
+# ARGS names a migration — the autodetector would take it for an app label.
+#
 # Usage: make migrate ARGS="games 0024_libraryidempotencyrecord"
-migrate: ensure-postgres makemigrations
+migrate: ensure-postgres
+	uv run --frozen python manage.py makemigrations --noinput
 	uv run --frozen python manage.py migrate $(ARGS)
 
 # Drop the development database and build it again from the migrations.

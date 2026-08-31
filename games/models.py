@@ -494,6 +494,14 @@ class Edition(ReferencedRow):
                 condition=Q(is_default=True) & Q(removed_at__isnull=True),
                 name="unique_default_edition_per_game",
             ),
+            #: A name is unique among one Game's live Editions.
+            #: No name is not a name, thus it claims no slot.
+            models.UniqueConstraint(
+                F("game"),
+                Lower(Trim("name")),
+                condition=Q(removed_at__isnull=True) & ~Q(name=""),
+                name="unique_live_edition_name_per_game",
+            ),
         )
         indexes = (
             #: The live Editions of one Game.
@@ -511,11 +519,18 @@ class Edition(ReferencedRow):
         on_delete=models.CASCADE,
         related_name="editions",
     )
+    #: The words this Edition presents under.
+    name = models.CharField(max_length=255, blank=True, default="")
     is_default = models.BooleanField(default=False, editable=False)
     #: Set instead of destroying the row.
     removed_at = models.DateTimeField(
         null=True, blank=True, default=None, editable=False
     )
+
+    @property
+    def display_name(self) -> str:
+        """An unnamed Edition presents as the work."""
+        return self.name or self.game.name
 
 
 class ReleaseQuerySet(RemovableMixin, models.QuerySet):
