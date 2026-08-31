@@ -296,7 +296,7 @@ git commit -m "Read a Game's visible Editions and their Releases"
 **Interfaces:**
 - Consumes: `EditionEntry`, `game_hierarchy` from Task 1.
 - Produces, all module-level in `games/views/game.py`:
-  - `GREY_VALUE_CLASS: str`, `UNSPECIFIED_PLATFORM: str`
+  - `META_VALUE_CLASS: str`, `UNSPECIFIED_PLATFORM: str`
   - `def _platform_words(release: Release | None) -> str`
   - `def _reads_plainly(entries: Sequence[EditionEntry]) -> bool`
   - `def _plain_release_rows(entries, presentation) -> list[Node]`
@@ -467,7 +467,7 @@ Beneath `WIKIDATA_CONFLICT_MESSAGE` (line 101), add:
 
 ```python
 #: The value half of a meta row, against the label's grey.
-GREY_VALUE_CLASS = "text-black dark:text-slate-300"
+META_VALUE_CLASS = "text-black dark:text-slate-300"
 #: No Platform is a stated fact, not a blank.
 UNSPECIFIED_PLATFORM = "Unspecified"
 ```
@@ -511,14 +511,14 @@ def _plain_release_rows(
     return [
         _meta_row(
             "Platform",
-            Span(class_=GREY_VALUE_CLASS)[_platform_words(release)],
+            Span(class_=META_VALUE_CLASS)[_platform_words(release)],
         ),
         _meta_row(
             "Released",
             TemporalText(
                 None if release is None else release.release_date,
                 presentation,
-                class_=GREY_VALUE_CLASS,
+                class_=META_VALUE_CLASS,
             ),
         ),
     ]
@@ -565,7 +565,7 @@ rows:
         _meta_row(
             "Original release",
             TemporalText(
-                game.original_release_date, presentation, class_=GREY_VALUE_CLASS
+                game.original_release_date, presentation, class_=META_VALUE_CLASS
             ),
         ),
         _meta_row(
@@ -668,7 +668,7 @@ git commit -m "Read a Game's own Release where the legacy row stood"
 - Modify: `tests/test_game_hierarchy_section.py`
 
 **Interfaces:**
-- Consumes: `_reads_plainly`, `_platform_words`, `GREY_VALUE_CLASS`,
+- Consumes: `_reads_plainly`, `_platform_words`, `META_VALUE_CLASS`,
   `EditionEntry` from Task 2; `StyledTable`, `Column`, `make_row`,
   `PageHeading`, `Fragment`, already imported in `games/views/game.py`.
 - Produces:
@@ -972,7 +972,7 @@ it is the last one on the branch.
 | No legacy column removal | no migration in any task |
 
 **Type consistency.** `EditionEntry` and `game_hierarchy` are named identically
-in Tasks 1, 2 and 3. `_platform_words`, `_reads_plainly` and `GREY_VALUE_CLASS`
+in Tasks 1, 2 and 3. `_platform_words`, `_reads_plainly` and `META_VALUE_CLASS`
 are defined in Task 2 and consumed unchanged in Task 3. `_game_header` gains
 `entries` in Task 2 and keeps that name.
 

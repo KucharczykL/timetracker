@@ -103,7 +103,7 @@ from games.writes.playergame import new_correlation_id
 WIKIDATA_CONFLICT_MESSAGE = "This Wikidata entity ID already belongs to another game."
 
 #: The value half of a meta row, against the label's grey.
-GREY_VALUE_CLASS = "text-black dark:text-slate-300"
+META_VALUE_CLASS = "text-black dark:text-slate-300"
 #: No Platform is a stated fact, not a blank.
 UNSPECIFIED_PLATFORM = "Unspecified"
 
@@ -602,14 +602,14 @@ def _plain_release_rows(
     return [
         _meta_row(
             "Platform",
-            Span(class_=GREY_VALUE_CLASS)[_platform_words(release)],
+            Span(class_=META_VALUE_CLASS)[_platform_words(release)],
         ),
         _meta_row(
             "Released",
             TemporalText(
                 None if release is None else release.release_date,
                 presentation,
-                class_=GREY_VALUE_CLASS,
+                class_=META_VALUE_CLASS,
             ),
         ),
     ]
@@ -669,7 +669,7 @@ def _game_header(
         _meta_row(
             "Original release",
             TemporalText(
-                game.original_release_date, presentation, class_=GREY_VALUE_CLASS
+                game.original_release_date, presentation, class_=META_VALUE_CLASS
             ),
         ),
         _meta_row(
