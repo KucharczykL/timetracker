@@ -1,4 +1,4 @@
-"""The words a stored temporal value reads as."""
+"""What a stored temporal value reads as."""
 
 from datetime import date
 from zoneinfo import ZoneInfo

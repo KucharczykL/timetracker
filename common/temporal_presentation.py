@@ -1,11 +1,6 @@
-"""Words for a stored temporal value, at the precision it knows.
+"""Words for a stored temporal value.
 
-``str(value)`` prints the canonical string, ``1984-06~``. That is the storage
-form and not a sentence: it hides the precision behind punctuation and states
-the qualifier as a symbol. This module answers words instead.
-
-Every calendar decision belongs to :class:`DateTimePresentation` — the account
-owns the order of the parts. This module decides only which parts there are.
+``str(value)`` prints storage, ``1984-06~``. This answers words.
 """
 
 from datetime import date
@@ -30,7 +25,7 @@ _RANGE_JOINER = " – "
 def present_temporal_value(
     value: TemporalValue | None, presentation: DateTimePresentation
 ) -> str:
-    """The words for ``value``, or ``Unknown`` where it states nothing."""
+    """The words for ``value``, or ``Unknown``."""
     if value is None or value.is_unknown:
         return UNKNOWN_TEXT
     if value.is_range:
@@ -44,13 +39,7 @@ def TemporalText(
     *,
     class_: str = "",
 ) -> Node:
-    """The same words, as a span a page can place.
-
-    The words carry no markup of their own, so a screen reader says what a
-    sighted reader sees. This adds the element and the classes, and it adds no
-    second wording — a title attribute, a log line or an API answer calls
-    :func:`present_temporal_value` instead.
-    """
+    """The same words, as a placeable span."""
     return Span(class_=class_)[present_temporal_value(value, presentation)]
 
 
@@ -80,7 +69,7 @@ def _present_endpoint(
 
 
 def _qualified(words: str, qualifier: TemporalQualifier | None) -> str:
-    """A symbol is storage. A reader gets words."""
+    """A reader gets words, not a symbol."""
     if qualifier is None:
         return words
     if qualifier is TemporalQualifier.APPROXIMATE:
@@ -105,7 +94,7 @@ def _at_precision(value: TemporalValue, presentation: DateTimePresentation) -> s
 
 
 def _day_date(value: TemporalValue) -> date:
-    """The stored day. Every part is present at this precision."""
+    """The stored day. Every part is present."""
     year, month, day = value.year, value.month, value.day
     if year is None or month is None or day is None:
         raise ValueError("A day temporal value states every part.")
@@ -113,7 +102,11 @@ def _day_date(value: TemporalValue) -> date:
 
 
 def _month_date(value: TemporalValue) -> date:
-    """A carrier for the month style. The day never reaches a reader."""
+    """A carrier for the month style.
+
+    The day is a fabrication. ``month_year`` discards it, and no
+    other style may read this date.
+    """
     year, month = value.year, value.month
     if year is None or month is None:
         raise ValueError("A month temporal value states both parts.")
