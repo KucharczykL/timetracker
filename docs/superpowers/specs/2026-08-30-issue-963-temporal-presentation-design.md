@@ -1,8 +1,9 @@
 # Present a stored date at its own precision
 
 A stored temporal value knows a precision and a qualifier. A reader must see
-both. `str(value)` prints the canonical string, `1984-06~`. That is the storage
-form and not a sentence.
+both. The value has a canonical string, `1984-06~`, which is the storage form
+and not a sentence. The value itself renders as its dataclass repr, thus a page
+must never place it directly.
 
 `common/temporal_presentation.py` answers words instead. It reads. It writes
 nothing, stores nothing, and adds no column.

@@ -9,7 +9,11 @@ from common.date_time_presentation import (
     DateTimePresentation,
     date_time_format_profile,
 )
-from common.temporal_presentation import TemporalText, present_temporal_value
+from common.temporal_presentation import (
+    TemporalText,
+    _decade,
+    present_temporal_value,
+)
 from timetracker.temporal import TemporalQualifier, TemporalValue
 
 
@@ -67,6 +71,10 @@ def test_a_decade_reads_with_a_trailing_letter() -> None:
 )
 def test_nothing_stored_reads_as_unknown(value: TemporalValue | None) -> None:
     assert present_temporal_value(value, presentation()) == "Unknown"
+
+
+def test_a_decade_with_no_year_reads_as_the_bare_sentinel() -> None:
+    assert _decade(None) == "Unknown"
 
 
 @pytest.mark.parametrize(

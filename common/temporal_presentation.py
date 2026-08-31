@@ -1,6 +1,6 @@
 """Words for a stored temporal value.
 
-``str(value)`` prints storage, ``1984-06~``. This answers words.
+The value renders as its dataclass repr. This answers words.
 """
 
 from datetime import date
@@ -88,7 +88,7 @@ def _at_precision(value: TemporalValue, presentation: DateTimePresentation) -> s
         case TemporalPrecision.YEAR:
             return _four_digits(value.year)
         case TemporalPrecision.DECADE:
-            return f"{_four_digits(value.decade_start_year)}s"
+            return _decade(value.decade_start_year)
         case _:
             return UNKNOWN_TEXT
 
@@ -115,3 +115,8 @@ def _month_date(value: TemporalValue) -> date:
 
 def _four_digits(year: int | None) -> str:
     return UNKNOWN_TEXT if year is None else f"{year:04d}"
+
+
+def _decade(start_year: int | None) -> str:
+    """The plural letter never follows the sentinel."""
+    return UNKNOWN_TEXT if start_year is None else f"{start_year:04d}s"
