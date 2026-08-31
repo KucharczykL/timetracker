@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.db.models import QuerySet
 from django.utils import timezone
 
@@ -25,10 +26,18 @@ from common.components import (
 )
 from common.components.primitives import Checkbox
 from common.date_time_presentation import DateTimePresentation, zone_or_none
+from games.catalog_compat import write_and_mirror
+from games.catalog_writes import (
+    add_edition,
+    add_release,
+    update_edition,
+    update_release,
+)
 from games.dev_login import prefill_credentials
 from games.external_references import normalize_provider_key
 from games.models import (
     Device,
+    Edition,
     ExternalReference,
     Game,
     Platform,
@@ -36,6 +45,7 @@ from games.models import (
     PlayerGameStatus,
     PlayEvent,
     Purchase,
+    Release,
     Session,
     UserLibrary,
 )
@@ -1068,6 +1078,136 @@ class InitialReleaseForm(PrimitiveWidgetsMixin, forms.Form):
         return InitialRelease(
             platform=self.cleaned_data["platform"],
             release_date=self.cleaned_data["release_date"],
+        )
+
+
+#: The service allows it for #782's importer; a person typing does
+#: not, because two unnamed siblings both read as the Game's name.
+UNNAMED_SIBLING_EDITION = (
+    "Name this edition. Another edition already presents as the game's own name."
+)
+
+
+class EditionForm(PrimitiveWidgetsMixin, forms.Form):
+    """One Edition, written through `games/catalog_writes.py`."""
+
+    name = forms.CharField(
+        max_length=255, required=False, widget=autofocus_input_widget
+    )
+    is_default = forms.BooleanField(required=False, label="Default edition")
+
+    def __init__(
+        self,
+        *args,
+        library: UserLibrary,
+        game: Game,
+        instance: Edition | None = None,
+        **kwargs,
+    ):
+        self.library = library
+        self.game = game
+        self.instance = instance
+        if instance is not None:
+            kwargs.setdefault(
+                "initial", {"name": instance.name, "is_default": instance.is_default}
+            )
+        super().__init__(*args, **kwargs)
+        if instance is not None and instance.is_default:
+            #: The service refuses a demotion, thus the control does.
+            #: Promoting a sibling is how the mark moves.
+            self.fields["is_default"].disabled = True
+            self.fields["is_default"].initial = True
+
+    def clean_name(self) -> str:
+        wanted = self.cleaned_data["name"].strip()
+        if wanted:
+            return wanted
+        siblings = Edition.objects.for_library(self.library).filter(game=self.game)
+        if self.instance is not None:
+            siblings = siblings.exclude(pk=self.instance.pk)
+        if siblings.exists():
+            raise forms.ValidationError(UNNAMED_SIBLING_EDITION)
+        return wanted
+
+    def write(self) -> Edition | None:
+        """Call the verb, or say what it refused."""
+        try:
+            return write_and_mirror(self.game, self._verb)
+        except ValidationError as refusal:
+            self.add_error(None, refusal.messages[0])
+            return None
+
+    def _verb(self) -> Edition:
+        if self.instance is None:
+            return add_edition(
+                game=self.game,
+                library=self.library,
+                name=self.cleaned_data["name"],
+                is_default=self.cleaned_data["is_default"],
+            )
+        return update_edition(
+            edition=self.instance,
+            library=self.library,
+            name=self.cleaned_data["name"],
+            is_default=self.cleaned_data["is_default"],
+        )
+
+
+class ReleaseForm(InitialReleaseForm):
+    """One Release, written through `games/catalog_writes.py`."""
+
+    is_default = forms.BooleanField(required=False, label="Default release")
+
+    def __init__(
+        self,
+        *args,
+        library: UserLibrary,
+        presentation: DateTimePresentation,
+        edition: Edition,
+        instance: Release | None = None,
+        **kwargs,
+    ):
+        self.edition = edition
+        self.instance = instance
+        if instance is not None:
+            kwargs.setdefault(
+                "initial",
+                {
+                    "platform": instance.platform_id,
+                    "release_date": instance.release_date,
+                    "is_default": instance.is_default,
+                },
+            )
+        super().__init__(*args, library=library, presentation=presentation, **kwargs)
+        #: `release_date` joins the form last, thus it sorts last too.
+        self.order_fields(("platform", "release_date", "is_default"))
+        if instance is not None and instance.is_default:
+            self.fields["is_default"].disabled = True
+            self.fields["is_default"].initial = True
+
+    def write(self) -> Release | None:
+        """Call the verb, or say what it refused."""
+        try:
+            return write_and_mirror(self.edition.game, self._verb)
+        except ValidationError as refusal:
+            self.add_error(None, refusal.messages[0])
+            return None
+
+    def _verb(self) -> Release:
+        if self.instance is None:
+            return add_release(
+                edition=self.edition,
+                library=self.library,
+                platform=self.cleaned_data["platform"],
+                release_date=self.cleaned_data["release_date"],
+                is_default=self.cleaned_data["is_default"],
+            )
+        return update_release(
+            release=self.instance,
+            library=self.library,
+            platform=self.cleaned_data["platform"],
+            release_date=self.cleaned_data["release_date"],
+            is_default=self.cleaned_data["is_default"],
         )
 
 
