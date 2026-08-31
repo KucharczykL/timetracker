@@ -543,6 +543,111 @@ def validate_temporal_value(value: object) -> None:
     parse_temporal_value(value)
 
 
+@dataclass(slots=True)
+class TemporalEndpointDraft:
+    """One position's dimensions, each independently assignable.
+
+    Mutable on purpose. ``TemporalValue`` is frozen and parses from one
+    canonical string, so changing a month there means string surgery.
+    Here it is a field assignment, and ``build()`` reassembles the value.
+    """
+
+    year: int | None = None
+    month: int | None = None
+    day: int | None = None
+    decade_start_year: int | None = None
+    qualifier: TemporalQualifier | None = None
+
+    @property
+    def is_empty(self) -> bool:
+        """No dimension states anything."""
+        return (
+            self.year is None
+            and self.month is None
+            and self.day is None
+            and self.decade_start_year is None
+        )
+
+    @classmethod
+    def from_value(cls, value: TemporalValue | None) -> TemporalEndpointDraft:
+        """The dimensions an atomic value states."""
+        if value is None:
+            return cls()
+        return cls(
+            year=value.year,
+            month=value.month,
+            day=value.day,
+            decade_start_year=value.decade_start_year,
+            qualifier=value.qualifier,
+        )
+
+    def build(self) -> TemporalValue | None:
+        """The value these dimensions state, or nothing.
+
+        The precision is derived rather than stated: the deepest filled
+        part decides it. A part with no shallower part to sit on is a
+        disagreement, and a disagreement is refused with a sentence
+        rather than completed with an invented part.
+        """
+        self._refuse_disagreement()
+        if self.day is not None:
+            assert self.year is not None and self.month is not None
+            return _build_day(self.year, self.month, self.day, self.qualifier)
+        if self.month is not None:
+            assert self.year is not None
+            return TemporalValue.from_month(
+                self.year, self.month, qualifier=self.qualifier
+            )
+        if self.year is not None:
+            return TemporalValue.from_year(self.year, qualifier=self.qualifier)
+        if self.decade_start_year is not None:
+            return _build_decade(self.decade_start_year, self.qualifier)
+        return None
+
+    def _refuse_disagreement(self) -> None:
+        if self.day is not None and (self.year is None or self.month is None):
+            raise TemporalValueParseError(
+                "A day needs a year and a month beside it.",
+                code="incomplete_day",
+            )
+        if self.month is not None and self.year is None:
+            raise TemporalValueParseError(
+                "A month needs a year beside it.", code="incomplete_month"
+            )
+        if self.decade_start_year is not None and not (
+            self.year is None and self.month is None and self.day is None
+        ):
+            raise TemporalValueParseError(
+                "State a decade or a date, not both.", code="decade_with_year"
+            )
+
+
+def _build_day(
+    year: int, month: int, day: int, qualifier: TemporalQualifier | None
+) -> TemporalValue:
+    """A refused calendar day carries a sentence."""
+    try:
+        return TemporalValue.from_day(date(year, month, day), qualifier=qualifier)
+    except ValueError as error:
+        raise TemporalValueParseError(
+            f"{year}-{month}-{day} is not a day the calendar holds.",
+            code="invalid_date",
+        ) from error
+
+
+def _build_decade(
+    start_year: int, qualifier: TemporalQualifier | None
+) -> TemporalValue:
+    """A refused decade carries a sentence."""
+    try:
+        return TemporalValue.from_decade(start_year, qualifier=qualifier)
+    except ValueError as error:
+        raise TemporalValueParseError(
+            "A decade starts on a ten-year boundary, such as 1980.",
+            code="invalid_decade",
+        ) from error
+
+
 def _normalize_temporal_model_value(value: object) -> TemporalValue | None:
     if value is None:
         return None
