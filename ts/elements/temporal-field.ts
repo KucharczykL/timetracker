@@ -23,6 +23,11 @@ import {
 import { coarsestPrefix, decadeStart, temporalCodec } from "./temporal-codec.js";
 
 const ENDPOINTS = ["start", "end"] as const;
+/** The toggle that opens an end, and the end it empties. */
+const OPEN_TOGGLES: Record<string, string> = {
+  open_start: "start",
+  open_end: "end",
+};
 
 export function namedInput(
   host: HTMLElement,
@@ -80,6 +85,8 @@ export function currentKind(host: HTMLElement): string {
   const start = endpointHasValue(host, "start");
   const end = endpointHasValue(host, "end");
   if (!start && !end) return "unknown";
+  if (isToggled(host, "open_start")) return "until";
+  if (isToggled(host, "open_end")) return "since";
   if (isToggled(host, "add_end")) return "range";
   return start ? "date" : "unknown";
 }
@@ -149,11 +156,43 @@ function writeNamedParts(host: HTMLElement, endpoint: string): void {
   setNamed(host, `${endpoint}_decade`, whole && year.length === 4 ? decadeStart(year) : "");
 }
 
+function endpointSentence(host: HTMLElement, endpoint: string): string {
+  if (isToggled(host, `whole_decade_${endpoint}`)) return "Decade precision";
+  const { values } = readSideParts(host, endpoint);
+  if (values.day) return "Day precision";
+  if (values.month) return "Month precision";
+  if (values.year) return "Year precision";
+  return "No date";
+}
+
+/** What a screen reader hears when the precision moves. */
+export function precisionSentence(host: HTMLElement): string {
+  const kind = currentKind(host);
+  if (kind === "unknown") return "Unknown date";
+  if (kind === "until") return `Until ${endpointSentence(host, "end").toLowerCase()}`;
+  if (kind === "since") return `Since ${endpointSentence(host, "start").toLowerCase()}`;
+  if (kind === "range") {
+    const from = endpointSentence(host, "start").toLowerCase();
+    const to = endpointSentence(host, "end").toLowerCase();
+    return `Range, ${from} to ${to}`;
+  }
+  return endpointSentence(host, "start");
+}
+
+function announce(host: HTMLElement): void {
+  const region = host.querySelector("[data-temporal-announcement]");
+  if (!region) return;
+  const sentence = precisionSentence(host);
+  // Repeating it on every keystroke would drown the field out.
+  if (region.textContent !== sentence) region.textContent = sentence;
+}
+
 export function commitEndpoint(host: HTMLElement, endpoint: string): void {
   if (isToggled(host, `whole_decade_${endpoint}`)) snapYearToDecade(host, endpoint);
   enforceGrowth(host, endpoint);
   ENDPOINTS.forEach((each) => writeNamedParts(host, each));
   setNamed(host, "kind", currentKind(host));
+  announce(host);
 }
 
 function show(element: Element | null, visible: boolean): void {
@@ -222,10 +261,38 @@ function initField(host: HTMLElement): void {
     paintDecade(host, endpoint, isToggled(host, `whole_decade_${endpoint}`));
   });
 
+  Object.entries(OPEN_TOGGLES).forEach(([openToggle, endpoint]) => {
+    toggleBox(host, openToggle)?.addEventListener("change", () => {
+      if (!isToggled(host, openToggle)) {
+        show(host.querySelector(`[data-temporal-segments="${endpoint}"]`), true);
+        commitEndpoint(host, endpoint);
+        return;
+      }
+      // An open end needs the other end to say something.
+      const other = openToggle === "open_start" ? "open_end" : "open_start";
+      const otherBox = toggleBox(host, other);
+      if (otherBox?.checked) {
+        otherBox.checked = false;
+        otherBox.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      const wantsEnd = toggleBox(host, "add_end");
+      if (wantsEnd && !wantsEnd.checked) {
+        wantsEnd.checked = true;
+        wantsEnd.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      clearEndpoint(host, endpoint);
+      show(host.querySelector(`[data-temporal-segments="${endpoint}"]`), false);
+      commitEndpoint(host, endpoint);
+    });
+  });
+
   const disclosure = host.querySelector("[data-temporal-disclosure]");
   disclosure?.addEventListener("click", () => setExpanded(host, true));
 
   setExpanded(host, host.getAttribute("expanded") === "true");
+  // A field nobody has touched announces nothing.
+  const region = host.querySelector("[data-temporal-announcement]");
+  if (region) region.textContent = "";
 }
 
 class TemporalFieldElement extends HTMLElement {

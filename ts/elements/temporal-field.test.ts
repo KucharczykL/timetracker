@@ -316,6 +316,72 @@ describe("temporal-field", () => {
     expect(named(host, "start_decade").value).toBe("");
   });
 
+  it("opens the end and calls it since", () => {
+    const host = mount("true");
+    check(host, "add_end");
+    type(host, "start", "year", "1984");
+    type(host, "end", "year", "1986");
+
+    check(host, "open_end");
+
+    expect(named(host, "kind").value).toBe("since");
+    expect(named(host, "end_year").value).toBe("");
+  });
+
+  it("opens the start and calls it until", () => {
+    const host = mount("true");
+    check(host, "add_end");
+    type(host, "start", "year", "1984");
+    type(host, "end", "year", "1986");
+
+    check(host, "open_start");
+
+    expect(named(host, "kind").value).toBe("until");
+    expect(named(host, "start_year").value).toBe("");
+  });
+
+  it("brings the end along when the start opens", () => {
+    const host = mount("true");
+
+    check(host, "open_start");
+
+    expect(toggle(host, "add_end").checked).toBe(true);
+    expect(
+      host.querySelector("[data-temporal-end-group]")!.hasAttribute("hidden"),
+    ).toBe(false);
+  });
+
+  it("refuses to open both ends at once", () => {
+    const host = mount("true");
+    check(host, "add_end");
+
+    check(host, "open_end");
+    check(host, "open_start");
+
+    expect(toggle(host, "open_end").checked).toBe(false);
+  });
+
+  it("says the precision it arrived at", () => {
+    const host = mount("true");
+    const region = host.querySelector("[data-temporal-announcement]")!;
+
+    type(host, "start", "year", "1984");
+    expect(region.textContent).toBe("Year precision");
+
+    type(host, "start", "month", "06");
+    expect(region.textContent).toBe("Month precision");
+
+    check(host, "whole_decade_start");
+    expect(region.textContent).toBe("Decade precision");
+  });
+
+  it("says nothing while nothing changed", () => {
+    const host = mount("true");
+    const region = host.querySelector("[data-temporal-announcement]")!;
+
+    expect(region.textContent).toBe("");
+  });
+
   it("adopts an end the server already stored", () => {
     const host = mount("true", "1986");
 
