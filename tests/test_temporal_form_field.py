@@ -146,15 +146,20 @@ def test_every_script_only_toggle_is_rendered_and_nameless() -> None:
     """An empty name is never submitted, so these stay off the wire."""
     html = markup()
 
-    for toggle in (
-        "whole_decade_start",
-        "whole_decade_end",
-        "add_end",
-        "open_start",
-        "open_end",
-    ):
+    for toggle in ("whole_decade_start", "whole_decade_end", "open_start"):
         assert f'data-temporal-toggle="{toggle}"' in html
-    assert html.count('name=""') == 5
+    assert html.count('name=""') == 3
+    # The end says it once, so the end itself offers no toggle.
+    assert 'data-temporal-toggle="open_end"' not in html
+
+
+def test_the_end_shape_radios_are_grouped_and_disabled() -> None:
+    """A radio needs a name to group. Disabled keeps it off the wire."""
+    html = markup()
+
+    for shape in ("end_none", "end_date", "end_open"):
+        assert f'disabled="disabled" data-temporal-toggle="{shape}"' in html
+    assert html.count('name="release-end-shape"') == 3
 
 
 def test_the_posted_controls_carry_their_draft_key() -> None:

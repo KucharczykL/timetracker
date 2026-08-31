@@ -4,12 +4,7 @@ import "./temporal-field.js";
 
 const PARTS = ["year", "month", "day"] as const;
 
-function endpointMarkup(
-  endpoint: string,
-  openLabel: string,
-  openToggle: string,
-  storedYear = "",
-): string {
+function endpointMarkup(endpoint: string, openToggle = "", storedYear = ""): string {
   const cells = PARTS.map(
     (part, index) => `
       <span data-temporal-part="${part}">
@@ -41,30 +36,42 @@ function endpointMarkup(
       </div>
       <div data-temporal-extra="" hidden>
         <input type="checkbox" data-temporal-toggle="whole_decade_${endpoint}">
-        <input type="checkbox" data-temporal-toggle="${openToggle}" aria-label="${openLabel}">
+        ${openToggle ? `<input type="checkbox" data-temporal-toggle="${openToggle}">` : ""}
       </div>
     </fieldset>`;
 }
 
-function mount(expanded = "false", storedEndYear = ""): HTMLElement {
+function mount(
+  expanded = "false",
+  storedEndYear = "",
+  storedKind = "unknown",
+): HTMLElement {
+  const kindOption = (value: string, text: string) =>
+    `<option value="${value}"${value === storedKind ? " selected" : ""}>${text}</option>`;
   document.body.innerHTML = `
     <temporal-field expanded="${expanded}">
       <div data-temporal-field="">
         <div data-temporal-native="">
           <select data-temporal-input="kind">
-            <option value="date">Date</option>
-            <option value="range">Range</option>
-            <option value="since">Since</option>
-            <option value="until">Until</option>
-            <option value="unknown" selected>Unknown</option>
+            ${kindOption("date", "Date")}
+            ${kindOption("range", "Range")}
+            ${kindOption("since", "Since")}
+            ${kindOption("until", "Until")}
+            ${kindOption("unknown", "Unknown")}
           </select>
         </div>
-        ${endpointMarkup("start", "No known start", "open_start")}
-        <div data-temporal-extra="" hidden>
-          <input type="checkbox" data-temporal-toggle="add_end">
-        </div>
+        ${endpointMarkup("start", "open_start")}
+        <fieldset data-temporal-extra="" hidden>
+          <legend>After the start date</legend>
+          <input type="radio" name="end-shape" value="end_none"
+                 data-temporal-toggle="end_none" disabled>
+          <input type="radio" name="end-shape" value="end_date"
+                 data-temporal-toggle="end_date" disabled>
+          <input type="radio" name="end-shape" value="end_open"
+                 data-temporal-toggle="end_open" disabled>
+        </fieldset>
         <div data-temporal-end-group="">
-          ${endpointMarkup("end", "Ongoing, no end date", "open_end", storedEndYear)}
+          ${endpointMarkup("end", "", storedEndYear)}
         </div>
         <div hidden data-temporal-disclosure-row="">
           <button type="button" data-temporal-disclosure="" aria-expanded="false">
@@ -109,6 +116,13 @@ function check(host: HTMLElement, name: string, checked = true): void {
   const box = toggle(host, name);
   box.checked = checked;
   box.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+/** Select one of the three end shapes, as a click would. */
+function pick(host: HTMLElement, shape: string): void {
+  const radio = toggle(host, shape);
+  radio.checked = true;
+  radio.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 function named(host: HTMLElement, key: string): HTMLInputElement {
@@ -203,8 +217,16 @@ describe("temporal-field", () => {
       host.querySelector("[data-temporal-disclosure-row]")!.hasAttribute("hidden"),
     ).toBe(true);
     expect(
-      toggle(host, "add_end").closest("[data-temporal-extra]")!.hasAttribute("hidden"),
+      toggle(host, "end_date").closest("[data-temporal-extra]")!.hasAttribute("hidden"),
     ).toBe(false);
+  });
+
+  it("hands the end choices over to whoever opened them", () => {
+    const host = mount("true");
+
+    ["end_none", "end_date", "end_open"].forEach((shape) => {
+      expect(toggle(host, shape).disabled).toBe(false);
+    });
   });
 
   it("keeps the end field away until somebody adds one", () => {
@@ -214,7 +236,7 @@ describe("temporal-field", () => {
       host.querySelector("[data-temporal-end-group]")!.hasAttribute("hidden"),
     ).toBe(true);
 
-    check(host, "add_end");
+    pick(host, "end_date");
 
     expect(
       host.querySelector("[data-temporal-end-group]")!.hasAttribute("hidden"),
@@ -223,7 +245,7 @@ describe("temporal-field", () => {
 
   it("becomes a range once both ends say something", () => {
     const host = mount("true");
-    check(host, "add_end");
+    pick(host, "end_date");
 
     type(host, "start", "year", "1984");
     type(host, "end", "year", "1986");
@@ -234,11 +256,11 @@ describe("temporal-field", () => {
 
   it("forgets an end nobody wants any more", () => {
     const host = mount("true");
-    check(host, "add_end");
+    pick(host, "end_date");
     type(host, "start", "year", "1984");
     type(host, "end", "year", "1986");
 
-    check(host, "add_end", false);
+    pick(host, "end_none");
 
     expect(named(host, "end_year").value).toBe("");
     expect(named(host, "kind").value).toBe("date");
@@ -316,21 +338,24 @@ describe("temporal-field", () => {
     expect(named(host, "start_decade").value).toBe("");
   });
 
-  it("opens the end and calls it since", () => {
+  it("still going leaves the value a since", () => {
     const host = mount("true");
-    check(host, "add_end");
+    pick(host, "end_date");
     type(host, "start", "year", "1984");
     type(host, "end", "year", "1986");
 
-    check(host, "open_end");
+    pick(host, "end_open");
 
     expect(named(host, "kind").value).toBe("since");
     expect(named(host, "end_year").value).toBe("");
+    expect(
+      host.querySelector("[data-temporal-end-group]")!.hasAttribute("hidden"),
+    ).toBe(true);
   });
 
   it("opens the start and calls it until", () => {
     const host = mount("true");
-    check(host, "add_end");
+    pick(host, "end_date");
     type(host, "start", "year", "1984");
     type(host, "end", "year", "1986");
 
@@ -345,20 +370,31 @@ describe("temporal-field", () => {
 
     check(host, "open_start");
 
-    expect(toggle(host, "add_end").checked).toBe(true);
+    expect(toggle(host, "end_date").checked).toBe(true);
     expect(
       host.querySelector("[data-temporal-end-group]")!.hasAttribute("hidden"),
     ).toBe(false);
   });
 
-  it("refuses to open both ends at once", () => {
+  it("leaves no other end to choose while the start is open", () => {
     const host = mount("true");
-    check(host, "add_end");
 
-    check(host, "open_end");
     check(host, "open_start");
 
-    expect(toggle(host, "open_end").checked).toBe(false);
+    ["end_none", "end_date", "end_open"].forEach((shape) => {
+      expect(toggle(host, shape).disabled).toBe(true);
+    });
+  });
+
+  it("gives the end choices back when the start closes", () => {
+    const host = mount("true");
+    check(host, "open_start");
+
+    check(host, "open_start", false);
+
+    expect(toggle(host, "end_none").disabled).toBe(false);
+    expect(toggle(host, "end_date").checked).toBe(true);
+    expect(named(host, "start_approximate").disabled).toBe(false);
   });
 
   it("says the precision it arrived at", () => {
@@ -382,59 +418,58 @@ describe("temporal-field", () => {
     expect(region.textContent).toBe("");
   });
 
-  it("takes no qualifier on an end it has opened", () => {
+  it("takes no qualifier on an open start", () => {
     const host = mount("true");
-    check(host, "add_end");
-    named(host, "end_approximate").checked = true;
+    named(host, "start_approximate").checked = true;
 
-    check(host, "open_end");
+    check(host, "open_start");
 
-    expect(named(host, "end_approximate").checked).toBe(false);
-    expect(named(host, "end_approximate").disabled).toBe(true);
-    expect(named(host, "end_uncertain").disabled).toBe(true);
-    expect(toggle(host, "whole_decade_end").disabled).toBe(true);
-  });
-
-  it("gives the qualifier back when the end closes again", () => {
-    const host = mount("true");
-    check(host, "add_end");
-    check(host, "open_end");
-
-    check(host, "open_end", false);
-
-    expect(named(host, "end_approximate").disabled).toBe(false);
+    expect(named(host, "start_approximate").checked).toBe(false);
+    expect(named(host, "start_approximate").disabled).toBe(true);
+    expect(named(host, "start_uncertain").disabled).toBe(true);
+    expect(toggle(host, "whole_decade_start").disabled).toBe(true);
     expect(
-      host.querySelector('[data-temporal-segments="end"]')!.hasAttribute("hidden"),
-    ).toBe(false);
+      host.querySelector('[data-temporal-segments="start"]')!.hasAttribute("hidden"),
+    ).toBe(true);
   });
 
   it("drops the qualifier of an end nobody wants", () => {
     const host = mount("true");
-    check(host, "add_end");
+    pick(host, "end_date");
     named(host, "end_uncertain").checked = true;
 
-    check(host, "add_end", false);
+    pick(host, "end_none");
 
     expect(named(host, "end_uncertain").checked).toBe(false);
   });
 
-  it("closes an open end when the end itself goes", () => {
-    const host = mount("true");
-    check(host, "open_start");
-
-    check(host, "add_end", false);
-
-    expect(toggle(host, "open_start").checked).toBe(false);
-    expect(named(host, "start_approximate").disabled).toBe(false);
-    expect(named(host, "kind").value).toBe("unknown");
-  });
-
   it("adopts an end the server already stored", () => {
-    const host = mount("true", "1986");
+    const host = mount("true", "1986", "range");
 
     expect(
       host.querySelector("[data-temporal-end-group]")!.hasAttribute("hidden"),
     ).toBe(false);
-    expect(toggle(host, "add_end").checked).toBe(true);
+    expect(toggle(host, "end_date").checked).toBe(true);
+  });
+
+  it("keeps a stored since a since", () => {
+    const host = mount("true", "", "since");
+
+    expect(toggle(host, "end_open").checked).toBe(true);
+
+    type(host, "start", "year", "1984");
+
+    expect(named(host, "kind").value).toBe("since");
+  });
+
+  it("keeps a stored until an until", () => {
+    const host = mount("true", "1986", "until");
+
+    expect(toggle(host, "open_start").checked).toBe(true);
+    expect(toggle(host, "end_date").checked).toBe(true);
+
+    type(host, "end", "month", "06");
+
+    expect(named(host, "kind").value).toBe("until");
   });
 });

@@ -14,7 +14,8 @@ The precision is never picked from a menu. It is derived from which
 parts a person filled, which is why there is no precision control here.
 
 Only what a script would use is rendered hidden: the segments, the
-nameless toggles and the disclosure. Every posted control is shown, so
+nameless toggles, the end-shape radios and the disclosure. Every
+posted control is shown, so
 with no script a person still reaches both endpoints and both
 qualifiers. The element hides what a person does not need yet.
 
@@ -38,7 +39,7 @@ from common.components.elements import (
     Select,
     Span,
 )
-from common.components.primitives import Checkbox, Input, field_label_id
+from common.components.primitives import Checkbox, Input, Radio, field_label_id
 from common.date_time_presentation import DateTimePresentation
 from timetracker.temporal import (
     TEMPORAL_DRAFT_KIND_LABELS,
@@ -107,9 +108,7 @@ def TemporalField(
             approximate=data["start_approximate"],
             uncertain=data["start_uncertain"],
         ),
-        Div(data_temporal_extra="", hidden=True)[
-            _script_toggle(toggle="add_end", label="Add an end date")
-        ],
+        _end_shape_group(name=name),
         # Shown: no script means no way to reveal an end date.
         Div(data_temporal_end_group="")[
             _endpoint_group(
@@ -117,8 +116,6 @@ def TemporalField(
                 endpoint="end",
                 legend="End",
                 presentation=presentation,
-                open_label="Ongoing, no end date",
-                open_toggle="open_end",
                 year=data["end_year"],
                 month=data["end_month"],
                 day=data["end_day"],
@@ -211,8 +208,8 @@ def _endpoint_group(
     endpoint: str,
     legend: str,
     presentation: DateTimePresentation,
-    open_label: str,
-    open_toggle: str,
+    open_label: str = "",
+    open_toggle: str = "",
     year: str,
     month: str,
     day: str,
@@ -225,6 +222,9 @@ def _endpoint_group(
     The boxes sit inside the endpoint, because the grammar qualifies
     each end on its own. One pair for the whole value could not state
     "1984 to about 1986", and rewrote it on every save.
+
+    Only the start offers an open toggle. How a value ends is stated
+    once, by the radio group beside it, so the end names no toggle.
     """
     return Fieldset(class_=_ENDPOINT_CLASS, data_temporal_endpoint=endpoint)[
         # Marked in place: a legend wrapped in a div names nothing.
@@ -290,7 +290,11 @@ def _endpoint_group(
                     label="Whole decade",
                     checked=bool(decade.strip()),
                 ),
-                _script_toggle(toggle=open_toggle, label=open_label),
+                *(
+                    [_script_toggle(toggle=open_toggle, label=open_label)]
+                    if open_toggle
+                    else []
+                ),
             ]
         ],
     ]
@@ -423,6 +427,41 @@ def _script_toggle(*, toggle: str, label: str, checked: bool = False) -> Node:
         checked=checked,
         data_temporal_toggle=toggle,
     )
+
+
+def _script_radio(*, name: str, toggle: str, label: str) -> Node:
+    """One of a group only the element reads.
+
+    Radios need a shared name to be one group, so these cannot be
+    nameless the way the boxes are. Disabled instead: a disabled
+    control never posts, and the element enables the group on connect.
+    None is checked here. The element picks the one the stored value
+    already states.
+    """
+    return Radio(
+        name=f"{name}-end-shape",
+        label=label,
+        value=toggle,
+        disabled=True,
+        data_temporal_toggle=toggle,
+    )
+
+
+def _end_shape_group(*, name: str) -> Node:
+    """How the value ends: nothing more, a date, or still going.
+
+    One answer, stated once. Two boxes reaching into each other could
+    state "ends on a date" and "still going" at the same time, which
+    the grammar has no shape for.
+    """
+    return Fieldset(class_=_ENDPOINT_CLASS, data_temporal_extra="", hidden=True)[
+        Legend(class_=_LEGEND_CLASS)["After the start date"],
+        Div(class_=_ROW_CLASS)[
+            _script_radio(name=name, toggle="end_none", label="Nothing more"),
+            _script_radio(name=name, toggle="end_date", label="Ends on a date"),
+            _script_radio(name=name, toggle="end_open", label="Still going"),
+        ],
+    ]
 
 
 def _disclosure() -> Node:

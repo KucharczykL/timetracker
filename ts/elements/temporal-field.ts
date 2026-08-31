@@ -3,7 +3,8 @@
  *
  * The server renders every control (common/components/temporal_field.py):
  * a shape select, four number inputs and two checkboxes per endpoint, and
- * — hidden — a segmented date, five nameless toggles and a live region.
+ * — hidden — a segmented date, three nameless toggles, a disabled radio
+ * group for how the value ends, and a live region.
  * This element hides the first set, shows the second, and derives the
  * shape from what a person fills. With no script the first set stands and
  * stores the same value.
@@ -23,11 +24,8 @@ import {
 import { coarsestPrefix, decadeStart, temporalCodec } from "./temporal-codec.js";
 
 const ENDPOINTS = ["start", "end"] as const;
-/** The toggle that opens an end, and the end it empties. */
-const OPEN_TOGGLES: Record<string, string> = {
-  open_start: "start",
-  open_end: "end",
-};
+/** How a value ends, as the one radio group states it. */
+const END_SHAPES = ["end_none", "end_date", "end_open"] as const;
 
 export function namedInput(
   host: HTMLElement,
@@ -90,14 +88,20 @@ function setEndpointOpen(host: HTMLElement, endpoint: string, open: boolean): vo
   show(host.querySelector(`[data-temporal-segments="${endpoint}"]`), !open);
 }
 
-/** Close whichever end is open, leaving its controls usable again. */
-function closeOpenEnds(host: HTMLElement): void {
-  Object.entries(OPEN_TOGGLES).forEach(([openToggle, endpoint]) => {
-    const box = toggleBox(host, openToggle);
-    if (!box?.checked) return;
-    box.checked = false;
-    setEndpointOpen(host, endpoint, false);
-  });
+function endShapeBoxes(host: HTMLElement): HTMLInputElement[] {
+  return END_SHAPES.map((shape) => toggleBox(host, shape)).filter(
+    (box) => box instanceof HTMLInputElement,
+  );
+}
+
+/** Which of the three the group is on. */
+function endShape(host: HTMLElement): string {
+  return END_SHAPES.find((shape) => isToggled(host, shape)) ?? "end_none";
+}
+
+function setEndShape(host: HTMLElement, shape: string): void {
+  const box = toggleBox(host, shape);
+  if (box) box.checked = true;
 }
 
 /** Clear a part no coarser part can carry. */
@@ -119,8 +123,9 @@ export function currentKind(host: HTMLElement): string {
   const end = endpointHasValue(host, "end");
   if (!start && !end) return "unknown";
   if (isToggled(host, "open_start")) return "until";
-  if (isToggled(host, "open_end")) return "since";
-  if (isToggled(host, "add_end")) return "range";
+  const shape = endShape(host);
+  if (shape === "end_open") return "since";
+  if (shape === "end_date") return "range";
   return start ? "date" : "unknown";
 }
 
@@ -266,22 +271,22 @@ function initField(host: HTMLElement): void {
     if (segment) commitEndpoint(host, segment.dataset.dateSide ?? "start");
   });
 
-  function syncEndGroup(): void {
-    const wanted = isToggled(host, "add_end");
-    show(host.querySelector("[data-temporal-end-group]"), wanted);
-    // Since and until both need an end. No end closes them.
-    if (!wanted) {
-      closeOpenEnds(host);
-      clearEndpoint(host, "end");
-    }
+  function paintEndShape(): void {
+    // Only a date at the end needs the fields for one.
+    show(host.querySelector("[data-temporal-end-group]"), endShape(host) === "end_date");
+  }
+
+  function syncEndShape(): void {
+    if (endShape(host) !== "end_date") clearEndpoint(host, "end");
+    paintEndShape();
     commitEndpoint(host, "end");
   }
 
-  const addEnd = toggleBox(host, "add_end");
-  addEnd?.addEventListener("change", syncEndGroup);
-  // A stored end is the only thing that asks for one at load.
-  if (addEnd) addEnd.checked = endpointHasValue(host, "end");
-  show(host.querySelector("[data-temporal-end-group]"), isToggled(host, "add_end"));
+  // The server disables them, so no script posts no answer.
+  endShapeBoxes(host).forEach((box) => {
+    box.disabled = false;
+    box.addEventListener("change", syncEndShape);
+  });
 
   ENDPOINTS.forEach((endpoint) => {
     const box = toggleBox(host, `whole_decade_${endpoint}`);
@@ -298,27 +303,35 @@ function initField(host: HTMLElement): void {
     paintDecade(host, endpoint, isToggled(host, `whole_decade_${endpoint}`));
   });
 
-  Object.entries(OPEN_TOGGLES).forEach(([openToggle, endpoint]) => {
-    toggleBox(host, openToggle)?.addEventListener("change", () => {
-      const open = isToggled(host, openToggle);
-      if (open) {
-        // An open end needs the other end to say something.
-        const other = openToggle === "open_start" ? "open_end" : "open_start";
-        const otherBox = toggleBox(host, other);
-        if (otherBox?.checked) {
-          otherBox.checked = false;
-          setEndpointOpen(host, OPEN_TOGGLES[other], false);
-        }
-        const wantsEnd = toggleBox(host, "add_end");
-        if (wantsEnd && !wantsEnd.checked) {
-          wantsEnd.checked = true;
-          wantsEnd.dispatchEvent(new Event("change", { bubbles: true }));
-        }
-      }
-      setEndpointOpen(host, endpoint, open);
-      commitEndpoint(host, endpoint);
+  const openStart = toggleBox(host, "open_start");
+  openStart?.addEventListener("change", () => {
+    const open = isToggled(host, "open_start");
+    // An until ends on a date. It is the only end it can have.
+    if (open) {
+      setEndShape(host, "end_date");
+      syncEndShape();
+    }
+    endShapeBoxes(host).forEach((box) => {
+      box.disabled = open;
     });
+    setEndpointOpen(host, "start", open);
+    commitEndpoint(host, "start");
   });
+
+  // The stored shape, before a keystroke derives a new one.
+  const storedKind = namedInput(host, "kind")?.value ?? "";
+  if (storedKind === "since") setEndShape(host, "end_open");
+  else if (storedKind === "until" || endpointHasValue(host, "end"))
+    setEndShape(host, "end_date");
+  else setEndShape(host, "end_none");
+  if (storedKind === "until" && openStart) {
+    openStart.checked = true;
+    endShapeBoxes(host).forEach((box) => {
+      box.disabled = true;
+    });
+    setEndpointOpen(host, "start", true);
+  }
+  paintEndShape();
 
   const disclosure = host.querySelector("[data-temporal-disclosure]");
   disclosure?.addEventListener("click", () => setExpanded(host, true));

@@ -91,7 +91,7 @@ def test_a_range_reaches_both_ends(live_server, page):
     page.click("[data-date-part='year'][data-date-side='start']")
     page.keyboard.type("1984")
     page.click("[data-temporal-disclosure]")
-    page.check("[data-temporal-toggle='add_end']")
+    page.check("[data-temporal-toggle='end_date']")
     page.click("[data-date-part='year'][data-date-side='end']")
     page.keyboard.type("1986")
     page.click("button[type=submit]")
