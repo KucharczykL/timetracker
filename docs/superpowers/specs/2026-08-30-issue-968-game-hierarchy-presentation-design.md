@@ -1,48 +1,58 @@
 # Present the Game, Edition, and Release hierarchy
 
-Game detail prints one Platform row and one year, both read from legacy Game
-columns. The Game, Edition, and Release graph exists since #649 and #650, and
-nothing shows it.
+Game detail shows the graph a library holds under one Game. It reads. It writes
+nothing.
 
-The change is in `games/views/game.py`, and it reads. This is the read half of
-the cutover, and it is correct while a Game holds one Edition, thus it is
-reviewable before #969 can make a second one.
+## The read
+
+`game_hierarchy(game, library)` in `games/reads/catalog_hierarchy.py` answers the
+Editions one library may see under one Game, each with its Releases. It makes two
+queries. It reads no reverse accessor, because a shared Game's accessors reach
+every library that ever wrote under it. The default Edition comes first, then the
+rest by name. The default Release comes first, then the rest by earliest known
+day, and an undated Release comes last.
+
+## The plain shape
+
+Most Games hold one unnamed Edition and one Release. That shape says everything
+in two header rows: the Platform, and the date. The page adds no heading and no
+table.
 
 ## The section
 
-Game detail gains a hierarchy section. It lists each live Edition, and under each
-Edition its live Releases. A Release shows its Platform and its release date.
+Three things break the plain shape and bring a `Releases` section: a second
+Edition, a second Release, or a name on the only Edition. The section holds one
+block for each Edition. A block holds a Platform and Released table, or the words
+`No releases yet.`
 
-The date goes through `present_temporal_value()` of #963, thus a stored month
-reads as a month and a qualifier reads in words.
+A block takes a heading where the name tells one Edition from another: where two
+Editions meet, and where a lone Edition states a name. A lone unnamed Edition
+takes no heading, because `display_name` falls back to the Game.
 
-A Release with no Platform reads as explicitly unspecified. Nothing infers a
-Platform from the Game, from a sibling Release, or from a display default.
+## The words
 
-## The ordinary Game reads plainly
+Every date goes through `present_temporal_value()`. A stored month reads as a
+month. A qualifier reads in words. See
+[the presentation specification](2026-08-30-issue-963-temporal-presentation-design.md).
 
-Most Games hold one default Edition with no name, and one default Release. The
-section then shows the Release facts alone: no Edition heading, and no empty
-scaffolding. A second Edition or a second Release brings the full shape.
+A Release with no Platform reads as `Unspecified`. No Platform is inferred from
+the Game, from a sibling Release, or from a display default.
 
-## What the flattened rows become
+## The Game keeps its own date
 
-The Platform row and the release year row leave the Game meta list, because both
-are facts of a Release and a Game may hold several.
+`Game.original_release_date` stays in the header, because it is a fact of the
+work. The flattened Platform row and the flattened release year are gone from the
+page. The columns stay in the database until #889.
 
-The original release date stays on the Game, because it is a fact of the work.
-It now reads through the presenter of #963 rather than through `str()`.
+## The section is a placeholder
 
-## A shared Game is visible and not the library's to change
-
-A shared Game shows its Editions and Releases, marked as not editable here. This
-section offers no control at all; #969 adds controls, and only for a private
-Game.
-
-Another library's private Editions and Releases never appear, because every read
-goes through `for_library()`.
+The section states on the page that it is under construction. `Edition` and
+`Release` are schema words that #782 needs for IGDB. No reader wants them, and
+nothing a person makes names either one. The section worth having states the
+playtime of each edition. That needs a Session that names a Release, which #690
+adds. This shape is replaced then.
 
 ## Boundary
 
-No write, route, form, or action; #969 owns those. No legacy column removal; #889
-owns it, and the columns stay. Game URLs are unchanged.
+The page offers no control, thus it says nothing about who may change the graph.
+#969 adds controls, and only for a private Game. Game URLs do not change.

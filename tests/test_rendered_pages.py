@@ -359,6 +359,7 @@ class RenderedPagesTest(TestCase):
             "Status",
             "Played",
             "Platform",
+            "Released",
             'id="history-container"',
             "status-changed from:body",
             "<play-event-row",  # the played-row custom element
@@ -370,6 +371,15 @@ class RenderedPagesTest(TestCase):
             self.assertIn(marker, html)
         self.assertNoEscapedTags(html)
         self.assertEqual(html.count("<div"), html.count("</div>"))
+
+    def test_view_game_drops_the_flattened_release_year(self):
+        """The title said a year no Release had to agree with."""
+        Game.objects.filter(pk=self.game.pk).update(year_released=1999)
+
+        html = self.client.get(self.game.get_absolute_url()).content.decode()
+
+        self.assertNotIn('id="popover-year"', html)
+        self.assertNotIn("Release year", html)
 
     def test_view_game_reads_the_original_release_date(self):
         self.game.original_release_date = TemporalValue.from_month(1984, 6)
@@ -384,9 +394,7 @@ class RenderedPagesTest(TestCase):
     def test_view_game_says_unknown_for_no_original_release_date(self):
         html = self.client.get(self.game.get_absolute_url()).content.decode()
 
-        self.assertIn(
-            '<span class="text-black dark:text-slate-300">Unknown</span>', html
-        )
+        self.assertIn('<span class="text-heading">Unknown</span>', html)
 
     def test_view_game_uses_play_event_row_element(self):
         game = Game.objects.create(

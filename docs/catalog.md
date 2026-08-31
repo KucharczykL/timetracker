@@ -75,6 +75,54 @@ raises, and the transaction leaves the graph as it was.
 An unset Platform and an unknown date stay unset. Neither is inferred from the
 Game, from a sibling Release, or from a display default.
 
+## What Game detail shows
+
+Game detail reads the graph through `game_hierarchy()` in
+`games/reads/catalog_hierarchy.py`: the Editions one library may see under one
+Game, each with its Releases, in two queries. Nothing on the page reads a
+reverse accessor, because a shared Game's accessors reach every library that
+ever wrote under it.
+
+Most Games hold one unnamed Edition and one Release. That shape says everything
+in two header rows — the Platform, and the date through the presenter — and the
+page adds no heading above them. Three things break the shape and bring the
+`Releases` section: a second Edition, a second Release, or a name on the only
+Edition. The section carries one block per Edition, each a Platform and Released
+table, or the words `No releases yet.` where an Edition holds none.
+
+A block is headed by `display_name` where the name tells one Edition from
+another: where two Editions meet, and where a lone Edition states a name of its
+own. A lone unnamed Edition is not headed, because `display_name` falls back to
+the Game and the heading would print the Game's own name above the Game's own
+page.
+
+A Release with no Platform reads as `Unspecified`. Nothing is inferred from the
+Game, from a sibling Release, or from a display default.
+
+A shared Game's graph is shown. The page says nothing about who may change it,
+because the page offers no control either way. #969 adds controls, and only for
+a private Game.
+
+## The section is a placeholder
+
+The `Releases` section states that it is under construction, on the page, where
+a reader sees it.
+
+`Edition` and `Release` are the words the schema needs. #782 normalizes IGDB
+into these two levels, and IGDB has them. They are not words a reader wants.
+Nothing a person makes names either one: a Purchase, a Session, a PlayEvent and
+a PlayerGame each name a Game, and the only foreign keys to an Edition or a
+Release come from `ExternalReference`. On 858 real Games the split has never
+once carried a fact — one Game, one Edition, one Release, 858 times.
+
+The section worth having states what a person did with each edition, not what
+the catalog holds. That needs a Session that names a Release, which #690 adds.
+This shape is replaced then, and the notice goes with it.
+
+The Game's own `original_release_date` stays on the Game, because it is a fact
+of the work rather than of one Release. The flattened Platform row and the
+flattened release year left with this reading; #889 takes the columns.
+
 ## Repeating a write
 
 `add_edition` and `add_release` state a whole row, and a repeat gives back the

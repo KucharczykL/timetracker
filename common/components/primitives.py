@@ -2490,6 +2490,7 @@ def StyledTable(
     footer: Node | None = None,
     data_table: bool = False,
     caption: str = "",
+    caption_key: str = "",
 ) -> Node:
     """Styled, paginated table — the opinionated wrapper over the generic
     ``Table`` primitive (shadow, rounded, zebra rows, responsive column-hiding,
@@ -2515,6 +2516,10 @@ def StyledTable(
     then required. Off by default, because the treatment is wrong for the
     card-shaped key-value tables in the stats page — their value cells wrap by
     design and they get no scroll region to reach.
+
+    ``caption_key`` is what makes the caption's id unique where one page holds
+    several tables that a reader would name the same. The id is hashed from the
+    caption otherwise, so two equal captions would resolve to one element.
     """
     if data_table and not caption:
         raise ValueError(
@@ -2549,7 +2554,11 @@ def StyledTable(
     # A <caption> is only valid as the table's first child, and it doubles as
     # the scroll region's accessible name. Visually hidden: the heading above
     # each table already says this on screen.
-    caption_id = f"table-caption-{randomid(content=caption)}" if data_table else ""
+    caption_id = (
+        f"table-caption-{randomid(content=caption_key or caption)}"
+        if data_table
+        else ""
+    )
     if data_table:
         table_children.append(Caption(class_="sr-only", id=caption_id)[caption])
     # `columns` still drives the count-guard and align rules when the header is

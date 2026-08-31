@@ -33,6 +33,7 @@ from common.components import (
     ModuleScript,
     NameWithIcon,
     Node,
+    P,
     PageHeading,
     Popover,
     PurchasePrice,
@@ -76,11 +77,13 @@ from games.models import (
     PlayerGameStatus,
     PlayEvent,
     Purchase,
+    Release,
     Session,
     SessionQuerySet,
     UserLibrary,
 )
 from games.ownership import owned_or_404
+from games.reads.catalog_hierarchy import EditionEntry, game_hierarchy
 from games.reads.playergame_history import StatusEntry, status_history
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
 from games.views.filtering import (
@@ -99,6 +102,16 @@ from games.views.returns import origin_from, return_url
 from games.writes.playergame import new_correlation_id
 
 WIKIDATA_CONFLICT_MESSAGE = "This Wikidata entity ID already belongs to another game."
+
+#: The value half of a meta row.
+META_VALUE_CLASS = "text-heading"
+#: No Platform is a fact, not blank.
+UNSPECIFIED_PLATFORM = "Unspecified"
+#: Said on the page, because the shape is not final.
+RELEASES_UNDER_CONSTRUCTION = (
+    "Under construction. These are catalog facts only. A session cannot name "
+    "an edition yet, so no playtime is shown here and this layout will change."
+)
 
 
 def _save_game_form_or_add_wikidata_error(form: GameForm) -> Game | None:
@@ -559,6 +572,115 @@ def _game_overview_metrics(sessions: SessionQuerySet) -> dict[str, Any]:
     }
 
 
+def _platform_words(release: Release | None) -> str:
+    """The Platform a Release names, or Unspecified."""
+    if release is None or release.platform is None:
+        return UNSPECIFIED_PLATFORM
+    return release.platform.name
+
+
+def _reads_plainly(entries: Sequence[EditionEntry]) -> bool:
+    """One unnamed Edition, at most one Release."""
+    if len(entries) > 1:
+        return False
+    if not entries:
+        return True
+    entry = entries[0]
+    return not entry.edition.name and len(entry.releases) <= 1
+
+
+def _plain_release_rows(
+    entries: Sequence[EditionEntry], presentation: DateTimePresentation
+) -> list[Node]:
+    """The header states an ordinary Game's Release."""
+    if not _reads_plainly(entries):
+        return []
+    releases = entries[0].releases if entries else ()
+    release = releases[0] if releases else None
+    return [
+        _meta_row(
+            "Platform",
+            Span(class_=META_VALUE_CLASS)[_platform_words(release)],
+        ),
+        _meta_row(
+            "Released",
+            TemporalText(
+                None if release is None else release.release_date,
+                presentation,
+                class_=META_VALUE_CLASS,
+            ),
+        ),
+    ]
+
+
+def _release_table(entry: EditionEntry, presentation: DateTimePresentation) -> Node:
+    """Two facts per Release: Platform and date."""
+    rows = [
+        make_row(
+            _platform_words(release),
+            TemporalText(release.release_date, presentation),
+        )
+        for release in entry.releases
+    ]
+    return StyledTable(
+        columns=[Column("Platform"), Column("Released")],
+        rows=rows,
+        data_table=True,
+        caption=f"Releases of {entry.edition.display_name}",
+        #: Two unnamed Editions read alike; their ids may not.
+        caption_key=str(entry.edition.pk),
+    )
+
+
+def _edition_block(
+    entry: EditionEntry, presentation: DateTimePresentation, *, named: bool
+) -> Node:
+    """One Edition's Releases, with an optional heading.
+
+    `display_name` falls back to the Game, thus heading a lone
+    unnamed Edition prints the Game's name twice.
+    """
+    return Div(class_="flex flex-col gap-2")[
+        Span(class_="text-type-subheading text-heading")[entry.edition.display_name]
+        if named
+        else "",
+        _release_table(entry, presentation) if entry.releases else "No releases yet.",
+    ]
+
+
+def _releases_section(
+    entries: Sequence[EditionEntry], presentation: DateTimePresentation
+) -> Node:
+    """What the header's two rows cannot say.
+
+    A placeholder, and it says so on the page. `Edition` and
+    `Release` are the words the schema needs for IGDB, not words
+    a reader wants: nothing a person makes names either one, and
+    every one of 858 real Games holds exactly one of each. The
+    section worth having states the playtime of each edition,
+    which #690 makes readable by letting a Session name a
+    Release. This shape is replaced then.
+    """
+    if _reads_plainly(entries):
+        return Fragment()
+    count = sum(len(entry.releases) for entry in entries)
+    #: A sibling makes every name worth printing.
+    several = len(entries) > 1
+    return Div(class_="mb-6 flex flex-col gap-4")[
+        PageHeading(children=["Releases"], badge=str(count) if count else ""),
+        P(
+            class_="text-type-body text-warning bg-warning-soft "
+            "border border-warning-subtle rounded px-3 py-2"
+        )[RELEASES_UNDER_CONSTRUCTION],
+        *(
+            _edition_block(
+                entry, presentation, named=several or bool(entry.edition.name)
+            )
+            for entry in entries
+        ),
+    ]
+
+
 def _game_header(
     game: Game,
     request: HttpRequest,
@@ -566,6 +688,7 @@ def _game_header(
     presentation: DateTimePresentation,
     durations: DurationPresentation,
     origin: OriginUrl | None,
+    entries: Sequence[EditionEntry],
 ) -> Node:
     playrange_start = metrics["playrange_start"]
     playrange_end = metrics["playrange_end"]
@@ -575,26 +698,8 @@ def _game_header(
         playrange = start if start == end else f"{start} — {end}"
     else:
         playrange = "N/A"
-    grey_value_class = "text-black dark:text-slate-300"
     title_span = Span(class_="text-balance max-w-120")[
-        *(
-            [
-                Span(class_="text-type-title font-serif")[game.name],
-            ]
-            + (
-                [
-                    Safe("&nbsp;"),
-                    Popover(
-                        popover_content="Release year",
-                        wrapped_classes="text-type-subheading text-slate-500",
-                        id="popover-year",
-                        children=[str(game.year_released)],
-                    ),
-                ]
-                if game.year_released
-                else []
-            )
-        )
+        Span(class_="text-type-title font-serif")[game.name],
     ]
     stats_row = Div(class_="flex gap-4 text-type-body dark:text-slate-400 mb-3")[
         _stat_popover(
@@ -624,12 +729,12 @@ def _game_header(
         ),
     ]
     metadata = Div(
-        class_="flex flex-col mb-6 text-gray-600 dark:text-slate-400 gap-y-4 text-type-body",
+        class_="flex flex-col mb-6 text-body gap-y-4 text-type-body",
     )[
         _meta_row(
             "Original release",
             TemporalText(
-                game.original_release_date, presentation, class_=grey_value_class
+                game.original_release_date, presentation, class_=META_VALUE_CLASS
             ),
         ),
         _meta_row(
@@ -645,12 +750,7 @@ def _game_header(
             "👑" if game.tracked_mastered else "",
         ),
         _played_row(game, request, origin),
-        _meta_row(
-            "Platform",
-            Span(class_=grey_value_class)[
-                str(game.platform) if game.platform else "Unspecified"
-            ],
-        ),
+        *_plain_release_rows(entries, presentation),
     ]
     return Div(id_="game-info", class_="mb-10")[
         Div(class_="flex gap-5 mb-3")[title_span],
@@ -829,6 +929,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
     )
     purchases = Purchase.objects.for_library(library).filter(games=game)
     playevents = PlayEvent.objects.for_library(library).filter(game=game)
+    hierarchy = game_hierarchy(game, library)
     content = ContentContainer(class_="dark:text-white")[
         _game_header(
             game,
@@ -837,7 +938,9 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
             presentation,
             durations,
             origin,
+            hierarchy,
         ),
+        _releases_section(hierarchy, presentation),
         _purchases_section(game, purchases, presentation, origin),
         _sessions_section(game, sessions, presentation, durations),
         _playevents_section(game, playevents, presentation, origin),
