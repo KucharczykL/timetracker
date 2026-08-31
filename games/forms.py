@@ -18,6 +18,7 @@ from common.components import (
     DateTimePicker,
     SearchSelect,
     SearchSelectOption,
+    TemporalField,
     TimeZoneRow,
     render,
     searchselect_selected,
@@ -40,6 +41,17 @@ from games.models import (
 )
 from timetracker.settings_registry import DISPLAY_TIME_ZONE_CHOICES
 from timetracker.settings_resolver import resolve_str_for_user
+from timetracker.temporal import (
+    EMPTY_TEMPORAL_DRAFT_DATA,
+    TemporalDraft,
+    TemporalDraftData,
+    TemporalValue,
+    TemporalValueParseError,
+    parse_temporal_value,
+    temporal_draft_data,
+    temporal_draft_from_data,
+    temporal_input_name,
+)
 
 autofocus_input_widget = forms.TextInput(attrs={"autofocus": "autofocus"})
 
@@ -115,8 +127,8 @@ def apply_primitive_widget_classes(fields: Mapping[str, forms.Field]) -> None:
             # Maintain the field's explicit required status (usually False for booleans)
             continue
         widget = field.widget
-        # SearchSelect/DatePicker/DateTimeField are self-styled composite
-        # components; never stamp the native-control classes onto them.
+        # SearchSelect/DatePicker/DateTimeField/Temporal are self-styled
+        # composite components; never stamp the native classes onto them.
         if isinstance(
             widget,
             (
@@ -124,6 +136,7 @@ def apply_primitive_widget_classes(fields: Mapping[str, forms.Field]) -> None:
                 DatePickerWidget,
                 DateTimeFieldWidget,
                 TimeZoneRowWidget,
+                TemporalWidget,
             ),
         ):
             continue
@@ -336,6 +349,104 @@ class DatePickerWidget(forms.Widget):
 
     def value_from_datadict(self, data, files, name):
         return data.get(name)
+
+
+class TemporalWidget(forms.Widget):
+    """Renders a `TemporalField()` component in place of a native control.
+
+    Follows `DatePickerWidget`: one field name yields several inputs, and
+    `value_from_datadict` reads them all back. What it returns is the raw
+    posted text, not a parsed draft, so a submission the grammar refuses
+    re-renders the characters a person typed.
+    """
+
+    def __init__(self, *, label: str, attrs=None) -> None:
+        super().__init__(attrs)
+        self.label = label
+
+    def _data(self, value) -> TemporalDraftData:
+        if isinstance(value, dict):
+            return cast(TemporalDraftData, value)
+        if value in (None, ""):
+            return temporal_draft_data(TemporalDraft())
+        stored = parse_temporal_value(value)
+        return temporal_draft_data(TemporalDraft.from_value(stored))
+
+    def render(self, name, value, attrs=None, renderer=None):
+        final_attrs = self.build_attrs(self.attrs, attrs)
+        return render(
+            TemporalField(
+                name=name,
+                data=self._data(value),
+                label=self.label,
+                input_id=str(final_attrs.get("id", "")),
+                required=bool(final_attrs.get("required")),
+                invalid=final_attrs.get("aria-invalid") == "true",
+            )
+        )
+
+    def value_from_datadict(self, data, files, name) -> TemporalDraftData:
+        return TemporalDraftData(
+            kind=data.get(temporal_input_name(name, "kind"), ""),
+            start_year=data.get(temporal_input_name(name, "start_year"), ""),
+            start_month=data.get(temporal_input_name(name, "start_month"), ""),
+            start_day=data.get(temporal_input_name(name, "start_day"), ""),
+            start_decade=data.get(temporal_input_name(name, "start_decade"), ""),
+            end_year=data.get(temporal_input_name(name, "end_year"), ""),
+            end_month=data.get(temporal_input_name(name, "end_month"), ""),
+            end_day=data.get(temporal_input_name(name, "end_day"), ""),
+            end_decade=data.get(temporal_input_name(name, "end_decade"), ""),
+            approximate=data.get(temporal_input_name(name, "approximate"), ""),
+            uncertain=data.get(temporal_input_name(name, "uncertain"), ""),
+        )
+
+    def value_omitted_from_data(self, data, files, name) -> bool:
+        """The real name is in no POST body. The kind is."""
+        return temporal_input_name(name, "kind") not in data
+
+
+class TemporalFormField(forms.Field):
+    """Cleans a temporal control's inputs to one `TemporalValue`.
+
+    An unknown value cleans to ``None``, which is what the model field
+    stores for one — so a form and a column agree on what nothing is.
+    """
+
+    def __init__(self, *, label: str = "Date", **kwargs) -> None:
+        kwargs.setdefault("widget", TemporalWidget(label=label))
+        kwargs.setdefault("required", False)
+        super().__init__(label=label, **kwargs)
+
+    def to_python(self, value) -> TemporalValue | None:
+        try:
+            built = temporal_draft_from_data(self._data(value)).build()
+        except TemporalValueParseError as error:
+            raise forms.ValidationError(str(error), code=error.code) from error
+        return None if built.is_unknown else built
+
+    def has_changed(self, initial, data) -> bool:
+        try:
+            submitted = self.to_python(data)
+        except forms.ValidationError:
+            return True
+        return submitted != self._stored(initial)
+
+    @staticmethod
+    def _data(value) -> TemporalDraftData:
+        if isinstance(value, dict):
+            return cast(TemporalDraftData, value)
+        if value in (None, ""):
+            return EMPTY_TEMPORAL_DRAFT_DATA
+        return temporal_draft_data(
+            TemporalDraft.from_value(parse_temporal_value(value))
+        )
+
+    @staticmethod
+    def _stored(initial) -> TemporalValue | None:
+        if initial in (None, ""):
+            return None
+        stored = parse_temporal_value(initial)
+        return None if stored.is_unknown else stored
 
 
 class AwareDateTimeField(forms.DateTimeField):
