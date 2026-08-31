@@ -47,7 +47,7 @@ from common.components import (
     paginated_table_content,
     parse_filter_dict,
 )
-from common.components.primitives import Li, Span
+from common.components.primitives import ButtonGroupMember, Li, Span
 from common.date_time_presentation import (
     DateTimePresentation,
     date_time_presentation_for_request,
@@ -629,7 +629,7 @@ def _release_actions(
     release: Release, entry: EditionEntry, origin: OriginUrl | None
 ) -> Node:
     """Edit always; Remove where the service would allow it."""
-    buttons: list[dict[str, object]] = [
+    buttons: list[ButtonGroupMember] = [
         {
             "href": action_url("games:edit_release", release.pk, origin=origin),
             "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
@@ -655,7 +655,7 @@ def _edition_controls(
 ) -> Node:
     """What one Edition offers below its Releases."""
     edition = entry.edition
-    buttons: list[dict[str, object]] = [
+    buttons: list[ButtonGroupMember] = [
         {
             "href": action_url("games:add_release", edition.pk, origin=origin),
             "slot": "Add release",
@@ -717,7 +717,7 @@ def _plain_release_rows(
     edition = entries[0].edition if entries else None
     if not _catalog_controls_visible(game) or edition is None:
         return rows
-    release_button: dict[str, object] = (
+    release_button: ButtonGroupMember = (
         {
             "href": action_url("games:edit_release", release.pk, origin=origin),
             "slot": "Edit release",
