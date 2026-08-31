@@ -382,6 +382,53 @@ describe("temporal-field", () => {
     expect(region.textContent).toBe("");
   });
 
+  it("takes no qualifier on an end it has opened", () => {
+    const host = mount("true");
+    check(host, "add_end");
+    named(host, "end_approximate").checked = true;
+
+    check(host, "open_end");
+
+    expect(named(host, "end_approximate").checked).toBe(false);
+    expect(named(host, "end_approximate").disabled).toBe(true);
+    expect(named(host, "end_uncertain").disabled).toBe(true);
+    expect(toggle(host, "whole_decade_end").disabled).toBe(true);
+  });
+
+  it("gives the qualifier back when the end closes again", () => {
+    const host = mount("true");
+    check(host, "add_end");
+    check(host, "open_end");
+
+    check(host, "open_end", false);
+
+    expect(named(host, "end_approximate").disabled).toBe(false);
+    expect(
+      host.querySelector('[data-temporal-segments="end"]')!.hasAttribute("hidden"),
+    ).toBe(false);
+  });
+
+  it("drops the qualifier of an end nobody wants", () => {
+    const host = mount("true");
+    check(host, "add_end");
+    named(host, "end_uncertain").checked = true;
+
+    check(host, "add_end", false);
+
+    expect(named(host, "end_uncertain").checked).toBe(false);
+  });
+
+  it("closes an open end when the end itself goes", () => {
+    const host = mount("true");
+    check(host, "open_start");
+
+    check(host, "add_end", false);
+
+    expect(toggle(host, "open_start").checked).toBe(false);
+    expect(named(host, "start_approximate").disabled).toBe(false);
+    expect(named(host, "kind").value).toBe("unknown");
+  });
+
   it("adopts an end the server already stored", () => {
     const host = mount("true", "1986");
 

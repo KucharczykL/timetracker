@@ -199,3 +199,52 @@ describe("segment ARIA", () => {
     expect(segment.getAttribute("aria-valuetext")).toBe("odp.");
   });
 });
+
+describe("field mousedown", () => {
+  beforeEach(() => {
+    segmentRules.mockReset();
+    dayPeriodLabels.mockReset();
+    segmentRules.mockReturnValue(null);
+    dayPeriodLabels.mockReturnValue(null);
+  });
+
+  async function mountField(): Promise<HTMLElement> {
+    const { bindSegmentField } = await importCore();
+    document.body.innerHTML =
+      '<div data-field><input data-date-part="month" data-date-side="value" ' +
+      'maxlength="2"><label><input type="checkbox" id="qualifier">About</label></div>';
+    const field = document.querySelector<HTMLElement>("[data-field]")!;
+    bindSegmentField({
+      picker: field,
+      field,
+      resolveHidden: () => null,
+      onCommit: () => {},
+    });
+    return field;
+  }
+
+  it("leaves a control beside the segments its own focus", async () => {
+    // A temporal field holds checkboxes inside the field, and stealing focus
+    // from one bounced it between the box and the nearest segment.
+    await mountField();
+    const box = document.querySelector<HTMLInputElement>("#qualifier")!;
+
+    const event = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+    box.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(document.activeElement).not.toBe(
+      document.querySelector("input[data-date-part]"),
+    );
+  });
+
+  it("still sends blank space to the nearest segment", async () => {
+    const field = await mountField();
+
+    const event = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+    field.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(document.querySelector("input[data-date-part]"));
+  });
+});

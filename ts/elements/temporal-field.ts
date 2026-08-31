@@ -60,11 +60,44 @@ export function isToggled(host: HTMLElement, toggle: string): boolean {
   return toggleBox(host, toggle)?.checked ?? false;
 }
 
+/** The boxes that qualify one end, decade included. */
+function endpointBoxes(host: HTMLElement, endpoint: string): HTMLInputElement[] {
+  return [
+    namedInput(host, `${endpoint}_approximate`),
+    namedInput(host, `${endpoint}_uncertain`),
+    toggleBox(host, `whole_decade_${endpoint}`),
+  ].filter((box) => box instanceof HTMLInputElement);
+}
+
 /** Empty one end, so a shape that never reads it posts nothing. */
 function clearEndpoint(host: HTMLElement, endpoint: string): void {
   segmentsForSide(host, endpoint).forEach((segment) => setSegmentBuffer(segment, ""));
   const scratch = scratchInput(host, endpoint);
   if (scratch) scratch.value = "";
+  // A qualifier with no date beside it is refused, not stored.
+  endpointBoxes(host, endpoint).forEach((box) => {
+    box.checked = false;
+  });
+  paintDecade(host, endpoint, false);
+}
+
+/** An open end states no date, so nothing here qualifies one. */
+function setEndpointOpen(host: HTMLElement, endpoint: string, open: boolean): void {
+  if (open) clearEndpoint(host, endpoint);
+  endpointBoxes(host, endpoint).forEach((box) => {
+    box.disabled = open;
+  });
+  show(host.querySelector(`[data-temporal-segments="${endpoint}"]`), !open);
+}
+
+/** Close whichever end is open, leaving its controls usable again. */
+function closeOpenEnds(host: HTMLElement): void {
+  Object.entries(OPEN_TOGGLES).forEach(([openToggle, endpoint]) => {
+    const box = toggleBox(host, openToggle);
+    if (!box?.checked) return;
+    box.checked = false;
+    setEndpointOpen(host, endpoint, false);
+  });
 }
 
 /** Clear a part no coarser part can carry. */
@@ -236,7 +269,11 @@ function initField(host: HTMLElement): void {
   function syncEndGroup(): void {
     const wanted = isToggled(host, "add_end");
     show(host.querySelector("[data-temporal-end-group]"), wanted);
-    if (!wanted) clearEndpoint(host, "end");
+    // Since and until both need an end. No end closes them.
+    if (!wanted) {
+      closeOpenEnds(host);
+      clearEndpoint(host, "end");
+    }
     commitEndpoint(host, "end");
   }
 
@@ -263,25 +300,22 @@ function initField(host: HTMLElement): void {
 
   Object.entries(OPEN_TOGGLES).forEach(([openToggle, endpoint]) => {
     toggleBox(host, openToggle)?.addEventListener("change", () => {
-      if (!isToggled(host, openToggle)) {
-        show(host.querySelector(`[data-temporal-segments="${endpoint}"]`), true);
-        commitEndpoint(host, endpoint);
-        return;
+      const open = isToggled(host, openToggle);
+      if (open) {
+        // An open end needs the other end to say something.
+        const other = openToggle === "open_start" ? "open_end" : "open_start";
+        const otherBox = toggleBox(host, other);
+        if (otherBox?.checked) {
+          otherBox.checked = false;
+          setEndpointOpen(host, OPEN_TOGGLES[other], false);
+        }
+        const wantsEnd = toggleBox(host, "add_end");
+        if (wantsEnd && !wantsEnd.checked) {
+          wantsEnd.checked = true;
+          wantsEnd.dispatchEvent(new Event("change", { bubbles: true }));
+        }
       }
-      // An open end needs the other end to say something.
-      const other = openToggle === "open_start" ? "open_end" : "open_start";
-      const otherBox = toggleBox(host, other);
-      if (otherBox?.checked) {
-        otherBox.checked = false;
-        otherBox.dispatchEvent(new Event("change", { bubbles: true }));
-      }
-      const wantsEnd = toggleBox(host, "add_end");
-      if (wantsEnd && !wantsEnd.checked) {
-        wantsEnd.checked = true;
-        wantsEnd.dispatchEvent(new Event("change", { bubbles: true }));
-      }
-      clearEndpoint(host, endpoint);
-      show(host.querySelector(`[data-temporal-segments="${endpoint}"]`), false);
+      setEndpointOpen(host, endpoint, open);
       commitEndpoint(host, endpoint);
     });
   });
