@@ -483,6 +483,14 @@ class Edition(models.Model):
                 name="unique_default_edition_per_game",
             ),
         )
+        indexes = (
+            #: The live Editions of one Game.
+            models.Index(
+                fields=("game",),
+                condition=Q(removed_at__isnull=True),
+                name="live_edition_per_game_idx",
+            ),
+        )
 
     id = UUIDv7Field(primary_key=True, editable=False)
     objects = EditionQuerySet.as_manager()
@@ -492,6 +500,10 @@ class Edition(models.Model):
         related_name="editions",
     )
     is_default = models.BooleanField(default=False, editable=False)
+    #: Set instead of destroying the row.
+    removed_at = models.DateTimeField(
+        null=True, blank=True, default=None, editable=False
+    )
 
 
 class ReleaseQuerySet(models.QuerySet):
@@ -517,6 +529,14 @@ class Release(models.Model):
                 fields=("edition",),
                 condition=Q(is_default=True),
                 name="unique_default_release_per_edition",
+            ),
+        )
+        indexes = (
+            #: The live Releases of one Edition.
+            models.Index(
+                fields=("edition",),
+                condition=Q(removed_at__isnull=True),
+                name="live_release_per_edition_idx",
             ),
         )
 
@@ -623,6 +643,10 @@ class Release(models.Model):
         serialize=False,
         db_persist=True,
         editable=False,
+    )
+    #: Set instead of destroying the row.
+    removed_at = models.DateTimeField(
+        null=True, blank=True, default=None, editable=False
     )
 
     def clean(self):
