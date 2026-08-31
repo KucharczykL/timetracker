@@ -7,7 +7,7 @@ Releases. Every verb refuses a write it must not make.
 import pytest
 from django.core.exceptions import ValidationError
 
-from games.catalog_writes import add_edition
+from games.catalog_writes import add_edition, remove_edition, update_edition
 from games.models import Edition, Game
 from games.removal import remove
 
@@ -118,3 +118,146 @@ def test_add_edition_leaves_the_other_librarys_graph_alone(
 
     assert Edition.objects.for_library(owned_library).count() == 1
     assert Edition.objects.for_library(other_library).count() == 1
+
+
+# --- update_edition ----------------------------------------------------------
+
+
+def test_update_edition_states_the_whole_row(owned_library, game):
+    edition = add_edition(game=game, library=owned_library, name="Original")
+
+    updated = update_edition(
+        edition=edition,
+        library=owned_library,
+        name="  Director's Cut  ",
+        is_default=True,
+    )
+
+    updated.refresh_from_db()
+    assert (updated.pk, updated.name) == (edition.pk, "Director's Cut")
+    assert Edition.objects.filter(game=game).count() == 1
+
+
+def test_update_edition_repeated_changes_nothing(owned_library, game):
+    edition = add_edition(game=game, library=owned_library, name="Original")
+
+    for _ in range(2):
+        update_edition(
+            edition=edition, library=owned_library, name="Original", is_default=True
+        )
+
+    assert Edition.objects.filter(game=game).count() == 1
+    assert Edition.objects.filter(game=game, is_default=True).count() == 1
+
+
+def test_update_edition_promotion_steps_the_old_default_down(owned_library, game):
+    first = add_edition(game=game, library=owned_library, name="Original")
+    second = add_edition(game=game, library=owned_library, name="Director's Cut")
+
+    update_edition(
+        edition=second, library=owned_library, name="Director's Cut", is_default=True
+    )
+
+    first.refresh_from_db()
+    second.refresh_from_db()
+    assert (first.is_default, second.is_default) == (False, True)
+
+
+def test_update_edition_refuses_to_leave_a_game_without_a_default(owned_library, game):
+    first = add_edition(game=game, library=owned_library, name="Original")
+    add_edition(game=game, library=owned_library, name="Director's Cut")
+
+    with pytest.raises(ValidationError, match="default edition"):
+        update_edition(
+            edition=first, library=owned_library, name="Original", is_default=False
+        )
+
+    first.refresh_from_db()
+    assert first.is_default is True
+
+
+def test_update_edition_refuses_a_siblings_name(owned_library, game):
+    add_edition(game=game, library=owned_library, name="Original")
+    second = add_edition(game=game, library=owned_library, name="Director's Cut")
+
+    with pytest.raises(ValidationError, match="already has that name"):
+        update_edition(
+            edition=second, library=owned_library, name="original", is_default=False
+        )
+
+    second.refresh_from_db()
+    assert second.name == "Director's Cut"
+
+
+def test_update_edition_refuses_another_librarys_edition(
+    owned_library, other_library, game
+):
+    edition = add_edition(game=game, library=owned_library, name="Original")
+
+    with pytest.raises(ValidationError, match="another library"):
+        update_edition(
+            edition=edition, library=other_library, name="Theirs", is_default=True
+        )
+
+    edition.refresh_from_db()
+    assert edition.name == "Original"
+
+
+def test_update_edition_refuses_a_removed_edition(owned_library, game):
+    first = add_edition(game=game, library=owned_library, name="Original")
+    add_edition(game=game, library=owned_library, name="Director's Cut")
+    remove(first)
+
+    with pytest.raises(ValidationError, match="edition is removed"):
+        update_edition(
+            edition=first, library=owned_library, name="Renamed", is_default=False
+        )
+
+
+# --- remove_edition ----------------------------------------------------------
+
+
+def test_remove_edition_takes_a_sibling_out(owned_library, game):
+    add_edition(game=game, library=owned_library, name="Original")
+    second = add_edition(game=game, library=owned_library, name="Director's Cut")
+
+    remove_edition(edition=second, library=owned_library)
+
+    second.refresh_from_db()
+    assert second.removed_at is not None
+    assert Edition.objects.for_library(owned_library).count() == 1
+    assert Edition.objects.filter(game=game).count() == 2
+
+
+def test_remove_edition_refuses_the_last_edition(owned_library, game):
+    only = add_edition(game=game, library=owned_library, name="Original")
+
+    with pytest.raises(ValidationError, match="keeps one edition"):
+        remove_edition(edition=only, library=owned_library)
+
+    only.refresh_from_db()
+    assert only.removed_at is None
+
+
+def test_remove_edition_refuses_the_default_while_a_sibling_lives(owned_library, game):
+    first = add_edition(game=game, library=owned_library, name="Original")
+    add_edition(game=game, library=owned_library, name="Director's Cut")
+
+    with pytest.raises(ValidationError, match="default edition"):
+        remove_edition(edition=first, library=owned_library)
+
+    first.refresh_from_db()
+    assert first.removed_at is None
+
+
+def test_remove_edition_refuses_another_librarys_edition(
+    owned_library, other_library, game
+):
+    add_edition(game=game, library=owned_library, name="Original")
+    second = add_edition(game=game, library=owned_library, name="Director's Cut")
+
+    with pytest.raises(ValidationError, match="another library"):
+        remove_edition(edition=second, library=other_library)
+
+    second.refresh_from_db()
+    assert second.removed_at is None

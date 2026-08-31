@@ -11,6 +11,7 @@ from django.db import transaction
 from django.db.models import QuerySet
 
 from games.models import Edition, Game, Platform, Release, UserLibrary
+from games.removal import remove
 from timetracker.temporal import TemporalValue
 
 #: The words an Edition presents under.
@@ -145,3 +146,57 @@ def add_edition(
     if becomes_default:
         _clear_default_edition(owner.pk)
     return Edition.objects.create(game=owner, name=wanted, is_default=becomes_default)
+
+
+def _writable_edition(edition: Edition, library: UserLibrary) -> Edition:
+    """The live Edition this library may write."""
+    owner = _writable_game(edition.game_id, library)
+    stored = _live_editions(owner.pk).filter(pk=edition.pk).first()
+    if stored is None:
+        raise ValidationError(REMOVED_EDITION)
+    return stored
+
+
+@transaction.atomic
+def update_edition(
+    *,
+    edition: Edition,
+    library: UserLibrary,
+    name: EditionName,
+    is_default: bool,
+) -> Edition:
+    """State an Edition's whole name and default mark."""
+    stored = _writable_edition(edition, library)
+    wanted = name.strip()
+    if stored.is_default and not is_default:
+        raise ValidationError(DEMOTED_EDITION)
+    taken = (
+        _live_editions(stored.game_id)
+        .filter(name__iexact=wanted)
+        .exclude(pk=stored.pk)
+        .exists()
+    )
+    if wanted and taken:
+        raise ValidationError(DUPLICATE_EDITION_NAME)
+    if is_default and not stored.is_default:
+        _clear_default_edition(stored.game_id)
+    stored.name = wanted
+    stored.is_default = is_default
+    stored.save(update_fields=("name", "is_default"))
+    return stored
+
+
+@transaction.atomic
+def remove_edition(*, edition: Edition, library: UserLibrary) -> None:
+    """Take one Edition out of a private Game.
+
+    Its Releases leave the reads with it: each reads its
+    ancestors' marks as well as its own.
+    """
+    stored = _writable_edition(edition, library)
+    siblings = _live_editions(stored.game_id).exclude(pk=stored.pk)
+    if not siblings.exists():
+        raise ValidationError(LAST_EDITION)
+    if stored.is_default:
+        raise ValidationError(DEFAULT_EDITION_HELD)
+    remove(stored)
