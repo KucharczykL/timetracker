@@ -76,11 +76,13 @@ from games.models import (
     PlayerGameStatus,
     PlayEvent,
     Purchase,
+    Release,
     Session,
     SessionQuerySet,
     UserLibrary,
 )
 from games.ownership import owned_or_404
+from games.reads.catalog_hierarchy import EditionEntry, game_hierarchy
 from games.reads.playergame_history import StatusEntry, status_history
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
 from games.views.filtering import (
@@ -99,6 +101,11 @@ from games.views.returns import origin_from, return_url
 from games.writes.playergame import new_correlation_id
 
 WIKIDATA_CONFLICT_MESSAGE = "This Wikidata entity ID already belongs to another game."
+
+#: The value half of a meta row, against the label's grey.
+GREY_VALUE_CLASS = "text-black dark:text-slate-300"
+#: No Platform is a stated fact, not a blank.
+UNSPECIFIED_PLATFORM = "Unspecified"
 
 
 def _save_game_form_or_add_wikidata_error(form: GameForm) -> Game | None:
@@ -559,6 +566,55 @@ def _game_overview_metrics(sessions: SessionQuerySet) -> dict[str, Any]:
     }
 
 
+def _platform_words(release: Release | None) -> str:
+    """A Release says which Platform, or says nobody said."""
+    if release is None or release.platform is None:
+        return UNSPECIFIED_PLATFORM
+    return release.platform.name
+
+
+def _reads_plainly(entries: Sequence[EditionEntry]) -> bool:
+    """One unnamed Edition holding at most one Release.
+
+    That shape says everything in two rows, thus a section of
+    headings above them would be scaffolding around one fact.
+    """
+    if len(entries) > 1:
+        return False
+    if not entries:
+        return True
+    entry = entries[0]
+    return not entry.edition.name and len(entry.releases) <= 1
+
+
+def _plain_release_rows(
+    entries: Sequence[EditionEntry], presentation: DateTimePresentation
+) -> list[Node]:
+    """The ordinary Game states its one Release in the header.
+
+    A richer graph states nothing here: the section below carries
+    every Edition and every Release instead.
+    """
+    if not _reads_plainly(entries):
+        return []
+    releases = entries[0].releases if entries else ()
+    release = releases[0] if releases else None
+    return [
+        _meta_row(
+            "Platform",
+            Span(class_=GREY_VALUE_CLASS)[_platform_words(release)],
+        ),
+        _meta_row(
+            "Released",
+            TemporalText(
+                None if release is None else release.release_date,
+                presentation,
+                class_=GREY_VALUE_CLASS,
+            ),
+        ),
+    ]
+
+
 def _game_header(
     game: Game,
     request: HttpRequest,
@@ -566,6 +622,7 @@ def _game_header(
     presentation: DateTimePresentation,
     durations: DurationPresentation,
     origin: OriginUrl | None,
+    entries: Sequence[EditionEntry],
 ) -> Node:
     playrange_start = metrics["playrange_start"]
     playrange_end = metrics["playrange_end"]
@@ -575,26 +632,9 @@ def _game_header(
         playrange = start if start == end else f"{start} — {end}"
     else:
         playrange = "N/A"
-    grey_value_class = "text-black dark:text-slate-300"
+    #: The year beside a name was one Release's, flattened.
     title_span = Span(class_="text-balance max-w-120")[
-        *(
-            [
-                Span(class_="text-type-title font-serif")[game.name],
-            ]
-            + (
-                [
-                    Safe("&nbsp;"),
-                    Popover(
-                        popover_content="Release year",
-                        wrapped_classes="text-type-subheading text-slate-500",
-                        id="popover-year",
-                        children=[str(game.year_released)],
-                    ),
-                ]
-                if game.year_released
-                else []
-            )
-        )
+        Span(class_="text-type-title font-serif")[game.name],
     ]
     stats_row = Div(class_="flex gap-4 text-type-body dark:text-slate-400 mb-3")[
         _stat_popover(
@@ -629,7 +669,7 @@ def _game_header(
         _meta_row(
             "Original release",
             TemporalText(
-                game.original_release_date, presentation, class_=grey_value_class
+                game.original_release_date, presentation, class_=GREY_VALUE_CLASS
             ),
         ),
         _meta_row(
@@ -645,12 +685,7 @@ def _game_header(
             "👑" if game.tracked_mastered else "",
         ),
         _played_row(game, request, origin),
-        _meta_row(
-            "Platform",
-            Span(class_=grey_value_class)[
-                str(game.platform) if game.platform else "Unspecified"
-            ],
-        ),
+        *_plain_release_rows(entries, presentation),
     ]
     return Div(id_="game-info", class_="mb-10")[
         Div(class_="flex gap-5 mb-3")[title_span],
@@ -829,6 +864,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
     )
     purchases = Purchase.objects.for_library(library).filter(games=game)
     playevents = PlayEvent.objects.for_library(library).filter(game=game)
+    hierarchy = game_hierarchy(game, library)
     content = ContentContainer(class_="dark:text-white")[
         _game_header(
             game,
@@ -837,6 +873,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
             presentation,
             durations,
             origin,
+            hierarchy,
         ),
         _purchases_section(game, purchases, presentation, origin),
         _sessions_section(game, sessions, presentation, durations),
