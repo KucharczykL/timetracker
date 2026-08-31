@@ -838,7 +838,7 @@ class TemporalDraftData(TypedDict):
     end_uncertain: str
 
 
-#: The first endpoint takes the bare part names.
+#: The first endpoint takes bare part names.
 TEMPORAL_INPUT_SUFFIXES: Final[dict[str, str]] = {
     "kind": "kind",
     "start_year": "year",

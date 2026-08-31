@@ -91,7 +91,7 @@ def _kind_select(*, name: str, kind: str, input_id: str) -> Node:
         for draft_kind, text in TEMPORAL_DRAFT_KIND_LABELS.items()
     ]
     if selected not in offered:
-        # A refused shape echoes back, as a refused number does.
+        # A refused shape echoes back, like a number.
         options.insert(0, Option(value=selected, selected=True)[selected])
     return Select(
         name=temporal_input_name(name, "kind"),

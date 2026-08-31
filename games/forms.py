@@ -429,7 +429,7 @@ class TemporalFormField(forms.Field):
         return None if built.is_unknown else built
 
     def has_changed(self, initial, data) -> bool:
-        # Django's own guard: nobody can touch a disabled control.
+        # Django's own guard: nobody touches a disabled control.
         if self.disabled:
             return False
         try:
