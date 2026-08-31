@@ -13,6 +13,11 @@ control above is still here, still named, and still read the same way.
 The precision is never picked from a menu. It is derived from which
 parts a person filled, which is why there is no precision control here.
 
+Only what a script would use is rendered hidden: the segments, the
+nameless toggles and the disclosure. Every posted control is shown, so
+with no script a person still reaches both endpoints and both
+qualifiers. The element hides what a person does not need yet.
+
 Nothing the element hides carries a Tailwind ``display`` utility: the
 ``hidden`` attribute is a user-agent rule any such class outranks.
 """
@@ -105,7 +110,8 @@ def TemporalField(
         Div(data_temporal_extra="", hidden=True)[
             _script_toggle(toggle="add_end", label="Add an end date")
         ],
-        Div(data_temporal_end_group="", hidden=True)[
+        # Shown: no script means no way to reveal an end date.
+        Div(data_temporal_end_group="")[
             _endpoint_group(
                 name=name,
                 endpoint="end",
@@ -221,8 +227,8 @@ def _endpoint_group(
     "1984 to about 1986", and rewrote it on every save.
     """
     return Fieldset(class_=_ENDPOINT_CLASS, data_temporal_endpoint=endpoint)[
-        # Hidden in place: a legend wrapped in a div names nothing.
-        Legend(class_=_LEGEND_CLASS, data_temporal_extra="", hidden=True)[legend],
+        # Marked in place: a legend wrapped in a div names nothing.
+        Legend(class_=_LEGEND_CLASS, data_temporal_extra="")[legend],
         Div(data_temporal_native="")[
             Div(class_=_ROW_CLASS)[
                 _part_input(
@@ -387,7 +393,7 @@ def _qualifier_row(
     *, name: str, endpoint: str, approximate: str, uncertain: str
 ) -> Node:
     """The two boxes that qualify one end."""
-    return Div(data_temporal_extra="", hidden=True)[
+    return Div(data_temporal_extra="")[
         Div(class_=_ROW_CLASS)[
             Checkbox(
                 name=temporal_input_name(name, f"{endpoint}_approximate"),

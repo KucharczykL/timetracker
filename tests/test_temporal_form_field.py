@@ -101,6 +101,16 @@ def test_the_segments_wait_for_the_script() -> None:
     assert '<div data-temporal-segments="end" hidden' in html
 
 
+def test_no_script_still_reaches_every_posted_control() -> None:
+    """Hidden, an end date and a qualifier would be unreachable."""
+    html = markup()
+
+    assert '<div data-temporal-end-group="">' in html
+    # The three hidden extras hold the nameless toggles alone.
+    assert html.count('data-temporal-extra=""') == 7
+    assert html.count('data-temporal-extra="" hidden') == 3
+
+
 def test_a_segment_carries_the_stored_part_zero_padded() -> None:
     data = temporal_draft_data(
         TemporalDraft.from_value(TemporalValue.parse("1984-06-22"))
@@ -247,7 +257,7 @@ def test_each_endpoint_names_its_own_parts() -> None:
         '<fieldset class="flex flex-col gap-1" data-temporal-endpoint="start">' in html
     )
     for legend in ("Start", "End"):
-        assert f'data-temporal-extra="" hidden="hidden">{legend}</legend>' in html
+        assert f'data-temporal-extra="">{legend}</legend>' in html
 
 
 def test_a_shape_the_form_never_offers_echoes_back() -> None:
