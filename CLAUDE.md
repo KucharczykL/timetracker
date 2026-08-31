@@ -267,7 +267,10 @@ Submodules re-exported via `common/components/__init__.py`:
   `temporal_input_name()`), which `TemporalWidget` in `games/forms.py` reads
   back. **A widget renders to text, so the element's `Media` never bubbles** —
   the hosting view threads `scripts=ModuleScript("dist/elements/temporal-field.js")`,
-  as `purchase.py`/`playevent.py` already do for the date picker
+  as `purchase.py`/`playevent.py` already do for the date picker. Two pages host
+  one: `games/views/game.py` (Add/Edit Game) and `games/views/catalog.py`
+  (Add/Edit Release). The grammar, the wire and the no-script contract are in
+  [Temporal](docs/temporal.md)
 
 **Filter system** (`games/filters.py` + `common/criteria.py`): Stash-inspired
 structured filtering.
@@ -661,8 +664,12 @@ chromium` once. All JS is vendored, so the tests run fully offline. A bare
   `update_release` or `remove_release` from `games/catalog_writes.py`, never
   `Edition.objects.create()` or a hand-written default juggle. Each verb is one
   transaction, states a whole row, and refuses a shared Game, another library's
-  row, and a removal that would leave a Game with no Edition. The contract is
-  [Catalog](docs/catalog.md).
+  row, and a removal that would leave a Game with no Edition. A form that writes
+  one is `EditionForm`/`ReleaseForm` in `games/forms.py`, whose `write()` calls
+  the verb and puts a refusal back on the form; a view wraps the call in
+  `write_and_mirror()` from `games/catalog_compat.py`, so the flat `platform` /
+  `year_released` columns follow the graph in the same transaction. The contract
+  is [Catalog](docs/catalog.md).
 - **A PlayerGame fact is stated as a command** — never assign `Game.status` or
   `Game.mastered` directly. Call `record_facts()` / `track_game()` from
   `games/writes/playergame.py`, or their request-shaped wrappers in

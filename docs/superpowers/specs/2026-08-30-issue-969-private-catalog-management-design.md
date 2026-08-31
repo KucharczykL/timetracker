@@ -65,3 +65,28 @@ No reusable Release selector; #690 owns it, as the first real consumer. No globa
 Catalogue page and no external reference editing; #896 owns those. No discovery,
 import, or reconciliation; #783, #784, and #785 own those. No product
 relationship; #731 and #732 own those. No legacy column removal; #889 owns it.
+
+## Amendments
+
+Two departures from the words above, taken during implementation and recorded
+here so the spec does not quietly disagree with the code.
+
+**The Game form states a temporal value, not an integer.** The spec kept
+`year_released` on the Game form. The implementation removed it, and
+`original_year_released` with it. The reason is issue comment 1's option 2: the
+column holds a temporal value at any precision, and an integer control cannot
+say what a month, a decade, a range or a qualifier holds. Keeping both meant
+keeping `_reconcile_year`, which compared the posted year against the persisted
+integer and guessed which to believe. The form now uses `TemporalField()`, whose
+grammar matches the column, and the guessing is gone.
+
+**The flat columns are mirrored, and the mirror checks first.** The spec did not
+say what happens to `Game.platform`, `Game.year_released` and
+`Game.original_year_released` while #889 is outstanding. Filters, the API and the
+sample fixture still read them, so `mirror_legacy_columns()` writes them from the
+default Edition's default Release, and `write_and_mirror()` wraps every catalog
+write so the columns cannot lag the graph. The mirror raises
+`LEGACY_IDENTITY_TAKEN` before it writes, because `(library, name, platform,
+year)` still carries a unique constraint and a Release edit can otherwise walk
+one Game onto another Game's identity — a database error after the form has
+already reported success.

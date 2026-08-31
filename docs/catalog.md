@@ -99,9 +99,33 @@ page.
 A Release with no Platform reads as `Unspecified`. Nothing is inferred from the
 Game, from a sibling Release, or from a display default.
 
-A shared Game's graph is shown. The page says nothing about who may change it,
-because the page offers no control either way. #969 adds controls, and only for
-a private Game.
+A private Game carries controls. The plain shape gains one row under its two
+header rows: `Edit release` where the Edition holds one, `Add release` where it
+holds none, and `Add edition`. The `Releases` section gains an Actions column
+per Release, a control row per Edition — `Add release`, `Edit edition`, and
+`Remove edition` where a removal is allowed — and one `Add edition` under the
+last block.
+
+Two rules hide a button, because the service would refuse the write and a
+person should not meet a 409 they could not have avoided. No `Remove edition`
+on the last Edition, or on a default Edition while a live sibling could take the
+mark. No `Remove release` on a default Release while a live sibling stands.
+Promoting a sibling is how the mark moves; see [The default](#the-default).
+
+A shared Game's graph is shown, and none of the controls are. The page says
+nothing about who may change it, because the page offers nothing either way.
+What sharing means is unsettled until the IGDB wave (#783, #784, #785) lands,
+and a mark written now would state a rule that does not exist yet.
+
+## What a form refuses that the service does not
+
+A second Edition must state a name. Two unnamed siblings both present as the
+Game's own name, so the page would show one work twice with no way to tell the
+rows apart. `EditionForm` refuses it; `add_edition` does not.
+
+The service stays permissive on purpose. #782's importer normalizes IGDB and
+writes unnamed Editions in bulk, and a rule in the service would stop it. The
+rule moves down to the service if a second writer ever needs it.
 
 ## The section is a placeholder
 
@@ -142,20 +166,28 @@ Neither one writes a row its add verb could not have added: a name a live
 sibling holds, or a Platform and date pair a live sibling holds, is refused.
 A row that states its own name or its own pair again is fine.
 
-## The legacy Game form
+## The flat columns follow the graph
 
-`games/catalog_compat.py` adapts the one-year Game form onto the graph. The
-form knows a bare year and nothing richer, so it writes a temporal value only
-where it owns one: where the stored value is absent, or is the bare year the
-persisted integer column already states.
+`Game.platform`, `Game.year_released` and `Game.original_year_released` are the
+three columns the graph replaced. Nothing renders a Game from them any more, but
+filters, the API and the sample fixture still read them, so they are kept true.
 
-Anything richer — a month, a day, a decade, a range, a qualifier — stays as it
-is, and the integer column is written from it where it states a year. A decade
-and a range state none, so there the stored integer stands: a form that does
-not own the value does not own the column beside it either.
+`mirror_legacy_columns()` in `games/catalog_compat.py` writes them from the
+default Edition's default Release: its Platform, and the year of its date where
+the date states one. A decade and a range state no year, so there the column
+goes null. `write_and_mirror(game, write)` wraps every catalog write in one
+transaction — the verb, then the mirror — so the columns can never lag the graph
+they shadow.
 
-The comparison is against the *persisted* integer, never the posted one.
-Against the posted one, an ordinary year edit would read as a disagreement and
-undo itself.
+The mirror checks before it writes. `(library, name, platform, year)` still
+carries a unique constraint, so a Release edit can walk one Game onto another
+Game's identity. The check raises `LEGACY_IDENTITY_TAKEN` and the whole
+transaction goes back, rather than letting the database refuse a write the form
+had already reported as saved.
+
+The Game form itself no longer states a Platform or a year. It states the work's
+`original_release_date` as a temporal value, and the Add form states one inline
+Release beside it. There is nothing left to reconcile: the form and the column
+speak the same grammar, which [Temporal](temporal.md) sets out.
 
 #889 retires this path.
