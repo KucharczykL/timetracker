@@ -99,3 +99,28 @@ def test_no_qualifier_adds_no_words() -> None:
     words = present_temporal_value(value, presentation())
 
     assert words == "1980s"
+
+
+@pytest.mark.parametrize(
+    ("canonical", "expected"),
+    [
+        ("1984/1986", "1984 – 1986"),
+        ("1984-06/1986", "June 1984 – 1986"),
+        ("../1986", "until 1986"),
+        ("1984/..", "since 1984"),
+        ("/1986", "Unknown – 1986"),
+        ("1984/", "1984 – Unknown"),
+    ],
+)
+def test_a_range_says_each_endpoint(canonical: str, expected: str) -> None:
+    value = TemporalValue.parse(canonical)
+
+    assert present_temporal_value(value, presentation()) == expected
+
+
+def test_each_endpoint_keeps_its_own_qualifier() -> None:
+    value = TemporalValue.parse("1984~/1986?")
+
+    words = present_temporal_value(value, presentation())
+
+    assert words == "around 1984 – 1986 (uncertain)"

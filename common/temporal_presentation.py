@@ -11,12 +11,18 @@ owns the order of the parts. This module decides only which parts there are.
 from datetime import date
 
 from common.date_time_presentation import DateTimePresentation
-from timetracker.temporal import TemporalPrecision, TemporalQualifier, TemporalValue
+from timetracker.temporal import (
+    TemporalEndpoint,
+    TemporalPrecision,
+    TemporalQualifier,
+    TemporalValue,
+)
 
 UNKNOWN_TEXT = "Unknown"
 
 _APPROXIMATE_PREFIX = "around "
 _UNCERTAIN_SUFFIX = " (uncertain)"
+_RANGE_JOINER = " – "
 
 
 def present_temporal_value(
@@ -25,11 +31,34 @@ def present_temporal_value(
     """The words for ``value``, or ``Unknown`` where it states nothing."""
     if value is None or value.is_unknown:
         return UNKNOWN_TEXT
+    if value.is_range:
+        return _present_range(value, presentation)
     return _present_atomic(value, presentation)
 
 
 def _present_atomic(value: TemporalValue, presentation: DateTimePresentation) -> str:
     return _qualified(_at_precision(value, presentation), value.qualifier)
+
+
+def _present_range(value: TemporalValue, presentation: DateTimePresentation) -> str:
+    start, end = value.start, value.end
+    if start is None or end is None:
+        return UNKNOWN_TEXT
+    if start.is_open:
+        return f"until {_present_endpoint(end, presentation)}"
+    if end.is_open:
+        return f"since {_present_endpoint(start, presentation)}"
+    start_words = _present_endpoint(start, presentation)
+    end_words = _present_endpoint(end, presentation)
+    return f"{start_words}{_RANGE_JOINER}{end_words}"
+
+
+def _present_endpoint(
+    endpoint: TemporalEndpoint, presentation: DateTimePresentation
+) -> str:
+    if endpoint.value is None:
+        return UNKNOWN_TEXT
+    return _present_atomic(endpoint.value, presentation)
 
 
 def _qualified(words: str, qualifier: TemporalQualifier | None) -> str:
