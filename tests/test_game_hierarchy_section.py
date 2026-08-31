@@ -1,5 +1,7 @@
 """What Game detail says about the graph."""
 
+import re
+
 import pytest
 from django.contrib.auth import get_user_model
 
@@ -153,7 +155,7 @@ def test_game_detail_gives_one_unnamed_edition_no_heading(library, reader):
 
     html = reader(game)
 
-    assert html.count("Releases of this edition") == 1
+    assert html.count("<caption") == 1
     assert 'text-type-subheading text-heading">Elite</span>' not in html
 
 
@@ -192,6 +194,25 @@ def test_game_detail_heads_a_lone_edition_that_states_its_own_name(library, read
     html = reader(game)
 
     assert 'text-type-subheading text-heading">Gold</span>' in html
+
+
+def test_game_detail_gives_each_release_table_its_own_caption_id(library, reader):
+    """A caption id is hashed, thus two alike collide.
+
+    Both scroll regions name their caption through
+    `aria-labelledby`, so one shared id points the second region
+    at the first region's name.
+    """
+    game = Game.objects.create(library=library, name="Elite")
+    first = Edition.objects.create(game=game, is_default=True)
+    second = Edition.objects.create(game=game)
+    Release.objects.create(edition=first, is_default=True)
+    Release.objects.create(edition=second)
+
+    ids = re.findall(r'<caption[^>]*id="([^"]+)"', reader(game))
+
+    assert len(ids) == 2
+    assert len(set(ids)) == 2
 
 
 def test_game_detail_leaves_out_a_removed_edition(library, reader):

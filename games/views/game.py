@@ -607,22 +607,22 @@ def _plain_release_rows(
     ]
 
 
-def _release_table(
-    releases: Sequence[Release], presentation: DateTimePresentation
-) -> Node:
+def _release_table(entry: EditionEntry, presentation: DateTimePresentation) -> Node:
     """Two facts per Release: Platform and date."""
     rows = [
         make_row(
             _platform_words(release),
             TemporalText(release.release_date, presentation),
         )
-        for release in releases
+        for release in entry.releases
     ]
     return StyledTable(
         columns=[Column("Platform"), Column("Released")],
         rows=rows,
         data_table=True,
-        caption="Releases of this edition",
+        caption=f"Releases of {entry.edition.display_name}",
+        #: Two unnamed Editions read alike; their ids may not.
+        caption_key=str(entry.edition.pk),
     )
 
 
@@ -638,9 +638,7 @@ def _edition_block(
         Span(class_="text-type-subheading text-heading")[entry.edition.display_name]
         if named
         else "",
-        _release_table(entry.releases, presentation)
-        if entry.releases
-        else "No releases yet.",
+        _release_table(entry, presentation) if entry.releases else "No releases yet.",
     ]
 
 

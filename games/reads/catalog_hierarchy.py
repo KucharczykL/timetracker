@@ -3,8 +3,7 @@
 from typing import NamedTuple
 from uuid import UUID
 
-from django.db.models import F
-from django.db.models.functions import Lower
+from django.db.models.functions import Coalesce, Lower
 
 from games.models import Edition, Game, Release, UserLibrary
 
@@ -35,7 +34,8 @@ def game_hierarchy(game: Game, library: UserLibrary) -> tuple[EditionEntry, ...]
         #: Default first, then the earliest known day.
         .order_by(
             "-is_default",
-            F("release_date_lower").asc(nulls_last=True),
+            #: An open start knows no lower bound, but is dated.
+            Coalesce("release_date_lower", "release_date_upper").asc(nulls_last=True),
             "pk",
         )
     )

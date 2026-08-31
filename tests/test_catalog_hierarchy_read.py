@@ -62,6 +62,27 @@ def test_game_hierarchy_orders_releases_by_their_earliest_day(library):
     assert entries[0].releases == (earlier, later, undated)
 
 
+def test_game_hierarchy_dates_a_release_by_its_open_start(library):
+    """An open start knows no lower bound, but is dated.
+
+    `timetracker_temporal_lower` answers NULL for it, thus a
+    lower-bound sort alone parks it with the undated.
+    """
+    game = Game.objects.create(library=library, name="Elite")
+    edition = Edition.objects.create(game=game)
+    until = Release.objects.create(
+        edition=edition, release_date=TemporalValue.parse("../1984")
+    )
+    later = Release.objects.create(
+        edition=edition, release_date=TemporalValue.from_year(1985)
+    )
+    undated = Release.objects.create(edition=edition)
+
+    entries = game_hierarchy(game, library)
+
+    assert entries[0].releases == (until, later, undated)
+
+
 def test_game_hierarchy_leaves_out_a_removed_edition_and_a_removed_release(library):
     game = Game.objects.create(library=library, name="Elite")
     kept = Edition.objects.create(game=game, name="Kept")
