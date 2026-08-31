@@ -615,6 +615,57 @@ def _plain_release_rows(
     ]
 
 
+def _release_table(
+    releases: Sequence[Release], presentation: DateTimePresentation
+) -> Node:
+    """Two facts per Release, as the sibling sections do."""
+    rows = [
+        make_row(
+            _platform_words(release),
+            TemporalText(release.release_date, presentation),
+        )
+        for release in releases
+    ]
+    return StyledTable(
+        columns=[Column("Platform"), Column("Released")],
+        rows=rows,
+        data_table=True,
+        caption="Releases of this edition",
+    )
+
+
+def _edition_block(
+    entry: EditionEntry, presentation: DateTimePresentation, *, named: bool
+) -> Node:
+    """One Edition's Releases, named where a name tells them apart.
+
+    A lone Edition takes no heading: `display_name` would print
+    the Game's own name above the Game's own page.
+    """
+    return Div(class_="flex flex-col gap-2")[
+        Span(class_="text-type-subheading text-heading")[entry.edition.display_name]
+        if named
+        else "",
+        _release_table(entry.releases, presentation)
+        if entry.releases
+        else "No releases yet.",
+    ]
+
+
+def _releases_section(
+    entries: Sequence[EditionEntry], presentation: DateTimePresentation
+) -> Node:
+    """Every Edition and every Release, where two rows cannot say it."""
+    if _reads_plainly(entries):
+        return Fragment()
+    count = sum(len(entry.releases) for entry in entries)
+    named = len(entries) > 1
+    return Div(class_="mb-6 flex flex-col gap-4")[
+        PageHeading(children=["Releases"], badge=str(count) if count else ""),
+        *(_edition_block(entry, presentation, named=named) for entry in entries),
+    ]
+
+
 def _game_header(
     game: Game,
     request: HttpRequest,
@@ -875,6 +926,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
             origin,
             hierarchy,
         ),
+        _releases_section(hierarchy, presentation),
         _purchases_section(game, purchases, presentation, origin),
         _sessions_section(game, sessions, presentation, durations),
         _playevents_section(game, playevents, presentation, origin),
