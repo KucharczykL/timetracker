@@ -17,11 +17,13 @@ from common.components import (
     Div,
     Form,
     FormFields,
+    ModuleScript,
     PageHeading,
 )
 from common.components.primitives import P
 from common.date_time_presentation import date_time_presentation_for_request
 from common.layout import render_page
+from common.temporal_presentation import present_temporal_value
 from games.forms import TemporalFormField
 from timetracker.temporal import TemporalValue
 
@@ -49,7 +51,12 @@ def temporal_field_preview(request: HttpRequest) -> HttpResponse:
     stored: list[str] = []
     if request.method == "POST" and form.is_valid():
         stored = [
-            f"{name}: {value!r} renders as {value}" if value else f"{name}: nothing"
+            (
+                f"{name}: {value.serialize()}"
+                f" renders as {present_temporal_value(value, presentation)}"
+            )
+            if value
+            else f"{name}: nothing"
             for name, value in form.cleaned_data.items()
         ]
 
@@ -65,4 +72,6 @@ def temporal_field_preview(request: HttpRequest) -> HttpResponse:
             Div(class_="flex flex-col gap-1")[*[P()[line] for line in stored]],
         ],
         title="Temporal field preview",
+        # A widget renders to text, so its element's Media never bubbles.
+        scripts=ModuleScript("dist/elements/temporal-field.js"),
     )
