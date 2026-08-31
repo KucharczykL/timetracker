@@ -465,7 +465,12 @@ def _end_shape_group(*, name: str) -> Node:
 
 
 def _disclosure() -> Node:
-    """The one thing the collapsed field offers beyond a date."""
+    """The one thing the collapsed field offers beyond a date.
+
+    It opens and closes. The element swaps the two labels and takes
+    the button away while the extras hold something the collapsed
+    field could not state, so closing it never strands an answer.
+    """
     return Div(hidden=True, data_temporal_disclosure_row="")[
         Element(
             "button",
@@ -475,6 +480,13 @@ def _disclosure() -> Node:
                 ("aria-expanded", "false"),
                 ("class", _DISCLOSURE_CLASS),
             ],
-            ["I don't know the exact date"],
+            [
+                Span(data_temporal_disclosure_label="collapsed")[
+                    "I don't know the exact date"
+                ],
+                Span(data_temporal_disclosure_label="expanded", hidden=True)[
+                    "I know the exact date"
+                ],
+            ],
         )
     ]

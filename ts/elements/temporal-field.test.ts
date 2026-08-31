@@ -75,7 +75,8 @@ function mount(
         </div>
         <div hidden data-temporal-disclosure-row="">
           <button type="button" data-temporal-disclosure="" aria-expanded="false">
-            I don't know the exact date
+            <span data-temporal-disclosure-label="collapsed">I don't know the exact date</span>
+            <span data-temporal-disclosure-label="expanded" hidden>I know the exact date</span>
           </button>
         </div>
         <p data-temporal-announcement="" role="status" aria-live="polite"></p>
@@ -116,6 +117,16 @@ function check(host: HTMLElement, name: string, checked = true): void {
   const box = toggle(host, name);
   box.checked = checked;
   box.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function toggleDisclosure(host: HTMLElement): void {
+  host.querySelector<HTMLButtonElement>("[data-temporal-disclosure]")!.click();
+}
+
+function label(host: HTMLElement, which: string): HTMLElement {
+  return host.querySelector<HTMLElement>(
+    `[data-temporal-disclosure-label="${which}"]`,
+  )!;
 }
 
 /** Select one of the three end shapes, as a click would. */
@@ -200,11 +211,48 @@ describe("temporal-field", () => {
   it("reveals the extras when somebody says they do not know", () => {
     const host = mount();
 
-    host.querySelector<HTMLButtonElement>("[data-temporal-disclosure]")!.click();
+    toggleDisclosure(host);
 
     host.querySelectorAll("[data-temporal-extra]").forEach((extra) => {
       expect(extra.hasAttribute("hidden")).toBe(false);
     });
+    expect(label(host, "expanded").hasAttribute("hidden")).toBe(false);
+    expect(label(host, "collapsed").hasAttribute("hidden")).toBe(true);
+  });
+
+  it("closes the extras again", () => {
+    const host = mount();
+    toggleDisclosure(host);
+
+    toggleDisclosure(host);
+
+    host.querySelectorAll("[data-temporal-extra]").forEach((extra) => {
+      expect(extra.hasAttribute("hidden")).toBe(true);
+    });
+    expect(label(host, "collapsed").hasAttribute("hidden")).toBe(false);
+  });
+
+  it("offers no way to close while the extras hold the value", () => {
+    const host = mount("true");
+
+    check(host, "whole_decade_start");
+
+    expect(
+      host.querySelector("[data-temporal-disclosure-row]")!.hasAttribute("hidden"),
+    ).toBe(true);
+
+    check(host, "whole_decade_start", false);
+
+    expect(
+      host.querySelector("[data-temporal-disclosure-row]")!.hasAttribute("hidden"),
+    ).toBe(false);
+  });
+
+  it("keeps an end date from being hidden away", () => {
+    const host = mount("true");
+    pick(host, "end_date");
+    type(host, "end", "year", "1986");
+
     expect(
       host.querySelector("[data-temporal-disclosure-row]")!.hasAttribute("hidden"),
     ).toBe(true);
@@ -213,9 +261,7 @@ describe("temporal-field", () => {
   it("opens already expanded when the stored value needs it", () => {
     const host = mount("true");
 
-    expect(
-      host.querySelector("[data-temporal-disclosure-row]")!.hasAttribute("hidden"),
-    ).toBe(true);
+    expect(label(host, "expanded").hasAttribute("hidden")).toBe(false);
     expect(
       toggle(host, "end_date").closest("[data-temporal-extra]")!.hasAttribute("hidden"),
     ).toBe(false);

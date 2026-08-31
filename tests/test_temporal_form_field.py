@@ -171,6 +171,20 @@ def test_the_posted_controls_carry_their_draft_key() -> None:
     assert 'data-temporal-input="end_uncertain"' in html
 
 
+def test_the_disclosure_carries_both_of_its_labels() -> None:
+    """One button, two words. The element swaps which one shows."""
+    html = markup()
+
+    assert (
+        '<span data-temporal-disclosure-label="collapsed">'
+        "I don&#x27;t know the exact date</span>" in html
+    )
+    assert (
+        '<span data-temporal-disclosure-label="expanded" hidden="hidden">'
+        "I know the exact date</span>" in html
+    )
+
+
 def test_a_plain_stored_date_needs_no_disclosure() -> None:
     data = temporal_draft_data(
         TemporalDraft.from_value(TemporalValue.parse("1984-06-22"))

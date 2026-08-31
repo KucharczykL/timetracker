@@ -231,10 +231,34 @@ export function commitEndpoint(host: HTMLElement, endpoint: string): void {
   ENDPOINTS.forEach((each) => writeNamedParts(host, each));
   setNamed(host, "kind", currentKind(host));
   announce(host);
+  paintDisclosure(host);
 }
 
 function show(element: Element | null, visible: boolean): void {
   element?.toggleAttribute("hidden", !visible);
+}
+
+function isExpanded(host: HTMLElement): boolean {
+  const disclosure = host.querySelector("[data-temporal-disclosure]");
+  return disclosure?.getAttribute("aria-expanded") === "true";
+}
+
+/** Whether the collapsed field could still state this value. */
+function canCollapse(host: HTMLElement): boolean {
+  if (endShape(host) !== "end_none") return false;
+  if (isToggled(host, "open_start")) return false;
+  if (endpointHasValue(host, "end")) return false;
+  return !ENDPOINTS.some((endpoint) =>
+    endpointBoxes(host, endpoint).some((box) => box.checked),
+  );
+}
+
+/** Which label the button shows, and whether it shows at all. */
+function paintDisclosure(host: HTMLElement): void {
+  const expanded = isExpanded(host);
+  show(host.querySelector("[data-temporal-disclosure-row]"), !expanded || canCollapse(host));
+  show(host.querySelector('[data-temporal-disclosure-label="collapsed"]'), !expanded);
+  show(host.querySelector('[data-temporal-disclosure-label="expanded"]'), expanded);
 }
 
 function setExpanded(host: HTMLElement, expanded: boolean): void {
@@ -243,7 +267,7 @@ function setExpanded(host: HTMLElement, expanded: boolean): void {
     .forEach((extra) => show(extra, expanded));
   const disclosure = host.querySelector("[data-temporal-disclosure]");
   disclosure?.setAttribute("aria-expanded", String(expanded));
-  show(host.querySelector("[data-temporal-disclosure-row]"), !expanded);
+  paintDisclosure(host);
 }
 
 function initField(host: HTMLElement): void {
@@ -334,7 +358,9 @@ function initField(host: HTMLElement): void {
   paintEndShape();
 
   const disclosure = host.querySelector("[data-temporal-disclosure]");
-  disclosure?.addEventListener("click", () => setExpanded(host, true));
+  disclosure?.addEventListener("click", () => setExpanded(host, !isExpanded(host)));
+  // A qualifier box owns no handler, yet it decides the button.
+  host.addEventListener("change", () => paintDisclosure(host));
 
   setExpanded(host, host.getAttribute("expanded") === "true");
   // A field nobody has touched announces nothing.
