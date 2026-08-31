@@ -13,9 +13,14 @@ from games.models import (
     PlayerGameStatus,
     Release,
 )
-from timetracker.temporal import TemporalValue
+from timetracker.temporal import TemporalValue, temporal_input_name
 
 pytestmark = pytest.mark.django_db(transaction=True)
+
+
+def temporal_payload(prefix: str, **parts: str) -> dict[str, str]:
+    """The inputs one temporal control posts."""
+    return {temporal_input_name(prefix, key): value for key, value in parts.items()}
 
 
 class AnchorCollector(HTMLParser):
@@ -42,16 +47,17 @@ class AnchorCollector(HTMLParser):
 
 
 def game_payload(**overrides):
+    """The Game form and, on Add, the inline Release row beside it."""
     payload = {
         "name": "Legacy form game",
         "sort_name": "Form game, Legacy",
         "platform": "",
-        "year_released": "2002",
-        "original_year_released": "2001",
         "status": PlayerGameStatus.PLAYED,
         "mastered": "on",
         "wikidata": "Q123",
     }
+    payload |= temporal_payload("original_release_date", kind="date", start_year="2001")
+    payload |= temporal_payload("release_date", kind="date", start_year="2002")
     payload.update(overrides)
     return payload
 
@@ -106,11 +112,10 @@ def test_add_game_writes_legacy_and_default_catalog_graph(
     assert (game.sort_name, game.wikidata) == ("Form game, Legacy", "Q123")
 
 
-def test_edit_game_updates_then_clears_legacy_and_canonical_values(
+def test_edit_game_states_then_clears_the_original_release(
     client, owned_user, owned_library
 ):
     first = Platform.objects.create(name="First")
-    second = Platform.objects.create(name="Second")
     client.force_login(owned_user)
     client.post(
         reverse("games:add_game"),
@@ -122,12 +127,8 @@ def test_edit_game_updates_then_clears_legacy_and_canonical_values(
 
     response = client.post(
         reverse("games:edit_game", args=[game.pk]),
-        game_payload(
-            name="Edited",
-            platform=str(second.pk),
-            original_year_released="2010",
-            year_released="2011",
-        ),
+        game_payload(name="Edited")
+        | temporal_payload("original_release_date", kind="date", start_year="2010"),
     )
     assert response.status_code == 302
     game.refresh_from_db()
@@ -137,31 +138,113 @@ def test_edit_game_updates_then_clears_legacy_and_canonical_values(
         release_id,
     )
     assert game.original_release_date == TemporalValue.from_year(2010)
-    assert release.release_date == TemporalValue.from_year(2011)
-    assert release.platform == second
+    assert game.original_year_released == 2010
 
     response = client.post(
         reverse("games:edit_game", args=[game.pk]),
-        game_payload(
-            name="Edited",
-            platform="",
-            original_year_released="",
-            year_released="",
-        ),
+        game_payload(name="Edited")
+        | temporal_payload("original_release_date", kind="", start_year=""),
     )
     assert response.status_code == 302
     game.refresh_from_db()
     release.refresh_from_db()
-    assert (game.original_year_released, game.year_released, game.platform) == (
-        None,
-        None,
-        None,
-    )
     assert game.original_release_date is None
-    assert release.release_date is None
-    assert release.platform is None
+    assert game.original_year_released is None
     assert Edition.objects.filter(game=game).count() == 1
     assert Release.objects.filter(edition_id=edition_id).count() == 1
+
+
+def test_add_game_states_the_platform_through_the_inline_release(
+    client, owned_user, owned_library
+):
+    platform = Platform.objects.create(name="Amiga")
+    client.force_login(owned_user)
+    payload = game_payload(platform=str(platform.pk)) | temporal_payload(
+        "release_date", kind="date", start_year="1984", start_month="6"
+    )
+
+    client.post(reverse("games:add_game"), payload)
+
+    game = Game.objects.get(name=payload["name"])
+    release = Release.objects.get(edition__game=game)
+    assert release.platform_id == platform.pk
+    assert release.release_date == TemporalValue.from_month(1984, 6)
+    #: The flat columns shadow it until #889.
+    assert game.platform_id == platform.pk
+    assert game.year_released == 1984
+
+
+def test_add_game_states_the_original_release_at_its_own_precision(
+    client, owned_user, owned_library
+):
+    client.force_login(owned_user)
+    payload = game_payload() | temporal_payload(
+        "original_release_date", kind="date", start_year="1983", start_month="9"
+    )
+
+    client.post(reverse("games:add_game"), payload)
+
+    game = Game.objects.get(name=payload["name"])
+    assert game.original_release_date == TemporalValue.from_month(1983, 9)
+    assert game.original_year_released == 1983
+
+
+def test_edit_game_keeps_a_month_on_the_original_release(
+    client, owned_user, owned_library
+):
+    """The trap issue comment 1 named: an unrelated edit downgraded it."""
+    client.force_login(owned_user)
+    client.post(
+        reverse("games:add_game"),
+        game_payload(name="Elite")
+        | temporal_payload(
+            "original_release_date", kind="date", start_year="1983", start_month="9"
+        ),
+    )
+    game = Game.objects.get(name="Elite")
+
+    client.post(
+        reverse("games:edit_game", args=[game.pk]),
+        game_payload(name="Elite II")
+        | temporal_payload(
+            "original_release_date", kind="date", start_year="1983", start_month="9"
+        ),
+    )
+
+    game.refresh_from_db()
+    assert game.original_release_date == TemporalValue.from_month(1983, 9)
+
+
+def test_edit_game_leaves_the_default_release_alone(client, owned_user, owned_library):
+    """An edit states no Release, thus it changes none."""
+    platform = Platform.objects.create(name="Amiga")
+    game = Game.objects.create(library=owned_library, name="Elite")
+    edition = Edition.objects.create(game=game, is_default=True)
+    Release.objects.create(
+        edition=edition,
+        platform=platform,
+        release_date=TemporalValue.from_year(1984),
+        is_default=True,
+    )
+    client.force_login(owned_user)
+
+    client.post(
+        reverse("games:edit_game", args=[game.pk]),
+        game_payload(name="Elite", wikidata=""),
+    )
+
+    release = Release.objects.get(edition=edition)
+    assert release.platform_id == platform.pk
+    assert release.release_date == TemporalValue.from_year(1984)
+
+
+def test_add_game_hosts_the_temporal_element(client, owned_user, owned_library):
+    client.force_login(owned_user)
+
+    html = client.get(reverse("games:add_game")).content.decode()
+
+    assert "<temporal-field" in html
+    assert "dist/elements/temporal-field.js" in html
 
 
 def test_game_views_canonicalize_wikidata_on_add_and_edit(

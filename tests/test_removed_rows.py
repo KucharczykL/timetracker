@@ -8,9 +8,11 @@ import pytest
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 
+from games.catalog_compat import mirror_legacy_columns
 from games.catalog_writes import PrivateGameGraph
-from games.forms import GameForm, PlatformForm
+from games.forms import PlatformForm
 from games.models import Device, Edition, Game, Platform, Release
+from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db
 
@@ -251,25 +253,23 @@ def test_a_live_shared_platform_still_shadows(owned_library):
 # --- the form layer reads the same policy ------------------------------------
 
 
-def test_the_add_game_form_accepts_a_removed_duplicate(owned_library):
-    """The form and the constraint agree.
+def test_the_mirror_accepts_a_removed_duplicate(owned_library):
+    """The mirror and the constraint agree.
 
-    Without the `removed_at` exclusion fix, the form would also
-    accept a live duplicate. See `docs/event-retention.md`.
+    The flat columns left the Game form with #969, so this pair is
+    guarded by `mirror_legacy_columns` alone. Without the `removed_at`
+    exclusion, it would refuse. See `docs/event-retention.md`.
     """
     remove_row(make_game(owned_library, name="Tetris"))
-
-    form = GameForm(
-        data={
-            "name": "Tetris",
-            "platform": "",
-            "year_released": 2023,
-            "status": "unplayed",
-        },
-        library=owned_library,
+    graph = make_graph(owned_library, name="Tetris")
+    Release.objects.filter(pk=graph.release.pk).update(
+        release_date=TemporalValue.from_year(2023)
     )
 
-    assert form.is_valid(), form.errors
+    mirror_legacy_columns(graph.game)
+
+    graph.game.refresh_from_db()
+    assert graph.game.year_released == 2023
 
 
 def test_the_add_platform_form_accepts_a_removed_duplicate(owned_library):

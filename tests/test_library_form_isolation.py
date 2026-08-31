@@ -1,3 +1,4 @@
+from functools import partial
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
@@ -12,6 +13,7 @@ from common.date_time_presentation import (
 from games.forms import (
     DeviceForm,
     GameForm,
+    InitialReleaseForm,
     LibraryPreferencesForm,
     PlatformForm,
     PlayEventForm,
@@ -77,7 +79,7 @@ def test_form_relationship_querysets_are_explicitly_library_bound(world):
         user=world.owner,
         presentation=PRESENTATION,
     )
-    game = GameForm(library=world.owner_library)
+    release = InitialReleaseForm(library=world.owner_library, presentation=PRESENTATION)
     playevent = PlayEventForm(library=world.owner_library, presentation=PRESENTATION)
 
     assert _ids(session.fields["game"].queryset) == {world.own_game.pk}
@@ -86,7 +88,8 @@ def test_form_relationship_querysets_are_explicitly_library_bound(world):
     assert _ids(purchase.fields["related_game"].queryset) == {world.own_game.pk}
     assert _ids(playevent.fields["game"].queryset) == {world.own_game.pk}
     visible_platforms = {world.shared_platform.pk, world.own_platform.pk}
-    assert _ids(game.fields["platform"].queryset) == visible_platforms
+    #: The Game names no Platform now; its first Release does.
+    assert _ids(release.fields["platform"].queryset) == visible_platforms
     assert _ids(purchase.fields["platform"].queryset) == visible_platforms
 
 
@@ -112,10 +115,9 @@ def test_library_preferences_default_device_is_a_scoped_model_choice(world):
         ),
         (DeviceForm, {"name": "New private device", "type": Device.UNKNOWN}, Device),
         (
-            GameForm,
+            partial(GameForm, presentation=PRESENTATION),
             {
                 "name": "New private game",
-                "platform": "",
                 "status": PlayerGameStatus.UNPLAYED,
             },
             Game,
@@ -137,45 +139,27 @@ def test_directly_owned_forms_save_new_rows_in_the_explicit_library(
 
 
 def test_shared_platform_is_selectable_but_foreign_private_platform_is_rejected(world):
-    shared_form = GameForm(
-        data={
-            "name": "Shared platform game",
-            "platform": world.shared_platform.pk,
-            "status": PlayerGameStatus.UNPLAYED,
-        },
+    shared_form = InitialReleaseForm(
+        data={"platform": world.shared_platform.pk},
         library=world.owner_library,
+        presentation=PRESENTATION,
     )
-    foreign_form = GameForm(
-        data={
-            "name": "Foreign platform game",
-            "platform": world.foreign_platform.pk,
-            "status": PlayerGameStatus.UNPLAYED,
-        },
+    foreign_form = InitialReleaseForm(
+        data={"platform": world.foreign_platform.pk},
         library=world.owner_library,
+        presentation=PRESENTATION,
     )
 
     assert shared_form.is_valid(), shared_form.errors
-    assert shared_form.save().library == world.owner_library
+    assert shared_form.cleaned_data["platform"] == world.shared_platform
     assert not foreign_form.is_valid()
     assert "platform" in foreign_form.errors
     assert world.foreign_platform.name not in str(foreign_form)
 
 
 def test_library_bound_forms_validate_constraints_with_implicit_owner(world):
-    Game.objects.create(
-        library=world.owner_library,
-        name="Platformless duplicate",
-        year_released=1999,
-    )
-    game_form = GameForm(
-        data={
-            "name": "Platformless duplicate",
-            "platform": "",
-            "year_released": 1999,
-            "status": PlayerGameStatus.UNPLAYED,
-        },
-        library=world.owner_library,
-    )
+    #: The Game pair (name, platform, year) left the form with #969.
+    #: `mirror_legacy_columns` guards it, over `tests/test_catalog_compat.py`.
     platform_form = PlatformForm(
         data={
             "name": world.own_platform.name,
@@ -185,8 +169,6 @@ def test_library_bound_forms_validate_constraints_with_implicit_owner(world):
         library=world.owner_library,
     )
 
-    assert not game_form.is_valid()
-    assert "__all__" in game_form.errors
     assert not platform_form.is_valid()
     assert "__all__" in platform_form.errors
 
@@ -312,7 +294,11 @@ def test_bound_forms_preselect_platform_by_integer_id(world):
         price_currency="USD",
     )
 
-    game_form = GameForm(library=world.owner_library, instance=world.own_game)
+    release_form = InitialReleaseForm(
+        library=world.owner_library,
+        presentation=PRESENTATION,
+        initial={"platform": world.own_platform.pk},
+    )
     purchase_form = PurchaseForm(
         library=world.owner_library,
         user=world.owner,
@@ -320,7 +306,7 @@ def test_bound_forms_preselect_platform_by_integer_id(world):
         instance=purchase,
     )
 
-    for form in (game_form, purchase_form):
+    for form in (release_form, purchase_form):
         rendered = str(form["platform"])
         assert world.own_platform.name in rendered
         assert f'value="{world.own_platform.pk}"' in rendered
@@ -329,9 +315,6 @@ def test_bound_forms_preselect_platform_by_integer_id(world):
 def test_bound_forms_leave_an_unset_platform_unselected(world):
     import datetime
 
-    platformless_game = Game.objects.create(
-        library=world.owner_library, name="Platformless form game", platform=None
-    )
     platformless_purchase = Purchase.objects.create(
         library=world.owner_library,
         platform=None,
@@ -340,7 +323,9 @@ def test_bound_forms_leave_an_unset_platform_unselected(world):
         price_currency="USD",
     )
 
-    game_form = GameForm(library=world.owner_library, instance=platformless_game)
+    release_form = InitialReleaseForm(
+        library=world.owner_library, presentation=PRESENTATION
+    )
     purchase_form = PurchaseForm(
         library=world.owner_library,
         user=world.owner,
@@ -348,7 +333,7 @@ def test_bound_forms_leave_an_unset_platform_unselected(world):
         instance=platformless_purchase,
     )
 
-    for form in (game_form, purchase_form):
+    for form in (release_form, purchase_form):
         rendered = str(form["platform"])
         assert world.own_platform.name not in rendered
         assert "None" not in rendered

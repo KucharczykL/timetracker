@@ -210,41 +210,42 @@ from django.core.exceptions import ValidationError
 Replace the body of `confirm_and_apply` from `if request.method != "POST":` down:
 
 ```python
-    def confirmation(refusal: str = "", status: int = 200) -> HttpResponse:
-        return render_page(
-            request,
-            ConfirmPage(
-                title=title,
-                message=f"{refusal} {message}" if refusal else message,
-                details=details,
-                post_url=request.get_full_path(),
-                csrf_token=get_token(request),
-                cancel_url=return_url(
-                    request, fallback=fallback, fallback_args=fallback_args
-                ),
-                confirm_label=confirm_label,
-            ),
+def confirmation(refusal: str = "", status: int = 200) -> HttpResponse:
+    return render_page(
+        request,
+        ConfirmPage(
             title=title,
-            status=status,
-        )
-
-    if request.method != "POST":
-        return confirmation()
-    try:
-        action()
-    except ValidationError as refusal:
-        #: The service refuses on state, and state moves: another tab
-        #: may have taken the sibling this removal was counting on.
-        #: A 500 would read as our fault rather than a stale page.
-        return confirmation(refusal.messages[0], status=409)
-    return redirect(
-        return_url(
-            request,
-            fallback=fallback,
-            fallback_args=fallback_args,
-            reject=reject,
-        )
+            message=f"{refusal} {message}" if refusal else message,
+            details=details,
+            post_url=request.get_full_path(),
+            csrf_token=get_token(request),
+            cancel_url=return_url(
+                request, fallback=fallback, fallback_args=fallback_args
+            ),
+            confirm_label=confirm_label,
+        ),
+        title=title,
+        status=status,
     )
+
+
+if request.method != "POST":
+    return confirmation()
+try:
+    action()
+except ValidationError as refusal:
+    #: The service refuses on state, and state moves: another tab
+    #: may have taken the sibling this removal was counting on.
+    #: A 500 would read as our fault rather than a stale page.
+    return confirmation(refusal.messages[0], status=409)
+return redirect(
+    return_url(
+        request,
+        fallback=fallback,
+        fallback_args=fallback_args,
+        reject=reject,
+    )
+)
 ```
 
 - [ ] **Step 4: Give `render_page` a status, if it has none**
@@ -455,9 +456,7 @@ def mirror_legacy_columns(game: Game) -> None:
         year_released=year,
         original_year_released=None if original is None else original.year,
     )
-    game.refresh_from_db(
-        fields=("platform", "year_released", "original_year_released")
-    )
+    game.refresh_from_db(fields=("platform", "year_released", "original_year_released"))
 
 
 @transaction.atomic
@@ -960,9 +959,11 @@ pytestmark = pytest.mark.django_db
 
 @pytest.fixture
 def library():
-    return get_user_model().objects.create_user(
-        username="catalog-forms", password="p"
-    ).library
+    return (
+        get_user_model()
+        .objects.create_user(username="catalog-forms", password="p")
+        .library
+    )
 
 
 @pytest.fixture
@@ -1317,16 +1318,24 @@ def test_a_shared_game_answers_404_to_every_catalog_route(client):
     release = Release.objects.create(edition=edition, is_default=True)
 
     assert client.get(reverse("games:add_edition", args=[shared.pk])).status_code == 404
-    assert client.get(reverse("games:edit_edition", args=[edition.pk])).status_code == 404
-    assert client.get(reverse("games:add_release", args=[edition.pk])).status_code == 404
-    assert client.get(reverse("games:edit_release", args=[release.pk])).status_code == 404
+    assert (
+        client.get(reverse("games:edit_edition", args=[edition.pk])).status_code == 404
+    )
+    assert (
+        client.get(reverse("games:add_release", args=[edition.pk])).status_code == 404
+    )
+    assert (
+        client.get(reverse("games:edit_release", args=[release.pk])).status_code == 404
+    )
 
 
 def test_another_library_cannot_reach_an_edition(client, other_library):
     game = Game.objects.create(library=other_library, name="Theirs")
     edition = Edition.objects.create(game=game, is_default=True)
 
-    assert client.get(reverse("games:edit_edition", args=[edition.pk])).status_code == 404
+    assert (
+        client.get(reverse("games:edit_edition", args=[edition.pk])).status_code == 404
+    )
 ```
 
 Add an `other_library` fixture if the file has none: a second user's library.
@@ -1521,28 +1530,36 @@ a removed Game hides its Releases here too.
 In `games/urls.py`, beside the existing game routes:
 
 ```python
+(
     path(
         "game/<uuidv7:game_id>/edition/add",
         catalog.add_edition,
         name="add_edition",
     ),
-    path("edition/<uuidv7:edition_id>/edit", catalog.edit_edition, name="edit_edition"),
+)
+(path("edition/<uuidv7:edition_id>/edit", catalog.edit_edition, name="edit_edition"),)
+(
     path(
         "edition/<uuidv7:edition_id>/remove",
         catalog.remove_edition_view,
         name="remove_edition",
     ),
+)
+(
     path(
         "edition/<uuidv7:edition_id>/release/add",
         catalog.add_release,
         name="add_release",
     ),
-    path("release/<uuidv7:release_id>/edit", catalog.edit_release, name="edit_release"),
+)
+(path("release/<uuidv7:release_id>/edit", catalog.edit_release, name="edit_release"),)
+(
     path(
         "release/<uuidv7:release_id>/remove",
         catalog.remove_release_view,
         name="remove_release",
     ),
+)
 ```
 
 with `from games.views import catalog` at the top.
@@ -1552,12 +1569,12 @@ with `from games.views import catalog` at the top.
 In `games/views/returns.py`, add all six names to `ORIGIN_AWARE`:
 
 ```python
-    "games:add_edition",
-    "games:edit_edition",
-    "games:remove_edition",
-    "games:add_release",
-    "games:edit_release",
-    "games:remove_release",
+("games:add_edition",)
+("games:edit_edition",)
+("games:remove_edition",)
+("games:add_release",)
+("games:edit_release",)
+("games:remove_release",)
 ```
 
 - [ ] **Step 6: Run the tests**
@@ -1816,9 +1833,7 @@ def _plain_release_rows(
                 [
                     release_button,
                     {
-                        "href": action_url(
-                            "games:add_edition", game.pk, origin=origin
-                        ),
+                        "href": action_url("games:add_edition", game.pk, origin=origin),
                         "slot": "Add edition",
                         "color": "gray",
                     },

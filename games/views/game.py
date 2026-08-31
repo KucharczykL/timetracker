@@ -24,6 +24,7 @@ from common.components import (
     Duration,
     DurationAlternates,
     DurationText,
+    FormFields,
     Fragment,
     GameStatus,
     GameStatusSelector,
@@ -60,7 +61,11 @@ from common.layout import render_page
 from common.returns import OriginUrl, action_url
 from common.temporal_presentation import TemporalText
 from common.utils import paginate, safe_division
-from games.catalog_compat import save_legacy_game_form
+from games.catalog_compat import (
+    LEGACY_IDENTITY_TAKEN,
+    InitialRelease,
+    save_legacy_game_form,
+)
 from games.external_references import external_reference_url
 from games.filters import (
     PlayEventFilter,
@@ -71,7 +76,7 @@ from games.filters import (
     parse_game_filter,
 )
 from games.formatting import session_time_range
-from games.forms import GameForm
+from games.forms import GameForm, InitialReleaseForm
 from games.models import (
     Game,
     PlayerGameStatus,
@@ -114,16 +119,24 @@ RELEASES_UNDER_CONSTRUCTION = (
 )
 
 
-def _save_game_form_or_add_wikidata_error(form: GameForm) -> Game | None:
+def _saved_game_or_form_error(
+    form: GameForm, *, initial_release: InitialRelease | None = None
+) -> Game | None:
+    """Save, or put the refusal where the person typing can read it."""
     try:
-        return save_legacy_game_form(form)
+        return save_legacy_game_form(form, initial_release=initial_release)
     except ValidationError as error:
-        if not hasattr(error, "message_dict") or set(error.message_dict) != {
+        if hasattr(error, "message_dict") and set(error.message_dict) == {
             "provider_key"
         }:
-            raise
-        form.add_error("wikidata", WIKIDATA_CONFLICT_MESSAGE)
-        return None
+            form.add_error("wikidata", WIKIDATA_CONFLICT_MESSAGE)
+            return None
+        if LEGACY_IDENTITY_TAKEN in error.messages:
+            #: (name, platform, year) is unique per library, and the
+            #: platform and the year come from the inline row now.
+            form.add_error(None, LEGACY_IDENTITY_TAKEN)
+            return None
+        raise
 
 
 @login_required
@@ -260,9 +273,15 @@ def list_games(request: HttpRequest) -> HttpResponse:
 @login_required
 def add_game(request: HttpRequest) -> HttpResponse:
     library = cast(User, request.user).library
-    form = GameForm(request.POST or None, library=library)
-    if form.is_valid():
-        game = _save_game_form_or_add_wikidata_error(form)
+    presentation = date_time_presentation_for_request(request)
+    form = GameForm(request.POST or None, library=library, presentation=presentation)
+    release_form = InitialReleaseForm(
+        request.POST or None, library=library, presentation=presentation
+    )
+    if form.is_valid() and release_form.is_valid():
+        game = _saved_game_or_form_error(
+            form, initial_release=release_form.initial_release()
+        )
         if game is not None:
             correlation_id = new_correlation_id()
             if not track_game_for_request(request, game, correlation_id=correlation_id):
@@ -304,6 +323,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
         AddForm(
             form,
             request=request,
+            fields=Fragment(FormFields(form), FormFields(release_form)),
             additional_row=Fragment(
                 ControlButton(
                     color="gray",
@@ -318,8 +338,10 @@ def add_game(request: HttpRequest) -> HttpResponse:
             ),
         ),
         title="Add New Game",
+        #: A widget renders to text, thus its Media never bubbles.
         scripts=Fragment(
             ModuleScript("dist/elements/search-select.js"),
+            ModuleScript("dist/elements/temporal-field.js"),
             ModuleScript("dist/add_game.js"),
         ),
     )
@@ -355,10 +377,15 @@ def _removed_with_game(game: Game) -> Node:
 def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
-    form = GameForm(request.POST or None, instance=game, library=library)
+    form = GameForm(
+        request.POST or None,
+        instance=game,
+        library=library,
+        presentation=date_time_presentation_for_request(request),
+    )
     if (
         form.is_valid()
-        and _save_game_form_or_add_wikidata_error(form) is not None
+        and _saved_game_or_form_error(form) is not None
         and record_facts_for_request(
             request,
             game,
@@ -375,7 +402,11 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
         request,
         AddForm(form, request=request),
         title="Edit Game",
-        scripts=ModuleScript("dist/elements/search-select.js"),
+        #: A widget renders to text, thus its Media never bubbles.
+        scripts=Fragment(
+            ModuleScript("dist/elements/search-select.js"),
+            ModuleScript("dist/elements/temporal-field.js"),
+        ),
     )
 
 
