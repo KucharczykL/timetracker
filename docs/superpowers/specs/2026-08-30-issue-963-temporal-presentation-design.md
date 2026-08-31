@@ -76,6 +76,10 @@ The Game detail page reads `Game.original_release_date` through the presenter,
 in the meta row labelled `Original release`. The value accepts a month, a decade
 and a range, thus a label that says "year" is a wrong label.
 
+The same page reads every Release date through it too, since #968: the one
+`Released` row an ordinary Game shows, and every cell of the `Releases` table a
+richer graph shows.
+
 ## Boundary
 
 The presenter adds no entry control; #964 and #965 own entry. It adds no filter;
