@@ -185,22 +185,3 @@ def _settings_kit_preview_urlpatterns():
 
 
 urlpatterns += _settings_kit_preview_urlpatterns()
-
-
-def _temporal_field_preview_urlpatterns():
-    """Routed only under DEBUG. Removed with the #965 branch."""
-
-    if not settings.DEBUG:
-        return []
-    from games.views import temporal_field_preview
-
-    return [
-        path(
-            "temporal-field-preview/",
-            temporal_field_preview.temporal_field_preview,
-            name="temporal_field_preview",
-        ),
-    ]
-
-
-urlpatterns += _temporal_field_preview_urlpatterns()
