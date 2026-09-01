@@ -58,7 +58,6 @@ vitest.
 | `games/views/catalog_section.py` | Renders the Editions area and its `<template>` rows |
 | `ts/elements/catalog-editor.ts` | Clones a template row, renumbers it, marks a row removed |
 | `ts/elements/catalog-editor.test.ts` | vitest over the renumbering and the removal mark |
-| `games/migrations/00XX_backfill_catalog_graph.py` | Gives every Edition-less private Game its default graph |
 | `tests/test_choice_card.py` | The component's markup and its scoped `:checked` hook |
 | `tests/test_catalog_graph_form.py` | Binding, validation, write order, refusal routing |
 | `e2e/test_game_form_catalog_e2e.py` | Add, mark and remove a row in a real browser |
@@ -358,135 +357,49 @@ git commit -m "Let a whole row be the radio option it stands for"
 
 ---
 
-## Task 3: Every Game holds a graph
+## Task 3: The form does not depend on a backfill
 
-**Files:**
-- Create: `games/migrations/00XX_backfill_catalog_graph.py`
-- Test: `tests/test_catalog_backfill.py`
+**Status: no migration needed. Verified, not assumed.**
+
+**Files:** none.
 
 **Interfaces:**
-- Consumes: nothing from earlier tasks
-- Produces: the guarantee every later task relies on — a private Game reaching
-  the form has at least one live Edition holding at least one live Release.
+- Consumes: nothing
+- Produces: the guarantee Task 5 binds against — but from the write path,
+  not from a migration.
 
-852 of 858 Games hold no Edition. Without this the Edit form opens on an empty
-Editions area for almost every Game.
+The plan first said "852 of 858 Games hold no Edition" and called for a
+backfill. That reading came from the **dev** database, which `make loadsample`
+seeds from `games/fixtures/sample.yaml.gz` — a fixture holding 858 Games and
+**zero** Editions, generated before the hierarchy existed. It says nothing
+about production.
 
-**A migration cannot import `save_private_game`** — a data migration must use
-the historical models it is handed. Write the three rows directly against
-`apps.get_model`, which is the one place the "never `Edition.objects.create()`"
-rule does not apply, because the service does not exist at that point in
-history. Say so in a comment.
+Two facts settle it:
 
-- [ ] **Step 1: Write the failing test**
+1. **Migration `0020_catalog_hierarchy_backfill` already did this**, for every
+   Game, idempotently, and it raises `RuntimeError` on any reconciliation
+   mismatch — so a deployment that had not applied it could not have
+   succeeded quietly.
+2. **`save_private_game` uses `get_or_create`** for both the default Edition
+   and its default Release, and `save_legacy_game_form` calls it on every
+   Game-form save. Its docstring already states the contract: "the save
+   guarantees the graph without touching it." No app path can leave a Game
+   without one.
 
-Create `tests/test_catalog_backfill.py`:
+So the only graph-less Games are the ones a stale fixture loads, and writing
+a second migration to repair a fixture would be the wrong tool.
 
-```python
-"""The backfill states what the flat columns already stated."""
+**What is real, and where it goes instead:** on a GET of Edit Game for a
+graph-less Game, `game_hierarchy` returns nothing and the Editions area would
+render empty. Task 5 makes the coordinator synthesize one blank Edition block
+holding one blank Release row when storage returns none. That is strictly
+better than a migration: it removes the form's dependency on any backfill
+having run, and it covers the stale fixture for free.
 
-import pytest
-from django.core.management import call_command
-
-from games.models import Edition, Game, Platform, Release
-
-pytestmark = pytest.mark.django_db
-
-
-def test_the_backfill_leaves_the_flat_columns_alone(owned_library, migrator): ...
-```
-
-Writing a migration test against `migrator` needs the pattern already in
-`tests/test_catalog_hierarchy_migration.py`. **Read that file first** and copy
-its harness verbatim — the fixture name, how it pins `before`/`after`, and how
-it builds rows through historical models. Then write these four cases inside
-that harness:
-
-1. A private Game with a Platform and a year gains one Edition and one Release
-   holding both, and its `platform` and `year_released` are unchanged after.
-2. A private Game with neither gains an Edition and a Release holding nulls.
-3. A private Game that already holds an Edition is untouched — no second row.
-4. A shared Game (`library_id` is null) gains nothing.
-
-- [ ] **Step 2: Run it and watch it fail**
-
-Run: `make test ARGS="tests/test_catalog_backfill.py"`
-Expected: FAIL — the migration does not exist.
-
-- [ ] **Step 3: Write the migration**
-
-```bash
-make makemigrations ARGS="games --empty --name backfill_catalog_graph"
-```
-
-Fill the generated file:
-
-```python
-def give_every_private_game_a_graph(apps, schema_editor):
-    """The graph states what the flat columns already state.
-
-    A data migration holds historical models, so the verbs in
-    `games/catalog_writes.py` are out of reach here and the rows are
-    written straight. That is this file's exception, not the app's.
-    """
-    Game = apps.get_model("games", "Game")
-    Edition = apps.get_model("games", "Edition")
-    Release = apps.get_model("games", "Release")
-    bare = Game.objects.filter(library__isnull=False, editions__isnull=True)
-    for game in bare.iterator():  # ← NO. See step 4.
-        ...
-```
-
-- [ ] **Step 4: Page it without a cursor**
-
-`QuerySet.iterator()` is refused by `tests/test_iterator_guard.py`, which walks
-the syntax tree of `games/`. Use `keyset_pages()` from `common/keyset.py`,
-keyed on `pk` (a UUIDv7, so it is ordered and unique and lies in the primary
-index). Read `common/keyset.py` for the exact signature before calling it.
-
-Build each Game's rows with `bulk_create` per page:
-
-```python
-editions = [Edition(game=game, name="", is_default=True) for game in page]
-Edition.objects.bulk_create(editions)
-Release.objects.bulk_create(
-    Release(
-        edition=edition,
-        platform_id=game.platform_id,
-        release_date=_value_for(game.year_released),
-        is_default=True,
-    )
-    for game, edition in zip(page, editions, strict=True)
-)
-```
-
-`_value_for(year)` returns `None` for a null year and otherwise a
-`TemporalValue` for that year. **Do not import `timetracker.temporal` at module
-scope in a migration if that module imports models**; check, and if it does,
-import inside the function.
-
-Give the migration a no-op reverse (`migrations.RunPython.noop`) — the rows it
-writes are indistinguishable from ones a person made, so a reverse that removed
-them would take real data.
-
-- [ ] **Step 5: Run the test and watch it pass**
-
-Run: `make test ARGS="tests/test_catalog_backfill.py"`
-Expected: PASS, all four cases.
-
-- [ ] **Step 6: Rehearse it against real data**
-
-Run: `make verify-dump`
-Expected: green. This restores the newest production dump, migrates it, and
-drops the copy. If you have no dump, run `make fetch-dump` first; if the host
-is unreachable, say so in the task report rather than skipping silently.
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add games/migrations/ tests/test_catalog_backfill.py
-git commit -m "Give every private game the graph its columns already state"
-```
+**What is left undone, and why:** `sample.yaml.gz` should be regenerated so
+`make loadsample` seeds a graph. That needs `make anonymize-sample` against a
+restored production database, which needs `PROD_SSH_HOST`/`PROD_DB_CONTAINER`.
+Recorded here rather than silently skipped.
 
 ---
 
@@ -703,6 +616,13 @@ block per `EditionEntry` from `game_hierarchy(game, library)`, in that order,
 each row's `initial` taken from its instance, and `mark` set to the prefix of
 the row that is the default Release of the default Edition.
 
+**Storage returning nothing yields one blank block, not zero.** A Game with no
+Edition cannot come from the app — `save_private_game` `get_or_create`s the
+default graph on every Game-form save — but a stale fixture loads plenty, and
+a form that renders an empty Editions area for one is a worse answer than a
+form that offers the row it would have. This is what replaces Task 3's
+migration; see that task for why.
+
 **Bound, the form binds what was posted.** Read `editions-count` and each
 `edition-{i}-releases-count` from `data`; those are the hidden inputs the
 element keeps. A count that is missing or not an integer binds zero rows, which
@@ -726,6 +646,8 @@ Add to `tests/test_catalog_graph_form.py`. Cases:
    `MARK_ON_A_REMOVED_ROW`.
 5. **Bound with every Release row of a surviving Edition removed** — invalid,
    `LAST_RELEASE` on that Edition's form.
+5b. **Unbound against a Game holding no Edition** — one block, one row, both
+   blank, `mark` on that row.
 6. **Bound with every Edition removed** — invalid, `LAST_EDITION_IN_FORM`.
 7. **Bound with two surviving unnamed Editions** — invalid,
    `UNNAMED_SIBLING_EDITION` on the second one's `name`.
