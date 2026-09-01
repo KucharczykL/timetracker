@@ -1,9 +1,9 @@
 """The temporal field in a real browser, with the script and without it.
 
-The release form hosts one (`e2e/test_catalog_management_e2e.py`), but
-it exercises one shape. This mounts a synthetic form to reach the edges
-of the grammar. The assertion that matters is the last one: both paths
-store the same value.
+The Game form hosts one per Release row
+(`e2e/test_game_form_catalog_e2e.py`), but it exercises one shape. This
+mounts a synthetic form to reach the edges of the grammar. The
+assertion that matters is the last one: both paths store the same value.
 """
 
 from zoneinfo import ZoneInfo

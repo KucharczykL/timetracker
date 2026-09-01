@@ -127,7 +127,11 @@ def apply_primitive_widget_classes(fields: Mapping[str, forms.Field]) -> None:
     """
     for field in fields.values():
         if isinstance(field, forms.BooleanField):
-            field.widget = PrimitiveCheckboxWidget()
+            # An explicitly hidden boolean is a choice the form made: a
+            # checkbox here puts the field back on the page, and
+            # `is_hidden` renderers then leave it out of the POST entirely.
+            if not field.widget.is_hidden:
+                field.widget = PrimitiveCheckboxWidget()
             # Maintain the field's explicit required status (usually False for booleans)
             continue
         widget = field.widget

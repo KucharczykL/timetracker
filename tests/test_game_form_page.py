@@ -127,6 +127,19 @@ def test_the_page_threads_the_temporal_element(logged_in, plain_game):
     assert "dist/elements/catalog-editor.js" in body
 
 
+def test_every_row_carries_the_input_the_bin_states(logged_in, plain_game):
+    """The bin writes `removed`, thus the row has to post it.
+
+    `removed` is a BooleanField, and the widget stamper turns one into
+    a checkbox. A checkbox is not hidden, so the row renderer leaves it
+    out, the POST carries nothing, and the bin removes nothing.
+    """
+    body = live(page(logged_in, plain_game))
+
+    assert 'type="hidden" name="edition-0-removed"' in body
+    assert 'type="hidden" name="edition-0-release-0-removed"' in body
+
+
 def test_the_page_ships_the_rows_the_browser_clones(logged_in, plain_game):
     """A blank row and a blank block, each numbered by placeholder."""
     body = page(logged_in, plain_game)
