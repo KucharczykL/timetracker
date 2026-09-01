@@ -181,6 +181,47 @@ def test_the_form_writes_the_graph_it_posted(logged_in, owned_library, plain_gam
     assert edition.name == "Definitive Edition"
 
 
+def test_a_bad_row_leaves_the_rows_after_it_readable(
+    logged_in, owned_library, plain_game
+):
+    """One invalid row is a sentence, not a traceback.
+
+    `all()` over a generator stops at the first false one, and a row it
+    never reached holds no `cleaned_data`. The set validator reads every
+    row's `removed`, so an unread one answers with `AttributeError`.
+    """
+    edition = Edition.objects.get(game=plain_game, is_default=True)
+    release = edition.releases.get(is_default=True)
+    second = add_release(
+        edition=edition,
+        library=owned_library,
+        platform=None,
+        release_date=TemporalValue.from_year(2011),
+        is_default=False,
+    )
+
+    response = logged_in.post(
+        reverse("games:edit_game", args=[plain_game.pk]),
+        {
+            "name": "Portal",
+            "status": "played",
+            "wikidata": "",
+            "editions-count": "1",
+            "edition-0-edition_id": str(edition.pk),
+            "edition-0-name": "",
+            "edition-0-releases-count": "2",
+            "edition-0-release-0-release_id": str(release.pk),
+            "edition-0-release-0-platform": "not-a-platform",
+            "edition-0-release-1-release_id": str(second.pk),
+            "edition-0-release-1-platform": "",
+            "in_library": "edition-0-release-0",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Select a valid choice" in response.content.decode()
+
+
 def test_a_refused_row_re_renders_beside_its_sentence(
     logged_in, owned_library, plain_game
 ):

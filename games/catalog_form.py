@@ -345,11 +345,12 @@ class CatalogGraphForm:
         """Every row, and then the things only the set can say."""
         if not self.is_bound:
             return False
-        valid = all(block.form.is_valid() for block in self.blocks)
-        valid = (
-            all(row.is_valid() for block in self.blocks for row in block.rows) and valid
-        )
-        return self._validate_set() and valid
+        #: `all()` over a generator stops at the first false one, and a
+        #: row it never reached holds no `cleaned_data`. `_validate_set`
+        #: reads every row's, thus every row is read here first.
+        read = [block.form.is_valid() for block in self.blocks]
+        read += [row.is_valid() for block in self.blocks for row in block.rows]
+        return self._validate_set() and all(read)
 
     def _validate_names(self, surviving: list[EditionBlock]) -> bool:
         valid = True
