@@ -47,11 +47,16 @@ def test_edit_game_returns_to_the_carried_origin(logged_in, game):
     assert response["Location"] == origin
 
 
-def test_a_chained_form_forwards_the_origin(logged_in, db):
+def test_a_chained_form_forwards_the_origin(logged_in, db, catalog_graph_post):
     origin = f"{reverse('games:list_games')}?page=3"
     response = logged_in.post(
         action_url("games:add_game", origin=origin),
-        {"name": "Chained", "status": "unplayed", "submit_and_create_session": "1"},
+        {
+            "name": "Chained",
+            "status": "unplayed",
+            "submit_and_create_session": "1",
+            **catalog_graph_post(),
+        },
     )
     created = Game.objects.get(name="Chained")
     assert response["Location"] == action_url(

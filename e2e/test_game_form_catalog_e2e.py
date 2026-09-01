@@ -63,13 +63,24 @@ def live_releases(edition: Edition) -> list[Release]:
     return list(edition.releases.alive().order_by("pk"))
 
 
-def open_form(page: Page, live_server, game: Game) -> None:
-    """Edit Game, once the elements that draw a row have upgraded."""
-    page.goto(f"{live_server.url}{reverse('games:edit_game', args=[game.pk])}")
+def _upgraded(page: Page) -> None:
+    """Wait for the elements that draw a row."""
     page.wait_for_function("() => customElements.get('catalog-editor') !== undefined")
     page.wait_for_selector(
         "[data-catalog-release='0'] [data-temporal-segments='start']:not([hidden])"
     )
+
+
+def open_form(page: Page, live_server, game: Game) -> None:
+    """Edit Game, once the elements that draw a row have upgraded."""
+    page.goto(f"{live_server.url}{reverse('games:edit_game', args=[game.pk])}")
+    _upgraded(page)
+
+
+def open_add_form(page: Page, live_server) -> None:
+    """Add Game, which hosts the very same area."""
+    page.goto(f"{live_server.url}{reverse('games:add_game')}")
+    _upgraded(page)
 
 
 def release_card(page: Page, edition: int, release: int) -> Locator:
@@ -204,6 +215,37 @@ def test_a_refused_release_reads_inside_its_own_row(
     expect(release_card(page, 0, 1)).to_contain_text(DUPLICATE_RELEASE)
     standing.refresh_from_db()
     assert standing.platform == dos
+
+
+def test_a_new_game_states_two_editions_at_once(
+    signed_in, live_server, e2e_library, amiga, dos
+):
+    """Add Game writes the Game and its whole graph in one Submit.
+
+    The marked row is the default the service makes, thus the first
+    Edition holds the stated Release rather than an empty one beside
+    it.
+    """
+    page = signed_in
+    open_add_form(page, live_server)
+
+    page.fill("input[name='name']", "Elite")
+    choose_platform(release_card(page, 0, 0), "Amiga")
+    type_year(release_card(page, 0, 0), "1984")
+    page.click("[data-catalog-add='edition']")
+    page.locator("input[name='edition-1-name']").fill("Gold")
+    choose_platform(release_card(page, 1, 0), "DOS")
+    saved(page, live_server)
+
+    written = Game.objects.get(library=e2e_library, name="Elite")
+    editions = list(Edition.objects.alive().filter(game=written).order_by("pk"))
+    assert [edition.name for edition in editions] == ["", "Gold"]
+    assert [edition.is_default for edition in editions] == [True, False]
+    releases = live_releases(editions[0])
+    assert [release.platform for release in releases] == [amiga]
+    assert releases[0].release_date.serialize() == "1984"
+    assert [release.platform for release in live_releases(editions[1])] == [dos]
+    assert (written.platform, written.year_released) == (amiga, 1984)
 
 
 def test_a_row_names_its_controls_at_both_widths(signed_in, live_server, game):

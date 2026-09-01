@@ -27,7 +27,7 @@ def test_every_word_is_settable():
 
 
 @pytest.mark.django_db(transaction=True)
-def test_the_form_posts_a_word(logged_in, owned_library):
+def test_the_form_posts_a_word(logged_in, owned_library, catalog_graph_post):
     response = logged_in.post(
         reverse("games:add_game"),
         {
@@ -35,6 +35,7 @@ def test_the_form_posts_a_word(logged_in, owned_library):
             "status": "completed",
             "mastered": "on",
             "wikidata": "",
+            **catalog_graph_post(),
         },
     )
 

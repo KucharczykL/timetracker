@@ -7,6 +7,7 @@ from uuid import UUID
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.db.models import F, OuterRef, Q, QuerySet, Subquery, Sum
 from django.http import Http404, HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
@@ -65,11 +66,7 @@ from common.temporal_presentation import (
     present_temporal_value,
 )
 from common.utils import paginate, safe_division
-from games.catalog_compat import (
-    LEGACY_IDENTITY_TAKEN,
-    InitialRelease,
-    save_legacy_game_form,
-)
+from games.catalog_compat import LEGACY_IDENTITY_TAKEN, save_legacy_game_form
 from games.catalog_form import CatalogGraphForm
 from games.external_references import external_reference_url
 from games.filters import (
@@ -81,7 +78,7 @@ from games.filters import (
     parse_game_filter,
 )
 from games.formatting import session_time_range
-from games.forms import GameForm, InitialReleaseForm
+from games.forms import GameForm
 from games.models import (
     Game,
     PlayerGameStatus,
@@ -126,24 +123,53 @@ EDITIONS_UNDER_CONSTRUCTION = (
 )
 
 
-def _saved_game_or_form_error(
-    form: GameForm, *, initial_release: InitialRelease | None = None
-) -> Game | None:
+def _game_form_refusal(form: GameForm, error: ValidationError) -> bool:
+    """Put a refusal the Game's own fields caused back on them."""
+    if hasattr(error, "message_dict") and set(error.message_dict) == {"provider_key"}:
+        form.add_error("wikidata", WIKIDATA_CONFLICT_MESSAGE)
+        return True
+    if LEGACY_IDENTITY_TAKEN in error.messages:
+        #: (name, platform, year) is unique per library, and the
+        #: platform and the year come from the marked Release row.
+        form.add_error(None, LEGACY_IDENTITY_TAKEN)
+        return True
+    return False
+
+
+def _saved_game_or_form_error(form: GameForm) -> Game | None:
     """Save, or put the refusal where the person typing can read it."""
     try:
-        return save_legacy_game_form(form, initial_release=initial_release)
+        return save_legacy_game_form(form)
     except ValidationError as error:
-        if hasattr(error, "message_dict") and set(error.message_dict) == {
-            "provider_key"
-        }:
-            form.add_error("wikidata", WIKIDATA_CONFLICT_MESSAGE)
-            return None
-        if LEGACY_IDENTITY_TAKEN in error.messages:
-            #: (name, platform, year) is unique per library, and the
-            #: platform and the year come from the inline row now.
-            form.add_error(None, LEGACY_IDENTITY_TAKEN)
+        if _game_form_refusal(form, error):
             return None
         raise
+
+
+def _added_game_or_form_error(form: GameForm, graph: CatalogGraphForm) -> Game | None:
+    """The Game and its whole graph, or neither of them.
+
+    One transaction over both. A refused row leaves no Game behind,
+    because the person is shown the page again and the name they
+    typed would meet a row only the database can see.
+
+    The marked row seeds the default graph `save_private_game` makes,
+    and `adopt()` claims it, so the graph write states that row
+    rather than adding a second Release beside an empty one.
+    """
+    try:
+        with transaction.atomic():
+            game = save_legacy_game_form(form, initial_release=graph.initial_release)
+            graph.adopt(game)
+            graph.write()
+    except ValidationError as error:
+        if graph.blamed:
+            graph.answer(error)
+            return None
+        if _game_form_refusal(form, error):
+            return None
+        raise
+    return game
 
 
 @login_required
@@ -282,13 +308,11 @@ def add_game(request: HttpRequest) -> HttpResponse:
     library = cast(User, request.user).library
     presentation = date_time_presentation_for_request(request)
     form = GameForm(request.POST or None, library=library, presentation=presentation)
-    release_form = InitialReleaseForm(
-        request.POST or None, library=library, presentation=presentation
+    graph = CatalogGraphForm(
+        request.POST or None, game=None, library=library, presentation=presentation
     )
-    if form.is_valid() and release_form.is_valid():
-        game = _saved_game_or_form_error(
-            form, initial_release=release_form.initial_release()
-        )
+    if form.is_valid() and graph.is_valid():
+        game = _added_game_or_form_error(form, graph)
         if game is not None:
             correlation_id = new_correlation_id()
             if not track_game_for_request(request, game, correlation_id=correlation_id):
@@ -330,7 +354,8 @@ def add_game(request: HttpRequest) -> HttpResponse:
         AddForm(
             form,
             request=request,
-            fields=Fragment(FormFields(form), FormFields(release_form)),
+            fields=Fragment(FormFields(form), editions_area(graph)),
+            width_class="max-w-xl md:max-w-4xl",
             additional_row=Fragment(
                 ControlButton(
                     color="gray",
@@ -346,8 +371,8 @@ def add_game(request: HttpRequest) -> HttpResponse:
         ),
         title="Add New Game",
         #: A widget renders to text, thus its Media never bubbles.
+        #: `<catalog-editor>` is a node, so it states its own.
         scripts=Fragment(
-            ModuleScript("dist/elements/search-select.js"),
             ModuleScript("dist/elements/temporal-field.js"),
             ModuleScript("dist/add_game.js"),
         ),

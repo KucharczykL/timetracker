@@ -16,7 +16,7 @@ from django import forms
 from django.core.exceptions import ValidationError
 
 from common.date_time_presentation import DateTimePresentation
-from games.catalog_compat import write_and_mirror
+from games.catalog_compat import InitialRelease, write_and_mirror
 from games.catalog_writes import (
     add_edition,
     add_release,
@@ -144,6 +144,14 @@ def _removed(form: forms.Form) -> bool:
     return bool(form.is_bound and form.cleaned_data.get("removed"))
 
 
+def _stated(row: forms.Form) -> InitialRelease:
+    """The Platform and the date one read row states."""
+    return InitialRelease(
+        platform=cast(Platform | None, row.cleaned_data.get("platform")),
+        release_date=cast(TemporalValue | None, row.cleaned_data.get("release_date")),
+    )
+
+
 @dataclass(slots=True)
 class EditionBlock:
     """One Edition's own form and the Release rows under it."""
@@ -183,13 +191,18 @@ class CatalogGraphForm:
     Unbound it states the stored graph. Bound it states what was
     posted, and a posted id that storage did not return is a new
     row rather than a write to somebody else's.
+
+    `game` is None on Add Game, where the Game the graph hangs from
+    does not exist yet. Nothing is stored, so the form states one
+    blank Edition holding one blank Release, and `adopt()` names the
+    Game once the write path has made it.
     """
 
     def __init__(
         self,
         data: PostedData | None,
         *,
-        game: Game,
+        game: Game | None,
         library: UserLibrary,
         presentation: DateTimePresentation,
     ) -> None:
@@ -200,13 +213,7 @@ class CatalogGraphForm:
         self.form_errors: list[str] = []
         #: The row a refused verb named, recorded on the way out.
         self._blamed: tuple[forms.Form, str] | None = None
-        self._stored = game_hierarchy(game, library)
-        self._stored_editions = {
-            entry.edition.pk: entry.edition for entry in self._stored
-        }
-        self._stored_releases = {
-            release.pk: release for entry in self._stored for release in entry.releases
-        }
+        self._read_storage()
         if data is None:
             self.blocks = self._blocks_from_storage()
             self.mark = self._mark_from_storage()
@@ -214,9 +221,32 @@ class CatalogGraphForm:
             self.blocks = self._blocks_from_post(data)
             self.mark = data.get(MARK_FIELD, "")
 
+    def _read_storage(self) -> None:
+        """The stored graph, and the two maps a posted id is read through."""
+        self._stored = (
+            [] if self.game is None else game_hierarchy(self.game, self.library)
+        )
+        self._stored_editions = {
+            entry.edition.pk: entry.edition for entry in self._stored
+        }
+        self._stored_releases = {
+            release.pk: release for entry in self._stored for release in entry.releases
+        }
+
     @property
     def is_bound(self) -> bool:
         return self.data is not None
+
+    @property
+    def blamed(self) -> bool:
+        """Whether a verb named the row that caused the last refusal."""
+        return self._blamed is not None
+
+    @property
+    def written_game(self) -> Game:
+        """The Game the graph hangs from, once there is one."""
+        assert self.game is not None, "A new Game is named by adopt() before the write."
+        return self.game
 
     def _release_form(
         self,
@@ -390,6 +420,36 @@ class CatalogGraphForm:
             valid = False
         return valid
 
+    @property
+    def initial_release(self) -> InitialRelease:
+        """What the marked row states, for the default the service makes.
+
+        `save_private_game` guarantees a Game a default Edition and a
+        default Release. Seeding them from the marked row is what lets
+        `adopt()` claim them: a row that claims nothing is written
+        beside them instead, leaving an empty Release nobody stated.
+        """
+        marked = self.marked()
+        assert marked is not None, "is_valid() states the mark names a surviving row."
+        _, row = marked
+        return _stated(row)
+
+    def adopt(self, game: Game) -> None:
+        """Name the Game just made, and claim its default rows.
+
+        The service made exactly one Edition holding one Release, and
+        made both default, thus they belong to the marked row.
+        """
+        self.game = game
+        self._read_storage()
+        assert self._stored, "save_private_game() guarantees one Edition."
+        marked = self.marked()
+        assert marked is not None, "is_valid() states the mark names a surviving row."
+        block, row = marked
+        entry = self._stored[0]
+        block.form.instance = entry.edition
+        row.instance = entry.releases[0] if entry.releases else None
+
     def _write_edition(self, block: EditionBlock, *, is_default: bool) -> Edition:
         """State one Edition's whole name and mark."""
         name = cast(str, block.form.cleaned_data.get("name", ""))
@@ -397,7 +457,7 @@ class CatalogGraphForm:
         with self._blame(block.form):
             written = (
                 add_edition(
-                    game=self.game,
+                    game=self.written_game,
                     library=self.library,
                     name=name,
                     is_default=is_default,
@@ -417,8 +477,7 @@ class CatalogGraphForm:
         self, edition: Edition, row: ReleaseRowForm, *, is_default: bool
     ) -> None:
         """State one Release's whole Platform, date and mark."""
-        platform = cast(Platform | None, row.cleaned_data.get("platform"))
-        release_date = cast(TemporalValue | None, row.cleaned_data.get("release_date"))
+        platform, release_date = _stated(row)
         stored = row.instance
         with self._blame(row):
             row.instance = (
@@ -522,7 +581,7 @@ class CatalogGraphForm:
             self._blamed = (form, refusal.messages[0])
             raise
 
-    def _answer(self, refusal: ValidationError) -> None:
+    def answer(self, refusal: ValidationError) -> None:
         """Put the sentence where whoever typed it will read it."""
         if self._blamed is None:
             self.form_errors.append(refusal.messages[0])
@@ -530,12 +589,21 @@ class CatalogGraphForm:
         form, sentence = self._blamed
         form.add_error(None, sentence)
 
-    def save(self) -> bool:
-        """One transaction over the whole finished graph."""
+    def write(self) -> None:
+        """One transaction over the whole finished graph.
+
+        The refusal keeps rising. Add Game writes the Game and the
+        graph under one transaction of its own, thus it needs the
+        raise to unwind the Game as well.
+        """
         self._blamed = None
+        write_and_mirror(self.written_game, self._write)
+
+    def save(self) -> bool:
+        """Write the graph, and answer a refusal rather than raise it."""
         try:
-            write_and_mirror(self.game, self._write)
+            self.write()
         except ValidationError as refusal:
-            self._answer(refusal)
+            self.answer(refusal)
             return False
         return True

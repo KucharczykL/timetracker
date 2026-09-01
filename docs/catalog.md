@@ -105,12 +105,20 @@ once per row and pointing at Edit Game. The plain shape carries no control row
 at all: its two header rows read, and the same `Edit Game` button above the page
 states them.
 
-The graph is edited in one place. Edit Game hosts every Edition and every
-Release, and one Submit states the whole set in one transaction, so the page
-needs no per-row Add, Edit or Remove. Nothing hides a button to dodge a 409
-either: a refusal the service states comes back on the row that caused it, in
-the form, where the value that caused it still is. Promoting a sibling is how
-the mark moves; see [The default](#the-default).
+The graph is written in one place. Add Game and Edit Game host the same area,
+holding every Edition and every Release, and one Submit states the whole set in
+one transaction, so neither page needs a per-row Add, Edit or Remove. Nothing
+hides a button to dodge a 409 either: a refusal the service states comes back on
+the row that caused it, in the form, where the value that caused it still is.
+Promoting a sibling is how the mark moves; see [The default](#the-default).
+
+On Add Game there is no Game to hang the graph from yet, and the area starts as
+one blank Edition holding one blank marked row. `save_private_game` makes a
+Game its default Edition and default Release, seeded from that marked row, and
+`CatalogGraphForm.adopt()` claims both before the graph is written — otherwise
+`add_release` would leave an empty default standing beside the stated one. The
+Game and the whole graph go in one transaction, so a refused row leaves no Game
+behind for a second submit to collide with.
 
 A shared Game's graph is shown, and the control is not. The page says
 nothing about who may change it, because the page offers nothing either way.
@@ -186,8 +194,8 @@ transaction goes back, rather than letting the database refuse a write the form
 had already reported as saved.
 
 The Game form itself no longer states a Platform or a year. It states the work's
-`original_release_date` as a temporal value, and the Add form states one inline
-Release beside it. There is nothing left to reconcile: the form and the column
-speak the same grammar, which [Temporal](temporal.md) sets out.
+`original_release_date` as a temporal value, and the Editions area beneath it
+states every Release. There is nothing left to reconcile: the form and the
+column speak the same grammar, which [Temporal](temporal.md) sets out.
 
 #889 retires this path.

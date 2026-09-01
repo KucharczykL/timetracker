@@ -1,7 +1,7 @@
 import datetime
 from collections.abc import Callable, Mapping
 from functools import partial
-from typing import TYPE_CHECKING, ClassVar, Final, cast
+from typing import ClassVar, Final, cast
 from zoneinfo import ZoneInfo
 
 from django import forms
@@ -52,10 +52,6 @@ from timetracker.temporal import (
     temporal_draft_from_data,
     temporal_input_name,
 )
-
-if TYPE_CHECKING:
-    #: `catalog_compat` imports this module for its own annotation.
-    from games.catalog_compat import InitialRelease
 
 autofocus_input_widget = forms.TextInput(attrs={"autofocus": "autofocus"})
 
@@ -1029,50 +1025,6 @@ class GameForm(
         #: a mirror now, written by `games/catalog_compat.py`.
         fields = ("name", "sort_name", "wikidata")
         widgets: ClassVar[dict[str, forms.Widget]] = {"name": autofocus_input_widget}
-
-
-class InitialReleaseForm(PrimitiveWidgetsMixin, forms.Form):
-    """The one Release the Add Game form states inline.
-
-    A Game gets a default Edition and a default Release either way.
-    This only says what they hold; changing them afterwards is the
-    Release form's work.
-    """
-
-    def __init__(
-        self,
-        *args,
-        library: UserLibrary,
-        presentation: DateTimePresentation,
-        **kwargs,
-    ):
-        super().__init__(*args, **kwargs)
-        self.library = library
-        cast(
-            forms.ModelChoiceField, self.fields["platform"]
-        ).queryset = Platform.objects.visible_to(library).order_by("name")
-        self.fields["platform"].widget.options_resolver = partial(
-            _platform_options, library=library
-        )
-        self.fields["release_date"] = TemporalFormField(
-            presentation=presentation, label="Released"
-        )
-
-    platform = forms.ModelChoiceField(
-        queryset=Platform.objects.order_by("name"),
-        required=False,
-        widget=SearchSelectWidget(
-            search_url="/api/platforms/search", options_resolver=_platform_options
-        ),
-    )
-
-    def initial_release(self) -> InitialRelease:
-        from games.catalog_compat import InitialRelease
-
-        return InitialRelease(
-            platform=self.cleaned_data["platform"],
-            release_date=self.cleaned_data["release_date"],
-        )
 
 
 class PlatformForm(

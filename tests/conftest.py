@@ -21,6 +21,33 @@ def owned_library(owned_user):
     return owned_user.library
 
 
+@pytest.fixture
+def catalog_graph_post():
+    """The Editions area's fields, the way a Game form posts them.
+
+    Add Game hosts the whole graph since #969, so a POST stating no
+    Edition states no game either. One block holding one marked row
+    is the shape the page draws for a Game nobody has written yet.
+    """
+    from timetracker.temporal import temporal_input_name
+
+    def fields(*, platform: str = "", year: str = "") -> dict[str, str]:
+        posted = {
+            "editions-count": "1",
+            "edition-0-name": "",
+            "edition-0-releases-count": "1",
+            "edition-0-release-0-platform": platform,
+            "in_library": "edition-0-release-0",
+        }
+        if year:
+            row = "edition-0-release-0-release_date"
+            posted[temporal_input_name(row, "kind")] = "date"
+            posted[temporal_input_name(row, "start_year")] = year
+        return posted
+
+    return fields
+
+
 @pytest.fixture(autouse=True)
 def _reset_settings_caches():
     """Isolate the layered settings resolver between tests.

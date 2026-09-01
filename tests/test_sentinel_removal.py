@@ -94,15 +94,14 @@ def test_platformless_duplicate_name_year_rejected(owned_library):
 
 
 def test_platformless_duplicate_via_add_game_form_shows_error(
-    client, django_user_model
+    client, django_user_model, catalog_graph_post
 ):
     # The conditional UniqueConstraint must surface as a form error, not an
     # IntegrityError 500. The year left the form with #969, so the pair is
-    # stated by the inline Release row and guarded by the mirror.
+    # stated by the marked Release row and guarded by the mirror.
     from django.urls import reverse
 
     from games.catalog_compat import LEGACY_IDENTITY_TAKEN
-    from timetracker.temporal import temporal_input_name
 
     user = django_user_model.objects.create_user(username="u", password="p")
     client.force_login(user)
@@ -113,11 +112,9 @@ def test_platformless_duplicate_via_add_game_form_shows_error(
         {
             "name": "Tetris",
             "sort_name": "",
-            "platform": "",
             "status": PlayerGameStatus.UNPLAYED,
             "wikidata": "",
-            temporal_input_name("release_date", "kind"): "date",
-            temporal_input_name("release_date", "start_year"): "1984",
+            **catalog_graph_post(year="1984"),
         },
     )
 

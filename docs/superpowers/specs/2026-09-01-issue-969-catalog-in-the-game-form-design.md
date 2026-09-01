@@ -72,13 +72,29 @@ effect, since only one Release reaches the list at all.
 
 ## What Add Game keeps
 
-Add Game does not change. A new Game has one Edition and one Release to state,
-so `InitialReleaseForm` already states them, and `save_private_game()` already
-writes all three rows.
+**Amended after the branch shipped.** Add Game hosts the same Editions area as
+Edit Game, and `InitialReleaseForm` is gone. The area is additive — a page that
+drew one Release row now draws one Release row and offers more — so nothing a
+person could see stops being visible, which is the test the deferred picker
+below fails.
 
-It does not gain a second Release row. A Game holding two Releases shows one
-Platform in the games list, and inviting that on the app's first screen states
-something the list cannot show. See [What waits](#what-waits).
+The original reading was that a new Game has one Edition and one Release to
+state, so a second row states something the games list cannot show. That is
+still true of the list, and it is not a reason to make a person save and then
+reopen the form to say the rest. What the list draws is settled by the mark, the
+same on both pages.
+
+`game=None` is what tells `CatalogGraphForm` there is no Game yet: it draws one
+blank Edition holding one blank marked row, `save_private_game()` seeds the
+Game's default Edition and Release from that row, and `adopt()` claims both
+before the graph write, so `add_release` adds no empty Release beside the stated
+one. The Game and the whole graph share one transaction, thus a refused row
+leaves no Game behind.
+
+The Platform control on Add Game is a plain `<select>` now, not the searchable
+combobox `InitialReleaseForm` carried. `ReleaseRowForm` uses one on purpose: a
+composite widget keeps its id on a wrapper `<div>`, and a cloned row would have
+to rewrite that id and re-run the element's wiring. Both pages read the same.
 
 ## What Game detail keeps
 
@@ -173,7 +189,7 @@ clone rewrites the index the prefix states.
 
 There is no scripting-off path to a new row. A popup that writes one is
 refused: it commits an Edition of its own, which is the second write path this
-whole design closes, and Add Game has no saved Game to hang one on. A submit
+whole design closes, and on Add Game there is no saved Game to hang one on. A submit
 button that re-renders the draft one row longer is refused as well — it works,
 but nobody is asked to carry it. What survives scripting off is every row the
 page already holds: they edit, they validate and they save.

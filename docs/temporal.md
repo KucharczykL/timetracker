@@ -82,8 +82,9 @@ and `temporal_draft_from_data()` turns one into the other. `TemporalWidget` in
 `games/forms.py` reads it back.
 
 Two temporal fields on one page must carry distinct field names, because the
-names are derived from them. The Add Game form has two: `original_release_date`
-for the work, and `release_date` for the one Release it states inline.
+names are derived from them. The Game form has one for the work,
+`original_release_date`, and one per Release row, each prefixed by the row it
+belongs to: `edition-0-release-1-release_date`.
 
 ## With no script
 
@@ -112,9 +113,8 @@ itself:
 scripts=ModuleScript("dist/elements/temporal-field.js")
 ```
 
-Two views do, both in `games/views/game.py`: Add Game, whose one inline Release
-row is `InitialReleaseForm`, and Edit Game, whose Editions area hosts one field
-per Release row.
+Two views do, both in `games/views/game.py`: Add Game and Edit Game. Each hosts
+the same Editions area, which draws one field per Release row.
 
 ## Storage notes
 

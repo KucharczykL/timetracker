@@ -268,10 +268,9 @@ Submodules re-exported via `common/components/__init__.py`:
   back. **A widget renders to text, so the element's `Media` never bubbles** —
   the hosting view threads `scripts=ModuleScript("dist/elements/temporal-field.js")`,
   as `purchase.py`/`playevent.py` already do for the date picker. Both hosting
-  pages are in `games/views/game.py`: Add Game, whose one inline Release row is
-  `InitialReleaseForm`, and Edit Game, whose Editions area hosts one per Release
-  row. The grammar, the wire and the no-script contract are in
-  [Temporal](docs/temporal.md)
+  pages are in `games/views/game.py`: Add Game and Edit Game, which host the same
+  Editions area and so draw one field per Release row. The grammar, the wire and
+  the no-script contract are in [Temporal](docs/temporal.md)
 
 **Filter system** (`games/filters.py` + `common/criteria.py`): Stash-inspired
 structured filtering.
@@ -667,12 +666,16 @@ chromium` once. All JS is vendored, so the tests run fully offline. A bare
   transaction, states a whole row, and refuses a shared Game, another library's
   row, and a removal that would leave a Game with no Edition. The one thing that
   writes a graph from a person is `CatalogGraphForm` in `games/catalog_form.py`,
-  hosted by Edit Game: it reads the whole posted set of `EditionRowForm` /
-  `ReleaseRowForm` rows, calls the verbs in one order, and puts a refusal back on
-  the row that stated it. Its `save()` goes through `write_and_mirror()` from
-  `games/catalog_compat.py`, so the flat `platform` / `year_released` columns
-  follow the graph in the same transaction. There are no standalone Edition or
-  Release routes; #969 folded all six into the Game form. The contract is
+  hosted by Add Game and Edit Game alike: it reads the whole posted set of
+  `EditionRowForm` / `ReleaseRowForm` rows, calls the verbs in one order, and puts
+  a refusal back on the row that stated it. Its `write()` goes through
+  `write_and_mirror()` from `games/catalog_compat.py`, so the flat `platform` /
+  `year_released` columns follow the graph in the same transaction; `save()`
+  answers a refusal instead of raising, and Add Game wants the raise so its outer
+  transaction takes the new Game back too. On Add Game the form is built with
+  `game=None` and `adopt()` claims the default Edition and Release
+  `save_private_game` makes. There are no standalone Edition or Release routes;
+  #969 folded all six into the Game form. The contract is
   [Catalog](docs/catalog.md).
 - **A PlayerGame fact is stated as a command** — never assign `Game.status` or
   `Game.mastered` directly. Call `record_facts()` / `track_game()` from

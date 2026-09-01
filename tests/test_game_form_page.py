@@ -222,6 +222,121 @@ def test_a_bad_row_leaves_the_rows_after_it_readable(
     assert "Select a valid choice" in response.content.decode()
 
 
+def test_add_game_draws_the_same_area(logged_in):
+    """A Game nobody has written yet gets one blank block, one blank row."""
+    response = logged_in.get(reverse("games:add_game"))
+    body = response.content.decode()
+
+    assert response.status_code == 200
+    assert 'name="editions-count" value="1"' in body
+    assert 'name="edition-0-releases-count" value="1"' in body
+    assert marks(live(body)) == [("edition-0-release-0", True)]
+    assert 'data-catalog-template="edition"' in body
+    assert "dist/elements/catalog-editor.js" in body
+    assert "dist/elements/temporal-field.js" in body
+
+
+def test_add_game_writes_the_whole_graph_it_posted(logged_in, owned_library):
+    """One submit states the Game and every Edition under it.
+
+    The marked row is the default `save_private_game` makes, thus the
+    Edition holds one Release rather than the stated one beside an
+    empty one nobody asked for.
+    """
+    steam = Platform.objects.create(name="Steam")
+
+    response = logged_in.post(
+        reverse("games:add_game"),
+        {
+            "name": "Portal",
+            "sort_name": "",
+            "status": "played",
+            "wikidata": "",
+            "editions-count": "2",
+            "edition-0-name": "",
+            "edition-0-releases-count": "1",
+            "edition-0-release-0-platform": str(steam.pk),
+            "edition-0-release-0-release_date-kind": "date",
+            "edition-0-release-0-release_date-year": "2007",
+            "edition-1-name": "Director's Cut",
+            "edition-1-releases-count": "1",
+            "edition-1-release-0-platform": "",
+            "edition-1-release-0-release_date-kind": "date",
+            "edition-1-release-0-release_date-year": "2011",
+            "in_library": "edition-0-release-0",
+        },
+    )
+
+    assert response.status_code == 302
+    game = Game.objects.get(library=owned_library, name="Portal")
+    default = Edition.objects.get(game=game, is_default=True)
+    assert default.name == ""
+    assert [edition.name for edition in Edition.objects.filter(game=game)] == [
+        "",
+        "Director's Cut",
+    ]
+    release = default.releases.get()
+    assert release.platform == steam
+    assert release.release_date == TemporalValue.from_year(2007)
+    #: The flat columns follow the graph in the same transaction.
+    game.refresh_from_db()
+    assert (game.platform, game.year_released) == (steam, 2007)
+
+
+def test_a_refused_graph_adds_no_game(logged_in, owned_library):
+    """The page comes back, and the catalog is as it was."""
+    response = logged_in.post(
+        reverse("games:add_game"),
+        {
+            "name": "Portal",
+            "sort_name": "",
+            "status": "played",
+            "wikidata": "",
+            "editions-count": "2",
+            "edition-0-name": "",
+            "edition-0-releases-count": "1",
+            "edition-0-release-0-platform": "",
+            "edition-1-name": "",
+            "edition-1-releases-count": "1",
+            "edition-1-release-0-platform": "",
+            "in_library": "edition-0-release-0",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Name this edition." in response.content.decode()
+    assert not Game.objects.filter(name="Portal").exists()
+
+
+def test_a_refused_identity_leaves_no_half_made_game(logged_in, plain_game):
+    """The Game and its graph go back together.
+
+    `plain_game` already holds (Portal, no platform, 2007). A second
+    Game stating the same three reaches the mirror's check, which
+    raises after the Game row and its default graph are written.
+    """
+    response = logged_in.post(
+        reverse("games:add_game"),
+        {
+            "name": "Portal",
+            "sort_name": "",
+            "status": "played",
+            "wikidata": "",
+            "editions-count": "1",
+            "edition-0-name": "",
+            "edition-0-releases-count": "1",
+            "edition-0-release-0-platform": "",
+            "edition-0-release-0-release_date-kind": "date",
+            "edition-0-release-0-release_date-year": "2007",
+            "in_library": "edition-0-release-0",
+        },
+    )
+
+    assert response.status_code == 200
+    assert Game.objects.filter(name="Portal").count() == 1
+    assert Edition.objects.count() == 1
+
+
 def test_a_refused_row_re_renders_beside_its_sentence(
     logged_in, owned_library, plain_game
 ):

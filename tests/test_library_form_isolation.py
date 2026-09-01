@@ -10,10 +10,10 @@ from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
 )
+from games.catalog_form import ReleaseRowForm
 from games.forms import (
     DeviceForm,
     GameForm,
-    InitialReleaseForm,
     LibraryPreferencesForm,
     PlatformForm,
     PlayEventForm,
@@ -79,7 +79,7 @@ def test_form_relationship_querysets_are_explicitly_library_bound(world):
         user=world.owner,
         presentation=PRESENTATION,
     )
-    release = InitialReleaseForm(library=world.owner_library, presentation=PRESENTATION)
+    release = ReleaseRowForm(library=world.owner_library, presentation=PRESENTATION)
     playevent = PlayEventForm(library=world.owner_library, presentation=PRESENTATION)
 
     assert _ids(session.fields["game"].queryset) == {world.own_game.pk}
@@ -139,12 +139,12 @@ def test_directly_owned_forms_save_new_rows_in_the_explicit_library(
 
 
 def test_shared_platform_is_selectable_but_foreign_private_platform_is_rejected(world):
-    shared_form = InitialReleaseForm(
+    shared_form = ReleaseRowForm(
         data={"platform": world.shared_platform.pk},
         library=world.owner_library,
         presentation=PRESENTATION,
     )
-    foreign_form = InitialReleaseForm(
+    foreign_form = ReleaseRowForm(
         data={"platform": world.foreign_platform.pk},
         library=world.owner_library,
         presentation=PRESENTATION,
@@ -294,11 +294,6 @@ def test_bound_forms_preselect_platform_by_integer_id(world):
         price_currency="USD",
     )
 
-    release_form = InitialReleaseForm(
-        library=world.owner_library,
-        presentation=PRESENTATION,
-        initial={"platform": world.own_platform.pk},
-    )
     purchase_form = PurchaseForm(
         library=world.owner_library,
         user=world.owner,
@@ -306,10 +301,9 @@ def test_bound_forms_preselect_platform_by_integer_id(world):
         instance=purchase,
     )
 
-    for form in (release_form, purchase_form):
-        rendered = str(form["platform"])
-        assert world.own_platform.name in rendered
-        assert f'value="{world.own_platform.pk}"' in rendered
+    rendered = str(purchase_form["platform"])
+    assert world.own_platform.name in rendered
+    assert f'value="{world.own_platform.pk}"' in rendered
 
 
 def test_bound_forms_leave_an_unset_platform_unselected(world):
@@ -323,9 +317,6 @@ def test_bound_forms_leave_an_unset_platform_unselected(world):
         price_currency="USD",
     )
 
-    release_form = InitialReleaseForm(
-        library=world.owner_library, presentation=PRESENTATION
-    )
     purchase_form = PurchaseForm(
         library=world.owner_library,
         user=world.owner,
@@ -333,10 +324,26 @@ def test_bound_forms_leave_an_unset_platform_unselected(world):
         instance=platformless_purchase,
     )
 
-    for form in (release_form, purchase_form):
-        rendered = str(form["platform"])
-        assert world.own_platform.name not in rendered
-        assert "None" not in rendered
+    rendered = str(purchase_form["platform"])
+    assert world.own_platform.name not in rendered
+    assert "None" not in rendered
+
+
+def test_a_release_row_offers_unspecified_for_no_platform(world):
+    """The row's platform is a plain select, thus every option is drawn.
+
+    An unset Platform is a fact rather than a blank, and the empty
+    option says so in words.
+    """
+    rendered = str(
+        ReleaseRowForm(library=world.owner_library, presentation=PRESENTATION)[
+            "platform"
+        ]
+    )
+
+    assert "Unspecified" in rendered
+    assert world.own_platform.name in rendered
+    assert world.foreign_platform.name not in rendered
 
 
 def test_game_option_data_carries_the_integer_platform_id(world):
