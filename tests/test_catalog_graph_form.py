@@ -28,7 +28,7 @@ from games.catalog_form import (
     release_count_field,
     release_prefix,
 )
-from games.catalog_writes import REMOVED_EDITION, add_edition, add_release
+from games.catalog_writes import REMOVED_EDITION
 from games.models import Edition, Game, Platform, Release
 from games.removal import remove
 from timetracker.temporal import TemporalDraft, TemporalValue, temporal_input_name
@@ -259,8 +259,8 @@ def test_an_unbound_row_reads_the_stored_platform_and_date_back(
 def test_the_graph_puts_the_default_edition_first_and_marks_its_release(
     owned_library, plain_game
 ):
-    second = add_edition(game=plain_game.game, library=owned_library, name="Anthology")
-    add_release(edition=second, library=owned_library)
+    second = Edition.objects.create(game=plain_game.game, name="Anthology")
+    Release.objects.create(edition=second, is_default=True)
 
     form = graph_form(game=plain_game.game, library=owned_library)
 
@@ -410,9 +410,8 @@ def saved(game, library, *blocks, mark="edition-0-release-0"):
 @pytest.fixture
 def two_release_game(owned_library, plain_game, owned_platform):
     """One Edition holding the default 2007 release and a 2011 one."""
-    add_release(
+    Release.objects.create(
         edition=plain_game.edition,
-        library=owned_library,
         platform=owned_platform,
         release_date=TemporalValue.from_year(2011),
     )
@@ -437,12 +436,12 @@ def test_save_moves_the_mark_to_a_sibling_release(
 def test_save_moves_the_mark_to_a_release_under_another_edition(
     owned_library, plain_game, owned_platform
 ):
-    second = add_edition(game=plain_game.game, library=owned_library, name="Anthology")
-    add_release(
+    second = Edition.objects.create(game=plain_game.game, name="Anthology")
+    Release.objects.create(
         edition=second,
-        library=owned_library,
         platform=owned_platform,
         release_date=TemporalValue.from_year(2011),
+        is_default=True,
     )
     blocks = stored_blocks(plain_game.game, owned_library)
 
@@ -475,12 +474,12 @@ def test_save_adding_a_release_leaves_the_mark_where_it_was(
 def test_save_removes_the_edition_that_held_the_default(
     owned_library, plain_game, owned_platform
 ):
-    second = add_edition(game=plain_game.game, library=owned_library, name="Anthology")
-    add_release(
+    second = Edition.objects.create(game=plain_game.game, name="Anthology")
+    Release.objects.create(
         edition=second,
-        library=owned_library,
         platform=owned_platform,
         release_date=TemporalValue.from_year(2011),
+        is_default=True,
     )
     blocks = stored_blocks(plain_game.game, owned_library)
     blocks[0]["removed"] = True

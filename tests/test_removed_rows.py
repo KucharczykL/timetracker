@@ -4,12 +4,13 @@ A removed row leaves every library-scoped read and stays for the
 callers that resolve it. The column is set by hand here.
 """
 
+from typing import NamedTuple
+
 import pytest
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 
 from games.catalog_compat import mirror_legacy_columns
-from games.catalog_writes import PrivateGameGraph
 from games.forms import PlatformForm
 from games.models import Device, Edition, Game, Platform, Release
 from timetracker.temporal import TemporalValue
@@ -44,11 +45,19 @@ def restore_row(instance):
     return instance
 
 
-def make_graph(library, name="Baldur's Gate 3") -> PrivateGameGraph:
+class Graph(NamedTuple):
+    """One Game and the two rows a removal test hangs from."""
+
+    game: Game
+    edition: Edition
+    release: Release
+
+
+def make_graph(library, name="Baldur's Gate 3") -> Graph:
     game = make_game(library, name=name)
     edition = Edition.objects.create(game=game, is_default=True)
     release = Release.objects.create(edition=edition, is_default=True)
-    return PrivateGameGraph(game=game, edition=edition, release=release)
+    return Graph(game=game, edition=edition, release=release)
 
 
 # --- the row leaves every library-scoped read --------------------------------

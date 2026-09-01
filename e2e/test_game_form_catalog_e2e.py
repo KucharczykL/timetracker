@@ -15,7 +15,8 @@ from django.urls import reverse
 from playwright.sync_api import Locator, Page, expect
 
 from games.catalog_compat import mirror_legacy_columns
-from games.catalog_writes import DUPLICATE_RELEASE, add_release, save_private_game
+from games.catalog_form import DUPLICATE_RELEASE_IN_FORM
+from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 from games.models import Edition, Game, Platform, Release
 from timetracker.temporal import TemporalValue
 
@@ -42,17 +43,44 @@ def dos(e2e_library) -> Platform:
     return Platform.objects.create(library=e2e_library, name="DOS")
 
 
+def state_default_graph(game: Game, library, *, platform=None, release_date=None):
+    """One Game as the app leaves it: one default Edition and Release.
+
+    Stated here rather than pulled from `tests/conftest.py`, which is
+    not on this package's path.
+    """
+    game.save()
+    return state_catalog_graph(
+        game=game,
+        library=library,
+        editions=[
+            EditionState(
+                key="edition-0",
+                is_default=True,
+                releases=(
+                    ReleaseState(
+                        key="edition-0-release-0",
+                        platform=platform,
+                        release_date=release_date,
+                        is_default=True,
+                    ),
+                ),
+            )
+        ],
+    )
+
+
 @pytest.fixture
 def game(e2e_library, amiga) -> Game:
     """One Game as the app leaves it: a default graph, columns mirrored."""
-    graph = save_private_game(
-        game=Game(library=e2e_library, name="Elite"),
-        original_release_date=None,
-        release_date=TemporalValue.from_year(1984),
+    written = state_default_graph(
+        Game(library=e2e_library, name="Elite"),
+        e2e_library,
         platform=amiga,
+        release_date=TemporalValue.from_year(1984),
     )
-    mirror_legacy_columns(graph.game)
-    return graph.game
+    mirror_legacy_columns(written.game)
+    return written.game
 
 
 def default_edition(game: Game) -> Edition:
@@ -136,9 +164,8 @@ def test_the_mark_moves_to_the_row_a_person_chose(
     signed_in, live_server, e2e_library, game, dos
 ):
     """The radio says which release the games list draws."""
-    add_release(
+    Release.objects.create(
         edition=default_edition(game),
-        library=e2e_library,
         platform=dos,
         release_date=TemporalValue.from_year(1988),
     )
@@ -158,9 +185,8 @@ def test_the_bin_takes_one_release_and_leaves_the_other(
     signed_in, live_server, e2e_library, game, amiga, dos
 ):
     """A removed row stays in the form and is stamped on submit."""
-    going = add_release(
+    going = Release.objects.create(
         edition=default_edition(game),
-        library=e2e_library,
         platform=dos,
         release_date=TemporalValue.from_year(1988),
     )
@@ -199,9 +225,8 @@ def test_a_refused_release_reads_inside_its_own_row(
     signed_in, live_server, e2e_library, game, amiga, dos
 ):
     """Two alike say nothing apart, and the row says so."""
-    standing = add_release(
+    standing = Release.objects.create(
         edition=default_edition(game),
-        library=e2e_library,
         platform=dos,
         release_date=TemporalValue.from_year(1984),
     )
@@ -212,7 +237,7 @@ def test_a_refused_release_reads_inside_its_own_row(
     choose_platform(refused, "Amiga")
     page.click(SUBMIT)
 
-    expect(release_card(page, 0, 1)).to_contain_text(DUPLICATE_RELEASE)
+    expect(release_card(page, 0, 1)).to_contain_text(DUPLICATE_RELEASE_IN_FORM)
     standing.refresh_from_db()
     assert standing.platform == dos
 

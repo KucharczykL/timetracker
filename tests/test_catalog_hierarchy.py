@@ -489,3 +489,47 @@ def test_a_removed_editions_name_is_free_again(owned_library):
     second = Edition.objects.create(game=game, name="Game of the Year")
 
     assert Edition.objects.for_library(owned_library).get() == second
+
+
+# --- one default mark per parent ---------------------------------------------
+
+
+def test_one_default_stands_beside_as_many_unmarked_rows_as_it_likes(owned_library):
+    """The mark is the database's to keep, and nobody may state it."""
+    game = Game.objects.create(library=owned_library, name="Defaults")
+    default_edition = Edition.objects.create(game=game, is_default=True)
+    Edition.objects.create(game=game)
+    Edition.objects.create(game=game)
+    Release.objects.create(edition=default_edition, is_default=True)
+    Release.objects.create(edition=default_edition)
+    Release.objects.create(edition=default_edition)
+
+    assert game.editions.filter(is_default=True).get() == default_edition
+    assert default_edition.releases.filter(is_default=True).count() == 1
+    assert Edition._meta.get_field("is_default").editable is False
+    assert Release._meta.get_field("is_default").editable is False
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        Edition.objects.create(game=game, is_default=True)
+    with pytest.raises(IntegrityError), transaction.atomic():
+        Release.objects.create(edition=default_edition, is_default=True)
+
+
+def test_two_live_default_editions_collide(owned_library):
+    game = Game.objects.create(library=owned_library, name="Collide")
+    Edition.objects.create(game=game, is_default=True)
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        Edition.objects.create(game=game, is_default=True)
+
+
+def test_a_removed_default_frees_the_slot(owned_library):
+    """The constraint reads the mark, thus the slot comes back."""
+    game = Game.objects.create(library=owned_library, name="Slot")
+    first = Edition.objects.create(game=game, is_default=True)
+    remove(first)
+
+    second = Edition.objects.create(game=game, is_default=True)
+
+    assert Edition.objects.filter(game=game, is_default=True).count() == 2
+    assert Edition.objects.for_library(owned_library).get() == second

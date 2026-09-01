@@ -1,11 +1,17 @@
 """One submit of the Game form: one transaction, one creator."""
 
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 import pytest
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.urls import reverse
 
+from common.date_time_presentation import (
+    DEFAULT_DATE_TIME_FORMAT_PROFILE,
+    DateTimePresentation,
+)
 from games.catalog_compat import LEGACY_IDENTITY_TAKEN, mirror_legacy_columns
 from games.catalog_submit import (
     CONSTRAINT_ANSWERS,
@@ -13,11 +19,24 @@ from games.catalog_submit import (
     UNREACHABLE_FROM_THE_GAME_FORM,
     WIKIDATA_CONFLICT_MESSAGE,
     answered_constraint,
+    save_game_columns,
 )
-from games.models import Edition, ExternalReference, Game, Release
+from games.external_references import save_external_reference
+from games.forms import GameForm
+from games.models import (
+    Edition,
+    ExternalReference,
+    Game,
+    PlayerGameStatus,
+    Release,
+)
 from timetracker.temporal import TemporalValue, temporal_input_name
 
 pytestmark = pytest.mark.django_db(transaction=True)
+
+PRESENTATION = DateTimePresentation(
+    DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
+)
 
 
 def game_post(name: str, **extra: str) -> dict[str, str]:
@@ -263,3 +282,201 @@ def test_every_unique_constraint_the_form_can_reach_is_mapped():
     accounted = set(CONSTRAINT_ANSWERS) | set(UNREACHABLE_FROM_THE_GAME_FORM)
 
     assert declared <= accounted, declared - accounted
+
+
+# --- the Game's own columns --------------------------------------------------
+
+
+def game_form(*, library, instance=None, original="2001", **overrides) -> GameForm:
+    data = {
+        "name": "Legacy adapter game",
+        "sort_name": "Adapter game, Legacy",
+        "status": PlayerGameStatus.PLAYED,
+        "mastered": "on",
+        "wikidata": "Q123",
+        temporal_input_name("original_release_date", "kind"): "date"
+        if original
+        else "",
+        temporal_input_name("original_release_date", "start_year"): original,
+    }
+    data.update(overrides)
+    return GameForm(
+        data=data, instance=instance, library=library, presentation=PRESENTATION
+    )
+
+
+def saved_columns(form: GameForm) -> Game:
+    assert form.is_valid(), form.errors
+    return save_game_columns(form)
+
+
+def test_a_persisted_game_may_not_change_library_owner(
+    owned_library, django_user_model
+):
+    other = django_user_model.objects.create_user(username="new-catalog-owner")
+    game = Game.objects.create(library=owned_library, name="Elite")
+    form = game_form(library=owned_library, instance=game, name="Elite")
+    assert form.is_valid(), form.errors
+    form.instance.library = other.library
+
+    with pytest.raises(ValidationError, match="library owner"):
+        save_game_columns(form)
+
+    assert Game.objects.get(pk=game.pk).library_id == owned_library.pk
+
+
+def test_a_private_game_needs_a_library_owner(owned_library):
+    form = game_form(library=owned_library, name="Elite")
+    assert form.is_valid(), form.errors
+    form.instance.library = None
+
+    with pytest.raises(ValidationError, match="requires a library owner"):
+        save_game_columns(form)
+
+    assert not Game.objects.filter(name="Elite").exists()
+
+
+def test_the_wikidata_id_is_canonicalized_and_synchronized(owned_library):
+    game = saved_columns(game_form(library=owned_library, wikidata=" q123 "))
+
+    game.refresh_from_db()
+    reference = ExternalReference.objects.get(
+        provider="wikidata", entity_kind="game", provider_key="Q123"
+    )
+    assert game.wikidata == "Q123"
+    assert reference.game_id == game.pk
+
+
+def test_an_unchanged_wikidata_id_keeps_the_reference_it_had(owned_library):
+    game = saved_columns(game_form(library=owned_library))
+    reference_id = ExternalReference.objects.get(game=game).pk
+
+    saved_columns(game_form(library=owned_library, instance=game))
+
+    assert ExternalReference.objects.get(game=game).pk == reference_id
+
+
+def test_a_changed_wikidata_id_replaces_the_mapping(owned_library):
+    game = saved_columns(game_form(library=owned_library))
+    old_reference = ExternalReference.objects.get(game=game)
+
+    saved_columns(game_form(library=owned_library, instance=game, wikidata="Q456"))
+
+    assert not ExternalReference.objects.filter(pk=old_reference.pk).exists()
+    assert (
+        ExternalReference.objects.get(
+            provider="wikidata", entity_kind="game", provider_key="Q456"
+        ).game_id
+        == game.pk
+    )
+
+
+def test_a_cleared_wikidata_id_removes_the_mapping(owned_library):
+    game = saved_columns(game_form(library=owned_library))
+
+    saved_columns(game_form(library=owned_library, instance=game, wikidata="   "))
+
+    game.refresh_from_db()
+    assert game.wikidata == ""
+    assert not ExternalReference.objects.filter(game=game).exists()
+
+
+def test_a_wikidata_id_another_game_holds_takes_the_rename_back(owned_library):
+    """One transaction: the reference refuses and the columns follow.
+
+    The other game claims the id after the form reads it, thus the
+    form passes and only the write finds the conflict.
+    """
+    game = saved_columns(game_form(library=owned_library, name="Before conflict"))
+    old_reference = ExternalReference.objects.get(game=game)
+    form = game_form(
+        library=owned_library,
+        instance=Game.objects.get(pk=game.pk),
+        name="After conflict",
+        wikidata="Q456",
+    )
+    assert form.is_valid(), form.errors
+
+    owner = Game.objects.create(library=owned_library, name="Conflict owner")
+    save_external_reference(provider="wikidata", provider_key="Q456", target=owner)
+
+    with pytest.raises(ValidationError, match="already maps to another catalog target"):
+        save_game_columns(form)
+
+    stored = Game.objects.get(pk=game.pk)
+    assert (stored.name, stored.wikidata) == ("Before conflict", "Q123")
+    assert ExternalReference.objects.get(pk=old_reference.pk).game_id == game.pk
+
+
+def test_a_failed_reference_write_takes_the_new_and_the_edited_game_back(
+    owned_library, monkeypatch
+):
+    existing = saved_columns(
+        game_form(library=owned_library, name="Before reference failure")
+    )
+    old_reference = ExternalReference.objects.get(game=existing)
+
+    def fail_reference_save(*args, **kwargs):
+        raise RuntimeError("forced reference save failure")
+
+    monkeypatch.setattr(ExternalReference, "save", fail_reference_save)
+    new_form = game_form(
+        library=owned_library, name="New reference failure", wikidata="Q789"
+    )
+    assert new_form.is_valid(), new_form.errors
+    with pytest.raises(RuntimeError, match="forced reference save failure"):
+        save_game_columns(new_form)
+
+    edit_form = game_form(
+        library=owned_library,
+        instance=Game.objects.get(pk=existing.pk),
+        name="After reference failure",
+        wikidata="Q456",
+    )
+    assert edit_form.is_valid(), edit_form.errors
+    with pytest.raises(RuntimeError, match="forced reference save failure"):
+        save_game_columns(edit_form)
+
+    stored = Game.objects.get(pk=existing.pk)
+    assert not Game.objects.filter(name="New reference failure").exists()
+    assert (stored.name, stored.wikidata) == ("Before reference failure", "Q123")
+    assert ExternalReference.objects.get(pk=old_reference.pk).game_id == existing.pk
+
+
+def test_a_graph_statement_writes_no_wikidata_reference(owned_library, stated_graph):
+    """The column travels with the graph; only a submit maps it."""
+    graph = stated_graph(
+        Game(library=owned_library, name="Durable writer only", wikidata="Q123"),
+        owned_library,
+    )
+
+    assert graph.game.wikidata == "Q123"
+    assert not ExternalReference.objects.filter(game=graph.game).exists()
+
+
+def test_the_original_date_is_stored_at_the_precision_it_was_typed(owned_library):
+    """The column is not editable, thus the form states it by hand."""
+    game = saved_columns(
+        game_form(
+            library=owned_library,
+            name="Elite",
+            **{temporal_input_name("original_release_date", "start_month"): "9"},
+            original="1983",
+        )
+    )
+
+    assert Game.objects.get(pk=game.pk).original_release_date == (
+        TemporalValue.from_month(1983, 9)
+    )
+
+
+def test_the_original_date_can_be_cleared(owned_library):
+    game = saved_columns(game_form(library=owned_library, name="Elite"))
+
+    saved_columns(
+        game_form(
+            library=owned_library, instance=Game.objects.get(pk=game.pk), original=""
+        )
+    )
+
+    assert Game.objects.get(pk=game.pk).original_release_date is None
