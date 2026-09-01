@@ -6,13 +6,20 @@ A row is named by Django's own form prefix. `BoundField.html_name` is
 line changing in `timetracker/temporal.py`.
 """
 
+from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Final, cast
+from uuid import UUID
 
 from django import forms
 
 from common.date_time_presentation import DateTimePresentation
 from games.forms import PrimitiveWidgetsMixin, TemporalFormField
-from games.models import Edition, Platform, Release, UserLibrary
+from games.models import Edition, Game, Platform, Release, UserLibrary
+from games.reads.catalog_hierarchy import game_hierarchy
+
+#: A flat POST body, the one shape every row reads its own keys from.
+type PostedData = Mapping[str, str]
 
 #: One radio group over the whole Game; its value is a release prefix.
 MARK_FIELD: Final[str] = "in_library"
@@ -24,6 +31,23 @@ EDITION_COUNT_FIELD: Final[str] = "editions-count"
 UNNAMED_SIBLING_EDITION = (
     "Name this edition. Another edition already presents as the game's own name."
 )
+NO_MARK = "Choose which release is the one in your library."
+MARK_ON_A_REMOVED_ROW = (
+    "The release you chose is going. Choose one of the releases that stay."
+)
+LAST_RELEASE = "An edition keeps one release. Add another one before you remove this."
+LAST_EDITION_IN_FORM = (
+    "A game keeps one edition. Add another one before you remove this."
+)
+DUPLICATE_NAME_IN_FORM = "Another edition of this game already has that name."
+
+
+def _as_uuid(value: str) -> UUID | None:
+    """A posted id that is not one names nothing."""
+    try:
+        return UUID(value)
+    except ValueError:
+        return None
 
 
 def edition_prefix(index: int) -> str:
@@ -92,3 +116,236 @@ class ReleaseRowForm(PrimitiveWidgetsMixin, forms.Form):
         )
         #: `release_date` joins the form last, thus it sorts last too.
         self.order_fields(("release_id", "platform", "release_date", "removed"))
+
+
+def _removed(form: forms.Form) -> bool:
+    """A row says it is going, once it has been read."""
+    return bool(form.is_bound and form.cleaned_data.get("removed"))
+
+
+@dataclass(slots=True)
+class EditionBlock:
+    """One Edition's own form and the Release rows under it."""
+
+    form: EditionRowForm
+    rows: list[ReleaseRowForm]
+
+    @property
+    def edition(self) -> Edition | None:
+        """The stored row this block writes, or None for a new one."""
+        return self.form.instance
+
+    @property
+    def removed(self) -> bool:
+        return _removed(self.form)
+
+    @property
+    def surviving(self) -> list[ReleaseRowForm]:
+        return [row for row in self.rows if not _removed(row)]
+
+
+def _count(data: PostedData, field: str) -> int:
+    """A count that is missing or not a number counts nothing.
+
+    Zero rows then fails validation, which is a sentence a person
+    reads, rather than a traceback.
+    """
+    try:
+        return max(0, int(data.get(field, "")))
+    except ValueError:
+        return 0
+
+
+class CatalogGraphForm:
+    """Every Edition and Release of one Game, as one bound thing.
+
+    Unbound it states the stored graph. Bound it states what was
+    posted, and a posted id that storage did not return is a new
+    row rather than a write to somebody else's.
+    """
+
+    def __init__(
+        self,
+        data: PostedData | None,
+        *,
+        game: Game,
+        library: UserLibrary,
+        presentation: DateTimePresentation,
+    ) -> None:
+        self.data = data
+        self.game = game
+        self.library = library
+        self.presentation = presentation
+        self.form_errors: list[str] = []
+        self._stored = game_hierarchy(game, library)
+        self._stored_editions = {
+            entry.edition.pk: entry.edition for entry in self._stored
+        }
+        self._stored_releases = {
+            release.pk: release for entry in self._stored for release in entry.releases
+        }
+        if data is None:
+            self.blocks = self._blocks_from_storage()
+            self.mark = self._mark_from_storage()
+        else:
+            self.blocks = self._blocks_from_post(data)
+            self.mark = data.get(MARK_FIELD, "")
+
+    @property
+    def is_bound(self) -> bool:
+        return self.data is not None
+
+    def _release_form(
+        self,
+        data: PostedData | None,
+        edition_index: int,
+        release_index: int,
+        initial: dict[str, object] | None = None,
+    ) -> ReleaseRowForm:
+        return ReleaseRowForm(
+            data,
+            prefix=release_prefix(edition_index, release_index),
+            initial=initial,
+            library=self.library,
+            presentation=self.presentation,
+        )
+
+    def _blocks_from_storage(self) -> list[EditionBlock]:
+        blocks: list[EditionBlock] = []
+        for index, entry in enumerate(self._stored):
+            form = EditionRowForm(
+                prefix=edition_prefix(index),
+                initial={"edition_id": entry.edition.pk, "name": entry.edition.name},
+            )
+            form.instance = entry.edition
+            rows: list[ReleaseRowForm] = []
+            for row_index, release in enumerate(entry.releases):
+                row = self._release_form(
+                    None,
+                    index,
+                    row_index,
+                    initial={
+                        "release_id": release.pk,
+                        "platform": release.platform_id,
+                        "release_date": release.release_date,
+                    },
+                )
+                row.instance = release
+                rows.append(row)
+            #: An Edition may hold no live Release, and a block with no
+            #: row offers nothing to fill in.
+            blocks.append(
+                EditionBlock(
+                    form=form, rows=rows or [self._release_form(None, index, 0)]
+                )
+            )
+        if blocks:
+            return blocks
+        #: See the module docstring of `games/catalog_compat.py`: no app
+        #: path leaves a Game without a graph, and a stale fixture does.
+        return [
+            EditionBlock(
+                form=EditionRowForm(prefix=edition_prefix(0)),
+                rows=[self._release_form(None, 0, 0)],
+            )
+        ]
+
+    def _mark_from_storage(self) -> str:
+        for index, block in enumerate(self.blocks):
+            edition = block.edition
+            if edition is not None and not edition.is_default:
+                continue
+            for row_index, row in enumerate(block.rows):
+                if row.instance is None or row.instance.is_default:
+                    return release_prefix(index, row_index)
+            return release_prefix(index, 0)
+        return release_prefix(0, 0)
+
+    def _posted_edition(self, data: PostedData, index: int) -> Edition | None:
+        posted_id = _as_uuid(data.get(f"{edition_prefix(index)}-edition_id", ""))
+        return None if posted_id is None else self._stored_editions.get(posted_id)
+
+    def _posted_release(
+        self, data: PostedData, index: int, row_index: int, edition: Edition | None
+    ) -> Release | None:
+        row = release_prefix(index, row_index)
+        posted_id = _as_uuid(data.get(f"{row}-release_id", ""))
+        release = None if posted_id is None else self._stored_releases.get(posted_id)
+        #: A row that names a Release of another block writes under the
+        #: parent it already has, thus it is a new row here.
+        if release is None or edition is None or release.edition_id != edition.pk:
+            return None
+        return release
+
+    def _blocks_from_post(self, data: PostedData) -> list[EditionBlock]:
+        blocks: list[EditionBlock] = []
+        for index in range(_count(data, EDITION_COUNT_FIELD)):
+            form = EditionRowForm(data, prefix=edition_prefix(index))
+            form.instance = self._posted_edition(data, index)
+            rows: list[ReleaseRowForm] = []
+            for row_index in range(_count(data, release_count_field(index))):
+                row = self._release_form(data, index, row_index)
+                row.instance = self._posted_release(
+                    data, index, row_index, form.instance
+                )
+                rows.append(row)
+            blocks.append(EditionBlock(form=form, rows=rows))
+        return blocks
+
+    def marked(self) -> tuple[EditionBlock, ReleaseRowForm] | None:
+        """The surviving row the mark names, if it names one."""
+        for index, block in enumerate(self.blocks):
+            if block.removed:
+                continue
+            for row_index, row in enumerate(block.rows):
+                if release_prefix(index, row_index) == self.mark and not _removed(row):
+                    return block, row
+        return None
+
+    def is_valid(self) -> bool:
+        """Every row, and then the things only the set can say."""
+        if not self.is_bound:
+            return False
+        valid = all(block.form.is_valid() for block in self.blocks)
+        valid = (
+            all(row.is_valid() for block in self.blocks for row in block.rows) and valid
+        )
+        return self._validate_set() and valid
+
+    def _validate_names(self, surviving: list[EditionBlock]) -> bool:
+        valid = True
+        taken: set[str] = set()
+        unnamed = 0
+        for block in surviving:
+            name = cast(str, block.form.cleaned_data.get("name", ""))
+            if not name:
+                unnamed += 1
+                if unnamed > 1:
+                    block.form.add_error("name", UNNAMED_SIBLING_EDITION)
+                    valid = False
+                continue
+            if name.casefold() in taken:
+                block.form.add_error("name", DUPLICATE_NAME_IN_FORM)
+                valid = False
+            taken.add(name.casefold())
+        return valid
+
+    def _validate_set(self) -> bool:
+        """What one row cannot say on its own."""
+        surviving = [block for block in self.blocks if not block.removed]
+        if not surviving:
+            self.form_errors.append(LAST_EDITION_IN_FORM)
+            return False
+        valid = True
+        for block in surviving:
+            if not block.surviving:
+                block.form.add_error(None, LAST_RELEASE)
+                valid = False
+        valid = self._validate_names(surviving) and valid
+        if not self.mark:
+            self.form_errors.append(NO_MARK)
+            valid = False
+        elif self.marked() is None:
+            self.form_errors.append(MARK_ON_A_REMOVED_ROW)
+            valid = False
+        return valid
