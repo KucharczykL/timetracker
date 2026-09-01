@@ -246,6 +246,20 @@ def test_the_graph_binds_a_plain_game_unbound(owned_library, plain_game):
     assert form.mark == "edition-0-release-0"
 
 
+def test_an_unbound_row_reads_the_stored_platform_and_date_back(
+    owned_library, owned_platform, plain_game
+):
+    """A row draws what the Release holds, not a blank control."""
+    Release.objects.filter(pk=plain_game.release.pk).update(
+        platform=owned_platform, release_date=TemporalValue.from_month(1984, 6)
+    )
+
+    row = graph_form(game=plain_game.game, library=owned_library).blocks[0].rows[0]
+
+    assert row.initial["platform"] == owned_platform.pk
+    assert row.initial["release_date"] == TemporalValue.from_month(1984, 6)
+
+
 def test_the_graph_puts_the_default_edition_first_and_marks_its_release(
     owned_library, plain_game
 ):
