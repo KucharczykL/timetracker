@@ -203,6 +203,30 @@ def test_the_bin_takes_one_release_and_leaves_the_other(
     assert releases[0].is_default
 
 
+def test_binning_a_release_and_re_adding_its_pair_keeps_the_new_row(
+    signed_in, live_server, game, amiga
+):
+    """One submit, one statement: the re-add is not eaten by the removal."""
+    page = signed_in
+    open_form(page, live_server, game)
+    old = live_releases(default_edition(game))[0]
+
+    release_card(page, 0, 0).locator("[data-catalog-remove]").click()
+    page.click("[data-catalog-edition='0'] [data-catalog-add='release']")
+    added = release_card(page, 0, 1)
+    choose_platform(added, "Amiga")
+    type_year(added, "1984")
+    added.locator("input[name='in_library']").check()
+    saved(page, live_server)
+
+    old.refresh_from_db()
+    assert old.removed_at is not None
+    releases = live_releases(default_edition(game))
+    assert [release.platform for release in releases] == [amiga]
+    assert releases[0].pk != old.pk
+    assert releases[0].is_default
+
+
 def test_a_cloned_block_adds_an_edition(signed_in, live_server, game, amiga, dos):
     """A second Edition, named, and the default did not move."""
     page = signed_in
