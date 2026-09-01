@@ -112,8 +112,9 @@ itself:
 scripts=ModuleScript("dist/elements/temporal-field.js")
 ```
 
-Two views do: `games/views/game.py` (Add and Edit Game) and
-`games/views/catalog.py` (Add and Edit Release).
+Two views do, both in `games/views/game.py`: Add Game, whose one inline Release
+row is `InitialReleaseForm`, and Edit Game, whose Editions area hosts one field
+per Release row.
 
 ## Storage notes
 

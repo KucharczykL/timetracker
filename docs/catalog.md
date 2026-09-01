@@ -99,20 +99,20 @@ page.
 A Release with no Platform reads as `Unspecified`. Nothing is inferred from the
 Game, from a sibling Release, or from a display default.
 
-A private Game carries controls. The plain shape gains one row under its two
-header rows: `Edit release` where the Edition holds one, `Add release` where it
-holds none, and `Add edition`. The `Releases` section gains an Actions column
-per Release, a control row per Edition — `Add release`, `Edit edition`, and
-`Remove edition` where a removal is allowed — and one `Add edition` under the
-last block.
+A private Game's page carries one control, and the page writes nothing. The
+`Editions` section gains an Actions column holding a single `Edit` link, drawn
+once per row and pointing at Edit Game. The plain shape carries no control row
+at all: its two header rows read, and the same `Edit Game` button above the page
+states them.
 
-Two rules hide a button, because the service would refuse the write and a
-person should not meet a 409 they could not have avoided. No `Remove edition`
-on the last Edition, or on a default Edition while a live sibling could take the
-mark. No `Remove release` on a default Release while a live sibling stands.
-Promoting a sibling is how the mark moves; see [The default](#the-default).
+The graph is edited in one place. Edit Game hosts every Edition and every
+Release, and one Submit states the whole set in one transaction, so the page
+needs no per-row Add, Edit or Remove. Nothing hides a button to dodge a 409
+either: a refusal the service states comes back on the row that caused it, in
+the form, where the value that caused it still is. Promoting a sibling is how
+the mark moves; see [The default](#the-default).
 
-A shared Game's graph is shown, and none of the controls are. The page says
+A shared Game's graph is shown, and the control is not. The page says
 nothing about who may change it, because the page offers nothing either way.
 What sharing means is unsettled until the IGDB wave (#783, #784, #785) lands,
 and a mark written now would state a rule that does not exist yet.
@@ -121,7 +121,7 @@ and a mark written now would state a rule that does not exist yet.
 
 A second Edition must state a name. Two unnamed siblings both present as the
 Game's own name, so the page would show one work twice with no way to tell the
-rows apart. `EditionForm` refuses it; `add_edition` does not.
+rows apart. `CatalogGraphForm` refuses it; `add_edition` does not.
 
 The service stays permissive on purpose. #782's importer normalizes IGDB and
 writes unnamed Editions in bulk, and a rule in the service would stop it. The
