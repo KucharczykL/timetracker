@@ -1,13 +1,17 @@
 import contextlib
 import logging
 import uuid
+from typing import NamedTuple
 
 import pytest
 from django.db.models.signals import post_save
 from django.utils import timezone
 
+from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
+from games.models import Edition, Game, Platform, Release, UserLibrary
 from timetracker import config as config_module
 from timetracker import settings_resolver
+from timetracker.temporal import TemporalValue
 
 
 @pytest.fixture
@@ -19,6 +23,54 @@ def owned_user(db, django_user_model):
 @pytest.fixture
 def owned_library(owned_user):
     return owned_user.library
+
+
+class DefaultGraph(NamedTuple):
+    """One Game and the single default graph a test starts from."""
+
+    game: Game
+    edition: Edition
+    release: Release
+
+
+@pytest.fixture
+def stated_graph():
+    """A Game with one default Edition holding one default Release.
+
+    The shape every page draws for a Game nobody has edited, and
+    the shape a test wants before it states something else.
+    """
+
+    def state(
+        game: Game,
+        library: UserLibrary,
+        *,
+        platform: Platform | None = None,
+        release_date: TemporalValue | None = None,
+    ) -> DefaultGraph:
+        game.save()
+        written = state_catalog_graph(
+            game=game,
+            library=library,
+            editions=[
+                EditionState(
+                    key="edition-0",
+                    is_default=True,
+                    releases=(
+                        ReleaseState(
+                            key="edition-0-release-0",
+                            platform=platform,
+                            release_date=release_date,
+                            is_default=True,
+                        ),
+                    ),
+                )
+            ],
+        )
+        entry = written.editions[0]
+        return DefaultGraph(written.game, entry.edition, entry.releases[0][1])
+
+    return state
 
 
 @pytest.fixture
