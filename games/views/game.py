@@ -163,8 +163,7 @@ def _added_game_or_form_error(form: GameForm, graph: CatalogGraphForm) -> Game |
             graph.adopt(game)
             graph.write()
     except ValidationError as error:
-        if graph.blamed:
-            graph.answer(error)
+        if graph.answer(error):
             return None
         if _game_form_refusal(form, error):
             return None

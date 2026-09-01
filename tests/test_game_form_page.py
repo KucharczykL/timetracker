@@ -271,7 +271,9 @@ def test_add_game_writes_the_whole_graph_it_posted(logged_in, owned_library):
     game = Game.objects.get(library=owned_library, name="Portal")
     default = Edition.objects.get(game=game, is_default=True)
     assert default.name == ""
-    assert [edition.name for edition in Edition.objects.filter(game=game)] == [
+    #: Sorted: the model states no ordering, so the rows come back in
+    #: whatever order the last write left them in.
+    assert sorted(edition.name for edition in Edition.objects.filter(game=game)) == [
         "",
         "Director's Cut",
     ]
