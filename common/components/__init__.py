@@ -4,6 +4,11 @@ Split into core / primitives / domain / filters submodules; this package
 re-exports the public API so ``from common.components import X`` keeps working.
 """
 
+from common.components.choice_card import (
+    CHOICE_CARD_MARK_ATTRIBUTE,
+    ChoiceCard,
+    ChoiceCardGroup,
+)
 from common.components.core import (
     AttrsArg,
     BaseComponent,
@@ -232,6 +237,7 @@ from common.components.time_zone_row import TimeZoneRow
 from common.utils import Truncation, truncate, truncate_info
 
 __all__ = [
+    "CHOICE_CARD_MARK_ATTRIBUTE",
     "CONTENT_MAX_WIDTH_CLASS",
     "CONTROL_SIZE_CLASS",
     "DEFAULT_PREFETCH",
@@ -271,6 +277,8 @@ __all__ = [
     "Caption",
     "Cell",
     "Checkbox",
+    "ChoiceCard",
+    "ChoiceCardGroup",
     "Column",
     "ComboboxDropdown",
     "ConfirmPage",
