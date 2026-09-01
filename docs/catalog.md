@@ -9,8 +9,8 @@ and it is the only place either row is created or changed.
   Game of the Year cut, a remaster.
 - A **Release** is that Edition on one Platform, on one date.
 
-`save_private_game()` still writes the one default graph a legacy Game form
-states. The six verbs below write the rest of it.
+One call writes all of it. `state_catalog_graph()` takes one Game's whole
+desired graph, and there is no second writer and no per-row verb.
 
 ## The name
 
@@ -43,22 +43,22 @@ constraint here.
 
 ## What a removal refuses
 
-A removal is a stamp. `remove_edition` and `remove_release` call
-`remove()` from `games/removal.py`; nothing in the service destroys a row.
+A removal is a stamp. `state_catalog_graph` calls `remove()` from
+`games/removal.py`; nothing in the service destroys a row.
 
 - **The last Edition of a Game stays.** A Game with no Edition has nowhere to
-  hold a Release.
-- **A default Edition stays while a live sibling exists.** A sibling can take
-  the mark, and the writer says which. With the last-Edition rule, this means a
-  default Edition is never the one that goes: promote a sibling first.
+  hold a Release. An Edition nobody mentioned counts: the rule is about what
+  the Game is left holding.
 - **The last Release of an Edition goes**, and the default mark goes with it.
   An Edition holding no Release is an ordinary state.
-- **A default Release stays while a live sibling exists**, for the same reason
-  a default Edition does.
+
+The three rules that used to guard the default mark are gone. A statement says
+which row is default and which row leaves at the same time, so a mark a
+removal would have stranded is a question the caller already answered.
 
 ## Permission
 
-A private Game belongs to one library, and that library writes its graph. Every
+A private Game belongs to one library, and that library writes its graph. The
 verb resolves the owning Game under `select_for_update()` and refuses:
 
 - a **shared Game** — `library IS NULL` — and its Editions and Releases, which
@@ -113,12 +113,12 @@ the row that caused it, in the form, where the value that caused it still is.
 Promoting a sibling is how the mark moves; see [The default](#the-default).
 
 On Add Game there is no Game to hang the graph from yet, and the area starts as
-one blank Edition holding one blank marked row. `save_private_game` makes a
-Game its default Edition and default Release, seeded from that marked row, and
-`CatalogGraphForm.adopt()` claims both before the graph is written — otherwise
-`add_release` would leave an empty default standing beside the stated one. The
-Game and the whole graph go in one transaction, so a refused row leaves no Game
-behind for a second submit to collide with.
+one blank Edition holding one blank marked row. `games/catalog_submit.py` saves
+the Game's own columns first and hands the graph form the Game it made, so one
+statement writes the whole graph. There is no second creator and nothing to
+claim. The Game, its wikidata reference, its graph and the flat columns are one
+transaction, so a refused row leaves no Game behind for a second submit to
+collide with.
 
 A shared Game's graph is shown, and the control is not. The page says
 nothing about who may change it, because the page offers nothing either way.
@@ -129,7 +129,13 @@ and a mark written now would state a rule that does not exist yet.
 
 A second Edition must state a name. Two unnamed siblings both present as the
 Game's own name, so the page would show one work twice with no way to tell the
-rows apart. `CatalogGraphForm` refuses it; `add_edition` does not.
+rows apart. `CatalogGraphForm` refuses it; the service does not.
+
+Two surviving Releases of one Edition may not state the same platform and date.
+The page would show a person two rows nothing tells apart. `CatalogGraphForm`
+refuses it; the service does not, because #782 needs two regions on one date to
+be two rows. The rule is about the surviving set, so binning a row and adding
+another that states its platform and date is fine, and is written.
 
 The service stays permissive on purpose. #782's importer normalizes IGDB and
 writes unnamed Editions in bulk, and a rule in the service would stop it. The
@@ -155,24 +161,38 @@ The Game's own `original_release_date` stays on the Game, because it is a fact
 of the work rather than of one Release. The flattened Platform row and the
 flattened release year left with this reading; #889 takes the columns.
 
-## Repeating a write
+## Stating a graph
 
-`add_edition` and `add_release` state a whole row, and a repeat gives back the
-row already there rather than a second one. An Edition is matched by its name
-under one Game; a Release by its Platform and its date under one Edition, which
-is the pair that tells two Releases apart.
+`state_catalog_graph()` takes one Game's whole desired graph and writes it in
+one transaction. Identity is the row the caller names and nothing else: a state
+naming an Edition or a Release is that row, and a state naming none is a new
+row. A name is a name, not an identity.
 
-An unnamed Edition matches nothing, and each unnamed add makes one. A Game the
-legacy form wrote already holds an unnamed Edition, so matching on the empty
-name would answer every unnamed add with that one and add nothing.
+A row the caller does not mention is left alone. Removal is stated by a mark on
+the row, so a writer that knows about two Editions can state those two without
+taking the three somebody added by hand. Absence meaning removal would let one
+importer defect take a whole catalog.
 
-`update_edition` and `update_release` take every field, not a patch. A partial
-update would need a sentinel to tell "leave this" from "make this empty", and
-an empty name and an unknown date are both things a writer states on purpose.
+Every refusal is checked against the desired end state, before anything is
+written, and each carries the caller's own name for the row that caused it, so
+a sentence reaches the row a person typed into.
 
-Neither one writes a row its add verb could not have added: a name a live
-sibling holds, or a Platform and date pair a live sibling holds, is refused.
-A row that states its own name or its own pair again is fine.
+A named row is read again under the Game's lock. The Edition or Release a
+caller passes is identity only: the verb resolves each after
+`select_for_update()` and refuses one that is removed, or that hangs from
+another Game or Edition. Every caller reads its rows before the lock, so no
+caller can act on a stale one.
+
+## What a constraint says
+
+No pre-check wins a race. The mirror reads with a SELECT and writes with an
+UPDATE, the wikidata reference has the same shape, and the two default marks
+are set with no pre-check at all. So `games/catalog_submit.py` catches the
+`IntegrityError` outside the transaction, reads the constraint the database
+named, and looks it up in `CONSTRAINT_ANSWERS`. A constraint that is not in
+that mapping rises as itself: a wrong sentence is worse than none. A guard test
+fails unless every unique constraint on Game, Edition, Release and
+ExternalReference is either mapped or named as out of reach, with a reason.
 
 ## The flat columns follow the graph
 
@@ -184,14 +204,15 @@ filters, the API and the sample fixture still read them, so they are kept true.
 default Edition's default Release: its Platform, and the year of its date where
 the date states one. A decade and a range state no year, so there the column
 goes null. `write_and_mirror(game, write)` wraps every catalog write in one
-transaction — the verb, then the mirror — so the columns can never lag the graph
-they shadow.
+transaction — the statement, then the mirror — so the columns can never lag the
+graph they shadow.
 
 The mirror checks before it writes. `(library, name, platform, year)` still
 carries a unique constraint, so a Release edit can walk one Game onto another
 Game's identity. The check raises `LEGACY_IDENTITY_TAKEN` and the whole
 transaction goes back, rather than letting the database refuse a write the form
-had already reported as saved.
+had already reported as saved. The check loses a race, and the constraint
+answers the one it loses; see [What a constraint says](#what-a-constraint-says).
 
 The Game form itself no longer states a Platform or a year. It states the work's
 `original_release_date` as a temporal value, and the Editions area beneath it
