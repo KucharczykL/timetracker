@@ -4,12 +4,12 @@ from datetime import date
 from zoneinfo import ZoneInfo
 
 import pytest
-from django.core.exceptions import ValidationError
 
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
 )
+from games.catalog_compat import LEGACY_IDENTITY_TAKEN, mirror_legacy_columns
 from games.catalog_form import (
     DUPLICATE_NAME_IN_FORM,
     EDITION_COUNT_FIELD,
@@ -225,13 +225,15 @@ def graph_form(data=None, *, game, library):
 
 @pytest.fixture
 def plain_game(owned_library):
-    """One Game with the one default graph the app always leaves."""
-    return save_private_game(
+    """One Game as the app leaves it: a default graph, columns mirrored."""
+    graph = save_private_game(
         game=Game(library=owned_library, name="Portal"),
         original_release_date=None,
         release_date=TemporalValue.from_year(2007),
         platform=None,
     )
+    mirror_legacy_columns(graph.game)
+    return graph
 
 
 def test_the_graph_binds_a_plain_game_unbound(owned_library, plain_game):
@@ -515,9 +517,9 @@ def test_save_refuses_renaming_two_editions_past_each_other(owned_library, plain
     form = graph_form(posted(*blocks), game=plain_game.game, library=owned_library)
 
     assert form.is_valid(), form.form_errors
-    with pytest.raises(ValidationError) as refusal:
-        form.save()
-    assert DUPLICATE_EDITION_NAME in refusal.value.messages
+
+    assert form.save() is False
+    assert DUPLICATE_EDITION_NAME in form.blocks[0].form.non_field_errors()
 
 
 def test_save_writes_an_unchanged_graph_without_moving_anything(
@@ -563,9 +565,9 @@ def test_save_rollback_leaves_the_whole_graph_as_it_was(
 
     form = graph_form(posted(*blocks), game=game, library=owned_library)
     assert form.is_valid(), form.form_errors
-    with pytest.raises(ValidationError) as refusal:
-        form.save()
-    assert DUPLICATE_RELEASE in refusal.value.messages
+
+    assert form.save() is False
+    assert DUPLICATE_RELEASE in form.blocks[0].rows[1].non_field_errors()
 
     game.refresh_from_db()
     two_release_game.edition.refresh_from_db()
@@ -576,3 +578,75 @@ def test_save_rollback_leaves_the_whole_graph_as_it_was(
     assert after == before
     assert two_release_game.edition.name == ""
     assert game.platform is None
+
+
+def test_a_refused_release_edit_lands_on_the_row_that_stated_it(
+    owned_library, two_release_game
+):
+    blocks = stored_blocks(two_release_game.game, owned_library)
+    blocks[0]["releases"][1] = release(
+        release_id=blocks[0]["releases"][1]["release_id"],
+        platform=None,
+        date=TemporalValue.from_year(2007),
+    )
+    form = graph_form(
+        posted(*blocks), game=two_release_game.game, library=owned_library
+    )
+    assert form.is_valid(), form.form_errors
+
+    assert form.save() is False
+    assert DUPLICATE_RELEASE in form.blocks[0].rows[1].non_field_errors()
+    assert not form.blocks[0].rows[0].non_field_errors()
+    assert not form.form_errors
+
+
+def test_a_refused_edition_rename_lands_on_the_block_that_stated_it(
+    owned_library, plain_game
+):
+    add_edition(game=plain_game.game, library=owned_library, name="Beta")
+    add_release(
+        edition=plain_game.game.editions.get(name="Beta"), library=owned_library
+    )
+    blocks = stored_blocks(plain_game.game, owned_library)
+    blocks[0]["name"] = "Beta"
+    blocks[1]["name"] = ""
+    form = graph_form(posted(*blocks), game=plain_game.game, library=owned_library)
+    assert form.is_valid(), form.form_errors
+
+    assert form.save() is False
+    assert DUPLICATE_EDITION_NAME in form.blocks[0].form.non_field_errors()
+
+
+def test_a_refusal_belonging_to_no_row_lands_on_the_form(owned_library, plain_game):
+    """`mirror_legacy_columns` refuses the whole Game, not one row."""
+    twin = save_private_game(
+        game=Game(library=owned_library, name=plain_game.game.name),
+        original_release_date=None,
+        release_date=TemporalValue.from_year(1998),
+        platform=None,
+    )
+    blocks = stored_blocks(twin.game, owned_library)
+    blocks[0]["releases"][0] = release(
+        release_id=blocks[0]["releases"][0]["release_id"],
+        platform=None,
+        date=TemporalValue.from_year(2007),
+    )
+    form = graph_form(posted(*blocks), game=twin.game, library=owned_library)
+    assert form.is_valid(), form.form_errors
+
+    assert form.save() is False
+    assert LEGACY_IDENTITY_TAKEN in form.form_errors
+    assert not form.blocks[0].rows[0].non_field_errors()
+
+
+def test_another_library_s_platform_is_refused_before_any_write(
+    owned_library, plain_game, other_library_platform
+):
+    """The row's own queryset refuses it, thus no verb ever sees it."""
+    blocks = stored_blocks(plain_game.game, owned_library)
+    blocks[0]["releases"][0]["platform"] = other_library_platform
+
+    form = graph_form(posted(*blocks), game=plain_game.game, library=owned_library)
+
+    assert not form.is_valid()
+    assert form.blocks[0].rows[0].errors["platform"]

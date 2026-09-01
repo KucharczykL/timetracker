@@ -6,12 +6,14 @@ A row is named by Django's own form prefix. `BoundField.html_name` is
 line changing in `timetracker/temporal.py`.
 """
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Final, cast
 from uuid import UUID
 
 from django import forms
+from django.core.exceptions import ValidationError
 
 from common.date_time_presentation import DateTimePresentation
 from games.catalog_compat import write_and_mirror
@@ -187,6 +189,8 @@ class CatalogGraphForm:
         self.library = library
         self.presentation = presentation
         self.form_errors: list[str] = []
+        #: The row a refused verb named, recorded on the way out.
+        self._blamed: tuple[forms.Form, str] | None = None
         self._stored = game_hierarchy(game, library)
         self._stored_editions = {
             entry.edition.pk: entry.edition for entry in self._stored
@@ -364,15 +368,22 @@ class CatalogGraphForm:
         """State one Edition's whole name and mark."""
         name = cast(str, block.form.cleaned_data.get("name", ""))
         stored = block.edition
-        written = (
-            add_edition(
-                game=self.game, library=self.library, name=name, is_default=is_default
+        with self._blame(block.form):
+            written = (
+                add_edition(
+                    game=self.game,
+                    library=self.library,
+                    name=name,
+                    is_default=is_default,
+                )
+                if stored is None
+                else update_edition(
+                    edition=stored,
+                    library=self.library,
+                    name=name,
+                    is_default=is_default,
+                )
             )
-            if stored is None
-            else update_edition(
-                edition=stored, library=self.library, name=name, is_default=is_default
-            )
-        )
         block.form.instance = written
         return written
 
@@ -383,23 +394,24 @@ class CatalogGraphForm:
         platform = cast(Platform | None, row.cleaned_data.get("platform"))
         release_date = cast(TemporalValue | None, row.cleaned_data.get("release_date"))
         stored = row.instance
-        row.instance = (
-            add_release(
-                edition=edition,
-                library=self.library,
-                platform=platform,
-                release_date=release_date,
-                is_default=is_default,
+        with self._blame(row):
+            row.instance = (
+                add_release(
+                    edition=edition,
+                    library=self.library,
+                    platform=platform,
+                    release_date=release_date,
+                    is_default=is_default,
+                )
+                if stored is None
+                else update_release(
+                    release=stored,
+                    library=self.library,
+                    platform=platform,
+                    release_date=release_date,
+                    is_default=is_default,
+                )
             )
-            if stored is None
-            else update_release(
-                release=stored,
-                library=self.library,
-                platform=platform,
-                release_date=release_date,
-                is_default=is_default,
-            )
-        )
 
     def _promote_marked_edition(self, marked: EditionBlock) -> None:
         """Step 1. The promotion is what stands the old default down.
@@ -447,13 +459,15 @@ class CatalogGraphForm:
                 continue
             for row in block.rows:
                 if _removed(row) and row.instance is not None:
-                    remove_release(release=row.instance, library=self.library)
+                    with self._blame(row):
+                        remove_release(release=row.instance, library=self.library)
 
     def _remove_editions(self) -> None:
         """Step 5. Step 1 already moved the mark off any of these."""
         for block in self.blocks:
             if block.removed and block.edition is not None:
-                remove_edition(edition=block.edition, library=self.library)
+                with self._blame(block.form):
+                    remove_edition(edition=block.edition, library=self.library)
 
     def _write(self) -> None:
         marked = self.marked()
@@ -469,6 +483,33 @@ class CatalogGraphForm:
         self._remove_releases()
         self._remove_editions()
 
-    def save(self) -> None:
+    @contextmanager
+    def _blame(self, form: forms.Form) -> Iterator[None]:
+        """A refusal names the row that caused it, then keeps rising.
+
+        The raise has to reach `write_and_mirror` for the transaction
+        to unwind, thus this records rather than answers.
+        """
+        try:
+            yield
+        except ValidationError as refusal:
+            self._blamed = (form, refusal.messages[0])
+            raise
+
+    def _answer(self, refusal: ValidationError) -> None:
+        """Put the sentence where whoever typed it will read it."""
+        if self._blamed is None:
+            self.form_errors.append(refusal.messages[0])
+            return
+        form, sentence = self._blamed
+        form.add_error(None, sentence)
+
+    def save(self) -> bool:
         """One transaction over the whole finished graph."""
-        write_and_mirror(self.game, self._write)
+        self._blamed = None
+        try:
+            write_and_mirror(self.game, self._write)
+        except ValidationError as refusal:
+            self._answer(refusal)
+            return False
+        return True
