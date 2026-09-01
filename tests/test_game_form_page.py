@@ -16,6 +16,15 @@ _MARK_TAG = re.compile(r'<input[^>]*name="in_library"[^>]*>')
 _VALUE = re.compile(r'value="([^"]*)"')
 
 
+def live(body: str) -> str:
+    """The page without the blank rows the browser clones.
+
+    Both templates sit after the area they belong to, so everything
+    before the first one is what a person is actually shown.
+    """
+    return body.split("<template data-catalog-template=")[0]
+
+
 def marks(body: str) -> list[tuple[str, bool]]:
     """Each Release row's mark, and whether it is the chosen one."""
     found = []
@@ -65,8 +74,8 @@ def test_edit_game_draws_a_block_per_edition(logged_in, owned_library, plain_gam
 
     body = page(logged_in, plain_game)
 
-    assert body.count('data-choice-card-group="in_library"') == 2
-    assert marks(body) == [
+    assert live(body).count('data-choice-card-group="in_library"') == 2
+    assert marks(live(body)) == [
         ("edition-0-release-0", True),
         ("edition-1-release-0", False),
     ]
@@ -86,7 +95,7 @@ def test_the_marked_row_is_the_default_release(logged_in, owned_library, plain_g
 
     body = page(logged_in, plain_game)
 
-    assert marks(body) == [
+    assert marks(live(body)) == [
         ("edition-0-release-0", True),
         ("edition-0-release-1", False),
     ]
@@ -116,6 +125,21 @@ def test_the_page_threads_the_temporal_element(logged_in, plain_game):
 
     assert "dist/elements/temporal-field.js" in body
     assert "dist/elements/catalog-editor.js" in body
+
+
+def test_the_page_ships_the_rows_the_browser_clones(logged_in, plain_game):
+    """A blank row and a blank block, each numbered by placeholder."""
+    body = page(logged_in, plain_game)
+
+    assert 'data-catalog-template="release"' in body
+    assert 'data-catalog-template="edition"' in body
+    #: The row template numbers both; the block's one row is row zero.
+    assert 'name="edition-__edition__-release-__release__-platform"' in body
+    assert 'name="edition-__edition__-releases-count" value="1"' in body
+    assert 'name="edition-__edition__-name"' in body
+    #: A live row is numbered, and the templates left it alone.
+    assert 'data-catalog-edition="0"' in body
+    assert 'data-catalog-release="0"' in body
 
 
 def test_the_form_writes_the_graph_it_posted(logged_in, owned_library, plain_game):

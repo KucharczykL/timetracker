@@ -33,6 +33,15 @@ from timetracker.temporal import TemporalValue
 #: A flat POST body, the one shape every row reads its own keys from.
 type PostedData = Mapping[str, str]
 
+#: Which row a name belongs to: a number, or the placeholder a clone
+#: template carries until the browser numbers it.
+type RowIndex = int | str
+
+#: Where a cloned row learns its own number. `ts/elements/catalog-editor.ts`
+#: rewrites both, so the two spellings have to agree.
+EDITION_PLACEHOLDER: Final[str] = "__edition__"
+RELEASE_PLACEHOLDER: Final[str] = "__release__"
+
 #: One radio group over the whole Game; its value is a release prefix.
 MARK_FIELD: Final[str] = "in_library"
 #: How many Edition blocks were posted, the way a formset states it.
@@ -62,17 +71,17 @@ def _as_uuid(value: str) -> UUID | None:
         return None
 
 
-def edition_prefix(index: int) -> str:
+def edition_prefix(index: RowIndex) -> str:
     """``edition_prefix(0)`` is ``"edition-0"``."""
     return f"edition-{index}"
 
 
-def release_prefix(edition: int, release: int) -> str:
+def release_prefix(edition: RowIndex, release: RowIndex) -> str:
     """``release_prefix(0, 1)`` is ``"edition-0-release-1"``."""
     return f"{edition_prefix(edition)}-release-{release}"
 
 
-def release_count_field(edition_index: int) -> str:
+def release_count_field(edition_index: RowIndex) -> str:
     """``release_count_field(0)`` is ``"edition-0-releases-count"``."""
     return f"{edition_prefix(edition_index)}-releases-count"
 
@@ -212,8 +221,8 @@ class CatalogGraphForm:
     def _release_form(
         self,
         data: PostedData | None,
-        edition_index: int,
-        release_index: int,
+        edition_index: RowIndex,
+        release_index: RowIndex,
         initial: dict[str, object] | None = None,
     ) -> ReleaseRowForm:
         return ReleaseRowForm(
@@ -305,6 +314,22 @@ class CatalogGraphForm:
                 rows.append(row)
             blocks.append(EditionBlock(form=form, rows=rows))
         return blocks
+
+    def blank_row(self) -> ReleaseRowForm:
+        """One unnumbered Release row, for the browser to clone."""
+        return self._release_form(None, EDITION_PLACEHOLDER, RELEASE_PLACEHOLDER)
+
+    def blank_block(self) -> EditionBlock:
+        """One unnumbered Edition, for the browser to clone.
+
+        Its one row is row zero already, so only the Edition is left
+        unnumbered. The renderer builds this block with the very
+        functions that build a live one, thus the two cannot drift.
+        """
+        return EditionBlock(
+            form=EditionRowForm(prefix=edition_prefix(EDITION_PLACEHOLDER)),
+            rows=[self._release_form(None, EDITION_PLACEHOLDER, 0)],
+        )
 
     def marked(self) -> tuple[EditionBlock, ReleaseRowForm] | None:
         """The surviving row the mark names, if it names one."""

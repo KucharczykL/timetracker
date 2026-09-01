@@ -418,10 +418,10 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
         ),
         title="Edit Game",
         #: A widget renders to text, thus its Media never bubbles.
+        #: `<catalog-editor>` is a node, so it states its own.
         scripts=Fragment(
             ModuleScript("dist/elements/search-select.js"),
             ModuleScript("dist/elements/temporal-field.js"),
-            ModuleScript("dist/elements/catalog-editor.js"),
         ),
     )
 

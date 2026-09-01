@@ -23,23 +23,32 @@ from common.components import (
     ControlButton,
     Div,
     FieldErrors,
+    Fragment,
     Icon,
     Input,
     Label,
     Node,
     Safe,
     Span,
+    Template,
+    custom_element_builder,
 )
 from common.components.primitives import field_label_id
 from games.catalog_form import (
     EDITION_COUNT_FIELD,
+    EDITION_PLACEHOLDER,
     MARK_FIELD,
+    RELEASE_PLACEHOLDER,
     CatalogGraphForm,
     EditionBlock,
     ReleaseRowForm,
+    RowIndex,
     release_count_field,
     release_prefix,
 )
+
+#: The element that clones a blank row; see `ts/elements/catalog-editor.ts`.
+CatalogEditor = custom_element_builder("catalog-editor")
 
 #: Radio, platform, date, removal — once the block is wide enough.
 #: A fixed first column so the header labels sit over their own controls.
@@ -65,6 +74,11 @@ _BIN_CELL_CLASS: Final[str] = (
     "col-start-2 row-start-1 flex min-h-control items-center justify-end "
     "@2xl/edition:col-start-4"
 )
+
+
+def _add_button(kind: str, label: str) -> Node:
+    """One more row, cloned from the template that carries no number."""
+    return ControlButton(variant="ghost", type="button", data_catalog_add=kind)[label]
 
 
 def _count_input(field: str, count: int) -> Node:
@@ -129,7 +143,9 @@ def _platform_name(row: ReleaseRowForm) -> str:
     return release.platform.name
 
 
-def _release_card(row: ReleaseRowForm, *, value: str, chosen: bool) -> Node:
+def _release_card(
+    row: ReleaseRowForm, *, index: RowIndex, value: str, chosen: bool
+) -> Node:
     platform = _platform_name(row)
     return ChoiceCard(
         name=MARK_FIELD,
@@ -137,6 +153,7 @@ def _release_card(row: ReleaseRowForm, *, value: str, chosen: bool) -> Node:
         label=f"Show the {platform} release in the library",
         checked=chosen,
         columns=EDITION_COLUMNS,
+        attributes=[("data-catalog-release", str(index))],
     )[
         [
             *_hidden_fields(row),
@@ -170,22 +187,21 @@ def _name_row(block: EditionBlock) -> Node:
     ]
 
 
-def _edition_block(block: EditionBlock, index: int, mark: str) -> Node:
+def _edition_block(block: EditionBlock, index: RowIndex, mark: str) -> Node:
     rows = [
         _release_card(
             row,
+            index=row_index,
             value=release_prefix(index, row_index),
             chosen=release_prefix(index, row_index) == mark,
         )
         for row_index, row in enumerate(block.rows)
     ]
-    add_release = ControlButton(
-        variant="ghost", type="button", data_catalog_add_release=""
-    )["Add release"]
     return ChoiceCardGroup(
         name=MARK_FIELD,
         legend=block.form["name"].value() or "Unnamed edition",
         class_=_BLOCK_CLASS,
+        attributes=[("data-catalog-edition", str(index))],
     )[
         [
             *_hidden_fields(block.form),
@@ -194,9 +210,31 @@ def _edition_block(block: EditionBlock, index: int, mark: str) -> Node:
             *_non_field_errors(block.form),
             _headings(),
             *rows,
-            Div()[add_release],
+            Div()[_add_button("release", "Add release")],
         ]
     ]
+
+
+def _templates(graph: CatalogGraphForm) -> Node:
+    """The two blank rows the browser numbers and appends.
+
+    The server states this markup once. `renumbered()` puts the row's
+    own number where the placeholder stands, so nothing here is built
+    twice and a control the form gains reaches a cloned row too.
+    """
+    return Fragment(
+        Template(data_catalog_template="release")[
+            _release_card(
+                graph.blank_row(),
+                index=RELEASE_PLACEHOLDER,
+                value=release_prefix(EDITION_PLACEHOLDER, RELEASE_PLACEHOLDER),
+                chosen=False,
+            )
+        ],
+        Template(data_catalog_template="edition")[
+            _edition_block(graph.blank_block(), EDITION_PLACEHOLDER, mark="")
+        ],
+    )
 
 
 def editions_area(graph: CatalogGraphForm) -> Node:
@@ -205,16 +243,16 @@ def editions_area(graph: CatalogGraphForm) -> Node:
         Div(class_="text-type-body text-danger")[sentence]
         for sentence in graph.form_errors
     ]
-    add_edition = ControlButton(
-        variant="ghost", type="button", data_catalog_add_edition=""
-    )["Add edition"]
-    return Div(class_="flex flex-col gap-4")[
-        Span(class_="text-type-subheading text-heading")["Editions"],
-        *errors,
-        _count_input(EDITION_COUNT_FIELD, len(graph.blocks)),
-        *(
-            _edition_block(block, index, graph.mark)
-            for index, block in enumerate(graph.blocks)
-        ),
-        Div()[add_edition],
+    return CatalogEditor()[
+        Div(class_="flex flex-col gap-4")[
+            Span(class_="text-type-subheading text-heading")["Editions"],
+            *errors,
+            _count_input(EDITION_COUNT_FIELD, len(graph.blocks)),
+            *(
+                _edition_block(block, index, graph.mark)
+                for index, block in enumerate(graph.blocks)
+            ),
+            Div()[_add_button("edition", "Add edition")],
+        ],
+        _templates(graph),
     ]

@@ -9,7 +9,13 @@ from __future__ import annotations
 
 from typing import Final
 
-from common.components.core import BaseComponent, Children, Node, as_children
+from common.components.core import (
+    Attributes,
+    BaseComponent,
+    Children,
+    Node,
+    as_children,
+)
 from common.components.elements import Fieldset, Legend
 from common.components.primitives import Div, Label, Radio, Span
 
@@ -43,6 +49,10 @@ class ChoiceCardGroup(BaseComponent):
     ``columns`` is the container-query track list the group's header and
     every card in it declare. They are separate grids, so a track stated
     once in each is the only thing that keeps a header over its control.
+
+    ``attributes`` is the group's own hook, for whatever script picks the
+    page up: children arrive through ``[]``, so a runtime-built attribute
+    has nowhere else to go.
     """
 
     def __init__(
@@ -52,12 +62,14 @@ class ChoiceCardGroup(BaseComponent):
         legend: str,
         columns: str = "",
         class_: str = "",
+        attributes: Attributes | None = None,
         _children: Children = None,
     ) -> None:
         self.name = name
         self.legend = legend
         self.columns = columns
         self.class_ = class_
+        self.attributes = attributes
         self._children = as_children(_children)
 
     def __getitem__(self, children: Children) -> ChoiceCardGroup:
@@ -66,11 +78,13 @@ class ChoiceCardGroup(BaseComponent):
             legend=self.legend,
             columns=self.columns,
             class_=self.class_,
+            attributes=self.attributes,
             _children=children,
         )
 
     def render(self) -> Node:
         return Fieldset(
+            self.attributes,
             class_=" ".join(
                 part for part in (_GROUP_CLASS, self.columns, self.class_) if part
             ),
@@ -79,7 +93,10 @@ class ChoiceCardGroup(BaseComponent):
 
 
 class ChoiceCard(BaseComponent):
-    """One option: its mark, then whatever the caller puts in it."""
+    """One option: its mark, then whatever the caller puts in it.
+
+    ``attributes`` is the card's own hook, as it is the group's.
+    """
 
     def __init__(
         self,
@@ -90,6 +107,7 @@ class ChoiceCard(BaseComponent):
         checked: bool = False,
         columns: str = "",
         class_: str = "",
+        attributes: Attributes | None = None,
         _children: Children = None,
     ) -> None:
         self.name = name
@@ -98,6 +116,7 @@ class ChoiceCard(BaseComponent):
         self.checked = checked
         self.columns = columns
         self.class_ = class_
+        self.attributes = attributes
         self._children = as_children(_children)
 
     def __getitem__(self, children: Children) -> ChoiceCard:
@@ -108,6 +127,7 @@ class ChoiceCard(BaseComponent):
             checked=self.checked,
             columns=self.columns,
             class_=self.class_,
+            attributes=self.attributes,
             _children=children,
         )
 
@@ -125,6 +145,7 @@ class ChoiceCard(BaseComponent):
             Span(class_="@2xl/edition:sr-only")[self.label],
         ]
         return Div(
+            self.attributes,
             class_=" ".join(
                 part for part in (_CARD_CLASS, self.columns, self.class_) if part
             ),
