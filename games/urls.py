@@ -15,7 +15,7 @@ from timetracker.uuidv7 import UUIDv7Converter
 
 # Registered here rather than in the project URLconf: several tests import this
 # module under a stripped ROOT_URLCONF, where the project's registration never
-# runs and every catalog route would fail to build.
+# runs and every route with a uuidv7 argument would fail to build.
 register_converter(UUIDv7Converter, "uuidv7")
 from games.views import settings as settings_views
 

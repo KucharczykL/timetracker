@@ -1,29 +1,63 @@
+from zoneinfo import ZoneInfo
+
 import pytest
 from django.core.exceptions import ValidationError
 
-from games.catalog_compat import save_legacy_game_form
-from games.catalog_writes import save_private_game
+from common.date_time_presentation import (
+    DEFAULT_DATE_TIME_FORMAT_PROFILE,
+    DateTimePresentation,
+)
+from games.catalog_compat import (
+    LEGACY_IDENTITY_TAKEN,
+    InitialRelease,
+    mirror_legacy_columns,
+    save_legacy_game_form,
+    write_and_mirror,
+)
+from games.catalog_writes import add_release, save_private_game
 from games.external_references import save_external_reference
 from games.forms import GameForm
-from games.models import ExternalReference, Game, PlayerGameStatus, Release
-from timetracker.temporal import TemporalQualifier, TemporalValue
+from games.models import (
+    Edition,
+    ExternalReference,
+    Game,
+    Platform,
+    PlayerGameStatus,
+    Release,
+)
+from timetracker.temporal import TemporalValue, temporal_input_name
 
 pytestmark = pytest.mark.django_db
 
+PRESENTATION = DateTimePresentation(
+    DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
+)
 
-def game_form(*, library, instance=None, **overrides) -> GameForm:
+
+def game_form(*, library, instance=None, original="2001", **overrides) -> GameForm:
     data = {
         "name": "Legacy adapter game",
         "sort_name": "Adapter game, Legacy",
-        "platform": "",
-        "year_released": "2002",
-        "original_year_released": "2001",
         "status": PlayerGameStatus.PLAYED,
         "mastered": "on",
         "wikidata": "Q123",
+        temporal_input_name("original_release_date", "kind"): "date"
+        if original
+        else "",
+        temporal_input_name("original_release_date", "start_year"): original,
     }
     data.update(overrides)
-    return GameForm(data=data, instance=instance, library=library)
+    return GameForm(
+        data=data, instance=instance, library=library, presentation=PRESENTATION
+    )
+
+
+def new_release(*, platform=None, year: int | None = 2002) -> InitialRelease:
+    """The inline row the Add Game form states beside the Game."""
+    return InitialRelease(
+        platform=platform,
+        release_date=None if year is None else TemporalValue.from_year(year),
+    )
 
 
 def test_legacy_wikidata_create_canonicalizes_and_synchronizes(owned_library):
@@ -180,7 +214,97 @@ def test_save_private_game_does_not_create_a_legacy_wikidata_reference(owned_lib
     assert not ExternalReference.objects.filter(game=graph.game).exists()
 
 
-# --- the adapter keeps a richer stored value ---------------------------------
+# --- the flat columns shadow the graph ---------------------------------------
+
+
+def test_the_mirror_copies_the_default_release_onto_the_flat_columns(owned_library):
+    platform = Platform.objects.create(library=owned_library, name="Amiga")
+    game = Game.objects.create(library=owned_library, name="Elite")
+    edition = Edition.objects.create(game=game, is_default=True)
+    Release.objects.create(
+        edition=edition,
+        platform=platform,
+        release_date=TemporalValue.from_month(1984, 6),
+        is_default=True,
+    )
+
+    mirror_legacy_columns(game)
+
+    game.refresh_from_db()
+    assert game.platform_id == platform.pk
+    assert game.year_released == 1984
+
+
+def test_the_mirror_keeps_the_precision_of_the_original_date(owned_library):
+    game = Game.objects.create(
+        library=owned_library,
+        name="Elite",
+        original_release_date=TemporalValue.from_month(1983, 9),
+    )
+
+    mirror_legacy_columns(game)
+
+    game.refresh_from_db()
+    assert game.original_year_released == 1983
+    assert game.original_release_date == TemporalValue.from_month(1983, 9)
+
+
+def test_the_mirror_clears_the_columns_when_the_release_states_nothing(owned_library):
+    game = Game.objects.create(library=owned_library, name="Elite", year_released=1999)
+    edition = Edition.objects.create(game=game, is_default=True)
+    Release.objects.create(edition=edition, is_default=True)
+
+    mirror_legacy_columns(game)
+
+    game.refresh_from_db()
+    assert game.platform_id is None
+    assert game.year_released is None
+
+
+def test_the_mirror_refuses_to_collide_with_another_live_game(owned_library):
+    platform = Platform.objects.create(library=owned_library, name="Amiga")
+    Game.objects.create(
+        library=owned_library, name="Elite", platform=platform, year_released=1984
+    )
+    second = Game.objects.create(library=owned_library, name="Elite")
+    edition = Edition.objects.create(game=second, is_default=True)
+    Release.objects.create(
+        edition=edition,
+        platform=platform,
+        release_date=TemporalValue.from_year(1984),
+        is_default=True,
+    )
+
+    with pytest.raises(ValidationError) as refusal:
+        mirror_legacy_columns(second)
+
+    assert LEGACY_IDENTITY_TAKEN in refusal.value.messages
+
+
+def test_a_refused_mirror_leaves_the_write_undone(owned_library):
+    """One transaction: the mirror's refusal takes the write with it."""
+    platform = Platform.objects.create(library=owned_library, name="Amiga")
+    Game.objects.create(
+        library=owned_library, name="Elite", platform=platform, year_released=1984
+    )
+    second = Game.objects.create(library=owned_library, name="Elite")
+    edition = Edition.objects.create(game=second, is_default=True)
+
+    with pytest.raises(ValidationError):
+        write_and_mirror(
+            second,
+            lambda: add_release(
+                edition=edition,
+                library=owned_library,
+                platform=platform,
+                release_date=TemporalValue.from_year(1984),
+            ),
+        )
+
+    assert not Release.objects.filter(edition=edition).exists()
+
+
+# --- the form states a graph, and only what it states ------------------------
 
 
 def stored_release(game) -> Release:
@@ -189,130 +313,71 @@ def stored_release(game) -> Release:
     )
 
 
-def test_legacy_save_keeps_a_month_precision_original_date(owned_library):
-    create_form = game_form(library=owned_library)
-    assert create_form.is_valid()
-    game = save_legacy_game_form(create_form)
-    Game.objects.filter(pk=game.pk).update(
-        original_release_date=TemporalValue.from_month(1998, 5)
+def test_the_inline_row_states_the_first_release(owned_library):
+    platform = Platform.objects.create(library=owned_library, name="Amiga")
+    form = game_form(library=owned_library, name="Elite")
+    assert form.is_valid()
+
+    game = save_legacy_game_form(
+        form, initial_release=new_release(platform=platform, year=1984)
     )
 
-    edit_form = game_form(library=owned_library, instance=Game.objects.get(pk=game.pk))
+    release = stored_release(game)
+    assert release.platform_id == platform.pk
+    assert release.release_date == TemporalValue.from_year(1984)
+    assert (game.platform_id, game.year_released) == (platform.pk, 1984)
+
+
+def test_an_edit_passes_the_stored_release_straight_back(owned_library):
+    platform = Platform.objects.create(library=owned_library, name="Amiga")
+    create_form = game_form(library=owned_library, name="Elite")
+    assert create_form.is_valid()
+    game = save_legacy_game_form(
+        create_form, initial_release=new_release(platform=platform, year=1984)
+    )
+    span = TemporalValue.parse("1984-05/1984-06")
+    Release.objects.filter(pk=stored_release(game).pk).update(release_date=span)
+
+    edit_form = game_form(
+        library=owned_library, instance=Game.objects.get(pk=game.pk), name="Elite II"
+    )
     assert edit_form.is_valid()
     save_legacy_game_form(edit_form)
+
+    release = stored_release(game)
+    assert release.release_date == span
+    assert release.platform_id == platform.pk
+
+
+def test_the_form_states_the_original_date_at_its_own_precision(owned_library):
+    form = game_form(
+        library=owned_library,
+        name="Elite",
+        **{
+            temporal_input_name("original_release_date", "start_month"): "9",
+        },
+        original="1983",
+    )
+    assert form.is_valid()
+
+    game = save_legacy_game_form(form)
 
     stored = Game.objects.get(pk=game.pk)
-    assert stored.original_release_date == TemporalValue.from_month(1998, 5)
-    assert stored.original_year_released == 1998
+    assert stored.original_release_date == TemporalValue.from_month(1983, 9)
+    assert stored.original_year_released == 1983
 
 
-def test_legacy_save_keeps_a_qualifier_on_the_release_date(owned_library):
-    create_form = game_form(library=owned_library)
-    assert create_form.is_valid()
-    game = save_legacy_game_form(create_form)
-    uncertain = TemporalValue.from_year(1999, qualifier=TemporalQualifier.UNCERTAIN)
-    Release.objects.filter(pk=stored_release(game).pk).update(release_date=uncertain)
-
-    edit_form = game_form(
-        library=owned_library,
-        instance=Game.objects.get(pk=game.pk),
-        year_released="2005",
-    )
-    assert edit_form.is_valid()
-    save_legacy_game_form(edit_form)
-
-    assert stored_release(game).release_date == uncertain
-    assert Game.objects.get(pk=game.pk).year_released == 1999
-
-
-def test_legacy_save_still_writes_a_year_the_form_owns(owned_library):
-    create_form = game_form(library=owned_library)
+def test_the_form_clears_the_original_date(owned_library):
+    create_form = game_form(library=owned_library, name="Elite")
     assert create_form.is_valid()
     game = save_legacy_game_form(create_form)
 
     edit_form = game_form(
-        library=owned_library,
-        instance=Game.objects.get(pk=game.pk),
-        year_released="2005",
-        original_year_released="2004",
-    )
-    assert edit_form.is_valid()
-    save_legacy_game_form(edit_form)
-
-    stored = Game.objects.get(pk=game.pk)
-    assert stored.original_release_date == TemporalValue.from_year(2004)
-    assert stored_release(game).release_date == TemporalValue.from_year(2005)
-    assert (stored.original_year_released, stored.year_released) == (2004, 2005)
-
-
-def test_legacy_save_leaves_an_unknown_year_unset(owned_library):
-    create_form = game_form(library=owned_library)
-    assert create_form.is_valid()
-    game = save_legacy_game_form(create_form)
-
-    edit_form = game_form(
-        library=owned_library,
-        instance=Game.objects.get(pk=game.pk),
-        year_released="",
-        original_year_released="",
+        library=owned_library, instance=Game.objects.get(pk=game.pk), original=""
     )
     assert edit_form.is_valid()
     save_legacy_game_form(edit_form)
 
     stored = Game.objects.get(pk=game.pk)
     assert stored.original_release_date is None
-    assert stored_release(game).release_date is None
-    assert (stored.original_year_released, stored.year_released) == (None, None)
-
-
-def test_legacy_save_writes_both_years_for_a_new_game(owned_library):
-    form = game_form(library=owned_library, name="New legacy game")
-    assert form.is_valid()
-
-    game = save_legacy_game_form(form)
-
-    stored = Game.objects.get(pk=game.pk)
-    assert stored.original_release_date == TemporalValue.from_year(2001)
-    assert stored_release(game).release_date == TemporalValue.from_year(2002)
-
-
-def test_legacy_save_keeps_the_year_of_a_stored_decade(owned_library):
-    create_form = game_form(library=owned_library)
-    assert create_form.is_valid()
-    game = save_legacy_game_form(create_form)
-    decade = TemporalValue.from_decade(1990)
-    Game.objects.filter(pk=game.pk).update(
-        original_release_date=decade, original_year_released=1990
-    )
-
-    edit_form = game_form(
-        library=owned_library,
-        instance=Game.objects.get(pk=game.pk),
-        original_year_released="2004",
-    )
-    assert edit_form.is_valid()
-    save_legacy_game_form(edit_form)
-
-    stored = Game.objects.get(pk=game.pk)
-    assert stored.original_release_date == decade
-    assert stored.original_year_released == 1990
-
-
-def test_legacy_save_keeps_the_year_of_a_stored_range(owned_library):
-    create_form = game_form(library=owned_library)
-    assert create_form.is_valid()
-    game = save_legacy_game_form(create_form)
-    span = TemporalValue.parse("2001-05/2003-06")
-    Release.objects.filter(pk=stored_release(game).pk).update(release_date=span)
-    Game.objects.filter(pk=game.pk).update(year_released=2001)
-
-    edit_form = game_form(
-        library=owned_library,
-        instance=Game.objects.get(pk=game.pk),
-        year_released="2005",
-    )
-    assert edit_form.is_valid()
-    save_legacy_game_form(edit_form)
-
-    assert stored_release(game).release_date == span
-    assert Game.objects.get(pk=game.pk).year_released == 2001
+    assert stored.original_year_released is None

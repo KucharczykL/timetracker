@@ -847,7 +847,9 @@ class GameListSessionFilterBoundaryTest(TestCase):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_add_game_submit_and_create_session_redirects(client, owned_user):
+def test_add_game_submit_and_create_session_redirects(
+    client, owned_user, catalog_graph_post
+):
     #: Out of the TestCase, because the POST dispatches.
     #: A transactional class truncates for all to serve one.
     client.force_login(owned_user)
@@ -858,6 +860,7 @@ def test_add_game_submit_and_create_session_redirects(client, owned_user):
             "name": "New Session Game",
             "status": "unplayed",
             "submit_and_create_session": "",
+            **catalog_graph_post(),
         },
     )
 

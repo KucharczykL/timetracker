@@ -99,9 +99,41 @@ page.
 A Release with no Platform reads as `Unspecified`. Nothing is inferred from the
 Game, from a sibling Release, or from a display default.
 
-A shared Game's graph is shown. The page says nothing about who may change it,
-because the page offers no control either way. #969 adds controls, and only for
-a private Game.
+A private Game's page carries one control, and the page writes nothing. The
+`Editions` section gains an Actions column holding a single `Edit` link, drawn
+once per row and pointing at Edit Game. The plain shape carries no control row
+at all: its two header rows read, and the same `Edit Game` button above the page
+states them.
+
+The graph is written in one place. Add Game and Edit Game host the same area,
+holding every Edition and every Release, and one Submit states the whole set in
+one transaction, so neither page needs a per-row Add, Edit or Remove. Nothing
+hides a button to dodge a 409 either: a refusal the service states comes back on
+the row that caused it, in the form, where the value that caused it still is.
+Promoting a sibling is how the mark moves; see [The default](#the-default).
+
+On Add Game there is no Game to hang the graph from yet, and the area starts as
+one blank Edition holding one blank marked row. `save_private_game` makes a
+Game its default Edition and default Release, seeded from that marked row, and
+`CatalogGraphForm.adopt()` claims both before the graph is written — otherwise
+`add_release` would leave an empty default standing beside the stated one. The
+Game and the whole graph go in one transaction, so a refused row leaves no Game
+behind for a second submit to collide with.
+
+A shared Game's graph is shown, and the control is not. The page says
+nothing about who may change it, because the page offers nothing either way.
+What sharing means is unsettled until the IGDB wave (#783, #784, #785) lands,
+and a mark written now would state a rule that does not exist yet.
+
+## What a form refuses that the service does not
+
+A second Edition must state a name. Two unnamed siblings both present as the
+Game's own name, so the page would show one work twice with no way to tell the
+rows apart. `CatalogGraphForm` refuses it; `add_edition` does not.
+
+The service stays permissive on purpose. #782's importer normalizes IGDB and
+writes unnamed Editions in bulk, and a rule in the service would stop it. The
+rule moves down to the service if a second writer ever needs it.
 
 ## The section is a placeholder
 
@@ -142,20 +174,28 @@ Neither one writes a row its add verb could not have added: a name a live
 sibling holds, or a Platform and date pair a live sibling holds, is refused.
 A row that states its own name or its own pair again is fine.
 
-## The legacy Game form
+## The flat columns follow the graph
 
-`games/catalog_compat.py` adapts the one-year Game form onto the graph. The
-form knows a bare year and nothing richer, so it writes a temporal value only
-where it owns one: where the stored value is absent, or is the bare year the
-persisted integer column already states.
+`Game.platform`, `Game.year_released` and `Game.original_year_released` are the
+three columns the graph replaced. Nothing renders a Game from them any more, but
+filters, the API and the sample fixture still read them, so they are kept true.
 
-Anything richer — a month, a day, a decade, a range, a qualifier — stays as it
-is, and the integer column is written from it where it states a year. A decade
-and a range state none, so there the stored integer stands: a form that does
-not own the value does not own the column beside it either.
+`mirror_legacy_columns()` in `games/catalog_compat.py` writes them from the
+default Edition's default Release: its Platform, and the year of its date where
+the date states one. A decade and a range state no year, so there the column
+goes null. `write_and_mirror(game, write)` wraps every catalog write in one
+transaction — the verb, then the mirror — so the columns can never lag the graph
+they shadow.
 
-The comparison is against the *persisted* integer, never the posted one.
-Against the posted one, an ordinary year edit would read as a disagreement and
-undo itself.
+The mirror checks before it writes. `(library, name, platform, year)` still
+carries a unique constraint, so a Release edit can walk one Game onto another
+Game's identity. The check raises `LEGACY_IDENTITY_TAKEN` and the whole
+transaction goes back, rather than letting the database refuse a write the form
+had already reported as saved.
+
+The Game form itself no longer states a Platform or a year. It states the work's
+`original_release_date` as a temporal value, and the Editions area beneath it
+states every Release. There is nothing left to reconcile: the form and the
+column speak the same grammar, which [Temporal](temporal.md) sets out.
 
 #889 retires this path.

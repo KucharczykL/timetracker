@@ -7,7 +7,7 @@ import pytest
 from django import forms
 
 from common.components import collect_media, render
-from common.components.temporal_field import TemporalField
+from common.components.temporal_field import _DISCLOSURE_CLASS, TemporalField
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
@@ -471,3 +471,14 @@ def test_a_required_field_refuses_an_unknown_value() -> None:
     form = RequiredReleaseForm(data={"released-kind": "unknown"})
 
     assert not form.is_valid()
+
+
+def test_the_disclosure_uses_the_foreground_brand_token():
+    """`text-brand` is a surface; in dark it fails the contrast floor.
+
+    The radios keep it as an accent colour, so the assertion names the
+    disclosure rather than the whole render.
+    """
+    assert "text-fg-brand" in _DISCLOSURE_CLASS
+    assert "text-brand" not in _DISCLOSURE_CLASS
+    assert _DISCLOSURE_CLASS in markup()

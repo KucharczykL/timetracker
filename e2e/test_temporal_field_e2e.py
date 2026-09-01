@@ -1,6 +1,8 @@
 """The temporal field in a real browser, with the script and without it.
 
-No page hosts one until #969, so this mounts a synthetic form. The
+The Game form hosts one per Release row
+(`e2e/test_game_form_catalog_e2e.py`), but it exercises one shape. This
+mounts a synthetic form to reach the edges of the grammar. The
 assertion that matters is the last one: both paths store the same value.
 """
 

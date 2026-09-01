@@ -7,6 +7,7 @@ from uuid import UUID
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.db.models import F, OuterRef, Q, QuerySet, Subquery, Sum
 from django.http import Http404, HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
@@ -24,6 +25,7 @@ from common.components import (
     Duration,
     DurationAlternates,
     DurationText,
+    FormFields,
     Fragment,
     GameStatus,
     GameStatusSelector,
@@ -58,9 +60,14 @@ from common.duration_presentation import (
 from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.returns import OriginUrl, action_url
-from common.temporal_presentation import TemporalText
+from common.temporal_presentation import (
+    UNKNOWN_TEXT,
+    TemporalText,
+    present_temporal_value,
+)
 from common.utils import paginate, safe_division
-from games.catalog_compat import save_legacy_game_form
+from games.catalog_compat import LEGACY_IDENTITY_TAKEN, save_legacy_game_form
+from games.catalog_form import CatalogGraphForm
 from games.external_references import external_reference_url
 from games.filters import (
     PlayEventFilter,
@@ -86,6 +93,7 @@ from games.ownership import owned_or_404
 from games.reads.catalog_hierarchy import EditionEntry, game_hierarchy
 from games.reads.playergame_history import StatusEntry, status_history
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
+from games.views.catalog_section import editions_area
 from games.views.filtering import (
     apply_structured_filter,
     builder_url_for,
@@ -108,22 +116,60 @@ META_VALUE_CLASS = "text-heading"
 #: No Platform is a fact, not blank.
 UNSPECIFIED_PLATFORM = "Unspecified"
 #: Said on the page, because the shape is not final.
-RELEASES_UNDER_CONSTRUCTION = (
+EDITIONS_UNDER_CONSTRUCTION = (
     "Under construction. These are catalog facts only. A session cannot name "
-    "an edition yet, so no playtime is shown here and this layout will change."
+    "an edition yet, so no playtime is shown here and this layout will change. "
+    "A platform beyond the first one does not reach the games list yet."
 )
 
 
-def _save_game_form_or_add_wikidata_error(form: GameForm) -> Game | None:
+def _game_form_refusal(form: GameForm, error: ValidationError) -> bool:
+    """Put a refusal the Game's own fields caused back on them."""
+    if hasattr(error, "message_dict") and set(error.message_dict) == {"provider_key"}:
+        form.add_error("wikidata", WIKIDATA_CONFLICT_MESSAGE)
+        return True
+    if LEGACY_IDENTITY_TAKEN in error.messages:
+        #: (name, platform, year) is unique per library, and the
+        #: platform and the year come from the marked Release row.
+        form.add_error(None, LEGACY_IDENTITY_TAKEN)
+        return True
+    return False
+
+
+def _saved_game_or_form_error(form: GameForm) -> Game | None:
+    """Save, or put the refusal where the person typing can read it."""
     try:
         return save_legacy_game_form(form)
     except ValidationError as error:
-        if not hasattr(error, "message_dict") or set(error.message_dict) != {
-            "provider_key"
-        }:
-            raise
-        form.add_error("wikidata", WIKIDATA_CONFLICT_MESSAGE)
-        return None
+        if _game_form_refusal(form, error):
+            return None
+        raise
+
+
+def _added_game_or_form_error(form: GameForm, graph: CatalogGraphForm) -> Game | None:
+    """The Game and its whole graph, or neither of them.
+
+    One transaction over both. A refused row leaves no Game behind,
+    because the person is shown the page again and the name they
+    typed would meet a row only the database can see.
+
+    The marked row seeds the default graph `save_private_game` makes,
+    and `adopt()` claims it, so the graph write states that row
+    rather than adding a second Release beside an empty one.
+    """
+    try:
+        with transaction.atomic():
+            game = save_legacy_game_form(form, initial_release=graph.initial_release)
+            graph.adopt(game)
+            graph.write()
+    except ValidationError as error:
+        if graph.blamed:
+            graph.answer(error)
+            return None
+        if _game_form_refusal(form, error):
+            return None
+        raise
+    return game
 
 
 @login_required
@@ -260,9 +306,13 @@ def list_games(request: HttpRequest) -> HttpResponse:
 @login_required
 def add_game(request: HttpRequest) -> HttpResponse:
     library = cast(User, request.user).library
-    form = GameForm(request.POST or None, library=library)
-    if form.is_valid():
-        game = _save_game_form_or_add_wikidata_error(form)
+    presentation = date_time_presentation_for_request(request)
+    form = GameForm(request.POST or None, library=library, presentation=presentation)
+    graph = CatalogGraphForm(
+        request.POST or None, game=None, library=library, presentation=presentation
+    )
+    if form.is_valid() and graph.is_valid():
+        game = _added_game_or_form_error(form, graph)
         if game is not None:
             correlation_id = new_correlation_id()
             if not track_game_for_request(request, game, correlation_id=correlation_id):
@@ -304,6 +354,8 @@ def add_game(request: HttpRequest) -> HttpResponse:
         AddForm(
             form,
             request=request,
+            fields=Fragment(FormFields(form), editions_area(graph)),
+            width_class="max-w-xl md:max-w-4xl",
             additional_row=Fragment(
                 ControlButton(
                     color="gray",
@@ -318,8 +370,10 @@ def add_game(request: HttpRequest) -> HttpResponse:
             ),
         ),
         title="Add New Game",
+        #: A widget renders to text, thus its Media never bubbles.
+        #: `<catalog-editor>` is a node, so it states its own.
         scripts=Fragment(
-            ModuleScript("dist/elements/search-select.js"),
+            ModuleScript("dist/elements/temporal-field.js"),
             ModuleScript("dist/add_game.js"),
         ),
     )
@@ -355,10 +409,23 @@ def _removed_with_game(game: Game) -> Node:
 def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
-    form = GameForm(request.POST or None, instance=game, library=library)
+    presentation = date_time_presentation_for_request(request)
+    form = GameForm(
+        request.POST or None,
+        instance=game,
+        library=library,
+        presentation=presentation,
+    )
+    graph = CatalogGraphForm(
+        request.POST or None, game=game, library=library, presentation=presentation
+    )
     if (
         form.is_valid()
-        and _save_game_form_or_add_wikidata_error(form) is not None
+        and graph.is_valid()
+        #: The Game saves first: `save_legacy_game_form` guarantees the
+        #: default graph the coordinator then diffs against.
+        and _saved_game_or_form_error(form) is not None
+        and graph.save()
         and record_facts_for_request(
             request,
             game,
@@ -373,9 +440,19 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
     #: invites no duplicate.
     return render_page(
         request,
-        AddForm(form, request=request),
+        AddForm(
+            form,
+            request=request,
+            fields=Fragment(FormFields(form), editions_area(graph)),
+            width_class="max-w-xl md:max-w-4xl",
+        ),
         title="Edit Game",
-        scripts=ModuleScript("dist/elements/search-select.js"),
+        #: A widget renders to text, thus its Media never bubbles.
+        #: `<catalog-editor>` is a node, so it states its own.
+        scripts=Fragment(
+            ModuleScript("dist/elements/search-select.js"),
+            ModuleScript("dist/elements/temporal-field.js"),
+        ),
     )
 
 
@@ -589,15 +666,41 @@ def _reads_plainly(entries: Sequence[EditionEntry]) -> bool:
     return not entry.edition.name and len(entry.releases) <= 1
 
 
+def _catalog_controls_visible(game: Game) -> bool:
+    """A shared Game is read-only for everyone."""
+    return game.library_id is not None
+
+
+def _release_words(release: Release, presentation: DateTimePresentation) -> str:
+    """One Release as a phrase: the Platform, then when it landed."""
+    platform = _platform_words(release)
+    when = present_temporal_value(release.release_date, presentation)
+    return platform if when == UNKNOWN_TEXT else f"{platform} ({when})"
+
+
+def _platforms_cell(entry: EditionEntry, presentation: DateTimePresentation) -> str:
+    """Every Release of one Edition, in one cell.
+
+    A comma list rather than a cell each: the table hides a column
+    by position, thus a row states exactly one cell per column.
+    """
+    if not entry.releases:
+        return "No releases yet."
+    return ", ".join(
+        _release_words(release, presentation) for release in entry.releases
+    )
+
+
 def _plain_release_rows(
-    entries: Sequence[EditionEntry], presentation: DateTimePresentation
+    entries: Sequence[EditionEntry],
+    presentation: DateTimePresentation,
 ) -> list[Node]:
     """The header states an ordinary Game's Release."""
     if not _reads_plainly(entries):
         return []
     releases = entries[0].releases if entries else ()
     release = releases[0] if releases else None
-    return [
+    rows: list[Node] = [
         _meta_row(
             "Platform",
             Span(class_=META_VALUE_CLASS)[_platform_words(release)],
@@ -611,47 +714,22 @@ def _plain_release_rows(
             ),
         ),
     ]
-
-
-def _release_table(entry: EditionEntry, presentation: DateTimePresentation) -> Node:
-    """Two facts per Release: Platform and date."""
-    rows = [
-        make_row(
-            _platform_words(release),
-            TemporalText(release.release_date, presentation),
-        )
-        for release in entry.releases
-    ]
-    return StyledTable(
-        columns=[Column("Platform"), Column("Released")],
-        rows=rows,
-        data_table=True,
-        caption=f"Releases of {entry.edition.display_name}",
-        #: Two unnamed Editions read alike; their ids may not.
-        caption_key=str(entry.edition.pk),
-    )
-
-
-def _edition_block(
-    entry: EditionEntry, presentation: DateTimePresentation, *, named: bool
-) -> Node:
-    """One Edition's Releases, with an optional heading.
-
-    `display_name` falls back to the Game, thus heading a lone
-    unnamed Edition prints the Game's name twice.
-    """
-    return Div(class_="flex flex-col gap-2")[
-        Span(class_="text-type-subheading text-heading")[entry.edition.display_name]
-        if named
-        else "",
-        _release_table(entry, presentation) if entry.releases else "No releases yet.",
-    ]
+    #: Nothing to press here: Edit Game owns the whole graph.
+    return rows
 
 
 def _releases_section(
-    entries: Sequence[EditionEntry], presentation: DateTimePresentation
+    entries: Sequence[EditionEntry],
+    presentation: DateTimePresentation,
+    origin: OriginUrl | None,
+    *,
+    game: Game,
 ) -> Node:
     """What the header's two rows cannot say.
+
+    One read-only row per Edition. Every edit goes to the Game
+    form, which states the whole graph in one transaction, so
+    nothing here writes.
 
     A placeholder, and it says so on the page. `Edition` and
     `Release` are the words the schema needs for IGDB, not words
@@ -663,20 +741,37 @@ def _releases_section(
     """
     if _reads_plainly(entries):
         return Fragment()
-    count = sum(len(entry.releases) for entry in entries)
-    #: A sibling makes every name worth printing.
-    several = len(entries) > 1
+    controls = _catalog_controls_visible(game)
+    columns = [Column("Name"), Column("Platforms", wrap=True)]
+    if controls:
+        columns.append(Column("Actions", align="right", priority=3))
+    #: One link, drawn once per row: the form owns every Edition.
+    edit = Div(class_="flex justify-end")[
+        ControlButton(
+            href=action_url("games:edit_game", game.pk, origin=origin), color="gray"
+        )["Edit"]
+    ]
+    rows = [
+        make_row(
+            entry.edition.display_name,
+            _platforms_cell(entry, presentation),
+            *((edit,) if controls else ()),
+        )
+        for entry in entries
+    ]
     return Div(class_="mb-6 flex flex-col gap-4")[
-        PageHeading(children=["Releases"], badge=str(count) if count else ""),
+        PageHeading(children=["Editions"], badge=str(len(entries))),
         P(
             class_="text-type-body text-warning bg-warning-soft "
             "border border-warning-subtle rounded px-3 py-2"
-        )[RELEASES_UNDER_CONSTRUCTION],
-        *(
-            _edition_block(
-                entry, presentation, named=several or bool(entry.edition.name)
-            )
-            for entry in entries
+        )[EDITIONS_UNDER_CONSTRUCTION],
+        StyledTable(
+            columns=columns,
+            rows=rows,
+            data_table=True,
+            caption=f"Editions of {game.name}",
+            #: Two Games may share a name; their ids may not.
+            caption_key=str(game.pk),
         ),
     ]
 
@@ -940,7 +1035,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
             origin,
             hierarchy,
         ),
-        _releases_section(hierarchy, presentation),
+        _releases_section(hierarchy, presentation, origin, game=game),
         _purchases_section(game, purchases, presentation, origin),
         _sessions_section(game, sessions, presentation, durations),
         _playevents_section(game, playevents, presentation, origin),

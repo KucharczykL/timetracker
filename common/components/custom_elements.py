@@ -248,6 +248,17 @@ register_element("temporal-field", "TemporalField", TemporalFieldProps)
 _TemporalField = custom_element_builder("temporal-field")
 
 
+class CatalogEditorProps(TypedDict):
+    #: Nothing crosses as an attribute: the element reads the hidden count
+    #: inputs, which are what the form posts, and clones the templates
+    #: beside them. The builder lives with the area it wraps
+    #: (`games/views/catalog_section.py`); only the contract is registered.
+    pass
+
+
+register_element("catalog-editor", "CatalogEditor", CatalogEditorProps)
+
+
 class FilterGroupProps(TypedDict):
     # Root model key (e.g. "game"); the deserializer selects its serialization model
     # from it and the client reads the root bundle as ``models[model]``.

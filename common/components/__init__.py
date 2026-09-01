@@ -4,6 +4,11 @@ Split into core / primitives / domain / filters submodules; this package
 re-exports the public API so ``from common.components import X`` keeps working.
 """
 
+from common.components.choice_card import (
+    CHOICE_CARD_MARK_ATTRIBUTE,
+    ChoiceCard,
+    ChoiceCardGroup,
+)
 from common.components.core import (
     AttrsArg,
     BaseComponent,
@@ -106,6 +111,7 @@ from common.components.primitives import (
     DIALOG_TITLE_CLASS,
     DISABLED_CONTROL_CLASS,
     DISABLED_WITHIN_CLASS,
+    FORM_LABEL_CLASS,
     FORM_MAX_WIDTH_CLASS,
     H1,
     H2,
@@ -141,6 +147,7 @@ from common.components.primitives import (
     DialogTitle,
     Div,
     ExternalScript,
+    FieldErrors,
     Form,
     FormFieldGroup,
     FormFieldPresentation,
@@ -232,12 +239,14 @@ from common.components.time_zone_row import TimeZoneRow
 from common.utils import Truncation, truncate, truncate_info
 
 __all__ = [
+    "CHOICE_CARD_MARK_ATTRIBUTE",
     "CONTENT_MAX_WIDTH_CLASS",
     "CONTROL_SIZE_CLASS",
     "DEFAULT_PREFETCH",
     "DIALOG_TITLE_CLASS",
     "DISABLED_CONTROL_CLASS",
     "DISABLED_WITHIN_CLASS",
+    "FORM_LABEL_CLASS",
     "FORM_MAX_WIDTH_CLASS",
     "H1",
     "H2",
@@ -271,6 +280,8 @@ __all__ = [
     "Caption",
     "Cell",
     "Checkbox",
+    "ChoiceCard",
+    "ChoiceCardGroup",
     "Column",
     "ComboboxDropdown",
     "ConfirmPage",
@@ -310,6 +321,7 @@ __all__ = [
     "EmptyState",
     "ExternalScript",
     "FactList",
+    "FieldErrors",
     "FilterBuilder",
     "FilterCount",
     "FilterFieldPicker",

@@ -1,6 +1,7 @@
 import json
 import uuid
 from datetime import date
+from zoneinfo import ZoneInfo
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -9,6 +10,10 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models, transaction
 
 from common.criteria import FilterError, _comparison_group_for, comparable_columns
+from common.date_time_presentation import (
+    DEFAULT_DATE_TIME_FORMAT_PROFILE,
+    DateTimePresentation,
+)
 from games.forms import GameForm
 from games.models import (
     Edition,
@@ -21,7 +26,7 @@ from games.models import (
     Session,
 )
 from games.removal import remove
-from timetracker.temporal import TemporalValue
+from timetracker.temporal import TemporalValue, temporal_input_name
 
 pytestmark = pytest.mark.django_db
 
@@ -281,32 +286,36 @@ def test_release_save_rejects_private_platform_from_shared_graph(owned_library):
     assert not Release.objects.filter(pk=release.pk).exists()
 
 
-def test_legacy_game_form_remains_authoritative_and_creates_no_graph(
+def test_the_game_form_states_a_date_and_leaves_the_graph_to_the_adapter(
     owned_library,
 ):
-    platform = Platform.objects.create(name="Legacy Platform")
+    """The flat pair left the form with #969; a bare save still writes no graph."""
     form = GameForm(
         data={
             "name": "Legacy Game",
             "sort_name": "Legacy Game",
-            "platform": str(platform.pk),
-            "year_released": "2001",
-            "original_year_released": "2000",
             "status": PlayerGameStatus.UNPLAYED,
             "wikidata": "",
+            temporal_input_name("original_release_date", "kind"): "date",
+            temporal_input_name("original_release_date", "start_year"): "2000",
         },
         library=owned_library,
+        presentation=DateTimePresentation(
+            DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
+        ),
     )
 
-    assert "original_release_date" not in form.fields
+    assert {"platform", "year_released"}.isdisjoint(form.fields)
     assert form.is_valid(), form.errors.as_json()
     game = form.save()
-    assert (game.platform_id, game.year_released, game.original_year_released) == (
-        platform.pk,
-        2001,
-        2000,
-    )
+    #: The column is not editable, thus the adapter states it.
+    assert form.cleaned_data["original_release_date"] == TemporalValue.from_year(2000)
     assert game.original_release_date is None
+    assert (game.platform_id, game.year_released, game.original_year_released) == (
+        None,
+        None,
+        None,
+    )
     assert not game.editions.exists()
 
 

@@ -123,7 +123,11 @@ def apply_primitive_widget_classes(fields: Mapping[str, forms.Field]) -> None:
     """
     for field in fields.values():
         if isinstance(field, forms.BooleanField):
-            field.widget = PrimitiveCheckboxWidget()
+            # An explicitly hidden boolean is a choice the form made: a
+            # checkbox here puts the field back on the page, and
+            # `is_hidden` renderers then leave it out of the POST entirely.
+            if not field.widget.is_hidden:
+                field.widget = PrimitiveCheckboxWidget()
             # Maintain the field's explicit required status (usually False for booleans)
             continue
         widget = field.widget
@@ -934,32 +938,34 @@ class _LibraryBoundConstraintValidationMixin:
 class GameForm(
     _LibraryBoundConstraintValidationMixin, PrimitiveWidgetsMixin, forms.ModelForm
 ):
-    def __init__(self, *args, library: UserLibrary, **kwargs):
+    def __init__(
+        self,
+        *args,
+        library: UserLibrary,
+        presentation: DateTimePresentation,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
         self.library = library
         self.instance.library = library
-        cast(
-            forms.ModelChoiceField, self.fields["platform"]
-        ).queryset = Platform.objects.visible_to(library).order_by("name")
-        self.fields["platform"].widget.options_resolver = partial(
-            _platform_options, library=library
+        #: The column is not editable, thus no model field reaches
+        #: the form and the initial is stated by hand.
+        self.fields["original_release_date"] = TemporalFormField(
+            presentation=presentation, label="Original release"
         )
+        #: A field added after __init__ otherwise sinks to the bottom.
+        self.order_fields(self.field_order)
         #: They left Meta.fields, so model_to_dict misses them.
         if self.instance.pk is not None:
+            self.initial.setdefault(
+                "original_release_date", self.instance.original_release_date
+            )
             tracked = PlayerGame.objects.filter(
                 library=library, game=self.instance
             ).first()
             if tracked is not None:
                 self.initial.setdefault("status", tracked.status)
                 self.initial.setdefault("mastered", tracked.mastered)
-
-    platform = forms.ModelChoiceField(
-        queryset=Platform.objects.order_by("name"),
-        required=False,
-        widget=SearchSelectWidget(
-            search_url="/api/platforms/search", options_resolver=_platform_options
-        ),
-    )
 
     #: Plain fields: this form writes no column.
     #: The initial is what tracking would create.
@@ -974,9 +980,7 @@ class GameForm(
     field_order = (
         "name",
         "sort_name",
-        "platform",
-        "year_released",
-        "original_year_released",
+        "original_release_date",
         "status",
         "mastered",
         "wikidata",
@@ -1016,14 +1020,10 @@ class GameForm(
 
     class Meta:
         model = Game
-        fields = (
-            "name",
-            "sort_name",
-            "platform",
-            "year_released",
-            "original_year_released",
-            "wikidata",
-        )
+        #: The Platform and the release year moved to the Release
+        #: that states them; the two integer columns beside them are
+        #: a mirror now, written by `games/catalog_compat.py`.
+        fields = ("name", "sort_name", "wikidata")
         widgets: ClassVar[dict[str, forms.Widget]] = {"name": autofocus_input_widget}
 
 

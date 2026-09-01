@@ -6,7 +6,16 @@ from django.urls import reverse
 from common.returns import action_url
 from games.models import Game
 
-GAME_FORM = {"name": "Renamed", "status": "unplayed"}
+#: Edit Game owns the whole catalog graph, so its form posts one
+#: blank Edition block back. A Game whose default Release states no
+#: Platform and no date round-trips through it untouched.
+BLANK_CATALOG = {
+    "editions-count": "1",
+    "edition-0-releases-count": "1",
+    "in_library": "edition-0-release-0",
+}
+
+GAME_FORM = {"name": "Renamed", "status": "unplayed"} | BLANK_CATALOG
 
 #: Transactional: these views dispatch, and a dispatch cannot
 #: nest in the transaction pytest-django rolls back. The db
@@ -38,11 +47,16 @@ def test_edit_game_returns_to_the_carried_origin(logged_in, game):
     assert response["Location"] == origin
 
 
-def test_a_chained_form_forwards_the_origin(logged_in, db):
+def test_a_chained_form_forwards_the_origin(logged_in, db, catalog_graph_post):
     origin = f"{reverse('games:list_games')}?page=3"
     response = logged_in.post(
         action_url("games:add_game", origin=origin),
-        {"name": "Chained", "status": "unplayed", "submit_and_create_session": "1"},
+        {
+            "name": "Chained",
+            "status": "unplayed",
+            "submit_and_create_session": "1",
+            **catalog_graph_post(),
+        },
     )
     created = Game.objects.get(name="Chained")
     assert response["Location"] == action_url(

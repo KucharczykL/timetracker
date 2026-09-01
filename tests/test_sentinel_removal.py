@@ -10,7 +10,7 @@ import pytest
 from django.db import IntegrityError
 from django.utils import timezone
 
-from games.models import Device, Game, Platform, Purchase, Session
+from games.models import Device, Game, Platform, PlayerGameStatus, Purchase, Session
 
 pytestmark = pytest.mark.django_db
 
@@ -94,11 +94,14 @@ def test_platformless_duplicate_name_year_rejected(owned_library):
 
 
 def test_platformless_duplicate_via_add_game_form_shows_error(
-    client, django_user_model
+    client, django_user_model, catalog_graph_post
 ):
-    # The conditional UniqueConstraint must surface as a form error through
-    # ModelForm.full_clean's validate_constraints, not an IntegrityError 500.
+    # The conditional UniqueConstraint must surface as a form error, not an
+    # IntegrityError 500. The year left the form with #969, so the pair is
+    # stated by the marked Release row and guarded by the mirror.
     from django.urls import reverse
+
+    from games.catalog_compat import LEGACY_IDENTITY_TAKEN
 
     user = django_user_model.objects.create_user(username="u", password="p")
     client.force_login(user)
@@ -109,15 +112,14 @@ def test_platformless_duplicate_via_add_game_form_shows_error(
         {
             "name": "Tetris",
             "sort_name": "",
-            "platform": "",
-            "year_released": "1984",
-            "original_year_released": "",
-            "status": Game.Status.UNPLAYED,
+            "status": PlayerGameStatus.UNPLAYED,
             "wikidata": "",
+            **catalog_graph_post(year="1984"),
         },
     )
 
     assert response.status_code == 200  # re-rendered form, not a redirect/500
+    assert LEGACY_IDENTITY_TAKEN in response.content.decode()
     assert Game.objects.count() == 1
 
 

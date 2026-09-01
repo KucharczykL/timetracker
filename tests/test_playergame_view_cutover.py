@@ -19,7 +19,20 @@ from games.writes.playergame import new_correlation_id, record_facts, track_game
 
 pytestmark = pytest.mark.untracked_games
 
-GAME_PAYLOAD = {"name": "Outer Wilds", "status": "unplayed", "wikidata": ""}
+#: Edit Game owns the whole catalog graph, so its form posts one
+#: blank Edition block back. A Game whose default Release states no
+#: Platform and no date round-trips through it untouched.
+BLANK_CATALOG = {
+    "editions-count": "1",
+    "edition-0-releases-count": "1",
+    "in_library": "edition-0-release-0",
+}
+
+GAME_PAYLOAD = {
+    "name": "Outer Wilds",
+    "status": "unplayed",
+    "wikidata": "",
+} | BLANK_CATALOG
 
 
 @pytest.fixture
