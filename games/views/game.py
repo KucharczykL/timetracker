@@ -6,8 +6,6 @@ from uuid import UUID
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
-from django.core.exceptions import ValidationError
-from django.db import transaction
 from django.db.models import F, OuterRef, Q, QuerySet, Subquery, Sum
 from django.http import Http404, HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
@@ -66,8 +64,8 @@ from common.temporal_presentation import (
     present_temporal_value,
 )
 from common.utils import paginate, safe_division
-from games.catalog_compat import LEGACY_IDENTITY_TAKEN, save_legacy_game_form
 from games.catalog_form import CatalogGraphForm
+from games.catalog_submit import submitted_game_or_form_error
 from games.external_references import external_reference_url
 from games.filters import (
     PlayEventFilter,
@@ -109,8 +107,6 @@ from games.views.removal import confirm_and_remove
 from games.views.returns import origin_from, return_url
 from games.writes.playergame import new_correlation_id
 
-WIKIDATA_CONFLICT_MESSAGE = "This Wikidata entity ID already belongs to another game."
-
 #: The value half of a meta row.
 META_VALUE_CLASS = "text-heading"
 #: No Platform is a fact, not blank.
@@ -121,54 +117,6 @@ EDITIONS_UNDER_CONSTRUCTION = (
     "an edition yet, so no playtime is shown here and this layout will change. "
     "A platform beyond the first one does not reach the games list yet."
 )
-
-
-def _game_form_refusal(form: GameForm, error: ValidationError) -> bool:
-    """Put a refusal the Game's own fields caused back on them."""
-    if hasattr(error, "message_dict") and set(error.message_dict) == {"provider_key"}:
-        form.add_error("wikidata", WIKIDATA_CONFLICT_MESSAGE)
-        return True
-    if LEGACY_IDENTITY_TAKEN in error.messages:
-        #: (name, platform, year) is unique per library, and the
-        #: platform and the year come from the marked Release row.
-        form.add_error(None, LEGACY_IDENTITY_TAKEN)
-        return True
-    return False
-
-
-def _saved_game_or_form_error(form: GameForm) -> Game | None:
-    """Save, or put the refusal where the person typing can read it."""
-    try:
-        return save_legacy_game_form(form)
-    except ValidationError as error:
-        if _game_form_refusal(form, error):
-            return None
-        raise
-
-
-def _added_game_or_form_error(form: GameForm, graph: CatalogGraphForm) -> Game | None:
-    """The Game and its whole graph, or neither of them.
-
-    One transaction over both. A refused row leaves no Game behind,
-    because the person is shown the page again and the name they
-    typed would meet a row only the database can see.
-
-    The marked row seeds the default graph `save_private_game` makes,
-    and `adopt()` claims it, so the graph write states that row
-    rather than adding a second Release beside an empty one.
-    """
-    try:
-        with transaction.atomic():
-            game = save_legacy_game_form(form, initial_release=graph.initial_release)
-            graph.adopt(game)
-            graph.write()
-    except ValidationError as error:
-        if graph.answer(error):
-            return None
-        if _game_form_refusal(form, error):
-            return None
-        raise
-    return game
 
 
 @login_required
@@ -311,7 +259,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
         request.POST or None, game=None, library=library, presentation=presentation
     )
     if form.is_valid() and graph.is_valid():
-        game = _added_game_or_form_error(form, graph)
+        game = submitted_game_or_form_error(form, graph)
         if game is not None:
             correlation_id = new_correlation_id()
             if not track_game_for_request(request, game, correlation_id=correlation_id):
@@ -418,22 +366,16 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
     graph = CatalogGraphForm(
         request.POST or None, game=game, library=library, presentation=presentation
     )
-    if (
-        form.is_valid()
-        and graph.is_valid()
-        #: The Game saves first: `save_legacy_game_form` guarantees the
-        #: default graph the coordinator then diffs against.
-        and _saved_game_or_form_error(form) is not None
-        and graph.save()
-        and record_facts_for_request(
+    if form.is_valid() and graph.is_valid():
+        game = submitted_game_or_form_error(form, graph)
+        if game is not None and record_facts_for_request(
             request,
             game,
             status=form.cleaned_data["status"],
             mastered=form.cleaned_data["mastered"],
             correlation_id=new_correlation_id(),
-        )
-    ):
-        return redirect(return_url(request, fallback="games:list_games"))
+        ):
+            return redirect(return_url(request, fallback="games:list_games"))
     #: A failed command lands here too: redirecting would read as
     #: a save. An edit resubmits onto the same row, so re-rendering
     #: invites no duplicate.

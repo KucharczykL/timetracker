@@ -15,7 +15,7 @@ from django import forms
 from django.core.exceptions import ValidationError
 
 from common.date_time_presentation import DateTimePresentation
-from games.catalog_compat import InitialRelease, write_and_mirror
+from games.catalog_compat import write_and_mirror
 from games.catalog_writes import (
     EditionState,
     GraphRefused,
@@ -196,8 +196,8 @@ class CatalogGraphForm:
 
     `game` is None on Add Game, where the Game the graph hangs from
     does not exist yet. Nothing is stored, so the form states one
-    blank Edition holding one blank Release, and `adopt()` names the
-    Game once the write path has made it.
+    blank Edition holding one blank Release, and `bind()` names the
+    Game once the submit has made it.
     """
 
     def __init__(
@@ -240,7 +240,7 @@ class CatalogGraphForm:
     @property
     def written_game(self) -> Game:
         """The Game the graph hangs from, once there is one."""
-        assert self.game is not None, "A new Game is named by adopt() before the write."
+        assert self.game is not None, "A new Game is named by bind() before the write."
         return self.game
 
     def _release_form(
@@ -435,41 +435,6 @@ class CatalogGraphForm:
             valid = False
         return valid
 
-    @property
-    def initial_release(self) -> InitialRelease:
-        """What the marked row states, for the default the service makes.
-
-        `save_private_game` guarantees a Game a default Edition and a
-        default Release. Seeding them from the marked row is what lets
-        `adopt()` claim them: a row that claims nothing is written
-        beside them instead, leaving an empty Release nobody stated.
-        """
-        marked = self.marked()
-        assert marked is not None, "is_valid() states the mark names a surviving row."
-        _, row = marked
-        return InitialRelease(
-            platform=cast(Platform | None, row.cleaned_data.get("platform")),
-            release_date=cast(
-                TemporalValue | None, row.cleaned_data.get("release_date")
-            ),
-        )
-
-    def adopt(self, game: Game) -> None:
-        """Name the Game just made, and claim its default rows.
-
-        The service made exactly one Edition holding one Release, and
-        made both default, thus they belong to the marked row.
-        """
-        self.game = game
-        self._read_storage()
-        assert self._stored, "save_private_game() guarantees one Edition."
-        marked = self.marked()
-        assert marked is not None, "is_valid() states the mark names a surviving row."
-        block, row = marked
-        entry = self._stored[0]
-        block.form.instance = entry.edition
-        row.instance = entry.releases[0] if entry.releases else None
-
     def _states(self) -> list[EditionState]:
         """Every posted row, as the graph the service is to write."""
         marked = self.marked()
@@ -550,16 +515,3 @@ class CatalogGraphForm:
     def write(self) -> None:
         """One transaction over the graph and the columns that shadow it."""
         write_and_mirror(self.written_game, self.write_rows)
-
-    def save(self) -> bool:
-        """Write the graph, and answer a refusal rather than raise it.
-
-        Task 3 of the plan hands this to `games/catalog_submit.py`.
-        """
-        try:
-            self.write()
-        except ValidationError as refusal:
-            if not self.answer(refusal):
-                self.form_errors.append(refusal.messages[0])
-            return False
-        return True

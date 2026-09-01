@@ -41,6 +41,21 @@ def _default_release(game: Game) -> Release | None:
     )
 
 
+def _collides(game: Game, platform: Platform | None, year: int | None) -> bool:
+    """Another live Game of this library already reads the same."""
+    return (
+        Game.objects.filter(
+            library_id=game.library_id,
+            name=game.name,
+            platform=platform,
+            year_released=year,
+            removed_at__isnull=True,
+        )
+        .exclude(pk=game.pk)
+        .exists()
+    )
+
+
 def mirror_legacy_columns(game: Game) -> None:
     """The flat Game columns follow the graph that now owns them.
 
@@ -53,18 +68,7 @@ def mirror_legacy_columns(game: Game) -> None:
     date = None if release is None else release.release_date
     year = None if date is None else date.year
     original = game.original_release_date
-    collides = (
-        Game.objects.filter(
-            library_id=game.library_id,
-            name=game.name,
-            platform=platform,
-            year_released=year,
-            removed_at__isnull=True,
-        )
-        .exclude(pk=game.pk)
-        .exists()
-    )
-    if collides:
+    if _collides(game, platform, year):
         raise ValidationError(LEGACY_IDENTITY_TAKEN)
     Game.objects.filter(pk=game.pk).update(
         platform=platform,
