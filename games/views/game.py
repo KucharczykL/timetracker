@@ -47,7 +47,7 @@ from common.components import (
     paginated_table_content,
     parse_filter_dict,
 )
-from common.components.primitives import ButtonGroupMember, Li, Span
+from common.components.primitives import Li, Span
 from common.date_time_presentation import (
     DateTimePresentation,
     date_time_presentation_for_request,
@@ -59,7 +59,11 @@ from common.duration_presentation import (
 from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.returns import OriginUrl, action_url
-from common.temporal_presentation import TemporalText
+from common.temporal_presentation import (
+    UNKNOWN_TEXT,
+    TemporalText,
+    present_temporal_value,
+)
 from common.utils import paginate, safe_division
 from games.catalog_compat import (
     LEGACY_IDENTITY_TAKEN,
@@ -115,9 +119,10 @@ META_VALUE_CLASS = "text-heading"
 #: No Platform is a fact, not blank.
 UNSPECIFIED_PLATFORM = "Unspecified"
 #: Said on the page, because the shape is not final.
-RELEASES_UNDER_CONSTRUCTION = (
+EDITIONS_UNDER_CONSTRUCTION = (
     "Under construction. These are catalog facts only. A session cannot name "
-    "an edition yet, so no playtime is shown here and this layout will change."
+    "an edition yet, so no playtime is shown here and this layout will change. "
+    "A platform beyond the first one does not reach the games list yet."
 )
 
 
@@ -641,75 +646,29 @@ def _catalog_controls_visible(game: Game) -> bool:
     return game.library_id is not None
 
 
-def _release_actions(
-    release: Release, entry: EditionEntry, origin: OriginUrl | None
-) -> Node:
-    """Edit always; Remove where the service would allow it."""
-    buttons: list[ButtonGroupMember] = [
-        {
-            "href": action_url("games:edit_release", release.pk, origin=origin),
-            "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
-            "color": "gray",
-        }
-    ]
-    #: A default Release stays while a live sibling could take the
-    #: mark. Offering the button would only answer 409.
-    holds_the_mark = release.is_default and len(entry.releases) > 1
-    if not holds_the_mark:
-        buttons.append(
-            {
-                "href": action_url("games:remove_release", release.pk, origin=origin),
-                "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
-                "color": "red",
-            }
-        )
-    return ButtonGroup(buttons)
+def _release_words(release: Release, presentation: DateTimePresentation) -> str:
+    """One Release as a phrase: the Platform, then when it landed."""
+    platform = _platform_words(release)
+    when = present_temporal_value(release.release_date, presentation)
+    return platform if when == UNKNOWN_TEXT else f"{platform} ({when})"
 
 
-def _edition_controls(
-    entry: EditionEntry, entries: Sequence[EditionEntry], origin: OriginUrl | None
-) -> Node:
-    """What one Edition offers below its Releases."""
-    edition = entry.edition
-    buttons: list[ButtonGroupMember] = [
-        {
-            "href": action_url("games:add_release", edition.pk, origin=origin),
-            "slot": "Add release",
-            "color": "gray",
-        },
-        {
-            "href": action_url("games:edit_edition", edition.pk, origin=origin),
-            "slot": "Edit edition",
-            "color": "gray",
-        },
-    ]
-    #: The last Edition stays, and so does a default one while a
-    #: sibling could take its mark. Together: promote first.
-    holds_the_game = len(entries) == 1 or edition.is_default
-    if not holds_the_game:
-        buttons.append(
-            {
-                "href": action_url("games:remove_edition", edition.pk, origin=origin),
-                "slot": "Remove edition",
-                "color": "red",
-            }
-        )
-    return ButtonGroup(buttons)
+def _platforms_cell(entry: EditionEntry, presentation: DateTimePresentation) -> str:
+    """Every Release of one Edition, in one cell.
 
-
-def _add_edition_button(game: Game, origin: OriginUrl | None) -> Node:
-    return ControlButton(
-        href=action_url("games:add_edition", game.pk, origin=origin),
-        color="gray",
-    )["Add edition"]
+    A comma list rather than a cell each: the table hides a column
+    by position, thus a row states exactly one cell per column.
+    """
+    if not entry.releases:
+        return "No releases yet."
+    return ", ".join(
+        _release_words(release, presentation) for release in entry.releases
+    )
 
 
 def _plain_release_rows(
     entries: Sequence[EditionEntry],
     presentation: DateTimePresentation,
-    *,
-    game: Game,
-    origin: OriginUrl | None,
 ) -> list[Node]:
     """The header states an ordinary Game's Release."""
     if not _reads_plainly(entries):
@@ -730,91 +689,8 @@ def _plain_release_rows(
             ),
         ),
     ]
-    edition = entries[0].edition if entries else None
-    if not _catalog_controls_visible(game) or edition is None:
-        return rows
-    release_button: ButtonGroupMember = (
-        {
-            "href": action_url("games:edit_release", release.pk, origin=origin),
-            "slot": "Edit release",
-            "color": "gray",
-        }
-        if release is not None
-        else {
-            "href": action_url("games:add_release", edition.pk, origin=origin),
-            "slot": "Add release",
-            "color": "gray",
-        }
-    )
-    rows.append(
-        Div(class_="flex gap-2")[
-            ButtonGroup(
-                [
-                    release_button,
-                    {
-                        "href": action_url("games:add_edition", game.pk, origin=origin),
-                        "slot": "Add edition",
-                        "color": "gray",
-                    },
-                ]
-            )
-        ]
-    )
+    #: Nothing to press here: Edit Game owns the whole graph.
     return rows
-
-
-def _release_table(
-    entry: EditionEntry,
-    presentation: DateTimePresentation,
-    origin: OriginUrl | None,
-    *,
-    controls: bool,
-) -> Node:
-    """Two facts per Release: Platform and date."""
-    columns = [Column("Platform"), Column("Released")]
-    if controls:
-        columns.append(Column(""))
-    rows = [
-        make_row(
-            _platform_words(release),
-            TemporalText(release.release_date, presentation),
-            *((_release_actions(release, entry, origin),) if controls else ()),
-        )
-        for release in entry.releases
-    ]
-    return StyledTable(
-        columns=columns,
-        rows=rows,
-        data_table=True,
-        caption=f"Releases of {entry.edition.display_name}",
-        #: Two unnamed Editions read alike; their ids may not.
-        caption_key=str(entry.edition.pk),
-    )
-
-
-def _edition_block(
-    entry: EditionEntry,
-    entries: Sequence[EditionEntry],
-    presentation: DateTimePresentation,
-    origin: OriginUrl | None,
-    *,
-    named: bool,
-    controls: bool,
-) -> Node:
-    """One Edition's Releases, with an optional heading.
-
-    `display_name` falls back to the Game, thus heading a lone
-    unnamed Edition prints the Game's name twice.
-    """
-    return Div(class_="flex flex-col gap-2")[
-        Span(class_="text-type-subheading text-heading")[entry.edition.display_name]
-        if named
-        else "",
-        _release_table(entry, presentation, origin, controls=controls)
-        if entry.releases
-        else "No releases yet.",
-        _edition_controls(entry, entries, origin) if controls else "",
-    ]
 
 
 def _releases_section(
@@ -826,6 +702,10 @@ def _releases_section(
 ) -> Node:
     """What the header's two rows cannot say.
 
+    One read-only row per Edition. Every edit goes to the Game
+    form, which states the whole graph in one transaction, so
+    nothing here writes.
+
     A placeholder, and it says so on the page. `Edition` and
     `Release` are the words the schema needs for IGDB, not words
     a reader wants: nothing a person makes names either one, and
@@ -836,28 +716,38 @@ def _releases_section(
     """
     if _reads_plainly(entries):
         return Fragment()
-    count = sum(len(entry.releases) for entry in entries)
-    #: A sibling makes every name worth printing.
-    several = len(entries) > 1
     controls = _catalog_controls_visible(game)
+    columns = [Column("Name"), Column("Platforms", wrap=True)]
+    if controls:
+        columns.append(Column("Actions", align="right", priority=3))
+    #: One link, drawn once per row: the form owns every Edition.
+    edit = Div(class_="flex justify-end")[
+        ControlButton(
+            href=action_url("games:edit_game", game.pk, origin=origin), color="gray"
+        )["Edit"]
+    ]
+    rows = [
+        make_row(
+            entry.edition.display_name,
+            _platforms_cell(entry, presentation),
+            *((edit,) if controls else ()),
+        )
+        for entry in entries
+    ]
     return Div(class_="mb-6 flex flex-col gap-4")[
-        PageHeading(children=["Releases"], badge=str(count) if count else ""),
+        PageHeading(children=["Editions"], badge=str(len(entries))),
         P(
             class_="text-type-body text-warning bg-warning-soft "
             "border border-warning-subtle rounded px-3 py-2"
-        )[RELEASES_UNDER_CONSTRUCTION],
-        *(
-            _edition_block(
-                entry,
-                entries,
-                presentation,
-                origin,
-                named=several or bool(entry.edition.name),
-                controls=controls,
-            )
-            for entry in entries
+        )[EDITIONS_UNDER_CONSTRUCTION],
+        StyledTable(
+            columns=columns,
+            rows=rows,
+            data_table=True,
+            caption=f"Editions of {game.name}",
+            #: Two Games may share a name; their ids may not.
+            caption_key=str(game.pk),
         ),
-        _add_edition_button(game, origin) if controls else "",
     ]
 
 
@@ -930,7 +820,7 @@ def _game_header(
             "👑" if game.tracked_mastered else "",
         ),
         _played_row(game, request, origin),
-        *_plain_release_rows(entries, presentation, game=game, origin=origin),
+        *_plain_release_rows(entries, presentation),
     ]
     return Div(id_="game-info", class_="mb-10")[
         Div(class_="flex gap-5 mb-3")[title_span],
