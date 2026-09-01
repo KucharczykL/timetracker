@@ -55,7 +55,7 @@ _PART_LABEL_CLASS = "flex flex-col gap-1 text-type-label text-heading"
 _LEGEND_CLASS = "text-type-label text-body"
 _AFFIX_CLASS = "text-body select-none"
 _DISCLOSURE_CLASS = (
-    "self-start text-type-body text-brand underline underline-offset-2 "
+    "self-start text-type-body text-fg-brand underline underline-offset-2 "
     "cursor-pointer bg-transparent border-0 p-0"
 )
 _PART_WIDTHS = {"year": 4, "month": 2, "day": 2, "decade": 4}
