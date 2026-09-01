@@ -1,9 +1,8 @@
 """One submit of the Game form.
 
-The Game's own columns, its wikidata reference, its whole catalog
-graph and the flat columns that shadow it, in one transaction. The
-PlayerGame command stays outside: `run_in_transaction` opens the
-transaction it retries and refuses to nest.
+The columns, the wikidata reference, the graph and the mirror, in
+one transaction. The PlayerGame command stays outside:
+`run_in_transaction` refuses to nest.
 """
 
 from typing import TYPE_CHECKING, Final, NamedTuple
@@ -21,18 +20,18 @@ if TYPE_CHECKING:
     from games.forms import GameForm
 
 WIKIDATA_CONFLICT_MESSAGE = "This Wikidata entity ID already belongs to another game."
-#: No pre-check wins a race. The database decided; this says so.
+#: No pre-check wins a race. The database decided.
 RACED = "Another change reached this game first. Nothing was saved; try again."
 
 
 class ConstraintAnswer(NamedTuple):
-    """What a constraint says, and where a person reads it."""
+    """What a constraint says, and where."""
 
     sentence: str
     field: str | None
 
 
-#: A refusal only the database can state, in words a person reads.
+#: A refusal only the database can state.
 CONSTRAINT_ANSWERS: Final[dict[str, ConstraintAnswer]] = {
     "unique_library_game_name_platform_year": ConstraintAnswer(
         LEGACY_IDENTITY_TAKEN, None
@@ -48,17 +47,17 @@ CONSTRAINT_ANSWERS: Final[dict[str, ConstraintAnswer]] = {
     ),
 }
 
-#: Declared on a model this form writes, and still out of its reach.
-#: A constraint named here states why, and the guard test reads it.
+#: Declared on a model this form writes, and out of reach.
+#: A constraint named here states why; the guard test reads it.
 UNREACHABLE_FROM_THE_GAME_FORM: Final[dict[str, str]] = {}
 
 
 def answered_constraint(collision: IntegrityError) -> ConstraintAnswer | None:
-    """What the database refused, if this form has words for it.
+    """What the database refused, in readable words.
 
-    An unmapped constraint gets none and rises as itself, the way
+    An unmapped constraint gets none and rises as itself, as
     `games/writes/answers.py` treats an unmapped conflict: a wrong
-    sentence is worse than no sentence.
+    sentence is worse than none.
     """
     diagnostic = getattr(collision.__cause__, "diag", None)
     name = None if diagnostic is None else diagnostic.constraint_name
@@ -67,10 +66,9 @@ def answered_constraint(collision: IntegrityError) -> ConstraintAnswer | None:
 
 @transaction.atomic
 def save_game_columns(form: GameForm) -> Game:
-    """The Game's own columns and its wikidata reference.
+    """The Game's own columns and its reference.
 
-    No graph and no mirror: the graph is stated after this, and the
-    mirror reads what the graph left.
+    No graph and no mirror: the mirror reads what the graph left.
     """
     game = form.save(commit=False)
     if not game._state.adding:
@@ -87,11 +85,10 @@ def save_game_columns(form: GameForm) -> Game:
 
 @transaction.atomic
 def save_game_and_graph(form: GameForm, graph: CatalogGraphForm) -> Game:
-    """The Game and its whole graph, or neither of them.
+    """The Game and its whole graph, or neither.
 
-    The mirror runs last, once, so a rename can no longer collide
-    with the platform and year of a Release the same submit is
-    replacing.
+    The mirror runs last, once, thus a rename cannot collide with
+    the platform and year the same submit is replacing.
     """
     game = save_game_columns(form)
     graph.bind(game)
@@ -100,13 +97,13 @@ def save_game_and_graph(form: GameForm, graph: CatalogGraphForm) -> Game:
 
 
 def _game_form_refusal(form: GameForm, error: ValidationError) -> bool:
-    """Put a refusal the Game's own fields caused back on them."""
+    """A refusal the Game's own fields caused."""
     if hasattr(error, "message_dict") and set(error.message_dict) == {"provider_key"}:
         form.add_error("wikidata", WIKIDATA_CONFLICT_MESSAGE)
         return True
     if LEGACY_IDENTITY_TAKEN in error.messages:
         #: (name, platform, year) is unique per library, and the
-        #: platform and the year come from the marked Release row.
+        #: platform and year come from the marked Release row.
         form.add_error(None, LEGACY_IDENTITY_TAKEN)
         return True
     return False
@@ -115,11 +112,10 @@ def _game_form_refusal(form: GameForm, error: ValidationError) -> bool:
 def submitted_game_or_form_error(
     form: GameForm, graph: CatalogGraphForm
 ) -> Game | None:
-    """Write one submit, or put every refusal where it is read.
+    """Write one submit, or answer every refusal.
 
     `IntegrityError` is caught out here: inside the transaction the
-    connection is unusable, thus the answer has to come after the
-    rollback.
+    connection is unusable, thus the answer follows the rollback.
     """
     try:
         return save_game_and_graph(form, graph)
@@ -134,6 +130,5 @@ def submitted_game_or_form_error(
             return None
         if graph.answer(refusal):
             return None
-        #: `save_game_columns`'s two guards are programming errors,
-        #: not things a person typed.
+        #: The two column guards are programming errors.
         raise

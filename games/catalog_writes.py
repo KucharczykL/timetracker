@@ -1,8 +1,7 @@
 """Write a private Game's Editions and Releases.
 
-One call states the whole graph of one Game, checks it against the
-desired end state, and writes it in one transaction. Nothing here
-destroys a row: a removal is a stamp.
+One call states one Game's whole graph. Nothing here destroys a
+row: a removal is a stamp.
 """
 
 from collections.abc import Sequence
@@ -36,11 +35,10 @@ type RowKey = str
 
 
 class GraphRefused(ValidationError):
-    """A refusal that names the row that caused it.
+    """A refusal that names its row.
 
     `key` is opaque here. The form passes the prefix it already
-    has, thus a sentence reaches the row a person typed into
-    without the service knowing what a form is.
+    has, thus a sentence reaches the row a person typed into.
     """
 
     def __init__(self, sentence: str, *, key: RowKey | None = None) -> None:
@@ -50,10 +48,10 @@ class GraphRefused(ValidationError):
 
 @dataclass(frozen=True, slots=True)
 class ReleaseState:
-    """One Release the caller wants under one Edition.
+    """One Release the caller wants.
 
-    `release` is identity only: the verb resolves it under the
-    Game lock. None states a row that does not exist yet.
+    `release` is identity only, resolved under the lock. None
+    states a row that does not exist yet.
     """
 
     key: RowKey
@@ -66,7 +64,7 @@ class ReleaseState:
 
 @dataclass(frozen=True, slots=True)
 class EditionState:
-    """One Edition the caller wants under one Game."""
+    """One Edition the caller wants."""
 
     key: RowKey
     edition: Edition | None = None
@@ -78,7 +76,7 @@ class EditionState:
 
 @dataclass(frozen=True, slots=True)
 class WrittenEdition:
-    """One written Edition and the Releases that survived under it."""
+    """One written Edition and its surviving Releases."""
 
     key: RowKey
     edition: Edition
@@ -87,7 +85,10 @@ class WrittenEdition:
 
 @dataclass(frozen=True, slots=True)
 class WrittenGraph:
-    """What one statement left, parallel to the surviving input."""
+    """What one statement left, row by row.
+
+    `editions` runs parallel to the surviving input.
+    """
 
     game: Game
     editions: tuple[WrittenEdition, ...]
@@ -96,13 +97,13 @@ class WrittenGraph:
 def _refuse_foreign_platform(
     library_id, platform: Platform | None, key: RowKey | None
 ) -> None:
-    """A Platform is shared, or it is this library's."""
+    """A Platform is shared or this library's."""
     if platform is not None and platform.library_id not in (None, library_id):
         raise GraphRefused(FOREIGN_PLATFORM, key=key)
 
 
 def _writable_game(game_id, library: UserLibrary) -> Game:
-    """The Game this library may write, locked for the transaction."""
+    """The Game this library may write, locked."""
     game = Game.objects.select_for_update().get(pk=game_id)
     if game.library_id is None:
         raise ValidationError(SHARED_GAME)
@@ -116,8 +117,8 @@ def _writable_game(game_id, library: UserLibrary) -> Game:
 def _live_editions(game_id) -> QuerySet[Edition]:
     """One Game's Editions, by their own mark.
 
-    The row's own mark, not `alive()`: it is what the constraints
-    here are conditional on, and the Game is already known live.
+    The row's own mark, not `alive()`: the constraints here are
+    conditional on it.
     """
     return Edition.objects.filter(game_id=game_id, removed_at__isnull=True)
 
@@ -138,7 +139,7 @@ def _clear_default_release(edition_id) -> None:
 
 
 def _resolved_edition(owner: Game, state: EditionState) -> Edition | None:
-    """The stored row a state names, read after the Game is locked."""
+    """The stored row a state names."""
     if state.edition is None:
         return None
     stored = Edition.objects.filter(pk=state.edition.pk).first()
@@ -150,7 +151,7 @@ def _resolved_edition(owner: Game, state: EditionState) -> Edition | None:
 
 
 def _resolved_release(parent: Edition | None, state: ReleaseState) -> Release | None:
-    """The stored Release a state names, under the parent it names."""
+    """The stored Release a state names."""
     if state.release is None:
         return None
     stored = Release.objects.filter(pk=state.release.pk).first()
@@ -164,7 +165,7 @@ def _resolved_release(parent: Edition | None, state: ReleaseState) -> Release | 
 def _refuse_taken_names(
     surviving: list[EditionState], untouched: list[Edition]
 ) -> None:
-    """One live name per Game, whoever holds it."""
+    """One live name per Game."""
     taken = {edition.name.strip().casefold() for edition in untouched} - {""}
     for state in surviving:
         wanted = state.name.strip().casefold()
@@ -181,7 +182,7 @@ def _refuse_the_set(
     editions: Sequence[EditionState],
     stored_editions: dict[RowKey, Edition | None],
 ) -> None:
-    """Everything the statement itself can be wrong about."""
+    """Everything the statement can be wrong about."""
     surviving = [state for state in editions if not state.removed]
     named = [stored.pk for stored in stored_editions.values() if stored is not None]
     untouched = list(_live_editions(owner.pk).exclude(pk__in=named))
@@ -203,7 +204,7 @@ def _refuse_the_set(
 def _written_release(
     edition: Edition, state: ReleaseState, stored: Release | None
 ) -> Release:
-    """One Release's whole Platform and date. The mark comes last."""
+    """One Release's whole Platform and date."""
     if stored is None:
         return Release.objects.create(
             edition=edition,
@@ -224,7 +225,7 @@ def _written_edition(
     stored: Edition | None,
     stored_releases: dict[RowKey, Release | None],
 ) -> WrittenEdition:
-    """One Edition's whole name, and every Release that survives it."""
+    """One Edition's name and its surviving Releases."""
     name = state.name.strip()
     if stored is None:
         edition = Edition.objects.create(game=owner, name=name, is_default=False)
@@ -247,7 +248,7 @@ def _default_edition(
     written: Sequence[WrittenEdition],
     standing: Edition | None,
 ) -> Edition | None:
-    """The stated mark, else the one standing, else the first row."""
+    """The stated mark, else standing, else first."""
     for state, entry in zip(surviving, written, strict=True):
         if state.is_default:
             return entry.edition
@@ -263,7 +264,7 @@ def _default_edition(
 def _default_release(
     state: EditionState, entry: WrittenEdition, standing: Release | None
 ) -> Release | None:
-    """The same rule, one level down. An Edition may hold no Release."""
+    """The same rule, one level down."""
     stated = [row for row in state.releases if not row.removed]
     for row, (_, release) in zip(stated, entry.releases, strict=True):
         if row.is_default:
@@ -284,10 +285,10 @@ def state_catalog_graph(
     library: UserLibrary,
     editions: Sequence[EditionState],
 ) -> WrittenGraph:
-    """State one Game's whole graph, in one transaction.
+    """State one Game's whole graph.
 
     A row the caller does not mention is left alone: removal is
-    stated by `removed`, so one partial writer cannot take a
+    stated by `removed`, thus one partial writer cannot take a
     catalog somebody built by hand.
     """
     owner = _writable_game(game.pk, library)
@@ -310,8 +311,7 @@ def state_catalog_graph(
             )
 
     #: 1. Every live default steps down first. Both constraints
-    #: permit at most one, thus none is a legal intermediate state
-    #: and every order below is free.
+    #: permit at most one, thus zero is legal and the rest is free.
     _clear_default_edition(owner.pk)
     for state in surviving:
         stored = stored_editions[state.key]
@@ -319,9 +319,8 @@ def state_catalog_graph(
             _clear_default_release(stored.pk)
 
     #: 2. A removal is a stamp. A removed Edition keeps its
-    #: Releases: each read tests its ancestors' marks as well as
-    #: its own, thus putting the Edition back brings back exactly
-    #: the rows nobody removed.
+    #: Releases, thus putting it back brings back exactly the
+    #: rows nobody removed.
     for state in surviving:
         for row in state.releases:
             stored_release = stored_releases[row.key]

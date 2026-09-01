@@ -60,9 +60,8 @@ LAST_EDITION_IN_FORM = (
     "A game keeps one edition. Add another one before you remove this."
 )
 DUPLICATE_NAME_IN_FORM = "Another edition of this game already has that name."
-#: The service allows two: #782 needs two regions on one date to be
-#: two rows. A person typing does not, because the page would show
-#: two rows nothing tells apart.
+#: The service allows two: #782 needs two regions on one date to
+#: be two rows. The page would show two rows nothing tells apart.
 DUPLICATE_RELEASE_IN_FORM = (
     "Another release of this edition already states this platform and date."
 )
@@ -150,7 +149,7 @@ def _removed(form: forms.Form) -> bool:
 
 
 def _key(form: forms.Form) -> RowKey:
-    """A row is named by the prefix Django already gave it."""
+    """A row is named by its own prefix."""
     return cast(RowKey, form.prefix)
 
 
@@ -289,8 +288,8 @@ class CatalogGraphForm:
             )
         if blocks:
             return blocks
-        #: See the module docstring of `games/catalog_compat.py`: no app
-        #: path leaves a Game without a graph, and a stale fixture does.
+        #: No app path leaves a Game without a graph. A stale
+        #: fixture does, and the form still has to draw it.
         return [
             EditionBlock(
                 form=EditionRowForm(prefix=edition_prefix(0)),
@@ -396,7 +395,7 @@ class CatalogGraphForm:
         return valid
 
     def _validate_releases(self, surviving: list[EditionBlock]) -> bool:
-        """Two surviving rows of one Edition that read the same."""
+        """Two surviving rows that read the same."""
         valid = True
         for block in surviving:
             seen: set[tuple[object, object]] = set()
@@ -436,7 +435,7 @@ class CatalogGraphForm:
         return valid
 
     def _states(self) -> list[EditionState]:
-        """Every posted row, as the graph the service is to write."""
+        """Every posted row, as one stated graph."""
         marked = self.marked()
         assert marked is not None, "is_valid() states the mark names a surviving row."
         marked_block, marked_row = marked
@@ -467,7 +466,7 @@ class CatalogGraphForm:
         ]
 
     def _rows_by_key(self) -> dict[RowKey, forms.Form]:
-        """Every row of this form, under the key the service was given."""
+        """Every row, under the key the service got."""
         rows: dict[RowKey, forms.Form] = {}
         for block in self.blocks:
             rows[_key(block.form)] = block.form
@@ -476,10 +475,10 @@ class CatalogGraphForm:
         return rows
 
     def _adopt(self, written: WrittenGraph) -> None:
-        """Each row now names the stored row it wrote.
+        """Each row now names the row it wrote.
 
         A re-render after a refused command shows what storage
-        holds, rather than posting the same rows back as new ones.
+        holds, rather than posting the rows back as new ones.
         """
         blocks = {_key(block.form): block for block in self.blocks}
         for entry in written.editions:
@@ -500,7 +499,7 @@ class CatalogGraphForm:
         )
 
     def answer(self, refusal: ValidationError) -> bool:
-        """Put the sentence on the row that stated it, if it names one."""
+        """Put the sentence on the row that stated it."""
         key = refusal.key if isinstance(refusal, GraphRefused) else None
         form = None if key is None else self._rows_by_key().get(key)
         if form is None:
@@ -509,9 +508,9 @@ class CatalogGraphForm:
         return True
 
     def bind(self, game: Game) -> None:
-        """Name the Game a submit just made, so the graph has a parent."""
+        """Name the Game a submit just made."""
         self.game = game
 
     def write(self) -> None:
-        """One transaction over the graph and the columns that shadow it."""
+        """One transaction over the graph and the mirror."""
         write_and_mirror(self.written_game, self.write_rows)

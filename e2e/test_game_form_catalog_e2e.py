@@ -44,10 +44,10 @@ def dos(e2e_library) -> Platform:
 
 
 def state_default_graph(game: Game, library, *, platform=None, release_date=None):
-    """One Game as the app leaves it: one default Edition and Release.
+    """One default Edition holding one default Release.
 
-    Stated here rather than pulled from `tests/conftest.py`, which is
-    not on this package's path.
+    Stated here rather than pulled from `tests/conftest.py`, which
+    is not on this package's path.
     """
     game.save()
     return state_catalog_graph(
@@ -72,7 +72,7 @@ def state_default_graph(game: Game, library, *, platform=None, release_date=None
 
 @pytest.fixture
 def game(e2e_library, amiga) -> Game:
-    """One Game as the app leaves it: a default graph, columns mirrored."""
+    """One Game as the app leaves it."""
     written = state_default_graph(
         Game(library=e2e_library, name="Elite"),
         e2e_library,
