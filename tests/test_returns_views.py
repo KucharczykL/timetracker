@@ -6,7 +6,16 @@ from django.urls import reverse
 from common.returns import action_url
 from games.models import Game
 
-GAME_FORM = {"name": "Renamed", "status": "unplayed"}
+#: Edit Game owns the whole catalog graph, so its form posts one
+#: blank Edition block back. A Game whose default Release states no
+#: Platform and no date round-trips through it untouched.
+BLANK_CATALOG = {
+    "editions-count": "1",
+    "edition-0-releases-count": "1",
+    "in_library": "edition-0-release-0",
+}
+
+GAME_FORM = {"name": "Renamed", "status": "unplayed"} | BLANK_CATALOG
 
 #: Transactional: these views dispatch, and a dispatch cannot
 #: nest in the transaction pytest-django rolls back. The db

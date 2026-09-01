@@ -15,7 +15,7 @@ from games.models import (
     Release,
 )
 from games.removal import remove
-from timetracker.temporal import TemporalValue, temporal_input_name
+from timetracker.temporal import TemporalDraft, TemporalValue, temporal_input_name
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -46,6 +46,41 @@ class AnchorCollector(HTMLParser):
             self.anchors.append((self._href, "".join(self._text)))
             self._href = None
             self._text = []
+
+
+#: Edit Game owns the whole catalog graph, so its form posts one
+#: Edition block back. A Game with no graph yet states a blank one.
+BLANK_CATALOG = {
+    "editions-count": "1",
+    "edition-0-releases-count": "1",
+    "in_library": "edition-0-release-0",
+}
+
+
+def catalog_payload(game):
+    """The Editions area, echoing the stored graph unchanged."""
+    edition = game.editions.get(is_default=True)
+    release = edition.releases.get(is_default=True)
+    draft = TemporalDraft.from_value(release.release_date)
+    parts = {"kind": draft.kind.value}
+    for key, part in (
+        ("start_year", draft.start.year),
+        ("start_month", draft.start.month),
+        ("start_day", draft.start.day),
+    ):
+        if part is not None:
+            parts[key] = str(part)
+    return {
+        "editions-count": "1",
+        "edition-0-edition_id": str(edition.pk),
+        "edition-0-name": edition.name,
+        "edition-0-releases-count": "1",
+        "edition-0-release-0-release_id": str(release.pk),
+        "edition-0-release-0-platform": (
+            "" if release.platform_id is None else str(release.platform_id)
+        ),
+        "in_library": "edition-0-release-0",
+    } | temporal_payload("edition-0-release-0-release_date", **parts)
 
 
 def game_payload(**overrides):
@@ -130,6 +165,7 @@ def test_edit_game_states_then_clears_the_original_release(
     response = client.post(
         reverse("games:edit_game", args=[game.pk]),
         game_payload(name="Edited")
+        | catalog_payload(game)
         | temporal_payload("original_release_date", kind="date", start_year="2010"),
     )
     assert response.status_code == 302
@@ -145,6 +181,7 @@ def test_edit_game_states_then_clears_the_original_release(
     response = client.post(
         reverse("games:edit_game", args=[game.pk]),
         game_payload(name="Edited")
+        | catalog_payload(game)
         | temporal_payload("original_release_date", kind="", start_year=""),
     )
     assert response.status_code == 302
@@ -416,7 +453,7 @@ def test_game_views_canonicalize_wikidata_on_add_and_edit(
 
     edit_response = client.post(
         reverse("games:edit_game", args=[game.pk]),
-        game_payload(wikidata=" q456 "),
+        game_payload(wikidata=" q456 ") | catalog_payload(game),
     )
 
     assert edit_response.status_code == 302
@@ -524,7 +561,7 @@ def test_game_edit_renders_a_write_time_wikidata_conflict_and_rolls_back(
 
     response = client.post(
         reverse("games:edit_game", args=[game.pk]),
-        game_payload(name="Changed name", wikidata="Q456"),
+        game_payload(name="Changed name", wikidata="Q456") | BLANK_CATALOG,
     )
 
     assert response.status_code == 200

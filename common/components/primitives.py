@@ -1514,7 +1514,7 @@ def YearPicker(
 # Form-field rendering. The element classes (label/error/checkbox-row + the
 # controls, which carry their own classes via PrimitiveWidgetsMixin) live here,
 # not in input.css — no selector reaches across the DOM to style a form.
-_LABEL_CLASS = "mb-2.5 text-type-label text-heading"
+FORM_LABEL_CLASS = "mb-2.5 text-type-label text-heading"
 _FIELD_ERROR_CLASS = (
     "mt-4 mb-1 pl-3 py-2 solid-danger w-full text-type-body rounded-base"
 )
@@ -1524,7 +1524,7 @@ _FIELD_ERROR_CLASS = (
 _CHECKBOX_ROW_CLASS = "flex flex-row items-center justify-between gap-6 mt-3"
 
 
-def _field_errors(errors) -> Node | None:
+def FieldErrors(errors) -> Node | None:
     """Render a form/field ErrorList as a styled <ul>, or None if empty."""
     items = [Li()[str(error)] for error in errors]
     if not items:
@@ -1576,7 +1576,7 @@ def field_label_id(input_id: str) -> str:
 def _form_field_label(field, label_extra: Node | None = None) -> Node:
     """Render a label, optionally with adjacent label-line metadata."""
     label_class = (
-        "text-type-label text-heading" if label_extra is not None else _LABEL_CLASS
+        "text-type-label text-heading" if label_extra is not None else FORM_LABEL_CLASS
     )
     label = Label(
         for_=field.id_for_label,
@@ -1602,7 +1602,7 @@ def _form_field_row(
     control: Node = Safe(str(field))
     if presentation.decorate_control is not None:
         control = presentation.decorate_control(control)
-    errors = _field_errors(field.errors)
+    errors = FieldErrors(field.errors)
 
     if is_checkbox:
         if presentation.label_extra is None:
@@ -1756,7 +1756,7 @@ def FormFields(
     for embedded_name, host_name in embedded.items():
         embedded_field = form[embedded_name]
         embed_parts: list[Node] = [Safe(str(embedded_field))]
-        embed_errors = _field_errors(embedded_field.errors)
+        embed_errors = FieldErrors(embedded_field.errors)
         if embed_errors:
             embed_parts.append(embed_errors)
         embedded_by_host.setdefault(host_name, []).extend(embed_parts)
@@ -1780,7 +1780,7 @@ def FormFields(
 
     rows: list[Node] = []
 
-    non_field = _field_errors(form.non_field_errors())
+    non_field = FieldErrors(form.non_field_errors())
     if non_field:
         rows.append(non_field)
 
@@ -1811,6 +1811,7 @@ def AddForm(
     fields: Node | SafeText | str | None = None,
     additional_row: Node | SafeText | str = "",
     submit_class: str = "mt-3",
+    width_class: str = FORM_MAX_WIDTH_CLASS,
 ) -> Node:
     """Page body for the generic add/edit form (Python equivalent of add.html).
 
@@ -1818,7 +1819,8 @@ def AddForm(
     session form, which lays out its fields manually). `additional_row` holds
     extra submit buttons rendered below the main Submit button. `submit_class`
     is applied to the main Submit button (the session form passes "" to match
-    its original markup).
+    its original markup). `width_class` widens the column for a form that holds
+    a grid of its own; every other page keeps the one-column default.
     """
     field_markup = fields if fields is not None else FormFields(form)
     submit_attrs = [("class", submit_class)] if submit_class else []
@@ -1839,7 +1841,7 @@ def AddForm(
 
     return Div(id_="add-form", class_="max-width-container")[
         Div(
-            class_=f"form-container w-full {FORM_MAX_WIDTH_CLASS} mx-auto @container",
+            class_=f"form-container w-full {width_class} mx-auto @container",
         )[inner_form]
     ]
 

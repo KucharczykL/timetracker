@@ -66,6 +66,7 @@ from games.catalog_compat import (
     InitialRelease,
     save_legacy_game_form,
 )
+from games.catalog_form import CatalogGraphForm
 from games.external_references import external_reference_url
 from games.filters import (
     PlayEventFilter,
@@ -91,6 +92,7 @@ from games.ownership import owned_or_404
 from games.reads.catalog_hierarchy import EditionEntry, game_hierarchy
 from games.reads.playergame_history import StatusEntry, status_history
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
+from games.views.catalog_section import editions_area
 from games.views.filtering import (
     apply_structured_filter,
     builder_url_for,
@@ -377,15 +379,23 @@ def _removed_with_game(game: Game) -> Node:
 def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
+    presentation = date_time_presentation_for_request(request)
     form = GameForm(
         request.POST or None,
         instance=game,
         library=library,
-        presentation=date_time_presentation_for_request(request),
+        presentation=presentation,
+    )
+    graph = CatalogGraphForm(
+        request.POST or None, game=game, library=library, presentation=presentation
     )
     if (
         form.is_valid()
+        and graph.is_valid()
+        #: The Game saves first: `save_legacy_game_form` guarantees the
+        #: default graph the coordinator then diffs against.
         and _saved_game_or_form_error(form) is not None
+        and graph.save()
         and record_facts_for_request(
             request,
             game,
@@ -400,12 +410,18 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
     #: invites no duplicate.
     return render_page(
         request,
-        AddForm(form, request=request),
+        AddForm(
+            form,
+            request=request,
+            fields=Fragment(FormFields(form), editions_area(graph)),
+            width_class="max-w-xl md:max-w-4xl",
+        ),
         title="Edit Game",
         #: A widget renders to text, thus its Media never bubbles.
         scripts=Fragment(
             ModuleScript("dist/elements/search-select.js"),
             ModuleScript("dist/elements/temporal-field.js"),
+            ModuleScript("dist/elements/catalog-editor.js"),
         ),
     )
 
