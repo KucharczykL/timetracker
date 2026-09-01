@@ -4,6 +4,7 @@ from datetime import date
 from zoneinfo import ZoneInfo
 
 import pytest
+from django.core.exceptions import ValidationError
 
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
@@ -25,9 +26,15 @@ from games.catalog_form import (
     release_count_field,
     release_prefix,
 )
-from games.catalog_writes import add_edition, add_release, save_private_game
-from games.models import Game, Platform
-from timetracker.temporal import TemporalValue, temporal_input_name
+from games.catalog_writes import (
+    DUPLICATE_EDITION_NAME,
+    DUPLICATE_RELEASE,
+    add_edition,
+    add_release,
+    save_private_game,
+)
+from games.models import Game, Platform, Release
+from timetracker.temporal import TemporalDraft, TemporalValue, temporal_input_name
 
 pytestmark = pytest.mark.django_db
 
@@ -155,22 +162,26 @@ def test_a_release_row_renders_a_plain_select_not_a_combobox(owned_library):
     assert "search-select" not in rendered
 
 
-def temporal_payload(prefix, year=None):
-    """The inputs one temporal control posts for a whole year."""
-    if year is None:
-        return {temporal_input_name(prefix, "kind"): "date"}
-    return {
-        temporal_input_name(prefix, "kind"): "date",
-        temporal_input_name(prefix, "start_year"): str(year),
-    }
+def temporal_payload(prefix, value=None):
+    """The inputs one temporal control posts for an atomic date."""
+    draft = TemporalDraft.from_value(value)
+    parts = {"kind": draft.kind.value}
+    for key, part in (
+        ("start_year", draft.start.year),
+        ("start_month", draft.start.month),
+        ("start_day", draft.start.day),
+    ):
+        if part is not None:
+            parts[key] = str(part)
+    return {temporal_input_name(prefix, key): part for key, part in parts.items()}
 
 
-def release(release_id="", platform=None, year=None, removed=False):
+def release(release_id="", platform=None, date=None, removed=False):
     """One release row, the way `posted` wants it."""
     return {
         "release_id": release_id,
         "platform": platform,
-        "year": year,
+        "date": date,
         "removed": removed,
     }
 
@@ -204,7 +215,7 @@ def posted(*blocks, mark="edition-0-release-0"):
                 data[f"{row_prefix}-platform"] = str(row["platform"].pk)
             if row["removed"]:
                 data[f"{row_prefix}-removed"] = "on"
-            data |= temporal_payload(f"{row_prefix}-release_date", row["year"])
+            data |= temporal_payload(f"{row_prefix}-release_date", row["date"])
     return data
 
 
@@ -273,7 +284,14 @@ def test_the_graph_refuses_a_submit_naming_no_release(owned_library, plain_game)
 
 def test_the_graph_refuses_a_mark_on_a_row_being_removed(owned_library, plain_game):
     form = graph_form(
-        posted(block(releases=[release(removed=True), release(year=2011)])),
+        posted(
+            block(
+                releases=[
+                    release(removed=True),
+                    release(date=TemporalValue.from_year(2011)),
+                ]
+            )
+        ),
         game=plain_game.game,
         library=owned_library,
     )
@@ -349,3 +367,212 @@ def test_the_graph_treats_another_library_s_release_id_as_a_new_row(
 
     assert form.is_valid(), form.form_errors
     assert form.blocks[0].rows[0].instance is None
+
+
+def stored_blocks(game, library):
+    """The blocks the unbound form would submit back unchanged."""
+    form = graph_form(game=game, library=library)
+    return [
+        block(
+            edition_id="" if one.edition is None else one.edition.pk,
+            name="" if one.edition is None else one.edition.name,
+            releases=[
+                release(
+                    release_id="" if row.instance is None else row.instance.pk,
+                    platform=None if row.instance is None else row.instance.platform,
+                    date=None if row.instance is None else row.instance.release_date,
+                )
+                for row in one.rows
+            ],
+        )
+        for one in form.blocks
+    ]
+
+
+def saved(game, library, *blocks, mark="edition-0-release-0"):
+    """Bind the posted graph, check it, write it."""
+    form = graph_form(posted(*blocks, mark=mark), game=game, library=library)
+    assert form.is_valid(), (form.form_errors, [one.form.errors for one in form.blocks])
+    form.save()
+    game.refresh_from_db()
+    return form
+
+
+@pytest.fixture
+def two_release_game(owned_library, plain_game, owned_platform):
+    """One Edition holding the default 2007 release and a 2011 one."""
+    add_release(
+        edition=plain_game.edition,
+        library=owned_library,
+        platform=owned_platform,
+        release_date=TemporalValue.from_year(2011),
+    )
+    return plain_game
+
+
+def test_save_moves_the_mark_to_a_sibling_release(
+    owned_library, two_release_game, owned_platform
+):
+    blocks = stored_blocks(two_release_game.game, owned_library)
+
+    saved(two_release_game.game, owned_library, *blocks, mark="edition-0-release-1")
+
+    game = two_release_game.game
+    assert game.platform == owned_platform
+    assert game.year_released == 2011
+    was_default = Release.objects.get(pk=two_release_game.release.pk)
+    assert was_default.removed_at is None
+    assert was_default.is_default is False
+
+
+def test_save_moves_the_mark_to_a_release_under_another_edition(
+    owned_library, plain_game, owned_platform
+):
+    second = add_edition(game=plain_game.game, library=owned_library, name="Anthology")
+    add_release(
+        edition=second,
+        library=owned_library,
+        platform=owned_platform,
+        release_date=TemporalValue.from_year(2011),
+    )
+    blocks = stored_blocks(plain_game.game, owned_library)
+
+    saved(plain_game.game, owned_library, *blocks, mark="edition-1-release-0")
+
+    second.refresh_from_db()
+    plain_game.edition.refresh_from_db()
+    assert second.is_default is True
+    assert plain_game.edition.is_default is False
+    assert second.releases.get(is_default=True).platform == owned_platform
+    assert plain_game.edition.releases.filter(is_default=True).count() == 1
+    assert plain_game.game.platform == owned_platform
+
+
+def test_save_adding_a_release_leaves_the_mark_where_it_was(
+    owned_library, plain_game, owned_platform
+):
+    blocks = stored_blocks(plain_game.game, owned_library)
+    blocks[0]["releases"].append(
+        release(platform=owned_platform, date=TemporalValue.from_year(2011))
+    )
+
+    saved(plain_game.game, owned_library, *blocks)
+
+    assert plain_game.game.platform is None
+    assert plain_game.game.year_released == 2007
+    assert plain_game.edition.releases.count() == 2
+
+
+def test_save_removes_the_edition_that_held_the_default(
+    owned_library, plain_game, owned_platform
+):
+    second = add_edition(game=plain_game.game, library=owned_library, name="Anthology")
+    add_release(
+        edition=second,
+        library=owned_library,
+        platform=owned_platform,
+        release_date=TemporalValue.from_year(2011),
+    )
+    blocks = stored_blocks(plain_game.game, owned_library)
+    blocks[0]["removed"] = True
+
+    saved(plain_game.game, owned_library, *blocks, mark="edition-1-release-0")
+
+    plain_game.edition.refresh_from_db()
+    second.refresh_from_db()
+    assert plain_game.edition.removed_at is not None
+    assert second.is_default is True
+    assert plain_game.game.platform == owned_platform
+
+
+def test_save_leaves_a_stored_day_alone_when_only_the_name_changes(
+    owned_library, plain_game
+):
+    day = TemporalValue.from_day(date(2024, 6, 14))
+    plain_game.release.release_date = day
+    plain_game.release.save(update_fields=("release_date",))
+    blocks = stored_blocks(plain_game.game, owned_library)
+    blocks[0]["name"] = "Director's Cut"
+
+    saved(plain_game.game, owned_library, *blocks)
+
+    plain_game.release.refresh_from_db()
+    plain_game.edition.refresh_from_db()
+    assert plain_game.release.release_date == day
+    assert plain_game.edition.name == "Director's Cut"
+
+
+def test_save_refuses_renaming_two_editions_past_each_other(owned_library, plain_game):
+    """The intermediate state is a name two editions hold."""
+    add_edition(game=plain_game.game, library=owned_library, name="Beta")
+    add_release(
+        edition=plain_game.game.editions.get(name="Beta"), library=owned_library
+    )
+    blocks = stored_blocks(plain_game.game, owned_library)
+    blocks[0]["name"] = "Beta"
+    blocks[1]["name"] = ""
+
+    form = graph_form(posted(*blocks), game=plain_game.game, library=owned_library)
+
+    assert form.is_valid(), form.form_errors
+    with pytest.raises(ValidationError) as refusal:
+        form.save()
+    assert DUPLICATE_EDITION_NAME in refusal.value.messages
+
+
+def test_save_writes_an_unchanged_graph_without_moving_anything(
+    owned_library, two_release_game
+):
+    before = {
+        row.pk: (row.is_default, row.platform_id, row.release_date)
+        for row in Release.objects.filter(edition__game=two_release_game.game)
+    }
+    blocks = stored_blocks(two_release_game.game, owned_library)
+
+    saved(two_release_game.game, owned_library, *blocks)
+
+    after = {
+        row.pk: (row.is_default, row.platform_id, row.release_date)
+        for row in Release.objects.filter(edition__game=two_release_game.game)
+    }
+    assert after == before
+    assert two_release_game.game.editions.count() == 1
+
+
+def test_save_rollback_leaves_the_whole_graph_as_it_was(
+    owned_library, two_release_game, owned_platform
+):
+    """The second row is edited onto the pair the first one holds.
+
+    An added duplicate gives the standing row back rather than
+    refusing, so a refusal has to come from an edit. The name is
+    written before it, thus the rollback has something to undo.
+    """
+    game = two_release_game.game
+    blocks = stored_blocks(game, owned_library)
+    blocks[0]["name"] = "Director's Cut"
+    blocks[0]["releases"][1] = release(
+        release_id=blocks[0]["releases"][1]["release_id"],
+        platform=None,
+        date=TemporalValue.from_year(2007),
+    )
+    before = {
+        row.pk: (row.is_default, row.platform_id, row.release_date)
+        for row in Release.objects.filter(edition__game=game)
+    }
+
+    form = graph_form(posted(*blocks), game=game, library=owned_library)
+    assert form.is_valid(), form.form_errors
+    with pytest.raises(ValidationError) as refusal:
+        form.save()
+    assert DUPLICATE_RELEASE in refusal.value.messages
+
+    game.refresh_from_db()
+    two_release_game.edition.refresh_from_db()
+    after = {
+        row.pk: (row.is_default, row.platform_id, row.release_date)
+        for row in Release.objects.filter(edition__game=game)
+    }
+    assert after == before
+    assert two_release_game.edition.name == ""
+    assert game.platform is None

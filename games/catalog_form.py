@@ -14,9 +14,19 @@ from uuid import UUID
 from django import forms
 
 from common.date_time_presentation import DateTimePresentation
+from games.catalog_compat import write_and_mirror
+from games.catalog_writes import (
+    add_edition,
+    add_release,
+    remove_edition,
+    remove_release,
+    update_edition,
+    update_release,
+)
 from games.forms import PrimitiveWidgetsMixin, TemporalFormField
 from games.models import Edition, Game, Platform, Release, UserLibrary
 from games.reads.catalog_hierarchy import game_hierarchy
+from timetracker.temporal import TemporalValue
 
 #: A flat POST body, the one shape every row reads its own keys from.
 type PostedData = Mapping[str, str]
@@ -349,3 +359,116 @@ class CatalogGraphForm:
             self.form_errors.append(MARK_ON_A_REMOVED_ROW)
             valid = False
         return valid
+
+    def _write_edition(self, block: EditionBlock, *, is_default: bool) -> Edition:
+        """State one Edition's whole name and mark."""
+        name = cast(str, block.form.cleaned_data.get("name", ""))
+        stored = block.edition
+        written = (
+            add_edition(
+                game=self.game, library=self.library, name=name, is_default=is_default
+            )
+            if stored is None
+            else update_edition(
+                edition=stored, library=self.library, name=name, is_default=is_default
+            )
+        )
+        block.form.instance = written
+        return written
+
+    def _write_release(
+        self, edition: Edition, row: ReleaseRowForm, *, is_default: bool
+    ) -> None:
+        """State one Release's whole Platform, date and mark."""
+        platform = cast(Platform | None, row.cleaned_data.get("platform"))
+        release_date = cast(TemporalValue | None, row.cleaned_data.get("release_date"))
+        stored = row.instance
+        row.instance = (
+            add_release(
+                edition=edition,
+                library=self.library,
+                platform=platform,
+                release_date=release_date,
+                is_default=is_default,
+            )
+            if stored is None
+            else update_release(
+                release=stored,
+                library=self.library,
+                platform=platform,
+                release_date=release_date,
+                is_default=is_default,
+            )
+        )
+
+    def _promote_marked_edition(self, marked: EditionBlock) -> None:
+        """Step 1. The promotion is what stands the old default down.
+
+        `update_edition` refuses an explicit demotion, so nothing is
+        ever demoted here. `_clear_default_edition` inside the verb
+        does it, and every later write reads the row back already
+        standing down.
+        """
+        self._write_edition(marked, is_default=True)
+
+    def _write_other_editions(self, marked: EditionBlock) -> None:
+        """Step 2. Each one reads back false, thus none is demoted."""
+        for block in self.blocks:
+            if block is not marked and not block.removed:
+                self._write_edition(block, is_default=False)
+
+    def _winner(
+        self, block: EditionBlock, marked_row: ReleaseRowForm | None
+    ) -> ReleaseRowForm:
+        """The row that takes this Edition's default mark."""
+        if marked_row is not None:
+            return marked_row
+        standing = [
+            row
+            for row in block.surviving
+            if row.instance is not None and row.instance.is_default
+        ]
+        return standing[0] if standing else block.surviving[0]
+
+    def _write_releases(self, block: EditionBlock, marked_row: ReleaseRowForm | None):
+        """Step 3. The winner first, so no later add takes the mark."""
+        edition = block.edition
+        assert edition is not None
+        winner = self._winner(block, marked_row)
+        self._write_release(edition, winner, is_default=True)
+        for row in block.surviving:
+            if row is not winner:
+                self._write_release(edition, row, is_default=False)
+
+    def _remove_releases(self) -> None:
+        """Step 4. Only the winner is default, and it is not here."""
+        for block in self.blocks:
+            if block.removed:
+                continue
+            for row in block.rows:
+                if _removed(row) and row.instance is not None:
+                    remove_release(release=row.instance, library=self.library)
+
+    def _remove_editions(self) -> None:
+        """Step 5. Step 1 already moved the mark off any of these."""
+        for block in self.blocks:
+            if block.removed and block.edition is not None:
+                remove_edition(edition=block.edition, library=self.library)
+
+    def _write(self) -> None:
+        marked = self.marked()
+        assert marked is not None, "is_valid() states the mark names a surviving row."
+        marked_block, marked_row = marked
+        self._promote_marked_edition(marked_block)
+        self._write_other_editions(marked_block)
+        for block in self.blocks:
+            if not block.removed:
+                self._write_releases(
+                    block, marked_row if block is marked_block else None
+                )
+        self._remove_releases()
+        self._remove_editions()
+
+    def save(self) -> None:
+        """One transaction over the whole finished graph."""
+        write_and_mirror(self.game, self._write)
