@@ -36,6 +36,54 @@ DEFAULT_SCRATCH_DATABASE = "timetracker_restore_verify"
 #: Dropping any of these breaks the cluster rather than a copy of a dump.
 PROTECTED_DATABASES = frozenset({"postgres", "template0", "template1"})
 
+#: `pg_dump` opens every session with an empty `search_path`, thus a function
+#: that calls its helpers by bare name reaches nothing while the data loads:
+#: `timetracker_temporal_is_valid` catches the lookup failure and the domain
+#: answers that the value itself is invalid. `0017_temporal_value_domain` wrote
+#: twelve such functions, and a dump carries the bodies as they were, thus
+#: `0034` could not correct one.
+#:
+#: `ALTER FUNCTION` states reach and no body, so this loads a dump of any age
+#: without choosing which generation of a body to write. It names no function
+#: on purpose: the hazard belongs to whatever a domain CHECK or a generated
+#: column reaches, which a name does not predict. An extension's functions are
+#: its own business.
+REACH_THE_HELPERS = r"""
+DO $$
+DECLARE
+    function_row record;
+    functions_reached integer := 0;
+BEGIN
+    FOR function_row IN
+        SELECT candidate.oid::regprocedure AS signature
+        FROM pg_proc AS candidate
+        JOIN pg_namespace AS schema_entry ON schema_entry.oid = candidate.pronamespace
+        WHERE schema_entry.nspname = 'public'
+          AND candidate.prokind = 'f'
+          AND NOT EXISTS (
+              SELECT 1
+              FROM unnest(coalesce(candidate.proconfig, '{}'::text[])) AS setting
+              WHERE setting LIKE 'search\_path=%')
+          AND NOT EXISTS (
+              SELECT 1 FROM pg_depend
+              WHERE objid = candidate.oid
+                AND classid = 'pg_proc'::regclass
+                AND deptype = 'e')
+    LOOP
+        EXECUTE format(
+            'ALTER FUNCTION %s SET search_path = pg_catalog, public',
+            function_row.signature);
+        functions_reached := functions_reached + 1;
+    END LOOP;
+    RAISE NOTICE 'Gave % function(s) their own search_path.', functions_reached;
+END
+$$;
+""".strip()
+
+#: An exact partition of the dump: verified on the local database at 0040,
+#: 68 + 49 + 157 = 274 entries, none in two sections and none in neither.
+DUMP_SECTIONS = ("pre-data", "data", "post-data")
+
 
 class DumpError(RuntimeError):
     pass
@@ -196,6 +244,41 @@ def _guard_scratch_database(database: str, database_url: str) -> None:
         )
 
 
+def _load_section(dump: Path, *, scratch_url: str, section: str) -> None:
+    """Load one section of the dump into the scratch database."""
+    run(
+        [
+            str(client_tool("pg_restore")),
+            "--exit-on-error",
+            "--no-owner",
+            "--no-privileges",
+            f"--section={section}",
+            f"--dbname={scratch_url}",
+            str(dump),
+        ]
+    )
+
+
+def _reach_the_helpers(scratch_url: str) -> None:
+    """Give every function the dump created a `search_path` of its own.
+
+    `psql` answers a failed script with 0 unless `ON_ERROR_STOP` says
+    otherwise, and `run` reads that as success, thus without the flag a refused
+    repair would surface as the original domain error one section later.
+    `--no-owner` means the restoring role owns every function the load created,
+    which is what `ALTER FUNCTION` asks for.
+    """
+    run(
+        [
+            str(client_tool("psql")),
+            "-X",
+            "--set=ON_ERROR_STOP=1",
+            f"--dbname={scratch_url}",
+            f"--command={REACH_THE_HELPERS}",
+        ]
+    )
+
+
 def restore(dump: Path, *, database: str, database_url: str) -> str:
     """Load `dump` into a freshly created scratch database, and return its URL."""
     if not dump.is_file():
@@ -219,16 +302,15 @@ def restore(dump: Path, *, database: str, database_url: str) -> str:
             database,
         ]
     )
-    run(
-        [
-            str(client_tool("pg_restore")),
-            "--exit-on-error",
-            "--no-owner",
-            "--no-privileges",
-            f"--dbname={scratch_url}",
-            str(dump),
-        ]
-    )
+    #: The functions get their reach between the schema and the data: the
+    #: domain check and the generated columns first run during the COPY, and
+    #: each pg_restore opens its own session under the empty search_path the
+    #: dump sets. ALTER FUNCTION is what carries the setting across that
+    #: boundary.
+    _load_section(dump, scratch_url=scratch_url, section=DUMP_SECTIONS[0])
+    _reach_the_helpers(scratch_url)
+    for section in DUMP_SECTIONS[1:]:
+        _load_section(dump, scratch_url=scratch_url, section=section)
     return scratch_url
 
 
