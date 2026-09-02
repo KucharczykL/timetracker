@@ -12,6 +12,7 @@ unseen.
 
 import importlib.util
 import os
+import re
 import subprocess
 import sys
 from importlib import import_module
@@ -105,6 +106,27 @@ def _rows(tooling, database_url: str, query: str) -> list[str]:
     return finished.stdout.split()
 
 
+def _client_major(tooling, name: str) -> int:
+    """The major version a client program reports."""
+    finished = subprocess.run(
+        [str(tooling.client_tool(name)), "--version"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    found = re.search(r"(\d+)", finished.stdout)
+    assert found, finished.stdout
+    return int(found.group(1))
+
+
+def _server_major(tooling) -> int:
+    """The major version the server reports."""
+    return (
+        int(_rows(tooling, tooling.local_database_url(), "SHOW server_version_num")[0])
+        // 10000
+    )
+
+
 @pytest.fixture(scope="module")
 def tooling():
     """The tooling, or skip the module."""
@@ -120,6 +142,18 @@ def tooling():
             module.client_tool(name)
         except module.DumpError as absent:
             pytest.skip(str(absent))
+    #: An older client than the server cannot do this.
+    #:
+    #: `client_tool` reads PATH first, so a machine holding PostgreSQL 16
+    #: clients beside an 18 server fails on what the client cannot say —
+    #: `createdb` has no `--builtin-locale` before 17, and `pg_dump`
+    #: refuses a server newer than itself. Neither is what this module is
+    #: about, so it steps aside rather than reporting the repair broken.
+    server = _server_major(module)
+    for name in CLIENT_PROGRAMS:
+        client = _client_major(module, name)
+        if client < server:
+            pytest.skip(f"{name} is {client}, the server is {server}")
     return module
 
 
