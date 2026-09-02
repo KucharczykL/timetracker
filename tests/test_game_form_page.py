@@ -6,8 +6,7 @@ import pytest
 from django.urls import reverse
 
 from games.catalog_compat import mirror_legacy_columns
-from games.catalog_writes import add_edition, add_release, save_private_game
-from games.models import Edition, Game, Platform
+from games.models import Edition, Game, Platform, Release
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -41,13 +40,12 @@ def logged_in(client, owned_user):
 
 
 @pytest.fixture
-def plain_game(owned_library):
+def plain_game(owned_library, stated_graph):
     """One Game as the app leaves it: a default graph, columns mirrored."""
-    graph = save_private_game(
-        game=Game(library=owned_library, name="Portal"),
-        original_release_date=None,
+    graph = stated_graph(
+        Game(library=owned_library, name="Portal"),
+        owned_library,
         release_date=TemporalValue.from_year(2007),
-        platform=None,
     )
     mirror_legacy_columns(graph.game)
     return graph.game
@@ -61,15 +59,9 @@ def page(logged_in, game: Game) -> str:
 
 def test_edit_game_draws_a_block_per_edition(logged_in, owned_library, plain_game):
     """A block per Edition, a card per Release, one group over them all."""
-    second = add_edition(
-        game=plain_game, library=owned_library, name="Director's Cut", is_default=False
-    )
-    add_release(
-        edition=second,
-        library=owned_library,
-        platform=None,
-        release_date=TemporalValue.from_year(2011),
-        is_default=True,
+    second = Edition.objects.create(game=plain_game, name="Director's Cut")
+    Release.objects.create(
+        edition=second, release_date=TemporalValue.from_year(2011), is_default=True
     )
 
     body = page(logged_in, plain_game)
@@ -85,12 +77,10 @@ def test_edit_game_draws_a_block_per_edition(logged_in, owned_library, plain_gam
 def test_the_marked_row_is_the_default_release(logged_in, owned_library, plain_game):
     """The radio that is checked is the one the games list draws."""
     edition = Edition.objects.get(game=plain_game, is_default=True)
-    add_release(
+    Release.objects.create(
         edition=edition,
-        library=owned_library,
         platform=Platform.objects.create(name="Steam"),
         release_date=TemporalValue.from_year(2011),
-        is_default=False,
     )
 
     body = page(logged_in, plain_game)
@@ -192,12 +182,8 @@ def test_a_bad_row_leaves_the_rows_after_it_readable(
     """
     edition = Edition.objects.get(game=plain_game, is_default=True)
     release = edition.releases.get(is_default=True)
-    second = add_release(
-        edition=edition,
-        library=owned_library,
-        platform=None,
-        release_date=TemporalValue.from_year(2011),
-        is_default=False,
+    second = Release.objects.create(
+        edition=edition, release_date=TemporalValue.from_year(2011)
     )
 
     response = logged_in.post(
@@ -239,7 +225,7 @@ def test_add_game_draws_the_same_area(logged_in):
 def test_add_game_writes_the_whole_graph_it_posted(logged_in, owned_library):
     """One submit states the Game and every Edition under it.
 
-    The marked row is the default `save_private_game` makes, thus the
+    The marked row is the one block zero states, thus the default
     Edition holds one Release rather than the stated one beside an
     empty one nobody asked for.
     """
@@ -271,7 +257,9 @@ def test_add_game_writes_the_whole_graph_it_posted(logged_in, owned_library):
     game = Game.objects.get(library=owned_library, name="Portal")
     default = Edition.objects.get(game=game, is_default=True)
     assert default.name == ""
-    assert [edition.name for edition in Edition.objects.filter(game=game)] == [
+    #: Sorted: the model states no ordering, so the rows come back in
+    #: whatever order the last write left them in.
+    assert sorted(edition.name for edition in Edition.objects.filter(game=game)) == [
         "",
         "Director's Cut",
     ]

@@ -6,8 +6,7 @@ A row is named by Django's own form prefix. `BoundField.html_name` is
 line changing in `timetracker/temporal.py`.
 """
 
-from collections.abc import Iterator, Mapping
-from contextlib import contextmanager
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Final, cast
 from uuid import UUID
@@ -16,14 +15,13 @@ from django import forms
 from django.core.exceptions import ValidationError
 
 from common.date_time_presentation import DateTimePresentation
-from games.catalog_compat import InitialRelease, write_and_mirror
+from games.catalog_compat import MirroredIdentity, mirrored_identity, write_and_mirror
 from games.catalog_writes import (
-    add_edition,
-    add_release,
-    remove_edition,
-    remove_release,
-    update_edition,
-    update_release,
+    EditionState,
+    GraphRefused,
+    ReleaseState,
+    RowKey,
+    state_catalog_graph,
 )
 from games.forms import PrimitiveWidgetsMixin, TemporalFormField
 from games.models import Edition, Game, Platform, Release, UserLibrary
@@ -61,6 +59,11 @@ LAST_EDITION_IN_FORM = (
     "A game keeps one edition. Add another one before you remove this."
 )
 DUPLICATE_NAME_IN_FORM = "Another edition of this game already has that name."
+#: The service allows two: #782 needs two regions on one date to
+#: be two rows. The page would show two rows nothing tells apart.
+DUPLICATE_RELEASE_IN_FORM = (
+    "Another release of this edition already states this platform and date."
+)
 
 
 def _as_uuid(value: str) -> UUID | None:
@@ -144,12 +147,9 @@ def _removed(form: forms.Form) -> bool:
     return bool(form.is_bound and form.cleaned_data.get("removed"))
 
 
-def _stated(row: forms.Form) -> InitialRelease:
-    """The Platform and the date one read row states."""
-    return InitialRelease(
-        platform=cast(Platform | None, row.cleaned_data.get("platform")),
-        release_date=cast(TemporalValue | None, row.cleaned_data.get("release_date")),
-    )
+def _key(form: forms.Form) -> RowKey:
+    """A row is named by its own prefix."""
+    return cast(RowKey, form.prefix)
 
 
 @dataclass(slots=True)
@@ -194,8 +194,8 @@ class CatalogGraphForm:
 
     `game` is None on Add Game, where the Game the graph hangs from
     does not exist yet. Nothing is stored, so the form states one
-    blank Edition holding one blank Release, and `adopt()` names the
-    Game once the write path has made it.
+    blank Edition holding one blank Release, and `bind()` names the
+    Game once the submit has made it.
     """
 
     def __init__(
@@ -211,8 +211,6 @@ class CatalogGraphForm:
         self.library = library
         self.presentation = presentation
         self.form_errors: list[str] = []
-        #: The row a refused verb named, recorded on the way out.
-        self._blamed: tuple[forms.Form, str] | None = None
         self._read_storage()
         if data is None:
             self.blocks = self._blocks_from_storage()
@@ -238,14 +236,9 @@ class CatalogGraphForm:
         return self.data is not None
 
     @property
-    def blamed(self) -> bool:
-        """Whether a verb named the row that caused the last refusal."""
-        return self._blamed is not None
-
-    @property
     def written_game(self) -> Game:
         """The Game the graph hangs from, once there is one."""
-        assert self.game is not None, "A new Game is named by adopt() before the write."
+        assert self.game is not None, "A new Game is named by bind() before the write."
         return self.game
 
     def _release_form(
@@ -294,8 +287,8 @@ class CatalogGraphForm:
             )
         if blocks:
             return blocks
-        #: See the module docstring of `games/catalog_compat.py`: no app
-        #: path leaves a Game without a graph, and a stale fixture does.
+        #: No app path leaves a Game without a graph. A stale
+        #: fixture does, and the form still has to draw it.
         return [
             EditionBlock(
                 form=EditionRowForm(prefix=edition_prefix(0)),
@@ -400,6 +393,25 @@ class CatalogGraphForm:
             taken.add(name.casefold())
         return valid
 
+    def _validate_releases(self, surviving: list[EditionBlock]) -> bool:
+        """Two surviving rows that read the same."""
+        valid = True
+        for block in surviving:
+            seen: set[tuple[object, object]] = set()
+            for row in block.surviving:
+                #: A row with its own errors states no pair yet.
+                if row.errors:
+                    continue
+                pair = (
+                    row.cleaned_data.get("platform"),
+                    row.cleaned_data.get("release_date"),
+                )
+                if pair in seen:
+                    row.add_error(None, DUPLICATE_RELEASE_IN_FORM)
+                    valid = False
+                seen.add(pair)
+        return valid
+
     def _validate_set(self) -> bool:
         """What one row cannot say on its own."""
         surviving = [block for block in self.blocks if not block.removed]
@@ -412,6 +424,7 @@ class CatalogGraphForm:
                 block.form.add_error(None, LAST_RELEASE)
                 valid = False
         valid = self._validate_names(surviving) and valid
+        valid = self._validate_releases(surviving) and valid
         if not self.mark:
             self.form_errors.append(NO_MARK)
             valid = False
@@ -420,190 +433,88 @@ class CatalogGraphForm:
             valid = False
         return valid
 
-    @property
-    def initial_release(self) -> InitialRelease:
-        """What the marked row states, for the default the service makes.
+    def mirrored_identity(self) -> MirroredIdentity:
+        """The flat pair the marked row is about to leave.
 
-        `save_private_game` guarantees a Game a default Edition and a
-        default Release. Seeding them from the marked row is what lets
-        `adopt()` claim them: a row that claims nothing is written
-        beside them instead, leaving an empty Release nobody stated.
+        The submit writes it beside the Game's name, thus a rename
+        that moves its own platform never meets the old pair.
         """
         marked = self.marked()
         assert marked is not None, "is_valid() states the mark names a surviving row."
         _, row = marked
-        return _stated(row)
+        return mirrored_identity(
+            cast(Platform | None, row.cleaned_data.get("platform")),
+            cast(TemporalValue | None, row.cleaned_data.get("release_date")),
+        )
 
-    def adopt(self, game: Game) -> None:
-        """Name the Game just made, and claim its default rows.
-
-        The service made exactly one Edition holding one Release, and
-        made both default, thus they belong to the marked row.
-        """
-        self.game = game
-        self._read_storage()
-        assert self._stored, "save_private_game() guarantees one Edition."
-        marked = self.marked()
-        assert marked is not None, "is_valid() states the mark names a surviving row."
-        block, row = marked
-        entry = self._stored[0]
-        block.form.instance = entry.edition
-        row.instance = entry.releases[0] if entry.releases else None
-
-    def _write_edition(self, block: EditionBlock, *, is_default: bool) -> Edition:
-        """State one Edition's whole name and mark."""
-        name = cast(str, block.form.cleaned_data.get("name", ""))
-        stored = block.edition
-        with self._blame(block.form):
-            written = (
-                add_edition(
-                    game=self.written_game,
-                    library=self.library,
-                    name=name,
-                    is_default=is_default,
-                )
-                if stored is None
-                else update_edition(
-                    edition=stored,
-                    library=self.library,
-                    name=name,
-                    is_default=is_default,
-                )
-            )
-        block.form.instance = written
-        return written
-
-    def _write_release(
-        self, edition: Edition, row: ReleaseRowForm, *, is_default: bool
-    ) -> None:
-        """State one Release's whole Platform, date and mark."""
-        platform, release_date = _stated(row)
-        stored = row.instance
-        with self._blame(row):
-            row.instance = (
-                add_release(
-                    edition=edition,
-                    library=self.library,
-                    platform=platform,
-                    release_date=release_date,
-                    is_default=is_default,
-                )
-                if stored is None
-                else update_release(
-                    release=stored,
-                    library=self.library,
-                    platform=platform,
-                    release_date=release_date,
-                    is_default=is_default,
-                )
-            )
-
-    def _promote_marked_edition(self, marked: EditionBlock) -> None:
-        """Step 1. The promotion is what stands the old default down.
-
-        `update_edition` refuses an explicit demotion, so nothing is
-        ever demoted here. `_clear_default_edition` inside the verb
-        does it, and every later write reads the row back already
-        standing down.
-        """
-        self._write_edition(marked, is_default=True)
-
-    def _write_other_editions(self, marked: EditionBlock) -> None:
-        """Step 2. Each one reads back false, thus none is demoted."""
-        for block in self.blocks:
-            if block is not marked and not block.removed:
-                self._write_edition(block, is_default=False)
-
-    def _winner(
-        self, block: EditionBlock, marked_row: ReleaseRowForm | None
-    ) -> ReleaseRowForm:
-        """The row that takes this Edition's default mark."""
-        if marked_row is not None:
-            return marked_row
-        standing = [
-            row
-            for row in block.surviving
-            if row.instance is not None and row.instance.is_default
-        ]
-        return standing[0] if standing else block.surviving[0]
-
-    def _write_releases(self, block: EditionBlock, marked_row: ReleaseRowForm | None):
-        """Step 3. The winner first, so no later add takes the mark."""
-        edition = block.edition
-        assert edition is not None
-        winner = self._winner(block, marked_row)
-        self._write_release(edition, winner, is_default=True)
-        for row in block.surviving:
-            if row is not winner:
-                self._write_release(edition, row, is_default=False)
-
-    def _remove_releases(self) -> None:
-        """Step 4. Only the winner is default, and it is not here."""
-        for block in self.blocks:
-            if block.removed:
-                continue
-            for row in block.rows:
-                if _removed(row) and row.instance is not None:
-                    with self._blame(row):
-                        remove_release(release=row.instance, library=self.library)
-
-    def _remove_editions(self) -> None:
-        """Step 5. Step 1 already moved the mark off any of these."""
-        for block in self.blocks:
-            if block.removed and block.edition is not None:
-                with self._blame(block.form):
-                    remove_edition(edition=block.edition, library=self.library)
-
-    def _write(self) -> None:
+    def _states(self) -> list[EditionState]:
+        """Every posted row, as one stated graph."""
         marked = self.marked()
         assert marked is not None, "is_valid() states the mark names a surviving row."
         marked_block, marked_row = marked
-        self._promote_marked_edition(marked_block)
-        self._write_other_editions(marked_block)
+        return [
+            EditionState(
+                key=_key(block.form),
+                edition=block.edition,
+                name=cast(str, block.form.cleaned_data.get("name", "")),
+                removed=block.removed,
+                is_default=block is marked_block,
+                releases=tuple(
+                    ReleaseState(
+                        key=_key(row),
+                        release=row.instance,
+                        platform=cast(
+                            Platform | None, row.cleaned_data.get("platform")
+                        ),
+                        release_date=cast(
+                            TemporalValue | None, row.cleaned_data.get("release_date")
+                        ),
+                        removed=_removed(row),
+                        is_default=row is marked_row,
+                    )
+                    for row in block.rows
+                ),
+            )
+            for block in self.blocks
+        ]
+
+    def _rows_by_key(self) -> dict[RowKey, forms.Form]:
+        """Every row, under the key the service got."""
+        rows: dict[RowKey, forms.Form] = {}
         for block in self.blocks:
-            if not block.removed:
-                self._write_releases(
-                    block, marked_row if block is marked_block else None
-                )
-        self._remove_releases()
-        self._remove_editions()
+            rows[_key(block.form)] = block.form
+            for row in block.rows:
+                rows[_key(row)] = row
+        return rows
 
-    @contextmanager
-    def _blame(self, form: forms.Form) -> Iterator[None]:
-        """A refusal names the row that caused it, then keeps rising.
+    def write_rows(self) -> None:
+        """One statement of the whole posted graph."""
+        state_catalog_graph(
+            game=self.written_game,
+            library=self.library,
+            editions=self._states(),
+        )
 
-        The raise has to reach `write_and_mirror` for the transaction
-        to unwind, thus this records rather than answers.
+    def answer(self, refusal: ValidationError) -> bool:
+        """Put the sentence on the row that stated it.
+
+        A refusal about the whole statement names no row, and the
+        Editions area shows it above the blocks. Anything that is
+        not a `GraphRefused` is a programming error, and rises.
         """
-        try:
-            yield
-        except ValidationError as refusal:
-            self._blamed = (form, refusal.messages[0])
-            raise
-
-    def answer(self, refusal: ValidationError) -> None:
-        """Put the sentence where whoever typed it will read it."""
-        if self._blamed is None:
+        if not isinstance(refusal, GraphRefused):
+            return False
+        form = None if refusal.key is None else self._rows_by_key().get(refusal.key)
+        if form is None:
             self.form_errors.append(refusal.messages[0])
-            return
-        form, sentence = self._blamed
-        form.add_error(None, sentence)
+        else:
+            form.add_error(None, refusal.messages[0])
+        return True
+
+    def bind(self, game: Game) -> None:
+        """Name the Game a submit just made."""
+        self.game = game
 
     def write(self) -> None:
-        """One transaction over the whole finished graph.
-
-        The refusal keeps rising. Add Game writes the Game and the
-        graph under one transaction of its own, thus it needs the
-        raise to unwind the Game as well.
-        """
-        self._blamed = None
-        write_and_mirror(self.written_game, self._write)
-
-    def save(self) -> bool:
-        """Write the graph, and answer a refusal rather than raise it."""
-        try:
-            self.write()
-        except ValidationError as refusal:
-            self.answer(refusal)
-            return False
-        return True
+        """One transaction over the graph and the mirror."""
+        write_and_mirror(self.written_game, self.write_rows)

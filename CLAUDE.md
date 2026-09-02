@@ -659,23 +659,20 @@ chromium` once. All JS is vendored, so the tests run fully offline. A bare
   in `REMOVABLE_MODELS`, and a builder in `tests/test_removable_models.py`, which
   fails until it has one. `delete` is Django's word, not the library's: see
   [Vocabulary](docs/vocabulary.md), which `make vale` enforces.
-- **A private catalog graph is written through the service** — call
-  `add_edition`, `update_edition`, `remove_edition`, `add_release`,
-  `update_release` or `remove_release` from `games/catalog_writes.py`, never
-  `Edition.objects.create()` or a hand-written default juggle. Each verb is one
-  transaction, states a whole row, and refuses a shared Game, another library's
-  row, and a removal that would leave a Game with no Edition. The one thing that
-  writes a graph from a person is `CatalogGraphForm` in `games/catalog_form.py`,
-  hosted by Add Game and Edit Game alike: it reads the whole posted set of
-  `EditionRowForm` / `ReleaseRowForm` rows, calls the verbs in one order, and puts
-  a refusal back on the row that stated it. Its `write()` goes through
-  `write_and_mirror()` from `games/catalog_compat.py`, so the flat `platform` /
-  `year_released` columns follow the graph in the same transaction; `save()`
-  answers a refusal instead of raising, and Add Game wants the raise so its outer
-  transaction takes the new Game back too. On Add Game the form is built with
-  `game=None` and `adopt()` claims the default Edition and Release
-  `save_private_game` makes. There are no standalone Edition or Release routes;
-  #969 folded all six into the Game form. The contract is
+- **A private catalog graph is stated, not patched row by row** — call
+  `state_catalog_graph` from `games/catalog_writes.py`, never
+  `Edition.objects.create()` and never a per-row verb. It takes one Game's
+  whole desired graph, refuses it against the desired end state, and writes it
+  in one transaction; a row the caller does not mention is left alone, and
+  removal is stated by a mark on the row. Each refusal carries the caller's own
+  key for the row that caused it. One submit of the Game form goes through
+  `games/catalog_submit.py`, which writes the Game's columns, its wikidata
+  reference, the graph and the flat mirror in one transaction and answers every
+  refusal onto the field or the row that stated it; the PlayerGame command
+  stays outside, because `run_in_transaction` refuses to nest. The one thing
+  that states a graph from a person is `CatalogGraphForm` in
+  `games/catalog_form.py`, hosted by Add Game and Edit Game alike. There are no
+  standalone Edition or Release routes. The contract is
   [Catalog](docs/catalog.md).
 - **A PlayerGame fact is stated as a command** — never assign `Game.status` or
   `Game.mastered` directly. Call `record_facts()` / `track_game()` from

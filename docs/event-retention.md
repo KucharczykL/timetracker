@@ -52,10 +52,11 @@ constraint.
 The default slot obeys the same rule. One Game holds one default Edition and
 one Edition holds one default Release, and both constraints carry
 `removed_at IS NULL` as well. A removed default holds no slot, thus the next
-write puts a new default in its place. `save_private_game()` looks the child up
-by that same condition, and not by `alive()`: `alive()` reads the ancestors'
-marks too, so under a removed Game it would miss the live default and write a
-second one, which is what the constraint refuses.
+write puts a new default in its place. `state_catalog_graph()` looks the child
+up by that same condition — `_live_editions()` and `_live_releases()` — and not
+by `alive()`: `alive()` reads the ancestors' marks too, so under a removed Game
+it would miss the live default and write a second one, which is what the
+constraint refuses.
 
 The conditions have one effect that is easy to miss. Django does not validate a
 conditional constraint in a form when the condition names an excluded field.
