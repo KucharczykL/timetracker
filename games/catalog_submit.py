@@ -22,6 +22,11 @@ if TYPE_CHECKING:
 WIKIDATA_CONFLICT_MESSAGE = "This Wikidata entity ID already belongs to another game."
 #: No pre-check wins a race. The database decided.
 RACED = "Another change reached this game first. Nothing was saved; try again."
+#: A save writes every column, thus a stale form would put a removed
+#: Game back with no event saying so.
+REMOVED_SINCE_READ = (
+    "This game was removed while you were editing it. Nothing was saved."
+)
 
 
 class ConstraintAnswer(NamedTuple):
@@ -80,6 +85,11 @@ def save_game_columns(form: GameForm, identity: MirroredIdentity) -> Game:
         persisted = Game.objects.select_for_update().get(pk=game.pk)
         if persisted.library_id != game.library_id:
             raise ValidationError("A persisted Game cannot change library owner.")
+        #: The form read this Game while it was live, and `save()`
+        #: writes every column, `removed_at` among them. A Game
+        #: removed since would come back with no event saying so.
+        if persisted.removed_at is not None:
+            raise ValidationError(REMOVED_SINCE_READ)
     if game.library_id is None:
         raise ValidationError("A private Game requires a library owner.")
     game.original_release_date = form.cleaned_data["original_release_date"]
@@ -103,6 +113,9 @@ def _game_form_refusal(form: GameForm, error: ValidationError) -> bool:
     """A refusal the Game's own fields caused."""
     if hasattr(error, "message_dict") and set(error.message_dict) == {"provider_key"}:
         form.add_error("wikidata", WIKIDATA_CONFLICT_MESSAGE)
+        return True
+    if REMOVED_SINCE_READ in error.messages:
+        form.add_error(None, REMOVED_SINCE_READ)
         return True
     if LEGACY_IDENTITY_TAKEN in error.messages:
         #: (name, platform, year) is unique per library, and the

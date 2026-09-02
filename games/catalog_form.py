@@ -8,7 +8,7 @@ line changing in `timetracker/temporal.py`.
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Final, cast
+from typing import Final, NamedTuple, cast
 from uuid import UUID
 
 from django import forms
@@ -207,19 +207,31 @@ class EditionBlock:
 #: rather than stating rows.
 MOST_ROWS: Final[int] = 1000
 
+TOO_MANY_ROWS: Final[str] = (
+    f"This form holds more than {MOST_ROWS} rows. Remove some and submit again."
+)
 
-def _count(data: PostedData, field: str) -> int:
+
+class RowCount(NamedTuple):
+    """How many rows a post states, and how many are read."""
+
+    read: int
+    over: bool
+
+
+def _count(data: PostedData, field: str) -> RowCount:
     """A count that is missing or not a number counts nothing.
 
     Zero rows then fails validation, which is a sentence a person
-    reads, rather than a traceback. A count past `MOST_ROWS` reads as
-    `MOST_ROWS`; the rows past it are not read, and a row nobody
-    states is a row the service leaves alone.
+    reads, rather than a traceback. A count past `MOST_ROWS` is read
+    as `MOST_ROWS`, so the work a post costs stays bounded, and it is
+    refused with `TOO_MANY_ROWS` rather than quietly served short.
     """
     try:
-        return min(MOST_ROWS, max(0, int(data.get(field, ""))))
+        stated = max(0, int(data.get(field, "")))
     except ValueError:
-        return 0
+        return RowCount(0, False)
+    return RowCount(min(MOST_ROWS, stated), stated > MOST_ROWS)
 
 
 class CatalogGraphForm:
@@ -248,6 +260,9 @@ class CatalogGraphForm:
         self.library = library
         self.presentation = presentation
         self.form_errors: list[str] = []
+        #: A post that states more rows than `MOST_ROWS` is refused,
+        #: not served short. `_blocks_from_post` sets it.
+        self._overcounted = False
         self._read_storage()
         if data is None:
             self.blocks = self._blocks_from_storage()
@@ -362,11 +377,15 @@ class CatalogGraphForm:
 
     def _blocks_from_post(self, data: PostedData) -> list[EditionBlock]:
         blocks: list[EditionBlock] = []
-        for index in range(_count(data, EDITION_COUNT_FIELD)):
+        editions = _count(data, EDITION_COUNT_FIELD)
+        self._overcounted = editions.over
+        for index in range(editions.read):
             form = EditionRowForm(data, prefix=edition_prefix(index))
             form.instance = self._posted_edition(data, index)
             rows: list[ReleaseRowForm] = []
-            for row_index in range(_count(data, release_count_field(index))):
+            releases = _count(data, release_count_field(index))
+            self._overcounted = self._overcounted or releases.over
+            for row_index in range(releases.read):
                 row = self._release_form(data, index, row_index)
                 row.instance = self._posted_release(
                     data, index, row_index, form.instance
@@ -462,6 +481,9 @@ class CatalogGraphForm:
 
     def _validate_set(self) -> bool:
         """What one row cannot say on its own."""
+        if self._overcounted:
+            self.form_errors.append(TOO_MANY_ROWS)
+            return False
         surviving = [block for block in self.blocks if not block.removed]
         if not surviving:
             self.form_errors.append(LAST_EDITION_IN_FORM)

@@ -6,7 +6,7 @@ import pytest
 from django.urls import reverse
 
 from games.catalog_compat import mirror_legacy_columns
-from games.catalog_form import LAST_RELEASE, MOST_ROWS
+from games.catalog_form import LAST_RELEASE, MOST_ROWS, TOO_MANY_ROWS
 from games.models import Edition, Game, Platform, Release
 from timetracker.temporal import TemporalValue
 
@@ -423,7 +423,7 @@ def test_the_page_reads_no_more_rows_than_a_person_could_stand(logged_in, plain_
             "wikidata": "",
             "editions-count": "5000000",
             "edition-0-edition_id": str(edition.pk),
-            "edition-0-name": "",
+            "edition-0-name": "Definitive",
             "edition-0-releases-count": "5000000",
             "edition-0-release-0-platform": "",
             "in_library": "edition-0-release-0",
@@ -432,7 +432,11 @@ def test_the_page_reads_no_more_rows_than_a_person_could_stand(logged_in, plain_
 
     assert response.status_code == 200
     body = live(response.content.decode())
+    #: Bounded work, and a sentence rather than a page served short.
     assert body.count('name="in_library"') == MOST_ROWS
+    assert TOO_MANY_ROWS in body
+    edition.refresh_from_db()
+    assert edition.name == ""
 
 
 def test_a_refused_graph_adds_no_game(logged_in, owned_library):

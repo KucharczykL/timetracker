@@ -17,13 +17,16 @@ from games.catalog_compat import (
     MirroredIdentity,
     mirror_legacy_columns,
 )
+from games.catalog_form import CatalogGraphForm
 from games.catalog_submit import (
     CONSTRAINT_ANSWERS,
     RACED,
+    REMOVED_SINCE_READ,
     UNREACHABLE_FROM_THE_GAME_FORM,
     WIKIDATA_CONFLICT_MESSAGE,
     answered_constraint,
     save_game_columns,
+    submitted_game_or_form_error,
 )
 from games.external_references import save_external_reference
 from games.forms import GameForm
@@ -35,6 +38,7 @@ from games.models import (
     PlayerGameStatus,
     Release,
 )
+from games.removal import remove
 from timetracker.temporal import TemporalValue, temporal_input_name
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -441,6 +445,45 @@ def test_a_persisted_game_may_not_change_library_owner(
         save_game_columns(form, NO_MIRROR)
 
     assert Game.objects.get(pk=game.pk).library_id == owned_library.pk
+
+
+def test_a_game_removed_while_it_was_being_edited_stays_removed(owned_library):
+    """A save writes every column, `removed_at` among them.
+
+    The form read this Game while it was live, so a plain save would
+    put it back with no event saying so. Edit Game answers a removed
+    Game with a 404, thus the window is inside one request; the guard
+    is here because the write is here.
+    """
+    game = Game.objects.create(library=owned_library, name="Elite")
+    form = game_form(library=owned_library, instance=game, name="Elite II")
+    assert form.is_valid(), form.errors
+    remove(game)
+
+    with pytest.raises(ValidationError, match="removed while you were editing"):
+        save_game_columns(form, NO_MIRROR)
+
+    stored = Game.objects.get(pk=game.pk)
+    assert stored.removed_at is not None
+    assert stored.name == "Elite"
+
+
+def test_a_game_removed_while_it_was_being_edited_answers_the_form(owned_library):
+    """The guard is a sentence on the form, not a 500."""
+    game = Game.objects.create(library=owned_library, name="Elite")
+    form = game_form(library=owned_library, instance=game, name="Elite II")
+    graph = CatalogGraphForm(
+        game_post("Elite II"),
+        game=game,
+        library=owned_library,
+        presentation=PRESENTATION,
+    )
+    assert form.is_valid(), form.errors
+    assert graph.is_valid(), graph.form_errors
+    remove(game)
+
+    assert submitted_game_or_form_error(form, graph) is None
+    assert REMOVED_SINCE_READ in form.non_field_errors()
 
 
 def test_a_private_game_needs_a_library_owner(owned_library):
