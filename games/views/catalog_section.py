@@ -90,9 +90,28 @@ _OUT_OF_SIGHT: Final[list[tuple[str, str]]] = [
 def _row_hooks(
     form: BaseForm, attribute: str, index: RowIndex
 ) -> list[tuple[str, str]]:
-    """What names a row, and what takes it off the page."""
+    """What names a row, and what takes it off the page.
+
+    A row that is going and has nothing to say goes out of sight. One
+    that carries a sentence stays in sight and says it: a refusal
+    drawn inside a hidden row refuses the submit and tells nobody
+    why, which is the thing the row's own key was for.
+    """
     hooks = [(attribute, str(index))]
-    return hooks + _OUT_OF_SIGHT if removal_stated(form) else hooks
+    if removal_stated(form) and not form.errors:
+        return hooks + _OUT_OF_SIGHT
+    return hooks
+
+
+def _hidden_errors(form: BaseForm) -> list[Node]:
+    """What a hidden field has to say.
+
+    `_hidden_fields` renders the input alone, so a sentence about a
+    posted id would land nowhere. A row states it beside the rest.
+    """
+    sentences = [error for field in form if field.is_hidden for error in field.errors]
+    errors = FieldErrors(sentences)
+    return [] if errors is None else [errors]
 
 
 def _add_button(kind: str, label: str) -> Node:
@@ -181,6 +200,7 @@ def _release_card(
             ],
             _field_cell(row["platform"], _PLATFORM_PLACEMENT),
             _field_cell(row["release_date"], _DATE_PLACEMENT),
+            *_hidden_errors(row),
             *_non_field_errors(row),
         ]
     ]
@@ -226,6 +246,7 @@ def _edition_block(block: EditionBlock, index: RowIndex, mark: str) -> Node:
             *_hidden_fields(block.form),
             _count_input(release_count_field(index), len(block.rows)),
             _name_row(block),
+            *_hidden_errors(block.form),
             *_non_field_errors(block.form),
             _headings(),
             *rows,

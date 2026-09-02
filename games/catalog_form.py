@@ -200,14 +200,24 @@ class EditionBlock:
         return [row for row in self.rows if not removal_stated(row)]
 
 
+#: A page builds one bound form per counted row, each holding a
+#: queryset of its own, thus the count is what a post spends. Django
+#: caps the same number with a formset's `absolute_max`. Nobody types
+#: a graph this big, and a post that states one is spending a worker
+#: rather than stating rows.
+MOST_ROWS: Final[int] = 1000
+
+
 def _count(data: PostedData, field: str) -> int:
     """A count that is missing or not a number counts nothing.
 
     Zero rows then fails validation, which is a sentence a person
-    reads, rather than a traceback.
+    reads, rather than a traceback. A count past `MOST_ROWS` reads as
+    `MOST_ROWS`; the rows past it are not read, and a row nobody
+    states is a row the service leaves alone.
     """
     try:
-        return max(0, int(data.get(field, "")))
+        return min(MOST_ROWS, max(0, int(data.get(field, ""))))
     except ValueError:
         return 0
 
@@ -412,6 +422,12 @@ class CatalogGraphForm:
         taken: set[str] = set()
         unnamed = 0
         for block in surviving:
+            #: A block with its own errors states no name yet. Absent
+            #: `cleaned_data` reads as the empty string, and a name
+            #: the field refused would count as one nobody typed,
+            #: putting the sibling's sentence on a blameless row.
+            if block.form.errors:
+                continue
             name = cast(str, block.form.cleaned_data.get("name", ""))
             if not name:
                 unnamed += 1

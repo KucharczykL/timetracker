@@ -364,6 +364,24 @@ def test_the_graph_refuses_two_surviving_unnamed_editions(owned_library, plain_g
     assert UNNAMED_SIBLING_EDITION in form.blocks[1].form.errors["name"]
 
 
+def test_a_name_the_field_refused_does_not_blame_its_sibling(owned_library, plain_game):
+    """A refused name is not a name nobody typed.
+
+    Absent `cleaned_data` reads as the empty string, so a block whose
+    own field refused its name would count as unnamed and put the
+    sibling's sentence on a row that did nothing wrong.
+    """
+    form = graph_form(
+        posted(block(name="N" * 300), block()),
+        game=plain_game.game,
+        library=owned_library,
+    )
+
+    assert not form.is_valid()
+    assert "name" in form.blocks[0].form.errors
+    assert form.blocks[1].form.errors == {}
+
+
 def test_the_graph_refuses_two_surviving_editions_sharing_a_name(
     owned_library, plain_game
 ):

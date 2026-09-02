@@ -6,7 +6,7 @@ import pytest
 from django.urls import reverse
 
 from games.catalog_compat import mirror_legacy_columns
-from games.catalog_form import LAST_RELEASE
+from games.catalog_form import LAST_RELEASE, MOST_ROWS
 from games.models import Edition, Game, Platform, Release
 from timetracker.temporal import TemporalValue
 
@@ -371,6 +371,68 @@ def test_a_refused_game_still_says_an_edition_keeps_one_release(logged_in, plain
 
     assert response.status_code == 200
     assert LAST_RELEASE in live(response.content.decode())
+
+
+def test_a_binned_row_with_a_sentence_stays_in_sight(logged_in, plain_game):
+    """A refusal drawn inside a hidden row tells nobody why.
+
+    A posted id nothing can read is a sentence on a hidden field, and
+    both the row and the sentence have to reach the page.
+    """
+    edition = Edition.objects.get(game=plain_game, is_default=True)
+    release = Release.objects.get(edition=edition)
+
+    response = logged_in.post(
+        reverse("games:edit_game", args=[plain_game.pk]),
+        {
+            "name": "Portal",
+            "sort_name": "",
+            "status": "played",
+            "wikidata": "",
+            "editions-count": "1",
+            "edition-0-edition_id": str(edition.pk),
+            "edition-0-name": "",
+            "edition-0-releases-count": "2",
+            "edition-0-release-0-release_id": "not-a-uuid",
+            "edition-0-release-0-platform": "",
+            "edition-0-release-0-removed": "on",
+            "edition-0-release-1-release_id": str(release.pk),
+            "edition-0-release-1-platform": "",
+            "in_library": "edition-0-release-1",
+        },
+    )
+
+    assert response.status_code == 200
+    body = live(response.content.decode())
+    row = re.search(r"<div[^>]*data-catalog-release=\"0\"[^>]*>", body)
+    assert row is not None
+    assert "display:none" not in row.group(0)
+    assert "Enter a valid UUID." in body
+
+
+def test_the_page_reads_no_more_rows_than_a_person_could_stand(logged_in, plain_game):
+    """A count nobody typed is a spent worker, not a form."""
+    edition = Edition.objects.get(game=plain_game, is_default=True)
+
+    response = logged_in.post(
+        reverse("games:edit_game", args=[plain_game.pk]),
+        {
+            "name": "Portal",
+            "sort_name": "",
+            "status": "played",
+            "wikidata": "",
+            "editions-count": "5000000",
+            "edition-0-edition_id": str(edition.pk),
+            "edition-0-name": "",
+            "edition-0-releases-count": "5000000",
+            "edition-0-release-0-platform": "",
+            "in_library": "edition-0-release-0",
+        },
+    )
+
+    assert response.status_code == 200
+    body = live(response.content.decode())
+    assert body.count('name="in_library"') == MOST_ROWS
 
 
 def test_a_refused_graph_adds_no_game(logged_in, owned_library):
