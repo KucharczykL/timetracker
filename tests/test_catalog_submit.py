@@ -63,6 +63,49 @@ def game_post(name: str, **extra: str) -> dict[str, str]:
     return posted
 
 
+def test_a_binned_row_with_a_bad_value_refuses_nothing(
+    client, owned_user, stated_graph
+):
+    """A row that is going states only which row it is.
+
+    Its date never reaches storage, and the page draws the row out of
+    sight, thus a sentence about that date would refuse a submit for a
+    reason nobody can read.
+    """
+    library = owned_user.library
+    client.force_login(owned_user)
+    graph = stated_graph(Game(library=library, name="Elite"), library)
+    staying = Release.objects.create(
+        edition=graph.edition,
+        platform=Platform.objects.create(library=library, name="DOS"),
+        release_date=TemporalValue.from_year(1988),
+    )
+    posted = game_post("Elite")
+    posted["edition-0-edition_id"] = str(graph.edition.pk)
+    posted["edition-0-releases-count"] = "2"
+    posted["edition-0-release-0-release_id"] = str(graph.release.pk)
+    posted["edition-0-release-0-removed"] = "on"
+    #: A month with no year beside it: the field alone refuses this.
+    row = "edition-0-release-0-release_date"
+    posted[temporal_input_name(row, "kind")] = "date"
+    posted[temporal_input_name(row, "start_month")] = "5"
+    posted["edition-0-release-1-release_id"] = str(staying.pk)
+    posted["edition-0-release-1-platform"] = str(staying.platform_id)
+    staying_row = "edition-0-release-1-release_date"
+    posted[temporal_input_name(staying_row, "kind")] = "date"
+    posted[temporal_input_name(staying_row, "start_year")] = "1988"
+    posted["in_library"] = "edition-0-release-1"
+
+    response = client.post(
+        reverse("games:edit_game", args=[graph.game.pk]), data=posted
+    )
+
+    assert response.status_code == 302
+    graph.release.refresh_from_db()
+    assert graph.release.removed_at is not None
+    assert [row.pk for row in graph.edition.releases.alive()] == [staying.pk]
+
+
 def test_a_refused_graph_takes_the_renamed_game_back(client, owned_user, stated_graph):
     """One transaction: the name and the graph go together or not at all."""
     client.force_login(owned_user)

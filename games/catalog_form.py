@@ -151,6 +151,29 @@ def removal_stated(form: forms.BaseForm) -> bool:
     return bool(form.cleaned_data.get("removed"))
 
 
+#: What a row that is going still has to say: which row it is.
+IDENTIFYING_FIELDS: Final[frozenset[str]] = frozenset(
+    {"edition_id", "release_id", "removed"}
+)
+
+
+def reads_as_stated(form: forms.BaseForm, *, going: bool = False) -> bool:
+    """Whether a row says enough for the statement it makes.
+
+    A row that is going states only which row it is. Nothing writes
+    its other values, and the page draws it out of sight, so a
+    sentence about one of them would refuse a submit for a reason
+    nobody can read. `going` is what a removed Edition says about the
+    rows under it, which are as unwritten as its own fields.
+    """
+    valid = form.is_valid()
+    if valid or not (going or removal_stated(form)):
+        return valid
+    for field in set(form.errors) - IDENTIFYING_FIELDS:
+        del form.errors[field]
+    return not form.errors
+
+
 def _key(form: forms.Form) -> RowKey:
     """A row is named by its own prefix."""
     return cast(RowKey, form.prefix)
@@ -377,8 +400,11 @@ class CatalogGraphForm:
         #: `all()` over a generator stops at the first false one, and a
         #: row it never reached holds no `cleaned_data`. `_validate_set`
         #: reads every row's, thus every row is read here first.
-        read = [block.form.is_valid() for block in self.blocks]
-        read += [row.is_valid() for block in self.blocks for row in block.rows]
+        read: list[bool] = []
+        for block in self.blocks:
+            read.append(reads_as_stated(block.form))
+            going = block.removed
+            read += [reads_as_stated(row, going=going) for row in block.rows]
         return self._validate_set() and all(read)
 
     def _validate_names(self, surviving: list[EditionBlock]) -> bool:

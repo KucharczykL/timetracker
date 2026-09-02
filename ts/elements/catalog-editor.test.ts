@@ -168,6 +168,22 @@ it("gives the mark to an added row when every row before it is going", () => {
   expect(marked()).toBe("edition-0-release-1");
 });
 
+it("moves the mark off a row the server drew out of sight", () => {
+  // A refused page comes back with the bin the person left, so the
+  // element repairs the mark on arrival, before anyone clicks.
+  document.body.innerHTML = PAGE.replace(
+    '<div data-catalog-release="0">',
+    '<div data-catalog-release="0" hidden style="display:none">',
+  ).replace(
+    '<button type="button" data-catalog-add="release">Add release</button>',
+    '<div data-catalog-release="1">' +
+      '<input type="radio" data-choice-card name="in_library" value="edition-0-release-1">' +
+      "</div>",
+  );
+
+  expect(marked()).toBe("edition-0-release-1");
+});
+
 it("leaves the mark alone when the row it sits on stays", () => {
   click('[data-catalog-add="release"]');
   click('[data-catalog-release="1"] [data-catalog-remove]');

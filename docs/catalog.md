@@ -143,6 +143,11 @@ refuses it; the service does not, because #782 needs two regions on one date to
 be two rows. The rule is about the surviving set, so binning a row and adding
 another that states its platform and date is fine, and is written.
 
+A row that is going states only which row it is. Nothing writes its platform or
+its date, and the page draws the row out of sight, so a sentence about either
+would refuse a submit for a reason nobody can read. The form asks a row that
+stays for every value, and a row that leaves for its id alone.
+
 The service stays permissive on purpose. #782's importer normalizes IGDB and
 writes unnamed Editions in bulk, and a rule in the service would stop it. The
 rule moves down to the service if a second writer ever needs it.

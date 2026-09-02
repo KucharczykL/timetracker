@@ -61,6 +61,9 @@ class CatalogEditorElement extends HTMLElement {
     this.wired = true;
     // One delegated listener, so a cloned row needs no wiring of its own.
     this.addEventListener("click", this.onClick);
+    // A refused page comes back with the rows the person left, bins and
+    // all. The mark is repaired on arrival too, not only on a click.
+    this.restateMark();
   }
 
   private onClick = (event: Event): void => {
