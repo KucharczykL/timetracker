@@ -12,7 +12,11 @@ from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
 )
-from games.catalog_compat import LEGACY_IDENTITY_TAKEN, mirror_legacy_columns
+from games.catalog_compat import (
+    LEGACY_IDENTITY_TAKEN,
+    MirroredIdentity,
+    mirror_legacy_columns,
+)
 from games.catalog_submit import (
     CONSTRAINT_ANSWERS,
     RACED,
@@ -27,6 +31,7 @@ from games.models import (
     Edition,
     ExternalReference,
     Game,
+    Platform,
     PlayerGameStatus,
     Release,
 )
@@ -37,6 +42,8 @@ pytestmark = pytest.mark.django_db(transaction=True)
 PRESENTATION = DateTimePresentation(
     DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
 )
+#: These cases state the columns alone; no graph names a pair.
+NO_MIRROR = MirroredIdentity(None, None)
 
 
 def game_post(name: str, **extra: str) -> dict[str, str]:
@@ -188,6 +195,71 @@ def test_a_taken_wikidata_id_lands_on_the_wikidata_field(
     assert WIKIDATA_CONFLICT_MESSAGE in response.content.decode()
 
 
+def test_a_rename_that_moves_its_own_platform_is_not_refused(
+    client, owned_user, stated_graph
+):
+    """The name and the pair it stands beside go in one write.
+
+    The end state is free, and only the pair the submit replaces
+    was ever taken, thus nothing here collides.
+    """
+    library = owned_user.library
+    client.force_login(owned_user)
+    amiga = Platform.objects.create(library=library, name="Amiga")
+    dos = Platform.objects.create(library=library, name="DOS")
+    Game.objects.create(
+        library=library, name="Elite", platform=amiga, year_released=1984
+    )
+    graph = stated_graph(
+        Game(library=library, name="Frontier"),
+        library,
+        platform=amiga,
+        release_date=TemporalValue.from_year(1984),
+    )
+    mirror_legacy_columns(graph.game)
+    posted = game_post("Elite")
+    posted["edition-0-edition_id"] = str(graph.edition.pk)
+    posted["edition-0-release-0-release_id"] = str(graph.release.pk)
+    posted["edition-0-release-0-platform"] = str(dos.pk)
+    row = "edition-0-release-0-release_date"
+    posted[temporal_input_name(row, "kind")] = "date"
+    posted[temporal_input_name(row, "start_year")] = "1984"
+
+    response = client.post(
+        reverse("games:edit_game", args=[graph.game.pk]), data=posted
+    )
+
+    assert response.status_code == 302
+    graph.game.refresh_from_db()
+    assert (graph.game.name, graph.game.platform_id) == ("Elite", dos.pk)
+
+
+def test_a_written_graph_is_redrawn_from_storage(client, owned_user, stated_graph):
+    """A refused command re-renders the page, and a resubmit is not a copy."""
+    library = owned_user.library
+    client.force_login(owned_user)
+    graph = stated_graph(Game(library=library, name="Elite"), library)
+    posted = game_post("Elite")
+    posted["editions-count"] = "2"
+    posted["edition-0-edition_id"] = str(graph.edition.pk)
+    posted["edition-0-release-0-release_id"] = str(graph.release.pk)
+    posted["edition-1-name"] = "Gold"
+    posted["edition-1-releases-count"] = "1"
+    posted["edition-1-release-0-platform"] = ""
+
+    with patch(
+        "games.views.game.record_facts_for_request", return_value=False
+    ) as refused:
+        response = client.post(
+            reverse("games:edit_game", args=[graph.game.pk]), data=posted
+        )
+
+    assert refused.called
+    assert response.status_code == 200
+    written = Edition.objects.alive().get(game=graph.game, name="Gold")
+    assert str(written.pk) in response.content.decode()
+
+
 def test_a_race_the_pre_check_missed_answers_in_words(client, owned_user, stated_graph):
     """The database is the only thing that decides, so read what it did.
 
@@ -251,12 +323,15 @@ def test_a_mapped_constraint_becomes_a_sentence():
     assert answer.field is None
 
 
-def test_the_wikidata_constraint_names_its_own_field():
-    answer = answered_constraint(
-        collision("unique_external_reference_provider_kind_key")
+def test_the_wikidata_constraint_never_reaches_the_mapping():
+    """`save_external_reference` answers it first, as a field error."""
+    assert (
+        answered_constraint(collision("unique_external_reference_provider_kind_key"))
+        is None
     )
-
-    assert answer == (WIKIDATA_CONFLICT_MESSAGE, "wikidata")
+    assert "unique_external_reference_provider_kind_key" in (
+        UNREACHABLE_FROM_THE_GAME_FORM
+    )
 
 
 def test_an_unmapped_constraint_gets_no_sentence():
@@ -307,7 +382,7 @@ def game_form(*, library, instance=None, original="2001", **overrides) -> GameFo
 
 def saved_columns(form: GameForm) -> Game:
     assert form.is_valid(), form.errors
-    return save_game_columns(form)
+    return save_game_columns(form, NO_MIRROR)
 
 
 def test_a_persisted_game_may_not_change_library_owner(
@@ -320,7 +395,7 @@ def test_a_persisted_game_may_not_change_library_owner(
     form.instance.library = other.library
 
     with pytest.raises(ValidationError, match="library owner"):
-        save_game_columns(form)
+        save_game_columns(form, NO_MIRROR)
 
     assert Game.objects.get(pk=game.pk).library_id == owned_library.pk
 
@@ -331,7 +406,7 @@ def test_a_private_game_needs_a_library_owner(owned_library):
     form.instance.library = None
 
     with pytest.raises(ValidationError, match="requires a library owner"):
-        save_game_columns(form)
+        save_game_columns(form, NO_MIRROR)
 
     assert not Game.objects.filter(name="Elite").exists()
 
@@ -401,7 +476,7 @@ def test_a_wikidata_id_another_game_holds_takes_the_rename_back(owned_library):
     save_external_reference(provider="wikidata", provider_key="Q456", target=owner)
 
     with pytest.raises(ValidationError, match="already maps to another catalog target"):
-        save_game_columns(form)
+        save_game_columns(form, NO_MIRROR)
 
     stored = Game.objects.get(pk=game.pk)
     assert (stored.name, stored.wikidata) == ("Before conflict", "Q123")
@@ -425,7 +500,7 @@ def test_a_failed_reference_write_takes_the_new_and_the_edited_game_back(
     )
     assert new_form.is_valid(), new_form.errors
     with pytest.raises(RuntimeError, match="forced reference save failure"):
-        save_game_columns(new_form)
+        save_game_columns(new_form, NO_MIRROR)
 
     edit_form = game_form(
         library=owned_library,
@@ -435,7 +510,7 @@ def test_a_failed_reference_write_takes_the_new_and_the_edited_game_back(
     )
     assert edit_form.is_valid(), edit_form.errors
     with pytest.raises(RuntimeError, match="forced reference save failure"):
-        save_game_columns(edit_form)
+        save_game_columns(edit_form, NO_MIRROR)
 
     stored = Game.objects.get(pk=existing.pk)
     assert not Game.objects.filter(name="New reference failure").exists()

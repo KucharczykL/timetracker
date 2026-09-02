@@ -1,15 +1,41 @@
 from collections.abc import Callable
+from typing import NamedTuple
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
 from games.models import Game, Platform, Release
+from timetracker.temporal import TemporalValue
 
 #: A flat column pair still holds a unique constraint over the
 #: library, thus a Release edit can walk one Game onto another's.
 LEGACY_IDENTITY_TAKEN = (
     "Another game in your library already has this name, platform and year."
 )
+
+
+class MirroredIdentity(NamedTuple):
+    """The two flat columns the marked Release shadows.
+
+    The Game's own unique constraint reads them beside its name,
+    thus one submit writes all three at once.
+    """
+
+    platform: Platform | None
+    year_released: int | None
+
+
+def mirrored_identity(
+    platform: Platform | None, release_date: TemporalValue | None
+) -> MirroredIdentity:
+    """What the flat columns read for one marked Release.
+
+    Storage states it after the write and the form states it
+    before, thus both say the same thing.
+    """
+    return MirroredIdentity(
+        platform, None if release_date is None else release_date.year
+    )
 
 
 def _default_release(game: Game) -> Release | None:
@@ -50,9 +76,10 @@ def mirror_legacy_columns(game: Game) -> None:
     them.
     """
     release = _default_release(game)
-    platform = None if release is None else release.platform
-    date = None if release is None else release.release_date
-    year = None if date is None else date.year
+    platform, year = mirrored_identity(
+        None if release is None else release.platform,
+        None if release is None else release.release_date,
+    )
     original = game.original_release_date
     if _collides(game, platform, year):
         raise ValidationError(LEGACY_IDENTITY_TAKEN)

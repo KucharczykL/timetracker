@@ -16,6 +16,7 @@ from games.catalog_writes import (
     REMOVED_EDITION,
     REMOVED_GAME,
     REMOVED_RELEASE,
+    REPEATED_ROW,
     SHARED_GAME,
     TWO_DEFAULT_EDITIONS,
     TWO_DEFAULT_RELEASES,
@@ -195,7 +196,9 @@ def test_a_game_keeps_an_edition(owned_library, game):
         state(game.game, owned_library, one(edition=game.edition, removed=True))
 
     assert LAST_EDITION in refused.value.messages
-    assert refused.value.key == "edition-0"
+    #: Every stated row is one the caller removed, and a sentence on
+    #: a row the page has hidden is a sentence nobody reads.
+    assert refused.value.key is None
 
 
 def test_a_game_keeps_an_edition_nobody_stated(owned_library, game):
@@ -413,7 +416,7 @@ def test_the_first_surviving_row_takes_an_unstated_mark(owned_library, game):
 
     first = written.editions[0]
     assert first.edition.is_default is True
-    assert first.releases[0][1].is_default is True
+    assert first.releases[0].release.is_default is True
     assert written.editions[1].edition.is_default is False
 
 
@@ -475,3 +478,116 @@ def test_a_removed_row_is_not_handed_back(owned_library, game):
     )
 
     assert [key for key, _ in written.editions[0].releases] == ["edition-0-release-0"]
+
+
+def test_a_stated_removal_of_a_row_already_gone_is_satisfied(owned_library, game):
+    """The end state is what a statement names, and it is already true."""
+    sibling = Release.objects.create(edition=game.edition)
+    remove(sibling)
+    sibling.refresh_from_db()
+    stamped = sibling.removed_at
+
+    state(
+        game.game,
+        owned_library,
+        one(
+            edition=game.edition,
+            releases=(
+                ReleaseState(
+                    key="edition-0-release-0", release=game.release, is_default=True
+                ),
+                ReleaseState(key="edition-0-release-1", release=sibling, removed=True),
+            ),
+        ),
+    )
+
+    sibling.refresh_from_db()
+    assert sibling.removed_at == stamped
+
+
+def test_a_stated_removal_of_an_edition_already_gone_is_satisfied(owned_library, game):
+    sibling = Edition.objects.create(game=game.game, name="Sibling")
+    remove(sibling)
+    sibling.refresh_from_db()
+    stamped = sibling.removed_at
+
+    state(
+        game.game,
+        owned_library,
+        one(edition=game.edition),
+        EditionState(key="edition-1", edition=sibling, name="Sibling", removed=True),
+    )
+
+    sibling.refresh_from_db()
+    assert sibling.removed_at == stamped
+
+
+def test_a_removed_edition_s_removed_release_goes_out_with_it(owned_library, game):
+    """Putting the Edition back brings back only the rows nobody removed."""
+    sibling = Edition.objects.create(game=game.game, name="Sibling")
+    kept = Release.objects.create(edition=sibling)
+    going = Release.objects.create(edition=sibling)
+
+    state(
+        game.game,
+        owned_library,
+        one(edition=game.edition),
+        EditionState(
+            key="edition-1",
+            edition=sibling,
+            name="Sibling",
+            removed=True,
+            releases=(
+                ReleaseState(key="edition-1-release-0", release=kept),
+                ReleaseState(key="edition-1-release-1", release=going, removed=True),
+            ),
+        ),
+    )
+
+    kept.refresh_from_db()
+    going.refresh_from_db()
+    assert (kept.removed_at, going.removed_at is None) == (None, False)
+
+
+def test_two_states_may_not_name_one_stored_edition(owned_library, game):
+    with pytest.raises(GraphRefused) as refused:
+        state(
+            game.game,
+            owned_library,
+            one(edition=game.edition, name="First"),
+            one(key="edition-1", edition=game.edition, name="Second", is_default=False),
+        )
+
+    assert REPEATED_ROW in refused.value.messages
+    assert refused.value.key == "edition-1"
+
+
+def test_two_states_may_not_name_one_stored_release(owned_library, game):
+    with pytest.raises(GraphRefused) as refused:
+        state(
+            game.game,
+            owned_library,
+            one(
+                edition=game.edition,
+                releases=(
+                    ReleaseState(
+                        key="edition-0-release-0", release=game.release, is_default=True
+                    ),
+                    ReleaseState(key="edition-0-release-1", release=game.release),
+                ),
+            ),
+        )
+
+    assert REPEATED_ROW in refused.value.messages
+    assert refused.value.key == "edition-0-release-1"
+
+
+def test_a_statement_wide_refusal_names_no_row(owned_library, game):
+    """A caller shows it above the rows, rather than raising a page."""
+    remove(game.game)
+
+    with pytest.raises(GraphRefused) as refused:
+        state(game.game, owned_library, one(edition=game.edition))
+
+    assert REMOVED_GAME in refused.value.messages
+    assert refused.value.key is None

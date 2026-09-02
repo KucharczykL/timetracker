@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Final, NamedTuple
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 
-from games.catalog_compat import LEGACY_IDENTITY_TAKEN
+from games.catalog_compat import LEGACY_IDENTITY_TAKEN, MirroredIdentity
 from games.catalog_form import CatalogGraphForm
 from games.catalog_writes import DUPLICATE_EDITION_NAME
 from games.external_references import sync_game_wikidata
@@ -42,14 +42,17 @@ CONSTRAINT_ANSWERS: Final[dict[str, ConstraintAnswer]] = {
     "unique_live_edition_name_per_game": ConstraintAnswer(DUPLICATE_EDITION_NAME, None),
     "unique_default_edition_per_game": ConstraintAnswer(RACED, None),
     "unique_default_release_per_edition": ConstraintAnswer(RACED, None),
-    "unique_external_reference_provider_kind_key": ConstraintAnswer(
-        WIKIDATA_CONFLICT_MESSAGE, "wikidata"
-    ),
 }
 
 #: Declared on a model this form writes, and out of reach.
 #: A constraint named here states why; the guard test reads it.
-UNREACHABLE_FROM_THE_GAME_FORM: Final[dict[str, str]] = {}
+UNREACHABLE_FROM_THE_GAME_FORM: Final[dict[str, str]] = {
+    "unique_external_reference_provider_kind_key": (
+        "`save_external_reference` catches this one in its own "
+        "savepoint and raises a `provider_key` ValidationError, "
+        "which `_game_form_refusal` answers onto the wikidata field."
+    ),
+}
 
 
 def answered_constraint(collision: IntegrityError) -> ConstraintAnswer | None:
@@ -65,10 +68,12 @@ def answered_constraint(collision: IntegrityError) -> ConstraintAnswer | None:
 
 
 @transaction.atomic
-def save_game_columns(form: GameForm) -> Game:
+def save_game_columns(form: GameForm, identity: MirroredIdentity) -> Game:
     """The Game's own columns and its reference.
 
-    No graph and no mirror: the mirror reads what the graph left.
+    The name and the flat pair go in one write. The unique
+    constraint reads all three, thus a rename that moves its own
+    platform never stands beside the pair it is replacing.
     """
     game = form.save(commit=False)
     if not game._state.adding:
@@ -78,6 +83,8 @@ def save_game_columns(form: GameForm) -> Game:
     if game.library_id is None:
         raise ValidationError("A private Game requires a library owner.")
     game.original_release_date = form.cleaned_data["original_release_date"]
+    game.platform = identity.platform
+    game.year_released = identity.year_released
     game.save()
     sync_game_wikidata(game=game)
     return game
@@ -85,12 +92,8 @@ def save_game_columns(form: GameForm) -> Game:
 
 @transaction.atomic
 def save_game_and_graph(form: GameForm, graph: CatalogGraphForm) -> Game:
-    """The Game and its whole graph, or neither.
-
-    The mirror runs last, once, thus a rename cannot collide with
-    the platform and year the same submit is replacing.
-    """
-    game = save_game_columns(form)
+    """The Game and its whole graph, or neither."""
+    game = save_game_columns(form, graph.mirrored_identity())
     graph.bind(game)
     graph.write()
     return game

@@ -28,7 +28,7 @@ from games.catalog_form import (
     release_count_field,
     release_prefix,
 )
-from games.catalog_writes import REMOVED_EDITION
+from games.catalog_writes import REMOVED_EDITION, REMOVED_GAME, GraphRefused
 from games.models import Edition, Game, Platform, Release
 from games.removal import remove
 from timetracker.temporal import TemporalDraft, TemporalValue, temporal_input_name
@@ -590,6 +590,23 @@ def test_a_refusal_naming_no_row_is_not_this_form_s_to_answer(
     assert form.is_valid(), form.form_errors
 
     assert form.answer(ValidationError(LEGACY_IDENTITY_TAKEN)) is False
+
+
+def test_a_refusal_about_the_whole_statement_shows_above_the_blocks(
+    owned_library, plain_game
+):
+    """A Game removed behind the request names no row, and is still shown."""
+    blocks = stored_blocks(plain_game.game, owned_library)
+    form = graph_form(posted(*blocks), game=plain_game.game, library=owned_library)
+    assert form.is_valid(), form.form_errors
+    remove(plain_game.game)
+
+    with pytest.raises(GraphRefused) as refused:
+        form.write()
+
+    assert refused.value.key is None
+    assert form.answer(refused.value) is True
+    assert form.form_errors == [REMOVED_GAME]
 
 
 def test_save_writes_an_unchanged_graph_without_moving_anything(

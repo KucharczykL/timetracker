@@ -15,13 +15,12 @@ from django import forms
 from django.core.exceptions import ValidationError
 
 from common.date_time_presentation import DateTimePresentation
-from games.catalog_compat import write_and_mirror
+from games.catalog_compat import MirroredIdentity, mirrored_identity, write_and_mirror
 from games.catalog_writes import (
     EditionState,
     GraphRefused,
     ReleaseState,
     RowKey,
-    WrittenGraph,
     state_catalog_graph,
 )
 from games.forms import PrimitiveWidgetsMixin, TemporalFormField
@@ -434,6 +433,20 @@ class CatalogGraphForm:
             valid = False
         return valid
 
+    def mirrored_identity(self) -> MirroredIdentity:
+        """The flat pair the marked row is about to leave.
+
+        The submit writes it beside the Game's name, thus a rename
+        that moves its own platform never meets the old pair.
+        """
+        marked = self.marked()
+        assert marked is not None, "is_valid() states the mark names a surviving row."
+        _, row = marked
+        return mirrored_identity(
+            cast(Platform | None, row.cleaned_data.get("platform")),
+            cast(TemporalValue | None, row.cleaned_data.get("release_date")),
+        )
+
     def _states(self) -> list[EditionState]:
         """Every posted row, as one stated graph."""
         marked = self.marked()
@@ -474,37 +487,28 @@ class CatalogGraphForm:
                 rows[_key(row)] = row
         return rows
 
-    def _adopt(self, written: WrittenGraph) -> None:
-        """Each row now names the row it wrote.
-
-        A re-render after a refused command shows what storage
-        holds, rather than posting the rows back as new ones.
-        """
-        blocks = {_key(block.form): block for block in self.blocks}
-        for entry in written.editions:
-            block = blocks[entry.key]
-            block.form.instance = entry.edition
-            rows = {_key(row): row for row in block.rows}
-            for key, release in entry.releases:
-                rows[key].instance = release
-
     def write_rows(self) -> None:
         """One statement of the whole posted graph."""
-        self._adopt(
-            state_catalog_graph(
-                game=self.written_game,
-                library=self.library,
-                editions=self._states(),
-            )
+        state_catalog_graph(
+            game=self.written_game,
+            library=self.library,
+            editions=self._states(),
         )
 
     def answer(self, refusal: ValidationError) -> bool:
-        """Put the sentence on the row that stated it."""
-        key = refusal.key if isinstance(refusal, GraphRefused) else None
-        form = None if key is None else self._rows_by_key().get(key)
-        if form is None:
+        """Put the sentence on the row that stated it.
+
+        A refusal about the whole statement names no row, and the
+        Editions area shows it above the blocks. Anything that is
+        not a `GraphRefused` is a programming error, and rises.
+        """
+        if not isinstance(refusal, GraphRefused):
             return False
-        form.add_error(None, refusal.messages[0])
+        form = None if refusal.key is None else self._rows_by_key().get(refusal.key)
+        if form is None:
+            self.form_errors.append(refusal.messages[0])
+        else:
+            form.add_error(None, refusal.messages[0])
         return True
 
     def bind(self, game: Game) -> None:

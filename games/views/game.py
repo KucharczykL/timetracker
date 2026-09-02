@@ -367,15 +367,22 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
         request.POST or None, game=game, library=library, presentation=presentation
     )
     if form.is_valid() and graph.is_valid():
-        game = submitted_game_or_form_error(form, graph)
-        if game is not None and record_facts_for_request(
-            request,
-            game,
-            status=form.cleaned_data["status"],
-            mastered=form.cleaned_data["mastered"],
-            correlation_id=new_correlation_id(),
-        ):
-            return redirect(return_url(request, fallback="games:list_games"))
+        written = submitted_game_or_form_error(form, graph)
+        if written is not None:
+            if record_facts_for_request(
+                request,
+                written,
+                status=form.cleaned_data["status"],
+                mastered=form.cleaned_data["mastered"],
+                correlation_id=new_correlation_id(),
+            ):
+                return redirect(return_url(request, fallback="games:list_games"))
+            #: The graph is written. Drawing it from storage rather
+            #: than from the post is what makes the resubmit below
+            #: land on those rows instead of making new ones.
+            graph = CatalogGraphForm(
+                None, game=written, library=library, presentation=presentation
+            )
     #: A failed command lands here too: redirecting would read as
     #: a save. An edit resubmits onto the same row, so re-rendering
     #: invites no duplicate.

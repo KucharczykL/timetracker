@@ -68,7 +68,7 @@ def stated_graph():
             ],
         )
         entry = written.editions[0]
-        return DefaultGraph(written.game, entry.edition, entry.releases[0][1])
+        return DefaultGraph(written.game, entry.edition, entry.releases[0].release)
 
     return state
 
