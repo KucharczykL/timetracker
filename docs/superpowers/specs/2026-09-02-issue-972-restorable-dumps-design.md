@@ -9,9 +9,9 @@
 temporal value:
 
 ```text
-pg_restore: error: COPY failed for table "probe": ERROR:  value for domain
+pg_restore: error: COPY failed for table "games_game": ERROR:  value for domain
 public.temporal_value violates check constraint "temporal_value_valid"
-CONTEXT:  COPY probe, line 1, column value: "2026"
+CONTEXT:  COPY games_game, line 1, column original_release_date: "2026"
 ```
 
 `2026` is a valid temporal value. The message blames the row, and the row is
@@ -34,7 +34,7 @@ The deployed image is `main-e45911c` (2026-08-21), whose tree stops at
 schema at 0022, and every one of them carries 0017's bodies.
 
 The next deploy carries 0023 through 0040, `0034` among them. Dumps taken after
-it restore in one command, so the reported instance ends with that deploy.
+it load in one command, so the reported instance ends with that deploy.
 
 Two things outlive it.
 
@@ -44,29 +44,42 @@ disaster it exists for is the one case where this failure costs something. The
 pre-deploy rehearsal is the smaller reason to act; retained backups are the
 larger one.
 
-**The shape recurs.** Any later migration that corrects a function reachable
-from a domain `CHECK` breaks the load of every dump taken before it, with the
-same message pointing at the same innocent row.
+**The shape recurs, in one narrow way.** A later migration that gives a function
+its `search_path` breaks the load of every dump taken before it. The scope of
+that claim matters and is stated under *What this does not fix* below.
 
 ## What was measured
 
-The design below was run before it was written. A scratch database received
-`0017_temporal_value_domain`'s `CREATE_TEMPORAL_VALUE_DOMAIN` verbatim, a table
-`probe (value temporal_value)`, and the rows `2026`, `1984-05`, `199X`. All
-twelve functions in `public` had `proconfig IS NULL`, which is the 0022 schema's
+The design below was run before it was written, then run again after an
+adversarial review, which falsified part of the first attempt. Both fixtures
+applied `0017_temporal_value_domain`'s `CREATE_TEMPORAL_VALUE_DOMAIN` verbatim,
+which leaves all twelve functions with `proconfig IS NULL` — the 0022 schema's
 condition.
+
+The second fixture is the one that counts. It carries the shape 0018 really
+builds: a `games_game` with a bare domain column, and a `games_release` whose
+`release_date_lower` and `release_date_kind` are `GENERATED ALWAYS AS ... STORED`
+over `timetracker_temporal_lower` and `timetracker_temporal_kind`.
 
 | Path | Result |
 |---|---|
-| One `pg_restore --exit-on-error` | Fails: `violates check constraint "temporal_value_valid"`, `COPY probe, line 1, column value: "2026"` |
-| pre-data, repair, data, post-data | Loads. All three rows present |
+| One `pg_restore --exit-on-error` | Fails: `violates check constraint "temporal_value_valid"` on `"2026"` |
+| pre-data, reach for **every** function, data, post-data | Loads. Generated columns recompute: `199X → 1990-01-01`, `atomic` |
+| Reach for `timetracker_temporal_is_valid` **alone** | **Fails, partially loaded.** `games_game` 3 rows, `games_release` 0: `function _timetracker_temporal_atom_lower(text) does not exist` |
 | Repair run twice | Second run matches no function and alters nothing |
-| Reach given to `timetracker_temporal_is_valid` alone | Data section loads |
 
-The last row confirms the mechanism the fix depends on: a function's
-`SET search_path` stays in effect for the calls it makes, so the helpers inherit
-it. It also confirms that the manual workaround in `docs/deployment.md` is
-sound.
+The third row is the review's finding and it corrects this document's first
+draft. A domain `CHECK` routes through `is_valid`, so giving reach to that one
+function loads any table whose temporal column is plain. A generated column
+calls `timetracker_temporal_lower` and `timetracker_temporal_kind` **directly**,
+so each of those needs its own reach. Every function must get it.
+
+This also condemns the manual workaround in `docs/deployment.md`, which names
+`is_valid` alone and offers "apply the helper reach to every
+`timetracker_temporal_*` function if the data section still fails" as a
+contingency. It is not a contingency. On the real schema the narrow form loads
+part of the data and then stops with a second misleading message, which is
+worse than failing outright.
 
 ## Design
 
@@ -77,38 +90,65 @@ sound.
 ```text
 pg_restore --section=pre-data     domain, functions, tables
 psql -f REACH_THE_HELPERS         the repair
-pg_restore --section=data         COPY, where the domain check runs
-pg_restore --section=post-data    indexes, constraints
+pg_restore --section=data         COPY, where domain checks and generated
+                                  columns run
+pg_restore --section=post-data    indexes and constraints, which also run
+                                  these functions
 ```
 
-Each `pg_restore` keeps `--exit-on-error --no-owner --no-privileges`. These
-three sections are the whole archive; the split changes what a load can
-interrupt, not what it writes.
+Each `pg_restore` keeps `--exit-on-error --no-owner --no-privileges`.
 
 The repair uses `ALTER FUNCTION`, so the setting belongs to the function rather
-than the session. That is what carries it across the section boundary, since
+than the session. That is what carries it across the section boundaries, since
 each `pg_restore` opens its own session and each session starts with the empty
 `search_path` the dump sets.
+
+Both later sections need it. A `CHECK` constraint validated in post-data re-runs
+its function under that empty path, and `CREATE INDEX` over a function
+expression runs it under a secure path that does not include `public` either.
+Measured: an expression index over `timetracker_temporal_kind` cannot be built
+in an unrepaired database and can be built in a repaired one. So the repair does
+not only decide whether data loads — it decides what post-data can build.
+
+The three sections are an exact partition of the archive. Verified on the local
+post-0040 database (274 TOC entries): `pre 68 + data 49 + post 157 = 274`, no
+entry in two sections and none in neither. A single-shot load and a four-step
+load into two fresh databases produced identical `pg_dump -s`, identical
+`pg_dump -a`, and identical `last_value` for all fourteen sequences. The split
+is equivalence-preserving for a dump that needs no repair.
+
+One caveat carried from that check: `pg_restore` replays SECTION_NONE entries in
+every `--section` run rather than once. Our dumps carry only `ENCODING`,
+`STDSTRINGS` and `SEARCHPATH` there, all idempotent. If `fetch_command()` ever
+gains `--create`, `CREATE DATABASE` would be attempted three times.
 
 ### The repair states no function body
 
 ```sql
 DO $$
-DECLARE fn record;
+DECLARE
+    function_row record;
 BEGIN
-  FOR fn IN
-    SELECT p.oid::regprocedure AS signature
-    FROM pg_proc p
-    JOIN pg_namespace n ON n.oid = p.pronamespace
-    WHERE n.nspname = 'public'
-      AND p.prokind = 'f'
-      AND NOT EXISTS (
-        SELECT 1 FROM unnest(coalesce(p.proconfig, '{}')) AS s
-        WHERE s LIKE 'search\_path=%')
-  LOOP
-    EXECUTE format(
-      'ALTER FUNCTION %s SET search_path = pg_catalog, public', fn.signature);
-  END LOOP;
+    FOR function_row IN
+        SELECT procedure.oid::regprocedure AS signature
+        FROM pg_proc AS procedure
+        JOIN pg_namespace AS namespace ON namespace.oid = procedure.pronamespace
+        WHERE namespace.nspname = 'public'
+          AND procedure.prokind = 'f'
+          AND NOT EXISTS (
+              SELECT 1
+              FROM unnest(coalesce(procedure.proconfig, '{}')) AS setting
+              WHERE setting LIKE 'search\_path=%')
+          AND NOT EXISTS (
+              SELECT 1 FROM pg_depend
+              WHERE objid = procedure.oid
+                AND classid = 'pg_proc'::regclass
+                AND deptype = 'e')
+    LOOP
+        EXECUTE format(
+            'ALTER FUNCTION %s SET search_path = pg_catalog, public',
+            function_row.signature);
+    END LOOP;
 END $$;
 ```
 
@@ -126,48 +166,83 @@ module holding "the current SQL" that `0034` imported would stop `0034` being a
 record of what ran in August, and applying 0034's `is_valid` to a dump taken
 after 0038 would quietly drop the three qualifier checks from the domain.
 
-`prokind = 'f'` is required: `ALTER FUNCTION` refuses an aggregate or a
-procedure. `search\_path` escapes the underscore, which `LIKE` would otherwise
-read as a wildcard.
+Three clauses earn their place:
+
+- `prokind = 'f'` — `ALTER FUNCTION` refuses an aggregate or a procedure.
+- `search\_path` — the escape stops `LIKE` reading the underscore as a wildcard.
+- the `pg_depend` test — an extension's functions are its own business.
+  Verified: `CREATE EXTENSION pg_trgm` puts 31 unset functions in `public`, and
+  without this clause the block alters all 31.
 
 ### The filter names no function
 
-The `WHERE` clause tests one thing — a function in `public` with no
-`search_path` of its own. It does not test the name.
+The `WHERE` clause tests one thing — a function in `public`, not owned by an
+extension, with no `search_path` of its own. It does not test the name.
 
 A name test would reopen the shape on the day a migration adds a function
 outside the `timetracker_temporal_*` prefix. The hazard belongs to any `public`
-function a domain `CHECK` or a generated column reaches while data loads, and
-nothing about the name predicts that.
+function a domain `CHECK`, a generated column or an index expression reaches
+during a load, and nothing about the name predicts that.
 
-The breadth costs nothing today, because `public` holds only these twelve
-functions. `0002_uuid_v7_domain`'s check calls `uuid_extract_version`, a builtin
-in `pg_catalog`, which an empty `search_path` still reaches — `pg_catalog` is
-searched whether or not the path names it.
+The breadth is deliberately blunt, and safe here for three reasons. Every
+function this application puts in `public` wants exactly this path — verified on
+the live post-0040 database, where all 17 already carry it and none is
+`SECURITY DEFINER`. Extension members are excluded. And the target is a scratch
+database that is dropped or migrated immediately afterwards, so a setting wider
+than strictly needed reaches nothing that outlives the verification.
 
-The target is a scratch database that is dropped or migrated straight
-afterwards, so a wider setting than strictly needed reaches nothing that
-outlives the verification.
+`--no-owner` means the restoring role owns every function the load created, so
+`ALTER FUNCTION`'s ownership requirement is met without a further clause.
+
+`0002_uuid_v7_domain` needs none of this: its check calls `uuid_extract_version`,
+a builtin in `pg_catalog`, which an empty `search_path` still reaches because
+`pg_catalog` is searched whether or not the path names it.
+
+### How the repair is invoked
+
+`psql -X --set=ON_ERROR_STOP=1 --command=<the block>`, through
+`client_tool("psql")`.
+
+Both flags are load-bearing. Measured: a plain `psql -f` **exits 0** when the
+script raises, including a `DO` block that raises — `run()` uses `check=True`
+and would see success. The operator would then get the original domain error
+from the data section with nothing saying the repair never ran. With
+`ON_ERROR_STOP=1` the same failure exits 3. `-X` skips the user's `~/.psqlrc`,
+which is a blank this module exists to fill.
+
+The SQL lives as a module constant `REACH_THE_HELPERS` in `scripts/db_dump.py`,
+named after the constant `0034` already uses for the same act, and is passed
+with `--command`, since `run()` builds an argument list and opens no stdin.
 
 ## Testing
 
 Two layers, because they answer different questions.
 
 **The four steps issue in order** — `tests/test_db_dump.py`, in the
-monkeypatched-`run` idiom the file already uses for its twenty-odd command-shape
-tests. That the repair falls between pre-data and data is its own assertion:
-after data is too late, and it is the ordering a later edit would get wrong.
-`test_restore_hands_pg_restore_the_documented_flags` asserts a single
-invocation today and is rewritten.
+monkeypatched-`run` idiom the file already uses for its command-shape tests.
+That the repair falls between pre-data and data is its own assertion: after data
+is too late, and it is the ordering a later edit would get wrong. That the psql
+invocation carries `ON_ERROR_STOP` is also its own assertion, since without it a
+failure is silent. `test_restore_hands_pg_restore_the_documented_flags` asserts
+a single invocation today and is rewritten.
 
-**The load works** — a new file, against a real cluster, building the fixture
-measured above: 0017's constant, a `probe` table, three values, `pg_dump
---format=custom`, then `restore()`.
+**The load works** — a new file, against a real cluster, building the second
+fixture measured above, not the first. It applies 0017's constant, then:
 
-It asserts in both directions. Through `restore()` the rows load. Through one
-plain `pg_restore` the load fails with the domain message. Without the second
-assertion the test cannot show that it reproduces #972, and a repair that had
-stopped working would pass it.
+- `games_game`-shaped: a bare `temporal_value` column.
+- `games_release`-shaped: a `GENERATED ALWAYS AS ... STORED` column over
+  `timetracker_temporal_lower`, and one over `timetracker_temporal_kind`.
+- a `CHECK` constraint and an expression index over
+  `timetracker_temporal_kind`, so the post-data section is exercised too.
+
+The generated column is not garnish. A repair that gave reach to `is_valid`
+alone passes a fixture without one and fails a production dump; that is exactly
+the wrong repair this test exists to reject.
+
+It asserts in both directions. Through `restore()` the rows load and the
+generated columns hold the right values. Through one plain `pg_restore` the load
+fails with the domain message. Without the second assertion the test cannot show
+that it reproduces #972, and a repair that had stopped working would pass it.
 
 The fixture applies `CREATE_TEMPORAL_VALUE_DOMAIN` imported from
 `games/migrations/0017_temporal_value_domain.py` rather than migrating. Reading
@@ -177,25 +252,42 @@ eighteen migrations and an `INSERT` satisfying `games_game`'s columns as of that
 node, to reach the same domain and the same functions.
 
 Note for the plan: the issue says to migrate to 0017. A database at 0017 dumps
-and loads cleanly, because 0017 creates the domain and no column uses it. The
-first temporal columns arrive in `0018_catalog_hierarchy`.
+and loads cleanly — verified — because 0017 creates the domain and no column
+uses it. The first temporal columns arrive in `0018_catalog_hierarchy`.
 
 Scratch database names carry the xdist worker id. Both are dropped in a
 `finally`. The module skips when `client_tool` cannot find the client programs,
-as `tests/test_filter_tree_contract.py` skips on its absent artifact.
+`psql` among them, as `tests/test_filter_tree_contract.py` skips on its absent
+artifact.
 
 ## Documentation
 
 `docs/deployment.md` has a subsection, "Dumps taken before migration 0034",
-teaching a manual three-section load. The raw commands stay: the section they
-sit in serves an operator holding only a shell, and that operator still needs
-them.
+teaching a manual load that gives reach to `is_valid` alone. That recipe is
+wrong, as measured above, and is replaced by the same `DO` block the tooling
+runs, so the shell operator and the tool do the same thing. The raw commands
+stay: the section they sit in serves an operator holding only a shell, and that
+operator still needs them.
 
-What changes is the standing of it. The subsection states that
-`make restore-dump` and `make verify-dump` give the dump's functions their reach
-before loading data, and why a dump needs it. The paragraph on the `make`
-targets gains one sentence saying the same. The text stops reading as a
-workaround awaiting a deploy.
+The subsection then states that `make restore-dump` and `make verify-dump` do
+this without being asked, and why a dump needs it. The paragraph on the `make`
+targets gains one sentence saying the same.
+
+The earlier "Isolated restore verification" recipe is a single `pg_restore` and
+stays broken for a pre-0034 dump. It gains a pointer to the subsection.
+
+## What this does not fix
+
+The repair restores **reach**, and only reach. The issue's step 1 — one module
+of function SQL that the migration and the tool share — is declined, for the
+three-generations reason above.
+
+So the recurring shape is narrower than "any later migration that corrects a
+function reachable from a domain `CHECK`". A migration that corrects a *body* —
+a wrong regex in `_atom_precision`, say — still leaves old dumps loading under
+old semantics, and a function that fails for any reason other than reach still
+produces the same misleading domain message. Closing #972 buys the search_path
+subclass, which is the one that has actually happened.
 
 ## Out of scope
 
@@ -210,21 +302,25 @@ workaround awaiting a deploy.
 
 ## Risks
 
-**A section boundary is a new place to stop.** A failure between pre-data and
-data leaves a scratch database holding a schema and no rows, where today it
-holds nothing. The scratch database is already dropped and recreated by the next
+**A section boundary is a new place to stop.** A failure in the data section
+already leaves rows in every table loaded before the failing one, so partial
+state is not new. What is new is a failure between sections, which leaves a
+schema and no rows. The scratch database is dropped and recreated by the next
 run, and `verify()` already leaves a failed copy for inspection deliberately.
 
-**`ALTER FUNCTION` needs ownership.** The restore connects as the local role and
-passes `--no-owner`, so that role owns every function it just created. This does
-not hold for a load into a database owned by somebody else, which
-`_guard_scratch_database` already refuses for other reasons.
+**The repair is silent about what it changed.** It reports no count. An operator
+reading a later failure cannot tell from the output whether the block matched
+anything. Printing the number of functions given reach is cheap and belongs in
+the plan.
 
 ## Definition of done
 
-- `restore()` loads in four steps with the repair between the first two.
-- Command-shape tests cover the order; a round-trip test covers the load, in
-  both directions.
-- `docs/deployment.md` states what the tooling does and why.
+- `restore()` loads in four steps with the repair between the first two, invoked
+  so that a failure in it stops the restore.
+- Command-shape tests cover the order and the `ON_ERROR_STOP` flag; a round-trip
+  test covers the load in both directions, with a generated column in the
+  fixture.
+- `docs/deployment.md` teaches a recipe that works, and states what the tooling
+  does.
 - Full `make check`, `e2e/` included, is green.
 - Closes #972.
