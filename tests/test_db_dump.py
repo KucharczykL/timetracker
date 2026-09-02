@@ -255,7 +255,7 @@ def test_restore_loads_each_section_with_the_documented_flags(
 def test_the_repair_runs_between_the_schema_and_the_data(
     tooling, monkeypatch, tmp_path
 ):
-    """After the data section is too late: the COPY is what fails."""
+    """After the data section is too late."""
     commands, url = _recorded_restore(tooling, monkeypatch, tmp_path)
 
     assert commands[3] == [
@@ -268,34 +268,24 @@ def test_the_repair_runs_between_the_schema_and_the_data(
 
 
 def test_a_refused_repair_stops_the_restore(tooling, monkeypatch, tmp_path):
-    """psql answers a failed script with 0 unless ON_ERROR_STOP says otherwise.
-
-    `run` uses `check=True`, so without the flag the operator would meet
-    the original domain error one section later, with nothing saying the
-    repair never ran.
-    """
+    """psql answers a failed script with 0."""
     commands, _ = _recorded_restore(tooling, monkeypatch, tmp_path)
 
     assert "--set=ON_ERROR_STOP=1" in commands[3]
-    #: -X skips the operator's ~/.psqlrc, one more blank this module fills.
+    #: -X skips the operator's ~/.psqlrc.
     assert "-X" in commands[3]
 
 
 def test_the_repair_names_no_function(tooling):
-    """A name test would miss whatever a later migration adds.
-
-    The hazard belongs to any public function a domain CHECK or a
-    generated column reaches during a load, and the name does not
-    predict that.
-    """
+    """A name test misses later functions."""
     block = tooling.REACH_THE_HELPERS
 
     assert "timetracker_temporal" not in block
-    #: ALTER FUNCTION refuses an aggregate or a procedure.
+    #: ALTER FUNCTION refuses aggregates and procedures.
     assert "prokind = 'f'" in block
-    #: An extension's functions are its own business.
+    #: An extension keeps its own functions.
     assert "deptype = 'e'" in block
-    #: Unescaped, LIKE would read the underscore as a wildcard.
+    #: Unescaped, the underscore is a wildcard.
     assert r"search\_path=%" in block
 
 

@@ -1,21 +1,13 @@
-"""A dump written before migration 0034 loads through `restore()` (#972).
+"""A dump written before 0034 loads (#972).
 
-`0017_temporal_value_domain` created twelve functions that call their helpers
-by bare name and carry no `search_path` of their own. A dump opens every
-session with an empty one, so during a load those calls reach nothing:
-`timetracker_temporal_is_valid` catches the lookup failure and the domain
-answers that the value is invalid.
+Keep the generated column. A domain CHECK calls `is_valid`, thus reach for that
+one function loads a plain column and then stops on a generated column, which
+calls `timetracker_temporal_lower` directly. A fixture without a generated
+column passes under that incorrect repair.
 
-The fixture is the smallest schema that tells a working repair from a broken
-one. A domain CHECK routes through `is_valid`, so reach for that one function
-loads a plain column and then stops on a generated column, which calls
-`timetracker_temporal_lower` directly. A fixture with no generated column
-passes under the wrong repair, which is the repair `docs/deployment.md` used
-to teach.
-
-There is no expression index here. One cannot be built while its function is
-unset, so no dump this tool must load carries one, and a fixture holding one
-would prove something about a database that cannot exist.
+Keep both directions. Without the failing direction the module cannot show that
+it loads a dump that refused before, and a repair that stopped working stays
+unseen.
 """
 
 import importlib.util
@@ -31,15 +23,12 @@ REPOSITORY = Path(__file__).parents[1]
 TOOLING_PATH = REPOSITORY / "scripts" / "db_dump.py"
 CLIENT_PROGRAMS = ("createdb", "dropdb", "psql", "pg_dump", "pg_restore")
 
-#: Each xdist worker gets its own pair, and both are dropped in a finally.
+#: One pair per xdist worker.
 WORKER = os.environ.get("PYTEST_XDIST_WORKER", "master")
 SOURCE_DATABASE = f"timetracker_dump972_source_{WORKER}"
 TARGET_DATABASE = f"timetracker_dump972_target_{WORKER}"
 
-#: `games_game` holds a bare domain column; `games_release` holds generated
-#: columns over the same domain, which is the pair that tells a whole repair
-#: from a partial one. The CHECK is written inline by `pg_dump`, so it first
-#: runs during the COPY beside them.
+#: A bare domain column beside generated columns.
 PROBE_SCHEMA = """
 CREATE TABLE probe_game (
     id integer PRIMARY KEY,
@@ -100,7 +89,7 @@ def _create(tooling, maintenance: str, database: str) -> None:
 
 
 def _rows(tooling, database_url: str, query: str) -> list[str]:
-    """Every row of a query, as psql's `-At` writes it."""
+    """Every row, as psql -At writes it."""
     finished = subprocess.run(
         [
             str(tooling.client_tool("psql")),
@@ -118,7 +107,7 @@ def _rows(tooling, database_url: str, query: str) -> list[str]:
 
 @pytest.fixture(scope="module")
 def tooling():
-    """`scripts/db_dump.py`, skipping the module if a client program is absent."""
+    """The tooling, or skip the module."""
     specification = importlib.util.spec_from_file_location(
         "db_dump_roundtrip", TOOLING_PATH
     )
@@ -136,12 +125,10 @@ def tooling():
 
 @pytest.fixture(scope="module")
 def pre_0034_dump(tooling, tmp_path_factory):
-    """A dump of a schema whose functions carry no `search_path`.
+    """A schema whose functions carry no search_path.
 
-    The domain SQL is read from the frozen migration rather than migrated to.
-    The migration is the historical record, and the record is the thing under
-    test; reaching the same state by migrating costs eighteen nodes and an
-    INSERT satisfying `games_game` as of 0018.
+    The domain SQL is read from the frozen migration, not migrated to. The
+    migration is the historical record, and the record is the thing under test.
     """
     domain_sql = import_module(
         "games.migrations.0017_temporal_value_domain"
@@ -172,7 +159,7 @@ def pre_0034_dump(tooling, tmp_path_factory):
 
 @pytest.fixture
 def scratch(tooling):
-    """Drop the target before and after, whatever the test did to it."""
+    """Drop the target before and after."""
     database_url = tooling.local_database_url()
     maintenance = f"--maintenance-db={tooling.with_database(database_url, 'postgres')}"
     _drop(tooling, maintenance, TARGET_DATABASE)
@@ -183,12 +170,7 @@ def scratch(tooling):
 
 
 def test_the_fixture_reproduces_the_reported_failure(tooling, pre_0034_dump, scratch):
-    """One pg_restore still fails, which is what #972 reports.
-
-    Without this the passing test below could not show that it loads a dump
-    that used to refuse, and a repair that had stopped working would go
-    unnoticed.
-    """
+    """One pg_restore still fails, as #972 reports."""
     maintenance = f"--maintenance-db={tooling.with_database(scratch, 'postgres')}"
     _create(tooling, maintenance, TARGET_DATABASE)
 
@@ -223,7 +205,7 @@ def test_restore_loads_a_dump_written_before_0034(tooling, pre_0034_dump, scratc
 def test_the_generated_columns_hold_their_computed_values(
     tooling, pre_0034_dump, scratch
 ):
-    """A repair reaching `is_valid` alone loads the plain column and stops here."""
+    """An is_valid-only repair stops here."""
     scratch_url = tooling.restore(
         pre_0034_dump, database=TARGET_DATABASE, database_url=scratch
     )
