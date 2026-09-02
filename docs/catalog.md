@@ -112,6 +112,12 @@ hides a button to dodge a 409 either: a refusal the service states comes back on
 the row that caused it, in the form, where the value that caused it still is.
 Promoting a sibling is how the mark moves; see [The default](#the-default).
 
+The mark is never lost. A person who bins the row holding it stated a removal,
+not a mistake, so the mark falls to the first row that stays: in the browser
+while they watch, and again in `CatalogGraphForm` for a post the browser never
+touched. A statement that keeps no row at all is refused for that, not for its
+mark.
+
 On Add Game there is no Game to hang the graph from yet, and the area starts as
 one blank Edition holding one blank marked row. `games/catalog_submit.py` saves
 the Game's own columns first and hands the graph form the Game it made, so one
