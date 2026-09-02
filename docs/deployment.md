@@ -86,6 +86,10 @@ dropdb --maintenance-db='postgresql://<admin>@<host>/postgres' \
   timetracker_restore_verify
 ```
 
+A dump taken before `0034_temporal_functions_search_path` needs more than this
+one `pg_restore`; see [Dumps taken before migration
+0034](#dumps-taken-before-migration-0034).
+
 ### From a checkout
 
 `make fetch-dump`, `make restore-dump`, and `make verify-dump` run the same
@@ -98,6 +102,9 @@ scratch database created from `template0` under the
 [database contract](database.md) and prints its URL; `verify-dump` restores,
 migrates the copy, and drops it only if the migration succeeded (`KEEP=1` keeps
 it). A restore refuses to name the development database or a maintenance one.
+Both targets load the dump in three sections and give its functions their
+`search_path` between the first two, so a dump taken before
+`0034_temporal_functions_search_path` needs no special handling.
 
 The one difference from the commands above: `verify-dump` **applies** the
 migrations rather than running `migrate --check`, because a checkout is usually
@@ -109,32 +116,71 @@ verification database for inspection. Never restore into the live database.
 
 ### Dumps taken before migration 0034
 
-A dump opens with an empty `search_path`, which the `timetracker_temporal_*`
-functions did not carry their own setting against until
-`0034_temporal_functions_search_path`. Restoring an older dump therefore fails
-on the first temporal value:
+`make restore-dump` and `make verify-dump` handle this without being asked. The
+commands below are for an operator holding only a shell.
+
+A dump opens every session with an empty `search_path`, which the
+`timetracker_temporal_*` functions did not carry their own setting against until
+`0034_temporal_functions_search_path`. Those functions call each other by bare
+name, so during a load the calls reach nothing, and
+`timetracker_temporal_is_valid` reports the lookup failure as a verdict on the
+value:
 
 ```text
 value for domain public.temporal_value violates check constraint "temporal_value_valid"
 ```
 
-Restore it in three parts and give the functions their reach between the first
-two:
+A dump carries the function bodies as they were, so migrating the source does
+not make an existing dump loadable. Load it in three parts instead, and give the
+functions their reach between the first two:
 
 ```bash
 pg_restore --exit-on-error --no-owner --no-privileges --section=pre-data \
   --dbname="$SCRATCH_URL" /path/to/timetracker.dump
-psql "$SCRATCH_URL" -c "ALTER FUNCTION timetracker_temporal_is_valid(text)
-  SET search_path = pg_catalog, public"
+
+psql -X --set=ON_ERROR_STOP=1 --dbname="$SCRATCH_URL" --command="
+DO \$\$
+DECLARE
+    function_row record;
+BEGIN
+    FOR function_row IN
+        SELECT candidate.oid::regprocedure AS signature
+        FROM pg_proc AS candidate
+        JOIN pg_namespace AS schema_entry ON schema_entry.oid = candidate.pronamespace
+        WHERE schema_entry.nspname = 'public'
+          AND candidate.prokind = 'f'
+          AND candidate.proconfig IS NULL
+          AND NOT EXISTS (
+              SELECT 1 FROM pg_depend
+              WHERE objid = candidate.oid
+                AND classid = 'pg_proc'::regclass
+                AND deptype = 'e')
+    LOOP
+        EXECUTE format(
+            'ALTER FUNCTION %s SET search_path = pg_catalog, public',
+            function_row.signature);
+    END LOOP;
+END
+\$\$;"
+
 pg_restore --exit-on-error --no-owner --no-privileges --section=data \
   --dbname="$SCRATCH_URL" /path/to/timetracker.dump
 pg_restore --exit-on-error --no-owner --no-privileges --section=post-data \
   --dbname="$SCRATCH_URL" /path/to/timetracker.dump
 ```
 
-Apply the helper reach to every `timetracker_temporal_*` function if the data
-section still fails; migrating the copy afterwards makes the setting permanent.
-Any dump taken after that migration restores in one command.
+Every function needs the setting, not only `timetracker_temporal_is_valid`. A
+domain check routes through that one function, but a generated column calls
+`timetracker_temporal_lower` directly, so naming `is_valid` alone loads the
+plain columns and then stops on the first generated one.
+
+`--set=ON_ERROR_STOP=1` is what makes a refused repair stop the sequence: `psql`
+otherwise answers a failed script with 0, and the next `pg_restore` would report
+the original domain error with nothing saying the repair never ran.
+
+`ALTER FUNCTION` changes reach and no function body, so this is safe on a dump
+of any age. Migrating the copy afterwards makes the setting permanent. Any dump
+taken after `0034` loads in one command.
 
 ## UUIDv7
 
