@@ -228,17 +228,65 @@ def test_restore_creates_the_scratch_database_under_the_collation_contract(
     )
 
 
-def test_restore_hands_pg_restore_the_documented_flags(tooling, monkeypatch, tmp_path):
-    commands, url = _recorded_restore(tooling, monkeypatch, tmp_path)
-
-    assert commands[2] == [
+def _section_command(url: str, dump: str, section: str) -> list[str]:
+    return [
         "/tools/pg_restore",
         "--exit-on-error",
         "--no-owner",
         "--no-privileges",
+        f"--section={section}",
         f"--dbname={url}",
-        str(tmp_path / "timetracker.dump"),
+        dump,
     ]
+
+
+def test_restore_loads_each_section_with_the_documented_flags(
+    tooling, monkeypatch, tmp_path
+):
+    commands, url = _recorded_restore(tooling, monkeypatch, tmp_path)
+    dump = str(tmp_path / "timetracker.dump")
+
+    assert commands[2] == _section_command(url, dump, "pre-data")
+    assert commands[4] == _section_command(url, dump, "data")
+    assert commands[5] == _section_command(url, dump, "post-data")
+    assert len(commands) == 6
+
+
+def test_the_repair_runs_between_the_schema_and_the_data(
+    tooling, monkeypatch, tmp_path
+):
+    """After the data section is too late."""
+    commands, url = _recorded_restore(tooling, monkeypatch, tmp_path)
+
+    assert commands[3] == [
+        "/tools/psql",
+        "-X",
+        "--set=ON_ERROR_STOP=1",
+        f"--dbname={url}",
+        f"--command={tooling.REACH_THE_HELPERS}",
+    ]
+
+
+def test_a_refused_repair_stops_the_restore(tooling, monkeypatch, tmp_path):
+    """psql answers a failed script with 0."""
+    commands, _ = _recorded_restore(tooling, monkeypatch, tmp_path)
+
+    assert "--set=ON_ERROR_STOP=1" in commands[3]
+    #: -X skips the operator's ~/.psqlrc.
+    assert "-X" in commands[3]
+
+
+def test_the_repair_names_no_function(tooling):
+    """A name test misses later functions."""
+    block = tooling.REACH_THE_HELPERS
+
+    assert "timetracker_temporal" not in block
+    #: ALTER FUNCTION refuses aggregates and procedures.
+    assert "prokind = 'f'" in block
+    #: An extension keeps its own functions.
+    assert "deptype = 'e'" in block
+    #: Unescaped, the underscore is a wildcard.
+    assert r"search\_path=%" in block
 
 
 def test_verify_drops_the_scratch_database_only_after_migrations_apply(

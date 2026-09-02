@@ -36,6 +36,52 @@ DEFAULT_SCRATCH_DATABASE = "timetracker_restore_verify"
 #: Dropping any of these breaks the cluster rather than a copy of a dump.
 PROTECTED_DATABASES = frozenset({"postgres", "template0", "template1"})
 
+#: Give each unset function in public its search_path.
+#:
+#: A dump loads under an empty search_path, and 0017 wrote twelve functions
+#: that call their helpers by bare name. ALTER FUNCTION states reach and no
+#: body, thus a dump of any age loads without choosing a generation of a body
+#: to write. Three generations exist.
+#:
+#: The filter tests no name: the risk belongs to whatever a domain CHECK or a
+#: generated column calls. prokind excludes an aggregate and a procedure, which
+#: ALTER FUNCTION refuses. The escape in search\_path stops LIKE reading the
+#: underscore as a wildcard. deptype leaves an extension its own functions.
+REACH_THE_HELPERS = r"""
+DO $$
+DECLARE
+    function_row record;
+    functions_reached integer := 0;
+BEGIN
+    FOR function_row IN
+        SELECT candidate.oid::regprocedure AS signature
+        FROM pg_proc AS candidate
+        JOIN pg_namespace AS schema_entry ON schema_entry.oid = candidate.pronamespace
+        WHERE schema_entry.nspname = 'public'
+          AND candidate.prokind = 'f'
+          AND NOT EXISTS (
+              SELECT 1
+              FROM unnest(coalesce(candidate.proconfig, '{}'::text[])) AS setting
+              WHERE setting LIKE 'search\_path=%')
+          AND NOT EXISTS (
+              SELECT 1 FROM pg_depend
+              WHERE objid = candidate.oid
+                AND classid = 'pg_proc'::regclass
+                AND deptype = 'e')
+    LOOP
+        EXECUTE format(
+            'ALTER FUNCTION %s SET search_path = pg_catalog, public',
+            function_row.signature);
+        functions_reached := functions_reached + 1;
+    END LOOP;
+    RAISE NOTICE 'Gave % function(s) their own search_path.', functions_reached;
+END
+$$;
+""".strip()
+
+#: An exact partition of the dump.
+DUMP_SECTIONS = ("pre-data", "data", "post-data")
+
 
 class DumpError(RuntimeError):
     pass
@@ -196,6 +242,39 @@ def _guard_scratch_database(database: str, database_url: str) -> None:
         )
 
 
+def _load_section(dump: Path, *, scratch_url: str, section: str) -> None:
+    """Load one section of the dump."""
+    run(
+        [
+            str(client_tool("pg_restore")),
+            "--exit-on-error",
+            "--no-owner",
+            "--no-privileges",
+            f"--section={section}",
+            f"--dbname={scratch_url}",
+            str(dump),
+        ]
+    )
+
+
+def _reach_the_helpers(scratch_url: str) -> None:
+    """Give the dump's functions their own search_path.
+
+    ON_ERROR_STOP is necessary: psql answers a failed script with 0, and `run`
+    reads that as success. Without the flag a refused repair arrives as the
+    original domain error one section later.
+    """
+    run(
+        [
+            str(client_tool("psql")),
+            "-X",
+            "--set=ON_ERROR_STOP=1",
+            f"--dbname={scratch_url}",
+            f"--command={REACH_THE_HELPERS}",
+        ]
+    )
+
+
 def restore(dump: Path, *, database: str, database_url: str) -> str:
     """Load `dump` into a freshly created scratch database, and return its URL."""
     if not dump.is_file():
@@ -219,16 +298,11 @@ def restore(dump: Path, *, database: str, database_url: str) -> str:
             database,
         ]
     )
-    run(
-        [
-            str(client_tool("pg_restore")),
-            "--exit-on-error",
-            "--no-owner",
-            "--no-privileges",
-            f"--dbname={scratch_url}",
-            str(dump),
-        ]
-    )
+    #: Reach comes between the schema and the data.
+    _load_section(dump, scratch_url=scratch_url, section=DUMP_SECTIONS[0])
+    _reach_the_helpers(scratch_url)
+    for section in DUMP_SECTIONS[1:]:
+        _load_section(dump, scratch_url=scratch_url, section=section)
     return scratch_url
 
 
