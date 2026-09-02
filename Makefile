@@ -381,15 +381,23 @@ ARGS ?=
 # that margin, which makes an aggressive default behave like the 32-worker run.
 # Leave half the machine usable; that is also why this is not `-n auto`.
 #
-# CI opts out: `ubuntu-latest` is 4 vCPU, where the win is small and the
-# contention risk is the same one that flakes a loaded desktop — a green local
-# run and a red CI run for no reason but scheduling is a bad trade. `-n 0` runs
-# in-process, so xdist is inert there rather than merely single-worker.
+# CI takes one worker per vCPU instead, because what it waits on is not the
+# CPU. Measured on `ubuntu-latest` (4 vCPU), three runs each: serial 1491s, 2
+# workers 974s, 4 workers 696/776/797s. So a full worker per vCPU is worth
+# ~3.5min over the half-the-machine ratio, and all nine runs were green. A
+# runner has nothing else on it, which is the headroom a desktop spends on
+# whatever else is open — that is why the ratios differ.
+#
+# Halve it again if a flaky failure ever appears here. Saturation shows up as a
+# red run on a green tree, not as a slow one.
 #
 # Override to debug (`make test PYTEST_WORKERS=0`): parallel output interleaves
-# and `-x` stops only the worker that hit the failure.
+# and `-x` stops only the worker that hit the failure. `-n 0` runs in-process,
+# so xdist is inert rather than merely single-worker.
 ifneq ($(CI),)
-PYTEST_WORKERS ?= 0
+PYTEST_WORKERS ?= $(shell cores=$$(nproc 2>/dev/null || echo 4); \
+	if [ $$cores -gt 16 ]; then cores=16; fi; \
+	echo $$cores)
 else ifeq ($(OS),Windows_NT)
 PYTEST_WORKERS ?= $(shell powershell -NoProfile -Command "[Math]::Max(1, [Math]::Min(16, [int]([Environment]::ProcessorCount / 2)))")
 else
