@@ -92,8 +92,7 @@ pg_restore --section=pre-data     domain, functions, tables
 psql -f REACH_THE_HELPERS         the repair
 pg_restore --section=data         COPY, where domain checks and generated
                                   columns run
-pg_restore --section=post-data    indexes and constraints, which also run
-                                  these functions
+pg_restore --section=post-data    keys and indexes
 ```
 
 Each `pg_restore` keeps `--exit-on-error --no-owner --no-privileges`.
@@ -103,12 +102,19 @@ than the session. That is what carries it across the section boundaries, since
 each `pg_restore` opens its own session and each session starts with the empty
 `search_path` the dump sets.
 
-Both later sections need it. A `CHECK` constraint validated in post-data re-runs
-its function under that empty path, and `CREATE INDEX` over a function
-expression runs it under a secure path that does not include `public` either.
-Measured: an expression index over `timetracker_temporal_kind` cannot be built
-in an unrepaired database and can be built in a repaired one. So the repair does
-not only decide whether data loads — it decides what post-data can build.
+The data section is the one that needs it. Measured: `pg_dump` writes a table
+`CHECK` constraint inline in `CREATE TABLE`, which is pre-data, and a table with
+no rows validates nothing — the constraint first runs during the `COPY`, beside
+the domain check and the generated columns. Post-data holds the keys and the
+indexes.
+
+Post-data can need it in principle, because `CREATE INDEX` over a function
+expression runs that function under a secure `search_path` that excludes
+`public`. It cannot need it in practice: measured, such an index cannot be built
+at all while its function is unset (`function timetracker_temporal_lower(text)
+does not exist`), so no dump written before `0034` can carry one. Placing the
+repair before the data section covers post-data at no cost, and nothing is built
+around a case that cannot arrive.
 
 The three sections are an exact partition of the archive. Verified on the local
 post-0040 database (274 TOC entries): `pre 68 + data 49 + post 157 = 274`, no
@@ -232,8 +238,12 @@ fixture measured above, not the first. It applies 0017's constant, then:
 - `games_game`-shaped: a bare `temporal_value` column.
 - `games_release`-shaped: a `GENERATED ALWAYS AS ... STORED` column over
   `timetracker_temporal_lower`, and one over `timetracker_temporal_kind`.
-- a `CHECK` constraint and an expression index over
-  `timetracker_temporal_kind`, so the post-data section is exercised too.
+- a `CHECK` constraint over `timetracker_temporal_kind`, which `pg_dump` writes
+  inline in `CREATE TABLE` and which therefore first runs during the `COPY`.
+
+No expression index: one cannot be built while its function is unset, so no dump
+this tool must load carries one, and a fixture holding one would prove something
+about a database that cannot exist.
 
 The generated column is not garnish. A repair that gave reach to `is_valid`
 alone passes a fixture without one and fails a production dump; that is exactly
