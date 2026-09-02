@@ -53,14 +53,15 @@ for iterating, never for the gate.
 is 83% of the suite's serial wall time (~70s vs ~6.5 min). It is explicitly **not**
 the gate: only the full `check` catches e2e breakage.
 
-The suite runs in parallel locally (pytest-xdist), because it is dominated by
-browser page loads: 2507 tests take ~55s at 16 workers against ~370s serial.
+The suite runs in parallel (pytest-xdist), because it is dominated by browser
+page loads: 2507 tests take ~55s at 16 workers against ~370s serial.
 `PYTEST_WORKERS` defaults to half the cores, capped at 16 — past that, contention
-starts flaking timing-sensitive e2e tests. **CI sets `CI`, which defaults it to
-`-n 0`**: `ubuntu-latest` is 4 vCPU, where the win is small and a
-scheduling-induced red CI on a green local run is a bad trade. Set
-`PYTEST_WORKERS=0` when debugging — parallel output interleaves and `-x` stops
-only the worker that hit it.
+starts flaking timing-sensitive e2e tests. **CI takes one worker per vCPU**,
+capped the same way, because a runner has nothing else on it: measured on
+`ubuntu-latest` (4 vCPU), three runs each, serial 1491s against 696-797s at 4
+workers. Halve it there if a flaky failure appears. Set `PYTEST_WORKERS=0` when
+debugging — parallel output interleaves and `-x` stops only the worker that hit
+it.
 
 ### Python 3.14 is a hard prerequisite
 
