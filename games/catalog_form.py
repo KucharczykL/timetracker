@@ -50,10 +50,6 @@ EDITION_COUNT_FIELD: Final[str] = "editions-count"
 UNNAMED_SIBLING_EDITION = (
     "Name this edition. Another edition already presents as the game's own name."
 )
-NO_MARK = "Choose which release is the one in your library."
-MARK_ON_A_REMOVED_ROW = (
-    "The release you chose is going. Choose one of the releases that stay."
-)
 LAST_RELEASE = "An edition keeps one release. Add another one before you remove this."
 LAST_EDITION_IN_FORM = (
     "A game keeps one edition. Add another one before you remove this."
@@ -142,9 +138,17 @@ class ReleaseRowForm(PrimitiveWidgetsMixin, forms.Form):
         self.order_fields(("release_id", "platform", "release_date", "removed"))
 
 
-def _removed(form: forms.Form) -> bool:
-    """A row says it is going, once it has been read."""
-    return bool(form.is_bound and form.cleaned_data.get("removed"))
+def removal_stated(form: forms.BaseForm) -> bool:
+    """A row says it is going.
+
+    `is_valid()` is what makes a bound form read its own data, and the
+    renderer draws rows that the Game form's refusal stopped short of
+    reading. Django caches the result, thus asking here costs nothing.
+    """
+    if not form.is_bound:
+        return False
+    form.is_valid()
+    return bool(form.cleaned_data.get("removed"))
 
 
 def _key(form: forms.Form) -> RowKey:
@@ -166,11 +170,11 @@ class EditionBlock:
 
     @property
     def removed(self) -> bool:
-        return _removed(self.form)
+        return removal_stated(self.form)
 
     @property
     def surviving(self) -> list[ReleaseRowForm]:
-        return [row for row in self.rows if not _removed(row)]
+        return [row for row in self.rows if not removal_stated(row)]
 
 
 def _count(data: PostedData, field: str) -> int:
@@ -360,7 +364,9 @@ class CatalogGraphForm:
             if block.removed:
                 continue
             for row_index, row in enumerate(block.rows):
-                if release_prefix(index, row_index) == self.mark and not _removed(row):
+                if release_prefix(index, row_index) == self.mark and not removal_stated(
+                    row
+                ):
                     return block, row
         return None
 
@@ -425,13 +431,24 @@ class CatalogGraphForm:
                 valid = False
         valid = self._validate_names(surviving) and valid
         valid = self._validate_releases(surviving) and valid
-        if not self.mark:
-            self.form_errors.append(NO_MARK)
-            valid = False
-        elif self.marked() is None:
-            self.form_errors.append(MARK_ON_A_REMOVED_ROW)
-            valid = False
+        #: Binning the marked row states a removal, not a mistake. The
+        #: mark falls to a row that stays, which is what the browser
+        #: does as the person watches; the same rule here states it for
+        #: a post the browser never touched. A statement that keeps no
+        #: row at all is already refused above.
+        if self.marked() is None:
+            self.mark = self._first_surviving()
         return valid
+
+    def _first_surviving(self) -> str:
+        """The row the mark falls to when it names none of its own."""
+        for index, block in enumerate(self.blocks):
+            if block.removed:
+                continue
+            for row_index, row in enumerate(block.rows):
+                if not removal_stated(row):
+                    return release_prefix(index, row_index)
+        return ""
 
     def mirrored_identity(self) -> MirroredIdentity:
         """The flat pair the marked row is about to leave.
@@ -469,7 +486,7 @@ class CatalogGraphForm:
                         release_date=cast(
                             TemporalValue | None, row.cleaned_data.get("release_date")
                         ),
-                        removed=_removed(row),
+                        removed=removal_stated(row),
                         is_default=row is marked_row,
                     )
                     for row in block.rows

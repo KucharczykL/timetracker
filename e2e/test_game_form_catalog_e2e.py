@@ -227,6 +227,41 @@ def test_binning_a_release_and_re_adding_its_pair_keeps_the_new_row(
     assert releases[0].is_default
 
 
+def test_binning_the_marked_row_moves_the_mark_where_a_person_sees_it(
+    signed_in, live_server, game, amiga, dos
+):
+    """The bin states a removal, and the mark falls to a row that stays.
+
+    A person who bins the marked row and adds its pair back never
+    chose a release that is going, so nothing refuses their submit.
+    """
+    Release.objects.create(
+        edition=default_edition(game),
+        platform=dos,
+        release_date=TemporalValue.from_year(1988),
+    )
+    page = signed_in
+    open_form(page, live_server, game)
+    old = live_releases(default_edition(game))[0]
+
+    release_card(page, 0, 0).locator("[data-catalog-remove]").click()
+
+    #: The mark moved while the person was still looking at the page.
+    expect(release_card(page, 0, 1).locator("input[name='in_library']")).to_be_checked()
+
+    page.click("[data-catalog-edition='0'] [data-catalog-add='release']")
+    added = release_card(page, 0, 2)
+    choose_platform(added, "Amiga")
+    type_year(added, "1984")
+    saved(page, live_server)
+
+    old.refresh_from_db()
+    assert old.removed_at is not None
+    releases = live_releases(default_edition(game))
+    assert sorted(release.platform.name for release in releases) == ["Amiga", "DOS"]
+    assert [release.platform for release in releases if release.is_default] == [dos]
+
+
 def test_a_cloned_block_adds_an_edition(signed_in, live_server, game, amiga, dos):
     """A second Edition, named, and the default did not move."""
     page = signed_in

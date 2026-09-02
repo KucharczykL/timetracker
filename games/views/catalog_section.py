@@ -45,6 +45,7 @@ from games.catalog_form import (
     RowIndex,
     release_count_field,
     release_prefix,
+    removal_stated,
 )
 
 #: The element that clones a blank row; see `ts/elements/catalog-editor.ts`.
@@ -74,6 +75,24 @@ _BIN_CELL_CLASS: Final[str] = (
     "col-start-2 row-start-1 flex min-h-control items-center justify-end "
     "@2xl/edition:col-start-4"
 )
+
+#: A row the bin took stays in the form and out of sight: its hidden
+#: inputs are what re-post the removal. `hidden` says what this is, and
+#: the inline display says it in the one place a Tailwind grid or flex
+#: utility on the row cannot outrank. `ts/elements/catalog-editor.ts`
+#: states the same pair, so a re-render draws the page the person left.
+_OUT_OF_SIGHT: Final[list[tuple[str, str]]] = [
+    ("hidden", ""),
+    ("style", "display:none"),
+]
+
+
+def _row_hooks(
+    form: BaseForm, attribute: str, index: RowIndex
+) -> list[tuple[str, str]]:
+    """What names a row, and what takes it off the page."""
+    hooks = [(attribute, str(index))]
+    return hooks + _OUT_OF_SIGHT if removal_stated(form) else hooks
 
 
 def _add_button(kind: str, label: str) -> Node:
@@ -153,7 +172,7 @@ def _release_card(
         label=f"Show the {platform} release in the library",
         checked=chosen,
         columns=EDITION_COLUMNS,
-        attributes=[("data-catalog-release", str(index))],
+        attributes=_row_hooks(row, "data-catalog-release", index),
     )[
         [
             *_hidden_fields(row),
@@ -201,7 +220,7 @@ def _edition_block(block: EditionBlock, index: RowIndex, mark: str) -> Node:
         name=MARK_FIELD,
         legend=block.form["name"].value() or "Unnamed edition",
         class_=_BLOCK_CLASS,
-        attributes=[("data-catalog-edition", str(index))],
+        attributes=_row_hooks(block.form, "data-catalog-edition", index),
     )[
         [
             *_hidden_fields(block.form),

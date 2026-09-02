@@ -271,6 +271,37 @@ def test_add_game_writes_the_whole_graph_it_posted(logged_in, owned_library):
     assert (game.platform, game.year_released) == (steam, 2007)
 
 
+def test_a_refused_page_draws_a_binned_row_out_of_sight(logged_in, plain_game):
+    """The page comes back the way the person left it, bin and all."""
+    edition = Edition.objects.get(game=plain_game, is_default=True)
+    release = Release.objects.get(edition=edition)
+
+    response = logged_in.post(
+        reverse("games:edit_game", args=[plain_game.pk]),
+        {
+            "name": "Portal",
+            "sort_name": "",
+            "status": "played",
+            "wikidata": "",
+            "editions-count": "1",
+            "edition-0-edition_id": str(edition.pk),
+            "edition-0-name": "",
+            "edition-0-releases-count": "1",
+            "edition-0-release-0-release_id": str(release.pk),
+            "edition-0-release-0-platform": "",
+            "edition-0-release-0-removed": "on",
+            "in_library": "edition-0-release-0",
+        },
+    )
+
+    assert response.status_code == 200
+    body = live(response.content.decode())
+    row = re.search(r"<div[^>]*data-catalog-release=\"0\"[^>]*>", body)
+    assert row is not None
+    assert "hidden" in row.group(0)
+    assert "display:none" in row.group(0)
+
+
 def test_a_refused_graph_adds_no_game(logged_in, owned_library):
     """The page comes back, and the catalog is as it was."""
     response = logged_in.post(
