@@ -6,6 +6,7 @@ import pytest
 from django.urls import reverse
 
 from games.catalog_compat import mirror_legacy_columns
+from games.catalog_form import LAST_RELEASE, MOST_ROWS, TOO_MANY_ROWS
 from games.models import Edition, Game, Platform, Release
 from timetracker.temporal import TemporalValue
 
@@ -269,6 +270,173 @@ def test_add_game_writes_the_whole_graph_it_posted(logged_in, owned_library):
     #: The flat columns follow the graph in the same transaction.
     game.refresh_from_db()
     assert (game.platform, game.year_released) == (steam, 2007)
+
+
+def test_a_refused_page_draws_a_binned_row_out_of_sight(logged_in, plain_game):
+    """The page comes back the way the person left it, bin and all."""
+    edition = Edition.objects.get(game=plain_game, is_default=True)
+    release = Release.objects.get(edition=edition)
+
+    response = logged_in.post(
+        reverse("games:edit_game", args=[plain_game.pk]),
+        {
+            "name": "Portal",
+            "sort_name": "",
+            "status": "played",
+            "wikidata": "",
+            "editions-count": "1",
+            "edition-0-edition_id": str(edition.pk),
+            "edition-0-name": "",
+            "edition-0-releases-count": "1",
+            "edition-0-release-0-release_id": str(release.pk),
+            "edition-0-release-0-platform": "",
+            "edition-0-release-0-removed": "on",
+            "in_library": "edition-0-release-0",
+        },
+    )
+
+    assert response.status_code == 200
+    body = live(response.content.decode())
+    row = re.search(r"<div[^>]*data-catalog-release=\"0\"[^>]*>", body)
+    assert row is not None
+    assert "hidden" in row.group(0)
+    assert "display:none" in row.group(0)
+
+
+def test_a_refused_game_still_lets_the_mark_fall(logged_in, owned_library, plain_game):
+    """The Game's own refusal does not stop the graph from reading.
+
+    The mark falls to a row that stays whatever else the page says,
+    or the person is shown a mark they cannot see and no way to move
+    it.
+    """
+    edition = Edition.objects.get(game=plain_game, is_default=True)
+    binned = Release.objects.get(edition=edition)
+    staying = Release.objects.create(
+        edition=edition,
+        platform=Platform.objects.create(library=owned_library, name="DOS"),
+        release_date=TemporalValue.from_year(2011),
+    )
+
+    response = logged_in.post(
+        reverse("games:edit_game", args=[plain_game.pk]),
+        {
+            #: The Game form refuses this, and only the Game form.
+            "name": "",
+            "sort_name": "",
+            "status": "played",
+            "wikidata": "",
+            "editions-count": "1",
+            "edition-0-edition_id": str(edition.pk),
+            "edition-0-name": "",
+            "edition-0-releases-count": "2",
+            "edition-0-release-0-release_id": str(binned.pk),
+            "edition-0-release-0-platform": "",
+            "edition-0-release-0-removed": "on",
+            "edition-0-release-1-release_id": str(staying.pk),
+            "edition-0-release-1-platform": str(staying.platform_id),
+            "in_library": "edition-0-release-0",
+        },
+    )
+
+    assert response.status_code == 200
+    assert marks(live(response.content.decode())) == [
+        ("edition-0-release-0", False),
+        ("edition-0-release-1", True),
+    ]
+
+
+def test_a_refused_game_still_says_an_edition_keeps_one_release(logged_in, plain_game):
+    """Every row is out of sight, thus the block itself has to say why."""
+    edition = Edition.objects.get(game=plain_game, is_default=True)
+    release = Release.objects.get(edition=edition)
+
+    response = logged_in.post(
+        reverse("games:edit_game", args=[plain_game.pk]),
+        {
+            "name": "",
+            "sort_name": "",
+            "status": "played",
+            "wikidata": "",
+            "editions-count": "1",
+            "edition-0-edition_id": str(edition.pk),
+            "edition-0-name": "",
+            "edition-0-releases-count": "1",
+            "edition-0-release-0-release_id": str(release.pk),
+            "edition-0-release-0-platform": "",
+            "edition-0-release-0-removed": "on",
+            "in_library": "edition-0-release-0",
+        },
+    )
+
+    assert response.status_code == 200
+    assert LAST_RELEASE in live(response.content.decode())
+
+
+def test_a_binned_row_with_a_sentence_stays_in_sight(logged_in, plain_game):
+    """A refusal drawn inside a hidden row tells nobody why.
+
+    A posted id nothing can read is a sentence on a hidden field, and
+    both the row and the sentence have to reach the page.
+    """
+    edition = Edition.objects.get(game=plain_game, is_default=True)
+    release = Release.objects.get(edition=edition)
+
+    response = logged_in.post(
+        reverse("games:edit_game", args=[plain_game.pk]),
+        {
+            "name": "Portal",
+            "sort_name": "",
+            "status": "played",
+            "wikidata": "",
+            "editions-count": "1",
+            "edition-0-edition_id": str(edition.pk),
+            "edition-0-name": "",
+            "edition-0-releases-count": "2",
+            "edition-0-release-0-release_id": "not-a-uuid",
+            "edition-0-release-0-platform": "",
+            "edition-0-release-0-removed": "on",
+            "edition-0-release-1-release_id": str(release.pk),
+            "edition-0-release-1-platform": "",
+            "in_library": "edition-0-release-1",
+        },
+    )
+
+    assert response.status_code == 200
+    body = live(response.content.decode())
+    row = re.search(r"<div[^>]*data-catalog-release=\"0\"[^>]*>", body)
+    assert row is not None
+    assert "display:none" not in row.group(0)
+    assert "Enter a valid UUID." in body
+
+
+def test_the_page_reads_no_more_rows_than_a_person_could_stand(logged_in, plain_game):
+    """A count nobody typed is a spent worker, not a form."""
+    edition = Edition.objects.get(game=plain_game, is_default=True)
+
+    response = logged_in.post(
+        reverse("games:edit_game", args=[plain_game.pk]),
+        {
+            "name": "Portal",
+            "sort_name": "",
+            "status": "played",
+            "wikidata": "",
+            "editions-count": "5000000",
+            "edition-0-edition_id": str(edition.pk),
+            "edition-0-name": "Definitive",
+            "edition-0-releases-count": "5000000",
+            "edition-0-release-0-platform": "",
+            "in_library": "edition-0-release-0",
+        },
+    )
+
+    assert response.status_code == 200
+    body = live(response.content.decode())
+    #: Bounded work, and a sentence rather than a page served short.
+    assert body.count('name="in_library"') == MOST_ROWS
+    assert TOO_MANY_ROWS in body
+    edition.refresh_from_db()
+    assert edition.name == ""
 
 
 def test_a_refused_graph_adds_no_game(logged_in, owned_library):

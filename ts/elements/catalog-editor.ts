@@ -37,6 +37,21 @@ export function renumbered(markup: string, indices: RowIndices): string {
 // child, and a block holds its cards' ones deeper down.
 const OWN_REMOVED_INPUT = ':scope > input[name$="-removed"]';
 
+// The card's own mark, told apart from any control the card hosts.
+// Mirrors CHOICE_CARD_MARK_ATTRIBUTE in common/components/choice_card.py.
+const MARK_INPUT = "input[data-choice-card]";
+
+// The two rows a mark sits inside. A card goes out on its own, and it
+// also goes out under the block that holds it.
+const ROW_SELECTORS = ["[data-catalog-release]", "[data-catalog-edition]"];
+
+/** Whether the bin has already taken the row this mark sits in. */
+function isGoing(mark: HTMLElement): boolean {
+  return ROW_SELECTORS.some(
+    (selector) => mark.closest<HTMLElement>(selector)?.hidden === true,
+  );
+}
+
 class CatalogEditorElement extends HTMLElement {
   // htmx can move this node, and a second connect must not bind twice.
   private wired = false;
@@ -46,6 +61,9 @@ class CatalogEditorElement extends HTMLElement {
     this.wired = true;
     // One delegated listener, so a cloned row needs no wiring of its own.
     this.addEventListener("click", this.onClick);
+    // A refused page comes back with the rows the person left, bins and
+    // all. The mark is repaired on arrival too, not only on a click.
+    this.restateMark();
   }
 
   private onClick = (event: Event): void => {
@@ -79,6 +97,8 @@ class CatalogEditorElement extends HTMLElement {
       this.querySelector<HTMLInputElement>('input[name="editions-count"]'),
       blocks.length + 1,
     );
+    // A person who binned every row is adding the one the mark falls to.
+    this.restateMark();
   }
 
   private addRelease(button: HTMLElement): void {
@@ -97,6 +117,7 @@ class CatalogEditorElement extends HTMLElement {
       block.querySelector<HTMLInputElement>('input[name$="-releases-count"]'),
       rows.length + 1,
     );
+    this.restateMark();
   }
 
   private stateCount(input: HTMLInputElement | null, count: number): void {
@@ -114,6 +135,23 @@ class CatalogEditorElement extends HTMLElement {
     // place a Tailwind grid/flex utility on the row cannot outrank.
     row.hidden = true;
     row.style.display = "none";
+    this.restateMark();
+  }
+
+  /**
+   * The mark cannot sit on a row that is going, so it falls to one that
+   * stays — visibly, while the person is still looking at the page.
+   * `games/catalog_form.py` states the same rule for a post that
+   * reaches it with the mark on a row nobody can see.
+   */
+  private restateMark(): void {
+    const staying = [
+      ...this.querySelectorAll<HTMLInputElement>(MARK_INPUT),
+    ].filter((mark) => !isGoing(mark));
+    const first = staying[0];
+    if (!first || staying.some((mark) => mark.checked)) return;
+    first.checked = true;
+    first.dispatchEvent(new Event("change", { bubbles: true }));
   }
 }
 

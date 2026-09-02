@@ -18,8 +18,6 @@ from games.catalog_form import (
     LAST_EDITION_IN_FORM,
     LAST_RELEASE,
     MARK_FIELD,
-    MARK_ON_A_REMOVED_ROW,
-    NO_MARK,
     UNNAMED_SIBLING_EDITION,
     CatalogGraphForm,
     EditionRowForm,
@@ -285,16 +283,19 @@ def test_the_graph_offers_one_blank_row_for_a_game_holding_no_edition(owned_libr
     assert form.mark == "edition-0-release-0"
 
 
-def test_the_graph_refuses_a_submit_naming_no_release(owned_library, plain_game):
+def test_a_submit_naming_no_release_marks_the_first_one(owned_library, plain_game):
     form = graph_form(
         posted(block(), mark=""), game=plain_game.game, library=owned_library
     )
 
-    assert not form.is_valid()
-    assert NO_MARK in form.form_errors
+    assert form.is_valid(), form.form_errors
+    assert form.mark == "edition-0-release-0"
 
 
-def test_the_graph_refuses_a_mark_on_a_row_being_removed(owned_library, plain_game):
+def test_binning_the_marked_row_moves_the_mark_to_one_that_stays(
+    owned_library, plain_game
+):
+    """A person who bins the marked row stated a removal, not a mistake."""
     form = graph_form(
         posted(
             block(
@@ -308,8 +309,24 @@ def test_the_graph_refuses_a_mark_on_a_row_being_removed(owned_library, plain_ga
         library=owned_library,
     )
 
-    assert not form.is_valid()
-    assert MARK_ON_A_REMOVED_ROW in form.form_errors
+    assert form.is_valid(), form.form_errors
+    assert form.mark == "edition-0-release-1"
+
+
+def test_binning_the_marked_edition_moves_the_mark_to_one_that_stays(
+    owned_library, plain_game
+):
+    form = graph_form(
+        posted(
+            block(removed=True),
+            block(name="Gold", releases=[release(date=TemporalValue.from_year(2011))]),
+        ),
+        game=plain_game.game,
+        library=owned_library,
+    )
+
+    assert form.is_valid(), form.form_errors
+    assert form.mark == "edition-1-release-0"
 
 
 def test_the_graph_refuses_an_edition_losing_its_last_release(
@@ -345,6 +362,24 @@ def test_the_graph_refuses_two_surviving_unnamed_editions(owned_library, plain_g
 
     assert not form.is_valid()
     assert UNNAMED_SIBLING_EDITION in form.blocks[1].form.errors["name"]
+
+
+def test_a_name_the_field_refused_does_not_blame_its_sibling(owned_library, plain_game):
+    """A refused name is not a name nobody typed.
+
+    Absent `cleaned_data` reads as the empty string, so a block whose
+    own field refused its name would count as unnamed and put the
+    sibling's sentence on a row that did nothing wrong.
+    """
+    form = graph_form(
+        posted(block(name="N" * 300), block()),
+        game=plain_game.game,
+        library=owned_library,
+    )
+
+    assert not form.is_valid()
+    assert "name" in form.blocks[0].form.errors
+    assert form.blocks[1].form.errors == {}
 
 
 def test_the_graph_refuses_two_surviving_editions_sharing_a_name(

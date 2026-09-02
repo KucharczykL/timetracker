@@ -45,6 +45,7 @@ from games.catalog_form import (
     RowIndex,
     release_count_field,
     release_prefix,
+    removal_stated,
 )
 
 #: The element that clones a blank row; see `ts/elements/catalog-editor.ts`.
@@ -74,6 +75,43 @@ _BIN_CELL_CLASS: Final[str] = (
     "col-start-2 row-start-1 flex min-h-control items-center justify-end "
     "@2xl/edition:col-start-4"
 )
+
+#: A row the bin took stays in the form and out of sight: its hidden
+#: inputs are what re-post the removal. `hidden` says what this is, and
+#: the inline display says it in the one place a Tailwind grid or flex
+#: utility on the row cannot outrank. `ts/elements/catalog-editor.ts`
+#: states the same pair, so a re-render draws the page the person left.
+_OUT_OF_SIGHT: Final[list[tuple[str, str]]] = [
+    ("hidden", ""),
+    ("style", "display:none"),
+]
+
+
+def _row_hooks(
+    form: BaseForm, attribute: str, index: RowIndex
+) -> list[tuple[str, str]]:
+    """What names a row, and what takes it off the page.
+
+    A row that is going and has nothing to say goes out of sight. One
+    that carries a sentence stays in sight and says it: a refusal
+    drawn inside a hidden row refuses the submit and tells nobody
+    why, which is the thing the row's own key was for.
+    """
+    hooks = [(attribute, str(index))]
+    if removal_stated(form) and not form.errors:
+        return hooks + _OUT_OF_SIGHT
+    return hooks
+
+
+def _hidden_errors(form: BaseForm) -> list[Node]:
+    """What a hidden field has to say.
+
+    `_hidden_fields` renders the input alone, so a sentence about a
+    posted id would land nowhere. A row states it beside the rest.
+    """
+    sentences = [error for field in form if field.is_hidden for error in field.errors]
+    errors = FieldErrors(sentences)
+    return [] if errors is None else [errors]
 
 
 def _add_button(kind: str, label: str) -> Node:
@@ -153,7 +191,7 @@ def _release_card(
         label=f"Show the {platform} release in the library",
         checked=chosen,
         columns=EDITION_COLUMNS,
-        attributes=[("data-catalog-release", str(index))],
+        attributes=_row_hooks(row, "data-catalog-release", index),
     )[
         [
             *_hidden_fields(row),
@@ -162,6 +200,7 @@ def _release_card(
             ],
             _field_cell(row["platform"], _PLATFORM_PLACEMENT),
             _field_cell(row["release_date"], _DATE_PLACEMENT),
+            *_hidden_errors(row),
             *_non_field_errors(row),
         ]
     ]
@@ -201,12 +240,13 @@ def _edition_block(block: EditionBlock, index: RowIndex, mark: str) -> Node:
         name=MARK_FIELD,
         legend=block.form["name"].value() or "Unnamed edition",
         class_=_BLOCK_CLASS,
-        attributes=[("data-catalog-edition", str(index))],
+        attributes=_row_hooks(block.form, "data-catalog-edition", index),
     )[
         [
             *_hidden_fields(block.form),
             _count_input(release_count_field(index), len(block.rows)),
             _name_row(block),
+            *_hidden_errors(block.form),
             *_non_field_errors(block.form),
             _headings(),
             *rows,

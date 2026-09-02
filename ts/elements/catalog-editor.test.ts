@@ -28,7 +28,7 @@ describe("renumbered", () => {
 
   it("rewrites the mark's value so the new row can be chosen", () => {
     const markup =
-      '<input type="radio" name="in_library" value="edition-__edition__-release-__release__">';
+      '<input type="radio" data-choice-card name="in_library" value="edition-__edition__-release-__release__">';
     expect(renumbered(markup, { edition: 2, release: 0 })).toContain(
       'value="edition-2-release-0"',
     );
@@ -51,7 +51,7 @@ const PAGE = `
     <input type="hidden" name="edition-0-releases-count" value="1">
     <button type="button" data-catalog-remove></button>
     <div data-catalog-release="0">
-      <input type="radio" name="in_library" value="edition-0-release-0" checked>
+      <input type="radio" data-choice-card name="in_library" value="edition-0-release-0" checked>
       <input type="hidden" name="edition-0-release-0-removed">
       <button type="button" data-catalog-remove></button>
     </div>
@@ -60,8 +60,9 @@ const PAGE = `
   <button type="button" data-catalog-add="edition">Add edition</button>
   <template data-catalog-template="release">
     <div data-catalog-release="__release__">
-      <input type="radio" name="in_library" value="edition-__edition__-release-__release__">
+      <input type="radio" data-choice-card name="in_library" value="edition-__edition__-release-__release__">
       <input type="hidden" name="edition-__edition__-release-__release__-removed">
+      <button type="button" data-catalog-remove></button>
       <select name="edition-__edition__-release-__release__-platform"></select>
     </div>
   </template>
@@ -71,7 +72,7 @@ const PAGE = `
       <input type="hidden" name="edition-__edition__-releases-count" value="1">
       <input name="edition-__edition__-name">
       <div data-catalog-release="0">
-        <input type="radio" name="in_library" value="edition-__edition__-release-0">
+        <input type="radio" data-choice-card name="in_library" value="edition-__edition__-release-0">
       </div>
     </fieldset>
   </template>
@@ -137,4 +138,55 @@ it("states a removed edition without touching its releases", () => {
   expect(value("edition-0-removed")).toBe("on");
   expect(value("edition-0-release-0-removed")).toBe("");
   expect(document.querySelector<HTMLElement>("[data-catalog-edition]")!.hidden).toBe(true);
+});
+
+function marked(): string | null {
+  const mark = document.querySelector<HTMLInputElement>("input[data-choice-card]:checked");
+  return mark ? mark.value : null;
+}
+
+it("moves the mark off a binned release onto one that stays", () => {
+  click('[data-catalog-add="release"]');
+  click('[data-catalog-release="0"] [data-catalog-remove]');
+
+  expect(marked()).toBe("edition-0-release-1");
+});
+
+it("moves the mark out of a binned edition into one that stays", () => {
+  click('[data-catalog-add="edition"]');
+  click("fieldset > [data-catalog-remove]");
+
+  expect(marked()).toBe("edition-1-release-0");
+});
+
+it("gives the mark to an added row when every row before it is going", () => {
+  click('[data-catalog-release="0"] [data-catalog-remove]');
+  expect(marked()).toBe("edition-0-release-0");
+
+  click('[data-catalog-add="release"]');
+
+  expect(marked()).toBe("edition-0-release-1");
+});
+
+it("moves the mark off a row the server drew out of sight", () => {
+  // A refused page comes back with the bin the person left, so the
+  // element repairs the mark on arrival, before anyone clicks.
+  document.body.innerHTML = PAGE.replace(
+    '<div data-catalog-release="0">',
+    '<div data-catalog-release="0" hidden style="display:none">',
+  ).replace(
+    '<button type="button" data-catalog-add="release">Add release</button>',
+    '<div data-catalog-release="1">' +
+      '<input type="radio" data-choice-card name="in_library" value="edition-0-release-1">' +
+      "</div>",
+  );
+
+  expect(marked()).toBe("edition-0-release-1");
+});
+
+it("leaves the mark alone when the row it sits on stays", () => {
+  click('[data-catalog-add="release"]');
+  click('[data-catalog-release="1"] [data-catalog-remove]');
+
+  expect(marked()).toBe("edition-0-release-0");
 });

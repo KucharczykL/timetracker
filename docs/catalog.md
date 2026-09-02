@@ -112,6 +112,12 @@ hides a button to dodge a 409 either: a refusal the service states comes back on
 the row that caused it, in the form, where the value that caused it still is.
 Promoting a sibling is how the mark moves; see [The default](#the-default).
 
+The mark is never lost. A person who bins the row holding it stated a removal,
+not a mistake, so the mark falls to the first row that stays: in the browser
+while they watch, and again in `CatalogGraphForm` for a post the browser never
+touched. A statement that keeps no row at all is refused for that, not for its
+mark.
+
 On Add Game there is no Game to hang the graph from yet, and the area starts as
 one blank Edition holding one blank marked row. `games/catalog_submit.py` saves
 the Game's own columns first and hands the graph form the Game it made, so one
@@ -136,6 +142,11 @@ The page would show a person two rows nothing tells apart. `CatalogGraphForm`
 refuses it; the service does not, because #782 needs two regions on one date to
 be two rows. The rule is about the surviving set, so binning a row and adding
 another that states its platform and date is fine, and is written.
+
+A row that is going states only which row it is. Nothing writes its platform or
+its date, and the page draws the row out of sight, so a sentence about either
+would refuse a submit for a reason nobody can read. The form asks a row that
+stays for every value, and a row that leaves for its id alone.
 
 The service stays permissive on purpose. #782's importer normalizes IGDB and
 writes unnamed Editions in bulk, and a rule in the service would stop it. The

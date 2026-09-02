@@ -258,7 +258,11 @@ def add_game(request: HttpRequest) -> HttpResponse:
     graph = CatalogGraphForm(
         request.POST or None, game=None, library=library, presentation=presentation
     )
-    if form.is_valid() and graph.is_valid():
+    #: Both read, whatever either says. `and` stops at the first false
+    #: one, and a graph the Game's own refusal never reached states no
+    #: sentence of its own and lets no mark fall.
+    game_reads = form.is_valid()
+    if graph.is_valid() and game_reads:
         game = submitted_game_or_form_error(form, graph)
         if game is not None:
             correlation_id = new_correlation_id()
@@ -366,7 +370,9 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
     graph = CatalogGraphForm(
         request.POST or None, game=game, library=library, presentation=presentation
     )
-    if form.is_valid() and graph.is_valid():
+    #: Both read; see `add_game` for why the order is not `and`.
+    game_reads = form.is_valid()
+    if graph.is_valid() and game_reads:
         written = submitted_game_or_form_error(form, graph)
         if written is not None:
             if record_facts_for_request(

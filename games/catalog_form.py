@@ -8,7 +8,7 @@ line changing in `timetracker/temporal.py`.
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Final, cast
+from typing import Final, NamedTuple, cast
 from uuid import UUID
 
 from django import forms
@@ -49,10 +49,6 @@ EDITION_COUNT_FIELD: Final[str] = "editions-count"
 #: because two unnamed siblings both read as the Game's name.
 UNNAMED_SIBLING_EDITION = (
     "Name this edition. Another edition already presents as the game's own name."
-)
-NO_MARK = "Choose which release is the one in your library."
-MARK_ON_A_REMOVED_ROW = (
-    "The release you chose is going. Choose one of the releases that stay."
 )
 LAST_RELEASE = "An edition keeps one release. Add another one before you remove this."
 LAST_EDITION_IN_FORM = (
@@ -142,9 +138,40 @@ class ReleaseRowForm(PrimitiveWidgetsMixin, forms.Form):
         self.order_fields(("release_id", "platform", "release_date", "removed"))
 
 
-def _removed(form: forms.Form) -> bool:
-    """A row says it is going, once it has been read."""
-    return bool(form.is_bound and form.cleaned_data.get("removed"))
+def removal_stated(form: forms.BaseForm) -> bool:
+    """A row says it is going.
+
+    `is_valid()` is what makes a bound form read its own data, and the
+    renderer draws rows that the Game form's refusal stopped short of
+    reading. Django caches the result, thus asking here costs nothing.
+    """
+    if not form.is_bound:
+        return False
+    form.is_valid()
+    return bool(form.cleaned_data.get("removed"))
+
+
+#: What a row that is going still has to say: which row it is.
+IDENTIFYING_FIELDS: Final[frozenset[str]] = frozenset(
+    {"edition_id", "release_id", "removed"}
+)
+
+
+def reads_as_stated(form: forms.BaseForm, *, going: bool = False) -> bool:
+    """Whether a row says enough for the statement it makes.
+
+    A row that is going states only which row it is. Nothing writes
+    its other values, and the page draws it out of sight, so a
+    sentence about one of them would refuse a submit for a reason
+    nobody can read. `going` is what a removed Edition says about the
+    rows under it, which are as unwritten as its own fields.
+    """
+    valid = form.is_valid()
+    if valid or not (going or removal_stated(form)):
+        return valid
+    for field in set(form.errors) - IDENTIFYING_FIELDS:
+        del form.errors[field]
+    return not form.errors
 
 
 def _key(form: forms.Form) -> RowKey:
@@ -166,23 +193,45 @@ class EditionBlock:
 
     @property
     def removed(self) -> bool:
-        return _removed(self.form)
+        return removal_stated(self.form)
 
     @property
     def surviving(self) -> list[ReleaseRowForm]:
-        return [row for row in self.rows if not _removed(row)]
+        return [row for row in self.rows if not removal_stated(row)]
 
 
-def _count(data: PostedData, field: str) -> int:
+#: A page builds one bound form per counted row, each holding a
+#: queryset of its own, thus the count is what a post spends. Django
+#: caps the same number with a formset's `absolute_max`. Nobody types
+#: a graph this big, and a post that states one is spending a worker
+#: rather than stating rows.
+MOST_ROWS: Final[int] = 1000
+
+TOO_MANY_ROWS: Final[str] = (
+    f"This form holds more than {MOST_ROWS} rows. Remove some and submit again."
+)
+
+
+class RowCount(NamedTuple):
+    """How many rows a post states, and how many are read."""
+
+    read: int
+    over: bool
+
+
+def _count(data: PostedData, field: str) -> RowCount:
     """A count that is missing or not a number counts nothing.
 
     Zero rows then fails validation, which is a sentence a person
-    reads, rather than a traceback.
+    reads, rather than a traceback. A count past `MOST_ROWS` is read
+    as `MOST_ROWS`, so the work a post costs stays bounded, and it is
+    refused with `TOO_MANY_ROWS` rather than quietly served short.
     """
     try:
-        return max(0, int(data.get(field, "")))
+        stated = max(0, int(data.get(field, "")))
     except ValueError:
-        return 0
+        return RowCount(0, False)
+    return RowCount(min(MOST_ROWS, stated), stated > MOST_ROWS)
 
 
 class CatalogGraphForm:
@@ -211,6 +260,9 @@ class CatalogGraphForm:
         self.library = library
         self.presentation = presentation
         self.form_errors: list[str] = []
+        #: A post that states more rows than `MOST_ROWS` is refused,
+        #: not served short. `_blocks_from_post` sets it.
+        self._overcounted = False
         self._read_storage()
         if data is None:
             self.blocks = self._blocks_from_storage()
@@ -325,11 +377,15 @@ class CatalogGraphForm:
 
     def _blocks_from_post(self, data: PostedData) -> list[EditionBlock]:
         blocks: list[EditionBlock] = []
-        for index in range(_count(data, EDITION_COUNT_FIELD)):
+        editions = _count(data, EDITION_COUNT_FIELD)
+        self._overcounted = editions.over
+        for index in range(editions.read):
             form = EditionRowForm(data, prefix=edition_prefix(index))
             form.instance = self._posted_edition(data, index)
             rows: list[ReleaseRowForm] = []
-            for row_index in range(_count(data, release_count_field(index))):
+            releases = _count(data, release_count_field(index))
+            self._overcounted = self._overcounted or releases.over
+            for row_index in range(releases.read):
                 row = self._release_form(data, index, row_index)
                 row.instance = self._posted_release(
                     data, index, row_index, form.instance
@@ -360,7 +416,9 @@ class CatalogGraphForm:
             if block.removed:
                 continue
             for row_index, row in enumerate(block.rows):
-                if release_prefix(index, row_index) == self.mark and not _removed(row):
+                if release_prefix(index, row_index) == self.mark and not removal_stated(
+                    row
+                ):
                     return block, row
         return None
 
@@ -371,8 +429,11 @@ class CatalogGraphForm:
         #: `all()` over a generator stops at the first false one, and a
         #: row it never reached holds no `cleaned_data`. `_validate_set`
         #: reads every row's, thus every row is read here first.
-        read = [block.form.is_valid() for block in self.blocks]
-        read += [row.is_valid() for block in self.blocks for row in block.rows]
+        read: list[bool] = []
+        for block in self.blocks:
+            read.append(reads_as_stated(block.form))
+            going = block.removed
+            read += [reads_as_stated(row, going=going) for row in block.rows]
         return self._validate_set() and all(read)
 
     def _validate_names(self, surviving: list[EditionBlock]) -> bool:
@@ -380,6 +441,12 @@ class CatalogGraphForm:
         taken: set[str] = set()
         unnamed = 0
         for block in surviving:
+            #: A block with its own errors states no name yet. Absent
+            #: `cleaned_data` reads as the empty string, and a name
+            #: the field refused would count as one nobody typed,
+            #: putting the sibling's sentence on a blameless row.
+            if block.form.errors:
+                continue
             name = cast(str, block.form.cleaned_data.get("name", ""))
             if not name:
                 unnamed += 1
@@ -414,6 +481,9 @@ class CatalogGraphForm:
 
     def _validate_set(self) -> bool:
         """What one row cannot say on its own."""
+        if self._overcounted:
+            self.form_errors.append(TOO_MANY_ROWS)
+            return False
         surviving = [block for block in self.blocks if not block.removed]
         if not surviving:
             self.form_errors.append(LAST_EDITION_IN_FORM)
@@ -425,13 +495,24 @@ class CatalogGraphForm:
                 valid = False
         valid = self._validate_names(surviving) and valid
         valid = self._validate_releases(surviving) and valid
-        if not self.mark:
-            self.form_errors.append(NO_MARK)
-            valid = False
-        elif self.marked() is None:
-            self.form_errors.append(MARK_ON_A_REMOVED_ROW)
-            valid = False
+        #: Binning the marked row states a removal, not a mistake. The
+        #: mark falls to a row that stays, which is what the browser
+        #: does as the person watches; the same rule here states it for
+        #: a post the browser never touched. A statement that keeps no
+        #: row at all is already refused above.
+        if self.marked() is None:
+            self.mark = self._first_surviving()
         return valid
+
+    def _first_surviving(self) -> str:
+        """The row the mark falls to when it names none of its own."""
+        for index, block in enumerate(self.blocks):
+            if block.removed:
+                continue
+            for row_index, row in enumerate(block.rows):
+                if not removal_stated(row):
+                    return release_prefix(index, row_index)
+        return ""
 
     def mirrored_identity(self) -> MirroredIdentity:
         """The flat pair the marked row is about to leave.
@@ -469,7 +550,7 @@ class CatalogGraphForm:
                         release_date=cast(
                             TemporalValue | None, row.cleaned_data.get("release_date")
                         ),
-                        removed=_removed(row),
+                        removed=removal_stated(row),
                         is_default=row is marked_row,
                     )
                     for row in block.rows
