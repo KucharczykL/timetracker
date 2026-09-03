@@ -1,6 +1,11 @@
+from functools import reduce
+from operator import or_
+
 import pytest
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.db.models import CheckConstraint, Q
+from django.db.models.expressions import BaseExpression
 from django.urls import reverse
 from django.utils.timezone import now
 
@@ -876,3 +881,89 @@ def test_every_key_box_states_a_label(client, owned_user):
 
     assert 'for="id_reference_wikidata"' in body
     assert ">Wikidata<" in body
+
+
+# --- the registry and the constraints that admit it --------------------------
+
+
+def declared_condition(name: str) -> Q | BaseExpression:
+    """What the named check constraint refuses rows by."""
+    for constraint in ExternalReference._meta.constraints:
+        if constraint.name == name:
+            assert isinstance(constraint, CheckConstraint), constraint
+            return constraint.condition
+    raise AssertionError(f"{name} is gone.")
+
+
+def test_the_constraint_admits_exactly_the_registered_providers():
+    """A policy without its migration fails here, not in a render.
+
+    `ProviderPolicy` states that registering a policy is the whole
+    cost of a provider. It is not: the database refuses every word
+    this constraint does not name, and the first sign of the gap
+    used to be a person's write being refused for no stated reason.
+    """
+    admits_each = reduce(or_, (Q(provider=name) for name in PROVIDER_POLICIES))
+
+    assert declared_condition("external_reference_supported_provider") == admits_each
+
+
+def test_one_key_pattern_holds_only_while_one_provider_is_registered():
+    """`external_reference_canonical_provider_key` is Wikidata's.
+
+    It applies `^Q[1-9][0-9]*$` to every row, whatever the row's
+    provider names. A second provider needs that constraint stated
+    per provider before one of its keys can be written at all, and
+    this is what says so.
+    """
+    assert set(PROVIDER_POLICIES) == {"wikidata"}
+
+
+def test_a_template_that_names_no_key_is_refused():
+    """Every reference of that provider would link to one page."""
+    with pytest.raises(ValueError, match=r"must interpolate"):
+        external_references.ProviderPolicy(
+            normalize_key=str,
+            url_template="https://www.wikidata.org/wiki/",
+            label="Wikidata",
+            hint="",
+        )
+
+
+@pytest.mark.parametrize(
+    "url_template",
+    ["http://example.test/{provider_key}", "javascript:x/{provider_key}"],
+)
+def test_a_template_that_is_not_https_is_refused(url_template):
+    """The node layer escapes an href's characters, not its scheme."""
+    with pytest.raises(ValueError, match=r"must start with"):
+        external_references.ProviderPolicy(
+            normalize_key=str, url_template=url_template, label="X", hint=""
+        )
+
+
+def test_a_registry_key_that_is_not_casefolded_is_refused():
+    """`normalize_provider` casefolds, thus nothing would reach it."""
+    with pytest.raises(ValueError, match=r"must be casefolded"):
+        external_references._refuse_a_key_nothing_can_reach(
+            {"Wikidata": PROVIDER_POLICIES["wikidata"]}
+        )
+
+
+def test_a_reference_no_policy_admits_reads_as_text(
+    owned_library, capture_games_logger
+):
+    """One row must not take Game detail and the Platform list down."""
+    from common.components.domain import ExternalReferenceLinks
+
+    game = Game.objects.create(library=owned_library, name="Elite")
+    stranded = ExternalReference(
+        provider="igdb", entity_kind="game", provider_key="elite", game=game
+    )
+
+    with capture_games_logger() as caplog:
+        rendered = str(ExternalReferenceLinks([stranded]))
+
+    assert "igdb elite" in rendered
+    assert "<a" not in rendered
+    assert "states no link" in caplog.text

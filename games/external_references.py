@@ -30,6 +30,14 @@ logger = logging.getLogger("games")
 
 WIKIDATA_KEY_PATTERN = re.compile(r"Q[1-9][0-9]*")
 
+#: The one scheme a template may carry. The node layer escapes the
+#: characters of an href and never reads its scheme, so `http` or
+#: `javascript` would go out exactly as written.
+TRUSTED_SCHEME = "https://"
+
+#: What a template has to interpolate to name one entity.
+KEY_PLACEHOLDER = "{provider_key}"
+
 
 @dataclass(frozen=True, slots=True)
 class ProviderPolicy:
@@ -44,6 +52,26 @@ class ProviderPolicy:
     url_template: str
     label: str
     hint: str
+
+    def __post_init__(self) -> None:
+        """Refuse a template that cannot state a link, at import.
+
+        The template is the only source of an href a person clicks
+        — layer two of the three `ExternalReferenceLinks` names —
+        and nothing outside this module writes one. So the mistake
+        this catches is a typo, and the moment to catch a typo in
+        an href is the one where the application refuses to start.
+        """
+        if not self.url_template.startswith(TRUSTED_SCHEME):
+            raise ValueError(
+                f"A provider's url_template must start with {TRUSTED_SCHEME!r}: "
+                f"{self.url_template!r}"
+            )
+        if KEY_PLACEHOLDER not in self.url_template:
+            raise ValueError(
+                f"A provider's url_template must interpolate {KEY_PLACEHOLDER}: "
+                f"{self.url_template!r}"
+            )
 
 
 def _normalize_wikidata_key(provider_key: str) -> str:
@@ -63,6 +91,22 @@ PROVIDER_POLICIES = {
         hint="An entity ID such as Q123.",
     ),
 }
+
+
+def _refuse_a_key_nothing_can_reach(policies: Mapping[str, ProviderPolicy]) -> None:
+    """Every registry key is what `normalize_provider` looks up.
+
+    That function casefolds first, thus a key with a capital in it
+    names a policy no caller ever reaches: the form draws no box,
+    and the provider silently does not exist. Read at import, next
+    to the registry it reads.
+    """
+    miscased = sorted(name for name in policies if name != name.casefold())
+    if miscased:
+        raise ValueError(f"A provider's registry key must be casefolded: {miscased}")
+
+
+_refuse_a_key_nothing_can_reach(PROVIDER_POLICIES)
 
 
 def normalize_provider(provider: str) -> str:

@@ -382,6 +382,21 @@ asserting the two agree — in the spirit of
 `test_every_unique_constraint_the_form_can_reach_is_mapped` — and degrade the
 renderer to plain text with a logged error rather than taking the page down.
 
+**Settled: the guard test and the fallback, not the derivation.**
+`test_the_constraint_admits_exactly_the_registered_providers` reads
+`external_reference_supported_provider` back off the model and compares it
+against `set(PROVIDER_POLICIES)`, and
+`test_one_key_pattern_holds_only_while_one_provider_is_registered` states that
+`^Q[1-9][0-9]*$` is Wikidata's pattern rather than every provider's. Registering
+a second provider now fails `make check` instead of a person's write. The
+renderer degrades too: `_reference_link` in `common/components/domain.py` writes
+the words with no link and logs at ERROR where a row states no URL, because one
+stranded row must not take Game detail and the whole Platform list down.
+
+Deriving the constraints from the registry is left for the wave that adds the
+second provider (#783/#784/#785). Nothing can drift silently in between: the two
+guards fail first.
+
 **`ProviderPolicy` does not validate its own template.** `url_template: str` is
 the sole trusted source of an `href`, and `ExternalReferenceLinks`' "safe by
 three layers" docstring rests layer two entirely on it. A `__post_init__`
@@ -390,12 +405,25 @@ refusing a template that lacks `{provider_key}` or does not start with
 Nothing checks the registry key is casefolded either, so a policy registered as
 `"Wikidata"` is silently unreachable.
 
+**Fixed.** `ProviderPolicy.__post_init__` refuses a template that does not start
+with `TRUSTED_SCHEME` or does not interpolate `KEY_PLACEHOLDER`, and
+`_refuse_a_key_nothing_can_reach` refuses a registry key `normalize_provider`
+could never look up. Both read at import, so the application refuses to start
+rather than serving one bad href.
+
 **`KEY_TAKEN` is unactionable.** "Another record already states this identifier"
 names no record. The case where a person most needs to know is one the design
 deliberately creates: a Release under a removed Game keeps its claim
 (`tests/test_reference_removal.py:83`) while being invisible in every list and
 unreachable for editing. The key is held hostage by a row the person can neither
 see nor free.
+
+**Deferred to #795, on purpose.** A sentence can only name a record a person can
+act on. Today there is nowhere to send them: the holder is a Release under a
+removed Game, and no page lists a removed row or offers to bring it back. Naming
+it would state a dead end more precisely. #795 adds the recovery UI, and the
+sentence gets its record and its link in the same change. Recorded on #896 and
+on #795.
 
 ---
 
