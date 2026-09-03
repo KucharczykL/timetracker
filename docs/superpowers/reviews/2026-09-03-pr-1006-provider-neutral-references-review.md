@@ -20,7 +20,9 @@ functions). **I5 is fixed too** (2026-09-03, full `make check` green at 5095
 passed / 1 xfailed — six more tests). **I6 is fixed too** (2026-09-03, full
 `make check` green at 5098 passed / 1 xfailed — three more tests). **I7 is
 fixed too** (2026-09-03, full `make check` green at 5100 passed / 1 xfailed —
-two more tests). Everything from the docs table down is open.
+two more tests). **The docs-and-comments table is closed** (2026-09-03, full
+`make check` green at 5100 passed / 1 xfailed, plus state-only migration
+`0042`). The design questions and the smaller points below are open.
 
 ---
 
@@ -346,20 +348,20 @@ All verified against the code.
 | Where | Problem |
 |---|---|
 | `docs/event-retention.md:61` | **Fixed.** Was inverted: One constraint on `(provider, entity_kind, provider_key)`; **four** on `(provider, <fk>)`. The doc swaps them, and now disagrees with `docs/catalog.md:220`, which is right. |
-| `tests/test_name_key.py:25` | `#998` is *"A duplicate Edition name is blamed on whichever row the service saw second"* — nothing to do with `İ` case mapping. The `strict=True` xfail will outlive #998's closure. File the residue issue or state the condition. |
-| `games/migrations/0041_…:64` | Names `sync_game_wikidata`, deleted in this same branch. Exists nowhere reachable from `main`. Keep the next sentence; drop the dead symbol. |
-| `games/external_references.py:352` | Lists "the API" as a reader of `Game.wikidata`. No `wikidata` in `games/api.py` or `ts/`. |
-| `games/models.py:833` | "`games/removal.py` writes it" — `_state_one` writes it when a person changes or clears a key, and migration 0041 writes it too. |
-| `docs/event-retention.md:65`, `docs/catalog.md:232` | **Fixed in event-retention.md** (catalog.md still silent). Neither stated the tested exception: a removed Game does **not** stamp its Editions'/Releases' references, so those keys stay claimed by rows nobody can see — the exact harm event-retention cites as the reason for the rule. Most likely thing in the diff to be read as a bug later. |
-| `games/models.py:695` | `Provider`/`EntityKind` `TextChoices` declared, zero callers, `choices=` never attached to the columns they describe. |
-| `common/naming.py:1` | The module's central claim has a known exception (`İ`) it does not mention, proved by its own `strict=True` xfail. |
+| `tests/test_name_key.py:25` | **Fixed.** `#998` is *"A duplicate Edition name is blamed on whichever row the service saw second"* — nothing to do with `İ` case mapping. The `strict=True` xfail will outlive #998's closure. File the residue issue or state the condition. The condition is stated: the `builtin` provider does simple case mapping and `str.lower()` full, and nothing in Python states the provider's, so no issue closes it. |
+| `games/migrations/0041_…:64` | **Fixed.** Names `sync_game_wikidata`, deleted in this same branch. Exists nowhere reachable from `main`. Keep the next sentence; drop the dead symbol. |
+| `games/external_references.py:352` | **Fixed.** Lists "the API" as a reader of `Game.wikidata`. No `wikidata` in `games/api.py` or `ts/`. Now says so outright, because the next reader will look. |
+| `games/models.py:833` | **Fixed.** "`games/removal.py` writes it" — `_state_one` writes it when a person changes or clears a key, and migration 0041 writes it too. All three are named now. |
+| `docs/event-retention.md:65`, `docs/catalog.md:232` | **Fixed.** Neither stated the tested exception: a removed Game does **not** stamp its Editions'/Releases' references, so those keys stay claimed by rows nobody can see — the exact harm event-retention cites as the reason for the rule. Most likely thing in the diff to be read as a bug later. `docs/catalog.md` now states it too, and points at the rule it stands apart from. |
+| `games/models.py:695` | **Fixed.** `Provider`/`EntityKind` `TextChoices` declared, zero callers, `choices=` never attached to the columns they describe. Both are attached now (migration `0042`, state only), and the comment says a check constraint is what enforces either set. |
+| `common/naming.py:1` | **Fixed.** The module's central claim has a known exception (`İ`) it does not mention, proved by its own `strict=True` xfail. The docstring names it and points at the test. |
 | `games/external_references.py:391` | **Fixed with C2.** Was `#654 owns that reconciliation` — #654 is scoped to redirects and hands the workflow to #785. The branch's own spec says `#654/#785`. |
-| `games/removal.py:57` | `#695 and #795` — #695 is Session Undo only; #795 is the load-bearing citation. |
+| `games/removal.py:57` | **Fixed.** `#695 and #795` — #695 is Session Undo only; #795 is the load-bearing citation. #695 is gone. |
 | `games/external_references.py:214` | **Fixed with I1.** Was `"""One provider's box, as one write."""` — it performs up to two (an UPDATE then an INSERT). |
-| `games/views/game.py:1019` | `One read for the page` contradicts `reads/external_references.py:1` ("one query per kind"); this call passes three kinds. |
-| `games/migrations/0041_…:4` | "the two backfills" — `BATCH_SIZE` feeds `_paged`, which only `_keep_one_key_per_record` uses. |
-| `games/removal.py:84` | Explains the restore branch, not the guard. The interesting half — that a removal deliberately leaves the column alone so a restore can take the key back — is unexplained. |
-| `games/views/reference_section.py:13` | `_BLOCK_CLASS` is byte-identical to `games/views/catalog_section.py:63` and the comment asserts an invariant nothing enforces. Import it instead. |
+| `games/views/game.py:1019` | **Fixed.** `One read for the page` contradicts `reads/external_references.py:1` ("one query per kind"); this call passes three kinds. It says one *batch* now, and names the three. |
+| `games/migrations/0041_…:4` | **Fixed.** "the two backfills" — `BATCH_SIZE` feeds `_paged`, which only `_keep_one_key_per_record` uses. |
+| `games/removal.py:84` | **Fixed.** Explains the restore branch, not the guard. The interesting half — that a removal deliberately leaves the column alone so a restore can take the key back — is unexplained. The guard is explained, though not that way: a restore reads the *marks*, never the column, so what the guard buys is that a removal does not edit a row nobody asked to edit. |
+| `games/views/reference_section.py:13` | **Fixed.** `_BLOCK_CLASS` is byte-identical to `games/views/catalog_section.py:63` and the comment asserts an invariant nothing enforces. Import it instead. Renamed to `BLOCK_CLASS` there and imported here. |
 
 ---
 

@@ -2,7 +2,8 @@ from django.db import migrations, models
 from django.db.models import OuterRef, Subquery
 from django.utils.timezone import now
 
-#: Page size for the two backfills. Nothing opens a cursor.
+#: Page size for the pass that resolves a doubled key, the one
+#: backfill here that reads rows. Nothing opens a cursor.
 BATCH_SIZE = 500
 
 #: The kinds, and the column each one hangs from.
@@ -77,8 +78,8 @@ def _keeper(kind, incumbent, candidate, mirrored):
 def _keep_one_key_per_record(apps, schema_editor):
     """Resolve a record that already holds two keys of one provider.
 
-    Nothing should be found: `sync_game_wikidata` has been removing
-    the extras, and only a direct service call could make one. It
+    Nothing should be found: no route states a second key of one
+    provider, and only a direct service call could make one. It
     runs because a migration that assumes a shape it can check is a
     migration that fails on the one database that broke it.
     """

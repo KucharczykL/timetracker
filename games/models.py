@@ -692,9 +692,13 @@ class Release(ReferencedRow):
 
 
 class ExternalReference(models.Model):
-    #: The database's own words. The human label a screen reads
-    #: comes from PROVIDER_POLICIES, because a provider that names
-    #: itself twice can name itself two ways.
+    #: The database's own words, carried on the two columns below
+    #: so a reader of the model sees what each one may hold. The
+    #: human label a screen reads comes from PROVIDER_POLICIES,
+    #: because a provider that names itself twice can name itself
+    #: two ways. A check constraint is what enforces either set;
+    #: `choices` states it, and a second provider states it here as
+    #: well as in the registry and in the constraint.
     class Provider(models.TextChoices):
         WIKIDATA = "wikidata", "Wikidata"
 
@@ -799,8 +803,8 @@ class ExternalReference(models.Model):
         )
 
     id = UUIDv7Field(primary_key=True, editable=False)
-    provider = models.CharField(max_length=50)
-    entity_kind = models.CharField(max_length=20)
+    provider = models.CharField(max_length=50, choices=Provider)
+    entity_kind = models.CharField(max_length=20, choices=EntityKind)
     provider_key = models.CharField(max_length=255)
     game = models.ForeignKey(
         Game,
@@ -830,8 +834,12 @@ class ExternalReference(models.Model):
         blank=True,
         related_name="external_references",
     )
-    #: Set instead of destroying the row. Derived: it follows the
-    #: row this reference names, and `games/removal.py` writes it.
+    #: Set instead of destroying the row, and written in three
+    #: places: `games/removal.py` when the row this reference names
+    #: is taken out or put back, `_state_one` when a person corrects
+    #: or clears the key, and migration 0041 for the rows that
+    #: predate the column. Each stamp says which act took the
+    #: reference out, which is what a restore reads back.
     #: ExternalReference is not in REMOVABLE_MODELS.
     removed_at = models.DateTimeField(
         null=True, blank=True, default=None, editable=False

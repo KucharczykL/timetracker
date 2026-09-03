@@ -68,7 +68,7 @@ def _mark_the_references_of(instance: Model, previous_mark: datetime | None) -> 
     A key another row has claimed meanwhile stays claimed. Taking
     it back would repeat the theft in the other direction, and
     raising would surface as a traceback, because restore() has no
-    error channel until #695 and #795 give it one.
+    error channel until #795 gives it one.
     """
     from games.models import ExternalReference
 
@@ -92,7 +92,16 @@ def _mark_the_references_of(instance: Model, previous_mark: datetime | None) -> 
 
 
 def _mirror_the_wikidata_column(game: Game, previous_mark: datetime | None) -> None:
-    """A restore that lost the key must not leave the column naming it."""
+    """The column is written on the way back in, not on the way out.
+
+    A removal is a mark. The stamp above takes the reference out,
+    and mirroring after it would clear the column too, which edits
+    a row nobody asked to edit and leaves the recovery UI #795 adds
+    with nothing to name. A restore does mirror, because the key may
+    have gone to another record meanwhile: the stamp above leaves
+    that reference marked, and a column still naming the key would
+    state it again on the record's next edit.
+    """
     from games.external_references import mirror_game_wikidata
 
     if game.removed_at is None:

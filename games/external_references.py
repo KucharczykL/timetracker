@@ -369,8 +369,8 @@ def mirror_game_wikidata(game: Game) -> None:
     """Write `Game.wikidata` from the reference that states it.
 
     The reference is what a person states; the column is what
-    filters, sorting, the games list, the API and the sample
-    fixture still read. An UPDATE rather than a save(), like
+    filters, sorting, the games list and the sample fixture still
+    read; the API names it nowhere. An UPDATE rather than a save(), like
     `mirror_legacy_columns()`, so the mirror revalidates nothing
     and fires no signal. #889 takes the column.
     """

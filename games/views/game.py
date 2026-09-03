@@ -1026,7 +1026,9 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
     purchases = Purchase.objects.for_library(library).filter(games=game)
     playevents = PlayEvent.objects.for_library(library).filter(game=game)
     hierarchy = game_hierarchy(game, library)
-    #: One read for the page: the Game, every Edition, every Release.
+    #: One batch for the page — the Game, every Edition, every
+    #: Release — so no row pays for a read of its own.
+    #: `references_for()` spends one query per kind, three here.
     referenced: list[Model] = [game]
     for entry in hierarchy:
         referenced.append(entry.edition)

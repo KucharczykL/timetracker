@@ -241,6 +241,13 @@ A reference carries a `removed_at` of its own, which `games/removal.py` writes
 when it stamps the row the reference names. That is what lets a removed record
 let go of its key. A restore takes back only the keys no live row holds.
 
+A removed Game does not stamp its Editions' and Releases' references. A Game's
+mark hides its children without stamping them, so those rows carry no mark of
+their own and their keys stay claimed while nobody can see what claims them.
+Putting the Game back brings the whole subtree back unchanged, which is what
+the shape buys; [Retaining a referenced row](event-retention.md) states the
+rule this stands apart from.
+
 Game and Platform host the editor. An Edition's and a Release's references are
 shown and are not editable: neither row has a route, and only #782's importer
 writes one.
