@@ -22,8 +22,17 @@ WIKIDATA_KEY_PATTERN = re.compile(r"Q[1-9][0-9]*")
 
 @dataclass(frozen=True, slots=True)
 class ProviderPolicy:
+    """What a provider states, and how it reads.
+
+    The one entry a provider needs. A form field, its label, its
+    help text and its link all come from here, thus registering a
+    policy is the whole UI cost of a provider.
+    """
+
     normalize_key: Callable[[str], str]
     url_template: str
+    label: str
+    hint: str
 
 
 def _normalize_wikidata_key(provider_key: str) -> str:
@@ -39,8 +48,15 @@ PROVIDER_POLICIES = {
     "wikidata": ProviderPolicy(
         normalize_key=_normalize_wikidata_key,
         url_template="https://www.wikidata.org/wiki/{provider_key}",
+        label="Wikidata",
+        hint="An entity ID such as Q123.",
     ),
 }
+
+
+def provider_labels() -> dict[str, str]:
+    """Every registered provider, under the words a person reads."""
+    return {provider: policy.label for provider, policy in PROVIDER_POLICIES.items()}
 
 
 def normalize_provider(provider: str) -> str:

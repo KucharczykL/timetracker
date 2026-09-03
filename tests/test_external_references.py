@@ -4,8 +4,10 @@ from django.db import IntegrityError, transaction
 from django.utils.timezone import now
 
 from games.external_references import (
+    PROVIDER_POLICIES,
     external_reference_url,
     normalize_provider_key,
+    provider_labels,
     resolve_external_reference,
     save_external_reference,
     sync_game_wikidata,
@@ -521,3 +523,19 @@ def test_a_marked_key_frees_the_record_for_another(owned_library):
     )
 
     assert second.pk != first.pk
+
+
+def test_every_registered_policy_states_a_label_and_a_hint():
+    """A provider is one registry entry, UI included."""
+    for provider, policy in PROVIDER_POLICIES.items():
+        assert policy.label, provider
+        assert policy.hint, provider
+
+
+def test_the_wikidata_policy_reads_as_a_person_would_say_it():
+    assert PROVIDER_POLICIES["wikidata"].label == "Wikidata"
+    assert "Q123" in PROVIDER_POLICIES["wikidata"].hint
+
+
+def test_provider_labels_are_the_registry_in_order():
+    assert provider_labels() == {"wikidata": "Wikidata"}

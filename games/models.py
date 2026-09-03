@@ -692,6 +692,9 @@ class Release(ReferencedRow):
 
 
 class ExternalReference(models.Model):
+    #: The database's own words. The human label a screen reads
+    #: comes from PROVIDER_POLICIES, because a provider that names
+    #: itself twice can name itself two ways.
     class Provider(models.TextChoices):
         WIKIDATA = "wikidata", "Wikidata"
 
