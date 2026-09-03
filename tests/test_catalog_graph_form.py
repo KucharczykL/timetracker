@@ -401,6 +401,17 @@ def test_the_graph_refuses_two_surviving_editions_sharing_a_name(
     assert DUPLICATE_NAME_IN_FORM in form.blocks[1].form.errors["name"]
 
 
+def test_the_form_accepts_two_names_the_constraint_accepts(owned_library, plain_game):
+    """`casefold()` read `Straße` and `STRASSE` as one name; the database does not."""
+    form = graph_form(
+        posted(block(name="Straße"), block(name="STRASSE")),
+        game=plain_game.game,
+        library=owned_library,
+    )
+
+    assert form.is_valid(), form.blocks[1].form.errors
+
+
 def test_the_graph_treats_another_library_s_release_id_as_a_new_row(
     owned_library, plain_game, django_user_model, stated_graph
 ):

@@ -12,6 +12,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Model, QuerySet
 
+from common.naming import NameKey, name_key
 from games.models import Edition, Game, Platform, Release, UserLibrary
 from games.removal import remove
 from timetracker.temporal import TemporalValue
@@ -193,9 +194,9 @@ def _refuse_taken_names(
     surviving: list[EditionState], untouched: list[Edition]
 ) -> None:
     """One live name per Game."""
-    taken = {edition.name.strip().casefold() for edition in untouched} - {""}
+    taken: set[NameKey] = {name_key(edition.name) for edition in untouched} - {""}
     for state in surviving:
-        wanted = state.name.strip().casefold()
+        wanted = name_key(state.name)
         if not wanted:
             continue
         if wanted in taken:

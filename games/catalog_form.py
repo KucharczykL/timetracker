@@ -15,6 +15,7 @@ from django import forms
 from django.core.exceptions import ValidationError
 
 from common.date_time_presentation import DateTimePresentation
+from common.naming import NameKey, name_key
 from games.catalog_compat import MirroredIdentity, mirrored_identity, write_and_mirror
 from games.catalog_writes import (
     EditionState,
@@ -458,7 +459,7 @@ class CatalogGraphForm:
 
     def _validate_names(self, surviving: list[EditionBlock]) -> bool:
         valid = True
-        taken: set[str] = set()
+        taken: set[NameKey] = set()
         unnamed = 0
         for block in surviving:
             #: A block with its own errors states no name yet. Absent
@@ -474,10 +475,10 @@ class CatalogGraphForm:
                     block.form.add_error("name", UNNAMED_SIBLING_EDITION)
                     valid = False
                 continue
-            if name.casefold() in taken:
+            if name_key(name) in taken:
                 block.form.add_error("name", DUPLICATE_NAME_IN_FORM)
                 valid = False
-            taken.add(name.casefold())
+            taken.add(name_key(name))
         return valid
 
     def _validate_releases(self, surviving: list[EditionBlock]) -> bool:

@@ -20,10 +20,12 @@ Game a person owns one way holds one Edition, and naming it would say nothing.
 An Edition with no name presents as the Game's own name. That is
 `Edition.display_name`, and a screen reads it rather than testing the column.
 
-A name is unique among one Game's live Editions, ignoring case and surrounding
-space. Two Games may each hold an Edition of the same name. No name is not a
-name, thus two unnamed Editions of one Game may stand, and the constraint
-`unique_live_edition_name_per_game` excludes them.
+A name is unique among one Game's live Editions, ignoring surrounding space and
+case as the database reads them: `Lower(Trim(name))`. `common/naming.py` states that
+same key for every side that compares two names in Python, because `casefold()`
+states a different one. Two Games may each hold an Edition of the same name. No
+name is not a name, thus two unnamed Editions of one Game may stand, and the
+constraint `unique_live_edition_name_per_game` excludes them.
 
 ## The default
 
