@@ -1944,15 +1944,20 @@ def ConfirmPage(
     confirm_label: str = "Confirm",
     confirm_color: ButtonColor = "red",
     details: Children = None,
+    refusal: Sequence[str] = (),
 ) -> Node:
     """Full-page confirmation: a prompt, a POST ``<form>`` (the confirm action)
     and a cancel link back to the origin. The no-JS replacement for the htmx
     confirmation modals — reusable across delete/refund/split/reset flows.
 
-    ``details`` is block content rendered after the prompt (a list of the data a
-    delete would take with it); it cannot live in ``message``, which renders
-    inside a ``<p>``.
+    Three slots, and neither of the two beside ``message`` can live in it,
+    because it renders inside a ``<p>``. ``refusal`` is why the last POST was
+    turned down; it draws through ``FieldErrors`` above the prompt, so a person
+    reads the reason and then the question that still stands, and so no page
+    states a second way to draw a refusal. ``details`` is block content after
+    the prompt (a list of the data a removal would take with it).
     """
+    refused = FieldErrors(refusal)
     return Div(
         class_=f"mx-auto w-full {FORM_MAX_WIDTH_CLASS} p-5 @container",
     )[
@@ -1961,6 +1966,7 @@ def ConfirmPage(
                 f'<input type="hidden" name="csrfmiddlewaretoken" value="{csrf_token}">'
             ),
             DialogTitle(title),
+            *([refused] if refused is not None else []),
             P(class_="text-heading text-center mt-5")[*as_children(message)],
             *(
                 [Div(class_="text-heading text-center mt-3")[*as_children(details)]]
