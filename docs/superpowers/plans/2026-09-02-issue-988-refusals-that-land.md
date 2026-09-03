@@ -391,9 +391,7 @@ Expected: FAIL — `SECOND` is absent and the joined prompt is present.
 In `games/views/removal.py`:
 
 ```text
-    def confirmation(
-        refusal: Sequence[str] = (), status: int = 200
-    ) -> HttpResponse:
+    def confirmation(refusal: Sequence[str] = (), status: int = 200) -> HttpResponse:
         return render_page(
             request,
             ConfirmPage(
