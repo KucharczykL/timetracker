@@ -18,8 +18,9 @@ added, full `make check` green at 5091 passed / 1 xfailed). Each carries a
 at 5089 passed / 1 xfailed — six tests added, eight deleted with the two dead
 functions). **I5 is fixed too** (2026-09-03, full `make check` green at 5095
 passed / 1 xfailed — six more tests). **I6 is fixed too** (2026-09-03, full
-`make check` green at 5098 passed / 1 xfailed — three more tests). I7 is open,
-as is everything from the docs table down.
+`make check` green at 5098 passed / 1 xfailed — three more tests). **I7 is
+fixed too** (2026-09-03, full `make check` green at 5100 passed / 1 xfailed —
+two more tests). Everything from the docs table down is open.
 
 ---
 
@@ -306,7 +307,7 @@ and `ExternalReferenceLinks`) keep the raising call. A row carries the
 canonical pattern as a check constraint, thus a key read from one always
 links, and a guard there would hide a broken constraint.
 
-### I7. `confirm_and_apply` catches the base `ValidationError`
+### I7. `confirm_and_apply` catches the base `ValidationError` — **fixed**
 
 `games/views/removal.py:72` (#988 code). `action()` now runs the `_AFTER_STAMP`
 chain, including `_recount_purchases` → `purchase.save()` → `clean()`. Any
@@ -322,6 +323,19 @@ from "a defect happened underneath".
 
 **Fix.** Introduce a dedicated refusal type, catch only that, and let a real
 `ValidationError` reach the 500 handler where a defect belongs.
+
+**Fixed.** The dedicated type already existed: `CommandFailed` carries the
+sentence and the status code the boundary in `games/writes/answers.py` states.
+`confirm_and_apply` reads that type alone and answers with `refusal.message`
+and `refusal.status_code`, so the hardcoded 409 is gone and a model that
+refuses underneath the act rises to the 500 handler. `remove_game_for_request`
+raises nothing of its own now: the `CommandFailed` the command stated rises
+through it, and the second type that threw the status away is gone with the
+`ValidationError` import.
+
+Left as it is: `ConfirmPage`'s `refusal` slot stays a `Sequence[str]`. The page
+draws what it is given, and narrowing it to one sentence would be a change to
+the component for the sake of its one caller.
 
 ---
 

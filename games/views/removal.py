@@ -11,7 +11,6 @@ from collections.abc import Callable, Sequence
 from functools import partial
 from typing import Any
 
-from django.core.exceptions import ValidationError
 from django.db.models import Model
 from django.http import HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
@@ -23,6 +22,7 @@ from common.layout import render_page
 from common.returns import UrlName
 from games.removal import remove
 from games.views.returns import return_url
+from games.writes.answers import CommandFailed
 
 
 def confirm_and_apply(
@@ -44,8 +44,10 @@ def confirm_and_apply(
     detail page, say — so an origin pointing there is refused rather than
     followed into a 404.
 
-    An ``action`` that refuses puts every sentence it carried back on the
-    confirmation, above the question rather than inside it.
+    An ``action`` that refuses raises ``CommandFailed``, and its sentence goes
+    back on the confirmation, above the question rather than inside it. Only
+    that type is read as a refusal: a ``ValidationError`` from a model beneath
+    the act is a defect, and it rises to the 500 handler where one belongs.
     """
 
     def confirmation(refusal: Sequence[str] = (), status: int = 200) -> HttpResponse:
@@ -71,11 +73,13 @@ def confirm_and_apply(
         return confirmation()
     try:
         action()
-    except ValidationError as refusal:
-        #: The service refuses on state, and state moves: another tab
-        #: may have taken the sibling this removal counted on. A 500
-        #: would read as our fault rather than as a stale page.
-        return confirmation(refusal.messages, status=409)
+    except CommandFailed as refusal:
+        #: A command refuses on state, and state moves: another tab
+        #: may have taken the row this act counted on. A 500 would
+        #: read as our fault rather than as a stale page. The status
+        #: is the refusal's own, because the answers disagree about
+        #: what a person should do next.
+        return confirmation([refusal.message], status=refusal.status_code)
     return redirect(
         return_url(
             request,
