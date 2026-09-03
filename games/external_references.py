@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from urllib.parse import quote
@@ -9,9 +9,17 @@ from uuid import UUID
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.utils.timezone import now
 
 if TYPE_CHECKING:
-    from games.models import Edition, ExternalReference, Game, Platform, Release
+    from games.models import (
+        Edition,
+        ExternalReference,
+        Game,
+        Platform,
+        Release,
+        UserLibrary,
+    )
 
     type CatalogTarget = Game | Edition | Release | Platform
 else:
@@ -99,6 +107,167 @@ def _target_metadata(target: CatalogTarget) -> tuple[str, str]:
         raise ValidationError({"target": "Unsupported catalog target."}) from error
 
 
+#: A shared row is read-only for everyone, and what sharing means
+#: is unsettled until the IGDB wave (#783, #784, #785) lands.
+SHARED_TARGET = "A shared record's references cannot be changed here."
+OTHER_LIBRARY_TARGET = "This record belongs to another library."
+REMOVED_TARGET = "This record was removed. Put it back before you change it."
+KEY_TAKEN = "Another record already states this identifier."
+
+
+class ReferencesRefused(ValidationError):
+    """A refusal, and the provider whose box caused it."""
+
+    def __init__(self, message: str, *, provider: str | None = None) -> None:
+        super().__init__(message)
+        self.provider = provider
+
+
+def _owner_and_mark(target: CatalogTarget) -> tuple[UUID | None, bool]:
+    """Which library holds the row, and whether it was removed.
+
+    An Edition and a Release read their ancestors' marks as well as
+    their own, the way `for_library()` does: a removed Game hides
+    both, so neither may be written under it.
+    """
+    from games.models import Edition, Game, Platform, Release
+
+    if isinstance(target, Game | Platform):
+        return target.library_id, target.removed_at is not None
+    if isinstance(target, Edition):
+        game = target.game
+        return game.library_id, (
+            target.removed_at is not None or game.removed_at is not None
+        )
+    if isinstance(target, Release):
+        edition = target.edition
+        game = edition.game
+        return game.library_id, (
+            target.removed_at is not None
+            or edition.removed_at is not None
+            or game.removed_at is not None
+        )
+    raise ValidationError({"target": "Unsupported catalog target."})
+
+
+def _refuse_an_unwritable_target(target: CatalogTarget, library: UserLibrary) -> None:
+    """A shared, foreign or removed record states nothing here."""
+    owner, removed = _owner_and_mark(target)
+    if owner is None:
+        raise ReferencesRefused(SHARED_TARGET)
+    if owner != library.pk:
+        raise ReferencesRefused(OTHER_LIBRARY_TARGET)
+    if removed:
+        raise ReferencesRefused(REMOVED_TARGET)
+
+
+def _normalized_or_refused(provider: str, raw: str) -> str:
+    """A blank box states no reference; anything else normalizes."""
+    if not raw.strip():
+        return ""
+    try:
+        _, provider_key = normalize_provider_key(provider=provider, provider_key=raw)
+    except ValidationError as refusal:
+        raise ReferencesRefused(
+            refusal.messages[0], provider=normalize_provider(provider)
+        ) from refusal
+    return provider_key
+
+
+def _refuse_a_taken_key(
+    wanted: Mapping[str, str],
+    held: Mapping[str, ExternalReference],
+    entity_kind: str,
+) -> None:
+    """A key a live row of this kind already holds.
+
+    No pre-check wins a race; the conditional constraint answers
+    the one this loses, and `games/catalog_submit.py` reads the
+    name the database gave.
+    """
+    from games.models import ExternalReference
+
+    for provider, provider_key in wanted.items():
+        if not provider_key:
+            continue
+        incumbent = held.get(provider)
+        clash = ExternalReference.objects.filter(
+            provider=provider,
+            entity_kind=entity_kind,
+            provider_key=provider_key,
+            removed_at__isnull=True,
+        )
+        if incumbent is not None:
+            clash = clash.exclude(pk=incumbent.pk)
+        if clash.exists():
+            raise ReferencesRefused(KEY_TAKEN, provider=provider)
+
+
+def _state_one(
+    provider: str,
+    provider_key: str,
+    incumbent: ExternalReference | None,
+    target: CatalogTarget,
+    entity_kind: str,
+    column: str,
+) -> None:
+    """One provider's box, as one write."""
+    from games.models import ExternalReference
+
+    if incumbent is not None:
+        if incumbent.provider_key == provider_key:
+            return
+        ExternalReference.objects.filter(pk=incumbent.pk).update(removed_at=now())
+    if not provider_key:
+        return
+    ExternalReference.objects.create(
+        provider=provider,
+        entity_kind=entity_kind,
+        provider_key=provider_key,
+        **{column: target},
+    )
+
+
+def state_external_references(
+    *,
+    target: CatalogTarget,
+    library: UserLibrary,
+    keys: Mapping[str, str],
+) -> None:
+    """One record's whole desired set, for the providers named.
+
+    A provider the caller does not name is left alone: a writer
+    that knows one provider must not take another's row. Removal
+    is a mark. Every refusal is read before anything is written,
+    and each carries the provider whose box caused it.
+    """
+    from games.models import ExternalReference
+
+    entity_kind, column = _target_metadata(target)
+    wanted = {
+        normalize_provider(provider): _normalized_or_refused(provider, raw)
+        for provider, raw in keys.items()
+    }
+    with transaction.atomic():
+        _refuse_an_unwritable_target(target, library)
+        held = {
+            reference.provider: reference
+            for reference in ExternalReference.objects.select_for_update()
+            .filter(removed_at__isnull=True, **{f"{column}_id": target.pk})
+            .filter(provider__in=wanted)
+        }
+        _refuse_a_taken_key(wanted, held, entity_kind)
+        for provider, provider_key in wanted.items():
+            _state_one(
+                provider,
+                provider_key,
+                held.get(provider),
+                target,
+                entity_kind,
+                column,
+            )
+
+
 def save_external_reference(
     *, provider: str, provider_key: str, target: CatalogTarget
 ) -> ExternalReference:
@@ -115,12 +284,12 @@ def save_external_reference(
         "provider_key": provider_key,
     }
 
+    #: Only a live row holds the slot: the constraint now reads the
+    #: mark, thus a removed row must not answer this lookup either.
+    live = {**tuple_filters, "removed_at__isnull": True}
+
     with transaction.atomic():
-        reference = (
-            ExternalReference.objects.select_for_update()
-            .filter(**tuple_filters)
-            .first()
-        )
+        reference = ExternalReference.objects.select_for_update().filter(**live).first()
         if reference is None:
             try:
                 with transaction.atomic():
@@ -129,9 +298,7 @@ def save_external_reference(
                     )
             except IntegrityError:
                 reference = (
-                    ExternalReference.objects.select_for_update()
-                    .filter(**tuple_filters)
-                    .get()
+                    ExternalReference.objects.select_for_update().filter(**live).get()
                 )
 
         if reference.target_uuid == target.pk:

@@ -4,15 +4,22 @@ from django.db import IntegrityError, transaction
 from django.utils.timezone import now
 
 from games.external_references import (
+    KEY_TAKEN,
+    OTHER_LIBRARY_TARGET,
     PROVIDER_POLICIES,
+    REMOVED_TARGET,
+    SHARED_TARGET,
+    ReferencesRefused,
     external_reference_url,
     normalize_provider_key,
     provider_labels,
     resolve_external_reference,
     save_external_reference,
+    state_external_references,
     sync_game_wikidata,
 )
 from games.models import Edition, ExternalReference, Game, Platform, Release
+from games.removal import remove
 
 pytestmark = pytest.mark.django_db
 
@@ -539,3 +546,132 @@ def test_the_wikidata_policy_reads_as_a_person_would_say_it():
 
 def test_provider_labels_are_the_registry_in_order():
     assert provider_labels() == {"wikidata": "Wikidata"}
+
+
+def test_stating_a_key_creates_the_reference(owned_library):
+    game = Game.objects.create(name="Elite", library=owned_library)
+
+    state_external_references(
+        target=game, library=owned_library, keys={"wikidata": " q123 "}
+    )
+
+    reference = ExternalReference.objects.get(game=game, removed_at=None)
+    assert reference.provider_key == "Q123"
+
+
+def test_stating_a_blank_key_marks_the_reference(owned_library):
+    game = Game.objects.create(name="Elite", library=owned_library)
+    state_external_references(
+        target=game, library=owned_library, keys={"wikidata": "Q123"}
+    )
+
+    state_external_references(target=game, library=owned_library, keys={"wikidata": ""})
+
+    assert not ExternalReference.objects.filter(game=game, removed_at=None).exists()
+    assert ExternalReference.objects.filter(game=game).exists()
+
+
+def test_stating_a_new_key_replaces_the_old_one(owned_library):
+    game = Game.objects.create(name="Elite", library=owned_library)
+    state_external_references(
+        target=game, library=owned_library, keys={"wikidata": "Q123"}
+    )
+
+    state_external_references(
+        target=game, library=owned_library, keys={"wikidata": "Q124"}
+    )
+
+    live = ExternalReference.objects.get(game=game, removed_at=None)
+    assert live.provider_key == "Q124"
+
+
+def test_a_provider_the_caller_does_not_name_is_left_alone(owned_library):
+    game = Game.objects.create(name="Elite", library=owned_library)
+    state_external_references(
+        target=game, library=owned_library, keys={"wikidata": "Q123"}
+    )
+
+    state_external_references(target=game, library=owned_library, keys={})
+
+    assert ExternalReference.objects.filter(game=game, removed_at=None).exists()
+
+
+def test_a_key_another_record_holds_is_refused(owned_library):
+    first = Game.objects.create(name="Elite", library=owned_library)
+    second = Game.objects.create(name="Elite II", library=owned_library)
+    state_external_references(
+        target=first, library=owned_library, keys={"wikidata": "Q123"}
+    )
+
+    with pytest.raises(ReferencesRefused) as refusal:
+        state_external_references(
+            target=second, library=owned_library, keys={"wikidata": "Q123"}
+        )
+
+    assert refusal.value.provider == "wikidata"
+    assert refusal.value.messages[0] == KEY_TAKEN
+    assert (
+        ExternalReference.objects.get(provider_key="Q123", removed_at=None).game_id
+        == first.pk
+    )
+
+
+def test_a_shared_target_is_refused(owned_library):
+    shared = Game.objects.create(name="Elite", library=None)
+
+    with pytest.raises(ReferencesRefused) as refusal:
+        state_external_references(
+            target=shared, library=owned_library, keys={"wikidata": "Q123"}
+        )
+
+    assert refusal.value.messages[0] == SHARED_TARGET
+
+
+def test_another_librarys_target_is_refused(owned_library, django_user_model):
+    other = django_user_model.objects.create_user(
+        username="other", password="p"
+    ).library
+    theirs = Game.objects.create(name="Elite", library=other)
+
+    with pytest.raises(ReferencesRefused) as refusal:
+        state_external_references(
+            target=theirs, library=owned_library, keys={"wikidata": "Q123"}
+        )
+
+    assert refusal.value.messages[0] == OTHER_LIBRARY_TARGET
+
+
+def test_a_removed_target_is_refused(owned_library):
+    game = Game.objects.create(name="Elite", library=owned_library)
+    remove(game)
+
+    with pytest.raises(ReferencesRefused) as refusal:
+        state_external_references(
+            target=game, library=owned_library, keys={"wikidata": "Q123"}
+        )
+
+    assert refusal.value.messages[0] == REMOVED_TARGET
+
+
+def test_a_malformed_key_is_refused_under_its_provider(owned_library):
+    game = Game.objects.create(name="Elite", library=owned_library)
+
+    with pytest.raises(ReferencesRefused) as refusal:
+        state_external_references(
+            target=game, library=owned_library, keys={"wikidata": "banana"}
+        )
+
+    assert refusal.value.provider == "wikidata"
+    assert "Q123" in refusal.value.messages[0]
+
+
+def test_nothing_is_written_when_one_provider_is_refused(owned_library):
+    """Every refusal is read before anything is written."""
+    game = Game.objects.create(name="Elite", library=owned_library)
+
+    with pytest.raises(ReferencesRefused):
+        state_external_references(
+            target=game, library=owned_library, keys={"wikidata": "banana"}
+        )
+
+    assert not ExternalReference.objects.filter(game=game).exists()
