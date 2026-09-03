@@ -11,15 +11,15 @@ from games.external_references import (
     SHARED_TARGET,
     ReferencesRefused,
     external_reference_url,
+    mirror_game_wikidata,
     normalize_provider_key,
     provider_labels,
     resolve_external_reference,
     save_external_reference,
     state_external_references,
-    sync_game_wikidata,
 )
 from games.models import Edition, ExternalReference, Game, Platform, Release
-from games.removal import remove
+from games.removal import remove, restore
 
 pytestmark = pytest.mark.django_db
 
@@ -400,81 +400,69 @@ def test_resolve_external_reference_rejects_invalid_tuples(kwargs):
         resolve_external_reference(**kwargs)
 
 
-def test_sync_game_wikidata_retains_the_existing_reference_for_an_unchanged_key():
-    """Sync must persist the canonical legacy key and preserve the reference UUID."""
-    game = Game.objects.create(name="Unchanged Wikidata", wikidata=" Q123 ")
-    original = save_external_reference(
-        provider="wikidata", provider_key="Q123", target=game
+def test_the_mirror_writes_the_column_from_the_live_reference(owned_library):
+    game = Game.objects.create(name="Elite", library=owned_library)
+    state_external_references(
+        target=game, library=owned_library, keys={"wikidata": "Q123"}
     )
 
-    synced = sync_game_wikidata(game=game)
-    game.refresh_from_db()
+    mirror_game_wikidata(game)
 
-    assert synced is not None
-    assert synced.pk == original.pk
+    game.refresh_from_db()
     assert game.wikidata == "Q123"
 
 
-def test_sync_game_wikidata_replaces_an_old_game_mapping_when_the_legacy_key_changes():
-    """Keeping an obsolete mapping would make one Game advertise two legacy keys."""
-    game = Game.objects.create(name="Changed Wikidata", wikidata="Q456")
-    old = save_external_reference(provider="wikidata", provider_key="Q123", target=game)
+def test_the_mirror_empties_the_column_when_no_reference_is_live(owned_library):
+    game = Game.objects.create(name="Elite", library=owned_library, wikidata="Q1")
 
-    synced = sync_game_wikidata(game=game)
+    mirror_game_wikidata(game)
 
-    assert synced is not None
-    assert synced.provider_key == "Q456"
-    assert not ExternalReference.objects.filter(pk=old.pk).exists()
-    assert list(
-        ExternalReference.objects.filter(game=game).values_list(
-            "provider_key", flat=True
-        )
-    ) == ["Q456"]
+    game.refresh_from_db()
+    assert game.wikidata == ""
 
 
-@pytest.mark.parametrize("preserved_kind", ["edition", "release", "platform"])
-def test_sync_game_wikidata_removes_only_game_mappings_when_legacy_value_is_blank(
-    preserved_kind,
-):
-    """Clearing a Game's legacy key must not delete another catalog kind's identity."""
-    targets = _catalog_targets()
-    targets["game"].wikidata = "Q123"
-    targets["game"].save(update_fields=("wikidata",))
-    game_reference = save_external_reference(
-        provider="wikidata", provider_key="Q123", target=targets["game"]
+def test_the_mirror_ignores_a_marked_reference(owned_library):
+    game = Game.objects.create(name="Elite", library=owned_library)
+    state_external_references(
+        target=game, library=owned_library, keys={"wikidata": "Q123"}
     )
-    preserved_reference = save_external_reference(
-        provider="wikidata", provider_key="Q123", target=targets[preserved_kind]
+    state_external_references(target=game, library=owned_library, keys={"wikidata": ""})
+
+    mirror_game_wikidata(game)
+
+    game.refresh_from_db()
+    assert game.wikidata == ""
+
+
+def test_a_removed_game_keeps_the_column_a_restore_wants(owned_library):
+    game = Game.objects.create(name="Elite", library=owned_library)
+    state_external_references(
+        target=game, library=owned_library, keys={"wikidata": "Q123"}
     )
-    targets["game"].wikidata = "   "
+    mirror_game_wikidata(game)
 
-    synced = sync_game_wikidata(game=targets["game"])
-    targets["game"].refresh_from_db()
+    remove(game)
 
-    assert synced is None
-    assert not ExternalReference.objects.filter(pk=game_reference.pk).exists()
-    assert ExternalReference.objects.filter(pk=preserved_reference.pk).exists()
-    assert targets["game"].wikidata == ""
+    game.refresh_from_db()
+    assert game.wikidata == "Q123"
 
 
-def test_sync_game_wikidata_rolls_back_deletion_when_another_game_owns_the_key():
-    """A conflicting replacement must restore the first Game's old mapping on rollback."""
-    first = Game.objects.create(name="First Wikidata", wikidata="Q456")
-    second = Game.objects.create(name="Second Wikidata", wikidata="Q456")
-    first_reference = save_external_reference(
-        provider="wikidata", provider_key="Q123", target=first
+def test_a_restore_that_loses_the_key_empties_the_column(owned_library):
+    first = Game.objects.create(name="Elite", library=owned_library)
+    state_external_references(
+        target=first, library=owned_library, keys={"wikidata": "Q123"}
     )
-    second_reference = save_external_reference(
-        provider="wikidata", provider_key="Q456", target=second
+    mirror_game_wikidata(first)
+    remove(first)
+    second = Game.objects.create(name="Elite II", library=owned_library)
+    state_external_references(
+        target=second, library=owned_library, keys={"wikidata": "Q123"}
     )
 
-    with pytest.raises(ValidationError, match="already maps to another catalog target"):
-        sync_game_wikidata(game=first)
+    restore(first)
 
-    assert ExternalReference.objects.get(pk=first_reference.pk).target_uuid == first.pk
-    assert (
-        ExternalReference.objects.get(pk=second_reference.pk).target_uuid == second.pk
-    )
+    first.refresh_from_db()
+    assert first.wikidata == ""
 
 
 def test_a_marked_reference_lets_go_of_its_provider_key(owned_library):

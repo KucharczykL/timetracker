@@ -13,7 +13,6 @@ from django.db import IntegrityError, transaction
 from games.catalog_compat import LEGACY_IDENTITY_TAKEN, MirroredIdentity
 from games.catalog_form import CatalogGraphForm
 from games.catalog_writes import DUPLICATE_EDITION_NAME
-from games.external_references import sync_game_wikidata
 from games.models import Game
 
 if TYPE_CHECKING:
@@ -116,7 +115,6 @@ def save_game_columns(form: GameForm, identity: MirroredIdentity) -> Game:
     game.platform = identity.platform
     game.year_released = identity.year_released
     game.save()
-    sync_game_wikidata(game=game)
     return game
 
 

@@ -345,36 +345,28 @@ def resolve_external_reference(
     )
 
 
-def sync_game_wikidata(*, game: Game) -> ExternalReference | None:
-    """Synchronize the temporary Game.wikidata compatibility field to its reference."""
+def mirror_game_wikidata(game: Game) -> None:
+    """Write `Game.wikidata` from the reference that states it.
+
+    The reference is what a person states; the column is what
+    filters, sorting, the games list, the API and the sample
+    fixture still read. An UPDATE rather than a save(), like
+    `mirror_legacy_columns()`, so the mirror revalidates nothing
+    and fires no signal. #889 takes the column.
+    """
     from games.models import ExternalReference, Game
 
-    legacy_key = game.wikidata.strip()
-    with transaction.atomic():
-        persisted_game = Game.objects.select_for_update().get(pk=game.pk)
-        references = list(
-            ExternalReference.objects.select_for_update().filter(
-                provider="wikidata", entity_kind="game", game_id=game.pk
-            )
+    live = (
+        ExternalReference.objects.filter(
+            provider="wikidata",
+            entity_kind="game",
+            game_id=game.pk,
+            removed_at__isnull=True,
         )
-        if not legacy_key:
-            for reference in references:
-                reference.delete()
-            persisted_game.wikidata = ""
-            persisted_game.save(update_fields=("wikidata",))
-            game.wikidata = ""
-            return None
-
-        _, canonical_key = normalize_provider_key(
-            provider="wikidata", provider_key=legacy_key
-        )
-        for reference in references:
-            if reference.provider_key != canonical_key:
-                reference.delete()
-        synced = save_external_reference(
-            provider="wikidata", provider_key=canonical_key, target=persisted_game
-        )
-        persisted_game.wikidata = canonical_key
-        persisted_game.save(update_fields=("wikidata",))
-        game.wikidata = canonical_key
-        return synced
+        .values_list("provider_key", flat=True)
+        .first()
+    ) or ""
+    if game.wikidata == live:
+        return
+    Game.objects.filter(pk=game.pk).update(wikidata=live)
+    game.wikidata = live

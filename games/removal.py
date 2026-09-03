@@ -80,9 +80,17 @@ def _mark_the_references_of(instance: Model) -> None:
     held.filter(removed_at__isnull=False).filter(free).update(removed_at=None)
 
 
+def _mirror_the_wikidata_column(game: Game) -> None:
+    """A restore that lost the key must not leave the column naming it."""
+    from games.external_references import mirror_game_wikidata
+
+    if game.removed_at is None:
+        mirror_game_wikidata(game)
+
+
 #: What a stamp does not do. Values run in order.
 _AFTER_STAMP: dict[type[Model], tuple[Callable[[Any], None], ...]] = {
-    Game: (_mark_the_references_of, _recount_purchases),
+    Game: (_mark_the_references_of, _mirror_the_wikidata_column, _recount_purchases),
     Edition: (_mark_the_references_of,),
     Release: (_mark_the_references_of,),
     Platform: (_mark_the_references_of,),
