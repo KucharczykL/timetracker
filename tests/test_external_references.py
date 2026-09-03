@@ -967,3 +967,156 @@ def test_a_reference_no_policy_admits_reads_as_text(
     assert "igdb elite" in rendered
     assert "<a" not in rendered
     assert "states no link" in caplog.text
+
+
+def test_an_edition_reads_its_owner_through_its_game(
+    owned_library, stated_graph, django_user_model
+):
+    """An Edition holds no library column; its Game holds one."""
+    other = django_user_model.objects.create_user(
+        username="other", password="p"
+    ).library
+    _, edition, _ = stated_graph(Game(name="Elite", library=other), other)
+
+    with pytest.raises(ReferencesRefused) as refusal:
+        state_external_references(
+            target=edition, library=owned_library, keys={"wikidata": "Q123"}
+        )
+
+    assert refusal.value.messages[0] == OTHER_LIBRARY_TARGET
+
+
+def test_an_edition_under_a_shared_game_is_refused(owned_library):
+    shared = Game.objects.create(name="Elite", library=None)
+    edition = Edition.objects.create(game=shared, is_default=True)
+
+    with pytest.raises(ReferencesRefused) as refusal:
+        state_external_references(
+            target=edition, library=owned_library, keys={"wikidata": "Q123"}
+        )
+
+    assert refusal.value.messages[0] == SHARED_TARGET
+
+
+def test_an_edition_under_a_removed_game_is_refused(owned_library, stated_graph):
+    """A removed Game hides its Editions, thus none may be written."""
+    game, edition, _ = stated_graph(
+        Game(name="Elite", library=owned_library), owned_library
+    )
+    remove(game)
+
+    with pytest.raises(ReferencesRefused) as refusal:
+        state_external_references(
+            target=edition, library=owned_library, keys={"wikidata": "Q123"}
+        )
+
+    assert refusal.value.messages[0] == REMOVED_TARGET
+
+
+def test_a_release_under_a_removed_edition_is_refused(owned_library, stated_graph):
+    _, edition, release = stated_graph(
+        Game(name="Elite", library=owned_library), owned_library
+    )
+    remove(edition)
+
+    with pytest.raises(ReferencesRefused) as refusal:
+        state_external_references(
+            target=release, library=owned_library, keys={"wikidata": "Q123"}
+        )
+
+    assert refusal.value.messages[0] == REMOVED_TARGET
+
+
+def test_a_release_under_a_removed_game_is_refused(owned_library, stated_graph):
+    """Two rows up, and the Release carries no mark of its own."""
+    game, _, release = stated_graph(
+        Game(name="Elite", library=owned_library), owned_library
+    )
+    remove(game)
+
+    with pytest.raises(ReferencesRefused) as refusal:
+        state_external_references(
+            target=release, library=owned_library, keys={"wikidata": "Q123"}
+        )
+
+    assert refusal.value.messages[0] == REMOVED_TARGET
+
+
+def test_a_release_states_a_key_under_the_library_two_rows_up(
+    owned_library, stated_graph
+):
+    """The live path through both ancestors, which the refusals share."""
+    _, _, release = stated_graph(
+        Game(name="Elite", library=owned_library), owned_library
+    )
+
+    state_external_references(
+        target=release, library=owned_library, keys={"wikidata": "Q999"}
+    )
+
+    reference = ExternalReference.objects.get(release=release, removed_at=None)
+    assert reference.entity_kind == "release"
+    assert reference.provider_key == "Q999"
+
+
+def test_one_key_may_name_a_game_and_a_platform(owned_library):
+    """The unique tuple is scoped by kind, thus kinds do not collide.
+
+    One Wikidata entity is one thing, never two, so the same ID
+    naming a Game and a Platform is a mistake somewhere upstream —
+    but it is not this constraint's mistake to catch, and refusing
+    it here would refuse the legitimate case the kinds exist for.
+    """
+    game = Game.objects.create(name="Amiga", library=owned_library)
+    platform = Platform.objects.create(name="Amiga", library=owned_library)
+
+    state_external_references(
+        target=game, library=owned_library, keys={"wikidata": "Q100047"}
+    )
+    state_external_references(
+        target=platform, library=owned_library, keys={"wikidata": "Q100047"}
+    )
+
+    assert (
+        ExternalReference.objects.filter(
+            provider_key="Q100047", removed_at__isnull=True
+        ).count()
+        == 2
+    )
+
+
+@pytest.mark.untracked_games
+def test_the_load_says_which_columns_it_left_alone(owned_user, django_user_model):
+    """Two counts, two sentences, because two causes.
+
+    An operator reading one number for both would go hunting a
+    conflict where there is only a value that is not an ID. The
+    fixture states neither, thus the rows are seeded here: a key
+    another library already holds, and a column that is not a key.
+
+    Untracked, because the command's own backfill tracks every
+    game the library holds, and the fixture's tracking helper
+    would have tracked these two first.
+    """
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    other = django_user_model.objects.create_user(
+        username="second", password="p"
+    ).library
+    holder = Game.objects.create(name="Held", library=other)
+    state_external_references(
+        target=holder, library=other, keys={"wikidata": "Q999999999999999999"}
+    )
+    Game.objects.create(
+        name="Elite", library=owned_user.library, wikidata="Q999999999999999999"
+    )
+    Game.objects.create(name="Frontier", library=owned_user.library, wikidata="banana")
+
+    printed = StringIO()
+    call_command("load_sample_data", "--user", owned_user.username, stdout=printed)
+
+    said = printed.getvalue()
+    assert "1 game(s) kept a Wikidata column no reference states: another" in said
+    assert "1 game(s) kept a Wikidata column no reference states: the value" in said

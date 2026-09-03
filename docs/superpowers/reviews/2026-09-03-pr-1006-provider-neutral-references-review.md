@@ -495,35 +495,64 @@ Smaller points, all fixed — each one's note follows it:
 
 ## Test gaps
 
-Beyond the migration (I5) and the `list_games` 500 (I6):
+Beyond the migration (I5) and the `list_games` 500 (I6). Every gap below is
+closed — each one's note follows it:
 
 - **The backfill's non-happy branches are entirely untested.** The fixture's 858
   wikidata values are all distinct and all canonical, so the parity test at
   `tests/test_external_references.py:669` exercises only the `written` path.
   Neither skip branch fires and the command's warning never prints.
+  - **Fixed.** Both skip branches were already reached by the C2 fix
+    (`test_the_backfill_leaves_a_removed_game_alone`,
+    `test_the_backfill_counts_a_malformed_column_apart_from_a_taken_key`). What
+    was left is the printing: `test_the_load_says_which_columns_it_left_alone`
+    seeds one key another library holds and one column that is not a key, runs
+    `load_sample_data`, and reads both sentences off its output.
 - **`_owner_and_mark`'s Edition and Release branches** are unexercised, including
   the library boundary (ownership derived through `edition.game.library_id`).
   The docstring's claim about a removed ancestor is untested.
+  - **Fixed.** Six tests in `tests/test_external_references.py`: an Edition read
+    through another library's Game, under a shared Game, and under a removed
+    Game; a Release under a removed Edition and under a removed Game; and the
+    live path through both ancestors that the five refusals share.
 - **Remove/restore for Edition, Release and Platform.** Covered: Game remove,
   Game restore, Platform remove. Untested: `remove(edition)`, `remove(release)`,
   and restore for any non-Game kind — and the restore branch is the subtle one.
+  - **Fixed.** Five tests in `tests/test_reference_removal.py`, including
+    `test_restoring_a_release_leaves_a_key_another_release_took` — the
+    taken-meanwhile branch on a kind that is not a Game.
 - **The Editions table's References column** never renders in any test;
   `tests/test_reference_presentation.py:62` reaches only the header meta-row, so
   `_references_cell` is untouched.
+  - **Fixed.** `test_the_editions_table_states_the_editions_and_the_releases_keys`
+    states a named Edition holding two Releases — the shape that draws the
+    section — and reads both kinds' links out of the one cell.
 - **`references_for` is only tested for one kind**, against a docstring
   promising one query per kind, while the detail page feeds it three.
+  - **Fixed.** `test_the_batch_read_takes_one_query_for_each_kind_present` feeds
+    it a Game, an Edition and a Release, and holds it to three queries.
 - **Cross-kind key coexistence** (a Game and a Platform may both claim `Q123`) is
   a deliberate scoping decision that nothing pins.
+  - **Fixed.** `test_one_key_may_name_a_game_and_a_platform`, whose docstring
+    says why the constraint is scoped by kind.
 - **A POST that omits `reference_wikidata` entirely** silently clears the
   reference; every test posts through a fixture that always includes the key.
+  - **Fixed.** `test_a_post_that_omits_the_box_clears_the_reference` takes the
+    key off the body and reads the reference gone. The behaviour is what a
+    `forms.CharField` states, thus a test rather than a change.
 - **`edit_platform` rollback on a taken key** — the Game path proves the rename
   is taken back; the Platform path has only the add case.
+  - **Fixed.** `test_a_taken_key_takes_the_platform_rename_back`.
 
 Test-quality nits: `pytest.raises(Exception)` at `tests/test_reference_form.py:85`
 and `:99` should name `ReferencesRefused`;
 `assert str(ExternalReferenceLinks([])).strip() in ("", "—")` accepts an
 alternative nothing produces; `assert "&lt;ul" not in markup` in
 `tests/test_components.py` is scoped to a tag a caller may legitimately use.
+
+**All three fixed.** The two raises name `ReferencesRefused`; the empty render
+is now `== ""`; and the confirmation page's assertion names the refusal list's
+own class rather than any `<ul>` the `details` slot may hold.
 
 ---
 

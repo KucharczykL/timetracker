@@ -4,6 +4,7 @@ import pytest
 from django.urls import reverse
 
 from common.components import ExternalReferenceLinks
+from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 from games.external_references import state_external_references
 from games.models import ExternalReference, Game, Platform
 from games.reads.external_references import held_by, references_for
@@ -26,7 +27,8 @@ def test_a_link_states_its_provider_and_its_key(owned_library):
 
 
 def test_no_reference_renders_nothing_a_reader_reads_as_one(owned_library):
-    assert str(ExternalReferenceLinks([])).strip() in ("", "—")
+    """Nothing at all, so a cell of a table stays empty."""
+    assert str(ExternalReferenceLinks([])) == ""
 
 
 def test_the_batch_read_takes_one_query_per_kind(
@@ -103,3 +105,69 @@ def test_gathering_one_row_does_not_write_into_another(owned_library):
     held_by(references, game.pk).append("not a reference")
 
     assert len(held_by(references, game.pk)) == 1
+
+
+def test_the_batch_read_takes_one_query_for_each_kind_present(
+    owned_library, stated_graph, django_assert_num_queries
+):
+    """Three kinds, thus three queries, and no query per row.
+
+    Game detail hands this function a Game, its Editions and their
+    Releases at once. A read that grouped by row rather than by
+    kind would still pass the one-kind test above.
+    """
+    game, edition, release = stated_graph(
+        Game(name="Elite", library=owned_library), owned_library
+    )
+    for target, key in ((game, "Q1"), (edition, "Q2"), (release, "Q3")):
+        state_external_references(
+            target=target, library=owned_library, keys={"wikidata": key}
+        )
+
+    with django_assert_num_queries(3):
+        found = references_for([game, edition, release])
+
+    assert len(found) == 3
+    assert held_by(found, edition.pk)[0].provider_key == "Q2"
+
+
+def test_the_editions_table_states_the_editions_and_the_releases_keys(
+    client, owned_user
+):
+    """One cell gathers two kinds; nothing else on the page does.
+
+    The section is drawn only for a graph that does not read
+    plainly, thus a named Edition holding two Releases.
+    """
+    library = owned_user.library
+    game = Game(name="Elite", library=library)
+    game.save()
+    written = state_catalog_graph(
+        game=game,
+        library=library,
+        editions=[
+            EditionState(
+                key="edition-0",
+                name="Deluxe",
+                is_default=True,
+                releases=(
+                    ReleaseState(key="release-0", is_default=True),
+                    ReleaseState(key="release-1"),
+                ),
+            )
+        ],
+    )
+    entry = written.editions[0]
+    state_external_references(
+        target=entry.edition, library=library, keys={"wikidata": "Q2"}
+    )
+    state_external_references(
+        target=entry.releases[1].release, library=library, keys={"wikidata": "Q3"}
+    )
+    client.force_login(owned_user)
+
+    markup = client.get(game.get_absolute_url()).content.decode()
+
+    assert "Editions of Elite" in markup
+    assert "https://www.wikidata.org/wiki/Q2" in markup
+    assert "https://www.wikidata.org/wiki/Q3" in markup

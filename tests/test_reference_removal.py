@@ -153,3 +153,87 @@ def test_a_live_release_under_a_removed_game_keeps_its_key(owned_library, stated
             provider_key="Q999",
             release=other,
         )
+
+
+def _kind_reference(kind, row, provider_key):
+    return ExternalReference.objects.create(
+        provider="wikidata",
+        entity_kind=kind,
+        provider_key=provider_key,
+        **{kind: row},
+    )
+
+
+def test_removing_an_edition_marks_the_reference_it_holds(owned_library, stated_graph):
+    _, edition, _ = stated_graph(
+        Game(name="Elite", library=owned_library), owned_library
+    )
+    reference = _kind_reference("edition", edition, "Q500")
+
+    remove(edition)
+
+    reference.refresh_from_db()
+    assert reference.removed_at is not None
+
+
+def test_removing_a_release_marks_the_reference_it_holds(owned_library, stated_graph):
+    _, _, release = stated_graph(
+        Game(name="Elite", library=owned_library), owned_library
+    )
+    reference = _kind_reference("release", release, "Q501")
+
+    remove(release)
+
+    reference.refresh_from_db()
+    assert reference.removed_at is not None
+
+
+def test_restoring_an_edition_takes_back_a_key_that_is_free(
+    owned_library, stated_graph
+):
+    _, edition, _ = stated_graph(
+        Game(name="Elite", library=owned_library), owned_library
+    )
+    reference = _kind_reference("edition", edition, "Q500")
+    remove(edition)
+
+    restore(edition)
+
+    reference.refresh_from_db()
+    assert reference.removed_at is None
+
+
+def test_restoring_a_platform_takes_back_a_key_that_is_free(owned_library):
+    platform = Platform.objects.create(name="Amiga", library=owned_library)
+    reference = _kind_reference("platform", platform, "Q100047")
+    remove(platform)
+
+    restore(platform)
+
+    reference.refresh_from_db()
+    assert reference.removed_at is None
+
+
+def test_restoring_a_release_leaves_a_key_another_release_took(
+    owned_library, stated_graph
+):
+    """The taken-meanwhile branch, on a kind that is not a Game.
+
+    Freedom is read per provider, kind and key, thus the Release
+    that came back must read the Release that took its key, and
+    nothing else that happens to state the same one.
+    """
+    _, edition, release = stated_graph(
+        Game(name="Elite", library=owned_library), owned_library
+    )
+    reference = _kind_reference("release", release, "Q501")
+    remove(release)
+    other = Release.objects.create(edition=edition)
+    _kind_reference("release", other, "Q501")
+
+    restore(release)
+
+    reference.refresh_from_db()
+    release.refresh_from_db()
+    assert release.removed_at is None
+    assert reference.removed_at is not None

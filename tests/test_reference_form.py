@@ -3,7 +3,11 @@
 import pytest
 from django.urls import reverse
 
-from games.external_references import KEY_TAKEN, state_external_references
+from games.external_references import (
+    KEY_TAKEN,
+    ReferencesRefused,
+    state_external_references,
+)
 from games.forms import INPUT_CLASS
 from games.models import ExternalReference, Game, Platform
 from games.reference_form import ReferenceSetForm, reference_field_name
@@ -92,7 +96,7 @@ def test_a_service_refusal_answers_onto_its_box(owned_library):
     )
     assert form.is_valid(), form.errors
 
-    with pytest.raises(Exception) as refusal:
+    with pytest.raises(ReferencesRefused) as refusal:
         form.write()
 
     assert form.answer(refusal.value)
@@ -106,7 +110,7 @@ def test_a_refusal_naming_no_provider_is_a_non_field_error(owned_library):
     )
     assert form.is_valid(), form.errors
 
-    with pytest.raises(Exception) as refusal:
+    with pytest.raises(ReferencesRefused) as refusal:
         form.write()
 
     assert form.answer(refusal.value)
@@ -308,3 +312,53 @@ def test_naming_the_same_record_again_is_what_an_edit_does(owned_library):
     assert (
         ExternalReference.objects.get(game=game, removed_at=None).provider_key == "Q123"
     )
+
+
+@view_tests
+def test_a_post_that_omits_the_box_clears_the_reference(client, owned_user, game_post):
+    """A missing field reads as a cleared one, not as untouched.
+
+    A `forms.CharField` a POST leaves out cleans to `""`, which is
+    what a person clearing the box states. Nothing distinguishes
+    the two, so a caller building the body by hand takes the key
+    off the record.
+    """
+    client.force_login(owned_user)
+    game = Game.objects.create(name="Elite", library=owned_user.library)
+    state_external_references(
+        target=game, library=owned_user.library, keys={"wikidata": "Q123"}
+    )
+    body = game_post("Elite")
+    del body["reference_wikidata"]
+
+    client.post(reverse("games:edit_game", args=[game.pk]), body)
+
+    assert not ExternalReference.objects.filter(game=game, removed_at=None).exists()
+
+
+@view_tests
+def test_a_taken_key_takes_the_platform_rename_back(client, owned_user):
+    """One transaction on the edit path too, not only on add."""
+    client.force_login(owned_user)
+    held = Platform.objects.create(name="Held", library=owned_user.library)
+    state_external_references(
+        target=held, library=owned_user.library, keys={"wikidata": "Q100047"}
+    )
+    platform = Platform.objects.create(
+        name="Before conflict", library=owned_user.library
+    )
+
+    response = client.post(
+        reverse("games:edit_platform", args=[platform.pk]),
+        {
+            "name": "After conflict",
+            "group": "",
+            "icon": "",
+            "reference_wikidata": "Q100047",
+        },
+    )
+
+    assert response.status_code == 200
+    assert KEY_TAKEN in response.content.decode()
+    platform.refresh_from_db()
+    assert platform.name == "Before conflict"
