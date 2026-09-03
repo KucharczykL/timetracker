@@ -75,10 +75,7 @@ class PathWorksTest(TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_game_list_survives_a_wikidata_column_naming_no_entity(self):
-        # `Game.wikidata` is a mirror of the reference and carries no
-        # check constraint, and #896's backfill leaves a value the
-        # canonical pattern rejects where it stands. Linking one used
-        # to raise, which took the whole list rather than the cell.
+        # A mirror key the pattern rejects renders.
         Game.objects.create(
             library=self.user.library, name="Unlinkable", wikidata="n/a"
         )

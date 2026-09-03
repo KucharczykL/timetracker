@@ -22,41 +22,32 @@ if TYPE_CHECKING:
         UserLibrary,
     )
 
-#: The four rows that may state an external reference. A `type`
-#: statement holds its value unevaluated until something asks for
-#: it, so this names classes imported for the checker alone and is
-#: still importable at runtime.
+#: Four rows may state an external reference.
 type CatalogTarget = Game | Edition | Release | Platform
 
-#: A registry key, and what `normalize_provider` leaves: casefolded
-#: and stripped, one of `PROVIDER_POLICIES`.
+#: A casefolded, stripped key of `PROVIDER_POLICIES`.
 type ProviderName = str
 
-#: What one provider calls one record, in that provider's own form
-#: — `"Q123"`, never `" q123 "`.
+#: One provider's own form of a key.
 type ProviderKey = str
 
 logger = logging.getLogger("games")
 
 WIKIDATA_KEY_PATTERN = re.compile(r"Q[1-9][0-9]*")
 
-#: The one scheme a template may carry. The node layer escapes the
-#: characters of an href and never reads its scheme, so `http` or
-#: `javascript` would go out exactly as written.
+#: The one scheme a template may carry.
+#:
+#: The node layer escapes the characters of an href and never reads
+#: its scheme, so `http` or `javascript` would go out as written.
 TRUSTED_SCHEME = "https://"
 
-#: What a template has to interpolate to name one entity.
+#: What a template interpolates for one entity.
 KEY_PLACEHOLDER = "{provider_key}"
 
 
 @dataclass(frozen=True, slots=True)
 class ProviderPolicy:
-    """What a provider states, and how it reads.
-
-    The one entry a provider needs. A form field, its label, its
-    help text and its link all come from here, thus registering a
-    policy is the whole UI cost of a provider.
-    """
+    """One provider's key rule, link, label, hint."""
 
     normalize_key: Callable[[str], ProviderKey]
     url_template: str
@@ -64,14 +55,7 @@ class ProviderPolicy:
     hint: str
 
     def __post_init__(self) -> None:
-        """Refuse a template that cannot state a link, at import.
-
-        The template is the only source of an href a person clicks
-        — layer two of the three `ExternalReferenceLinks` names —
-        and nothing outside this module writes one. So the mistake
-        this catches is a typo, and the moment to catch a typo in
-        an href is the one where the application refuses to start.
-        """
+        """Refuse a template that states no link."""
         if not self.url_template.startswith(TRUSTED_SCHEME):
             raise ValueError(
                 f"A provider's url_template must start with {TRUSTED_SCHEME!r}: "
@@ -104,13 +88,7 @@ PROVIDER_POLICIES: Final[Mapping[ProviderName, ProviderPolicy]] = {
 
 
 def _refuse_a_key_nothing_can_reach(policies: Mapping[str, ProviderPolicy]) -> None:
-    """Every registry key is what `normalize_provider` looks up.
-
-    That function casefolds first, thus a key with a capital in it
-    names a policy no caller ever reaches: the form draws no box,
-    and the provider silently does not exist. Read at import, next
-    to the registry it reads.
-    """
+    """A miscased registry key names no policy."""
     miscased = sorted(name for name in policies if name != name.casefold())
     if miscased:
         raise ValueError(f"A provider's registry key must be casefolded: {miscased}")
@@ -127,12 +105,7 @@ def normalize_provider(provider: str) -> ProviderName:
 
 
 class NormalizedReference(NamedTuple):
-    """One provider and one key, both in the form they are stored in.
-
-    Two strings of one type, thus a plain pair lets a swapped
-    argument type-check all the way to a row that names the wrong
-    thing.
-    """
+    """One provider and one key, as stored."""
 
     provider: ProviderName
     provider_key: ProviderKey
@@ -161,13 +134,10 @@ def external_reference_url(
 def external_reference_url_or_none(
     *, provider: str, entity_kind: str, provider_key: str
 ) -> str | None:
-    """The provider's link, or none where the key names nothing.
+    """None where the key states no link.
 
-    A reference row carries a check constraint pinning its key to
-    the canonical pattern, thus every key read from one links. A
-    mirror column carries none, and the backfill leaves a value the
-    pattern rejects where it is, so one reaches a reader. It states
-    no link, and it must not take the page it sits on.
+    A mirror column carries no check constraint, thus a value the
+    pattern rejects reaches a reader. It must not take the page.
     """
     try:
         return external_reference_url(
@@ -178,13 +148,7 @@ def external_reference_url_or_none(
 
 
 class TargetMetadata(NamedTuple):
-    """The word a row is stored under, and the column that holds it.
-
-    They read alike for all four kinds today and are still two
-    things: the word goes in `entity_kind`, the column names the
-    foreign key. A plain pair would let the day they differ pass
-    the checker.
-    """
+    """The stored word, and its column."""
 
     entity_kind: str
     column: str
@@ -205,14 +169,12 @@ def _target_metadata(target: CatalogTarget) -> TargetMetadata:
         raise ValidationError({"target": "Unsupported catalog target."}) from error
 
 
-#: A shared row is read-only for everyone, and what sharing means
-#: is unsettled until the IGDB wave (#783, #784, #785) lands.
+#: Sharing is unsettled until #783, #784, #785.
 SHARED_TARGET = "A shared record's references cannot be changed here."
 OTHER_LIBRARY_TARGET = "This record belongs to another library."
 REMOVED_TARGET = "This record was removed. Put it back before you change it."
 KEY_TAKEN = "Another record already states this identifier."
-#: Two writes of one record raced, and both stated a key under one
-#: provider. Not KEY_TAKEN: the record holding it is this record.
+#: Two writes raced; this record holds it.
 RECORD_RACED = (
     "Another change reached this record's identifiers first. "
     "Nothing was saved; try again."
@@ -220,7 +182,7 @@ RECORD_RACED = (
 
 
 class ReferencesRefused(ValidationError):
-    """A refusal, and the provider whose box caused it."""
+    """A refusal and the box behind it."""
 
     def __init__(self, message: str, *, provider: str | None = None) -> None:
         super().__init__(message)
@@ -228,22 +190,14 @@ class ReferencesRefused(ValidationError):
 
 
 class OwnerAndMark(NamedTuple):
-    """Who holds a row, and whether anything above it was removed.
-
-    A null owner is a shared row, which belongs to no library.
-    """
+    """Who holds a row, and whether removed."""
 
     library_id: UUID | None
     removed: bool
 
 
 def _owner_and_mark(target: CatalogTarget) -> OwnerAndMark:
-    """Which library holds the row, and whether it was removed.
-
-    An Edition and a Release read their ancestors' marks as well as
-    their own, the way `for_library()` does: a removed Game hides
-    both, so neither may be written under it.
-    """
+    """A child reads its ancestors' marks too."""
     from games.models import Edition, Game, Platform, Release
 
     if isinstance(target, Game | Platform):
@@ -267,7 +221,7 @@ def _owner_and_mark(target: CatalogTarget) -> OwnerAndMark:
 
 
 def _refuse_an_unwritable_target(target: CatalogTarget, library: UserLibrary) -> None:
-    """A shared, foreign or removed record states nothing here."""
+    """Shared, foreign or removed records state nothing."""
     owner, removed = _owner_and_mark(target)
     if owner is None:
         raise ReferencesRefused(SHARED_TARGET)
@@ -278,7 +232,7 @@ def _refuse_an_unwritable_target(target: CatalogTarget, library: UserLibrary) ->
 
 
 def _normalized_or_refused(provider: ProviderName, raw: str) -> ProviderKey:
-    """A blank box states no reference; anything else normalizes."""
+    """A blank box states no reference."""
     if not raw.strip():
         return ""
     try:
@@ -295,12 +249,7 @@ def _refuse_a_taken_key(
     held: Mapping[ProviderName, ExternalReference],
     entity_kind: str,
 ) -> None:
-    """A key a live row of this kind already holds.
-
-    This is the reading that names the box a person typed into. It
-    does not win a race: `_state_one` reads the constraint the
-    database names and states the same refusal there.
-    """
+    """A key another live row already holds."""
     from games.models import ExternalReference
 
     for provider, provider_key in wanted.items():
@@ -322,12 +271,7 @@ def _refuse_a_taken_key(
 def _refusal_for(
     collision: IntegrityError, provider: ProviderName, entity_kind: str
 ) -> ReferencesRefused | None:
-    """What a constraint this write lost says, in readable words.
-
-    An unmapped constraint gets none and rises as itself, the way
-    `answered_constraint()` in `games/catalog_submit.py` treats one:
-    a wrong sentence is worse than none.
-    """
+    """What a constraint this write lost says."""
     diagnostic = getattr(collision.__cause__, "diag", None)
     name = None if diagnostic is None else diagnostic.constraint_name
     if name == "unique_external_reference_provider_kind_key":
@@ -345,12 +289,7 @@ def _state_one(
     entity_kind: str,
     column: str,
 ) -> None:
-    """One provider's box, as the writes it takes.
-
-    A key that changed takes two: the mark on the key the record
-    used to state, then the row stating the new one. An unchanged
-    key takes none, and a cleared one takes only the mark.
-    """
+    """One box, as the writes it takes."""
     from games.models import ExternalReference
 
     if incumbent is not None:
@@ -359,10 +298,12 @@ def _state_one(
         ExternalReference.objects.filter(pk=incumbent.pk).update(removed_at=now())
     if not provider_key:
         return
-    #: No pre-check wins a race. The lock above holds the rows this
-    #: record already has, never the key another record is about to
-    #: claim, thus the conditional constraint answers the loser. A
-    #: savepoint keeps the connection usable for that answer.
+    #: No pre-check wins a race.
+    #:
+    #: The lock above holds this record's rows, never the key
+    #: another record is about to claim, thus the constraint
+    #: answers the loser. The savepoint keeps the connection
+    #: usable for that answer.
     try:
         with transaction.atomic():
             ExternalReference.objects.create(
@@ -384,12 +325,10 @@ def state_external_references(
     library: UserLibrary,
     keys: Mapping[ProviderName, str],
 ) -> None:
-    """One record's whole desired set, for the providers named.
+    """The whole desired set, for providers named.
 
     A provider the caller does not name is left alone: a writer
-    that knows one provider must not take another's row. Removal
-    is a mark. Every refusal is read before anything is written,
-    and each carries the provider whose box caused it.
+    that knows one provider must not take another's row.
     """
     from games.models import ExternalReference
 
@@ -421,13 +360,7 @@ def state_external_references(
 def resolve_external_reference(
     *, provider: str, entity_kind: str, provider_key: str
 ) -> UUID | None:
-    """The record one canonical provider tuple names, or None.
-
-    Only a live row answers. A key a record let go of is free for
-    the next record, thus the marked rows behind it name whoever
-    stated it before, and the conditional constraint leaves at most
-    one live row to find.
-    """
+    """Only a live row answers, or None."""
     from games.models import ExternalReference
 
     target_field = ExternalReference.TARGET_FIELDS.get(entity_kind)
@@ -451,13 +384,11 @@ def resolve_external_reference(
 
 
 def mirror_game_wikidata(game: Game) -> None:
-    """Write `Game.wikidata` from the reference that states it.
+    """Write `Game.wikidata` from the reference stating it.
 
-    The reference is what a person states; the column is what
-    filters, sorting, the games list and the sample fixture still
-    read; the API names it nowhere. An UPDATE rather than a save(), like
-    `mirror_legacy_columns()`, so the mirror revalidates nothing
-    and fires no signal. #889 takes the column.
+    An UPDATE rather than a save(), like `mirror_legacy_columns()`,
+    so the mirror revalidates nothing and fires no signal. #889
+    takes the column.
     """
     from games.models import ExternalReference, Game
 
@@ -478,13 +409,7 @@ def mirror_game_wikidata(game: Game) -> None:
 
 
 class BackfilledReferences(NamedTuple):
-    """What a fixture load's backfill wrote, and why it left the rest.
-
-    Two causes, counted apart: a column another record's key has
-    already taken, and a column that is not an entity ID at all.
-    One number for both would send an operator hunting a conflict
-    that is not there.
-    """
+    """What the backfill wrote, and left."""
 
     written: int
     taken: int
@@ -492,20 +417,12 @@ class BackfilledReferences(NamedTuple):
 
 
 def backfill_wikidata_references(library: UserLibrary) -> BackfilledReferences:
-    """The reference a loaded Game's column still stands for.
+    """A loaded Game's column becomes a reference.
 
-    Migration 0022 writes one for every Game a migrated database
-    holds. A fixture load is the other source of a Game whose
-    `wikidata` column names a key no reference states, and the
-    column is the mirror now: an edit that read no reference
-    would write the column empty. A key another live row already
-    holds is left alone and counted, because two libraries may
-    load the same fixture and #654 and #785 own that
-    reconciliation.
-
-    A removed Game keeps its column and is left alone: nothing may
-    state a reference under a row a person has taken out, and the
-    refusal would abort the whole load.
+    A removed Game is left alone: nothing may state a reference
+    under a row a person took out, and the refusal would abort the
+    whole load. A key another live row holds is left alone too,
+    because #654 and #785 own that reconciliation.
     """
     from games.models import ExternalReference, Game
 

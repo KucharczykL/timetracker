@@ -52,10 +52,10 @@ CONSTRAINT_ANSWERS: Final[dict[str, ConstraintAnswer]] = {
 #: Declared on a model this form writes, and out of reach.
 #: A constraint named here states why; the guard test reads it.
 _ANSWERED_BY_THE_REFERENCE_SERVICE = (
-    "`state_external_references` writes every reference in a "
-    "savepoint of its own and reads the constraint the database "
-    "names, thus this arrives here as a `ReferencesRefused` "
-    "carrying the box that stated it, never as an `IntegrityError`."
+    "`state_external_references` writes in a savepoint of its own "
+    "and reads the constraint the database names, thus this "
+    "arrives as a `ReferencesRefused` naming the box that stated "
+    "it, never as an `IntegrityError`."
 )
 UNREACHABLE_FROM_THE_GAME_FORM: Final[dict[str, str]] = {
     "unique_external_reference_provider_kind_key": _ANSWERED_BY_THE_REFERENCE_SERVICE,
@@ -109,13 +109,13 @@ def save_game_columns(form: GameForm, identity: MirroredIdentity) -> Game:
 def save_game_and_graph(
     form: GameForm, graph: CatalogGraphForm, references: ReferenceSetForm
 ) -> Game:
-    """The Game, its whole graph and its references, or none of them."""
+    """The Game, its graph and its references."""
     game = save_game_columns(form, graph.mirrored_identity())
     graph.bind(game)
     graph.write()
     references.bind(game)
     references.write()
-    #: The reference states the key; the column follows it.
+    #: The reference states it; the column follows.
     mirror_game_wikidata(game)
     return game
 

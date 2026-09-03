@@ -174,18 +174,12 @@ def _platform_form_page(
     platform: Platform | None,
     title: str,
 ) -> HttpResponse:
-    """Add and Edit: one Platform, and the references it states.
-
-    `platform` is None on Add, where the row does not exist yet;
-    `submitted_or_form_error` names it to the reference write once
-    the save has made it.
-    """
+    """One Platform, and the references it states."""
     form = PlatformForm(request.POST or None, instance=platform, library=library)
     references = ReferenceSetForm(
         request.POST or None, target=platform, library=library
     )
-    #: Both read; a form the other's refusal never reached states no
-    #: sentence of its own.
+    #: Both read, whatever either says.
     form_reads = form.is_valid()
     if (
         references.is_valid()

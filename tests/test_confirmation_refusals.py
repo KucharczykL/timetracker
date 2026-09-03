@@ -1,4 +1,4 @@
-"""A refused confirmation says why, on the same page."""
+"""A refused confirmation says why."""
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -26,7 +26,7 @@ def post_request(rf):
 
 
 def confirm(request, action):
-    """One confirmation, so a test states only what it refuses with."""
+    """One confirmation; a test states its refusal."""
     return confirm_and_apply(
         request,
         action=action,
@@ -48,7 +48,7 @@ def test_a_refused_action_re_renders_the_confirmation(post_request):
 
 
 def test_the_refusal_stands_apart_from_the_question(post_request):
-    """Joining the two made the reason read as the question itself."""
+    """Joined, the reason reads as the question."""
 
     def refuse():
         raise CommandFailed(REFUSAL, CONFLICT_STATUS)
@@ -61,7 +61,7 @@ def test_the_refusal_stands_apart_from_the_question(post_request):
 
 
 def test_the_status_is_the_one_the_refusal_states(post_request):
-    """A refusal carries its own, because the answers disagree."""
+    """A refusal carries its own status."""
 
     def refuse():
         raise CommandFailed(REFUSAL, 422)
@@ -70,11 +70,7 @@ def test_the_status_is_the_one_the_refusal_states(post_request):
 
 
 def test_a_model_that_refuses_underneath_the_act_is_a_defect(post_request):
-    """`_AFTER_STAMP` saves siblings, and one of those may `clean()`.
-
-    Reading that as a refusal would state a form's field wording as
-    the reason a removal was refused, and answer 409 for a defect.
-    """
+    """`_AFTER_STAMP` saves siblings, which may `clean()`."""
 
     def break_underneath():
         raise ValidationError(DEFECT)

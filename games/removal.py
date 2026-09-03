@@ -59,16 +59,10 @@ def _recalculate_the_games_playtime(
 def _mark_the_references_of(instance: Model, previous_mark: datetime | None) -> None:
     """A reference follows the row it names.
 
-    A removal stamps every live reference of the row with the row's
-    own mark, thus the mark says which act took the reference out.
-    A restore reads it back and takes only those: a key the record
-    let go of earlier carries the mark of that act instead, and a
-    restore that took it back would state two keys of one provider.
-
-    A key another row has claimed meanwhile stays claimed. Taking
-    it back would repeat the theft in the other direction, and
-    raising would surface as a traceback, because restore() has no
-    error channel until #795 gives it one.
+    The stamp is the row's own mark, thus a restore takes back only
+    the references that act took out. A key another row claimed
+    meanwhile stays claimed: restore() has no error channel until
+    #795 gives it one.
     """
     from games.models import ExternalReference
 
@@ -92,15 +86,12 @@ def _mark_the_references_of(instance: Model, previous_mark: datetime | None) -> 
 
 
 def _mirror_the_wikidata_column(game: Game, previous_mark: datetime | None) -> None:
-    """The column is written on the way back in, not on the way out.
+    """Mirrored on a restore, not a removal.
 
-    A removal is a mark. The stamp above takes the reference out,
-    and mirroring after it would clear the column too, which edits
-    a row nobody asked to edit and leaves the recovery UI #795 adds
-    with nothing to name. A restore does mirror, because the key may
-    have gone to another record meanwhile: the stamp above leaves
-    that reference marked, and a column still naming the key would
-    state it again on the record's next edit.
+    Mirroring on the way out would clear the column too, leaving
+    the recovery UI #795 adds with nothing to name. On the way back
+    in the key may have gone to another record, and a column still
+    naming it would state it again on the next edit.
     """
     from games.external_references import mirror_game_wikidata
 
@@ -108,8 +99,7 @@ def _mirror_the_wikidata_column(game: Game, previous_mark: datetime | None) -> N
         mirror_game_wikidata(game)
 
 
-#: What a stamp does not do. Values run in order, and each reads
-#: the mark the row carried before this one.
+#: What a stamp does not do; ordered.
 _AFTER_STAMP: dict[type[Model], tuple[Callable[[Any, datetime | None], None], ...]] = {
     Game: (_mark_the_references_of, _mirror_the_wikidata_column, _recount_purchases),
     Edition: (_mark_the_references_of,),
@@ -124,12 +114,9 @@ def _stamp(instance: Model, value: datetime | None) -> None:
     if model not in REMOVABLE_MODELS:
         raise TypeError(f"{model.__name__} is not a removable model.")
     rows = model._default_manager.filter(pk=instance.pk)
-    #: One transaction: the mark and everything _AFTER_STAMP does
-    #: about it land together, or a refusal in the middle leaves
-    #: the row as it was rather than half put back.
+    #: One transaction: the mark and its consequences.
     with transaction.atomic():
-        #: Read from the row and not from the instance a caller
-        #: holds, because only the row says which act to undo.
+        #: The row says which act to undo.
         previous_mark = rows.values_list("removed_at", flat=True).first()
         #: An update, not a save.
         #: Game, Platform, Session and Purchase

@@ -121,15 +121,11 @@ def PriceConverted(
 
 
 def _reference_link(reference: ExternalReference) -> Node:
-    """One link, or the words alone where the row states none.
+    """One link, or the words alone.
 
-    A row the check constraints admit always links. One that gets
-    here anyway is a defect in the data — a provider registered
-    without the migration that admits it, a key written around the
-    pattern — and this component stands on Game detail and on the
-    whole Platform list. Raising would take both pages down for
-    everybody on every request, which is a worse way to report a
-    defect than a link that reads as text and a line in the log.
+    A row that states no link is a defect in the data, and this
+    component stands on Game detail and on the whole Platform list.
+    A raise would take both pages down for everybody.
     """
     from games.external_references import (
         PROVIDER_POLICIES,
@@ -160,13 +156,7 @@ def _reference_link(reference: ExternalReference) -> Node:
 
 
 def ExternalReferenceLinks(references: Sequence[ExternalReference]) -> Node:
-    """One link per reference, safe by three layers.
-
-    The database refuses a key its canonical pattern does not
-    match, the policy template is the only source of a URL and
-    quotes the key it interpolates, and the node layer escapes
-    every attribute value it writes.
-    """
+    """One link per reference, escaped three ways."""
     if not references:
         return Fragment()
     return Span(class_="flex flex-wrap gap-2")[

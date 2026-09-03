@@ -1,4 +1,4 @@
-"""What a removal does to the keys a row claimed (#976)."""
+"""What removal does to claimed keys (#976)."""
 
 import pytest
 from django.db import IntegrityError
@@ -11,7 +11,7 @@ pytestmark = pytest.mark.django_db
 
 
 def _reference(kind, row, provider_key):
-    """One live reference of one kind, on the row it names."""
+    """One live reference, on the row named."""
     return ExternalReference.objects.create(
         provider="wikidata",
         entity_kind=kind,
@@ -68,12 +68,7 @@ def test_restoring_leaves_a_key_another_record_has_taken(owned_library):
 
 
 def test_restoring_takes_back_only_the_key_the_row_went_out_with(owned_library):
-    """A corrected key stays corrected.
-
-    Changing a key marks the row the record used to state. That
-    mark is not the removal's, thus a restore must leave it, or
-    the record comes back holding two keys of one provider.
-    """
+    """A corrected key stays corrected."""
     game = Game.objects.create(name="Elite", library=owned_library)
     state_external_references(
         target=game, library=owned_library, keys={"wikidata": "Q1"}
@@ -117,12 +112,7 @@ def test_a_removed_platform_lets_go_of_its_key(owned_library):
 
 
 def test_a_live_release_under_a_removed_game_keeps_its_key(owned_library, stated_graph):
-    """Only the row a person removed lets go.
-
-    A Game's mark hides its children without stamping them, thus
-    their references are not stamped either, and a restore brings
-    the whole subtree back unchanged.
-    """
+    """Only the removed row lets go."""
     game, edition, release = stated_graph(
         Game(name="Elite", library=owned_library), owned_library
     )
@@ -133,9 +123,7 @@ def test_a_live_release_under_a_removed_game_keeps_its_key(owned_library, stated
     reference.refresh_from_db()
     assert reference.removed_at is None
 
-    #: Still claimed, thus no other Release may take it. The tuple
-    #: constraint scopes by kind, so the collision must be stated
-    #: against a Release rather than against any other row.
+    #: Still claimed; the collision needs a Release.
     other = Release.objects.create(edition=edition)
     with pytest.raises(IntegrityError):
         _reference("release", other, "Q999")
@@ -194,12 +182,7 @@ def test_restoring_a_platform_takes_back_a_key_that_is_free(owned_library):
 def test_restoring_a_release_leaves_a_key_another_release_took(
     owned_library, stated_graph
 ):
-    """The taken-meanwhile branch, on a kind that is not a Game.
-
-    Freedom is read per provider, kind and key, thus the Release
-    that came back must read the Release that took its key, and
-    nothing else that happens to state the same one.
-    """
+    """The taken-meanwhile branch, on a Release."""
     _, edition, release = stated_graph(
         Game(name="Elite", library=owned_library), owned_library
     )

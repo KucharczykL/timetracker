@@ -1,9 +1,4 @@
-"""State the two word sets the columns already hold.
-
-`choices` is Django's state and writes no SQL: a check constraint
-is what refuses a word neither set names. This migration exists so
-the model and the recorded state agree.
-"""
+"""State the two word sets, in Django's state."""
 
 from django.db import migrations, models
 
