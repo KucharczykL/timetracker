@@ -241,8 +241,13 @@ writes one.
 fixture read the column; #889 takes it. The fixture predates the reference, so
 `load_sample_data` calls `backfill_wikidata_references()` after it loads: a
 Game whose column names a key no reference states would lose the key on its
-first edit. A key another live row already holds is left alone and counted in
-the command's output.
+first edit. Two kinds of column are left alone and counted apart in the
+command's output — one holding a key another record already states, and one
+holding a value that is not an entity ID — because an operator reading a
+single number would hunt a conflict that is not there. Each is logged with the
+Game and the value. A removed Game is left alone as well and counted as
+neither: nothing states a reference under a row a person has taken out, and
+the refusal would take the whole load with it.
 
 ## The flat columns follow the graph
 

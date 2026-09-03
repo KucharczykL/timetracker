@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -24,6 +25,8 @@ if TYPE_CHECKING:
     type CatalogTarget = Game | Edition | Release | Platform
 else:
     type CatalogTarget = object
+
+logger = logging.getLogger("games")
 
 WIKIDATA_KEY_PATTERN = re.compile(r"Q[1-9][0-9]*")
 
@@ -373,10 +376,17 @@ def mirror_game_wikidata(game: Game) -> None:
 
 
 class BackfilledReferences(NamedTuple):
-    """What a fixture load's backfill wrote, and what it left."""
+    """What a fixture load's backfill wrote, and why it left the rest.
+
+    Two causes, counted apart: a column another record's key has
+    already taken, and a column that is not an entity ID at all.
+    One number for both would send an operator hunting a conflict
+    that is not there.
+    """
 
     written: int
-    skipped: int
+    taken: int
+    malformed: int
 
 
 def backfill_wikidata_references(library: UserLibrary) -> BackfilledReferences:
@@ -388,7 +398,12 @@ def backfill_wikidata_references(library: UserLibrary) -> BackfilledReferences:
     column is the mirror now: an edit that read no reference
     would write the column empty. A key another live row already
     holds is left alone and counted, because two libraries may
-    load the same fixture and #654 owns that reconciliation.
+    load the same fixture and #654 and #785 own that
+    reconciliation.
+
+    A removed Game keeps its column and is left alone: nothing may
+    state a reference under a row a person has taken out, and the
+    refusal would abort the whole load.
     """
     from games.models import ExternalReference, Game
 
@@ -397,9 +412,9 @@ def backfill_wikidata_references(library: UserLibrary) -> BackfilledReferences:
             provider="wikidata", entity_kind="game", removed_at__isnull=True
         ).values_list("provider_key", flat=True)
     )
-    written = skipped = 0
+    written = taken = malformed = 0
     unreferenced = (
-        Game.objects.filter(library=library)
+        Game.objects.filter(library=library, removed_at__isnull=True)
         .exclude(wikidata="")
         .exclude(
             pk__in=ExternalReference.objects.filter(
@@ -412,13 +427,24 @@ def backfill_wikidata_references(library: UserLibrary) -> BackfilledReferences:
             provider, key = normalize_provider_key(
                 provider="wikidata", provider_key=game.wikidata
             )
-        except ValidationError:
-            skipped += 1
+        except ValidationError as refusal:
+            logger.warning(
+                "Game %s keeps the Wikidata column %r: %s",
+                game.pk,
+                game.wikidata,
+                refusal.messages[0],
+            )
+            malformed += 1
             continue
         if key in stated:
-            skipped += 1
+            logger.warning(
+                "Game %s keeps the Wikidata column %r: another record states it.",
+                game.pk,
+                game.wikidata,
+            )
+            taken += 1
             continue
         state_external_references(target=game, library=library, keys={provider: key})
         stated.add(key)
         written += 1
-    return BackfilledReferences(written, skipped)
+    return BackfilledReferences(written, taken, malformed)

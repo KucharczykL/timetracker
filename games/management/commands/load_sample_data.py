@@ -153,14 +153,29 @@ class Command(BaseCommand):
             backfill_library(user.library)
             #: The fixture predates #896: it states a key in the
             #: Game's column and holds no reference row, and the
-            #: column is the mirror now.
-            backfilled = backfill_wikidata_references(user.library)
+            #: column is the mirror now. A refusal here is a defect
+            #: rather than a fixture the operator can repair, thus
+            #: it reads as one and takes the load with it.
+            try:
+                backfilled = backfill_wikidata_references(user.library)
+            except ValidationError as refusal:
+                raise CommandError(
+                    "Sample fixture references could not be written: "
+                    f"{refusal.messages[0]}"
+                ) from refusal
 
-        if backfilled.skipped:
+        if backfilled.taken:
             self.stdout.write(
                 self.style.WARNING(
-                    f"{backfilled.skipped} game(s) kept a Wikidata column no "
-                    "reference states: another library already holds the key."
+                    f"{backfilled.taken} game(s) kept a Wikidata column no "
+                    "reference states: another record already holds the key."
+                )
+            )
+        if backfilled.malformed:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"{backfilled.malformed} game(s) kept a Wikidata column no "
+                    "reference states: the value is not an entity ID."
                 )
             )
         self.stdout.write(

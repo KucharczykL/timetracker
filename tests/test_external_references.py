@@ -11,6 +11,7 @@ from games.external_references import (
     REMOVED_TARGET,
     SHARED_TARGET,
     ReferencesRefused,
+    backfill_wikidata_references,
     external_reference_url,
     mirror_game_wikidata,
     normalize_provider_key,
@@ -664,6 +665,37 @@ def test_nothing_is_written_when_one_provider_is_refused(owned_library):
         )
 
     assert not ExternalReference.objects.filter(game=game).exists()
+
+
+def test_the_backfill_leaves_a_removed_game_alone(owned_library):
+    """A removed Game keeps its column and states nothing.
+
+    Its mark is what `_mirror_the_wikidata_column` leaves in place,
+    so the column still names a key no reference states. Writing
+    one is refused, and the refusal would take the whole load.
+    """
+    live = Game.objects.create(name="Elite", library=owned_library, wikidata="Q1")
+    gone = Game.objects.create(name="Frontier", library=owned_library, wikidata="Q2")
+    remove(gone)
+
+    backfilled = backfill_wikidata_references(owned_library)
+
+    assert backfilled == (1, 0, 0)
+    assert ExternalReference.objects.get(game=live).provider_key == "Q1"
+    assert not ExternalReference.objects.filter(game=gone).exists()
+
+
+def test_the_backfill_counts_a_malformed_column_apart_from_a_taken_key(owned_library):
+    Game.objects.create(name="Elite", library=owned_library, wikidata="banana")
+    holder = Game.objects.create(name="Frontier", library=owned_library)
+    state_external_references(
+        target=holder, library=owned_library, keys={"wikidata": "Q9"}
+    )
+    Game.objects.create(name="Encounter", library=owned_library, wikidata="Q9")
+
+    backfilled = backfill_wikidata_references(owned_library)
+
+    assert backfilled == (0, 1, 1)
 
 
 def test_every_mirrored_column_equals_its_live_reference(owned_user):
