@@ -7,7 +7,7 @@ refuses a destroying delete of a referenced row.
 from collections.abc import Callable
 from typing import Any
 
-from django.db.models import Model
+from django.db.models import Exists, Model, OuterRef
 from django.utils.timezone import now
 
 from games.models import (
@@ -52,10 +52,41 @@ def _recalculate_the_games_playtime(session: Session) -> None:
     recalculate_playtime(session.game)
 
 
-#: What a stamp does not do.
-_AFTER_STAMP: dict[type[Model], Callable[[Any], None]] = {
-    Game: _recount_purchases,
-    Session: _recalculate_the_games_playtime,
+def _mark_the_references_of(instance: Model) -> None:
+    """A reference follows the row it names.
+
+    A removal stamps every reference of the row. A restore takes
+    back only the keys no live row holds: re-claiming one would
+    repeat the theft in the other direction, and raising would
+    surface as a traceback, because restore() has no error channel
+    until #695 and #795 give it one.
+    """
+    from games.models import ExternalReference
+
+    column = ExternalReference.TARGET_FIELDS_BY_MODEL[type(instance)]
+    held = ExternalReference.objects.filter(**{column: instance.pk})
+    stamp = instance.removed_at  # type: ignore[attr-defined]
+    if stamp is not None:
+        held.filter(removed_at__isnull=True).update(removed_at=stamp)
+        return
+    free = ~Exists(
+        ExternalReference.objects.filter(
+            provider=OuterRef("provider"),
+            entity_kind=OuterRef("entity_kind"),
+            provider_key=OuterRef("provider_key"),
+            removed_at__isnull=True,
+        )
+    )
+    held.filter(removed_at__isnull=False).filter(free).update(removed_at=None)
+
+
+#: What a stamp does not do. Values run in order.
+_AFTER_STAMP: dict[type[Model], tuple[Callable[[Any], None], ...]] = {
+    Game: (_mark_the_references_of, _recount_purchases),
+    Edition: (_mark_the_references_of,),
+    Release: (_mark_the_references_of,),
+    Platform: (_mark_the_references_of,),
+    Session: (_recalculate_the_games_playtime,),
 }
 
 
@@ -71,8 +102,7 @@ def _stamp(instance: Model, value: Any) -> None:
     #: _AFTER_STAMP does what post_save would.
     model._default_manager.filter(pk=instance.pk).update(removed_at=value)
     instance.removed_at = value  # type: ignore[attr-defined]
-    after = _AFTER_STAMP.get(model)
-    if after is not None:
+    for after in _AFTER_STAMP.get(model, ()):
         after(instance)
 
 
