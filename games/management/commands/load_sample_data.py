@@ -16,6 +16,7 @@ from django.db.models import Q
 
 from games.backfill.playergame import backfill_library
 from games.conversion import _request_conversion_for_locked_state
+from games.external_references import backfill_wikidata_references
 from games.models import (
     Device,
     ExchangeRate,
@@ -150,11 +151,23 @@ class Command(BaseCommand):
             #: projector. Inside this block, so a load either lands tracked or
             #: does not land.
             backfill_library(user.library)
+            #: The fixture predates #896: it states a key in the
+            #: Game's column and holds no reference row, and the
+            #: column is the mirror now.
+            backfilled = backfill_wikidata_references(user.library)
 
+        if backfilled.skipped:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"{backfilled.skipped} game(s) kept a Wikidata column no "
+                    "reference states: another library already holds the key."
+                )
+            )
         self.stdout.write(
             self.style.SUCCESS(
                 f"Loaded {len(loadable)} sample object(s) for User {username!r} "
-                f"into library {user.library.pk}."
+                f"into library {user.library.pk}, with "
+                f"{backfilled.written} external reference(s)."
             )
         )
 

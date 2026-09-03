@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 from urllib.parse import quote
 from uuid import UUID
 
@@ -370,3 +370,55 @@ def mirror_game_wikidata(game: Game) -> None:
         return
     Game.objects.filter(pk=game.pk).update(wikidata=live)
     game.wikidata = live
+
+
+class BackfilledReferences(NamedTuple):
+    """What a fixture load's backfill wrote, and what it left."""
+
+    written: int
+    skipped: int
+
+
+def backfill_wikidata_references(library: UserLibrary) -> BackfilledReferences:
+    """The reference a loaded Game's column still stands for.
+
+    Migration 0022 writes one for every Game a migrated database
+    holds. A fixture load is the other source of a Game whose
+    `wikidata` column names a key no reference states, and the
+    column is the mirror now: an edit that read no reference
+    would write the column empty. A key another live row already
+    holds is left alone and counted, because two libraries may
+    load the same fixture and #654 owns that reconciliation.
+    """
+    from games.models import ExternalReference, Game
+
+    stated = set(
+        ExternalReference.objects.filter(
+            provider="wikidata", entity_kind="game", removed_at__isnull=True
+        ).values_list("provider_key", flat=True)
+    )
+    written = skipped = 0
+    unreferenced = (
+        Game.objects.filter(library=library)
+        .exclude(wikidata="")
+        .exclude(
+            pk__in=ExternalReference.objects.filter(
+                provider="wikidata", entity_kind="game", removed_at__isnull=True
+            ).values("game_id")
+        )
+    )
+    for game in unreferenced:
+        try:
+            provider, key = normalize_provider_key(
+                provider="wikidata", provider_key=game.wikidata
+            )
+        except ValidationError:
+            skipped += 1
+            continue
+        if key in stated:
+            skipped += 1
+            continue
+        state_external_references(target=game, library=library, keys={provider: key})
+        stated.add(key)
+        written += 1
+    return BackfilledReferences(written, skipped)

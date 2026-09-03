@@ -85,7 +85,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
             Column("Name", "name"),
             Column("Icon", priority=2),
             Column("Group", "group", priority=2),
-            Column("References", priority=3),
+            Column("References", priority=2),
             Column("Created", "created"),
             Column("Actions", align="right", priority=3),
         ],

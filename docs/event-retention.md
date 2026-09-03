@@ -58,6 +58,14 @@ by `alive()`: `alive()` reads the ancestors' marks too, so under a removed Game
 it would miss the live default and write a second one, which is what the
 constraint refuses.
 
+`ExternalReference` follows the same rule. Its four uniqueness constraints —
+one per catalog kind, each on `(provider, entity_kind, provider_key)` — carry
+the condition `removed_at IS NULL`, and so does the one that holds a record to
+one key per provider. A removed record must let go of the provider key it
+claimed, or the name it stated stays claimed by a row nobody can see (#976).
+`games/removal.py` stamps every reference of a row it takes out, and a restore
+takes back only the keys no live row holds.
+
 The conditions have one effect that is easy to miss. Django does not validate a
 conditional constraint in a form when the condition names an excluded field.
 `removed_at` is not editable, thus a form always excludes it. Without a

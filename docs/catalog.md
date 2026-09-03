@@ -207,6 +207,43 @@ that mapping rises as itself: a wrong sentence is worse than none. A guard test
 fails unless every unique constraint on Game, Edition, Release and
 ExternalReference is either mapped or named as out of reach, with a reason.
 
+## External references
+
+A record may name itself in a provider's catalog. `ExternalReference` holds
+one `(provider, entity_kind, provider_key)` tuple against one row, and
+`PROVIDER_POLICIES` in `games/external_references.py` is the one registry: a
+policy states how a key normalizes, the trusted HTTPS template its link comes
+from, the words a person reads, and therefore the field a form draws.
+Registering a policy is the whole cost of a provider, except for the two check
+constraints that pin the column and the key pattern, which a second provider
+migrates.
+
+A provider issues one identity per record, so a form holds one box per provider
+and four conditional constraints hold the rule. Blank means the record names
+none.
+
+`state_external_references()` states one record's whole desired set, under the
+contract [Stating a graph](#stating-a-graph) sets out: a provider the caller
+does not name is left alone, removal is a mark, every refusal is read before
+anything is written, and each names the box that caused it. It refuses a shared
+record, another library's record and a removed one.
+
+A reference carries a `removed_at` of its own, which `games/removal.py` writes
+when it stamps the row the reference names. That is what lets a removed record
+let go of its key. A restore takes back only the keys no live row holds.
+
+Game and Platform host the editor. An Edition's and a Release's references are
+shown and are not editable: neither row has a route, and only #782's importer
+writes one.
+
+`Game.wikidata` is a mirror now, written from the live Wikidata reference by
+`mirror_game_wikidata()`. Filters, sorting, the games list and the sample
+fixture read the column; #889 takes it. The fixture predates the reference, so
+`load_sample_data` calls `backfill_wikidata_references()` after it loads: a
+Game whose column names a key no reference states would lose the key on its
+first edit. A key another live row already holds is left alone and counted in
+the command's output.
+
 ## The flat columns follow the graph
 
 `Game.platform`, `Game.year_released` and `Game.original_year_released` are the

@@ -1,6 +1,7 @@
 import pytest
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.urls import reverse
 from django.utils.timezone import now
 
 from games.external_references import (
@@ -663,3 +664,87 @@ def test_nothing_is_written_when_one_provider_is_refused(owned_library):
         )
 
     assert not ExternalReference.objects.filter(game=game).exists()
+
+
+def test_every_mirrored_column_equals_its_live_reference(owned_user):
+    """Parity over the anonymized production snapshot.
+
+    Through the command, not `loaddata`: the fixture names its
+    owner with a placeholder the command resolves, and the same
+    call is what a developer runs.
+    """
+    from django.core.management import call_command
+
+    call_command("load_sample_data", "--user", owned_user.username, verbosity=0)
+    for game in Game.objects.all():
+        live = (
+            ExternalReference.objects.filter(
+                provider="wikidata",
+                entity_kind="game",
+                game_id=game.pk,
+                removed_at__isnull=True,
+            )
+            .values_list("provider_key", flat=True)
+            .first()
+        )
+        assert game.wikidata == (live or "")
+
+
+def test_a_second_library_cannot_state_the_first_librarys_key(
+    owned_library, django_user_model
+):
+    other = django_user_model.objects.create_user(
+        username="second", password="p"
+    ).library
+    mine = Game.objects.create(name="Elite", library=owned_library)
+    theirs = Game.objects.create(name="Elite", library=other)
+    state_external_references(
+        target=mine, library=owned_library, keys={"wikidata": "Q123"}
+    )
+
+    with pytest.raises(ReferencesRefused) as refusal:
+        state_external_references(
+            target=theirs, library=other, keys={"wikidata": "Q123"}
+        )
+
+    assert refusal.value.messages[0] == KEY_TAKEN
+
+
+def test_a_key_cannot_select_a_url_of_its_own(owned_library):
+    """Three layers, each refusing on its own."""
+    game = Game.objects.create(name="Elite", library=owned_library)
+
+    with pytest.raises(ReferencesRefused):
+        state_external_references(
+            target=game,
+            library=owned_library,
+            keys={"wikidata": 'Q1" onmouseover="x'},
+        )
+
+    with pytest.raises(ValidationError):
+        ExternalReference.objects.create(
+            provider="wikidata",
+            entity_kind="game",
+            provider_key='Q1" onmouseover="x',
+            game=game,
+        )
+
+    #: An UPDATE reaches neither clean() nor the service, thus
+    #: the check constraint is what answers it.
+    held = ExternalReference.objects.create(
+        provider="wikidata", entity_kind="game", provider_key="Q1", game=game
+    )
+    with pytest.raises(IntegrityError), transaction.atomic():
+        ExternalReference.objects.filter(pk=held.pk).update(
+            provider_key='Q1" onmouseover="x'
+        )
+
+
+def test_every_key_box_states_a_label(client, owned_user):
+    """The accessibility tree names each box."""
+    client.force_login(owned_user)
+
+    body = client.get(reverse("games:add_game")).content.decode()
+
+    assert 'for="id_reference_wikidata"' in body
+    assert ">Wikidata<" in body

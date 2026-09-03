@@ -729,7 +729,7 @@ def _releases_section(
     columns = [
         Column("Name"),
         Column("Platforms", wrap=True),
-        Column("References", priority=3),
+        Column("References", priority=2),
     ]
     if controls:
         columns.append(Column("Actions", align="right", priority=3))
