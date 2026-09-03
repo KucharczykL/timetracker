@@ -122,10 +122,11 @@ def submitted_or_form_error(
 ) -> Model | None:
     """Write a record and its references, or answer the refusal.
 
-    One transaction. `IntegrityError` is not caught here: no
-    constraint on this table is reachable, because the form holds
-    one box per provider and the service reads every refusal
-    before it writes.
+    One transaction. `IntegrityError` is not caught here: a
+    constraint the reference write loses is read by
+    `state_external_references`, which states it as a
+    `ReferencesRefused` naming the box, thus what reaches this
+    boundary is already a `ValidationError`.
     """
     try:
         with transaction.atomic():

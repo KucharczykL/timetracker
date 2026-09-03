@@ -4,10 +4,12 @@ from django.db import IntegrityError, transaction
 from django.urls import reverse
 from django.utils.timezone import now
 
+from games import external_references
 from games.external_references import (
     KEY_TAKEN,
     OTHER_LIBRARY_TARGET,
     PROVIDER_POLICIES,
+    RECORD_RACED,
     REMOVED_TARGET,
     SHARED_TARGET,
     ReferencesRefused,
@@ -15,9 +17,7 @@ from games.external_references import (
     external_reference_url,
     mirror_game_wikidata,
     normalize_provider_key,
-    provider_labels,
     resolve_external_reference,
-    save_external_reference,
     state_external_references,
 )
 from games.models import Edition, ExternalReference, Game, Platform, Release
@@ -293,74 +293,15 @@ def test_deleting_an_external_reference_target_cascades_only_its_reference(entit
 
 
 @pytest.mark.parametrize("entity_kind", ["game", "edition", "release", "platform"])
-def test_save_external_reference_derives_the_kind_and_target_field(entity_kind):
-    """A caller-supplied kind could create a tuple pointing at the wrong table."""
-    target = _catalog_targets()[entity_kind]
-
-    reference = save_external_reference(
-        provider=" WikiData ", provider_key=" q123 ", target=target
-    )
-
-    assert (
-        reference.provider,
-        reference.entity_kind,
-        reference.provider_key,
-        reference.target_uuid,
-    ) == ("wikidata", entity_kind, "Q123", target.pk)
-    assert getattr(reference, f"{entity_kind}_id") == target.pk
-
-
-def test_save_external_reference_reuses_the_uuid_for_a_canonical_equivalent_tuple():
-    """Case or surrounding whitespace must not create a second identity row."""
-    game = Game.objects.create(name="Canonical Service Game")
-    original = save_external_reference(
-        provider="wikidata", provider_key="Q123", target=game
-    )
-
-    repeated = save_external_reference(
-        provider=" WikiData ", provider_key=" q123 ", target=game
-    )
-
-    assert repeated.pk == original.pk
-    assert ExternalReference.objects.count() == 1
-
-
-def test_save_external_reference_refuses_to_reassign_a_tuple_to_another_target():
-    """A second target must not take ownership of an existing provider tuple."""
-    original = Game.objects.create(name="Original Service Target")
-    replacement = Game.objects.create(name="Replacement Service Target")
-    reference = save_external_reference(
-        provider="wikidata", provider_key="Q123", target=original
-    )
-
-    with pytest.raises(ValidationError) as exc_info:
-        save_external_reference(
-            provider="wikidata", provider_key="Q123", target=replacement
-        )
-
-    assert exc_info.value.message_dict == {
-        "provider_key": [
-            "This external reference already maps to another catalog target."
-        ]
-    }
-    reference.refresh_from_db()
-    assert reference.target_uuid == original.pk
-    assert ExternalReference.objects.count() == 1
-
-
-def test_save_external_reference_rejects_an_unsupported_target_class():
-    """The write boundary must accept only the four catalog target models."""
-    with pytest.raises(ValidationError, match="Unsupported catalog target"):
-        save_external_reference(
-            provider="wikidata", provider_key="Q123", target=object()
-        )
-
-
-@pytest.mark.parametrize("entity_kind", ["game", "edition", "release", "platform"])
 def test_resolve_external_reference_returns_only_the_requested_kind_uuid(entity_kind):
     """Resolving through the wrong kind would confuse catalog-level identities."""
     target = _catalog_targets()[entity_kind]
-    save_external_reference(provider="wikidata", provider_key="Q123", target=target)
+    ExternalReference.objects.create(
+        provider="wikidata",
+        entity_kind=entity_kind,
+        provider_key="Q123",
+        **{entity_kind: target},
+    )
 
     resolved = resolve_external_reference(
         provider=" WikiData ", entity_kind=entity_kind, provider_key=" q123 "
@@ -369,10 +310,53 @@ def test_resolve_external_reference_returns_only_the_requested_kind_uuid(entity_
     assert resolved == target.pk
 
 
+def test_resolve_external_reference_reads_past_a_marked_row(owned_library):
+    """A key one record let go of names whoever holds it now.
+
+    The tuple is unique among live rows only, thus the marked rows
+    behind a key are the records that stated it before. Reading one
+    of those would resolve to a record nobody can see.
+    """
+    first = Game.objects.create(name="Elite", library=owned_library)
+    second = Game.objects.create(name="Frontier", library=owned_library)
+    state_external_references(
+        target=first, library=owned_library, keys={"wikidata": "Q123"}
+    )
+    state_external_references(
+        target=first, library=owned_library, keys={"wikidata": ""}
+    )
+    state_external_references(
+        target=second, library=owned_library, keys={"wikidata": "Q123"}
+    )
+
+    resolved = resolve_external_reference(
+        provider="wikidata", entity_kind="game", provider_key="Q123"
+    )
+
+    assert resolved == second.pk
+
+
+def test_resolve_external_reference_forgets_a_key_nobody_holds(owned_library):
+    game = Game.objects.create(name="Elite", library=owned_library)
+    state_external_references(
+        target=game, library=owned_library, keys={"wikidata": "Q123"}
+    )
+    state_external_references(target=game, library=owned_library, keys={"wikidata": ""})
+
+    assert (
+        resolve_external_reference(
+            provider="wikidata", entity_kind="game", provider_key="Q123"
+        )
+        is None
+    )
+
+
 def test_resolve_external_reference_returns_none_without_cross_kind_fallback():
     """A Game reference must never resolve as an Edition reference with the same key."""
     game = Game.objects.create(name="No Cross-Kind Lookup")
-    save_external_reference(provider="wikidata", provider_key="Q123", target=game)
+    ExternalReference.objects.create(
+        provider="wikidata", entity_kind="game", provider_key="Q123", game=game
+    )
 
     assert (
         resolve_external_reference(
@@ -534,10 +518,6 @@ def test_the_wikidata_policy_reads_as_a_person_would_say_it():
     assert "Q123" in PROVIDER_POLICIES["wikidata"].hint
 
 
-def test_provider_labels_are_the_registry_in_order():
-    assert provider_labels() == {"wikidata": "Wikidata"}
-
-
 def test_stating_a_key_creates_the_reference(owned_library):
     game = Game.objects.create(name="Elite", library=owned_library)
 
@@ -604,6 +584,101 @@ def test_a_key_another_record_holds_is_refused(owned_library):
         ExternalReference.objects.get(provider_key="Q123", removed_at=None).game_id
         == first.pk
     )
+
+
+def _claimed_between_the_reading_and_the_write(claim):
+    """A rival write that lands after the pre-check has read.
+
+    The lock holds the rows the record already has, thus a key
+    nobody holds yet is claimable up to the moment of the write.
+    Standing in for the rival where the pre-check runs makes that
+    window a fixed point rather than a thread schedule.
+    """
+
+    def instead_of_the_pre_check(wanted, held, entity_kind):
+        claim()
+
+    return instead_of_the_pre_check
+
+
+def test_a_key_claimed_after_the_pre_check_answers_on_its_box(
+    owned_library, monkeypatch
+):
+    """No pre-check wins a race; the constraint answers the loser."""
+    holder = Game.objects.create(name="Elite", library=owned_library)
+    game = Game.objects.create(name="Frontier", library=owned_library)
+    monkeypatch.setattr(
+        external_references,
+        "_refuse_a_taken_key",
+        _claimed_between_the_reading_and_the_write(
+            lambda: ExternalReference.objects.create(
+                provider="wikidata",
+                entity_kind="game",
+                provider_key="Q123",
+                game=holder,
+            )
+        ),
+    )
+
+    with pytest.raises(ReferencesRefused) as refusal:
+        state_external_references(
+            target=game, library=owned_library, keys={"wikidata": "Q123"}
+        )
+
+    assert refusal.value.provider == "wikidata"
+    assert refusal.value.messages[0] == KEY_TAKEN
+
+
+def test_a_second_key_for_one_record_reads_as_a_race(owned_library, monkeypatch):
+    """The record holding the key is this record, thus not KEY_TAKEN."""
+    game = Game.objects.create(name="Elite", library=owned_library)
+    monkeypatch.setattr(
+        external_references,
+        "_refuse_a_taken_key",
+        _claimed_between_the_reading_and_the_write(
+            lambda: ExternalReference.objects.create(
+                provider="wikidata",
+                entity_kind="game",
+                provider_key="Q999",
+                game=game,
+            )
+        ),
+    )
+
+    with pytest.raises(ReferencesRefused) as refusal:
+        state_external_references(
+            target=game, library=owned_library, keys={"wikidata": "Q123"}
+        )
+
+    assert refusal.value.provider == "wikidata"
+    assert refusal.value.messages[0] == RECORD_RACED
+
+
+class _Cause(Exception):
+    """A driver error, as the database hands one over."""
+
+    def __init__(self, name: str) -> None:
+        super().__init__(name)
+        self.diag = type("Diagnostic", (), {"constraint_name": name})()
+
+
+def test_an_unmapped_constraint_gets_no_sentence():
+    """A wrong sentence is worse than none."""
+    named = IntegrityError("unique_library_mode_name_preset")
+    named.__cause__ = _Cause("unique_library_mode_name_preset")
+
+    assert external_references._refusal_for(named, "wikidata", "game") is None
+    assert (
+        external_references._refusal_for(IntegrityError(""), "wikidata", "game") is None
+    )
+
+
+def test_a_kinds_own_constraint_answers_only_that_kind():
+    """`unique_live_game_…` is not a Platform write's refusal."""
+    collision = IntegrityError("unique_live_game_reference_per_provider")
+    collision.__cause__ = _Cause("unique_live_game_reference_per_provider")
+
+    assert external_references._refusal_for(collision, "wikidata", "platform") is None
 
 
 def test_a_shared_target_is_refused(owned_library):

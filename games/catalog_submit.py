@@ -51,32 +51,18 @@ CONSTRAINT_ANSWERS: Final[dict[str, ConstraintAnswer]] = {
 
 #: Declared on a model this form writes, and out of reach.
 #: A constraint named here states why; the guard test reads it.
+_ANSWERED_BY_THE_REFERENCE_SERVICE = (
+    "`state_external_references` writes every reference in a "
+    "savepoint of its own and reads the constraint the database "
+    "names, thus this arrives here as a `ReferencesRefused` "
+    "carrying the box that stated it, never as an `IntegrityError`."
+)
 UNREACHABLE_FROM_THE_GAME_FORM: Final[dict[str, str]] = {
-    "unique_external_reference_provider_kind_key": (
-        "`state_external_references` reads every key a live row of "
-        "this kind holds before it writes one, and answers the "
-        "refusal onto the box that stated it."
-    ),
-    "unique_live_game_reference_per_provider": (
-        "`ReferenceSetForm` holds one field per provider, thus a post "
-        "cannot state two keys for one. `state_external_references` "
-        "refuses a second live game row before the database sees it."
-    ),
-    "unique_live_edition_reference_per_provider": (
-        "`ReferenceSetForm` holds one field per provider, thus a post "
-        "cannot state two keys for one. `state_external_references` "
-        "refuses a second live edition row before the database sees it."
-    ),
-    "unique_live_release_reference_per_provider": (
-        "`ReferenceSetForm` holds one field per provider, thus a post "
-        "cannot state two keys for one. `state_external_references` "
-        "refuses a second live release row before the database sees it."
-    ),
-    "unique_live_platform_reference_per_provider": (
-        "`ReferenceSetForm` holds one field per provider, thus a post "
-        "cannot state two keys for one. `state_external_references` "
-        "refuses a second live platform row before the database sees it."
-    ),
+    "unique_external_reference_provider_kind_key": (_ANSWERED_BY_THE_REFERENCE_SERVICE),
+    "unique_live_game_reference_per_provider": _ANSWERED_BY_THE_REFERENCE_SERVICE,
+    "unique_live_edition_reference_per_provider": _ANSWERED_BY_THE_REFERENCE_SERVICE,
+    "unique_live_release_reference_per_provider": _ANSWERED_BY_THE_REFERENCE_SERVICE,
+    "unique_live_platform_reference_per_provider": _ANSWERED_BY_THE_REFERENCE_SERVICE,
 }
 
 

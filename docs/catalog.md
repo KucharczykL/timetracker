@@ -228,6 +228,15 @@ does not name is left alone, removal is a mark, every refusal is read before
 anything is written, and each names the box that caused it. It refuses a shared
 record, another library's record and a removed one.
 
+No pre-check wins a race here either. The lock holds the references a record
+already has, never a key another record is about to claim, so the service
+writes each reference in a savepoint of its own and reads the constraint the
+database named: a key taken between the reading and the write comes back on
+the same box, and a second key for one record reads as a race rather than as
+a key somebody else holds. A constraint the service does not know rises as
+itself, under the rule [What a constraint says](#what-a-constraint-says)
+sets out.
+
 A reference carries a `removed_at` of its own, which `games/removal.py` writes
 when it stamps the row the reference names. That is what lets a removed record
 let go of its key. A restore takes back only the keys no live row holds.

@@ -65,11 +65,6 @@ PROVIDER_POLICIES = {
 }
 
 
-def provider_labels() -> dict[str, str]:
-    """Every registered provider, under the words a person reads."""
-    return {provider: policy.label for provider, policy in PROVIDER_POLICIES.items()}
-
-
 def normalize_provider(provider: str) -> str:
     normalized = provider.strip().casefold()
     if normalized not in PROVIDER_POLICIES:
@@ -116,6 +111,12 @@ SHARED_TARGET = "A shared record's references cannot be changed here."
 OTHER_LIBRARY_TARGET = "This record belongs to another library."
 REMOVED_TARGET = "This record was removed. Put it back before you change it."
 KEY_TAKEN = "Another record already states this identifier."
+#: Two writes of one record raced, and both stated a key under one
+#: provider. Not KEY_TAKEN: the record holding it is this record.
+RECORD_RACED = (
+    "Another change reached this record's identifiers first. "
+    "Nothing was saved; try again."
+)
 
 
 class ReferencesRefused(ValidationError):
@@ -184,9 +185,9 @@ def _refuse_a_taken_key(
 ) -> None:
     """A key a live row of this kind already holds.
 
-    No pre-check wins a race; the conditional constraint answers
-    the one this loses, and `games/catalog_submit.py` reads the
-    name the database gave.
+    This is the reading that names the box a person typed into. It
+    does not win a race: `_state_one` reads the constraint the
+    database names and states the same refusal there.
     """
     from games.models import ExternalReference
 
@@ -206,6 +207,24 @@ def _refuse_a_taken_key(
             raise ReferencesRefused(KEY_TAKEN, provider=provider)
 
 
+def _refusal_for(
+    collision: IntegrityError, provider: str, entity_kind: str
+) -> ReferencesRefused | None:
+    """What a constraint this write lost says, in readable words.
+
+    An unmapped constraint gets none and rises as itself, the way
+    `answered_constraint()` in `games/catalog_submit.py` treats one:
+    a wrong sentence is worse than none.
+    """
+    diagnostic = getattr(collision.__cause__, "diag", None)
+    name = None if diagnostic is None else diagnostic.constraint_name
+    if name == "unique_external_reference_provider_kind_key":
+        return ReferencesRefused(KEY_TAKEN, provider=provider)
+    if name == f"unique_live_{entity_kind}_reference_per_provider":
+        return ReferencesRefused(RECORD_RACED, provider=provider)
+    return None
+
+
 def _state_one(
     provider: str,
     provider_key: str,
@@ -214,7 +233,12 @@ def _state_one(
     entity_kind: str,
     column: str,
 ) -> None:
-    """One provider's box, as one write."""
+    """One provider's box, as the writes it takes.
+
+    A key that changed takes two: the mark on the key the record
+    used to state, then the row stating the new one. An unchanged
+    key takes none, and a cleared one takes only the mark.
+    """
     from games.models import ExternalReference
 
     if incumbent is not None:
@@ -223,12 +247,23 @@ def _state_one(
         ExternalReference.objects.filter(pk=incumbent.pk).update(removed_at=now())
     if not provider_key:
         return
-    ExternalReference.objects.create(
-        provider=provider,
-        entity_kind=entity_kind,
-        provider_key=provider_key,
-        **{column: target},
-    )
+    #: No pre-check wins a race. The lock above holds the rows this
+    #: record already has, never the key another record is about to
+    #: claim, thus the conditional constraint answers the loser. A
+    #: savepoint keeps the connection usable for that answer.
+    try:
+        with transaction.atomic():
+            ExternalReference.objects.create(
+                provider=provider,
+                entity_kind=entity_kind,
+                provider_key=provider_key,
+                **{column: target},
+            )
+    except IntegrityError as collision:
+        refusal = _refusal_for(collision, provider, entity_kind)
+        if refusal is None:
+            raise
+        raise refusal from collision
 
 
 def state_external_references(
@@ -271,54 +306,16 @@ def state_external_references(
             )
 
 
-def save_external_reference(
-    *, provider: str, provider_key: str, target: CatalogTarget
-) -> ExternalReference:
-    """Persist one canonical provider tuple without allowing target reassignment."""
-    from games.models import ExternalReference
-
-    provider, provider_key = normalize_provider_key(
-        provider=provider, provider_key=provider_key
-    )
-    entity_kind, target_field = _target_metadata(target)
-    tuple_filters = {
-        "provider": provider,
-        "entity_kind": entity_kind,
-        "provider_key": provider_key,
-    }
-
-    #: Only a live row holds the slot: the constraint now reads the
-    #: mark, thus a removed row must not answer this lookup either.
-    live = {**tuple_filters, "removed_at__isnull": True}
-
-    with transaction.atomic():
-        reference = ExternalReference.objects.select_for_update().filter(**live).first()
-        if reference is None:
-            try:
-                with transaction.atomic():
-                    return ExternalReference.objects.create(
-                        **tuple_filters, **{target_field: target}
-                    )
-            except IntegrityError:
-                reference = (
-                    ExternalReference.objects.select_for_update().filter(**live).get()
-                )
-
-        if reference.target_uuid == target.pk:
-            return reference
-        raise ValidationError(
-            {
-                "provider_key": (
-                    "This external reference already maps to another catalog target."
-                )
-            }
-        )
-
-
 def resolve_external_reference(
     *, provider: str, entity_kind: str, provider_key: str
 ) -> UUID | None:
-    """Resolve one canonical provider tuple to its target UUID."""
+    """The record one canonical provider tuple names, or None.
+
+    Only a live row answers. A key a record let go of is free for
+    the next record, thus the marked rows behind it name whoever
+    stated it before, and the conditional constraint leaves at most
+    one live row to find.
+    """
     from games.models import ExternalReference
 
     target_id_fields = {
@@ -342,6 +339,7 @@ def resolve_external_reference(
             provider=provider,
             entity_kind=entity_kind,
             provider_key=provider_key,
+            removed_at__isnull=True,
         )
         .values_list(target_id_field, flat=True)
         .first()
