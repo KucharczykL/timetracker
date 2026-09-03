@@ -12,6 +12,8 @@ from common.components import (
     ButtonGroup,
     Column,
     ContentContainer,
+    FormFields,
+    Fragment,
     Icon,
     Li,
     QuickFilterBar,
@@ -31,6 +33,7 @@ from games.filters import filter_query_context_for_library, parse_platform_filte
 from games.forms import PlatformForm
 from games.models import Platform
 from games.ownership import owned_or_404
+from games.reference_form import ReferenceSetForm, submitted_or_form_error
 from games.sorting import (
     PLATFORM_DEFAULT_SORT,
     PLATFORM_SORTS,
@@ -42,6 +45,7 @@ from games.views.filtering import (
     builder_url_for,
     warn_unknown_sort,
 )
+from games.views.reference_section import references_area
 from games.views.removal import confirm_and_remove
 from games.views.returns import return_url
 
@@ -165,20 +169,49 @@ def edit_platform(request: HttpRequest, platform_id: UUID) -> HttpResponse:
         Platform.objects.for_library(library), library, id=platform_id
     )
     form = PlatformForm(request.POST or None, instance=platform, library=library)
-    if form.is_valid():
-        form.save()
+    references = ReferenceSetForm(
+        request.POST or None, target=platform, library=library
+    )
+    #: Both read; a form the other's refusal never reached states no
+    #: sentence of its own.
+    form_reads = form.is_valid()
+    if (
+        references.is_valid()
+        and form_reads
+        and submitted_or_form_error(form, references) is not None
+    ):
         return redirect(return_url(request, fallback="games:list_platforms"))
-    return render_page(request, AddForm(form, request=request), title="Edit Platform")
+    return render_page(
+        request,
+        AddForm(
+            form,
+            request=request,
+            fields=Fragment(FormFields(form), references_area(references)),
+        ),
+        title="Edit Platform",
+    )
 
 
 @login_required
 def add_platform(request: HttpRequest) -> HttpResponse:
     library = cast(User, request.user).library
     form = PlatformForm(request.POST or None, library=library)
-    if form.is_valid():
-        form.save()
+    references = ReferenceSetForm(request.POST or None, target=None, library=library)
+    #: Both read; see `edit_platform`.
+    form_reads = form.is_valid()
+    if (
+        references.is_valid()
+        and form_reads
+        and submitted_or_form_error(form, references) is not None
+    ):
         return redirect(return_url(request, fallback="games:list_platforms"))
 
     return render_page(
-        request, AddForm(form, request=request), title="Add New Platform"
+        request,
+        AddForm(
+            form,
+            request=request,
+            fields=Fragment(FormFields(form), references_area(references)),
+        ),
+        title="Add New Platform",
     )

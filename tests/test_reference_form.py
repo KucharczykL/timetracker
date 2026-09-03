@@ -4,7 +4,7 @@ import pytest
 from django.urls import reverse
 
 from games.external_references import KEY_TAKEN, state_external_references
-from games.models import ExternalReference, Game
+from games.models import ExternalReference, Game, Platform
 from games.reference_form import ReferenceSetForm, reference_field_name
 
 pytestmark = pytest.mark.django_db
@@ -200,3 +200,57 @@ def test_a_taken_key_takes_the_rename_back(client, owned_user, game_post):
     assert response.status_code == 200
     game.refresh_from_db()
     assert game.name == "Before conflict"
+
+
+@view_tests
+def test_add_platform_writes_the_key_the_area_states(client, owned_user):
+    client.force_login(owned_user)
+
+    client.post(
+        reverse("games:add_platform"),
+        {
+            "name": "Amiga",
+            "group": "",
+            "icon": "",
+            "reference_wikidata": "Q100047",
+        },
+    )
+
+    platform = Platform.objects.get(name="Amiga")
+    assert (
+        ExternalReference.objects.get(platform=platform, removed_at=None).provider_key
+        == "Q100047"
+    )
+
+
+@view_tests
+def test_a_shared_platform_offers_no_edit(client, owned_user):
+    shared = Platform.objects.create(name="Amiga", library=None)
+    client.force_login(owned_user)
+
+    response = client.get(reverse("games:edit_platform", args=[shared.pk]))
+
+    assert response.status_code == 404
+
+
+@view_tests
+def test_a_taken_key_answers_on_the_platform_form(client, owned_user):
+    client.force_login(owned_user)
+    held = Platform.objects.create(name="Held", library=owned_user.library)
+    state_external_references(
+        target=held, library=owned_user.library, keys={"wikidata": "Q100047"}
+    )
+
+    response = client.post(
+        reverse("games:add_platform"),
+        {
+            "name": "Amiga",
+            "group": "",
+            "icon": "",
+            "reference_wikidata": "Q100047",
+        },
+    )
+
+    assert response.status_code == 200
+    assert KEY_TAKEN in response.content.decode()
+    assert not Platform.objects.filter(name="Amiga").exists()
