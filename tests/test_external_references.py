@@ -96,7 +96,7 @@ def test_external_reference_url_rejects_untrusted_or_malformed_input(kwargs):
 
 
 def test_a_key_that_names_no_entity_states_no_url():
-    """A mirror column holds one, and a reader must survive it."""
+    """A mirror column holds one; readers survive."""
     assert (
         external_reference_url_or_none(
             provider="wikidata", entity_kind="game", provider_key="n/a"
@@ -106,7 +106,7 @@ def test_a_key_that_names_no_entity_states_no_url():
 
 
 def test_a_url_or_none_answers_the_canonical_key_the_same_way():
-    """The guard states the link, never a second reading of it."""
+    """The guard states the link once."""
     assert (
         external_reference_url_or_none(
             provider=" WikiData ", entity_kind="game", provider_key=" q123 "
@@ -320,7 +320,7 @@ def test_deleting_an_external_reference_target_cascades_only_its_reference(entit
 
 @pytest.mark.parametrize("entity_kind", ["game", "edition", "release", "platform"])
 def test_resolve_external_reference_returns_only_the_requested_kind_uuid(entity_kind):
-    """Resolving through the wrong kind would confuse catalog-level identities."""
+    """The wrong kind confuses catalog identities."""
     target = _catalog_targets()[entity_kind]
     ExternalReference.objects.create(
         provider="wikidata",
@@ -337,12 +337,7 @@ def test_resolve_external_reference_returns_only_the_requested_kind_uuid(entity_
 
 
 def test_resolve_external_reference_reads_past_a_marked_row(owned_library):
-    """A key one record let go of names whoever holds it now.
-
-    The tuple is unique among live rows only, thus the marked rows
-    behind a key are the records that stated it before. Reading one
-    of those would resolve to a record nobody can see.
-    """
+    """A key let go names its holder."""
     first = Game.objects.create(name="Elite", library=owned_library)
     second = Game.objects.create(name="Frontier", library=owned_library)
     state_external_references(
@@ -478,7 +473,7 @@ def test_a_restore_that_loses_the_key_empties_the_column(owned_library):
 
 
 def test_a_marked_reference_lets_go_of_its_provider_key(owned_library):
-    """#976: a removed row does not hold a key against a later entry."""
+    """#976: a removed row holds no key."""
     first = Game.objects.create(name="Elite", library=owned_library)
     second = Game.objects.create(name="Elite II", library=owned_library)
     reference = ExternalReference.objects.create(
@@ -520,7 +515,7 @@ def test_a_marked_key_frees_the_record_for_another(owned_library):
 
 
 def test_every_registered_policy_states_a_label_and_a_hint():
-    """A provider is one registry entry, UI included."""
+    """A provider is one registry entry."""
     for provider, policy in PROVIDER_POLICIES.items():
         assert policy.label, provider
         assert policy.hint, provider
@@ -600,13 +595,7 @@ def test_a_key_another_record_holds_is_refused(owned_library):
 
 
 def _claimed_between_the_reading_and_the_write(claim):
-    """A rival write that lands after the pre-check has read.
-
-    The lock holds the rows the record already has, thus a key
-    nobody holds yet is claimable up to the moment of the write.
-    Standing in for the rival where the pre-check runs makes that
-    window a fixed point rather than a thread schedule.
-    """
+    """A rival write, after the pre-check reads."""
 
     def instead_of_the_pre_check(wanted, held, entity_kind):
         claim()
@@ -617,7 +606,7 @@ def _claimed_between_the_reading_and_the_write(claim):
 def test_a_key_claimed_after_the_pre_check_answers_on_its_box(
     owned_library, monkeypatch
 ):
-    """No pre-check wins a race; the constraint answers the loser."""
+    """No pre-check wins a race."""
     holder = Game.objects.create(name="Elite", library=owned_library)
     game = Game.objects.create(name="Frontier", library=owned_library)
     monkeypatch.setattr(
@@ -643,7 +632,7 @@ def test_a_key_claimed_after_the_pre_check_answers_on_its_box(
 
 
 def test_a_second_key_for_one_record_reads_as_a_race(owned_library, monkeypatch):
-    """The record holding the key is this record, thus not KEY_TAKEN."""
+    """The holder is this record, not KEY_TAKEN."""
     game = Game.objects.create(name="Elite", library=owned_library)
     monkeypatch.setattr(
         external_references,
@@ -668,7 +657,7 @@ def test_a_second_key_for_one_record_reads_as_a_race(owned_library, monkeypatch)
 
 
 class _Cause(Exception):
-    """A driver error, as the database hands one over."""
+    """A driver error, as the database raises."""
 
     def __init__(self, name: str) -> None:
         super().__init__(name)
@@ -744,7 +733,7 @@ def test_a_malformed_key_is_refused_under_its_provider(owned_library):
 
 
 def test_nothing_is_written_when_one_provider_is_refused(owned_library):
-    """Every refusal is read before anything is written."""
+    """Every refusal is read before any write."""
     game = Game.objects.create(name="Elite", library=owned_library)
 
     with pytest.raises(ReferencesRefused):
@@ -756,12 +745,7 @@ def test_nothing_is_written_when_one_provider_is_refused(owned_library):
 
 
 def test_the_backfill_leaves_a_removed_game_alone(owned_library):
-    """A removed Game keeps its column and states nothing.
-
-    Its mark is what `_mirror_the_wikidata_column` leaves in place,
-    so the column still names a key no reference states. Writing
-    one is refused, and the refusal would take the whole load.
-    """
+    """A removed Game keeps its column."""
     live = Game.objects.create(name="Elite", library=owned_library, wikidata="Q1")
     gone = Game.objects.create(name="Frontier", library=owned_library, wikidata="Q2")
     remove(gone)
@@ -787,12 +771,7 @@ def test_the_backfill_counts_a_malformed_column_apart_from_a_taken_key(owned_lib
 
 
 def test_every_mirrored_column_equals_its_live_reference(owned_user):
-    """Parity over the anonymized production snapshot.
-
-    Through the command, not `loaddata`: the fixture names its
-    owner with a placeholder the command resolves, and the same
-    call is what a developer runs.
-    """
+    """Parity over the anonymized production snapshot."""
     from django.core.management import call_command
 
     call_command("load_sample_data", "--user", owned_user.username, verbosity=0)
@@ -849,8 +828,7 @@ def test_a_key_cannot_select_a_url_of_its_own(owned_library):
             game=game,
         )
 
-    #: An UPDATE reaches neither clean() nor the service, thus
-    #: the check constraint is what answers it.
+    #: An UPDATE reaches only the constraint.
     held = ExternalReference.objects.create(
         provider="wikidata", entity_kind="game", provider_key="Q1", game=game
     )
@@ -870,11 +848,11 @@ def test_every_key_box_states_a_label(client, owned_user):
     assert ">Wikidata<" in body
 
 
-# --- the registry and the constraints that admit it --------------------------
+# --- the registry and its constraints ---------------------------------------
 
 
 def declared_condition(name: str) -> Q | BaseExpression:
-    """What the named check constraint refuses rows by."""
+    """What the check constraint refuses by."""
     for constraint in ExternalReference._meta.constraints:
         if constraint.name == name:
             assert isinstance(constraint, CheckConstraint), constraint
@@ -883,31 +861,19 @@ def declared_condition(name: str) -> Q | BaseExpression:
 
 
 def test_the_constraint_admits_exactly_the_registered_providers():
-    """A policy without its migration fails here, not in a render.
-
-    `ProviderPolicy` states that registering a policy is the whole
-    cost of a provider. It is not: the database refuses every word
-    this constraint does not name, and the first sign of the gap
-    used to be a person's write being refused for no stated reason.
-    """
+    """A policy without its migration fails here."""
     admits_each = reduce(or_, (Q(provider=name) for name in PROVIDER_POLICIES))
 
     assert declared_condition("external_reference_supported_provider") == admits_each
 
 
 def test_one_key_pattern_holds_only_while_one_provider_is_registered():
-    """`external_reference_canonical_provider_key` is Wikidata's.
-
-    It applies `^Q[1-9][0-9]*$` to every row, whatever the row's
-    provider names. A second provider needs that constraint stated
-    per provider before one of its keys can be written at all, and
-    this is what says so.
-    """
+    """`external_reference_canonical_provider_key` is Wikidata's."""
     assert set(PROVIDER_POLICIES) == {"wikidata"}
 
 
 def test_a_template_that_names_no_key_is_refused():
-    """Every reference of that provider would link to one page."""
+    """Every reference would link to one page."""
     with pytest.raises(ValueError, match=r"must interpolate"):
         external_references.ProviderPolicy(
             normalize_key=str,
@@ -922,7 +888,7 @@ def test_a_template_that_names_no_key_is_refused():
     ["http://example.test/{provider_key}", "javascript:x/{provider_key}"],
 )
 def test_a_template_that_is_not_https_is_refused(url_template):
-    """The node layer escapes an href's characters, not its scheme."""
+    """The node layer escapes characters, not schemes."""
     with pytest.raises(ValueError, match=r"must start with"):
         external_references.ProviderPolicy(
             normalize_key=str, url_template=url_template, label="X", hint=""
@@ -940,7 +906,7 @@ def test_a_registry_key_that_is_not_casefolded_is_refused():
 def test_a_reference_no_policy_admits_reads_as_text(
     owned_library, capture_games_logger
 ):
-    """One row must not take Game detail and the Platform list down."""
+    """One row takes no page down."""
     from common.components.domain import ExternalReferenceLinks
 
     game = Game.objects.create(library=owned_library, name="Elite")
@@ -959,7 +925,7 @@ def test_a_reference_no_policy_admits_reads_as_text(
 def test_an_edition_reads_its_owner_through_its_game(
     owned_library, stated_graph, django_user_model
 ):
-    """An Edition holds no library column; its Game holds one."""
+    """An Edition reads its Game's library column."""
     other = django_user_model.objects.create_user(
         username="other", password="p"
     ).library
@@ -986,7 +952,7 @@ def test_an_edition_under_a_shared_game_is_refused(owned_library):
 
 
 def test_an_edition_under_a_removed_game_is_refused(owned_library, stated_graph):
-    """A removed Game hides its Editions, thus none may be written."""
+    """A removed Game hides its Editions."""
     game, edition, _ = stated_graph(
         Game(name="Elite", library=owned_library), owned_library
     )
@@ -1015,7 +981,7 @@ def test_a_release_under_a_removed_edition_is_refused(owned_library, stated_grap
 
 
 def test_a_release_under_a_removed_game_is_refused(owned_library, stated_graph):
-    """Two rows up, and the Release carries no mark of its own."""
+    """Two rows up, and no mark between."""
     game, _, release = stated_graph(
         Game(name="Elite", library=owned_library), owned_library
     )
@@ -1032,7 +998,7 @@ def test_a_release_under_a_removed_game_is_refused(owned_library, stated_graph):
 def test_a_release_states_a_key_under_the_library_two_rows_up(
     owned_library, stated_graph
 ):
-    """The live path through both ancestors, which the refusals share."""
+    """The live path through both ancestors."""
     _, _, release = stated_graph(
         Game(name="Elite", library=owned_library), owned_library
     )
@@ -1047,13 +1013,7 @@ def test_a_release_states_a_key_under_the_library_two_rows_up(
 
 
 def test_one_key_may_name_a_game_and_a_platform(owned_library):
-    """The unique tuple is scoped by kind, thus kinds do not collide.
-
-    One Wikidata entity is one thing, never two, so the same ID
-    naming a Game and a Platform is a mistake somewhere upstream —
-    but it is not this constraint's mistake to catch, and refusing
-    it here would refuse the legitimate case the kinds exist for.
-    """
+    """The unique tuple is scoped by kind."""
     game = Game.objects.create(name="Amiga", library=owned_library)
     platform = Platform.objects.create(name="Amiga", library=owned_library)
 
@@ -1074,17 +1034,7 @@ def test_one_key_may_name_a_game_and_a_platform(owned_library):
 
 @pytest.mark.untracked_games
 def test_the_load_says_which_columns_it_left_alone(owned_user, django_user_model):
-    """Two counts, two sentences, because two causes.
-
-    An operator reading one number for both would go hunting a
-    conflict where there is only a value that is not an ID. The
-    fixture states neither, thus the rows are seeded here: a key
-    another library already holds, and a column that is not a key.
-
-    Untracked, because the command's own backfill tracks every
-    game the library holds, and the fixture's tracking helper
-    would have tracked these two first.
-    """
+    """Two counts, two sentences, because two causes."""
     from io import StringIO
 
     from django.core.management import call_command

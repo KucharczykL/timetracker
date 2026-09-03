@@ -1,9 +1,4 @@
-"""The External references area of a record's form.
-
-One labelled row per registered provider. No add button, no count
-field and no clone template: the rows are the registry, and the
-registry does not change while a page is open.
-"""
+"""The External references area of a form."""
 
 from common.components import Div, FormFields, Node, Span
 from games.reference_form import ReferenceSetForm

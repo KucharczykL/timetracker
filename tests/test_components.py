@@ -2941,7 +2941,7 @@ def test_confirm_page_draws_a_refusal_before_the_question():
 
 
 def test_confirm_page_nobody_refused_draws_no_error_list():
-    """The refusal list alone, not every ``<ul>`` a slot may hold."""
+    """The refusal list alone, not every ``<ul>``."""
     from common.components import ConfirmPage
     from common.components.primitives import _FIELD_ERROR_CLASS
 

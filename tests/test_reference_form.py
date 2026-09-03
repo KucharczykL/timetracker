@@ -1,4 +1,4 @@
-"""The External references area, as one bound thing."""
+"""The External references area, bound as one."""
 
 import pytest
 from django.urls import reverse
@@ -26,7 +26,7 @@ def test_the_registry_states_the_fields(owned_library):
 
 
 def test_every_box_wears_the_native_control_classes(owned_library):
-    """A field built after ``super().__init__()`` is still stamped."""
+    """A field built after ``super().__init__()`` is stamped."""
     form = ReferenceSetForm(None, target=None, library=owned_library)
 
     widget = form.fields["reference_wikidata"].widget
@@ -121,13 +121,12 @@ def test_the_field_name_is_the_provider():
     assert reference_field_name("wikidata") == "reference_wikidata"
 
 
-#: The view dispatches a PlayerGame command, and
-#: `run_in_transaction` refuses to nest.
+#: The view dispatches; `run_in_transaction` refuses nesting.
 view_tests = pytest.mark.django_db(transaction=True)
 
 
 def _platform_post(name: str, provider_key: str) -> dict[str, str]:
-    """The Platform form's own fields, beside the References area."""
+    """The Platform form's own fields, beside References."""
     return {
         "name": name,
         "group": "",
@@ -190,7 +189,7 @@ def test_clearing_the_box_removes_the_reference(client, owned_user, game_post):
 
 @view_tests
 def test_an_unchanged_key_keeps_the_reference_it_had(client, owned_user, game_post):
-    """A resubmit states the same key, thus nothing is written."""
+    """A resubmit states the same key."""
     client.force_login(owned_user)
     game = Game.objects.create(name="Elite", library=owned_user.library)
     state_external_references(
@@ -208,7 +207,7 @@ def test_an_unchanged_key_keeps_the_reference_it_had(client, owned_user, game_po
 
 @view_tests
 def test_a_taken_key_takes_the_rename_back(client, owned_user, game_post):
-    """One transaction: the reference refuses and the columns follow."""
+    """One transaction: the refusal takes the rename."""
     client.force_login(owned_user)
     held = Game.objects.create(name="Held", library=owned_user.library)
     state_external_references(
@@ -271,7 +270,7 @@ def test_a_taken_key_answers_on_the_platform_form(client, owned_user):
 
 
 def test_a_form_that_names_no_record_writes_nothing(owned_library):
-    """`python -O` strips an assert; a write must still refuse."""
+    """`python -O` strips an assert; refuse anyway."""
     form = ReferenceSetForm(
         {"reference_wikidata": "Q123"}, target=None, library=owned_library
     )
@@ -284,7 +283,7 @@ def test_a_form_that_names_no_record_writes_nothing(owned_library):
 
 
 def test_a_second_record_cannot_be_bound_over_the_first(owned_library):
-    """The boxes were seeded from one record; they state that one."""
+    """The boxes were seeded from one record."""
     stated = Game.objects.create(name="Elite", library=owned_library)
     other = Game.objects.create(name="Frontier", library=owned_library)
     state_external_references(
@@ -299,7 +298,7 @@ def test_a_second_record_cannot_be_bound_over_the_first(owned_library):
 
 
 def test_naming_the_same_record_again_is_what_an_edit_does(owned_library):
-    """Edit Game binds the record the form was built from."""
+    """Edit Game binds the record again."""
     game = Game.objects.create(name="Elite", library=owned_library)
     form = ReferenceSetForm(
         {"reference_wikidata": "Q123"}, target=game, library=owned_library
@@ -316,13 +315,7 @@ def test_naming_the_same_record_again_is_what_an_edit_does(owned_library):
 
 @view_tests
 def test_a_post_that_omits_the_box_clears_the_reference(client, owned_user, game_post):
-    """A missing field reads as a cleared one, not as untouched.
-
-    A `forms.CharField` a POST leaves out cleans to `""`, which is
-    what a person clearing the box states. Nothing distinguishes
-    the two, so a caller building the body by hand takes the key
-    off the record.
-    """
+    """A missing field reads as cleared."""
     client.force_login(owned_user)
     game = Game.objects.create(name="Elite", library=owned_user.library)
     state_external_references(
@@ -338,7 +331,7 @@ def test_a_post_that_omits_the_box_clears_the_reference(client, owned_user, game
 
 @view_tests
 def test_a_taken_key_takes_the_platform_rename_back(client, owned_user):
-    """One transaction on the edit path too, not only on add."""
+    """One transaction on the edit path too."""
     client.force_login(owned_user)
     held = Platform.objects.create(name="Held", library=owned_user.library)
     state_external_references(

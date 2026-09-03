@@ -126,14 +126,7 @@ EDITIONS_UNDER_CONSTRUCTION = (
 
 
 def _wikidata_cell(provider_key: str) -> Cell:
-    """The mirror column, linked where it names an entity.
-
-    #889 takes the column. Until then it holds whatever stood there
-    before the reference did, and the backfill leaves a value the
-    canonical pattern rejects alone rather than guessing at it. Such
-    a value reads as the text it is: one of them used to raise, and
-    a raise here takes the whole list rather than the one cell.
-    """
+    """The mirror column, linked where it links."""
     if not provider_key:
         return ""
     url = external_reference_url_or_none(
@@ -697,7 +690,7 @@ def _plain_release_rows(
 
 
 def _references_row(references: Sequence[ExternalReference]) -> list[Node]:
-    """No row at all when the record names nothing outside."""
+    """No row when nothing is named outside."""
     if not references:
         return []
     return [_meta_row("References", ExternalReferenceLinks(references))]
@@ -1026,9 +1019,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
     purchases = Purchase.objects.for_library(library).filter(games=game)
     playevents = PlayEvent.objects.for_library(library).filter(game=game)
     hierarchy = game_hierarchy(game, library)
-    #: One batch for the page — the Game, every Edition, every
-    #: Release — so no row pays for a read of its own.
-    #: `references_for()` spends one query per kind, three here.
+    #: One batch, one query per kind.
     referenced: list[CatalogTarget] = [game]
     for entry in hierarchy:
         referenced.append(entry.edition)

@@ -151,11 +151,7 @@ class Command(BaseCommand):
             #: projector. Inside this block, so a load either lands tracked or
             #: does not land.
             backfill_library(user.library)
-            #: The fixture predates #896: it states a key in the
-            #: Game's column and holds no reference row, and the
-            #: column is the mirror now. A refusal here is a defect
-            #: rather than a fixture the operator can repair, thus
-            #: it reads as one and takes the load with it.
+            #: The fixture predates #896: no reference rows.
             try:
                 backfilled = backfill_wikidata_references(user.library)
             except ValidationError as refusal:

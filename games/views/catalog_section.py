@@ -60,8 +60,7 @@ EDITION_COLUMNS: Final[str] = (
 #: Visible on a narrow card, named-but-unseen once the headers appear.
 NARROW_LABEL_CLASS: Final[str] = f"{FORM_LABEL_CLASS} @2xl/edition:sr-only"
 
-#: Every block of a record's form, so the areas read as one page.
-#: The References area imports it rather than restating it.
+#: Every block of a record's form.
 BLOCK_CLASS: Final[str] = "rounded-base border border-default-medium p-3 sm:p-4"
 
 _HEADINGS_CLASS: Final[str] = (

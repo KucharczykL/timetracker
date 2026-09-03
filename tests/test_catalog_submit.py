@@ -333,7 +333,7 @@ def test_a_mapped_constraint_becomes_a_sentence():
 
 
 def test_the_wikidata_constraint_never_reaches_the_mapping():
-    """`state_external_references` answers it first, on its own box."""
+    """`state_external_references` answers it on its box."""
     assert (
         answered_constraint(collision("unique_external_reference_provider_kind_key"))
         is None

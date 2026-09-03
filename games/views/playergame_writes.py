@@ -65,12 +65,9 @@ def remove_game_for_request(request: HttpRequest, game: Game) -> None:
     and refuses to nest. A failure between the two leaves a game no
     list shows, and running the act again completes it.
 
-    A refused command rises as the `CommandFailed` it already is, and
-    `confirm_and_apply` reads that type: the confirmation comes back
-    with the sentence on it and the status the refusal states. A toast
-    here would have said no while the redirect said yes, and a second
-    type in between would have thrown the status away and read the
-    same as a model that refused underneath the act.
+    A refused command rises as the `CommandFailed` it already is,
+    which `confirm_and_apply` reads: the confirmation comes back
+    with the sentence and the status the refusal states.
     """
     untrack_game(cast("User", request.user), game, correlation_id=new_correlation_id())
     remove(game)

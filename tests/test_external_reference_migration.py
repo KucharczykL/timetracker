@@ -725,11 +725,7 @@ def test_empty_reference_table_can_reverse_and_migrate_forward_again(
 
 @pytest.fixture
 def reference_mark_migration_harness():
-    """The schema one migration before the reference marks.
-
-    Flushing before the step back matters: going back runs 0041's
-    reverse, which refuses while a marked row stands.
-    """
+    """The schema before the reference marks."""
     leaf_nodes = MigrationExecutor(connection).loader.graph.leaf_nodes()
     call_command("flush", interactive=False, verbosity=0)
     executor = MigrationExecutor(connection)
@@ -746,7 +742,7 @@ def migrate_to_reference_marks():
 
 
 def seed_reference_library(apps):
-    """One library to hang the marked world from."""
+    """One library the marked rows hang from."""
     User = apps.get_model("auth", "User")
     UserLibrary = apps.get_model("games", "UserLibrary")
     user = User.objects.create(username="reference-marks")
@@ -754,7 +750,7 @@ def seed_reference_library(apps):
 
 
 def state_reference(apps, kind, target, provider_key):
-    """One live reference of one kind, at the 0040 schema."""
+    """One live reference, at the 0040 schema."""
     ExternalReference = apps.get_model("games", "ExternalReference")
     return ExternalReference.objects.create(
         id=uuid.uuid7(),
@@ -766,7 +762,7 @@ def state_reference(apps, kind, target, provider_key):
 
 
 def keys_by_mark(apps):
-    """Every reference key, against the mark it carries."""
+    """Every key, against the mark it carries."""
     ExternalReference = apps.get_model("games", "ExternalReference")
     return dict(
         ExternalReference.objects.order_by("provider_key").values_list(
@@ -778,12 +774,7 @@ def keys_by_mark(apps):
 def test_a_removed_rows_references_take_that_rows_own_mark(
     reference_mark_migration_harness,
 ):
-    """`games/removal.py` reads the two marks back as equal (#976).
-
-    The reference takes the row's own mark and not the run's clock,
-    thus a restore takes back the references that went out with the
-    row and leaves the ones a rival write had already replaced.
-    """
+    """`games/removal.py` reads the two marks equal (#976)."""
     apps = reference_mark_migration_harness
     library = seed_reference_library(apps)
     Game = apps.get_model("games", "Game")
@@ -798,8 +789,7 @@ def test_a_removed_rows_references_take_that_rows_own_mark(
         removed_at=timezone.now() - timedelta(days=4),
     )
     live_game = Game.objects.create(id=uuid.uuid7(), library_id=library.pk, name="Live")
-    #: Its own mark, under a Game that carries none: the migration
-    #: reads the row it names, never an ancestor.
+    #: Its own mark, under an unmarked Game.
     removed_edition = Edition.objects.create(
         game_id=live_game.pk,
         is_default=True,
@@ -831,11 +821,7 @@ def test_a_removed_rows_references_take_that_rows_own_mark(
 def test_the_mirrored_key_is_the_reference_that_stays(
     reference_mark_migration_harness,
 ):
-    """The column names the keeper, whichever row came first.
-
-    Both directions, because keeping the earliest id would answer
-    one of them right by accident.
-    """
+    """The column names the keeper."""
     apps = reference_mark_migration_harness
     library = seed_reference_library(apps)
     Game = apps.get_model("games", "Game")
@@ -863,7 +849,7 @@ def test_the_mirrored_key_is_the_reference_that_stays(
 def test_an_unmirrored_game_keeps_the_reference_written_first(
     reference_mark_migration_harness,
 ):
-    """An empty column names nobody, thus the earliest id stays."""
+    """An empty column names nobody; earliest stays."""
     apps = reference_mark_migration_harness
     library = seed_reference_library(apps)
     Game = apps.get_model("games", "Game")
@@ -894,11 +880,7 @@ def test_a_platform_pair_keeps_the_reference_written_first(
 def test_a_pair_that_spans_two_pages_is_still_one_pair(
     reference_mark_migration_harness,
 ):
-    """What one record holds is read across the page break.
-
-    A pager that started each page empty would find no incumbent for
-    the second row of the pair and leave both live.
-    """
+    """One record, read across the page break."""
     apps = reference_mark_migration_harness
     library = seed_reference_library(apps)
     Game = apps.get_model("games", "Game")
@@ -923,8 +905,7 @@ def test_a_pair_that_spans_two_pages_is_still_one_pair(
         )
         for number, game in enumerate(games)
     )
-    #: Written last, thus the last id, thus the far side of the
-    #: break from the reference its own record already holds.
+    #: Written last, thus the far side.
     state_reference(apps, "game", games[0], "Q9000")
 
     marks = keys_by_mark(migrate_to_reference_marks())
@@ -936,11 +917,7 @@ def test_a_pair_that_spans_two_pages_is_still_one_pair(
 def test_reverse_refuses_while_a_marked_reference_stands(
     reference_mark_migration_harness,
 ):
-    """A mark and the row that took its key over share one tuple.
-
-    The old constraint refuses that pair, and the reverse would meet
-    it with the marks already dropped and nothing left to read.
-    """
+    """A mark and its taker share one tuple."""
     apps = reference_mark_migration_harness
     library = seed_reference_library(apps)
     Game = apps.get_model("games", "Game")

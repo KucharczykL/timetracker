@@ -75,11 +75,7 @@ def stated_graph():
 
 @pytest.fixture
 def game_post():
-    """The Game form's own fields, beside the Editions area.
-
-    Two modules post this form now, thus the body lives here rather
-    than beside either of them.
-    """
+    """The Game form's own fields, beside Editions."""
 
     def fields(name: str, **extra: str) -> dict[str, str]:
         posted = {

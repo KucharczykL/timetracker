@@ -46,8 +46,7 @@ def confirm_and_apply(
 
     An ``action`` that refuses raises ``CommandFailed``, and its sentence goes
     back on the confirmation, above the question rather than inside it. Only
-    that type is read as a refusal: a ``ValidationError`` from a model beneath
-    the act is a defect, and it rises to the 500 handler where one belongs.
+    that type reads as a refusal; anything beneath the act is a defect.
     """
 
     def confirmation(refusal: Sequence[str] = (), status: int = 200) -> HttpResponse:
@@ -74,11 +73,11 @@ def confirm_and_apply(
     try:
         action()
     except CommandFailed as refusal:
-        #: A command refuses on state, and state moves: another tab
-        #: may have taken the row this act counted on. A 500 would
-        #: read as our fault rather than as a stale page. The status
-        #: is the refusal's own, because the answers disagree about
-        #: what a person should do next.
+        #: State moves: another tab may have won.
+        #:
+        #: A 500 would read as our fault rather than as a stale
+        #: page, and the status is the refusal's own, because the
+        #: answers disagree about what to do next.
         return confirmation([refusal.message], status=refusal.status_code)
     return redirect(
         return_url(

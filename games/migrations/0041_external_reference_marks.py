@@ -2,11 +2,10 @@ from django.db import migrations, models
 from django.db.models import OuterRef, Subquery
 from django.utils.timezone import now
 
-#: Page size for the pass that resolves a doubled key, the one
-#: backfill here that reads rows. Nothing opens a cursor.
+#: Page size; nothing opens a cursor.
 BATCH_SIZE = 500
 
-#: The kinds, and the column each one hangs from.
+#: Each kind, and its column.
 TARGET_COLUMNS = {
     "game": "game_id",
     "edition": "edition_id",
@@ -16,13 +15,7 @@ TARGET_COLUMNS = {
 
 
 def _paged(queryset):
-    """Page a historical queryset by primary key.
-
-    `common/keyset.py` types against the live model, and a
-    migration reads the historical one. Same shape, same rule: no
-    server-side cursor. UUIDv7 sorts by time, thus `id` alone is a
-    stable key.
-    """
+    """Page a historical queryset by primary key."""
     last = None
     while True:
         page = queryset if last is None else queryset.filter(id__gt=last)
@@ -36,11 +29,10 @@ def _paged(queryset):
 
 
 def _mark_references_of_removed_rows(apps, schema_editor):
-    """A removed row lets go of the key it claimed (#976).
+    """A removed row lets go (#976).
 
-    The reference takes the row's own mark and not this run's
-    clock, because `games/removal.py` reads the two back as equal
-    to know which references went out with the row.
+    The mark is the row's own and not this run's clock, because
+    `games/removal.py` reads the two back as equal.
     """
     reference_model = apps.get_model("games", "ExternalReference")
     for kind, column in TARGET_COLUMNS.items():
@@ -60,11 +52,7 @@ def _mark_references_of_removed_rows(apps, schema_editor):
 
 
 def _keeper(kind, incumbent, candidate, mirrored):
-    """The row that stays: the mirrored key, else the earliest id.
-
-    Only a Game carries a mirror column, thus the other three kinds
-    have nothing to prefer and keep the row that was written first.
-    """
+    """The mirrored key stays, else the earliest."""
     if kind == "game":
         wanted = mirrored.get(incumbent.game_id)
         if wanted is not None:
@@ -76,13 +64,7 @@ def _keeper(kind, incumbent, candidate, mirrored):
 
 
 def _keep_one_key_per_record(apps, schema_editor):
-    """Resolve a record that already holds two keys of one provider.
-
-    Nothing should be found: no route states a second key of one
-    provider, and only a direct service call could make one. It
-    runs because a migration that assumes a shape it can check is a
-    migration that fails on the one database that broke it.
-    """
+    """Two keys of one provider, resolved."""
     reference_model = apps.get_model("games", "ExternalReference")
     game_model = apps.get_model("games", "Game")
     stamped = now()
@@ -107,13 +89,11 @@ def _keep_one_key_per_record(apps, schema_editor):
 
 
 def _refuse_a_reverse_that_loses_the_marks(apps, schema_editor):
-    """Refuse to go back while a marked reference stands.
+    """Refuse a reverse while a mark stands.
 
-    Reversing drops `removed_at` and puts the unconditional unique
-    back. A key one record let go of and another record now holds is
-    two rows of one tuple, which that constraint refuses, and by then
-    the column naming the loser is gone and nobody can read what
-    collided. Refusing first leaves the marks where an operator can.
+    Reversing puts the unconditional unique back, which a key one
+    record let go of and another now holds would break, with the
+    column naming the loser already gone.
     """
     del schema_editor
     reference_model = apps.get_model("games", "ExternalReference")
@@ -140,9 +120,7 @@ class Migration(migrations.Migration):
                 blank=True, default=None, editable=False, null=True
             ),
         ),
-        #: Reversing drops the column these two write, thus a mark
-        #: has nowhere to live and nothing to undo. The guard at the
-        #: end reverses first and refuses before it comes to that.
+        #: The guard at the end reverses first.
         migrations.RunPython(
             _mark_references_of_removed_rows, migrations.RunPython.noop
         ),
@@ -195,8 +173,7 @@ class Migration(migrations.Migration):
                 name="unique_live_platform_reference_per_provider",
             ),
         ),
-        #: Last, thus first to reverse: the marks above are read
-        #: before anything that would drop them.
+        #: Last, thus first to reverse.
         migrations.RunPython(
             migrations.RunPython.noop, _refuse_a_reverse_that_loses_the_marks
         ),

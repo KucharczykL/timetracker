@@ -1,13 +1,4 @@
-"""An external reference, stated and followed in a real browser.
-
-The area holds one plain text box per provider and no scripting of
-its own, thus this file proves the round trip rather than a widget:
-what a person types is written, shown as a link, changed, and let
-go of.
-
-A UI assertion is not a database assertion. Every ORM read below
-waits for the page the redirect lands on first.
-"""
+"""A reference, typed and followed in Chromium."""
 
 import pytest
 from django.urls import reverse
@@ -18,7 +9,7 @@ from games.models import ExternalReference, Game
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
-#: The navbar's Log out is a submit button too, thus the form's own.
+#: Log out is a submit button too.
 SUBMIT = "#add-form button[type=submit]"
 
 
@@ -33,7 +24,7 @@ def signed_in(live_server, page: Page, e2e_user) -> Page:
 
 
 def saved(page: Page, live_server) -> None:
-    """Press Submit and wait for the page the write redirects to."""
+    """Submit, and wait for the redirect."""
     page.click(SUBMIT)
     page.wait_for_url(f"{live_server.url}{reverse('games:list_games')}**")
 
@@ -99,7 +90,7 @@ def test_editing_the_box_changes_the_key_then_lets_go_of_it(
 def test_a_taken_key_answers_beside_the_box_a_person_typed_into(
     signed_in, live_server, e2e_library
 ):
-    """The refusal comes back on the page, with the value still in it."""
+    """The refusal comes back with the value."""
     page = signed_in
     held = Game.objects.create(library=e2e_library, name="Held")
     state_external_references(

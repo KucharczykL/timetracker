@@ -1,4 +1,4 @@
-"""What a reference looks like on a page."""
+"""What a reference looks like."""
 
 import pytest
 from django.urls import reverse
@@ -27,7 +27,7 @@ def test_a_link_states_its_provider_and_its_key(owned_library):
 
 
 def test_no_reference_renders_nothing_a_reader_reads_as_one():
-    """Nothing at all, so a cell of a table stays empty."""
+    """Nothing at all; the cell stays empty."""
     assert str(ExternalReferenceLinks([])) == ""
 
 
@@ -88,14 +88,14 @@ def test_the_platform_list_shows_the_reference(client, owned_user):
 
 
 def test_a_row_with_no_reference_reads_as_an_empty_list(owned_library):
-    """The one empty answer, so no reader states its own."""
+    """One empty answer, so readers state none."""
     game = Game.objects.create(name="Elite", library=owned_library)
 
     assert held_by(references_for([game]), game.pk) == []
 
 
 def test_gathering_one_row_does_not_write_into_another(owned_library):
-    """Game detail extends what it reads; the map must not feel it."""
+    """Game detail extends; the map stays whole."""
     game = Game.objects.create(name="Elite", library=owned_library)
     state_external_references(
         target=game, library=owned_library, keys={"wikidata": "Q123"}
@@ -110,12 +110,7 @@ def test_gathering_one_row_does_not_write_into_another(owned_library):
 def test_the_batch_read_takes_one_query_for_each_kind_present(
     owned_library, stated_graph, django_assert_num_queries
 ):
-    """Three kinds, thus three queries, and no query per row.
-
-    Game detail hands this function a Game, its Editions and their
-    Releases at once. A read that grouped by row rather than by
-    kind would still pass the one-kind test above.
-    """
+    """Three kinds, three queries, none per row."""
     game, edition, release = stated_graph(
         Game(name="Elite", library=owned_library), owned_library
     )
@@ -134,11 +129,7 @@ def test_the_batch_read_takes_one_query_for_each_kind_present(
 def test_the_editions_table_states_the_editions_and_the_releases_keys(
     client, owned_user
 ):
-    """One cell gathers two kinds; nothing else on the page does.
-
-    The section is drawn only for a graph that does not read
-    plainly, thus a named Edition holding two Releases.
-    """
+    """One cell gathers two kinds."""
     library = owned_user.library
     game = Game(name="Elite", library=library)
     game.save()
