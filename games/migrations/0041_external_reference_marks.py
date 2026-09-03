@@ -1,4 +1,5 @@
 from django.db import migrations, models
+from django.db.models import OuterRef, Subquery
 from django.utils.timezone import now
 
 #: Page size for the two backfills. Nothing opens a cursor.
@@ -34,16 +35,27 @@ def _paged(queryset):
 
 
 def _mark_references_of_removed_rows(apps, schema_editor):
-    """A removed row lets go of the key it claimed (#976)."""
+    """A removed row lets go of the key it claimed (#976).
+
+    The reference takes the row's own mark and not this run's
+    clock, because `games/removal.py` reads the two back as equal
+    to know which references went out with the row.
+    """
     reference_model = apps.get_model("games", "ExternalReference")
-    stamped = now()
     for kind, column in TARGET_COLUMNS.items():
         relation = column.removesuffix("_id")
+        target_model = apps.get_model("games", kind)
         reference_model.objects.filter(
             entity_kind=kind,
             removed_at__isnull=True,
             **{f"{relation}__removed_at__isnull": False},
-        ).update(removed_at=stamped)
+        ).update(
+            removed_at=Subquery(
+                target_model.objects.filter(id=OuterRef(column)).values("removed_at")[
+                    :1
+                ]
+            )
+        )
 
 
 def _keeper(kind, incumbent, candidate, mirrored):

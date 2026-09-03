@@ -3,6 +3,7 @@
 import pytest
 from django.db import IntegrityError
 
+from games.external_references import state_external_references
 from games.models import ExternalReference, Game, Platform, Release
 from games.removal import remove, restore
 
@@ -63,6 +64,45 @@ def test_restoring_leaves_a_key_another_record_has_taken(owned_library):
     first.refresh_from_db()
     assert first.removed_at is None
     assert reference.removed_at is not None
+
+
+def test_restoring_takes_back_only_the_key_the_row_went_out_with(owned_library):
+    """A corrected key stays corrected.
+
+    Changing a key marks the row the record used to state. That
+    mark is not the removal's, thus a restore must leave it, or
+    the record comes back holding two keys of one provider.
+    """
+    game = Game.objects.create(name="Elite", library=owned_library)
+    state_external_references(
+        target=game, library=owned_library, keys={"wikidata": "Q1"}
+    )
+    state_external_references(
+        target=game, library=owned_library, keys={"wikidata": "Q2"}
+    )
+    remove(game)
+
+    restore(game)
+
+    live = ExternalReference.objects.filter(game=game, removed_at__isnull=True)
+    assert list(live.values_list("provider_key", flat=True)) == ["Q2"]
+
+
+def test_restoring_does_not_state_a_key_a_person_let_go_of(owned_library):
+    game = Game.objects.create(name="Elite", library=owned_library)
+    state_external_references(
+        target=game, library=owned_library, keys={"wikidata": "Q1"}
+    )
+    state_external_references(target=game, library=owned_library, keys={"wikidata": ""})
+    remove(game)
+
+    restore(game)
+
+    game.refresh_from_db()
+    assert game.wikidata == ""
+    assert not ExternalReference.objects.filter(
+        game=game, removed_at__isnull=True
+    ).exists()
 
 
 def test_a_removed_platform_lets_go_of_its_key(owned_library):
