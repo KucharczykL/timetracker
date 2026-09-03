@@ -96,12 +96,27 @@ class ReferenceSetForm(forms.Form):
         }
 
     def bind(self, target: CatalogTarget) -> None:
-        """Name the record a submit just made."""
+        """Name the record a submit just made.
+
+        Naming the same record again is what Edit Game does, and
+        it changes nothing. A second, different record is the
+        mistake: the boxes were seeded from the first one, so the
+        write would state its keys under the other's name.
+        """
+        if self.target is not None and self.target != target:
+            raise RuntimeError(
+                "This form already names another record; its keys are that record's."
+            )
         self.target = target
 
     def write(self) -> None:
-        """One statement of the whole set."""
-        assert self.target is not None, "bind() names a new record first."
+        """One statement of the whole set.
+
+        A real raise rather than an `assert`: `python -O` strips
+        one, and what is left writes nothing and says nothing.
+        """
+        if self.target is None:
+            raise RuntimeError("bind() names a new record first.")
         state_external_references(
             target=self.target, library=self.library, keys=self.stated_keys()
         )

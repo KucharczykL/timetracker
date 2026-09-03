@@ -34,7 +34,7 @@ from games.filters import filter_query_context_for_library, parse_platform_filte
 from games.forms import PlatformForm
 from games.models import Platform
 from games.ownership import owned_or_404
-from games.reads.external_references import references_for
+from games.reads.external_references import held_by, references_for
 from games.reference_form import ReferenceSetForm, submitted_or_form_error
 from games.sorting import (
     PLATFORM_DEFAULT_SORT,
@@ -95,7 +95,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
                 TruncatedText(platform.name),
                 Icon(platform.icon),
                 platform.group,
-                ExternalReferenceLinks(references.get(platform.pk, [])),
+                ExternalReferenceLinks(held_by(references, platform.pk)),
                 presentation.format(platform.created_at, "date"),
                 ButtonGroup(
                     [

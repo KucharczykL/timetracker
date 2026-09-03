@@ -440,33 +440,56 @@ Ratings from the type reviewer, for the record:
 | `ReferenceMap` | 7 | 6 | 8 | 5 |
 | `NameKey` | 8 | 9 | 10 | 5 (intentional) |
 
-Smaller points:
+Smaller points, all fixed — each one's note follows it:
 
 - `reference_form.py:99` guards a real invariant with a bare `assert`, which
   `python -O` strips. `bind()` is public and unguarded, so binding a *different*
   record than the one that seeded `initial` writes one record's keys onto
   another.
+  **Fixed:** `write()` raises `RuntimeError` where no record is named, and
+  `bind()` refuses a record other than the one already named. Naming the same
+  one again is left alone — that is what Edit Game does.
 - `reads/external_references.py:18` takes `Sequence[Model]` and does an
   unguarded `TARGET_FIELDS_BY_MODEL[type(row)]`. A `Device` raises a bare
   `KeyError` where every other entry point raises
   `ValidationError("Unsupported catalog target.")`. `Sequence[CatalogTarget]`
   makes it unreachable statically.
+  **Fixed:** it takes `Sequence[CatalogTarget]`, and `game.py` collects its
+  batch as one.
 - `references_for` returns `dict(found)`, so callers must supply a default —
   and they disagree: `game.py:698` passes `()`, `platform.py:98` passes `[]`,
   against an alias promising `list`.
+  **Fixed:** `held_by(references, row_id)` is the one empty answer, and no
+  caller writes a default. It copies, because Game detail gathers an Edition's
+  references and its Releases' into one list and would otherwise extend the
+  map's own.
 - Unnamed compounds, against CLAUDE.md: `normalize_provider_key → tuple[str, str]`,
   `_target_metadata → tuple[str, str]`, `_owner_and_mark → tuple[UUID | None, bool]`.
   All same-typed pairs, so a swap type-checks. `provider`, `provider_key` and
   `entity_kind` are bare `str` across roughly twenty signatures; the same branch
   added `common/naming.py` specifically to name one such role.
+  **Fixed for the pairs and the two provider roles:** `NormalizedReference`,
+  `TargetMetadata` and `OwnerAndMark` are NamedTuples, and `ProviderName` and
+  `ProviderKey` are PEP 695 aliases carried across the module's signatures.
+  `entity_kind` stays a bare `str`: the values are `ExternalReference.EntityKind`
+  members, and annotating the parameters with that `TextChoices` would refuse
+  every call site passing `"game"`.
 - `common/naming.py:14` uses `str.strip()`, but `Trim()` compiles to `btrim(x)`,
   which strips ASCII spaces only. A name with a trailing tab or non-breaking
   space keys equal in Python and unequal in Postgres — the class of bug the
   module exists to prevent.
+  **Fixed:** `name_key` strips `TRIMMED`, the one character `btrim` takes.
+  `tests/test_name_key.py` now keys a name ending in a tab and one ending in a
+  no-break space against the database.
 - `PROVIDER_POLICIES` is a plain mutable dict with no `Final`, while
   `catalog_submit.py:40,54` annotates its two registries `Final`.
+  **Fixed:** `Final[Mapping[ProviderName, ProviderPolicy]]`, so neither the name
+  nor the contents can be reassigned past the checker.
 - `external_references.py:24-26` makes `CatalogTarget` mean `object` at runtime.
   PEP 695 aliases are lazily evaluated, so the `else` branch may be unnecessary.
+  **Fixed:** it was. The alias holds its value unevaluated, so one statement
+  outside the `TYPE_CHECKING` block names classes imported for the checker alone
+  and is still importable at runtime.
 
 ---
 

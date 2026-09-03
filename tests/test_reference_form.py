@@ -264,3 +264,47 @@ def test_a_taken_key_answers_on_the_platform_form(client, owned_user):
     assert response.status_code == 200
     assert KEY_TAKEN in response.content.decode()
     assert not Platform.objects.filter(name="Amiga").exists()
+
+
+def test_a_form_that_names_no_record_writes_nothing(owned_library):
+    """`python -O` strips an assert; a write must still refuse."""
+    form = ReferenceSetForm(
+        {"reference_wikidata": "Q123"}, target=None, library=owned_library
+    )
+    assert form.is_valid(), form.errors
+
+    with pytest.raises(RuntimeError, match="bind"):
+        form.write()
+
+    assert not ExternalReference.objects.exists()
+
+
+def test_a_second_record_cannot_be_bound_over_the_first(owned_library):
+    """The boxes were seeded from one record; they state that one."""
+    stated = Game.objects.create(name="Elite", library=owned_library)
+    other = Game.objects.create(name="Frontier", library=owned_library)
+    state_external_references(
+        target=stated, library=owned_library, keys={"wikidata": "Q123"}
+    )
+    form = ReferenceSetForm(None, target=stated, library=owned_library)
+
+    with pytest.raises(RuntimeError, match="already names another record"):
+        form.bind(other)
+
+    assert form.target == stated
+
+
+def test_naming_the_same_record_again_is_what_an_edit_does(owned_library):
+    """Edit Game binds the record the form was built from."""
+    game = Game.objects.create(name="Elite", library=owned_library)
+    form = ReferenceSetForm(
+        {"reference_wikidata": "Q123"}, target=game, library=owned_library
+    )
+    assert form.is_valid(), form.errors
+
+    form.bind(game)
+    form.write()
+
+    assert (
+        ExternalReference.objects.get(game=game, removed_at=None).provider_key == "Q123"
+    )

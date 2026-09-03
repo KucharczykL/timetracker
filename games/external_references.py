@@ -4,7 +4,7 @@ import logging
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Final, NamedTuple
 from urllib.parse import quote
 from uuid import UUID
 
@@ -22,9 +22,19 @@ if TYPE_CHECKING:
         UserLibrary,
     )
 
-    type CatalogTarget = Game | Edition | Release | Platform
-else:
-    type CatalogTarget = object
+#: The four rows that may state an external reference. A `type`
+#: statement holds its value unevaluated until something asks for
+#: it, so this names classes imported for the checker alone and is
+#: still importable at runtime.
+type CatalogTarget = Game | Edition | Release | Platform
+
+#: A registry key, and what `normalize_provider` leaves: casefolded
+#: and stripped, one of `PROVIDER_POLICIES`.
+type ProviderName = str
+
+#: What one provider calls one record, in that provider's own form
+#: — `"Q123"`, never `" q123 "`.
+type ProviderKey = str
 
 logger = logging.getLogger("games")
 
@@ -48,7 +58,7 @@ class ProviderPolicy:
     policy is the whole UI cost of a provider.
     """
 
-    normalize_key: Callable[[str], str]
+    normalize_key: Callable[[str], ProviderKey]
     url_template: str
     label: str
     hint: str
@@ -74,7 +84,7 @@ class ProviderPolicy:
             )
 
 
-def _normalize_wikidata_key(provider_key: str) -> str:
+def _normalize_wikidata_key(provider_key: str) -> ProviderKey:
     key = provider_key.strip().upper()
     if not WIKIDATA_KEY_PATTERN.fullmatch(key):
         raise ValidationError(
@@ -83,7 +93,7 @@ def _normalize_wikidata_key(provider_key: str) -> str:
     return key
 
 
-PROVIDER_POLICIES = {
+PROVIDER_POLICIES: Final[Mapping[ProviderName, ProviderPolicy]] = {
     "wikidata": ProviderPolicy(
         normalize_key=_normalize_wikidata_key,
         url_template="https://www.wikidata.org/wiki/{provider_key}",
@@ -109,16 +119,30 @@ def _refuse_a_key_nothing_can_reach(policies: Mapping[str, ProviderPolicy]) -> N
 _refuse_a_key_nothing_can_reach(PROVIDER_POLICIES)
 
 
-def normalize_provider(provider: str) -> str:
+def normalize_provider(provider: str) -> ProviderName:
     normalized = provider.strip().casefold()
     if normalized not in PROVIDER_POLICIES:
         raise ValidationError({"provider": "Unsupported external-reference provider."})
     return normalized
 
 
-def normalize_provider_key(*, provider: str, provider_key: str) -> tuple[str, str]:
+class NormalizedReference(NamedTuple):
+    """One provider and one key, both in the form they are stored in.
+
+    Two strings of one type, thus a plain pair lets a swapped
+    argument type-check all the way to a row that names the wrong
+    thing.
+    """
+
+    provider: ProviderName
+    provider_key: ProviderKey
+
+
+def normalize_provider_key(*, provider: str, provider_key: str) -> NormalizedReference:
     provider = normalize_provider(provider)
-    return provider, PROVIDER_POLICIES[provider].normalize_key(provider_key)
+    return NormalizedReference(
+        provider, PROVIDER_POLICIES[provider].normalize_key(provider_key)
+    )
 
 
 def external_reference_url(
@@ -153,14 +177,27 @@ def external_reference_url_or_none(
         return None
 
 
-def _target_metadata(target: CatalogTarget) -> tuple[str, str]:
+class TargetMetadata(NamedTuple):
+    """The word a row is stored under, and the column that holds it.
+
+    They read alike for all four kinds today and are still two
+    things: the word goes in `entity_kind`, the column names the
+    foreign key. A plain pair would let the day they differ pass
+    the checker.
+    """
+
+    entity_kind: str
+    column: str
+
+
+def _target_metadata(target: CatalogTarget) -> TargetMetadata:
     from games.models import Edition, Game, Platform, Release
 
     target_metadata = {
-        Game: ("game", "game"),
-        Edition: ("edition", "edition"),
-        Release: ("release", "release"),
-        Platform: ("platform", "platform"),
+        Game: TargetMetadata("game", "game"),
+        Edition: TargetMetadata("edition", "edition"),
+        Release: TargetMetadata("release", "release"),
+        Platform: TargetMetadata("platform", "platform"),
     }
     try:
         return target_metadata[type(target)]
@@ -190,7 +227,17 @@ class ReferencesRefused(ValidationError):
         self.provider = provider
 
 
-def _owner_and_mark(target: CatalogTarget) -> tuple[UUID | None, bool]:
+class OwnerAndMark(NamedTuple):
+    """Who holds a row, and whether anything above it was removed.
+
+    A null owner is a shared row, which belongs to no library.
+    """
+
+    library_id: UUID | None
+    removed: bool
+
+
+def _owner_and_mark(target: CatalogTarget) -> OwnerAndMark:
     """Which library holds the row, and whether it was removed.
 
     An Edition and a Release read their ancestors' marks as well as
@@ -200,19 +247,21 @@ def _owner_and_mark(target: CatalogTarget) -> tuple[UUID | None, bool]:
     from games.models import Edition, Game, Platform, Release
 
     if isinstance(target, Game | Platform):
-        return target.library_id, target.removed_at is not None
+        return OwnerAndMark(target.library_id, target.removed_at is not None)
     if isinstance(target, Edition):
         game = target.game
-        return game.library_id, (
-            target.removed_at is not None or game.removed_at is not None
+        return OwnerAndMark(
+            game.library_id,
+            target.removed_at is not None or game.removed_at is not None,
         )
     if isinstance(target, Release):
         edition = target.edition
         game = edition.game
-        return game.library_id, (
+        return OwnerAndMark(
+            game.library_id,
             target.removed_at is not None
             or edition.removed_at is not None
-            or game.removed_at is not None
+            or game.removed_at is not None,
         )
     raise ValidationError({"target": "Unsupported catalog target."})
 
@@ -228,7 +277,7 @@ def _refuse_an_unwritable_target(target: CatalogTarget, library: UserLibrary) ->
         raise ReferencesRefused(REMOVED_TARGET)
 
 
-def _normalized_or_refused(provider: str, raw: str) -> str:
+def _normalized_or_refused(provider: ProviderName, raw: str) -> ProviderKey:
     """A blank box states no reference; anything else normalizes."""
     if not raw.strip():
         return ""
@@ -242,8 +291,8 @@ def _normalized_or_refused(provider: str, raw: str) -> str:
 
 
 def _refuse_a_taken_key(
-    wanted: Mapping[str, str],
-    held: Mapping[str, ExternalReference],
+    wanted: Mapping[ProviderName, ProviderKey],
+    held: Mapping[ProviderName, ExternalReference],
     entity_kind: str,
 ) -> None:
     """A key a live row of this kind already holds.
@@ -271,7 +320,7 @@ def _refuse_a_taken_key(
 
 
 def _refusal_for(
-    collision: IntegrityError, provider: str, entity_kind: str
+    collision: IntegrityError, provider: ProviderName, entity_kind: str
 ) -> ReferencesRefused | None:
     """What a constraint this write lost says, in readable words.
 
@@ -289,8 +338,8 @@ def _refusal_for(
 
 
 def _state_one(
-    provider: str,
-    provider_key: str,
+    provider: ProviderName,
+    provider_key: ProviderKey,
     incumbent: ExternalReference | None,
     target: CatalogTarget,
     entity_kind: str,
@@ -333,7 +382,7 @@ def state_external_references(
     *,
     target: CatalogTarget,
     library: UserLibrary,
-    keys: Mapping[str, str],
+    keys: Mapping[ProviderName, str],
 ) -> None:
     """One record's whole desired set, for the providers named.
 

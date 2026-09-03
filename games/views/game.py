@@ -6,7 +6,7 @@ from uuid import UUID
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
-from django.db.models import F, Model, OuterRef, Q, QuerySet, Subquery, Sum
+from django.db.models import F, OuterRef, Q, QuerySet, Subquery, Sum
 from django.http import Http404, HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import redirect
@@ -68,7 +68,7 @@ from common.temporal_presentation import (
 from common.utils import paginate, safe_division
 from games.catalog_form import CatalogGraphForm
 from games.catalog_submit import submitted_game_or_form_error
-from games.external_references import external_reference_url_or_none
+from games.external_references import CatalogTarget, external_reference_url_or_none
 from games.filters import (
     PlayEventFilter,
     PurchaseFilter,
@@ -92,7 +92,7 @@ from games.models import (
 )
 from games.ownership import owned_or_404
 from games.reads.catalog_hierarchy import EditionEntry, game_hierarchy
-from games.reads.external_references import ReferenceMap, references_for
+from games.reads.external_references import ReferenceMap, held_by, references_for
 from games.reads.playergame_history import StatusEntry, status_history
 from games.reference_form import ReferenceSetForm
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
@@ -705,9 +705,9 @@ def _references_row(references: Sequence[ExternalReference]) -> list[Node]:
 
 def _references_cell(entry: EditionEntry, references: ReferenceMap) -> Node:
     """One Edition's references, then its Releases'."""
-    held = list(references.get(entry.edition.pk, ()))
+    held = held_by(references, entry.edition.pk)
     for release in entry.releases:
-        held.extend(references.get(release.pk, ()))
+        held.extend(held_by(references, release.pk))
     return ExternalReferenceLinks(held)
 
 
@@ -1029,7 +1029,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
     #: One batch for the page — the Game, every Edition, every
     #: Release — so no row pays for a read of its own.
     #: `references_for()` spends one query per kind, three here.
-    referenced: list[Model] = [game]
+    referenced: list[CatalogTarget] = [game]
     for entry in hierarchy:
         referenced.append(entry.edition)
         referenced.extend(entry.releases)
@@ -1043,7 +1043,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
             durations,
             origin,
             hierarchy,
-            references.get(game.pk, []),
+            held_by(references, game.pk),
         ),
         _releases_section(
             hierarchy, presentation, origin, game=game, references=references

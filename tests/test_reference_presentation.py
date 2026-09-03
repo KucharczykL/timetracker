@@ -6,7 +6,7 @@ from django.urls import reverse
 from common.components import ExternalReferenceLinks
 from games.external_references import state_external_references
 from games.models import ExternalReference, Game, Platform
-from games.reads.external_references import references_for
+from games.reads.external_references import held_by, references_for
 
 pytestmark = pytest.mark.django_db
 
@@ -83,3 +83,23 @@ def test_the_platform_list_shows_the_reference(client, owned_user):
     response = client.get(reverse("games:list_platforms"))
 
     assert "https://www.wikidata.org/wiki/Q100047" in response.content.decode()
+
+
+def test_a_row_with_no_reference_reads_as_an_empty_list(owned_library):
+    """The one empty answer, so no reader states its own."""
+    game = Game.objects.create(name="Elite", library=owned_library)
+
+    assert held_by(references_for([game]), game.pk) == []
+
+
+def test_gathering_one_row_does_not_write_into_another(owned_library):
+    """Game detail extends what it reads; the map must not feel it."""
+    game = Game.objects.create(name="Elite", library=owned_library)
+    state_external_references(
+        target=game, library=owned_library, keys={"wikidata": "Q123"}
+    )
+    references = references_for([game])
+
+    held_by(references, game.pk).append("not a reference")
+
+    assert len(held_by(references, game.pk)) == 1

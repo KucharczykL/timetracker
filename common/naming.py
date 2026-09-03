@@ -12,10 +12,17 @@ Python states the provider's mapping, and `tests/test_name_key.py`
 holds the difference as a strict xfail rather than as a silence.
 """
 
+#: What `Trim()` takes off. It compiles to `btrim(value)`, whose
+#: default set is one character: the ASCII space. Bare `strip()`
+#: takes every Unicode space with it, so a name ending in a tab
+#: or a no-break space would key equal here and unequal there —
+#: the one thing this module exists to prevent.
+TRIMMED = " "
+
 #: The comparison form of a name, never stored and never shown.
 type NameKey = str
 
 
 def name_key(value: str) -> NameKey:
     """What the database compares two names by."""
-    return value.strip().lower()
+    return value.strip(TRIMMED).lower()
