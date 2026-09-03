@@ -15,6 +15,7 @@ from games.external_references import (
     ReferencesRefused,
     backfill_wikidata_references,
     external_reference_url,
+    external_reference_url_or_none,
     mirror_game_wikidata,
     normalize_provider_key,
     resolve_external_reference,
@@ -87,6 +88,26 @@ def test_external_reference_url_rejects_untrusted_or_malformed_input(kwargs):
     """URL construction must never turn invalid input into an outbound URL."""
     with pytest.raises(ValidationError):
         external_reference_url(**kwargs)
+
+
+def test_a_key_that_names_no_entity_states_no_url():
+    """A mirror column holds one, and a reader must survive it."""
+    assert (
+        external_reference_url_or_none(
+            provider="wikidata", entity_kind="game", provider_key="n/a"
+        )
+        is None
+    )
+
+
+def test_a_url_or_none_answers_the_canonical_key_the_same_way():
+    """The guard states the link, never a second reading of it."""
+    assert (
+        external_reference_url_or_none(
+            provider=" WikiData ", entity_kind="game", provider_key=" q123 "
+        )
+        == "https://www.wikidata.org/wiki/Q123"
+    )
 
 
 def _catalog_targets():

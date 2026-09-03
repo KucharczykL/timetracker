@@ -17,8 +17,9 @@ added, full `make check` green at 5091 passed / 1 xfailed). Each carries a
 **Important I1, I2, I3 and I4 are fixed** (2026-09-03, full `make check` green
 at 5089 passed / 1 xfailed — six tests added, eight deleted with the two dead
 functions). **I5 is fixed too** (2026-09-03, full `make check` green at 5095
-passed / 1 xfailed — six more tests). I6 and I7 are open, as is everything from
-the docs table down.
+passed / 1 xfailed — six more tests). **I6 is fixed too** (2026-09-03, full
+`make check` green at 5098 passed / 1 xfailed — three more tests). I7 is open,
+as is everything from the docs table down.
 
 ---
 
@@ -276,7 +277,7 @@ Left as it is: `_keeper` consulting the mirror for `entity_kind == "game"`
 alone. No other kind carries a mirror column, so there is nothing for one to
 prefer; the docstring now says so.
 
-### I6. `list_games` 500s on a non-canonical `wikidata` column
+### I6. `list_games` 500s on a non-canonical `wikidata` column — **fixed**
 
 `games/views/game.py:196` calls `external_reference_url(provider_key=game.wikidata)`
 unguarded; it raises `ValidationError` on anything the pattern rejects. One such
@@ -291,6 +292,19 @@ reference stating `Q123` is now representable.
 **Test that fails today:** create a Game with `wikidata="n/a"` via
 `Game.objects.create()`, then GET `games:list_games` and assert 200.
 `tests/test_paths_return_200.py` is the natural home.
+
+**Fixed.** `external_reference_url_or_none()` in
+`games/external_references.py` answers the reading a mirror column needs,
+and `_wikidata_cell()` in `games/views/game.py` renders the value as plain
+text where it names no entity. The suggested test landed as
+`test_game_list_survives_a_wikidata_column_naming_no_entity`, run against
+the unguarded call first and failing there, plus two unit tests on the new
+reading. `docs/catalog.md` says what the list does with such a column.
+
+Left as it is: the two reference-row readers (`ExternalReference.external_url`
+and `ExternalReferenceLinks`) keep the raising call. A row carries the
+canonical pattern as a check constraint, thus a key read from one always
+links, and a guard there would hide a broken constraint.
 
 ### I7. `confirm_and_apply` catches the base `ValidationError`
 

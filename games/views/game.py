@@ -16,6 +16,7 @@ from common.components import (
     ICON_BUTTON_SIZE_CLASS,
     AddForm,
     ButtonGroup,
+    Cell,
     Column,
     ContentContainer,
     ControlButton,
@@ -67,7 +68,7 @@ from common.temporal_presentation import (
 from common.utils import paginate, safe_division
 from games.catalog_form import CatalogGraphForm
 from games.catalog_submit import submitted_game_or_form_error
-from games.external_references import external_reference_url
+from games.external_references import external_reference_url_or_none
 from games.filters import (
     PlayEventFilter,
     PurchaseFilter,
@@ -122,6 +123,23 @@ EDITIONS_UNDER_CONSTRUCTION = (
     "an edition yet, so no playtime is shown here and this layout will change. "
     "A platform beyond the first one does not reach the games list yet."
 )
+
+
+def _wikidata_cell(provider_key: str) -> Cell:
+    """The mirror column, linked where it names an entity.
+
+    #889 takes the column. Until then it holds whatever stood there
+    before the reference did, and the backfill leaves a value the
+    canonical pattern rejects alone rather than guessing at it. Such
+    a value reads as the text it is: one of them used to raise, and
+    a raise here takes the whole list rather than the one cell.
+    """
+    if not provider_key:
+        return ""
+    url = external_reference_url_or_none(
+        provider="wikidata", entity_kind="game", provider_key=provider_key
+    )
+    return Link(href=url)[provider_key] if url is not None else provider_key
 
 
 @login_required
@@ -194,15 +212,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
                     get_token(request),
                     current=game.tracked_status,
                 ),
-                Link(
-                    href=external_reference_url(
-                        provider="wikidata",
-                        entity_kind="game",
-                        provider_key=game.wikidata,
-                    )
-                )[game.wikidata]
-                if game.wikidata
-                else "",
+                _wikidata_cell(game.wikidata),
                 presentation.format(game.created_at, "date"),
                 ButtonGroup(
                     [

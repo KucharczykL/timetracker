@@ -254,7 +254,11 @@ first edit. Two kinds of column are left alone and counted apart in the
 command's output — one holding a key another record already states, and one
 holding a value that is not an entity ID — because an operator reading a
 single number would hunt a conflict that is not there. Each is logged with the
-Game and the value. A removed Game is left alone as well and counted as
+Game and the value. A column left that way still reaches a reader, so the games
+list reads it as the text it is and links only what names an entity: a
+reference row carries the pattern as a check constraint and the mirror carries
+none, and one value must not take the page it sits on.
+A removed Game is left alone as well and counted as
 neither: nothing states a reference under a row a person has taken out, and
 the refusal would take the whole load with it.
 

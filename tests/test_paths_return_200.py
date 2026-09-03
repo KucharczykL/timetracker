@@ -74,6 +74,21 @@ class PathWorksTest(TestCase):
         response = self.client.get(reverse("games:list_games"), follow=True)
         self.assertEqual(response.status_code, 200)
 
+    def test_game_list_survives_a_wikidata_column_naming_no_entity(self):
+        # `Game.wikidata` is a mirror of the reference and carries no
+        # check constraint, and #896's backfill leaves a value the
+        # canonical pattern rejects where it stands. Linking one used
+        # to raise, which took the whole list rather than the cell.
+        Game.objects.create(
+            library=self.user.library, name="Unlinkable", wikidata="n/a"
+        )
+
+        response = self.client.get(reverse("games:list_games"), follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "n/a")
+        self.assertNotContains(response, "wikidata.org/wiki/n")
+
     def test_view_game_returns_200(self):
         response = self.client.get(self.game.get_absolute_url())
         self.assertEqual(response.status_code, 200)

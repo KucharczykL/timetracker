@@ -90,6 +90,25 @@ def external_reference_url(
     )
 
 
+def external_reference_url_or_none(
+    *, provider: str, entity_kind: str, provider_key: str
+) -> str | None:
+    """The provider's link, or none where the key names nothing.
+
+    A reference row carries a check constraint pinning its key to
+    the canonical pattern, thus every key read from one links. A
+    mirror column carries none, and the backfill leaves a value the
+    pattern rejects where it is, so one reaches a reader. It states
+    no link, and it must not take the page it sits on.
+    """
+    try:
+        return external_reference_url(
+            provider=provider, entity_kind=entity_kind, provider_key=provider_key
+        )
+    except ValidationError:
+        return None
+
+
 def _target_metadata(target: CatalogTarget) -> tuple[str, str]:
     from games.models import Edition, Game, Platform, Release
 
