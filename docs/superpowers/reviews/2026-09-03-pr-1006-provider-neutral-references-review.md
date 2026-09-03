@@ -12,7 +12,11 @@ Status of the branch at review time: full `make check` green — 5086 passed,
 
 **All three Critical findings are fixed** (2026-09-03, five regression tests
 added, full `make check` green at 5091 passed / 1 xfailed). Each carries a
-**Fixed** note below. Everything from Important down is still open.
+**Fixed** note below.
+
+**Important I1, I2, I3 and I4 are fixed** (2026-09-03, full `make check` green
+at 5089 passed / 1 xfailed — six tests added, eight deleted with the two dead
+functions). I5, I6 and I7 are open, as is everything from the docs table down.
 
 ---
 
@@ -148,7 +152,7 @@ the rendered markup.
 
 ## Important
 
-### I1. A lost race is a 500, and three comments claim it cannot happen
+### I1. A lost race is a 500, and three comments claim it cannot happen — **fixed**
 
 `games/external_references.py:183` says the conditional constraint answers the
 loser and `catalog_submit.py` reads the name the database gave.
@@ -170,7 +174,23 @@ only stale prose.
 provider=provider)`, which both callers already answer onto the right box.
 Then correct whichever comments lose.
 
-### I2. `resolve_external_reference` ignores the mark
+**Fixed.** `_state_one` writes the `create()` in a savepoint of its own and
+hands the collision to `_refusal_for`, which reads the constraint name the
+database gave and states one of two sentences on the provider's box:
+`KEY_TAKEN` for `unique_external_reference_provider_kind_key`, and a new
+`RECORD_RACED` for `unique_live_<kind>_reference_per_provider` — the review
+asked for `KEY_TAKEN` for both, but the per-record constraint means the record
+holding the key is *this* record, and "another record already states this
+identifier" would be false. A constraint neither shape matches rises as itself,
+as `answered_constraint()` treats an unmapped one. The three comments now say
+this. `UNREACHABLE_FROM_THE_GAME_FORM` keeps all five entries under one shared
+reason: they are still out of `answered_constraint()`'s reach, now because the
+service converts them before the boundary sees them, not because nothing can
+trip them. Four tests: two driving a rival claim in from where the pre-check
+runs (one per constraint), two on `_refusal_for`'s unmapped and wrong-kind
+paths.
+
+### I2. `resolve_external_reference` ignores the mark — **fixed**
 
 `games/external_references.py:337`. No `removed_at__isnull=True`, and `.first()`
 on a queryset with no ordering and no `Meta.ordering`. Before this PR the
@@ -179,7 +199,12 @@ and any number of removed rows can share the tuple, so it resolves
 nondeterministically — possibly to a removed row's target.
 `save_external_reference` got the `live` filter; this one was missed.
 
-### I3. Three public functions are test-only, and two are now unsafe
+**Fixed.** The filter is there. Ordering needs nothing further: among live rows
+the conditional constraint leaves at most one to find, which the docstring now
+says. Two tests — a key handed on from one record to another resolves to the
+holder, and a key nobody holds resolves to `None`.
+
+### I3. Three public functions are test-only, and two are now unsafe — **fixed**
 
 `save_external_reference`, `resolve_external_reference` and `provider_labels`
 have no production caller (`grep` finds only `tests/test_external_references.py`).
@@ -189,6 +214,14 @@ target already holding a live key under that provider, the `create()` trips
 handler re-queries by the *new* key and raises `DoesNotExist`. Delete all three,
 or route the writer through `state_external_references`, before #783/#784/#785
 build on them.
+
+**Fixed, two of three.** `save_external_reference` and `provider_labels` are
+gone with their eight tests: the first is superseded by
+`state_external_references` and cannot be repaired without duplicating it, and
+the second had no caller and one assertion. `resolve_external_reference` stays
+and was repaired instead (see I2) — the IGDB wave needs a resolver, its fix was
+two lines, and its five tests are the seam's only description. Its remaining
+setup no longer goes through a writer: it creates the reference row directly.
 
 ### I4. `skipped` conflates two causes, and the operator message states the wrong one — **fixed**
 
@@ -276,9 +309,9 @@ All verified against the code.
 | `docs/event-retention.md:65`, `docs/catalog.md:232` | **Fixed in event-retention.md** (catalog.md still silent). Neither stated the tested exception: a removed Game does **not** stamp its Editions'/Releases' references, so those keys stay claimed by rows nobody can see — the exact harm event-retention cites as the reason for the rule. Most likely thing in the diff to be read as a bug later. |
 | `games/models.py:695` | `Provider`/`EntityKind` `TextChoices` declared, zero callers, `choices=` never attached to the columns they describe. |
 | `common/naming.py:1` | The module's central claim has a known exception (`İ`) it does not mention, proved by its own `strict=True` xfail. |
-| `games/external_references.py:391` | `#654 owns that reconciliation` — #654 is scoped to redirects and hands the workflow to #785. The branch's own spec says `#654/#785`. |
+| `games/external_references.py:391` | **Fixed with C2.** Was `#654 owns that reconciliation` — #654 is scoped to redirects and hands the workflow to #785. The branch's own spec says `#654/#785`. |
 | `games/removal.py:57` | `#695 and #795` — #695 is Session Undo only; #795 is the load-bearing citation. |
-| `games/external_references.py:214` | `"""One provider's box, as one write."""` — it performs up to two (an UPDATE then an INSERT). |
+| `games/external_references.py:214` | **Fixed with I1.** Was `"""One provider's box, as one write."""` — it performs up to two (an UPDATE then an INSERT). |
 | `games/views/game.py:1019` | `One read for the page` contradicts `reads/external_references.py:1` ("one query per kind"); this call passes three kinds. |
 | `games/migrations/0041_…:4` | "the two backfills" — `BATCH_SIZE` feeds `_paged`, which only `_keep_one_key_per_record` uses. |
 | `games/removal.py:84` | Explains the restore branch, not the guard. The interesting half — that a removal deliberately leaves the column alone so a restore can take the key back — is unexplained. |
