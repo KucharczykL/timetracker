@@ -34,7 +34,7 @@ def test_the_form_posts_a_word(logged_in, owned_library, catalog_graph_post):
             "name": "Outer Wilds",
             "status": "completed",
             "mastered": "on",
-            "wikidata": "",
+            "reference_wikidata": "",
             **catalog_graph_post(),
         },
     )

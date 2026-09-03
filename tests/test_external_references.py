@@ -1,15 +1,33 @@
+from functools import reduce
+from operator import or_
+
 import pytest
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.db.models import CheckConstraint, Q
+from django.db.models.expressions import BaseExpression
+from django.urls import reverse
+from django.utils.timezone import now
 
+from games import external_references
 from games.external_references import (
+    KEY_TAKEN,
+    OTHER_LIBRARY_TARGET,
+    PROVIDER_POLICIES,
+    RECORD_RACED,
+    REMOVED_TARGET,
+    SHARED_TARGET,
+    ReferencesRefused,
+    backfill_wikidata_references,
     external_reference_url,
+    external_reference_url_or_none,
+    mirror_game_wikidata,
     normalize_provider_key,
     resolve_external_reference,
-    save_external_reference,
-    sync_game_wikidata,
+    state_external_references,
 )
 from games.models import Edition, ExternalReference, Game, Platform, Release
+from games.removal import remove, restore
 
 pytestmark = pytest.mark.django_db
 
@@ -75,6 +93,26 @@ def test_external_reference_url_rejects_untrusted_or_malformed_input(kwargs):
     """URL construction must never turn invalid input into an outbound URL."""
     with pytest.raises(ValidationError):
         external_reference_url(**kwargs)
+
+
+def test_a_key_that_names_no_entity_states_no_url():
+    """A mirror column holds one, and a reader must survive it."""
+    assert (
+        external_reference_url_or_none(
+            provider="wikidata", entity_kind="game", provider_key="n/a"
+        )
+        is None
+    )
+
+
+def test_a_url_or_none_answers_the_canonical_key_the_same_way():
+    """The guard states the link, never a second reading of it."""
+    assert (
+        external_reference_url_or_none(
+            provider=" WikiData ", entity_kind="game", provider_key=" q123 "
+        )
+        == "https://www.wikidata.org/wiki/Q123"
+    )
 
 
 def _catalog_targets():
@@ -281,74 +319,15 @@ def test_deleting_an_external_reference_target_cascades_only_its_reference(entit
 
 
 @pytest.mark.parametrize("entity_kind", ["game", "edition", "release", "platform"])
-def test_save_external_reference_derives_the_kind_and_target_field(entity_kind):
-    """A caller-supplied kind could create a tuple pointing at the wrong table."""
-    target = _catalog_targets()[entity_kind]
-
-    reference = save_external_reference(
-        provider=" WikiData ", provider_key=" q123 ", target=target
-    )
-
-    assert (
-        reference.provider,
-        reference.entity_kind,
-        reference.provider_key,
-        reference.target_uuid,
-    ) == ("wikidata", entity_kind, "Q123", target.pk)
-    assert getattr(reference, f"{entity_kind}_id") == target.pk
-
-
-def test_save_external_reference_reuses_the_uuid_for_a_canonical_equivalent_tuple():
-    """Case or surrounding whitespace must not create a second identity row."""
-    game = Game.objects.create(name="Canonical Service Game")
-    original = save_external_reference(
-        provider="wikidata", provider_key="Q123", target=game
-    )
-
-    repeated = save_external_reference(
-        provider=" WikiData ", provider_key=" q123 ", target=game
-    )
-
-    assert repeated.pk == original.pk
-    assert ExternalReference.objects.count() == 1
-
-
-def test_save_external_reference_refuses_to_reassign_a_tuple_to_another_target():
-    """A second target must not take ownership of an existing provider tuple."""
-    original = Game.objects.create(name="Original Service Target")
-    replacement = Game.objects.create(name="Replacement Service Target")
-    reference = save_external_reference(
-        provider="wikidata", provider_key="Q123", target=original
-    )
-
-    with pytest.raises(ValidationError) as exc_info:
-        save_external_reference(
-            provider="wikidata", provider_key="Q123", target=replacement
-        )
-
-    assert exc_info.value.message_dict == {
-        "provider_key": [
-            "This external reference already maps to another catalog target."
-        ]
-    }
-    reference.refresh_from_db()
-    assert reference.target_uuid == original.pk
-    assert ExternalReference.objects.count() == 1
-
-
-def test_save_external_reference_rejects_an_unsupported_target_class():
-    """The write boundary must accept only the four catalog target models."""
-    with pytest.raises(ValidationError, match="Unsupported catalog target"):
-        save_external_reference(
-            provider="wikidata", provider_key="Q123", target=object()
-        )
-
-
-@pytest.mark.parametrize("entity_kind", ["game", "edition", "release", "platform"])
 def test_resolve_external_reference_returns_only_the_requested_kind_uuid(entity_kind):
     """Resolving through the wrong kind would confuse catalog-level identities."""
     target = _catalog_targets()[entity_kind]
-    save_external_reference(provider="wikidata", provider_key="Q123", target=target)
+    ExternalReference.objects.create(
+        provider="wikidata",
+        entity_kind=entity_kind,
+        provider_key="Q123",
+        **{entity_kind: target},
+    )
 
     resolved = resolve_external_reference(
         provider=" WikiData ", entity_kind=entity_kind, provider_key=" q123 "
@@ -357,10 +336,53 @@ def test_resolve_external_reference_returns_only_the_requested_kind_uuid(entity_
     assert resolved == target.pk
 
 
+def test_resolve_external_reference_reads_past_a_marked_row(owned_library):
+    """A key one record let go of names whoever holds it now.
+
+    The tuple is unique among live rows only, thus the marked rows
+    behind a key are the records that stated it before. Reading one
+    of those would resolve to a record nobody can see.
+    """
+    first = Game.objects.create(name="Elite", library=owned_library)
+    second = Game.objects.create(name="Frontier", library=owned_library)
+    state_external_references(
+        target=first, library=owned_library, keys={"wikidata": "Q123"}
+    )
+    state_external_references(
+        target=first, library=owned_library, keys={"wikidata": ""}
+    )
+    state_external_references(
+        target=second, library=owned_library, keys={"wikidata": "Q123"}
+    )
+
+    resolved = resolve_external_reference(
+        provider="wikidata", entity_kind="game", provider_key="Q123"
+    )
+
+    assert resolved == second.pk
+
+
+def test_resolve_external_reference_forgets_a_key_nobody_holds(owned_library):
+    game = Game.objects.create(name="Elite", library=owned_library)
+    state_external_references(
+        target=game, library=owned_library, keys={"wikidata": "Q123"}
+    )
+    state_external_references(target=game, library=owned_library, keys={"wikidata": ""})
+
+    assert (
+        resolve_external_reference(
+            provider="wikidata", entity_kind="game", provider_key="Q123"
+        )
+        is None
+    )
+
+
 def test_resolve_external_reference_returns_none_without_cross_kind_fallback():
     """A Game reference must never resolve as an Edition reference with the same key."""
     game = Game.objects.create(name="No Cross-Kind Lookup")
-    save_external_reference(provider="wikidata", provider_key="Q123", target=game)
+    ExternalReference.objects.create(
+        provider="wikidata", entity_kind="game", provider_key="Q123", game=game
+    )
 
     assert (
         resolve_external_reference(
@@ -390,78 +412,698 @@ def test_resolve_external_reference_rejects_invalid_tuples(kwargs):
         resolve_external_reference(**kwargs)
 
 
-def test_sync_game_wikidata_retains_the_existing_reference_for_an_unchanged_key():
-    """Sync must persist the canonical legacy key and preserve the reference UUID."""
-    game = Game.objects.create(name="Unchanged Wikidata", wikidata=" Q123 ")
-    original = save_external_reference(
-        provider="wikidata", provider_key="Q123", target=game
+def test_the_mirror_writes_the_column_from_the_live_reference(owned_library):
+    game = Game.objects.create(name="Elite", library=owned_library)
+    state_external_references(
+        target=game, library=owned_library, keys={"wikidata": "Q123"}
     )
 
-    synced = sync_game_wikidata(game=game)
-    game.refresh_from_db()
+    mirror_game_wikidata(game)
 
-    assert synced is not None
-    assert synced.pk == original.pk
+    game.refresh_from_db()
     assert game.wikidata == "Q123"
 
 
-def test_sync_game_wikidata_replaces_an_old_game_mapping_when_the_legacy_key_changes():
-    """Keeping an obsolete mapping would make one Game advertise two legacy keys."""
-    game = Game.objects.create(name="Changed Wikidata", wikidata="Q456")
-    old = save_external_reference(provider="wikidata", provider_key="Q123", target=game)
+def test_the_mirror_empties_the_column_when_no_reference_is_live(owned_library):
+    game = Game.objects.create(name="Elite", library=owned_library, wikidata="Q1")
 
-    synced = sync_game_wikidata(game=game)
+    mirror_game_wikidata(game)
 
-    assert synced is not None
-    assert synced.provider_key == "Q456"
-    assert not ExternalReference.objects.filter(pk=old.pk).exists()
-    assert list(
-        ExternalReference.objects.filter(game=game).values_list(
-            "provider_key", flat=True
+    game.refresh_from_db()
+    assert game.wikidata == ""
+
+
+def test_the_mirror_ignores_a_marked_reference(owned_library):
+    game = Game.objects.create(name="Elite", library=owned_library)
+    state_external_references(
+        target=game, library=owned_library, keys={"wikidata": "Q123"}
+    )
+    state_external_references(target=game, library=owned_library, keys={"wikidata": ""})
+
+    mirror_game_wikidata(game)
+
+    game.refresh_from_db()
+    assert game.wikidata == ""
+
+
+def test_a_removed_game_keeps_the_column_a_restore_wants(owned_library):
+    game = Game.objects.create(name="Elite", library=owned_library)
+    state_external_references(
+        target=game, library=owned_library, keys={"wikidata": "Q123"}
+    )
+    mirror_game_wikidata(game)
+
+    remove(game)
+
+    game.refresh_from_db()
+    assert game.wikidata == "Q123"
+
+
+def test_a_restore_that_loses_the_key_empties_the_column(owned_library):
+    first = Game.objects.create(name="Elite", library=owned_library)
+    state_external_references(
+        target=first, library=owned_library, keys={"wikidata": "Q123"}
+    )
+    mirror_game_wikidata(first)
+    remove(first)
+    second = Game.objects.create(name="Elite II", library=owned_library)
+    state_external_references(
+        target=second, library=owned_library, keys={"wikidata": "Q123"}
+    )
+
+    restore(first)
+
+    first.refresh_from_db()
+    assert first.wikidata == ""
+
+
+def test_a_marked_reference_lets_go_of_its_provider_key(owned_library):
+    """#976: a removed row does not hold a key against a later entry."""
+    first = Game.objects.create(name="Elite", library=owned_library)
+    second = Game.objects.create(name="Elite II", library=owned_library)
+    reference = ExternalReference.objects.create(
+        provider="wikidata", entity_kind="game", provider_key="Q123", game=first
+    )
+    ExternalReference.objects.filter(pk=reference.pk).update(removed_at=now())
+
+    taken = ExternalReference.objects.create(
+        provider="wikidata", entity_kind="game", provider_key="Q123", game=second
+    )
+
+    assert taken.pk != reference.pk
+
+
+def test_one_live_key_per_record_per_provider(owned_library):
+    game = Game.objects.create(name="Elite", library=owned_library)
+    ExternalReference.objects.create(
+        provider="wikidata", entity_kind="game", provider_key="Q123", game=game
+    )
+
+    with pytest.raises(IntegrityError):
+        ExternalReference.objects.create(
+            provider="wikidata", entity_kind="game", provider_key="Q124", game=game
         )
-    ) == ["Q456"]
 
 
-@pytest.mark.parametrize("preserved_kind", ["edition", "release", "platform"])
-def test_sync_game_wikidata_removes_only_game_mappings_when_legacy_value_is_blank(
-    preserved_kind,
-):
-    """Clearing a Game's legacy key must not delete another catalog kind's identity."""
-    targets = _catalog_targets()
-    targets["game"].wikidata = "Q123"
-    targets["game"].save(update_fields=("wikidata",))
-    game_reference = save_external_reference(
-        provider="wikidata", provider_key="Q123", target=targets["game"]
+def test_a_marked_key_frees_the_record_for_another(owned_library):
+    game = Game.objects.create(name="Elite", library=owned_library)
+    first = ExternalReference.objects.create(
+        provider="wikidata", entity_kind="game", provider_key="Q123", game=game
     )
-    preserved_reference = save_external_reference(
-        provider="wikidata", provider_key="Q123", target=targets[preserved_kind]
-    )
-    targets["game"].wikidata = "   "
+    ExternalReference.objects.filter(pk=first.pk).update(removed_at=now())
 
-    synced = sync_game_wikidata(game=targets["game"])
-    targets["game"].refresh_from_db()
-
-    assert synced is None
-    assert not ExternalReference.objects.filter(pk=game_reference.pk).exists()
-    assert ExternalReference.objects.filter(pk=preserved_reference.pk).exists()
-    assert targets["game"].wikidata == ""
-
-
-def test_sync_game_wikidata_rolls_back_deletion_when_another_game_owns_the_key():
-    """A conflicting replacement must restore the first Game's old mapping on rollback."""
-    first = Game.objects.create(name="First Wikidata", wikidata="Q456")
-    second = Game.objects.create(name="Second Wikidata", wikidata="Q456")
-    first_reference = save_external_reference(
-        provider="wikidata", provider_key="Q123", target=first
-    )
-    second_reference = save_external_reference(
-        provider="wikidata", provider_key="Q456", target=second
+    second = ExternalReference.objects.create(
+        provider="wikidata", entity_kind="game", provider_key="Q124", game=game
     )
 
-    with pytest.raises(ValidationError, match="already maps to another catalog target"):
-        sync_game_wikidata(game=first)
+    assert second.pk != first.pk
 
-    assert ExternalReference.objects.get(pk=first_reference.pk).target_uuid == first.pk
+
+def test_every_registered_policy_states_a_label_and_a_hint():
+    """A provider is one registry entry, UI included."""
+    for provider, policy in PROVIDER_POLICIES.items():
+        assert policy.label, provider
+        assert policy.hint, provider
+
+
+def test_the_wikidata_policy_reads_as_a_person_would_say_it():
+    assert PROVIDER_POLICIES["wikidata"].label == "Wikidata"
+    assert "Q123" in PROVIDER_POLICIES["wikidata"].hint
+
+
+def test_stating_a_key_creates_the_reference(owned_library):
+    game = Game.objects.create(name="Elite", library=owned_library)
+
+    state_external_references(
+        target=game, library=owned_library, keys={"wikidata": " q123 "}
+    )
+
+    reference = ExternalReference.objects.get(game=game, removed_at=None)
+    assert reference.provider_key == "Q123"
+
+
+def test_stating_a_blank_key_marks_the_reference(owned_library):
+    game = Game.objects.create(name="Elite", library=owned_library)
+    state_external_references(
+        target=game, library=owned_library, keys={"wikidata": "Q123"}
+    )
+
+    state_external_references(target=game, library=owned_library, keys={"wikidata": ""})
+
+    assert not ExternalReference.objects.filter(game=game, removed_at=None).exists()
+    assert ExternalReference.objects.filter(game=game).exists()
+
+
+def test_stating_a_new_key_replaces_the_old_one(owned_library):
+    game = Game.objects.create(name="Elite", library=owned_library)
+    state_external_references(
+        target=game, library=owned_library, keys={"wikidata": "Q123"}
+    )
+
+    state_external_references(
+        target=game, library=owned_library, keys={"wikidata": "Q124"}
+    )
+
+    live = ExternalReference.objects.get(game=game, removed_at=None)
+    assert live.provider_key == "Q124"
+
+
+def test_a_provider_the_caller_does_not_name_is_left_alone(owned_library):
+    game = Game.objects.create(name="Elite", library=owned_library)
+    state_external_references(
+        target=game, library=owned_library, keys={"wikidata": "Q123"}
+    )
+
+    state_external_references(target=game, library=owned_library, keys={})
+
+    assert ExternalReference.objects.filter(game=game, removed_at=None).exists()
+
+
+def test_a_key_another_record_holds_is_refused(owned_library):
+    first = Game.objects.create(name="Elite", library=owned_library)
+    second = Game.objects.create(name="Elite II", library=owned_library)
+    state_external_references(
+        target=first, library=owned_library, keys={"wikidata": "Q123"}
+    )
+
+    with pytest.raises(ReferencesRefused) as refusal:
+        state_external_references(
+            target=second, library=owned_library, keys={"wikidata": "Q123"}
+        )
+
+    assert refusal.value.provider == "wikidata"
+    assert refusal.value.messages[0] == KEY_TAKEN
     assert (
-        ExternalReference.objects.get(pk=second_reference.pk).target_uuid == second.pk
+        ExternalReference.objects.get(provider_key="Q123", removed_at=None).game_id
+        == first.pk
     )
+
+
+def _claimed_between_the_reading_and_the_write(claim):
+    """A rival write that lands after the pre-check has read.
+
+    The lock holds the rows the record already has, thus a key
+    nobody holds yet is claimable up to the moment of the write.
+    Standing in for the rival where the pre-check runs makes that
+    window a fixed point rather than a thread schedule.
+    """
+
+    def instead_of_the_pre_check(wanted, held, entity_kind):
+        claim()
+
+    return instead_of_the_pre_check
+
+
+def test_a_key_claimed_after_the_pre_check_answers_on_its_box(
+    owned_library, monkeypatch
+):
+    """No pre-check wins a race; the constraint answers the loser."""
+    holder = Game.objects.create(name="Elite", library=owned_library)
+    game = Game.objects.create(name="Frontier", library=owned_library)
+    monkeypatch.setattr(
+        external_references,
+        "_refuse_a_taken_key",
+        _claimed_between_the_reading_and_the_write(
+            lambda: ExternalReference.objects.create(
+                provider="wikidata",
+                entity_kind="game",
+                provider_key="Q123",
+                game=holder,
+            )
+        ),
+    )
+
+    with pytest.raises(ReferencesRefused) as refusal:
+        state_external_references(
+            target=game, library=owned_library, keys={"wikidata": "Q123"}
+        )
+
+    assert refusal.value.provider == "wikidata"
+    assert refusal.value.messages[0] == KEY_TAKEN
+
+
+def test_a_second_key_for_one_record_reads_as_a_race(owned_library, monkeypatch):
+    """The record holding the key is this record, thus not KEY_TAKEN."""
+    game = Game.objects.create(name="Elite", library=owned_library)
+    monkeypatch.setattr(
+        external_references,
+        "_refuse_a_taken_key",
+        _claimed_between_the_reading_and_the_write(
+            lambda: ExternalReference.objects.create(
+                provider="wikidata",
+                entity_kind="game",
+                provider_key="Q999",
+                game=game,
+            )
+        ),
+    )
+
+    with pytest.raises(ReferencesRefused) as refusal:
+        state_external_references(
+            target=game, library=owned_library, keys={"wikidata": "Q123"}
+        )
+
+    assert refusal.value.provider == "wikidata"
+    assert refusal.value.messages[0] == RECORD_RACED
+
+
+class _Cause(Exception):
+    """A driver error, as the database hands one over."""
+
+    def __init__(self, name: str) -> None:
+        super().__init__(name)
+        self.diag = type("Diagnostic", (), {"constraint_name": name})()
+
+
+def test_an_unmapped_constraint_gets_no_sentence():
+    """A wrong sentence is worse than none."""
+    named = IntegrityError("unique_library_mode_name_preset")
+    named.__cause__ = _Cause("unique_library_mode_name_preset")
+
+    assert external_references._refusal_for(named, "wikidata", "game") is None
+    assert (
+        external_references._refusal_for(IntegrityError(""), "wikidata", "game") is None
+    )
+
+
+def test_a_kinds_own_constraint_answers_only_that_kind():
+    """`unique_live_game_…` is not a Platform write's refusal."""
+    collision = IntegrityError("unique_live_game_reference_per_provider")
+    collision.__cause__ = _Cause("unique_live_game_reference_per_provider")
+
+    assert external_references._refusal_for(collision, "wikidata", "platform") is None
+
+
+def test_a_shared_target_is_refused(owned_library):
+    shared = Game.objects.create(name="Elite", library=None)
+
+    with pytest.raises(ReferencesRefused) as refusal:
+        state_external_references(
+            target=shared, library=owned_library, keys={"wikidata": "Q123"}
+        )
+
+    assert refusal.value.messages[0] == SHARED_TARGET
+
+
+def test_another_librarys_target_is_refused(owned_library, django_user_model):
+    other = django_user_model.objects.create_user(
+        username="other", password="p"
+    ).library
+    theirs = Game.objects.create(name="Elite", library=other)
+
+    with pytest.raises(ReferencesRefused) as refusal:
+        state_external_references(
+            target=theirs, library=owned_library, keys={"wikidata": "Q123"}
+        )
+
+    assert refusal.value.messages[0] == OTHER_LIBRARY_TARGET
+
+
+def test_a_removed_target_is_refused(owned_library):
+    game = Game.objects.create(name="Elite", library=owned_library)
+    remove(game)
+
+    with pytest.raises(ReferencesRefused) as refusal:
+        state_external_references(
+            target=game, library=owned_library, keys={"wikidata": "Q123"}
+        )
+
+    assert refusal.value.messages[0] == REMOVED_TARGET
+
+
+def test_a_malformed_key_is_refused_under_its_provider(owned_library):
+    game = Game.objects.create(name="Elite", library=owned_library)
+
+    with pytest.raises(ReferencesRefused) as refusal:
+        state_external_references(
+            target=game, library=owned_library, keys={"wikidata": "banana"}
+        )
+
+    assert refusal.value.provider == "wikidata"
+    assert "Q123" in refusal.value.messages[0]
+
+
+def test_nothing_is_written_when_one_provider_is_refused(owned_library):
+    """Every refusal is read before anything is written."""
+    game = Game.objects.create(name="Elite", library=owned_library)
+
+    with pytest.raises(ReferencesRefused):
+        state_external_references(
+            target=game, library=owned_library, keys={"wikidata": "banana"}
+        )
+
+    assert not ExternalReference.objects.filter(game=game).exists()
+
+
+def test_the_backfill_leaves_a_removed_game_alone(owned_library):
+    """A removed Game keeps its column and states nothing.
+
+    Its mark is what `_mirror_the_wikidata_column` leaves in place,
+    so the column still names a key no reference states. Writing
+    one is refused, and the refusal would take the whole load.
+    """
+    live = Game.objects.create(name="Elite", library=owned_library, wikidata="Q1")
+    gone = Game.objects.create(name="Frontier", library=owned_library, wikidata="Q2")
+    remove(gone)
+
+    backfilled = backfill_wikidata_references(owned_library)
+
+    assert backfilled == (1, 0, 0)
+    assert ExternalReference.objects.get(game=live).provider_key == "Q1"
+    assert not ExternalReference.objects.filter(game=gone).exists()
+
+
+def test_the_backfill_counts_a_malformed_column_apart_from_a_taken_key(owned_library):
+    Game.objects.create(name="Elite", library=owned_library, wikidata="banana")
+    holder = Game.objects.create(name="Frontier", library=owned_library)
+    state_external_references(
+        target=holder, library=owned_library, keys={"wikidata": "Q9"}
+    )
+    Game.objects.create(name="Encounter", library=owned_library, wikidata="Q9")
+
+    backfilled = backfill_wikidata_references(owned_library)
+
+    assert backfilled == (0, 1, 1)
+
+
+def test_every_mirrored_column_equals_its_live_reference(owned_user):
+    """Parity over the anonymized production snapshot.
+
+    Through the command, not `loaddata`: the fixture names its
+    owner with a placeholder the command resolves, and the same
+    call is what a developer runs.
+    """
+    from django.core.management import call_command
+
+    call_command("load_sample_data", "--user", owned_user.username, verbosity=0)
+    for game in Game.objects.all():
+        live = (
+            ExternalReference.objects.filter(
+                provider="wikidata",
+                entity_kind="game",
+                game_id=game.pk,
+                removed_at__isnull=True,
+            )
+            .values_list("provider_key", flat=True)
+            .first()
+        )
+        assert game.wikidata == (live or "")
+
+
+def test_a_second_library_cannot_state_the_first_librarys_key(
+    owned_library, django_user_model
+):
+    other = django_user_model.objects.create_user(
+        username="second", password="p"
+    ).library
+    mine = Game.objects.create(name="Elite", library=owned_library)
+    theirs = Game.objects.create(name="Elite", library=other)
+    state_external_references(
+        target=mine, library=owned_library, keys={"wikidata": "Q123"}
+    )
+
+    with pytest.raises(ReferencesRefused) as refusal:
+        state_external_references(
+            target=theirs, library=other, keys={"wikidata": "Q123"}
+        )
+
+    assert refusal.value.messages[0] == KEY_TAKEN
+
+
+def test_a_key_cannot_select_a_url_of_its_own(owned_library):
+    """Three layers, each refusing on its own."""
+    game = Game.objects.create(name="Elite", library=owned_library)
+
+    with pytest.raises(ReferencesRefused):
+        state_external_references(
+            target=game,
+            library=owned_library,
+            keys={"wikidata": 'Q1" onmouseover="x'},
+        )
+
+    with pytest.raises(ValidationError):
+        ExternalReference.objects.create(
+            provider="wikidata",
+            entity_kind="game",
+            provider_key='Q1" onmouseover="x',
+            game=game,
+        )
+
+    #: An UPDATE reaches neither clean() nor the service, thus
+    #: the check constraint is what answers it.
+    held = ExternalReference.objects.create(
+        provider="wikidata", entity_kind="game", provider_key="Q1", game=game
+    )
+    with pytest.raises(IntegrityError), transaction.atomic():
+        ExternalReference.objects.filter(pk=held.pk).update(
+            provider_key='Q1" onmouseover="x'
+        )
+
+
+def test_every_key_box_states_a_label(client, owned_user):
+    """The accessibility tree names each box."""
+    client.force_login(owned_user)
+
+    body = client.get(reverse("games:add_game")).content.decode()
+
+    assert 'for="id_reference_wikidata"' in body
+    assert ">Wikidata<" in body
+
+
+# --- the registry and the constraints that admit it --------------------------
+
+
+def declared_condition(name: str) -> Q | BaseExpression:
+    """What the named check constraint refuses rows by."""
+    for constraint in ExternalReference._meta.constraints:
+        if constraint.name == name:
+            assert isinstance(constraint, CheckConstraint), constraint
+            return constraint.condition
+    raise AssertionError(f"{name} is gone.")
+
+
+def test_the_constraint_admits_exactly_the_registered_providers():
+    """A policy without its migration fails here, not in a render.
+
+    `ProviderPolicy` states that registering a policy is the whole
+    cost of a provider. It is not: the database refuses every word
+    this constraint does not name, and the first sign of the gap
+    used to be a person's write being refused for no stated reason.
+    """
+    admits_each = reduce(or_, (Q(provider=name) for name in PROVIDER_POLICIES))
+
+    assert declared_condition("external_reference_supported_provider") == admits_each
+
+
+def test_one_key_pattern_holds_only_while_one_provider_is_registered():
+    """`external_reference_canonical_provider_key` is Wikidata's.
+
+    It applies `^Q[1-9][0-9]*$` to every row, whatever the row's
+    provider names. A second provider needs that constraint stated
+    per provider before one of its keys can be written at all, and
+    this is what says so.
+    """
+    assert set(PROVIDER_POLICIES) == {"wikidata"}
+
+
+def test_a_template_that_names_no_key_is_refused():
+    """Every reference of that provider would link to one page."""
+    with pytest.raises(ValueError, match=r"must interpolate"):
+        external_references.ProviderPolicy(
+            normalize_key=str,
+            url_template="https://www.wikidata.org/wiki/",
+            label="Wikidata",
+            hint="",
+        )
+
+
+@pytest.mark.parametrize(
+    "url_template",
+    ["http://example.test/{provider_key}", "javascript:x/{provider_key}"],
+)
+def test_a_template_that_is_not_https_is_refused(url_template):
+    """The node layer escapes an href's characters, not its scheme."""
+    with pytest.raises(ValueError, match=r"must start with"):
+        external_references.ProviderPolicy(
+            normalize_key=str, url_template=url_template, label="X", hint=""
+        )
+
+
+def test_a_registry_key_that_is_not_casefolded_is_refused():
+    """`normalize_provider` casefolds, thus nothing would reach it."""
+    with pytest.raises(ValueError, match=r"must be casefolded"):
+        external_references._refuse_a_key_nothing_can_reach(
+            {"Wikidata": PROVIDER_POLICIES["wikidata"]}
+        )
+
+
+def test_a_reference_no_policy_admits_reads_as_text(
+    owned_library, capture_games_logger
+):
+    """One row must not take Game detail and the Platform list down."""
+    from common.components.domain import ExternalReferenceLinks
+
+    game = Game.objects.create(library=owned_library, name="Elite")
+    stranded = ExternalReference(
+        provider="igdb", entity_kind="game", provider_key="elite", game=game
+    )
+
+    with capture_games_logger() as caplog:
+        rendered = str(ExternalReferenceLinks([stranded]))
+
+    assert "igdb elite" in rendered
+    assert "<a" not in rendered
+    assert "states no link" in caplog.text
+
+
+def test_an_edition_reads_its_owner_through_its_game(
+    owned_library, stated_graph, django_user_model
+):
+    """An Edition holds no library column; its Game holds one."""
+    other = django_user_model.objects.create_user(
+        username="other", password="p"
+    ).library
+    _, edition, _ = stated_graph(Game(name="Elite", library=other), other)
+
+    with pytest.raises(ReferencesRefused) as refusal:
+        state_external_references(
+            target=edition, library=owned_library, keys={"wikidata": "Q123"}
+        )
+
+    assert refusal.value.messages[0] == OTHER_LIBRARY_TARGET
+
+
+def test_an_edition_under_a_shared_game_is_refused(owned_library):
+    shared = Game.objects.create(name="Elite", library=None)
+    edition = Edition.objects.create(game=shared, is_default=True)
+
+    with pytest.raises(ReferencesRefused) as refusal:
+        state_external_references(
+            target=edition, library=owned_library, keys={"wikidata": "Q123"}
+        )
+
+    assert refusal.value.messages[0] == SHARED_TARGET
+
+
+def test_an_edition_under_a_removed_game_is_refused(owned_library, stated_graph):
+    """A removed Game hides its Editions, thus none may be written."""
+    game, edition, _ = stated_graph(
+        Game(name="Elite", library=owned_library), owned_library
+    )
+    remove(game)
+
+    with pytest.raises(ReferencesRefused) as refusal:
+        state_external_references(
+            target=edition, library=owned_library, keys={"wikidata": "Q123"}
+        )
+
+    assert refusal.value.messages[0] == REMOVED_TARGET
+
+
+def test_a_release_under_a_removed_edition_is_refused(owned_library, stated_graph):
+    _, edition, release = stated_graph(
+        Game(name="Elite", library=owned_library), owned_library
+    )
+    remove(edition)
+
+    with pytest.raises(ReferencesRefused) as refusal:
+        state_external_references(
+            target=release, library=owned_library, keys={"wikidata": "Q123"}
+        )
+
+    assert refusal.value.messages[0] == REMOVED_TARGET
+
+
+def test_a_release_under_a_removed_game_is_refused(owned_library, stated_graph):
+    """Two rows up, and the Release carries no mark of its own."""
+    game, _, release = stated_graph(
+        Game(name="Elite", library=owned_library), owned_library
+    )
+    remove(game)
+
+    with pytest.raises(ReferencesRefused) as refusal:
+        state_external_references(
+            target=release, library=owned_library, keys={"wikidata": "Q123"}
+        )
+
+    assert refusal.value.messages[0] == REMOVED_TARGET
+
+
+def test_a_release_states_a_key_under_the_library_two_rows_up(
+    owned_library, stated_graph
+):
+    """The live path through both ancestors, which the refusals share."""
+    _, _, release = stated_graph(
+        Game(name="Elite", library=owned_library), owned_library
+    )
+
+    state_external_references(
+        target=release, library=owned_library, keys={"wikidata": "Q999"}
+    )
+
+    reference = ExternalReference.objects.get(release=release, removed_at=None)
+    assert reference.entity_kind == "release"
+    assert reference.provider_key == "Q999"
+
+
+def test_one_key_may_name_a_game_and_a_platform(owned_library):
+    """The unique tuple is scoped by kind, thus kinds do not collide.
+
+    One Wikidata entity is one thing, never two, so the same ID
+    naming a Game and a Platform is a mistake somewhere upstream —
+    but it is not this constraint's mistake to catch, and refusing
+    it here would refuse the legitimate case the kinds exist for.
+    """
+    game = Game.objects.create(name="Amiga", library=owned_library)
+    platform = Platform.objects.create(name="Amiga", library=owned_library)
+
+    state_external_references(
+        target=game, library=owned_library, keys={"wikidata": "Q100047"}
+    )
+    state_external_references(
+        target=platform, library=owned_library, keys={"wikidata": "Q100047"}
+    )
+
+    assert (
+        ExternalReference.objects.filter(
+            provider_key="Q100047", removed_at__isnull=True
+        ).count()
+        == 2
+    )
+
+
+@pytest.mark.untracked_games
+def test_the_load_says_which_columns_it_left_alone(owned_user, django_user_model):
+    """Two counts, two sentences, because two causes.
+
+    An operator reading one number for both would go hunting a
+    conflict where there is only a value that is not an ID. The
+    fixture states neither, thus the rows are seeded here: a key
+    another library already holds, and a column that is not a key.
+
+    Untracked, because the command's own backfill tracks every
+    game the library holds, and the fixture's tracking helper
+    would have tracked these two first.
+    """
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    other = django_user_model.objects.create_user(
+        username="second", password="p"
+    ).library
+    holder = Game.objects.create(name="Held", library=other)
+    state_external_references(
+        target=holder, library=other, keys={"wikidata": "Q999999999999999999"}
+    )
+    Game.objects.create(
+        name="Elite", library=owned_user.library, wikidata="Q999999999999999999"
+    )
+    Game.objects.create(name="Frontier", library=owned_user.library, wikidata="banana")
+
+    printed = StringIO()
+    call_command("load_sample_data", "--user", owned_user.username, stdout=printed)
+
+    said = printed.getvalue()
+    assert "1 game(s) kept a Wikidata column no reference states: another" in said
+    assert "1 game(s) kept a Wikidata column no reference states: the value" in said

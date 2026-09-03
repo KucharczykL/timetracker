@@ -18,11 +18,23 @@ DIVERGING = ("Straße", "STRASSE")
     [
         *DIVERGING,
         " Deluxe ",
+        #: `Trim()` is `btrim`, which takes the ASCII space and
+        #: nothing else. Bare `strip()` takes these too, and the
+        #: name would key equal here and unequal in the database.
+        "\tDeluxe\t",
+        "Deluxe\xa0",
+        " Deluxe",
         #: SQL lowercases this to one character and Python to two.
+        #: Not a bug to close: the builtin provider states the simple
+        #: case mapping and `str.lower()` the full one, and nothing in
+        #: Python states the provider's. Strict, so the day a Python
+        #: release or a provider change closes the gap says so here.
         pytest.param(
             "İ",
             marks=pytest.mark.xfail(
-                reason="simple case mapping; #998 takes the residue", strict=True
+                reason="the provider states the simple case mapping and "
+                "Python the full one",
+                strict=True,
             ),
         ),
     ],

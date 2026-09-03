@@ -105,6 +105,12 @@ toast, and returns nothing. Its two siblings, `track_game_for_request` and
 `record_facts_for_request`, are unchanged: neither runs under a confirmation,
 and a toast is right where the page stays.
 
+**Superseded by #896's review.** The type is `CommandFailed`, and it is not
+raised again: the one the command already stated rises. A second type threw
+the status code away, and `ValidationError` is what a model raises when it
+refuses underneath the act, which is a defect and not a refusal a person can
+answer. `confirm_and_apply` reads `CommandFailed` alone.
+
 One page then draws two lists. `remove_game` always states
 `details=_removed_with_game(game)`, the sessions and purchases the removal
 takes with it, and a refused POST puts the reason above the prompt while that

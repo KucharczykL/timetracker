@@ -16,6 +16,7 @@ from django.db.models import Q
 
 from games.backfill.playergame import backfill_library
 from games.conversion import _request_conversion_for_locked_state
+from games.external_references import backfill_wikidata_references
 from games.models import (
     Device,
     ExchangeRate,
@@ -150,11 +151,38 @@ class Command(BaseCommand):
             #: projector. Inside this block, so a load either lands tracked or
             #: does not land.
             backfill_library(user.library)
+            #: The fixture predates #896: it states a key in the
+            #: Game's column and holds no reference row, and the
+            #: column is the mirror now. A refusal here is a defect
+            #: rather than a fixture the operator can repair, thus
+            #: it reads as one and takes the load with it.
+            try:
+                backfilled = backfill_wikidata_references(user.library)
+            except ValidationError as refusal:
+                raise CommandError(
+                    "Sample fixture references could not be written: "
+                    f"{refusal.messages[0]}"
+                ) from refusal
 
+        if backfilled.taken:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"{backfilled.taken} game(s) kept a Wikidata column no "
+                    "reference states: another record already holds the key."
+                )
+            )
+        if backfilled.malformed:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"{backfilled.malformed} game(s) kept a Wikidata column no "
+                    "reference states: the value is not an entity ID."
+                )
+            )
         self.stdout.write(
             self.style.SUCCESS(
                 f"Loaded {len(loadable)} sample object(s) for User {username!r} "
-                f"into library {user.library.pk}."
+                f"into library {user.library.pk}, with "
+                f"{backfilled.written} external reference(s)."
             )
         )
 

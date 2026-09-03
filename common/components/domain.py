@@ -1,5 +1,7 @@
 """Domain components for games / purchases / sessions."""
 
+import logging
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, NamedTuple
 
 from django.template.defaultfilters import floatformat
@@ -20,11 +22,19 @@ from common.components.primitives import (
     TruncatedText,
     Ul,
 )
-from games.models import Game, PlayerGameStatus, Purchase, Session
+from games.models import (
+    ExternalReference,
+    Game,
+    PlayerGameStatus,
+    Purchase,
+    Session,
+)
 
 if TYPE_CHECKING:
     from common.duration_presentation import DurationPresentation
     from common.returns import OriginUrl
+
+logger = logging.getLogger("games")
 
 
 def GameLink(
@@ -108,6 +118,60 @@ def PriceConverted(
         title="Price is a result of conversion and rounding.",
         class_="decoration-dotted underline",
     )[*as_children(children)]
+
+
+def _reference_link(reference: ExternalReference) -> Node:
+    """One link, or the words alone where the row states none.
+
+    A row the check constraints admit always links. One that gets
+    here anyway is a defect in the data — a provider registered
+    without the migration that admits it, a key written around the
+    pattern — and this component stands on Game detail and on the
+    whole Platform list. Raising would take both pages down for
+    everybody on every request, which is a worse way to report a
+    defect than a link that reads as text and a line in the log.
+    """
+    from games.external_references import (
+        PROVIDER_POLICIES,
+        external_reference_url_or_none,
+    )
+
+    policy = PROVIDER_POLICIES.get(reference.provider)
+    url = external_reference_url_or_none(
+        provider=reference.provider,
+        entity_kind=reference.entity_kind,
+        provider_key=reference.provider_key,
+    )
+    text = f"{policy.label if policy else reference.provider} {reference.provider_key}"
+    if url is None:
+        logger.error(
+            "[references]: %s states no link for %s %r",
+            reference.entity_kind,
+            reference.provider,
+            reference.provider_key,
+        )
+        return Span(class_="whitespace-nowrap")[text]
+    return Link(
+        href=url,
+        class_="whitespace-nowrap",
+        rel="noopener noreferrer",
+        target="_blank",
+    )[text]
+
+
+def ExternalReferenceLinks(references: Sequence[ExternalReference]) -> Node:
+    """One link per reference, safe by three layers.
+
+    The database refuses a key its canonical pattern does not
+    match, the policy template is the only source of a URL and
+    quotes the key it interpolates, and the node layer escapes
+    every attribute value it writes.
+    """
+    if not references:
+        return Fragment()
+    return Span(class_="flex flex-wrap gap-2")[
+        *(_reference_link(reference) for reference in references)
+    ]
 
 
 def LinkedPurchase(purchase: Purchase) -> Node:

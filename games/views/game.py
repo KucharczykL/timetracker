@@ -16,6 +16,7 @@ from common.components import (
     ICON_BUTTON_SIZE_CLASS,
     AddForm,
     ButtonGroup,
+    Cell,
     Column,
     ContentContainer,
     ControlButton,
@@ -23,6 +24,7 @@ from common.components import (
     Duration,
     DurationAlternates,
     DurationText,
+    ExternalReferenceLinks,
     FormFields,
     Fragment,
     GameStatus,
@@ -66,7 +68,7 @@ from common.temporal_presentation import (
 from common.utils import paginate, safe_division
 from games.catalog_form import CatalogGraphForm
 from games.catalog_submit import submitted_game_or_form_error
-from games.external_references import external_reference_url
+from games.external_references import CatalogTarget, external_reference_url_or_none
 from games.filters import (
     PlayEventFilter,
     PurchaseFilter,
@@ -78,6 +80,7 @@ from games.filters import (
 from games.formatting import session_time_range
 from games.forms import GameForm
 from games.models import (
+    ExternalReference,
     Game,
     PlayerGameStatus,
     PlayEvent,
@@ -89,7 +92,9 @@ from games.models import (
 )
 from games.ownership import owned_or_404
 from games.reads.catalog_hierarchy import EditionEntry, game_hierarchy
+from games.reads.external_references import ReferenceMap, held_by, references_for
 from games.reads.playergame_history import StatusEntry, status_history
+from games.reference_form import ReferenceSetForm
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
 from games.views.catalog_section import editions_area
 from games.views.filtering import (
@@ -103,6 +108,7 @@ from games.views.playergame_writes import (
     track_game_for_request,
 )
 from games.views.playevent import create_playevent_tabledata
+from games.views.reference_section import references_area
 from games.views.removal import confirm_and_remove
 from games.views.returns import origin_from, return_url
 from games.writes.playergame import new_correlation_id
@@ -117,6 +123,23 @@ EDITIONS_UNDER_CONSTRUCTION = (
     "an edition yet, so no playtime is shown here and this layout will change. "
     "A platform beyond the first one does not reach the games list yet."
 )
+
+
+def _wikidata_cell(provider_key: str) -> Cell:
+    """The mirror column, linked where it names an entity.
+
+    #889 takes the column. Until then it holds whatever stood there
+    before the reference did, and the backfill leaves a value the
+    canonical pattern rejects alone rather than guessing at it. Such
+    a value reads as the text it is: one of them used to raise, and
+    a raise here takes the whole list rather than the one cell.
+    """
+    if not provider_key:
+        return ""
+    url = external_reference_url_or_none(
+        provider="wikidata", entity_kind="game", provider_key=provider_key
+    )
+    return Link(href=url)[provider_key] if url is not None else provider_key
 
 
 @login_required
@@ -189,15 +212,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
                     get_token(request),
                     current=game.tracked_status,
                 ),
-                Link(
-                    href=external_reference_url(
-                        provider="wikidata",
-                        entity_kind="game",
-                        provider_key=game.wikidata,
-                    )
-                )[game.wikidata]
-                if game.wikidata
-                else "",
+                _wikidata_cell(game.wikidata),
                 presentation.format(game.created_at, "date"),
                 ButtonGroup(
                     [
@@ -258,12 +273,14 @@ def add_game(request: HttpRequest) -> HttpResponse:
     graph = CatalogGraphForm(
         request.POST or None, game=None, library=library, presentation=presentation
     )
+    references = ReferenceSetForm(request.POST or None, target=None, library=library)
     #: Both read, whatever either says. `and` stops at the first false
     #: one, and a graph the Game's own refusal never reached states no
     #: sentence of its own and lets no mark fall.
     game_reads = form.is_valid()
-    if graph.is_valid() and game_reads:
-        game = submitted_game_or_form_error(form, graph)
+    references_read = references.is_valid()
+    if graph.is_valid() and game_reads and references_read:
+        game = submitted_game_or_form_error(form, graph, references)
         if game is not None:
             correlation_id = new_correlation_id()
             if not track_game_for_request(request, game, correlation_id=correlation_id):
@@ -305,7 +322,9 @@ def add_game(request: HttpRequest) -> HttpResponse:
         AddForm(
             form,
             request=request,
-            fields=Fragment(FormFields(form), editions_area(graph)),
+            fields=Fragment(
+                FormFields(form), editions_area(graph), references_area(references)
+            ),
             width_class="max-w-xl md:max-w-4xl",
             additional_row=Fragment(
                 ControlButton(
@@ -370,10 +389,12 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
     graph = CatalogGraphForm(
         request.POST or None, game=game, library=library, presentation=presentation
     )
+    references = ReferenceSetForm(request.POST or None, target=game, library=library)
     #: Both read; see `add_game` for why the order is not `and`.
     game_reads = form.is_valid()
-    if graph.is_valid() and game_reads:
-        written = submitted_game_or_form_error(form, graph)
+    references_read = references.is_valid()
+    if graph.is_valid() and game_reads and references_read:
+        written = submitted_game_or_form_error(form, graph, references)
         if written is not None:
             if record_facts_for_request(
                 request,
@@ -389,6 +410,7 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
             graph = CatalogGraphForm(
                 None, game=written, library=library, presentation=presentation
             )
+            references = ReferenceSetForm(None, target=written, library=library)
     #: A failed command lands here too: redirecting would read as
     #: a save. An edit resubmits onto the same row, so re-rendering
     #: invites no duplicate.
@@ -397,7 +419,9 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
         AddForm(
             form,
             request=request,
-            fields=Fragment(FormFields(form), editions_area(graph)),
+            fields=Fragment(
+                FormFields(form), editions_area(graph), references_area(references)
+            ),
             width_class="max-w-xl md:max-w-4xl",
         ),
         title="Edit Game",
@@ -672,12 +696,28 @@ def _plain_release_rows(
     return rows
 
 
+def _references_row(references: Sequence[ExternalReference]) -> list[Node]:
+    """No row at all when the record names nothing outside."""
+    if not references:
+        return []
+    return [_meta_row("References", ExternalReferenceLinks(references))]
+
+
+def _references_cell(entry: EditionEntry, references: ReferenceMap) -> Node:
+    """One Edition's references, then its Releases'."""
+    held = held_by(references, entry.edition.pk)
+    for release in entry.releases:
+        held.extend(held_by(references, release.pk))
+    return ExternalReferenceLinks(held)
+
+
 def _releases_section(
     entries: Sequence[EditionEntry],
     presentation: DateTimePresentation,
     origin: OriginUrl | None,
     *,
     game: Game,
+    references: ReferenceMap,
 ) -> Node:
     """What the header's two rows cannot say.
 
@@ -696,7 +736,11 @@ def _releases_section(
     if _reads_plainly(entries):
         return Fragment()
     controls = _catalog_controls_visible(game)
-    columns = [Column("Name"), Column("Platforms", wrap=True)]
+    columns = [
+        Column("Name"),
+        Column("Platforms", wrap=True),
+        Column("References", priority=2),
+    ]
     if controls:
         columns.append(Column("Actions", align="right", priority=3))
     #: One link, drawn once per row: the form owns every Edition.
@@ -709,6 +753,7 @@ def _releases_section(
         make_row(
             entry.edition.display_name,
             _platforms_cell(entry, presentation),
+            _references_cell(entry, references),
             *((edit,) if controls else ()),
         )
         for entry in entries
@@ -738,6 +783,7 @@ def _game_header(
     durations: DurationPresentation,
     origin: OriginUrl | None,
     entries: Sequence[EditionEntry],
+    references: Sequence[ExternalReference],
 ) -> Node:
     playrange_start = metrics["playrange_start"]
     playrange_end = metrics["playrange_end"]
@@ -786,6 +832,7 @@ def _game_header(
                 game.original_release_date, presentation, class_=META_VALUE_CLASS
             ),
         ),
+        *_references_row(references),
         _meta_row(
             "Status",
             Span()[
@@ -979,6 +1026,14 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
     purchases = Purchase.objects.for_library(library).filter(games=game)
     playevents = PlayEvent.objects.for_library(library).filter(game=game)
     hierarchy = game_hierarchy(game, library)
+    #: One batch for the page — the Game, every Edition, every
+    #: Release — so no row pays for a read of its own.
+    #: `references_for()` spends one query per kind, three here.
+    referenced: list[CatalogTarget] = [game]
+    for entry in hierarchy:
+        referenced.append(entry.edition)
+        referenced.extend(entry.releases)
+    references = references_for(referenced)
     content = ContentContainer(class_="dark:text-white")[
         _game_header(
             game,
@@ -988,8 +1043,11 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
             durations,
             origin,
             hierarchy,
+            held_by(references, game.pk),
         ),
-        _releases_section(hierarchy, presentation, origin, game=game),
+        _releases_section(
+            hierarchy, presentation, origin, game=game, references=references
+        ),
         _purchases_section(game, purchases, presentation, origin),
         _sessions_section(game, sessions, presentation, durations),
         _playevents_section(game, playevents, presentation, origin),

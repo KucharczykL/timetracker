@@ -2941,7 +2941,9 @@ def test_confirm_page_draws_a_refusal_before_the_question():
 
 
 def test_confirm_page_nobody_refused_draws_no_error_list():
+    """The refusal list alone, not every ``<ul>`` a slot may hold."""
     from common.components import ConfirmPage
+    from common.components.primitives import _FIELD_ERROR_CLASS
 
     markup = str(
         ConfirmPage(
@@ -2954,7 +2956,7 @@ def test_confirm_page_nobody_refused_draws_no_error_list():
         )
     )
 
-    assert "<ul" not in markup
+    assert _FIELD_ERROR_CLASS not in markup
 
 
 if __name__ == "__main__":

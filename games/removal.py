@@ -5,9 +5,11 @@ refuses a destroying delete of a referenced row.
 """
 
 from collections.abc import Callable
+from datetime import datetime
 from typing import Any
 
-from django.db.models import Model
+from django.db import transaction
+from django.db.models import Exists, Model, OuterRef
 from django.utils.timezone import now
 
 from games.models import (
@@ -39,7 +41,7 @@ REMOVABLE_MODELS: tuple[type[Model], ...] = (
 )
 
 
-def _recount_purchases(game: Game) -> None:
+def _recount_purchases(game: Game, previous_mark: datetime | None) -> None:
     """A count of the live games only."""
     for purchase in game.purchases.all():
         purchase.num_purchases = purchase.games.alive().count()
@@ -47,33 +49,98 @@ def _recount_purchases(game: Game) -> None:
         purchase.save(update_fields=["num_purchases", "updated_at"])
 
 
-def _recalculate_the_games_playtime(session: Session) -> None:
+def _recalculate_the_games_playtime(
+    session: Session, previous_mark: datetime | None
+) -> None:
     """A stamp fires no session signal."""
     recalculate_playtime(session.game)
 
 
-#: What a stamp does not do.
-_AFTER_STAMP: dict[type[Model], Callable[[Any], None]] = {
-    Game: _recount_purchases,
-    Session: _recalculate_the_games_playtime,
+def _mark_the_references_of(instance: Model, previous_mark: datetime | None) -> None:
+    """A reference follows the row it names.
+
+    A removal stamps every live reference of the row with the row's
+    own mark, thus the mark says which act took the reference out.
+    A restore reads it back and takes only those: a key the record
+    let go of earlier carries the mark of that act instead, and a
+    restore that took it back would state two keys of one provider.
+
+    A key another row has claimed meanwhile stays claimed. Taking
+    it back would repeat the theft in the other direction, and
+    raising would surface as a traceback, because restore() has no
+    error channel until #795 gives it one.
+    """
+    from games.models import ExternalReference
+
+    column = ExternalReference.TARGET_FIELDS_BY_MODEL[type(instance)]
+    held = ExternalReference.objects.filter(**{column: instance.pk})
+    stamp = instance.removed_at  # type: ignore[attr-defined]
+    if stamp is not None:
+        held.filter(removed_at__isnull=True).update(removed_at=stamp)
+        return
+    if previous_mark is None:
+        return
+    free = ~Exists(
+        ExternalReference.objects.filter(
+            provider=OuterRef("provider"),
+            entity_kind=OuterRef("entity_kind"),
+            provider_key=OuterRef("provider_key"),
+            removed_at__isnull=True,
+        )
+    )
+    held.filter(removed_at=previous_mark).filter(free).update(removed_at=None)
+
+
+def _mirror_the_wikidata_column(game: Game, previous_mark: datetime | None) -> None:
+    """The column is written on the way back in, not on the way out.
+
+    A removal is a mark. The stamp above takes the reference out,
+    and mirroring after it would clear the column too, which edits
+    a row nobody asked to edit and leaves the recovery UI #795 adds
+    with nothing to name. A restore does mirror, because the key may
+    have gone to another record meanwhile: the stamp above leaves
+    that reference marked, and a column still naming the key would
+    state it again on the record's next edit.
+    """
+    from games.external_references import mirror_game_wikidata
+
+    if game.removed_at is None:
+        mirror_game_wikidata(game)
+
+
+#: What a stamp does not do. Values run in order, and each reads
+#: the mark the row carried before this one.
+_AFTER_STAMP: dict[type[Model], tuple[Callable[[Any, datetime | None], None], ...]] = {
+    Game: (_mark_the_references_of, _mirror_the_wikidata_column, _recount_purchases),
+    Edition: (_mark_the_references_of,),
+    Release: (_mark_the_references_of,),
+    Platform: (_mark_the_references_of,),
+    Session: (_recalculate_the_games_playtime,),
 }
 
 
-def _stamp(instance: Model, value: Any) -> None:
+def _stamp(instance: Model, value: datetime | None) -> None:
     model = type(instance)
     if model not in REMOVABLE_MODELS:
         raise TypeError(f"{model.__name__} is not a removable model.")
-    #: An update, not a save.
-    #: Game, Platform, Session and Purchase
-    #: each override save() to call clean(),
-    #: and a stamp must not revalidate
-    #: a row a user is taking out.
-    #: _AFTER_STAMP does what post_save would.
-    model._default_manager.filter(pk=instance.pk).update(removed_at=value)
-    instance.removed_at = value  # type: ignore[attr-defined]
-    after = _AFTER_STAMP.get(model)
-    if after is not None:
-        after(instance)
+    rows = model._default_manager.filter(pk=instance.pk)
+    #: One transaction: the mark and everything _AFTER_STAMP does
+    #: about it land together, or a refusal in the middle leaves
+    #: the row as it was rather than half put back.
+    with transaction.atomic():
+        #: Read from the row and not from the instance a caller
+        #: holds, because only the row says which act to undo.
+        previous_mark = rows.values_list("removed_at", flat=True).first()
+        #: An update, not a save.
+        #: Game, Platform, Session and Purchase
+        #: each override save() to call clean(),
+        #: and a stamp must not revalidate
+        #: a row a user is taking out.
+        #: _AFTER_STAMP does what post_save would.
+        rows.update(removed_at=value)
+        instance.removed_at = value  # type: ignore[attr-defined]
+        for after in _AFTER_STAMP.get(model, ()):
+            after(instance, previous_mark)
 
 
 def remove(instance: Model) -> None:

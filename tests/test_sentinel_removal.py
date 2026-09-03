@@ -113,7 +113,7 @@ def test_platformless_duplicate_via_add_game_form_shows_error(
             "name": "Tetris",
             "sort_name": "",
             "status": PlayerGameStatus.UNPLAYED,
-            "wikidata": "",
+            "reference_wikidata": "",
             **catalog_graph_post(year="1984"),
         },
     )

@@ -58,6 +58,29 @@ by `alive()`: `alive()` reads the ancestors' marks too, so under a removed Game
 it would miss the live default and write a second one, which is what the
 constraint refuses.
 
+`ExternalReference` follows the same rule. Its uniqueness constraint on
+`(provider, entity_kind, provider_key)` carries the condition
+`removed_at IS NULL`, and so do the four — one per catalog kind — that hold a
+record to one key per provider. A removed record must let go of the provider
+key it claimed, or the name it stated stays claimed by a row nobody can see
+(#976). `games/removal.py` stamps every reference of a row it takes out with
+the row's own mark.
+
+The mark says which act took the reference out. A person who corrects or
+clears a key also stamps the reference the record used to state, at the moment
+of that act. Thus a restore takes back only the references carrying the row's
+own mark, and only where no live row holds the key: a corrected key stays
+corrected, a cleared key stays cleared, and a key another record has claimed
+meanwhile stays with that record. Restoring every mark instead would state two
+keys of one provider, which the per-record constraint refuses.
+
+A removed Game does not stamp its Editions' and Releases' references. Their
+rows carry no mark of their own — a Game's mark hides its children without
+stamping them — so their keys stay claimed while nobody can see the rows that
+claim them. Putting the Game back brings the whole subtree back unchanged.
+#782 and #690, which give an Edition and a Release a reference editor, own
+whether that stays the rule.
+
 The conditions have one effect that is easy to miss. Django does not validate a
 conditional constraint in a form when the condition names an excluded field.
 `removed_at` is not editable, thus a form always excludes it. Without a

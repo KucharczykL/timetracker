@@ -1,0 +1,600 @@
+# PR #1006 review — provider-neutral external references
+
+**Branch:** `claude/issue-896-provider-neutral-references`
+**Base:** `main` (44 files, +5993 / -375)
+**Closes:** #896, #976. Also carries the unmerged #988 commits.
+**Reviewed:** 2026-09-03, five parallel reviewers (code, tests, error handling,
+comments, type design). Findings below were each checked against the code;
+the ones marked **reproduced** were run.
+
+Status of the branch at review time: full `make check` green — 5086 passed,
+1 xfailed. Every finding here is something the suite does not catch.
+
+**All three Critical findings are fixed** (2026-09-03, five regression tests
+added, full `make check` green at 5091 passed / 1 xfailed). Each carries a
+**Fixed** note below.
+
+**Important I1, I2, I3 and I4 are fixed** (2026-09-03, full `make check` green
+at 5089 passed / 1 xfailed — six tests added, eight deleted with the two dead
+functions). **I5 is fixed too** (2026-09-03, full `make check` green at 5095
+passed / 1 xfailed — six more tests). **I6 is fixed too** (2026-09-03, full
+`make check` green at 5098 passed / 1 xfailed — three more tests). **I7 is
+fixed too** (2026-09-03, full `make check` green at 5100 passed / 1 xfailed —
+two more tests). **The docs-and-comments table is closed** (2026-09-03, full
+`make check` green at 5100 passed / 1 xfailed, plus state-only migration
+`0042`). The design questions and the smaller points below are open.
+
+---
+
+## Critical
+
+### C1. `restore()` raises `IntegrityError`, and resurrects a key a person cleared
+
+`games/removal.py:80`. **Reproduced. Fixed.**
+
+```python
+held.filter(removed_at__isnull=False).filter(free).update(removed_at=None)
+```
+
+`free` tests only whether the *key* is taken. It un-marks every removed
+reference of the row. A record accrues one removed row per key change,
+because `_state_one` (`games/external_references.py:217-220`) marks the
+incumbent and creates a successor. So:
+
+- `state(Q1) → state(Q2) → remove → restore` brings both rows back live:
+
+  ```
+  django.db.utils.IntegrityError: duplicate key value violates unique constraint
+    "unique_live_game_reference_per_provider"
+  DETAIL:  Key (provider, game_id)=(wikidata, 01a06806-…) already exists.
+  ```
+
+- `state(Q1) → clear → remove → restore` brings the cleared reference back
+  live, and `_mirror_the_wikidata_column` writes `Q1` back into the column.
+  Silent resurrection: `AssertionError: assert 'Q1' == ''`.
+
+The root cause is a "one act, one verb" violation. `removed_at` carries two
+acts — *cleared by a person* (`external_references.py:220`) and *removed with
+its row* (`removal.py:70`) — and the restore path cannot tell them apart.
+
+Compounding it: `_stamp` commits `removed_at=None` on the row before
+`_AFTER_STAMP` runs, and nothing wraps the pair, so the raise leaves the row
+restored, its references not, and `_mirror_the_wikidata_column` /
+`_recount_purchases` never run.
+
+`restore()` has no production caller yet, so this is latent — but the
+constraint this PR adds is what makes it reachable, and #695/#795 will call it.
+
+**Fix.** Restore at most one reference per `(provider, target)` — the most
+recently marked free one — and wrap `_stamp`'s UPDATE plus its `_AFTER_STAMP`
+callables in `transaction.atomic()`. A narrower alternative that keeps one
+column: capture the row's prior stamp before the UPDATE and restore only the
+references whose `removed_at` equals it, which makes the column mean "removed
+*with* the row" wherever the value matches.
+
+**Fixed** — the narrower alternative, because it is exact rather than a
+heuristic. `_stamp` now reads the row's mark from the database before it
+writes the new one and passes it to every `_AFTER_STAMP` callable, and the
+whole sequence runs in one `transaction.atomic()`.
+`_mark_the_references_of` restores only the references carrying that mark,
+still filtered by the `free` guard. Migration 0041 changed with it: it stamps
+a removed row's references with a `Subquery` reading the row's own
+`removed_at` rather than the migration's clock, or a migrated database could
+never restore anything.
+
+The mark is now the record of *which act* took a reference out: a person
+correcting or clearing a key stamps at that moment, a removal stamps with the
+row's mark, and 0041's duplicate resolver stamps with its own clock — so none
+of the three can be undone by another's restore.
+
+Regression tests: `test_restoring_takes_back_only_the_key_the_row_went_out_with`
+and `test_restoring_does_not_state_a_key_a_person_let_go_of`, in
+`tests/test_reference_removal.py`. Both reproduced the reported failures before
+the fix.
+
+### C2. The backfill aborts the whole sample load on a removed Game
+
+`games/external_references.py:401` and `:421`, called from
+`games/management/commands/load_sample_data.py:155`.
+
+`Game.objects.filter(library=library)` is the plain manager, which still sees
+removed rows, and nothing excludes `removed_at__isnull=False`. A removed Game
+keeps its `wikidata` column (`_mirror_the_wikidata_column` no-ops on removal)
+and holds no live reference, so it lands in the queryset. Then
+`state_external_references` refuses it with `REMOVED_TARGET` — and that call
+sits *outside* the `try` that guards `normalize_provider_key`.
+
+`handle()` wraps the load in `transaction.atomic()`, so `make loadsample`
+loads nothing, with a raw traceback and an end-user sentence ("Put it back
+before you change it") that means nothing to an operator. It is not wrapped in
+`CommandError` like every other failure in that command.
+
+Dormant only because today's `sample.yaml.gz` has no removed games.
+`anonymize_sample`'s `_prune_other_libraries` keeps the library's removed rows
+and `dumpdata` uses `_default_manager`, so the next regeneration against
+production — which has had `removed_at` since #944 — bakes the crash in.
+
+**Fixed.** The queryset takes `removed_at__isnull=True`, which is what makes
+the refusal unreachable rather than merely handled. `handle()` now wraps the
+backfill in `CommandError`, so a refusal that does escape reads as a defect an
+operator can report instead of a raw traceback.
+
+I4 is fixed in the same change, since it is the same three lines:
+`BackfilledReferences` counts `written` / `taken` / `malformed` apart, each
+skip is logged with the Game's pk and the offending value, and the command
+prints one sentence per cause.
+
+Regression tests: `test_the_backfill_leaves_a_removed_game_alone` and
+`test_the_backfill_counts_a_malformed_column_apart_from_a_taken_key`, in
+`tests/test_external_references.py`.
+
+### C3. The reference inputs render unstyled
+
+`games/reference_form.py:48`.
+
+`PrimitiveWidgetsMixin.__init__` calls `apply_primitive_widget_classes(self.fields)`
+immediately after `super().__init__()` (`games/forms.py:158-160`).
+`ReferenceSetForm` builds its fields *after* that call, so the mixin is a
+no-op. Actual rendering:
+
+```html
+<input type="text" name="reference_wikidata" maxlength="255"
+       aria-describedby="id_reference_wikidata_helptext" id="id_reference_wikidata">
+```
+
+No `INPUT_CLASS`, no `DISABLED_CONTROL_CLASS` — a browser-default box between
+two fully styled areas on all four hosting pages (Add/Edit Game, Add/Edit
+Platform). Breaks the CLAUDE.md rule that native controls take their classes
+from `PrimitiveWidgetsMixin`. The e2e tests fill by `name`, so they pass.
+
+**Fixed.** `apply_primitive_widget_classes(self.fields)` runs after the loop
+and `PrimitiveWidgetsMixin` is off the bases, following
+`games/settings_forms.py:128`. Regression test:
+`test_every_box_wears_the_native_control_classes` in
+`tests/test_reference_form.py`, which asserts the class on the widget *and* in
+the rendered markup.
+
+---
+
+## Important
+
+### I1. A lost race is a 500, and three comments claim it cannot happen — **fixed**
+
+`games/external_references.py:183` says the conditional constraint answers the
+loser and `catalog_submit.py` reads the name the database gave.
+`games/catalog_submit.py:55` files
+`unique_external_reference_provider_kind_key` under
+`UNREACHABLE_FROM_THE_GAME_FORM`, so `answered_constraint()` returns `None`
+and the `IntegrityError` re-raises. `games/reference_form.py:120` repeats the
+claim for the Platform path, which has no `IntegrityError` handler at all.
+
+The constraint is reachable: `select_for_update()` at `:255` locks only rows
+already attached to *this* target, never the key another target is about to
+claim, so two requests can both pass `_refuse_a_taken_key` for a key nobody
+holds yet. Pre-PR, `save_external_reference` caught this in its own savepoint
+and raised a `provider_key` refusal — so this is a concurrency regression, not
+only stale prose.
+
+**Fix.** Catch `IntegrityError` in `state_external_references` around the
+`create()` in a savepoint and re-raise as `ReferencesRefused(KEY_TAKEN,
+provider=provider)`, which both callers already answer onto the right box.
+Then correct whichever comments lose.
+
+**Fixed.** `_state_one` writes the `create()` in a savepoint of its own and
+hands the collision to `_refusal_for`, which reads the constraint name the
+database gave and states one of two sentences on the provider's box:
+`KEY_TAKEN` for `unique_external_reference_provider_kind_key`, and a new
+`RECORD_RACED` for `unique_live_<kind>_reference_per_provider` — the review
+asked for `KEY_TAKEN` for both, but the per-record constraint means the record
+holding the key is *this* record, and "another record already states this
+identifier" would be false. A constraint neither shape matches rises as itself,
+as `answered_constraint()` treats an unmapped one. The three comments now say
+this. `UNREACHABLE_FROM_THE_GAME_FORM` keeps all five entries under one shared
+reason: they are still out of `answered_constraint()`'s reach, now because the
+service converts them before the boundary sees them, not because nothing can
+trip them. Four tests: two driving a rival claim in from where the pre-check
+runs (one per constraint), two on `_refusal_for`'s unmapped and wrong-kind
+paths.
+
+### I2. `resolve_external_reference` ignores the mark — **fixed**
+
+`games/external_references.py:337`. No `removed_at__isnull=True`, and `.first()`
+on a queryset with no ordering and no `Meta.ordering`. Before this PR the
+unconditional unique constraint made at most one such row exist; now a live row
+and any number of removed rows can share the tuple, so it resolves
+nondeterministically — possibly to a removed row's target.
+`save_external_reference` got the `live` filter; this one was missed.
+
+**Fixed.** The filter is there. Ordering needs nothing further: among live rows
+the conditional constraint leaves at most one to find, which the docstring now
+says. Two tests — a key handed on from one record to another resolves to the
+holder, and a key nobody holds resolves to `None`.
+
+### I3. Three public functions are test-only, and two are now unsafe — **fixed**
+
+`save_external_reference`, `resolve_external_reference` and `provider_labels`
+have no production caller (`grep` finds only `tests/test_external_references.py`).
+`save_external_reference` does not know about the four per-record uniques: for a
+target already holding a live key under that provider, the `create()` trips
+`unique_live_<kind>_reference_per_provider`, and the `except IntegrityError`
+handler re-queries by the *new* key and raises `DoesNotExist`. Delete all three,
+or route the writer through `state_external_references`, before #783/#784/#785
+build on them.
+
+**Fixed, two of three.** `save_external_reference` and `provider_labels` are
+gone with their eight tests: the first is superseded by
+`state_external_references` and cannot be repaired without duplicating it, and
+the second had no caller and one assertion. `resolve_external_reference` stays
+and was repaired instead (see I2) — the IGDB wave needs a resolver, its fix was
+two lines, and its five tests are the seam's only description. Its remaining
+setup no longer goes through a writer: it creates the reference row directly.
+
+### I4. `skipped` conflates two causes, and the operator message states the wrong one — **fixed**
+
+`games/external_references.py:415` and `:418` both increment `skipped` — one for
+a malformed column value, one for a key already stated. The warning at
+`load_sample_data.py:161` attributes every skip to the second:
+
+> "N game(s) kept a Wikidata column no reference states: another library
+> already holds the key."
+
+A malformed value sends the operator hunting a conflict that does not exist.
+The bare `except ValidationError:` also discards the refusal message, the Game's
+pk and the offending value, so nothing identifies which of 858 fixture games is
+broken.
+
+**Fixed** alongside C2 — same three lines. See C2 for what landed.
+
+### I5. Migration 0041 has no test, and its reverse is broken — **fixed**
+
+`games/migrations/0041_external_reference_marks.py`. Two `RunPython` data
+functions, a hand-rolled keyset pager, and a `_keeper` tie-break that is
+mirror-aware only for `entity_kind == "game"` — for the other three kinds it
+silently keeps the lowest `id`. Zero coverage; `grep` for `0041` across `tests/`
+finds nothing. `tests/test_external_reference_migration.py:34` already has the
+harness (`MigrationExecutor` + `flush`) used for seven tests around 0022.
+
+Missing cases: a reference of an already-removed row per kind; the mirror
+tie-break when `Game.wikidata` names the *later* row; the fallback when the
+column is empty; a Platform pair (where the mirror plays no part); and more
+than `BATCH_SIZE` rows so `_paged` takes a second page.
+
+Reverse order runs `RemoveField(removed_at)` and *then* `AddConstraint` of the
+unconditional unique on `(provider, entity_kind, provider_key)`. Any database
+holding a marked row and a live row with the same tuple — the state this
+feature creates by design, per `tests/test_reference_removal.py:31` — cannot
+roll back, and dies after `removed_at` is already gone, so the operator cannot
+inspect the collision.
+
+**Fixed.** A last `RunPython` — noop forward, thus first to reverse — refuses
+the reverse with `Cannot reverse external reference marks while marked
+reference rows exist.` while any mark stands, so the marks are still readable
+when it stops. Six tests in `tests/test_external_reference_migration.py` on a
+second `MigrationExecutor` harness pinned at 0040: a reference per kind under a
+removed row taking that row's own mark, the mirror tie-break in both
+directions, the empty-column fallback, a Platform pair, a duplicate whose two
+rows straddle the `BATCH_SIZE` page break, and the refused reverse. The reverse
+test was run against the migration without the guard first and fails there.
+
+Left as it is: `_keeper` consulting the mirror for `entity_kind == "game"`
+alone. No other kind carries a mirror column, so there is nothing for one to
+prefer; the docstring now says so.
+
+### I6. `list_games` 500s on a non-canonical `wikidata` column — **fixed**
+
+`games/views/game.py:196` calls `external_reference_url(provider_key=game.wikidata)`
+unguarded; it raises `ValidationError` on anything the pattern rejects. One such
+row takes down the whole list, not one cell.
+
+The call is pre-existing on `main`, but this PR deletes `GameForm.clean_wikidata`
+— the guard that canonicalized the column on save — and adds a skip path that
+deliberately leaves such columns behind. Related: the backfill canonicalizes
+into the reference and never mirrors back, so a column holding `q123` beside a
+reference stating `Q123` is now representable.
+
+**Test that fails today:** create a Game with `wikidata="n/a"` via
+`Game.objects.create()`, then GET `games:list_games` and assert 200.
+`tests/test_paths_return_200.py` is the natural home.
+
+**Fixed.** `external_reference_url_or_none()` in
+`games/external_references.py` answers the reading a mirror column needs,
+and `_wikidata_cell()` in `games/views/game.py` renders the value as plain
+text where it names no entity. The suggested test landed as
+`test_game_list_survives_a_wikidata_column_naming_no_entity`, run against
+the unguarded call first and failing there, plus two unit tests on the new
+reading. `docs/catalog.md` says what the list does with such a column.
+
+Left as it is: the two reference-row readers (`ExternalReference.external_url`
+and `ExternalReferenceLinks`) keep the raising call. A row carries the
+canonical pattern as a check constraint, thus a key read from one always
+links, and a guard there would hide a broken constraint.
+
+### I7. `confirm_and_apply` catches the base `ValidationError` — **fixed**
+
+`games/views/removal.py:72` (#988 code). `action()` now runs the `_AFTER_STAMP`
+chain, including `_recount_purchases` → `purchase.save()` → `clean()`. Any
+model-validation failure beneath it renders as "here is why the removal was
+refused" with a hardcoded 409 and field-dict wording written for a form,
+unlogged — exactly what `answered()` in `games/writes/answers.py:110` goes out of
+its way to prevent.
+
+`games/views/playergame_writes.py:78` compounds it by downgrading a typed
+`CommandFailed` into an untyped `ValidationError`, discarding
+`failure.status_code` and erasing the type that distinguished "safe to show"
+from "a defect happened underneath".
+
+**Fix.** Introduce a dedicated refusal type, catch only that, and let a real
+`ValidationError` reach the 500 handler where a defect belongs.
+
+**Fixed.** The dedicated type already existed: `CommandFailed` carries the
+sentence and the status code the boundary in `games/writes/answers.py` states.
+`confirm_and_apply` reads that type alone and answers with `refusal.message`
+and `refusal.status_code`, so the hardcoded 409 is gone and a model that
+refuses underneath the act rises to the 500 handler. `remove_game_for_request`
+raises nothing of its own now: the `CommandFailed` the command stated rises
+through it, and the second type that threw the status away is gone with the
+`ValidationError` import.
+
+Left as it is: `ConfirmPage`'s `refusal` slot stays a `Sequence[str]`. The page
+draws what it is given, and narrowing it to one sentence would be a change to
+the component for the sake of its one caller.
+
+---
+
+## Docs and comments
+
+All verified against the code.
+
+| Where | Problem |
+|---|---|
+| `docs/event-retention.md:61` | **Fixed.** Was inverted: One constraint on `(provider, entity_kind, provider_key)`; **four** on `(provider, <fk>)`. The doc swaps them, and now disagrees with `docs/catalog.md:220`, which is right. |
+| `tests/test_name_key.py:25` | **Fixed.** `#998` is *"A duplicate Edition name is blamed on whichever row the service saw second"* — nothing to do with `İ` case mapping. The `strict=True` xfail will outlive #998's closure. File the residue issue or state the condition. The condition is stated: the `builtin` provider does simple case mapping and `str.lower()` full, and nothing in Python states the provider's, so no issue closes it. |
+| `games/migrations/0041_…:64` | **Fixed.** Names `sync_game_wikidata`, deleted in this same branch. Exists nowhere reachable from `main`. Keep the next sentence; drop the dead symbol. |
+| `games/external_references.py:352` | **Fixed.** Lists "the API" as a reader of `Game.wikidata`. No `wikidata` in `games/api.py` or `ts/`. Now says so outright, because the next reader will look. |
+| `games/models.py:833` | **Fixed.** "`games/removal.py` writes it" — `_state_one` writes it when a person changes or clears a key, and migration 0041 writes it too. All three are named now. |
+| `docs/event-retention.md:65`, `docs/catalog.md:232` | **Fixed.** Neither stated the tested exception: a removed Game does **not** stamp its Editions'/Releases' references, so those keys stay claimed by rows nobody can see — the exact harm event-retention cites as the reason for the rule. Most likely thing in the diff to be read as a bug later. `docs/catalog.md` now states it too, and points at the rule it stands apart from. |
+| `games/models.py:695` | **Fixed.** `Provider`/`EntityKind` `TextChoices` declared, zero callers, `choices=` never attached to the columns they describe. Both are attached now (migration `0042`, state only), and the comment says a check constraint is what enforces either set. |
+| `common/naming.py:1` | **Fixed.** The module's central claim has a known exception (`İ`) it does not mention, proved by its own `strict=True` xfail. The docstring names it and points at the test. |
+| `games/external_references.py:391` | **Fixed with C2.** Was `#654 owns that reconciliation` — #654 is scoped to redirects and hands the workflow to #785. The branch's own spec says `#654/#785`. |
+| `games/removal.py:57` | **Fixed.** `#695 and #795` — #695 is Session Undo only; #795 is the load-bearing citation. #695 is gone. |
+| `games/external_references.py:214` | **Fixed with I1.** Was `"""One provider's box, as one write."""` — it performs up to two (an UPDATE then an INSERT). |
+| `games/views/game.py:1019` | **Fixed.** `One read for the page` contradicts `reads/external_references.py:1` ("one query per kind"); this call passes three kinds. It says one *batch* now, and names the three. |
+| `games/migrations/0041_…:4` | **Fixed.** "the two backfills" — `BATCH_SIZE` feeds `_paged`, which only `_keep_one_key_per_record` uses. |
+| `games/removal.py:84` | **Fixed.** Explains the restore branch, not the guard. The interesting half — that a removal deliberately leaves the column alone so a restore can take the key back — is unexplained. The guard is explained, though not that way: a restore reads the *marks*, never the column, so what the guard buys is that a removal does not edit a row nobody asked to edit. |
+| `games/views/reference_section.py:13` | **Fixed.** `_BLOCK_CLASS` is byte-identical to `games/views/catalog_section.py:63` and the comment asserts an invariant nothing enforces. Import it instead. Renamed to `BLOCK_CLASS` there and imported here. |
+
+---
+
+## Design questions worth settling
+
+**The provider registry and the check constraints disagree.**
+`external_reference_supported_provider` hardcodes `Q(provider="wikidata")`, and
+`external_reference_canonical_provider_key` applies `^Q[1-9][0-9]*$` to **every**
+row regardless of provider. Meanwhile `ProviderPolicy`'s docstring promises
+"registering a policy is the whole UI cost of a provider". Register a second
+provider without a matching migration and `ExternalReferenceLinks` raises
+`KeyError`/`ValidationError` mid-render, so the Game detail page and the whole
+Platform list 500 on every request. A render path should not be what enforces a
+data invariant.
+
+Either derive the constraints from `PROVIDER_POLICIES`, or add a guard test
+asserting the two agree — in the spirit of
+`test_every_unique_constraint_the_form_can_reach_is_mapped` — and degrade the
+renderer to plain text with a logged error rather than taking the page down.
+
+**Settled: the guard test and the fallback, not the derivation.**
+`test_the_constraint_admits_exactly_the_registered_providers` reads
+`external_reference_supported_provider` back off the model and compares it
+against `set(PROVIDER_POLICIES)`, and
+`test_one_key_pattern_holds_only_while_one_provider_is_registered` states that
+`^Q[1-9][0-9]*$` is Wikidata's pattern rather than every provider's. Registering
+a second provider now fails `make check` instead of a person's write. The
+renderer degrades too: `_reference_link` in `common/components/domain.py` writes
+the words with no link and logs at ERROR where a row states no URL, because one
+stranded row must not take Game detail and the whole Platform list down.
+
+Deriving the constraints from the registry is left for the wave that adds the
+second provider (#783/#784/#785). Nothing can drift silently in between: the two
+guards fail first.
+
+**`ProviderPolicy` does not validate its own template.** `url_template: str` is
+the sole trusted source of an `href`, and `ExternalReferenceLinks`' "safe by
+three layers" docstring rests layer two entirely on it. A `__post_init__`
+refusing a template that lacks `{provider_key}` or does not start with
+`https://` is three lines and catches a security-relevant mistake at import.
+Nothing checks the registry key is casefolded either, so a policy registered as
+`"Wikidata"` is silently unreachable.
+
+**Fixed.** `ProviderPolicy.__post_init__` refuses a template that does not start
+with `TRUSTED_SCHEME` or does not interpolate `KEY_PLACEHOLDER`, and
+`_refuse_a_key_nothing_can_reach` refuses a registry key `normalize_provider`
+could never look up. Both read at import, so the application refuses to start
+rather than serving one bad href.
+
+**`KEY_TAKEN` is unactionable.** "Another record already states this identifier"
+names no record. The case where a person most needs to know is one the design
+deliberately creates: a Release under a removed Game keeps its claim
+(`tests/test_reference_removal.py:83`) while being invisible in every list and
+unreachable for editing. The key is held hostage by a row the person can neither
+see nor free.
+
+**Deferred to #795, on purpose.** A sentence can only name a record a person can
+act on. Today there is nowhere to send them: the holder is a Release under a
+removed Game, and no page lists a removed row or offers to bring it back. Naming
+it would state a dead end more precisely. #795 adds the recovery UI, and the
+sentence gets its record and its link in the same change. Recorded on #896 and
+on #795.
+
+---
+
+## Type design
+
+Ratings from the type reviewer, for the record:
+
+| Type | Encapsulation | Expression | Usefulness | Enforcement |
+|---|---|---|---|---|
+| `ExternalReference` | 6 | 6 | 9 | 7 |
+| `ProviderPolicy` / `PROVIDER_POLICIES` | 7 | 4 | 9 | 4 |
+| `BackfilledReferences` | 8 | 5 | 6 | n/a |
+| `ReferenceSetForm` | 5 | 6 | 9 | 6 |
+| `ReferenceMap` | 7 | 6 | 8 | 5 |
+| `NameKey` | 8 | 9 | 10 | 5 (intentional) |
+
+Smaller points, all fixed — each one's note follows it:
+
+- `reference_form.py:99` guards a real invariant with a bare `assert`, which
+  `python -O` strips. `bind()` is public and unguarded, so binding a *different*
+  record than the one that seeded `initial` writes one record's keys onto
+  another.
+  **Fixed:** `write()` raises `RuntimeError` where no record is named, and
+  `bind()` refuses a record other than the one already named. Naming the same
+  one again is left alone — that is what Edit Game does.
+- `reads/external_references.py:18` takes `Sequence[Model]` and does an
+  unguarded `TARGET_FIELDS_BY_MODEL[type(row)]`. A `Device` raises a bare
+  `KeyError` where every other entry point raises
+  `ValidationError("Unsupported catalog target.")`. `Sequence[CatalogTarget]`
+  makes it unreachable statically.
+  **Fixed:** it takes `Sequence[CatalogTarget]`, and `game.py` collects its
+  batch as one.
+- `references_for` returns `dict(found)`, so callers must supply a default —
+  and they disagree: `game.py:698` passes `()`, `platform.py:98` passes `[]`,
+  against an alias promising `list`.
+  **Fixed:** `held_by(references, row_id)` is the one empty answer, and no
+  caller writes a default. It copies, because Game detail gathers an Edition's
+  references and its Releases' into one list and would otherwise extend the
+  map's own.
+- Unnamed compounds, against CLAUDE.md: `normalize_provider_key → tuple[str, str]`,
+  `_target_metadata → tuple[str, str]`, `_owner_and_mark → tuple[UUID | None, bool]`.
+  All same-typed pairs, so a swap type-checks. `provider`, `provider_key` and
+  `entity_kind` are bare `str` across roughly twenty signatures; the same branch
+  added `common/naming.py` specifically to name one such role.
+  **Fixed for the pairs and the two provider roles:** `NormalizedReference`,
+  `TargetMetadata` and `OwnerAndMark` are NamedTuples, and `ProviderName` and
+  `ProviderKey` are PEP 695 aliases carried across the module's signatures.
+  `entity_kind` stays a bare `str`: the values are `ExternalReference.EntityKind`
+  members, and annotating the parameters with that `TextChoices` would refuse
+  every call site passing `"game"`.
+- `common/naming.py:14` uses `str.strip()`, but `Trim()` compiles to `btrim(x)`,
+  which strips ASCII spaces only. A name with a trailing tab or non-breaking
+  space keys equal in Python and unequal in Postgres — the class of bug the
+  module exists to prevent.
+  **Fixed:** `name_key` strips `TRIMMED`, the one character `btrim` takes.
+  `tests/test_name_key.py` now keys a name ending in a tab and one ending in a
+  no-break space against the database.
+- `PROVIDER_POLICIES` is a plain mutable dict with no `Final`, while
+  `catalog_submit.py:40,54` annotates its two registries `Final`.
+  **Fixed:** `Final[Mapping[ProviderName, ProviderPolicy]]`, so neither the name
+  nor the contents can be reassigned past the checker.
+- `external_references.py:24-26` makes `CatalogTarget` mean `object` at runtime.
+  PEP 695 aliases are lazily evaluated, so the `else` branch may be unnecessary.
+  **Fixed:** it was. The alias holds its value unevaluated, so one statement
+  outside the `TYPE_CHECKING` block names classes imported for the checker alone
+  and is still importable at runtime.
+
+---
+
+## Test gaps
+
+Beyond the migration (I5) and the `list_games` 500 (I6). Every gap below is
+closed — each one's note follows it:
+
+- **The backfill's non-happy branches are entirely untested.** The fixture's 858
+  wikidata values are all distinct and all canonical, so the parity test at
+  `tests/test_external_references.py:669` exercises only the `written` path.
+  Neither skip branch fires and the command's warning never prints.
+  - **Fixed.** Both skip branches were already reached by the C2 fix
+    (`test_the_backfill_leaves_a_removed_game_alone`,
+    `test_the_backfill_counts_a_malformed_column_apart_from_a_taken_key`). What
+    was left is the printing: `test_the_load_says_which_columns_it_left_alone`
+    seeds one key another library holds and one column that is not a key, runs
+    `load_sample_data`, and reads both sentences off its output.
+- **`_owner_and_mark`'s Edition and Release branches** are unexercised, including
+  the library boundary (ownership derived through `edition.game.library_id`).
+  The docstring's claim about a removed ancestor is untested.
+  - **Fixed.** Six tests in `tests/test_external_references.py`: an Edition read
+    through another library's Game, under a shared Game, and under a removed
+    Game; a Release under a removed Edition and under a removed Game; and the
+    live path through both ancestors that the five refusals share.
+- **Remove/restore for Edition, Release and Platform.** Covered: Game remove,
+  Game restore, Platform remove. Untested: `remove(edition)`, `remove(release)`,
+  and restore for any non-Game kind — and the restore branch is the subtle one.
+  - **Fixed.** Five tests in `tests/test_reference_removal.py`, including
+    `test_restoring_a_release_leaves_a_key_another_release_took` — the
+    taken-meanwhile branch on a kind that is not a Game.
+- **The Editions table's References column** never renders in any test;
+  `tests/test_reference_presentation.py:62` reaches only the header meta-row, so
+  `_references_cell` is untouched.
+  - **Fixed.** `test_the_editions_table_states_the_editions_and_the_releases_keys`
+    states a named Edition holding two Releases — the shape that draws the
+    section — and reads both kinds' links out of the one cell.
+- **`references_for` is only tested for one kind**, against a docstring
+  promising one query per kind, while the detail page feeds it three.
+  - **Fixed.** `test_the_batch_read_takes_one_query_for_each_kind_present` feeds
+    it a Game, an Edition and a Release, and holds it to three queries.
+- **Cross-kind key coexistence** (a Game and a Platform may both claim `Q123`) is
+  a deliberate scoping decision that nothing pins.
+  - **Fixed.** `test_one_key_may_name_a_game_and_a_platform`, whose docstring
+    says why the constraint is scoped by kind.
+- **A POST that omits `reference_wikidata` entirely** silently clears the
+  reference; every test posts through a fixture that always includes the key.
+  - **Fixed.** `test_a_post_that_omits_the_box_clears_the_reference` takes the
+    key off the body and reads the reference gone. The behaviour is what a
+    `forms.CharField` states, thus a test rather than a change.
+- **`edit_platform` rollback on a taken key** — the Game path proves the rename
+  is taken back; the Platform path has only the add case.
+  - **Fixed.** `test_a_taken_key_takes_the_platform_rename_back`.
+
+Test-quality nits: `pytest.raises(Exception)` at `tests/test_reference_form.py:85`
+and `:99` should name `ReferencesRefused`;
+`assert str(ExternalReferenceLinks([])).strip() in ("", "—")` accepts an
+alternative nothing produces; `assert "&lt;ul" not in markup` in
+`tests/test_components.py` is scoped to a tag a caller may legitimately use.
+
+**All three fixed.** The two raises name `ReferencesRefused`; the empty render
+is now `== ""`; and the confirmation page's assertion names the refusal list's
+own class rather than any `<ul>` the `details` slot may hold.
+
+---
+
+## What is done well
+
+- `test_every_unique_constraint_the_form_can_reach_is_mapped`
+  (`tests/test_catalog_submit.py:355`) forces every new constraint to be
+  classified as answered or unreachable, with a written reason. The best
+  structural test in the diff.
+- `submitted_game_or_form_error` and `submitted_or_form_error` both **re-raise**
+  a refusal no handler claimed rather than inventing a sentence, and
+  `answered_constraint` returns `None` for an unmapped constraint instead of
+  guessing. I1 and I7 are precisely where that discipline was asserted in a
+  docstring but not implemented.
+- The #976 constraint behaviour is tested at the database layer
+  (`tests/test_external_references.py:469` onward), so it survives a refactor of
+  the Python guard — and `tests/test_reference_removal.py:53` covers the hard
+  case, a restore that must *not* reclaim a contested key.
+- `tests/test_reference_removal.py:83` pins a non-obvious consequence of the
+  ancestor-marking design and proves the key is still *claimed*, not merely
+  unmarked.
+- The `xfail(strict=True)` on `İ` records a deferral the right way: it will fail
+  loudly when someone fixes it.
+- `transaction=True` is applied deliberately, with the reason stated at the
+  point of use.
+- The comment register is consistent and the `make vale` vocabulary holds
+  throughout; several comments explain a design choice a reviewer would
+  otherwise challenge (`models.py:781`, `migration 0041:11`,
+  `views/reference_section.py:1`, `catalog_form.py:437`).
+
+---
+
+## Suggested order
+
+1. **C1** and **C2** — reachable data bugs. C1 has two ready-made regression
+   tests above, both of which fail today.
+2. **C3** — one line.
+3. **I1** — pick a side, then correct whichever comments lose.
+4. **I2**, **I3**, **I4**.
+5. **I5** — the migration harness already exists.
+6. **I6**, **I7**.
+7. Docs and comments in one sweep.
+8. Re-run the full `make check`.
+
+Not run: `code-simplifier`, which edits files.
