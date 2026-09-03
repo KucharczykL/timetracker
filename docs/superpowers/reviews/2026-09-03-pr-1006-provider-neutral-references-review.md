@@ -16,7 +16,9 @@ added, full `make check` green at 5091 passed / 1 xfailed). Each carries a
 
 **Important I1, I2, I3 and I4 are fixed** (2026-09-03, full `make check` green
 at 5089 passed / 1 xfailed — six tests added, eight deleted with the two dead
-functions). I5, I6 and I7 are open, as is everything from the docs table down.
+functions). **I5 is fixed too** (2026-09-03, full `make check` green at 5095
+passed / 1 xfailed — six more tests). I6 and I7 are open, as is everything from
+the docs table down.
 
 ---
 
@@ -239,7 +241,7 @@ broken.
 
 **Fixed** alongside C2 — same three lines. See C2 for what landed.
 
-### I5. Migration 0041 has no test, and its reverse is broken
+### I5. Migration 0041 has no test, and its reverse is broken — **fixed**
 
 `games/migrations/0041_external_reference_marks.py`. Two `RunPython` data
 functions, a hand-rolled keyset pager, and a `_keeper` tie-break that is
@@ -259,6 +261,20 @@ holding a marked row and a live row with the same tuple — the state this
 feature creates by design, per `tests/test_reference_removal.py:31` — cannot
 roll back, and dies after `removed_at` is already gone, so the operator cannot
 inspect the collision.
+
+**Fixed.** A last `RunPython` — noop forward, thus first to reverse — refuses
+the reverse with `Cannot reverse external reference marks while marked
+reference rows exist.` while any mark stands, so the marks are still readable
+when it stops. Six tests in `tests/test_external_reference_migration.py` on a
+second `MigrationExecutor` harness pinned at 0040: a reference per kind under a
+removed row taking that row's own mark, the mirror tie-break in both
+directions, the empty-column fallback, a Platform pair, a duplicate whose two
+rows straddle the `BATCH_SIZE` page break, and the refused reverse. The reverse
+test was run against the migration without the guard first and fails there.
+
+Left as it is: `_keeper` consulting the mirror for `entity_kind == "game"`
+alone. No other kind carries a mirror column, so there is nothing for one to
+prefer; the docstring now says so.
 
 ### I6. `list_games` 500s on a non-canonical `wikidata` column
 

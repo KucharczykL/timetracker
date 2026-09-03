@@ -14,6 +14,8 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 BEFORE_EXTERNAL_REFERENCES = ("games", "0021_alter_game_library")
 WITH_EXTERNAL_REFERENCES = ("games", "0022_external_references")
+BEFORE_REFERENCE_MARKS = ("games", "0040_edition_name")
+WITH_REFERENCE_MARKS = ("games", "0041_external_reference_marks")
 
 PRESERVED_GAME_FIELDS = (
     "library_id",
@@ -719,3 +721,251 @@ def test_empty_reference_table_can_reverse_and_migrate_forward_again(
         "wikidata_references": 0,
         "wikidata_release_references": 0,
     }
+
+
+@pytest.fixture
+def reference_mark_migration_harness():
+    """The schema one migration before the reference marks.
+
+    Flushing before the step back matters: going back runs 0041's
+    reverse, which refuses while a marked row stands.
+    """
+    leaf_nodes = MigrationExecutor(connection).loader.graph.leaf_nodes()
+    call_command("flush", interactive=False, verbosity=0)
+    executor = MigrationExecutor(connection)
+    executor.migrate([BEFORE_REFERENCE_MARKS])
+    yield executor.loader.project_state([BEFORE_REFERENCE_MARKS]).apps
+    call_command("flush", interactive=False, verbosity=0)
+    MigrationExecutor(connection).migrate(leaf_nodes)
+
+
+def migrate_to_reference_marks():
+    executor = MigrationExecutor(connection)
+    executor.migrate([WITH_REFERENCE_MARKS])
+    return executor.loader.project_state([WITH_REFERENCE_MARKS]).apps
+
+
+def seed_reference_library(apps):
+    """One library to hang the marked world from."""
+    User = apps.get_model("auth", "User")
+    UserLibrary = apps.get_model("games", "UserLibrary")
+    user = User.objects.create(username="reference-marks")
+    return UserLibrary.objects.create(user_id=user.pk, created_at=timezone.now())
+
+
+def state_reference(apps, kind, target, provider_key):
+    """One live reference of one kind, at the 0040 schema."""
+    ExternalReference = apps.get_model("games", "ExternalReference")
+    return ExternalReference.objects.create(
+        id=uuid.uuid7(),
+        provider="wikidata",
+        entity_kind=kind,
+        provider_key=provider_key,
+        **{kind: target},
+    )
+
+
+def keys_by_mark(apps):
+    """Every reference key, against the mark it carries."""
+    ExternalReference = apps.get_model("games", "ExternalReference")
+    return dict(
+        ExternalReference.objects.order_by("provider_key").values_list(
+            "provider_key", "removed_at"
+        )
+    )
+
+
+def test_a_removed_rows_references_take_that_rows_own_mark(
+    reference_mark_migration_harness,
+):
+    """`games/removal.py` reads the two marks back as equal (#976).
+
+    The reference takes the row's own mark and not the run's clock,
+    thus a restore takes back the references that went out with the
+    row and leaves the ones a rival write had already replaced.
+    """
+    apps = reference_mark_migration_harness
+    library = seed_reference_library(apps)
+    Game = apps.get_model("games", "Game")
+    Edition = apps.get_model("games", "Edition")
+    Release = apps.get_model("games", "Release")
+    Platform = apps.get_model("games", "Platform")
+
+    removed_game = Game.objects.create(
+        id=uuid.uuid7(),
+        library_id=library.pk,
+        name="Removed",
+        removed_at=timezone.now() - timedelta(days=4),
+    )
+    live_game = Game.objects.create(id=uuid.uuid7(), library_id=library.pk, name="Live")
+    #: Its own mark, under a Game that carries none: the migration
+    #: reads the row it names, never an ancestor.
+    removed_edition = Edition.objects.create(
+        game_id=live_game.pk,
+        is_default=True,
+        removed_at=timezone.now() - timedelta(days=3),
+    )
+    removed_release = Release.objects.create(
+        edition_id=removed_edition.pk,
+        is_default=True,
+        removed_at=timezone.now() - timedelta(days=2),
+    )
+    removed_platform = Platform.objects.create(
+        name="Removed Platform", removed_at=timezone.now() - timedelta(days=1)
+    )
+    state_reference(apps, "game", removed_game, "Q1")
+    state_reference(apps, "edition", removed_edition, "Q2")
+    state_reference(apps, "release", removed_release, "Q3")
+    state_reference(apps, "platform", removed_platform, "Q4")
+    state_reference(apps, "game", live_game, "Q5")
+
+    assert keys_by_mark(migrate_to_reference_marks()) == {
+        "Q1": removed_game.removed_at,
+        "Q2": removed_edition.removed_at,
+        "Q3": removed_release.removed_at,
+        "Q4": removed_platform.removed_at,
+        "Q5": None,
+    }
+
+
+def test_the_mirrored_key_is_the_reference_that_stays(
+    reference_mark_migration_harness,
+):
+    """The column names the keeper, whichever row came first.
+
+    Both directions, because keeping the earliest id would answer
+    one of them right by accident.
+    """
+    apps = reference_mark_migration_harness
+    library = seed_reference_library(apps)
+    Game = apps.get_model("games", "Game")
+
+    names_the_earlier = Game.objects.create(
+        id=uuid.uuid7(), library_id=library.pk, name="Earlier", wikidata="Q10"
+    )
+    names_the_later = Game.objects.create(
+        id=uuid.uuid7(), library_id=library.pk, name="Later", wikidata="Q13"
+    )
+    state_reference(apps, "game", names_the_earlier, "Q10")
+    state_reference(apps, "game", names_the_earlier, "Q11")
+    state_reference(apps, "game", names_the_later, "Q12")
+    state_reference(apps, "game", names_the_later, "Q13")
+
+    marks = keys_by_mark(migrate_to_reference_marks())
+
+    assert sorted(key for key, mark in marks.items() if mark is None) == ["Q10", "Q13"]
+    assert sorted(key for key, mark in marks.items() if mark is not None) == [
+        "Q11",
+        "Q12",
+    ]
+
+
+def test_an_unmirrored_game_keeps_the_reference_written_first(
+    reference_mark_migration_harness,
+):
+    """An empty column names nobody, thus the earliest id stays."""
+    apps = reference_mark_migration_harness
+    library = seed_reference_library(apps)
+    Game = apps.get_model("games", "Game")
+
+    game = Game.objects.create(
+        id=uuid.uuid7(), library_id=library.pk, name="Unmirrored", wikidata=""
+    )
+    state_reference(apps, "game", game, "Q20")
+    state_reference(apps, "game", game, "Q21")
+
+    assert keys_by_mark(migrate_to_reference_marks())["Q20"] is None
+
+
+def test_a_platform_pair_keeps_the_reference_written_first(
+    reference_mark_migration_harness,
+):
+    """No mirror column stands behind a Platform."""
+    apps = reference_mark_migration_harness
+    seed_reference_library(apps)
+    Platform = apps.get_model("games", "Platform")
+
+    platform = Platform.objects.create(name="Paired Platform")
+    state_reference(apps, "platform", platform, "Q30")
+    state_reference(apps, "platform", platform, "Q31")
+
+    assert keys_by_mark(migrate_to_reference_marks())["Q30"] is None
+
+
+def test_a_pair_that_spans_two_pages_is_still_one_pair(
+    reference_mark_migration_harness,
+):
+    """What one record holds is read across the page break.
+
+    A pager that started each page empty would find no incumbent for
+    the second row of the pair and leave both live.
+    """
+    apps = reference_mark_migration_harness
+    library = seed_reference_library(apps)
+    Game = apps.get_model("games", "Game")
+    ExternalReference = apps.get_model("games", "ExternalReference")
+    batch_size = import_module(
+        "games.migrations.0041_external_reference_marks"
+    ).BATCH_SIZE
+
+    games = [
+        Game.objects.create(
+            id=uuid.uuid7(), library_id=library.pk, name=f"Paged {number}"
+        )
+        for number in range(batch_size + 1)
+    ]
+    ExternalReference.objects.bulk_create(
+        ExternalReference(
+            id=uuid.uuid7(),
+            provider="wikidata",
+            entity_kind="game",
+            provider_key=f"Q{number + 1}",
+            game_id=game.pk,
+        )
+        for number, game in enumerate(games)
+    )
+    #: Written last, thus the last id, thus the far side of the
+    #: break from the reference its own record already holds.
+    state_reference(apps, "game", games[0], "Q9000")
+
+    marks = keys_by_mark(migrate_to_reference_marks())
+
+    assert marks["Q9000"] is not None
+    assert [key for key, mark in marks.items() if mark is not None] == ["Q9000"]
+
+
+def test_reverse_refuses_while_a_marked_reference_stands(
+    reference_mark_migration_harness,
+):
+    """A mark and the row that took its key over share one tuple.
+
+    The old constraint refuses that pair, and the reverse would meet
+    it with the marks already dropped and nothing left to read.
+    """
+    apps = reference_mark_migration_harness
+    library = seed_reference_library(apps)
+    Game = apps.get_model("games", "Game")
+    removed_game = Game.objects.create(
+        id=uuid.uuid7(),
+        library_id=library.pk,
+        name="Removed",
+        removed_at=timezone.now() - timedelta(days=1),
+    )
+    state_reference(apps, "game", removed_game, "Q40")
+    apps = migrate_to_reference_marks()
+    assert keys_by_mark(apps) == {"Q40": removed_game.removed_at}
+
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            r"Cannot reverse external reference marks while marked "
+            r"reference rows exist\."
+        ),
+    ):
+        MigrationExecutor(connection).migrate([BEFORE_REFERENCE_MARKS])
+
+    assert WITH_REFERENCE_MARKS in MigrationRecorder(connection).applied_migrations()
+    preserved = (
+        MigrationExecutor(connection).loader.project_state([WITH_REFERENCE_MARKS]).apps
+    )
+    assert keys_by_mark(preserved) == {"Q40": removed_game.removed_at}

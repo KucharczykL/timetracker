@@ -59,7 +59,11 @@ def _mark_references_of_removed_rows(apps, schema_editor):
 
 
 def _keeper(kind, incumbent, candidate, mirrored):
-    """The row that stays: the mirrored key, else the earliest id."""
+    """The row that stays: the mirrored key, else the earliest id.
+
+    Only a Game carries a mirror column, thus the other three kinds
+    have nothing to prefer and keep the row that was written first.
+    """
     if kind == "game":
         wanted = mirrored.get(incumbent.game_id)
         if wanted is not None:
@@ -101,6 +105,23 @@ def _keep_one_key_per_record(apps, schema_editor):
             reference_model.objects.filter(pk=loser.pk).update(removed_at=stamped)
 
 
+def _refuse_a_reverse_that_loses_the_marks(apps, schema_editor):
+    """Refuse to go back while a marked reference stands.
+
+    Reversing drops `removed_at` and puts the unconditional unique
+    back. A key one record let go of and another record now holds is
+    two rows of one tuple, which that constraint refuses, and by then
+    the column naming the loser is gone and nobody can read what
+    collided. Refusing first leaves the marks where an operator can.
+    """
+    del schema_editor
+    reference_model = apps.get_model("games", "ExternalReference")
+    if reference_model.objects.filter(removed_at__isnull=False).exists():
+        raise RuntimeError(
+            "Cannot reverse external reference marks while marked reference rows exist."
+        )
+
+
 class Migration(migrations.Migration):
     dependencies = [
         ("games", "0040_edition_name"),
@@ -118,8 +139,9 @@ class Migration(migrations.Migration):
                 blank=True, default=None, editable=False, null=True
             ),
         ),
-        #: Reversing drops the constraints and the column, thus a
-        #: mark has nowhere to live and nothing to undo.
+        #: Reversing drops the column these two write, thus a mark
+        #: has nowhere to live and nothing to undo. The guard at the
+        #: end reverses first and refuses before it comes to that.
         migrations.RunPython(
             _mark_references_of_removed_rows, migrations.RunPython.noop
         ),
@@ -171,5 +193,10 @@ class Migration(migrations.Migration):
                 fields=("provider", "platform"),
                 name="unique_live_platform_reference_per_provider",
             ),
+        ),
+        #: Last, thus first to reverse: the marks above are read
+        #: before anything that would drop them.
+        migrations.RunPython(
+            migrations.RunPython.noop, _refuse_a_reverse_that_loses_the_marks
         ),
     ]
