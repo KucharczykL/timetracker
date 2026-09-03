@@ -117,13 +117,23 @@ def test_a_refusal_naming_no_provider_is_a_non_field_error(owned_library):
     assert form.errors["__all__"]
 
 
-def test_the_field_name_is_the_provider(owned_library):
+def test_the_field_name_is_the_provider():
     assert reference_field_name("wikidata") == "reference_wikidata"
 
 
 #: The view dispatches a PlayerGame command, and
 #: `run_in_transaction` refuses to nest.
 view_tests = pytest.mark.django_db(transaction=True)
+
+
+def _platform_post(name: str, provider_key: str) -> dict[str, str]:
+    """The Platform form's own fields, beside the References area."""
+    return {
+        "name": name,
+        "group": "",
+        "icon": "",
+        "reference_wikidata": provider_key,
+    }
 
 
 @view_tests
@@ -222,12 +232,7 @@ def test_add_platform_writes_the_key_the_area_states(client, owned_user):
 
     client.post(
         reverse("games:add_platform"),
-        {
-            "name": "Amiga",
-            "group": "",
-            "icon": "",
-            "reference_wikidata": "Q100047",
-        },
+        _platform_post("Amiga", "Q100047"),
     )
 
     platform = Platform.objects.get(name="Amiga")
@@ -257,12 +262,7 @@ def test_a_taken_key_answers_on_the_platform_form(client, owned_user):
 
     response = client.post(
         reverse("games:add_platform"),
-        {
-            "name": "Amiga",
-            "group": "",
-            "icon": "",
-            "reference_wikidata": "Q100047",
-        },
+        _platform_post("Amiga", "Q100047"),
     )
 
     assert response.status_code == 200
@@ -350,12 +350,7 @@ def test_a_taken_key_takes_the_platform_rename_back(client, owned_user):
 
     response = client.post(
         reverse("games:edit_platform", args=[platform.pk]),
-        {
-            "name": "After conflict",
-            "group": "",
-            "icon": "",
-            "reference_wikidata": "Q100047",
-        },
+        _platform_post("After conflict", "Q100047"),
     )
 
     assert response.status_code == 200

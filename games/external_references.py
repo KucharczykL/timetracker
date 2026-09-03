@@ -430,18 +430,10 @@ def resolve_external_reference(
     """
     from games.models import ExternalReference
 
-    target_id_fields = {
-        "game": "game_id",
-        "edition": "edition_id",
-        "release": "release_id",
-        "platform": "platform_id",
-    }
-    try:
-        target_id_field = target_id_fields[entity_kind]
-    except KeyError as error:
-        raise ValidationError(
-            {"entity_kind": "Unsupported catalog entity kind."}
-        ) from error
+    target_field = ExternalReference.TARGET_FIELDS.get(entity_kind)
+    if target_field is None:
+        raise ValidationError({"entity_kind": "Unsupported catalog entity kind."})
+    target_id_field = f"{target_field}_id"
 
     provider, provider_key = normalize_provider_key(
         provider=provider, provider_key=provider_key

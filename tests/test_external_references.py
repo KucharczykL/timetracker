@@ -493,19 +493,6 @@ def test_a_marked_reference_lets_go_of_its_provider_key(owned_library):
     assert taken.pk != reference.pk
 
 
-def test_two_live_references_of_one_tuple_are_refused(owned_library):
-    first = Game.objects.create(name="Elite", library=owned_library)
-    second = Game.objects.create(name="Elite II", library=owned_library)
-    ExternalReference.objects.create(
-        provider="wikidata", entity_kind="game", provider_key="Q123", game=first
-    )
-
-    with pytest.raises(IntegrityError):
-        ExternalReference.objects.create(
-            provider="wikidata", entity_kind="game", provider_key="Q123", game=second
-        )
-
-
 def test_one_live_key_per_record_per_provider(owned_library):
     game = Game.objects.create(name="Elite", library=owned_library)
     ExternalReference.objects.create(

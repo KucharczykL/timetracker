@@ -10,18 +10,19 @@ from games.removal import remove, restore
 pytestmark = pytest.mark.django_db
 
 
-def _reference(game, provider_key):
+def _reference(kind, row, provider_key):
+    """One live reference of one kind, on the row it names."""
     return ExternalReference.objects.create(
         provider="wikidata",
-        entity_kind="game",
+        entity_kind=kind,
         provider_key=provider_key,
-        game=game,
+        **{kind: row},
     )
 
 
 def test_removing_a_game_marks_the_references_it_holds(owned_library):
     game = Game.objects.create(name="Elite", library=owned_library)
-    reference = _reference(game, "Q123")
+    reference = _reference("game", game, "Q123")
 
     remove(game)
 
@@ -31,18 +32,18 @@ def test_removing_a_game_marks_the_references_it_holds(owned_library):
 
 def test_a_second_game_may_take_the_key_a_removed_game_held(owned_library):
     first = Game.objects.create(name="Elite", library=owned_library)
-    _reference(first, "Q123")
+    _reference("game", first, "Q123")
     remove(first)
 
     second = Game.objects.create(name="Elite II", library=owned_library)
-    taken = _reference(second, "Q123")
+    taken = _reference("game", second, "Q123")
 
     assert taken.game_id == second.pk
 
 
 def test_restoring_a_game_takes_back_a_key_that_is_free(owned_library):
     game = Game.objects.create(name="Elite", library=owned_library)
-    reference = _reference(game, "Q123")
+    reference = _reference("game", game, "Q123")
     remove(game)
 
     restore(game)
@@ -53,10 +54,10 @@ def test_restoring_a_game_takes_back_a_key_that_is_free(owned_library):
 
 def test_restoring_leaves_a_key_another_record_has_taken(owned_library):
     first = Game.objects.create(name="Elite", library=owned_library)
-    reference = _reference(first, "Q123")
+    reference = _reference("game", first, "Q123")
     remove(first)
     second = Game.objects.create(name="Elite II", library=owned_library)
-    _reference(second, "Q123")
+    _reference("game", second, "Q123")
 
     restore(first)
 
@@ -107,12 +108,7 @@ def test_restoring_does_not_state_a_key_a_person_let_go_of(owned_library):
 
 def test_a_removed_platform_lets_go_of_its_key(owned_library):
     platform = Platform.objects.create(name="Amiga", library=owned_library)
-    reference = ExternalReference.objects.create(
-        provider="wikidata",
-        entity_kind="platform",
-        provider_key="Q100047",
-        platform=platform,
-    )
+    reference = _reference("platform", platform, "Q100047")
 
     remove(platform)
 
@@ -130,12 +126,7 @@ def test_a_live_release_under_a_removed_game_keeps_its_key(owned_library, stated
     game, edition, release = stated_graph(
         Game(name="Elite", library=owned_library), owned_library
     )
-    reference = ExternalReference.objects.create(
-        provider="wikidata",
-        entity_kind="release",
-        provider_key="Q999",
-        release=release,
-    )
+    reference = _reference("release", release, "Q999")
 
     remove(game)
 
@@ -147,28 +138,14 @@ def test_a_live_release_under_a_removed_game_keeps_its_key(owned_library, stated
     #: against a Release rather than against any other row.
     other = Release.objects.create(edition=edition)
     with pytest.raises(IntegrityError):
-        ExternalReference.objects.create(
-            provider="wikidata",
-            entity_kind="release",
-            provider_key="Q999",
-            release=other,
-        )
-
-
-def _kind_reference(kind, row, provider_key):
-    return ExternalReference.objects.create(
-        provider="wikidata",
-        entity_kind=kind,
-        provider_key=provider_key,
-        **{kind: row},
-    )
+        _reference("release", other, "Q999")
 
 
 def test_removing_an_edition_marks_the_reference_it_holds(owned_library, stated_graph):
     _, edition, _ = stated_graph(
         Game(name="Elite", library=owned_library), owned_library
     )
-    reference = _kind_reference("edition", edition, "Q500")
+    reference = _reference("edition", edition, "Q500")
 
     remove(edition)
 
@@ -180,7 +157,7 @@ def test_removing_a_release_marks_the_reference_it_holds(owned_library, stated_g
     _, _, release = stated_graph(
         Game(name="Elite", library=owned_library), owned_library
     )
-    reference = _kind_reference("release", release, "Q501")
+    reference = _reference("release", release, "Q501")
 
     remove(release)
 
@@ -194,7 +171,7 @@ def test_restoring_an_edition_takes_back_a_key_that_is_free(
     _, edition, _ = stated_graph(
         Game(name="Elite", library=owned_library), owned_library
     )
-    reference = _kind_reference("edition", edition, "Q500")
+    reference = _reference("edition", edition, "Q500")
     remove(edition)
 
     restore(edition)
@@ -205,7 +182,7 @@ def test_restoring_an_edition_takes_back_a_key_that_is_free(
 
 def test_restoring_a_platform_takes_back_a_key_that_is_free(owned_library):
     platform = Platform.objects.create(name="Amiga", library=owned_library)
-    reference = _kind_reference("platform", platform, "Q100047")
+    reference = _reference("platform", platform, "Q100047")
     remove(platform)
 
     restore(platform)
@@ -226,10 +203,10 @@ def test_restoring_a_release_leaves_a_key_another_release_took(
     _, edition, release = stated_graph(
         Game(name="Elite", library=owned_library), owned_library
     )
-    reference = _kind_reference("release", release, "Q501")
+    reference = _reference("release", release, "Q501")
     remove(release)
     other = Release.objects.create(edition=edition)
-    _kind_reference("release", other, "Q501")
+    _reference("release", other, "Q501")
 
     restore(release)
 

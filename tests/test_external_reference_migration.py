@@ -882,7 +882,6 @@ def test_a_platform_pair_keeps_the_reference_written_first(
 ):
     """No mirror column stands behind a Platform."""
     apps = reference_mark_migration_harness
-    seed_reference_library(apps)
     Platform = apps.get_model("games", "Platform")
 
     platform = Platform.objects.create(name="Paired Platform")

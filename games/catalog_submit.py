@@ -58,7 +58,7 @@ _ANSWERED_BY_THE_REFERENCE_SERVICE = (
     "carrying the box that stated it, never as an `IntegrityError`."
 )
 UNREACHABLE_FROM_THE_GAME_FORM: Final[dict[str, str]] = {
-    "unique_external_reference_provider_kind_key": (_ANSWERED_BY_THE_REFERENCE_SERVICE),
+    "unique_external_reference_provider_kind_key": _ANSWERED_BY_THE_REFERENCE_SERVICE,
     "unique_live_game_reference_per_provider": _ANSWERED_BY_THE_REFERENCE_SERVICE,
     "unique_live_edition_reference_per_provider": _ANSWERED_BY_THE_REFERENCE_SERVICE,
     "unique_live_release_reference_per_provider": _ANSWERED_BY_THE_REFERENCE_SERVICE,

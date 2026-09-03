@@ -26,7 +26,7 @@ def test_a_link_states_its_provider_and_its_key(owned_library):
     assert "Q123" in markup
 
 
-def test_no_reference_renders_nothing_a_reader_reads_as_one(owned_library):
+def test_no_reference_renders_nothing_a_reader_reads_as_one():
     """Nothing at all, so a cell of a table stays empty."""
     assert str(ExternalReferenceLinks([])) == ""
 

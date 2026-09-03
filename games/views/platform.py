@@ -32,7 +32,7 @@ from common.returns import action_url
 from common.utils import paginate
 from games.filters import filter_query_context_for_library, parse_platform_filter
 from games.forms import PlatformForm
-from games.models import Platform
+from games.models import Platform, UserLibrary
 from games.ownership import owned_or_404
 from games.reads.external_references import held_by, references_for
 from games.reference_form import ReferenceSetForm, submitted_or_form_error
@@ -167,12 +167,19 @@ def remove_platform(request: HttpRequest, platform_id: UUID) -> HttpResponse:
     )
 
 
-@login_required
-def edit_platform(request: HttpRequest, platform_id: UUID) -> HttpResponse:
-    library = cast(User, request.user).library
-    platform = owned_or_404(
-        Platform.objects.for_library(library), library, id=platform_id
-    )
+def _platform_form_page(
+    request: HttpRequest,
+    library: UserLibrary,
+    *,
+    platform: Platform | None,
+    title: str,
+) -> HttpResponse:
+    """Add and Edit: one Platform, and the references it states.
+
+    `platform` is None on Add, where the row does not exist yet;
+    `submitted_or_form_error` names it to the reference write once
+    the save has made it.
+    """
     form = PlatformForm(request.POST or None, instance=platform, library=library)
     references = ReferenceSetForm(
         request.POST or None, target=platform, library=library
@@ -193,30 +200,24 @@ def edit_platform(request: HttpRequest, platform_id: UUID) -> HttpResponse:
             request=request,
             fields=Fragment(FormFields(form), references_area(references)),
         ),
-        title="Edit Platform",
+        title=title,
+    )
+
+
+@login_required
+def edit_platform(request: HttpRequest, platform_id: UUID) -> HttpResponse:
+    library = cast(User, request.user).library
+    platform = owned_or_404(
+        Platform.objects.for_library(library), library, id=platform_id
+    )
+    return _platform_form_page(
+        request, library, platform=platform, title="Edit Platform"
     )
 
 
 @login_required
 def add_platform(request: HttpRequest) -> HttpResponse:
     library = cast(User, request.user).library
-    form = PlatformForm(request.POST or None, library=library)
-    references = ReferenceSetForm(request.POST or None, target=None, library=library)
-    #: Both read; see `edit_platform`.
-    form_reads = form.is_valid()
-    if (
-        references.is_valid()
-        and form_reads
-        and submitted_or_form_error(form, references) is not None
-    ):
-        return redirect(return_url(request, fallback="games:list_platforms"))
-
-    return render_page(
-        request,
-        AddForm(
-            form,
-            request=request,
-            fields=Fragment(FormFields(form), references_area(references)),
-        ),
-        title="Add New Platform",
+    return _platform_form_page(
+        request, library, platform=None, title="Add New Platform"
     )
