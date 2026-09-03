@@ -57,6 +57,26 @@ UNREACHABLE_FROM_THE_GAME_FORM: Final[dict[str, str]] = {
         "savepoint and raises a `provider_key` ValidationError, "
         "which `_game_form_refusal` answers onto the wikidata field."
     ),
+    "unique_live_game_reference_per_provider": (
+        "`ReferenceSetForm` holds one field per provider, thus a post "
+        "cannot state two keys for one. `state_external_references` "
+        "refuses a second live game row before the database sees it."
+    ),
+    "unique_live_edition_reference_per_provider": (
+        "`ReferenceSetForm` holds one field per provider, thus a post "
+        "cannot state two keys for one. `state_external_references` "
+        "refuses a second live edition row before the database sees it."
+    ),
+    "unique_live_release_reference_per_provider": (
+        "`ReferenceSetForm` holds one field per provider, thus a post "
+        "cannot state two keys for one. `state_external_references` "
+        "refuses a second live release row before the database sees it."
+    ),
+    "unique_live_platform_reference_per_provider": (
+        "`ReferenceSetForm` holds one field per provider, thus a post "
+        "cannot state two keys for one. `state_external_references` "
+        "refuses a second live platform row before the database sees it."
+    ),
 }
 
 

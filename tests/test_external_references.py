@@ -1,6 +1,7 @@
 import pytest
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.utils.timezone import now
 
 from games.external_references import (
     external_reference_url,
@@ -465,3 +466,58 @@ def test_sync_game_wikidata_rolls_back_deletion_when_another_game_owns_the_key()
     assert (
         ExternalReference.objects.get(pk=second_reference.pk).target_uuid == second.pk
     )
+
+
+def test_a_marked_reference_lets_go_of_its_provider_key(owned_library):
+    """#976: a removed row does not hold a key against a later entry."""
+    first = Game.objects.create(name="Elite", library=owned_library)
+    second = Game.objects.create(name="Elite II", library=owned_library)
+    reference = ExternalReference.objects.create(
+        provider="wikidata", entity_kind="game", provider_key="Q123", game=first
+    )
+    ExternalReference.objects.filter(pk=reference.pk).update(removed_at=now())
+
+    taken = ExternalReference.objects.create(
+        provider="wikidata", entity_kind="game", provider_key="Q123", game=second
+    )
+
+    assert taken.pk != reference.pk
+
+
+def test_two_live_references_of_one_tuple_are_refused(owned_library):
+    first = Game.objects.create(name="Elite", library=owned_library)
+    second = Game.objects.create(name="Elite II", library=owned_library)
+    ExternalReference.objects.create(
+        provider="wikidata", entity_kind="game", provider_key="Q123", game=first
+    )
+
+    with pytest.raises(IntegrityError):
+        ExternalReference.objects.create(
+            provider="wikidata", entity_kind="game", provider_key="Q123", game=second
+        )
+
+
+def test_one_live_key_per_record_per_provider(owned_library):
+    game = Game.objects.create(name="Elite", library=owned_library)
+    ExternalReference.objects.create(
+        provider="wikidata", entity_kind="game", provider_key="Q123", game=game
+    )
+
+    with pytest.raises(IntegrityError):
+        ExternalReference.objects.create(
+            provider="wikidata", entity_kind="game", provider_key="Q124", game=game
+        )
+
+
+def test_a_marked_key_frees_the_record_for_another(owned_library):
+    game = Game.objects.create(name="Elite", library=owned_library)
+    first = ExternalReference.objects.create(
+        provider="wikidata", entity_kind="game", provider_key="Q123", game=game
+    )
+    ExternalReference.objects.filter(pk=first.pk).update(removed_at=now())
+
+    second = ExternalReference.objects.create(
+        provider="wikidata", entity_kind="game", provider_key="Q124", game=game
+    )
+
+    assert second.pk != first.pk

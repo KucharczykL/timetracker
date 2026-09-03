@@ -708,10 +708,24 @@ class ExternalReference(models.Model):
         EntityKind.PLATFORM: "platform",
     }
 
+    #: Keyed on the model class and yielding the `_id` attribute,
+    #: because a caller here holds a row and wants its primary key.
+    #: TARGET_FIELDS above yields the relation name instead, for the
+    #: callers that assign the object. Keep the two apart.
+    TARGET_FIELDS_BY_MODEL: ClassVar[dict[type[models.Model], str]] = {
+        Game: "game_id",
+        Edition: "edition_id",
+        Release: "release_id",
+        Platform: "platform_id",
+    }
+
     class Meta:
         constraints = (
+            #: A removed row holds no slot, as every other
+            #: conditional constraint here states (#976).
             models.UniqueConstraint(
                 fields=("provider", "entity_kind", "provider_key"),
+                condition=Q(removed_at__isnull=True),
                 name="unique_external_reference_provider_kind_key",
             ),
             models.CheckConstraint(
@@ -755,6 +769,30 @@ class ExternalReference(models.Model):
                 condition=Q(provider_key__regex=r"^Q[1-9][0-9]*$"),
                 name="external_reference_canonical_provider_key",
             ),
+            #: A provider issues one identity per record. Four rather
+            #: than one constraint over five columns: the kind/target
+            #: check above enumerates the same four, and a reader who
+            #: has met that one needs no note about null handling.
+            models.UniqueConstraint(
+                fields=("provider", "game"),
+                condition=Q(game__isnull=False) & Q(removed_at__isnull=True),
+                name="unique_live_game_reference_per_provider",
+            ),
+            models.UniqueConstraint(
+                fields=("provider", "edition"),
+                condition=Q(edition__isnull=False) & Q(removed_at__isnull=True),
+                name="unique_live_edition_reference_per_provider",
+            ),
+            models.UniqueConstraint(
+                fields=("provider", "release"),
+                condition=Q(release__isnull=False) & Q(removed_at__isnull=True),
+                name="unique_live_release_reference_per_provider",
+            ),
+            models.UniqueConstraint(
+                fields=("provider", "platform"),
+                condition=Q(platform__isnull=False) & Q(removed_at__isnull=True),
+                name="unique_live_platform_reference_per_provider",
+            ),
         )
 
     id = UUIDv7Field(primary_key=True, editable=False)
@@ -788,6 +826,12 @@ class ExternalReference(models.Model):
         null=True,
         blank=True,
         related_name="external_references",
+    )
+    #: Set instead of destroying the row. Derived: it follows the
+    #: row this reference names, and `games/removal.py` writes it.
+    #: ExternalReference is not in REMOVABLE_MODELS.
+    removed_at = models.DateTimeField(
+        null=True, blank=True, default=None, editable=False
     )
 
     def clean(self):
