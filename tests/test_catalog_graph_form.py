@@ -22,11 +22,17 @@ from games.catalog_form import (
     CatalogGraphForm,
     EditionRowForm,
     ReleaseRowForm,
+    _key,
     edition_prefix,
     release_count_field,
     release_prefix,
 )
-from games.catalog_writes import REMOVED_EDITION, REMOVED_GAME, GraphRefused
+from games.catalog_writes import (
+    DUPLICATE_EDITION_NAME,
+    REMOVED_EDITION,
+    REMOVED_GAME,
+    GraphRefused,
+)
 from games.models import Edition, Game, Platform, Release
 from games.removal import remove
 from timetracker.temporal import TemporalDraft, TemporalValue, temporal_input_name
@@ -674,3 +680,67 @@ def test_another_library_s_platform_is_refused_before_any_write(
 
     assert not form.is_valid()
     assert form.blocks[0].rows[0].errors["platform"]
+
+
+def test_asking_twice_states_a_block_s_sentence_once(owned_library, plain_game):
+    """`LAST_RELEASE` goes on a block, and no row-level guard covers it."""
+    form = graph_form(
+        posted(block(name="Deluxe", releases=[])),
+        game=plain_game.game,
+        library=owned_library,
+    )
+
+    assert not form.is_valid()
+    assert list(form.blocks[0].form.non_field_errors()) == [LAST_RELEASE]
+
+    assert not form.is_valid()
+    assert list(form.blocks[0].form.non_field_errors()) == [LAST_RELEASE]
+
+
+def test_asking_twice_states_a_set_sentence_once(owned_library, plain_game):
+    """`LAST_EDITION_IN_FORM` goes on `form_errors`, which nothing guards."""
+    form = graph_form(
+        posted(block(removed=True)), game=plain_game.game, library=owned_library
+    )
+
+    assert not form.is_valid()
+    assert form.form_errors == [LAST_EDITION_IN_FORM]
+
+    assert not form.is_valid()
+    assert form.form_errors == [LAST_EDITION_IN_FORM]
+
+
+def test_a_sentence_the_service_stated_on_a_row_makes_the_form_invalid(
+    owned_library, plain_game
+):
+    """`answer()` writes after `is_valid()` returned, and the page re-renders.
+
+    The row already answers this, because a bound form caches its own
+    errors. The test stands so that remembering the verdict, rather
+    than the pass, cannot pass unnoticed.
+    """
+    form = graph_form(
+        posted(block(name="Deluxe")), game=plain_game.game, library=owned_library
+    )
+    assert form.is_valid(), form.form_errors
+
+    assert form.answer(
+        GraphRefused(DUPLICATE_EDITION_NAME, key=_key(form.blocks[0].form))
+    )
+
+    assert not form.is_valid()
+
+
+def test_a_sentence_the_service_stated_about_the_whole_statement_is_read_too(
+    owned_library, plain_game
+):
+    """A refusal naming no row lands on `form_errors`, which nothing read."""
+    form = graph_form(
+        posted(block(name="Deluxe")), game=plain_game.game, library=owned_library
+    )
+    assert form.is_valid(), form.form_errors
+
+    assert form.answer(GraphRefused(REMOVED_GAME))
+
+    assert form.form_errors == [REMOVED_GAME]
+    assert not form.is_valid()
