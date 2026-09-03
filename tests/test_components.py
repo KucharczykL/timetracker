@@ -2919,6 +2919,44 @@ def test_confirm_page_renders_details_outside_the_message_paragraph():
     assert "<p" in before_list and "</p>" in before_list
 
 
+def test_confirm_page_draws_a_refusal_before_the_question():
+    """A reason inside the prompt reads as part of the standing question."""
+    from common.components import ConfirmPage
+
+    markup = str(
+        ConfirmPage(
+            title="Remove game",
+            message="Remove Elite from your library?",
+            refusal=["The library no longer tracks it.", "Reload and try again."],
+            post_url="/tracker/game/1/remove",
+            csrf_token="token",
+            cancel_url="/tracker/game/list",
+            confirm_label="Remove",
+        )
+    )
+
+    assert "The library no longer tracks it." in markup
+    assert "Reload and try again." in markup
+    assert markup.index("no longer tracks") < markup.index("Remove Elite")
+
+
+def test_confirm_page_nobody_refused_draws_no_error_list():
+    from common.components import ConfirmPage
+
+    markup = str(
+        ConfirmPage(
+            title="Remove game",
+            message="Remove Elite from your library?",
+            post_url="/tracker/game/1/remove",
+            csrf_token="token",
+            cancel_url="/tracker/game/list",
+            confirm_label="Remove",
+        )
+    )
+
+    assert "<ul" not in markup
+
+
 if __name__ == "__main__":
     unittest.main()
 

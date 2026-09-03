@@ -15,6 +15,7 @@ from django import forms
 from django.core.exceptions import ValidationError
 
 from common.date_time_presentation import DateTimePresentation
+from common.naming import NameKey, name_key
 from games.catalog_compat import MirroredIdentity, mirrored_identity, write_and_mirror
 from games.catalog_writes import (
     EditionState,
@@ -260,6 +261,7 @@ class CatalogGraphForm:
         self.library = library
         self.presentation = presentation
         self.form_errors: list[str] = []
+        self._read = False
         #: A post that states more rows than `MOST_ROWS` is refused,
         #: not served short. `_blocks_from_post` sets it.
         self._overcounted = False
@@ -423,22 +425,41 @@ class CatalogGraphForm:
         return None
 
     def is_valid(self) -> bool:
-        """Every row, and then the things only the set can say."""
+        """Every sentence that stands, however often asked."""
         if not self.is_bound:
             return False
-        #: `all()` over a generator stops at the first false one, and a
-        #: row it never reached holds no `cleaned_data`. `_validate_set`
-        #: reads every row's, thus every row is read here first.
-        read: list[bool] = []
+        self._read_once()
+        return not self.form_errors and not any(
+            form.errors for form in self._rows_by_key().values()
+        )
+
+    def _read_once(self) -> None:
+        """One pass over the rows and then over the set.
+
+        A row states its own sentence once, because a field it
+        already refused it does not read again. The set has no such
+        guard: a second pass would state `LAST_EDITION_IN_FORM` and
+        `LAST_RELEASE` beside the first. The answer above is read
+        fresh every time, because `answer()` puts a service refusal
+        on a row, or on `form_errors`, after this has returned, and
+        the page then draws the form again.
+        """
+        if self._read:
+            return
+        self._read = True
+        #: Every row, not up to the first false one: `_validate_set`
+        #: reads each row's `cleaned_data`, and a row nobody read
+        #: holds none.
         for block in self.blocks:
-            read.append(reads_as_stated(block.form))
+            reads_as_stated(block.form)
             going = block.removed
-            read += [reads_as_stated(row, going=going) for row in block.rows]
-        return self._validate_set() and all(read)
+            for row in block.rows:
+                reads_as_stated(row, going=going)
+        self._validate_set()
 
     def _validate_names(self, surviving: list[EditionBlock]) -> bool:
         valid = True
-        taken: set[str] = set()
+        taken: set[NameKey] = set()
         unnamed = 0
         for block in surviving:
             #: A block with its own errors states no name yet. Absent
@@ -454,10 +475,10 @@ class CatalogGraphForm:
                     block.form.add_error("name", UNNAMED_SIBLING_EDITION)
                     valid = False
                 continue
-            if name.casefold() in taken:
+            if name_key(name) in taken:
                 block.form.add_error("name", DUPLICATE_NAME_IN_FORM)
                 valid = False
-            taken.add(name.casefold())
+            taken.add(name_key(name))
         return valid
 
     def _validate_releases(self, surviving: list[EditionBlock]) -> bool:

@@ -27,6 +27,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from common.duration_presentation import format_decimal_hours
+from common.naming import name_key
 from common.utils import label_with_details
 from games.external_references import external_reference_url, normalize_provider_key
 from timetracker.settings_registry import THEME_CHOICES, SettingKey
@@ -448,8 +449,8 @@ class Platform(ReferencedRow):
                 normalized_group=Lower(Trim("group")),
             )
             .filter(
-                normalized_name=self.name.strip().casefold(),
-                normalized_group=self.group.strip().casefold(),
+                normalized_name=name_key(self.name),
+                normalized_group=name_key(self.group),
             )
         )
         if self.library_id is None:

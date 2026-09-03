@@ -44,15 +44,17 @@ def confirm_and_apply(
     detail page, say — so an origin pointing there is refused rather than
     followed into a 404.
 
-    An ``action`` that refuses puts its sentence back on the confirmation.
+    An ``action`` that refuses puts every sentence it carried back on the
+    confirmation, above the question rather than inside it.
     """
 
-    def confirmation(refusal: str = "", status: int = 200) -> HttpResponse:
+    def confirmation(refusal: Sequence[str] = (), status: int = 200) -> HttpResponse:
         return render_page(
             request,
             ConfirmPage(
                 title=title,
-                message=f"{refusal} {message}" if refusal else message,
+                message=message,
+                refusal=refusal,
                 details=details,
                 post_url=request.get_full_path(),
                 csrf_token=get_token(request),
@@ -73,7 +75,7 @@ def confirm_and_apply(
         #: The service refuses on state, and state moves: another tab
         #: may have taken the sibling this removal counted on. A 500
         #: would read as our fault rather than as a stale page.
-        return confirmation(refusal.messages[0], status=409)
+        return confirmation(refusal.messages, status=409)
     return redirect(
         return_url(
             request,

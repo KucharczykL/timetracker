@@ -180,6 +180,21 @@ def test_two_surviving_editions_may_not_state_one_name(owned_library, game):
     assert refused.value.key == "edition-1"
 
 
+def test_two_names_the_constraint_separates_may_both_stand(owned_library, game):
+    """`casefold()` read `Straße` and `STRASSE` as one name; the database does not."""
+    written = state(
+        game.game,
+        owned_library,
+        one(edition=game.edition, name="Straße"),
+        one(key="edition-1", name="STRASSE", is_default=False),
+    )
+
+    assert sorted(entry.edition.name for entry in written.editions) == [
+        "STRASSE",
+        "Straße",
+    ]
+
+
 def test_a_name_an_unmentioned_edition_holds_is_refused(owned_library, game):
     """A row nobody states still holds its own name."""
     Edition.objects.create(game=game.game, name="Original")

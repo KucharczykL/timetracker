@@ -9,6 +9,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from games.models import Game, PlayerGame, PlayerGameStatus, Session
+from games.writes.answers import CommandFailed
 from games.writes.playergame import new_correlation_id, record_facts, track_game
 
 
@@ -248,3 +249,23 @@ def test_the_tracking_fixture_states_the_games_facts(owned_library):
 
     assert tracked.status == PlayerGameStatus.COMPLETED
     assert tracked.mastered is True
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_refused_removal_re_renders_the_confirmation(
+    monkeypatch, logged_in, owned_library
+):
+    """The toast said nothing happened while the redirect said it did."""
+    game = Game.objects.create(library=owned_library, name="Elite")
+
+    def refuse(*_args, **_kwargs):
+        raise CommandFailed("The library cannot stop tracking it.", 409)
+
+    monkeypatch.setattr("games.views.playergame_writes.untrack_game", refuse)
+
+    response = logged_in.post(reverse("games:remove_game", args=[game.pk]))
+
+    assert response.status_code == 409
+    assert "cannot stop tracking it" in response.content.decode()
+    game.refresh_from_db()
+    assert game.removed_at is None
