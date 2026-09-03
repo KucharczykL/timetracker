@@ -1,6 +1,6 @@
 """One submit of the Game form.
 
-The columns, the wikidata reference, the graph and the mirror, in
+The columns, the graph, the external references and the mirrors, in
 one transaction. The PlayerGame command stays outside:
 `run_in_transaction` refuses to nest.
 """
@@ -13,12 +13,13 @@ from django.db import IntegrityError, transaction
 from games.catalog_compat import LEGACY_IDENTITY_TAKEN, MirroredIdentity
 from games.catalog_form import CatalogGraphForm
 from games.catalog_writes import DUPLICATE_EDITION_NAME
+from games.external_references import mirror_game_wikidata
 from games.models import Game
+from games.reference_form import ReferenceSetForm
 
 if TYPE_CHECKING:
     from games.forms import GameForm
 
-WIKIDATA_CONFLICT_MESSAGE = "This Wikidata entity ID already belongs to another game."
 #: No pre-check wins a race. The database decided.
 RACED = "Another change reached this game first. Nothing was saved; try again."
 #: A save writes every column, thus a stale form would put a removed
@@ -52,9 +53,9 @@ CONSTRAINT_ANSWERS: Final[dict[str, ConstraintAnswer]] = {
 #: A constraint named here states why; the guard test reads it.
 UNREACHABLE_FROM_THE_GAME_FORM: Final[dict[str, str]] = {
     "unique_external_reference_provider_kind_key": (
-        "`save_external_reference` catches this one in its own "
-        "savepoint and raises a `provider_key` ValidationError, "
-        "which `_game_form_refusal` answers onto the wikidata field."
+        "`state_external_references` reads every key a live row of "
+        "this kind holds before it writes one, and answers the "
+        "refusal onto the box that stated it."
     ),
     "unique_live_game_reference_per_provider": (
         "`ReferenceSetForm` holds one field per provider, thus a post "
@@ -93,7 +94,7 @@ def answered_constraint(collision: IntegrityError) -> ConstraintAnswer | None:
 
 @transaction.atomic
 def save_game_columns(form: GameForm, identity: MirroredIdentity) -> Game:
-    """The Game's own columns and its reference.
+    """The Game's own columns.
 
     The name and the flat pair go in one write. The unique
     constraint reads all three, thus a rename that moves its own
@@ -119,19 +120,22 @@ def save_game_columns(form: GameForm, identity: MirroredIdentity) -> Game:
 
 
 @transaction.atomic
-def save_game_and_graph(form: GameForm, graph: CatalogGraphForm) -> Game:
-    """The Game and its whole graph, or neither."""
+def save_game_and_graph(
+    form: GameForm, graph: CatalogGraphForm, references: ReferenceSetForm
+) -> Game:
+    """The Game, its whole graph and its references, or none of them."""
     game = save_game_columns(form, graph.mirrored_identity())
     graph.bind(game)
     graph.write()
+    references.bind(game)
+    references.write()
+    #: The reference states the key; the column follows it.
+    mirror_game_wikidata(game)
     return game
 
 
 def _game_form_refusal(form: GameForm, error: ValidationError) -> bool:
     """A refusal the Game's own fields caused."""
-    if hasattr(error, "message_dict") and set(error.message_dict) == {"provider_key"}:
-        form.add_error("wikidata", WIKIDATA_CONFLICT_MESSAGE)
-        return True
     if REMOVED_SINCE_READ in error.messages:
         form.add_error(None, REMOVED_SINCE_READ)
         return True
@@ -144,7 +148,7 @@ def _game_form_refusal(form: GameForm, error: ValidationError) -> bool:
 
 
 def submitted_game_or_form_error(
-    form: GameForm, graph: CatalogGraphForm
+    form: GameForm, graph: CatalogGraphForm, references: ReferenceSetForm
 ) -> Game | None:
     """Write one submit, or answer every refusal.
 
@@ -152,7 +156,7 @@ def submitted_game_or_form_error(
     connection is unusable, thus the answer follows the rollback.
     """
     try:
-        return save_game_and_graph(form, graph)
+        return save_game_and_graph(form, graph, references)
     except IntegrityError as collision:
         answer = answered_constraint(collision)
         if answer is None:
@@ -160,6 +164,8 @@ def submitted_game_or_form_error(
         form.add_error(answer.field, answer.sentence)
         return None
     except ValidationError as refusal:
+        if references.answer(refusal):
+            return None
         if _game_form_refusal(form, refusal):
             return None
         if graph.answer(refusal):

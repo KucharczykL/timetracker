@@ -31,7 +31,7 @@ BLANK_CATALOG = {
 GAME_PAYLOAD = {
     "name": "Outer Wilds",
     "status": "unplayed",
-    "wikidata": "",
+    "reference_wikidata": "",
 } | BLANK_CATALOG
 
 

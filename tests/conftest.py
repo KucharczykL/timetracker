@@ -74,6 +74,32 @@ def stated_graph():
 
 
 @pytest.fixture
+def game_post():
+    """The Game form's own fields, beside the Editions area.
+
+    Two modules post this form now, thus the body lives here rather
+    than beside either of them.
+    """
+
+    def fields(name: str, **extra: str) -> dict[str, str]:
+        posted = {
+            "name": name,
+            "sort_name": "",
+            "reference_wikidata": "",
+            "status": "unplayed",
+            "editions-count": "1",
+            "edition-0-name": "",
+            "edition-0-releases-count": "1",
+            "edition-0-release-0-platform": "",
+            "in_library": "edition-0-release-0",
+        }
+        posted.update(extra)
+        return posted
+
+    return fields
+
+
+@pytest.fixture
 def catalog_graph_post():
     """The Editions area's fields, the way a Game form posts them.
 

@@ -295,7 +295,7 @@ def test_the_game_form_states_a_date_and_leaves_the_graph_to_the_adapter(
             "name": "Legacy Game",
             "sort_name": "Legacy Game",
             "status": PlayerGameStatus.UNPLAYED,
-            "wikidata": "",
+            "reference_wikidata": "",
             temporal_input_name("original_release_date", "kind"): "date",
             temporal_input_name("original_release_date", "start_year"): "2000",
         },

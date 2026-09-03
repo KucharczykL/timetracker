@@ -1,6 +1,7 @@
 """The External references area, as one bound thing."""
 
 import pytest
+from django.urls import reverse
 
 from games.external_references import KEY_TAKEN, state_external_references
 from games.models import ExternalReference, Game
@@ -104,3 +105,98 @@ def test_a_refusal_naming_no_provider_is_a_non_field_error(owned_library):
 
 def test_the_field_name_is_the_provider(owned_library):
     assert reference_field_name("wikidata") == "reference_wikidata"
+
+
+#: The view dispatches a PlayerGame command, and
+#: `run_in_transaction` refuses to nest.
+view_tests = pytest.mark.django_db(transaction=True)
+
+
+@view_tests
+def test_add_game_writes_the_key_the_area_states(client, owned_user, game_post):
+    client.force_login(owned_user)
+
+    client.post(
+        reverse("games:add_game"),
+        game_post("Elite", reference_wikidata="q123"),
+    )
+
+    game = Game.objects.get(name="Elite")
+    assert game.wikidata == "Q123"
+    assert (
+        ExternalReference.objects.get(game=game, removed_at=None).provider_key == "Q123"
+    )
+
+
+@view_tests
+def test_a_taken_key_answers_on_the_game_form(client, owned_user, game_post):
+    client.force_login(owned_user)
+    held = Game.objects.create(name="Held", library=owned_user.library)
+    state_external_references(
+        target=held, library=owned_user.library, keys={"wikidata": "Q123"}
+    )
+
+    response = client.post(
+        reverse("games:add_game"),
+        game_post("Elite", reference_wikidata="Q123"),
+    )
+
+    assert response.status_code == 200
+    assert KEY_TAKEN in response.content.decode()
+    assert not Game.objects.filter(name="Elite").exists()
+
+
+@view_tests
+def test_clearing_the_box_removes_the_reference(client, owned_user, game_post):
+    client.force_login(owned_user)
+    game = Game.objects.create(name="Elite", library=owned_user.library)
+    state_external_references(
+        target=game, library=owned_user.library, keys={"wikidata": "Q123"}
+    )
+
+    client.post(
+        reverse("games:edit_game", args=[game.pk]),
+        game_post("Elite", reference_wikidata=""),
+    )
+
+    game.refresh_from_db()
+    assert game.wikidata == ""
+    assert not ExternalReference.objects.filter(game=game, removed_at=None).exists()
+
+
+@view_tests
+def test_an_unchanged_key_keeps_the_reference_it_had(client, owned_user, game_post):
+    """A resubmit states the same key, thus nothing is written."""
+    client.force_login(owned_user)
+    game = Game.objects.create(name="Elite", library=owned_user.library)
+    state_external_references(
+        target=game, library=owned_user.library, keys={"wikidata": "Q123"}
+    )
+    reference_id = ExternalReference.objects.get(game=game, removed_at=None).pk
+
+    client.post(
+        reverse("games:edit_game", args=[game.pk]),
+        game_post("Elite", reference_wikidata="Q123"),
+    )
+
+    assert ExternalReference.objects.get(game=game, removed_at=None).pk == reference_id
+
+
+@view_tests
+def test_a_taken_key_takes_the_rename_back(client, owned_user, game_post):
+    """One transaction: the reference refuses and the columns follow."""
+    client.force_login(owned_user)
+    held = Game.objects.create(name="Held", library=owned_user.library)
+    state_external_references(
+        target=held, library=owned_user.library, keys={"wikidata": "Q123"}
+    )
+    game = Game.objects.create(name="Before conflict", library=owned_user.library)
+
+    response = client.post(
+        reverse("games:edit_game", args=[game.pk]),
+        game_post("After conflict", reference_wikidata="Q123"),
+    )
+
+    assert response.status_code == 200
+    game.refresh_from_db()
+    assert game.name == "Before conflict"

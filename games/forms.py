@@ -26,10 +26,8 @@ from common.components import (
 from common.components.primitives import Checkbox
 from common.date_time_presentation import DateTimePresentation, zone_or_none
 from games.dev_login import prefill_credentials
-from games.external_references import normalize_provider_key
 from games.models import (
     Device,
-    ExternalReference,
     Game,
     Platform,
     PlayerGame,
@@ -983,7 +981,6 @@ class GameForm(
         "original_release_date",
         "status",
         "mastered",
-        "wikidata",
     )
 
     def save(self, commit=True):
@@ -993,37 +990,12 @@ class GameForm(
             self.save_m2m()
         return game
 
-    def clean_wikidata(self) -> str:
-        value = self.cleaned_data["wikidata"]
-        if not value.strip():
-            return ""
-
-        try:
-            _, canonical_key = normalize_provider_key(
-                provider="wikidata", provider_key=value
-            )
-        except forms.ValidationError as error:
-            raise forms.ValidationError(error.messages) from error
-
-        references = ExternalReference.objects.filter(
-            provider="wikidata",
-            entity_kind="game",
-            provider_key=canonical_key,
-        )
-        if self.instance.pk is not None:
-            references = references.exclude(game_id=self.instance.pk)
-        if references.exists():
-            raise forms.ValidationError(
-                "This Wikidata entity ID already belongs to another game."
-            )
-        return canonical_key
-
     class Meta:
         model = Game
         #: The Platform and the release year moved to the Release
         #: that states them; the two integer columns beside them are
         #: a mirror now, written by `games/catalog_compat.py`.
-        fields = ("name", "sort_name", "wikidata")
+        fields = ("name", "sort_name")
         widgets: ClassVar[dict[str, forms.Widget]] = {"name": autofocus_input_widget}
 
 

@@ -90,6 +90,7 @@ from games.models import (
 from games.ownership import owned_or_404
 from games.reads.catalog_hierarchy import EditionEntry, game_hierarchy
 from games.reads.playergame_history import StatusEntry, status_history
+from games.reference_form import ReferenceSetForm
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
 from games.views.catalog_section import editions_area
 from games.views.filtering import (
@@ -103,6 +104,7 @@ from games.views.playergame_writes import (
     track_game_for_request,
 )
 from games.views.playevent import create_playevent_tabledata
+from games.views.reference_section import references_area
 from games.views.removal import confirm_and_remove
 from games.views.returns import origin_from, return_url
 from games.writes.playergame import new_correlation_id
@@ -258,12 +260,14 @@ def add_game(request: HttpRequest) -> HttpResponse:
     graph = CatalogGraphForm(
         request.POST or None, game=None, library=library, presentation=presentation
     )
+    references = ReferenceSetForm(request.POST or None, target=None, library=library)
     #: Both read, whatever either says. `and` stops at the first false
     #: one, and a graph the Game's own refusal never reached states no
     #: sentence of its own and lets no mark fall.
     game_reads = form.is_valid()
-    if graph.is_valid() and game_reads:
-        game = submitted_game_or_form_error(form, graph)
+    references_read = references.is_valid()
+    if graph.is_valid() and game_reads and references_read:
+        game = submitted_game_or_form_error(form, graph, references)
         if game is not None:
             correlation_id = new_correlation_id()
             if not track_game_for_request(request, game, correlation_id=correlation_id):
@@ -305,7 +309,9 @@ def add_game(request: HttpRequest) -> HttpResponse:
         AddForm(
             form,
             request=request,
-            fields=Fragment(FormFields(form), editions_area(graph)),
+            fields=Fragment(
+                FormFields(form), editions_area(graph), references_area(references)
+            ),
             width_class="max-w-xl md:max-w-4xl",
             additional_row=Fragment(
                 ControlButton(
@@ -370,10 +376,12 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
     graph = CatalogGraphForm(
         request.POST or None, game=game, library=library, presentation=presentation
     )
+    references = ReferenceSetForm(request.POST or None, target=game, library=library)
     #: Both read; see `add_game` for why the order is not `and`.
     game_reads = form.is_valid()
-    if graph.is_valid() and game_reads:
-        written = submitted_game_or_form_error(form, graph)
+    references_read = references.is_valid()
+    if graph.is_valid() and game_reads and references_read:
+        written = submitted_game_or_form_error(form, graph, references)
         if written is not None:
             if record_facts_for_request(
                 request,
@@ -389,6 +397,7 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
             graph = CatalogGraphForm(
                 None, game=written, library=library, presentation=presentation
             )
+            references = ReferenceSetForm(None, target=written, library=library)
     #: A failed command lands here too: redirecting would read as
     #: a save. An edit resubmits onto the same row, so re-rendering
     #: invites no duplicate.
@@ -397,7 +406,9 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
         AddForm(
             form,
             request=request,
-            fields=Fragment(FormFields(form), editions_area(graph)),
+            fields=Fragment(
+                FormFields(form), editions_area(graph), references_area(references)
+            ),
             width_class="max-w-xl md:max-w-4xl",
         ),
         title="Edit Game",
