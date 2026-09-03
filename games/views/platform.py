@@ -12,6 +12,7 @@ from common.components import (
     ButtonGroup,
     Column,
     ContentContainer,
+    ExternalReferenceLinks,
     FormFields,
     Fragment,
     Icon,
@@ -33,6 +34,7 @@ from games.filters import filter_query_context_for_library, parse_platform_filte
 from games.forms import PlatformForm
 from games.models import Platform
 from games.ownership import owned_or_404
+from games.reads.external_references import references_for
 from games.reference_form import ReferenceSetForm, submitted_or_form_error
 from games.sorting import (
     PLATFORM_DEFAULT_SORT,
@@ -75,6 +77,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
     platforms = sort.queryset
     warn_unknown_sort(request, sort.unknown, entity="platform")
     platforms, page_obj, elided_page_range = paginate(platforms, find)
+    references = references_for(list(platforms))
 
     data: TableData = {
         "caption": "Platforms",
@@ -82,6 +85,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
             Column("Name", "name"),
             Column("Icon", priority=2),
             Column("Group", "group", priority=2),
+            Column("References", priority=3),
             Column("Created", "created"),
             Column("Actions", align="right", priority=3),
         ],
@@ -91,6 +95,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
                 TruncatedText(platform.name),
                 Icon(platform.icon),
                 platform.group,
+                ExternalReferenceLinks(references.get(platform.pk, [])),
                 presentation.format(platform.created_at, "date"),
                 ButtonGroup(
                     [

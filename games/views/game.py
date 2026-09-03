@@ -6,7 +6,7 @@ from uuid import UUID
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
-from django.db.models import F, OuterRef, Q, QuerySet, Subquery, Sum
+from django.db.models import F, Model, OuterRef, Q, QuerySet, Subquery, Sum
 from django.http import Http404, HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import redirect
@@ -23,6 +23,7 @@ from common.components import (
     Duration,
     DurationAlternates,
     DurationText,
+    ExternalReferenceLinks,
     FormFields,
     Fragment,
     GameStatus,
@@ -78,6 +79,7 @@ from games.filters import (
 from games.formatting import session_time_range
 from games.forms import GameForm
 from games.models import (
+    ExternalReference,
     Game,
     PlayerGameStatus,
     PlayEvent,
@@ -89,6 +91,7 @@ from games.models import (
 )
 from games.ownership import owned_or_404
 from games.reads.catalog_hierarchy import EditionEntry, game_hierarchy
+from games.reads.external_references import ReferenceMap, references_for
 from games.reads.playergame_history import StatusEntry, status_history
 from games.reference_form import ReferenceSetForm
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
@@ -683,12 +686,28 @@ def _plain_release_rows(
     return rows
 
 
+def _references_row(references: Sequence[ExternalReference]) -> list[Node]:
+    """No row at all when the record names nothing outside."""
+    if not references:
+        return []
+    return [_meta_row("References", ExternalReferenceLinks(references))]
+
+
+def _references_cell(entry: EditionEntry, references: ReferenceMap) -> Node:
+    """One Edition's references, then its Releases'."""
+    held = list(references.get(entry.edition.pk, ()))
+    for release in entry.releases:
+        held.extend(references.get(release.pk, ()))
+    return ExternalReferenceLinks(held)
+
+
 def _releases_section(
     entries: Sequence[EditionEntry],
     presentation: DateTimePresentation,
     origin: OriginUrl | None,
     *,
     game: Game,
+    references: ReferenceMap,
 ) -> Node:
     """What the header's two rows cannot say.
 
@@ -707,7 +726,11 @@ def _releases_section(
     if _reads_plainly(entries):
         return Fragment()
     controls = _catalog_controls_visible(game)
-    columns = [Column("Name"), Column("Platforms", wrap=True)]
+    columns = [
+        Column("Name"),
+        Column("Platforms", wrap=True),
+        Column("References", priority=3),
+    ]
     if controls:
         columns.append(Column("Actions", align="right", priority=3))
     #: One link, drawn once per row: the form owns every Edition.
@@ -720,6 +743,7 @@ def _releases_section(
         make_row(
             entry.edition.display_name,
             _platforms_cell(entry, presentation),
+            _references_cell(entry, references),
             *((edit,) if controls else ()),
         )
         for entry in entries
@@ -749,6 +773,7 @@ def _game_header(
     durations: DurationPresentation,
     origin: OriginUrl | None,
     entries: Sequence[EditionEntry],
+    references: Sequence[ExternalReference],
 ) -> Node:
     playrange_start = metrics["playrange_start"]
     playrange_end = metrics["playrange_end"]
@@ -797,6 +822,7 @@ def _game_header(
                 game.original_release_date, presentation, class_=META_VALUE_CLASS
             ),
         ),
+        *_references_row(references),
         _meta_row(
             "Status",
             Span()[
@@ -990,6 +1016,12 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
     purchases = Purchase.objects.for_library(library).filter(games=game)
     playevents = PlayEvent.objects.for_library(library).filter(game=game)
     hierarchy = game_hierarchy(game, library)
+    #: One read for the page: the Game, every Edition, every Release.
+    referenced: list[Model] = [game]
+    for entry in hierarchy:
+        referenced.append(entry.edition)
+        referenced.extend(entry.releases)
+    references = references_for(referenced)
     content = ContentContainer(class_="dark:text-white")[
         _game_header(
             game,
@@ -999,8 +1031,11 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
             durations,
             origin,
             hierarchy,
+            references.get(game.pk, []),
         ),
-        _releases_section(hierarchy, presentation, origin, game=game),
+        _releases_section(
+            hierarchy, presentation, origin, game=game, references=references
+        ),
         _purchases_section(game, purchases, presentation, origin),
         _sessions_section(game, sessions, presentation, durations),
         _playevents_section(game, playevents, presentation, origin),

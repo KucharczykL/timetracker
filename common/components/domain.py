@@ -1,5 +1,6 @@
 """Domain components for games / purchases / sessions."""
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, NamedTuple
 
 from django.template.defaultfilters import floatformat
@@ -20,7 +21,13 @@ from common.components.primitives import (
     TruncatedText,
     Ul,
 )
-from games.models import Game, PlayerGameStatus, Purchase, Session
+from games.models import (
+    ExternalReference,
+    Game,
+    PlayerGameStatus,
+    Purchase,
+    Session,
+)
 
 if TYPE_CHECKING:
     from common.duration_presentation import DurationPresentation
@@ -108,6 +115,35 @@ def PriceConverted(
         title="Price is a result of conversion and rounding.",
         class_="decoration-dotted underline",
     )[*as_children(children)]
+
+
+def ExternalReferenceLinks(references: Sequence[ExternalReference]) -> Node:
+    """One link per reference, safe by three layers.
+
+    The database refuses a key its canonical pattern does not
+    match, the policy template is the only source of a URL and
+    quotes the key it interpolates, and the node layer escapes
+    every attribute value it writes.
+    """
+    from games.external_references import PROVIDER_POLICIES, external_reference_url
+
+    if not references:
+        return Fragment()
+    return Span(class_="flex flex-wrap gap-2")[
+        *(
+            Link(
+                href=external_reference_url(
+                    provider=reference.provider,
+                    entity_kind=reference.entity_kind,
+                    provider_key=reference.provider_key,
+                ),
+                class_="whitespace-nowrap",
+                rel="noopener noreferrer",
+                target="_blank",
+            )[f"{PROVIDER_POLICIES[reference.provider].label} {reference.provider_key}"]
+            for reference in references
+        )
+    ]
 
 
 def LinkedPurchase(purchase: Purchase) -> Node:
