@@ -20,7 +20,7 @@ from games.external_references import (
     ReferencesRefused,
     state_external_references,
 )
-from games.forms import PrimitiveWidgetsMixin
+from games.forms import apply_primitive_widget_classes
 from games.models import ExternalReference, UserLibrary
 
 
@@ -29,11 +29,15 @@ def reference_field_name(provider: str) -> str:
     return f"reference_{provider}"
 
 
-class ReferenceSetForm(PrimitiveWidgetsMixin, forms.Form):
+class ReferenceSetForm(forms.Form):
     """Every external reference of one record, as one bound thing.
 
     `target` is None on an Add page, where the record does not
     exist yet; `bind()` names it once the submit has made it.
+
+    The fields are built after ``super().__init__()``, thus out of
+    :class:`PrimitiveWidgetsMixin`'s reach; the stamping call the
+    mixin would have made is here instead.
     """
 
     def __init__(
@@ -54,6 +58,7 @@ class ReferenceSetForm(PrimitiveWidgetsMixin, forms.Form):
                 label=policy.label,
                 help_text=policy.hint,
             )
+        apply_primitive_widget_classes(self.fields)
 
     def _stored(self, target: CatalogTarget) -> dict[str, str]:
         """The keys this record holds, under their field names."""

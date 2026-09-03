@@ -4,6 +4,7 @@ import pytest
 from django.urls import reverse
 
 from games.external_references import KEY_TAKEN, state_external_references
+from games.forms import INPUT_CLASS
 from games.models import ExternalReference, Game, Platform
 from games.reference_form import ReferenceSetForm, reference_field_name
 
@@ -18,6 +19,15 @@ def test_the_registry_states_the_fields(owned_library):
     assert list(form.fields) == ["reference_wikidata"]
     assert form.fields["reference_wikidata"].label == "Wikidata"
     assert "Q123" in form.fields["reference_wikidata"].help_text
+
+
+def test_every_box_wears_the_native_control_classes(owned_library):
+    """A field built after ``super().__init__()`` is still stamped."""
+    form = ReferenceSetForm(None, target=None, library=owned_library)
+
+    widget = form.fields["reference_wikidata"].widget
+    assert INPUT_CLASS in widget.attrs["class"]
+    assert INPUT_CLASS in str(form["reference_wikidata"])
 
 
 def test_an_unbound_form_reads_the_live_reference(owned_library):
