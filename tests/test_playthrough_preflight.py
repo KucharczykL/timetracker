@@ -1,12 +1,16 @@
 """What the legacy lifecycle rows hold, before #684 converts them."""
 
+import json
 import uuid
 from datetime import date, datetime
+from io import StringIO
 
 import pytest
+from django.core.management import CommandError, call_command
 from django.utils import timezone
 
 from games.backfill.playergame import backfill_library
+from games.management.commands.preflight_playthroughs import MACHINE_PREFIX
 from games.models import Game, GameStatusChange, LibraryEvent, PlayerGame, PlayEvent
 from games.preflight.playthrough import (
     NO_COUNTS,
@@ -449,3 +453,94 @@ def test_a_shared_game_two_libraries_track_holds_contested_rows(
             tracked_at=timezone.now(),
         )
     assert shared_catalog_counts().contested_rows == 1
+
+
+def _run(*args):
+    output = StringIO()
+    call_command("preflight_playthroughs", *args, stdout=output)
+    return output.getvalue()
+
+
+def _machine_line(text):
+    line = next(
+        line for line in text.splitlines() if line.startswith(MACHINE_PREFIX)
+    )
+    return json.loads(line[len(MACHINE_PREFIX) :])
+
+
+def test_a_scope_is_named_rather_than_defaulted(owned_library):
+    with pytest.raises(CommandError):
+        _run()
+
+
+def test_the_machine_line_comes_first(owned_library):
+    text = _run("--all-libraries")
+    assert text.splitlines()[0].startswith(MACHINE_PREFIX)
+
+
+def test_the_machine_line_carries_every_count(owned_library):
+    game = _game(owned_library)
+    _saved_row(game, started=date(2024, 5, 9), ended=date(2024, 5, 1))
+    payload = _machine_line(_run("--user", owned_library.user.username))
+    assert payload["schema_version"] == 1
+    assert payload["summary"]["reversed_endpoints"] == 1
+    assert payload["libraries"][0]["counts"]["reversed_endpoints"] == 1
+    assert payload["shared_catalog"]["shared_games"] == 0
+
+
+def test_the_summary_is_the_sum_of_the_libraries(owned_library, django_user_model):
+    stranger = django_user_model.objects.create_user(username="stranger", password="p")
+    for library in (owned_library, stranger.library):
+        _saved_row(_game(library), started=date(2024, 1, 1))
+    payload = _machine_line(_run("--all-libraries"))
+    assert payload["summary"]["live_rows"] == 2
+    assert (
+        sum(entry["counts"]["live_rows"] for entry in payload["libraries"])
+        == payload["summary"]["live_rows"]
+    )
+
+
+def test_the_machine_line_sorts_its_keys(owned_library):
+    line = next(
+        line
+        for line in _run("--all-libraries").splitlines()
+        if line.startswith(MACHINE_PREFIX)
+    )
+    body = line[len(MACHINE_PREFIX) :]
+    assert body == json.dumps(json.loads(body), sort_keys=True, separators=(",", ":"))
+
+
+def test_the_human_section_names_the_library(owned_library):
+    text = _run("--user", owned_library.user.username)
+    assert f"library {owned_library.pk}" in text
+    assert "tracked games: 0" in text
+
+
+def test_a_run_over_every_anomaly_still_exits_zero(owned_library):
+    game = _game(owned_library)
+    _saved_row(game, started=date(2024, 5, 9), ended=date(2024, 5, 1))
+    _saved_row(game)
+    #: call_command raises SystemExit on a nonzero code.
+    _run("--all-libraries")
+
+
+def test_two_runs_print_the_same_bytes(owned_library):
+    game = _game(owned_library)
+    _saved_row(game, started=date(2024, 1, 1))
+    _saved_row(game, started=date(2024, 1, 1))
+    assert _run("--all-libraries") == _run("--all-libraries")
+
+
+def test_the_sample_cap_reaches_the_output(owned_library):
+    game = _game(owned_library)
+    for day in (1, 2, 3):
+        _saved_row(game, started=date(2024, 5, day + 8), ended=date(2024, 5, day))
+    payload = _machine_line(_run("--all-libraries", "--sample-size", "1"))
+    entry = payload["libraries"][0]
+    assert entry["counts"]["reversed_endpoints"] == 3
+    assert len(entry["samples"]["reversed_endpoints"]) == 1
+
+
+def test_an_unknown_user_is_refused_by_name(owned_library):
+    with pytest.raises(CommandError, match="nobody"):
+        _run("--user", "nobody")
