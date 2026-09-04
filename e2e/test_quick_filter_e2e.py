@@ -243,15 +243,21 @@ def test_date_dropdown_facet_preset_flow(
     """The Started facet as a dropdown: a ghost "Started ▾" trigger
     opening a static always-visible calendar (no toggle, no Cancel/Select);
     picking the Today preset and applying serializes a BETWEEN criterion."""
-    from datetime import date, datetime, timedelta
+    from datetime import datetime, timedelta
 
     from games.models import Session
 
     platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
     game = Game.objects.create(library=e2e_library, name="Doom", platform=platform)
+    #: Noon, so no zone the three clocks use reads another day.
+    #:
+    #: The preset states the browser's day (#949), the filter answers
+    #: in the display one, and the row is stored in UTC. An hour
+    #: either side of midnight they name two days and the row is lost.
     now = datetime.now(UTC)
+    noon = now.replace(hour=12, minute=0, second=0, microsecond=0)
     today_session = Session.objects.create(
-        game=game, timestamp_start=now, timestamp_end=now + timedelta(hours=1)
+        game=game, timestamp_start=noon, timestamp_end=noon + timedelta(hours=1)
     )
     old_start = datetime(2020, 1, 1, 12, 0, tzinfo=UTC)
     old_session = Session.objects.create(
@@ -280,7 +286,7 @@ def test_date_dropdown_facet_preset_flow(
     _quick_apply(page)
 
     page.wait_for_url("**filter=**")
-    today_iso = date.today().isoformat()
+    today_iso = now.date().isoformat()
     assert _filter_from_url(page.url) == {
         "timestamp_start": {
             "value": today_iso,
