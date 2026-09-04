@@ -333,6 +333,10 @@ loadplatforms: ensure-postgres
 audit-uuid-identity: ensure-postgres
 	uv run --frozen python manage.py audit_uuid_identity
 
+# Usage: make preflight-playthroughs ARGS="--all-libraries"
+preflight-playthroughs: ensure-postgres
+	uv run --frozen python manage.py preflight_playthroughs $(ARGS)
+
 # Usage: make bench ARGS="--seed 10000 --gate"
 bench: ensure-postgres
 	uv run --frozen python manage.py benchmark_events $(ARGS)
