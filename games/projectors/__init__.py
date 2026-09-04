@@ -4,4 +4,4 @@ A family may hold more than one, so this is not one module per family:
 `CURRENT_STATE` holds both PlayerGames and Playthroughs.
 """
 
-from games.projectors import playergame  # noqa: F401
+from games.projectors import playergame, playthrough  # noqa: F401

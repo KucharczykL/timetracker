@@ -1,9 +1,23 @@
 """One row per run at a game a library tracks."""
 
+import uuid
+
 import pytest
+from django.db import transaction
+from django.utils import timezone
 
 from games.checks import check_projection_models
-from games.models import Playthrough, PlaythroughKind
+from games.events.append import lock_stream
+from games.events.envelope import RecordedEvent
+from games.events.playthrough import playthrough_created
+from games.events.projection import DEFAULT_REGISTRY
+from games.models import (
+    Game,
+    LibraryEvent,
+    PlayerGame,
+    Playthrough,
+    PlaythroughKind,
+)
 
 pytestmark = pytest.mark.untracked_games
 
@@ -74,3 +88,72 @@ def test_the_display_order_index_covers_every_sort_key():
     ]
 
     assert len(covering) == 1
+
+
+def append_playthrough_created(library, actor, tracked, *, key="create"):
+    """Append one creation event, as dispatch would."""
+    with transaction.atomic():
+        stream = lock_stream(library)
+        return stream.append(
+            [playthrough_created(tracked.pk)],
+            actor=actor,
+            correlation_id=uuid.uuid7(),
+            idempotency_key=key,
+        )
+
+
+def test_the_creation_event_has_a_current_state_handler():
+    handlers = DEFAULT_REGISTRY.handlers_for("library.playthrough.created")
+
+    assert len(handlers) == 1
+
+
+def test_playergames_still_owns_its_own_events():
+    """Two projectors in one family, each with its own act."""
+    assert len(DEFAULT_REGISTRY.handlers_for("library.playergame.created")) == 1
+
+
+@pytest.fixture
+def tracked(owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    return PlayerGame.objects.create(
+        id=uuid.uuid7(),
+        library=owned_library,
+        game=game,
+        tracked_at=timezone.now(),
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_creation_event_writes_the_row(owned_user, owned_library, tracked):
+    appended = append_playthrough_created(owned_library, owned_user, tracked)
+
+    row = Playthrough.objects.get()
+    assert (row.player_game_id, row.library_id) == (tracked.pk, owned_library.pk)
+    assert row.pk == appended.events[0].aggregate_id
+    assert row.kind == PlaythroughKind.ORDINARY
+    assert row.created_at == appended.events[0].recorded_at
+    #: The model defaults, which no amendment has replaced yet.
+    assert (row.name, row.note, row.started, row.completed, row.removed_at) == (
+        "",
+        "",
+        None,
+        None,
+        None,
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_applying_the_creation_event_twice_writes_one_row(
+    owned_user, owned_library, tracked
+):
+    """The write is keyed on aggregate_id."""
+    appended = append_playthrough_created(owned_library, owned_user, tracked)
+    event = RecordedEvent.from_row(
+        LibraryEvent.objects.get(aggregate_id=appended.events[0].aggregate_id)
+    )
+
+    with transaction.atomic():
+        DEFAULT_REGISTRY.apply(event)
+
+    assert Playthrough.objects.count() == 1
