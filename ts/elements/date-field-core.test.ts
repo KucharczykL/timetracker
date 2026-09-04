@@ -46,8 +46,10 @@ describe("segmentSpec", () => {
   beforeEach(() => {
     segmentRules.mockReset();
     dayPeriodLabels.mockReset();
+    todayInPresentationZone.mockReset();
     segmentRules.mockReturnValue(null);
     dayPeriodLabels.mockReturnValue(null);
+    todayInPresentationZone.mockReturnValue(null);
   });
 
   it("refuses an unknown part instead of treating it as a day", async () => {
@@ -85,13 +87,21 @@ describe("segmentSpec", () => {
     });
   });
 
-  it("starts an empty year at the current year, other parts at their minimum", async () => {
+  it("starts an empty year at the display zone's year, other parts at their minimum", async () => {
+    todayInPresentationZone.mockReturnValue("2027-03-05");
+    const { segmentSpec } = await importCore();
+
+    expect(segmentSpec(mountSegment("year", 4, "YYYY"))?.emptyValue).toBe(2027);
+    expect(segmentSpec(mountSegment("day", 2, "DD"))?.emptyValue).toBe(1);
+  });
+
+  it("falls back to the browser's year when the contract cannot say", async () => {
+    todayInPresentationZone.mockReturnValue(null);
     const { segmentSpec } = await importCore();
 
     expect(segmentSpec(mountSegment("year", 4, "YYYY"))?.emptyValue).toBe(
       new Date().getFullYear(),
     );
-    expect(segmentSpec(mountSegment("day", 2, "DD"))?.emptyValue).toBe(1);
   });
 });
 
@@ -273,8 +283,9 @@ describe("todayInDisplayZone", () => {
     todayInPresentationZone.mockReturnValue(null);
     const { todayInDisplayZone, isoFromDate } = await importCore();
 
+    // The day is the claim. Not the hour: a browser zone that springs
+    // forward at midnight has no 00:00 to land on.
     const browserToday = new Date();
     expect(isoFromDate(todayInDisplayZone())).toBe(isoFromDate(browserToday));
-    expect(todayInDisplayZone().getHours()).toBe(0);
   });
 });

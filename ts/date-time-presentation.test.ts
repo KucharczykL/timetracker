@@ -264,6 +264,26 @@ const invalidContracts = [
 ];
 
 
+describe("an unusable contract", () => {
+  beforeEach(() => {
+    reportClientError.mockClear();
+    document.documentElement.removeAttribute(CONTRACT_ATTRIBUTE);
+  });
+
+  // Read by the two whose null a caller acts on: the rules a field binds its
+  // segments with, and the day a preset states (#949). The table sat with no
+  // consumer at all from f13c9445 until #949.
+  it.each(invalidContracts)("$name leaves every reader with null", async ({ raw }) => {
+    if (raw !== null) document.documentElement.setAttribute(CONTRACT_ATTRIBUTE, raw);
+    const { segmentRules, todayInPresentationZone } = await importFormatter();
+
+    expect(segmentRules("year")).toBeNull();
+    expect(todayInPresentationZone()).toBeNull();
+    // Once, by the contract read, which memoizes its null.
+    expect(reportClientError).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("nowInPresentationZone", () => {
   beforeEach(() => {
     reportClientError.mockClear();

@@ -48,6 +48,12 @@ def test_today_preset_uses_the_display_zone(
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
 
+    #: The browser has to be somewhere else for this to prove anything.
+    assert (
+        page.evaluate("Intl.DateTimeFormat().resolvedOptions().timeZone")
+        == BROWSER_ZONE
+    )
+
     page.locator("#quick-timestamp_start-dropdownLink").click()
     panel = page.locator("#quick-timestamp_start-dropdown")
     panel.locator('[data-date-range-preset="today"]').click()

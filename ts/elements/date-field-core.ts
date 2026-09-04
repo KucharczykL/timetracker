@@ -120,9 +120,11 @@ interface SegmentBehaviour {
  * in the contract rather than derived here.
  */
 const SEGMENT_BEHAVIOUR: Record<SegmentName, SegmentBehaviour> = {
-  // Jumping an empty year to 0001 is useless; start from this year.
+  // An empty year starts from this year.
+  //
+  // "This" is the display zone's year, not the browser's (#949).
   year: {
-    emptyValue: () => new Date().getFullYear(),
+    emptyValue: () => todayInDisplayZone().getFullYear(),
     fillFromRight: true,
     fallback: { minimum: 1, maximum: 9999 },
   },
