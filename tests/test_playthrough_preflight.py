@@ -4,8 +4,9 @@ import uuid
 from datetime import date
 
 import pytest
+from django.utils import timezone
 
-from games.models import Game, PlayEvent
+from games.models import Game, LibraryEvent, PlayerGame, PlayEvent
 from games.preflight.playthrough import (
     NO_COUNTS,
     CandidateEvent,
@@ -13,6 +14,7 @@ from games.preflight.playthrough import (
     Endpoint,
     EndpointKind,
     LegacyOrderKey,
+    LibraryPreflight,
     OrderingVerdict,
     PairingVerdict,
     PreflightCounts,
@@ -21,7 +23,9 @@ from games.preflight.playthrough import (
     legacy_order_key,
     ordering_counts,
     pair_endpoints,
+    preflight_library,
 )
+from games.removal import remove
 
 pytestmark = pytest.mark.django_db
 
@@ -223,3 +227,126 @@ def test_a_different_day_does_not_pair():
 def test_an_event_no_endpoint_matched_is_counted_unclaimed():
     result = pair_endpoints([], [_candidate(900), _candidate(901)])
     assert result.unclaimed_events == 2
+
+
+def _game(library, name="Chrono Trigger"):
+    return Game.objects.create(library=library, name=name)
+
+
+def _saved_row(game, started=None, ended=None):
+    return PlayEvent.objects.create(game=game, started=started, ended=ended)
+
+
+def test_a_tracked_game_with_no_rows_receives_the_default(owned_library):
+    _game(owned_library)
+    counts = preflight_library(owned_library).counts
+    assert counts.tracked == 1
+    assert counts.tracked_without_rows == 1
+    assert counts.live_rows == 0
+
+
+def test_each_verdict_is_counted(owned_library):
+    game = _game(owned_library)
+    _saved_row(game, started=date(2024, 1, 1), ended=date(2024, 1, 9))
+    _saved_row(game, started=date(2024, 2, 1))
+    _saved_row(game, ended=date(2024, 3, 9))
+    _saved_row(game)
+    _saved_row(game, started=date(2024, 5, 9), ended=date(2024, 5, 1))
+    counts = preflight_library(owned_library).counts
+    assert counts.live_rows == 5
+    assert counts.clean_both == 1
+    assert counts.clean_start_only == 1
+    assert counts.clean_end_only == 1
+    assert counts.no_known_endpoint == 1
+    assert counts.reversed_endpoints == 1
+
+
+def test_a_removed_row_leaves_the_live_count(owned_library):
+    game = _game(owned_library)
+    remove(_saved_row(game, started=date(2024, 1, 1)))
+    counts = preflight_library(owned_library).counts
+    assert counts.live_rows == 0
+    assert counts.rows_removed == 1
+
+
+def test_a_row_on_a_removed_game_is_counted_once(owned_library):
+    game = _game(owned_library)
+    row = _saved_row(game, started=date(2024, 1, 1))
+    remove(row)
+    remove(game)
+    counts = preflight_library(owned_library).counts
+    assert counts.rows_on_removed_game == 1
+    assert counts.rows_removed == 0
+
+
+def test_an_untracked_game_is_not_a_backfill_failure(owned_library):
+    #: remove_game_for_request untracks and then removes, with no
+    #: transaction around the pair. A failure between them lands here.
+    game = _game(owned_library)
+    _saved_row(game, started=date(2024, 1, 1))
+    PlayerGame.objects.filter(game=game).update(removed_at=timezone.now())
+    counts = preflight_library(owned_library).counts
+    assert counts.rows_untracked == 1
+    assert counts.rows_without_projection == 0
+
+
+@pytest.mark.untracked_games
+def test_a_row_with_no_projection_row_is_the_backfill_signal(owned_library):
+    game = _game(owned_library)
+    _saved_row(game, started=date(2024, 1, 1))
+    counts = preflight_library(owned_library).counts
+    assert counts.rows_without_projection == 1
+    assert counts.tracked == 0
+
+
+def test_the_ordering_axis_is_counted_per_game(owned_library):
+    tied = _game(owned_library, name="Tied")
+    _saved_row(tied, started=date(2024, 1, 1))
+    _saved_row(tied, started=date(2024, 1, 1))
+    dated = _game(owned_library, name="Dated")
+    _saved_row(dated, started=date(2024, 1, 1))
+    _saved_row(dated, started=date(2024, 2, 1))
+    counts = preflight_library(owned_library).counts
+    assert counts.tie_broken == 1
+    assert counts.ordered_by_date == 1
+
+
+def test_samples_are_capped_and_keep_their_count(owned_library):
+    game = _game(owned_library)
+    for day in (1, 2, 3):
+        _saved_row(game, started=date(2024, 5, day + 8), ended=date(2024, 5, day))
+    result = preflight_library(owned_library, sample_size=2)
+    assert result.counts.reversed_endpoints == 3
+    assert len(result.samples.reversed_endpoints) == 2
+
+
+def test_a_sample_size_of_zero_keeps_only_the_counts(owned_library):
+    game = _game(owned_library)
+    _saved_row(game, started=date(2024, 5, 9), ended=date(2024, 5, 1))
+    result = preflight_library(owned_library, sample_size=0)
+    assert result.counts.reversed_endpoints == 1
+    assert result.samples.reversed_endpoints == ()
+
+
+def test_one_library_never_counts_another(owned_library, django_user_model):
+    stranger = django_user_model.objects.create_user(username="stranger", password="p")
+    _saved_row(_game(stranger.library), started=date(2024, 1, 1))
+    counts = preflight_library(owned_library).counts
+    assert counts.tracked == 0
+    assert counts.live_rows == 0
+
+
+def test_the_walk_writes_nothing(owned_library):
+    game = _game(owned_library)
+    _saved_row(game, started=date(2024, 1, 1))
+    before = (LibraryEvent.objects.count(), PlayEvent.objects.count())
+    preflight_library(owned_library)
+    assert (LibraryEvent.objects.count(), PlayEvent.objects.count()) == before
+
+
+def test_the_result_renders_itself(owned_library):
+    rendered = preflight_library(owned_library).as_dict()
+    assert rendered["library_id"] == str(owned_library.pk)
+    assert rendered["counts"]["tracked"] == 0
+    assert rendered["samples"]["reversed_endpoints"] == []
+    assert isinstance(preflight_library(owned_library), LibraryPreflight)

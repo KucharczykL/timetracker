@@ -11,9 +11,20 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, fields
 from datetime import date
 from enum import StrEnum
+from itertools import batched
 from typing import NamedTuple
 
-from games.models import PlayEvent
+from common.keyset import keyset_pages
+from games.backfill.playergame import PGAME_ISSUE
+from games.events.playergame import PLAYERGAME_STATUS_CHANGED
+from games.models import (
+    Game,
+    LibraryEvent,
+    PlayerGame,
+    PlayerGameStatus,
+    PlayEvent,
+    UserLibrary,
+)
 
 #: Sorts before every real date, and only reached when the flag beside it
 #: already sorted the unknown value last.
@@ -250,3 +261,215 @@ def pair_endpoints(
         if key not in endpoints_by_key
     )
     return PairingResult(pairings=pairings, unclaimed_events=unclaimed)
+
+
+#: Aggregates per query, matching the backfill's page.
+WALK_PAGE_SIZE = 200
+
+#: Identifiers per sampled list.
+DEFAULT_SAMPLE_SIZE = 20
+
+#: The status a #676 event states for each endpoint.
+_STATUS_FOR_KIND: dict[EndpointKind, PlayerGameStatus] = {
+    EndpointKind.START: PlayerGameStatus.PLAYED,
+    EndpointKind.COMPLETION: PlayerGameStatus.COMPLETED,
+}
+_KIND_FOR_STATUS = {status: kind for kind, status in _STATUS_FOR_KIND.items()}
+
+
+@dataclass(frozen=True, slots=True)
+class Samples:
+    """The first few identifiers behind a count, never a random draw.
+
+    First in the report's own order, so two runs over unchanged data print the
+    same bytes and the JSON line diffs across a rehearsal.
+    """
+
+    reversed_endpoints: tuple[uuid.UUID, ...] = ()
+    tie_broken: tuple[uuid.UUID, ...] = ()
+    date_order_differs: tuple[uuid.UUID, ...] = ()
+    ambiguous_endpoints: tuple[str, ...] = ()
+
+    def as_dict(self) -> dict[str, list[str]]:
+        return {
+            field.name: [str(value) for value in getattr(self, field.name)]
+            for field in fields(self)
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class LibraryPreflight:
+    """One library's whole report."""
+
+    library_id: uuid.UUID
+    username: str
+    counts: PreflightCounts
+    samples: Samples
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "library_id": str(self.library_id),
+            "username": self.username,
+            "counts": self.counts.as_dict(),
+            "samples": self.samples.as_dict(),
+        }
+
+
+def _candidate_events(library: UserLibrary) -> list[CandidateEvent]:
+    """Every dated #676 status event this library recorded.
+
+    One query per run, not one per page: LibraryEvent indexes neither
+    aggregate_id nor event_type, so the scan is paid once.
+
+    The day is read in Python. effective_time carries no generated bound
+    columns, so comparing it in SQL would be a per-row function call over that
+    same unindexed scan.
+
+    A day precision is demanded rather than assumed: lower_bound gives the
+    first day of a month or a decade too, and that is not a day the legacy row
+    could have stated.
+    """
+    rows = LibraryEvent.objects.filter(
+        library=library,
+        event_type=PLAYERGAME_STATUS_CHANGED.event_type,
+        source_metadata__origin="backfill",
+        source_metadata__issue=PGAME_ISSUE,
+        payload__status__in=[status.value for status in _STATUS_FOR_KIND.values()],
+        effective_time__isnull=False,
+    ).values_list("aggregate_id", "payload", "effective_time", "correlation_id")
+
+    candidates = []
+    for aggregate_id, payload, effective_time, correlation_id in rows:
+        if effective_time is None or not effective_time.has_known_day:
+            continue
+        day = effective_time.lower_bound
+        kind = _KIND_FOR_STATUS[PlayerGameStatus(payload["status"])]
+        candidates.append(
+            CandidateEvent(
+                key=CandidateKey(aggregate_id=aggregate_id, kind=kind, day=day),
+                correlation_id=correlation_id,
+            )
+        )
+    return candidates
+
+
+def _excluded_counts(library: UserLibrary) -> PreflightCounts:
+    """The rows the conversion never sees, counted once each.
+
+    The order of the four is the order of the checks: a row on a removed game
+    is that, whatever its own mark says.
+    """
+    owned = PlayEvent.objects.filter(game__library=library)
+    on_removed_game = owned.filter(game__removed_at__isnull=False).count()
+    live_game_rows = owned.filter(game__removed_at__isnull=True)
+    removed_rows = live_game_rows.filter(removed_at__isnull=False).count()
+    live = live_game_rows.filter(removed_at__isnull=True)
+    untracked = live.filter(
+        game__player_games__library=library,
+        game__player_games__removed_at__isnull=False,
+    ).count()
+    without_projection = live.exclude(
+        game__player_games__library=library,
+    ).count()
+    return PreflightCounts(
+        rows_on_removed_game=on_removed_game,
+        rows_removed=removed_rows,
+        rows_untracked=untracked,
+        rows_without_projection=without_projection,
+    )
+
+
+def preflight_library(
+    library: UserLibrary, *, sample_size: int = DEFAULT_SAMPLE_SIZE
+) -> LibraryPreflight:
+    """Read one library's legacy rows and say what #684 will meet."""
+    counts = _excluded_counts(library)
+    candidates = _candidate_events(library)
+    counts = counts + PreflightCounts(status_events_676=len(candidates))
+
+    reversed_rows: list[uuid.UUID] = []
+    tied_games: list[uuid.UUID] = []
+    reordered_games: list[uuid.UUID] = []
+    ambiguous: list[str] = []
+    endpoints: list[Endpoint] = []
+
+    tracked = PlayerGame.objects.filter(
+        library=library, removed_at__isnull=True
+    ).only("id", "game_id")
+    for batch in batched(
+        keyset_pages(tracked, key=("id",), page_size=WALK_PAGE_SIZE), WALK_PAGE_SIZE
+    ):
+        aggregate_for_game = {row.game_id: row.pk for row in batch}
+        live_games = set(
+            Game.objects.filter(
+                pk__in=aggregate_for_game, removed_at__isnull=True
+            ).values_list("pk", flat=True)
+        )
+        rows_by_game: dict[uuid.UUID, list[PlayEvent]] = defaultdict(list)
+        for row in PlayEvent.objects.filter(
+            game_id__in=live_games, removed_at__isnull=True
+        ).order_by("game_id", "id"):
+            rows_by_game[row.game_id].append(row)
+
+        for game_id, aggregate_id in sorted(
+            aggregate_for_game.items(), key=lambda pair: pair[1]
+        ):
+            counts = counts + PreflightCounts(tracked=1)
+            rows = rows_by_game.get(game_id, [])
+            if not rows:
+                counts = counts + PreflightCounts(tracked_without_rows=1)
+                continue
+
+            counts = counts + PreflightCounts(live_rows=len(rows))
+            for row in sorted(rows, key=legacy_order_key):
+                verdict = classify_row(row)
+                counts = counts + PreflightCounts(**{_VERDICT_FIELDS[verdict]: 1})
+                if verdict is RowVerdict.REVERSED_ENDPOINTS:
+                    reversed_rows.append(row.id)
+                for kind, day in (
+                    (EndpointKind.START, row.started),
+                    (EndpointKind.COMPLETION, row.ended),
+                ):
+                    if day is not None:
+                        endpoints.append(
+                            Endpoint(
+                                row_id=row.id,
+                                kind=kind,
+                                day=day,
+                                aggregate_id=aggregate_id,
+                            )
+                        )
+
+            ordering = ordering_counts(rows)
+            counts = counts + PreflightCounts(
+                ordered_by_date=int(ordering.ordered_by_date),
+                tie_broken=int(ordering.tie_broken),
+                date_order_differs_from_insertion=int(ordering.date_order_differs),
+            )
+            if ordering.tie_broken:
+                tied_games.append(game_id)
+            if ordering.date_order_differs:
+                reordered_games.append(game_id)
+
+    pairing = pair_endpoints(endpoints, candidates)
+    for endpoint in endpoints:
+        pair_verdict = pairing.pairings[endpoint].verdict
+        counts = counts + PreflightCounts(**{f"pairs_{pair_verdict.value}": 1})
+        if pair_verdict is PairingVerdict.AMBIGUOUS:
+            ambiguous.append(f"{endpoint.row_id}:{endpoint.kind.value}")
+    counts = counts + PreflightCounts(unclaimed_events=pairing.unclaimed_events)
+
+    def capped[SampleT](values: list[SampleT]) -> tuple[SampleT, ...]:
+        return tuple(values[:sample_size])
+
+    return LibraryPreflight(
+        library_id=library.pk,
+        username=library.user.username,
+        counts=counts,
+        samples=Samples(
+            reversed_endpoints=capped(reversed_rows),
+            tie_broken=capped(tied_games),
+            date_order_differs=capped(reordered_games),
+            ambiguous_endpoints=capped(ambiguous),
+        ),
+    )
