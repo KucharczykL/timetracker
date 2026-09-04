@@ -1,12 +1,13 @@
 """What the legacy lifecycle rows hold, before #684 converts them."""
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 from django.utils import timezone
 
-from games.models import Game, LibraryEvent, PlayerGame, PlayEvent
+from games.backfill.playergame import backfill_library
+from games.models import Game, GameStatusChange, LibraryEvent, PlayerGame, PlayEvent
 from games.preflight.playthrough import (
     NO_COUNTS,
     CandidateEvent,
@@ -19,11 +20,13 @@ from games.preflight.playthrough import (
     PairingVerdict,
     PreflightCounts,
     RowVerdict,
+    SharedCatalogCounts,
     classify_row,
     legacy_order_key,
     ordering_counts,
     pair_endpoints,
     preflight_library,
+    shared_catalog_counts,
 )
 from games.removal import remove
 
@@ -350,3 +353,99 @@ def test_the_result_renders_itself(owned_library):
     assert rendered["counts"]["tracked"] == 0
     assert rendered["samples"]["reversed_endpoints"] == []
     assert isinstance(preflight_library(owned_library), LibraryPreflight)
+
+
+def _recorded_completion(game, day):
+    """A legacy transition #676 turns into a dated status event."""
+    return GameStatusChange.objects.create(
+        game=game,
+        old_status=Game.Status.PLAYED,
+        new_status=Game.Status.FINISHED,
+        timestamp=timezone.make_aware(datetime(day.year, day.month, day.day, 12)),
+    )
+
+
+@pytest.mark.untracked_games
+@pytest.mark.django_db(transaction=True)
+def test_an_endpoint_pairs_with_the_status_event_of_its_day(owned_library):
+    completed = date(2024, 1, 9)
+    game = _game(owned_library)
+    game.status = Game.Status.FINISHED
+    game.save()
+    _recorded_completion(game, completed)
+    _saved_row(game, started=date(2024, 1, 1), ended=completed)
+    backfill_library(owned_library)
+    counts = preflight_library(owned_library).counts
+    assert counts.pairs_unambiguous == 1
+    #: The start has no `played` transition behind it.
+    assert counts.pairs_absent == 1
+
+
+@pytest.mark.untracked_games
+@pytest.mark.django_db(transaction=True)
+def test_two_rows_completing_on_one_day_are_both_ambiguous(owned_library):
+    completed = date(2024, 1, 9)
+    game = _game(owned_library)
+    game.status = Game.Status.FINISHED
+    game.save()
+    _recorded_completion(game, completed)
+    _saved_row(game, started=date(2024, 1, 1), ended=completed)
+    _saved_row(game, started=date(2023, 1, 1), ended=completed)
+    backfill_library(owned_library)
+    result = preflight_library(owned_library)
+    assert result.counts.pairs_ambiguous == 2
+    assert result.counts.pairs_unambiguous == 0
+    assert len(result.samples.ambiguous_endpoints) == 2
+
+
+@pytest.mark.untracked_games
+@pytest.mark.django_db(transaction=True)
+def test_a_status_event_no_endpoint_matched_is_unclaimed(owned_library):
+    game = _game(owned_library)
+    game.status = Game.Status.FINISHED
+    game.save()
+    _recorded_completion(game, date(2024, 1, 9))
+    backfill_library(owned_library)
+    counts = preflight_library(owned_library).counts
+    assert counts.status_events_676 == 1
+    assert counts.unclaimed_events == 1
+
+
+@pytest.mark.untracked_games
+@pytest.mark.django_db(transaction=True)
+def test_an_undated_status_event_is_no_candidate(owned_library):
+    #: #676 records the corrective event with an unknown effective time, so it
+    #: carries no day and can pair with nothing.
+    game = _game(owned_library)
+    game.status = Game.Status.FINISHED
+    game.save()
+    _saved_row(game, ended=date(2024, 1, 9))
+    backfill_library(owned_library)
+    counts = preflight_library(owned_library).counts
+    assert counts.status_events_676 == 0
+    assert counts.pairs_absent == 1
+
+
+def test_a_shared_game_is_counted_outside_every_library(owned_library):
+    shared = Game.objects.create(library=None, name="Shared")
+    _saved_row(shared, started=date(2024, 1, 1))
+    counts = shared_catalog_counts()
+    assert counts == SharedCatalogCounts(
+        shared_games=1, shared_game_rows=1, contested_rows=0
+    )
+
+
+def test_a_shared_game_two_libraries_track_holds_contested_rows(
+    owned_library, django_user_model
+):
+    shared = Game.objects.create(library=None, name="Shared")
+    _saved_row(shared, started=date(2024, 1, 1))
+    stranger = django_user_model.objects.create_user(username="stranger", password="p")
+    for library in (owned_library, stranger.library):
+        PlayerGame.objects.create(
+            pk=uuid.uuid7(),
+            library=library,
+            game=shared,
+            tracked_at=timezone.now(),
+        )
+    assert shared_catalog_counts().contested_rows == 1

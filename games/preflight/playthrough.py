@@ -14,6 +14,8 @@ from enum import StrEnum
 from itertools import batched
 from typing import NamedTuple
 
+from django.db.models import Count
+
 from common.keyset import keyset_pages
 from games.backfill.playergame import PGAME_ISSUE
 from games.events.playergame import PLAYERGAME_STATUS_CHANGED
@@ -472,4 +474,42 @@ def preflight_library(
             date_order_differs=capped(reordered_games),
             ambiguous_endpoints=capped(ambiguous),
         ),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class SharedCatalogCounts:
+    """The catalog rows no library owns.
+
+    Expected to be zero: GameForm.__init__ always stamps a library, so the
+    production catalog holds no shared game. Counted anyway, because
+    "expected zero" and "verified zero" are different claims.
+    """
+
+    shared_games: int = 0
+    shared_game_rows: int = 0
+    #: A row on a shared game more than one library tracks. It belongs to no
+    #: single Playthrough, and #684 decides what that means.
+    contested_rows: int = 0
+
+    def as_dict(self) -> dict[str, int]:
+        return {field.name: getattr(self, field.name) for field in fields(self)}
+
+
+def shared_catalog_counts() -> SharedCatalogCounts:
+    """Count the shared games, their rows, and the contested ones."""
+    shared = Game.objects.filter(library__isnull=True, removed_at__isnull=True)
+    contested_games = (
+        shared.filter(player_games__removed_at__isnull=True)
+        .annotate(trackers=Count("player_games__library", distinct=True))
+        .filter(trackers__gt=1)
+    )
+    return SharedCatalogCounts(
+        shared_games=shared.count(),
+        shared_game_rows=PlayEvent.objects.filter(
+            game__in=shared, removed_at__isnull=True
+        ).count(),
+        contested_rows=PlayEvent.objects.filter(
+            game__in=contested_games, removed_at__isnull=True
+        ).count(),
     )
