@@ -47,6 +47,7 @@ from games.models import (
     LibraryEventStreamHead,
     LibraryIdempotencyRecord,
     PlayerGame,
+    Playthrough,
 )
 
 pytestmark = pytest.mark.untracked_games
@@ -133,13 +134,13 @@ def test_the_counter_counts_statements_that_name_no_table():
 
 @pytest.mark.django_db(transaction=True)
 def test_the_counter_separates_projections_from_the_event_store(owned_library):
-    #: One game: one row in each table.
+    #: One game: the tracked row and its default run, one row each.
     counter = StatementCounter()
     with connection.execute_wrapper(counter):
         track_one_game(owned_library)
     work = counter.work(events=1)
-    assert work.projection_rows == 1
-    assert work.projection_statements == 1
+    assert work.projection_rows == 2
+    assert work.projection_statements == 2
     assert work.event_store_rows >= 3
     assert work.statements > work.projection_statements
 
@@ -342,7 +343,9 @@ def test_warmup_samples_are_additional_and_are_not_recorded(owned_library):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_one_dispatch_writes_one_projection_row_through_one_statement(owned_library):
+def test_one_dispatch_writes_one_row_per_projection_through_one_statement_each(
+    owned_library,
+):
     seed_library(owned_library, actor=owned_library.user, events=0, spares=1)
     work = run_amplification_scenario(
         owned_library,
@@ -350,15 +353,19 @@ def test_one_dispatch_writes_one_projection_row_through_one_statement(owned_libr
         games=spare_games(owned_library),
         iterations=1,
     )
-    assert work.projection_rows == 1
-    assert work.projection_statements == 1
+    #: Two events since #679, so two projection rows: the tracked game and
+    #: its default run, each written by its own projector.
+    assert work.projection_rows == 2
+    assert work.projection_statements == 2
     rows = work.rows_per_table
-    assert rows[LibraryEvent._meta.db_table] == 1
+    assert rows[LibraryEvent._meta.db_table] == 2
+    #: The playthrough payload names the tracked game by bare id, so only
+    #: the catalog reference on the first event is indexed.
     assert rows[LibraryEventReference._meta.db_table] == 1
     assert rows[LibraryIdempotencyRecord._meta.db_table] >= 1
     #: events=0 seeded no head: two rows, not one.
     assert rows[LibraryEventStreamHead._meta.db_table] == 2
-    assert work.event_store_rows == 4 + rows[LibraryIdempotencyRecord._meta.db_table]
+    assert work.event_store_rows == 5 + rows[LibraryIdempotencyRecord._meta.db_table]
 
 
 @pytest.mark.django_db
@@ -391,16 +398,22 @@ def test_the_replay_counts_the_shadow_table_as_its_projection(owned_library):
     live = PlayerGame._meta.db_table
     shadow = f"{live}{SHADOW_SUFFIX}"
     assert replay.statements_per_table[shadow] == 10
+    #: The playthrough table is empty here -- the seeding appends creation
+    #: events directly -- so its shadow takes no statement and only its swap
+    #: does.
     assert replay.projection_statements == (
-        replay.statements_per_table[shadow] + replay.statements_per_table[live]
+        replay.statements_per_table[shadow]
+        + replay.statements_per_table[live]
+        + replay.statements_per_table[Playthrough._meta.db_table]
     )
 
 
 @pytest.mark.django_db(transaction=True)
 def test_a_run_replays_the_events_both_write_paths_produced():
     report = run_benchmark(seed=30, iterations=3, warmup=1, keep=True)
-    #: 30 seeded, 4 dispatched, 3 amplified.
-    assert report.rebuild.replayed_through == 37
+    #: 30 seeded, 4 dispatched, 3 amplified -- each dispatch two events
+    #: since #679, and the seeding appends its creation events directly.
+    assert report.rebuild.replayed_through == 44
     assert all(
         table.only_live == table.only_rebuilt == table.differing == 0
         for table in report.rebuild.tables

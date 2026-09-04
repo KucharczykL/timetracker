@@ -23,6 +23,7 @@ from games.events.playergame import (
     PLAYERGAME_STATUS_CHANGED,
     StatusValue,
 )
+from games.events.playthrough import playthrough_created
 from games.events.references import capture_reference
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import Game, PlayerGame, PlayerGameStatus
@@ -83,11 +84,16 @@ class TrackGame(Command):
                     ),
                 )
             return Unchanged(f"This library already tracks {game.name}.")
+        #: The library's first act on a game states both facts, which is
+        #: what a mandatory default means. dispatch resolves one
+        #: correlation_id before build runs, so both events carry it.
+        tracked_id = uuid.uuid7()
         return [
             PLAYERGAME_CREATED.new(
-                aggregate_id=uuid.uuid7(),
+                aggregate_id=tracked_id,
                 payload={"game": capture_reference(game)},
-            )
+            ),
+            playthrough_created(tracked_id),
         ]
 
     def _visible_game(self, context: CommandContext) -> Game:

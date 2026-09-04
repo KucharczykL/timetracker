@@ -266,7 +266,6 @@ def test_a_refused_claim_leaves_the_family_as_it_was():
         handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
 
     with pytest.raises(TypeError, match="already owned by"):
-
         #: The uncontested PROBE_OTHER claim is evaluated first, so it is what
         #: a mutate-as-you-go loop would have left behind.
         class Greedy(Projector, registry=registry):

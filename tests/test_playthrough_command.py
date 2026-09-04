@@ -5,7 +5,13 @@ import pytest
 from games.commands.playergame import PlayerGameNotTracked, TrackGame
 from games.commands.playthrough import CreatePlaythrough
 from games.events.dispatch import CommandOutcome, CommandRejected, dispatch
-from games.models import Game, LibraryEvent, PlayerGame, Playthrough
+from games.models import (
+    Game,
+    LibraryEvent,
+    PlayerGame,
+    Playthrough,
+    PlaythroughKind,
+)
 
 pytestmark = pytest.mark.untracked_games
 
@@ -100,3 +106,54 @@ def test_a_repeat_under_one_key_records_nothing_further(
         )
 
     assert Playthrough.objects.count() == 2
+
+
+@pytest.mark.django_db(transaction=True)
+def test_tracking_a_game_states_its_first_playthrough(owned_user, owned_library, game):
+    """The library's first act on a game states both facts."""
+    _track(owned_user, owned_library, game)
+
+    events = list(LibraryEvent.objects.order_by("sequence"))
+    assert [event.event_type for event in events] == [
+        "library.playergame.created",
+        "library.playthrough.created",
+    ]
+    #: One dispatch, one correlation_id.
+    assert len({event.correlation_id for event in events}) == 1
+    assert events[1].sequence == events[0].sequence + 1
+
+    tracked = PlayerGame.objects.get()
+    run = Playthrough.objects.get()
+    assert events[1].payload == {
+        "player_game": str(tracked.pk),
+        "kind": "ordinary",
+    }
+    assert (run.player_game_id, run.kind, run.library_id) == (
+        tracked.pk,
+        PlaythroughKind.ORDINARY,
+        owned_library.pk,
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_repeated_track_under_one_key_states_one_playthrough(
+    owned_user, owned_library, game
+):
+    """A repeat answers from the idempotency record."""
+    _track(owned_user, owned_library, game)
+    _track(owned_user, owned_library, game)
+
+    assert Playthrough.objects.count() == 1
+    assert LibraryEvent.objects.count() == 2
+
+
+@pytest.mark.django_db(transaction=True)
+def test_tracking_an_already_tracked_game_states_no_second_default(
+    owned_user, owned_library, game
+):
+    """#684 supplies a missing default; TrackGame does not."""
+    _track(owned_user, owned_library, game, key="first")
+    result = _track(owned_user, owned_library, game, key="second")
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+    assert Playthrough.objects.count() == 1

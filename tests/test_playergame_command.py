@@ -52,8 +52,9 @@ def test_tracking_a_game_records_it_and_projects_it(owned_user, owned_library):
     )
 
     assert result.outcome is CommandOutcome.APPENDED
-    event = LibraryEvent.objects.get(library=owned_library)
-    assert event.event_type == "library.playergame.created"
+    event = LibraryEvent.objects.get(
+        library=owned_library, event_type="library.playergame.created"
+    )
     assert event.payload["game"]["id"] == str(game.pk)
 
     row = PlayerGame.objects.get()
@@ -931,7 +932,12 @@ def test_recording_one_fact_appends_one_event(owned_user, owned_library):
         .order_by("sequence")
         .values_list("event_type", flat=True)
     )
-    assert types == ["library.playergame.created", "library.playergame.status_changed"]
+    assert types == [
+        "library.playergame.created",
+        #: Tracking states the default run: #679.
+        "library.playthrough.created",
+        "library.playergame.status_changed",
+    ]
     assert PlayerGame.objects.get().mastered is False
 
 

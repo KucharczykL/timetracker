@@ -532,10 +532,14 @@ def test_the_projection_replays_from_the_backfilled_log_without_drift(
     checked = rebuild_projections(owned_library, mode=RebuildMode.CHECK)
 
     drift = [
-        (table.only_live, table.only_rebuilt, table.differing)
+        (table.table, table.only_live, table.only_rebuilt, table.differing)
         for table in checked.tables
     ]
-    assert drift == [(0, 0, 0)]
+    #: Every projection table, each agreeing with its rebuild.
+    assert drift == [
+        ("games_playergame", 0, 0, 0),
+        ("games_playthrough", 0, 0, 0),
+    ]
 
 
 @pytest.mark.django_db(transaction=True)
