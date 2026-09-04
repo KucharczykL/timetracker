@@ -432,6 +432,26 @@ export function nowInPresentationZone(
   }
 }
 
+/**
+ * Today's date in the contract's zone.
+ *
+ * `null` when the contract is unusable, logged once by the contract read and
+ * never toasted. The sibling above toasts only for an explicit override, where
+ * a click gets nothing back; here the caller still answers, with the browser's
+ * day (#949).
+ */
+export function todayInPresentationZone(): string | null {
+  const presentation = getPresentation();
+  if (!presentation) return null;
+
+  try {
+    return Temporal.Now.plainDateISO(presentation.timeZone).toString();
+  } catch (error) {
+    reportClientError("date-time-presentation", errorDetail(error), { toast: false });
+    return null;
+  }
+}
+
 /** The zone an endpoint actually projects into: its own stored zone under the
  * "own" preference, else the account zone (matching the base "account" path
  * so date comparisons stay meaningful in both modes). */

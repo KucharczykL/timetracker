@@ -18,6 +18,7 @@
 import {
   dayPeriodLabels,
   segmentRules,
+  todayInPresentationZone,
 } from "../date-time-presentation.js";
 import type { SegmentName } from "../generated/date-time-presentation.js";
 
@@ -52,6 +53,20 @@ export function addDays(dateObject: Date, dayCount: number): Date {
   const copy = new Date(dateObject.getTime());
   copy.setDate(copy.getDate() + dayCount);
   return copy;
+}
+
+/**
+ * Today at midnight, in the display zone (#949).
+ *
+ * Returns a `Date` and never `null`: with no readable contract the browser's
+ * day stands, because a "Today" a day out beats presets that do nothing.
+ */
+export function todayInDisplayZone(): Date {
+  const isoString = todayInPresentationZone();
+  if (isoString) return dateFromIso(isoString);
+  const browserToday = new Date();
+  browserToday.setHours(0, 0, 0, 0);
+  return browserToday;
 }
 
 /** Validate a (year, month, day) triple as a real calendar date. */
@@ -105,9 +120,11 @@ interface SegmentBehaviour {
  * in the contract rather than derived here.
  */
 const SEGMENT_BEHAVIOUR: Record<SegmentName, SegmentBehaviour> = {
-  // Jumping an empty year to 0001 is useless; start from this year.
+  // An empty year starts from this year.
+  //
+  // "This" is the display zone's year, not the browser's (#949).
   year: {
-    emptyValue: () => new Date().getFullYear(),
+    emptyValue: () => todayInDisplayZone().getFullYear(),
     fillFromRight: true,
     fallback: { minimum: 1, maximum: 9999 },
   },

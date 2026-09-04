@@ -26,6 +26,7 @@ vi.mock("../date-time-presentation.js", () => ({
   dayPeriodLabels: () => null,
   presentationClock: () => ({ timeZone: "Europe/Prague", hourCycle: "h23" }),
   nowInPresentationZone,
+  todayInPresentationZone: () => null,
 }));
 
 import "./date-time-field.js";

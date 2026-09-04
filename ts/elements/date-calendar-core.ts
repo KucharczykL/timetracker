@@ -19,7 +19,7 @@ import {
   CALENDAR_WEEKDAY_CLASS,
 } from "../generated/calendar-classes.js";
 import { calendarWeekdayLabels, formatCalendarMonthYear } from "../date-time-presentation.js";
-import { addDays, isoFromDate } from "./date-field-core.js";
+import { addDays, isoFromDate, todayInDisplayZone } from "./date-field-core.js";
 
 // Day-cell looks are GENERATED from Python (common/components/date_range_picker.py
 // composes them out of ControlButton). Nothing here hand-writes a class string:
@@ -63,7 +63,7 @@ export interface MonthCalendarOptions {
 }
 
 export function todayView(): MonthCalendarView {
-  const today = new Date();
+  const today = todayInDisplayZone();
   return { year: today.getFullYear(), month: today.getMonth() };
 }
 
@@ -255,7 +255,7 @@ export function bindSingleSelectCalendar(options: {
 
   const state = { view: todayView() };
   let selectedIso = "";
-  const todayIso = isoFromDate(new Date());
+  const todayIso = isoFromDate(todayInDisplayZone());
 
   function dayCellClass(isoString: string, inViewMonth: boolean): string {
     // One complete generated class list per state — never additive. Rounding,

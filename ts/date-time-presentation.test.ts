@@ -264,6 +264,26 @@ const invalidContracts = [
 ];
 
 
+describe("an unusable contract", () => {
+  beforeEach(() => {
+    reportClientError.mockClear();
+    document.documentElement.removeAttribute(CONTRACT_ATTRIBUTE);
+  });
+
+  // Read by the two whose null a caller acts on: the rules a field binds its
+  // segments with, and the day a preset states (#949). The table sat with no
+  // consumer at all from f13c9445 until #949.
+  it.each(invalidContracts)("$name leaves every reader with null", async ({ raw }) => {
+    if (raw !== null) document.documentElement.setAttribute(CONTRACT_ATTRIBUTE, raw);
+    const { segmentRules, todayInPresentationZone } = await importFormatter();
+
+    expect(segmentRules("year")).toBeNull();
+    expect(todayInPresentationZone()).toBeNull();
+    // Once, by the contract read, which memoizes its null.
+    expect(reportClientError).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("nowInPresentationZone", () => {
   beforeEach(() => {
     reportClientError.mockClear();
@@ -384,5 +404,66 @@ describe("calendar presentation", () => {
       expect.any(String),
       { toast: false },
     );
+  });
+});
+
+describe("todayInPresentationZone", () => {
+  beforeEach(() => {
+    reportClientError.mockClear();
+    document.documentElement.removeAttribute(CONTRACT_ATTRIBUTE);
+  });
+
+  it("names the day in the contract's zone, not the browser's", async () => {
+    installConfig(
+      alteredConfig((config) => {
+        // Fixed UTC+14: no plausible runner zone matches.
+        config.time_zone = "Pacific/Kiritimati";
+      }),
+    );
+    const { todayInPresentationZone } = await importFormatter();
+
+    expect(todayInPresentationZone()).toBe(
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Pacific/Kiritimati",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date()),
+    );
+    expect(reportClientError).not.toHaveBeenCalled();
+  });
+
+  it("returns null on a missing contract so callers can degrade", async () => {
+    const { todayInPresentationZone } = await importFormatter();
+
+    expect(todayInPresentationZone()).toBeNull();
+    // The one report comes from the contract read, which memoizes its null:
+    // a second call degrades in silence.
+    expect(reportClientError).toHaveBeenCalledTimes(1);
+    expect(todayInPresentationZone()).toBeNull();
+    expect(reportClientError).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs and returns null when the zone read itself throws", async () => {
+    // The contract's zone is Intl-valid by construction, so only a Temporal
+    // stricter than Intl reaches the catch — the polyfill on old Safari can be.
+    installConfig(validConfig());
+    const { todayInPresentationZone } = await importFormatter();
+    const plainDateISO = vi
+      .spyOn(Temporal.Now, "plainDateISO")
+      .mockImplementation(() => {
+        throw new RangeError("zone unsupported");
+      });
+
+    try {
+      expect(todayInPresentationZone()).toBeNull();
+      expect(reportClientError).toHaveBeenCalledWith(
+        "date-time-presentation",
+        "zone unsupported",
+        { toast: false },
+      );
+    } finally {
+      plainDateISO.mockRestore();
+    }
   });
 });

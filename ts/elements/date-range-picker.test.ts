@@ -6,6 +6,8 @@ const formatCalendarMonthYear = vi.hoisted(() => vi.fn(() => "Contract month"));
 const calendarWeekdayLabels = vi.hoisted(() =>
   vi.fn(() => ["M1", "T2", "W3", "T4", "F5", "S6", "S7"]),
 );
+// The server's day, never the runner's (#949).
+const todayInPresentationZone = vi.hoisted(() => vi.fn(() => "2027-03-05"));
 
 // segmentRules/dayPeriodLabels return null here, so the engine exercises its
 // contract-less fallback path — these pages carry no presentation contract.
@@ -14,6 +16,7 @@ vi.mock("../date-time-presentation.js", () => ({
   calendarWeekdayLabels,
   segmentRules: () => null,
   dayPeriodLabels: () => null,
+  todayInPresentationZone,
 }));
 
 // Minimal-complete markup mirroring DateRangeField + DateRangeCalendar — only the
@@ -199,6 +202,16 @@ describe("date-range-picker static-calendar variant", () => {
     expect(calendarWeekdayLabels).toHaveBeenCalledTimes(1);
   });
 
+  it("opens on the display zone's month and marks its day (#949)", () => {
+    // March 2027 is the mocked contract day's month, not the runner's.
+    const picker = mountStatic();
+
+    expect(formatCalendarMonthYear).toHaveBeenCalledWith(2027, 2);
+    expect(
+      picker.querySelector('[data-date="2027-03-05"]')!.getAttribute("aria-current"),
+    ).toBe("date");
+  });
+
   it("keeps the calendar interactive after an outside click", () => {
     const picker = mountStatic();
     document.body.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -209,14 +222,14 @@ describe("date-range-picker static-calendar variant", () => {
     expect(picker.querySelector("[data-date-range-calendar]")!.classList.contains("hidden")).toBe(false);
   });
 
-  it("preset pick writes both hidden bounds", () => {
+  it("preset pick writes both hidden bounds, on the day the server answers in", () => {
     const picker = mountStatic();
     picker
       .querySelector<HTMLElement>('[data-date-range-preset="today"]')!
       .dispatchEvent(new MouseEvent("click", { bubbles: true }));
     const min = picker.querySelector<HTMLInputElement>('[data-date-range-hidden="min"]')!;
     const max = picker.querySelector<HTMLInputElement>('[data-date-range-hidden="max"]')!;
-    expect(min.value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(min.value).toBe("2027-03-05");
     expect(max.value).toBe(min.value);
   });
 });

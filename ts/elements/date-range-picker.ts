@@ -38,6 +38,7 @@ import {
   dateFromIso,
   isoFromDate,
   setSideValue,
+  todayInDisplayZone,
   writeSideValue as writeSideValueCore,
 } from "./date-field-core.js";
 import {
@@ -103,8 +104,7 @@ interface CalendarState {
 }
 
 function presetRange(presetName: string): [Date, Date] | null {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = todayInDisplayZone();
   const yesterday = addDays(today, -1);
   const year = today.getFullYear();
   const month = today.getMonth();
@@ -320,7 +320,7 @@ function createCalendarState(picker: HTMLElement): CalendarState {
     return classes.join(" ");
   }
 
-  const todayIso = isoFromDate(new Date());
+  const todayIso = isoFromDate(todayInDisplayZone());
 
   function dayCellAria(isoString: string, inViewMonth: boolean) {
     const isStart = isoString === state.startIso;
