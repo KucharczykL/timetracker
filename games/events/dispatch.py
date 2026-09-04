@@ -87,6 +87,7 @@ class CommandName(CommandVocabulary):
     PLAYERGAME_REMOVE = "library.playergame.remove"
     PLAYERGAME_RESTORE = "library.playergame.restore"
     PLAYERGAME_RECORD_FACTS = "library.playergame.record_facts"
+    PLAYTHROUGH_CREATE = "library.playthrough.create"
 
 
 @dataclass(frozen=True, slots=True)
