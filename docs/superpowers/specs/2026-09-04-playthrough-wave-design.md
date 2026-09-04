@@ -7,7 +7,7 @@ Parent epic: [#601](https://github.com/KucharczykL/timetracker/issues/601)
 ## Purpose
 
 This document is the wave review #601 requires before the Playthroughs group
-begins. It replaces the placeholder PLAY-01 through PLAY-10 ordering with a
+begins. It replaces the placeholder ordering of #679 through #688 with a
 dependency-ordered, cycle-free sequence, states the issue boundaries, and names
 every legacy surface and its owner.
 
@@ -100,15 +100,15 @@ wave that assigns Sessions is the wave that needs one.
    default at `TrackGame`, the display numbering, and the system kind
 2. #686 — the read-only preflight report over legacy `PlayEvent` rows
 3. #681 — state a start and state a completion
-4. PLAY-03 — correct and rename a Playthrough
-5. PLAY-04 — remove and restore a Playthrough
+4. #1010 — correct and rename a Playthrough
+5. #1011 — remove and restore a Playthrough
 6. #909 — the shared library-scoped reference resolver
 7. #684 — convert legacy `PlayEvent` rows and backfill the missing defaults
 8. #687 — switch lifecycle writes to commands
-9. PLAY-08 — read cutover: Game detail and the list page
-10. PLAY-09 — read cutover: filters, sorts, quick facets, and saved presets
-11. PLAY-10 — read cutover: statistics and the stat links
-12. PLAY-11 — read cutover: the API router and the row element
+9. #1012 — read cutover: Game detail and the list page
+10. #1013 — read cutover: filters, sorts, quick facets, and saved presets
+11. #1014 — read cutover: statistics and the stat links
+12. #1015 — read cutover: the API router and the row element
 13. #683 — the companion status change beside a lifecycle action
 14. #688 — the PlayerGame and Playthrough replay-parity gate
 
@@ -119,21 +119,21 @@ Required orderings and the reason for each:
   the conversion already wrote.
 - `#681 → #684`. The conversion appends the same event types a live start and a
   live completion append, and the payload has to exist first.
-- `#681 → PLAY-03, PLAY-04`. A correction corrects a stated fact.
+- `#681 → #1010, #1011`. A correction corrects a stated fact.
 - `#684 → #687`. A write cutover leaves the legacy table as the only record of
   facts it no longer writes, so every legacy row must already be an event.
-- `#687 → PLAY-08 … PLAY-11`. A read switched before the write is switched
+- `#687 → #1012 … #1015`. A read switched before the write is switched
   reads a projection two writers disagree about.
-- `PLAY-08 → #683`. The companion action is an affordance beside a lifecycle
-  control, and that control is on the surface PLAY-08 delivers.
-- `PLAY-09, PLAY-10, PLAY-11 → #688`. The gate proves parity for surfaces that
+- `#1012 → #683`. The companion action is an affordance beside a lifecycle
+  control, and that control is on the surface #1012 delivers.
+- `#1013, #1014, #1015 → #688`. The gate proves parity for surfaces that
   have all moved.
 - `#688 → #771`. Legacy storage comes out after the gate is green.
 
 Free to start together: #679 and #686. #686 reads legacy rows only, and has no
 unmet dependency.
 
-Free to run in parallel: PLAY-08, PLAY-09, PLAY-10, and PLAY-11 after #687;
+Free to run in parallel: #1012, #1013, #1014, and #1015 after #687;
 #909 any time after #681.
 
 ## Issue boundaries
@@ -168,13 +168,13 @@ Absorbs #682.
 Includes "Played before": a start whose temporal value is unknown, with no
 Session and no duration.
 
-### PLAY-03 — correct and rename
+### #1010 — correct and rename
 
 The name, the note, and either endpoint. A correction is an ordinary command
 with its own event; the projection carries the current value and the stream
 carries what it was.
 
-### PLAY-04 — remove and restore
+### #1011 — remove and restore
 
 Mirrors #675 for this family. It owns the question the other issues do not:
 what a removed Playthrough means for the Sessions that will point at it. The
@@ -215,17 +215,17 @@ Every path that writes a `PlayEvent` dispatches a command instead: the add and
 edit views, the form, and the inline creation on Game detail. The legacy table
 is still read.
 
-### PLAY-08 through PLAY-11 — switch reads
+### #1012 through #1015 — switch reads
 
 Split by surface, following #946, #947, #951, and #953:
 
-- PLAY-08 — the Game detail Playthrough section and the list page;
-- PLAY-09 — `PlayEventFilter` and its relations, `playevent_count`, the sort
+- #1012 — the Game detail Playthrough section and the list page;
+- #1013 — `PlayEventFilter` and its relations, `playevent_count`, the sort
   keys, the quick facets, and the saved presets that name them;
-- PLAY-10 — every read of `games__playevents__ended` in
+- #1014 — every read of `games__playevents__ended` in
   `games/views/stats_data.py` and `games/views/stats_links.py`, moved onto the
   generated bound columns, with the parity test each stat link already has;
-- PLAY-11 — the `/api/playevent` router and the `play-event-row` custom
+- #1015 — the `/api/playevent` router and the `play-event-row` custom
   element with its registered props.
 
 ### #683 — the companion status change
@@ -235,7 +235,7 @@ mark Game Completed" beside a completion, and the optional action beside the
 compact status selector. One command appending a lifecycle event and a status
 event under one `correlation_id`.
 
-Moved after PLAY-08. Its affordance sits beside a control that does not exist
+Moved after #1012. Its affordance sits beside a control that does not exist
 until the read cutover renders one.
 
 ### #688 — the gate
@@ -278,7 +278,7 @@ this wave does not touch:
 - #999
 
 One is inherited rather than blocking: #977 offers `removed_at` as a filter
-operand on every model, and PLAY-09 adds a model. It stays owned by the filter
+operand on every model, and #1013 adds a model. It stays owned by the filter
 audit, #765 through #767.
 
 ### Cleanup
@@ -308,14 +308,38 @@ Each issue keeps the standing acceptance block. The wave adds:
    #676 recorded;
 4. every preflight count in #686 matches the conversion's own report in #684;
 5. the statistics that read a finish date report the same values before and
-   after PLAY-10, for a restored production copy;
+   after #1014, for a restored production copy;
 6. the empty-database replay in #688 reproduces both families together.
 
-## GitHub update plan
+## What was applied
 
-Three issues close as merged, six open, two move in the order, and #601's
-Playthroughs section is rewritten to carry the ordering above:
+Three issues closed as merged, each with the reason on the closing comment:
 
-- merged into #679: #680
-- merged into #681: #682
-- merged into #684: #685
+- #680, into #679
+- #682, into #681
+- #685, into #684
+
+Six opened:
+
+- #1010
+- #1011
+- #1012
+- #1013
+- #1014
+- #1015
+
+Seven were retitled to the delivery order above, because the new slices would
+otherwise collide with the `PLAY-05`, `PLAY-09` and `PLAY-10` labels the
+placeholders held:
+
+- #679
+- #686
+- #681
+- #684
+- #687
+- #683
+- #688
+
+#601's Playthroughs section now carries the order, the merges, the additions
+and the deferral. Its Sessions section carries the other half of the deferral,
+and the #909 line names its placement inside this wave.
