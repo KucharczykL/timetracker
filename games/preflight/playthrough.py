@@ -6,7 +6,8 @@ imports the classifiers so the two agree by construction.
 """
 
 import uuid
-from collections.abc import Sequence
+from collections import defaultdict
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, fields
 from datetime import date
 from enum import StrEnum
@@ -149,3 +150,103 @@ def ordering_counts(rows: Sequence[PlayEvent]) -> OrderingVerdict:
         tie_broken=tie_broken,
         date_order_differs=by_rule != by_insertion,
     )
+
+
+class EndpointKind(StrEnum):
+    """Which of a row's two dates is being paired."""
+
+    START = "start"
+    COMPLETION = "completion"
+
+
+class Endpoint(NamedTuple):
+    """One known date on one live row."""
+
+    row_id: uuid.UUID
+    kind: EndpointKind
+    day: date
+    aggregate_id: uuid.UUID
+
+
+class CandidateKey(NamedTuple):
+    """Everything a #676 status event must match to be a candidate.
+
+    An endpoint reduces to exactly one of these, which is why the components
+    of the pairing graph are this key's groups.
+    """
+
+    aggregate_id: uuid.UUID
+    kind: EndpointKind
+    day: date
+
+
+class CandidateEvent(NamedTuple):
+    """One #676 status event, and the id #684 would adopt from it."""
+
+    key: CandidateKey
+    correlation_id: uuid.UUID
+
+
+class PairingVerdict(StrEnum):
+    UNAMBIGUOUS = "unambiguous"
+    AMBIGUOUS = "ambiguous"
+    ABSENT = "absent"
+
+
+class Pairing(NamedTuple):
+    """What one endpoint found. An id only when nothing contests it."""
+
+    verdict: PairingVerdict
+    correlation_id: uuid.UUID | None
+
+
+class PairingResult(NamedTuple):
+    pairings: Mapping[Endpoint, Pairing]
+    unclaimed_events: int
+
+
+def _endpoint_key(endpoint: Endpoint) -> CandidateKey:
+    return CandidateKey(
+        aggregate_id=endpoint.aggregate_id, kind=endpoint.kind, day=endpoint.day
+    )
+
+
+def pair_endpoints(
+    endpoints: Iterable[Endpoint], candidates: Iterable[CandidateEvent]
+) -> PairingResult:
+    """Pair each endpoint with the #676 status event #684 would adopt.
+
+    A component holding one endpoint and one event pairs. Any larger component
+    pairs nothing: two rows completing on one day both match the single event,
+    and neither may take it. Reading order cannot change an answer, because
+    the verdict is a property of the group.
+    """
+    events_by_key: dict[CandidateKey, list[CandidateEvent]] = defaultdict(list)
+    for candidate in candidates:
+        events_by_key[candidate.key].append(candidate)
+
+    endpoints_by_key: dict[CandidateKey, list[Endpoint]] = defaultdict(list)
+    for endpoint in endpoints:
+        endpoints_by_key[_endpoint_key(endpoint)].append(endpoint)
+
+    pairings: dict[Endpoint, Pairing] = {}
+    for key, group in endpoints_by_key.items():
+        events = events_by_key.get(key, [])
+        if not events:
+            verdict, correlation_id = PairingVerdict.ABSENT, None
+        elif len(group) == 1 and len(events) == 1:
+            verdict, correlation_id = (
+                PairingVerdict.UNAMBIGUOUS,
+                events[0].correlation_id,
+            )
+        else:
+            verdict, correlation_id = PairingVerdict.AMBIGUOUS, None
+        for endpoint in group:
+            pairings[endpoint] = Pairing(verdict, correlation_id)
+
+    unclaimed = sum(
+        len(events)
+        for key, events in events_by_key.items()
+        if key not in endpoints_by_key
+    )
+    return PairingResult(pairings=pairings, unclaimed_events=unclaimed)

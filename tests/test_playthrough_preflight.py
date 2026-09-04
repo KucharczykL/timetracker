@@ -8,13 +8,19 @@ import pytest
 from games.models import Game, PlayEvent
 from games.preflight.playthrough import (
     NO_COUNTS,
+    CandidateEvent,
+    CandidateKey,
+    Endpoint,
+    EndpointKind,
     LegacyOrderKey,
     OrderingVerdict,
+    PairingVerdict,
     PreflightCounts,
     RowVerdict,
     classify_row,
     legacy_order_key,
     ordering_counts,
+    pair_endpoints,
 )
 
 pytestmark = pytest.mark.django_db
@@ -145,3 +151,75 @@ def test_a_date_order_against_the_insertion_order_is_reported():
     verdict = ordering_counts([first_written, second_written])
     assert verdict.date_order_differs is True
     assert verdict.tie_broken is False
+
+
+AGGREGATE = uuid.UUID(int=100)
+
+
+def _endpoint(row_id, kind=EndpointKind.COMPLETION, day=date(2024, 1, 9)):
+    return Endpoint(
+        row_id=uuid.UUID(int=row_id), kind=kind, day=day, aggregate_id=AGGREGATE
+    )
+
+
+def _candidate(correlation, kind=EndpointKind.COMPLETION, day=date(2024, 1, 9)):
+    return CandidateEvent(
+        key=CandidateKey(aggregate_id=AGGREGATE, kind=kind, day=day),
+        correlation_id=uuid.UUID(int=correlation),
+    )
+
+
+def test_one_endpoint_and_one_event_pair_unambiguously():
+    endpoint = _endpoint(1)
+    candidate = _candidate(900)
+    result = pair_endpoints([endpoint], [candidate])
+    assert result.pairings[endpoint].verdict is PairingVerdict.UNAMBIGUOUS
+    assert result.pairings[endpoint].correlation_id == candidate.correlation_id
+    assert result.unclaimed_events == 0
+
+
+def test_an_endpoint_with_no_event_is_absent():
+    endpoint = _endpoint(1)
+    result = pair_endpoints([endpoint], [])
+    assert result.pairings[endpoint].verdict is PairingVerdict.ABSENT
+    assert result.pairings[endpoint].correlation_id is None
+
+
+def test_two_endpoints_of_one_day_are_both_ambiguous():
+    #: Neither may adopt the correlation id without the other losing it.
+    first, second = _endpoint(1), _endpoint(2)
+    result = pair_endpoints([first, second], [_candidate(900)])
+    assert result.pairings[first].verdict is PairingVerdict.AMBIGUOUS
+    assert result.pairings[second].verdict is PairingVerdict.AMBIGUOUS
+    assert result.pairings[first].correlation_id is None
+
+
+def test_one_endpoint_with_two_events_is_ambiguous():
+    endpoint = _endpoint(1)
+    result = pair_endpoints([endpoint], [_candidate(900), _candidate(901)])
+    assert result.pairings[endpoint].verdict is PairingVerdict.AMBIGUOUS
+
+
+def test_the_answer_does_not_depend_on_the_order_read():
+    first, second = _endpoint(1), _endpoint(2)
+    candidates = [_candidate(900), _candidate(901)]
+    forward = pair_endpoints([first, second], candidates)
+    backward = pair_endpoints([second, first], list(reversed(candidates)))
+    assert forward.pairings == backward.pairings
+
+
+def test_a_start_does_not_pair_with_a_completion_event():
+    endpoint = _endpoint(1, kind=EndpointKind.START)
+    result = pair_endpoints([endpoint], [_candidate(900)])
+    assert result.pairings[endpoint].verdict is PairingVerdict.ABSENT
+
+
+def test_a_different_day_does_not_pair():
+    endpoint = _endpoint(1, day=date(2024, 1, 8))
+    result = pair_endpoints([endpoint], [_candidate(900)])
+    assert result.pairings[endpoint].verdict is PairingVerdict.ABSENT
+
+
+def test_an_event_no_endpoint_matched_is_counted_unclaimed():
+    result = pair_endpoints([], [_candidate(900), _candidate(901)])
+    assert result.unclaimed_events == 2
