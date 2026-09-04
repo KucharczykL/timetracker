@@ -200,7 +200,7 @@ def test_a_family_is_dispatched_for_the_event_type_its_spec_names():
     assert CALLS == [(ProjectorFamily.STATS, RECORDED)]
 
 
-def test_two_families_cannot_claim_one_member():
+def test_two_classes_cannot_claim_one_event_type_in_one_family():
     registry = ProjectorRegistry()
 
     class First(Projector, registry=registry):
@@ -218,6 +218,72 @@ def test_two_families_cannot_claim_one_member():
             def _recorded(self, event: RecordedEvent) -> None: ...
 
             handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
+
+
+#: A local sink, because the module's CALLS is typed
+#: list[tuple[ProjectorFamily, str]] and these tests record which class ran.
+type ClassCall = tuple[str, str]
+
+
+def test_two_classes_share_one_family_when_they_claim_different_event_types():
+    """The thing that was impossible before #679."""
+    seen: list[ClassCall] = []
+    registry = ProjectorRegistry()
+
+    class First(Projector, registry=registry):
+        family_name = ProjectorFamily.CURRENT_STATE
+
+        def _recorded(self, event: RecordedEvent) -> None:
+            seen.append(("first", event.event_type))
+
+        handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
+
+    class Second(Projector, registry=registry):
+        family_name = ProjectorFamily.CURRENT_STATE
+
+        def _other(self, event: RecordedEvent) -> None:
+            seen.append(("second", event.event_type))
+
+        handles: ClassVar[HandlerMap] = {PROBE_OTHER: _other}
+
+    registry.apply(make_event())
+    registry.apply(make_event(event_type=OTHER))
+
+    assert seen == [("first", RECORDED), ("second", OTHER)]
+
+
+def test_a_refused_claim_leaves_the_family_as_it_was():
+    """Every claim is checked before any is taken."""
+    seen: list[ClassCall] = []
+    registry = ProjectorRegistry()
+
+    class Incumbent(Projector, registry=registry):
+        family_name = ProjectorFamily.STATS
+
+        def _recorded(self, event: RecordedEvent) -> None:
+            seen.append(("incumbent", event.event_type))
+
+        handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
+
+    with pytest.raises(TypeError, match="already owned by"):
+
+        #: The uncontested PROBE_OTHER claim is evaluated first, so it is what
+        #: a mutate-as-you-go loop would have left behind.
+        class Greedy(Projector, registry=registry):
+            family_name = ProjectorFamily.STATS
+
+            def _other(self, event: RecordedEvent) -> None: ...
+
+            def _recorded(self, event: RecordedEvent) -> None: ...
+
+            handles: ClassVar[HandlerMap] = {
+                PROBE_OTHER: _other,
+                PROBE_RECORDED: _recorded,
+            }
+
+    assert registry.handlers_for(OTHER) == ()
+    registry.apply(make_event())
+    assert seen == [("incumbent", RECORDED)]
 
 
 def test_registering_one_family_twice_is_not_a_collision():

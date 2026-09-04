@@ -56,8 +56,11 @@ class ProjectorFamily(StrEnum):
     """Every projection family, in the order they run within one event.
 
     **Member order is run order.** Journal and statistics families read the
-    current-state rows written earlier in the same transaction, so the order is
-    load-bearing and must not depend on which module Python imported first.
+    current-state rows written earlier in the same transaction, so the order
+    between families is load-bearing and is this enum, never an import order.
+    Within one family the order is registration order, which is an import
+    order -- and does not matter, because one event type has one owner inside
+    a family, so no two same-family handlers ever see one event.
 
     Nothing persists these names -- they are an ordering key, not the audit
     trail's vocabulary -- so a member may be renamed, added, or reordered
@@ -85,10 +88,14 @@ class ProjectorRegistry:
     """
 
     def __init__(self) -> None:
-        self._families: dict[ProjectorFamily, Projector] = {}
+        #: Many projectors per family, keyed on where each was defined, so
+        #: re-registering one site replaces it rather than adding a copy.
+        self._families: dict[ProjectorFamily, dict[DefinitionSite, Projector]] = {}
         #: Kept so `for_target` rebuilds from the classes.
-        self._classes: dict[ProjectorFamily, type[Projector]] = {}
-        self._claims: dict[ProjectorFamily, DefinitionSite] = {}
+        self._classes: dict[ProjectorFamily, dict[DefinitionSite, type[Projector]]] = {}
+        #: One owner per act, not per family: two projectors share a family
+        #: only while they claim different event types.
+        self._claims: dict[tuple[ProjectorFamily, EventType], DefinitionSite] = {}
         #: The string a RecordedEvent carries.
         self._handlers: dict[EventType, tuple[FamilyHandler, ...]] = {}
 
@@ -127,27 +134,38 @@ class ProjectorRegistry:
                 )
 
         definition_site = (projector_class.__module__, projector_class.__qualname__)
-        claimed_by = self._claims.get(family_name)
-        if claimed_by is not None and claimed_by != definition_site:
-            raise TypeError(
-                f"{projector_class.__qualname__} claims {family_name.value!r}, "
-                f"already owned by {claimed_by[0]}.{claimed_by[1]}."
-            )
+        #: Every claim is checked before any is taken, so a refusal leaves
+        #: nothing half-registered behind it.
+        for spec in handles:
+            claimed_by = self._claims.get((family_name, spec.event_type))
+            if claimed_by is not None and claimed_by != definition_site:
+                raise TypeError(
+                    f"{projector_class.__qualname__} claims "
+                    f"{spec.event_type!r} in {family_name.value!r}, "
+                    f"already owned by {claimed_by[0]}.{claimed_by[1]}."
+                )
+        for spec in handles:
+            self._claims[(family_name, spec.event_type)] = definition_site
 
         #: A family takes its target, nothing else.
-        self._families[family_name] = projector_class(target)
-        self._classes[family_name] = projector_class
-        self._claims[family_name] = definition_site
+        self._families.setdefault(family_name, {})[definition_site] = projector_class(
+            target
+        )
+        self._classes.setdefault(family_name, {})[definition_site] = projector_class
         self._rebuild_handlers()
 
     def for_target(self, target: ProjectionTarget) -> ProjectorRegistry:
         """The same families, writing where `target` points."""
         sibling = ProjectorRegistry()
-        sibling._classes = dict(self._classes)
+        sibling._classes = {
+            family_name: dict(sites) for family_name, sites in self._classes.items()
+        }
         sibling._claims = dict(self._claims)
         sibling._families = {
-            family_name: projector_class(target)
-            for family_name, projector_class in self._classes.items()
+            family_name: {
+                site: projector_class(target) for site, projector_class in sites.items()
+            }
+            for family_name, sites in self._classes.items()
         }
         sibling._rebuild_handlers()
         return sibling
@@ -155,11 +173,11 @@ class ProjectorRegistry:
     def _rebuild_handlers(self) -> None:
         handlers: dict[EventType, list[FamilyHandler]] = {}
         for family_name in sorted(self._families, key=_RUN_ORDER.__getitem__):
-            family = self._families[family_name]
-            for spec, handler in family.handles.items():
-                handlers.setdefault(spec.event_type, []).append(
-                    (family_name, handler.__get__(family))
-                )
+            for family in self._families[family_name].values():
+                for spec, handler in family.handles.items():
+                    handlers.setdefault(spec.event_type, []).append(
+                        (family_name, handler.__get__(family))
+                    )
         self._handlers = {
             event_type: tuple(found) for event_type, found in handlers.items()
         }
