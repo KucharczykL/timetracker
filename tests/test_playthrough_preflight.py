@@ -33,6 +33,7 @@ from games.preflight.playthrough import (
     shared_catalog_counts,
 )
 from games.removal import remove
+from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db
 
@@ -429,6 +430,165 @@ def test_an_undated_status_event_is_no_candidate(owned_library):
     assert counts.pairs_absent == 1
 
 
+def test_a_removed_game_keeps_its_rows_out_of_the_no_rows_count(owned_library):
+    #: remove() stamps the game; the projection row stays live.
+    game = _game(owned_library)
+    _saved_row(game, started=date(2024, 1, 1))
+    remove(game)
+    counts = preflight_library(owned_library).counts
+    assert counts.tracked == 1
+    assert counts.tracked_on_removed_game == 1
+    assert counts.tracked_without_rows == 0
+    assert counts.rows_on_removed_game == 1
+
+
+def test_a_shared_game_a_library_tracks_is_walked(owned_library):
+    shared = Game.objects.create(library=None, name="Shared")
+    _saved_row(shared, started=date(2024, 1, 1))
+    PlayerGame.objects.create(
+        pk=uuid.uuid7(), library=owned_library, game=shared, tracked_at=timezone.now()
+    )
+    counts = preflight_library(owned_library).counts
+    assert counts.tracked == 1
+    assert counts.rows_total == 1
+    assert counts.live_rows == 1
+    assert counts.rows_unaccounted == 0
+
+
+def test_every_row_lands_in_exactly_one_bucket(owned_library):
+    walked = _game(owned_library, name="Walked")
+    _saved_row(walked, started=date(2024, 1, 1))
+
+    stamped = _game(owned_library, name="Stamped")
+    remove(_saved_row(stamped, started=date(2024, 1, 1)))
+
+    gone = _game(owned_library, name="Gone")
+    _saved_row(gone, started=date(2024, 1, 1))
+    remove(gone)
+
+    untracked = _game(owned_library, name="Untracked")
+    _saved_row(untracked, started=date(2024, 1, 1))
+    PlayerGame.objects.filter(game=untracked).update(removed_at=timezone.now())
+
+    shared = Game.objects.create(library=None, name="Shared")
+    _saved_row(shared, started=date(2024, 1, 1))
+    PlayerGame.objects.create(
+        pk=uuid.uuid7(), library=owned_library, game=shared, tracked_at=timezone.now()
+    )
+
+    counts = preflight_library(owned_library).counts
+    assert counts.rows_total == 5
+    assert counts.rows_unaccounted == 0
+    assert (
+        counts.live_rows
+        + counts.rows_removed
+        + counts.rows_on_removed_game
+        + counts.rows_untracked
+        + counts.rows_without_projection
+        == counts.rows_total
+    )
+
+
+@pytest.mark.untracked_games
+@pytest.mark.django_db(transaction=True)
+def test_an_abandoned_game_still_pairs_its_completion(owned_library):
+    #: The legacy row's ended date is the day it was dropped.
+    dropped = date(2024, 1, 9)
+    game = _game(owned_library)
+    game.status = Game.Status.ABANDONED
+    game.save()
+    GameStatusChange.objects.create(
+        game=game,
+        old_status=Game.Status.PLAYED,
+        new_status=Game.Status.ABANDONED,
+        timestamp=datetime(
+            dropped.year,
+            dropped.month,
+            dropped.day,
+            12,
+            tzinfo=timezone.get_current_timezone(),
+        ),
+    )
+    _saved_row(game, ended=dropped)
+    backfill_library(owned_library)
+    counts = preflight_library(owned_library).counts
+    assert counts.pairs_unambiguous == 1
+    assert counts.pairs_retired_or_abandoned == 1
+    assert counts.pairs_absent == 0
+
+
+@pytest.mark.untracked_games
+@pytest.mark.django_db(transaction=True)
+def test_a_completed_pair_is_not_counted_as_an_ending_status(owned_library):
+    completed = date(2024, 1, 9)
+    game = _game(owned_library)
+    game.status = Game.Status.FINISHED
+    game.save()
+    _recorded_completion(game, completed)
+    _saved_row(game, ended=completed)
+    backfill_library(owned_library)
+    counts = preflight_library(owned_library).counts
+    assert counts.pairs_unambiguous == 1
+    assert counts.pairs_retired_or_abandoned == 0
+
+
+@pytest.mark.untracked_games
+@pytest.mark.django_db(transaction=True)
+def test_a_month_is_no_known_day(owned_library):
+    game = _game(owned_library)
+    game.status = Game.Status.FINISHED
+    game.save()
+    _recorded_completion(game, date(2024, 1, 9))
+    _saved_row(game, ended=date(2024, 1, 9))
+    backfill_library(owned_library)
+    #: An UPDATE, so the projection is left where it stands.
+    LibraryEvent.objects.filter(effective_time__isnull=False).update(
+        effective_time=TemporalValue.from_month(2024, 1)
+    )
+    counts = preflight_library(owned_library).counts
+    assert counts.status_events_676 == 0
+    assert counts.status_events_undated == 1
+    assert counts.pairs_absent == 1
+
+
+@pytest.mark.untracked_games
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    "metadata", [{"origin": "request"}, {"origin": "backfill", "issue": 999}]
+)
+def test_only_a_676_backfill_event_is_a_candidate(owned_library, metadata):
+    completed = date(2024, 1, 9)
+    game = _game(owned_library)
+    game.status = Game.Status.FINISHED
+    game.save()
+    _recorded_completion(game, completed)
+    _saved_row(game, ended=completed)
+    backfill_library(owned_library)
+    #: An UPDATE, so the projection is left where it stands.
+    LibraryEvent.objects.filter(effective_time__isnull=False).update(
+        source_metadata=metadata
+    )
+    counts = preflight_library(owned_library).counts
+    assert counts.status_events_676 == 0
+    assert counts.status_events_undated == 0
+    assert counts.pairs_absent == 1
+
+
+def test_an_event_of_another_game_does_not_pair():
+    endpoint = _endpoint(1)
+    stranger = CandidateEvent(
+        key=CandidateKey(
+            aggregate_id=uuid.UUID(int=101),
+            kind=EndpointKind.COMPLETION,
+            day=date(2024, 1, 9),
+        ),
+        correlation_id=uuid.UUID(int=900),
+    )
+    result = pair_endpoints([endpoint], [stranger])
+    assert result.pairings[endpoint].verdict is PairingVerdict.ABSENT
+    assert result.unclaimed_events == 1
+
+
 def test_a_shared_game_is_counted_outside_every_library(owned_library):
     shared = Game.objects.create(library=None, name="Shared")
     _saved_row(shared, started=date(2024, 1, 1))
@@ -517,7 +677,7 @@ def test_a_run_over_every_anomaly_still_exits_zero(owned_library):
     game = _game(owned_library)
     _saved_row(game, started=date(2024, 5, 9), ended=date(2024, 5, 1))
     _saved_row(game)
-    #: call_command raises SystemExit on a nonzero code.
+    #: A CommandError would rise out of call_command.
     _run("--all-libraries")
 
 
@@ -541,6 +701,41 @@ def test_the_sample_cap_reaches_the_output(owned_library):
 def test_an_unknown_user_is_refused_by_name(owned_library):
     with pytest.raises(CommandError, match="nobody"):
         _run("--user", "nobody")
+
+
+def test_one_library_is_reported_by_its_uuid(owned_library, django_user_model):
+    stranger = django_user_model.objects.create_user(username="stranger", password="p")
+    _saved_row(_game(owned_library), started=date(2024, 1, 1))
+    _saved_row(_game(stranger.library), started=date(2024, 1, 1))
+    payload = _machine_line(_run("--library", str(owned_library.pk)))
+    assert len(payload["libraries"]) == 1
+    assert payload["libraries"][0]["library_id"] == str(owned_library.pk)
+    assert payload["summary"]["live_rows"] == 1
+
+
+def test_an_unknown_library_is_refused_by_uuid(owned_library):
+    absent = uuid.uuid7()
+    with pytest.raises(CommandError, match=str(absent)):
+        _run("--library", str(absent))
+
+
+def test_a_library_that_is_no_uuid_is_refused_rather_than_raised(owned_library):
+    #: ValidationError from the field, not a CommandError of ours.
+    with pytest.raises(CommandError, match="not-a-uuid"):
+        _run("--library", "not-a-uuid")
+
+
+def test_a_negative_sample_size_is_refused(owned_library):
+    with pytest.raises(CommandError, match="negative"):
+        _run("--all-libraries", "--sample-size", "-1")
+
+
+def test_the_report_names_its_denominator(owned_library):
+    game = _game(owned_library)
+    _saved_row(game, started=date(2024, 1, 1))
+    text = _run("--all-libraries")
+    assert "play events in scope: 1" in text
+    assert "in no bucket above: 0" in text
 
 
 @pytest.mark.untracked_games

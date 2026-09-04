@@ -1,6 +1,7 @@
 """Print the preflight, for a log and a person.
 
-The exit code is always 0: a preflight reports and does not gate.
+A preflight reports and does not gate, so what it finds never fails the run.
+Only a scope this command cannot resolve is an error.
 """
 
 import json
@@ -81,6 +82,8 @@ class Command(BaseCommand):
         )
         write(f"  tracked games: {counts.tracked}")
         write(f"    holding no play events: {counts.tracked_without_rows}")
+        write(f"    on a removed game: {counts.tracked_on_removed_game}")
+        write(f"  play events in scope: {counts.rows_total}")
         write(f"  live play events: {counts.live_rows}")
         write(f"    clean, both endpoints: {counts.clean_both}")
         write(f"    clean, start only: {counts.clean_start_only}")
@@ -93,6 +96,7 @@ class Command(BaseCommand):
         write(f"    on a removed game: {counts.rows_on_removed_game}")
         write(f"    on an untracked game: {counts.rows_untracked}")
         write(f"    with no projection row: {counts.rows_without_projection}")
+        write(f"    in no bucket above: {counts.rows_unaccounted}")
         write("  ordering:")
         write(f"    ordered by date alone: {counts.ordered_by_date}")
         write(f"    display number decided by insertion order: {counts.tie_broken}")
@@ -102,8 +106,15 @@ class Command(BaseCommand):
             f"{counts.date_order_differs_from_insertion}"
         )
         self._write_sample(report.samples.date_order_differs)
-        write(f"  #676 status events found: {counts.status_events_676}")
+        write(f"  #676 status events with a known day: {counts.status_events_676}")
+        write(
+            f"    #676 status events with no known day: {counts.status_events_undated}"
+        )
         write(f"    endpoints with one unambiguous pair: {counts.pairs_unambiguous}")
+        write(
+            f"      whose status was retired or abandoned: "
+            f"{counts.pairs_retired_or_abandoned}"
+        )
         write(f"    endpoints with an ambiguous pair: {counts.pairs_ambiguous}")
         self._write_sample(report.samples.ambiguous_endpoints)
         write(f"    endpoints with no candidate: {counts.pairs_absent}")

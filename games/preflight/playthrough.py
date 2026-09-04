@@ -10,9 +10,9 @@ from dataclasses import dataclass, fields
 from datetime import date
 from enum import StrEnum
 from itertools import batched
-from typing import NamedTuple
+from typing import NamedTuple, assert_never
 
-from django.db.models import Count
+from django.db.models import Count, Q, QuerySet
 
 from common.keyset import keyset_pages
 from games.backfill.playergame import PGAME_ISSUE
@@ -84,6 +84,8 @@ class PreflightCounts:
 
     tracked: int = 0
     tracked_without_rows: int = 0
+    tracked_on_removed_game: int = 0
+    rows_total: int = 0
     live_rows: int = 0
     clean_both: int = 0
     clean_start_only: int = 0
@@ -97,8 +99,11 @@ class PreflightCounts:
     rows_on_removed_game: int = 0
     rows_untracked: int = 0
     rows_without_projection: int = 0
+    rows_unaccounted: int = 0
     status_events_676: int = 0
+    status_events_undated: int = 0
     pairs_unambiguous: int = 0
+    pairs_retired_or_abandoned: int = 0
     pairs_ambiguous: int = 0
     pairs_absent: int = 0
     unclaimed_events: int = 0
@@ -118,18 +123,25 @@ class PreflightCounts:
 #: The value an accumulation starts from.
 NO_COUNTS = PreflightCounts()
 
-#: One field name per RowVerdict member.
-_VERDICT_FIELDS: dict[RowVerdict, str] = {
-    RowVerdict.CLEAN_BOTH: "clean_both",
-    RowVerdict.CLEAN_START_ONLY: "clean_start_only",
-    RowVerdict.CLEAN_END_ONLY: "clean_end_only",
-    RowVerdict.NO_KNOWN_ENDPOINT: "no_known_endpoint",
-    RowVerdict.REVERSED_ENDPOINTS: "reversed_endpoints",
-}
+
+def _verdict_field(verdict: RowVerdict) -> str:
+    """The counts field one row verdict adds to."""
+    match verdict:
+        case RowVerdict.CLEAN_BOTH:
+            return "clean_both"
+        case RowVerdict.CLEAN_START_ONLY:
+            return "clean_start_only"
+        case RowVerdict.CLEAN_END_ONLY:
+            return "clean_end_only"
+        case RowVerdict.NO_KNOWN_ENDPOINT:
+            return "no_known_endpoint"
+        case RowVerdict.REVERSED_ENDPOINTS:
+            return "reversed_endpoints"
+    assert_never(verdict)
 
 
 class OrderingVerdict(NamedTuple):
-    """Three independent readings, not a partition."""
+    """ordered_by_date is not tie_broken; differs is independent."""
 
     ordered_by_date: bool
     tie_broken: bool
@@ -175,10 +187,11 @@ class CandidateKey(NamedTuple):
 
 
 class CandidateEvent(NamedTuple):
-    """One #676 event and its correlation id."""
+    """One #676 event, its status and correlation id."""
 
     key: CandidateKey
     correlation_id: uuid.UUID
+    status: PlayerGameStatus = PlayerGameStatus.COMPLETED
 
 
 class PairingVerdict(StrEnum):
@@ -187,11 +200,27 @@ class PairingVerdict(StrEnum):
     ABSENT = "absent"
 
 
+def _pairing_field(verdict: PairingVerdict) -> str:
+    """The counts field one pairing verdict adds to."""
+    match verdict:
+        case PairingVerdict.UNAMBIGUOUS:
+            return "pairs_unambiguous"
+        case PairingVerdict.AMBIGUOUS:
+            return "pairs_ambiguous"
+        case PairingVerdict.ABSENT:
+            return "pairs_absent"
+    assert_never(verdict)
+
+
 class Pairing(NamedTuple):
-    """A verdict, and an id when uncontested."""
+    """A verdict, and the event when uncontested."""
 
     verdict: PairingVerdict
-    correlation_id: uuid.UUID | None
+    event: CandidateEvent | None
+
+    @property
+    def correlation_id(self) -> uuid.UUID | None:
+        return None if self.event is None else self.event.correlation_id
 
 
 class PairingResult(NamedTuple):
@@ -226,16 +255,13 @@ def pair_endpoints(
     for key, group in endpoints_by_key.items():
         events = events_by_key.get(key, [])
         if not events:
-            verdict, correlation_id = PairingVerdict.ABSENT, None
+            verdict, event = PairingVerdict.ABSENT, None
         elif len(group) == 1 and len(events) == 1:
-            verdict, correlation_id = (
-                PairingVerdict.UNAMBIGUOUS,
-                events[0].correlation_id,
-            )
+            verdict, event = PairingVerdict.UNAMBIGUOUS, events[0]
         else:
-            verdict, correlation_id = PairingVerdict.AMBIGUOUS, None
+            verdict, event = PairingVerdict.AMBIGUOUS, None
         for endpoint in group:
-            pairings[endpoint] = Pairing(verdict, correlation_id)
+            pairings[endpoint] = Pairing(verdict, event)
 
     unclaimed = sum(
         len(events)
@@ -251,12 +277,17 @@ WALK_PAGE_SIZE = 200
 #: Identifiers per sampled list.
 DEFAULT_SAMPLE_SIZE = 20
 
-#: The status a #676 event states.
-_STATUS_FOR_KIND: dict[EndpointKind, PlayerGameStatus] = {
-    EndpointKind.START: PlayerGameStatus.PLAYED,
-    EndpointKind.COMPLETION: PlayerGameStatus.COMPLETED,
+#: Which endpoint a #676 status can date.
+_KIND_FOR_STATUS: dict[PlayerGameStatus, EndpointKind] = {
+    PlayerGameStatus.PLAYED: EndpointKind.START,
+    PlayerGameStatus.COMPLETED: EndpointKind.COMPLETION,
+    #: A dropped game ends on a day.
+    PlayerGameStatus.RETIRED: EndpointKind.COMPLETION,
+    PlayerGameStatus.ABANDONED: EndpointKind.COMPLETION,
 }
-_KIND_FOR_STATUS = {status: kind for kind, status in _STATUS_FOR_KIND.items()}
+
+#: A completion #684 must not read as completed.
+_ENDING_STATUSES = frozenset({PlayerGameStatus.RETIRED, PlayerGameStatus.ABANDONED})
 
 
 @dataclass(frozen=True, slots=True)
@@ -296,56 +327,81 @@ class LibraryPreflight:
         }
 
 
-def _candidate_events(library: UserLibrary) -> list[CandidateEvent]:
-    """Every dated #676 status event, one query.
+class CandidateEvents(NamedTuple):
+    """The dated candidates, and the undated ones counted."""
 
-    LibraryEvent indexes none of these columns, so the scan is paid once and
-    the day is read in Python. A known day is demanded: lower_bound answers
-    for a month or a decade too.
+    candidates: list[CandidateEvent]
+    undated: int
+
+
+def _candidate_events(library: UserLibrary) -> CandidateEvents:
+    """Every #676 status event, one query.
+
+    LibraryEvent indexes neither the type nor the payload, so the scan is
+    paid once and the day is read in Python. A known day is demanded:
+    lower_bound answers for a month or a decade too.
     """
     rows = LibraryEvent.objects.filter(
         library=library,
         event_type=PLAYERGAME_STATUS_CHANGED.event_type,
         source_metadata__origin="backfill",
         source_metadata__issue=PGAME_ISSUE,
-        payload__status__in=[status.value for status in _STATUS_FOR_KIND.values()],
-        effective_time__isnull=False,
+        payload__status__in=[status.value for status in _KIND_FOR_STATUS],
     ).values_list("aggregate_id", "payload", "effective_time", "correlation_id")
 
     candidates = []
+    undated = 0
     for aggregate_id, payload, effective_time, correlation_id in rows:
         if effective_time is None or not effective_time.has_known_day:
+            undated += 1
             continue
-        day = effective_time.lower_bound
-        kind = _KIND_FOR_STATUS[PlayerGameStatus(payload["status"])]
+        status = PlayerGameStatus(payload["status"])
         candidates.append(
             CandidateEvent(
-                key=CandidateKey(aggregate_id=aggregate_id, kind=kind, day=day),
+                key=CandidateKey(
+                    aggregate_id=aggregate_id,
+                    kind=_KIND_FOR_STATUS[status],
+                    day=effective_time.lower_bound,
+                ),
                 correlation_id=correlation_id,
+                status=status,
             )
         )
-    return candidates
+    return CandidateEvents(candidates=candidates, undated=undated)
+
+
+def _rows_in_scope(library: UserLibrary) -> QuerySet[PlayEvent]:
+    """Every legacy row this library owns or tracks.
+
+    A library can track a catalog game it does not own, so ownership alone
+    would miss the shared rows the walk converts.
+    """
+    return PlayEvent.objects.filter(
+        Q(game__library=library) | Q(game__player_games__library=library)
+    ).distinct()
 
 
 def _excluded_counts(library: UserLibrary) -> PreflightCounts:
     """Rows the conversion never sees, counted once.
 
     The four checks run in this order, so a row is counted in the first that
-    claims it.
+    claims it. Together with live_rows they exhaust rows_total.
     """
-    owned = PlayEvent.objects.filter(game__library=library)
-    on_removed_game = owned.filter(game__removed_at__isnull=False).count()
-    live_game_rows = owned.filter(game__removed_at__isnull=True)
+    projected = PlayerGame.objects.filter(library=library)
+    tracked_games = projected.filter(removed_at__isnull=True).values("game_id")
+    untracked_games = projected.filter(removed_at__isnull=False).values("game_id")
+
+    in_scope = _rows_in_scope(library)
+    on_removed_game = in_scope.filter(game__removed_at__isnull=False).count()
+    live_game_rows = in_scope.filter(game__removed_at__isnull=True)
     removed_rows = live_game_rows.filter(removed_at__isnull=False).count()
-    live = live_game_rows.filter(removed_at__isnull=True)
-    untracked = live.filter(
-        game__player_games__library=library,
-        game__player_games__removed_at__isnull=False,
-    ).count()
-    without_projection = live.exclude(
-        game__player_games__library=library,
-    ).count()
+    live = live_game_rows.filter(removed_at__isnull=True).exclude(
+        game_id__in=tracked_games
+    )
+    untracked = live.filter(game_id__in=untracked_games).count()
+    without_projection = live.exclude(game_id__in=untracked_games).count()
     return PreflightCounts(
+        rows_total=in_scope.count(),
         rows_on_removed_game=on_removed_game,
         rows_removed=removed_rows,
         rows_untracked=untracked,
@@ -358,8 +414,10 @@ def preflight_library(
 ) -> LibraryPreflight:
     """One library's legacy rows, read and counted."""
     counts = _excluded_counts(library)
-    candidates = _candidate_events(library)
-    counts = counts + PreflightCounts(status_events_676=len(candidates))
+    candidates, undated = _candidate_events(library)
+    counts = counts + PreflightCounts(
+        status_events_676=len(candidates), status_events_undated=undated
+    )
 
     reversed_rows: list[uuid.UUID] = []
     tied_games: list[uuid.UUID] = []
@@ -389,6 +447,10 @@ def preflight_library(
             aggregate_for_game.items(), key=lambda pair: pair[1]
         ):
             counts = counts + PreflightCounts(tracked=1)
+            if game_id not in live_games:
+                #: Removal never untracks; its rows count elsewhere.
+                counts = counts + PreflightCounts(tracked_on_removed_game=1)
+                continue
             rows = rows_by_game.get(game_id, [])
             if not rows:
                 counts = counts + PreflightCounts(tracked_without_rows=1)
@@ -397,7 +459,7 @@ def preflight_library(
             counts = counts + PreflightCounts(live_rows=len(rows))
             for row in sorted(rows, key=legacy_order_key):
                 verdict = classify_row(row)
-                counts = counts + PreflightCounts(**{_VERDICT_FIELDS[verdict]: 1})
+                counts = counts + PreflightCounts(**{_verdict_field(verdict): 1})
                 if verdict is RowVerdict.REVERSED_ENDPOINTS:
                     reversed_rows.append(row.id)
                 for kind, day in (
@@ -427,11 +489,21 @@ def preflight_library(
 
     pairing = pair_endpoints(endpoints, candidates)
     for endpoint in endpoints:
-        pair_verdict = pairing.pairings[endpoint].verdict
-        counts = counts + PreflightCounts(**{f"pairs_{pair_verdict.value}": 1})
-        if pair_verdict is PairingVerdict.AMBIGUOUS:
+        paired = pairing.pairings[endpoint]
+        counts = counts + PreflightCounts(**{_pairing_field(paired.verdict): 1})
+        if paired.verdict is PairingVerdict.AMBIGUOUS:
             ambiguous.append(f"{endpoint.row_id}:{endpoint.kind.value}")
-    counts = counts + PreflightCounts(unclaimed_events=pairing.unclaimed_events)
+        if paired.event is not None and paired.event.status in _ENDING_STATUSES:
+            counts = counts + PreflightCounts(pairs_retired_or_abandoned=1)
+    counts = counts + PreflightCounts(
+        unclaimed_events=pairing.unclaimed_events,
+        rows_unaccounted=counts.rows_total
+        - counts.live_rows
+        - counts.rows_removed
+        - counts.rows_on_removed_game
+        - counts.rows_untracked
+        - counts.rows_without_projection,
+    )
 
     def capped[SampleT](values: list[SampleT]) -> tuple[SampleT, ...]:
         return tuple(values[:sample_size])

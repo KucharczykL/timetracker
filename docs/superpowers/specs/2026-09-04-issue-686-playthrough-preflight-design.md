@@ -38,12 +38,22 @@ counts report the order of a game: `ordered_by_date`, `tie_broken` and
 The report also counts the rows that the conversion does not see: a removed
 row, a row on a removed game, a row on an untracked game, and a row with no
 projection. The last count is the #676 signal. The checks run in this order,
-thus each row is counted once.
+thus each row is counted once. A row is in scope when the library owns its
+game or tracks it. These five counts and the live row count sum to the rows
+in scope. The report prints the difference, and the difference is zero.
+
+Removal does not untrack. A tracked game that is removed holds its rows in
+the removed-game count, thus the report counts the game separately from a
+tracked game that holds no rows.
 
 ## The pairing
 
 An endpoint is one known date on one live row. A candidate is a #676 status
-event with the same aggregate, the same kind and the same day. `pair_endpoints`
+event with the same aggregate, the same kind and the same day. A `played`
+event dates a start. A `completed`, a `retired` or an `abandoned` event dates
+a completion, because a game that a person drops also ends on a day. The
+report counts the pairs that a `retired` or an `abandoned` event makes, thus
+#684 sees them and decides. `pair_endpoints`
 groups the endpoints and the events by that key. A group with one endpoint and
 one event is `unambiguous`. A larger group is `ambiguous`, and no event is
 taken. An endpoint with no event is `absent`. The verdict is a property of the
@@ -51,7 +61,9 @@ group, thus the read order cannot change it.
 
 The day comparison occurs in Python. `effective_time` has no generated bound
 columns. A candidate must state a known day, because `lower_bound` also answers
-for a month or a decade. The candidate events are read once for each library.
+for a month or a decade. The report counts the events that state no known day,
+thus a zero candidate count names its cause. The candidate events are read once
+for each library.
 
 ## The output
 
@@ -62,7 +74,8 @@ readable section follows for each library. `--sample-size` limits the
 identifiers beside a count; the default is 20, and `0` prints none. Two runs
 over the same data print the same bytes.
 
-The command always exits 0. A preflight reports; it does not gate.
+A preflight reports; it does not gate. What the report finds never fails the
+run. Only a scope the command cannot resolve is an error.
 
 The pairing counts are zero before migration 0033. Restore a copy of the
 deployed database, migrate it, then run the command.
