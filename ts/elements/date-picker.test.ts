@@ -9,12 +9,14 @@ const calendarWeekdayLabels = vi.hoisted(() =>
 
 // segmentRules/dayPeriodLabels return null here, so the engine exercises its
 // contract-less fallback path — these pages carry no presentation contract.
+// The day is fixed, and must not be the runner's, to pin the zone the empty
+// calendar opens in (#949).
 vi.mock("../date-time-presentation.js", () => ({
   formatCalendarMonthYear,
   calendarWeekdayLabels,
   segmentRules: () => null,
   dayPeriodLabels: () => null,
-  todayInPresentationZone: () => null,
+  todayInPresentationZone: () => "2027-03-05",
 }));
 
 function segment(part: string, width: number, placeholder: string): string {
@@ -184,6 +186,18 @@ describe("date-picker calendar", () => {
     expect(
       picker.querySelector("[data-date-range-calendar]")!.hasAttribute("hidden"),
     ).toBe(false);
+  });
+
+  it("opens an empty field on the display zone's day (#949)", () => {
+    const picker = mount();
+    picker
+      .querySelector<HTMLElement>("[data-date-picker-calendar-toggle]")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    expect(formatCalendarMonthYear).toHaveBeenCalledWith(2027, 2);
+    expect(
+      picker.querySelector('[data-date="2027-03-05"]')!.getAttribute("aria-current"),
+    ).toBe("date");
   });
 
   it("picking a day commits the value and closes the popup immediately", () => {

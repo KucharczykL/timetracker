@@ -435,9 +435,10 @@ export function nowInPresentationZone(
 /**
  * Today's date in the contract's zone.
  *
- * `null`, logged without a toast, when the contract is unusable. The sibling
- * above toasts because a click waits on it; here the caller falls back to the
- * browser's day and nothing is blocked (#949).
+ * `null` when the contract is unusable, logged once by the contract read and
+ * never toasted. The sibling above toasts only for an explicit override, where
+ * a click gets nothing back; here the caller still answers, with the browser's
+ * day (#949).
  */
 export function todayInPresentationZone(): string | null {
   const presentation = getPresentation();

@@ -417,6 +417,33 @@ describe("todayInPresentationZone", () => {
     const { todayInPresentationZone } = await importFormatter();
 
     expect(todayInPresentationZone()).toBeNull();
+    // The one report comes from the contract read, which memoizes its null:
+    // a second call degrades in silence.
     expect(reportClientError).toHaveBeenCalledTimes(1);
+    expect(todayInPresentationZone()).toBeNull();
+    expect(reportClientError).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs and returns null when the zone read itself throws", async () => {
+    // The contract's zone is Intl-valid by construction, so only a Temporal
+    // stricter than Intl reaches the catch — the polyfill on old Safari can be.
+    installConfig(validConfig());
+    const { todayInPresentationZone } = await importFormatter();
+    const plainDateISO = vi
+      .spyOn(Temporal.Now, "plainDateISO")
+      .mockImplementation(() => {
+        throw new RangeError("zone unsupported");
+      });
+
+    try {
+      expect(todayInPresentationZone()).toBeNull();
+      expect(reportClientError).toHaveBeenCalledWith(
+        "date-time-presentation",
+        "zone unsupported",
+        { toast: false },
+      );
+    } finally {
+      plainDateISO.mockRestore();
+    }
   });
 });

@@ -202,6 +202,16 @@ describe("date-range-picker static-calendar variant", () => {
     expect(calendarWeekdayLabels).toHaveBeenCalledTimes(1);
   });
 
+  it("opens on the display zone's month and marks its day (#949)", () => {
+    // March 2027 is the mocked contract day's month, not the runner's.
+    const picker = mountStatic();
+
+    expect(formatCalendarMonthYear).toHaveBeenCalledWith(2027, 2);
+    expect(
+      picker.querySelector('[data-date="2027-03-05"]')!.getAttribute("aria-current"),
+    ).toBe("date");
+  });
+
   it("keeps the calendar interactive after an outside click", () => {
     const picker = mountStatic();
     document.body.dispatchEvent(new MouseEvent("click", { bubbles: true }));
