@@ -249,11 +249,10 @@ def test_date_dropdown_facet_preset_flow(
 
     platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
     game = Game.objects.create(library=e2e_library, name="Doom", platform=platform)
-    #: Noon, so no zone the three clocks use reads another day.
+    #: Noon, so every clock reads one day.
     #:
-    #: The preset states the browser's day (#949), the filter answers
-    #: in the display one, and the row is stored in UTC. An hour
-    #: either side of midnight they name two days and the row is lost.
+    #: The preset states the browser's day (#949), the filter answers in
+    #: the display one, and the row is stored in UTC.
     now = datetime.now(UTC)
     noon = now.replace(hour=12, minute=0, second=0, microsecond=0)
     today_session = Session.objects.create(
