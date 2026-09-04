@@ -115,7 +115,7 @@ class PreflightCounts:
     pairs_absent: int = 0
     unclaimed_events: int = 0
 
-    def __add__(self, other: "PreflightCounts") -> "PreflightCounts":
+    def __add__(self, other: PreflightCounts) -> PreflightCounts:
         return PreflightCounts(
             **{
                 field.name: getattr(self, field.name) + getattr(other, field.name)
@@ -395,9 +395,9 @@ def preflight_library(
     ambiguous: list[str] = []
     endpoints: list[Endpoint] = []
 
-    tracked = PlayerGame.objects.filter(
-        library=library, removed_at__isnull=True
-    ).only("id", "game_id")
+    tracked = PlayerGame.objects.filter(library=library, removed_at__isnull=True).only(
+        "id", "game_id"
+    )
     for batch in batched(
         keyset_pages(tracked, key=("id",), page_size=WALK_PAGE_SIZE), WALK_PAGE_SIZE
     ):

@@ -365,7 +365,10 @@ def _recorded_completion(game, day):
         game=game,
         old_status=Game.Status.PLAYED,
         new_status=Game.Status.FINISHED,
-        timestamp=timezone.make_aware(datetime(day.year, day.month, day.day, 12)),
+        #: Local noon: the backfill reads the day off localtime().
+        timestamp=datetime(
+            day.year, day.month, day.day, 12, tzinfo=timezone.get_current_timezone()
+        ),
     )
 
 
@@ -462,9 +465,7 @@ def _run(*args):
 
 
 def _machine_line(text):
-    line = next(
-        line for line in text.splitlines() if line.startswith(MACHINE_PREFIX)
-    )
+    line = next(line for line in text.splitlines() if line.startswith(MACHINE_PREFIX))
     return json.loads(line[len(MACHINE_PREFIX) :])
 
 
@@ -544,3 +545,32 @@ def test_the_sample_cap_reaches_the_output(owned_library):
 def test_an_unknown_user_is_refused_by_name(owned_library):
     with pytest.raises(CommandError, match="nobody"):
         _run("--user", "nobody")
+
+
+@pytest.mark.untracked_games
+@pytest.mark.django_db(transaction=True)
+def test_the_sample_fixture_walks_and_states_why_it_cannot_pair(django_user_model):
+    """The fixture holds no legacy status rows, so nothing can pair."""
+    owner = django_user_model.objects.create_user(username="sample-owner", password="p")
+    call_command("load_sample_data", "--user", owner.username, verbosity=0)
+
+    report = preflight_library(owner.library)
+    counts = report.counts
+    assert counts.tracked > 0
+    assert counts.live_rows > 0
+    assert (
+        counts.clean_both
+        + counts.clean_start_only
+        + counts.clean_end_only
+        + counts.no_known_endpoint
+        + counts.reversed_endpoints
+        == counts.live_rows
+    )
+    #: anonymize_sample omits GameStatusChange, so #676 recorded only
+    #: corrective events, and those carry no day.
+    assert GameStatusChange.objects.count() == 0
+    assert counts.status_events_676 == 0
+    assert counts.pairs_unambiguous == 0
+    assert counts.pairs_ambiguous == 0
+    assert counts.unclaimed_events == 0
+    assert counts.pairs_absent > 0
