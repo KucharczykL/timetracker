@@ -6,6 +6,8 @@ const formatCalendarMonthYear = vi.hoisted(() => vi.fn(() => "Contract month"));
 const calendarWeekdayLabels = vi.hoisted(() =>
   vi.fn(() => ["M1", "T2", "W3", "T4", "F5", "S6", "S7"]),
 );
+// The day the server would answer with, which is not the runner's day (#949).
+const todayInPresentationZone = vi.hoisted(() => vi.fn(() => "2027-03-05"));
 
 // segmentRules/dayPeriodLabels return null here, so the engine exercises its
 // contract-less fallback path — these pages carry no presentation contract.
@@ -14,6 +16,7 @@ vi.mock("../date-time-presentation.js", () => ({
   calendarWeekdayLabels,
   segmentRules: () => null,
   dayPeriodLabels: () => null,
+  todayInPresentationZone,
 }));
 
 // Minimal-complete markup mirroring DateRangeField + DateRangeCalendar — only the
@@ -209,14 +212,17 @@ describe("date-range-picker static-calendar variant", () => {
     expect(picker.querySelector("[data-date-range-calendar]")!.classList.contains("hidden")).toBe(false);
   });
 
-  it("preset pick writes both hidden bounds", () => {
+  it("preset pick writes both hidden bounds, on the day the server answers in", () => {
+    // Not the runner's day: the filter reads the range back in
+    // DISPLAY_TIME_ZONE, so a preset computed from the browser's clock names a
+    // day the server does not (#949).
     const picker = mountStatic();
     picker
       .querySelector<HTMLElement>('[data-date-range-preset="today"]')!
       .dispatchEvent(new MouseEvent("click", { bubbles: true }));
     const min = picker.querySelector<HTMLInputElement>('[data-date-range-hidden="min"]')!;
     const max = picker.querySelector<HTMLInputElement>('[data-date-range-hidden="max"]')!;
-    expect(min.value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(min.value).toBe("2027-03-05");
     expect(max.value).toBe(min.value);
   });
 });

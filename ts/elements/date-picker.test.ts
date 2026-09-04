@@ -14,6 +14,7 @@ vi.mock("../date-time-presentation.js", () => ({
   calendarWeekdayLabels,
   segmentRules: () => null,
   dayPeriodLabels: () => null,
+  todayInPresentationZone: () => null,
 }));
 
 function segment(part: string, width: number, placeholder: string): string {

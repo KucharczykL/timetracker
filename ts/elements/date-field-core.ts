@@ -18,6 +18,7 @@
 import {
   dayPeriodLabels,
   segmentRules,
+  todayInPresentationZone,
 } from "../date-time-presentation.js";
 import type { SegmentName } from "../generated/date-time-presentation.js";
 
@@ -52,6 +53,26 @@ export function addDays(dateObject: Date, dayCount: number): Date {
   const copy = new Date(dateObject.getTime());
   copy.setDate(copy.getDate() + dayCount);
   return copy;
+}
+
+/**
+ * Today at local midnight, drawn in the zone the server answers in.
+ *
+ * Every preset and every "current day" ring comes from here rather than from
+ * `new Date()`: a range is read back in `DISPLAY_TIME_ZONE`, and a browser in
+ * another zone draws the day boundary somewhere the server does not (#949).
+ * The `Date` stays a local-midnight one, which is the whole picker's calendar
+ * representation — only the day it names changes.
+ *
+ * Without a readable contract the browser's day stands: a "Today" that may sit
+ * a day out beats a picker whose presets do nothing.
+ */
+export function todayInDisplayZone(): Date {
+  const isoString = todayInPresentationZone();
+  if (isoString) return dateFromIso(isoString);
+  const browserToday = new Date();
+  browserToday.setHours(0, 0, 0, 0);
+  return browserToday;
 }
 
 /** Validate a (year, month, day) triple as a real calendar date. */

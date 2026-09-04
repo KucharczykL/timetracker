@@ -7,7 +7,13 @@ const dayPeriodLabels = vi.hoisted(() =>
   vi.fn<() => { am: string; pm: string } | null>(),
 );
 
-vi.mock("../date-time-presentation.js", () => ({ segmentRules, dayPeriodLabels }));
+const todayInPresentationZone = vi.hoisted(() => vi.fn<() => string | null>(() => null));
+
+vi.mock("../date-time-presentation.js", () => ({
+  segmentRules,
+  dayPeriodLabels,
+  todayInPresentationZone,
+}));
 
 function rules(name: string, minimum: number, maximum: number, kind = "numeric"): Segment {
   return {
@@ -246,5 +252,29 @@ describe("field mousedown", () => {
 
     expect(event.defaultPrevented).toBe(true);
     expect(document.activeElement).toBe(document.querySelector("input[data-date-part]"));
+  });
+});
+
+describe("todayInDisplayZone", () => {
+  beforeEach(() => {
+    todayInPresentationZone.mockReset();
+  });
+
+  it("takes the day the contract states, at local midnight", async () => {
+    todayInPresentationZone.mockReturnValue("2027-03-05");
+    const { todayInDisplayZone } = await importCore();
+
+    const today = todayInDisplayZone();
+    expect([today.getFullYear(), today.getMonth(), today.getDate()]).toEqual([2027, 2, 5]);
+    expect([today.getHours(), today.getMinutes(), today.getSeconds()]).toEqual([0, 0, 0]);
+  });
+
+  it("falls back to the browser's day when the contract cannot say", async () => {
+    todayInPresentationZone.mockReturnValue(null);
+    const { todayInDisplayZone, isoFromDate } = await importCore();
+
+    const browserToday = new Date();
+    expect(isoFromDate(todayInDisplayZone())).toBe(isoFromDate(browserToday));
+    expect(todayInDisplayZone().getHours()).toBe(0);
   });
 });

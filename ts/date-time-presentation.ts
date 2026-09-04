@@ -432,6 +432,28 @@ export function nowInPresentationZone(
   }
 }
 
+/**
+ * Today's date in the contract's zone as `YYYY-MM-DD`, or `null` when the
+ * contract is unusable.
+ *
+ * A picker preset states a day, and the server reads that day back in
+ * `DISPLAY_TIME_ZONE` (#949). The browser's own zone is a third clock: where
+ * it disagrees, "Today" names a day the server never answers with. Nothing
+ * interactive waits on this — the caller falls back to the browser's day — so
+ * a failure is logged without a toast.
+ */
+export function todayInPresentationZone(): string | null {
+  const presentation = getPresentation();
+  if (!presentation) return null;
+
+  try {
+    return Temporal.Now.plainDateISO(presentation.timeZone).toString();
+  } catch (error) {
+    reportClientError("date-time-presentation", errorDetail(error), { toast: false });
+    return null;
+  }
+}
+
 /** The zone an endpoint actually projects into: its own stored zone under the
  * "own" preference, else the account zone (matching the base "account" path
  * so date comparisons stay meaningful in both modes). */

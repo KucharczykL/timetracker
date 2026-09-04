@@ -386,3 +386,38 @@ describe("calendar presentation", () => {
     );
   });
 });
+
+describe("todayInPresentationZone", () => {
+  beforeEach(() => {
+    reportClientError.mockClear();
+    document.documentElement.removeAttribute(CONTRACT_ATTRIBUTE);
+  });
+
+  it("names the day in the contract's zone, not the browser's", async () => {
+    installConfig(
+      alteredConfig((config) => {
+        // Fixed UTC+14 year-round: the furthest tzdata gets from any plausible
+        // test-runner zone, so a browser-clock answer cannot pass by accident.
+        config.time_zone = "Pacific/Kiritimati";
+      }),
+    );
+    const { todayInPresentationZone } = await importFormatter();
+
+    expect(todayInPresentationZone()).toBe(
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Pacific/Kiritimati",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date()),
+    );
+    expect(reportClientError).not.toHaveBeenCalled();
+  });
+
+  it("returns null on a missing contract so callers can degrade", async () => {
+    const { todayInPresentationZone } = await importFormatter();
+
+    expect(todayInPresentationZone()).toBeNull();
+    expect(reportClientError).toHaveBeenCalledTimes(1);
+  });
+});
