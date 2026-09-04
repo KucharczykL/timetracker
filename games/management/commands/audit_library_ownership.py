@@ -12,6 +12,7 @@ from games.models import (
     GameStatusChange,
     Platform,
     PlayEvent,
+    Playthrough,
     Purchase,
     PurchaseConversionState,
     Session,
@@ -232,5 +233,21 @@ class Command(BaseCommand):
             violations.append(
                 "UserLibraryPreferences.default_device: "
                 f"library {library_id}, device {device_id}"
+            )
+        #: This list has no completeness test, so a relation left out of it is
+        #: never audited. A projection row is the costly case: the swap works
+        #: one library at a time, so a cross-library child fails the deferred
+        #: key at COMMIT and the library can never be rebuilt.
+        for playthrough_id, player_game_id in (
+            Playthrough.objects.filter(
+                Q(library_id__in=library_ids)
+                | Q(player_game__library_id__in=library_ids)
+            )
+            .exclude(player_game__library_id=F("library_id"))
+            .values_list("pk", "player_game_id")
+        ):
+            violations.append(
+                "Playthrough.player_game: "
+                f"playthrough {playthrough_id}, tracked game {player_game_id}"
             )
         return violations

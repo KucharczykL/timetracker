@@ -1514,6 +1514,14 @@ class ProjectionModel(models.Model):
     auto-increment key. No model outside the projections may point to a
     projection row, because the swap deletes and inserts each row. No check
     enforces that last rule.
+
+    A fourth rule arrives with the second projection table. A projection row
+    and every projection row it names belong to one library. The swap runs
+    one library at a time, so a row pointing across the boundary fails the
+    deferred foreign key at COMMIT and leaves that library unable to rebuild
+    at all. Nothing in the schema refuses it: `audit_library_ownership`
+    reports it, and every command resolves its references within the
+    library it is dispatched for.
     """
 
     library = models.ForeignKey(
