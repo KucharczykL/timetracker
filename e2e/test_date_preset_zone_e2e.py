@@ -1,8 +1,8 @@
-"""A date preset names the day the server answers in, not the browser's.
+"""A preset names the server's day (#949).
 
-The browser here runs 25 hours behind the display zone (Pacific/Niue against
-Pacific/Kiritimati), so the two never share a calendar date. A preset computed
-from `new Date()` therefore always names a day the filter does not (#949).
+The two zones sit 25 hours apart, so they never share a calendar date and the
+test cannot pass on the luck of the clock. A pair any closer together is green
+most of the day whatever the picker does.
 """
 
 import datetime as dt

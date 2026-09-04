@@ -396,8 +396,7 @@ describe("todayInPresentationZone", () => {
   it("names the day in the contract's zone, not the browser's", async () => {
     installConfig(
       alteredConfig((config) => {
-        // Fixed UTC+14 year-round: the furthest tzdata gets from any plausible
-        // test-runner zone, so a browser-clock answer cannot pass by accident.
+        // Fixed UTC+14: no plausible runner zone matches.
         config.time_zone = "Pacific/Kiritimati";
       }),
     );

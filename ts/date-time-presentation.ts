@@ -433,14 +433,11 @@ export function nowInPresentationZone(
 }
 
 /**
- * Today's date in the contract's zone as `YYYY-MM-DD`, or `null` when the
- * contract is unusable.
+ * Today's date in the contract's zone.
  *
- * A picker preset states a day, and the server reads that day back in
- * `DISPLAY_TIME_ZONE` (#949). The browser's own zone is a third clock: where
- * it disagrees, "Today" names a day the server never answers with. Nothing
- * interactive waits on this — the caller falls back to the browser's day — so
- * a failure is logged without a toast.
+ * `null`, logged without a toast, when the contract is unusable. The sibling
+ * above toasts because a click waits on it; here the caller falls back to the
+ * browser's day and nothing is blocked (#949).
  */
 export function todayInPresentationZone(): string | null {
   const presentation = getPresentation();

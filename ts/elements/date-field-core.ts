@@ -56,16 +56,10 @@ export function addDays(dateObject: Date, dayCount: number): Date {
 }
 
 /**
- * Today at local midnight, drawn in the zone the server answers in.
+ * Today at midnight, in the display zone (#949).
  *
- * Every preset and every "current day" ring comes from here rather than from
- * `new Date()`: a range is read back in `DISPLAY_TIME_ZONE`, and a browser in
- * another zone draws the day boundary somewhere the server does not (#949).
- * The `Date` stays a local-midnight one, which is the whole picker's calendar
- * representation — only the day it names changes.
- *
- * Without a readable contract the browser's day stands: a "Today" that may sit
- * a day out beats a picker whose presets do nothing.
+ * Returns a `Date` and never `null`: with no readable contract the browser's
+ * day stands, because a "Today" a day out beats presets that do nothing.
  */
 export function todayInDisplayZone(): Date {
   const isoString = todayInPresentationZone();
