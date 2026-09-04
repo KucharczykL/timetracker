@@ -1,4 +1,4 @@
-"""What the legacy lifecycle rows hold, before #684 converts them."""
+"""What the legacy rows hold, before #684."""
 
 import json
 import uuid
@@ -38,7 +38,7 @@ pytestmark = pytest.mark.django_db
 
 
 def _row(started=None, ended=None, game=None):
-    """A PlayEvent that is never saved: the classifiers read fields."""
+    """Never saved; the classifiers read fields."""
     return PlayEvent(id=uuid.uuid7(), game=game, started=started, ended=ended)
 
 
@@ -48,8 +48,7 @@ def test_both_endpoints_convert_without_a_question():
 
 
 def test_one_day_is_not_a_reversal():
-    #: days_to_finish already reads an equal pair as one day, and #681
-    #: refuses only a completion earlier than its start.
+    #: #681 refuses only completion before start.
     row = _row(started=date(2024, 1, 1), ended=date(2024, 1, 1))
     assert classify_row(row) is RowVerdict.CLEAN_BOTH
 
@@ -87,8 +86,7 @@ def test_an_unknown_completion_sorts_last_among_equal_starts():
 
 
 def test_the_last_resort_is_the_primary_key():
-    #: created_at is auto_now_add and loaddata rewrites it. The pk is a
-    #: UUIDv7 the dump preserves, so it is the one stable insertion order.
+    #: loaddata rewrites created_at; the pk survives.
     first = _row()
     second = _row()
     first.id, second.id = uuid.UUID(int=1), uuid.UUID(int=2)
@@ -155,7 +153,7 @@ def test_a_single_row_ties_with_nothing():
 
 
 def test_a_date_order_against_the_insertion_order_is_reported():
-    #: Written second, played first: the display number moves.
+    #: Written second, played first: numbers move.
     first_written = _row(started=date(2024, 3, 1))
     second_written = _row(started=date(2024, 1, 1))
     first_written.id, second_written.id = uuid.UUID(int=1), uuid.UUID(int=2)
@@ -197,7 +195,7 @@ def test_an_endpoint_with_no_event_is_absent():
 
 
 def test_two_endpoints_of_one_day_are_both_ambiguous():
-    #: Neither may adopt the correlation id without the other losing it.
+    #: Neither may take the shared id.
     first, second = _endpoint(1), _endpoint(2)
     result = pair_endpoints([first, second], [_candidate(900)])
     assert result.pairings[first].verdict is PairingVerdict.AMBIGUOUS
@@ -287,8 +285,7 @@ def test_a_row_on_a_removed_game_is_counted_once(owned_library):
 
 
 def test_an_untracked_game_is_not_a_backfill_failure(owned_library):
-    #: remove_game_for_request untracks and then removes, with no
-    #: transaction around the pair. A failure between them lands here.
+    #: remove_game_for_request untracks, then removes, without transaction.
     game = _game(owned_library)
     _saved_row(game, started=date(2024, 1, 1))
     PlayerGame.objects.filter(game=game).update(removed_at=timezone.now())
@@ -360,12 +357,12 @@ def test_the_result_renders_itself(owned_library):
 
 
 def _recorded_completion(game, day):
-    """A legacy transition #676 turns into a dated status event."""
+    """#676 turns this into a dated event."""
     return GameStatusChange.objects.create(
         game=game,
         old_status=Game.Status.PLAYED,
         new_status=Game.Status.FINISHED,
-        #: Local noon: the backfill reads the day off localtime().
+        #: Local noon: backfill reads localtime().
         timestamp=datetime(
             day.year, day.month, day.day, 12, tzinfo=timezone.get_current_timezone()
         ),
@@ -384,7 +381,7 @@ def test_an_endpoint_pairs_with_the_status_event_of_its_day(owned_library):
     backfill_library(owned_library)
     counts = preflight_library(owned_library).counts
     assert counts.pairs_unambiguous == 1
-    #: The start has no `played` transition behind it.
+    #: No `played` transition behind the start.
     assert counts.pairs_absent == 1
 
 
@@ -421,8 +418,7 @@ def test_a_status_event_no_endpoint_matched_is_unclaimed(owned_library):
 @pytest.mark.untracked_games
 @pytest.mark.django_db(transaction=True)
 def test_an_undated_status_event_is_no_candidate(owned_library):
-    #: #676 records the corrective event with an unknown effective time, so it
-    #: carries no day and can pair with nothing.
+    #: #676's corrective event carries no day.
     game = _game(owned_library)
     game.status = Game.Status.FINISHED
     game.save()
@@ -550,7 +546,7 @@ def test_an_unknown_user_is_refused_by_name(owned_library):
 @pytest.mark.untracked_games
 @pytest.mark.django_db(transaction=True)
 def test_the_sample_fixture_walks_and_states_why_it_cannot_pair(django_user_model):
-    """The fixture holds no legacy status rows, so nothing can pair."""
+    """No legacy status rows, so nothing pairs."""
     owner = django_user_model.objects.create_user(username="sample-owner", password="p")
     call_command("load_sample_data", "--user", owner.username, verbosity=0)
 
@@ -566,8 +562,7 @@ def test_the_sample_fixture_walks_and_states_why_it_cannot_pair(django_user_mode
         + counts.reversed_endpoints
         == counts.live_rows
     )
-    #: anonymize_sample omits GameStatusChange, so #676 recorded only
-    #: corrective events, and those carry no day.
+    #: anonymize_sample omits GameStatusChange, so nothing dates.
     assert GameStatusChange.objects.count() == 0
     assert counts.status_events_676 == 0
     assert counts.pairs_unambiguous == 0

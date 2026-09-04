@@ -1,8 +1,6 @@
-"""What the legacy PlayEvent rows hold, read and never written.
+"""What the legacy PlayEvent rows hold.
 
-Issue #686. #684 converts these rows into Playthroughs; this says what that
-conversion will meet. Nothing here appends an event or writes a row, and #684
-imports the classifiers so the two agree by construction.
+#684 imports the classifiers, so the two agree.
 """
 
 import uuid
@@ -28,24 +26,23 @@ from games.models import (
     UserLibrary,
 )
 
-#: Sorts before every real date, and only reached when the flag beside it
-#: already sorted the unknown value last.
+#: Sorts before every real date.
 _ABSENT_DAY = date.min
 
 
 class RowVerdict(StrEnum):
-    """What one legacy row states, and whether #684 can state it back."""
+    """What one legacy row states."""
 
     CLEAN_BOTH = "clean_both"
     CLEAN_START_ONLY = "clean_start_only"
     CLEAN_END_ONLY = "clean_end_only"
     NO_KNOWN_ENDPOINT = "no_known_endpoint"
-    #: #681 refuses a completion earlier than its start, so #684 decides.
+    #: #681 refuses it, so #684 decides.
     REVERSED_ENDPOINTS = "reversed_endpoints"
 
 
 def classify_row(row: PlayEvent) -> RowVerdict:
-    """One verdict per row. The five partition the live rows."""
+    """One of five verdicts per row."""
     if row.started is None and row.ended is None:
         return RowVerdict.NO_KNOWN_ENDPOINT
     if row.started is None:
@@ -58,11 +55,7 @@ def classify_row(row: PlayEvent) -> RowVerdict:
 
 
 class LegacyOrderKey(NamedTuple):
-    """The wave's numbering rule, over the legacy columns.
-
-    Known start first, then known completion, then insertion. The booleans
-    carry NULLS LAST: False sorts before True.
-    """
+    """The wave's numbering rule over legacy columns."""
 
     start_unknown: bool
     start: date
@@ -72,10 +65,9 @@ class LegacyOrderKey(NamedTuple):
 
 
 def legacy_order_key(row: PlayEvent) -> LegacyOrderKey:
-    """Order by known start, then known completion, then primary key.
+    """Order by start, then completion, then pk.
 
-    The primary key, never created_at: created_at is auto_now_add, so loaddata
-    rewrites it, while the UUIDv7 key survives a dump.
+    created_at is auto_now_add, so loaddata rewrites it.
     """
     return LegacyOrderKey(
         start_unknown=row.started is None,
@@ -88,11 +80,7 @@ def legacy_order_key(row: PlayEvent) -> LegacyOrderKey:
 
 @dataclass(frozen=True, slots=True)
 class PreflightCounts:
-    """What one library holds, summable into a total.
-
-    Twenty fields, so __add__ reads the field list rather than naming each
-    one: a field added here would otherwise sum to itself.
-    """
+    """What one library holds, summable into totals."""
 
     tracked: int = 0
     tracked_without_rows: int = 0
@@ -130,7 +118,7 @@ class PreflightCounts:
 #: The value an accumulation starts from.
 NO_COUNTS = PreflightCounts()
 
-#: One verdict per RowVerdict member, so a new member fails loudly.
+#: One field name per RowVerdict member.
 _VERDICT_FIELDS: dict[RowVerdict, str] = {
     RowVerdict.CLEAN_BOTH: "clean_both",
     RowVerdict.CLEAN_START_ONLY: "clean_start_only",
@@ -141,10 +129,7 @@ _VERDICT_FIELDS: dict[RowVerdict, str] = {
 
 
 class OrderingVerdict(NamedTuple):
-    """How one game's rows reached their display numbers.
-
-    Not a partition: a game can be tie-broken and also reordered.
-    """
+    """Three independent readings, not a partition."""
 
     ordered_by_date: bool
     tie_broken: bool
@@ -152,7 +137,7 @@ class OrderingVerdict(NamedTuple):
 
 
 def ordering_counts(rows: Sequence[PlayEvent]) -> OrderingVerdict:
-    """Read one tracked game's live rows against the numbering rule."""
+    """Read one game's rows against the rule."""
     keys = [legacy_order_key(row) for row in rows]
     dated_parts = [key[:4] for key in keys]
     tie_broken = len(set(dated_parts)) != len(dated_parts)
@@ -166,14 +151,14 @@ def ordering_counts(rows: Sequence[PlayEvent]) -> OrderingVerdict:
 
 
 class EndpointKind(StrEnum):
-    """Which of a row's two dates is being paired."""
+    """Which of a row's dates pairs."""
 
     START = "start"
     COMPLETION = "completion"
 
 
 class Endpoint(NamedTuple):
-    """One known date on one live row."""
+    """One known date on one row."""
 
     row_id: uuid.UUID
     kind: EndpointKind
@@ -182,11 +167,7 @@ class Endpoint(NamedTuple):
 
 
 class CandidateKey(NamedTuple):
-    """Everything a #676 status event must match to be a candidate.
-
-    An endpoint reduces to exactly one of these, which is why the components
-    of the pairing graph are this key's groups.
-    """
+    """What a #676 event must match."""
 
     aggregate_id: uuid.UUID
     kind: EndpointKind
@@ -194,7 +175,7 @@ class CandidateKey(NamedTuple):
 
 
 class CandidateEvent(NamedTuple):
-    """One #676 status event, and the id #684 would adopt from it."""
+    """One #676 event and its correlation id."""
 
     key: CandidateKey
     correlation_id: uuid.UUID
@@ -207,7 +188,7 @@ class PairingVerdict(StrEnum):
 
 
 class Pairing(NamedTuple):
-    """What one endpoint found. An id only when nothing contests it."""
+    """A verdict, and an id when uncontested."""
 
     verdict: PairingVerdict
     correlation_id: uuid.UUID | None
@@ -227,12 +208,11 @@ def _endpoint_key(endpoint: Endpoint) -> CandidateKey:
 def pair_endpoints(
     endpoints: Iterable[Endpoint], candidates: Iterable[CandidateEvent]
 ) -> PairingResult:
-    """Pair each endpoint with the #676 status event #684 would adopt.
+    """Pair each endpoint with its #676 event.
 
-    A component holding one endpoint and one event pairs. Any larger component
-    pairs nothing: two rows completing on one day both match the single event,
-    and neither may take it. Reading order cannot change an answer, because
-    the verdict is a property of the group.
+    One endpoint and one event pair; a larger group pairs nothing. A greedy
+    walk would answer differently by order, so the verdict is a property of
+    the group.
     """
     events_by_key: dict[CandidateKey, list[CandidateEvent]] = defaultdict(list)
     for candidate in candidates:
@@ -265,13 +245,13 @@ def pair_endpoints(
     return PairingResult(pairings=pairings, unclaimed_events=unclaimed)
 
 
-#: Aggregates per query, matching the backfill's page.
+#: Aggregates per query.
 WALK_PAGE_SIZE = 200
 
 #: Identifiers per sampled list.
 DEFAULT_SAMPLE_SIZE = 20
 
-#: The status a #676 event states for each endpoint.
+#: The status a #676 event states.
 _STATUS_FOR_KIND: dict[EndpointKind, PlayerGameStatus] = {
     EndpointKind.START: PlayerGameStatus.PLAYED,
     EndpointKind.COMPLETION: PlayerGameStatus.COMPLETED,
@@ -281,10 +261,9 @@ _KIND_FOR_STATUS = {status: kind for kind, status in _STATUS_FOR_KIND.items()}
 
 @dataclass(frozen=True, slots=True)
 class Samples:
-    """The first few identifiers behind a count, never a random draw.
+    """The first few identifiers, never random.
 
-    First in the report's own order, so two runs over unchanged data print the
-    same bytes and the JSON line diffs across a rehearsal.
+    Two runs over unchanged data print the same bytes.
     """
 
     reversed_endpoints: tuple[uuid.UUID, ...] = ()
@@ -318,18 +297,11 @@ class LibraryPreflight:
 
 
 def _candidate_events(library: UserLibrary) -> list[CandidateEvent]:
-    """Every dated #676 status event this library recorded.
+    """Every dated #676 status event, one query.
 
-    One query per run, not one per page: LibraryEvent indexes neither
-    aggregate_id nor event_type, so the scan is paid once.
-
-    The day is read in Python. effective_time carries no generated bound
-    columns, so comparing it in SQL would be a per-row function call over that
-    same unindexed scan.
-
-    A day precision is demanded rather than assumed: lower_bound gives the
-    first day of a month or a decade too, and that is not a day the legacy row
-    could have stated.
+    LibraryEvent indexes none of these columns, so the scan is paid once and
+    the day is read in Python. A known day is demanded: lower_bound answers
+    for a month or a decade too.
     """
     rows = LibraryEvent.objects.filter(
         library=library,
@@ -356,10 +328,10 @@ def _candidate_events(library: UserLibrary) -> list[CandidateEvent]:
 
 
 def _excluded_counts(library: UserLibrary) -> PreflightCounts:
-    """The rows the conversion never sees, counted once each.
+    """Rows the conversion never sees, counted once.
 
-    The order of the four is the order of the checks: a row on a removed game
-    is that, whatever its own mark says.
+    The four checks run in this order, so a row is counted in the first that
+    claims it.
     """
     owned = PlayEvent.objects.filter(game__library=library)
     on_removed_game = owned.filter(game__removed_at__isnull=False).count()
@@ -384,7 +356,7 @@ def _excluded_counts(library: UserLibrary) -> PreflightCounts:
 def preflight_library(
     library: UserLibrary, *, sample_size: int = DEFAULT_SAMPLE_SIZE
 ) -> LibraryPreflight:
-    """Read one library's legacy rows and say what #684 will meet."""
+    """One library's legacy rows, read and counted."""
     counts = _excluded_counts(library)
     candidates = _candidate_events(library)
     counts = counts + PreflightCounts(status_events_676=len(candidates))
@@ -479,17 +451,11 @@ def preflight_library(
 
 @dataclass(frozen=True, slots=True)
 class SharedCatalogCounts:
-    """The catalog rows no library owns.
-
-    Expected to be zero: GameForm.__init__ always stamps a library, so the
-    production catalog holds no shared game. Counted anyway, because
-    "expected zero" and "verified zero" are different claims.
-    """
+    """The catalog rows no library owns."""
 
     shared_games: int = 0
     shared_game_rows: int = 0
-    #: A row on a shared game more than one library tracks. It belongs to no
-    #: single Playthrough, and #684 decides what that means.
+    #: A row two libraries both track.
     contested_rows: int = 0
 
     def as_dict(self) -> dict[str, int]:
@@ -497,7 +463,7 @@ class SharedCatalogCounts:
 
 
 def shared_catalog_counts() -> SharedCatalogCounts:
-    """Count the shared games, their rows, and the contested ones."""
+    """Count shared games, their rows, contested ones."""
     shared = Game.objects.filter(library__isnull=True, removed_at__isnull=True)
     contested_games = (
         shared.filter(player_games__removed_at__isnull=True)

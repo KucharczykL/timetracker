@@ -1,8 +1,6 @@
-"""Report the legacy lifecycle rows, before #684 converts them.
+"""Print the preflight, for a log and a person.
 
-Issue #686. Read-only: no event is appended and no row is written. The exit
-code is always 0, because a preflight reports and does not gate. What is read
-is the machine line.
+The exit code is always 0: a preflight reports and does not gate.
 """
 
 import json
