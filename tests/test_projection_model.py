@@ -248,6 +248,14 @@ PINNED_DEFAULTS: dict[str, dict[str, object]] = {
         "excluded_from_unfinished": False,
         "removed_at": None,
     },
+    "games.Playthrough": {
+        "kind": "ordinary",
+        "name": "",
+        "note": "",
+        "started": None,
+        "completed": None,
+        "removed_at": None,
+    },
 }
 
 

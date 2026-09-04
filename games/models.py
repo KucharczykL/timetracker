@@ -1594,6 +1594,102 @@ class PlayerGame(ProjectionModel):
         return f"{self.game} tracked by library {self.library_id}"
 
 
+class PlaythroughKind(models.TextChoices):
+    """Whether a run is a person's or the importer's.
+
+    Full words, not letters: a recorded payload cannot be upcast, so an
+    event recording `i` would mean imported history forever.
+    """
+
+    ORDINARY = "ordinary", "Ordinary"
+    IMPORTED_HISTORY = "imported_history", "Imported history"
+
+
+class Playthrough(ProjectionModel):
+    """One run at a game a library tracks, projected from its events."""
+
+    id = UUIDv7Field(
+        primary_key=True,
+        editable=False,
+        #: The creation event's aggregate_id, evaluated once.
+        default=models.NOT_PROVIDED,
+        db_default=models.NOT_PROVIDED,
+    )
+    player_game = models.ForeignKey(
+        PlayerGame,
+        #: No cascade may remove a projection row.
+        on_delete=models.RESTRICT,
+        related_name="playthroughs",
+    )
+    #: Stated by the creation event, and never restated.
+    kind = models.CharField(
+        max_length=16,
+        choices=PlaythroughKind,
+        default=PlaythroughKind.ORDINARY,
+    )
+    #: #1010 states it. Blank displays as "Playthrough N".
+    name = models.CharField(max_length=255, blank=True, default="")
+    #: #1010 states it.
+    note = models.TextField(blank=True, default="")
+    #: #681 states both endpoints.
+    started = TemporalValueField()
+    started_lower = models.GeneratedField(
+        expression=TemporalLowerBound("started"),
+        output_field=models.DateField(null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    started_upper = models.GeneratedField(
+        expression=TemporalUpperBound("started"),
+        output_field=models.DateField(null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    completed = TemporalValueField()
+    completed_lower = models.GeneratedField(
+        expression=TemporalLowerBound("completed"),
+        output_field=models.DateField(null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    completed_upper = models.GeneratedField(
+        expression=TemporalUpperBound("completed"),
+        output_field=models.DateField(null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    #: The creation event's recorded_at.
+    created_at = models.DateTimeField(editable=False)
+    #: The remove event's recorded_at; null means live. #1011 states it.
+    removed_at = models.DateTimeField(null=True, default=None, editable=False)
+
+    class Meta:
+        indexes = (
+            #: The display-number order, ending on the key so it is total.
+            models.Index(
+                fields=(
+                    "player_game",
+                    "started_lower",
+                    "completed_lower",
+                    "created_at",
+                    "id",
+                ),
+                name="playthrough_display_order",
+            ),
+        )
+
+    def __str__(self) -> str:
+        return f"Playthrough {self.pk} of tracked game {self.player_game_id}"
+
+
 class UserLibraryPreferences(models.Model):
     library = models.OneToOneField(
         UserLibrary,
