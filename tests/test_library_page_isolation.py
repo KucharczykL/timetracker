@@ -114,17 +114,23 @@ def world(client, django_user_model):
     )
 
     now = timezone.now()
+    #: The navbar sums the local day (#949).
+    start_of_today = timezone.localtime(now).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    own_start = max(now - timedelta(hours=1), start_of_today)
     own_session = Session.objects.create(
         game=own_game,
         device=own_device,
-        timestamp_start=now - timedelta(hours=1),
-        timestamp_end=now,
+        timestamp_start=own_start,
+        timestamp_end=own_start + timedelta(hours=1),
     )
+    foreign_start = max(now - timedelta(hours=6), start_of_today)
     foreign_session = Session.objects.create(
         game=foreign_game,
         device=foreign_device,
-        timestamp_start=now - timedelta(hours=6),
-        timestamp_end=now,
+        timestamp_start=foreign_start,
+        timestamp_end=foreign_start + timedelta(hours=6),
     )
     own_purchase = Purchase.objects.create(
         library=owner_library,

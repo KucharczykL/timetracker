@@ -74,14 +74,13 @@ extend-exclude = [
 # fight every future regeneration.
 "games/migrations/*" = ["RUF012"]
 # These specific tests construct naive datetimes/dates as deliberate fixture
-# values (the code under test owns the tz semantics); the e2e ones additionally
-# compare against the browser's local "today". Deliberately file-specific: a
+# values (the code under test owns the tz semantics); the e2e one additionally
+# compares against the browser's local "today". Deliberately file-specific: a
 # blanket tests/e2e ignore would also silence genuine DTZ mistakes in new tests.
 "tests/test_date_time_presentation.py" = ["DTZ001"]
 "tests/test_middleware_integration.py" = ["DTZ001"]
 "tests/test_stats.py" = ["DTZ001"]
 "e2e/test_date_range_picker_e2e.py" = ["DTZ011"]
-"e2e/test_quick_filter_e2e.py" = ["DTZ011"]
 
 [tool.mypy]
 plugins = ["mypy_django_plugin.main"]
