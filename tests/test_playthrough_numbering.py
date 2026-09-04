@@ -5,6 +5,10 @@ import uuid
 import pytest
 from django.utils import timezone
 
+from games.commands.playergame import TrackGame
+from games.commands.playthrough import CreatePlaythrough
+from games.events.dispatch import dispatch
+from games.events.rebuild import RebuildMode, rebuild_projections
 from games.models import Game, PlayerGame, Playthrough, PlaythroughKind
 from games.reads.playthrough_numbering import (
     UnnumberedPlaythrough,
@@ -137,3 +141,29 @@ def test_a_blank_name_with_no_number_is_refused(tracked):
 
     with pytest.raises(UnnumberedPlaythrough):
         display_name(unnumbered)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_number_is_unchanged_across_a_rebuild(owned_user, owned_library):
+    """The order is total, so a swap cannot reshuffle it."""
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    dispatch(
+        TrackGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="track",
+    )
+    tracked = PlayerGame.objects.get()
+    for index in range(4):
+        dispatch(
+            CreatePlaythrough(game_id=game.pk),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key=f"run-{index}",
+        )
+    before = numbers(tracked)
+
+    rebuild_projections(owned_library, mode=RebuildMode.REBUILD)
+
+    assert numbers(tracked) == before
+    assert [number for _, number in before] == [1, 2, 3, 4, 5]

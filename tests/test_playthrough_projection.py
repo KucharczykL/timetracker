@@ -3,14 +3,18 @@
 import uuid
 
 import pytest
-from django.db import transaction
+from django.db import connection, transaction
 from django.utils import timezone
 
 from games.checks import check_projection_models
+from games.commands.playergame import TrackGame
 from games.events.append import lock_stream
+from games.events.dispatch import dispatch
 from games.events.envelope import RecordedEvent
 from games.events.playthrough import playthrough_created
 from games.events.projection import DEFAULT_REGISTRY
+from games.events.rebuild import RebuildMode, rebuild_projections
+from games.events.replay import replay
 from games.models import (
     Game,
     LibraryEvent,
@@ -157,3 +161,77 @@ def test_applying_the_creation_event_twice_writes_one_row(
         DEFAULT_REGISTRY.apply(event)
 
     assert Playthrough.objects.count() == 1
+
+
+def track(owned_user, owned_library, game, key="track"):
+    return dispatch(
+        TrackGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key=key,
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_empty_database_replay_reproduces_both_tables(owned_user, owned_library):
+    """Nothing in either row predates its event."""
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    before = (
+        list(PlayerGame.objects.order_by("pk").values()),
+        list(Playthrough.objects.order_by("pk").values()),
+    )
+    #: The child first: player_game RESTRICTs.
+    Playthrough.objects.all().delete()
+    PlayerGame.objects.all().delete()
+
+    replay(owned_library)
+
+    assert (
+        list(PlayerGame.objects.order_by("pk").values()),
+        list(Playthrough.objects.order_by("pk").values()),
+    ) == before
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_rebuild_swaps_both_tables_with_an_empty_diff(owned_user, owned_library):
+    """The foreign key between two projection tables and the generated
+    columns, proven rather than argued."""
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+
+    report = rebuild_projections(owned_library, mode=RebuildMode.REBUILD)
+
+    assert report.swapped is True
+    #: Both tables, each agreeing with its rebuild.
+    assert [
+        (table.table, table.only_live, table.only_rebuilt, table.differing)
+        for table in report.tables
+    ] == [
+        ("games_playergame", 0, 0, 0),
+        ("games_playthrough", 0, 0, 0),
+    ]
+    assert (PlayerGame.objects.count(), Playthrough.objects.count()) == (1, 1)
+
+
+@pytest.mark.django_db
+def test_the_foreign_key_to_playergame_is_deferred():
+    """Why the swap's table order is not load-bearing.
+
+    Django emits no ON DELETE clause, so the constraint is Postgres's
+    default NO ACTION -- and deferred, so it is checked at COMMIT, after
+    the swap has reinserted both tables.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT condeferrable, condeferred, confdeltype
+            FROM pg_constraint
+            WHERE conrelid = 'games_playthrough'::regclass
+              AND contype = 'f'
+              AND confrelid = 'games_playergame'::regclass
+            """
+        )
+        rows = cursor.fetchall()
+
+    assert rows == [(True, True, "a")]
