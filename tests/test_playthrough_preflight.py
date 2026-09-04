@@ -10,8 +10,18 @@ from django.core.management import CommandError, call_command
 from django.utils import timezone
 
 from games.backfill.playergame import backfill_library
-from games.management.commands.preflight_playthroughs import MACHINE_PREFIX
-from games.models import Game, GameStatusChange, LibraryEvent, PlayerGame, PlayEvent
+from games.management.commands.preflight_playthroughs import (
+    GENERATED_PREFIX,
+    MACHINE_PREFIX,
+)
+from games.models import (
+    Game,
+    GameStatusChange,
+    LibraryEvent,
+    PlayerGame,
+    PlayEvent,
+    UserLibrary,
+)
 from games.preflight.playthrough import (
     NO_COUNTS,
     CandidateEvent,
@@ -625,6 +635,18 @@ def _machine_line(text):
     return json.loads(line[len(MACHINE_PREFIX) :])
 
 
+def _timeless(text):
+    """The report without the one line and key that move."""
+    payload = _machine_line(text)
+    del payload["generated_at"]
+    lines = [
+        line
+        for line in text.splitlines()
+        if not line.startswith((MACHINE_PREFIX, GENERATED_PREFIX))
+    ]
+    return json.dumps(payload, sort_keys=True), lines
+
+
 def test_a_scope_is_named_rather_than_defaulted(owned_library):
     with pytest.raises(CommandError):
         _run()
@@ -681,11 +703,27 @@ def test_a_run_over_every_anomaly_still_exits_zero(owned_library):
     _run("--all-libraries")
 
 
-def test_two_runs_print_the_same_bytes(owned_library):
+def test_two_runs_print_the_same_bytes_but_for_the_time(owned_library):
     game = _game(owned_library)
     _saved_row(game, started=date(2024, 1, 1))
     _saved_row(game, started=date(2024, 1, 1))
-    assert _run("--all-libraries") == _run("--all-libraries")
+    first, second = _run("--all-libraries"), _run("--all-libraries")
+    assert _timeless(first) == _timeless(second)
+
+
+def test_the_report_states_when_it_was_read(owned_library):
+    text = _run("--all-libraries")
+    generated_at = _machine_line(text)["generated_at"]
+    assert datetime.fromisoformat(generated_at).tzinfo is not None
+    assert f"{GENERATED_PREFIX}{generated_at}" in text.splitlines()
+
+
+def test_an_empty_scope_says_it_read_nothing():
+    #: No fixture makes a user, so no library exists.
+    assert not UserLibrary.objects.exists()
+    text = _run("--all-libraries")
+    assert _machine_line(text)["libraries"] == []
+    assert "No library was read" in text
 
 
 def test_the_sample_cap_reaches_the_output(owned_library):
@@ -699,8 +737,16 @@ def test_the_sample_cap_reaches_the_output(owned_library):
 
 
 def test_an_unknown_user_is_refused_by_name(owned_library):
-    with pytest.raises(CommandError, match="nobody"):
+    with pytest.raises(CommandError, match="No user is named 'nobody'"):
         _run("--user", "nobody")
+
+
+def test_a_user_without_a_library_is_told_apart_from_a_typo(django_user_model):
+    stranger = django_user_model.objects.create_user(username="stranger", password="p")
+    #: A signal makes the library, so the test unmakes it.
+    UserLibrary.objects.filter(user=stranger).delete()
+    with pytest.raises(CommandError, match="owns no library"):
+        _run("--user", "stranger")
 
 
 def test_one_library_is_reported_by_its_uuid(owned_library, django_user_model):
@@ -720,8 +766,8 @@ def test_an_unknown_library_is_refused_by_uuid(owned_library):
 
 
 def test_a_library_that_is_no_uuid_is_refused_rather_than_raised(owned_library):
-    #: ValidationError from the field, not a CommandError of ours.
-    with pytest.raises(CommandError, match="not-a-uuid"):
+    #: The text is read before the query, so no field raises.
+    with pytest.raises(CommandError, match="'not-a-uuid' is no UUID"):
         _run("--library", "not-a-uuid")
 
 

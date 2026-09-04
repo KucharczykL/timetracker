@@ -69,13 +69,20 @@ for each library.
 
 Name the scope: `--user`, `--library` or `--all-libraries`. The first line is
 `PLAYTHROUGH_PREFLIGHT_JSON=` and a payload that carries a `schema_version`,
-the summary, one entry for each library, and the shared catalog counts. A
-readable section follows for each library. `--sample-size` limits the
-identifiers beside a count; the default is 20, and `0` prints none. Two runs
-over the same data print the same bytes.
+a `generated_at`, the summary, one entry for each library, and the shared
+catalog counts. The time follows on its own readable line, then a section for
+each library. `--sample-size` limits the identifiers beside a count; the
+default is 20, and `0` prints none. Two runs over the same data print the same
+bytes, except for the time they state.
+
+A scope that names no library is not an error, because a deployment can hold
+none. The report says that it read nothing, thus a row of zeros is not read as
+a clean result.
 
 A preflight reports; it does not gate. What the report finds never fails the
-run. Only a scope the command cannot resolve is an error.
+run. Only a scope the command cannot resolve is an error. Each refusal names
+one cause: a name that no user holds, a user that owns no library, text that
+is no UUID, and a UUID that no library holds are four sentences.
 
 The pairing counts are zero before migration 0033. Restore a copy of the
 deployed database, migrate it, then run the command.

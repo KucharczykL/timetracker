@@ -5,10 +5,11 @@ Only a scope this command cannot resolve is an error.
 """
 
 import json
+import uuid
 
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
+from django.utils import timezone
 
 from games.models import UserLibrary
 from games.preflight.playthrough import (
@@ -20,6 +21,7 @@ from games.preflight.playthrough import (
 )
 
 MACHINE_PREFIX = "PLAYTHROUGH_PREFLIGHT_JSON="
+GENERATED_PREFIX = "Generated at "
 
 
 class Command(BaseCommand):
@@ -57,8 +59,10 @@ class Command(BaseCommand):
         shared = shared_catalog_counts()
         summary = sum((report.counts for report in reports), NO_COUNTS)
 
+        generated_at = timezone.now().isoformat()
         payload = {
             "schema_version": 1,
+            "generated_at": generated_at,
             "summary": summary.as_dict(),
             "libraries": [report.as_dict() for report in reports],
             "shared_catalog": shared.as_dict(),
@@ -66,6 +70,12 @@ class Command(BaseCommand):
         self.stdout.write(
             MACHINE_PREFIX + json.dumps(payload, sort_keys=True, separators=(",", ":"))
         )
+        self.stdout.write(f"{GENERATED_PREFIX}{generated_at}")
+        if not reports:
+            #: An empty scope reads as an all-zero report.
+            self.stdout.write(
+                "No library was read, so every count below counts nothing."
+            )
         for report in reports:
             self._write_report(report)
         self.stdout.write(f"Shared catalog games: {shared.shared_games}")
@@ -129,17 +139,28 @@ class Command(BaseCommand):
         if options["all_libraries"]:
             return list(libraries)
         if options["user"]:
-            user_model = get_user_model()
-            try:
-                user = user_model.objects.get(username=options["user"])
-                return [libraries.get(user=user)]
-            except (user_model.DoesNotExist, UserLibrary.DoesNotExist) as error:
-                raise CommandError(
-                    f"User {options['user']!r} or their library does not exist."
-                ) from error
+            return [self._library_of_user(libraries, options["user"])]
+        return [self._library_by_id(libraries, options["library_id"])]
+
+    def _library_of_user(self, libraries, username: str) -> UserLibrary:
+        """A missing user is not a user missing a library."""
+        user_model = get_user_model()
         try:
-            return [libraries.get(pk=options["library_id"])]
-        except (UserLibrary.DoesNotExist, ValidationError, ValueError) as error:
-            raise CommandError(
-                f"Library {options['library_id']!r} does not exist."
-            ) from error
+            user = user_model.objects.get(username=username)
+        except user_model.DoesNotExist as error:
+            raise CommandError(f"No user is named {username!r}.") from error
+        try:
+            return libraries.get(user=user)
+        except UserLibrary.DoesNotExist as error:
+            raise CommandError(f"User {username!r} owns no library.") from error
+
+    def _library_by_id(self, libraries, library_id: str) -> UserLibrary:
+        """The text is read here, so the query catches one error."""
+        try:
+            parsed = uuid.UUID(library_id)
+        except ValueError as error:
+            raise CommandError(f"Library {library_id!r} is no UUID.") from error
+        try:
+            return libraries.get(pk=parsed)
+        except UserLibrary.DoesNotExist as error:
+            raise CommandError(f"Library {parsed} does not exist.") from error
