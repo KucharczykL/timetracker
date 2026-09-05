@@ -570,6 +570,12 @@ def test_scoped_audit_reports_incoming_cross_library_links(owner, outsider):
         kind=PlaythroughKind.ORDINARY,
         created_at=timezone.now(),
     )
+    #: PlayerGame.game, the second registered reference: the owner's
+    #: tracking row moved onto a game the outsider's library holds.
+    tracked_across = Game.objects.create(
+        library=outsider.library, name="Outsider tracked by owner"
+    )
+    PlayerGame.objects.filter(game=tracked_across).update(library=owner.library)
     output = StringIO()
 
     with pytest.raises(CommandError, match="violation"):
@@ -589,6 +595,7 @@ def test_scoped_audit_reports_incoming_cross_library_links(owner, outsider):
         "Session.device",
         "UserLibraryPreferences.default_device",
         "Playthrough.player_game",
+        "PlayerGame.game",
     ):
         assert relation in report
     assert (
@@ -625,9 +632,51 @@ def test_a_playthrough_in_another_library_is_reported(owner, outsider):
         )
 
     assert (
-        f"Playthrough.player_game: playthrough {run.pk}, "
-        f"tracked game {tracked.pk}" in output.getvalue()
+        f"Playthrough.player_game: {run.pk} names PlayerGame {tracked.pk}"
+        in output.getvalue()
     )
+
+
+@pytest.mark.django_db
+def test_a_tracked_game_from_another_library_is_reported(owner, outsider):
+    """`PlayerGame.game` is RESTRICT: it blocks the other library's purge."""
+    game = Game.objects.create(library=outsider.library, name="Tunic")
+    tracked = PlayerGame.objects.get(game=game)
+    PlayerGame.objects.filter(pk=tracked.pk).update(library=owner.library)
+    output = StringIO()
+
+    with pytest.raises(CommandError, match="violation"):
+        call_command(
+            "audit_library_ownership",
+            "--user",
+            owner.username,
+            stdout=output,
+        )
+
+    assert f"PlayerGame.game: {tracked.pk} names Game {game.pk}" in output.getvalue()
+
+
+@pytest.mark.django_db
+def test_a_tracked_game_with_no_library_is_no_violation(owner):
+    """A shared catalog row crosses no boundary."""
+    shared = Game.objects.create(name="Outer Wilds")
+    PlayerGame.objects.create(
+        id=uuid7(),
+        library=owner.library,
+        game=shared,
+        tracked_at=timezone.now(),
+    )
+    output = StringIO()
+
+    call_command(
+        "audit_library_ownership",
+        "--user",
+        owner.username,
+        stdout=output,
+    )
+
+    assert shared.library_id is None
+    assert "Cross-library links: 0" in output.getvalue()
 
 
 @pytest.mark.django_db

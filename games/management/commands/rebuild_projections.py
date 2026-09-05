@@ -1,10 +1,11 @@
 from uuid import UUID
 
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand, CommandError, OutputWrapper
 
 from games.events.rebuild import (
     RebuildMode,
     RebuildReport,
+    SwapRefusedByReference,
     TableDiff,
     rebuild_projections,
 )
@@ -45,6 +46,11 @@ class Command(BaseCommand):
                 f"The events name {error.reconciliation.unresolved} row(s) that "
                 "no longer exist, so nothing was replayed."
             ) from error
+        except SwapRefusedByReference as error:
+            #: handle() has no report to print.
+            for table in error.tables:
+                self._write_table(table, self.stderr)
+            raise CommandError(str(error)) from error
         self._write_report(report)
 
         if mode is RebuildMode.CHECK:
@@ -94,14 +100,17 @@ class Command(BaseCommand):
             f"{len(report.attempts)} attempt(s) in {report.elapsed_seconds:.2f}s."
         )
 
-    def _write_table(self, table: TableDiff) -> None:
-        self.stdout.write(
+    def _write_table(
+        self, table: TableDiff, stream: OutputWrapper | None = None
+    ) -> None:
+        stream = self.stdout if stream is None else stream
+        stream.write(
             f"  {table.table}: {table.live_rows} live, {table.rebuilt_rows} "
             f"rebuilt, {table.only_live} only live, {table.only_rebuilt} only "
             f"rebuilt, {table.differing} differing"
         )
         if table.sample:
-            self.stdout.write(f"    first keys: {', '.join(table.sample)}")
+            stream.write(f"    first keys: {', '.join(table.sample)}")
 
     def _write_reconciliation(self, reconciliation: ReferenceReconciliation) -> None:
         """Every gap the refusal carries."""
