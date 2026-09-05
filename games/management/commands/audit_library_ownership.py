@@ -12,13 +12,16 @@ from games.models import (
     GameStatusChange,
     Platform,
     PlayEvent,
-    Playthrough,
     Purchase,
     PurchaseConversionState,
     Session,
     UserLibrary,
     UserLibraryPreferences,
     UserPreferences,
+)
+from games.projections import (
+    AUDITED_PROJECTION_REFERENCES,
+    cross_library_violations,
 )
 
 
@@ -168,10 +171,10 @@ class Command(BaseCommand):
     def _cross_library_violations(library_ids):
         """Every relation audited, one loop each.
 
-        This list has no completeness test, which #1017 owns. A relation
-        left out of it is never audited, and a projection row is the
-        costly case: a cross-library child is restricted at purge, so the
-        library that holds the row it names can never be purged.
+        The six loops below are hand-written because each names its own
+        join path, and one of them reads an M2M through table. Every
+        reference out of a projection is derived instead, from the
+        registry `games.E009` holds complete.
         """
         violations = []
         for game_id, platform_id in (
@@ -241,17 +244,7 @@ class Command(BaseCommand):
                 "UserLibraryPreferences.default_device: "
                 f"library {library_id}, device {device_id}"
             )
-        #: The first foreign key between two projection tables.
-        for playthrough_id, player_game_id in (
-            Playthrough.objects.filter(
-                Q(library_id__in=library_ids)
-                | Q(player_game__library_id__in=library_ids)
-            )
-            .exclude(player_game__library_id=F("library_id"))
-            .values_list("pk", "player_game_id")
-        ):
-            violations.append(
-                "Playthrough.player_game: "
-                f"playthrough {playthrough_id}, tracked game {player_game_id}"
-            )
+        violations.extend(
+            cross_library_violations(AUDITED_PROJECTION_REFERENCES, library_ids)
+        )
         return violations
