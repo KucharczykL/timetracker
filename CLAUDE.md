@@ -159,6 +159,15 @@ docs/           — Additional documentation
 - **GameStatusChange** — the legacy audit log of status transitions, ordered by `-timestamp`. Nothing writes or reads it since #678 D1: the event stream is the record and `games/reads/playergame_history.py` is the one reader. The backfill still reads the old rows; #771 takes the table
 - **FilterPreset** — saved filter config; `mode` (games/sessions/purchases/playevents), `find_filter`, `object_filter`, `ui_options` (all JSON). Follows Stash's SavedFilter pattern
 - **PlayerGame** — the first projection: one row per catalog game a library tracks, written only by the `PlayerGames` projector. Its `removed_at` is the projector's, stated by a `RemovePlayerGame` command, and separate from the catalog row's. It states the library's `status` (the six `PlayerGameStatus` words) and `mastered`, and since #678 D2 it is the only place either is stated or read. Both `UUIDv7Field` defaults are opted out (the pk is the event's `aggregate_id`); `game` is `RESTRICT`, so a projection row is never collateral
+- **Playthrough** — the second projection: one row per run at a tracked game,
+  written only by the `Playthroughs` projector, which shares the
+  `CURRENT_STATE` family with `PlayerGames`. Every `PlayerGame` gets one from
+  the moment a library tracks the game — `TrackGame` returns both creation
+  events under one `correlation_id`. Both endpoints are `TemporalValueField`
+  with generated lower- and upper-bound columns beside each. Its `removed_at`
+  is the projector's, stated by a command, which is why it is absent from
+  `REMOVABLE_MODELS`. A blank `name` displays as `Playthrough N`, derived at
+  read time by `games/reads/playthrough_numbering.py` and stored nowhere
 
 **Nothing a user removes is destroyed** (#944). The nine removable models —
 Game, Edition, Release, Platform, Device, Session, PlayEvent, Purchase,
