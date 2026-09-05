@@ -19,23 +19,13 @@ from games.events.replay import ReplayResult, replay
 from games.events.targets import SHADOW_SUFFIX, ShadowTarget
 from games.events.wiring import DEFAULT_WIRING, EventWiring
 from games.models import LibraryEventStreamHead, ProjectionModel, UserLibrary
+from games.projections import projection_models
 
 type ColumnName = str  # e.g. "library_id"
 type TableName = str  # e.g. "games_playergamestate"
 
 
 # --- Phase 1: which tables, and their shadows -------------------------------
-
-
-def projection_models(apps: Apps = global_apps) -> tuple[type[ProjectionModel], ...]:
-    """Every projection table in `apps`, sorted."""
-    found = [
-        model
-        for model in apps.get_models()
-        if issubclass(model, ProjectionModel) and model._meta.managed
-    ]
-    #: `managed` is what excludes the manufactured twins.
-    return tuple(sorted(found, key=lambda model: model._meta.db_table))
 
 
 def shadow_table_name(model: type[ProjectionModel]) -> TableName:
