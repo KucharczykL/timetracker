@@ -68,20 +68,23 @@ column, so a check message has a stable order.
 ```
 model.objects
   .filter(Q(library_id__in=ids) | Q(<field>__library_id__in=ids))
-  .filter(<field>__isnull=False)
+  .filter(<field>__library__isnull=False)
   .exclude(<field>__library_id=F("library_id"))
   .values_list("pk", <field>.attname)
 ```
 
-The `isnull` clause is unconditional, and it is load-bearing for any nullable
-foreign key. Django compiles `exclude()` to mean "not equal, nulls included":
-it puts `IS NOT NULL` conjuncts *inside* the negation, so a row whose foreign
-key is NULL gives `NOT(FALSE)` and is reported as a violation. Both audited
-pairs are `null=False` today and would emit an inner join, so the clause is
-redundant for them — one code path is worth the redundant predicate, because
-the first nullable pair would otherwise make the audit answer with a
-violation for every unset row. The six hand-written blocks in the audit
-command carry the same clause for the same reason.
+The `isnull` clause is unconditional, and it is load-bearing. Django compiles
+`exclude()` to mean "not equal, nulls included": it puts `IS NOT NULL`
+conjuncts *inside* the negation, so a NULL on either side gives `NOT(FALSE)`
+and is reported as a violation. The clause is on the *referenced row's*
+library, not on the foreign key, and it answers both nulls at once — a NULL
+foreign key produces no joined row, and a joined row with no library is a
+shared row that crosses no boundary.
+
+Both cases are live. `Game.library` is `null=True, default=None`, so a
+`PlayerGame` naming a global catalog game would be reported as a violation
+without it. The six hand-written blocks in the audit command spell the same
+clause, `platform__library__isnull=False` among them, for the same reason.
 
 Each violation reads `Playthrough.player_game: <id> names PlayerGame <id>`.
 The text is derived from the pair, not written per relation: a guard that
@@ -215,7 +218,9 @@ structurally cannot.
   `ProjectionModel`.
 
 `tests/test_library_commands.py`: the derived violation line, at both sites
-that pin it — the relation-name loop and the exact-prose assertion.
+that pin it — the relation-name loop and the exact-prose assertion. Two cases
+for the widened walk: a `PlayerGame` naming a `Game` in another library is
+reported, and a `PlayerGame` naming a `Game` with no library at all is not.
 
 `tests/test_projection_rebuild.py`, one `transaction=True` case: a `PlayerGame`
 planted in library B with no event behind it, a `Playthrough` in library A
