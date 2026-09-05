@@ -78,6 +78,12 @@ def constraint_name_of(error: Exception) -> str | None:
     return getattr(diagnostic, "constraint_name", None)
 
 
+def detail_of(error: Exception) -> str | None:
+    #: PostgreSQL names the offending key here, and nowhere else.
+    diagnostic = getattr(error.__cause__, "diag", None)
+    return getattr(diagnostic, "message_detail", None)
+
+
 def is_retryable(error: Exception) -> bool:
     """Whether running the same transaction again could succeed.
 

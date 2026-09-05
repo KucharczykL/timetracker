@@ -15,7 +15,10 @@ from django.db import models
 from django.utils import timezone
 
 from games.models import ProjectionModel
-from games.projections import unaudited_projection_references
+from games.projections import (
+    stale_projection_references,
+    unaudited_projection_references,
+)
 
 #: A new UUID every call, so never a projection key.
 _UUID_FACTORIES = frozenset(
@@ -212,6 +215,24 @@ def check_projection_references(
                 ),
                 obj=reference.model,
                 id="games.E009",
+            )
+        )
+    for reference in stale_projection_references(apps):
+        if labels is not None and reference.model._meta.app_label not in labels:
+            continue
+        errors.append(
+            Error(
+                f"{reference} is registered and is no longer a reference out "
+                "of a projection table.",
+                hint=(
+                    "The ownership audit and the swap's refusal both build a "
+                    "query from this pair, so a stale entry raises a "
+                    "FieldError -- and the worst place for that is the "
+                    "handler explaining a refused swap. Take the pair out of "
+                    "AUDITED_PROJECTION_REFERENCES in games/projections.py."
+                ),
+                obj=reference.model,
+                id="games.E010",
             )
         )
     return errors

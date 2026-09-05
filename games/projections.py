@@ -1,5 +1,6 @@
 """The projection tables, and every row outside a library they can name."""
 
+import uuid
 from collections.abc import Iterable, Sequence
 from typing import Any, NamedTuple
 
@@ -12,9 +13,16 @@ from django.db.models import F, Q
 from games.models import PlayerGame, Playthrough, ProjectionModel
 
 type FieldName = str  # e.g. "player_game"
+type ModelLabel = str  # e.g. "games.PlayerGame"
+type ReferenceKey = tuple[ModelLabel, FieldName]
+type ViolationSentence = str  # e.g. "PlayerGame.game: <id> names Game <id>"
 
-#: The column every library-scoped model carries.
+#: The field every library-scoped model carries. Every lookup below is
+#: built from it, so renaming the field moves one string.
 LIBRARY_FIELD: FieldName = "library"
+
+#: The column that field writes, and the lookups the audit joins through.
+_LIBRARY_ID = f"{LIBRARY_FIELD}_id"
 
 
 class ProjectionReference(NamedTuple):
@@ -22,6 +30,26 @@ class ProjectionReference(NamedTuple):
 
     model: type[ProjectionModel]
     field: models.ForeignKey[Any, Any]
+
+    @classmethod
+    def on(
+        cls, model: type[ProjectionModel], field_name: FieldName
+    ) -> ProjectionReference:
+        """The one construction path, refusing a pair it cannot audit."""
+        field = model._meta.get_field(field_name)
+        if not isinstance(field, models.ForeignKey):
+            raise TypeError(f"{model.__name__}.{field_name} is not a foreign key.")
+        if not _is_library_scoped(field.related_model):
+            raise TypeError(
+                f"{model.__name__}.{field_name} names "
+                f"{field.related_model.__name__}, which holds no library."
+            )
+        return cls(model, field)
+
+    @property
+    def key(self) -> ReferenceKey:
+        """What makes two references the same pair across registries."""
+        return (self.model._meta.label, self.field.name)
 
     def __str__(self) -> str:
         return f"{self.model.__name__}.{self.field.name}"
@@ -39,12 +67,17 @@ def projection_models(apps: Apps = global_apps) -> tuple[type[ProjectionModel], 
 
 
 def _is_library_scoped(model: type[models.Model]) -> bool:
-    """Whether a row of `model` belongs to one library."""
+    """Whether a row of `model` carries a library column.
+
+    Concrete, because `get_field` answers for a reverse relation too:
+    `UserLibrary.user` is `related_name="library"`, which would make the
+    user model read as scoped and every lookup built below a FieldError.
+    """
     try:
-        model._meta.get_field(LIBRARY_FIELD)
+        field = model._meta.get_field(LIBRARY_FIELD)
     except FieldDoesNotExist:
         return False
-    return True
+    return field.concrete
 
 
 def projection_references(apps: Apps = global_apps) -> tuple[ProjectionReference, ...]:
@@ -78,8 +111,8 @@ def projection_references(apps: Apps = global_apps) -> tuple[ProjectionReference
 #: Every reference the ownership audit reads. `games.E009` refuses a walk
 #: that finds one this list does not.
 AUDITED_PROJECTION_REFERENCES: tuple[ProjectionReference, ...] = (
-    ProjectionReference(PlayerGame, PlayerGame._meta.get_field("game")),
-    ProjectionReference(Playthrough, Playthrough._meta.get_field("player_game")),
+    ProjectionReference.on(PlayerGame, "game"),
+    ProjectionReference.on(Playthrough, "player_game"),
 )
 
 
@@ -87,39 +120,59 @@ def unaudited_projection_references(
     apps: Apps = global_apps,
 ) -> tuple[ProjectionReference, ...]:
     """Every reference the walk finds and the registry omits."""
-    audited = {
-        (reference.model._meta.label, reference.field.name)
-        for reference in AUDITED_PROJECTION_REFERENCES
-    }
+    audited = {reference.key for reference in AUDITED_PROJECTION_REFERENCES}
     return tuple(
         reference
         for reference in projection_references(apps)
-        if (reference.model._meta.label, reference.field.name) not in audited
+        if reference.key not in audited
+    )
+
+
+def stale_projection_references(
+    apps: Apps = global_apps,
+) -> tuple[ProjectionReference, ...]:
+    """Every reference the registry holds and the walk no longer finds.
+
+    A stale entry passes the completeness check and fails later, inside
+    `cross_library_violations` -- worst of all inside the handler that
+    reads it to explain a refused swap. A registry `apps` does not hold
+    the model of is another registry's, not a stale entry.
+    """
+    walked = {reference.key for reference in projection_references(apps)}
+    present = {model._meta.label for model in projection_models(apps)}
+    return tuple(
+        reference
+        for reference in AUDITED_PROJECTION_REFERENCES
+        if reference.model._meta.label in present and reference.key not in walked
     )
 
 
 def cross_library_violations(
-    references: Iterable[ProjectionReference],
-    library_ids: Sequence[Any],
-) -> list[str]:
+    library_ids: Sequence[uuid.UUID],
+    *,
+    references: Iterable[ProjectionReference] = AUDITED_PROJECTION_REFERENCES,
+) -> list[ViolationSentence]:
     """Every row that names a row in another library.
 
     The `isnull` clause is on the referenced row's library, and it is
-    load-bearing. Django compiles `exclude()` to mean "not equal, nulls
-    included": it puts `IS NOT NULL` inside the negation, so a null on
-    either side would be answered as a violation. A null foreign key
-    joins no row, and a joined row with no library is shared.
+    load-bearing wherever that library is nullable -- a shared catalog
+    row. Django compiles `exclude()` to mean "not equal, nulls
+    included": it puts `IS NOT NULL` inside the negation, so a
+    referenced row with no library would be answered as a violation. A
+    null foreign key joins no row, and a projection's own library is
+    never null.
     """
-    violations: list[str] = []
+    violations: list[ViolationSentence] = []
     for reference in references:
         name = reference.field.name
+        #: The base manager: a removed row still holds the key.
         rows = (
-            reference.model._default_manager.filter(
-                Q(library_id__in=library_ids)
-                | Q(**{f"{name}__library_id__in": library_ids}),
-                **{f"{name}__library__isnull": False},
+            reference.model._base_manager.filter(
+                Q(**{f"{_LIBRARY_ID}__in": library_ids})
+                | Q(**{f"{name}__{_LIBRARY_ID}__in": library_ids}),
+                **{f"{name}__{LIBRARY_FIELD}__isnull": False},
             )
-            .exclude(**{f"{name}__library_id": F("library_id")})
+            .exclude(**{f"{name}__{_LIBRARY_ID}": F(_LIBRARY_ID)})
             .values_list("pk", reference.field.attname)
         )
         referenced = reference.field.related_model.__name__

@@ -19,10 +19,7 @@ from games.models import (
     UserLibraryPreferences,
     UserPreferences,
 )
-from games.projections import (
-    AUDITED_PROJECTION_REFERENCES,
-    cross_library_violations,
-)
+from games.projections import cross_library_violations
 
 
 class Command(BaseCommand):
@@ -169,7 +166,7 @@ class Command(BaseCommand):
 
     @staticmethod
     def _cross_library_violations(library_ids):
-        """Every relation audited, one loop each.
+        """Every relation outside the projections, one loop each.
 
         The six loops below are hand-written because each names its own
         join path, and one of them reads an M2M through table. Every
@@ -244,7 +241,5 @@ class Command(BaseCommand):
                 "UserLibraryPreferences.default_device: "
                 f"library {library_id}, device {device_id}"
             )
-        violations.extend(
-            cross_library_violations(AUDITED_PROJECTION_REFERENCES, library_ids)
-        )
+        violations.extend(cross_library_violations(library_ids))
         return violations

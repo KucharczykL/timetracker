@@ -1,5 +1,6 @@
 """Rebuild projections into shadow tables, then swap."""
 
+import logging
 import re
 import uuid
 from collections.abc import Iterable, Iterator, Sequence
@@ -11,7 +12,7 @@ from typing import Any, cast
 
 from django.apps import apps as global_apps
 from django.apps.registry import Apps
-from django.db import IntegrityError, connection, transaction
+from django.db import DatabaseError, IntegrityError, connection, transaction
 from django.db.models.fields.generated import GeneratedField
 
 from games.events.append import StreamSequenceMismatch, lock_stream
@@ -19,16 +20,19 @@ from games.events.replay import ReplayResult, replay
 from games.events.retry import (
     FOREIGN_KEY_VIOLATION,
     constraint_name_of,
+    detail_of,
     sqlstate_of,
 )
 from games.events.targets import SHADOW_SUFFIX, ShadowTarget
 from games.events.wiring import DEFAULT_WIRING, EventWiring
 from games.models import LibraryEventStreamHead, ProjectionModel, UserLibrary
 from games.projections import (
-    AUDITED_PROJECTION_REFERENCES,
+    ViolationSentence,
     cross_library_violations,
     projection_models,
 )
+
+logger = logging.getLogger("games")
 
 type ColumnName = str  # e.g. "library_id"
 type TableName = str  # e.g. "games_playergamestate"
@@ -299,43 +303,58 @@ class SwapRefusedByReference(RuntimeError):
         *,
         library_id: uuid.UUID,
         constraint_name: str | None,
-        violations: tuple[str, ...],
+        detail: str | None,
+        violations: tuple[ViolationSentence, ...],
+        audited: bool,
         tables: tuple[TableDiff, ...],
     ) -> None:
-        super().__init__(_refusal_sentence(library_id, constraint_name, violations))
+        super().__init__(
+            _refusal_sentence(library_id, constraint_name, detail, violations, audited)
+        )
         self.library_id = library_id
         self.constraint_name = constraint_name
+        self.detail = detail
         self.violations = violations
+        self.audited = audited
         self.tables = tables
 
 
 def _refusal_sentence(
     library_id: uuid.UUID,
     constraint_name: str | None,
-    violations: tuple[str, ...],
+    detail: str | None,
+    violations: tuple[ViolationSentence, ...],
+    audited: bool,
 ) -> str:
-    """Two shapes: the pairs, or the reason there are none.
+    """Three shapes: the pairs, no pairs, or no answer.
 
-    Three failures raise 23503 here, and only one is a reference across
-    libraries. The other two are two projectors in one library
-    disagreeing, and a RESTRICT reference to a row outside the
-    projections. Naming either of those as cross-library would send an
-    operator to an audit that answers zero.
+    Not every 23503 here is a reference across libraries: two projectors
+    in one library can disagree, and a RESTRICT reference can name a row
+    outside the projections. Naming either of those as cross-library
+    would send an operator to an audit that answers zero. The pairs the
+    audit does find run both ways, so the sentence states what they are
+    rather than which way they point, and the constraint is named in
+    every shape -- it is what tells an operator which pair fired.
     """
-    if not violations:
-        named = "an unnamed constraint" if constraint_name is None else constraint_name
+    named = "an unnamed constraint" if constraint_name is None else constraint_name
+    opening = f"The rebuild of library {library_id} was refused at the swap by {named}."
+    closing = "Nothing was swapped; the live rows are unchanged."
+    reported = f" {detail}" if detail else ""
+    if not audited:
         return (
-            f"The rebuild of library {library_id} was refused at the swap by "
-            f"{named}, and the audit finds no cross-library pair, so the "
-            "referenced row is missing for another reason. Nothing was "
-            "swapped; the live rows are unchanged."
+            f"{opening}{reported} The audit that names the pair could not "
+            f"run, so no pair is listed. {closing}"
+        )
+    if not violations:
+        return (
+            f"{opening}{reported} The audit finds no cross-library pair, so "
+            f"the referenced row is missing for another reason. {closing}"
         )
     listed = "\n".join(f"  {violation}" for violation in violations)
     return (
-        f"The rebuild of library {library_id} was refused at the swap. A "
-        "projection row in another library names a row this rebuild did not "
-        f"reproduce:\n{listed}\nNothing was swapped; the live rows are "
-        "unchanged. Run: manage.py audit_library_ownership --all-libraries"
+        f"{opening}{reported} The audit finds these rows naming a row in "
+        f"another library:\n{listed}\n{closing} Run: manage.py "
+        "audit_library_ownership --all-libraries"
     )
 
 
@@ -344,21 +363,25 @@ def swap_in(
     models: Iterable[type[ProjectionModel]],
     replayed_through: int,
     *,
-    tables: tuple[TableDiff, ...] = (),
+    tables: tuple[TableDiff, ...],
 ) -> None:
     """Put the rebuilt rows in place.
 
-    The whole block, not the cursor: the foreign keys between projection
-    tables are DEFERRABLE INITIALLY DEFERRED, so a violation raises when
-    the block commits. Django's _commit() runs inside
-    wrap_database_errors, so the chain a state read needs is there.
-    StreamSequenceMismatch is a CommandConflict, so the wider block does
-    not swallow it.
+    The whole block, not the cursor: every foreign key on these tables is
+    DEFERRABLE INITIALLY DEFERRED, so a violation raises when the block
+    commits. Django's _commit() runs inside wrap_database_errors, so the
+    chain a state read needs is there. StreamSequenceMismatch is a
+    CommandConflict, so the wider block does not swallow it. The audit in
+    the handler needs the rolled-back block behind it, so moving the try
+    inside would answer TransactionManagementError instead of a sentence.
     """
+    swapping = False
     try:
         with transaction.atomic():
             stream = lock_stream(library)
             stream.require_sequence(replayed_through)
+            #: The prologue writes a stream head, whose own key is not this.
+            swapping = True
             with connection.cursor() as cursor:
                 for model in models:
                     table = connection.ops.quote_name(model._meta.db_table)
@@ -376,16 +399,24 @@ def swap_in(
                         [library.pk],
                     )
     except IntegrityError as error:
-        if sqlstate_of(error) != FOREIGN_KEY_VIOLATION:
+        if not swapping or sqlstate_of(error) != FOREIGN_KEY_VIOLATION:
             raise
-        raise SwapRefusedByReference(
+        try:
+            violations = tuple(cross_library_violations([library.pk]))
+            audited = True
+        except DatabaseError:
+            #: A diagnostic never outranks the diagnosis.
+            violations, audited = (), False
+        refusal = SwapRefusedByReference(
             library_id=library.pk,
             constraint_name=constraint_name_of(error),
-            violations=tuple(
-                cross_library_violations(AUDITED_PROJECTION_REFERENCES, [library.pk])
-            ),
+            detail=detail_of(error),
+            violations=violations,
+            audited=audited,
             tables=tables,
-        ) from error
+        )
+        logger.error("%s", refusal)
+        raise refusal from error
 
 
 # --- The attempt loop and the report ----------------------------------------

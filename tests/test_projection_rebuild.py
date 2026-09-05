@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from io import StringIO
 from random import Random
+from types import SimpleNamespace
 from typing import Any, ClassVar, TypedDict
 from uuid import UUID, uuid4, uuid7
 
@@ -47,7 +48,7 @@ from games.events.rebuild import (
     write_targets,
 )
 from games.events.replay import ReplayResult, StreamNotContiguous
-from games.events.retry import RetryPolicy, sqlstate_of
+from games.events.retry import FOREIGN_KEY_VIOLATION, RetryPolicy, sqlstate_of
 from games.events.targets import SHADOW_SUFFIX, ShadowTarget
 from games.events.vocabulary import EventSpec, EventTypeRegistry, NewEvent
 from games.events.wiring import EventWiring
@@ -837,7 +838,7 @@ def test_the_swap_replaces_the_live_rows_with_the_rebuilt_ones(owned_library):
 
     with shadow_tables([shelf]):
         replayed = replay_into_shadow(owned_library, [shelf], wiring=SHADOW_WIRING)
-        swap_in(owned_library, [shelf], replayed.replayed_through)
+        swap_in(owned_library, [shelf], replayed.replayed_through, tables=())
 
     assert shelf_rows(shelf) == correct
     assert not shelf.objects.filter(pk=stray.pk).exists()
@@ -855,7 +856,7 @@ def test_another_librarys_rows_come_through_the_swap_untouched(
 
     with shadow_tables([shelf]):
         replayed = replay_into_shadow(owned_library, [shelf], wiring=SHADOW_WIRING)
-        swap_in(owned_library, [shelf], replayed.replayed_through)
+        swap_in(owned_library, [shelf], replayed.replayed_through, tables=())
 
     #: Every column: a wide scope loses rows.
     assert every_column(shelf, second_library) == theirs
@@ -875,7 +876,7 @@ def test_a_foreign_row_in_the_shadow_is_left_behind(owned_library, second_librar
         twin.objects.create(
             id=uuid4(), library_id=second_library.pk, title="not mine", played_seconds=0
         )
-        swap_in(owned_library, [shelf], replayed.replayed_through)
+        swap_in(owned_library, [shelf], replayed.replayed_through, tables=())
 
     assert not shelf.objects.filter(library_id=second_library.pk).exists()
     assert [title for _, title in shelf_rows(shelf)] == ["one"]
@@ -894,7 +895,7 @@ def test_an_event_that_landed_during_the_rebuild_refuses_the_swap(owned_library)
         live_rows = shelf_rows(shelf)
 
         with pytest.raises(StreamSequenceMismatch) as conflict:
-            swap_in(owned_library, [shelf], replayed.replayed_through)
+            swap_in(owned_library, [shelf], replayed.replayed_through, tables=())
 
     assert conflict.value.expected == replayed.replayed_through
     assert conflict.value.actual == head_sequence(owned_library)
@@ -910,7 +911,7 @@ def test_a_library_that_never_appended_is_swapped_empty(owned_library):
 
     with shadow_tables([shelf]):
         replayed = replay_into_shadow(owned_library, [shelf], wiring=SHADOW_WIRING)
-        swap_in(owned_library, [shelf], replayed.replayed_through)
+        swap_in(owned_library, [shelf], replayed.replayed_through, tables=())
 
     assert shelf_rows(shelf) == []
     assert head_sequence(owned_library) == 0
@@ -932,7 +933,7 @@ def test_the_swap_empties_and_refills_every_table_it_is_given(owned_library):
         replayed = replay_into_shadow(
             owned_library, [shelf, entry], wiring=SHADOW_WIRING
         )
-        swap_in(owned_library, [shelf, entry], replayed.replayed_through)
+        swap_in(owned_library, [shelf, entry], replayed.replayed_through, tables=())
 
     #: A given table is replaced, not extended.
     assert entry.objects.count() == 0
@@ -954,7 +955,7 @@ def test_the_swap_costs_the_same_statements_at_any_size(
         with django_assert_num_queries(
             SWAP_FIXED_STATEMENTS + SWAP_STATEMENTS_PER_TABLE
         ):
-            swap_in(owned_library, [shelf], replayed.replayed_through)
+            swap_in(owned_library, [shelf], replayed.replayed_through, tables=())
 
 
 # --- The attempt loop and the report ----------------------------------------
@@ -1297,8 +1298,10 @@ def plant_tracked_game(library):
 def test_a_cross_library_reference_refuses_the_swap(owned_library, other_owner):
     """The rows, not a constraint name.
 
-    The violation fires on the swap's DELETE -- the planted row is still
-    referenced -- so the sentence is matched on the two ids.
+    The swap's DELETE takes the planted row a Playthrough elsewhere still
+    names. The key is DEFERRABLE INITIALLY DEFERRED, so the violation
+    raises when the block commits, and the sentence is matched on the two
+    ids.
     """
     planted = plant_tracked_game(owned_library)
     run = Playthrough.objects.create(
@@ -1328,25 +1331,51 @@ def test_a_refusal_with_no_pair_names_the_constraint_instead():
 
     A same-library reference cannot reach this shape through a rebuild:
     the swap deletes every projection row the library holds, so the row
-    that names it goes in the same statement. The two remaining
-    producers -- two projectors disagreeing, and a RESTRICT reference to
-    a row outside the projections -- leave the audit with nothing, and
-    the sentence must not send an operator to it regardless.
+    that names it goes in the same block. The two remaining producers --
+    two projectors disagreeing, and a RESTRICT reference to a row
+    outside the projections -- leave the audit with nothing, and the
+    sentence must not send an operator to it regardless.
     """
     library_id = uuid7()
 
     error = SwapRefusedByReference(
         library_id=library_id,
         constraint_name="games_playthrough_player_game_id_fk",
+        detail="Key (id)=(3) is still referenced from table “x”.",
         violations=(),
+        audited=True,
         tables=(),
     )
 
     sentence = str(error)
     assert "no cross-library pair" in sentence
     assert "games_playthrough_player_game_id_fk" in sentence
+    assert "Key (id)=(3) is still referenced" in sentence
     assert str(library_id) in sentence
     assert "audit_library_ownership" not in sentence
+
+
+def test_a_refusal_the_audit_could_not_answer_says_so():
+    """A silent zero and an unanswered audit read alike otherwise.
+
+    The audit runs after the rolled-back block, so it can fail on its
+    own -- a lost connection, a statement timeout. Reporting that as "no
+    cross-library pair" would tell an operator the opposite of what is
+    known.
+    """
+    error = SwapRefusedByReference(
+        library_id=uuid7(),
+        constraint_name="games_playthrough_player_game_id_fk",
+        detail=None,
+        violations=(),
+        audited=False,
+        tables=(),
+    )
+
+    sentence = str(error)
+    assert "could not run, so no pair is listed" in sentence
+    assert "no cross-library pair" not in sentence
+    assert "games_playthrough_player_game_id_fk" in sentence
 
 
 def test_a_refusal_with_no_constraint_name_still_reads():
@@ -1354,7 +1383,9 @@ def test_a_refusal_with_no_constraint_name_still_reads():
     error = SwapRefusedByReference(
         library_id=uuid7(),
         constraint_name=None,
+        detail=None,
         violations=(),
+        audited=True,
         tables=(),
     )
 
@@ -1397,10 +1428,38 @@ def test_an_integrity_error_of_another_state_rises_unchanged(
     monkeypatch.setattr(rebuild_module, "lock_stream", refuse)
 
     with pytest.raises(IntegrityError) as caught:
-        swap_in(owned_library, (), 0)
+        swap_in(owned_library, (), 0, tables=())
 
     assert caught.value is raised
     assert sqlstate_of(raised) is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_violation_before_the_swap_rises_unchanged(owned_library, monkeypatch):
+    """The prologue writes a stream head, whose key is not this one.
+
+    Answering it as a refused swap would name a pair the swap never
+    reached, and hide the write that did fail.
+    """
+    cause = Exception("insert or update on table violates foreign key constraint")
+    cause.sqlstate = FOREIGN_KEY_VIOLATION
+    cause.diag = SimpleNamespace(
+        constraint_name="games_libraryeventstreamhead_library_id_fk",
+        message_detail="Key (library_id)=(…) is not present in table.",
+    )
+    raised = IntegrityError("the head, not a projection")
+    raised.__cause__ = cause
+
+    def refuse(library):
+        raise raised
+
+    monkeypatch.setattr(rebuild_module, "lock_stream", refuse)
+
+    with pytest.raises(IntegrityError) as caught:
+        swap_in(owned_library, (), 0, tables=())
+
+    assert caught.value is raised
+    assert not isinstance(caught.value, SwapRefusedByReference)
 
 
 @pytest.mark.django_db(transaction=True)
@@ -1415,12 +1474,14 @@ def test_the_command_prints_the_diff_and_names_the_pair(owned_library, other_own
         created_at=timezone.now(),
     )
     output = StringIO()
+    errors = StringIO()
 
     with pytest.raises(CommandError, match="refused at the swap") as refused:
         call_command(
             "rebuild_projections",
             str(owned_library.pk),
             stdout=output,
+            stderr=errors,
         )
 
     #: manage.py prints a CommandError itself; call_command raises it.
@@ -1429,7 +1490,9 @@ def test_the_command_prints_the_diff_and_names_the_pair(owned_library, other_own
         f"Playthrough.player_game: {run.pk} names PlayerGame {planted.pk}" in sentence
     )
     assert "audit_library_ownership" in sentence
-    assert "games_playergame: 1 live, 0 rebuilt, 1 only live" in output.getvalue()
+    #: The diff joins the refusal on stderr, not the report on stdout.
+    assert "games_playergame: 1 live, 0 rebuilt, 1 only live" in errors.getvalue()
+    assert "games_playergame" not in output.getvalue()
 
 
 # --- Registry hygiene --------------------------------------------------------

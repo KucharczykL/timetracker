@@ -105,10 +105,17 @@ A check, not a test: `manage.py check` runs it, and so does every `migrate`,
 every `make dev`, and container start. A developer who adds the relation learns
 before the suite does.
 
+`games.E010` is the same check read the other way: one `Error` per pair the
+registry holds and the walk no longer finds. A stale pair passes E009 and fails
+later, inside the query the audit builds from it — worst of all inside the
+handler that reads it to explain a refused swap. A pair whose model the
+registry under check does not hold belongs to another registry and is not
+stale.
+
 ## The audit command
 
 `_cross_library_violations` loses its projection block and calls
-`cross_library_violations(AUDITED_PROJECTION_REFERENCES, library_ids)`.
+`cross_library_violations(library_ids)`, which reads the registry itself.
 
 The six blocks for ordinary models stay hand-written. They are not derivable
 the same way: each names its own join path (`device__library` against

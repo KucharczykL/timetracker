@@ -570,7 +570,8 @@ def test_scoped_audit_reports_incoming_cross_library_links(owner, outsider):
         kind=PlaythroughKind.ORDINARY,
         created_at=timezone.now(),
     )
-    #: The other reference out of a projection, on its own game.
+    #: PlayerGame.game, the second registered reference: the owner's
+    #: tracking row moved onto a game the outsider's library holds.
     tracked_across = Game.objects.create(
         library=outsider.library, name="Outsider tracked by owner"
     )

@@ -3,17 +3,22 @@
 import uuid
 
 import pytest
+from django.contrib.auth import get_user_model
+from django.core.checks import run_checks
 from django.db import models
 from django.test.utils import isolate_apps
 from django.utils import timezone
 from test_projection_targets import declare_projection_models
 
+from games import projections
 from games.checks import check_projection_references
-from games.models import Game, PlayerGame, Playthrough
+from games.models import Game, PlayerGame, Playthrough, ProjectionModel
 from games.projections import (
     AUDITED_PROJECTION_REFERENCES,
+    ProjectionReference,
     cross_library_violations,
     projection_references,
+    stale_projection_references,
     unaudited_projection_references,
 )
 
@@ -38,6 +43,55 @@ def test_the_library_column_is_not_a_reference():
     assert "library" not in {
         reference.field.name for reference in projection_references()
     }
+
+
+@isolate_apps("games")
+def test_a_reference_to_a_row_no_library_owns_is_not_walked():
+    """A device model with no library crosses no boundary."""
+    shelf, _ = declare_projection_models()
+
+    class Vendor(models.Model):
+        id = models.UUIDField(primary_key=True)
+
+        class Meta:
+            app_label = "games"
+            db_table = "test_projection_vendor"
+
+    class Listing(ProjectionModel):
+        id = models.UUIDField(primary_key=True)
+        vendor = models.ForeignKey(Vendor, on_delete=models.CASCADE)
+
+        class Meta:
+            app_label = "games"
+            db_table = "test_projection_listing"
+
+    found = projection_references(apps=shelf._meta.apps)
+
+    assert ("Listing", "vendor") not in named(found)
+
+
+def test_a_reverse_relation_named_library_does_not_scope_a_model():
+    """`UserLibrary.user` is `related_name="library"`.
+
+    `get_field` answers for that reverse relation, so a walk that did not
+    ask for a concrete field would read the user model as scoped and then
+    build a lookup no column answers.
+    """
+    user_model = get_user_model()
+
+    assert user_model._meta.get_field("library").concrete is False
+    assert not projections._is_library_scoped(user_model)
+
+
+def test_a_reference_the_model_does_not_hold_is_refused():
+    """The factory is the only construction path."""
+    with pytest.raises(TypeError, match="not a foreign key"):
+        ProjectionReference.on(PlayerGame, "status")
+
+
+def test_a_reference_to_an_unscoped_row_is_refused():
+    with pytest.raises(TypeError, match="holds no library"):
+        ProjectionReference.on(Playthrough, "library")
 
 
 def test_every_reference_is_audited():
@@ -91,10 +145,7 @@ def tracked_pair(owned_library):
 @pytest.mark.django_db
 @pytest.mark.untracked_games
 def test_a_matching_library_is_no_violation(owned_library, tracked_pair):
-    assert (
-        cross_library_violations(AUDITED_PROJECTION_REFERENCES, [owned_library.pk])
-        == []
-    )
+    assert cross_library_violations([owned_library.pk]) == []
 
 
 @pytest.mark.django_db
@@ -110,10 +161,7 @@ def test_a_game_with_no_library_is_no_violation(owned_library):
     )
 
     assert shared.library_id is None
-    assert (
-        cross_library_violations(AUDITED_PROJECTION_REFERENCES, [owned_library.pk])
-        == []
-    )
+    assert cross_library_violations([owned_library.pk]) == []
 
 
 @pytest.mark.django_db
@@ -131,9 +179,34 @@ def test_a_reference_across_libraries_is_reported(
         created_at=timezone.now(),
     )
 
-    reported = cross_library_violations(
-        AUDITED_PROJECTION_REFERENCES, [owned_library.pk]
+    reported = cross_library_violations([owned_library.pk])
+
+    assert reported == [
+        f"Playthrough.player_game: {run.pk} names PlayerGame {tracked.pk}"
+    ]
+
+
+@pytest.mark.django_db
+@pytest.mark.untracked_games
+def test_a_removed_row_still_names_the_other_library(
+    owned_library, other_library, tracked_pair
+):
+    """The audit reads the base manager.
+
+    A stamp takes the row off every screen and out of nothing else: the
+    key is still there, and the swap still refuses at commit.
+    """
+    _game, tracked = tracked_pair
+    run = Playthrough.objects.create(
+        id=uuid.uuid7(),
+        library=other_library,
+        player_game=tracked,
+        kind="ordinary",
+        created_at=timezone.now(),
     )
+    Playthrough.objects.filter(pk=run.pk).update(removed_at=timezone.now())
+
+    reported = cross_library_violations([owned_library.pk])
 
     assert reported == [
         f"Playthrough.player_game: {run.pk} names PlayerGame {tracked.pk}"
@@ -142,6 +215,35 @@ def test_a_reference_across_libraries_is_reported(
 
 def test_the_real_registry_reports_no_unaudited_reference():
     assert check_projection_references() == []
+
+
+def test_the_check_is_registered_and_reads_the_real_registry(monkeypatch):
+    """Without the registration, nothing runs this at all.
+
+    Every other check test calls the function, which an unregistered
+    check answers just as well. Emptying the registry is what makes
+    `run_checks()` say whether Django knows about it.
+    """
+    monkeypatch.setattr(projections, "AUDITED_PROJECTION_REFERENCES", ())
+
+    reported = [str(message.id) for message in run_checks()]
+
+    assert reported == ["games.E009", "games.E009"]
+
+
+@isolate_apps("games")
+def test_the_check_answers_its_own_app_label():
+    """The filter passes the app the reference is in."""
+    shelf, _ = declare_projection_models()
+
+    class GamesConfig:
+        label = "games"
+
+    messages = check_projection_references(
+        app_configs=[GamesConfig()], apps=shelf._meta.apps
+    )
+
+    assert [str(message.id) for message in messages] == ["games.E009"]
 
 
 @isolate_apps("games")
@@ -175,3 +277,33 @@ def test_the_check_honours_an_app_label_filter():
     )
 
     assert messages == []
+
+
+def test_a_registered_pair_the_walk_does_not_find_is_stale(monkeypatch):
+    """`PlayerGame.library` is a foreign key the walk excludes.
+
+    Registering it is the shape a pair takes after the field it names is
+    renamed or dropped: the completeness check passes, and the query the
+    audit builds from it raises a FieldError instead.
+    """
+    stale = ProjectionReference(PlayerGame, PlayerGame._meta.get_field("library"))
+    monkeypatch.setattr(
+        projections,
+        "AUDITED_PROJECTION_REFERENCES",
+        (*AUDITED_PROJECTION_REFERENCES, stale),
+    )
+
+    assert stale_projection_references() == (stale,)
+
+    messages = check_projection_references()
+
+    assert [str(message.id) for message in messages] == ["games.E010"]
+    assert "PlayerGame.library" in messages[0].msg
+
+
+@isolate_apps("games")
+def test_a_pair_another_registry_holds_is_not_stale():
+    """The registry under check holds neither shipped projection."""
+    shelf, _ = declare_projection_models()
+
+    assert stale_projection_references(apps=shelf._meta.apps) == ()
