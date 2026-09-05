@@ -8,6 +8,7 @@ from django.test.utils import isolate_apps
 from django.utils import timezone
 from test_projection_targets import declare_projection_models
 
+from games.checks import check_projection_references
 from games.models import Game, PlayerGame, Playthrough
 from games.projections import (
     AUDITED_PROJECTION_REFERENCES,
@@ -137,3 +138,40 @@ def test_a_reference_across_libraries_is_reported(
     assert reported == [
         f"Playthrough.player_game: {run.pk} names PlayerGame {tracked.pk}"
     ]
+
+
+def test_the_real_registry_reports_no_unaudited_reference():
+    assert check_projection_references() == []
+
+
+@isolate_apps("games")
+def test_an_unaudited_reference_is_refused():
+    """The check reads the isolated registry it is handed.
+
+    `run_checks()` would prove nothing here: `isolate_apps` swaps
+    `Options.default_apps` and leaves `django.apps.apps` alone, so the
+    synthetic models are invisible to the global registry. That is also
+    why no shipped check test regresses.
+    """
+    shelf, _ = declare_projection_models()
+
+    messages = check_projection_references(apps=shelf._meta.apps)
+
+    assert [str(message.id) for message in messages] == ["games.E009"]
+    assert "Entry.shelf" in messages[0].msg
+    assert "CASCADE" in messages[0].msg
+
+
+@isolate_apps("games")
+def test_the_check_honours_an_app_label_filter():
+    """A check asked about another app answers nothing."""
+    shelf, _ = declare_projection_models()
+
+    class OtherConfig:
+        label = "not_games"
+
+    messages = check_projection_references(
+        app_configs=[OtherConfig()], apps=shelf._meta.apps
+    )
+
+    assert messages == []

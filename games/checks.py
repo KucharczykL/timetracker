@@ -15,6 +15,7 @@ from django.db import models
 from django.utils import timezone
 
 from games.models import ProjectionModel
+from games.projections import unaudited_projection_references
 
 #: A new UUID every call, so never a projection key.
 _UUID_FACTORIES = frozenset(
@@ -176,6 +177,41 @@ def _check_callable_default(
         obj=model,
         id="games.E007",
     )
+
+
+@register(Tags.models)
+def check_projection_references(
+    *,
+    app_configs: Sequence[AppConfig] | None = None,
+    databases: Sequence[str] | None = None,
+    apps: Apps = global_apps,
+    **kwargs: Any,
+) -> list[CheckMessage]:
+    """Refuse a reference the ownership audit does not read."""
+    labels = None if app_configs is None else {config.label for config in app_configs}
+    errors: list[CheckMessage] = []
+    for reference in unaudited_projection_references(apps):
+        if labels is not None and reference.model._meta.app_label not in labels:
+            continue
+        on_delete = reference.field.remote_field.on_delete.__name__
+        errors.append(
+            Error(
+                f"{reference} is an unaudited {on_delete} reference out of a "
+                "projection table.",
+                hint=(
+                    "A value naming another library's row is invisible to "
+                    "every query a rebuild runs: a shadow table copies no "
+                    "foreign key, and the diff is scoped to one library. It "
+                    "is found when the swap refuses at commit, or never. Add "
+                    "the pair to AUDITED_PROJECTION_REFERENCES in "
+                    "games/projections.py, which is what "
+                    "audit_library_ownership reads."
+                ),
+                obj=reference.model,
+                id="games.E009",
+            )
+        )
+    return errors
 
 
 @register()
