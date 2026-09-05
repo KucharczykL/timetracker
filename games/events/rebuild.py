@@ -11,15 +11,24 @@ from typing import Any, cast
 
 from django.apps import apps as global_apps
 from django.apps.registry import Apps
-from django.db import connection, transaction
+from django.db import IntegrityError, connection, transaction
 from django.db.models.fields.generated import GeneratedField
 
 from games.events.append import StreamSequenceMismatch, lock_stream
 from games.events.replay import ReplayResult, replay
+from games.events.retry import (
+    FOREIGN_KEY_VIOLATION,
+    constraint_name_of,
+    sqlstate_of,
+)
 from games.events.targets import SHADOW_SUFFIX, ShadowTarget
 from games.events.wiring import DEFAULT_WIRING, EventWiring
 from games.models import LibraryEventStreamHead, ProjectionModel, UserLibrary
-from games.projections import projection_models
+from games.projections import (
+    AUDITED_PROJECTION_REFERENCES,
+    cross_library_violations,
+    projection_models,
+)
 
 type ColumnName = str  # e.g. "library_id"
 type TableName = str  # e.g. "games_playergamestate"
@@ -282,31 +291,101 @@ _INSERT_REBUILT_ROWS = (
 )
 
 
+class SwapRefusedByReference(RuntimeError):
+    """A foreign key stopped the swap at commit."""
+
+    def __init__(
+        self,
+        *,
+        library_id: uuid.UUID,
+        constraint_name: str | None,
+        violations: tuple[str, ...],
+        tables: tuple[TableDiff, ...],
+    ) -> None:
+        super().__init__(_refusal_sentence(library_id, constraint_name, violations))
+        self.library_id = library_id
+        self.constraint_name = constraint_name
+        self.violations = violations
+        self.tables = tables
+
+
+def _refusal_sentence(
+    library_id: uuid.UUID,
+    constraint_name: str | None,
+    violations: tuple[str, ...],
+) -> str:
+    """Two shapes: the pairs, or the reason there are none.
+
+    Three failures raise 23503 here, and only one is a reference across
+    libraries. The other two are two projectors in one library
+    disagreeing, and a RESTRICT reference to a row outside the
+    projections. Naming either of those as cross-library would send an
+    operator to an audit that answers zero.
+    """
+    if not violations:
+        named = "an unnamed constraint" if constraint_name is None else constraint_name
+        return (
+            f"The rebuild of library {library_id} was refused at the swap by "
+            f"{named}, and the audit finds no cross-library pair, so the "
+            "referenced row is missing for another reason. Nothing was "
+            "swapped; the live rows are unchanged."
+        )
+    listed = "\n".join(f"  {violation}" for violation in violations)
+    return (
+        f"The rebuild of library {library_id} was refused at the swap. A "
+        "projection row in another library names a row this rebuild did not "
+        f"reproduce:\n{listed}\nNothing was swapped; the live rows are "
+        "unchanged. Run: manage.py audit_library_ownership --all-libraries"
+    )
+
+
 def swap_in(
     library: UserLibrary,
     models: Iterable[type[ProjectionModel]],
     replayed_through: int,
+    *,
+    tables: tuple[TableDiff, ...] = (),
 ) -> None:
-    """Put the rebuilt rows in place."""
-    with transaction.atomic():
-        stream = lock_stream(library)
-        stream.require_sequence(replayed_through)
-        with connection.cursor() as cursor:
-            for model in models:
-                table = connection.ops.quote_name(model._meta.db_table)
-                columns = ", ".join(
-                    connection.ops.quote_name(column)
-                    for column in insertable_columns(model)
-                )
-                cursor.execute(_DELETE_LIVE_ROWS.format(table=table), [library.pk])
-                cursor.execute(
-                    _INSERT_REBUILT_ROWS.format(
-                        table=table,
-                        columns=columns,
-                        shadow=connection.ops.quote_name(shadow_table_name(model)),
-                    ),
-                    [library.pk],
-                )
+    """Put the rebuilt rows in place.
+
+    The whole block, not the cursor: the foreign keys between projection
+    tables are DEFERRABLE INITIALLY DEFERRED, so a violation raises when
+    the block commits. Django's _commit() runs inside
+    wrap_database_errors, so the chain a state read needs is there.
+    StreamSequenceMismatch is a CommandConflict, so the wider block does
+    not swallow it.
+    """
+    try:
+        with transaction.atomic():
+            stream = lock_stream(library)
+            stream.require_sequence(replayed_through)
+            with connection.cursor() as cursor:
+                for model in models:
+                    table = connection.ops.quote_name(model._meta.db_table)
+                    columns = ", ".join(
+                        connection.ops.quote_name(column)
+                        for column in insertable_columns(model)
+                    )
+                    cursor.execute(_DELETE_LIVE_ROWS.format(table=table), [library.pk])
+                    cursor.execute(
+                        _INSERT_REBUILT_ROWS.format(
+                            table=table,
+                            columns=columns,
+                            shadow=connection.ops.quote_name(shadow_table_name(model)),
+                        ),
+                        [library.pk],
+                    )
+    except IntegrityError as error:
+        if sqlstate_of(error) != FOREIGN_KEY_VIOLATION:
+            raise
+        raise SwapRefusedByReference(
+            library_id=library.pk,
+            constraint_name=constraint_name_of(error),
+            violations=tuple(
+                cross_library_violations(AUDITED_PROJECTION_REFERENCES, [library.pk])
+            ),
+            tables=tables,
+        ) from error
 
 
 # --- The attempt loop and the report ----------------------------------------
@@ -451,7 +530,12 @@ def rebuild_projections(
 
             swap_started = monotonic()
             try:
-                swap_in(library, models, staged.replayed.replayed_through)
+                swap_in(
+                    library,
+                    models,
+                    staged.replayed.replayed_through,
+                    tables=staged.tables,
+                )
             except StreamSequenceMismatch as conflict:
                 attempts.append(
                     staged.attempt(swap_seconds=None, conflict=str(conflict))

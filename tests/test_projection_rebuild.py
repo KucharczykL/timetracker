@@ -11,8 +11,9 @@ import pytest
 from django.core.checks import run_checks
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.db import connection, transaction
+from django.db import IntegrityError, connection, transaction
 from django.test.utils import isolate_apps
+from django.utils import timezone
 from pydantic import ConfigDict, with_config
 from test_projection_targets import ENTRY_TABLE, SHELF_TABLE, declare_projection_models
 from test_uuid_identity_audit import EXPECTED_RELATION_COLUMNS
@@ -32,6 +33,7 @@ from games.events.rebuild import (
     RebuildAttempt,
     RebuildMode,
     RebuildReport,
+    SwapRefusedByReference,
     TableDiff,
     diff_table,
     diff_tables,
@@ -45,17 +47,19 @@ from games.events.rebuild import (
     write_targets,
 )
 from games.events.replay import ReplayResult, StreamNotContiguous
-from games.events.retry import RetryPolicy
+from games.events.retry import RetryPolicy, sqlstate_of
 from games.events.targets import SHADOW_SUFFIX, ShadowTarget
 from games.events.vocabulary import EventSpec, EventTypeRegistry, NewEvent
 from games.events.wiring import EventWiring
 from games.identity_audit import relation_columns
 from games.management.commands import rebuild_projections as rebuild_command
 from games.models import (
+    Game,
     LibraryEvent,
     LibraryEventStreamHead,
     PlayerGame,
     Playthrough,
+    PlaythroughKind,
     ProjectionModel,
     UserLibrary,
 )
@@ -1260,6 +1264,143 @@ def test_an_unknown_library_fails_without_touching_anything(owned_library):
 def test_a_library_id_that_is_not_a_uuid_fails(owned_library):
     with pytest.raises(CommandError, match="not a library id"):
         run_command("the-one-with-the-games")
+
+
+# --- A foreign key that stops the swap ---------------------------------------
+
+
+@pytest.fixture
+def other_owner(django_user_model):
+    """A second library, for a reference across the boundary."""
+    return django_user_model.objects.create_user(
+        username="rebuild-outsider", password="p"
+    )
+
+
+def plant_tracked_game(library):
+    """A PlayerGame with no event behind it.
+
+    The module marks `untracked_games`, so `Game.objects.create` writes
+    no tracking row. A replay of this library therefore reproduces
+    nothing, which is what makes the swap's DELETE take the row.
+    """
+    game = Game.objects.create(library=library, name="Outer Wilds")
+    return PlayerGame.objects.create(
+        id=uuid7(),
+        library=library,
+        game=game,
+        tracked_at=timezone.now(),
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_cross_library_reference_refuses_the_swap(owned_library, other_owner):
+    """The rows, not a constraint name.
+
+    The violation fires on the swap's DELETE -- the planted row is still
+    referenced -- so the sentence is matched on the two ids.
+    """
+    planted = plant_tracked_game(owned_library)
+    run = Playthrough.objects.create(
+        id=uuid7(),
+        library=other_owner.library,
+        player_game=planted,
+        kind=PlaythroughKind.ORDINARY,
+        created_at=timezone.now(),
+    )
+
+    with pytest.raises(SwapRefusedByReference) as refused:
+        rebuild_projections(owned_library, mode=RebuildMode.REBUILD)
+
+    sentence = str(refused.value)
+    assert str(owned_library.pk) in sentence
+    assert (
+        f"Playthrough.player_game: {run.pk} names PlayerGame {planted.pk}" in sentence
+    )
+    assert "audit_library_ownership" in sentence
+    assert "Nothing was swapped" in sentence
+    #: The live row survives the refused swap.
+    assert PlayerGame.objects.filter(pk=planted.pk).exists()
+
+
+def test_a_refusal_with_no_pair_names_the_constraint_instead():
+    """23503 has three producers, and only one is this error's subject.
+
+    A same-library reference cannot reach this shape through a rebuild:
+    the swap deletes every projection row the library holds, so the row
+    that names it goes in the same statement. The two remaining
+    producers -- two projectors disagreeing, and a RESTRICT reference to
+    a row outside the projections -- leave the audit with nothing, and
+    the sentence must not send an operator to it regardless.
+    """
+    library_id = uuid7()
+
+    error = SwapRefusedByReference(
+        library_id=library_id,
+        constraint_name="games_playthrough_player_game_id_fk",
+        violations=(),
+        tables=(),
+    )
+
+    sentence = str(error)
+    assert "no cross-library pair" in sentence
+    assert "games_playthrough_player_game_id_fk" in sentence
+    assert str(library_id) in sentence
+    assert "audit_library_ownership" not in sentence
+
+
+def test_a_refusal_with_no_constraint_name_still_reads():
+    """psycopg states the name, but nothing guarantees it."""
+    error = SwapRefusedByReference(
+        library_id=uuid7(),
+        constraint_name=None,
+        violations=(),
+        tables=(),
+    )
+
+    assert "an unnamed constraint" in str(error)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_refusal_carries_the_staged_diff(owned_library, other_owner):
+    """The command has no report to print otherwise."""
+    planted = plant_tracked_game(owned_library)
+    Playthrough.objects.create(
+        id=uuid7(),
+        library=other_owner.library,
+        player_game=planted,
+        kind=PlaythroughKind.ORDINARY,
+        created_at=timezone.now(),
+    )
+
+    with pytest.raises(SwapRefusedByReference) as refused:
+        rebuild_projections(owned_library, mode=RebuildMode.REBUILD)
+
+    reported = {table.table: table.only_live for table in refused.value.tables}
+    assert reported["games_playergame"] == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_integrity_error_of_another_state_rises_unchanged(
+    owned_library, monkeypatch
+):
+    """Only 23503 becomes this error.
+
+    A causeless IntegrityError reads as no sqlstate at all, which is the
+    safe direction: an error the swap cannot classify leaves as itself.
+    """
+    raised = IntegrityError("no cause, no sqlstate")
+
+    def refuse(library):
+        raise raised
+
+    monkeypatch.setattr(rebuild_module, "lock_stream", refuse)
+
+    with pytest.raises(IntegrityError) as caught:
+        swap_in(owned_library, (), 0)
+
+    assert caught.value is raised
+    assert sqlstate_of(raised) is None
 
 
 # --- Registry hygiene --------------------------------------------------------

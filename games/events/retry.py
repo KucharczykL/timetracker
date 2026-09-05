@@ -23,6 +23,7 @@ logger = logging.getLogger("games")
 RETRYABLE_SQLSTATES = frozenset({"40001", "40P01"})
 
 UNIQUE_VIOLATION = "23505"
+FOREIGN_KEY_VIOLATION = "23503"
 
 
 class NestedTransactionNotSupported(RuntimeError):
@@ -64,7 +65,7 @@ class RetryPolicy:
 DEFAULT_RETRY_POLICY = RetryPolicy()
 
 
-def _sqlstate(error: Exception) -> str | None:
+def sqlstate_of(error: Exception) -> str | None:
     #: Django's cursor wrapper re-raises driver errors `from` the original, one
     #: level deep, so a failure that reached us through a cursor carries the
     #: psycopg exception as its cause. One raised any other way has no cause and
@@ -72,7 +73,7 @@ def _sqlstate(error: Exception) -> str | None:
     return getattr(error.__cause__, "sqlstate", None)
 
 
-def _constraint_name(error: Exception) -> str | None:
+def constraint_name_of(error: Exception) -> str | None:
     diagnostic = getattr(error.__cause__, "diag", None)
     return getattr(diagnostic, "constraint_name", None)
 
@@ -84,11 +85,11 @@ def is_retryable(error: Exception) -> bool:
     other one is an application bug, and retrying it four times would spend the
     budget to tell the user to retry something that can never work.
     """
-    sqlstate = _sqlstate(error)
+    sqlstate = sqlstate_of(error)
     if sqlstate in RETRYABLE_SQLSTATES:
         return True
     if sqlstate == UNIQUE_VIOLATION:
-        return _constraint_name(error) == LIBRARY_EVENT_SEQUENCE_CONSTRAINT
+        return constraint_name_of(error) == LIBRARY_EVENT_SEQUENCE_CONSTRAINT
     return False
 
 
@@ -129,10 +130,10 @@ def run_in_transaction[T](
                 raise
             if attempt == policy.retries:
                 raise RetryBudgetExhausted(attempt + 1) from error
-            constraint_name = _constraint_name(error)
+            constraint_name = constraint_name_of(error)
             logger.warning(
                 "Retrying a command after SQLSTATE %s%s (attempt %d of %d).",
-                _sqlstate(error),
+                sqlstate_of(error),
                 f" on {constraint_name}" if constraint_name else "",
                 attempt + 1,
                 policy.retries + 1,

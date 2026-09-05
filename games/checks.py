@@ -193,7 +193,10 @@ def check_projection_references(
     for reference in unaudited_projection_references(apps):
         if labels is not None and reference.model._meta.app_label not in labels:
             continue
-        on_delete = reference.field.remote_field.on_delete.__name__
+        #: A ForeignKey always states one; the base relation types it optional.
+        on_delete = getattr(
+            reference.field.remote_field.on_delete, "__name__", "unstated"
+        )
         errors.append(
             Error(
                 f"{reference} is an unaudited {on_delete} reference out of a "
