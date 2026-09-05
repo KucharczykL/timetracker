@@ -79,7 +79,7 @@ def constraint_name_of(error: Exception) -> str | None:
 
 
 def detail_of(error: Exception) -> str | None:
-    #: PostgreSQL names the offending key here, and nowhere else.
+    #: PostgreSQL names the offending key here.
     diagnostic = getattr(error.__cause__, "diag", None)
     return getattr(diagnostic, "message_detail", None)
 

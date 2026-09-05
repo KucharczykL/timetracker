@@ -47,7 +47,7 @@ class Command(BaseCommand):
                 "no longer exist, so nothing was replayed."
             ) from error
         except SwapRefusedByReference as error:
-            #: The diff the refusal carries: handle() has no report.
+            #: handle() has no report to print.
             for table in error.tables:
                 self._write_table(table, self.stderr)
             raise CommandError(str(error)) from error

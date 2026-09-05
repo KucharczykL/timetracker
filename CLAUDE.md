@@ -723,9 +723,10 @@ chromium` once. All JS is vendored, so the tests run fully offline. A bare
   that cannot be rewritten, not for ours.
 - **A reference out of a projection is registered** — a foreign key from a
   projection table into a library-scoped model goes in
-  `AUDITED_PROJECTION_REFERENCES` in `games/projections.py`, or `games.E009`
-  refuses it at `manage.py check`. The registry is what
-  `audit_library_ownership` reads, and what the swap's refusal sentence
+  `AUDITED_PROJECTION_REFERENCES` in `games/projections.py`, through
+  `ProjectionReference.on`, or `games.E009` refuses it at `manage.py check`;
+  `games.E010` refuses an entry the walk no longer finds. The registry is
+  what `audit_library_ownership` reads, and what the swap's refusal sentence
   reads when a rebuild is stopped by SQLSTATE 23503. Nothing else audits
   such a key: a shadow table copies no foreign key, and the rebuild's diff
   is scoped to one library.

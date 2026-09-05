@@ -326,15 +326,13 @@ def _refusal_sentence(
     violations: tuple[ViolationSentence, ...],
     audited: bool,
 ) -> str:
-    """Three shapes: the pairs, no pairs, or no answer.
+    """Three shapes: the pairs, none, or unanswered.
 
     Not every 23503 here is a reference across libraries: two projectors
     in one library can disagree, and a RESTRICT reference can name a row
-    outside the projections. Naming either of those as cross-library
-    would send an operator to an audit that answers zero. The pairs the
-    audit does find run both ways, so the sentence states what they are
-    rather than which way they point, and the constraint is named in
-    every shape -- it is what tells an operator which pair fired.
+    outside the projections. Naming either as cross-library would send
+    an operator to an audit that answers zero. The constraint is named
+    in every shape -- it tells an operator which pair fired.
     """
     named = "an unnamed constraint" if constraint_name is None else constraint_name
     opening = f"The rebuild of library {library_id} was refused at the swap by {named}."
@@ -367,20 +365,19 @@ def swap_in(
 ) -> None:
     """Put the rebuilt rows in place.
 
-    The whole block, not the cursor: every foreign key on these tables is
+    The whole block, not the cursor: every foreign key here is
     DEFERRABLE INITIALLY DEFERRED, so a violation raises when the block
-    commits. Django's _commit() runs inside wrap_database_errors, so the
-    chain a state read needs is there. StreamSequenceMismatch is a
-    CommandConflict, so the wider block does not swallow it. The audit in
-    the handler needs the rolled-back block behind it, so moving the try
-    inside would answer TransactionManagementError instead of a sentence.
+    commits, inside wrap_database_errors. StreamSequenceMismatch is a
+    CommandConflict, so the wider block does not swallow it. The audit
+    needs the rolled-back block behind it, so a narrower try would
+    answer TransactionManagementError instead of a sentence.
     """
     swapping = False
     try:
         with transaction.atomic():
             stream = lock_stream(library)
             stream.require_sequence(replayed_through)
-            #: The prologue writes a stream head, whose own key is not this.
+            #: The prologue writes a stream head.
             swapping = True
             with connection.cursor() as cursor:
                 for model in models:

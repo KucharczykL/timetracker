@@ -1298,10 +1298,9 @@ def plant_tracked_game(library):
 def test_a_cross_library_reference_refuses_the_swap(owned_library, other_owner):
     """The rows, not a constraint name.
 
-    The swap's DELETE takes the planted row a Playthrough elsewhere still
-    names. The key is DEFERRABLE INITIALLY DEFERRED, so the violation
-    raises when the block commits, and the sentence is matched on the two
-    ids.
+    The swap's DELETE takes the planted row a Playthrough elsewhere
+    still names. The key is DEFERRABLE INITIALLY DEFERRED, so the
+    violation raises at commit, and the sentence is matched on two ids.
     """
     planted = plant_tracked_game(owned_library)
     run = Playthrough.objects.create(
@@ -1356,12 +1355,11 @@ def test_a_refusal_with_no_pair_names_the_constraint_instead():
 
 
 def test_a_refusal_the_audit_could_not_answer_says_so():
-    """A silent zero and an unanswered audit read alike otherwise.
+    """A zero and an unanswered audit read alike.
 
     The audit runs after the rolled-back block, so it can fail on its
     own -- a lost connection, a statement timeout. Reporting that as "no
-    cross-library pair" would tell an operator the opposite of what is
-    known.
+    cross-library pair" states the opposite of what is known.
     """
     error = SwapRefusedByReference(
         library_id=uuid7(),
@@ -1436,10 +1434,10 @@ def test_an_integrity_error_of_another_state_rises_unchanged(
 
 @pytest.mark.django_db(transaction=True)
 def test_a_violation_before_the_swap_rises_unchanged(owned_library, monkeypatch):
-    """The prologue writes a stream head, whose key is not this one.
+    """The prologue writes a stream head.
 
-    Answering it as a refused swap would name a pair the swap never
-    reached, and hide the write that did fail.
+    Its key is not the swap's. Answering it as a refused swap would
+    name a pair the swap never reached, and hide the failed write.
     """
     cause = Exception("insert or update on table violates foreign key constraint")
     cause.sqlstate = FOREIGN_KEY_VIOLATION
@@ -1490,7 +1488,7 @@ def test_the_command_prints_the_diff_and_names_the_pair(owned_library, other_own
         f"Playthrough.player_game: {run.pk} names PlayerGame {planted.pk}" in sentence
     )
     assert "audit_library_ownership" in sentence
-    #: The diff joins the refusal on stderr, not the report on stdout.
+    #: The diff joins the refusal on stderr.
     assert "games_playergame: 1 live, 0 rebuilt, 1 only live" in errors.getvalue()
     assert "games_playergame" not in output.getvalue()
 

@@ -1,4 +1,4 @@
-"""Every reference out of a projection table, enumerated."""
+"""Every reference out of a projection table."""
 
 import uuid
 
@@ -71,11 +71,11 @@ def test_a_reference_to_a_row_no_library_owns_is_not_walked():
 
 
 def test_a_reverse_relation_named_library_does_not_scope_a_model():
-    """`UserLibrary.user` is `related_name="library"`.
+    """`get_field` answers for a reverse relation.
 
-    `get_field` answers for that reverse relation, so a walk that did not
-    ask for a concrete field would read the user model as scoped and then
-    build a lookup no column answers.
+    `UserLibrary.user` is `related_name="library"`, so a walk that did
+    not ask for a concrete field would read the user model as scoped and
+    then build a lookup no column answers.
     """
     user_model = get_user_model()
 
@@ -194,7 +194,7 @@ def test_a_removed_row_still_names_the_other_library(
     """The audit reads the base manager.
 
     A stamp takes the row off every screen and out of nothing else: the
-    key is still there, and the swap still refuses at commit.
+    key is still there, and the swap still refuses.
     """
     _game, tracked = tracked_pair
     run = Playthrough.objects.create(
@@ -218,11 +218,11 @@ def test_the_real_registry_reports_no_unaudited_reference():
 
 
 def test_the_check_is_registered_and_reads_the_real_registry(monkeypatch):
-    """Without the registration, nothing runs this at all.
+    """Without the registration, nothing runs this.
 
-    Every other check test calls the function, which an unregistered
-    check answers just as well. Emptying the registry is what makes
-    `run_checks()` say whether Django knows about it.
+    Every other test calls the function, which an unregistered check
+    answers just as well. Emptying the registry is what makes
+    `run_checks()` say whether Django knows it.
     """
     monkeypatch.setattr(projections, "AUDITED_PROJECTION_REFERENCES", ())
 
@@ -248,12 +248,11 @@ def test_the_check_answers_its_own_app_label():
 
 @isolate_apps("games")
 def test_an_unaudited_reference_is_refused():
-    """The check reads the isolated registry it is handed.
+    """The check reads the registry it is handed.
 
-    `run_checks()` would prove nothing here: `isolate_apps` swaps
-    `Options.default_apps` and leaves `django.apps.apps` alone, so the
-    synthetic models are invisible to the global registry. That is also
-    why no shipped check test regresses.
+    `isolate_apps` swaps `Options.default_apps` and leaves
+    `django.apps.apps` alone, so the synthetic models are invisible to
+    the global registry. That is also why no shipped test regresses.
     """
     shelf, _ = declare_projection_models()
 
@@ -280,7 +279,7 @@ def test_the_check_honours_an_app_label_filter():
 
 
 def test_a_registered_pair_the_walk_does_not_find_is_stale(monkeypatch):
-    """`PlayerGame.library` is a foreign key the walk excludes.
+    """The walk excludes `PlayerGame.library`.
 
     Registering it is the shape a pair takes after the field it names is
     renamed or dropped: the completeness check passes, and the query the

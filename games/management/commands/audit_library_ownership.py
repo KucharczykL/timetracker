@@ -166,7 +166,7 @@ class Command(BaseCommand):
 
     @staticmethod
     def _cross_library_violations(library_ids):
-        """Every relation outside the projections, one loop each.
+        """Every relation outside the projections.
 
         The six loops below are hand-written because each names its own
         join path, and one of them reads an M2M through table. Every

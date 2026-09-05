@@ -1,4 +1,4 @@
-"""The projection tables, and every row outside a library they can name."""
+"""Projection tables, and what they name outside."""
 
 import uuid
 from collections.abc import Iterable, Sequence
@@ -17,16 +17,15 @@ type ModelLabel = str  # e.g. "games.PlayerGame"
 type ReferenceKey = tuple[ModelLabel, FieldName]
 type ViolationSentence = str  # e.g. "PlayerGame.game: <id> names Game <id>"
 
-#: The field every library-scoped model carries. Every lookup below is
-#: built from it, so renaming the field moves one string.
+#: The field every library-scoped model carries.
 LIBRARY_FIELD: FieldName = "library"
 
-#: The column that field writes, and the lookups the audit joins through.
+#: The column that field writes.
 _LIBRARY_ID = f"{LIBRARY_FIELD}_id"
 
 
 class ProjectionReference(NamedTuple):
-    """One foreign key out of a projection table."""
+    """One foreign key out of a projection."""
 
     model: type[ProjectionModel]
     field: models.ForeignKey[Any, Any]
@@ -35,7 +34,7 @@ class ProjectionReference(NamedTuple):
     def on(
         cls, model: type[ProjectionModel], field_name: FieldName
     ) -> ProjectionReference:
-        """The one construction path, refusing a pair it cannot audit."""
+        """The one construction path; refuses unauditable pairs."""
         field = model._meta.get_field(field_name)
         if not isinstance(field, models.ForeignKey):
             raise TypeError(f"{model.__name__}.{field_name} is not a foreign key.")
@@ -48,7 +47,7 @@ class ProjectionReference(NamedTuple):
 
     @property
     def key(self) -> ReferenceKey:
-        """What makes two references the same pair across registries."""
+        """What makes two references the same pair."""
         return (self.model._meta.label, self.field.name)
 
     def __str__(self) -> str:
@@ -67,7 +66,7 @@ def projection_models(apps: Apps = global_apps) -> tuple[type[ProjectionModel], 
 
 
 def _is_library_scoped(model: type[models.Model]) -> bool:
-    """Whether a row of `model` carries a library column.
+    """Whether `model` rows carry a library column.
 
     Concrete, because `get_field` answers for a reverse relation too:
     `UserLibrary.user` is `related_name="library"`, which would make the
@@ -81,14 +80,12 @@ def _is_library_scoped(model: type[models.Model]) -> bool:
 
 
 def projection_references(apps: Apps = global_apps) -> tuple[ProjectionReference, ...]:
-    """Every foreign key out of a projection into a library-scoped row.
+    """Every foreign key out of a projection.
 
     Keyed on the referenced model carrying a library, not on it being a
-    projection: that is the condition the cost follows. `UserLibrary` has
-    no library of its own, so the `library` column excludes itself and
-    needs no case. `on_delete` does not narrow the walk either --
-    `RESTRICT` stops the referenced library from ever being purged, and
-    `CASCADE` would take rows out of it.
+    projection: that is the condition the cost follows. `on_delete` does
+    not narrow the walk -- `RESTRICT` stops the referenced library from
+    ever being purged, and `CASCADE` would take rows out of it.
     """
     found = [
         ProjectionReference(model, field)
@@ -108,8 +105,7 @@ def projection_references(apps: Apps = global_apps) -> tuple[ProjectionReference
     )
 
 
-#: Every reference the ownership audit reads. `games.E009` refuses a walk
-#: that finds one this list does not.
+#: Every reference the ownership audit reads.
 AUDITED_PROJECTION_REFERENCES: tuple[ProjectionReference, ...] = (
     ProjectionReference.on(PlayerGame, "game"),
     ProjectionReference.on(Playthrough, "player_game"),
@@ -119,7 +115,7 @@ AUDITED_PROJECTION_REFERENCES: tuple[ProjectionReference, ...] = (
 def unaudited_projection_references(
     apps: Apps = global_apps,
 ) -> tuple[ProjectionReference, ...]:
-    """Every reference the walk finds and the registry omits."""
+    """Walked references the registry omits."""
     audited = {reference.key for reference in AUDITED_PROJECTION_REFERENCES}
     return tuple(
         reference
@@ -131,11 +127,10 @@ def unaudited_projection_references(
 def stale_projection_references(
     apps: Apps = global_apps,
 ) -> tuple[ProjectionReference, ...]:
-    """Every reference the registry holds and the walk no longer finds.
+    """Registered references the walk no longer finds.
 
     A stale entry passes the completeness check and fails later, inside
-    `cross_library_violations` -- worst of all inside the handler that
-    reads it to explain a refused swap. A registry `apps` does not hold
+    the query the audit builds from it. A registry `apps` does not hold
     the model of is another registry's, not a stale entry.
     """
     walked = {reference.key for reference in projection_references(apps)}
@@ -152,20 +147,18 @@ def cross_library_violations(
     *,
     references: Iterable[ProjectionReference] = AUDITED_PROJECTION_REFERENCES,
 ) -> list[ViolationSentence]:
-    """Every row that names a row in another library.
+    """Rows naming a row in another library.
 
     The `isnull` clause is on the referenced row's library, and it is
     load-bearing wherever that library is nullable -- a shared catalog
     row. Django compiles `exclude()` to mean "not equal, nulls
     included": it puts `IS NOT NULL` inside the negation, so a
-    referenced row with no library would be answered as a violation. A
-    null foreign key joins no row, and a projection's own library is
-    never null.
+    referenced row with no library would read as a violation.
     """
     violations: list[ViolationSentence] = []
     for reference in references:
         name = reference.field.name
-        #: The base manager: a removed row still holds the key.
+        #: The base manager: a removed row keeps its key.
         rows = (
             reference.model._base_manager.filter(
                 Q(**{f"{_LIBRARY_ID}__in": library_ids})
