@@ -1522,7 +1522,9 @@ class ProjectionModel(models.Model):
     but the two libraries no longer rebuild independently: a replay of
     the named library that reproduces one key fewer is refused by a
     foreign key from a library nobody asked to rebuild. Nothing in the
-    schema refuses it: `audit_library_ownership` reports it.
+    schema refuses it. `audit_library_ownership` reports it, over the
+    references `games/projections.py` registers, and `games.E009`
+    refuses a reference that registry omits.
     """
 
     library = models.ForeignKey(

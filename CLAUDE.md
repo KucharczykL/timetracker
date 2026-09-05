@@ -158,7 +158,7 @@ docs/           — Additional documentation
 - **ExchangeRate** — cached FX rates per currency pair per year
 - **GameStatusChange** — the legacy audit log of status transitions, ordered by `-timestamp`. Nothing writes or reads it since #678 D1: the event stream is the record and `games/reads/playergame_history.py` is the one reader. The backfill still reads the old rows; #771 takes the table
 - **FilterPreset** — saved filter config; `mode` (games/sessions/purchases/playevents), `find_filter`, `object_filter`, `ui_options` (all JSON). Follows Stash's SavedFilter pattern
-- **PlayerGame** — the first projection: one row per catalog game a library tracks, written only by the `PlayerGames` projector. Its `removed_at` is the projector's, stated by a `RemovePlayerGame` command, and separate from the catalog row's. It states the library's `status` (the six `PlayerGameStatus` words) and `mastered`, and since #678 D2 it is the only place either is stated or read. Both `UUIDv7Field` defaults are opted out (the pk is the event's `aggregate_id`); `game` is `RESTRICT`, so a projection row is never collateral
+- **PlayerGame** — the first projection: one row per catalog game a library tracks, written only by the `PlayerGames` projector. Its `removed_at` is the projector's, stated by a `RemovePlayerGame` command, and separate from the catalog row's. It states the library's `status` (the six `PlayerGameStatus` words) and `mastered`, and since #678 D2 it is the only place either is stated or read. Both `UUIDv7Field` defaults are opted out (the pk is the event's `aggregate_id`); `game` is `RESTRICT`, so a projection row is never collateral; #1017 registers it, so `audit_library_ownership` reports a `PlayerGame` naming another library's Game
 - **Playthrough** — the second projection: one row per run at a tracked game,
   written only by the `Playthroughs` projector, which shares the
   `CURRENT_STATE` family with `PlayerGames`. A game tracked since #679 gets one
@@ -721,3 +721,11 @@ chromium` once. All JS is vendored, so the tests run fully offline. A bare
   of `games/`, `common/`, `timetracker/`, `contrib/` and `scripts/` and fails on
   a new call. `DISABLE_SERVER_SIDE_CURSORS` exists for the reads inside Django
   that cannot be rewritten, not for ours.
+- **A reference out of a projection is registered** — a foreign key from a
+  projection table into a library-scoped model goes in
+  `AUDITED_PROJECTION_REFERENCES` in `games/projections.py`, or `games.E009`
+  refuses it at `manage.py check`. The registry is what
+  `audit_library_ownership` reads, and what the swap's refusal sentence
+  reads when a rebuild is stopped by SQLSTATE 23503. Nothing else audits
+  such a key: a shadow table copies no foreign key, and the rebuild's diff
+  is scoped to one library.
