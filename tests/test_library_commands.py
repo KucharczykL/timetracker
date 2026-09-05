@@ -601,12 +601,7 @@ def test_scoped_audit_reports_incoming_cross_library_links(owner, outsider):
 
 @pytest.mark.django_db
 def test_a_playthrough_in_another_library_is_reported(owner, outsider):
-    """A cross-library projection row makes a library un-rebuildable.
-
-    The swap works one library at a time, so a child left pointing
-    across the boundary fails the deferred foreign key at COMMIT --
-    every time, with no way out.
-    """
+    """A cross-library row makes a library un-rebuildable."""
     game = Game.objects.create(library=owner.library, name="Outer Wilds")
     tracked = PlayerGame.objects.get(game=game)
     run = Playthrough.objects.create(

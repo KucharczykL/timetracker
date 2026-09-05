@@ -231,7 +231,7 @@ def test_a_rebuild_reproduces_the_tracked_rows(owned_user, owned_library, tracke
         (table.table, table.only_live, table.only_rebuilt, table.differing)
         for table in checked.tables
     ]
-    #: Every projection table, each agreeing with its rebuild.
+    #: Every projection table agrees with its rebuild.
     assert drift == [
         ("games_playergame", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
@@ -335,7 +335,7 @@ def test_a_rebuild_reproduces_the_status(owned_user, owned_library, tracked_game
         (table.table, table.only_live, table.only_rebuilt, table.differing)
         for table in checked.tables
     ]
-    #: Every projection table, each agreeing with its rebuild.
+    #: Every projection table agrees with its rebuild.
     assert drift == [
         ("games_playergame", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
@@ -447,7 +447,7 @@ def test_a_rebuild_reproduces_the_mastery(owned_user, owned_library, tracked_gam
         (table.table, table.only_live, table.only_rebuilt, table.differing)
         for table in checked.tables
     ]
-    #: Every projection table, each agreeing with its rebuild.
+    #: Every projection table agrees with its rebuild.
     assert drift == [
         ("games_playergame", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
@@ -561,7 +561,7 @@ def test_a_rebuild_reproduces_the_exclusion(owned_user, owned_library, tracked_g
         (table.table, table.only_live, table.only_rebuilt, table.differing)
         for table in checked.tables
     ]
-    #: Every projection table, each agreeing with its rebuild.
+    #: Every projection table agrees with its rebuild.
     assert drift == [
         ("games_playergame", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
@@ -699,7 +699,7 @@ def test_a_rebuild_reproduces_the_removal(owned_user, owned_library, tracked_gam
         (table.table, table.only_live, table.only_rebuilt, table.differing)
         for table in checked.tables
     ]
-    #: Every projection table, each agreeing with its rebuild.
+    #: Every projection table agrees with its rebuild.
     assert drift == [
         ("games_playergame", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),

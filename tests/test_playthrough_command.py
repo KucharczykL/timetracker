@@ -1,4 +1,4 @@
-"""Dispatching the command that states a run at a game."""
+"""Dispatching the commands that state a run."""
 
 import pytest
 
@@ -110,7 +110,7 @@ def test_a_repeat_under_one_key_records_nothing_further(
 
 @pytest.mark.django_db(transaction=True)
 def test_tracking_a_game_states_its_first_playthrough(owned_user, owned_library, game):
-    """The library's first act on a game states both facts."""
+    """The first act states both facts."""
     _track(owned_user, owned_library, game)
 
     events = list(LibraryEvent.objects.order_by("sequence"))
@@ -151,7 +151,7 @@ def test_a_repeated_track_under_one_key_states_one_playthrough(
 def test_tracking_an_already_tracked_game_states_no_second_default(
     owned_user, owned_library, game
 ):
-    """#684 supplies a missing default; TrackGame does not."""
+    """#684 supplies a missing default, not TrackGame."""
     _track(owned_user, owned_library, game, key="first")
     result = _track(owned_user, owned_library, game, key="second")
 

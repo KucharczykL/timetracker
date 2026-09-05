@@ -510,7 +510,7 @@ def test_purging_a_library_takes_its_referenced_rows(owned_user, owned_library, 
 
 
 def test_purging_a_library_takes_its_playthroughs(owned_user, owned_library, game):
-    """A new RESTRICT edge on the one path that destroys rows."""
+    """A RESTRICT edge on the purge path."""
     dispatch(
         TrackGame(game_id=game.pk),
         actor=owned_user,

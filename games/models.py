@@ -1515,13 +1515,11 @@ class ProjectionModel(models.Model):
     projection row, because the swap deletes and inserts each row. No check
     enforces that last rule.
 
-    A fourth rule arrives with the second projection table. A projection row
-    and every projection row it names belong to one library. The swap runs
-    one library at a time, so a row pointing across the boundary fails the
-    deferred foreign key at COMMIT and leaves that library unable to rebuild
-    at all. Nothing in the schema refuses it: `audit_library_ownership`
-    reports it, and every command resolves its references within the
-    library it is dispatched for.
+    A projection row and every projection row it names belong to one
+    library. The swap runs one library at a time, so a row across the
+    boundary fails the deferred foreign key at COMMIT and leaves that
+    library unable to rebuild. Nothing in the schema refuses it:
+    `audit_library_ownership` reports it.
     """
 
     library = models.ForeignKey(
@@ -1603,18 +1601,14 @@ class PlayerGame(ProjectionModel):
 
 
 class PlaythroughKind(models.TextChoices):
-    """Whether a run is a person's or the importer's.
-
-    Full words, not letters: a recorded payload cannot be upcast, so an
-    event recording `i` would mean imported history forever.
-    """
+    """A person's run, or the importer's."""
 
     ORDINARY = "ordinary", "Ordinary"
     IMPORTED_HISTORY = "imported_history", "Imported history"
 
 
 class Playthrough(ProjectionModel):
-    """One run at a game a library tracks, projected from its events."""
+    """One run at a tracked game."""
 
     id = UUIDv7Field(
         primary_key=True,
@@ -1629,13 +1623,13 @@ class Playthrough(ProjectionModel):
         on_delete=models.RESTRICT,
         related_name="playthroughs",
     )
-    #: Stated by the creation event, and never restated.
+    #: Stated by the creation event, never restated.
     kind = models.CharField(
         max_length=16,
         choices=PlaythroughKind,
         default=PlaythroughKind.ORDINARY,
     )
-    #: #1010 states it. Blank displays as "Playthrough N".
+    #: #1010 states it; blank displays as N.
     name = models.CharField(max_length=255, blank=True, default="")
     #: #1010 states it.
     note = models.TextField(blank=True, default="")
@@ -1676,12 +1670,12 @@ class Playthrough(ProjectionModel):
     )
     #: The creation event's recorded_at.
     created_at = models.DateTimeField(editable=False)
-    #: The remove event's recorded_at; null means live. #1011 states it.
+    #: Null means live. #1011 states it.
     removed_at = models.DateTimeField(null=True, default=None, editable=False)
 
     class Meta:
         indexes = (
-            #: The display-number order, ending on the key so it is total.
+            #: The display-number order, ending on the key.
             models.Index(
                 fields=(
                     "player_game",

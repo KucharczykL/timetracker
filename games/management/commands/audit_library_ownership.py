@@ -234,10 +234,12 @@ class Command(BaseCommand):
                 "UserLibraryPreferences.default_device: "
                 f"library {library_id}, device {device_id}"
             )
-        #: This list has no completeness test, so a relation left out of it is
-        #: never audited. A projection row is the costly case: the swap works
-        #: one library at a time, so a cross-library child fails the deferred
-        #: key at COMMIT and the library can never be rebuilt.
+        #: This list has no completeness test.
+        #:
+        #: A relation left out of it is never audited, and a projection row
+        #: is the costly case: the swap works one library at a time, so a
+        #: cross-library child fails the deferred key at COMMIT and the
+        #: library can never be rebuilt.
         for playthrough_id, player_game_id in (
             Playthrough.objects.filter(
                 Q(library_id__in=library_ids)

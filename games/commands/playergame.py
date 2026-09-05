@@ -45,11 +45,7 @@ class PlayerGameNotTracked(CommandRejected):
 
 
 def tracked_game(context: CommandContext, game_id: uuid.UUID) -> PlayerGame:
-    """The projection row, never the catalog.
-
-    Public since #679, so games.commands.playthrough can call it.
-    #909 replaces it with the shared library-scoped resolver.
-    """
+    """The projection row, never the catalog."""
     try:
         return PlayerGame.objects.get(library=context.library, game_id=game_id)
     except PlayerGame.DoesNotExist:
@@ -84,9 +80,7 @@ class TrackGame(Command):
                     ),
                 )
             return Unchanged(f"This library already tracks {game.name}.")
-        #: The library's first act on a game states both facts, which is
-        #: what a mandatory default means. dispatch resolves one
-        #: correlation_id before build runs, so both events carry it.
+        #: The first act states the default run.
         tracked_id = uuid.uuid7()
         return [
             PLAYERGAME_CREATED.new(

@@ -1,4 +1,4 @@
-"""What a library records about a run at a game."""
+"""What a library records about a run."""
 
 import uuid
 from typing import get_args
@@ -24,7 +24,7 @@ def test_the_creation_event_is_in_the_default_vocabulary():
 
 
 def test_the_kind_literal_matches_the_choices():
-    """A payload is read back as a plain string."""
+    """A payload is read back as text."""
     #: __value__ reads through the PEP 695 alias.
     assert set(get_args(PlaythroughKindValue.__value__)) == set(PlaythroughKind.values)
 

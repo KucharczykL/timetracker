@@ -1,4 +1,4 @@
-"""The current-state family for runs at a tracked game."""
+"""Current-state rows for runs at tracked games."""
 
 import uuid
 from typing import ClassVar
@@ -10,7 +10,7 @@ from games.models import Playthrough
 
 
 class Playthroughs(Projector):
-    """One row per run at a tracked game."""
+    """One row per run at a game."""
 
     family_name = ProjectorFamily.CURRENT_STATE
 
@@ -25,11 +25,12 @@ class Playthroughs(Projector):
             created_at=event.recorded_at,
         )
 
-    #: Only these four. A rebuild inserts the model defaults for the rest and
-    #: the amendment events that follow set the real values, so naming a
-    #: column here would let a re-applied creation event overwrite one.
+    #: Only these four columns, so amendments survive.
     #:
-    #: #681's endpoint handlers use amend, never project, and are never added
-    #: to this list: `started` and `completed` carry a default, so
+    #: A rebuild inserts the model defaults for the rest and the amendment
+    #: events that follow set the real values, so naming a column in the
+    #: handler above would let a re-applied creation event overwrite one.
+    #: #681's endpoint handlers use amend, never project, and are never
+    #: added: `started` and `completed` carry a default, so
     #: `_required_columns` exempts them and would not catch the mistake.
     handles: ClassVar[HandlerMap] = {PLAYTHROUGH_CREATED: _created}

@@ -82,11 +82,7 @@ def test_a_system_row_does_not_shift_the_number(tracked):
 
 
 def test_rows_that_share_every_other_key_are_ordered_by_identity(tracked):
-    """The case the id key exists for.
-
-    Until #681 every playthrough has two null bounds, and one append
-    stamps one recorded_at across every row it writes.
-    """
+    """The case the id key exists for."""
     stamp = timezone.now()
     created = sorted(
         [make_run(tracked, created_at=stamp) for _ in range(4)],
@@ -136,7 +132,7 @@ def test_a_named_row_needs_no_number(tracked):
 
 
 def test_a_blank_name_with_no_number_is_refused(tracked):
-    """A caller paired a row with a queryset it is not in."""
+    """A row from outside the numbered queryset."""
     unnumbered = make_run(tracked)
 
     with pytest.raises(UnnumberedPlaythrough):
@@ -145,7 +141,7 @@ def test_a_blank_name_with_no_number_is_refused(tracked):
 
 @pytest.mark.django_db(transaction=True)
 def test_the_number_is_unchanged_across_a_rebuild(owned_user, owned_library):
-    """The order is total, so a swap cannot reshuffle it."""
+    """A swap cannot reshuffle a total order."""
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     dispatch(
         TrackGame(game_id=game.pk),

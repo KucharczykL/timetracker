@@ -1,4 +1,4 @@
-"""Commands about the runs a library records at a game."""
+"""Commands about the runs a library records."""
 
 import uuid
 from collections.abc import Sequence
@@ -13,11 +13,7 @@ from games.events.vocabulary import NewEvent, Unchanged
 
 @dataclass(frozen=True, slots=True)
 class CreatePlaythrough(Command):
-    """State one more run at a game this library tracks.
-
-    It takes no name: #1010 owns naming, and a blank name is what the
-    display number is for.
-    """
+    """State one more run at a game."""
 
     command_name: ClassVar[CommandName] = CommandName.PLAYTHROUGH_CREATE
     #: A UUID, because Command fingerprints its fields.

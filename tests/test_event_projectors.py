@@ -220,8 +220,7 @@ def test_two_classes_cannot_claim_one_event_type_in_one_family():
             handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
 
 
-#: A local sink, because the module's CALLS is typed
-#: list[tuple[ProjectorFamily, str]] and these tests record which class ran.
+#: A local sink: these record the class.
 type ClassCall = tuple[str, str]
 
 
@@ -253,7 +252,7 @@ def test_two_classes_share_one_family_when_they_claim_different_event_types():
 
 
 def test_a_refused_claim_leaves_the_family_as_it_was():
-    """Every claim is checked before any is taken."""
+    """Every claim checked before any is taken."""
     seen: list[ClassCall] = []
     registry = ProjectorRegistry()
 
@@ -266,8 +265,7 @@ def test_a_refused_claim_leaves_the_family_as_it_was():
         handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
 
     with pytest.raises(TypeError, match="already owned by"):
-        #: The uncontested PROBE_OTHER claim is evaluated first, so it is what
-        #: a mutate-as-you-go loop would have left behind.
+        #: What a mutate-as-you-go loop would leave behind.
         class Greedy(Projector, registry=registry):
             family_name = ProjectorFamily.STATS
 

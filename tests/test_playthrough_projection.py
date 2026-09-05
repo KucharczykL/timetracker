@@ -1,4 +1,4 @@
-"""One row per run at a game a library tracks."""
+"""One row per run at a game."""
 
 import uuid
 
@@ -47,7 +47,7 @@ def test_a_playthrough_starts_ordinary():
 
 
 def test_a_playthrough_starts_unnamed():
-    """A blank name is what the display number is for."""
+    """A blank name, for the display number."""
     assert Playthrough().name == ""
     assert Playthrough().note == ""
 
@@ -77,7 +77,7 @@ def test_the_bound_columns_are_generated():
 
 
 def test_the_display_order_index_covers_every_sort_key():
-    """The read-time numbering has an index behind it."""
+    """The read-time numbering has an index."""
     covering = [
         index
         for index in Playthrough._meta.indexes
@@ -113,7 +113,7 @@ def test_the_creation_event_has_a_current_state_handler():
 
 
 def test_playergames_still_owns_its_own_events():
-    """Two projectors in one family, each with its own act."""
+    """Two projectors in one family, two acts."""
     assert len(DEFAULT_REGISTRY.handlers_for("library.playergame.created")) == 1
 
 
@@ -137,7 +137,7 @@ def test_the_creation_event_writes_the_row(owned_user, owned_library, tracked):
     assert row.pk == appended.events[0].aggregate_id
     assert row.kind == PlaythroughKind.ORDINARY
     assert row.created_at == appended.events[0].recorded_at
-    #: The model defaults, which no amendment has replaced yet.
+    #: The model defaults, no amendment yet.
     assert (row.name, row.note, row.started, row.completed, row.removed_at) == (
         "",
         "",
@@ -195,8 +195,7 @@ def test_an_empty_database_replay_reproduces_both_tables(owned_user, owned_libra
 
 @pytest.mark.django_db(transaction=True)
 def test_a_rebuild_swaps_both_tables_with_an_empty_diff(owned_user, owned_library):
-    """The foreign key between two projection tables and the generated
-    columns, proven rather than argued."""
+    """The projection foreign key and generated columns."""
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     track(owned_user, owned_library, game)
 
@@ -216,12 +215,7 @@ def test_a_rebuild_swaps_both_tables_with_an_empty_diff(owned_user, owned_librar
 
 @pytest.mark.django_db
 def test_the_foreign_key_to_playergame_is_deferred():
-    """Why the swap's table order is not load-bearing.
-
-    Django emits no ON DELETE clause, so the constraint is Postgres's
-    default NO ACTION -- and deferred, so it is checked at COMMIT, after
-    the swap has reinserted both tables.
-    """
+    """Why the swap's table order does not matter."""
     with connection.cursor() as cursor:
         cursor.execute(
             """

@@ -57,10 +57,9 @@ class ProjectorFamily(StrEnum):
 
     **Member order is run order.** Journal and statistics families read the
     current-state rows written earlier in the same transaction, so the order
-    between families is load-bearing and is this enum, never an import order.
-    Within one family the order is registration order, which is an import
-    order -- and does not matter, because one event type has one owner inside
-    a family, so no two same-family handlers ever see one event.
+    between families is this enum, never an import order. Order within one
+    family is registration order and does not matter: inside a family, one
+    event type has one owner.
 
     Nothing persists these names -- they are an ordering key, not the audit
     trail's vocabulary -- so a member may be renamed, added, or reordered
@@ -88,13 +87,11 @@ class ProjectorRegistry:
     """
 
     def __init__(self) -> None:
-        #: Many projectors per family, keyed on where each was defined, so
-        #: re-registering one site replaces it rather than adding a copy.
+        #: Many per family, keyed on definition site.
         self._families: dict[ProjectorFamily, dict[DefinitionSite, Projector]] = {}
         #: Kept so `for_target` rebuilds from the classes.
         self._classes: dict[ProjectorFamily, dict[DefinitionSite, type[Projector]]] = {}
-        #: One owner per act, not per family: two projectors share a family
-        #: only while they claim different event types.
+        #: One owner per act, not per family.
         self._claims: dict[tuple[ProjectorFamily, EventType], DefinitionSite] = {}
         #: The string a RecordedEvent carries.
         self._handlers: dict[EventType, tuple[FamilyHandler, ...]] = {}
@@ -134,8 +131,7 @@ class ProjectorRegistry:
                 )
 
         definition_site = (projector_class.__module__, projector_class.__qualname__)
-        #: Every claim is checked before any is taken, so a refusal leaves
-        #: nothing half-registered behind it.
+        #: Every claim checked before any is taken.
         for spec in handles:
             claimed_by = self._claims.get((family_name, spec.event_type))
             if claimed_by is not None and claimed_by != definition_site:

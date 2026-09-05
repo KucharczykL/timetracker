@@ -535,7 +535,7 @@ def test_the_projection_replays_from_the_backfilled_log_without_drift(
         (table.table, table.only_live, table.only_rebuilt, table.differing)
         for table in checked.tables
     ]
-    #: Every projection table, each agreeing with its rebuild.
+    #: Every projection table agrees with its rebuild.
     assert drift == [
         ("games_playergame", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
