@@ -166,6 +166,13 @@ class Command(BaseCommand):
 
     @staticmethod
     def _cross_library_violations(library_ids):
+        """Every relation audited, one loop each.
+
+        This list has no completeness test, which #1017 owns. A relation
+        left out of it is never audited, and a projection row is the
+        costly case: a cross-library child is restricted at purge, so the
+        library that holds the row it names can never be purged.
+        """
         violations = []
         for game_id, platform_id in (
             Game.objects.filter(
@@ -234,12 +241,7 @@ class Command(BaseCommand):
                 "UserLibraryPreferences.default_device: "
                 f"library {library_id}, device {device_id}"
             )
-        #: This list has no completeness test.
-        #:
-        #: A relation left out of it is never audited, and a projection row
-        #: is the costly case: the swap works one library at a time, so a
-        #: cross-library child fails the deferred key at COMMIT and the
-        #: library can never be rebuilt.
+        #: The first foreign key between two projection tables.
         for playthrough_id, player_game_id in (
             Playthrough.objects.filter(
                 Q(library_id__in=library_ids)

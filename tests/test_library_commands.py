@@ -24,6 +24,7 @@ from games.models import (
     PlayerGame,
     PlayEvent,
     Playthrough,
+    PlaythroughKind,
     Purchase,
     PurchaseConversionState,
     Session,
@@ -566,6 +567,7 @@ def test_scoped_audit_reports_incoming_cross_library_links(owner, outsider):
         id=uuid7(),
         library=owner.library,
         player_game=PlayerGame.objects.get(game=outsider_game),
+        kind=PlaythroughKind.ORDINARY,
         created_at=timezone.now(),
     )
     output = StringIO()
@@ -601,7 +603,7 @@ def test_scoped_audit_reports_incoming_cross_library_links(owner, outsider):
 
 @pytest.mark.django_db
 def test_a_playthrough_in_another_library_is_reported(owner, outsider):
-    """A cross-library row makes a library un-rebuildable."""
+    """A cross-library row blocks the named row's purge."""
     game = Game.objects.create(library=owner.library, name="Outer Wilds")
     tracked = PlayerGame.objects.get(game=game)
     run = Playthrough.objects.create(
@@ -609,6 +611,7 @@ def test_a_playthrough_in_another_library_is_reported(owner, outsider):
         #: The offence: not the tracked game's library.
         library=outsider.library,
         player_game=tracked,
+        kind=PlaythroughKind.ORDINARY,
         created_at=timezone.now(),
     )
     output = StringIO()

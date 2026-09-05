@@ -1516,10 +1516,13 @@ class ProjectionModel(models.Model):
     enforces that last rule.
 
     A projection row and every projection row it names belong to one
-    library. The swap runs one library at a time, so a row across the
-    boundary fails the deferred foreign key at COMMIT and leaves that
-    library unable to rebuild. Nothing in the schema refuses it:
-    `audit_library_ownership` reports it.
+    library. A row across the boundary is restricted at purge, so the
+    library holding the row it names can never be purged. The swap
+    survives it -- it restores the same keys inside one transaction --
+    but the two libraries no longer rebuild independently: a replay of
+    the named library that reproduces one key fewer is refused by a
+    foreign key from a library nobody asked to rebuild. Nothing in the
+    schema refuses it: `audit_library_ownership` reports it.
     """
 
     library = models.ForeignKey(
@@ -1566,7 +1569,7 @@ class PlayerGame(ProjectionModel):
     )
     game = models.ForeignKey(
         Game,
-        #: No cascade may delete a projection row.
+        #: No cascade may destroy a projection row.
         on_delete=models.RESTRICT,
         related_name="player_games",
     )
@@ -1619,17 +1622,15 @@ class Playthrough(ProjectionModel):
     )
     player_game = models.ForeignKey(
         PlayerGame,
-        #: No cascade may remove a projection row.
+        #: No cascade may destroy a projection row.
         on_delete=models.RESTRICT,
         related_name="playthroughs",
     )
-    #: Stated by the creation event, never restated.
-    kind = models.CharField(
-        max_length=16,
-        choices=PlaythroughKind,
-        default=PlaythroughKind.ORDINARY,
-    )
-    #: #1010 states it; blank displays as N.
+    #: Stated by the creation event, never restated. No default, so
+    #: `_required_columns` holds the handler to naming it.
+    kind = models.CharField(max_length=16, choices=PlaythroughKind)
+    #: #1010 states it; blank reads as `Playthrough N`, derived at read
+    #: time by `games/reads/playthrough_numbering.py`.
     name = models.CharField(max_length=255, blank=True, default="")
     #: #1010 states it.
     note = models.TextField(blank=True, default="")

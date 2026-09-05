@@ -21,7 +21,7 @@ class CreatePlaythrough(Command):
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         tracked = tracked_game(context, self.game_id)
-        #: Under dispatch's lock: no concurrent duplicate.
+        #: Under dispatch's lock: the mark cannot move.
         if tracked.removed_at is not None:
             raise CommandRejected(
                 f"This library removed game {self.game_id}, so it records no "

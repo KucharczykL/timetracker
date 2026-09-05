@@ -34,7 +34,6 @@ class Migration(migrations.Migration):
                             ("ordinary", "Ordinary"),
                             ("imported_history", "Imported history"),
                         ],
-                        default="ordinary",
                         max_length=16,
                     ),
                 ),

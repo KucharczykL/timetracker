@@ -248,8 +248,8 @@ PINNED_DEFAULTS: dict[str, dict[str, object]] = {
         "excluded_from_unfinished": False,
         "removed_at": None,
     },
+    #: No `kind`: the creation event states it.
     "games.Playthrough": {
-        "kind": "ordinary",
         "name": "",
         "note": "",
         "started": None,

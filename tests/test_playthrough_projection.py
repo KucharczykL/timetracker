@@ -12,7 +12,7 @@ from games.events.append import lock_stream
 from games.events.dispatch import dispatch
 from games.events.envelope import RecordedEvent
 from games.events.playthrough import playthrough_created
-from games.events.projection import DEFAULT_REGISTRY
+from games.events.projection import DEFAULT_REGISTRY, _required_columns
 from games.events.rebuild import RebuildMode, rebuild_projections
 from games.events.replay import replay
 from games.models import (
@@ -22,6 +22,7 @@ from games.models import (
     Playthrough,
     PlaythroughKind,
 )
+from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.untracked_games
 
@@ -42,8 +43,16 @@ def test_the_identity_has_no_default():
     assert Playthrough().id is None
 
 
-def test_a_playthrough_starts_ordinary():
-    assert Playthrough().kind == PlaythroughKind.ORDINARY
+def test_the_kind_has_no_default():
+    """The event states it, so nothing else may.
+
+    A default would exempt the column from `_required_columns`, and a
+    handler that stopped naming it would write the default on the live
+    path and on a rebuild alike, agreeing with itself and with nothing
+    the event recorded.
+    """
+    assert not Playthrough._meta.get_field("kind").has_default()
+    assert "kind" in {name for name, _ in _required_columns(Playthrough)}
 
 
 def test_a_playthrough_starts_unnamed():
@@ -106,6 +115,13 @@ def append_playthrough_created(library, actor, tracked, *, key="create"):
         )
 
 
+def reapply_creation(identity):
+    """Hand the recorded creation event to the projectors a second time."""
+    event = RecordedEvent.from_row(LibraryEvent.objects.get(aggregate_id=identity))
+    with transaction.atomic():
+        DEFAULT_REGISTRY.apply(event)
+
+
 def test_the_creation_event_has_a_current_state_handler():
     handlers = DEFAULT_REGISTRY.handlers_for("library.playthrough.created")
 
@@ -153,14 +169,50 @@ def test_applying_the_creation_event_twice_writes_one_row(
 ):
     """The write is keyed on aggregate_id."""
     appended = append_playthrough_created(owned_library, owned_user, tracked)
-    event = RecordedEvent.from_row(
-        LibraryEvent.objects.get(aggregate_id=appended.events[0].aggregate_id)
-    )
 
-    with transaction.atomic():
-        DEFAULT_REGISTRY.apply(event)
+    reapply_creation(appended.events[0].aggregate_id)
 
     assert Playthrough.objects.count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_re_applying_the_creation_event_leaves_an_amendment_alone(
+    owned_user, owned_library, tracked
+):
+    """The handler names four columns, and no more.
+
+    `project` passes `update_fields=list(columns)`, so a column the
+    handler leaves out survives. #681 and #1010 amend the rest, and the
+    creation event carries the lowest sequence, so a rebuild replays it
+    first and their events land on top. What this holds is the live
+    path, where the same event reaches the handler against a row their
+    amendments already changed. `started` and `completed` are the two
+    that need holding: both carry a default, so `_required_columns`
+    exempts them and would let the handler name them unnoticed.
+    """
+    appended = append_playthrough_created(owned_library, owned_user, tracked)
+    identity = appended.events[0].aggregate_id
+    amended = timezone.now()
+    started = TemporalValue.from_year(2024)
+    completed = TemporalValue.from_year(2025)
+    Playthrough.objects.filter(pk=identity).update(
+        name="Blind run",
+        note="No hints",
+        started=started,
+        completed=completed,
+        removed_at=amended,
+    )
+
+    reapply_creation(identity)
+
+    row = Playthrough.objects.get()
+    assert (row.name, row.note, row.started, row.completed, row.removed_at) == (
+        "Blind run",
+        "No hints",
+        started,
+        completed,
+        amended,
+    )
 
 
 def track(owned_user, owned_library, game, key="track"):
