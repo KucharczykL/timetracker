@@ -156,6 +156,26 @@ Warning everywhere else, because only a reader knows what was missing and what
 was merely stale. `health` and `healthy` are not matched: Vale bounds every
 token, so the pattern needs a word ending where those two continue.
 
+## Settled
+
+A word no rule refuses, because nothing competes for it. It is written down
+because its meaning narrowed once and a reader who met the old one would
+guess wrong.
+
+### `family` — an ordering group, not a class
+
+A projector's **family** says when it runs, not what it is. Since #679 one
+family holds many projectors: `CURRENT_STATE` holds `PlayerGames` and
+`Playthroughs` alike.
+
+- Order **between** families is the member order of `ProjectorFamily`, and it
+  is load-bearing: the journal and the statistics families read the
+  current-state rows written earlier in the same transaction.
+- Order **within** one family is registration order, which is an import order,
+  and it does not matter — one event type has one owner inside a family, so no
+  two same-family projectors ever see one event. `ProjectorRegistry` refuses a
+  second claim on the same `(family, event type)` pair.
+
 ## Adding a rule
 
 Put the settled meaning in a rule file under `.vale/styles/Timetracker/` as

@@ -1514,6 +1514,15 @@ class ProjectionModel(models.Model):
     auto-increment key. No model outside the projections may point to a
     projection row, because the swap deletes and inserts each row. No check
     enforces that last rule.
+
+    A projection row and every projection row it names belong to one
+    library. A row across the boundary is restricted at purge, so the
+    library holding the row it names can never be purged. The swap
+    survives it -- it restores the same keys inside one transaction --
+    but the two libraries no longer rebuild independently: a replay of
+    the named library that reproduces one key fewer is refused by a
+    foreign key from a library nobody asked to rebuild. Nothing in the
+    schema refuses it: `audit_library_ownership` reports it.
     """
 
     library = models.ForeignKey(
@@ -1560,7 +1569,7 @@ class PlayerGame(ProjectionModel):
     )
     game = models.ForeignKey(
         Game,
-        #: No cascade may delete a projection row.
+        #: No cascade may destroy a projection row.
         on_delete=models.RESTRICT,
         related_name="player_games",
     )
@@ -1592,6 +1601,96 @@ class PlayerGame(ProjectionModel):
 
     def __str__(self) -> str:
         return f"{self.game} tracked by library {self.library_id}"
+
+
+class PlaythroughKind(models.TextChoices):
+    """A person's run, or the importer's."""
+
+    ORDINARY = "ordinary", "Ordinary"
+    IMPORTED_HISTORY = "imported_history", "Imported history"
+
+
+class Playthrough(ProjectionModel):
+    """One run at a tracked game."""
+
+    id = UUIDv7Field(
+        primary_key=True,
+        editable=False,
+        #: The creation event's aggregate_id, evaluated once.
+        default=models.NOT_PROVIDED,
+        db_default=models.NOT_PROVIDED,
+    )
+    player_game = models.ForeignKey(
+        PlayerGame,
+        #: No cascade may destroy a projection row.
+        on_delete=models.RESTRICT,
+        related_name="playthroughs",
+    )
+    #: Stated by the creation event, never restated. No default, so
+    #: `_required_columns` holds the handler to naming it.
+    kind = models.CharField(max_length=16, choices=PlaythroughKind)
+    #: #1010 states it; blank reads as `Playthrough N`, derived at read
+    #: time by `games/reads/playthrough_numbering.py`.
+    name = models.CharField(max_length=255, blank=True, default="")
+    #: #1010 states it.
+    note = models.TextField(blank=True, default="")
+    #: #681 states both endpoints.
+    started = TemporalValueField()
+    started_lower = models.GeneratedField(
+        expression=TemporalLowerBound("started"),
+        output_field=models.DateField(null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    started_upper = models.GeneratedField(
+        expression=TemporalUpperBound("started"),
+        output_field=models.DateField(null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    completed = TemporalValueField()
+    completed_lower = models.GeneratedField(
+        expression=TemporalLowerBound("completed"),
+        output_field=models.DateField(null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    completed_upper = models.GeneratedField(
+        expression=TemporalUpperBound("completed"),
+        output_field=models.DateField(null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    #: The creation event's recorded_at.
+    created_at = models.DateTimeField(editable=False)
+    #: Null means live. #1011 states it.
+    removed_at = models.DateTimeField(null=True, default=None, editable=False)
+
+    class Meta:
+        indexes = (
+            #: The display-number order, ending on the key.
+            models.Index(
+                fields=(
+                    "player_game",
+                    "started_lower",
+                    "completed_lower",
+                    "created_at",
+                    "id",
+                ),
+                name="playthrough_display_order",
+            ),
+        )
+
+    def __str__(self) -> str:
+        return f"Playthrough {self.pk} of tracked game {self.player_game_id}"
 
 
 class UserLibraryPreferences(models.Model):

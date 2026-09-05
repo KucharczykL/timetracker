@@ -55,6 +55,7 @@ from games.models import (
     LibraryEvent,
     LibraryEventStreamHead,
     PlayerGame,
+    Playthrough,
     ProjectionModel,
     UserLibrary,
 )
@@ -131,9 +132,9 @@ def test_discovery_passes_over_a_manufactured_twin():
     assert set(projection_models(shelf._meta.apps)) == {shelf, entry}
 
 
-def test_the_application_declares_the_playergame_projection():
-    """The one projection table so far."""
-    assert projection_models() == (PlayerGame,)
+def test_the_application_declares_its_projections():
+    """Two projection tables so far."""
+    assert projection_models() == (PlayerGame, Playthrough)
 
 
 @pytest.mark.django_db

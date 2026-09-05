@@ -23,6 +23,7 @@ from games.events.playergame import (
     PLAYERGAME_STATUS_CHANGED,
     StatusValue,
 )
+from games.events.playthrough import playthrough_created
 from games.events.references import capture_reference
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import Game, PlayerGame, PlayerGameStatus
@@ -43,7 +44,7 @@ class PlayerGameNotTracked(CommandRejected):
     """
 
 
-def _tracked_game(context: CommandContext, game_id: uuid.UUID) -> PlayerGame:
+def tracked_game(context: CommandContext, game_id: uuid.UUID) -> PlayerGame:
     """The projection row, never the catalog."""
     try:
         return PlayerGame.objects.get(library=context.library, game_id=game_id)
@@ -79,11 +80,14 @@ class TrackGame(Command):
                     ),
                 )
             return Unchanged(f"This library already tracks {game.name}.")
+        #: The first act states the default run.
+        tracked_id = uuid.uuid7()
         return [
             PLAYERGAME_CREATED.new(
-                aggregate_id=uuid.uuid7(),
+                aggregate_id=tracked_id,
                 payload={"game": capture_reference(game)},
-            )
+            ),
+            playthrough_created(tracked_id),
         ]
 
     def _visible_game(self, context: CommandContext) -> Game:
@@ -115,7 +119,7 @@ class SetPlayerGameStatus(Command):
     status: PlayerGameStatus
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
-        tracked = _tracked_game(context, self.game_id)
+        tracked = tracked_game(context, self.game_id)
         #: Under dispatch's lock: no concurrent duplicate.
         if tracked.status == self.status:
             return Unchanged(
@@ -142,7 +146,7 @@ class SetPlayerGameMastered(Command):
     mastered: bool
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
-        tracked = _tracked_game(context, self.game_id)
+        tracked = tracked_game(context, self.game_id)
         #: Under dispatch's lock: no concurrent duplicate.
         if tracked.mastered == self.mastered:
             recorded = "mastered" if self.mastered else "not mastered"
@@ -169,7 +173,7 @@ class SetPlayerGameExcludedFromUnfinished(Command):
     excluded_from_unfinished: bool
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
-        tracked = _tracked_game(context, self.game_id)
+        tracked = tracked_game(context, self.game_id)
         #: Under dispatch's lock: no concurrent duplicate.
         if tracked.excluded_from_unfinished == self.excluded_from_unfinished:
             recorded = (
@@ -196,7 +200,7 @@ class RemovePlayerGame(Command):
     game_id: uuid.UUID
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
-        tracked = _tracked_game(context, self.game_id)
+        tracked = tracked_game(context, self.game_id)
         #: Under dispatch's lock: no concurrent duplicate.
         if tracked.removed_at is not None:
             return Unchanged(f"This library already removed game {self.game_id}.")
@@ -217,7 +221,7 @@ class RestorePlayerGame(Command):
     game_id: uuid.UUID
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
-        tracked = _tracked_game(context, self.game_id)
+        tracked = tracked_game(context, self.game_id)
         #: Under dispatch's lock: no concurrent duplicate.
         if tracked.removed_at is None:
             return Unchanged(f"This library did not remove game {self.game_id}.")
@@ -249,7 +253,7 @@ class RecordPlayerGameFacts(Command):
             )
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
-        tracked = _tracked_game(context, self.game_id)
+        tracked = tracked_game(context, self.game_id)
         #: Under dispatch's lock: no concurrent duplicate.
         events: list[NewEvent] = []
         if self.status is not None and tracked.status != self.status:

@@ -6,7 +6,7 @@ from datetime import UTC, date, datetime
 from gzip import open as gzip_open
 from io import StringIO
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid7
 
 import pytest
 import yaml
@@ -14,13 +14,17 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.utils import timezone
 
 from games.models import (
     Device,
     ExchangeRate,
     Game,
     Platform,
+    PlayerGame,
     PlayEvent,
+    Playthrough,
+    PlaythroughKind,
     Purchase,
     PurchaseConversionState,
     Session,
@@ -559,6 +563,13 @@ def test_scoped_audit_reports_incoming_cross_library_links(owner, outsider):
     UserLibraryPreferences.objects.filter(library=outsider.library).update(
         default_device=owner_device
     )
+    Playthrough.objects.create(
+        id=uuid7(),
+        library=owner.library,
+        player_game=PlayerGame.objects.get(game=outsider_game),
+        kind=PlaythroughKind.ORDINARY,
+        created_at=timezone.now(),
+    )
     output = StringIO()
 
     with pytest.raises(CommandError, match="violation"):
@@ -577,6 +588,7 @@ def test_scoped_audit_reports_incoming_cross_library_links(owner, outsider):
         "Purchase.games",
         "Session.device",
         "UserLibraryPreferences.default_device",
+        "Playthrough.player_game",
     ):
         assert relation in report
     assert (
@@ -586,6 +598,35 @@ def test_scoped_audit_reports_incoming_cross_library_links(owner, outsider):
     assert (
         "UserLibraryPreferences.default_device: "
         f"library {outsider.library.pk}, device {owner_device.pk}" in report
+    )
+
+
+@pytest.mark.django_db
+def test_a_playthrough_in_another_library_is_reported(owner, outsider):
+    """A cross-library row blocks the named row's purge."""
+    game = Game.objects.create(library=owner.library, name="Outer Wilds")
+    tracked = PlayerGame.objects.get(game=game)
+    run = Playthrough.objects.create(
+        id=uuid7(),
+        #: The offence: not the tracked game's library.
+        library=outsider.library,
+        player_game=tracked,
+        kind=PlaythroughKind.ORDINARY,
+        created_at=timezone.now(),
+    )
+    output = StringIO()
+
+    with pytest.raises(CommandError, match="violation"):
+        call_command(
+            "audit_library_ownership",
+            "--user",
+            owner.username,
+            stdout=output,
+        )
+
+    assert (
+        f"Playthrough.player_game: playthrough {run.pk}, "
+        f"tracked game {tracked.pk}" in output.getvalue()
     )
 
 

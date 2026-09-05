@@ -169,6 +169,29 @@ def test_a_handler_must_be_callable():
             handles: ClassVar[HandlerMap] = {PROBE_RECORDED: "recorded"}
 
 
+def test_a_handler_must_bind_to_the_projector():
+    """Refused before the registry is touched.
+
+    Binding happens after the projector is stored, so a callable that is
+    not a descriptor would raise with its claim already taken and its
+    projector already in the family -- leaving the module-level registry
+    every later import shares in a state nothing can repair.
+    """
+    registry = ProjectorRegistry()
+
+    #: Callable, so the check before this one passes it, and no descriptor.
+    class CallableInstance:
+        def __call__(self, event: RecordedEvent) -> None: ...
+
+    with pytest.raises(TypeError, match="binds to no instance"):
+
+        class Unbindable(Projector, registry=registry):
+            family_name = ProjectorFamily.STATS
+            handles: ClassVar[HandlerMap] = {PROBE_RECORDED: CallableInstance()}
+
+    assert registry.handlers_for(RECORDED) == ()
+
+
 def test_a_family_cannot_claim_a_bare_event_type_string():
     """A string names no event type."""
     with pytest.raises(TypeError, match="not an EventSpec"):
@@ -200,7 +223,7 @@ def test_a_family_is_dispatched_for_the_event_type_its_spec_names():
     assert CALLS == [(ProjectorFamily.STATS, RECORDED)]
 
 
-def test_two_families_cannot_claim_one_member():
+def test_two_classes_cannot_claim_one_event_type_in_one_family():
     registry = ProjectorRegistry()
 
     class First(Projector, registry=registry):
@@ -218,6 +241,103 @@ def test_two_families_cannot_claim_one_member():
             def _recorded(self, event: RecordedEvent) -> None: ...
 
             handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
+
+
+#: A local sink: these record the class.
+type ClassCall = tuple[str, str]
+
+
+def test_two_classes_share_one_family_when_they_claim_different_event_types():
+    """The thing that was impossible before #679."""
+    seen: list[ClassCall] = []
+    registry = ProjectorRegistry()
+
+    class First(Projector, registry=registry):
+        family_name = ProjectorFamily.CURRENT_STATE
+
+        def _recorded(self, event: RecordedEvent) -> None:
+            seen.append(("first", event.event_type))
+
+        handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
+
+    class Second(Projector, registry=registry):
+        family_name = ProjectorFamily.CURRENT_STATE
+
+        def _other(self, event: RecordedEvent) -> None:
+            seen.append(("second", event.event_type))
+
+        handles: ClassVar[HandlerMap] = {PROBE_OTHER: _other}
+
+    registry.apply(make_event())
+    registry.apply(make_event(event_type=OTHER))
+
+    assert seen == [("first", RECORDED), ("second", OTHER)]
+
+
+def test_a_refused_claim_leaves_the_family_as_it_was():
+    """Every claim checked before any is taken."""
+    seen: list[ClassCall] = []
+    registry = ProjectorRegistry()
+
+    class Incumbent(Projector, registry=registry):
+        family_name = ProjectorFamily.STATS
+
+        def _recorded(self, event: RecordedEvent) -> None:
+            seen.append(("incumbent", event.event_type))
+
+        handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
+
+    with pytest.raises(TypeError, match="already owned by"):
+        #: What a mutate-as-you-go loop would leave behind.
+        class Greedy(Projector, registry=registry):
+            family_name = ProjectorFamily.STATS
+
+            def _other(self, event: RecordedEvent) -> None: ...
+
+            def _recorded(self, event: RecordedEvent) -> None: ...
+
+            handles: ClassVar[HandlerMap] = {
+                PROBE_OTHER: _other,
+                PROBE_RECORDED: _recorded,
+            }
+
+    assert registry.handlers_for(OTHER) == ()
+    registry.apply(make_event())
+    assert seen == [("incumbent", RECORDED)]
+
+
+def test_a_projector_that_cannot_be_built_leaves_no_claim():
+    """The claim is taken after the projector exists.
+
+    A claim taken first would be held by a class that never entered the
+    registry, and would refuse the next projector to claim that event
+    type -- with a message naming a projector nobody can reach.
+    """
+    seen: list[ClassCall] = []
+    registry = ProjectorRegistry()
+
+    with pytest.raises(RuntimeError, match="no target"):
+
+        class Unbuildable(Projector, registry=registry):
+            family_name = ProjectorFamily.STATS
+
+            def __init__(self, target: ProjectionTarget = LIVE_TARGET) -> None:
+                raise RuntimeError("no target")
+
+            def _recorded(self, event: RecordedEvent) -> None: ...
+
+            handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
+
+    class Successor(Projector, registry=registry):
+        family_name = ProjectorFamily.STATS
+
+        def _recorded(self, event: RecordedEvent) -> None:
+            seen.append(("successor", event.event_type))
+
+        handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
+
+    registry.apply(make_event())
+    assert seen == [("successor", RECORDED)]
 
 
 def test_registering_one_family_twice_is_not_a_collision():
@@ -809,6 +929,9 @@ def test_a_failing_handler_names_itself_without_being_wrapped(owned_library):
     assert ProjectorFamily.STATS.value in note
     assert RECORDED in note
     assert "#1" in note
+    #: The handler, not the family alone: a family holds many projectors,
+    #: and two of them claiming different acts would answer to one name.
+    assert "RollbackFailer._recorded" in note
 
 
 @pytest.mark.django_db(transaction=True)

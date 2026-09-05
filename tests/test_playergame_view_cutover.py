@@ -70,8 +70,11 @@ def test_adding_a_game_records_one_creation_event(logged_in, owned_library):
             "event_type", flat=True
         )
     )
-    #: The row starts where the form says, so nothing changes.
-    assert types == ["library.playergame.created"]
+    #: No fact restated; tracking states the run.
+    assert types == [
+        "library.playergame.created",
+        "library.playthrough.created",
+    ]
 
 
 @pytest.mark.django_db(transaction=True)

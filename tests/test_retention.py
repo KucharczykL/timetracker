@@ -40,6 +40,7 @@ from games.models import (
     Platform,
     PlayerGame,
     PlayEvent,
+    Playthrough,
     Purchase,
     ReferencedRow,
     Release,
@@ -506,6 +507,27 @@ def test_purging_a_library_takes_its_referenced_rows(owned_user, owned_library, 
     assert not Game.objects.filter(pk=game.pk).exists()
     assert not LibraryEvent.objects.exists()
     assert not LibraryEventReference.objects.exists()
+
+
+def test_purging_a_library_takes_its_playthroughs(owned_user, owned_library, game):
+    """A RESTRICT edge on the purge path."""
+    dispatch(
+        TrackGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="track",
+    )
+    assert Playthrough.objects.count() == 1
+
+    call_command(
+        "purge_user_library",
+        user=owned_user.username,
+        confirm=owned_user.username,
+        stdout=StringIO(),
+    )
+
+    assert not Playthrough.objects.exists()
+    assert not PlayerGame.objects.exists()
 
 
 def test_purging_a_library_takes_its_referenced_releases(

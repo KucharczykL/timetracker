@@ -145,6 +145,11 @@ Delivers the model, the migration, `library.playthrough.created`, the
 display-number rule, and the system kind. Absorbs #680: a number decided after
 the projection ships is a second migration over the same column.
 
+Also relaxes `ProjectorRegistry` so one family holds many projectors, with the
+ownership guard on the `(family, event type)` pair. It belongs here because
+nothing else can consume it: no second `CURRENT_STATE` projector can exist
+until it lands.
+
 Out: every other event type, every screen, the backfill.
 
 ### #686 — the preflight report

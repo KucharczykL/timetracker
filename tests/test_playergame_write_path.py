@@ -80,7 +80,12 @@ def test_an_untracked_game_is_tracked_then_recorded(owned_user, owned_library):
         .order_by("sequence")
         .values_list("event_type", flat=True)
     )
-    assert types == ["library.playergame.created", "library.playergame.status_changed"]
+    assert types == [
+        "library.playergame.created",
+        #: Tracking states the default run: #679.
+        "library.playthrough.created",
+        "library.playergame.status_changed",
+    ]
 
 
 @pytest.mark.django_db(transaction=True)
