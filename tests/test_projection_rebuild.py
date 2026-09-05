@@ -1403,6 +1403,35 @@ def test_an_integrity_error_of_another_state_rises_unchanged(
     assert sqlstate_of(raised) is None
 
 
+@pytest.mark.django_db(transaction=True)
+def test_the_command_prints_the_diff_and_names_the_pair(owned_library, other_owner):
+    """Without the carried tables it would print no diff at all."""
+    planted = plant_tracked_game(owned_library)
+    run = Playthrough.objects.create(
+        id=uuid7(),
+        library=other_owner.library,
+        player_game=planted,
+        kind=PlaythroughKind.ORDINARY,
+        created_at=timezone.now(),
+    )
+    output = StringIO()
+
+    with pytest.raises(CommandError, match="refused at the swap") as refused:
+        call_command(
+            "rebuild_projections",
+            str(owned_library.pk),
+            stdout=output,
+        )
+
+    #: manage.py prints a CommandError itself; call_command raises it.
+    sentence = str(refused.value)
+    assert (
+        f"Playthrough.player_game: {run.pk} names PlayerGame {planted.pk}" in sentence
+    )
+    assert "audit_library_ownership" in sentence
+    assert "games_playergame: 1 live, 0 rebuilt, 1 only live" in output.getvalue()
+
+
 # --- Registry hygiene --------------------------------------------------------
 
 

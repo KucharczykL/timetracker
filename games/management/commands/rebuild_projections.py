@@ -5,6 +5,7 @@ from django.core.management.base import BaseCommand, CommandError
 from games.events.rebuild import (
     RebuildMode,
     RebuildReport,
+    SwapRefusedByReference,
     TableDiff,
     rebuild_projections,
 )
@@ -45,6 +46,11 @@ class Command(BaseCommand):
                 f"The events name {error.reconciliation.unresolved} row(s) that "
                 "no longer exist, so nothing was replayed."
             ) from error
+        except SwapRefusedByReference as error:
+            #: The diff the refusal carries: handle() has no report.
+            for table in error.tables:
+                self._write_table(table)
+            raise CommandError(str(error)) from error
         self._write_report(report)
 
         if mode is RebuildMode.CHECK:
