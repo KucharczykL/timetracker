@@ -48,9 +48,9 @@ def playthrough_created(
 ) -> NewEvent:
     """The one creation event, for both commands.
 
-    A caller states the identity where the row's order matters: #684
-    records a past instant, and the identity audit holds every
-    Playthrough key to its `created_at` order.
+    A caller states the identity where order matters: #684 records
+    a past instant, and the identity audit holds every key to its
+    `created_at` order.
     """
     return PLAYTHROUGH_CREATED.new(
         aggregate_id=playthrough_id or uuid.uuid7(),

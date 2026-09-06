@@ -32,16 +32,15 @@ from games.reads.playthrough_numbering import with_display_number
 from games.removal import remove
 from timetracker.temporal import TemporalValue
 
-#: A module name beginning with a digit cannot be imported by the
-#: `from ... import` form.
+#: A digit-first module name needs importlib.
 _migration = importlib.import_module(
     "games.migrations.0045_playthrough_conversion_backfill"
 )
 MACHINE_PREFIX = _migration.MACHINE_PREFIX
 convert_legacy_playevents = _migration.convert_legacy_playevents
 
-#: backfill_library() appends the creation event the conftest fixture
-#: would have written by hand, so the two collide on the unique key.
+#: backfill_library() and the conftest fixture write the
+#: same row, so the two collide on the unique key.
 pytestmark = [
     pytest.mark.django_db(transaction=True),
     pytest.mark.untracked_games,
@@ -94,7 +93,7 @@ def test_an_endpoint_less_row_states_both_acts_and_no_days(owned_library):
     run = Playthrough.objects.get(player_game__game=game)
     assert run.started_lower is None
     assert run.completed_lower is None
-    #: The marker is the act; the null day is only an unknown day.
+    #: The marker is the act, not the day.
     assert run.start_recorded_at is not None
     assert run.completion_recorded_at is not None
 
@@ -155,7 +154,7 @@ def test_an_identity_sorts_by_the_row_it_came_from(owned_library):
     _convert(owned_library, row, _tracked(owned_library, game))
 
     run = Playthrough.objects.get(player_game__game=game)
-    #: A UUIDv7 carries its instant in the high bits.
+    #: A UUIDv7 carries its instant up front.
     assert run.pk < uuid.uuid7()
     assert run.created_at == datetime(2014, 1, 1, 12, 0, tzinfo=UTC)
 
@@ -181,7 +180,7 @@ def test_counts_add_field_by_field():
 
 
 def _finished_on(game, day):
-    """#676 turns this into a dated completion event."""
+    """#676 turns this into a completion event."""
     game.status = Game.Status.FINISHED
     game.save()
     return GameStatusChange.objects.create(
@@ -266,7 +265,7 @@ def test_an_ambiguous_group_mints_fresh_ids(owned_library):
     game = _game(owned_library, name="Hades")
     _finished_on(game, date(2024, 1, 9))
     backfill_library(owned_library)
-    #: Two rows completed on one day: the group pairs nothing.
+    #: Two rows on one day pair nothing.
     _row(game, started=date(2024, 1, 1), ended=date(2024, 1, 9))
     _row(game, started=date(2024, 1, 2), ended=date(2024, 1, 9))
     counts = convert_library(owned_library)
@@ -293,8 +292,8 @@ def test_a_removed_row_joins_the_pairing_set(owned_library):
     remove(_row(game, started=date(2024, 1, 2), ended=date(2024, 1, 9)))
     counts = convert_library(owned_library)
 
-    #: The preflight, which sees live rows only, would call this
-    #: unambiguous. This run sees both, so the group pairs nothing.
+    #: The preflight sees live rows only and calls this
+    #: unambiguous. This run sees both, so nothing pairs.
     assert counts.endpoints_paired == 0
 
 
@@ -348,8 +347,7 @@ def test_a_row_the_conversion_never_saw_is_reported(owned_library):
     backfill_library(owned_library)
     _row(game, started=date(2024, 1, 1))
     convert_library(owned_library)
-    #: A legacy row nothing replayed: the source now says more than the
-    #: events do.
+    #: A row nothing replayed: the source says more.
     _row(game, started=date(2024, 2, 1))
 
     codes = {mismatch.code for mismatch in reconcile(owned_library)}
@@ -401,7 +399,7 @@ def test_a_tracked_game_with_no_live_run_is_reported(owned_library):
 
 
 def test_the_display_order_follows_the_legacy_order(owned_library):
-    #: The Dark Souls 2 shape: one dated run and two nobody dated.
+    #: The Dark Souls 2 shape: one dated, two not.
     game = _game(owned_library, name="Dark Souls 2")
     backfill_library(owned_library)
     _row(game, started=date(2014, 6, 7), ended=date(2014, 6, 17))
@@ -417,9 +415,9 @@ def test_the_display_order_follows_the_legacy_order(owned_library):
 
 
 def test_rows_sharing_an_instant_are_numbered_in_either_order(owned_library):
-    #: The sample fixture's shape: its anonymizer stamps every undated
-    #: row one instant, so nothing the projection carries tells the two
-    #: apart and the gate must not fail on it.
+    #: The sample fixture's shape: its anonymizer stamps
+    #: every undated row one instant, so nothing the
+    #: projection carries tells the two apart.
     game = _game(owned_library, name="Witcher")
     backfill_library(owned_library)
     _row(game)
@@ -440,8 +438,7 @@ def test_a_display_order_disagreement_is_reported(owned_library):
     _row(game, started=date(2024, 1, 1))
     _row(game, started=date(2024, 2, 1))
     convert_library(owned_library)
-    #: The earlier run now claims the later day, so the sequence no
-    #: longer matches the rows.
+    #: The earlier run claims the later day.
     Playthrough.objects.filter(started_lower=date(2024, 1, 1)).update(
         started=TemporalValue.from_day(date(2024, 3, 1))
     )
@@ -456,7 +453,7 @@ def test_an_identity_out_of_order_is_reported(owned_library):
     _row(game, started=date(2014, 1, 1))
     convert_library(owned_library)
     Playthrough.objects.update(created_at=datetime(2014, 1, 1, tzinfo=UTC))
-    #: A key minted now against a created_at from a year earlier.
+    #: A key minted now, dated a year back.
     Playthrough.objects.create(
         id=uuid.uuid7(),
         library=owned_library,
@@ -490,8 +487,7 @@ def test_the_migration_raises_on_a_mismatch(owned_library, monkeypatch):
     game = _game(owned_library)
     backfill_library(owned_library)
     _row(game, started=date(2024, 1, 1))
-    #: The migration reads the module by name at call time, so the gate
-    #: is patched where it is written.
+    #: The migration reads it at call time.
     monkeypatch.setattr(
         "games.backfill.playthrough.reconcile",
         lambda library: [Mismatch(code="test", game_id=str(game.pk), detail="x")],

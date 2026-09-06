@@ -1,7 +1,6 @@
 """What the legacy PlayEvent rows hold.
 
-#684 imports `classify_row`, `legacy_order_key`, `candidate_events` and
-`pair_endpoints`, so the two agree.
+#684 imports the classifiers, so the two agree.
 """
 
 import uuid

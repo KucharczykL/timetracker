@@ -284,7 +284,7 @@ def test_the_lifecycle_builders_name_the_playthrough_they_are_told_about():
 
 
 def test_a_creation_event_takes_the_identity_it_is_given():
-    """#684 mints from identity_at(), so the key sorts by created_at."""
+    """#684 mints from identity_at(), for the order."""
     identity = uuid.uuid7()
 
     event = playthrough_created(uuid.uuid7(), playthrough_id=identity)

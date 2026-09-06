@@ -152,10 +152,8 @@ class Command(BaseCommand):
             #: projector. Inside this block, so a load either lands tracked or
             #: does not land.
             backfill_library(user.library)
-            #: And the runs those tracked games hold: #684 states one
-            #: per legacy row, and one default for every game holding
-            #: none. Inside this block, so a load either lands whole or
-            #: does not land.
+            #: And the runs they hold: #684 states one per legacy
+            #: row, and one default per game holding none.
             convert_library(user.library)
             #: The fixture predates #896: no reference rows.
             try:

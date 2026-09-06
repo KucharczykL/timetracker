@@ -49,12 +49,11 @@ def _fail_if_mismatched(mismatches):
 def convert_legacy_playevents(apps, schema_editor):
     """State every legacy row as Playthrough events.
 
-    The live models and the live event machinery, deliberately, for the
-    reason 0033 records: historical models cannot run a projector or
-    validate a payload, so a backfill that wrote events and projection
-    rows by hand would be a second event writer. The cost is that this
-    migration is pinned to the application as it stands when it runs,
-    and the gate below is what keeps a future incompatibility loud.
+    The live models and machinery, for the reason 0033 records:
+    historical models cannot run a projector or validate a
+    payload, so writing events and rows by hand is a second event
+    writer. This migration is therefore pinned to the application
+    as it stands, and the gate keeps that loud.
     """
     del apps, schema_editor
     from games.backfill import playthrough as conversion
@@ -64,8 +63,7 @@ def convert_legacy_playevents(apps, schema_editor):
     mismatches = []
     for library in UserLibrary.objects.order_by("pk"):
         counts = counts + conversion.convert_library(library)
-        #: A second pass appends nothing, and proves it by counting
-        #: nothing. Check 5.
+        #: Check 5: a second pass appends nothing.
         repeat = conversion.convert_library(library)
         if repeat.events_appended:
             mismatches.append(
