@@ -210,12 +210,7 @@ def playthrough_note_changed(playthrough_id: uuid.UUID, *, note: str) -> NewEven
 
 @with_config(STRICT_SCHEMA)
 class PlaythroughRemovedPayload(TypedDict):
-    """The library takes the run out of its lists.
-
-    Empty, because the type is the fact. A key stating a direction
-    could disagree with the type it rides on, and the instant is
-    `recorded_at`.
-    """
+    """The library takes the run out."""
 
 
 @with_config(STRICT_SCHEMA)
@@ -240,10 +235,10 @@ DEFAULT_EVENT_TYPES.register(PLAYTHROUGH_RESTORED)
 
 
 def playthrough_removed(playthrough_id: uuid.UUID) -> NewEvent:
-    """The run leaves the lists. `recorded_at` states when."""
+    """The run leaves the lists."""
     return PLAYTHROUGH_REMOVED.new(aggregate_id=playthrough_id, payload={})
 
 
 def playthrough_restored(playthrough_id: uuid.UUID) -> NewEvent:
-    """The run is back, with every fact it had."""
+    """The run comes back unchanged."""
     return PLAYTHROUGH_RESTORED.new(aggregate_id=playthrough_id, payload={})

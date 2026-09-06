@@ -41,10 +41,7 @@ def with_display_number(
 def display_name(playthrough: Playthrough, *, fallback: str | None = None) -> str:
     """What a screen calls this run.
 
-    `fallback` is for a caller that means to render a row no number is
-    counted across -- a removed one, or one whose kind is not ordinary.
-    With none, the refusal stands, so a screen that simply forgot to
-    number its rows still hears about it.
+    `fallback` renders a row no number is counted across.
     """
     if playthrough.name:
         return playthrough.name

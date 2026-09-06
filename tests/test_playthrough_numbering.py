@@ -67,8 +67,7 @@ def test_a_known_start_orders_before_an_unknown_one(tracked):
 
 def test_a_removed_row_does_not_shift_the_number(tracked):
     first = make_run(tracked)
-    #: Stamped directly: this module tests the read, and
-    #: RemovePlaythrough is what states the column in production.
+    #: Stamped directly: this module tests the read.
     removed = make_run(tracked, removed_at=timezone.now())
     last = make_run(tracked)
 
@@ -212,6 +211,6 @@ def test_a_fallback_does_not_displace_a_stated_name():
 
 
 def test_no_fallback_still_refuses_an_unnumbered_row():
-    """A screen that forgot to number its rows hears about it."""
+    """A screen that forgot still hears about it."""
     with pytest.raises(UnnumberedPlaythrough):
         display_name(Playthrough(name=""))

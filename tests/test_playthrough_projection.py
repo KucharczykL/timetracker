@@ -699,7 +699,7 @@ def test_a_rebuild_of_a_described_run_swaps_with_an_empty_diff(
 
 @pytest.mark.django_db(transaction=True)
 def test_the_removal_event_writes_its_own_time(owned_user, owned_library):
-    """Off the event, so a replay agrees with the live path."""
+    """Off the event, so a replay agrees."""
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     track(owned_user, owned_library, game)
     run = Playthrough.objects.get()

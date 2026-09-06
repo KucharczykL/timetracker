@@ -562,9 +562,7 @@ def test_stating_an_endpoint_for_a_removed_game_is_refused(
 def test_stating_an_endpoint_for_a_removed_playthrough_is_refused(
     owned_user, owned_library, game
 ):
-    """The resolver both commands share is written here, so its answers are
-    tested here.
-    """
+    """The shared resolver answers for both commands."""
     _track(owned_user, owned_library, game)
     playthrough = _second_run(owned_user, owned_library)
     _remove(owned_user, owned_library, playthrough, key="removal")
@@ -1418,10 +1416,9 @@ def test_a_cleared_note_fingerprints_apart_from_no_note(
 
 
 def _second_run(owned_user, owned_library, key="second-run"):
-    """A run the last-ordinary-run rule does not protect."""
+    """A run the last-run rule does not protect."""
     game = Game.objects.get()
-    #: CommandResult carries no events on purpose, so the new row is
-    #: the one that was not there before.
+    #: CommandResult carries no events; diff the rows.
     before = set(Playthrough.objects.values_list("pk", flat=True))
     dispatch(
         CreatePlaythrough(game_id=game.pk),
@@ -1566,7 +1563,7 @@ def test_removing_a_run_of_a_removed_game_is_refused(owned_user, owned_library, 
 
 @pytest.mark.django_db(transaction=True)
 def test_restoring_a_run_of_a_removed_game_is_refused(owned_user, owned_library, game):
-    """The way out is always open: restore the game, then the run."""
+    """The way out: restore the game first."""
     _track(owned_user, owned_library, game)
     run = _second_run(owned_user, owned_library)
     _remove(owned_user, owned_library, run)
@@ -1613,7 +1610,7 @@ def test_removing_a_run_beside_a_live_sibling_is_allowed(
 def test_a_removed_sibling_does_not_keep_the_last_run_removable(
     owned_user, owned_library, game
 ):
-    """The rule counts live rows, so the second removal is refused."""
+    """The rule counts live rows only."""
     _track(owned_user, owned_library, game)
     second = _second_run(owned_user, owned_library)
     _remove(owned_user, owned_library, second, key="first-removal")
@@ -1640,11 +1637,7 @@ def test_a_bucket_does_not_keep_an_ordinary_run_removable(
 def test_a_bucket_is_removable_from_a_game_with_no_ordinary_run(
     owned_user, owned_library, game
 ):
-    """The rule fires for an ordinary run, and only for one.
-
-    Removing a bucket takes no ordinary run away, and gating the count
-    alone would leave the bucket #700 creates unremovable forever.
-    """
+    """A bucket takes no ordinary run away."""
     _track(owned_user, owned_library, game)
     bucket = _imported_run(owned_user, owned_library)
     Playthrough.objects.filter(kind=PlaythroughKind.ORDINARY).update(
@@ -1710,7 +1703,7 @@ def test_a_registered_referrer_keeps_a_run_in_place(
 def test_a_removed_referring_row_keeps_nothing_in_place(
     owned_user, owned_library, game, monkeypatch
 ):
-    """A referrer's own mark decides, so a removed row blocks nothing."""
+    """A removed referrer blocks nothing."""
     _track(owned_user, owned_library, game)
     run = _second_run(owned_user, owned_library)
 
@@ -1750,5 +1743,5 @@ def test_a_removed_referring_row_keeps_nothing_in_place(
 
 
 def test_the_delivered_registry_refuses_nothing():
-    """Nothing names a run yet; #700 and #701 give the first thing that does."""
+    """Nothing names a run until #700 and #701."""
     assert playthrough_commands.BLOCKING_REFERRERS == ()

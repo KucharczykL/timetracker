@@ -78,7 +78,7 @@ class Playthroughs(Projector):
         )
 
     def _removed(self, event: RecordedEvent) -> None:
-        #: The event's instant, so a replay writes what was recorded.
+        #: The event's instant, so a replay agrees.
         self.amend(Playthrough, event.aggregate_id, removed_at=event.recorded_at)
 
     def _restored(self, event: RecordedEvent) -> None:

@@ -252,19 +252,19 @@ def test_the_lifecycle_events_are_in_the_default_vocabulary():
 
 
 def test_a_lifecycle_payload_states_nothing_but_its_type():
-    """The type is the fact, so no key can disagree with it."""
+    """The type is the fact; no key disagrees."""
     assert DEFAULT_EVENT_TYPES.validate(PLAYTHROUGH_REMOVED.event_type, {}) == {}
     assert DEFAULT_EVENT_TYPES.validate(PLAYTHROUGH_RESTORED.event_type, {}) == {}
 
 
 def test_a_lifecycle_payload_refuses_a_direction_of_its_own():
-    """A later fact takes a later type, not a key nobody declared."""
+    """A later fact takes a later type."""
     with pytest.raises(PayloadInvalid):
         DEFAULT_EVENT_TYPES.validate(PLAYTHROUGH_REMOVED.event_type, {"removed": True})
 
 
 def test_a_lifecycle_payload_refuses_a_time_of_its_own():
-    """`recorded_at` carries it, so a replay writes what was recorded."""
+    """`recorded_at` carries it, so a replay agrees."""
     with pytest.raises(PayloadInvalid):
         DEFAULT_EVENT_TYPES.validate(
             PLAYTHROUGH_RESTORED.event_type, {"at": "2026-09-06T00:00:00Z"}
