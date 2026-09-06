@@ -4,12 +4,15 @@ import uuid
 from datetime import date
 
 import pytest
-from django.db import transaction
+from django.db import connection, models, transaction
+from django.test.utils import isolate_apps
 from django.utils import timezone
 
+from games.commands import playthrough as playthrough_commands
 from games.commands.playergame import PlayerGameNotTracked, TrackGame
 from games.commands.playthrough import (
     PLAYTHROUGH_NAME_MAX_LENGTH,
+    BlockingReferrer,
     CompletePlaythrough,
     CorrectPlaythroughCompletion,
     CorrectPlaythroughStart,
@@ -1655,3 +1658,101 @@ def test_a_bucket_is_removable_from_a_game_with_no_ordinary_run(
     result = _remove(owned_user, owned_library, bucket, key="bucket")
 
     assert result.outcome is CommandOutcome.APPENDED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_registered_referrer_keeps_a_run_in_place(
+    owned_user, owned_library, game, monkeypatch
+):
+    """Inert on delivery: #700 and #701 supply the first entry."""
+    _track(owned_user, owned_library, game)
+    run = _second_run(owned_user, owned_library)
+
+    with isolate_apps("games"):
+
+        class Assignment(models.Model):
+            id = models.UUIDField(primary_key=True, default=uuid.uuid7)
+            playthrough = models.ForeignKey(Playthrough, on_delete=models.RESTRICT)
+            removed_at = models.DateTimeField(null=True, default=None)
+
+            class Meta:
+                app_label = "games"
+                db_table = "test_playthrough_assignment"
+
+        with connection.schema_editor() as schema_editor:
+            schema_editor.create_model(Assignment)
+        try:
+            Assignment.objects.create(playthrough=run)
+            monkeypatch.setattr(
+                playthrough_commands,
+                "BLOCKING_REFERRERS",
+                (
+                    BlockingReferrer(
+                        model=Assignment,
+                        field_name="playthrough",
+                        sentence=(
+                            "Sessions are assigned to this playthrough. Move "
+                            "them before removing it."
+                        ),
+                    ),
+                ),
+            )
+
+            with pytest.raises(CommandRejected) as refusal:
+                _remove(owned_user, owned_library, run, key="blocked")
+
+            assert refusal.value.sentence == (
+                "Sessions are assigned to this playthrough. Move them before "
+                "removing it."
+            )
+        finally:
+            with connection.schema_editor() as schema_editor:
+                schema_editor.delete_model(Assignment)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_removed_referring_row_keeps_nothing_in_place(
+    owned_user, owned_library, game, monkeypatch
+):
+    """A referrer's own mark decides, so a removed row blocks nothing."""
+    _track(owned_user, owned_library, game)
+    run = _second_run(owned_user, owned_library)
+
+    with isolate_apps("games"):
+
+        class Assignment(models.Model):
+            id = models.UUIDField(primary_key=True, default=uuid.uuid7)
+            playthrough = models.ForeignKey(Playthrough, on_delete=models.RESTRICT)
+            removed_at = models.DateTimeField(null=True, default=None)
+
+            class Meta:
+                app_label = "games"
+                db_table = "test_playthrough_assignment"
+
+        with connection.schema_editor() as schema_editor:
+            schema_editor.create_model(Assignment)
+        try:
+            Assignment.objects.create(playthrough=run, removed_at=timezone.now())
+            monkeypatch.setattr(
+                playthrough_commands,
+                "BLOCKING_REFERRERS",
+                (
+                    BlockingReferrer(
+                        model=Assignment,
+                        field_name="playthrough",
+                        sentence="unused",
+                    ),
+                ),
+            )
+
+            result = _remove(owned_user, owned_library, run, key="not-blocked")
+
+            assert result.outcome is CommandOutcome.APPENDED
+        finally:
+            with connection.schema_editor() as schema_editor:
+                schema_editor.delete_model(Assignment)
+
+
+def test_the_delivered_registry_refuses_nothing():
+    """Nothing names a run yet; #700 and #701 give the first thing that does."""
+    assert playthrough_commands.BLOCKING_REFERRERS == ()

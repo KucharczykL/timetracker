@@ -3,8 +3,9 @@
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import ClassVar, cast
+from typing import ClassVar, NamedTuple, cast
 
+from django.db import models
 from django.db.models import QuerySet
 
 from games.commands.playergame import tracked_game
@@ -22,6 +23,7 @@ from games.events.playthrough import (
 )
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import Playthrough, PlaythroughKind
+from games.projections import FieldName
 from games.reads.playthrough_endpoints import stated_completion, stated_start
 from timetracker.temporal import TemporalQualifier, TemporalValue, stated_date
 
@@ -383,6 +385,41 @@ def _refuse_under_a_removed_game(run: Playthrough, playthrough_id: uuid.UUID) ->
         )
 
 
+class BlockingReferrer(NamedTuple):
+    """One thing whose existence keeps a run in place.
+
+    The model carries `removed_at`: what a person removed states
+    nothing about a run, so only a live row blocks.
+    """
+
+    model: type[models.Model]
+    #: The alias games/projections.py states for a field's name.
+    field_name: FieldName
+    #: The one thing a person is shown. Each entry writes its own,
+    #: because "move the sessions" is advice only its own referrer
+    #: can give.
+    sentence: str
+
+
+#: Empty until #700 and #701 give a Session its reference to a run.
+#: Written now so a shipped command need not grow the rule, and kept
+#: beside its one reader: an incoming-reference registry in
+#: games/projections.py would duplicate games.E009, which already
+#: refuses an unregistered reference out of a projection.
+BLOCKING_REFERRERS: tuple[BlockingReferrer, ...] = ()
+
+
+def blocking_referrer(run: Playthrough) -> BlockingReferrer | None:
+    """The first registered thing naming this run, or none."""
+    for referrer in BLOCKING_REFERRERS:
+        named = referrer.model._default_manager.filter(
+            **{referrer.field_name: run}, removed_at__isnull=True
+        )
+        if named.exists():
+            return referrer
+    return None
+
+
 def _other_live_ordinary_runs(
     context: CommandContext, run: Playthrough
 ) -> QuerySet[Playthrough]:
@@ -421,6 +458,14 @@ class RemovePlaythrough(Command):
                 f"This library already removed playthrough {self.playthrough_id}."
             )
         _refuse_under_a_removed_game(run, self.playthrough_id)
+        blocker = blocking_referrer(run)
+        if blocker is not None:
+            raise CommandRejected(
+                f"{blocker.model.__name__} rows name playthrough "
+                f"{self.playthrough_id}, so the run stays where they can "
+                "find it.",
+                sentence=blocker.sentence,
+            )
         #: Only for an ordinary run. Removing a bucket takes no
         #: ordinary run away, and refusing there would defend nothing
         #: and leave the bucket #700 creates unremovable.
