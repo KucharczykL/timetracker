@@ -250,8 +250,8 @@ class DescribePlaythrough(Command):
                 f"The stated name is {len(self.name)} characters, and the "
                 f"column holds {PLAYTHROUGH_NAME_MAX_LENGTH}.",
                 sentence=(
-                    "That name is too long. Keep it under "
-                    f"{PLAYTHROUGH_NAME_MAX_LENGTH} characters."
+                    "That name is too long. Keep it to "
+                    f"{PLAYTHROUGH_NAME_MAX_LENGTH} characters or fewer."
                 ),
             )
         if self.name == "" and run.kind != PlaythroughKind.ORDINARY:

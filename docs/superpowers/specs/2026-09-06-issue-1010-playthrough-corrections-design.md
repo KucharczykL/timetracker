@@ -160,12 +160,12 @@ run's id as `aggregate_id`.
 another library exactly as it answers a row that does not exist. Every command
 here goes through it.
 
-`_endpoint_subject()` is then the wrong name for the second resolver: it
-refuses a removed run and a removed tracked game, and a rename is not an
-endpoint. It is renamed `_live_run()`, which says what it returns — the run,
-when neither mark is set — and both #681 commands move onto the new name here.
-The name is the incumbent's mistake, not the newcomer's, and the rename costs
-two call sites and the definition. #909 merges `library_playthrough()` with the
+`_endpoint_subject()` was the wrong name for the second resolver: it refuses a
+removed run and a removed tracked game, and a rename is not an endpoint. Its
+name is now `_live_run()`, which says what it returns — the run, when neither
+mark is set — and both #681 commands read it under that name. The name was the
+incumbent's mistake, not the newcomer's, and the rename cost two call sites and
+the definition. #909 merges `library_playthrough()` with the
 two other library-scoped resolvers; it does not merge this one, which states a
 removal rule the other two have no column for.
 
@@ -326,10 +326,11 @@ Focused tests, beside the ones #681 wrote:
 The gate is the full `make check`, including `e2e/`. No screen changes, so no
 e2e test is added.
 
-The `#1010 states it` comments on `Playthrough.name` and `Playthrough.note`,
-the two "#1010 corrects a stated endpoint" sentences in
-`games/commands/playthrough.py`, and the `Playthrough` bullet in `CLAUDE.md`
-name this issue in the future tense. All four are this issue's to correct.
+Four places named this issue in the future tense: the comments on
+`Playthrough.name` and `Playthrough.note`, the two refusal sentences in
+`games/commands/playthrough.py` that sent a reader to #1010, and the
+`Playthrough` bullet in `CLAUDE.md`. Each now names the command a person
+uses.
 
 ## Not in this issue
 

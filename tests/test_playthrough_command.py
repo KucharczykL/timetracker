@@ -683,7 +683,7 @@ def test_a_name_longer_than_the_column_is_refused(owned_user, owned_library, gam
         _describe(owned_user, owned_library, run, name="x" * 256, note=None)
 
     assert refusal.value.sentence == (
-        "That name is too long. Keep it under 255 characters."
+        "That name is too long. Keep it to 255 characters or fewer."
     )
     assert not LibraryEvent.objects.filter(
         event_type="library.playthrough.name_changed"
