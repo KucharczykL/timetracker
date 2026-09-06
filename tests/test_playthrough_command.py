@@ -3,7 +3,10 @@
 import pytest
 
 from games.commands.playergame import PlayerGameNotTracked, TrackGame
-from games.commands.playthrough import CreatePlaythrough
+from games.commands.playthrough import (
+    CreatePlaythrough,
+    endpoints_certainly_reversed,
+)
 from games.events.dispatch import CommandOutcome, CommandRejected, dispatch
 from games.models import (
     Game,
@@ -12,6 +15,7 @@ from games.models import (
     Playthrough,
     PlaythroughKind,
 )
+from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.untracked_games
 
@@ -157,3 +161,45 @@ def test_tracking_an_already_tracked_game_states_no_second_default(
 
     assert result.outcome is CommandOutcome.UNCHANGED
     assert Playthrough.objects.count() == 1
+
+
+@pytest.mark.parametrize(
+    ("started", "completed", "reversed_pair"),
+    [
+        #: Certainly reversed, at every precision.
+        ("2024-03-20", "2024-03-10", True),
+        ("2024-05", "2024-03", True),
+        ("202X", "2019", True),
+        ("2024-06/2024-12", "2024-01", True),
+        #: Consistent, or imprecise enough to be.
+        ("2024-03-10", "2024-03", False),
+        ("2024-03-10", "2024-03-10", False),
+        ("2024-03", "2024-03-10", False),
+        ("2019", "202X", False),
+        #: No bound on one side: nothing to prove.
+        (None, "2024-03", False),
+        ("2024-05", None, False),
+        (None, None, False),
+        #: A dated endpoint with no bound: an open-ended range.
+        ("../2024-06", "2020", False),
+        ("2024-05", "2024-01/..", False),
+        #: A qualifier states no certainty to contradict.
+        ("2024-05~", "2024-03", False),
+        ("2024-05?", "2024-03", False),
+        ("2024-05-10~", "2024-05-09", False),
+        ("2024-05", "2024-03~", False),
+        #: A range states its qualifier on the endpoints.
+        ("1984~/1986~", "1980", False),
+    ],
+)
+def test_the_order_rule_refuses_only_the_certainly_impossible(
+    started, completed, reversed_pair
+):
+    """A bare comparison raises TypeError on five of these rows."""
+    assert (
+        endpoints_certainly_reversed(
+            None if started is None else TemporalValue(started),
+            None if completed is None else TemporalValue(completed),
+        )
+        is reversed_pair
+    )
