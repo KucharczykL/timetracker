@@ -1581,3 +1581,77 @@ def test_restoring_a_run_of_a_removed_game_is_refused(owned_user, owned_library,
         "That game was removed from your library. Restore it before changing "
         "its playthroughs."
     )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_removing_the_only_ordinary_run_is_refused(owned_user, owned_library, game):
+    """Every tracked game keeps a Playthrough 1."""
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+
+    with pytest.raises(CommandRejected) as refusal:
+        _remove(owned_user, owned_library, run, key="last")
+
+    assert refusal.value.sentence == (
+        "This is the only playthrough of that game, and a tracked game keeps "
+        "one. Remove the game itself instead."
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_removing_a_run_beside_a_live_sibling_is_allowed(
+    owned_user, owned_library, game
+):
+    _track(owned_user, owned_library, game)
+    run = _second_run(owned_user, owned_library)
+
+    result = _remove(owned_user, owned_library, run)
+
+    assert result.outcome is CommandOutcome.APPENDED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_removed_sibling_does_not_keep_the_last_run_removable(
+    owned_user, owned_library, game
+):
+    """The rule counts live rows, so the second removal is refused."""
+    _track(owned_user, owned_library, game)
+    second = _second_run(owned_user, owned_library)
+    _remove(owned_user, owned_library, second, key="first-removal")
+    first = Playthrough.objects.get(removed_at__isnull=True)
+
+    with pytest.raises(CommandRejected):
+        _remove(owned_user, owned_library, first, key="second-removal")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_bucket_does_not_keep_an_ordinary_run_removable(
+    owned_user, owned_library, game
+):
+    """No display number is counted across a bucket."""
+    _track(owned_user, owned_library, game)
+    _imported_run(owned_user, owned_library)
+    ordinary = Playthrough.objects.get(kind=PlaythroughKind.ORDINARY)
+
+    with pytest.raises(CommandRejected):
+        _remove(owned_user, owned_library, ordinary, key="last-ordinary")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_bucket_is_removable_from_a_game_with_no_ordinary_run(
+    owned_user, owned_library, game
+):
+    """The rule fires for an ordinary run, and only for one.
+
+    Removing a bucket takes no ordinary run away, and gating the count
+    alone would leave the bucket #700 creates unremovable forever.
+    """
+    _track(owned_user, owned_library, game)
+    bucket = _imported_run(owned_user, owned_library)
+    Playthrough.objects.filter(kind=PlaythroughKind.ORDINARY).update(
+        removed_at=timezone.now()
+    )
+
+    result = _remove(owned_user, owned_library, bucket, key="bucket")
+
+    assert result.outcome is CommandOutcome.APPENDED

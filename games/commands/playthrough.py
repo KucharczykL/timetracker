@@ -5,6 +5,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import ClassVar, cast
 
+from django.db.models import QuerySet
+
 from games.commands.playergame import tracked_game
 from games.events.dispatch import Command, CommandContext, CommandName, CommandRejected
 from games.events.playthrough import (
@@ -381,6 +383,25 @@ def _refuse_under_a_removed_game(run: Playthrough, playthrough_id: uuid.UUID) ->
         )
 
 
+def _other_live_ordinary_runs(
+    context: CommandContext, run: Playthrough
+) -> QuerySet[Playthrough]:
+    """The live ordinary runs of this game, besides this one.
+
+    Scoped on the library explicitly. `library_playthrough` scopes on
+    `Playthrough.library`, and a run may name another library's
+    PlayerGame -- the drift `audit_library_ownership` reports -- so a
+    query keyed on the parent alone counts rows this library does not
+    hold.
+    """
+    return Playthrough.objects.filter(
+        library=context.library,
+        player_game=run.player_game,
+        removed_at__isnull=True,
+        kind=PlaythroughKind.ORDINARY,
+    ).exclude(pk=run.pk)
+
+
 @dataclass(frozen=True, slots=True)
 class RemovePlaythrough(Command):
     """Take a run out of the library's lists."""
@@ -400,6 +421,22 @@ class RemovePlaythrough(Command):
                 f"This library already removed playthrough {self.playthrough_id}."
             )
         _refuse_under_a_removed_game(run, self.playthrough_id)
+        #: Only for an ordinary run. Removing a bucket takes no
+        #: ordinary run away, and refusing there would defend nothing
+        #: and leave the bucket #700 creates unremovable.
+        if (
+            run.kind == PlaythroughKind.ORDINARY
+            and not _other_live_ordinary_runs(context, run).exists()
+        ):
+            raise CommandRejected(
+                f"Playthrough {self.playthrough_id} is the last live ordinary "
+                f"run of player game {run.player_game_id}, and every tracked "
+                "game holds one.",
+                sentence=(
+                    "This is the only playthrough of that game, and a tracked "
+                    "game keeps one. Remove the game itself instead."
+                ),
+            )
         return [playthrough_removed(run.pk)]
 
 
