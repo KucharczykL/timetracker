@@ -4,10 +4,23 @@ import uuid
 from datetime import UTC, date, datetime
 
 import pytest
+from django.utils import timezone
 
 from games.backfill.playergame import backfill_library
-from games.backfill.playthrough import NO_COUNTS, ConversionCounts, convert_row
-from games.models import Game, PlayerGame, PlayEvent, Playthrough
+from games.backfill.playthrough import (
+    NO_COUNTS,
+    ConversionCounts,
+    convert_library,
+    convert_row,
+)
+from games.models import (
+    Game,
+    GameStatusChange,
+    LibraryEvent,
+    PlayerGame,
+    PlayEvent,
+    Playthrough,
+)
 from games.removal import remove
 
 #: backfill_library() appends the creation event the conftest fixture
@@ -148,3 +161,153 @@ def test_counts_add_field_by_field():
     assert total.live_rows == 3
     assert total.notes == 1
     assert NO_COUNTS.live_rows == 0
+
+
+def _finished_on(game, day):
+    """#676 turns this into a dated completion event."""
+    game.status = Game.Status.FINISHED
+    game.save()
+    return GameStatusChange.objects.create(
+        game=game,
+        old_status=Game.Status.PLAYED,
+        new_status=Game.Status.FINISHED,
+        #: Local noon: the backfill reads localtime().
+        timestamp=datetime(
+            day.year, day.month, day.day, 12, tzinfo=timezone.get_current_timezone()
+        ),
+    )
+
+
+def test_a_tracked_game_with_no_rows_receives_one_default(owned_library):
+    game = _game(owned_library)
+    backfill_library(owned_library)
+    counts = convert_library(owned_library)
+
+    tracked = _tracked(owned_library, game)
+    run = Playthrough.objects.get(player_game=tracked)
+    assert counts.runs_default == 1
+    assert counts.tracked == 1
+    assert run.created_at == tracked.tracked_at
+    assert run.start_recorded_at is None
+    assert run.completion_recorded_at is None
+
+
+def test_a_game_whose_only_row_was_removed_still_receives_a_default(owned_library):
+    game = _game(owned_library)
+    backfill_library(owned_library)
+    remove(_row(game, started=date(2024, 1, 1)))
+    counts = convert_library(owned_library)
+
+    runs = Playthrough.objects.filter(player_game__game=game)
+    assert counts.runs_converted == 1
+    assert counts.runs_default == 1
+    assert runs.filter(removed_at__isnull=True).count() == 1
+
+
+def test_a_game_holding_a_live_row_receives_no_default(owned_library):
+    game = _game(owned_library)
+    backfill_library(owned_library)
+    _row(game, started=date(2024, 1, 1))
+    counts = convert_library(owned_library)
+
+    assert counts.runs_default == 0
+    assert Playthrough.objects.filter(player_game__game=game).count() == 1
+
+
+def test_a_tracked_game_on_a_removed_catalog_row_is_skipped(owned_library):
+    game = _game(owned_library)
+    backfill_library(owned_library)
+    _row(game, started=date(2024, 1, 1))
+    remove(game)
+    counts = convert_library(owned_library)
+
+    assert counts.tracked_on_removed_game == 1
+    assert counts.runs_converted == 0
+    assert counts.runs_default == 0
+
+
+def test_an_unambiguous_endpoint_adopts_the_status_event_correlation(owned_library):
+    game = _game(owned_library, name="Celeste")
+    _finished_on(game, date(2024, 1, 9))
+    backfill_library(owned_library)
+    _row(game, started=date(2024, 1, 1), ended=date(2024, 1, 9))
+    counts = convert_library(owned_library)
+
+    status_event = LibraryEvent.objects.get(
+        library=owned_library, event_type="library.playergame.status_changed"
+    )
+    completion = LibraryEvent.objects.get(
+        library=owned_library, event_type="library.playthrough.completed"
+    )
+    assert completion.correlation_id == status_event.correlation_id
+    assert counts.endpoints_paired == 1
+    #: No `played` transition behind the start.
+    assert counts.endpoints_fresh == 1
+
+
+def test_an_ambiguous_group_mints_fresh_ids(owned_library):
+    game = _game(owned_library, name="Hades")
+    _finished_on(game, date(2024, 1, 9))
+    backfill_library(owned_library)
+    #: Two rows completed on one day: the group pairs nothing.
+    _row(game, started=date(2024, 1, 1), ended=date(2024, 1, 9))
+    _row(game, started=date(2024, 1, 2), ended=date(2024, 1, 9))
+    counts = convert_library(owned_library)
+
+    assert counts.endpoints_paired == 0
+    assert counts.endpoints_fresh == 4
+
+
+def test_a_dayless_endpoint_mints_a_fresh_id(owned_library):
+    game = _game(owned_library)
+    backfill_library(owned_library)
+    _row(game)
+    counts = convert_library(owned_library)
+
+    assert counts.endpoints_dayless == 2
+    assert counts.endpoints_paired == 0
+
+
+def test_a_removed_row_joins_the_pairing_set(owned_library):
+    game = _game(owned_library, name="Tunic")
+    _finished_on(game, date(2024, 1, 9))
+    backfill_library(owned_library)
+    _row(game, started=date(2024, 1, 1), ended=date(2024, 1, 9))
+    remove(_row(game, started=date(2024, 1, 2), ended=date(2024, 1, 9)))
+    counts = convert_library(owned_library)
+
+    #: The preflight, which sees live rows only, would call this
+    #: unambiguous. This run sees both, so the group pairs nothing.
+    assert counts.endpoints_paired == 0
+
+
+def test_a_second_pass_over_a_library_appends_nothing(owned_library):
+    game = _game(owned_library)
+    backfill_library(owned_library)
+    _row(game, started=date(2024, 1, 1))
+    convert_library(owned_library)
+    repeat = convert_library(owned_library)
+
+    assert repeat.events_appended == 0
+    assert Playthrough.objects.count() == 1
+
+
+def test_a_shared_game_converts_once_per_library(owned_library, django_user_model):
+    shared = Game.objects.create(library=None, name="Shared")
+    _row(shared, started=date(2024, 1, 1))
+    stranger = django_user_model.objects.create_user(username="stranger", password="p")
+    for library in (owned_library, stranger.library):
+        PlayerGame.objects.create(
+            pk=uuid.uuid7(),
+            library=library,
+            game=shared,
+            tracked_at=timezone.now(),
+        )
+        convert_library(library)
+
+    assert Playthrough.objects.filter(player_game__library=owned_library).count() == 1
+    assert (
+        Playthrough.objects.filter(player_game__library=stranger.library).count() == 1
+    )
+    for run in Playthrough.objects.all():
+        assert run.library_id == run.player_game.library_id

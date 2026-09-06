@@ -8,14 +8,17 @@ set beside a null day.
 """
 
 import uuid
+from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, fields, replace
 from datetime import datetime
+from itertools import batched
 from typing import Any
 
 from django.contrib.auth.models import User
 from django.db import transaction
 
+from common.keyset import keyset_pages
 from games.events.append import LockedStream, SourceMetadata, identity_at
 from games.events.idempotency import ReplayedAppend, idempotent_append
 from games.events.playthrough import (
@@ -26,13 +29,17 @@ from games.events.playthrough import (
     playthrough_started,
 )
 from games.events.vocabulary import NewEvent
-from games.models import PlayEvent, UserLibrary
+from games.models import Game, PlayerGame, PlayEvent, UserLibrary
 from games.preflight.playthrough import (
+    CandidateEvent,
     Endpoint,
     EndpointKind,
     Pairing,
     RowVerdict,
+    candidate_events,
     classify_row,
+    legacy_order_key,
+    pair_endpoints,
 )
 from timetracker.temporal import TemporalValue
 
@@ -283,4 +290,127 @@ def convert_row(
         ):
             counts = replace(counts, events_appended=counts.events_appended + 1)
 
+    return counts
+
+
+def convert_game(
+    rows: Sequence[PlayEvent],
+    *,
+    library: UserLibrary,
+    actor: User,
+    tracked_id: uuid.UUID,
+    tracked_at: datetime,
+    candidates: Sequence[CandidateEvent],
+) -> ConversionCounts:
+    """State one tracked game's rows, and its default run where it needs one.
+
+    Pairing runs here rather than over the whole library because a group
+    is keyed on the PlayerGame, so no group spans two games. The
+    candidates are this game's alone, which is why unclaimed_events is
+    not read: every other game's events would count as unclaimed.
+    """
+    endpoints = [
+        Endpoint(row_id=row.pk, kind=kind, day=day, aggregate_id=tracked_id)
+        for row in rows
+        for kind, day in (
+            (EndpointKind.START, row.started),
+            (EndpointKind.COMPLETION, row.ended),
+        )
+        if day is not None
+    ]
+    pairings = pair_endpoints(endpoints, candidates).pairings
+
+    counts = NO_COUNTS
+    #: legacy_order_key, so the run a person entered first is numbered
+    #: first: the identities ascend with the rows.
+    for row in sorted(rows, key=legacy_order_key):
+        counts = counts + convert_row(
+            row,
+            library=library,
+            actor=actor,
+            tracked_id=tracked_id,
+            pairings=pairings,
+        )
+
+    #: "No live run", not "no legacy row": a game whose only row was
+    #: removed keeps a removed run and still needs the live one every
+    #: tracked game holds. One live row is one live run, so the rows
+    #: answer this without a query.
+    if any(row.removed_at is None for row in rows):
+        return counts
+
+    counts = counts + ConversionCounts(runs_default=1)
+    #: Its own block, as convert_row's is: lock_stream refuses the head
+    #: lock outside a transaction.
+    with transaction.atomic():
+        if _append(
+            library,
+            playthrough_created(tracked_id, playthrough_id=identity_at(tracked_at)),
+            actor=actor,
+            idempotency_key=f"{KEY_PREFIX}:default:{tracked_id}",
+            command_input={"fact": "default", "player_game_id": str(tracked_id)},
+            #: The tracked game's own instant: the run has been open
+            #: since the library started tracking it.
+            recorded_at=tracked_at,
+            correlation_id=uuid.uuid7(),
+            source_metadata={"origin": "backfill", "issue": PTHROUGH_ISSUE},
+        ):
+            counts = counts + ConversionCounts(events_appended=1)
+    return counts
+
+
+def _rows_for_games(batch: Sequence[PlayerGame]) -> dict[uuid.UUID, list[PlayEvent]]:
+    """One batch's live catalog games, each with its legacy rows.
+
+    A game the catalog marks removed is absent from the answer, which is
+    what the caller counts as tracked_on_removed_game.
+    """
+    live_games = set(
+        Game.objects.filter(
+            pk__in=[row.game_id for row in batch], removed_at__isnull=True
+        )
+        .only("id")
+        .values_list("pk", flat=True)
+    )
+    rows: dict[uuid.UUID, list[PlayEvent]] = {game_id: [] for game_id in live_games}
+    for row in PlayEvent.objects.filter(game_id__in=live_games).only(*PLAYEVENT_FIELDS):
+        rows[row.game_id].append(row)
+    return rows
+
+
+def convert_library(library: UserLibrary) -> ConversionCounts:
+    """State every legacy row this library tracks, live and removed alike.
+
+    The preflight's walk, with one difference: it takes live rows only,
+    and this takes both. Nothing the library removed is destroyed, and
+    #771 destroys the legacy table, so a skipped removed row would be a
+    record that survives this run and not the next one.
+    """
+    actor = library.user
+    counts = ConversionCounts(libraries=1)
+    candidates_by_game: dict[uuid.UUID, list[CandidateEvent]] = defaultdict(list)
+    for candidate in candidate_events(library).candidates:
+        candidates_by_game[candidate.key.aggregate_id].append(candidate)
+
+    tracked = PlayerGame.objects.filter(library=library, removed_at__isnull=True).only(
+        "id", "game_id", "tracked_at"
+    )
+    for batch in batched(
+        keyset_pages(tracked, key=("id",), page_size=CONVERSION_PAGE_SIZE),
+        CONVERSION_PAGE_SIZE,
+    ):
+        rows_for_game = _rows_for_games(batch)
+        for tracked_row in batch:
+            counts = counts + ConversionCounts(tracked=1)
+            if tracked_row.game_id not in rows_for_game:
+                counts = counts + ConversionCounts(tracked_on_removed_game=1)
+                continue
+            counts = counts + convert_game(
+                rows_for_game[tracked_row.game_id],
+                library=library,
+                actor=actor,
+                tracked_id=tracked_row.pk,
+                tracked_at=tracked_row.tracked_at,
+                candidates=candidates_by_game.get(tracked_row.pk, []),
+            )
     return counts
