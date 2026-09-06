@@ -13,6 +13,8 @@ from games.events.playthrough import (
     playthrough_created,
     playthrough_name_changed,
     playthrough_note_changed,
+    playthrough_removed,
+    playthrough_restored,
     playthrough_start_corrected,
     playthrough_started,
 )
@@ -359,3 +361,69 @@ class CorrectPlaythroughCompletion(Command):
         return [
             playthrough_completion_corrected(run.pk, when=self.when, note=self.note)
         ]
+
+
+def _refuse_under_a_removed_game(run: Playthrough, playthrough_id: uuid.UUID) -> None:
+    """Refuse a lifecycle act on a run whose game is gone.
+
+    A sentence of its own, and not `_live_run`'s: "before recording
+    this" names an act that neither of these two performs.
+    """
+    #: Under dispatch's lock: the mark cannot move.
+    if run.player_game.removed_at is not None:
+        raise CommandRejected(
+            f"This library removed the game behind playthrough {playthrough_id}, "
+            "so its runs neither leave the lists nor come back.",
+            sentence=(
+                "That game was removed from your library. Restore it before "
+                "changing its playthroughs."
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class RemovePlaythrough(Command):
+    """Take a run out of the library's lists."""
+
+    command_name: ClassVar[CommandName] = CommandName.PLAYTHROUGH_REMOVE
+    #: A UUID, because Command fingerprints its fields.
+    playthrough_id: uuid.UUID
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        run = library_playthrough(context, self.playthrough_id)
+        #: The no-op before the game's mark, unlike `_live_run`, which
+        #: reads the parent first. #906: a command asking for state
+        #: that already holds is a success, so a repeat still answers
+        #: one after the game itself was removed.
+        if run.removed_at is not None:
+            return Unchanged(
+                f"This library already removed playthrough {self.playthrough_id}."
+            )
+        _refuse_under_a_removed_game(run, self.playthrough_id)
+        return [playthrough_removed(run.pk)]
+
+
+@dataclass(frozen=True, slots=True)
+class RestorePlaythrough(Command):
+    """Put a removed run back.
+
+    `RestorePlayerGame` consults nothing above it, because a removed
+    catalog Game cannot be restored from the library and a refusal
+    would strand the row. Here the thing above is a PlayerGame,
+    `RestorePlayerGame` never refuses, so the way out is always open
+    and the refusal states the order rather than stranding a run.
+    """
+
+    command_name: ClassVar[CommandName] = CommandName.PLAYTHROUGH_RESTORE
+    #: A UUID, because Command fingerprints its fields.
+    playthrough_id: uuid.UUID
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        run = library_playthrough(context, self.playthrough_id)
+        #: The no-op first, for the reason RemovePlaythrough states.
+        if run.removed_at is None:
+            return Unchanged(
+                f"This library did not remove playthrough {self.playthrough_id}."
+            )
+        _refuse_under_a_removed_game(run, self.playthrough_id)
+        return [playthrough_restored(run.pk)]

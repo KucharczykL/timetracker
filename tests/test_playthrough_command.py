@@ -15,6 +15,8 @@ from games.commands.playthrough import (
     CorrectPlaythroughStart,
     CreatePlaythrough,
     DescribePlaythrough,
+    RemovePlaythrough,
+    RestorePlaythrough,
     StartPlaythrough,
     endpoints_certainly_reversed,
 )
@@ -1414,3 +1416,168 @@ def test_a_cleared_note_fingerprints_apart_from_no_note(
 
     with pytest.raises(IdempotencyKeyMismatch):
         _describe(owned_user, owned_library, run, name="Ironman", note="")
+
+
+def _second_run(owned_user, owned_library, key="second-run"):
+    """A run the last-ordinary-run rule does not protect."""
+    game = Game.objects.get()
+    #: CommandResult carries no events on purpose, so the new row is
+    #: the one that was not there before.
+    before = set(Playthrough.objects.values_list("pk", flat=True))
+    dispatch(
+        CreatePlaythrough(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key=key,
+    )
+    return Playthrough.objects.exclude(pk__in=before).get()
+
+
+def _remove(owned_user, owned_library, playthrough, key="remove"):
+    return dispatch(
+        RemovePlaythrough(playthrough_id=playthrough.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key=key,
+    )
+
+
+def _restore(owned_user, owned_library, playthrough, key="restore"):
+    return dispatch(
+        RestorePlaythrough(playthrough_id=playthrough.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key=key,
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_removing_a_run_stamps_the_column(owned_user, owned_library, game):
+    _track(owned_user, owned_library, game)
+    run = _second_run(owned_user, owned_library)
+
+    result = _remove(owned_user, owned_library, run)
+
+    assert result.outcome is CommandOutcome.APPENDED
+    run.refresh_from_db()
+    assert run.removed_at is not None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_removing_a_run_a_second_time_changes_nothing(owned_user, owned_library, game):
+    """A no-op is a success recording no event, per #906."""
+    _track(owned_user, owned_library, game)
+    run = _second_run(owned_user, owned_library)
+    _remove(owned_user, owned_library, run)
+
+    result = _remove(owned_user, owned_library, run, key="remove-again")
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+    assert (
+        LibraryEvent.objects.filter(event_type="library.playthrough.removed").count()
+        == 1
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_one_idempotency_key_records_one_removal(owned_user, owned_library, game):
+    """The key names the request, so a repeat replays the record."""
+    _track(owned_user, owned_library, game)
+    run = _second_run(owned_user, owned_library)
+    _remove(owned_user, owned_library, run, key="once")
+
+    result = _remove(owned_user, owned_library, run, key="once")
+
+    assert result.outcome is CommandOutcome.REPLAYED
+    assert (
+        LibraryEvent.objects.filter(event_type="library.playthrough.removed").count()
+        == 1
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_restoring_a_run_clears_the_column(owned_user, owned_library, game):
+    _track(owned_user, owned_library, game)
+    run = _second_run(owned_user, owned_library)
+    _remove(owned_user, owned_library, run)
+
+    result = _restore(owned_user, owned_library, run)
+
+    assert result.outcome is CommandOutcome.APPENDED
+    run.refresh_from_db()
+    assert run.removed_at is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_restoring_a_live_run_changes_nothing(owned_user, owned_library, game):
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+
+    result = _restore(owned_user, owned_library, run)
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+    assert not LibraryEvent.objects.filter(
+        event_type="library.playthrough.restored"
+    ).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_removing_a_run_of_another_library_is_refused(
+    owned_user, owned_library, django_user_model
+):
+    """A refusal is not a place to learn an id."""
+    stranger = django_user_model.objects.create_user(username="stranger", password="p")
+    elsewhere = Game.objects.create(library=stranger.library, name="Tunic")
+    tracked = PlayerGame.objects.create(
+        id=uuid.uuid7(),
+        library=stranger.library,
+        game=elsewhere,
+        tracked_at=timezone.now(),
+    )
+    hidden = Playthrough.objects.create(
+        id=uuid.uuid7(),
+        library=stranger.library,
+        player_game=tracked,
+        kind=PlaythroughKind.ORDINARY,
+        created_at=timezone.now(),
+    )
+
+    with pytest.raises(CommandRejected) as refusal:
+        _remove(owned_user, owned_library, hidden, key="foreign")
+
+    assert refusal.value.sentence == "That playthrough is not available."
+    assert str(hidden.pk) not in refusal.value.sentence
+
+
+@pytest.mark.django_db(transaction=True)
+def test_removing_a_run_of_a_removed_game_is_refused(owned_user, owned_library, game):
+    _track(owned_user, owned_library, game)
+    run = _second_run(owned_user, owned_library)
+    tracked = PlayerGame.objects.get()
+    PlayerGame.objects.filter(pk=tracked.pk).update(removed_at=tracked.tracked_at)
+
+    with pytest.raises(CommandRejected) as refusal:
+        _remove(owned_user, owned_library, run, key="parent-gone")
+
+    assert refusal.value.sentence == (
+        "That game was removed from your library. Restore it before changing "
+        "its playthroughs."
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_restoring_a_run_of_a_removed_game_is_refused(owned_user, owned_library, game):
+    """The way out is always open: restore the game, then the run."""
+    _track(owned_user, owned_library, game)
+    run = _second_run(owned_user, owned_library)
+    _remove(owned_user, owned_library, run)
+    tracked = PlayerGame.objects.get()
+    PlayerGame.objects.filter(pk=tracked.pk).update(removed_at=tracked.tracked_at)
+
+    with pytest.raises(CommandRejected) as refusal:
+        _restore(owned_user, owned_library, run, key="parent-gone")
+
+    assert refusal.value.sentence == (
+        "That game was removed from your library. Restore it before changing "
+        "its playthroughs."
+    )
