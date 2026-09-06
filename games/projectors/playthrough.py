@@ -10,6 +10,8 @@ from games.events.playthrough import (
     PLAYTHROUGH_CREATED,
     PLAYTHROUGH_NAME_CHANGED,
     PLAYTHROUGH_NOTE_CHANGED,
+    PLAYTHROUGH_REMOVED,
+    PLAYTHROUGH_RESTORED,
     PLAYTHROUGH_START_CORRECTED,
     PLAYTHROUGH_STARTED,
 )
@@ -75,6 +77,13 @@ class Playthroughs(Projector):
             completion_note=event.payload["note"],
         )
 
+    def _removed(self, event: RecordedEvent) -> None:
+        #: The event's instant, so a replay writes what was recorded.
+        self.amend(Playthrough, event.aggregate_id, removed_at=event.recorded_at)
+
+    def _restored(self, event: RecordedEvent) -> None:
+        self.amend(Playthrough, event.aggregate_id, removed_at=None)
+
     #: The creation handler names four columns, so amendments survive.
     #:
     #: A rebuild inserts the model defaults for the rest, and the events
@@ -90,4 +99,6 @@ class Playthroughs(Projector):
         PLAYTHROUGH_NOTE_CHANGED: _note_changed,
         PLAYTHROUGH_START_CORRECTED: _start_corrected,
         PLAYTHROUGH_COMPLETION_CORRECTED: _completion_corrected,
+        PLAYTHROUGH_REMOVED: _removed,
+        PLAYTHROUGH_RESTORED: _restored,
     }
