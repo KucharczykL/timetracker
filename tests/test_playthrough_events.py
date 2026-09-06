@@ -8,10 +8,14 @@ import pytest
 from games.events.playthrough import (
     PLAYTHROUGH_COMPLETED,
     PLAYTHROUGH_CREATED,
+    PLAYTHROUGH_NAME_CHANGED,
+    PLAYTHROUGH_NOTE_CHANGED,
     PLAYTHROUGH_STARTED,
     PlaythroughKindValue,
     playthrough_completed,
     playthrough_created,
+    playthrough_name_changed,
+    playthrough_note_changed,
     playthrough_started,
 )
 from games.events.vocabulary import DEFAULT_EVENT_TYPES, PayloadInvalid
@@ -120,3 +124,45 @@ def test_the_endpoint_builders_name_the_playthrough_they_are_told_about():
     assert (started.aggregate_id, completed.aggregate_id) == (identity, identity)
     assert (started.effective_time, completed.effective_time) == (when, None)
     assert (started.payload, completed.payload) == ({"note": "blind run"}, {"note": ""})
+
+
+def test_the_descriptive_events_are_in_the_default_vocabulary():
+    name = DEFAULT_EVENT_TYPES.spec_for("library.playthrough.name_changed")
+    note = DEFAULT_EVENT_TYPES.spec_for("library.playthrough.note_changed")
+
+    assert (name, note) == (PLAYTHROUGH_NAME_CHANGED, PLAYTHROUGH_NOTE_CHANGED)
+    assert (name.aggregate_type, note.aggregate_type) == ("playthrough", "playthrough")
+
+
+def test_a_descriptive_payload_refuses_the_other_one_s_key():
+    """Two facts, two types, and neither reads the other."""
+    with pytest.raises(PayloadInvalid):
+        DEFAULT_EVENT_TYPES.validate(
+            PLAYTHROUGH_NAME_CHANGED.event_type, {"note": "second run"}
+        )
+    with pytest.raises(PayloadInvalid):
+        DEFAULT_EVENT_TYPES.validate(
+            PLAYTHROUGH_NOTE_CHANGED.event_type, {"name": "Ironman"}
+        )
+
+
+def test_a_descriptive_payload_takes_the_cleared_value():
+    """A blank name reads as the run's number."""
+    assert DEFAULT_EVENT_TYPES.validate(
+        PLAYTHROUGH_NAME_CHANGED.event_type, {"name": ""}
+    ) == {"name": ""}
+
+
+def test_the_descriptive_events_state_no_day():
+    """A name is true of the run, not of a date."""
+    identity = uuid.uuid7()
+
+    renamed = playthrough_name_changed(identity, name="Ironman")
+    noted = playthrough_note_changed(identity, note="no saves")
+
+    assert (renamed.aggregate_id, noted.aggregate_id) == (identity, identity)
+    assert (renamed.effective_time, noted.effective_time) == (None, None)
+    assert (renamed.payload, noted.payload) == (
+        {"name": "Ironman"},
+        {"note": "no saves"},
+    )

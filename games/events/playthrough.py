@@ -111,3 +111,53 @@ def playthrough_completed(
         effective_time=when,
         payload={"note": note},
     )
+
+
+@with_config(STRICT_SCHEMA)
+class PlaythroughNamePayload(TypedDict):
+    """What the library calls this run. Blank reads as its number."""
+
+    name: str
+
+
+@with_config(STRICT_SCHEMA)
+class PlaythroughNotePayload(TypedDict):
+    """The note of the whole run.
+
+    Not `PlaythroughEndpointPayload`, though the shape is the same:
+    that note belongs to an act, and its day is the effective_time.
+    This one describes a run and has no day.
+    """
+
+    note: str
+
+
+PLAYTHROUGH_NAME_CHANGED = EventSpec(
+    "library.playthrough.name_changed",
+    aggregate_type="playthrough",
+    payload=PlaythroughNamePayload,
+)
+
+PLAYTHROUGH_NOTE_CHANGED = EventSpec(
+    "library.playthrough.note_changed",
+    aggregate_type="playthrough",
+    payload=PlaythroughNotePayload,
+)
+
+DEFAULT_EVENT_TYPES.register(PLAYTHROUGH_NAME_CHANGED)
+DEFAULT_EVENT_TYPES.register(PLAYTHROUGH_NOTE_CHANGED)
+
+
+def playthrough_name_changed(playthrough_id: uuid.UUID, *, name: str) -> NewEvent:
+    """The library calls the run this now."""
+    #: No effective_time: a rename happens on no day.
+    return PLAYTHROUGH_NAME_CHANGED.new(
+        aggregate_id=playthrough_id, payload={"name": name}
+    )
+
+
+def playthrough_note_changed(playthrough_id: uuid.UUID, *, note: str) -> NewEvent:
+    """The note of the run, as it now reads."""
+    return PLAYTHROUGH_NOTE_CHANGED.new(
+        aggregate_id=playthrough_id, payload={"note": note}
+    )
