@@ -62,9 +62,47 @@ def test_a_playthrough_starts_unnamed():
 
 
 def test_a_playthrough_starts_with_no_endpoints():
-    """#681 states them."""
+    """The date of a run nobody has stated yet."""
     assert Playthrough().started is None
     assert Playthrough().completed is None
+
+
+def test_a_playthrough_starts_with_neither_act_recorded():
+    """The marker's null is the act that never happened.
+
+    A null date cannot say it: `TemporalValue.unknown()` serializes to
+    None, so the date column reads the same for an unknown day.
+    """
+    row = Playthrough()
+
+    assert row.start_recorded_at is None
+    assert row.completion_recorded_at is None
+
+
+def test_a_playthrough_starts_with_no_endpoint_notes():
+    row = Playthrough()
+
+    assert (row.start_note, row.completion_note) == ("", "")
+
+
+def test_the_endpoint_columns_are_exempt_from_the_required_ones():
+    """The creation handler names none of them, and must not.
+
+    Each carries a default, so `_required_columns` exempts it and the
+    handler #679 wrote stays as it is.
+    """
+    required = {name for name, _ in _required_columns(Playthrough)}
+
+    assert required.isdisjoint(
+        {
+            "started",
+            "completed",
+            "start_recorded_at",
+            "completion_recorded_at",
+            "start_note",
+            "completion_note",
+        }
+    )
 
 
 def test_a_playthrough_starts_live():

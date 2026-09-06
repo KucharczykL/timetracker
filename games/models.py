@@ -1634,7 +1634,7 @@ class Playthrough(ProjectionModel):
     name = models.CharField(max_length=255, blank=True, default="")
     #: #1010 states it.
     note = models.TextField(blank=True, default="")
-    #: #681 states both endpoints.
+    #: The stated date; null is a day nobody knows.
     started = TemporalValueField()
     started_lower = models.GeneratedField(
         expression=TemporalLowerBound("started"),
@@ -1652,6 +1652,12 @@ class Playthrough(ProjectionModel):
         db_persist=True,
         editable=False,
     )
+    #: Null is the act that never happened. The date cannot say it: an
+    #: unknown day serializes to null too.
+    start_recorded_at = models.DateTimeField(null=True, default=None, editable=False)
+    #: The note of the act, which the Journal dates. The row's `note`
+    #: describes the run and belongs to no day.
+    start_note = models.TextField(blank=True, default="")
     completed = TemporalValueField()
     completed_lower = models.GeneratedField(
         expression=TemporalLowerBound("completed"),
@@ -1669,6 +1675,10 @@ class Playthrough(ProjectionModel):
         db_persist=True,
         editable=False,
     )
+    completion_recorded_at = models.DateTimeField(
+        null=True, default=None, editable=False
+    )
+    completion_note = models.TextField(blank=True, default="")
     #: The creation event's recorded_at.
     created_at = models.DateTimeField(editable=False)
     #: Null means live. #1011 states it.
