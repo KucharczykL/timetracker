@@ -9,6 +9,7 @@ from django.db import models
 from django.db.models import QuerySet
 
 from games.commands.playergame import tracked_game
+from games.commands.scope import Refusal, library_row
 from games.events.dispatch import Command, CommandContext, CommandName, CommandRejected
 from games.events.playthrough import (
     playthrough_completed,
@@ -103,22 +104,20 @@ class CreatePlaythrough(Command):
 def library_playthrough(
     context: CommandContext, playthrough_id: uuid.UUID
 ) -> Playthrough:
-    """The run inside this library, or a refusal naming none.
-
-    A row of another library and a row that does not exist answer
-    alike: a refusal is not a place to learn an id. The third
-    library-scoped resolver, and the third caller #909 merges.
-    """
-    try:
-        return Playthrough.objects.select_related("player_game").get(
-            library=context.library, pk=playthrough_id
-        )
-    except Playthrough.DoesNotExist:
-        raise CommandRejected(
-            f"This library holds no playthrough {playthrough_id}. A stated "
-            "fact belongs to a run the library records.",
+    """This library's run, or a refusal."""
+    return library_row(
+        context,
+        #: Every caller reads the parent's mark.
+        Playthrough.objects.select_related("player_game"),
+        Refusal(
+            message=(
+                f"This library holds no playthrough {playthrough_id}. A stated "
+                "fact belongs to a run the library records."
+            ),
             sentence="That playthrough is not available.",
-        ) from None
+        ),
+        pk=playthrough_id,
+    )
 
 
 def _live_run(context: CommandContext, playthrough_id: uuid.UUID) -> Playthrough:

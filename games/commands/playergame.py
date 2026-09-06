@@ -5,9 +5,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import ClassVar, cast
 
-from django.db.models import Q
 from django.utils import timezone
 
+from games.commands.scope import Refusal, library_row
 from games.events.dispatch import (
     Command,
     CommandContext,
@@ -46,15 +46,20 @@ class PlayerGameNotTracked(CommandRejected):
 
 def tracked_game(context: CommandContext, game_id: uuid.UUID) -> PlayerGame:
     """The projection row, never the catalog."""
-    try:
-        return PlayerGame.objects.get(library=context.library, game_id=game_id)
-    except PlayerGame.DoesNotExist:
-        raise PlayerGameNotTracked(
-            f"This library tracks no game {game_id}. A recorded fact belongs "
-            "to a tracked game, and #676 backfills one for every game a "
-            "library has.",
+    return library_row(
+        context,
+        PlayerGame.objects.all(),
+        Refusal(
+            message=(
+                f"This library tracks no game {game_id}. A recorded fact belongs "
+                "to a tracked game, and #676 backfills one for every game a "
+                "library has."
+            ),
             sentence="This game is not tracked yet. Reload the page and try again.",
-        ) from None
+            raises=PlayerGameNotTracked,
+        ),
+        game_id=game_id,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,10 +98,7 @@ class TrackGame(Command):
     def _visible_game(self, context: CommandContext) -> Game:
         """Its own game, or a shared one."""
         try:
-            return Game.objects.filter(
-                Q(library=context.library) | Q(library__isnull=True),
-                removed_at__isnull=True,
-            ).get(pk=self.game_id)
+            return Game.objects.visible_to(context.library).get(pk=self.game_id)
         except Game.DoesNotExist:
             #: Leaks nothing about another library's rows.
             raise CommandRejected(
