@@ -53,6 +53,13 @@ the act's noun carries everything about the statement: `start_recorded_at`,
 `start_note`. The docs sweep adds that sentence to the Naming section, because
 every later endpoint faces the same split.
 
+One verb still runs through the act: `library.playthrough.started`,
+`StartPlaythrough`, `start_recorded_at`. Only the form differs, as it already
+does between the event and the command. The cost of the noun is that a marker
+column holds the envelope's own `recorded_at` under a similar name, so the two
+handlers read almost alike and a copy-paste would go unseen; each handler's
+test therefore asserts the other endpoint's marker is still null.
+
 The two notes sit beside the row's own `note`, which #1010 states. They are not
 the same note. The row's note describes the run; an endpoint note describes one
 act within it, and the Journal needs it dated to place it on a day. The
@@ -77,7 +84,9 @@ never comes up, and the autodetector writes the whole migration. Existing rows
 take the defaults, which read correctly: a row created before this issue has
 stated neither endpoint.
 
-`makemigrations --check` must report no drift once it is written.
+`makemigrations --check` must report no drift once it is written, and
+`make format` runs after it: Django writes single quotes and ruff wants double,
+so a freshly generated migration fails `make format-check` as it stands.
 
 ## No constraint states the rule
 
@@ -134,11 +143,16 @@ def playthrough_started(
 CommandName.PLAYTHROUGH_START     = "library.playthrough.start"
 CommandName.PLAYTHROUGH_COMPLETE  = "library.playthrough.complete"
 
-StartPlaythrough(playthrough_id: UUID, when: TemporalValue | None, note: str = "")
-CompletePlaythrough(playthrough_id: UUID, when: TemporalValue | None, note: str = "")
+StartPlaythrough(playthrough_id: UUID, when: TemporalValue | None, note: str)
+CompletePlaythrough(playthrough_id: UUID, when: TemporalValue | None, note: str)
 ```
 
 `when=None` is "Played before": the act, no date, no Session and no duration.
+
+Neither field takes a default. A caller states the whole endpoint, because the
+build compares the whole endpoint: a default `note=""` would let a caller
+restate a date, omit the note it never meant to touch, and be refused for
+changing it.
 
 A command names a playthrough, not a game. A tracked game has many runs, and
 #684 converts each legacy `PlayEvent` into its own row. The screen that resolves
@@ -186,20 +200,48 @@ no id. It is a third library-scoped resolver beside `tracked_game` and
 - The two endpoints are certainly reversed. The rule is one function both
   commands call, over the value being stated and the value already recorded.
 
+The three middle answers are one test in a fixed order, and the order is the
+whole point of the marker:
+
+```
+if row.start_recorded_at is None:                     append the event
+elif (when, note) == (row.started, row.start_note):   Unchanged
+else:                                                 CommandRejected
+```
+
 ### The order rule
 
 A completion earlier than a start is refused when the two cannot overlap in
 that order:
 
 ```
-refused when completed.upper_bound < started.lower_bound
+refused when started.lower_bound is not None
+        and completed.upper_bound is not None
+        and neither value carries a qualifier
+        and completed.upper_bound < started.lower_bound
 ```
 
-Both bounds must be known. An endpoint with no date has no bound and is never
-refused, and neither is an imprecise pair that could be consistent: a run
-started on 10 March and completed "in March" passes, because March ends on the
-31st. A run started in May and completed in March is refused, because the
-completion's last possible day precedes the start's first possible day.
+Every guard is load-bearing, and a bare comparison raises `TypeError` on four
+reachable inputs rather than passing them.
+
+A bound is unknown for two reasons, not one. The endpoint may carry no date at
+all, and a dated endpoint may be an open-ended range: `../2024-06` bounds
+nothing below and `2024-01/` bounds nothing above, both first-class grammar in
+[Temporal](../../temporal.md) and both offered by `<temporal-field>`, which has
+an open-start box and a three-way end-shape radio group. Either way the window
+has no edge on that side and the pair cannot be proved impossible.
+
+A qualifier is the third guard, and it is the one the rule would otherwise get
+wrong. `~` and `?` leave the bounds identical to the bare value, so "started
+about 10 May" bounds to 10 May exactly, and a completion on 9 May would be
+refused — though `~` exists to say that day is not exact. The rule refuses only
+the certainly-impossible, and a qualified date states no certainty to
+contradict, so a qualifier on either endpoint ends the check.
+
+What remains is refused: a run started in May and completed in March, because
+the completion's last possible day precedes the start's first possible day. An
+imprecise pair that could be consistent passes, so a run started on 10 March
+and completed "in March" is fine, because March ends on the 31st.
 
 This is why the two endpoints are one issue. The rule reads both columns, and a
 rule stated in one issue and enforced in another is a rule with two homes.
@@ -243,17 +285,27 @@ owns, and it is refused here with the same sentence as a changed date.
 
 ## Verification
 
-- Both event types register, and their payloads round-trip through the
-  vocabulary, with a note and with the empty string.
+- Both event types register, their payloads round-trip through the vocabulary
+  with a note and with the empty string, and each dispatch leaves the row the
+  handler was supposed to amend. Registration alone proves nothing: nothing in
+  the suite fails when a registered event type has no handler, so a test that
+  stops at "the type is known" would pass with the projector unwired.
 - Each command appends its event, with the stated date as `effective_time` and
-  with a null `effective_time` for "Played before".
+  with a null `effective_time` for "Played before". Each handler's test also
+  reads the other endpoint's marker back as null.
 - The projection reads back the act, the date and the note apart:
   `start_recorded_at` set with `started` null is a run that started on an
   unknown day, and it keeps its note.
 - Each refusal has a test, and each carries a sentence.
 - The order rule is tested over a table of precision pairs: day against day,
-  day against month, month against year, a range against an atom, an unknown
-  against each, and each pair in both statement orders.
+  day against month, month against year, a decade, a range against an atom, a
+  null endpoint against each, an open-start `../2024-06` and an unknown-end
+  `2024-01/` against each, a qualified value on each side, and every pair in
+  both statement orders. A bare comparison raises `TypeError` on five of these,
+  so the table is what proves the guards are there.
+- `PINNED_DEFAULTS` in `tests/test_projection_model.py` names all four new
+  columns. Nothing else points at that dict, and every defaulted column on a
+  projection has to be in it.
 - A repeated dispatch of one command returns `UNCHANGED`, and a repeated
   delivery under one idempotency key returns `REPLAYED`.
 - A replay from an empty database reproduces every column of every row, over a
