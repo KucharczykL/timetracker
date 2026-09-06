@@ -159,10 +159,7 @@ all. The refusal is therefore written as a registry the command reads, empty on
 delivery:
 
     class BlockingReferrer(NamedTuple):
-        """A live row that blocks a removal.
-
-        Every entry's model must carry `removed_at`.
-        """
+        """One registered way to name a run."""
 
         model: type[models.Model]
         #: Field name alias from games/projections.py.
@@ -177,9 +174,22 @@ Each entry writes its own sentence, because "move the sessions" is advice only
 its own referrer can give. The model must carry `removed_at`, because what a
 person removed states nothing about a run.
 
+That requirement is enforced rather than stated, by the same construction path
+`ProjectionReference.on` uses in `games/projections.py`: `BlockingReferrer.on`
+refuses a field that is not a foreign key, a foreign key that names something
+other than a `Playthrough`, and a model with no concrete `removed_at`. Without
+it a malformed entry would state itself as a `FieldError` raised inside
+`build()`, which answers every removal in the library with a 500, at the moment
+the entry is added rather than at the moment it is registered.
+
 `blocking_referrer(run)` returns the first entry whose model has a live row
 naming the run, or `None`, and `RemovePlaythrough` turns an entry into a
-refusal carrying that entry's sentence.
+refusal carrying that entry's sentence. It does not scope that lookup on the
+library, and `_other_live_ordinary_runs` does: the sibling count asks which
+rows this library holds, where a foreign row must not stand in for one of its
+own, and this asks only whether anything at all names the run. A foreign row
+naming it is the drift `audit_library_ownership` reports, and releasing the run
+from under that row would answer drift by ignoring it.
 
 The registry is a module-level tuple in `games/commands/playthrough.py`, beside
 its one reader. It is deliberately **not** a second entry in
@@ -243,6 +253,15 @@ rows still hears about it. With one, a caller that means to render a row no
 number is counted across says what to call it. #1012 renders the first such
 screen and chooses the words; this issue delivered the seam and its tests, which
 are its only callers today.
+
+The fallback excuses only the rows it was written for. There is a third way to
+reach that branch, and it is neither of the two above: a live ordinary row a
+caller never passed through `with_display_number()`. Honouring the fallback
+there would label every run of a forgotten queryset "Removed playthrough", the
+exact silence `UnnumberedPlaythrough` exists to break, and no test could see it
+because the annotation is absent in both cases. So the row itself decides:
+`is_numbered()` reads the two columns the numbering is counted across, and a
+row that passes it raises whatever the caller stated.
 
 ## What this issue does not change
 

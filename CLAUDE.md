@@ -182,15 +182,19 @@ docs/           — Additional documentation
   every stated value is stripped in `__post_init__`, ahead of the fingerprint.
   Its `removed_at` is the projector's, so it is absent from
   `REMOVABLE_MODELS`: #1011 states it with `RemovePlaythrough` and clears it
-  with `RestorePlaythrough`, which refuse a lifecycle act under a removed
-  `PlayerGame`, refuse taking the last live ordinary run off a tracked game,
-  and read `BLOCKING_REFERRERS` — empty until #700 and #701 give a Session its
-  reference to a run. A blank `name` reads as
+  with `RestorePlaythrough`. Both refuse a lifecycle act under a removed
+  `PlayerGame`, and both answer `Unchanged` for the state the row already
+  holds, ahead of that refusal. Removal alone refuses taking the last live
+  ordinary run off a tracked game and reads `BLOCKING_REFERRERS`, a registry
+  of the live rows that name a run — empty until #700 and #701 give a Session
+  its reference to one, and constructed only through `BlockingReferrer.on`,
+  which refuses an entry the lookup could not run. A blank `name` reads as
   `Playthrough N`, derived at read time by
   `games/reads/playthrough_numbering.py` and stored nowhere, which is why
   taking a name away is refused on a row no number is counted across — only
   taking one away, so a save that repeats the blank a row was born with still
-  states its note; no screen calls it yet
+  states its note. No screen calls any of it yet: #1011 delivered the commands
+  alone, and #1012 renders the first screen
 
 **Nothing a user removes is destroyed** (#944). The nine removable models —
 Game, Edition, Release, Platform, Device, Session, PlayEvent, Purchase,
