@@ -90,6 +90,9 @@ class CommandName(CommandVocabulary):
     PLAYTHROUGH_CREATE = "library.playthrough.create"
     PLAYTHROUGH_START = "library.playthrough.start"
     PLAYTHROUGH_COMPLETE = "library.playthrough.complete"
+    PLAYTHROUGH_DESCRIBE = "library.playthrough.describe"
+    PLAYTHROUGH_CORRECT_START = "library.playthrough.correct_start"
+    PLAYTHROUGH_CORRECT_COMPLETION = "library.playthrough.correct_completion"
 
 
 @dataclass(frozen=True, slots=True)

@@ -171,12 +171,22 @@ docs/           — Additional documentation
   that never happened, and `games/reads/playthrough_endpoints.py` reads the
   pair as one `StatedEndpoint`. #681 states both with
   `StartPlaythrough`/`CompletePlaythrough` in `games/commands/playthrough.py`,
-  which refuse a second statement of a stated endpoint (#1010 corrects one)
-  and a completion that certainly precedes the start. Its `removed_at` is the
-  projector's, stated by a command, which is why it is absent from
-  `REMOVABLE_MODELS`. A blank `name` reads as `Playthrough N`, derived at read
-  time by `games/reads/playthrough_numbering.py` and stored nowhere; no screen
-  calls it yet
+  which refuse a second statement of a stated endpoint and a completion that
+  certainly precedes the start. #1010 adds the three commands beside them:
+  `CorrectPlaythroughStart`/`CorrectPlaythroughCompletion` state a better day
+  or note for an endpoint already stated — refused where none is, ahead of the
+  value comparison, because an unstated endpoint holds the very values a
+  "played before" correction states — and neither moves the marker, so a
+  replay keeps the instant the act was recorded; `DescribePlaythrough` states
+  the `name`, the `note`, or both, `None` for a fact it does not state, and
+  every stated value is stripped in `__post_init__`, ahead of the fingerprint.
+  Its `removed_at` is the projector's, stated by the command #1011 adds, which
+  is why it is absent from `REMOVABLE_MODELS`. A blank `name` reads as
+  `Playthrough N`, derived at read time by
+  `games/reads/playthrough_numbering.py` and stored nowhere, which is why
+  taking a name away is refused on a row no number is counted across — only
+  taking one away, so a save that repeats the blank a row was born with still
+  states its note; no screen calls it yet
 
 **Nothing a user removes is destroyed** (#944). The nine removable models —
 Game, Edition, Release, Platform, Device, Session, PlayEvent, Purchase,

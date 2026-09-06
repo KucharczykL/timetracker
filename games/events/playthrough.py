@@ -61,8 +61,9 @@ class PlaythroughEndpointPayload(TypedDict):
     key would ask a reader whether a value is absent or empty, and
     here the two mean one thing.
 
-    One type for both specs. They are two EventSpecs, so an issue that
-    gives one of them a field gives it a type of its own.
+    One type for the four specs about an endpoint. Each is its own
+    EventSpec, so an issue that gives one of them a field gives it a
+    type of its own, and the rows already written keep reading back.
     """
 
     note: str
@@ -110,4 +111,98 @@ def playthrough_completed(
         aggregate_id=playthrough_id,
         effective_time=when,
         payload={"note": note},
+    )
+
+
+PLAYTHROUGH_START_CORRECTED = EventSpec(
+    "library.playthrough.start_corrected",
+    aggregate_type="playthrough",
+    payload=PlaythroughEndpointPayload,
+)
+
+PLAYTHROUGH_COMPLETION_CORRECTED = EventSpec(
+    "library.playthrough.completion_corrected",
+    aggregate_type="playthrough",
+    payload=PlaythroughEndpointPayload,
+)
+
+DEFAULT_EVENT_TYPES.register(PLAYTHROUGH_START_CORRECTED)
+DEFAULT_EVENT_TYPES.register(PLAYTHROUGH_COMPLETION_CORRECTED)
+
+
+def playthrough_start_corrected(
+    playthrough_id: uuid.UUID,
+    *,
+    when: TemporalValue | None,
+    note: str,
+) -> NewEvent:
+    """The run began on the day now stated, or on none."""
+    return PLAYTHROUGH_START_CORRECTED.new(
+        aggregate_id=playthrough_id,
+        effective_time=when,
+        payload={"note": note},
+    )
+
+
+def playthrough_completion_corrected(
+    playthrough_id: uuid.UUID,
+    *,
+    when: TemporalValue | None,
+    note: str,
+) -> NewEvent:
+    """The run met its main objective on the day now stated, or on none."""
+    return PLAYTHROUGH_COMPLETION_CORRECTED.new(
+        aggregate_id=playthrough_id,
+        effective_time=when,
+        payload={"note": note},
+    )
+
+
+@with_config(STRICT_SCHEMA)
+class PlaythroughNamePayload(TypedDict):
+    """What the library calls this run. Blank reads as its number."""
+
+    name: str
+
+
+@with_config(STRICT_SCHEMA)
+class PlaythroughNotePayload(TypedDict):
+    """The note of the whole run.
+
+    Not `PlaythroughEndpointPayload`, though the shape is the same:
+    that note belongs to an act, and its day is the effective_time.
+    This one describes a run and has no day.
+    """
+
+    note: str
+
+
+PLAYTHROUGH_NAME_CHANGED = EventSpec(
+    "library.playthrough.name_changed",
+    aggregate_type="playthrough",
+    payload=PlaythroughNamePayload,
+)
+
+PLAYTHROUGH_NOTE_CHANGED = EventSpec(
+    "library.playthrough.note_changed",
+    aggregate_type="playthrough",
+    payload=PlaythroughNotePayload,
+)
+
+DEFAULT_EVENT_TYPES.register(PLAYTHROUGH_NAME_CHANGED)
+DEFAULT_EVENT_TYPES.register(PLAYTHROUGH_NOTE_CHANGED)
+
+
+def playthrough_name_changed(playthrough_id: uuid.UUID, *, name: str) -> NewEvent:
+    """The library calls the run this now."""
+    #: No effective_time: a rename happens on no day.
+    return PLAYTHROUGH_NAME_CHANGED.new(
+        aggregate_id=playthrough_id, payload={"name": name}
+    )
+
+
+def playthrough_note_changed(playthrough_id: uuid.UUID, *, note: str) -> NewEvent:
+    """The note of the run, as it now reads."""
+    return PLAYTHROUGH_NOTE_CHANGED.new(
+        aggregate_id=playthrough_id, payload={"note": note}
     )

@@ -1631,10 +1631,10 @@ class Playthrough(ProjectionModel):
     #: Stated by the creation event, never restated. No default, so
     #: `_required_columns` holds the handler to naming it.
     kind = models.CharField(max_length=16, choices=PlaythroughKind)
-    #: #1010 states it; blank reads as `Playthrough N`, derived at read
-    #: time by `games/reads/playthrough_numbering.py`.
+    #: Stated by `DescribePlaythrough`; blank reads as `Playthrough N`,
+    #: derived at read time by `games/reads/playthrough_numbering.py`.
     name = models.CharField(max_length=255, blank=True, default="")
-    #: #1010 states it.
+    #: Stated by `DescribePlaythrough`, beside the name.
     note = models.TextField(blank=True, default="")
     #: The day the run began. Null is a day nobody knows, which is
     #: why `start_recorded_at` beside it carries the act itself.
