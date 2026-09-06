@@ -6,7 +6,11 @@ from typing import ClassVar
 from games.events.envelope import RecordedEvent
 from games.events.playthrough import (
     PLAYTHROUGH_COMPLETED,
+    PLAYTHROUGH_COMPLETION_CORRECTED,
     PLAYTHROUGH_CREATED,
+    PLAYTHROUGH_NAME_CHANGED,
+    PLAYTHROUGH_NOTE_CHANGED,
+    PLAYTHROUGH_START_CORRECTED,
     PLAYTHROUGH_STARTED,
 )
 from games.events.projection import HandlerMap, Projector, ProjectorFamily
@@ -48,6 +52,29 @@ class Playthroughs(Projector):
             completion_note=event.payload["note"],
         )
 
+    def _name_changed(self, event: RecordedEvent) -> None:
+        self.amend(Playthrough, event.aggregate_id, name=event.payload["name"])
+
+    def _note_changed(self, event: RecordedEvent) -> None:
+        self.amend(Playthrough, event.aggregate_id, note=event.payload["note"])
+
+    def _start_corrected(self, event: RecordedEvent) -> None:
+        #: No marker: the act was recorded when it was stated.
+        self.amend(
+            Playthrough,
+            event.aggregate_id,
+            started=event.effective_time,
+            start_note=event.payload["note"],
+        )
+
+    def _completion_corrected(self, event: RecordedEvent) -> None:
+        self.amend(
+            Playthrough,
+            event.aggregate_id,
+            completed=event.effective_time,
+            completion_note=event.payload["note"],
+        )
+
     #: The creation handler names four columns, so amendments survive.
     #:
     #: A rebuild inserts the model defaults for the rest, and the events
@@ -59,4 +86,8 @@ class Playthroughs(Projector):
         PLAYTHROUGH_CREATED: _created,
         PLAYTHROUGH_STARTED: _started,
         PLAYTHROUGH_COMPLETED: _completed,
+        PLAYTHROUGH_NAME_CHANGED: _name_changed,
+        PLAYTHROUGH_NOTE_CHANGED: _note_changed,
+        PLAYTHROUGH_START_CORRECTED: _start_corrected,
+        PLAYTHROUGH_COMPLETION_CORRECTED: _completion_corrected,
     }

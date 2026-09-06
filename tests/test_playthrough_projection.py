@@ -13,7 +13,13 @@ from games.commands.playthrough import CompletePlaythrough, StartPlaythrough
 from games.events.append import lock_stream
 from games.events.dispatch import dispatch
 from games.events.envelope import RecordedEvent
-from games.events.playthrough import playthrough_created
+from games.events.playthrough import (
+    playthrough_completion_corrected,
+    playthrough_created,
+    playthrough_name_changed,
+    playthrough_note_changed,
+    playthrough_start_corrected,
+)
 from games.events.projection import DEFAULT_REGISTRY, _required_columns
 from games.events.rebuild import RebuildMode, rebuild_projections
 from games.events.replay import replay
@@ -441,6 +447,201 @@ def test_an_empty_database_replay_reproduces_both_endpoints(owned_user, owned_li
         (CompletePlaythrough(playthrough_id=run.pk, when=None, note="b"), "done"),
     ):
         dispatch(command, actor=owned_user, library=owned_library, idempotency_key=key)
+    before = list(Playthrough.objects.order_by("pk").values())
+    #: The child first: player_game RESTRICTs.
+    Playthrough.objects.all().delete()
+    PlayerGame.objects.all().delete()
+
+    replay(owned_library)
+
+    assert list(Playthrough.objects.order_by("pk").values()) == before
+
+
+def append_about_run(library, actor, event, *, key):
+    """Append one event about a run that exists, as dispatch would."""
+    with transaction.atomic():
+        stream = lock_stream(library)
+        return stream.append(
+            [event],
+            actor=actor,
+            correlation_id=uuid.uuid7(),
+            idempotency_key=key,
+        )
+
+
+def started_run(owned_user, owned_library, *, when, note="first"):
+    """A tracked game with one run, whose start is stated."""
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    dispatch(
+        StartPlaythrough(playthrough_id=run.pk, when=when, note=note),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="start",
+    )
+    return run
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_rename_writes_the_name_and_nothing_else(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+
+    append_about_run(
+        owned_library,
+        owned_user,
+        playthrough_name_changed(run.pk, name="Ironman"),
+        key="rename",
+    )
+
+    row = Playthrough.objects.get()
+    assert row.name == "Ironman"
+    #: Two facts, two handlers, and neither writes the other.
+    assert row.note == ""
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_note_change_writes_the_note_and_nothing_else(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+
+    append_about_run(
+        owned_library,
+        owned_user,
+        playthrough_note_changed(run.pk, note="no saves"),
+        key="note",
+    )
+
+    row = Playthrough.objects.get()
+    assert row.note == "no saves"
+    assert row.name == ""
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_corrected_start_replaces_the_date_and_keeps_the_marker(
+    owned_user, owned_library
+):
+    """The act happened once; only the day it names was wrong."""
+    run = started_run(owned_user, owned_library, when=TemporalValue.from_year(2023))
+    stated_at = LibraryEvent.objects.get(
+        event_type="library.playthrough.started"
+    ).recorded_at
+
+    append_about_run(
+        owned_library,
+        owned_user,
+        playthrough_start_corrected(
+            run.pk, when=TemporalValue.from_year(2024), note="second look"
+        ),
+        key="correct-start",
+    )
+
+    row = Playthrough.objects.get()
+    assert row.started == TemporalValue.from_year(2024)
+    assert row.start_note == "second look"
+    assert row.start_recorded_at == stated_at
+    #: The other endpoint stays the one nobody stated.
+    assert (row.completed, row.completion_recorded_at, row.completion_note) == (
+        None,
+        None,
+        "",
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_corrected_completion_replaces_the_date_and_keeps_the_marker(
+    owned_user, owned_library
+):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    dispatch(
+        CompletePlaythrough(
+            playthrough_id=run.pk, when=TemporalValue.from_year(2023), note="done"
+        ),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="done",
+    )
+    stated_at = LibraryEvent.objects.get(
+        event_type="library.playthrough.completed"
+    ).recorded_at
+
+    append_about_run(
+        owned_library,
+        owned_user,
+        playthrough_completion_corrected(
+            run.pk, when=TemporalValue.from_day(date(2024, 4, 2)), note="hard mode"
+        ),
+        key="correct-completion",
+    )
+
+    row = Playthrough.objects.get()
+    assert row.completed == TemporalValue.from_day(date(2024, 4, 2))
+    assert row.completion_note == "hard mode"
+    assert row.completion_recorded_at == stated_at
+    assert (row.started, row.start_recorded_at, row.start_note) == (None, None, "")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_correction_reads_back_an_unknown_day_as_the_act_alone(
+    owned_user, owned_library
+):
+    """A stated day, corrected to a day nobody knows."""
+    run = started_run(owned_user, owned_library, when=TemporalValue.from_year(2023))
+
+    append_about_run(
+        owned_library,
+        owned_user,
+        playthrough_start_corrected(run.pk, when=None, note=""),
+        key="correct-start",
+    )
+
+    row = Playthrough.objects.get()
+    assert row.started is None
+    assert row.start_recorded_at is not None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_replay_keeps_the_instant_the_start_was_recorded(owned_user, owned_library):
+    """A correction states a better date, not a second act."""
+    run = started_run(owned_user, owned_library, when=TemporalValue.from_year(2023))
+    append_about_run(
+        owned_library,
+        owned_user,
+        playthrough_start_corrected(
+            run.pk, when=TemporalValue.from_year(2024), note="second look"
+        ),
+        key="correct-start",
+    )
+    stated_at = Playthrough.objects.get(pk=run.pk).start_recorded_at
+    #: The child first: player_game RESTRICTs.
+    Playthrough.objects.all().delete()
+    PlayerGame.objects.all().delete()
+
+    replay(owned_library)
+
+    rebuilt = Playthrough.objects.get(pk=run.pk)
+    assert rebuilt.start_recorded_at == stated_at
+    assert rebuilt.started == TemporalValue.from_year(2024)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_empty_database_replay_reproduces_a_described_run(owned_user, owned_library):
+    """Every written value comes off the event, so a replay agrees."""
+    run = started_run(owned_user, owned_library, when=TemporalValue.from_year(2023))
+    for event, key in (
+        (playthrough_name_changed(run.pk, name="Ironman"), "rename"),
+        (playthrough_note_changed(run.pk, note="no saves"), "note"),
+        (
+            playthrough_start_corrected(run.pk, when=None, note="a guess"),
+            "correct-start",
+        ),
+    ):
+        append_about_run(owned_library, owned_user, event, key=key)
     before = list(Playthrough.objects.order_by("pk").values())
     #: The child first: player_game RESTRICTs.
     Playthrough.objects.all().delete()
