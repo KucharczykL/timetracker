@@ -1,6 +1,7 @@
 """What the legacy PlayEvent rows hold.
 
-#684 imports the classifiers, so the two agree.
+#684 imports `classify_row`, `legacy_order_key`, `candidate_events` and
+`pair_endpoints`, so the two agree.
 """
 
 import uuid
@@ -334,7 +335,7 @@ class CandidateEvents(NamedTuple):
     undated: int
 
 
-def _candidate_events(library: UserLibrary) -> CandidateEvents:
+def candidate_events(library: UserLibrary) -> CandidateEvents:
     """Every #676 status event, one query.
 
     LibraryEvent indexes neither the type nor the payload, so the scan is
@@ -414,7 +415,7 @@ def preflight_library(
 ) -> LibraryPreflight:
     """One library's legacy rows, read and counted."""
     counts = _excluded_counts(library)
-    candidates, undated = _candidate_events(library)
+    candidates, undated = candidate_events(library)
     counts = counts + PreflightCounts(
         status_events_676=len(candidates), status_events_undated=undated
     )
