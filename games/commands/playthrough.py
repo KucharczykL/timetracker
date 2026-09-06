@@ -106,9 +106,7 @@ def library_playthrough(
         ) from None
 
 
-def _endpoint_subject(
-    context: CommandContext, playthrough_id: uuid.UUID
-) -> Playthrough:
+def _live_run(context: CommandContext, playthrough_id: uuid.UUID) -> Playthrough:
     """The run, refused if nothing may be stated about it."""
     run = library_playthrough(context, playthrough_id)
     #: Under dispatch's lock: neither mark can move.
@@ -150,7 +148,7 @@ class StartPlaythrough(Command):
         object.__setattr__(self, "when", stated_date(self.when))
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
-        run = _endpoint_subject(context, self.playthrough_id)
+        run = _live_run(context, self.playthrough_id)
         stated = stated_start(run)
         if stated is not None:
             if (self.when, self.note) == (stated.when, stated.note):
@@ -188,7 +186,7 @@ class CompletePlaythrough(Command):
         object.__setattr__(self, "when", stated_date(self.when))
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
-        run = _endpoint_subject(context, self.playthrough_id)
+        run = _live_run(context, self.playthrough_id)
         stated = stated_completion(run)
         if stated is not None:
             if (self.when, self.note) == (stated.when, stated.note):
