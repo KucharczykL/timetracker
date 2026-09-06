@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from games.commands.playergame import PlayerGameNotTracked, TrackGame
 from games.commands.playthrough import (
+    PLAYTHROUGH_NAME_MAX_LENGTH,
     CompletePlaythrough,
     CorrectPlaythroughCompletion,
     CorrectPlaythroughStart,
@@ -648,6 +649,63 @@ def test_a_cleared_name_reads_as_the_display_number(owned_user, owned_library, g
     assert display_name(numbered) == "Playthrough 1"
 
 
+@pytest.mark.django_db(transaction=True)
+def test_the_note_is_stripped_like_the_name(owned_user, owned_library, game):
+    """One rule for either fact, so neither stores its spaces."""
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+
+    _describe(owned_user, owned_library, run, name=None, note=" no saves ")
+
+    assert Playthrough.objects.get().note == "no saves"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_spaces_clear_the_note(owned_user, owned_library, game):
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _describe(owned_user, owned_library, run, name=None, note="no saves")
+
+    _describe(owned_user, owned_library, run, name=None, note="   ", key="again")
+
+    assert Playthrough.objects.get().note == ""
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_fact_stated_as_it_already_reads_records_no_event(
+    owned_user, owned_library, game
+):
+    """A save that moved the note alone appends one event."""
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _describe(owned_user, owned_library, run, name="Ironman", note="no saves")
+
+    _describe(
+        owned_user, owned_library, run, name="Ironman", note="one save", key="again"
+    )
+
+    recorded = LibraryEvent.objects.filter(
+        aggregate_id=run.pk, event_type="library.playthrough.name_changed"
+    )
+    assert recorded.count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_name_that_differs_only_by_spaces_fingerprints_alike(
+    owned_user, owned_library, game
+):
+    """The strip runs before the key is taken, or it is two keys."""
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _describe(owned_user, owned_library, run, name="Ironman ", note=None, key="one")
+
+    again = _describe(
+        owned_user, owned_library, run, name="Ironman", note=None, key="one"
+    )
+
+    assert again.outcome is CommandOutcome.REPLAYED
+
+
 def test_a_command_that_states_no_fact_is_not_a_command():
     """A request expressing no intent claims no idempotency key."""
     with pytest.raises(ValueError):
@@ -675,7 +733,7 @@ def test_restating_both_facts_exactly_changes_nothing(owned_user, owned_library,
 
 @pytest.mark.django_db(transaction=True)
 def test_a_name_longer_than_the_column_is_refused(owned_user, owned_library, game):
-    """The refusal reads the command, not the row."""
+    """The bound is the column's width, read off the column."""
     _track(owned_user, owned_library, game)
     run = Playthrough.objects.get()
 
@@ -690,11 +748,34 @@ def test_a_name_longer_than_the_column_is_refused(owned_user, owned_library, gam
     ).exists()
 
 
+def test_the_refused_width_is_the_width_the_column_holds():
+    """The sentence quotes a number, so the two cannot drift."""
+    assert PLAYTHROUGH_NAME_MAX_LENGTH == Playthrough._meta.get_field("name").max_length
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_name_of_the_column_s_width_is_accepted(owned_user, owned_library, game):
+    """The refusal is over the width, not at it."""
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+
+    result = _describe(
+        owned_user,
+        owned_library,
+        run,
+        name="x" * PLAYTHROUGH_NAME_MAX_LENGTH,
+        note=None,
+    )
+
+    assert result.outcome is CommandOutcome.APPENDED
+    assert Playthrough.objects.get().name == "x" * PLAYTHROUGH_NAME_MAX_LENGTH
+
+
 @pytest.mark.django_db(transaction=True)
 def test_clearing_the_name_of_an_unnumbered_run_is_refused(
     owned_user, owned_library, game
 ):
-    """A bucket row has no number to fall back on."""
+    """An imported-history run has no number to fall back on."""
     _track(owned_user, owned_library, game)
     imported = _imported_run(owned_user, owned_library)
     _describe(owned_user, owned_library, imported, name="Before 2020", note=None)
@@ -704,6 +785,58 @@ def test_clearing_the_name_of_an_unnumbered_run_is_refused(
 
     assert refusal.value.sentence == (
         "This run is not numbered, so it needs a name of its own."
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_spaces_clear_the_name_of_an_unnumbered_run_and_are_refused_alike(
+    owned_user, owned_library, game
+):
+    """The strip runs before the refusal reads the name."""
+    _track(owned_user, owned_library, game)
+    imported = _imported_run(owned_user, owned_library)
+    _describe(owned_user, owned_library, imported, name="Before 2020", note=None)
+
+    with pytest.raises(CommandRejected) as refusal:
+        _describe(
+            owned_user, owned_library, imported, name="   ", note=None, key="clear"
+        )
+
+    assert refusal.value.sentence == (
+        "This run is not numbered, so it needs a name of its own."
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_note_reaches_an_unnumbered_run_that_was_never_named(
+    owned_user, owned_library, game
+):
+    """The refusal takes a name away; it does not repeat a blank."""
+    _track(owned_user, owned_library, game)
+    imported = _imported_run(owned_user, owned_library)
+
+    result = _describe(owned_user, owned_library, imported, name="", note="from before")
+
+    assert result.outcome is CommandOutcome.APPENDED
+    assert Playthrough.objects.get(pk=imported.pk).note == "from before"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_unnumbered_run_states_an_endpoint_like_any_other(
+    owned_user, owned_library, game
+):
+    """The kind refuses one value of one fact, and nothing else."""
+    _track(owned_user, owned_library, game)
+    imported = _imported_run(owned_user, owned_library)
+    _start(owned_user, owned_library, imported, when=TemporalValue.from_year(2019))
+
+    result = _correct_start(
+        owned_user, owned_library, imported, when=TemporalValue.from_year(2018)
+    )
+
+    assert result.outcome is CommandOutcome.APPENDED
+    assert Playthrough.objects.get(pk=imported.pk).started == TemporalValue.from_year(
+        2018
     )
 
 
@@ -792,7 +925,7 @@ def _correct_completion(
 def test_correcting_an_endpoint_that_was_never_stated_is_refused(
     owned_user, owned_library, game
 ):
-    """The values match a row that never started. The marker does not."""
+    """The values match a row that never started; the marker says so."""
     _track(owned_user, owned_library, game)
     run = Playthrough.objects.get()
 
@@ -904,6 +1037,8 @@ def test_correcting_a_start_to_what_it_states_changes_nothing(
     result = _correct_start(owned_user, owned_library, run, when=when, note="blind")
 
     assert result.outcome is CommandOutcome.UNCHANGED
+    #: Its own reason, so a log names the branch that decided.
+    assert result.reason == "This correction states the start the run states."
     assert not LibraryEvent.objects.filter(
         event_type="library.playthrough.start_corrected"
     ).exists()
@@ -920,6 +1055,22 @@ def test_an_unknown_day_restates_a_dateless_start_correction(
     _correct_start(owned_user, owned_library, run, when=TemporalValue.from_year(2023))
 
     result = _correct_start(owned_user, owned_library, run, when=None, key="cleared")
+
+    assert result.outcome is CommandOutcome.APPENDED
+    assert Playthrough.objects.get().started is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_unknown_day_states_the_dateless_start_a_run_states(
+    owned_user, owned_library, game
+):
+    """The other spelling of no day, and the same fact."""
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _start(owned_user, owned_library, run, when=None)
+    _correct_start(owned_user, owned_library, run, when=TemporalValue.from_year(2023))
+    _correct_start(owned_user, owned_library, run, when=None, key="cleared")
+
     again = _correct_start(
         owned_user,
         owned_library,
@@ -928,7 +1079,6 @@ def test_an_unknown_day_restates_a_dateless_start_correction(
         key="cleared-again",
     )
 
-    assert result.outcome is CommandOutcome.APPENDED
     assert again.outcome is CommandOutcome.UNCHANGED
 
 
@@ -955,6 +1105,22 @@ def test_correcting_a_completion_records_the_date_and_the_note(
 
 
 @pytest.mark.django_db(transaction=True)
+def test_correcting_only_the_note_of_a_completion_is_recorded(
+    owned_user, owned_library, game
+):
+    """The far endpoint is the pair too, so its note is corrected alike."""
+    when = TemporalValue.from_year(2023)
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _complete(owned_user, owned_library, run, when=when, note="rushed")
+
+    _correct_completion(owned_user, owned_library, run, when=when, note="hard mode")
+
+    corrected = Playthrough.objects.get()
+    assert (corrected.completed, corrected.completion_note) == (when, "hard mode")
+
+
+@pytest.mark.django_db(transaction=True)
 def test_correcting_a_completion_to_what_it_states_changes_nothing(
     owned_user, owned_library, game
 ):
@@ -966,6 +1132,77 @@ def test_correcting_a_completion_to_what_it_states_changes_nothing(
     result = _correct_completion(owned_user, owned_library, run, when=when, note="done")
 
     assert result.outcome is CommandOutcome.UNCHANGED
+    assert result.reason == "This correction states the completion the run states."
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_note_of_spaces_states_the_endpoint_the_run_states(
+    owned_user, owned_library, game
+):
+    """The endpoint note is stripped, or a blank appends an event."""
+    when = TemporalValue.from_year(2023)
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _start(owned_user, owned_library, run, when=when, note="blind")
+
+    result = _correct_start(owned_user, owned_library, run, when=when, note=" blind ")
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_correction_between_the_two_endpoints_is_recorded(
+    owned_user, owned_library, game
+):
+    """The order rule reads the stored far end, and passes here."""
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _start(owned_user, owned_library, run, when=TemporalValue.from_year(2022))
+    _complete(owned_user, owned_library, run, when=TemporalValue.from_year(2024))
+
+    result = _correct_start(
+        owned_user, owned_library, run, when=TemporalValue.from_year(2023)
+    )
+
+    assert result.outcome is CommandOutcome.APPENDED
+    assert Playthrough.objects.get().started == TemporalValue.from_year(2023)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_clearing_a_start_beside_a_stated_completion_is_recorded(
+    owned_user, owned_library, game
+):
+    """No day bounds nothing, so the far end refuses nothing."""
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _start(owned_user, owned_library, run, when=TemporalValue.from_year(2022))
+    _complete(owned_user, owned_library, run, when=TemporalValue.from_year(2024))
+
+    result = _correct_start(owned_user, owned_library, run, when=None)
+
+    assert result.outcome is CommandOutcome.APPENDED
+    corrected = Playthrough.objects.get()
+    assert corrected.started is None
+    assert corrected.completed == TemporalValue.from_year(2024)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_start_never_stated_is_refused_before_the_order_rule(
+    owned_user, owned_library, game
+):
+    """The marker refusal stands first, so it names the missing act."""
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _complete(owned_user, owned_library, run, when=TemporalValue.from_year(2023))
+
+    with pytest.raises(CommandRejected) as refusal:
+        _correct_start(
+            owned_user, owned_library, run, when=TemporalValue.from_year(2025)
+        )
+
+    assert refusal.value.sentence == (
+        "This run has no start to correct. Record that it started first."
+    )
 
 
 @pytest.mark.django_db(transaction=True)
@@ -1164,3 +1401,16 @@ def test_a_cleared_name_fingerprints_apart_from_no_name(
 
     with pytest.raises(IdempotencyKeyMismatch):
         _describe(owned_user, owned_library, run, name="", note="no saves")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_cleared_note_fingerprints_apart_from_no_note(
+    owned_user, owned_library, game
+):
+    """The note reads the same two ways as the name."""
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _describe(owned_user, owned_library, run, name="Ironman", note=None)
+
+    with pytest.raises(IdempotencyKeyMismatch):
+        _describe(owned_user, owned_library, run, name="Ironman", note="")

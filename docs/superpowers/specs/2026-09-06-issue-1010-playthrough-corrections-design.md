@@ -149,7 +149,12 @@ type of its own. The two descriptive types take `PlaythroughNamePayload` and
 `PlaythroughNotePayload`. `note_changed` does **not** reuse the endpoint
 payload, though the shape is identical: that type's docstring binds its note to
 an act whose date is the `effective_time`, and this note describes a run and
-has no day.
+has no day. The harder reason is that a payload is a recorded schema, validated
+on the way in and on the way out over rows already written. One type across two
+families couples their futures: a key added to `PlaythroughEndpointPayload`
+would change `note_changed`'s schema too, and under `STRICT_SCHEMA` every
+`note_changed` row already written would then fail to read back. A second type
+is the only way to keep the two free to move apart.
 
 Each event takes a builder beside `playthrough_started`, and each passes the
 run's id as `aggregate_id`.
@@ -183,14 +188,22 @@ Every command refuses:
   Postgres raises `DataError` inside a projector, which is a refusal with no
   sentence. The bound is a module constant taken from the field, in the shape
   `EVENT_TYPE_MAX_LENGTH` and `IDEMPOTENCY_KEY_MAX_LENGTH` already use, because
-  django-stubs types `max_length` as `int | None`;
-- a cleared name on a run whose `kind` is not `ORDINARY`. The display number is
-  counted over live ordinary rows only, so a blank name on the imported-history
-  bucket leaves a row that has no name and no number, and `display_name()`
-  raises `UnnumberedPlaythrough` on the one read that renders it. This is the
-  single place a kind refuses anything, and it refuses one value of one field:
-  an imported-history run's endpoints, note and non-blank names are corrected
-  like any other run's.
+  django-stubs types `max_length` as `int | None`. The bound is deliberately a
+  command-layer rule and not a `MaxLen` on the payload: a recorded schema is
+  validated over rows already written, so a length it states can never be
+  loosened. It lives in `build()` rather than `__post_init__` for the same
+  reason the "no fact" check does not — a refusal a person reads carries a
+  `sentence`, and `__post_init__` can only raise `ValueError`;
+- a name being taken away from a run whose `kind` is not `ORDINARY`. The
+  display number is counted over live ordinary rows only, so a blank name on
+  the imported-history bucket leaves a row that has no name and no number, and
+  `display_name()` raises `UnnumberedPlaythrough` on the one read that renders
+  it. The refusal reads `run.name`, so it fires only where a name is actually
+  taken away: a row is born blank, and a save that repeats that blank still
+  states its note. This is the single place a kind refuses anything, and it
+  refuses one value of one field: an imported-history run's endpoints, note and
+  non-blank names are corrected like any other run's. Nothing gives such a row
+  a name at creation, so the invariant is #684's to hold when it writes one.
 
 Both corrections also refuse:
 
@@ -225,18 +238,21 @@ compares equal to both columns. Under #906's order that dispatch answers
 happened, and the player is told nothing is wrong.
 
 `DescribePlaythrough` has no marker, so it has no inversion to state. Its two
-refusals read the command's own values rather than the row's — a name over the
-column's length, and a cleared name on a run no number is counted for — so both
-stand ahead of the comparison. Neither is excused by the row already holding
-the value: a column 255 characters wide cannot hold the first, and the second
-describes what the value leaves behind rather than what it changes. Both facts
-already holding is then `Unchanged`; a save that moved the note alone appends
-one event.
+refusals stand ahead of the comparison, and neither is excused by the row
+holding a value the command repeats. The length refusal reads the command
+alone: a column 255 characters wide cannot hold the name whatever the row says.
+The kind refusal reads the row as well, because what it forbids is a name being
+taken away, and only a row that has one can lose it. Both facts already holding
+is then `Unchanged`; a save that moved the note alone appends one event.
 
 A correction compares the whole pair — `(when, note)` against
 `(stated.when, stated.note)` — and equality is `Unchanged`. The date compares
 over its canonical string, which `stated_date()` in `__post_init__` and
-`TemporalValueField` on the column make one spelling.
+`TemporalValueField` on the column make one spelling. The note compares over a
+stripped string, for the same reason and in the same place: `__post_init__` is
+the last point that can reach the fingerprint, which `dispatch()` takes from
+the constructed command before `build()` runs. All four endpoint commands strip
+it, so `"blind "` and `"blind"` are one statement and claim one key.
 
 ## The order rule
 
@@ -319,18 +335,21 @@ Focused tests, beside the ones #681 wrote:
   regression `stated_date()` prevents; `name=None` and `name=""` fingerprint
   apart, which is what makes them two answers;
 - `tests/test_playthrough_projection.py` — each handler over a recorded event,
-  and a replay from an empty database reproducing a row that was created,
-  started, corrected and renamed, with the marker equal to the `started`
-  event's `recorded_at` and not the correction's.
+  a replay from an empty database reproducing a row that was created, started,
+  completed, renamed, noted and corrected on both endpoints, and a shadow
+  rebuild of that row swapping with an empty diff. The marker is read off the
+  `started` event's `recorded_at`, never off the row the correction has
+  already amended: a row read afterwards agrees with a handler that moved the
+  marker, and the test would pass with the defect it exists to catch.
 
 The gate is the full `make check`, including `e2e/`. No screen changes, so no
 e2e test is added.
 
-Four places named this issue in the future tense: the comments on
-`Playthrough.name` and `Playthrough.note`, the two refusal sentences in
-`games/commands/playthrough.py` that sent a reader to #1010, and the
-`Playthrough` bullet in `CLAUDE.md`. Each now names the command a person
-uses.
+Five places named this issue in the future tense: the comments on
+`Playthrough.name` and `Playthrough.note`, the two refusal messages in
+`games/commands/playthrough.py` that sent a reader to #1010 — the messages a
+log carries, not the `sentence` a person reads — and the `Playthrough` bullet
+in `CLAUDE.md`. Each now names the command a person uses.
 
 ## Not in this issue
 

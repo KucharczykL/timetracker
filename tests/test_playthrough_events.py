@@ -189,8 +189,35 @@ def test_a_descriptive_payload_refuses_the_other_one_s_key():
         )
 
 
+def test_a_descriptive_payload_refuses_a_key_beside_its_own():
+    """The strict schema, so no value gets a second home."""
+    with pytest.raises(PayloadInvalid):
+        DEFAULT_EVENT_TYPES.validate(
+            PLAYTHROUGH_NAME_CHANGED.event_type,
+            {"name": "Ironman", "when": "2024-03"},
+        )
+    with pytest.raises(PayloadInvalid):
+        DEFAULT_EVENT_TYPES.validate(
+            PLAYTHROUGH_NOTE_CHANGED.event_type,
+            {"note": "no saves", "name": "Ironman"},
+        )
+
+
+def test_a_descriptive_payload_refuses_an_empty_payload():
+    with pytest.raises(PayloadInvalid):
+        DEFAULT_EVENT_TYPES.validate(PLAYTHROUGH_NAME_CHANGED.event_type, {})
+    with pytest.raises(PayloadInvalid):
+        DEFAULT_EVENT_TYPES.validate(PLAYTHROUGH_NOTE_CHANGED.event_type, {})
+
+
+def test_a_descriptive_payload_refuses_a_value_of_another_type():
+    """Strict, so nothing is coerced into a name."""
+    with pytest.raises(PayloadInvalid):
+        DEFAULT_EVENT_TYPES.validate(PLAYTHROUGH_NAME_CHANGED.event_type, {"name": 3})
+
+
 def test_a_descriptive_payload_takes_the_cleared_value():
-    """A blank name reads as the run's number."""
+    """The cleared value validates; a blank name reads as the number."""
     assert DEFAULT_EVENT_TYPES.validate(
         PLAYTHROUGH_NAME_CHANGED.event_type, {"name": ""}
     ) == {"name": ""}

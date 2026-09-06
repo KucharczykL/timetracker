@@ -484,6 +484,33 @@ def started_run(owned_user, owned_library, *, when, note="first"):
     return run
 
 
+def _describe_and_correct(owned_user, owned_library, run):
+    """One event of every descriptive and corrective kind."""
+    dispatch(
+        CompletePlaythrough(
+            playthrough_id=run.pk, when=TemporalValue.from_year(2024), note="done"
+        ),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="done",
+    )
+    for event, key in (
+        (playthrough_name_changed(run.pk, name="Ironman"), "rename"),
+        (playthrough_note_changed(run.pk, note="no saves"), "note"),
+        (
+            playthrough_start_corrected(run.pk, when=None, note="a guess"),
+            "correct-start",
+        ),
+        (
+            playthrough_completion_corrected(
+                run.pk, when=TemporalValue.from_day(date(2024, 4, 2)), note="hard mode"
+            ),
+            "correct-completion",
+        ),
+    ):
+        append_about_run(owned_library, owned_user, event, key=key)
+
+
 @pytest.mark.django_db(transaction=True)
 def test_a_rename_writes_the_name_and_nothing_else(owned_user, owned_library):
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
@@ -618,7 +645,10 @@ def test_a_replay_keeps_the_instant_the_start_was_recorded(owned_user, owned_lib
         ),
         key="correct-start",
     )
-    stated_at = Playthrough.objects.get(pk=run.pk).start_recorded_at
+    #: Off the event, so a marker the handler moved is caught.
+    stated_at = LibraryEvent.objects.get(
+        event_type="library.playthrough.started"
+    ).recorded_at
     #: The child first: player_game RESTRICTs.
     Playthrough.objects.all().delete()
     PlayerGame.objects.all().delete()
@@ -634,15 +664,7 @@ def test_a_replay_keeps_the_instant_the_start_was_recorded(owned_user, owned_lib
 def test_an_empty_database_replay_reproduces_a_described_run(owned_user, owned_library):
     """Every written value comes off the event, so a replay agrees."""
     run = started_run(owned_user, owned_library, when=TemporalValue.from_year(2023))
-    for event, key in (
-        (playthrough_name_changed(run.pk, name="Ironman"), "rename"),
-        (playthrough_note_changed(run.pk, note="no saves"), "note"),
-        (
-            playthrough_start_corrected(run.pk, when=None, note="a guess"),
-            "correct-start",
-        ),
-    ):
-        append_about_run(owned_library, owned_user, event, key=key)
+    _describe_and_correct(owned_user, owned_library, run)
     before = list(Playthrough.objects.order_by("pk").values())
     #: The child first: player_game RESTRICTs.
     Playthrough.objects.all().delete()
@@ -651,3 +673,23 @@ def test_an_empty_database_replay_reproduces_a_described_run(owned_user, owned_l
     replay(owned_library)
 
     assert list(Playthrough.objects.order_by("pk").values()) == before
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_rebuild_of_a_described_run_swaps_with_an_empty_diff(
+    owned_user, owned_library
+):
+    """The shadow table, over a row every handler has written."""
+    run = started_run(owned_user, owned_library, when=TemporalValue.from_year(2023))
+    _describe_and_correct(owned_user, owned_library, run)
+
+    report = rebuild_projections(owned_library, mode=RebuildMode.REBUILD)
+
+    assert report.swapped is True
+    assert [
+        (table.table, table.only_live, table.only_rebuilt, table.differing)
+        for table in report.tables
+    ] == [
+        ("games_playergame", 0, 0, 0),
+        ("games_playthrough", 0, 0, 0),
+    ]

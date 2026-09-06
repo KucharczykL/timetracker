@@ -61,8 +61,9 @@ class PlaythroughEndpointPayload(TypedDict):
     key would ask a reader whether a value is absent or empty, and
     here the two mean one thing.
 
-    One type for both specs. They are two EventSpecs, so an issue that
-    gives one of them a field gives it a type of its own.
+    One type for the four specs about an endpoint. Each is its own
+    EventSpec, so an issue that gives one of them a field gives it a
+    type of its own, and the rows already written keep reading back.
     """
 
     note: str
@@ -135,8 +136,7 @@ def playthrough_start_corrected(
     when: TemporalValue | None,
     note: str,
 ) -> NewEvent:
-    """The run began on this day, whatever was said before."""
-    #: No marker: the act was recorded when it was stated.
+    """The run began on the day now stated, or on none."""
     return PLAYTHROUGH_START_CORRECTED.new(
         aggregate_id=playthrough_id,
         effective_time=when,
@@ -150,7 +150,7 @@ def playthrough_completion_corrected(
     when: TemporalValue | None,
     note: str,
 ) -> NewEvent:
-    """The run met its objective on this day, whatever was said before."""
+    """The run met its main objective on the day now stated, or on none."""
     return PLAYTHROUGH_COMPLETION_CORRECTED.new(
         aggregate_id=playthrough_id,
         effective_time=when,

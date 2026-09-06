@@ -59,7 +59,7 @@ class Playthroughs(Projector):
         self.amend(Playthrough, event.aggregate_id, note=event.payload["note"])
 
     def _start_corrected(self, event: RecordedEvent) -> None:
-        #: No marker: the act was recorded when it was stated.
+        #: The marker holds the first statement's instant, not this one.
         self.amend(
             Playthrough,
             event.aggregate_id,
@@ -79,8 +79,8 @@ class Playthroughs(Projector):
     #:
     #: A rebuild inserts the model defaults for the rest, and the events
     #: that follow set the real values. Naming one there would let a
-    #: re-applied creation event take an endpoint back out, and the
-    #: endpoint columns carry defaults, so `_required_columns` exempts
+    #: re-applied creation event take an amendment back out, and every
+    #: amended column carries a default, so `_required_columns` exempts
     #: them and would not report it.
     handles: ClassVar[HandlerMap] = {
         PLAYTHROUGH_CREATED: _created,

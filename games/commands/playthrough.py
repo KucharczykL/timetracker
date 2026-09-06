@@ -110,7 +110,7 @@ def library_playthrough(
     except Playthrough.DoesNotExist:
         raise CommandRejected(
             f"This library holds no playthrough {playthrough_id}. A stated "
-            "endpoint belongs to a run the library records.",
+            "fact belongs to a run the library records.",
             sentence="That playthrough is not available.",
         ) from None
 
@@ -155,6 +155,8 @@ class StartPlaythrough(Command):
     def __post_init__(self) -> None:
         #: One spelling of no day, so a restatement fingerprints alike.
         object.__setattr__(self, "when", stated_date(self.when))
+        #: One spelling of a blank note, for the same reason.
+        object.__setattr__(self, "note", self.note.strip())
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         run = _live_run(context, self.playthrough_id)
@@ -193,6 +195,8 @@ class CompletePlaythrough(Command):
     def __post_init__(self) -> None:
         #: One spelling of no day, so a restatement fingerprints alike.
         object.__setattr__(self, "when", stated_date(self.when))
+        #: One spelling of a blank note, for the same reason.
+        object.__setattr__(self, "note", self.note.strip())
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         run = _live_run(context, self.playthrough_id)
@@ -236,15 +240,15 @@ class DescribePlaythrough(Command):
                 "nothing would still claim an idempotency key and write a "
                 "record for a request that expressed no intent."
             )
-        #: A name of three spaces is a cleared name.
-        for field_name in ("name", "note"):
-            stated = getattr(self, field_name)
-            if stated is not None:
-                object.__setattr__(self, field_name, stated.strip())
+        #: Three spaces is a cleared value, for either fact.
+        if self.name is not None:
+            object.__setattr__(self, "name", self.name.strip())
+        if self.note is not None:
+            object.__setattr__(self, "note", self.note.strip())
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         run = _live_run(context, self.playthrough_id)
-        #: Both refusals read the command, so the row excuses neither.
+        #: In build, not __post_init__: a refusal carries a sentence.
         if self.name is not None and len(self.name) > PLAYTHROUGH_NAME_MAX_LENGTH:
             raise CommandRejected(
                 f"The stated name is {len(self.name)} characters, and the "
@@ -254,7 +258,9 @@ class DescribePlaythrough(Command):
                     f"{PLAYTHROUGH_NAME_MAX_LENGTH} characters or fewer."
                 ),
             )
-        if self.name == "" and run.kind != PlaythroughKind.ORDINARY:
+        #: Only a name being taken away. A row born blank is left as it
+        #: is, so a save that repeats that blank still states its note.
+        if self.name == "" and run.name != "" and run.kind != PlaythroughKind.ORDINARY:
             raise CommandRejected(
                 f"Playthrough {self.playthrough_id} is of kind {run.kind}, which "
                 "no display number is counted across, so a blank name would "
@@ -278,12 +284,15 @@ class CorrectPlaythroughStart(Command):
     command_name: ClassVar[CommandName] = CommandName.PLAYTHROUGH_CORRECT_START
     #: A UUID, because Command fingerprints its fields.
     playthrough_id: uuid.UUID
+    #: None clears the day. The act stands; only the date goes.
     when: TemporalValue | None
     note: str
 
     def __post_init__(self) -> None:
         #: One spelling of no day, so a restatement fingerprints alike.
         object.__setattr__(self, "when", stated_date(self.when))
+        #: One spelling of a blank note, for the same reason.
+        object.__setattr__(self, "note", self.note.strip())
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         run = _live_run(context, self.playthrough_id)
@@ -299,7 +308,7 @@ class CorrectPlaythroughStart(Command):
                 ),
             )
         if (self.when, self.note) == (stated.when, stated.note):
-            return Unchanged("This run already states that start.")
+            return Unchanged("This correction states the start the run states.")
         if endpoints_certainly_reversed(started=self.when, completed=run.completed):
             raise CommandRejected(
                 f"Playthrough {self.playthrough_id} completed before the start "
@@ -316,12 +325,15 @@ class CorrectPlaythroughCompletion(Command):
     command_name: ClassVar[CommandName] = CommandName.PLAYTHROUGH_CORRECT_COMPLETION
     #: A UUID, because Command fingerprints its fields.
     playthrough_id: uuid.UUID
+    #: None clears the day. The act stands; only the date goes.
     when: TemporalValue | None
     note: str
 
     def __post_init__(self) -> None:
         #: One spelling of no day, so a restatement fingerprints alike.
         object.__setattr__(self, "when", stated_date(self.when))
+        #: One spelling of a blank note, for the same reason.
+        object.__setattr__(self, "note", self.note.strip())
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         run = _live_run(context, self.playthrough_id)
@@ -337,7 +349,7 @@ class CorrectPlaythroughCompletion(Command):
                 ),
             )
         if (self.when, self.note) == (stated.when, stated.note):
-            return Unchanged("This run already states that completion.")
+            return Unchanged("This correction states the completion the run states.")
         if endpoints_certainly_reversed(started=run.started, completed=self.when):
             raise CommandRejected(
                 f"Playthrough {self.playthrough_id} started after the completion "
