@@ -18,6 +18,8 @@ from games.events.playthrough import (
     playthrough_created,
     playthrough_name_changed,
     playthrough_note_changed,
+    playthrough_removed,
+    playthrough_restored,
     playthrough_start_corrected,
 )
 from games.events.projection import DEFAULT_REGISTRY, _required_columns
@@ -682,6 +684,84 @@ def test_a_rebuild_of_a_described_run_swaps_with_an_empty_diff(
     """The shadow table, over a row every handler has written."""
     run = started_run(owned_user, owned_library, when=TemporalValue.from_year(2023))
     _describe_and_correct(owned_user, owned_library, run)
+
+    report = rebuild_projections(owned_library, mode=RebuildMode.REBUILD)
+
+    assert report.swapped is True
+    assert [
+        (table.table, table.only_live, table.only_rebuilt, table.differing)
+        for table in report.tables
+    ] == [
+        ("games_playergame", 0, 0, 0),
+        ("games_playthrough", 0, 0, 0),
+    ]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_removal_event_writes_its_own_time(owned_user, owned_library):
+    """Off the event, so a replay agrees."""
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+
+    append_about_run(owned_library, owned_user, playthrough_removed(run.pk), key="gone")
+
+    stamped = LibraryEvent.objects.get(
+        event_type="library.playthrough.removed"
+    ).recorded_at
+    run.refresh_from_db()
+    assert run.removed_at == stamped
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_restore_event_states_the_way_back(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    append_about_run(owned_library, owned_user, playthrough_removed(run.pk), key="gone")
+
+    append_about_run(
+        owned_library, owned_user, playthrough_restored(run.pk), key="back"
+    )
+
+    run.refresh_from_db()
+    assert run.removed_at is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_replay_reproduces_a_removal_and_its_undoing(owned_user, owned_library):
+    """Removed, back, and removed again reach one state."""
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    lifecycle = (
+        playthrough_removed(run.pk),
+        playthrough_restored(run.pk),
+        playthrough_removed(run.pk),
+    )
+    for index, event in enumerate(lifecycle):
+        append_about_run(owned_library, owned_user, event, key=f"lifecycle-{index}")
+    last = (
+        LibraryEvent.objects.filter(event_type="library.playthrough.removed")
+        .order_by("sequence")
+        .last()
+        .recorded_at
+    )
+    #: The child first: player_game RESTRICTs.
+    Playthrough.objects.all().delete()
+    PlayerGame.objects.all().delete()
+
+    replay(owned_library)
+
+    assert Playthrough.objects.get().removed_at == last
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_rebuild_of_a_removed_run_swaps_with_an_empty_diff(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    append_about_run(owned_library, owned_user, playthrough_removed(run.pk), key="gone")
 
     report = rebuild_projections(owned_library, mode=RebuildMode.REBUILD)
 

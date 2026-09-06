@@ -3,7 +3,10 @@
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import ClassVar, cast
+from typing import Any, ClassVar, NamedTuple, Protocol, cast
+
+from django.db import models
+from django.db.models import QuerySet
 
 from games.commands.playergame import tracked_game
 from games.events.dispatch import Command, CommandContext, CommandName, CommandRejected
@@ -13,11 +16,14 @@ from games.events.playthrough import (
     playthrough_created,
     playthrough_name_changed,
     playthrough_note_changed,
+    playthrough_removed,
+    playthrough_restored,
     playthrough_start_corrected,
     playthrough_started,
 )
 from games.events.vocabulary import NewEvent, Unchanged
-from games.models import Playthrough, PlaythroughKind
+from games.models import Playthrough, PlaythroughKind, ProjectionModel
+from games.projections import FieldName
 from games.reads.playthrough_endpoints import stated_completion, stated_start
 from timetracker.temporal import TemporalQualifier, TemporalValue, stated_date
 
@@ -359,3 +365,167 @@ class CorrectPlaythroughCompletion(Command):
         return [
             playthrough_completion_corrected(run.pk, when=self.when, note=self.note)
         ]
+
+
+def _refuse_under_a_removed_game(run: Playthrough) -> None:
+    """Refuse an act under a removed game."""
+    #: Under dispatch's lock the mark cannot move.
+    if run.player_game.removed_at is not None:
+        raise CommandRejected(
+            f"This library removed the game behind playthrough {run.pk}, "
+            "so its runs neither leave the lists nor come back.",
+            sentence=(
+                "That game was removed from your library. Restore it before "
+                "changing its playthroughs."
+            ),
+        )
+
+
+class RemovableReads(Protocol):
+    """A manager whose reads skip a removed row."""
+
+    def alive(self) -> QuerySet[Any]: ...
+
+
+def _skips_removed_rows(model: type[ProjectionModel]) -> bool:
+    """Whether the model's manager states `alive()`."""
+    return hasattr(model._default_manager, "alive")
+
+
+class BlockingReferrer(NamedTuple):
+    """One registered way to name a run."""
+
+    #: A projection, which #701 makes Session one of.
+    model: type[ProjectionModel]
+    #: Field name alias from games/projections.py.
+    field_name: FieldName
+    #: What a person is shown.
+    sentence: str
+
+    @classmethod
+    def on(
+        cls, model: type[ProjectionModel], field_name: FieldName, *, sentence: str
+    ) -> BlockingReferrer:
+        """The one construction path; refuses an entry the query cannot run.
+
+        A malformed entry would raise a FieldError inside build(),
+        which answers every removal with a 500. Refusing it here
+        states it at import.
+        """
+        field = model._meta.get_field(field_name)
+        if not isinstance(field, models.ForeignKey):
+            raise TypeError(f"{model.__name__}.{field_name} is not a foreign key.")
+        if field.related_model is not Playthrough:
+            raise TypeError(
+                f"{model.__name__}.{field_name} names "
+                f"{field.related_model.__name__}, not a playthrough."
+            )
+        if not _skips_removed_rows(model):
+            raise TypeError(
+                f"{model.__name__} states no alive(), so a removed row of it "
+                "would keep a run in place forever."
+            )
+        return cls(model, field_name, sentence)
+
+
+#: Empty until #700 and #701 land.
+BLOCKING_REFERRERS: tuple[BlockingReferrer, ...] = ()
+
+
+def blocking_referrer(run: Playthrough) -> BlockingReferrer | None:
+    """The first registered entry a live row answers.
+
+    Scoped on the library, as `_other_live_ordinary_runs` is: a
+    row of another library naming this run is the drift
+    `audit_library_ownership` reports, and a person cannot act on
+    advice about rows their library does not hold. `model` is a
+    projection, so the column is always there, and `on()` states
+    the manager's `alive()`, which reads a parent's mark too.
+    """
+    for referrer in BLOCKING_REFERRERS:
+        #: `on()` refuses a manager without it. The annotation on
+        #: `_default_manager` names the base, which cannot say so.
+        reads = cast(RemovableReads, referrer.model._default_manager)
+        named = reads.alive().filter(**{referrer.field_name: run}, library=run.library)
+        if named.exists():
+            return referrer
+    return None
+
+
+def _other_live_ordinary_runs(
+    context: CommandContext, run: Playthrough
+) -> QuerySet[Playthrough]:
+    """This game's other live ordinary runs.
+
+    Scoped on the library explicitly: a run may name another
+    library's PlayerGame, the drift `audit_library_ownership`
+    reports, so the parent alone counts rows this library does
+    not hold.
+    """
+    return Playthrough.objects.filter(
+        library=context.library,
+        player_game=run.player_game,
+        removed_at__isnull=True,
+        kind=PlaythroughKind.ORDINARY,
+    ).exclude(pk=run.pk)
+
+
+@dataclass(frozen=True, slots=True)
+class RemovePlaythrough(Command):
+    """Take a run out of the lists."""
+
+    command_name: ClassVar[CommandName] = CommandName.PLAYTHROUGH_REMOVE
+    #: A UUID, because Command fingerprints its fields.
+    playthrough_id: uuid.UUID
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        run = library_playthrough(context, self.playthrough_id)
+        #: The no-op before the game's mark.
+        #: #906: a repeat still succeeds once the game is gone.
+        if run.removed_at is not None:
+            return Unchanged(
+                f"This library already removed playthrough {self.playthrough_id}."
+            )
+        _refuse_under_a_removed_game(run)
+        blocker = blocking_referrer(run)
+        if blocker is not None:
+            raise CommandRejected(
+                f"A live {blocker.model.__name__} names playthrough "
+                f"{self.playthrough_id}, so the run stays where it can "
+                "be found.",
+                sentence=blocker.sentence,
+            )
+        #: Ordinary only. A bucket takes none away.
+        if (
+            run.kind == PlaythroughKind.ORDINARY
+            and not _other_live_ordinary_runs(context, run).exists()
+        ):
+            raise CommandRejected(
+                f"Playthrough {self.playthrough_id} is the last live ordinary "
+                f"run of player game {run.player_game_id}, and every tracked "
+                "game holds one.",
+                sentence=(
+                    "This is the only playthrough of that game, and a tracked "
+                    "game keeps one. Remove the game itself instead."
+                ),
+            )
+        return [playthrough_removed(run.pk)]
+
+
+@dataclass(frozen=True, slots=True)
+class RestorePlaythrough(Command):
+    """Put a removed run back."""
+
+    command_name: ClassVar[CommandName] = CommandName.PLAYTHROUGH_RESTORE
+    #: A UUID, because Command fingerprints its fields.
+    playthrough_id: uuid.UUID
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        run = library_playthrough(context, self.playthrough_id)
+        #: The no-op first, as in RemovePlaythrough.
+        if run.removed_at is None:
+            return Unchanged(
+                f"This library did not remove playthrough {self.playthrough_id}."
+            )
+        _refuse_under_a_removed_game(run)
+        return [playthrough_restored(run.pk)]

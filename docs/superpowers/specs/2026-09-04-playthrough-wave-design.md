@@ -186,6 +186,27 @@ what a removed Playthrough means for the Sessions that will point at it. The
 answer this wave commits to is that removal is refused while any Session names
 the row, and the refusal is inert until the Sessions wave creates the reference.
 
+What shipped: `RemovePlaythrough` and `RestorePlaythrough` in
+`games/commands/playthrough.py`, over the `library.playthrough.removed` and
+`library.playthrough.restored` events, whose handlers write `removed_at` from
+each event's own `recorded_at` so a replay reproduces the instant. The refusal
+reads `BLOCKING_REFERRERS`, a tuple of `BlockingReferrer` beside its one
+reader, empty until #700 and #701 give a Session its reference to a run. It is
+a local tuple rather than a registry with a system check because `games.E009`
+already refuses an unregistered reference *out of* a projection, and a second
+registry for references *into* one would restate it. Each entry carries the
+sentence a person is shown, because "move the sessions first" is advice only
+its own referrer can give.
+
+Beside it, the rule the wave did not state: a tracked game keeps one run, so
+removal is refused where no other live ordinary run of the same `PlayerGame`
+remains. It counts ordinary rows only — removing the bucket #700 creates takes
+no ordinary run away — and it is scoped on the library explicitly, because a
+row may name another library's `PlayerGame`, the drift
+`audit_library_ownership` reports. Both commands answer `Unchanged` for state
+that already holds, ahead of every refusal, so a repeat still succeeds after
+the game itself was removed.
+
 ### #909 — the shared resolver
 
 #601 gives this wave the decision. `_tracked_game` in
