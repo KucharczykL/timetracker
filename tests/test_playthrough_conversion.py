@@ -12,6 +12,8 @@ from games.backfill.playthrough import (
     ConversionCounts,
     convert_library,
     convert_row,
+    ordering_violations,
+    reconcile,
 )
 from games.models import (
     Game,
@@ -21,7 +23,9 @@ from games.models import (
     PlayEvent,
     Playthrough,
 )
+from games.reads.playthrough_numbering import with_display_number
 from games.removal import remove
+from timetracker.temporal import TemporalValue
 
 #: backfill_library() appends the creation event the conftest fixture
 #: would have written by hand, so the two collide on the unique key.
@@ -311,3 +315,142 @@ def test_a_shared_game_converts_once_per_library(owned_library, django_user_mode
     )
     for run in Playthrough.objects.all():
         assert run.library_id == run.player_game.library_id
+
+
+def test_a_converted_library_reconciles_clean(owned_library):
+    game = _game(owned_library)
+    _row(game, started=date(2024, 1, 1), ended=date(2024, 1, 9), note="One")
+    _row(game)
+    remove(_row(game, started=date(2023, 1, 1)))
+    _game(owned_library, name="Untouched")
+    backfill_library(owned_library)
+    convert_library(owned_library)
+
+    assert reconcile(owned_library) == []
+    assert ordering_violations() == []
+
+
+def test_a_row_the_conversion_never_saw_is_reported(owned_library):
+    game = _game(owned_library)
+    backfill_library(owned_library)
+    _row(game, started=date(2024, 1, 1))
+    convert_library(owned_library)
+    #: A legacy row nothing replayed: the source now says more than the
+    #: events do.
+    _row(game, started=date(2024, 2, 1))
+
+    codes = {mismatch.code for mismatch in reconcile(owned_library)}
+    assert "run_disagreement" in codes
+
+
+def test_a_missing_marker_is_reported(owned_library):
+    game = _game(owned_library)
+    backfill_library(owned_library)
+    _row(game, started=date(2024, 1, 1))
+    convert_library(owned_library)
+    Playthrough.objects.update(completion_recorded_at=None)
+
+    codes = {mismatch.code for mismatch in reconcile(owned_library)}
+    assert "missing_marker" in codes
+
+
+def test_a_note_disagreement_is_reported(owned_library):
+    game = _game(owned_library)
+    backfill_library(owned_library)
+    _row(game, started=date(2024, 1, 1), note="First playthrough")
+    convert_library(owned_library)
+    Playthrough.objects.update(note="Something else")
+
+    codes = {mismatch.code for mismatch in reconcile(owned_library)}
+    assert "run_disagreement" in codes
+
+
+def test_a_removed_row_without_a_removed_run_is_reported(owned_library):
+    game = _game(owned_library)
+    backfill_library(owned_library)
+    remove(_row(game, started=date(2024, 1, 1)))
+    convert_library(owned_library)
+    Playthrough.objects.filter(removed_at__isnull=False).update(removed_at=None)
+
+    codes = {mismatch.code for mismatch in reconcile(owned_library)}
+    assert "removed_run_missing" in codes
+
+
+def test_a_tracked_game_with_no_live_run_is_reported(owned_library):
+    game = _game(owned_library)
+    backfill_library(owned_library)
+    _row(game, started=date(2024, 1, 1))
+    convert_library(owned_library)
+    Playthrough.objects.update(removed_at=timezone.now())
+
+    codes = {mismatch.code for mismatch in reconcile(owned_library)}
+    assert "no_live_run" in codes
+
+
+def test_the_display_order_follows_the_legacy_order(owned_library):
+    #: The Dark Souls 2 shape: one dated run and two nobody dated.
+    game = _game(owned_library, name="Dark Souls 2")
+    backfill_library(owned_library)
+    _row(game, started=date(2014, 6, 7), ended=date(2014, 6, 17))
+    _row(game)
+    _row(game)
+    convert_library(owned_library)
+
+    numbered = with_display_number(Playthrough.objects.filter(player_game__game=game))
+    by_number = sorted(numbered, key=lambda run: run.display_number)
+    assert [run.display_number for run in by_number] == [1, 2, 3]
+    assert by_number[0].started_lower == date(2014, 6, 7)
+    assert reconcile(owned_library) == []
+
+
+def test_rows_sharing_an_instant_are_numbered_in_either_order(owned_library):
+    #: The sample fixture's shape: its anonymizer stamps every undated
+    #: row one instant, so nothing the projection carries tells the two
+    #: apart and the gate must not fail on it.
+    game = _game(owned_library, name="Witcher")
+    backfill_library(owned_library)
+    _row(game)
+    _row(game)
+    PlayEvent.objects.filter(game=game).update(
+        created_at=datetime(2020, 1, 1, tzinfo=UTC)
+    )
+    convert_library(owned_library)
+
+    numbered = with_display_number(Playthrough.objects.filter(player_game__game=game))
+    assert sorted(run.display_number for run in numbered) == [1, 2]
+    assert reconcile(owned_library) == []
+
+
+def test_a_display_order_disagreement_is_reported(owned_library):
+    game = _game(owned_library)
+    backfill_library(owned_library)
+    _row(game, started=date(2024, 1, 1))
+    _row(game, started=date(2024, 2, 1))
+    convert_library(owned_library)
+    #: The earlier run now claims the later day, so the sequence no
+    #: longer matches the rows.
+    Playthrough.objects.filter(started_lower=date(2024, 1, 1)).update(
+        started=TemporalValue.from_day(date(2024, 3, 1))
+    )
+
+    codes = {mismatch.code for mismatch in reconcile(owned_library)}
+    assert "display_order_disagreement" in codes
+
+
+def test_an_identity_out_of_order_is_reported(owned_library):
+    game = _game(owned_library)
+    backfill_library(owned_library)
+    _row(game, started=date(2014, 1, 1))
+    convert_library(owned_library)
+    Playthrough.objects.update(created_at=datetime(2014, 1, 1, tzinfo=UTC))
+    #: A key minted now against a created_at from a year earlier.
+    Playthrough.objects.create(
+        id=uuid.uuid7(),
+        library=owned_library,
+        player_game=_tracked(owned_library, game),
+        kind="ordinary",
+        created_at=datetime(2013, 1, 1, tzinfo=UTC),
+    )
+
+    codes = {mismatch.code for mismatch in ordering_violations()}
+    assert "identity_ordering" in codes

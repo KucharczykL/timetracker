@@ -8,12 +8,13 @@ set beside a null day.
 """
 
 import uuid
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, fields, replace
-from datetime import datetime
+from datetime import date, datetime
 from itertools import batched
-from typing import Any
+from operator import attrgetter
+from typing import Any, NamedTuple
 
 from django.contrib.auth.models import User
 from django.db import transaction
@@ -29,7 +30,8 @@ from games.events.playthrough import (
     playthrough_started,
 )
 from games.events.vocabulary import NewEvent
-from games.models import Game, PlayerGame, PlayEvent, UserLibrary
+from games.identity_audit import check_ordering, identity_models
+from games.models import Game, PlayerGame, PlayEvent, Playthrough, UserLibrary
 from games.preflight.playthrough import (
     CandidateEvent,
     Endpoint,
@@ -41,6 +43,7 @@ from games.preflight.playthrough import (
     legacy_order_key,
     pair_endpoints,
 )
+from games.reads.playthrough_numbering import with_display_number
 from timetracker.temporal import TemporalValue
 
 #: Named in every key and every source_metadata value.
@@ -414,3 +417,180 @@ def convert_library(library: UserLibrary) -> ConversionCounts:
                 candidates=candidates_by_game.get(tracked_row.pk, []),
             )
     return counts
+
+
+@dataclass(frozen=True, slots=True)
+class Mismatch:
+    """One reason the conversion must not commit."""
+
+    code: str
+    game_id: str
+    detail: str
+
+    def as_dict(self) -> dict[str, str]:
+        return {"code": self.code, "detail": self.detail, "game_id": self.game_id}
+
+
+class RunShape(NamedTuple):
+    """What a row and the run it became must both say."""
+
+    started: date | None
+    completed: date | None
+    note: str
+
+
+def _row_shape(row: PlayEvent) -> RunShape:
+    return RunShape(started=row.started, completed=row.ended, note=row.note)
+
+
+def _run_shape(run: Playthrough) -> RunShape:
+    #: The generated bounds, which the database computed from the value
+    #: the endpoint event carried.
+    return RunShape(
+        started=run.started_lower, completed=run.completed_lower, note=run.note
+    )
+
+
+def _states_an_act(run: Playthrough) -> bool:
+    """A run one legacy row became. The default run states neither act."""
+    return run.start_recorded_at is not None or run.completion_recorded_at is not None
+
+
+def _reconcile_game(
+    game_id: str, rows: Sequence[PlayEvent], tracked_id: uuid.UUID
+) -> list[Mismatch]:
+    """The four row-to-row checks over one tracked game."""
+    mismatches: list[Mismatch] = []
+    runs = list(Playthrough.objects.filter(player_game_id=tracked_id))
+    live_runs = [run for run in runs if run.removed_at is None]
+    live_rows = [row for row in rows if row.removed_at is None]
+    removed_rows = [row for row in rows if row.removed_at is not None]
+    removed_runs = [run for run in runs if run.removed_at is not None]
+
+    #: Check 1. A multiset, because nothing distinguishes two rows that
+    #: say the same thing, and neither side is ordered here.
+    expected = Counter(_row_shape(row) for row in live_rows)
+    converted = Counter(_run_shape(run) for run in live_runs if _states_an_act(run))
+    if expected != converted:
+        mismatches.append(
+            Mismatch(
+                code="run_disagreement",
+                game_id=game_id,
+                detail=f"the rows say {sorted(expected.items())}, "
+                f"the runs say {sorted(converted.items())}",
+            )
+        )
+    for run in live_runs:
+        markers = (run.start_recorded_at, run.completion_recorded_at)
+        if any(marker is None for marker in markers) and not all(
+            marker is None for marker in markers
+        ):
+            mismatches.append(
+                Mismatch(
+                    code="missing_marker",
+                    game_id=game_id,
+                    detail=f"run {run.pk} states one act and not the other",
+                )
+            )
+
+    #: Check 2.
+    if len(removed_runs) != len(removed_rows):
+        mismatches.append(
+            Mismatch(
+                code="removed_run_missing",
+                game_id=game_id,
+                detail=f"{len(removed_rows)} removed row(s), "
+                f"{len(removed_runs)} removed run(s)",
+            )
+        )
+
+    #: Check 3.
+    if not live_runs:
+        mismatches.append(
+            Mismatch(
+                code="no_live_run",
+                game_id=game_id,
+                detail="a tracked game holds no live ordinary run",
+            )
+        )
+
+    #: Check 4. Rows that are peers on all three come back in either
+    #: order, and the triples they compare as are equal, so a peer swap
+    #: cannot be seen here -- which is the point.
+    #: attrgetter, because the number is annotated onto the queryset and
+    #: the model declares no such field.
+    numbered = with_display_number(
+        Playthrough.objects.filter(player_game_id=tracked_id)
+    )
+    by_display = [
+        (run.started_lower, run.completed_lower, run.created_at)
+        for run in sorted(numbered, key=attrgetter("display_number"))
+        if _states_an_act(run)
+    ]
+    by_legacy = [
+        (row.started, row.ended, row.created_at)
+        for row in sorted(live_rows, key=legacy_order_key)
+    ]
+    if by_display != by_legacy:
+        mismatches.append(
+            Mismatch(
+                code="display_order_disagreement",
+                game_id=game_id,
+                detail=f"the rows order as {by_legacy}, the runs as {by_display}",
+            )
+        )
+    return mismatches
+
+
+def reconcile(library: UserLibrary) -> list[Mismatch]:
+    """Compare every row the walk reached against the run it became.
+
+    Scoped to those rows, never to PlayEvent.objects whole. A row on an
+    untracked game, on a removed catalog game, or on a game with no
+    projection row is outside this run by design, and a gate demanding a
+    run for it would fail a migration that did nothing wrong.
+
+    No column links a run back to the row it came from, and none is
+    added: the projection carries what the library states, not where a
+    one-time conversion read it. So the comparison is per game, over
+    what both sides say.
+    """
+    mismatches: list[Mismatch] = []
+    tracked = PlayerGame.objects.filter(library=library, removed_at__isnull=True).only(
+        "id", "game_id"
+    )
+    for batch in batched(
+        keyset_pages(tracked, key=("id",), page_size=CONVERSION_PAGE_SIZE),
+        CONVERSION_PAGE_SIZE,
+    ):
+        rows_for_game = _rows_for_games(batch)
+        for tracked_row in batch:
+            rows = rows_for_game.get(tracked_row.game_id)
+            if rows is None:
+                #: The catalog marks the game removed. The walk skipped
+                #: it, so nothing is owed.
+                continue
+            mismatches.extend(
+                _reconcile_game(str(tracked_row.game_id), rows, tracked_row.pk)
+            )
+    return mismatches
+
+
+def ordering_violations() -> list[Mismatch]:
+    """Check 6: every Playthrough key still sorts by its created_at.
+
+    The one invariant no constraint enforces, and the one this run is
+    most able to break: it records instants from years ago, where a
+    uuid7() minted now would stamp today and pass every other check.
+    """
+    entries = [
+        entry for entry in identity_models() if entry.table == "games_playthrough"
+    ]
+    return [
+        Mismatch(
+            code="identity_ordering",
+            game_id=violation.subject,
+            detail=violation.detail,
+        )
+        for violation in check_ordering(entries).violations
+    ]
