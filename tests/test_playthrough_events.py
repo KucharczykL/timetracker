@@ -281,3 +281,19 @@ def test_the_lifecycle_builders_name_the_playthrough_they_are_told_about():
     assert (removed.aggregate_id, restored.aggregate_id) == (identity, identity)
     assert (removed.payload, restored.payload) == ({}, {})
     assert (removed.effective_time, restored.effective_time) == (None, None)
+
+
+def test_a_creation_event_takes_the_identity_it_is_given():
+    """#684 mints from identity_at(), for the order."""
+    identity = uuid.uuid7()
+
+    event = playthrough_created(uuid.uuid7(), playthrough_id=identity)
+
+    assert event.aggregate_id == identity
+
+
+def test_a_creation_event_mints_its_own_identity_by_default():
+    first = playthrough_created(uuid.uuid7())
+    second = playthrough_created(uuid.uuid7())
+
+    assert first.aggregate_id != second.aggregate_id

@@ -44,10 +44,16 @@ def playthrough_created(
     player_game_id: uuid.UUID,
     *,
     kind: PlaythroughKindValue = "ordinary",
+    playthrough_id: uuid.UUID | None = None,
 ) -> NewEvent:
-    """The one creation event, for both commands."""
+    """The one creation event, for both commands.
+
+    A caller states the identity where order matters: #684 records
+    a past instant, and the identity audit holds every Playthrough
+    key to its `created_at` order.
+    """
     return PLAYTHROUGH_CREATED.new(
-        aggregate_id=uuid.uuid7(),
+        aggregate_id=uuid.uuid7() if playthrough_id is None else playthrough_id,
         payload={"player_game": str(player_game_id), "kind": kind},
     )
 

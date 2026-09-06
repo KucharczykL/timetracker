@@ -15,6 +15,11 @@ from django.db import IntegrityError, transaction
 from django.db.models import Q
 
 from games.backfill.playergame import backfill_library
+from games.backfill.playthrough import (
+    convert_library,
+    ordering_violations,
+    reconcile,
+)
 from games.conversion import _request_conversion_for_locked_state
 from games.external_references import backfill_wikidata_references
 from games.models import (
@@ -151,6 +156,20 @@ class Command(BaseCommand):
             #: projector. Inside this block, so a load either lands tracked or
             #: does not land.
             backfill_library(user.library)
+            #: And the runs they hold: #684 states one per legacy
+            #: row, and one default per game holding none. Gated
+            #: here as 0045 gates it, so a fixture never lands
+            #: holding runs the migration would have refused.
+            converted = convert_library(user.library)
+            mismatches = reconcile(user.library) + ordering_violations()
+            if mismatches:
+                raise CommandError(
+                    "Sample playthroughs could not be stated: "
+                    + "; ".join(
+                        f"{mismatch.code} {mismatch.subject}: {mismatch.detail}"
+                        for mismatch in mismatches[:3]
+                    )
+                )
             #: The fixture predates #896: no reference rows.
             try:
                 backfilled = backfill_wikidata_references(user.library)
@@ -178,7 +197,9 @@ class Command(BaseCommand):
             self.style.SUCCESS(
                 f"Loaded {len(loadable)} sample object(s) for User {username!r} "
                 f"into library {user.library.pk}, with "
-                f"{backfilled.written} external reference(s)."
+                f"{backfilled.written} external reference(s), "
+                f"{converted.runs_converted} run(s) converted and "
+                f"{converted.runs_default} default run(s)."
             )
         )
 
