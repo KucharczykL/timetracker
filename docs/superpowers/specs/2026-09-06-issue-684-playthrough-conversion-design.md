@@ -88,8 +88,9 @@ over it, so a caller's `fallback` is honoured and nothing raises.
 `PTHROUGH_ISSUE = 684`, `KEY_PREFIX = "backfill:684:playthrough"`, a private
 `_append()` taking one event at a time, a summable `ConversionCounts`, then
 `convert_game()`, `convert_library()` and `reconcile()`. `convert_library()`
-takes its `run_time` defaulted, as `backfill_library()` does, so
-`load_sample_data` calls it with the library alone.
+takes the library alone, where `backfill_library()` takes a `run_time` too:
+every event here is dated from the row it converts or from the tracked game's
+`tracked_at`, so there is no instant for a caller to supply.
 
 One event per append, never one append per row. `LockedStream.append()` stamps
 one `recorded_at` across every row of one call, and the events of a single
