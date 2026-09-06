@@ -1,6 +1,7 @@
 """One row per run at a game."""
 
 import uuid
+from datetime import date
 
 import pytest
 from django.db import connection, transaction
@@ -8,6 +9,7 @@ from django.utils import timezone
 
 from games.checks import check_projection_models
 from games.commands.playergame import TrackGame
+from games.commands.playthrough import CompletePlaythrough, StartPlaythrough
 from games.events.append import lock_stream
 from games.events.dispatch import dispatch
 from games.events.envelope import RecordedEvent
@@ -62,9 +64,47 @@ def test_a_playthrough_starts_unnamed():
 
 
 def test_a_playthrough_starts_with_no_endpoints():
-    """#681 states them."""
+    """The date of a run nobody has stated yet."""
     assert Playthrough().started is None
     assert Playthrough().completed is None
+
+
+def test_a_playthrough_starts_with_neither_act_recorded():
+    """The marker's null is the act that never happened.
+
+    A null date cannot say it: `TemporalValue.unknown()` serializes to
+    None, so the date column reads the same for an unknown day.
+    """
+    row = Playthrough()
+
+    assert row.start_recorded_at is None
+    assert row.completion_recorded_at is None
+
+
+def test_a_playthrough_starts_with_no_endpoint_notes():
+    row = Playthrough()
+
+    assert (row.start_note, row.completion_note) == ("", "")
+
+
+def test_the_endpoint_columns_are_exempt_from_the_required_ones():
+    """The creation handler names none of them, and must not.
+
+    Each carries a default, so `_required_columns` exempts it and the
+    handler #679 wrote stays as it is.
+    """
+    required = {name for name, _ in _required_columns(Playthrough)}
+
+    assert required.isdisjoint(
+        {
+            "started",
+            "completed",
+            "start_recorded_at",
+            "completion_recorded_at",
+            "start_note",
+            "completion_note",
+        }
+    )
 
 
 def test_a_playthrough_starts_live():
@@ -182,13 +222,14 @@ def test_re_applying_the_creation_event_leaves_an_amendment_alone(
     """The handler names four columns, and no more.
 
     `project` passes `update_fields=list(columns)`, so a column the
-    handler leaves out survives. #681 and #1010 amend the rest, and the
-    creation event carries the lowest sequence, so a rebuild replays it
-    first and their events land on top. What this holds is the live
-    path, where the same event reaches the handler against a row their
-    amendments already changed. `started` and `completed` are the two
-    that need holding: both carry a default, so `_required_columns`
-    exempts them and would let the handler name them unnoticed.
+    handler leaves out survives. The endpoint handlers amend the rest,
+    as #1010 will, and the creation event carries the lowest sequence,
+    so a rebuild replays it first and their events land on top. What
+    this holds is the live path, where the same event reaches the
+    handler against a row their amendments already changed. Every
+    endpoint column needs holding: each carries a default, so
+    `_required_columns` exempts it and would let the handler name it
+    unnoticed.
     """
     appended = append_playthrough_created(owned_library, owned_user, tracked)
     identity = appended.events[0].aggregate_id
@@ -199,18 +240,36 @@ def test_re_applying_the_creation_event_leaves_an_amendment_alone(
         name="Blind run",
         note="No hints",
         started=started,
+        start_recorded_at=amended,
+        start_note="Began here",
         completed=completed,
+        completion_recorded_at=amended,
+        completion_note="Ended here",
         removed_at=amended,
     )
 
     reapply_creation(identity)
 
     row = Playthrough.objects.get()
-    assert (row.name, row.note, row.started, row.completed, row.removed_at) == (
+    assert (
+        row.name,
+        row.note,
+        row.started,
+        row.start_recorded_at,
+        row.start_note,
+        row.completed,
+        row.completion_recorded_at,
+        row.completion_note,
+        row.removed_at,
+    ) == (
         "Blind run",
         "No hints",
         started,
+        amended,
+        "Began here",
         completed,
+        amended,
+        "Ended here",
         amended,
     )
 
@@ -281,3 +340,112 @@ def test_the_foreign_key_to_playergame_is_deferred():
         rows = cursor.fetchall()
 
     assert rows == [(True, True, "a")]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_started_event_writes_the_date_the_marker_and_the_note(
+    owned_user, owned_library
+):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+
+    dispatch(
+        StartPlaythrough(
+            playthrough_id=run.pk,
+            when=TemporalValue.from_month(2024, 3),
+            note="blind run",
+        ),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="start",
+    )
+
+    row = Playthrough.objects.get()
+    event = LibraryEvent.objects.get(event_type="library.playthrough.started")
+    assert row.started == TemporalValue.from_month(2024, 3)
+    assert row.start_recorded_at == event.recorded_at
+    assert row.start_note == "blind run"
+    #: The other endpoint is untouched: two handlers read alike.
+    assert (row.completed, row.completion_recorded_at, row.completion_note) == (
+        None,
+        None,
+        "",
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_played_before_reads_back_as_an_act_with_no_day(owned_user, owned_library):
+    """The marker carries the act; the date carries nothing."""
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+
+    dispatch(
+        StartPlaythrough(playthrough_id=run.pk, when=None, note=""),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="start",
+    )
+
+    row = Playthrough.objects.get()
+    assert row.started is None
+    assert row.start_recorded_at is not None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_completed_event_leaves_the_start_alone(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    dispatch(
+        StartPlaythrough(
+            playthrough_id=run.pk, when=TemporalValue.from_month(2024, 3), note="blind"
+        ),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="start",
+    )
+
+    dispatch(
+        CompletePlaythrough(
+            playthrough_id=run.pk,
+            when=TemporalValue.from_day(date(2024, 4, 2)),
+            note="hard mode",
+        ),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="done",
+    )
+
+    row = Playthrough.objects.get()
+    assert (row.started, row.start_note) == (TemporalValue.from_month(2024, 3), "blind")
+    assert row.completed == TemporalValue.from_day(date(2024, 4, 2))
+    assert row.completion_note == "hard mode"
+    assert row.completion_recorded_at is not None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_empty_database_replay_reproduces_both_endpoints(owned_user, owned_library):
+    """Every written value comes off the event, so a replay agrees."""
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    for command, key in (
+        (
+            StartPlaythrough(
+                playthrough_id=run.pk, when=TemporalValue.from_month(2024, 3), note="a"
+            ),
+            "start",
+        ),
+        (CompletePlaythrough(playthrough_id=run.pk, when=None, note="b"), "done"),
+    ):
+        dispatch(command, actor=owned_user, library=owned_library, idempotency_key=key)
+    before = list(Playthrough.objects.order_by("pk").values())
+    #: The child first: player_game RESTRICTs.
+    Playthrough.objects.all().delete()
+    PlayerGame.objects.all().delete()
+
+    replay(owned_library)
+
+    assert list(Playthrough.objects.order_by("pk").values()) == before

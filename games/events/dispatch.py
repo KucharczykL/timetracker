@@ -88,6 +88,8 @@ class CommandName(CommandVocabulary):
     PLAYERGAME_RESTORE = "library.playergame.restore"
     PLAYERGAME_RECORD_FACTS = "library.playergame.record_facts"
     PLAYTHROUGH_CREATE = "library.playthrough.create"
+    PLAYTHROUGH_START = "library.playthrough.start"
+    PLAYTHROUGH_COMPLETE = "library.playthrough.complete"
 
 
 @dataclass(frozen=True, slots=True)

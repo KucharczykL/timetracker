@@ -253,7 +253,11 @@ PINNED_DEFAULTS: dict[str, dict[str, object]] = {
         "name": "",
         "note": "",
         "started": None,
+        "start_recorded_at": None,
+        "start_note": "",
         "completed": None,
+        "completion_recorded_at": None,
+        "completion_note": "",
         "removed_at": None,
     },
 }

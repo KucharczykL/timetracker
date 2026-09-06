@@ -7,6 +7,7 @@ from pydantic import with_config
 
 from games.events.references import STRICT_SCHEMA, ReferenceId
 from games.events.vocabulary import DEFAULT_EVENT_TYPES, EventSpec, NewEvent
+from timetracker.temporal import TemporalValue
 
 #: A Literal, not PlaythroughKind, on purpose. Strict validation refuses a
 #: plain string for an enum field, and a recorded payload is read back as
@@ -48,4 +49,65 @@ def playthrough_created(
     return PLAYTHROUGH_CREATED.new(
         aggregate_id=uuid.uuid7(),
         payload={"player_game": str(player_game_id), "kind": kind},
+    )
+
+
+@with_config(STRICT_SCHEMA)
+class PlaythroughEndpointPayload(TypedDict):
+    """The note of one endpoint, and only that.
+
+    The date is `effective_time`, which is where the charter puts what
+    a player says happened. No note is the empty string: an optional
+    key would ask a reader whether a value is absent or empty, and
+    here the two mean one thing.
+
+    One type for both specs. They are two EventSpecs, so an issue that
+    gives one of them a field gives it a type of its own.
+    """
+
+    note: str
+
+
+PLAYTHROUGH_STARTED = EventSpec(
+    "library.playthrough.started",
+    aggregate_type="playthrough",
+    payload=PlaythroughEndpointPayload,
+)
+
+PLAYTHROUGH_COMPLETED = EventSpec(
+    "library.playthrough.completed",
+    aggregate_type="playthrough",
+    payload=PlaythroughEndpointPayload,
+)
+
+DEFAULT_EVENT_TYPES.register(PLAYTHROUGH_STARTED)
+DEFAULT_EVENT_TYPES.register(PLAYTHROUGH_COMPLETED)
+
+
+def playthrough_started(
+    playthrough_id: uuid.UUID,
+    *,
+    when: TemporalValue | None,
+    note: str,
+) -> NewEvent:
+    """The run began, on the day stated or on none."""
+    #: The aggregate exists, so the id is given rather than minted.
+    return PLAYTHROUGH_STARTED.new(
+        aggregate_id=playthrough_id,
+        effective_time=when,
+        payload={"note": note},
+    )
+
+
+def playthrough_completed(
+    playthrough_id: uuid.UUID,
+    *,
+    when: TemporalValue | None,
+    note: str,
+) -> NewEvent:
+    """The run met its main objective."""
+    return PLAYTHROUGH_COMPLETED.new(
+        aggregate_id=playthrough_id,
+        effective_time=when,
+        payload={"note": note},
     )

@@ -543,6 +543,17 @@ def validate_temporal_value(value: object) -> None:
     parse_temporal_value(value)
 
 
+def stated_date(value: TemporalValue | None) -> TemporalValue | None:
+    """One spelling of no day, the one a column keeps.
+
+    `TemporalValue.unknown()` and None state one fact, and
+    `TemporalValueField` collapses the first to the second on the way
+    in. Anything that compares a stated date with a stored one, or
+    fingerprints it, collapses it here first.
+    """
+    return None if value is None or value.is_unknown else value
+
+
 @dataclass(slots=True)
 class TemporalEndpointDraft:
     """One position's dimensions, each independently assignable.
