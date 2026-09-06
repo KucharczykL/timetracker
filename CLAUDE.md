@@ -164,15 +164,15 @@ docs/           — Additional documentation
   `CURRENT_STATE` family with `PlayerGames`. A game tracked since #679 gets one
   from the moment a library tracks it — `TrackGame` returns both creation
   events under one `correlation_id` — but the rows #676 backfilled have none,
-  and #684 owns supplying it. Both endpoints are `TemporalValueField`
-  with generated lower- and upper-bound columns beside each, and each also
-  carries a `<act>_recorded_at` marker whose null is the act that never
-  happened (a null date only means an unknown day) and a note of its own, all
-  stated by `StartPlaythrough`/`CompletePlaythrough` in
-  `games/commands/playthrough.py`; #1010 corrects a stated endpoint. Its
-  `removed_at`
-  is the projector's, stated by a command, which is why it is absent from
-  `REMOVABLE_MODELS`. A blank `name` reads as `Playthrough N`, derived at
+  and #684 owns supplying it. Both endpoints are `TemporalValueField` with
+  generated lower- and upper-bound columns beside each, plus a
+  `<act>_recorded_at` marker and a note of their own: a null date is only an
+  unknown day, so the marker's null is the act that never happened. #681
+  states both with `StartPlaythrough`/`CompletePlaythrough` in
+  `games/commands/playthrough.py`, which refuse a second statement of a stated
+  endpoint (#1010 corrects one) and a completion that certainly precedes the
+  start. Its `removed_at` is the projector's, stated by a command, which is
+  why it is absent from `REMOVABLE_MODELS`. A blank `name` reads as `Playthrough N`, derived at
   read time by `games/reads/playthrough_numbering.py` and stored nowhere; no
   screen calls it yet
 

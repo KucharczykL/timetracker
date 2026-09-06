@@ -30,14 +30,9 @@ def endpoints_certainly_reversed(
 ) -> bool:
     """Whether a completion cannot follow its start.
 
-    Only the certainly-impossible. Each guard drops a pair the
-    comparison cannot judge, and the last two are why a bare `<` is
-    wrong rather than merely incomplete:
-
-    A bound is unknown for two reasons. The endpoint carries no date, or
-    it is an open-ended range -- `../2024-06` bounds nothing below and
-    `2024-01/..` nothing above -- and a window with no edge contradicts
-    nothing.
+    Only the certainly-impossible. A bound is unknown for two reasons:
+    no date at all, or an open-ended range -- `../2024-06` bounds
+    nothing below -- and a window with no edge contradicts nothing.
 
     A qualifier leaves the bounds where the bare value put them, so
     `2024-05-10~` bounds to that day exactly. Refusing a completion on
@@ -78,12 +73,11 @@ class CreatePlaythrough(Command):
 def library_playthrough(
     context: CommandContext, playthrough_id: uuid.UUID
 ) -> Playthrough:
-    """The run inside this library, or a refusal that names none.
+    """The run inside this library, or a refusal naming none.
 
-    A row of another library and a row that does not exist answer alike:
-    a refusal is not a place to learn an id. The third library-scoped
-    resolver, beside `tracked_game` and `TrackGame._visible_game`, and
-    the third caller #909 merges.
+    A row of another library and a row that does not exist answer
+    alike: a refusal is not a place to learn an id. The third
+    library-scoped resolver, and the third caller #909 merges.
     """
     try:
         return Playthrough.objects.select_related("player_game").get(
@@ -133,8 +127,7 @@ class StartPlaythrough(Command):
     playthrough_id: uuid.UUID
     #: None is "played before": the act, and no day.
     when: TemporalValue | None
-    #: No default. The build compares the whole endpoint, so a caller
-    #: who omitted this would be refused for changing it.
+    #: No default: the build compares the whole endpoint.
     note: str
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:

@@ -50,12 +50,11 @@ class Playthroughs(Projector):
 
     #: The creation handler names four columns, so amendments survive.
     #:
-    #: A rebuild inserts the model defaults for the rest and the amendment
-    #: events that follow set the real values, so naming a column in that
-    #: handler would let a re-applied creation event overwrite one. The two
-    #: endpoint handlers amend, never project, for the same reason:
-    #: `started` and `completed` carry a default, so `_required_columns`
-    #: exempts them and would not catch the mistake.
+    #: A rebuild inserts the model defaults for the rest, and the events
+    #: that follow set the real values. Naming one there would let a
+    #: re-applied creation event take an endpoint back out, and the
+    #: endpoint columns carry defaults, so `_required_columns` exempts
+    #: them and would not report it.
     handles: ClassVar[HandlerMap] = {
         PLAYTHROUGH_CREATED: _created,
         PLAYTHROUGH_STARTED: _started,

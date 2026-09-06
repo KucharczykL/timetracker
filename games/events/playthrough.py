@@ -56,14 +56,13 @@ def playthrough_created(
 class PlaythroughEndpointPayload(TypedDict):
     """The note of one endpoint, and only that.
 
-    The date is `effective_time`, which is where the charter puts what a
-    player says happened, and giving it a second home would give every
-    later reader a second code path. No note is the empty string: an
-    optional key would make a reader ask whether a value is absent or
-    empty, and here the two mean one thing.
+    The date is `effective_time`, which is where the charter puts what
+    a player says happened. No note is the empty string: an optional
+    key would ask a reader whether a value is absent or empty, and
+    here the two mean one thing.
 
     One type for both specs. They are two EventSpecs, so an issue that
-    gives one of them a field of its own gives it a type of its own.
+    gives one of them a field gives it a type of its own.
     """
 
     note: str

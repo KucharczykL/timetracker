@@ -1652,11 +1652,10 @@ class Playthrough(ProjectionModel):
         db_persist=True,
         editable=False,
     )
-    #: Null is the act that never happened. The date cannot say it: an
-    #: unknown day serializes to null too.
+    #: Null is the act that never happened. An unknown day is null too,
+    #: which is why the date cannot say it.
     start_recorded_at = models.DateTimeField(null=True, default=None, editable=False)
-    #: The note of the act, which the Journal dates. The row's `note`
-    #: describes the run and belongs to no day.
+    #: The note of the act. The row's `note` has no day.
     start_note = models.TextField(blank=True, default="")
     completed = TemporalValueField()
     completed_lower = models.GeneratedField(
