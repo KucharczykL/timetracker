@@ -7,15 +7,19 @@ import pytest
 
 from games.events.playthrough import (
     PLAYTHROUGH_COMPLETED,
+    PLAYTHROUGH_COMPLETION_CORRECTED,
     PLAYTHROUGH_CREATED,
     PLAYTHROUGH_NAME_CHANGED,
     PLAYTHROUGH_NOTE_CHANGED,
+    PLAYTHROUGH_START_CORRECTED,
     PLAYTHROUGH_STARTED,
     PlaythroughKindValue,
     playthrough_completed,
+    playthrough_completion_corrected,
     playthrough_created,
     playthrough_name_changed,
     playthrough_note_changed,
+    playthrough_start_corrected,
     playthrough_started,
 )
 from games.events.vocabulary import DEFAULT_EVENT_TYPES, PayloadInvalid
@@ -124,6 +128,45 @@ def test_the_endpoint_builders_name_the_playthrough_they_are_told_about():
     assert (started.aggregate_id, completed.aggregate_id) == (identity, identity)
     assert (started.effective_time, completed.effective_time) == (when, None)
     assert (started.payload, completed.payload) == ({"note": "blind run"}, {"note": ""})
+
+
+def test_the_correction_events_are_in_the_default_vocabulary():
+    started = DEFAULT_EVENT_TYPES.spec_for("library.playthrough.start_corrected")
+    completed = DEFAULT_EVENT_TYPES.spec_for("library.playthrough.completion_corrected")
+
+    assert (started, completed) == (
+        PLAYTHROUGH_START_CORRECTED,
+        PLAYTHROUGH_COMPLETION_CORRECTED,
+    )
+    assert started.aggregate_type == "playthrough"
+    assert completed.aggregate_type == "playthrough"
+
+
+def test_a_correction_payload_refuses_a_date_of_its_own():
+    """The corrected date rides where the first one rode."""
+    with pytest.raises(PayloadInvalid):
+        DEFAULT_EVENT_TYPES.validate(
+            PLAYTHROUGH_START_CORRECTED.event_type, {"note": "", "when": "2024-03"}
+        )
+
+
+def test_a_corrected_endpoint_carries_its_date_as_the_effective_time():
+    identity = uuid.uuid7()
+    when = TemporalValue.from_month(2024, 3)
+
+    corrected = playthrough_start_corrected(identity, when=when, note="blind run")
+
+    assert corrected.aggregate_id == identity
+    assert corrected.effective_time == when
+    assert corrected.payload == {"note": "blind run"}
+
+
+def test_a_corrected_endpoint_states_an_unknown_day_as_no_effective_time():
+    """A day nobody knows, stated a second time."""
+    corrected = playthrough_completion_corrected(uuid.uuid7(), when=None, note="")
+
+    assert corrected.effective_time is None
+    assert corrected.payload == {"note": ""}
 
 
 def test_the_descriptive_events_are_in_the_default_vocabulary():

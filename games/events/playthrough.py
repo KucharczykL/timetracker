@@ -113,6 +113,51 @@ def playthrough_completed(
     )
 
 
+PLAYTHROUGH_START_CORRECTED = EventSpec(
+    "library.playthrough.start_corrected",
+    aggregate_type="playthrough",
+    payload=PlaythroughEndpointPayload,
+)
+
+PLAYTHROUGH_COMPLETION_CORRECTED = EventSpec(
+    "library.playthrough.completion_corrected",
+    aggregate_type="playthrough",
+    payload=PlaythroughEndpointPayload,
+)
+
+DEFAULT_EVENT_TYPES.register(PLAYTHROUGH_START_CORRECTED)
+DEFAULT_EVENT_TYPES.register(PLAYTHROUGH_COMPLETION_CORRECTED)
+
+
+def playthrough_start_corrected(
+    playthrough_id: uuid.UUID,
+    *,
+    when: TemporalValue | None,
+    note: str,
+) -> NewEvent:
+    """The run began on this day, whatever was said before."""
+    #: No marker: the act was recorded when it was stated.
+    return PLAYTHROUGH_START_CORRECTED.new(
+        aggregate_id=playthrough_id,
+        effective_time=when,
+        payload={"note": note},
+    )
+
+
+def playthrough_completion_corrected(
+    playthrough_id: uuid.UUID,
+    *,
+    when: TemporalValue | None,
+    note: str,
+) -> NewEvent:
+    """The run met its objective on this day, whatever was said before."""
+    return PLAYTHROUGH_COMPLETION_CORRECTED.new(
+        aggregate_id=playthrough_id,
+        effective_time=when,
+        payload={"note": note},
+    )
+
+
 @with_config(STRICT_SCHEMA)
 class PlaythroughNamePayload(TypedDict):
     """What the library calls this run. Blank reads as its number."""
