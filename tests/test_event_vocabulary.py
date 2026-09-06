@@ -263,7 +263,7 @@ TEST_EVENT_TYPES = (
     "library.probe.forgotten",
     "library.ratio.recorded",
     "library.opaque.recorded",
-    "library.playthrough.started",
+    "library.nested.recorded",
     "library.shapes.recorded",
     "library.unregistered.happened",
     "library.nothing.happened",

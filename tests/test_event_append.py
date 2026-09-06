@@ -65,9 +65,9 @@ PROBE_RECORDED = EventSpec(
     "library.probe.recorded", aggregate_type="probe", payload=ProbePayload
 )
 #: Second spec: version and type from registration.
-PLAYTHROUGH_STARTED = EventSpec(
-    "library.playthrough.started",
-    aggregate_type="playthrough",
+NESTED_RECORDED = EventSpec(
+    "library.nested.recorded",
+    aggregate_type="probe",
     payload=NestedPayload,
 )
 SHAPES_RECORDED = EventSpec(
@@ -93,7 +93,7 @@ MISDECLARED_PROBE = EventSpec(
 EVENT_TYPES = EventTypeRegistry()
 for registered_spec in (
     PROBE_RECORDED,
-    PLAYTHROUGH_STARTED,
+    NESTED_RECORDED,
     SHAPES_RECORDED,
     OPAQUE_RECORDED,
 ):
@@ -292,7 +292,7 @@ def test_event_fields_round_trip(owned_library):
             owned_library,
             [
                 make_new_event(
-                    spec=PLAYTHROUGH_STARTED,
+                    spec=NESTED_RECORDED,
                     aggregate_id=aggregate_id,
                     payload={"nested": {"id": str(aggregate_id)}},
                     effective_time=effective_time,
@@ -303,7 +303,7 @@ def test_event_fields_round_trip(owned_library):
         )
 
     event = LibraryEvent.objects.get()
-    assert event.event_type == "library.playthrough.started"
+    assert event.event_type == "library.nested.recorded"
     assert event.aggregate_id == aggregate_id
     assert event.payload == {"nested": {"id": str(aggregate_id)}}
     assert event.effective_time == effective_time
