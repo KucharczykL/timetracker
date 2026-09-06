@@ -164,8 +164,8 @@ class StartPlaythrough(Command):
                 return Unchanged("This run already states that start.")
             raise CommandRejected(
                 f"Playthrough {self.playthrough_id} already states a start, and "
-                "a second one would say the run began twice. #1010 corrects a "
-                "stated endpoint.",
+                "a second one would say the run began twice. "
+                "CorrectPlaythroughStart states a better one.",
                 sentence=(
                     "This run already has a start. Correct the one it has "
                     "instead of adding another."
@@ -202,8 +202,8 @@ class CompletePlaythrough(Command):
                 return Unchanged("This run already states that completion.")
             raise CommandRejected(
                 f"Playthrough {self.playthrough_id} already states a completion, "
-                "and a second one would say the run ended twice. #1010 corrects "
-                "a stated endpoint.",
+                "and a second one would say the run ended twice. "
+                "CorrectPlaythroughCompletion states a better one.",
                 sentence=(
                     "This run already has a completion. Correct the one it has "
                     "instead of adding another."
