@@ -159,12 +159,19 @@ all. The refusal is therefore written as a registry the command reads, empty on
 delivery:
 
     class BlockingReferrer(NamedTuple):
-        """One thing that keeps a run in place."""
+        """One thing that keeps a run in place.
+
+        The model must carry `removed_at`: what a person removed
+        states nothing about a run, so only a live row blocks.
+        """
 
         model: type[models.Model]
         #: The alias games/projections.py already states.
         field_name: FieldName
-        subject: str  # e.g. "session"
+        #: The one thing a person is shown. Each entry writes its
+        #: own, because "move the sessions" is advice only its own
+        #: referrer can give.
+        sentence: str
 
     #: Empty until #700 and #701 give a Session its reference to a
     #: run. Written now so a shipped command need not grow the rule.
@@ -172,7 +179,7 @@ delivery:
 
 `blocking_referrer(run)` returns the first entry whose model has a live row
 naming the run, or `None`, and `RemovePlaythrough` turns an entry into a
-refusal that names the subject.
+refusal carrying that entry's sentence.
 
 The registry is a module-level tuple in `games/commands/playthrough.py`, beside
 its one reader. It is deliberately **not** a second entry in
