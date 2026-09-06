@@ -1,5 +1,7 @@
 """What the legacy rows become. Issue #684."""
 
+import importlib
+import json
 import uuid
 from datetime import UTC, date, datetime
 
@@ -10,6 +12,7 @@ from games.backfill.playergame import backfill_library
 from games.backfill.playthrough import (
     NO_COUNTS,
     ConversionCounts,
+    Mismatch,
     convert_library,
     convert_row,
     ordering_violations,
@@ -26,6 +29,14 @@ from games.models import (
 from games.reads.playthrough_numbering import with_display_number
 from games.removal import remove
 from timetracker.temporal import TemporalValue
+
+#: A module name beginning with a digit cannot be imported by the
+#: `from ... import` form.
+_migration = importlib.import_module(
+    "games.migrations.0045_playthrough_conversion_backfill"
+)
+MACHINE_PREFIX = _migration.MACHINE_PREFIX
+convert_legacy_playevents = _migration.convert_legacy_playevents
 
 #: backfill_library() appends the creation event the conftest fixture
 #: would have written by hand, so the two collide on the unique key.
@@ -454,3 +465,34 @@ def test_an_identity_out_of_order_is_reported(owned_library):
 
     codes = {mismatch.code for mismatch in ordering_violations()}
     assert "identity_ordering" in codes
+
+
+def test_the_migration_converts_and_reports(owned_library, capsys):
+    game = _game(owned_library)
+    backfill_library(owned_library)
+    _row(game, started=date(2024, 1, 1), ended=date(2024, 1, 9))
+    convert_legacy_playevents(None, None)
+
+    line = next(
+        text
+        for text in capsys.readouterr().out.splitlines()
+        if text.startswith(MACHINE_PREFIX)
+    )
+    payload = json.loads(line[len(MACHINE_PREFIX) :])
+    assert payload["mismatches"] == []
+    assert payload["summary"]["runs_converted"] == 1
+    assert payload["summary"]["libraries"] == 1
+
+
+def test_the_migration_raises_on_a_mismatch(owned_library, monkeypatch):
+    game = _game(owned_library)
+    backfill_library(owned_library)
+    _row(game, started=date(2024, 1, 1))
+    #: The migration reads the module by name at call time, so the gate
+    #: is patched where it is written.
+    monkeypatch.setattr(
+        "games.backfill.playthrough.reconcile",
+        lambda library: [Mismatch(code="test", game_id=str(game.pk), detail="x")],
+    )
+    with pytest.raises(RuntimeError, match="1 mismatch"):
+        convert_legacy_playevents(None, None)
