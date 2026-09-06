@@ -222,13 +222,14 @@ def test_re_applying_the_creation_event_leaves_an_amendment_alone(
     """The handler names four columns, and no more.
 
     `project` passes `update_fields=list(columns)`, so a column the
-    handler leaves out survives. #681 and #1010 amend the rest, and the
-    creation event carries the lowest sequence, so a rebuild replays it
-    first and their events land on top. What this holds is the live
-    path, where the same event reaches the handler against a row their
-    amendments already changed. `started` and `completed` are the two
-    that need holding: both carry a default, so `_required_columns`
-    exempts them and would let the handler name them unnoticed.
+    handler leaves out survives. The endpoint handlers amend the rest,
+    as #1010 will, and the creation event carries the lowest sequence,
+    so a rebuild replays it first and their events land on top. What
+    this holds is the live path, where the same event reaches the
+    handler against a row their amendments already changed. Every
+    endpoint column needs holding: each carries a default, so
+    `_required_columns` exempts it and would let the handler name it
+    unnoticed.
     """
     appended = append_playthrough_created(owned_library, owned_user, tracked)
     identity = appended.events[0].aggregate_id

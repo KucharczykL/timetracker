@@ -16,10 +16,11 @@ def with_display_number(
     """Live ordinary rows, each with its number.
 
     The key is the fourth sort field, and it is what makes the order
-    total. Until #681 every row has two null bounds, and one append
-    stamps one recorded_at across every row it writes, so the first
-    three fields leave whole partitions as peers -- and RowNumber over
-    peers follows the plan's input order, which a swap changes.
+    total. A row has bounds only where #681 stated an endpoint, and one
+    append stamps one recorded_at across every row it writes, so the
+    first three fields still leave whole partitions as peers -- and
+    RowNumber over peers follows the plan's input order, which a swap
+    changes.
     """
     return queryset.filter(
         removed_at__isnull=True, kind=PlaythroughKind.ORDINARY
