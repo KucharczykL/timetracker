@@ -25,6 +25,9 @@ check answers at two levels.
 - **warning** — every other use. Printed, not fatal. The word may be the right
   one; a pattern cannot tell, and only a reader can.
 
+`fold` is the exception: both levels are errors, because the reading that
+warning level exists for never turned up. See its entry below.
+
 Vale matches patterns, not meanings, so the split is an approximation. It is
 measured rather than assumed: over the uses that #676 and #677 introduced, 16
 of 20 domain uses reach error level and the other 4 fall through to warning,
@@ -46,8 +49,9 @@ Commit `2a9e0d27` renamed 62 files; #676 and #677 put it back in 71 places
 within two days, because the rename left nothing behind that could refuse it.
 This page and the check are that thing.
 
-Error when the sentence names the domain — an event, a stream, a projector, or
-the row, projection, status or state it writes:
+Error in every sense. The domain sense has one replacement, and the message
+names it — an event, a stream, a projector, or the row, projection, status or
+state it writes:
 
 | Instead of | Write |
 |---|---|
@@ -57,13 +61,20 @@ the row, projection, status or state it writes:
 | `mirror the fold` | mirror the row |
 | `folds the events` | replays the events |
 
-Warning everywhere else, where the plainer word depends on what is joined:
+Every other sense is an error too, and there the replacement depends on what is
+joined, so the message asks for it rather than naming one:
 
 | Instead of | Write |
 |---|---|
 | `folds two ranges` | merges two ranges |
 | `folded into the label` | included in the label |
 | `folding them into one branch` | combining them into one branch |
+| `a disclosure that folds both ways` | a disclosure that closes as well as opens |
+
+This word alone is refused at both levels. The second table was a warning until
+every use in the tree was read: each one was a metaphor standing in for a
+plainer word, and the literal sense the warning was protecting never appeared.
+`folder` and any other identifier are still out of scope, as code always is.
 
 ### `tombstone` → remove
 

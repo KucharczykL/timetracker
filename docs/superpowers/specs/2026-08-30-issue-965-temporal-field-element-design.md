@@ -39,8 +39,9 @@ was whole would move under the cursor mid-keystroke. Clearing a coarser part
 clears every finer part, because `1984--12` states no month.
 
 Everything else waits behind one disclosure, "I don't know the exact date",
-which folds both ways. It takes itself away while the controls behind it hold
-something the plain box could not state, so closing it strands no answer.
+which closes as well as opens. It takes itself away while the controls behind
+it hold something the plain box could not state, so closing it strands no
+answer.
 
 Behind it: approximate and uncertain, one pair per endpoint, because the grammar
 qualifies each end on its own; a whole-decade box, which snaps the year down to

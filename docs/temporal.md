@@ -94,7 +94,7 @@ value from what they post.
 
 `<temporal-field>` (`ts/elements/temporal-field.ts`) only enhances. It hides the
 number inputs and shows a segmented date, offers a whole-decade box and an
-open-start box, gives the end a three-way shape radio group, and folds the
+open-start box, gives the end a three-way shape radio group, and puts the
 second endpoint behind a disclosure. Nothing it does is needed to save a value,
 and the precision is never picked from a menu — it is derived from which parts a
 person filled.

@@ -119,7 +119,7 @@ def client_tool(name: str) -> Path:
     """
     if found := shutil.which(executable_name(name)):
         return Path(found)
-    #: Both shapes the pinned archive extracts into, newest version first.
+    #: Both shapes the pinned tarball extracts into, newest version first.
     patterns = ("postgres-binaries/*/bin", "postgres-binaries/*/*/bin")
     for directory in sorted(
         (path for pattern in patterns for path in CACHE.glob(pattern)), reverse=True

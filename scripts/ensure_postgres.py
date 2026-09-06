@@ -167,7 +167,7 @@ def download_with_curl(url: str, archive: Path) -> None:
         )
     except subprocess.CalledProcessError as exc:
         # A failed transfer can leave a truncated file behind, which would be
-        # cached as if it were the real archive on the next run.
+        # cached as if it were the real tarball on the next run.
         archive.unlink(missing_ok=True)
         raise HarnessError(
             "Could not download the PostgreSQL fallback with Python or curl "

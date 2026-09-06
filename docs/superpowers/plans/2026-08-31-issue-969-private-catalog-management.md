@@ -1983,7 +1983,7 @@ One page, ASD-STE100 plain, covering exactly these six things and nothing else:
    field names (Add Game has `original_release_date` and `release_date`).
 5. **The no-script contract.** The whole value round-trips with scripting off.
    `<temporal-field>` only enhances: it hides number inputs for a segmented date,
-   folds the disclosure, and offers the whole-decade and open-start boxes. Nothing
+   closes the disclosure, and offers the whole-decade and open-start boxes. Nothing
    it does is required to save a value. Node ≥ 26, because it uses `Temporal`.
 6. **Hosting one.** A widget renders to text, so `Media` never bubbles: the view
    threads `scripts=ModuleScript("dist/elements/temporal-field.js")`. Name

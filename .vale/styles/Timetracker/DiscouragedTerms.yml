@@ -1,7 +1,8 @@
 ---
-# Every other sense. Not an error, because the word is not always wrong — it is
-# imprecise. Whatever it names here, a plainer word names better: two values
-# merge, two ranges merge, a sheet of paper folds.
+# Every other sense, and an error too. The word was left at warning while a
+# literal sense looked defensible, but every use this repo wrote turned out to
+# be a metaphor standing in for a plainer word: two values merge, two ranges
+# merge, a disclosure closes. None survived, so none is allowed.
 #
 # A match that Terminology already reported as an error is dropped by
 # scripts/run-vale.mjs, so the settled sense reads as one finding rather than
@@ -9,7 +10,7 @@
 extends: existence
 message: "'%s' is imprecise. Say what merges, or 'replay' for events."
 link: docs/vocabulary.md
-level: warning
+level: error
 ignorecase: true
 scope:
   - ~code

@@ -649,7 +649,7 @@ def test_failed_curl_retry_discards_a_truncated_archive(harness, monkeypatch, tm
 
     with pytest.raises(harness.HarnessError, match="Python or curl"):
         harness.download_with_curl("https://example.invalid/pg.tar.gz", archive)
-    # A half-written file would otherwise be reused as if it were the real archive.
+    # A half-written file would otherwise be reused as if it were the real tarball.
     assert not archive.exists()
 
 

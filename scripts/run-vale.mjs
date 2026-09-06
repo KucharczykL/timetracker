@@ -9,7 +9,7 @@
 //
 // JSON rather than vale's own line format, for the two things this script does
 // that vale cannot: read each finding's severity so only an error fails the
-// build, and drop a warning that an error already covers.
+// build, and drop a broad rule's finding where a narrow rule already covers it.
 
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -60,22 +60,29 @@ if (tracked.status !== 0) {
 }
 
 // A broad rule and a narrow one can both match the same words: the narrow rule
-// names a settled sense of a term and errors, the broad rule says the term is
-// imprecise and warns. Go's regexp has no lookahead, so the broad rule cannot
-// exclude the narrow one and the overlap is resolved here instead. The error
-// message says everything the warning would have.
-function withoutCoveredWarnings(findings) {
-  const errors = findings.filter((finding) => finding.severity === "error");
+// names a settled sense of a term, the broad one says the term is imprecise.
+// Go's regexp has no lookahead, so the broad rule cannot exclude the narrow one
+// and the overlap is resolved here instead. The narrow message says everything
+// the broad one would have and names the one replacement, so the broad finding
+// is the one dropped — whatever its level, because `fold` errors at both.
+const BROAD_CHECKS = new Set([
+  "Timetracker.DiscouragedTerms",
+  "Timetracker.RemovalTerms",
+  "Timetracker.HealTerms",
+]);
+
+function withoutCoveredFindings(findings) {
+  const narrow = findings.filter((finding) => !BROAD_CHECKS.has(finding.check));
   return findings.filter((finding) => {
-    if (finding.severity === "error") {
+    if (!BROAD_CHECKS.has(finding.check)) {
       return true;
     }
-    return !errors.some(
-      (error) =>
-        error.file === finding.file &&
-        error.line === finding.line &&
-        error.start <= finding.end &&
-        finding.start <= error.end,
+    return !narrow.some(
+      (other) =>
+        other.file === finding.file &&
+        other.line === finding.line &&
+        other.start <= finding.end &&
+        finding.start <= other.end,
     );
   });
 }
@@ -111,7 +118,7 @@ for (let start = 0; start < files.length; start += CHUNK_SIZE) {
   }
 }
 
-const reportable = withoutCoveredWarnings(findings);
+const reportable = withoutCoveredFindings(findings);
 reportable.sort(
   (left, right) =>
     left.file.localeCompare(right.file) ||
