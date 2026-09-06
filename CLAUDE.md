@@ -735,6 +735,15 @@ chromium` once. All JS is vendored, so the tests run fully offline. A bare
   person is shown. The boundary never reads `str(error)`, so a raise site that
   states no `sentence` is answered with `REFUSED` and logged, rather than
   leaking. Write one for every new raise site.
+- **A command scopes a resolve by calling one** — resolve the UUID a command
+  carries with `library_row` from `games/commands/scope.py`, never
+  `Model.objects.get(...)` inside a `build`. It applies `library=context.library`
+  itself, so no caller holds a library to forget, and takes the caller's two
+  sentences as a `Refusal`. A read wider than one library names the read layer's
+  verb — `Game.objects.visible_to(library)`, listed in `SCOPING_VERBS`.
+  `tests/test_command_scope_guard.py` walks `games/commands/` and fails on a bare
+  manager `.get()`; it cannot see a dropped `library=` in a `filter()`, so a read
+  that counts or may answer `None` still states its own scope.
 - **No dispatch inside a transaction** — `run_in_transaction` opens the
   transaction it retries and refuses to nest, so a view that dispatches carries
   no `@transaction.atomic` and calls no helper that does. `games.E008` refuses
