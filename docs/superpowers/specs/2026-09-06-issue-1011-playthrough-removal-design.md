@@ -18,15 +18,14 @@ and no other writer may touch it.
 ## No schema change
 
 `Playthrough.removed_at` exists. #679 added it with the row, nullable, not
-editable, starting at `None`, and left the comment naming this issue as the one
-that states it. `tests/test_projection_model.py` already pins the default, so
-`PINNED_DEFAULTS` gains no entry.
+editable, starting at `None`. `tests/test_projection_model.py` already pins the
+default, so `PINNED_DEFAULTS` gained no entry.
 
-Nothing writes the column today. Two places read it: the numbering excludes a
+Two places read the column besides the projector: the numbering excludes a
 removed row, and `_live_run` refuses every statement about one.
 
-This issue therefore adds no migration, no field and no index. Its whole
-reversal is the projection rebuild [#667](2026-08-25-issue-667-shadow-rebuild-design.md)
+This issue added no migration, no field and no index. Its whole reversal is the
+projection rebuild [#667](2026-08-25-issue-667-shadow-rebuild-design.md)
 already provides.
 
 ## Two events
@@ -42,7 +41,7 @@ than a key nobody declared.
 Neither payload states the time. `recorded_at` carries it, exactly as the
 creation event carries `created_at`, so a replay writes what was recorded.
 
-Each spec gets a builder function beside it, `playthrough_removed()` and
+Each spec has a builder function beside it, `playthrough_removed()` and
 `playthrough_restored()`. #675 called its specs directly; every Playthrough
 event since #679 has a builder, and the commands and the projector import
 builders rather than specs.
@@ -83,8 +82,8 @@ success.
 
 This is a different order from `_live_run`, which reads the parent first and
 the run second. Both are correct for what they guard, and neither is obvious
-from the other, so each new build carries a comment naming #906 as the reason
-it differs.
+from the other, so each build carries a comment naming #906 as the reason it
+differs.
 
 `RestorePlaythrough` refuses under a removed game, and
 `RestorePlayerGame` refuses under nothing. The two do not contradict each
@@ -96,7 +95,8 @@ the game, then restore the run. The refusal states that order rather than
 hiding a restored row behind a removed game.
 
 Each refusal carries a `sentence`, and the removal pair writes its own rather
-than borrowing the one `_live_run` states. "Restore it before recording this"
+than borrowing the one `_live_run` states. `_refuse_under_a_removed_game()`
+holds it for both commands. "Restore it before recording this"
 names an act the person is not performing. The pair says the game was removed
 and asks for it back before its runs are changed.
 
@@ -159,23 +159,23 @@ all. The refusal is therefore written as a registry the command reads, empty on
 delivery:
 
     class BlockingReferrer(NamedTuple):
-        """One thing that keeps a run in place.
+        """A live row that blocks a removal.
 
-        The model must carry `removed_at`: what a person removed
-        states nothing about a run, so only a live row blocks.
+        Every entry's model must carry `removed_at`.
         """
 
         model: type[models.Model]
-        #: The alias games/projections.py already states.
+        #: Field name alias from games/projections.py.
         field_name: FieldName
-        #: The one thing a person is shown. Each entry writes its
-        #: own, because "move the sessions" is advice only its own
-        #: referrer can give.
+        #: What a person is shown.
         sentence: str
 
-    #: Empty until #700 and #701 give a Session its reference to a
-    #: run. Written now so a shipped command need not grow the rule.
+    #: Empty until #700 and #701 land.
     BLOCKING_REFERRERS: tuple[BlockingReferrer, ...] = ()
+
+Each entry writes its own sentence, because "move the sessions" is advice only
+its own referrer can give. The model must carry `removed_at`, because what a
+person removed states nothing about a run.
 
 `blocking_referrer(run)` returns the first entry whose model has a live row
 naming the run, or `None`, and `RemovePlaythrough` turns an entry into a
@@ -207,7 +207,7 @@ delivered registry is empty, so the command refuses nothing today.
 
 ## The handlers
 
-The `Playthroughs` projector gains `_removed`, which amends
+The `Playthroughs` projector has `_removed`, which amends
 `removed_at=event.recorded_at`, and `_restored`, which amends it to `None`. Each
 is one `UPDATE` on the primary key of the created row, and an absent row raises
 `ProjectionRowMissing`.
@@ -241,8 +241,8 @@ than a second function named after half the set:
 With no `fallback`, the refusal stands, and a screen that forgot to number its
 rows still hears about it. With one, a caller that means to render a row no
 number is counted across says what to call it. #1012 renders the first such
-screen and chooses the words; this issue owes the seam and its tests, which are
-its only callers here.
+screen and chooses the words; this issue delivered the seam and its tests, which
+are its only callers today.
 
 ## What this issue does not change
 
@@ -263,21 +263,21 @@ statistics read no Playthrough column yet; #1013 and #1014 own them.
 `removed_at` satisfies the one-act-one-verb rule in `docs/event-retention.md`.
 Neither document changes.
 
-Four comments do:
+Four comments did:
 
-- `games/models.py`, the `removed_at` comment, which names an issue rather than
-  the two commands that now state it;
-- `games/removal.py`, which says `PlayerGame` is the projection absent from
-  `REMOVABLE_MODELS`, and must now say both;
-- `CLAUDE.md`, whose `Playthrough` bullet says "the command #1011 adds",
+- `games/models.py`, the `removed_at` comment, which named an issue rather than
+  the two commands that state it;
+- `games/removal.py`, which named `PlayerGame` as the one projection absent from
+  `REMOVABLE_MODELS`, and now names both;
+- `CLAUDE.md`, whose `Playthrough` bullet said "the command #1011 adds",
   singular and in the future;
-- the wave review's #1011 section, which records what was delivered against
+- the wave review's #1011 section, which now records what was delivered against
   what it committed to.
 
 ## Verification and reversibility
 
-The gate is the full `make check`. The focused tests, in the four files the
-family already uses:
+The gate is the full `make check`, green on delivery. The focused tests, in the
+four files the family already uses:
 
 - **`tests/test_playthrough_events.py`** — both types are in the default
   vocabulary, and both payloads refuse an extra key.
@@ -297,12 +297,11 @@ family already uses:
   fallback, and answers with one, for a removed row and for a non-ordinary row
   alike.
 
-Three tests currently stamp `removed_at` with a raw `update()` because no
-command existed — in `tests/test_playthrough_command.py` for a start, a
-description and a correction of a removed run, and one in
-`tests/test_playthrough_numbering.py`. Each moves onto a dispatched
-`RemovePlaythrough`, so the state they assert against is the state the command
-actually produces.
+Three tests stamped `removed_at` with a raw `update()` because no command
+existed — in `tests/test_playthrough_command.py`, for a start, a description and
+a correction of a removed run. Each now dispatches `RemovePlaythrough`, so the
+state they assert against is the state the command produces. The numbering
+test keeps its direct write, because what it tests is the read.
 
 A revert is the commits alone. There is no migration, and no caller appends
 either event until #687 switches the writes, so no recorded event is lost.
