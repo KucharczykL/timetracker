@@ -562,16 +562,12 @@ def test_stating_an_endpoint_for_a_removed_game_is_refused(
 def test_stating_an_endpoint_for_a_removed_playthrough_is_refused(
     owned_user, owned_library, game
 ):
-    """Inert until #1011 stamps the column, and written here.
-
-    The resolver both commands share is written here, so its answers are
+    """The resolver both commands share is written here, so its answers are
     tested here.
     """
     _track(owned_user, owned_library, game)
-    playthrough = Playthrough.objects.get()
-    Playthrough.objects.filter(pk=playthrough.pk).update(
-        removed_at=playthrough.created_at
-    )
+    playthrough = _second_run(owned_user, owned_library)
+    _remove(owned_user, owned_library, playthrough, key="removal")
 
     with pytest.raises(CommandRejected) as refusal:
         _start(owned_user, owned_library, playthrough, when=None, key="gone")
@@ -890,8 +886,8 @@ def test_describing_a_run_of_a_removed_game_is_refused(owned_user, owned_library
 @pytest.mark.django_db(transaction=True)
 def test_describing_a_removed_run_is_refused(owned_user, owned_library, game):
     _track(owned_user, owned_library, game)
-    run = Playthrough.objects.get()
-    Playthrough.objects.filter(pk=run.pk).update(removed_at=run.created_at)
+    run = _second_run(owned_user, owned_library)
+    _remove(owned_user, owned_library, run, key="removal")
 
     with pytest.raises(CommandRejected) as refusal:
         _describe(owned_user, owned_library, run, name="Ironman", note=None)
@@ -1298,9 +1294,9 @@ def test_correcting_an_endpoint_of_a_removed_run_is_refused(
     owned_user, owned_library, game
 ):
     _track(owned_user, owned_library, game)
-    run = Playthrough.objects.get()
+    run = _second_run(owned_user, owned_library)
     _start(owned_user, owned_library, run, when=TemporalValue.from_year(2023))
-    Playthrough.objects.filter(pk=run.pk).update(removed_at=run.created_at)
+    _remove(owned_user, owned_library, run, key="removal")
 
     with pytest.raises(CommandRejected) as refusal:
         _correct_start(owned_user, owned_library, run, when=None)

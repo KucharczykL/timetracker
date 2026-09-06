@@ -180,8 +180,12 @@ docs/           — Additional documentation
   replay keeps the instant the act was recorded; `DescribePlaythrough` states
   the `name`, the `note`, or both, `None` for a fact it does not state, and
   every stated value is stripped in `__post_init__`, ahead of the fingerprint.
-  Its `removed_at` is the projector's, stated by the command #1011 adds, which
-  is why it is absent from `REMOVABLE_MODELS`. A blank `name` reads as
+  Its `removed_at` is the projector's, so it is absent from
+  `REMOVABLE_MODELS`: #1011 states it with `RemovePlaythrough` and clears it
+  with `RestorePlaythrough`, which refuse a lifecycle act under a removed
+  `PlayerGame`, refuse taking the last live ordinary run off a tracked game,
+  and read `BLOCKING_REFERRERS` — empty until #700 and #701 give a Session its
+  reference to a run. A blank `name` reads as
   `Playthrough N`, derived at read time by
   `games/reads/playthrough_numbering.py` and stored nowhere, which is why
   taking a name away is refused on a row no number is counted across — only

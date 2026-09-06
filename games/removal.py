@@ -26,8 +26,10 @@ from games.models import (
 from games.signals import recalculate_playtime
 
 #: Every model a user can remove.
-#: PlayerGame is absent: it is a projection,
-#: and only its projector writes it.
+#: PlayerGame and Playthrough are absent: both are projections,
+#: and only their projectors write them. A person removes either
+#: through a command -- RemovePlayerGame, RemovePlaythrough --
+#: which states an event the projector then replays onto the row.
 REMOVABLE_MODELS: tuple[type[Model], ...] = (
     Game,
     Edition,

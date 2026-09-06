@@ -67,6 +67,8 @@ def test_a_known_start_orders_before_an_unknown_one(tracked):
 
 def test_a_removed_row_does_not_shift_the_number(tracked):
     first = make_run(tracked)
+    #: Stamped directly: this module tests the read, and
+    #: RemovePlaythrough is what states the column in production.
     removed = make_run(tracked, removed_at=timezone.now())
     last = make_run(tracked)
 
