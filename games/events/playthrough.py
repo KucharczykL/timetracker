@@ -206,3 +206,44 @@ def playthrough_note_changed(playthrough_id: uuid.UUID, *, note: str) -> NewEven
     return PLAYTHROUGH_NOTE_CHANGED.new(
         aggregate_id=playthrough_id, payload={"note": note}
     )
+
+
+@with_config(STRICT_SCHEMA)
+class PlaythroughRemovedPayload(TypedDict):
+    """The library takes the run out of its lists.
+
+    Empty, because the type is the fact. A key stating a direction
+    could disagree with the type it rides on, and the instant is
+    `recorded_at`.
+    """
+
+
+@with_config(STRICT_SCHEMA)
+class PlaythroughRestoredPayload(TypedDict):
+    """The library puts the run back."""
+
+
+PLAYTHROUGH_REMOVED = EventSpec(
+    "library.playthrough.removed",
+    aggregate_type="playthrough",
+    payload=PlaythroughRemovedPayload,
+)
+
+PLAYTHROUGH_RESTORED = EventSpec(
+    "library.playthrough.restored",
+    aggregate_type="playthrough",
+    payload=PlaythroughRestoredPayload,
+)
+
+DEFAULT_EVENT_TYPES.register(PLAYTHROUGH_REMOVED)
+DEFAULT_EVENT_TYPES.register(PLAYTHROUGH_RESTORED)
+
+
+def playthrough_removed(playthrough_id: uuid.UUID) -> NewEvent:
+    """The run leaves the lists. `recorded_at` states when."""
+    return PLAYTHROUGH_REMOVED.new(aggregate_id=playthrough_id, payload={})
+
+
+def playthrough_restored(playthrough_id: uuid.UUID) -> NewEvent:
+    """The run is back, with every fact it had."""
+    return PLAYTHROUGH_RESTORED.new(aggregate_id=playthrough_id, payload={})

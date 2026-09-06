@@ -11,6 +11,8 @@ from games.events.playthrough import (
     PLAYTHROUGH_CREATED,
     PLAYTHROUGH_NAME_CHANGED,
     PLAYTHROUGH_NOTE_CHANGED,
+    PLAYTHROUGH_REMOVED,
+    PLAYTHROUGH_RESTORED,
     PLAYTHROUGH_START_CORRECTED,
     PLAYTHROUGH_STARTED,
     PlaythroughKindValue,
@@ -19,6 +21,8 @@ from games.events.playthrough import (
     playthrough_created,
     playthrough_name_changed,
     playthrough_note_changed,
+    playthrough_removed,
+    playthrough_restored,
     playthrough_start_corrected,
     playthrough_started,
 )
@@ -236,3 +240,44 @@ def test_the_descriptive_events_state_no_day():
         {"name": "Ironman"},
         {"note": "no saves"},
     )
+
+
+def test_the_lifecycle_events_are_in_the_default_vocabulary():
+    removed = DEFAULT_EVENT_TYPES.spec_for("library.playthrough.removed")
+    restored = DEFAULT_EVENT_TYPES.spec_for("library.playthrough.restored")
+
+    assert (removed, restored) == (PLAYTHROUGH_REMOVED, PLAYTHROUGH_RESTORED)
+    assert removed.aggregate_type == "playthrough"
+    assert restored.aggregate_type == "playthrough"
+
+
+def test_a_lifecycle_payload_states_nothing_but_its_type():
+    """The type is the fact, so no key can disagree with it."""
+    assert DEFAULT_EVENT_TYPES.validate(PLAYTHROUGH_REMOVED.event_type, {}) == {}
+    assert DEFAULT_EVENT_TYPES.validate(PLAYTHROUGH_RESTORED.event_type, {}) == {}
+
+
+def test_a_lifecycle_payload_refuses_a_direction_of_its_own():
+    """A later fact takes a later type, not a key nobody declared."""
+    with pytest.raises(PayloadInvalid):
+        DEFAULT_EVENT_TYPES.validate(PLAYTHROUGH_REMOVED.event_type, {"removed": True})
+
+
+def test_a_lifecycle_payload_refuses_a_time_of_its_own():
+    """`recorded_at` carries it, so a replay writes what was recorded."""
+    with pytest.raises(PayloadInvalid):
+        DEFAULT_EVENT_TYPES.validate(
+            PLAYTHROUGH_RESTORED.event_type, {"at": "2026-09-06T00:00:00Z"}
+        )
+
+
+def test_the_lifecycle_builders_name_the_playthrough_they_are_told_about():
+    """The aggregate exists, so nothing mints an identity here."""
+    identity = uuid.uuid7()
+
+    removed = playthrough_removed(identity)
+    restored = playthrough_restored(identity)
+
+    assert (removed.aggregate_id, restored.aggregate_id) == (identity, identity)
+    assert (removed.payload, restored.payload) == ({}, {})
+    assert (removed.effective_time, restored.effective_time) == (None, None)
