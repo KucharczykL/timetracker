@@ -6,6 +6,7 @@ import uuid
 from datetime import UTC, date, datetime
 
 import pytest
+from django.core.management import call_command
 from django.utils import timezone
 
 from games.backfill.playergame import backfill_library
@@ -25,6 +26,7 @@ from games.models import (
     PlayerGame,
     PlayEvent,
     Playthrough,
+    UserLibrary,
 )
 from games.reads.playthrough_numbering import with_display_number
 from games.removal import remove
@@ -496,3 +498,16 @@ def test_the_migration_raises_on_a_mismatch(owned_library, monkeypatch):
     )
     with pytest.raises(RuntimeError, match="1 mismatch"):
         convert_legacy_playevents(None, None)
+
+
+def test_the_sample_fixture_leaves_every_tracked_game_holding_a_run(owned_user):
+    call_command("load_sample_data", "--user", owned_user.username, verbosity=0)
+    library = UserLibrary.objects.get(user=owned_user)
+    tracked = PlayerGame.objects.filter(library=library, removed_at__isnull=True)
+    with_runs = tracked.filter(
+        playthroughs__removed_at__isnull=True, playthroughs__kind="ordinary"
+    ).distinct()
+
+    assert tracked.count() > 0
+    assert with_runs.count() == tracked.count()
+    assert reconcile(library) == []

@@ -15,6 +15,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Q
 
 from games.backfill.playergame import backfill_library
+from games.backfill.playthrough import convert_library
 from games.conversion import _request_conversion_for_locked_state
 from games.external_references import backfill_wikidata_references
 from games.models import (
@@ -151,6 +152,11 @@ class Command(BaseCommand):
             #: projector. Inside this block, so a load either lands tracked or
             #: does not land.
             backfill_library(user.library)
+            #: And the runs those tracked games hold: #684 states one
+            #: per legacy row, and one default for every game holding
+            #: none. Inside this block, so a load either lands whole or
+            #: does not land.
+            convert_library(user.library)
             #: The fixture predates #896: no reference rows.
             try:
                 backfilled = backfill_wikidata_references(user.library)
