@@ -194,3 +194,22 @@ def test_the_number_is_unchanged_across_a_rebuild(owned_user, owned_library):
 
     assert numbers(tracked) == before
     assert [number for _, number in before] == [1, 2, 3, 4, 5]
+
+
+def test_a_fallback_answers_for_a_row_with_no_number():
+    """A removed row and a bucket are both unnumbered."""
+    run = Playthrough(name="")
+
+    assert display_name(run, fallback="Removed playthrough") == "Removed playthrough"
+
+
+def test_a_fallback_does_not_displace_a_stated_name():
+    run = Playthrough(name="Blind run")
+
+    assert display_name(run, fallback="Removed playthrough") == "Blind run"
+
+
+def test_no_fallback_still_refuses_an_unnumbered_row():
+    """A screen that forgot to number its rows hears about it."""
+    with pytest.raises(UnnumberedPlaythrough):
+        display_name(Playthrough(name=""))
