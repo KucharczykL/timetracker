@@ -9,9 +9,11 @@ from games.commands.playergame import tracked_game
 from games.events.dispatch import Command, CommandContext, CommandName, CommandRejected
 from games.events.playthrough import (
     playthrough_completed,
+    playthrough_completion_corrected,
     playthrough_created,
     playthrough_name_changed,
     playthrough_note_changed,
+    playthrough_start_corrected,
     playthrough_started,
 )
 from games.events.vocabulary import NewEvent, Unchanged
@@ -267,3 +269,81 @@ class DescribePlaythrough(Command):
         if not events:
             return Unchanged("This run already reads that way.")
         return events
+
+
+@dataclass(frozen=True, slots=True)
+class CorrectPlaythroughStart(Command):
+    """State a better day or note for a start already stated."""
+
+    command_name: ClassVar[CommandName] = CommandName.PLAYTHROUGH_CORRECT_START
+    #: A UUID, because Command fingerprints its fields.
+    playthrough_id: uuid.UUID
+    when: TemporalValue | None
+    note: str
+
+    def __post_init__(self) -> None:
+        #: One spelling of no day, so a restatement fingerprints alike.
+        object.__setattr__(self, "when", stated_date(self.when))
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        run = _live_run(context, self.playthrough_id)
+        stated = stated_start(run)
+        #: Ahead of the comparison: a run that never began holds the
+        #: very values a "played before" correction states.
+        if stated is None:
+            raise CommandRejected(
+                f"Playthrough {self.playthrough_id} states no start, so there is "
+                "nothing to correct. A first statement is StartPlaythrough.",
+                sentence=(
+                    "This run has no start to correct. Record that it started first."
+                ),
+            )
+        if (self.when, self.note) == (stated.when, stated.note):
+            return Unchanged("This run already states that start.")
+        if endpoints_certainly_reversed(started=self.when, completed=run.completed):
+            raise CommandRejected(
+                f"Playthrough {self.playthrough_id} completed before the start "
+                "being stated, and no run ends before it begins.",
+                sentence="This run finished before that date. Check the day.",
+            )
+        return [playthrough_start_corrected(run.pk, when=self.when, note=self.note)]
+
+
+@dataclass(frozen=True, slots=True)
+class CorrectPlaythroughCompletion(Command):
+    """State a better day or note for a completion already stated."""
+
+    command_name: ClassVar[CommandName] = CommandName.PLAYTHROUGH_CORRECT_COMPLETION
+    #: A UUID, because Command fingerprints its fields.
+    playthrough_id: uuid.UUID
+    when: TemporalValue | None
+    note: str
+
+    def __post_init__(self) -> None:
+        #: One spelling of no day, so a restatement fingerprints alike.
+        object.__setattr__(self, "when", stated_date(self.when))
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        run = _live_run(context, self.playthrough_id)
+        stated = stated_completion(run)
+        if stated is None:
+            raise CommandRejected(
+                f"Playthrough {self.playthrough_id} states no completion, so "
+                "there is nothing to correct. A first statement is "
+                "CompletePlaythrough.",
+                sentence=(
+                    "This run has no completion to correct. Record that it "
+                    "finished first."
+                ),
+            )
+        if (self.when, self.note) == (stated.when, stated.note):
+            return Unchanged("This run already states that completion.")
+        if endpoints_certainly_reversed(started=run.started, completed=self.when):
+            raise CommandRejected(
+                f"Playthrough {self.playthrough_id} started after the completion "
+                "being stated, and no run ends before it begins.",
+                sentence="This run started after that date. Check the day.",
+            )
+        return [
+            playthrough_completion_corrected(run.pk, when=self.when, note=self.note)
+        ]

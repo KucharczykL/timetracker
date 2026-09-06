@@ -10,6 +10,8 @@ from django.utils import timezone
 from games.commands.playergame import PlayerGameNotTracked, TrackGame
 from games.commands.playthrough import (
     CompletePlaythrough,
+    CorrectPlaythroughCompletion,
+    CorrectPlaythroughStart,
     CreatePlaythrough,
     DescribePlaythrough,
     StartPlaythrough,
@@ -754,6 +756,311 @@ def test_describing_a_removed_run_is_refused(owned_user, owned_library, game):
 
     with pytest.raises(CommandRejected) as refusal:
         _describe(owned_user, owned_library, run, name="Ironman", note=None)
+
+    assert refusal.value.sentence == (
+        "That playthrough was removed from your library. Restore it before "
+        "recording this."
+    )
+
+
+def _correct_start(
+    owned_user, owned_library, playthrough, *, when, note="", key="correct-start"
+):
+    return dispatch(
+        CorrectPlaythroughStart(playthrough_id=playthrough.pk, when=when, note=note),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key=key,
+    )
+
+
+def _correct_completion(
+    owned_user, owned_library, playthrough, *, when, note="", key="correct-done"
+):
+    return dispatch(
+        CorrectPlaythroughCompletion(
+            playthrough_id=playthrough.pk, when=when, note=note
+        ),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key=key,
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_correcting_an_endpoint_that_was_never_stated_is_refused(
+    owned_user, owned_library, game
+):
+    """The values match a row that never started. The marker does not."""
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+
+    with pytest.raises(CommandRejected) as refusal:
+        _correct_start(owned_user, owned_library, run, when=None, note="")
+
+    assert refusal.value.sentence == (
+        "This run has no start to correct. Record that it started first."
+    )
+    assert (
+        LibraryEvent.objects.filter(
+            event_type="library.playthrough.start_corrected"
+        ).count()
+        == 0
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_correcting_a_completion_that_was_never_stated_is_refused(
+    owned_user, owned_library, game
+):
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+
+    with pytest.raises(CommandRejected) as refusal:
+        _correct_completion(owned_user, owned_library, run, when=None, note="")
+
+    assert refusal.value.sentence == (
+        "This run has no completion to correct. Record that it finished first."
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_correction_leaves_the_instant_the_act_was_recorded(
+    owned_user, owned_library, game
+):
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _start(owned_user, owned_library, run, when=TemporalValue.from_year(2023))
+    stated_at = Playthrough.objects.get().start_recorded_at
+
+    _correct_start(owned_user, owned_library, run, when=TemporalValue.from_year(2024))
+
+    corrected = Playthrough.objects.get()
+    assert corrected.start_recorded_at == stated_at
+    assert corrected.started == TemporalValue.from_year(2024)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_correcting_a_start_records_the_date_as_the_effective_time(
+    owned_user, owned_library, game
+):
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _start(owned_user, owned_library, run, when=TemporalValue.from_year(2023))
+
+    result = _correct_start(
+        owned_user, owned_library, run, when=TemporalValue.from_month(2024, 3)
+    )
+
+    assert result.outcome is CommandOutcome.APPENDED
+    event = LibraryEvent.objects.get(event_type="library.playthrough.start_corrected")
+    assert event.aggregate_id == run.pk
+    assert event.effective_time == TemporalValue.from_month(2024, 3)
+    assert event.payload == {"note": ""}
+
+
+@pytest.mark.django_db(transaction=True)
+def test_correcting_only_the_note_of_a_start_is_recorded(
+    owned_user, owned_library, game
+):
+    """The endpoint is the pair, so its note is corrected alike."""
+    when = TemporalValue.from_year(2023)
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _start(owned_user, owned_library, run, when=when, note="blind")
+
+    _correct_start(owned_user, owned_library, run, when=when, note="second try")
+
+    corrected = Playthrough.objects.get()
+    assert (corrected.started, corrected.start_note) == (when, "second try")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_correcting_a_start_to_an_unknown_day_keeps_the_act(
+    owned_user, owned_library, game
+):
+    """The day was wrong, and the run still began."""
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _start(owned_user, owned_library, run, when=TemporalValue.from_year(2023))
+
+    _correct_start(owned_user, owned_library, run, when=None)
+
+    corrected = Playthrough.objects.get()
+    assert corrected.started is None
+    assert corrected.start_recorded_at is not None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_correcting_a_start_to_what_it_states_changes_nothing(
+    owned_user, owned_library, game
+):
+    when = TemporalValue.from_year(2023)
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _start(owned_user, owned_library, run, when=when, note="blind")
+
+    result = _correct_start(owned_user, owned_library, run, when=when, note="blind")
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+    assert not LibraryEvent.objects.filter(
+        event_type="library.playthrough.start_corrected"
+    ).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_unknown_day_restates_a_dateless_start_correction(
+    owned_user, owned_library, game
+):
+    """Two spellings of no day, and one fact between them."""
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _start(owned_user, owned_library, run, when=None)
+    _correct_start(owned_user, owned_library, run, when=TemporalValue.from_year(2023))
+
+    result = _correct_start(owned_user, owned_library, run, when=None, key="cleared")
+    again = _correct_start(
+        owned_user,
+        owned_library,
+        run,
+        when=TemporalValue.unknown(),
+        key="cleared-again",
+    )
+
+    assert result.outcome is CommandOutcome.APPENDED
+    assert again.outcome is CommandOutcome.UNCHANGED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_correcting_a_completion_records_the_date_and_the_note(
+    owned_user, owned_library, game
+):
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _complete(owned_user, owned_library, run, when=TemporalValue.from_year(2023))
+
+    result = _correct_completion(
+        owned_user,
+        owned_library,
+        run,
+        when=TemporalValue.from_day(date(2024, 4, 2)),
+        note="hard mode",
+    )
+
+    assert result.outcome is CommandOutcome.APPENDED
+    corrected = Playthrough.objects.get()
+    assert corrected.completed == TemporalValue.from_day(date(2024, 4, 2))
+    assert corrected.completion_note == "hard mode"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_correcting_a_completion_to_what_it_states_changes_nothing(
+    owned_user, owned_library, game
+):
+    when = TemporalValue.from_year(2023)
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _complete(owned_user, owned_library, run, when=when, note="done")
+
+    result = _correct_completion(owned_user, owned_library, run, when=when, note="done")
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_correcting_a_start_past_the_completion_is_refused(
+    owned_user, owned_library, game
+):
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _start(owned_user, owned_library, run, when=TemporalValue.from_year(2023))
+    _complete(owned_user, owned_library, run, when=TemporalValue.from_year(2024))
+
+    with pytest.raises(CommandRejected) as refusal:
+        _correct_start(
+            owned_user, owned_library, run, when=TemporalValue.from_year(2025)
+        )
+
+    assert refusal.value.sentence == (
+        "This run finished before that date. Check the day."
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_correcting_a_completion_before_the_start_is_refused(
+    owned_user, owned_library, game
+):
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _start(owned_user, owned_library, run, when=TemporalValue.from_year(2024))
+    _complete(owned_user, owned_library, run, when=TemporalValue.from_year(2025))
+
+    with pytest.raises(CommandRejected) as refusal:
+        _correct_completion(
+            owned_user, owned_library, run, when=TemporalValue.from_year(2023)
+        )
+
+    assert refusal.value.sentence == (
+        "This run started after that date. Check the day."
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_correcting_an_endpoint_of_another_library_is_refused(
+    owned_user, owned_library, django_user_model
+):
+    """A refusal names no id, and leaks no row."""
+    stranger = django_user_model.objects.create_user(username="stranger", password="p")
+    elsewhere = Game.objects.create(library=stranger.library, name="Tunic")
+    tracked = PlayerGame.objects.create(
+        id=uuid.uuid7(),
+        library=stranger.library,
+        game=elsewhere,
+        tracked_at=timezone.now(),
+    )
+    hidden = Playthrough.objects.create(
+        id=uuid.uuid7(),
+        library=stranger.library,
+        player_game=tracked,
+        kind=PlaythroughKind.ORDINARY,
+        created_at=timezone.now(),
+    )
+
+    with pytest.raises(CommandRejected) as refusal:
+        _correct_start(owned_user, owned_library, hidden, when=None)
+
+    assert refusal.value.sentence == "That playthrough is not available."
+
+
+@pytest.mark.django_db(transaction=True)
+def test_correcting_an_endpoint_of_a_removed_game_is_refused(
+    owned_user, owned_library, game
+):
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _start(owned_user, owned_library, run, when=TemporalValue.from_year(2023))
+    tracked = PlayerGame.objects.get()
+    PlayerGame.objects.filter(pk=tracked.pk).update(removed_at=tracked.tracked_at)
+
+    with pytest.raises(CommandRejected) as refusal:
+        _correct_start(owned_user, owned_library, run, when=None)
+
+    assert refusal.value.sentence == (
+        "That game was removed from your library. Restore it before recording this."
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_correcting_an_endpoint_of_a_removed_run_is_refused(
+    owned_user, owned_library, game
+):
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _start(owned_user, owned_library, run, when=TemporalValue.from_year(2023))
+    Playthrough.objects.filter(pk=run.pk).update(removed_at=run.created_at)
+
+    with pytest.raises(CommandRejected) as refusal:
+        _correct_start(owned_user, owned_library, run, when=None)
 
     assert refusal.value.sentence == (
         "That playthrough was removed from your library. Restore it before "
