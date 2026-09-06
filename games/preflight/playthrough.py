@@ -1,6 +1,8 @@
 """What the legacy PlayEvent rows hold.
 
-#684 imports the classifiers, so the two agree.
+#684 imports the classifiers, the pairing and the candidate
+scan, so the report and the run agree. Those names are public
+for that reason alone.
 """
 
 import uuid
@@ -437,10 +439,16 @@ def preflight_library(
                 pk__in=aggregate_for_game, removed_at__isnull=True
             ).values_list("pk", flat=True)
         )
+        #: Removed rows too. The counts below read the live ones,
+        #: as this report always has, but #684 converts both and
+        #: pairs over both, and pairing reads a whole group: one
+        #: removed row sharing a day makes an endpoint ambiguous.
+        #: Scanning live rows alone would report a correlation id
+        #: the run then declines to adopt.
         rows_by_game: dict[uuid.UUID, list[PlayEvent]] = defaultdict(list)
-        for row in PlayEvent.objects.filter(
-            game_id__in=live_games, removed_at__isnull=True
-        ).order_by("game_id", "id"):
+        for row in PlayEvent.objects.filter(game_id__in=live_games).order_by(
+            "game_id", "id"
+        ):
             rows_by_game[row.game_id].append(row)
 
         for game_id, aggregate_id in sorted(
@@ -451,17 +459,7 @@ def preflight_library(
                 #: Removal never untracks; its rows count elsewhere.
                 counts = counts + PreflightCounts(tracked_on_removed_game=1)
                 continue
-            rows = rows_by_game.get(game_id, [])
-            if not rows:
-                counts = counts + PreflightCounts(tracked_without_rows=1)
-                continue
-
-            counts = counts + PreflightCounts(live_rows=len(rows))
-            for row in sorted(rows, key=legacy_order_key):
-                verdict = classify_row(row)
-                counts = counts + PreflightCounts(**{_verdict_field(verdict): 1})
-                if verdict is RowVerdict.REVERSED_ENDPOINTS:
-                    reversed_rows.append(row.id)
+            for row in rows_by_game.get(game_id, []):
                 for kind, day in (
                     (EndpointKind.START, row.started),
                     (EndpointKind.COMPLETION, row.ended),
@@ -475,6 +473,19 @@ def preflight_library(
                                 aggregate_id=aggregate_id,
                             )
                         )
+            rows = [
+                row for row in rows_by_game.get(game_id, []) if row.removed_at is None
+            ]
+            if not rows:
+                counts = counts + PreflightCounts(tracked_without_rows=1)
+                continue
+
+            counts = counts + PreflightCounts(live_rows=len(rows))
+            for row in sorted(rows, key=legacy_order_key):
+                verdict = classify_row(row)
+                counts = counts + PreflightCounts(**{_verdict_field(verdict): 1})
+                if verdict is RowVerdict.REVERSED_ENDPOINTS:
+                    reversed_rows.append(row.id)
 
             ordering = ordering_counts(rows)
             counts = counts + PreflightCounts(

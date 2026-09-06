@@ -35,8 +35,10 @@ An endpoint with a day whose `(player_game, kind, day)` matches exactly one
 a fresh id.
 
 Idempotency keys are `backfill:684:playthrough:<fact>:<row>`, plus
-`:default:<player_game>`. No `command_input` names an aggregate id, so a second
-pass hashes the same fingerprint and replays.
+`:default:<player_game>`. No `command_input` names an identity this pass mints.
+Such an identity is fresh per pass, so a fingerprint holding one answers a
+second pass with `IdempotencyKeyMismatch` in place of the drift the gate reads.
+A `PlayerGame` id is stable, so `command_input` may name one.
 
 ## Scope and defaults
 
@@ -44,22 +46,33 @@ The walk pages the live `PlayerGame` rows of one library. It skips a game the
 catalog marks removed. It takes that game's rows, live and removed alike.
 
 A tracked game that holds no live run after its rows are converted receives one
-`created` event, dated with its `tracked_at`.
+`created` event, dated with its `tracked_at`. "No live run" is read from the
+projection, not from the rows: #679 states a run the moment a library tracks a
+game, and reading rows alone would state a second.
 
 ## The gate
 
 The migration `0045_playthrough_conversion_backfill` converts, then checks,
 then commits. Any mismatch rolls the run back.
 
-1. The live rows of a game and the runs that state an act say the same days and
-   the same notes.
-2. A removed row has a removed run.
+1. The live rows of a game and the live runs that state an act say the same days
+   and the same notes.
+2. The removed rows of a game and its removed runs say the same, read the same
+   way: a count alone lets one wrong run cancel another.
 3. A tracked game holds a live ordinary run.
 4. The display order of the runs follows the legacy order of the rows.
-5. A second pass appends no event.
-6. The identity audit reports no violation for `games_playthrough`.
+5. A second pass appends no event, and the walk reaches every row it owes a run.
+6. The identity audit reports no violation for `games_playthrough`, and holds an
+   entry for the table: an audit that examined nothing must not read as clean.
+7. At most one live ordinary run states no act. Check 1 reads only the runs that
+   state one, so a surplus default passes every other check.
 
-`load_sample_data` calls `convert_library()` beside `backfill_library()`.
+The migration prints one machine-readable line to stderr, so it travels with the
+traceback rather than on a stream a quiet `migrate` may discard, and names the
+first three mismatches in the exception itself.
+
+`load_sample_data` calls `convert_library()` beside `backfill_library()`, and
+refuses the load on any mismatch.
 
 ## Rollback
 
