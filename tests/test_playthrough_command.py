@@ -4,16 +4,20 @@ import uuid
 from datetime import date
 
 import pytest
+from django.db import transaction
 from django.utils import timezone
 
 from games.commands.playergame import PlayerGameNotTracked, TrackGame
 from games.commands.playthrough import (
     CompletePlaythrough,
     CreatePlaythrough,
+    DescribePlaythrough,
     StartPlaythrough,
     endpoints_certainly_reversed,
 )
+from games.events.append import lock_stream
 from games.events.dispatch import CommandOutcome, CommandRejected, dispatch
+from games.events.playthrough import playthrough_created
 from games.models import (
     Game,
     LibraryEvent,
@@ -21,6 +25,7 @@ from games.models import (
     Playthrough,
     PlaythroughKind,
 )
+from games.reads.playthrough_numbering import display_name, with_display_number
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.untracked_games
@@ -561,6 +566,194 @@ def test_stating_an_endpoint_for_a_removed_playthrough_is_refused(
 
     with pytest.raises(CommandRejected) as refusal:
         _start(owned_user, owned_library, playthrough, when=None, key="gone")
+
+    assert refusal.value.sentence == (
+        "That playthrough was removed from your library. Restore it before "
+        "recording this."
+    )
+
+
+def _describe(owned_user, owned_library, playthrough, *, name, note, key="describe"):
+    return dispatch(
+        DescribePlaythrough(playthrough_id=playthrough.pk, name=name, note=note),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key=key,
+    )
+
+
+def _imported_run(owned_user, owned_library):
+    """A bucket row, which no display number is counted across."""
+    tracked = PlayerGame.objects.get()
+    with transaction.atomic():
+        stream = lock_stream(owned_library)
+        appended = stream.append(
+            [playthrough_created(tracked.pk, kind="imported_history")],
+            actor=owned_user,
+            correlation_id=uuid.uuid7(),
+            idempotency_key="imported",
+        )
+    return Playthrough.objects.get(pk=appended.events[0].aggregate_id)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_describing_a_run_records_one_event_per_stated_fact(
+    owned_user, owned_library, game
+):
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+
+    result = _describe(owned_user, owned_library, run, name="Ironman", note="no saves")
+
+    assert result.outcome is CommandOutcome.APPENDED
+    described = Playthrough.objects.get()
+    assert (described.name, described.note) == ("Ironman", "no saves")
+    recorded = LibraryEvent.objects.filter(aggregate_id=run.pk).order_by("sequence")
+    assert [event.event_type for event in recorded] == [
+        "library.playthrough.created",
+        "library.playthrough.name_changed",
+        "library.playthrough.note_changed",
+    ]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_fact_the_command_does_not_state_is_left_alone(
+    owned_user, owned_library, game
+):
+    """None is not a value; it is the absence of a statement."""
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _describe(owned_user, owned_library, run, name="Ironman", note="no saves")
+
+    _describe(owned_user, owned_library, run, name=None, note="one save", key="again")
+
+    described = Playthrough.objects.get()
+    assert (described.name, described.note) == ("Ironman", "one save")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_cleared_name_reads_as_the_display_number(owned_user, owned_library, game):
+    """Three spaces is a cleared name, not a name of spaces."""
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _describe(owned_user, owned_library, run, name="Ironman", note=None)
+
+    _describe(owned_user, owned_library, run, name="   ", note=None, key="again")
+
+    numbered = with_display_number(Playthrough.objects.all()).get()
+    assert numbered.name == ""
+    assert display_name(numbered) == "Playthrough 1"
+
+
+def test_a_command_that_states_no_fact_is_not_a_command():
+    """A request expressing no intent claims no idempotency key."""
+    with pytest.raises(ValueError):
+        DescribePlaythrough(playthrough_id=uuid.uuid7(), name=None, note=None)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_restating_both_facts_exactly_changes_nothing(owned_user, owned_library, game):
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _describe(owned_user, owned_library, run, name="Ironman", note="no saves")
+
+    result = _describe(
+        owned_user, owned_library, run, name="Ironman", note="no saves", key="again"
+    )
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+    assert (
+        LibraryEvent.objects.filter(
+            event_type="library.playthrough.name_changed"
+        ).count()
+        == 1
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_name_longer_than_the_column_is_refused(owned_user, owned_library, game):
+    """The refusal reads the command, not the row."""
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+
+    with pytest.raises(CommandRejected) as refusal:
+        _describe(owned_user, owned_library, run, name="x" * 256, note=None)
+
+    assert refusal.value.sentence == (
+        "That name is too long. Keep it under 255 characters."
+    )
+    assert not LibraryEvent.objects.filter(
+        event_type="library.playthrough.name_changed"
+    ).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_clearing_the_name_of_an_unnumbered_run_is_refused(
+    owned_user, owned_library, game
+):
+    """A bucket row has no number to fall back on."""
+    _track(owned_user, owned_library, game)
+    imported = _imported_run(owned_user, owned_library)
+    _describe(owned_user, owned_library, imported, name="Before 2020", note=None)
+
+    with pytest.raises(CommandRejected) as refusal:
+        _describe(owned_user, owned_library, imported, name="", note=None, key="clear")
+
+    assert refusal.value.sentence == (
+        "This run is not numbered, so it needs a name of its own."
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_describing_a_run_of_another_library_is_refused(
+    owned_user, owned_library, django_user_model
+):
+    """A refusal names no id, and leaks no row."""
+    stranger = django_user_model.objects.create_user(username="stranger", password="p")
+    elsewhere = Game.objects.create(library=stranger.library, name="Tunic")
+    tracked = PlayerGame.objects.create(
+        id=uuid.uuid7(),
+        library=stranger.library,
+        game=elsewhere,
+        tracked_at=timezone.now(),
+    )
+    hidden = Playthrough.objects.create(
+        id=uuid.uuid7(),
+        library=stranger.library,
+        player_game=tracked,
+        kind=PlaythroughKind.ORDINARY,
+        created_at=timezone.now(),
+    )
+
+    with pytest.raises(CommandRejected) as refusal:
+        _describe(owned_user, owned_library, hidden, name="Ironman", note=None)
+
+    assert refusal.value.sentence == "That playthrough is not available."
+
+
+@pytest.mark.django_db(transaction=True)
+def test_describing_a_run_of_a_removed_game_is_refused(owned_user, owned_library, game):
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    tracked = PlayerGame.objects.get()
+    PlayerGame.objects.filter(pk=tracked.pk).update(removed_at=tracked.tracked_at)
+
+    with pytest.raises(CommandRejected) as refusal:
+        _describe(owned_user, owned_library, run, name="Ironman", note=None)
+
+    assert refusal.value.sentence == (
+        "That game was removed from your library. Restore it before recording this."
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_describing_a_removed_run_is_refused(owned_user, owned_library, game):
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    Playthrough.objects.filter(pk=run.pk).update(removed_at=run.created_at)
+
+    with pytest.raises(CommandRejected) as refusal:
+        _describe(owned_user, owned_library, run, name="Ironman", note=None)
 
     assert refusal.value.sentence == (
         "That playthrough was removed from your library. Restore it before "

@@ -3,19 +3,26 @@
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import ClassVar
+from typing import ClassVar, cast
 
 from games.commands.playergame import tracked_game
 from games.events.dispatch import Command, CommandContext, CommandName, CommandRejected
 from games.events.playthrough import (
     playthrough_completed,
     playthrough_created,
+    playthrough_name_changed,
+    playthrough_note_changed,
     playthrough_started,
 )
 from games.events.vocabulary import NewEvent, Unchanged
-from games.models import Playthrough
+from games.models import Playthrough, PlaythroughKind
 from games.reads.playthrough_endpoints import stated_completion, stated_start
 from timetracker.temporal import TemporalQualifier, TemporalValue, stated_date
+
+#: Read off the column, so the refusal and the constraint cannot drift.
+PLAYTHROUGH_NAME_MAX_LENGTH: int = cast(
+    int, Playthrough._meta.get_field("name").max_length
+)
 
 
 def _bounding_qualifier(
@@ -207,3 +214,56 @@ class CompletePlaythrough(Command):
                 sentence="This run started after that date. Check the day.",
             )
         return [playthrough_completed(run.pk, when=self.when, note=self.note)]
+
+
+@dataclass(frozen=True, slots=True)
+class DescribePlaythrough(Command):
+    """State the run's name, its note, or both."""
+
+    command_name: ClassVar[CommandName] = CommandName.PLAYTHROUGH_DESCRIBE
+    #: A UUID, because Command fingerprints its fields.
+    playthrough_id: uuid.UUID
+    #: None states no fact. "" clears the value.
+    name: str | None
+    note: str | None
+
+    def __post_init__(self) -> None:
+        if self.name is None and self.note is None:
+            raise ValueError(
+                "DescribePlaythrough states no fact. A command that asks for "
+                "nothing would still claim an idempotency key and write a "
+                "record for a request that expressed no intent."
+            )
+        #: A name of three spaces is a cleared name.
+        for field_name in ("name", "note"):
+            stated = getattr(self, field_name)
+            if stated is not None:
+                object.__setattr__(self, field_name, stated.strip())
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        run = _live_run(context, self.playthrough_id)
+        #: Both refusals read the command, so the row excuses neither.
+        if self.name is not None and len(self.name) > PLAYTHROUGH_NAME_MAX_LENGTH:
+            raise CommandRejected(
+                f"The stated name is {len(self.name)} characters, and the "
+                f"column holds {PLAYTHROUGH_NAME_MAX_LENGTH}.",
+                sentence=(
+                    "That name is too long. Keep it under "
+                    f"{PLAYTHROUGH_NAME_MAX_LENGTH} characters."
+                ),
+            )
+        if self.name == "" and run.kind != PlaythroughKind.ORDINARY:
+            raise CommandRejected(
+                f"Playthrough {self.playthrough_id} is of kind {run.kind}, which "
+                "no display number is counted across, so a blank name would "
+                "leave the run with nothing to be called.",
+                sentence=("This run is not numbered, so it needs a name of its own."),
+            )
+        events: list[NewEvent] = []
+        if self.name is not None and self.name != run.name:
+            events.append(playthrough_name_changed(run.pk, name=self.name))
+        if self.note is not None and self.note != run.note:
+            events.append(playthrough_note_changed(run.pk, note=self.note))
+        if not events:
+            return Unchanged("This run already reads that way.")
+        return events
