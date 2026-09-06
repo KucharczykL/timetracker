@@ -161,7 +161,8 @@ delivery:
     class BlockingReferrer(NamedTuple):
         """One registered way to name a run."""
 
-        model: type[models.Model]
+        #: A projection, which #701 makes Session one of.
+        model: type[ProjectionModel]
         #: Field name alias from games/projections.py.
         field_name: FieldName
         #: What a person is shown.
@@ -171,25 +172,29 @@ delivery:
     BLOCKING_REFERRERS: tuple[BlockingReferrer, ...] = ()
 
 Each entry writes its own sentence, because "move the sessions" is advice only
-its own referrer can give. The model must carry `removed_at`, because what a
-person removed states nothing about a run.
+its own referrer can give. The model's reads must skip a removed row, because
+what a person removed states nothing about a run.
 
 That requirement is enforced rather than stated, by the same construction path
 `ProjectionReference.on` uses in `games/projections.py`: `BlockingReferrer.on`
 refuses a field that is not a foreign key, a foreign key that names something
-other than a `Playthrough`, and a model with no concrete `removed_at`. Without
-it a malformed entry would state itself as a `FieldError` raised inside
+other than a `Playthrough`, and a model whose manager states no `alive()`.
+Without it a malformed entry would state itself as a `FieldError` raised inside
 `build()`, which answers every removal in the library with a 500, at the moment
 the entry is added rather than at the moment it is registered.
 
-`blocking_referrer(run)` returns the first entry whose model has a live row
-naming the run, or `None`, and `RemovePlaythrough` turns an entry into a
-refusal carrying that entry's sentence. It does not scope that lookup on the
-library, and `_other_live_ordinary_runs` does: the sibling count asks which
-rows this library holds, where a foreign row must not stand in for one of its
-own, and this asks only whether anything at all names the run. A foreign row
-naming it is the drift `audit_library_ownership` reports, and releasing the run
-from under that row would answer drift by ignoring it.
+`model` is a `ProjectionModel` rather than any model, which is what the wave
+already commits to: #701 makes `Session` a projection, and the first entry is
+its key to a run. It also settles two questions the lookup would otherwise ask
+of each entry — every projection carries a `library`, and `alive()` reads a
+parent's mark as well as the row's own.
+
+`blocking_referrer(run)` returns the first entry whose model has a live row of
+this library naming the run, or `None`, and `RemovePlaythrough` turns an entry
+into a refusal carrying that entry's sentence. The lookup is scoped on the
+library, as `_other_live_ordinary_runs` is: a row of another library naming the
+run is the drift `audit_library_ownership` reports, and "move your sessions" is
+advice about rows the person reading it cannot reach.
 
 The registry is a module-level tuple in `games/commands/playthrough.py`, beside
 its one reader. It is deliberately **not** a second entry in

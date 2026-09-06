@@ -33,6 +33,8 @@ from games.models import (
     PlayerGame,
     Playthrough,
     PlaythroughKind,
+    ProjectionModel,
+    RemovableLibraryQuerySet,
 )
 from games.reads.playthrough_numbering import display_name, with_display_number
 from timetracker.temporal import TemporalValue
@@ -1784,22 +1786,26 @@ def test_a_foreign_run_at_the_same_game_does_not_keep_the_last_run_removable(
 
 @pytest.fixture
 def referring_models():
-    """Two throwaway models naming a run, as #700's will."""
+    """Two throwaway projections naming a run, as #701's will."""
     with isolate_apps("games"):
 
-        class Assignment(models.Model):
+        class Assignment(ProjectionModel):
             id = models.UUIDField(primary_key=True, default=uuid.uuid7)
             playthrough = models.ForeignKey(Playthrough, on_delete=models.RESTRICT)
             removed_at = models.DateTimeField(null=True, default=None)
+
+            objects = RemovableLibraryQuerySet.as_manager()
 
             class Meta:
                 app_label = "games"
                 db_table = "test_playthrough_assignment"
 
-        class Bookmark(models.Model):
+        class Bookmark(ProjectionModel):
             id = models.UUIDField(primary_key=True, default=uuid.uuid7)
             playthrough = models.ForeignKey(Playthrough, on_delete=models.RESTRICT)
             removed_at = models.DateTimeField(null=True, default=None)
+
+            objects = RemovableLibraryQuerySet.as_manager()
 
             class Meta:
                 app_label = "games"
@@ -1834,7 +1840,7 @@ def test_a_registered_referrer_keeps_a_run_in_place(
     assignment_model, _ = referring_models
     _track(owned_user, owned_library, game)
     run = _second_run(owned_user, owned_library)
-    assignment_model.objects.create(playthrough=run)
+    assignment_model.objects.create(playthrough=run, library=owned_library)
     _register(
         monkeypatch,
         BlockingReferrer.on(
@@ -1856,7 +1862,9 @@ def test_a_removed_referring_row_keeps_nothing_in_place(
     assignment_model, _ = referring_models
     _track(owned_user, owned_library, game)
     run = _second_run(owned_user, owned_library)
-    assignment_model.objects.create(playthrough=run, removed_at=timezone.now())
+    assignment_model.objects.create(
+        playthrough=run, library=owned_library, removed_at=timezone.now()
+    )
     _register(
         monkeypatch,
         BlockingReferrer.on(assignment_model, "playthrough", sentence="unused"),
@@ -1875,7 +1883,7 @@ def test_a_later_entry_answers_where_the_first_names_nothing(
     assignment_model, bookmark_model = referring_models
     _track(owned_user, owned_library, game)
     run = _second_run(owned_user, owned_library)
-    bookmark_model.objects.create(playthrough=run)
+    bookmark_model.objects.create(playthrough=run, library=owned_library)
     _register(
         monkeypatch,
         BlockingReferrer.on(
@@ -1900,8 +1908,8 @@ def test_the_first_naming_entry_is_the_one_a_person_hears(
     assignment_model, bookmark_model = referring_models
     _track(owned_user, owned_library, game)
     run = _second_run(owned_user, owned_library)
-    assignment_model.objects.create(playthrough=run)
-    bookmark_model.objects.create(playthrough=run)
+    assignment_model.objects.create(playthrough=run, library=owned_library)
+    bookmark_model.objects.create(playthrough=run, library=owned_library)
     _register(
         monkeypatch,
         BlockingReferrer.on(
@@ -1918,18 +1926,45 @@ def test_the_first_naming_entry_is_the_one_a_person_hears(
     assert refusal.value.sentence == ASSIGNED_SENTENCE
 
 
-def test_a_referrer_on_a_model_with_no_mark_is_refused():
+@pytest.mark.django_db(transaction=True)
+def test_a_foreign_referring_row_keeps_nothing_in_place(
+    owned_user, owned_library, game, monkeypatch, referring_models, django_user_model
+):
+    """The lookup is scoped, as the sibling count is.
+
+    A row of another library naming this run is the drift
+    `audit_library_ownership` reports, and "move your sessions"
+    is advice about rows this person cannot reach.
+    """
+    assignment_model, _ = referring_models
+    _track(owned_user, owned_library, game)
+    run = _second_run(owned_user, owned_library)
+    stranger = django_user_model.objects.create_user(username="stranger", password="p")
+    assignment_model.objects.create(playthrough=run, library=stranger.library)
+    _register(
+        monkeypatch,
+        BlockingReferrer.on(
+            assignment_model, "playthrough", sentence=ASSIGNED_SENTENCE
+        ),
+    )
+
+    result = _remove(owned_user, owned_library, run, key="foreign-referrer")
+
+    assert result.outcome is CommandOutcome.APPENDED
+
+
+def test_a_referrer_whose_reads_keep_removed_rows_is_refused():
     """A row nobody can remove would block forever."""
     with isolate_apps("games"):
 
-        class Unmarked(models.Model):
+        class Unmarked(ProjectionModel):
             id = models.UUIDField(primary_key=True, default=uuid.uuid7)
             playthrough = models.ForeignKey(Playthrough, on_delete=models.RESTRICT)
 
             class Meta:
                 app_label = "games"
 
-        with pytest.raises(TypeError, match="states no removed_at"):
+        with pytest.raises(TypeError, match="states no alive"):
             BlockingReferrer.on(Unmarked, "playthrough", sentence="unused")
 
 
@@ -1937,10 +1972,12 @@ def test_a_referrer_on_a_field_that_is_not_a_key_is_refused():
     """The lookup would raise a FieldError inside build()."""
     with isolate_apps("games"):
 
-        class Mislabeled(models.Model):
+        class Mislabeled(ProjectionModel):
             id = models.UUIDField(primary_key=True, default=uuid.uuid7)
             playthrough = models.CharField(max_length=8)
             removed_at = models.DateTimeField(null=True, default=None)
+
+            objects = RemovableLibraryQuerySet.as_manager()
 
             class Meta:
                 app_label = "games"
@@ -1953,10 +1990,12 @@ def test_a_referrer_naming_another_model_is_refused():
     """A key to something else answers about the wrong row."""
     with isolate_apps("games"):
 
-        class Misdirected(models.Model):
+        class Misdirected(ProjectionModel):
             id = models.UUIDField(primary_key=True, default=uuid.uuid7)
             playthrough = models.ForeignKey(PlayerGame, on_delete=models.RESTRICT)
             removed_at = models.DateTimeField(null=True, default=None)
+
+            objects = RemovableLibraryQuerySet.as_manager()
 
             class Meta:
                 app_label = "games"

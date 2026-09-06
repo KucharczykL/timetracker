@@ -186,9 +186,11 @@ docs/           — Additional documentation
   `PlayerGame`, and both answer `Unchanged` for the state the row already
   holds, ahead of that refusal. Removal alone refuses taking the last live
   ordinary run off a tracked game and reads `BLOCKING_REFERRERS`, a registry
-  of the live rows that name a run — empty until #700 and #701 give a Session
+  of the projections that name a run — empty until #700 and #701 give a Session
   its reference to one, and constructed only through `BlockingReferrer.on`,
-  which refuses an entry the lookup could not run. A blank `name` reads as
+  which refuses a field that is not a key to a run and a model whose manager
+  states no `alive()`. Both that lookup and the sibling count are scoped on the
+  library. A blank `name` reads as
   `Playthrough N`, derived at read time by
   `games/reads/playthrough_numbering.py` and stored nowhere, which is why
   taking a name away is refused on a row no number is counted across — only

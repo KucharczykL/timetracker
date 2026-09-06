@@ -3,9 +3,8 @@
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import ClassVar, NamedTuple, cast
+from typing import Any, ClassVar, NamedTuple, Protocol, cast
 
-from django.core.exceptions import FieldDoesNotExist
 from django.db import models
 from django.db.models import QuerySet
 
@@ -23,7 +22,7 @@ from games.events.playthrough import (
     playthrough_started,
 )
 from games.events.vocabulary import NewEvent, Unchanged
-from games.models import Playthrough, PlaythroughKind
+from games.models import Playthrough, PlaythroughKind, ProjectionModel
 from games.projections import FieldName
 from games.reads.playthrough_endpoints import stated_completion, stated_start
 from timetracker.temporal import TemporalQualifier, TemporalValue, stated_date
@@ -382,19 +381,22 @@ def _refuse_under_a_removed_game(run: Playthrough) -> None:
         )
 
 
-def _states_a_mark(model: type[models.Model]) -> bool:
-    """Whether the model's rows say they were removed."""
-    try:
-        field = model._meta.get_field("removed_at")
-    except FieldDoesNotExist:
-        return False
-    return field.concrete
+class RemovableReads(Protocol):
+    """A manager whose reads skip a removed row."""
+
+    def alive(self) -> QuerySet[Any]: ...
+
+
+def _skips_removed_rows(model: type[ProjectionModel]) -> bool:
+    """Whether the model's manager states `alive()`."""
+    return hasattr(model._default_manager, "alive")
 
 
 class BlockingReferrer(NamedTuple):
     """One registered way to name a run."""
 
-    model: type[models.Model]
+    #: A projection, which #701 makes Session one of.
+    model: type[ProjectionModel]
     #: Field name alias from games/projections.py.
     field_name: FieldName
     #: What a person is shown.
@@ -402,7 +404,7 @@ class BlockingReferrer(NamedTuple):
 
     @classmethod
     def on(
-        cls, model: type[models.Model], field_name: FieldName, *, sentence: str
+        cls, model: type[ProjectionModel], field_name: FieldName, *, sentence: str
     ) -> BlockingReferrer:
         """The one construction path; refuses an entry the query cannot run.
 
@@ -418,10 +420,10 @@ class BlockingReferrer(NamedTuple):
                 f"{model.__name__}.{field_name} names "
                 f"{field.related_model.__name__}, not a playthrough."
             )
-        if not _states_a_mark(model):
+        if not _skips_removed_rows(model):
             raise TypeError(
-                f"{model.__name__} states no removed_at, so a removed row of "
-                "it would keep a run in place forever."
+                f"{model.__name__} states no alive(), so a removed row of it "
+                "would keep a run in place forever."
             )
         return cls(model, field_name, sentence)
 
@@ -433,19 +435,18 @@ BLOCKING_REFERRERS: tuple[BlockingReferrer, ...] = ()
 def blocking_referrer(run: Playthrough) -> BlockingReferrer | None:
     """The first registered entry a live row answers.
 
-    Unscoped on the library, unlike `_other_live_ordinary_runs`:
-    that one counts siblings, where a foreign row must not stand
-    in for one this library holds, and this one asks whether
-    anything at all names the run. A row of another library is
-    the drift `audit_library_ownership` reports, and letting the
-    run out from under it would answer drift by ignoring it.
-    `on()` states the removed_at column, so the literal below
-    runs against every registered model.
+    Scoped on the library, as `_other_live_ordinary_runs` is: a
+    row of another library naming this run is the drift
+    `audit_library_ownership` reports, and a person cannot act on
+    advice about rows their library does not hold. `model` is a
+    projection, so the column is always there, and `on()` states
+    the manager's `alive()`, which reads a parent's mark too.
     """
     for referrer in BLOCKING_REFERRERS:
-        named = referrer.model._default_manager.filter(
-            **{referrer.field_name: run}, removed_at__isnull=True
-        )
+        #: `on()` refuses a manager without it. The annotation on
+        #: `_default_manager` names the base, which cannot say so.
+        reads = cast(RemovableReads, referrer.model._default_manager)
+        named = reads.alive().filter(**{referrer.field_name: run}, library=run.library)
         if named.exists():
             return referrer
     return None
