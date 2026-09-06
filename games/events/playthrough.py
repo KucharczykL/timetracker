@@ -240,5 +240,5 @@ def playthrough_removed(playthrough_id: uuid.UUID) -> NewEvent:
 
 
 def playthrough_restored(playthrough_id: uuid.UUID) -> NewEvent:
-    """The run comes back unchanged."""
+    """The run returns to the lists."""
     return PLAYTHROUGH_RESTORED.new(aggregate_id=playthrough_id, payload={})

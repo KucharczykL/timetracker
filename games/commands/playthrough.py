@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import ClassVar, NamedTuple, cast
 
+from django.core.exceptions import FieldDoesNotExist
 from django.db import models
 from django.db.models import QuerySet
 
@@ -367,12 +368,12 @@ class CorrectPlaythroughCompletion(Command):
         ]
 
 
-def _refuse_under_a_removed_game(run: Playthrough, playthrough_id: uuid.UUID) -> None:
+def _refuse_under_a_removed_game(run: Playthrough) -> None:
     """Refuse an act under a removed game."""
     #: Under dispatch's lock the mark cannot move.
     if run.player_game.removed_at is not None:
         raise CommandRejected(
-            f"This library removed the game behind playthrough {playthrough_id}, "
+            f"This library removed the game behind playthrough {run.pk}, "
             "so its runs neither leave the lists nor come back.",
             sentence=(
                 "That game was removed from your library. Restore it before "
@@ -381,11 +382,17 @@ def _refuse_under_a_removed_game(run: Playthrough, playthrough_id: uuid.UUID) ->
         )
 
 
-class BlockingReferrer(NamedTuple):
-    """A live row that blocks a removal.
+def _states_a_mark(model: type[models.Model]) -> bool:
+    """Whether the model's rows say they were removed."""
+    try:
+        field = model._meta.get_field("removed_at")
+    except FieldDoesNotExist:
+        return False
+    return field.concrete
 
-    Every entry's model must carry `removed_at`.
-    """
+
+class BlockingReferrer(NamedTuple):
+    """One registered way to name a run."""
 
     model: type[models.Model]
     #: Field name alias from games/projections.py.
@@ -393,13 +400,48 @@ class BlockingReferrer(NamedTuple):
     #: What a person is shown.
     sentence: str
 
+    @classmethod
+    def on(
+        cls, model: type[models.Model], field_name: FieldName, *, sentence: str
+    ) -> BlockingReferrer:
+        """The one construction path; refuses an entry the query cannot run.
+
+        A malformed entry would raise a FieldError inside build(),
+        which answers every removal with a 500. Refusing it here
+        states it at import.
+        """
+        field = model._meta.get_field(field_name)
+        if not isinstance(field, models.ForeignKey):
+            raise TypeError(f"{model.__name__}.{field_name} is not a foreign key.")
+        if field.related_model is not Playthrough:
+            raise TypeError(
+                f"{model.__name__}.{field_name} names "
+                f"{field.related_model.__name__}, not a playthrough."
+            )
+        if not _states_a_mark(model):
+            raise TypeError(
+                f"{model.__name__} states no removed_at, so a removed row of "
+                "it would keep a run in place forever."
+            )
+        return cls(model, field_name, sentence)
+
 
 #: Empty until #700 and #701 land.
 BLOCKING_REFERRERS: tuple[BlockingReferrer, ...] = ()
 
 
 def blocking_referrer(run: Playthrough) -> BlockingReferrer | None:
-    """The first registered row naming this run."""
+    """The first registered entry a live row answers.
+
+    Unscoped on the library, unlike `_other_live_ordinary_runs`:
+    that one counts siblings, where a foreign row must not stand
+    in for one this library holds, and this one asks whether
+    anything at all names the run. A row of another library is
+    the drift `audit_library_ownership` reports, and letting the
+    run out from under it would answer drift by ignoring it.
+    `on()` states the removed_at column, so the literal below
+    runs against every registered model.
+    """
     for referrer in BLOCKING_REFERRERS:
         named = referrer.model._default_manager.filter(
             **{referrer.field_name: run}, removed_at__isnull=True
@@ -443,13 +485,13 @@ class RemovePlaythrough(Command):
             return Unchanged(
                 f"This library already removed playthrough {self.playthrough_id}."
             )
-        _refuse_under_a_removed_game(run, self.playthrough_id)
+        _refuse_under_a_removed_game(run)
         blocker = blocking_referrer(run)
         if blocker is not None:
             raise CommandRejected(
-                f"{blocker.model.__name__} rows name playthrough "
-                f"{self.playthrough_id}, so the run stays where they can "
-                "find it.",
+                f"A live {blocker.model.__name__} names playthrough "
+                f"{self.playthrough_id}, so the run stays where it can "
+                "be found.",
                 sentence=blocker.sentence,
             )
         #: Ordinary only. A bucket takes none away.
@@ -484,5 +526,5 @@ class RestorePlaythrough(Command):
             return Unchanged(
                 f"This library did not remove playthrough {self.playthrough_id}."
             )
-        _refuse_under_a_removed_game(run, self.playthrough_id)
+        _refuse_under_a_removed_game(run)
         return [playthrough_restored(run.pk)]

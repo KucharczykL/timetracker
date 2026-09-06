@@ -197,20 +197,47 @@ def test_the_number_is_unchanged_across_a_rebuild(owned_user, owned_library):
     assert [number for _, number in before] == [1, 2, 3, 4, 5]
 
 
-def test_a_fallback_answers_for_a_row_with_no_number():
-    """A removed row and a bucket are both unnumbered."""
-    run = Playthrough(name="")
+def test_a_fallback_answers_for_a_removed_row():
+    """One of the two ways to be unnumbered."""
+    run = Playthrough(name="", kind=PlaythroughKind.ORDINARY, removed_at=timezone.now())
 
     assert display_name(run, fallback="Removed playthrough") == "Removed playthrough"
 
 
+def test_a_fallback_answers_for_a_bucket():
+    """The other way: no number is counted across it."""
+    run = Playthrough(name="", kind=PlaythroughKind.IMPORTED_HISTORY)
+
+    assert display_name(run, fallback="Imported history") == "Imported history"
+
+
 def test_a_fallback_does_not_displace_a_stated_name():
-    run = Playthrough(name="Blind run")
+    run = Playthrough(name="Blind run", kind=PlaythroughKind.ORDINARY)
 
     assert display_name(run, fallback="Removed playthrough") == "Blind run"
+
+
+def test_a_fallback_does_not_displace_a_counted_number():
+    """The number is what the blank name reads as."""
+    run = Playthrough(name="", kind=PlaythroughKind.ORDINARY)
+    run.display_number = 3
+
+    assert display_name(run, fallback="Removed playthrough") == "Playthrough 3"
+
+
+def test_a_fallback_does_not_excuse_a_row_that_was_never_numbered():
+    """A live ordinary row is the caller's own error.
+
+    Answering it with the fallback would label every run of a
+    queryset nobody annotated, and the two states are alike here.
+    """
+    run = Playthrough(name="", kind=PlaythroughKind.ORDINARY)
+
+    with pytest.raises(UnnumberedPlaythrough):
+        display_name(run, fallback="Removed playthrough")
 
 
 def test_no_fallback_still_refuses_an_unnumbered_row():
     """A screen that forgot still hears about it."""
     with pytest.raises(UnnumberedPlaythrough):
-        display_name(Playthrough(name=""))
+        display_name(Playthrough(name="", kind=PlaythroughKind.ORDINARY))

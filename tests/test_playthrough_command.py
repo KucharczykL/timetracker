@@ -522,7 +522,6 @@ def test_stating_an_endpoint_of_another_library_is_refused(
         _start(owned_user, owned_library, hidden, when=None, key="foreign")
 
     assert refusal.value.sentence == "That playthrough is not available."
-    assert str(hidden.pk) not in refusal.value.sentence
 
 
 @pytest.mark.django_db(transaction=True)
@@ -1542,7 +1541,6 @@ def test_removing_a_run_of_another_library_is_refused(
         _remove(owned_user, owned_library, hidden, key="foreign")
 
     assert refusal.value.sentence == "That playthrough is not available."
-    assert str(hidden.pk) not in refusal.value.sentence
 
 
 @pytest.mark.django_db(transaction=True)
@@ -1576,6 +1574,82 @@ def test_restoring_a_run_of_a_removed_game_is_refused(owned_user, owned_library,
     assert refusal.value.sentence == (
         "That game was removed from your library. Restore it before changing "
         "its playthroughs."
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_removing_a_removed_run_of_a_removed_game_changes_nothing(
+    owned_user, owned_library, game
+):
+    """#906: the no-op is read before the game's mark.
+
+    A retry after the game went is a success, not advice to
+    restore a game the caller never touched.
+    """
+    _track(owned_user, owned_library, game)
+    run = _second_run(owned_user, owned_library)
+    _remove(owned_user, owned_library, run)
+    tracked = PlayerGame.objects.get()
+    PlayerGame.objects.filter(pk=tracked.pk).update(removed_at=tracked.tracked_at)
+
+    result = _remove(owned_user, owned_library, run, key="retry")
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+    assert (
+        LibraryEvent.objects.filter(event_type="library.playthrough.removed").count()
+        == 1
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_restoring_a_live_run_of_a_removed_game_changes_nothing(
+    owned_user, owned_library, game
+):
+    """The same order in the other command."""
+    _track(owned_user, owned_library, game)
+    run = _second_run(owned_user, owned_library)
+    tracked = PlayerGame.objects.get()
+    PlayerGame.objects.filter(pk=tracked.pk).update(removed_at=tracked.tracked_at)
+
+    result = _restore(owned_user, owned_library, run, key="already-here")
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+    assert not LibraryEvent.objects.filter(
+        event_type="library.playthrough.restored"
+    ).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_one_idempotency_key_records_one_restoration(owned_user, owned_library, game):
+    """The key names the request, as it does for a removal."""
+    _track(owned_user, owned_library, game)
+    run = _second_run(owned_user, owned_library)
+    _remove(owned_user, owned_library, run)
+    _restore(owned_user, owned_library, run, key="once")
+
+    result = _restore(owned_user, owned_library, run, key="once")
+
+    assert result.outcome is CommandOutcome.REPLAYED
+    assert (
+        LibraryEvent.objects.filter(event_type="library.playthrough.restored").count()
+        == 1
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_restoring_a_run_a_second_time_changes_nothing(owned_user, owned_library, game):
+    """A mis-click states nothing twice."""
+    _track(owned_user, owned_library, game)
+    run = _second_run(owned_user, owned_library)
+    _remove(owned_user, owned_library, run)
+    _restore(owned_user, owned_library, run)
+
+    result = _restore(owned_user, owned_library, run, key="restore-again")
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+    assert (
+        LibraryEvent.objects.filter(event_type="library.playthrough.restored").count()
+        == 1
     )
 
 
@@ -1616,8 +1690,13 @@ def test_a_removed_sibling_does_not_keep_the_last_run_removable(
     _remove(owned_user, owned_library, second, key="first-removal")
     first = Playthrough.objects.get(removed_at__isnull=True)
 
-    with pytest.raises(CommandRejected):
+    with pytest.raises(CommandRejected) as refusal:
         _remove(owned_user, owned_library, first, key="second-removal")
+
+    assert refusal.value.sentence == (
+        "This is the only playthrough of that game, and a tracked game keeps "
+        "one. Remove the game itself instead."
+    )
 
 
 @pytest.mark.django_db(transaction=True)
@@ -1629,8 +1708,13 @@ def test_a_bucket_does_not_keep_an_ordinary_run_removable(
     _imported_run(owned_user, owned_library)
     ordinary = Playthrough.objects.get(kind=PlaythroughKind.ORDINARY)
 
-    with pytest.raises(CommandRejected):
+    with pytest.raises(CommandRejected) as refusal:
         _remove(owned_user, owned_library, ordinary, key="last-ordinary")
+
+    assert refusal.value.sentence == (
+        "This is the only playthrough of that game, and a tracked game keeps "
+        "one. Remove the game itself instead."
+    )
 
 
 @pytest.mark.django_db(transaction=True)
@@ -1650,13 +1734,57 @@ def test_a_bucket_is_removable_from_a_game_with_no_ordinary_run(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_registered_referrer_keeps_a_run_in_place(
-    owned_user, owned_library, game, monkeypatch
+def test_a_removed_game_is_the_refusal_a_last_run_hears(
+    owned_user, owned_library, game
 ):
-    """Inert on delivery: #700 and #701 supply the first entry."""
+    """Two rules apply; the earlier one states the way out."""
     _track(owned_user, owned_library, game)
-    run = _second_run(owned_user, owned_library)
+    run = Playthrough.objects.get()
+    tracked = PlayerGame.objects.get()
+    PlayerGame.objects.filter(pk=tracked.pk).update(removed_at=tracked.tracked_at)
 
+    with pytest.raises(CommandRejected) as refusal:
+        _remove(owned_user, owned_library, run, key="both")
+
+    assert refusal.value.sentence == (
+        "That game was removed from your library. Restore it before changing "
+        "its playthroughs."
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_foreign_run_at_the_same_game_does_not_keep_the_last_run_removable(
+    owned_user, owned_library, game, django_user_model
+):
+    """The sibling count is scoped on the library.
+
+    A run naming another library's PlayerGame is the drift
+    `audit_library_ownership` reports. Counting it would let this
+    library take its own last run off a game it still tracks.
+    """
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    stranger = django_user_model.objects.create_user(username="stranger", password="p")
+    Playthrough.objects.create(
+        id=uuid.uuid7(),
+        library=stranger.library,
+        player_game=run.player_game,
+        kind=PlaythroughKind.ORDINARY,
+        created_at=timezone.now(),
+    )
+
+    with pytest.raises(CommandRejected) as refusal:
+        _remove(owned_user, owned_library, run, key="drift")
+
+    assert refusal.value.sentence == (
+        "This is the only playthrough of that game, and a tracked game keeps "
+        "one. Remove the game itself instead."
+    )
+
+
+@pytest.fixture
+def referring_models():
+    """Two throwaway models naming a run, as #700's will."""
     with isolate_apps("games"):
 
         class Assignment(models.Model):
@@ -1668,78 +1796,173 @@ def test_a_registered_referrer_keeps_a_run_in_place(
                 app_label = "games"
                 db_table = "test_playthrough_assignment"
 
+        class Bookmark(models.Model):
+            id = models.UUIDField(primary_key=True, default=uuid.uuid7)
+            playthrough = models.ForeignKey(Playthrough, on_delete=models.RESTRICT)
+            removed_at = models.DateTimeField(null=True, default=None)
+
+            class Meta:
+                app_label = "games"
+                db_table = "test_playthrough_bookmark"
+
+        built = (Assignment, Bookmark)
         with connection.schema_editor() as schema_editor:
-            schema_editor.create_model(Assignment)
+            for model in built:
+                schema_editor.create_model(model)
         try:
-            Assignment.objects.create(playthrough=run)
-            monkeypatch.setattr(
-                playthrough_commands,
-                "BLOCKING_REFERRERS",
-                (
-                    BlockingReferrer(
-                        model=Assignment,
-                        field_name="playthrough",
-                        sentence=(
-                            "Sessions are assigned to this playthrough. Move "
-                            "them before removing it."
-                        ),
-                    ),
-                ),
-            )
-
-            with pytest.raises(CommandRejected) as refusal:
-                _remove(owned_user, owned_library, run, key="blocked")
-
-            assert refusal.value.sentence == (
-                "Sessions are assigned to this playthrough. Move them before "
-                "removing it."
-            )
+            yield built
         finally:
             with connection.schema_editor() as schema_editor:
-                schema_editor.delete_model(Assignment)
+                for model in reversed(built):
+                    schema_editor.delete_model(model)
+
+
+def _register(monkeypatch, *referrers):
+    monkeypatch.setattr(playthrough_commands, "BLOCKING_REFERRERS", referrers)
+
+
+ASSIGNED_SENTENCE = (
+    "Sessions are assigned to this playthrough. Move them before removing it."
+)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_registered_referrer_keeps_a_run_in_place(
+    owned_user, owned_library, game, monkeypatch, referring_models
+):
+    """Inert on delivery: #700 and #701 supply the first entry."""
+    assignment_model, _ = referring_models
+    _track(owned_user, owned_library, game)
+    run = _second_run(owned_user, owned_library)
+    assignment_model.objects.create(playthrough=run)
+    _register(
+        monkeypatch,
+        BlockingReferrer.on(
+            assignment_model, "playthrough", sentence=ASSIGNED_SENTENCE
+        ),
+    )
+
+    with pytest.raises(CommandRejected) as refusal:
+        _remove(owned_user, owned_library, run, key="blocked")
+
+    assert refusal.value.sentence == ASSIGNED_SENTENCE
 
 
 @pytest.mark.django_db(transaction=True)
 def test_a_removed_referring_row_keeps_nothing_in_place(
-    owned_user, owned_library, game, monkeypatch
+    owned_user, owned_library, game, monkeypatch, referring_models
 ):
     """A removed referrer blocks nothing."""
+    assignment_model, _ = referring_models
     _track(owned_user, owned_library, game)
     run = _second_run(owned_user, owned_library)
+    assignment_model.objects.create(playthrough=run, removed_at=timezone.now())
+    _register(
+        monkeypatch,
+        BlockingReferrer.on(assignment_model, "playthrough", sentence="unused"),
+    )
 
+    result = _remove(owned_user, owned_library, run, key="not-blocked")
+
+    assert result.outcome is CommandOutcome.APPENDED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_later_entry_answers_where_the_first_names_nothing(
+    owned_user, owned_library, game, monkeypatch, referring_models
+):
+    """The walk does not stop at the first entry."""
+    assignment_model, bookmark_model = referring_models
+    _track(owned_user, owned_library, game)
+    run = _second_run(owned_user, owned_library)
+    bookmark_model.objects.create(playthrough=run)
+    _register(
+        monkeypatch,
+        BlockingReferrer.on(
+            assignment_model, "playthrough", sentence=ASSIGNED_SENTENCE
+        ),
+        BlockingReferrer.on(
+            bookmark_model, "playthrough", sentence="Bookmarks name this playthrough."
+        ),
+    )
+
+    with pytest.raises(CommandRejected) as refusal:
+        _remove(owned_user, owned_library, run, key="second-entry")
+
+    assert refusal.value.sentence == "Bookmarks name this playthrough."
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_first_naming_entry_is_the_one_a_person_hears(
+    owned_user, owned_library, game, monkeypatch, referring_models
+):
+    """Two rows name the run; the registry states the order."""
+    assignment_model, bookmark_model = referring_models
+    _track(owned_user, owned_library, game)
+    run = _second_run(owned_user, owned_library)
+    assignment_model.objects.create(playthrough=run)
+    bookmark_model.objects.create(playthrough=run)
+    _register(
+        monkeypatch,
+        BlockingReferrer.on(
+            assignment_model, "playthrough", sentence=ASSIGNED_SENTENCE
+        ),
+        BlockingReferrer.on(
+            bookmark_model, "playthrough", sentence="Bookmarks name this playthrough."
+        ),
+    )
+
+    with pytest.raises(CommandRejected) as refusal:
+        _remove(owned_user, owned_library, run, key="both-name-it")
+
+    assert refusal.value.sentence == ASSIGNED_SENTENCE
+
+
+def test_a_referrer_on_a_model_with_no_mark_is_refused():
+    """A row nobody can remove would block forever."""
     with isolate_apps("games"):
 
-        class Assignment(models.Model):
+        class Unmarked(models.Model):
             id = models.UUIDField(primary_key=True, default=uuid.uuid7)
             playthrough = models.ForeignKey(Playthrough, on_delete=models.RESTRICT)
+
+            class Meta:
+                app_label = "games"
+
+        with pytest.raises(TypeError, match="states no removed_at"):
+            BlockingReferrer.on(Unmarked, "playthrough", sentence="unused")
+
+
+def test_a_referrer_on_a_field_that_is_not_a_key_is_refused():
+    """The lookup would raise a FieldError inside build()."""
+    with isolate_apps("games"):
+
+        class Mislabeled(models.Model):
+            id = models.UUIDField(primary_key=True, default=uuid.uuid7)
+            playthrough = models.CharField(max_length=8)
             removed_at = models.DateTimeField(null=True, default=None)
 
             class Meta:
                 app_label = "games"
-                db_table = "test_playthrough_assignment"
 
-        with connection.schema_editor() as schema_editor:
-            schema_editor.create_model(Assignment)
-        try:
-            Assignment.objects.create(playthrough=run, removed_at=timezone.now())
-            monkeypatch.setattr(
-                playthrough_commands,
-                "BLOCKING_REFERRERS",
-                (
-                    BlockingReferrer(
-                        model=Assignment,
-                        field_name="playthrough",
-                        sentence="unused",
-                    ),
-                ),
-            )
+        with pytest.raises(TypeError, match="is not a foreign key"):
+            BlockingReferrer.on(Mislabeled, "playthrough", sentence="unused")
 
-            result = _remove(owned_user, owned_library, run, key="not-blocked")
 
-            assert result.outcome is CommandOutcome.APPENDED
-        finally:
-            with connection.schema_editor() as schema_editor:
-                schema_editor.delete_model(Assignment)
+def test_a_referrer_naming_another_model_is_refused():
+    """A key to something else answers about the wrong row."""
+    with isolate_apps("games"):
+
+        class Misdirected(models.Model):
+            id = models.UUIDField(primary_key=True, default=uuid.uuid7)
+            playthrough = models.ForeignKey(PlayerGame, on_delete=models.RESTRICT)
+            removed_at = models.DateTimeField(null=True, default=None)
+
+            class Meta:
+                app_label = "games"
+
+        with pytest.raises(TypeError, match="not a playthrough"):
+            BlockingReferrer.on(Misdirected, "playthrough", sentence="unused")
 
 
 def test_the_delivered_registry_refuses_nothing():

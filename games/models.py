@@ -1687,8 +1687,8 @@ class Playthrough(ProjectionModel):
     completion_note = models.TextField(blank=True, default="")
     #: The creation event's recorded_at.
     created_at = models.DateTimeField(editable=False)
-    #: Null means live. RemovePlaythrough states it,
-    #: RestorePlaythrough clears it.
+    #: The remove event's recorded_at; null means live.
+    #: RemovePlaythrough states it, RestorePlaythrough clears it.
     removed_at = models.DateTimeField(null=True, default=None, editable=False)
 
     class Meta:
