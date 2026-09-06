@@ -19,6 +19,7 @@ from games.commands.playthrough import (
 )
 from games.events.append import lock_stream
 from games.events.dispatch import CommandOutcome, CommandRejected, dispatch
+from games.events.idempotency import IdempotencyKeyMismatch
 from games.events.playthrough import playthrough_created
 from games.models import (
     Game,
@@ -1066,3 +1067,100 @@ def test_correcting_an_endpoint_of_a_removed_run_is_refused(
         "That playthrough was removed from your library. Restore it before "
         "recording this."
     )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_repeated_description_under_one_key_records_nothing_further(
+    owned_user, owned_library, game
+):
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _describe(owned_user, owned_library, run, name="Ironman", note="no saves")
+
+    result = _describe(owned_user, owned_library, run, name="Ironman", note="no saves")
+
+    assert result.outcome is CommandOutcome.REPLAYED
+    assert (
+        LibraryEvent.objects.filter(
+            event_type="library.playthrough.name_changed"
+        ).count()
+        == 1
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_repeated_correction_under_one_key_records_nothing_further(
+    owned_user, owned_library, game
+):
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _start(owned_user, owned_library, run, when=TemporalValue.from_year(2023))
+    when = TemporalValue.from_year(2024)
+    _correct_start(owned_user, owned_library, run, when=when)
+
+    result = _correct_start(owned_user, owned_library, run, when=when)
+
+    assert result.outcome is CommandOutcome.REPLAYED
+    assert (
+        LibraryEvent.objects.filter(
+            event_type="library.playthrough.start_corrected"
+        ).count()
+        == 1
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_repeated_completion_correction_under_one_key_records_nothing_further(
+    owned_user, owned_library, game
+):
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _complete(owned_user, owned_library, run, when=TemporalValue.from_year(2023))
+    when = TemporalValue.from_year(2024)
+    _correct_completion(owned_user, owned_library, run, when=when)
+
+    result = _correct_completion(owned_user, owned_library, run, when=when)
+
+    assert result.outcome is CommandOutcome.REPLAYED
+    assert (
+        LibraryEvent.objects.filter(
+            event_type="library.playthrough.completion_corrected"
+        ).count()
+        == 1
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_unknown_day_fingerprints_as_a_dateless_correction(
+    owned_user, owned_library, game
+):
+    """One key, two spellings, and no mismatch between them."""
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _start(owned_user, owned_library, run, when=TemporalValue.from_year(2023))
+    _correct_start(owned_user, owned_library, run, when=None)
+
+    result = _correct_start(
+        owned_user, owned_library, run, when=TemporalValue.unknown()
+    )
+
+    assert result.outcome is CommandOutcome.REPLAYED
+    assert (
+        LibraryEvent.objects.filter(
+            event_type="library.playthrough.start_corrected"
+        ).count()
+        == 1
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_cleared_name_fingerprints_apart_from_no_name(
+    owned_user, owned_library, game
+):
+    """Two answers, so two fingerprints: one clears, one states nothing."""
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _describe(owned_user, owned_library, run, name=None, note="no saves")
+
+    with pytest.raises(IdempotencyKeyMismatch):
+        _describe(owned_user, owned_library, run, name="", note="no saves")
