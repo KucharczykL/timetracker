@@ -720,7 +720,9 @@ def test_the_restore_event_states_the_way_back(owned_user, owned_library):
     run = Playthrough.objects.get()
     append_about_run(owned_library, owned_user, playthrough_removed(run.pk), key="gone")
 
-    append_about_run(owned_library, owned_user, playthrough_restored(run.pk), key="back")
+    append_about_run(
+        owned_library, owned_user, playthrough_restored(run.pk), key="back"
+    )
 
     run.refresh_from_db()
     assert run.removed_at is None
