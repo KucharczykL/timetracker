@@ -14,25 +14,38 @@ from games.events.playthrough import (
 )
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import Playthrough
-from timetracker.temporal import TemporalValue
+from games.reads.playthrough_endpoints import stated_completion, stated_start
+from timetracker.temporal import TemporalQualifier, TemporalValue, stated_date
 
 
-def _states_a_qualifier(value: TemporalValue) -> bool:
-    """Whether the value, or either end of a range, is qualified."""
-    return value.qualifier is not None or any(
-        endpoint is not None and endpoint.qualifier is not None
-        for endpoint in (value.start, value.end)
-    )
+def _bounding_qualifier(
+    value: TemporalValue, *, at_start: bool
+) -> TemporalQualifier | None:
+    """The qualifier on the end the comparison reads.
+
+    A range states no qualifier of its own; each endpoint states one.
+    Only the end that produced the bound in hand can excuse it, so the
+    far end is not consulted -- it says nothing about that day.
+    """
+    if not value.is_range:
+        return value.qualifier
+    endpoint = value.start if at_start else value.end
+    return None if endpoint is None else endpoint.qualifier
 
 
 def endpoints_certainly_reversed(
-    started: TemporalValue | None, completed: TemporalValue | None
+    *, started: TemporalValue | None, completed: TemporalValue | None
 ) -> bool:
     """Whether a completion cannot follow its start.
 
+    Keyword-only, because the two arguments share a type and the order
+    is the whole meaning: a swap is silent on every pair but the one
+    this exists to catch.
+
     Only the certainly-impossible. A bound is unknown for two reasons:
-    no date at all, or an open-ended range -- `../2024-06` bounds
-    nothing below -- and a window with no edge contradicts nothing.
+    no date at all, or a range whose end is open or unknown --
+    `../2024-06` and `2024-01/` both bound nothing below and above
+    respectively -- and a window with no edge contradicts nothing.
 
     A qualifier leaves the bounds where the bare value put them, so
     `2024-05-10~` bounds to that day exactly. Refusing a completion on
@@ -40,7 +53,9 @@ def endpoints_certainly_reversed(
     """
     if started is None or completed is None:
         return False
-    if _states_a_qualifier(started) or _states_a_qualifier(completed):
+    if _bounding_qualifier(started, at_start=True) is not None:
+        return False
+    if _bounding_qualifier(completed, at_start=False) is not None:
         return False
     if started.lower_bound is None or completed.upper_bound is None:
         return False
@@ -130,12 +145,16 @@ class StartPlaythrough(Command):
     #: No default: the build compares the whole endpoint.
     note: str
 
+    def __post_init__(self) -> None:
+        #: One spelling of no day, so a restatement fingerprints alike.
+        object.__setattr__(self, "when", stated_date(self.when))
+
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         run = _endpoint_subject(context, self.playthrough_id)
-        #: The marker, never the date: a null date is also an unknown day.
-        if run.start_recorded_at is not None:
-            if (self.when, self.note) == (run.started, run.start_note):
-                return Unchanged("This run already started on that day.")
+        stated = stated_start(run)
+        if stated is not None:
+            if (self.when, self.note) == (stated.when, stated.note):
+                return Unchanged("This run already states that start.")
             raise CommandRejected(
                 f"Playthrough {self.playthrough_id} already states a start, and "
                 "a second one would say the run began twice. #1010 corrects a "
@@ -145,7 +164,7 @@ class StartPlaythrough(Command):
                     "instead of adding another."
                 ),
             )
-        if endpoints_certainly_reversed(self.when, run.completed):
+        if endpoints_certainly_reversed(started=self.when, completed=run.completed):
             raise CommandRejected(
                 f"Playthrough {self.playthrough_id} completed before the start "
                 "being stated, and no run ends before it begins.",
@@ -164,11 +183,16 @@ class CompletePlaythrough(Command):
     when: TemporalValue | None
     note: str
 
+    def __post_init__(self) -> None:
+        #: One spelling of no day, so a restatement fingerprints alike.
+        object.__setattr__(self, "when", stated_date(self.when))
+
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         run = _endpoint_subject(context, self.playthrough_id)
-        if run.completion_recorded_at is not None:
-            if (self.when, self.note) == (run.completed, run.completion_note):
-                return Unchanged("This run already completed on that day.")
+        stated = stated_completion(run)
+        if stated is not None:
+            if (self.when, self.note) == (stated.when, stated.note):
+                return Unchanged("This run already states that completion.")
             raise CommandRejected(
                 f"Playthrough {self.playthrough_id} already states a completion, "
                 "and a second one would say the run ended twice. #1010 corrects "
@@ -178,7 +202,7 @@ class CompletePlaythrough(Command):
                     "instead of adding another."
                 ),
             )
-        if endpoints_certainly_reversed(run.started, self.when):
+        if endpoints_certainly_reversed(started=run.started, completed=self.when):
             raise CommandRejected(
                 f"Playthrough {self.playthrough_id} started after the completion "
                 "being stated, and no run ends before it begins.",

@@ -199,9 +199,13 @@ the act touches can come first. It is a nullable `DateTimeField`, and null is
 the live state. Thus `removed_at`, `voided_at`, `access_ended_at`.
 
 An act whose own time a person states takes two columns. The past participle
-holds the stated time. The record of the statement takes the act's noun with
-`recorded_at`. Thus `started` beside `start_recorded_at`. Null in the record
-column is still the act that did not occur.
+holds the stated time, in whichever field that time needs: a
+`TemporalValueField` where a person states a day at any precision. The record
+of the statement takes the act's noun with `recorded_at`, and it is the
+nullable `DateTimeField`. Thus `started` beside `start_recorded_at`, and
+`completed` beside `completion_recorded_at`, where the noun is not the stem of
+the participle. Null in the stated column is only a time nobody knows; null in
+the record column is the act that did not occur.
 
 A fact about the world and a retraction of a record are two acts, thus they take
 two verbs. An end of access and a refund are facts. A void is a retraction.

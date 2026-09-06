@@ -1634,7 +1634,8 @@ class Playthrough(ProjectionModel):
     name = models.CharField(max_length=255, blank=True, default="")
     #: #1010 states it.
     note = models.TextField(blank=True, default="")
-    #: The stated date; null is a day nobody knows.
+    #: The day the run began. Null is a day nobody knows, which is
+    #: why `start_recorded_at` beside it carries the act itself.
     started = TemporalValueField()
     started_lower = models.GeneratedField(
         expression=TemporalLowerBound("started"),
@@ -1657,6 +1658,8 @@ class Playthrough(ProjectionModel):
     start_recorded_at = models.DateTimeField(null=True, default=None, editable=False)
     #: The note of the act. The row's `note` has no day.
     start_note = models.TextField(blank=True, default="")
+    #: The day the run met its main objective. Null is a day nobody
+    #: knows, as on the start.
     completed = TemporalValueField()
     completed_lower = models.GeneratedField(
         expression=TemporalLowerBound("completed"),
@@ -1674,9 +1677,11 @@ class Playthrough(ProjectionModel):
         db_persist=True,
         editable=False,
     )
+    #: Null is the act that never happened, as on the start.
     completion_recorded_at = models.DateTimeField(
         null=True, default=None, editable=False
     )
+    #: The note of the act. The row's `note` has no day.
     completion_note = models.TextField(blank=True, default="")
     #: The creation event's recorded_at.
     created_at = models.DateTimeField(editable=False)

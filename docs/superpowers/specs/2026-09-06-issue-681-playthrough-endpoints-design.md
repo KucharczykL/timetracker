@@ -117,6 +117,14 @@ resolves "the current run of this game" before it dispatches.
 `games/events/idempotency.py` reduces it to its canonical string. Thus two
 dispatches of one date fingerprint alike.
 
+A day nobody knows has two spellings: `None`, and `TemporalValue.unknown()`.
+`TemporalValueField` collapses the second to the first, so a column holds only
+`None`, and each command collapses its own `when` the same way, with
+`stated_date()` from `timetracker/temporal.py`. Both the fingerprint and the
+comparison against the stored endpoint then read one spelling. A caller that
+holds `unknown()` — the #684 backfill, and an empty `TemporalDraft` from the
+#1012 form — restates what it stated.
+
 Two commands, not one command over an endpoint parameter. Each states one act
 and maps to one event type, and the order rule is a function both call.
 
@@ -140,18 +148,27 @@ Both commands then refuse:
   began twice.
 - The two endpoints are certainly reversed.
 
+The run's `kind` refuses nothing. An `IMPORTED_HISTORY` run is a run, and #684
+states its endpoints with these same commands. A kind is what a row records,
+not who may state a fact about it.
+
 A stated endpoint restated identically returns `Unchanged`, per [a command that
 changes nothing](2026-08-28-issue-906-no-op-command-semantics-design.md).
 Identical is both the date and the note, and the date compares over its
 canonical string.
 
 The marker decides which of the three answers applies, and the order is the
-reason the marker exists:
+reason the marker exists. `games/reads/playthrough_endpoints.py` puts that in a
+signature: `stated_start(run)` and `stated_completion(run)` return a
+`StatedEndpoint` — the marker, the date and the note — or `None` for an act
+that never happened. Nothing else has to remember which of the three columns
+carries the act:
 
 ```
-if row.start_recorded_at is None:                     append the event
-elif (when, note) == (row.started, row.start_note):   Unchanged
-else:                                                 CommandRejected
+stated = stated_start(run)
+if stated is None:                              append the event
+elif (when, note) == (stated.when, stated.note): Unchanged
+else:                                            CommandRejected
 ```
 
 A null marker is an act that did not occur, so the build appends whatever the
@@ -167,23 +184,26 @@ order:
 ```
 refused when started.lower_bound is not None
         and completed.upper_bound is not None
-        and neither value states a qualifier
+        and neither bound in hand carries a qualifier
         and completed.upper_bound < started.lower_bound
 ```
 
 Each guard drops a pair the comparison cannot judge, and a bare `<` raises
 `TypeError` on the pairs the first two drop.
 
-A bound is unknown for two reasons. The endpoint carries no date, or it is an
-open-ended range: `../2024-06` bounds nothing below and `2024-01/..` bounds
-nothing above. Both are grammar in [Temporal](../../temporal.md), and
-`<temporal-field>` offers both. A window with no edge contradicts nothing.
+A bound is unknown for two reasons. The endpoint carries no date, or it is a
+range whose far end is open or unknown: `../2024-06` and `/2024-06` bound
+nothing below, `2024-01/..` and `2024-01/` bound nothing above. All are grammar
+in [Temporal](../../temporal.md), and `<temporal-field>` offers them. A window
+with no edge contradicts nothing.
 
 A qualifier leaves the bounds where the bare value put them, so `2024-05-10~`
 bounds to that day exactly, and a completion on the 9th would be refused —
-which is what `~` was written to prevent. A range states a qualifier on each
-end of its own, so the guard reads the top-level qualifier and both endpoint
-qualifiers.
+which is what `~` was written to prevent. A range states no qualifier of its
+own; each of its two ends states one. Only the end that produced the bound in
+hand can excuse that bound, so the guard reads the start of `started` and the
+end of `completed`, and never the far end: `1984/1986~` states its start
+exactly, and a completion in 1980 stays refused.
 
 What remains is refused: a run started in May and completed in March. An
 imprecise pair that can be consistent passes, so a run started on 10 March and
