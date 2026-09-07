@@ -1,6 +1,7 @@
 """Playthrough N, derived at read time."""
 
 import uuid
+from datetime import date
 
 import pytest
 from django.db import connection, transaction
@@ -15,6 +16,7 @@ from games.models import Game, PlayerGame, Playthrough, PlaythroughKind
 from games.reads.playthrough_numbering import (
     UnnumberedPlaythrough,
     display_name,
+    numbered_for,
     with_display_number,
 )
 from timetracker.temporal import TemporalValue
@@ -43,6 +45,17 @@ def make_run(tracked, *, started=None, completed=None, created_at=None, **column
         completed=completed,
         created_at=created_at or timezone.now(),
         **columns,
+    )
+
+
+def a_second_tracked_game(library, name="Tunic"):
+    """One more tracked game, for a caller that names two."""
+    game = Game.objects.create(library=library, name=name)
+    return PlayerGame.objects.create(
+        id=uuid.uuid7(),
+        library=library,
+        game=game,
+        tracked_at=timezone.now(),
     )
 
 
@@ -241,3 +254,80 @@ def test_no_fallback_still_refuses_an_unnumbered_row():
     """A screen that forgot still hears about it."""
     with pytest.raises(UnnumberedPlaythrough):
         display_name(Playthrough(name="", kind=PlaythroughKind.ORDINARY))
+
+
+def test_numbered_for_answers_the_same_number_asked_alone_or_beside_others(
+    owned_library, tracked
+):
+    """The partition is the game, never the caller's selection."""
+    other = a_second_tracked_game(owned_library)
+    make_run(other, started=TemporalValue.from_day(date(2020, 1, 1)))
+    first = make_run(tracked, started=TemporalValue.from_day(date(2021, 1, 1)))
+    second = make_run(tracked, started=TemporalValue.from_day(date(2022, 1, 1)))
+
+    alone = {
+        run.pk: run.display_number for run in numbered_for(owned_library, [tracked.pk])
+    }
+    together = {
+        run.pk: run.display_number
+        for run in numbered_for(owned_library, [tracked.pk, other.pk])
+    }
+
+    assert alone == {first.pk: 1, second.pk: 2}
+    assert together[first.pk] == 1
+    assert together[second.pk] == 2
+
+
+def test_numbered_for_counts_across_neither_a_removed_run_nor_a_bucket(
+    owned_library, tracked
+):
+    first = make_run(tracked, started=TemporalValue.from_day(date(2021, 1, 1)))
+    make_run(
+        tracked,
+        started=TemporalValue.from_day(date(2021, 6, 1)),
+        removed_at=timezone.now(),
+    )
+    make_run(
+        tracked,
+        started=TemporalValue.from_day(date(2021, 7, 1)),
+        kind=PlaythroughKind.IMPORTED_HISTORY,
+    )
+    last = make_run(tracked, started=TemporalValue.from_day(date(2022, 1, 1)))
+
+    numbers_read = {
+        run.pk: run.display_number for run in numbered_for(owned_library, [tracked.pk])
+    }
+
+    assert numbers_read == {first.pk: 1, last.pk: 2}
+
+
+def test_numbered_for_counts_across_no_run_naming_another_librarys_game(
+    owned_library, tracked, django_user_model
+):
+    """Drift belongs to neither partition.
+
+    A run whose own library and whose parent's library
+    disagree is what `audit_library_ownership` reports. The
+    library holding the row filters it out by the parent;
+    the library holding the parent never names the row.
+    """
+    stranger = django_user_model.objects.create_user(
+        username="numbering-stranger", password="p"
+    )
+    drifted = make_run(tracked, started=TemporalValue.from_day(date(2021, 1, 1)))
+    Playthrough.objects.filter(pk=drifted.pk).update(library=stranger.library)
+
+    assert list(numbered_for(owned_library, [tracked.pk])) == []
+    assert list(numbered_for(stranger.library, [tracked.pk])) == []
+
+
+def test_numbered_for_renders_the_numbers_down_the_page_in_order(
+    owned_library, tracked
+):
+    late = make_run(tracked, started=TemporalValue.from_day(date(2022, 1, 1)))
+    early = make_run(tracked, started=TemporalValue.from_day(date(2021, 1, 1)))
+
+    ordered = list(numbered_for(owned_library, [tracked.pk]))
+
+    assert [run.pk for run in ordered] == [early.pk, late.pk]
+    assert [run.display_number for run in ordered] == [1, 2]

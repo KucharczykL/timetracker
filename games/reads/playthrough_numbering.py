@@ -1,9 +1,24 @@
 """Playthrough N, derived at read time."""
 
-from django.db.models import F, QuerySet, Window
+import uuid
+from collections.abc import Iterable
+
+from django.db.models import F, OrderBy, QuerySet, Window
 from django.db.models.functions import RowNumber
 
-from games.models import Playthrough, PlaythroughKind
+from games.models import Playthrough, PlaythroughKind, UserLibrary
+
+#: A tracked game's key, as a caller holds it.
+type PlayerGameId = uuid.UUID
+
+#: The window's order, and the order a screen renders in.
+#: A screen that ordered by anything else would print 2 above 1.
+DISPLAY_ORDER: tuple[OrderBy | str, ...] = (
+    F("started_lower").asc(nulls_last=True),
+    F("completed_lower").asc(nulls_last=True),
+    "created_at",
+    "id",
+)
 
 
 class UnnumberedPlaythrough(ValueError):
@@ -28,14 +43,36 @@ def with_display_number(
         display_number=Window(
             RowNumber(),
             partition_by="player_game",
-            order_by=(
-                F("started_lower").asc(nulls_last=True),
-                F("completed_lower").asc(nulls_last=True),
-                "created_at",
-                "id",
-            ),
+            order_by=DISPLAY_ORDER,
         )
     )
+
+
+def numbered_for(
+    library: UserLibrary, player_game_ids: Iterable[PlayerGameId]
+) -> QuerySet[Playthrough]:
+    """Every live ordinary run of these tracked games, numbered.
+
+    The partition is whatever the caller selected, so
+    `with_display_number` over a queryset narrowed to one row
+    numbers it 1 and no exception marks it. This takes the
+    games instead, so the caller narrows afterwards or not at
+    all.
+
+    The library is stated beside the games, never inferred,
+    and scoped on the row and on its parent alike: a run
+    naming another library's tracked game is the drift
+    `audit_library_ownership` reports, and numbering it under
+    either library would disagree with `live_ordinary_runs`,
+    which is the partition a removal counts across.
+    """
+    return with_display_number(
+        Playthrough.objects.filter(
+            library=library,
+            player_game__library=library,
+            player_game_id__in=list(player_game_ids),
+        )
+    ).order_by(*DISPLAY_ORDER)
 
 
 def is_numbered(playthrough: Playthrough) -> bool:
