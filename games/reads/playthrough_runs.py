@@ -2,7 +2,7 @@
 
 from django.db.models import QuerySet
 
-from games.models import PlayerGame, Playthrough, PlaythroughKind, UserLibrary
+from games.models import Game, PlayerGame, Playthrough, PlaythroughKind, UserLibrary
 from games.reads.playthrough_endpoints import stated_completion, stated_start
 
 
@@ -21,6 +21,37 @@ def live_ordinary_runs(
         removed_at__isnull=True,
         kind=PlaythroughKind.ORDINARY,
     ).order_by("created_at", "id")
+
+
+def tracked_game(library: UserLibrary, game: Game) -> PlayerGame | None:
+    """The row this library tracks the game with, or nothing.
+
+    One row per pair, by `unique_library_player_game`. A
+    removed one is not tracked.
+    """
+    return PlayerGame.objects.filter(
+        library=library, game=game, removed_at__isnull=True
+    ).first()
+
+
+def completed_run_count(library: UserLibrary, player_game: PlayerGame | None) -> int:
+    """How many times the person played the game through.
+
+    Runs whose completion is stated, the day known or unknown
+    alike. #679 states a run at tracking time that states
+    neither act, and nobody played that one; a run started
+    and not finished is not a time played through either.
+
+    This is the number the legacy row meant: #684 states a
+    completion marker for every row it converts.
+    """
+    if player_game is None:
+        return 0
+    return (
+        live_ordinary_runs(library, player_game)
+        .filter(completion_recorded_at__isnull=False)
+        .count()
+    )
 
 
 def run_to_adopt(library: UserLibrary, player_game: PlayerGame) -> Playthrough | None:
