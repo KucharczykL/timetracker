@@ -9,12 +9,11 @@ from games.reads.playthrough_endpoints import stated_completion, stated_start
 def live_ordinary_runs(
     library: UserLibrary, player_game: PlayerGame
 ) -> QuerySet[Playthrough]:
-    """This tracked game's live ordinary runs, in the order they were made.
+    """This game's live ordinary runs, oldest first.
 
-    The library is stated beside the parent, not inferred from it: a run
-    may name another library's PlayerGame, which is the drift
-    `audit_library_ownership` reports, and a count that trusted the
-    parent alone would count rows this library does not hold.
+    The library is stated beside the parent, never inferred:
+    a run may name another library's PlayerGame, which is
+    the drift `audit_library_ownership` reports.
     """
     return Playthrough.objects.filter(
         library=library,
@@ -25,13 +24,11 @@ def live_ordinary_runs(
 
 
 def run_to_adopt(library: UserLibrary, player_game: PlayerGame) -> Playthrough | None:
-    """The run a first statement fills in, or nothing.
+    """The run a first statement fills in.
 
-    A tracked game holds one run from the moment #679 tracks it. Where
-    that run is the only one and states neither act, the first
-    playthrough a person records is that run rather than a second one
-    beside it. Nothing enforces at most one actless run at runtime, so
-    this reads the shape rather than trusting it.
+    #679 gives a tracked game one run. Where it is the only
+    one and states neither act, a first statement fills it
+    in. Nothing enforces that shape, so this reads it.
     """
     runs = list(live_ordinary_runs(library, player_game)[:2])
     if len(runs) != 1:

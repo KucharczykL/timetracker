@@ -179,8 +179,8 @@ def test_add_playthrough_date_fields_follow_iso_profile_and_persist(
     with page.expect_navigation():
         page.get_by_role("button", name="Submit", exact=True).click()
 
-    #: #687 states the submit as a run, so the days land on the
-    #: projection's endpoints rather than on a legacy row.
+    #: #687 states the submit as a run,
+    #: so the days land on the projection.
     run = Playthrough.objects.get(player_game__game=game)
     assert str(run.started_lower) == "2026-01-10"
     assert str(run.completed_lower) == "2026-01-20"

@@ -142,7 +142,7 @@ def test_a_repeat_under_one_key_records_nothing_further(
 def test_one_build_states_the_run_its_note_and_both_acts(
     owned_user, owned_library, game
 ):
-    """#687: a whole run arrives in one dispatch."""
+    """#687: a whole run in one dispatch."""
     _track(owned_user, owned_library, game)
 
     result = dispatch(
@@ -167,7 +167,7 @@ def test_one_build_states_the_run_its_note_and_both_acts(
 
 @pytest.mark.django_db(transaction=True)
 def test_an_act_with_no_day_is_still_an_act(owned_user, owned_library, game):
-    """#687: the act is the marker, never the day."""
+    """#687: the marker is the act."""
     _track(owned_user, owned_library, game)
 
     dispatch(
@@ -191,7 +191,7 @@ def test_an_act_with_no_day_is_still_an_act(owned_user, owned_library, game):
 def test_a_creation_that_states_no_act_states_no_endpoint(
     owned_user, owned_library, game
 ):
-    """#687: the run TrackGame states keeps its two unstated ends."""
+    """#687: TrackGame's run keeps both ends unstated."""
     _track(owned_user, owned_library, game)
 
     dispatch(
@@ -210,7 +210,7 @@ def test_a_creation_that_states_no_act_states_no_endpoint(
 def test_a_creation_whose_acts_are_reversed_records_nothing(
     owned_user, owned_library, game
 ):
-    """#687: one build, so a refusal leaves no half-stated run."""
+    """#687: one build, so no half-stated run."""
     _track(owned_user, owned_library, game)
     before = LibraryEvent.objects.count()
 
@@ -236,7 +236,7 @@ def test_a_creation_whose_acts_are_reversed_records_nothing(
 def test_the_endpoint_notes_of_a_created_run_are_its_own(
     owned_user, owned_library, game
 ):
-    """#687: each act carries the note stated about it."""
+    """#687: each act carries its own note."""
     _track(owned_user, owned_library, game)
 
     dispatch(
@@ -251,7 +251,7 @@ def test_the_endpoint_notes_of_a_created_run_are_its_own(
     )
 
     run = Playthrough.objects.latest("created_at")
-    #: Stripped in __post_init__, so a restatement fingerprints alike.
+    #: Stripped in __post_init__, so restatements fingerprint alike.
     assert run.start_note == "from the box"
     assert run.completion_note == "100%"
 

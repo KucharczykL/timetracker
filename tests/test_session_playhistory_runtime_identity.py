@@ -95,7 +95,7 @@ def _api_request(client, method, path, payload=None):
 
 @pytest.fixture
 def playthrough_world(transactional_db):
-    """A world whose rows carry runs, so the write endpoints reach one.
+    """Rows carrying runs the write endpoints reach.
 
     Its own fixture rather than ``runtime_world``: PATCH and DELETE
     dispatch commands, and ``run_in_transaction`` refuses to nest
@@ -108,7 +108,8 @@ def playthrough_world(transactional_db):
     own_playevent = PlayEvent.objects.create(
         game=own_game, started=date(2026, 8, 20), note="Owned event"
     )
-    #: A second run, so removing the first is not the game's last one.
+    #: A second run, so removing the first
+    #: does not take the game's last one.
     PlayEvent.objects.create(game=own_game, started=date(2026, 8, 21))
     convert_library(owner.library)
     return SimpleNamespace(**locals())

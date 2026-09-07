@@ -346,7 +346,7 @@ def test_playeventfilter_game_filter_selects_playevents_for_matching_games(
 
 
 def test_playthroughform_states_the_games_identity(game, owned_library):
-    """#687 made the form a plain Form, so it states rather than saves.
+    """#687 made the form a plain Form.
 
     The value the game field posts is still the game's own identity,
     which is what #644 promoted and what the widget's options carry.

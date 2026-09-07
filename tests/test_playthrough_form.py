@@ -1,4 +1,4 @@
-"""The run form states a draft, and writes nothing itself."""
+"""The run form states a draft only."""
 
 from zoneinfo import ZoneInfo
 

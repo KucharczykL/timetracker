@@ -120,11 +120,11 @@ def test_every_removal_confirms_first(
 def test_removal_confirms_first_with_owning_game_fallback(
     logged_in, owned_library, removables
 ):
-    """This one falls back to the game, and stamps the run.
+    """This one falls back to the game.
 
-    #687 removes the run the row became, so the legacy row keeps its
-    own mark and the projection carries the removal. A second row, so
-    the game is not left with no run at all.
+    #687 removes the run the row became, so the legacy row
+    keeps its own mark and the projection carries the
+    removal. A second row, so the game keeps one.
     """
     instance = removables["playevent"]
     owning_game = removables["game"]

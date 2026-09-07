@@ -1,7 +1,6 @@
-"""State a run; answer a refused statement.
+"""State a run; answer a refusal.
 
-Takes an actor, not a request.
-The view half makes it a toast.
+An actor goes in here, not a request.
 """
 
 import uuid
@@ -41,9 +40,8 @@ from timetracker.temporal import TemporalValue
 class RunDraft:
     """What a person stated about one run.
 
-    Plain dates, because the form states days. The act rule turns them
-    into two acts: a day where one was given, and the act with no day
-    where none was.
+    Plain dates: the act rule turns each into an
+    act, with no day where none was given.
     """
 
     started: date | None
@@ -52,7 +50,7 @@ class RunDraft:
 
 
 def _stated_day(value: date | None) -> TemporalValue | None:
-    """The day at day precision, or no day at all."""
+    """The day at day precision, or none."""
     return None if value is None else TemporalValue.from_day(value)
 
 
@@ -74,7 +72,7 @@ def _dispatch(
 
 
 class EndpointStatement(NamedTuple):
-    """How one endpoint is stated, the first time and after it."""
+    """How one endpoint is stated, and restated."""
 
     reads: Callable[[Playthrough], StatedEndpoint | None]
     first: type[Command]
@@ -97,17 +95,14 @@ def _state_endpoint(
     *,
     correlation_id: uuid.UUID,
 ) -> None:
-    """State one endpoint, as a first statement or as a correction.
+    """State one endpoint, first time or correction.
 
-    Which of the two is read before dispatch takes its lock, so a
-    second request on the same run can make the choice stale and the
-    command refuses it. A refusal re-reads the run and states it once
-    more -- one attempt, never a loop, the shape tracking uses.
+    The choice is read before dispatch takes its lock, so
+    a racing request makes it stale. A refusal reads the
+    run again and states it once more.
 
-    A correction carries the note the endpoint already states: #684
-    wrote every endpoint note blank and put the row's note on the run,
-    so a day-only correction that passed a fresh blank would state a
-    note nobody wrote.
+    A correction carries the note the endpoint already
+    states, or it states a note nobody wrote.
     """
     for attempt in (1, 2):
         stated = endpoint.reads(run)
@@ -134,11 +129,11 @@ def restate_run(
     *,
     correlation_id: uuid.UUID,
 ) -> None:
-    """State the draft onto a run that exists, differences only.
+    """State the draft's differences onto a run.
 
-    Three dispatches rather than one build: each command answers
-    Unchanged for state the run already holds, so a submit that fails
-    after the first act is finished by submitting again.
+    Three dispatches, not one build: each answers Unchanged
+    for state the run holds, so a failed submit is finished
+    by submitting again.
     """
     with answered("playthrough"):
         _restate(actor, run, draft, correlation_id=correlation_id)
@@ -154,9 +149,8 @@ def _restate(
     """The statements themselves, inside a caller's answer."""
     started = _stated_day(draft.started)
     completed = _stated_day(draft.ended)
-    #: Before the first dispatch. On the three-dispatch path a start
-    #: commits and only the completion would refuse, and no command
-    #: withdraws a stated act.
+    #: Refused up front, because no act withdraws:
+    #: a start commits, then the completion refuses.
     if endpoints_certainly_reversed(started=started, completed=completed):
         raise CommandRejected(
             f"The statement about playthrough {run.pk} completes it before it "
@@ -184,18 +178,15 @@ def record_run(
 ) -> None:
     """State one run at a game.
 
-    The first run of a tracked game is the one it already holds: #679
-    states a run the moment a library tracks a game, and a second one
-    beside it would leave every never-played game with an empty run
-    forever.
+    The first run of a tracked game is the one #679 gave
+    it. A second beside it stays empty forever.
     """
     with answered("playthrough"):
         try:
             _record_once(actor, game, draft, correlation_id=correlation_id)
         except PlayerGameNotTracked:
-            #: One retry, never a loop. TrackGame states a run of its
-            #: own, so the branch is read again rather than the command
-            #: re-dispatched, which would leave a second run beside it.
+            #: One retry only. TrackGame states a run,
+            #: so the branch runs again rather than re-dispatching.
             track_game(actor, game, correlation_id=correlation_id)
             _record_once(actor, game, draft, correlation_id=correlation_id)
 
@@ -207,18 +198,18 @@ def _record_once(
     *,
     correlation_id: uuid.UUID,
 ) -> None:
-    """Adopt the run the game already holds, or create one."""
+    """Adopt the game's run, or create one."""
     tracked = PlayerGame.objects.filter(library=actor.library, game=game).first()
     adopted = None if tracked is None else run_to_adopt(actor.library, tracked)
     if adopted is not None:
         _restate(actor, adopted, draft, correlation_id=correlation_id)
         return
-    #: An untracked game reaches the command, which raises
-    #: PlayerGameNotTracked for the retry above to read.
+    #: An untracked game reaches the command,
+    #: which raises PlayerGameNotTracked for the retry.
     _dispatch(
         CreatePlaythrough(
             game_id=game.pk,
-            #: Both acts, always: a run recorded here happened.
+            #: Both acts: a run recorded here happened.
             started=ActStatement(_stated_day(draft.started)),
             completed=ActStatement(_stated_day(draft.ended)),
             note=draft.note,

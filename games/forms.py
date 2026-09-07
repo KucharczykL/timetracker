@@ -1046,8 +1046,8 @@ class PlaythroughForm(PrimitiveWidgetsMixin, forms.Form):
     ):
         super().__init__(*args, **kwargs)
         self.library = library
-        #: An edit states facts about one run, and no command moves a
-        #: run between games.
+        #: An edit states facts about one run,
+        #: and no command moves a run between games.
         self.locked_game = locked_game
         cast(
             forms.ModelChoiceField, self.fields["game"]

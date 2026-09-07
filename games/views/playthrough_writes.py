@@ -1,8 +1,8 @@
-"""The request-shaped half of the run write path.
+"""The request-shaped half of the write path.
 
-games/writes/playthrough.py raises. A view that stays on its page
-toasts and answers False; one that stands behind a confirmation
-re-raises, so the confirmation states the sentence itself.
+A view that stays on its page toasts and answers False.
+One behind a confirmation re-raises, so the page states
+the sentence itself.
 """
 
 import uuid
@@ -38,7 +38,7 @@ def restate_run_for_request(
     *,
     correlation_id: uuid.UUID,
 ) -> bool:
-    """State the draft onto an existing run; False on a refusal."""
+    """State the draft; False on a refusal."""
     try:
         restate_run(
             cast("User", request.user), run, draft, correlation_id=correlation_id
@@ -52,10 +52,9 @@ def restate_run_for_request(
 def remove_run_for_request(
     request: HttpRequest, run: Playthrough, *, correlation_id: uuid.UUID
 ) -> None:
-    """Take the run out, and let a refusal rise.
+    """Take the run out; a refusal rises.
 
-    A refused command rises as the CommandFailed it already is, which
-    confirm_and_apply reads: the confirmation comes back with the
-    sentence and the status the refusal states.
+    confirm_and_apply reads the CommandFailed and renders
+    its sentence with its status.
     """
     remove_run(cast("User", request.user), run, correlation_id=correlation_id)

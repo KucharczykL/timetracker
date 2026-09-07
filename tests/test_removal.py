@@ -71,9 +71,9 @@ def test_removing_a_session_drops_the_playtime(owned_library):
 def test_the_api_removes_a_playthrough_rather_than_destroying_it(client, owned_user):
     """DELETE is the transport's word, not ours.
 
-    #687 states the removal on the run the row became, so the mark
-    lands on the projection and the legacy row keeps its own. A second
-    row, so the game is not left with no run at all.
+    #687 removes the run the row became, so the mark lands
+    on the projection and the legacy row keeps its own. A
+    second row, so the game keeps one.
     """
     game = make_game(owned_user.library)
     play_event = PlayEvent.objects.create(game=game)

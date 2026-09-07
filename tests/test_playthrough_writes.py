@@ -1,4 +1,4 @@
-"""The write path a person's statement about a run goes down."""
+"""The write path for a stated run."""
 
 from datetime import date
 
@@ -15,8 +15,8 @@ from games.writes.playthrough import (
 )
 from timetracker.temporal import TemporalValue
 
-#: Every test here wants the run #679 states, so none may start from
-#: the bare row the autouse fixture writes.
+#: Every test wants the run #679 states,
+#: so none starts from the fixture's bare row.
 pytestmark = pytest.mark.untracked_games
 
 
@@ -31,7 +31,7 @@ def game(owned_library):
 
 
 def a_recorded_run(user, game, *, started, ended) -> Playthrough:
-    """Track the game, state one run at it, and read the run back."""
+    """Track, state one run, and read back."""
     track_game(user, game, correlation_id=new_correlation_id())
     record_run(
         user,
@@ -39,12 +39,13 @@ def a_recorded_run(user, game, *, started, ended) -> Playthrough:
         RunDraft(started=started, ended=ended, note=""),
         correlation_id=new_correlation_id(),
     )
-    #: The run the tracked game was born with, now stating both acts.
+    #: The run the game was born with,
+    #: now stating both acts.
     return Playthrough.objects.get(player_game__game=game)
 
 
 class TestRecordRun:
-    """#687: the first run is the one the tracked game already holds."""
+    """#687: the first run is already there."""
 
     @pytest.mark.django_db(transaction=True)
     def test_the_first_run_states_its_acts_onto_the_run_born_with_the_game(
@@ -83,8 +84,8 @@ class TestRecordRun:
 
     @pytest.mark.django_db(transaction=True)
     def test_an_untracked_game_is_tracked_once_and_left_with_one_run(self, user, game):
-        #: No track_game here: the marker leaves the game with no
-        #: PlayerGame row, which is what the retry branch is for.
+        #: No track_game: the marker leaves no PlayerGame
+        #: row, which is what the retry branch is for.
         record_run(
             user,
             game,
@@ -128,7 +129,7 @@ class TestRecordRun:
 
 
 class TestRestateRun:
-    """#687: an edit states differences, and states nothing twice."""
+    """#687: an edit states differences, never twice."""
 
     @pytest.mark.django_db(transaction=True)
     def test_it_states_only_what_changed(self, user, game):
@@ -197,7 +198,7 @@ class TestRestateRun:
 
 
 class TestRemoveRun:
-    """#687: a tracked game keeps one run, and gives up any other."""
+    """#687: a tracked game keeps one run."""
 
     @pytest.mark.django_db(transaction=True)
     def test_the_only_run_of_a_tracked_game_is_refused(self, user, game):

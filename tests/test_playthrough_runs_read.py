@@ -1,4 +1,4 @@
-"""The runs a tracked game holds, read from the projection."""
+"""The runs a tracked game holds."""
 
 import uuid
 
@@ -11,8 +11,8 @@ from games.models import Game, PlayerGame, Playthrough, PlaythroughKind
 from games.reads.playthrough_runs import live_ordinary_runs, run_to_adopt
 from games.writes.playergame import new_correlation_id, track_game
 
-#: Every test here wants the run #679 states, so none may start from
-#: the bare row the autouse fixture writes.
+#: Every test wants the run #679 states,
+#: so none starts from the fixture's bare row.
 pytestmark = pytest.mark.untracked_games
 
 
@@ -22,13 +22,13 @@ def game(owned_library):
 
 
 def a_tracked_game(owned_user, game) -> PlayerGame:
-    """Track the game the way a request does, and read its row."""
+    """Track the game as a request does."""
     track_game(owned_user, game, correlation_id=new_correlation_id())
     return PlayerGame.objects.get(library=owned_user.library, game=game)
 
 
 def a_second_run(owned_user, owned_library, game) -> None:
-    """One more run at the game, beside the one it was born with."""
+    """One more run, beside the game's first."""
     dispatch(
         CreatePlaythrough(game_id=game.pk),
         actor=owned_user,
@@ -73,8 +73,8 @@ def test_a_second_run_leaves_nothing_to_adopt(owned_user, owned_library, game):
 def test_a_removed_run_is_not_live(owned_user, owned_library, game):
     tracked = a_tracked_game(owned_user, game)
 
-    #: The projector's own mark, stated here with an UPDATE because
-    #: RemovePlaythrough refuses to take the last run off a tracked game.
+    #: The projector's mark, stated with an UPDATE:
+    #: RemovePlaythrough refuses a tracked game's last run.
     Playthrough.objects.filter(player_game=tracked).update(removed_at=timezone.now())
 
     assert live_ordinary_runs(owned_library, tracked).count() == 0

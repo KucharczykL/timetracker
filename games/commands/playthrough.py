@@ -79,31 +79,32 @@ def endpoints_certainly_reversed(
 
 
 class ActStatement(NamedTuple):
-    """An act that happened, and what was said about it.
+    """An act, and what was said.
 
-    A NamedTuple, so the idempotency fingerprint encodes it as an array
-    and the TemporalValue inside reaches the encoder that knows it.
+    A NamedTuple, so the idempotency fingerprint encodes it
+    as an array and the TemporalValue inside reaches the
+    encoder that knows it.
     """
 
-    #: None is "it happened, on a day nobody wrote down".
+    #: None is a day nobody wrote down.
     when: TemporalValue | None
     note: str = ""
 
 
 @dataclass(frozen=True, slots=True)
 class CreatePlaythrough(Command):
-    """State one more run at a game, and what is known of it.
+    """State one more run at a game.
 
-    One build rather than four dispatches: a creation that commits and
-    a start that then fails would leave a run with no act, and
-    RemovePlaythrough refuses to take the last live ordinary run off a
-    tracked game -- a row a person could not get rid of.
+    One build rather than four dispatches: a creation that
+    commits before a failed start leaves a run with no act,
+    and RemovePlaythrough refuses the last live ordinary
+    run of a tracked game.
     """
 
     command_name: ClassVar[CommandName] = CommandName.PLAYTHROUGH_CREATE
     #: A UUID, because Command fingerprints its fields.
     game_id: uuid.UUID
-    #: None is an act that never happened, which is the run TrackGame states.
+    #: None is an act that never happened.
     started: ActStatement | None = None
     completed: ActStatement | None = None
     note: str = ""
@@ -112,8 +113,8 @@ class CreatePlaythrough(Command):
         for field_name in ("started", "completed"):
             act = cast(ActStatement | None, getattr(self, field_name))
             if act is not None:
-                #: One spelling of no day and of a blank note, so a
-                #: restatement fingerprints alike.
+                #: One spelling of no day and no note,
+                #: so a restatement fingerprints alike.
                 object.__setattr__(
                     self,
                     field_name,
@@ -142,7 +143,7 @@ class CreatePlaythrough(Command):
                 "before it began, and no run ends before it begins.",
                 sentence="This run finished before it started. Check the days.",
             )
-        #: Minted here, so every event of this build names one run.
+        #: Minted here, so every event names it.
         run_id = uuid.uuid7()
         events: list[NewEvent] = [
             playthrough_created(tracked.pk, playthrough_id=run_id)

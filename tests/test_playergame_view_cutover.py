@@ -302,7 +302,7 @@ def test_editing_a_play_event_records_completed_too(
     logged_in, owned_library, tracked_game
 ):
     play_event = PlayEvent.objects.create(game=tracked_game)
-    #: The edit page states facts about the run the row became.
+    #: The edit page states facts about it.
     convert_library(owned_library)
 
     logged_in.post(

@@ -440,10 +440,10 @@ _STAT_SVGS = {
 def _played_row(game: Game, origin: OriginUrl | None) -> Node:
     """'Played N times' split button.
 
-    The '+1' action and the custom element that owned it went with
-    #687: a click that filled in the run a tracked game already holds
-    left a run only untracking the game could take back. #1024 owns
-    stating a count without filling in a form per run.
+    #687 took the '+1' action and its element away: a
+    click filled in the run a tracked game already holds,
+    which only untracking the game took back. #1024 owns
+    stating a count.
     """
     from common.components import (
         ControlButton,
@@ -964,7 +964,7 @@ def _playevents_section(
         "No play events yet.",
         view_all_url=filter_url(PlayEventFilter.where(game=[game.id])),
     )
-    #: #1012 replaces this section with the projection's own.
+    #: #1012 replaces this section with the projection.
     return Div(id_="playevents-container")[section]
 
 

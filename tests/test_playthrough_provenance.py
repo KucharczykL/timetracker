@@ -1,4 +1,4 @@
-"""The run a converted legacy row became, read from its provenance."""
+"""The run a converted legacy row became."""
 
 import pytest
 

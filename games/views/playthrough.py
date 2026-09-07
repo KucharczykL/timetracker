@@ -343,11 +343,10 @@ def _record_completed(
 ) -> None:
     """State Completed for the game just finished.
 
-    The request's correlation id, not a fresh one: the act and the
-    status it implies belong to one submit. No shipped reader groups
-    events that way yet -- playergame_history groups on aggregate_id
-    and event_type -- so this changes no screen. It is the plumbing
-    #683 needs.
+    The request's correlation id, not a fresh one: the act
+    and the status it implies belong to one submit. No
+    reader groups events that way yet, so this changes no
+    screen. It is the plumbing #683 needs.
     """
     record_facts_for_request(
         request,
@@ -365,9 +364,9 @@ def edit_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse
     )
     run = run_for_row(library, playevent.pk)
     if run is None:
-        #: #684 converted the rows of tracked games only, so a row of a
-        #: game the library stopped tracking has no run to state facts
-        #: about. #771 takes the legacy row and this branch together.
+        #: #684 converted rows of tracked games only.
+        #: A row whose game the library stopped tracking
+        #: has no run. #771 takes row and branch together.
         messages.error(
             request,
             "This play event was never converted into a playthrough, because "

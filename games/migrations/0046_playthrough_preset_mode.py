@@ -1,10 +1,13 @@
-"""#687 renamed the play event, and a saved preset stores the old word."""
+"""#687 renamed the play event.
+
+A saved preset stores the old word.
+"""
 
 from django.db import migrations, models
 
 
 def _rewrite(value, mapping):
-    """Rename criterion keys at every depth of a stored filter."""
+    """Rename criterion keys at any depth."""
     if isinstance(value, dict):
         return {
             mapping.get(key, key): _rewrite(item, mapping)
@@ -15,7 +18,7 @@ def _rewrite(value, mapping):
     return value
 
 
-#: The two criterion keys the rename moved, forward.
+#: The two criterion keys, forward.
 _KEYS = {
     "playevent_count": "playthrough_count",
     "playevent_filter": "playthrough_filter",
@@ -23,11 +26,10 @@ _KEYS = {
 
 
 def _rename(apps, keys, *, mode_from, mode_to):
-    """Rewrite every saved preset that names the old word.
+    """Rewrite every preset naming the old word.
 
-    A plain queryset walk, not `.iterator()`: a server-side cursor is
-    refused (`tests/test_iterator_guard.py`), and a preset table holds
-    tens of rows.
+    A plain walk, not `.iterator()`: a server-side cursor
+    is refused, and a preset table holds tens of rows.
     """
     preset_model = apps.get_model("games", "FilterPreset")
     for preset in preset_model.objects.all():
@@ -41,12 +43,12 @@ def _rename(apps, keys, *, mode_from, mode_to):
 
 
 def rename_forward(apps, schema_editor):
-    """playevents -> playthroughs, in the mode and in the stored filter."""
+    """playevents -> playthroughs, in mode and filter."""
     _rename(apps, _KEYS, mode_from="playevents", mode_to="playthroughs")
 
 
 def rename_backward(apps, schema_editor):
-    """The inverse, so a downgrade reads its own presets."""
+    """The inverse, so a downgrade reads them."""
     _rename(
         apps,
         {new: old for old, new in _KEYS.items()},

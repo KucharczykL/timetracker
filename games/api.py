@@ -100,7 +100,7 @@ def _command_failed(request, failure: CommandFailed):
     )
 
 
-#: One sentence for the two handlers that need a converted row.
+#: One sentence for the two converted-row handlers.
 _NO_RUN_FOR_ROW = (
     "This play event was never converted into a playthrough, because your "
     "library no longer tracks its game."
@@ -142,7 +142,10 @@ class UpdatePlaythroughIn(Schema):
 
 
 class PlaythroughOut(Schema):
-    """A run, read off the legacy row. #1015 reads the projection."""
+    """A run, read off the legacy row.
+
+    #1015 reads the projection instead.
+    """
 
     id: UUIDv7
     game: str = Field(..., alias="game.name")
@@ -257,10 +260,10 @@ def partial_update_playthrough(
     run = run_for_row(library, playevent.pk)
     if run is None:
         raise CommandFailed(_NO_RUN_FOR_ROW, CONFLICT_STATUS)
-    #: PATCH states some of a run; restate_run states all of one. A key
-    #: the payload leaves out keeps the value the legacy row shows,
-    #: which is the value this surface read it from. #1015 restates the
-    #: whole handler against the projection.
+    #: PATCH states part; restate_run states the whole.
+    #: A key the payload leaves out keeps the value the
+    #: legacy row shows, which is where this surface read
+    #: it. #1015 restates the handler against the projection.
     stated = payload.dict(exclude_unset=True)
     restate_run(
         cast("User", request.user),

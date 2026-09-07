@@ -1,8 +1,8 @@
-"""The saved presets that name the play event are rewritten.
+"""The saved presets are rewritten.
 
-#687 renamed the mode key and the two criterion keys, and a preset
-holds both as stored strings. The rewrite is a plain function, so it
-is tested as one; the schema half is left to ``make migrate``.
+#687 renamed the mode key and the two criterion keys, and
+a preset holds both as stored strings. The rewrite is a
+plain function, so it is tested as one.
 """
 
 import pytest

@@ -161,7 +161,8 @@ def world(client, django_user_model):
     foreign_playevent = PlayEvent.objects.create(
         game=foreign_game, started=now.date(), note="Foreign event"
     )
-    #: #687 states a run, so the edit page needs the row converted into one.
+    #: #687 states a run, so the edit page
+    #: needs the row converted into one.
     convert_library(owner_library)
     convert_library(foreign_library)
     return SimpleNamespace(**locals())
@@ -289,8 +290,8 @@ def test_foreign_removal_posts_return_404_without_mutation(
         ("games:remove_purchase", "own_purchase", Purchase),
         ("games:remove_device", "own_device", Device),
         ("games:remove_platform", "own_platform", Platform),
-        #: Removing a playthrough stamps the projection, not the legacy row,
-        #: so tests/test_removal_confirmation.py owns that assertion.
+        #: Removing a run stamps the projection,
+        #: so test_removal_confirmation.py owns that assertion.
     ],
 )
 @pytest.mark.untracked_games

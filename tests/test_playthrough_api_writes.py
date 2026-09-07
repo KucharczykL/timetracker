@@ -1,4 +1,4 @@
-"""#687: the playevent API states runs, and writes no legacy row."""
+"""#687: the API states runs, not rows."""
 
 from datetime import date
 
@@ -125,7 +125,10 @@ def test_a_row_with_no_run_answers_409(client, user, game):
 
 
 def test_only_two_modules_read_the_bridge():
-    """#771 takes the bridge away; a third reader is a decision."""
+    """#771 takes the bridge away.
+
+    A third reader is a decision, not a drift.
+    """
     import pathlib
 
     readers = sorted(

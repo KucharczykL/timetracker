@@ -1,8 +1,7 @@
 """The run a converted legacy row became.
 
-#684 recorded the row's id in the creation event's source_metadata and
-wrote no column, so this reads the provenance rather than a join.
-#771 removes the legacy table and this module with it.
+#684 wrote no column, so this reads the row id off the
+creation event. #771 takes the table and this module.
 """
 
 import uuid
@@ -11,7 +10,7 @@ from collections.abc import Iterable
 from games.events.playthrough import PLAYTHROUGH_CREATED
 from games.models import LibraryEvent, Playthrough, UserLibrary
 
-#: The legacy row, and the run #684 made from it.
+#: A legacy row and its converted run.
 type PlayEventId = uuid.UUID
 type PlaythroughId = uuid.UUID
 
@@ -21,8 +20,7 @@ def runs_for_rows(
 ) -> dict[PlayEventId, PlaythroughId]:
     """The run each converted row became.
 
-    Partial by construction: a default run the conversion minted and a
-    run TrackGame states carry no row id, because no row became either.
+    Partial: a default run and a TrackGame run name no row.
     """
     keys = [str(row_id) for row_id in row_ids]
     if not keys:
@@ -36,11 +34,10 @@ def runs_for_rows(
 
 
 def run_for_row(library: UserLibrary, row_id: PlayEventId) -> Playthrough | None:
-    """The run this legacy row became, or nothing.
+    """The run this legacy row became.
 
-    The run is read whatever its mark says: a removal answers Unchanged
-    for a run already removed, which is a better answer than a refusal
-    naming a row the person can still see.
+    Read whatever its mark says: a removal answers Unchanged
+    for a removed run, which beats refusing a visible row.
     """
     run_id = runs_for_rows(library, [row_id]).get(row_id)
     if run_id is None:
