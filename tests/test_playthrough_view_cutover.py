@@ -85,6 +85,42 @@ def test_editing_a_converted_row_states_the_difference(client, user, game):
 
 
 @pytest.mark.django_db(transaction=True)
+def test_removing_the_only_run_is_refused_on_the_confirmation(client, user, game):
+    #: No track_game: the autouse fixture wrote the PlayerGame row, and
+    #: the conversion turns this row into the game's one run.
+    row = PlayEvent.objects.create(game=game, started=None, ended=None, note="")
+    convert_library(user.library)
+    client.force_login(user)
+
+    response = client.post(reverse("games:remove_playevent", args=[row.pk]))
+
+    assert response.status_code == 409
+    assert b"only playthrough of that game" in response.content
+    assert Playthrough.objects.filter(removed_at__isnull=False).count() == 0
+
+
+@pytest.mark.django_db(transaction=True)
+def test_removing_one_of_two_runs_stamps_the_projection_only(client, user, game):
+    first = PlayEvent.objects.create(game=game, started=None, ended=None, note="")
+    second = PlayEvent.objects.create(game=game, started=None, ended=None, note="")
+    convert_library(user.library)
+    run = run_for_row(user.library, second.pk)
+    assert run is not None
+    client.force_login(user)
+
+    response = client.post(reverse("games:remove_playevent", args=[second.pk]))
+
+    assert response.status_code == 302
+    run.refresh_from_db()
+    assert run.removed_at is not None
+    second.refresh_from_db()
+    assert second.removed_at is None
+    #: The other run is untouched, so the game keeps one.
+    other = run_for_row(user.library, first.pk)
+    assert other is not None and other.removed_at is None
+
+
+@pytest.mark.django_db(transaction=True)
 def test_a_row_with_no_run_is_refused_on_the_edit_page(client, user, game):
     row = PlayEvent.objects.create(game=game, started=None, ended=None, note="")
     client.force_login(user)

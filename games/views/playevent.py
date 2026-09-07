@@ -63,10 +63,12 @@ from games.views.filtering import (
 from games.views.playergame_writes import record_facts_for_request
 from games.views.playthrough_writes import (
     record_run_for_request,
+    remove_run_for_request,
     restate_run_for_request,
 )
-from games.views.removal import confirm_and_remove
+from games.views.removal import confirm_and_apply
 from games.views.returns import return_url
+from games.writes.answers import CONFLICT_STATUS, CommandFailed
 from games.writes.playergame import new_correlation_id
 from games.writes.playthrough import RunDraft
 
@@ -423,11 +425,23 @@ def remove_playevent(request: HttpRequest, playevent_id: UUID) -> HttpResponse:
     playevent = owned_or_404(
         PlayEvent.objects.for_library(library), library, id=playevent_id
     )
-    return confirm_and_remove(
+
+    def act() -> None:
+        run = run_for_row(library, playevent.pk)
+        if run is None:
+            raise CommandFailed(
+                "This play event was never converted into a playthrough, "
+                "because your library no longer tracks its game.",
+                CONFLICT_STATUS,
+            )
+        remove_run_for_request(request, run, correlation_id=new_correlation_id())
+
+    return confirm_and_apply(
         request,
-        playevent,
+        action=act,
         title="Remove playthrough",
         message=f"Remove this playthrough of {playevent.game}?",
+        confirm_label="Remove",
         fallback="games:view_game",
         fallback_args=[playevent.game.id, playevent.game.url_slug],
     )

@@ -6,7 +6,9 @@ import pytest
 from django.urls import reverse
 
 from common.returns import action_url
+from games.backfill.playthrough import convert_library
 from games.models import Game, Platform, PlayEvent, Session
+from games.reads.playthrough_provenance import run_for_row
 
 
 @pytest.fixture
@@ -114,17 +116,29 @@ def test_every_removal_confirms_first(
     assert not manager.for_library(owned_library).filter(pk=instance.pk).exists()
 
 
+@pytest.mark.django_db(transaction=True)
 def test_removal_confirms_first_with_owning_game_fallback(
     logged_in, owned_library, removables
 ):
-    """This one falls back to the game."""
+    """This one falls back to the game, and stamps the run.
+
+    #687 removes the run the row became, so the legacy row keeps its
+    own mark and the projection carries the removal. A second row, so
+    the game is not left with no run at all.
+    """
     instance = removables["playevent"]
     owning_game = removables["game"]
-    visible = PlayEvent.objects.for_library(owned_library)
+    PlayEvent.objects.create(game=owning_game)
+    convert_library(owned_library)
+    run = run_for_row(owned_library, instance.pk)
+    assert run is not None
     url = reverse("games:remove_playevent", args=[instance.pk])
     assert logged_in.get(url).status_code == 200
-    assert visible.filter(pk=instance.pk).exists()
+
     response = logged_in.post(url)
+
     assert response["Location"] == owning_game.get_absolute_url()
-    assert PlayEvent.objects.filter(pk=instance.pk).exists()
-    assert not visible.filter(pk=instance.pk).exists()
+    run.refresh_from_db()
+    assert run.removed_at is not None
+    instance.refresh_from_db()
+    assert instance.removed_at is None
