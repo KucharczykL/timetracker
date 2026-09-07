@@ -127,6 +127,11 @@ Required orderings and the reason for each:
   reads a projection two writers disagree about.
 - `#1012 → #683`. The companion action is an affordance beside a lifecycle
   control, and that control is on the surface #1012 delivers.
+- `#1012 → #1013`. The split below leaves the list page reading legacy rows
+  under a detail page that reads runs. #1012 leaves the scaffolding that holds
+  the two together — a second row builder and the link translation — and #1013
+  removes it. Either order needs a bridge; this one puts it where it is already
+  specified.
 - `#1013, #1014, #1015 → #688`. The gate proves parity for surfaces that
   have all moved.
 - `#688 → #771`. Legacy storage comes out after the gate is green.
@@ -134,8 +139,8 @@ Required orderings and the reason for each:
 Free to start together: #679 and #686. #686 reads legacy rows only, and has no
 unmet dependency.
 
-Free to run in parallel: #1012, #1013, #1014, and #1015 after #687;
-#909 any time after #681.
+Free to run in parallel: #1012, #1014, and #1015 after #687, with #1013 behind
+#1012; #909 any time after #681.
 
 ## Issue boundaries
 

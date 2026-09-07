@@ -72,13 +72,30 @@ the drift `audit_library_ownership` reports.
 
 ## Numbering and order
 
-The rows pass through `with_display_number` from
-`games/reads/playthrough_numbering.py`, which selects the live ordinary rows and
-annotates each with its number. A removed run and the imported-history bucket
-are therefore absent from the section, and `display_name` needs no fallback.
+`with_display_number` in `games/reads/playthrough_numbering.py` selects the live
+ordinary rows and annotates each with its number. A removed run and the
+imported-history bucket are therefore absent from the section, and
+`display_name` needs no fallback.
 
 The section orders by the four fields the window orders by, so the numbers read
 down the page in order. Ordering by anything else would print 2 above 1.
+
+### `numbered_for`, the deferral this issue owns
+
+#679's review deferred `numbered_for(player_game_ids)` here, as the numbering's
+first caller, and #601 records the verdict. This issue delivers it.
+
+`RowNumber` partitions over whatever the caller selected, so
+`with_display_number` over a queryset already narrowed to one row answers 1 for
+the run a person calls 4. No exception marks it. `numbered_for` takes the tracked
+games rather than a queryset, so the partition cannot be narrowed by the caller:
+it selects every live ordinary run of those games, numbers them, and the caller
+narrows afterwards or not at all.
+
+It takes a collection although this issue passes one game. The shape is decided
+by the callers, and the second is the list page #1013 now holds, which passes a
+page of tracked games. A singular entry point would be widened there rather than
+used.
 
 ## Days to finish
 
@@ -170,7 +187,8 @@ Focused tests:
 2. a day, a month, a decade and a range, each rendered at its own precision;
 3. the days rule at both bounds, at equal bounds, and with either bound absent;
 4. the display numbers, in order, with a removed run and a bucket present and
-   counted across by neither;
+   counted across by neither, and `numbered_for` answering the same number for
+   one game asked alone and asked beside others;
 5. both counts, over a tracked game with no act, a game with one converted run,
    and a game with a removed run beside a live one;
 6. the edit and remove routes reached from the section, and reached from the
