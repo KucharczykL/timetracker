@@ -66,6 +66,44 @@ def test_the_section_renders_unknown_for_a_stated_act_with_no_day(logged_in, gam
     assert "Unknown" in section(logged_in, game)
 
 
+def test_played_reads_zero_for_a_game_with_no_completion(logged_in, game):
+    """The run tracking states is not a time played through."""
+    body = detail(logged_in, game)
+
+    assert '<span data-count="">0</span> times' in body
+
+
+def test_played_counts_a_completion_whose_day_is_unknown(logged_in, game):
+    run = Playthrough.objects.get(player_game__game=game)
+    Playthrough.objects.filter(pk=run.pk).update(
+        completion_recorded_at=timezone.now(), completed=None
+    )
+
+    body = detail(logged_in, game)
+
+    assert '<span data-count="">1</span> times' in body
+
+
+def test_played_skips_a_started_run_with_no_completion(logged_in, game):
+    run = Playthrough.objects.get(player_game__game=game)
+    Playthrough.objects.filter(pk=run.pk).update(start_recorded_at=timezone.now())
+
+    body = detail(logged_in, game)
+
+    assert '<span data-count="">0</span> times' in body
+
+
+def test_the_removal_confirmation_counts_every_live_ordinary_run(logged_in, game):
+    """The line says what leaves the screen.
+
+    Every row does, the actless one included, so it counts by
+    the section's rule rather than the completion's.
+    """
+    body = logged_in.get(reverse("games:remove_game", args=[game.id])).content.decode()
+
+    assert "1 playthrough(s)" in body
+
+
 def test_the_section_links_its_actions_at_the_run(logged_in, game):
     run = Playthrough.objects.get(player_game__game=game)
 

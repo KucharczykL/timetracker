@@ -95,7 +95,11 @@ from games.reads.catalog_hierarchy import EditionEntry, game_hierarchy
 from games.reads.external_references import ReferenceMap, held_by, references_for
 from games.reads.playergame_history import StatusEntry, status_history
 from games.reads.playthrough_numbering import numbered_for
-from games.reads.playthrough_runs import tracked_game
+from games.reads.playthrough_runs import (
+    completed_run_count,
+    live_ordinary_runs,
+    tracked_game,
+)
 from games.reference_form import ReferenceSetForm
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
 from games.views.catalog_section import editions_area
@@ -353,18 +357,23 @@ def remove_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
         game,
         title="Remove game",
         message=f"Remove {game.name} from your library?",
-        details=_removed_with_game(game),
+        details=_removed_with_game(game, library),
         fallback="games:list_games",
         detail_url=game.get_absolute_url(),
         action=partial(remove_game_for_request, request, game),
     )
 
 
-def _removed_with_game(game: Game) -> Node:
+def _removed_with_game(game: Game, library: UserLibrary) -> Node:
+    tracked = tracked_game(library, game)
+    runs = live_ordinary_runs(library, tracked).count() if tracked else 0
     counts = [
         (game.sessions.alive().count(), "session"),
         (game.purchases.alive().count(), "purchase"),
-        (game.playevents.alive().count(), "play event"),
+        #: Removal stamps the PlayerGame, not its runs, so
+        #: this says what leaves the screen -- the same claim
+        #: the session line already makes.
+        (runs, "playthrough"),
     ]
     present = [Li()[f"{count} {label}(s)"] for count, label in counts if count]
     return Ul()[*(present or [Li()["No associated data"]])]
@@ -439,8 +448,13 @@ _STAT_SVGS = {
 }
 
 
-def _played_row(game: Game, origin: OriginUrl | None) -> Node:
+def _played_row(game: Game, origin: OriginUrl | None, played: int) -> Node:
     """'Played N times' split button.
+
+    The count is the runs whose completion is stated, day
+    known or unknown alike, which is the number the legacy
+    row meant. A run nobody finished is not a time played
+    through.
 
     #687 took the '+1' action and its element away: a
     click filled in the run a tracked game already holds,
@@ -452,8 +466,6 @@ def _played_row(game: Game, origin: OriginUrl | None) -> Node:
         DropdownLinkItem,
         SplitButtonDropdown,
     )
-
-    played = game.playevents.alive().count()
 
     count_button = ControlButton(
         [("class", "rounded-s-lg")],
@@ -773,6 +785,7 @@ def _game_header(
     origin: OriginUrl | None,
     entries: Sequence[EditionEntry],
     references: Sequence[ExternalReference],
+    played: int,
 ) -> Node:
     playrange_start = metrics["playrange_start"]
     playrange_end = metrics["playrange_end"]
@@ -834,7 +847,7 @@ def _game_header(
             ],
             "👑" if game.tracked_mastered else "",
         ),
-        _played_row(game, origin),
+        _played_row(game, origin, played),
         *_plain_release_rows(entries, presentation),
     ]
     return Div(id_="game-info", class_="mb-10")[
@@ -1034,6 +1047,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
             origin,
             hierarchy,
             held_by(references, game.pk),
+            completed_run_count(library, tracked),
         ),
         _releases_section(
             hierarchy, presentation, origin, game=game, references=references
