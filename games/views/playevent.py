@@ -1,9 +1,11 @@
 import logging
+import uuid
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import Any, cast
 from uuid import UUID
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.db.models import QuerySet
@@ -45,6 +47,7 @@ from games.filters import filter_query_context_for_library, parse_playevent_filt
 from games.forms import PlayEventForm
 from games.models import Game, PlayerGameStatus, PlayEvent, Session
 from games.ownership import owned_or_404
+from games.reads.playthrough_provenance import run_for_row
 from games.sorting import (
     PLAYEVENT_DEFAULT_SORT,
     PLAYEVENT_SORTS,
@@ -58,9 +61,14 @@ from games.views.filtering import (
     warn_unknown_sort,
 )
 from games.views.playergame_writes import record_facts_for_request
+from games.views.playthrough_writes import (
+    record_run_for_request,
+    restate_run_for_request,
+)
 from games.views.removal import confirm_and_remove
 from games.views.returns import return_url
 from games.writes.playergame import new_correlation_id
+from games.writes.playthrough import RunDraft
 
 logger = logging.getLogger("games")
 
@@ -293,17 +301,20 @@ def add_playevent(request: HttpRequest, game_id: UUID | None = None) -> HttpResp
         presentation=date_time_presentation_for_request(request),
     )
     if form.is_valid():
-        play_event = form.save()
-        if form.cleaned_data.get("mark_as_finished"):
-            _record_completed(request, play_event)
-        game = play_event.game
-        return redirect(
-            return_url(
-                request,
-                fallback="games:view_game",
-                fallback_args=[game.id, game.url_slug],
+        game = form.cleaned_data["game"]
+        correlation_id = new_correlation_id()
+        if record_run_for_request(
+            request, game, _draft_from(form), correlation_id=correlation_id
+        ):
+            if form.cleaned_data.get("mark_as_finished"):
+                _record_completed(request, game, correlation_id)
+            return redirect(
+                return_url(
+                    request,
+                    fallback="games:view_game",
+                    fallback_args=[game.id, game.url_slug],
+                )
             )
-        )
 
     return render_page(
         request,
@@ -316,13 +327,31 @@ def add_playevent(request: HttpRequest, game_id: UUID | None = None) -> HttpResp
     )
 
 
-def _record_completed(request: HttpRequest, play_event: PlayEvent) -> None:
-    """State Completed for the game just finished."""
+def _draft_from(form: PlayEventForm) -> RunDraft:
+    """The run the form states."""
+    return RunDraft(
+        started=form.cleaned_data["started"],
+        ended=form.cleaned_data["ended"],
+        note=form.cleaned_data["note"],
+    )
+
+
+def _record_completed(
+    request: HttpRequest, game: Game, correlation_id: uuid.UUID
+) -> None:
+    """State Completed for the game just finished.
+
+    The request's correlation id, not a fresh one: the act and the
+    status it implies belong to one submit. No shipped reader groups
+    events that way yet -- playergame_history groups on aggregate_id
+    and event_type -- so this changes no screen. It is the plumbing
+    #683 needs.
+    """
     record_facts_for_request(
         request,
-        play_event.game,
+        game,
         status=PlayerGameStatus.COMPLETED,
-        correlation_id=new_correlation_id(),
+        correlation_id=correlation_id,
     )
 
 
@@ -332,16 +361,17 @@ def edit_playevent(request: HttpRequest, playevent_id: UUID) -> HttpResponse:
     playevent = owned_or_404(
         PlayEvent.objects.for_library(library), library, id=playevent_id
     )
-    form = PlayEventForm(
-        request.POST or None,
-        instance=playevent,
-        library=library,
-        presentation=date_time_presentation_for_request(request),
-    )
-    if form.is_valid():
-        play_event = form.save()
-        if form.cleaned_data.get("mark_as_finished"):
-            _record_completed(request, play_event)
+    run = run_for_row(library, playevent.pk)
+    if run is None:
+        #: #684 converted the rows of tracked games only, so a row of a
+        #: game the library stopped tracking has no run to state facts
+        #: about. #771 takes the legacy row and this branch together.
+        messages.error(
+            request,
+            "This play event was never converted into a playthrough, because "
+            "your library no longer tracks its game. Track the game again to "
+            "record runs at it.",
+        )
         return redirect(
             return_url(
                 request,
@@ -349,11 +379,37 @@ def edit_playevent(request: HttpRequest, playevent_id: UUID) -> HttpResponse:
                 fallback_args=[playevent.game.id, playevent.game.url_slug],
             )
         )
+    form = PlayEventForm(
+        request.POST or None,
+        initial={
+            "game": playevent.game,
+            "started": playevent.started,
+            "ended": playevent.ended,
+            "note": playevent.note,
+        },
+        library=library,
+        presentation=date_time_presentation_for_request(request),
+        locked_game=playevent.game,
+    )
+    if form.is_valid():
+        correlation_id = new_correlation_id()
+        if restate_run_for_request(
+            request, run, _draft_from(form), correlation_id=correlation_id
+        ):
+            if form.cleaned_data.get("mark_as_finished"):
+                _record_completed(request, playevent.game, correlation_id)
+            return redirect(
+                return_url(
+                    request,
+                    fallback="games:view_game",
+                    fallback_args=[playevent.game.id, playevent.game.url_slug],
+                )
+            )
 
     return render_page(
         request,
         AddForm(form, request=request),
-        title="Edit Play Event",
+        title="Edit playthrough",
         scripts=Fragment(
             ModuleScript("dist/elements/search-select.js"),
             ModuleScript("dist/elements/date-picker.js"),
