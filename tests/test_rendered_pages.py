@@ -438,13 +438,7 @@ class RenderedPagesTest(TestCase):
         self.assertNoEscapedTags(html)
 
     def test_view_game_empty_sections(self):
-        """A game with no sessions or purchases shows the empty messages.
-
-        The Playthrough section has none to show: #679 gives a tracked game a
-        run from the moment the library tracks it, so the section always has a
-        row. The empty branch stays for a section with a count and no rows,
-        which is worse than a sentence.
-        """
+        """A game with no sessions or purchases shows the empty messages."""
         lonely = Game.objects.create(
             library=self.user.library, name="Lonely Game", platform=self.platform
         )

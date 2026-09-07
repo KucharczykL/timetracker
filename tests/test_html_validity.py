@@ -156,8 +156,7 @@ class HtmlValidityTest(TestCase):
             started=date(2022, 9, 1),
             ended=date(2022, 9, 26),
         )
-        #: #1012 moved the route onto the run. Tracking the
-        #: game states one, so the page has a key to reverse.
+        #: #1012 moved the route onto the run.
         self.playthrough = Playthrough.objects.get(player_game__game=self.long_game)
 
     def _urls(self) -> list[str]:

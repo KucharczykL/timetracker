@@ -370,9 +370,7 @@ def _removed_with_game(game: Game, library: UserLibrary) -> Node:
     counts = [
         (game.sessions.alive().count(), "session"),
         (game.purchases.alive().count(), "purchase"),
-        #: Removal stamps the PlayerGame, not its runs, so
-        #: this says what leaves the screen -- the same claim
-        #: the session line already makes.
+        #: Removal stamps the PlayerGame; runs leave too.
         (runs, "playthrough"),
     ]
     present = [Li()[f"{count} {label}(s)"] for count, label in counts if count]
@@ -451,10 +449,9 @@ _STAT_SVGS = {
 def _played_row(game: Game, origin: OriginUrl | None, played: int) -> Node:
     """'Played N times' split button.
 
-    The count is the runs whose completion is stated, day
-    known or unknown alike, which is the number the legacy
-    row meant. A run nobody finished is not a time played
-    through.
+    Counts runs whose completion is stated.
+
+    The day may be unknown and still count.
 
     #687 took the '+1' action and its element away: a
     click filled in the run a tracked game already holds,
@@ -970,17 +967,13 @@ def _playthroughs_section(
         data_table=True,
         caption="Playthroughs of this game",
     )
-    #: The empty branch is unreachable while every tracked
-    #: game holds a run. A badge with no rows beneath it is
-    #: worse than a sentence, so it stays.
+    #: Every tracked game holds a run today.
     section = _game_section(
         "Playthroughs",
         len(runs),
         table,
         "No playthroughs yet.",
-        #: The list page reads legacy rows until #1013, so a
-        #: run stated after #687 is not on the page this
-        #: reaches. #1013 closes it.
+        #: List page reads legacy rows until #1013.
         view_all_url=filter_url(PlayEventFilter.where(game=[game.id])),
     )
     return Div(id_="playthroughs-container")[section]
@@ -1022,9 +1015,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
     )
     purchases = Purchase.objects.for_library(library).filter(games=game)
     tracked = tracked_game(library, game)
-    #: Scoped on the row and its parent alike, as
-    #: `live_ordinary_runs` is: a run may name another
-    #: library's tracked game.
+    #: A run may name another library's game.
     runs = list(
         numbered_for(library, [tracked.pk] if tracked else []).select_related(
             "player_game__game"

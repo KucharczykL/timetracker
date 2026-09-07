@@ -1,8 +1,4 @@
-"""One table row per run.
-
-The sibling of `create_playthrough_tabledata`, which takes a legacy row and
-stays in `games/views/playthrough.py` until #1013 moves the list page.
-"""
+"""One table row per run."""
 
 from collections.abc import Sequence
 
@@ -36,20 +32,14 @@ def playthrough_tabledata(
     *,
     origin: OriginUrl | None,
 ) -> TableData:
-    """The runs, as rows.
-
-    No sort keys: the one caller is an embedded section that handles no
-    `?sort=`. #1013 states them when it moves the list page onto this
-    builder.
-    """
+    """The runs, as rows. No sort keys."""
     column_list = [
         Column("Playthrough", shrinkable=True),
         Column("Game", shrinkable=True),
         Column("Started", priority=3),
         Column("Completed", priority=2),
         Column("Days to finish", priority=2),
-        # Free text with no natural width: on one line a single long note would
-        # widen the table past anything the other columns could reclaim.
+        # One long note on one line widens everything.
         Column("Note", wrap=True),
         Column("Created"),
         Column("Actions", align="right", priority=4),
@@ -94,11 +84,7 @@ def playthrough_tabledata(
 def _endpoint_cell(
     stated: StatedEndpoint | None, presentation: DateTimePresentation
 ) -> Cell:
-    """Three states where the legacy pair had two.
-
-    No act reads a dash. An act whose day nobody knows reads `Unknown`,
-    which `present_temporal_value` answers for a value of None.
-    """
+    """No act reads a dash, unknown day `Unknown`."""
     if stated is None:
         return "-"
     return TemporalText(stated.when, presentation)
@@ -112,9 +98,8 @@ def _days_cell(run: Playthrough) -> Cell:
 def _actions(run: Playthrough, origin: OriginUrl | None) -> Cell:
     """Edit and remove, naming the run.
 
-    Remove renders on the game's last run too. The command refuses that
-    one in its own sentence, and stating the rule here as well would be
-    two places that can disagree.
+    Remove renders on the last run too: the command owns
+    that refusal, and a second gate can disagree with it.
     """
     return ButtonGroup(
         [

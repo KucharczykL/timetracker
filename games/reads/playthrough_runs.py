@@ -24,10 +24,9 @@ def live_ordinary_runs(
 
 
 def tracked_game(library: UserLibrary, game: Game) -> PlayerGame | None:
-    """The row this library tracks the game with, or nothing.
+    """The row this library tracks the game with.
 
-    One row per pair, by `unique_library_player_game`. A
-    removed one is not tracked.
+    One per pair. A removed one is not tracked.
     """
     return PlayerGame.objects.filter(
         library=library, game=game, removed_at__isnull=True
@@ -35,15 +34,10 @@ def tracked_game(library: UserLibrary, game: Game) -> PlayerGame | None:
 
 
 def completed_run_count(library: UserLibrary, player_game: PlayerGame | None) -> int:
-    """How many times the person played the game through.
+    """How many times the game was played through.
 
-    Runs whose completion is stated, the day known or unknown
-    alike. #679 states a run at tracking time that states
-    neither act, and nobody played that one; a run started
-    and not finished is not a time played through either.
-
-    This is the number the legacy row meant: #684 states a
-    completion marker for every row it converts.
+    Runs whose completion is stated, day known or not. An
+    unfinished run is not a time played through.
     """
     if player_game is None:
         return 0

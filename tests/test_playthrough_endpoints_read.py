@@ -130,13 +130,7 @@ def test_days_to_finish_states_nothing_where_a_bound_is_absent(run):
 
 @pytest.mark.django_db(transaction=True)
 def test_days_to_finish_states_nothing_for_a_completion_before_the_start(run):
-    """A backwards pair is not a length.
-
-    The legacy column coalesced it to 0, which read as a real
-    one. #684 converts such rows by appending events, past
-    the command that would refuse them, so they reach a
-    screen.
-    """
+    """A backwards pair is not a length."""
     spanning = _spanning(
         run,
         TemporalValue.from_day(date(2026, 3, 1)),

@@ -11,8 +11,7 @@ pytestmark = pytest.mark.django_db
 
 @pytest.fixture
 def game(owned_library) -> Game:
-    #: tests/conftest.py tracks a created game and states
-    #: the run #679 gives it, so this holds one already.
+    #: The fixture states the run #679 gives.
     return Game.objects.create(library=owned_library, name="Outer Wilds")
 
 
@@ -29,8 +28,7 @@ def detail(logged_in, game) -> str:
 def section(logged_in, game) -> str:
     """The Playthrough section alone.
 
-    The page renders `Unknown` for a release nobody dated too, so an
-    assertion over the whole page would pass without the section.
+    The page renders `Unknown` elsewhere too.
     """
     body = detail(logged_in, game)
     start = body.index('id="playthroughs-container"')
@@ -38,11 +36,7 @@ def section(logged_in, game) -> str:
 
 
 def test_the_section_renders_the_run_a_tracked_game_holds(logged_in, game):
-    """No act yet, and still a row.
-
-    The row is the one the person is about to fill in, so it
-    renders rather than an empty message.
-    """
+    """No act yet, and still a row."""
     body = detail(logged_in, game)
 
     assert "Playthroughs" in body
@@ -67,7 +61,7 @@ def test_the_section_renders_unknown_for_a_stated_act_with_no_day(logged_in, gam
 
 
 def test_played_reads_zero_for_a_game_with_no_completion(logged_in, game):
-    """The run tracking states is not a time played through."""
+    """The run tracking states is no time played."""
     body = detail(logged_in, game)
 
     assert '<span data-count="">0</span> times' in body
@@ -94,11 +88,7 @@ def test_played_skips_a_started_run_with_no_completion(logged_in, game):
 
 
 def test_the_removal_confirmation_counts_every_live_ordinary_run(logged_in, game):
-    """The line says what leaves the screen.
-
-    Every row does, the actless one included, so it counts by
-    the section's rule rather than the completion's.
-    """
+    """The line says what leaves the screen."""
     body = logged_in.get(reverse("games:remove_game", args=[game.id])).content.decode()
 
     assert "1 playthrough(s)" in body

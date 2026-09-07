@@ -54,9 +54,7 @@ def _track_created_games(request):
     would hide it.
 
     Both rows, because TrackGame states both: #679 gives every tracked game one
-    run from the moment the library tracks it, and #1012 reads those runs on
-    Game detail, so a fixture that wrote only the PlayerGame would render an
-    empty section production never shows.
+    run, and #1012 reads those runs on Game detail.
 
     A direct write, not ``backfill_game()``: the backfill needs an actor and a
     run time, opens its own transaction and appends events. The rows are what

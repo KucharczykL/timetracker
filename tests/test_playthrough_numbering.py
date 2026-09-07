@@ -304,13 +304,7 @@ def test_numbered_for_counts_across_neither_a_removed_run_nor_a_bucket(
 def test_numbered_for_counts_across_no_run_naming_another_librarys_game(
     owned_library, tracked, django_user_model
 ):
-    """Drift belongs to neither partition.
-
-    A run whose own library and whose parent's library
-    disagree is what `audit_library_ownership` reports. The
-    library holding the row filters it out by the parent;
-    the library holding the parent never names the row.
-    """
+    """Drift belongs to neither partition."""
     stranger = django_user_model.objects.create_user(
         username="numbering-stranger", password="p"
     )

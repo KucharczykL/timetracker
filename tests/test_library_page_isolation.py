@@ -167,10 +167,7 @@ def world(client, django_user_model):
     #: needs the row converted into one.
     convert_library(owner_library)
     convert_library(foreign_library)
-    #: #1012 moved the routes onto the run, so the
-    #: isolation cases must name one. A legacy key now
-    #: matches nothing at all, which would answer 404 for
-    #: the wrong reason and test nothing.
+    #: #1012 moved the routes onto the run.
     own_run = run_for_row(owner_library, own_playevent.pk).run
     foreign_run = run_for_row(foreign_library, foreign_playevent.pk).run
     return SimpleNamespace(**locals())

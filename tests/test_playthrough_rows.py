@@ -36,12 +36,7 @@ def presentation() -> DateTimePresentation:
 
 
 def cells_of(owned_library, run, presentation, **options) -> list[str]:
-    """Every cell this run renders, each as its own string.
-
-    `make_row` answers a TableRowData, whose `cell_data` holds
-    the cells the table will render. A cell is a plain string
-    or a node, so the assertions stringify each.
-    """
+    """Every cell this run renders, stringified."""
     tracked = tracked_game(owned_library, run.player_game.game)
     assert tracked is not None
     runs = list(

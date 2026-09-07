@@ -82,8 +82,7 @@ def runtime_world(db):
     foreign_playevent = PlayEvent.objects.create(
         game=foreign_game, started=date(2026, 8, 20), note="Foreign event"
     )
-    #: #1012 moved the HTML routes onto the run. The API
-    #: still takes the legacy key, until #1015.
+    #: #1012 moved the HTML routes onto the run.
     foreign_run = Playthrough.objects.get(player_game__game=foreign_game)
     return SimpleNamespace(**locals())
 

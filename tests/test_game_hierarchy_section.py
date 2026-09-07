@@ -42,11 +42,7 @@ def editions_table(html: str) -> str:
 
 
 def edition_captions(html: str) -> list[tuple[str, str]]:
-    """The Editions table's own captions, id and text alike.
-
-    #1012 gave the page a second table, so a count over every
-    caption on it would say two where one is meant.
-    """
+    """The Editions table's captions, id and text."""
     return [
         (caption_id, text)
         for caption_id, text in re.findall(

@@ -11,8 +11,8 @@ from games.models import Playthrough, PlaythroughKind, UserLibrary
 #: A tracked game's key, as a caller holds it.
 type PlayerGameId = uuid.UUID
 
-#: The window's order, and the order a screen renders in.
-#: A screen that ordered by anything else would print 2 above 1.
+#: The window's order, and the screen's.
+#: Another order prints 2 above 1.
 DISPLAY_ORDER: tuple[OrderBy | str, ...] = (
     F("started_lower").asc(nulls_last=True),
     F("completed_lower").asc(nulls_last=True),
@@ -53,18 +53,11 @@ def numbered_for(
 ) -> QuerySet[Playthrough]:
     """Every live ordinary run of these tracked games, numbered.
 
-    The partition is whatever the caller selected, so
-    `with_display_number` over a queryset narrowed to one row
-    numbers it 1 and no exception marks it. This takes the
-    games instead, so the caller narrows afterwards or not at
-    all.
-
-    The library is stated beside the games, never inferred,
-    and scoped on the row and on its parent alike: a run
-    naming another library's tracked game is the drift
-    `audit_library_ownership` reports, and numbering it under
-    either library would disagree with `live_ordinary_runs`,
-    which is the partition a removal counts across.
+    Takes games, not a queryset: the partition is whatever
+    the caller selected, so a narrowed one numbers its row 1
+    and nothing marks it. Scoped on the row and its parent
+    alike, so the partition matches `live_ordinary_runs`,
+    which a removal counts across.
     """
     return with_display_number(
         Playthrough.objects.filter(

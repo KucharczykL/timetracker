@@ -84,11 +84,11 @@ logger = logging.getLogger("games")
 
 
 def _legacy_actions(run_id: PlaythroughId | None, origin: OriginUrl | None) -> Cell:
-    """No actions for a row that became no run.
+    """No run, no actions.
 
-    The map is partial: a row whose game the library stopped
-    tracking was never converted. #771 takes the row with its
-    table.
+    The map is partial: #684 converted rows of tracked games
+    only, so a row whose game the library stopped tracking
+    became none. #771 takes row and branch together.
     """
     if run_id is None:
         return ""
@@ -121,8 +121,7 @@ def create_playthrough_tabledata(
     if isinstance(playevents, BaseManager):
         playevents = playevents.all()
     rows = list(playevents)
-    #: #1012 moved the routes onto the run, and this page
-    #: still lists rows until #1013. One batch, one query.
+    #: Rows here, run ids there, until #1013.
     runs = runs_for_rows(library, [row.pk for row in rows])
     column_list = [
         Column("Game", "name", shrinkable=True),
@@ -282,11 +281,7 @@ def add_playthrough(request: HttpRequest, game_id: UUID | None = None) -> HttpRe
             latest_session = game.sessions.alive().latest("timestamp_start")
             latest_session_ts = latest_session.timestamp_start
 
-            #: The greatest day a run of this game states it
-            #: finished on. A completion whose day nobody
-            #: knows states none, so it seeds nothing and the
-            #: earliest session takes over, as it does for a
-            #: game with no finished run at all.
+            #: The greatest finish day a run states.
             tracked = tracked_game(library, game)
             last_finish = (
                 live_ordinary_runs(library, tracked).aggregate(
@@ -303,8 +298,7 @@ def add_playthrough(request: HttpRequest, game_id: UUID | None = None) -> HttpRe
                     new_playthrough_start_date, datetime.min.time()
                 )
             else:
-                #: No finished run, so the new one starts from
-                #: the earliest session.
+                #: No finish day, so the earliest session.
                 earliest_session_ts = (
                     game.sessions.alive().earliest("timestamp_start").timestamp_start
                 )
@@ -386,17 +380,7 @@ def _no_run_here(request: HttpRequest, game: Game, sentence: str) -> HttpRespons
 
 
 def _editable_runs(library: UserLibrary) -> QuerySet[Playthrough]:
-    """This library's live runs, their game read with them.
-
-    Scoped on the row and on its parent alike, as
-    `live_ordinary_runs` is: a run naming another library's
-    tracked game is the drift `audit_library_ownership`
-    reports, and answering it here would render that
-    library's game name and redirect into their page.
-
-    Live only, which is what the legacy routes answered for a
-    removed row.
-    """
+    """This library's live runs, their game beside them."""
     return Playthrough.objects.select_related("player_game__game").filter(
         library=library,
         player_game__library=library,

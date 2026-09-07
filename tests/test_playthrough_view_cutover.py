@@ -184,12 +184,7 @@ def test_removing_one_of_two_runs_stamps_the_projection_only(client, user, game)
 
 @pytest.mark.django_db(transaction=True)
 def test_a_legacy_row_id_reaches_no_page(client, user, game):
-    """#1012 moved the routes onto the run.
-
-    Both keys are UUIDs in one path position, so no route can
-    tell them apart. The run is the key that survives, and a
-    bookmark naming a row answers 404.
-    """
+    """#1012 moved the routes onto the run."""
     row = PlayEvent.objects.create(game=game, started=None, ended=None, note="")
     convert_library(user.library)
     client.force_login(user)
@@ -218,12 +213,7 @@ def test_a_removed_run_reaches_no_page(client, user, game):
 def test_a_run_naming_another_librarys_tracked_game_reaches_no_page(
     client, user, game, django_user_model
 ):
-    """Drift must not render another library's game name.
-
-    The row's own library is one scope and its parent's is
-    another. Answering on either alone would put a stranger's
-    game in the heading and redirect into their detail page.
-    """
+    """Drift must not render another library's game."""
     stranger = django_user_model.objects.create_user(
         username="drift-stranger", password="p"
     )
@@ -240,12 +230,7 @@ def test_a_run_naming_another_librarys_tracked_game_reaches_no_page(
 def test_the_prefill_seeds_from_the_greatest_stated_completion(
     client, user, owned_library, game
 ):
-    """The day after the last run finished.
-
-    Read off the projection: nothing writes the legacy row
-    any more, so seeding from it would offer a day the person
-    already corrected.
-    """
+    """The day after the last run finished."""
     Session.objects.create(
         game=game,
         timestamp_start=datetime(2026, 5, 1, 10, tzinfo=UTC),
@@ -282,7 +267,5 @@ def test_the_prefill_seeds_nothing_from_a_completion_with_no_day(client, user, g
         reverse("games:add_playthrough_for_game", args=[game.pk])
     ).content.decode()
 
-    #: No completion states a day, so the seed falls back to
-    #: the earliest session, as it does for a game with no
-    #: finished run at all.
+    #: No finish day, so the earliest session.
     assert "2026-05-01" in body
