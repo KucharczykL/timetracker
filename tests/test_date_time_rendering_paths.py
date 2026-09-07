@@ -139,7 +139,7 @@ def test_non_default_presentation_reaches_every_server_display_path(
             "13h58",
             "2022.05.10",
         ),
-        reverse("games:list_playevents"): (
+        reverse("games:list_playthroughs"): (
             "2022.24.09",
             "2022.25.09",
             "2022.06.10",

@@ -387,7 +387,7 @@ def test_finished_alltime_matches_backlog(world):
 # ── JSON round-trip parity (issue #120) ──────────────────────────────────────
 #
 # Builders that nest cross-entity sub-filters (game_filter / session_filter /
-# playevent_filter). Before the serialization fix these serialized to an empty
+# playthrough_filter). Before the serialization fix these serialized to an empty
 # or partial `?filter=`, so a clicked link landed on an unfiltered list. Each
 
 

@@ -106,7 +106,7 @@ _NO_RUN_FOR_ROW = (
     "library no longer tracks its game."
 )
 
-playevent_router = Router()
+playthrough_router = Router()
 game_router = Router()
 device_router = Router()
 platform_router = Router()
@@ -121,7 +121,7 @@ class GameStatusUpdate(Schema):
     status: PlayerGameStatus
 
 
-class PlayEventIn(Schema):
+class PlaythroughIn(Schema):
     game_id: UUIDv7
     started: date | None = None
     ended: date | None = None
@@ -135,13 +135,15 @@ class AutoPlayEventIn(ModelSchema):
         fields = ("game", "started", "ended", "note")
 
 
-class UpdatePlayEventIn(Schema):
+class UpdatePlaythroughIn(Schema):
     started: date | None = None
     ended: date | None = None
     note: str = ""
 
 
-class PlayEventOut(Schema):
+class PlaythroughOut(Schema):
+    """A run, read off the legacy row. #1015 reads the projection."""
+
     id: UUIDv7
     game: str = Field(..., alias="game.name")
     started: date | None = None
@@ -215,14 +217,14 @@ def partial_update_game(request, game_id: UUIDv7, payload: GameStatusUpdate):
     return Status(204, None)
 
 
-@playevent_router.get("/", response=list[PlayEventOut])
-def list_playevents(request):
+@playthrough_router.get("/", response=list[PlaythroughOut])
+def list_playthroughs(request):
     library = cast(User, request.user).library
     return PlayEvent.objects.for_library(library)
 
 
-@playevent_router.post("/", response={204: None})
-def create_playevent(request, payload: PlayEventIn):
+@playthrough_router.post("/", response={204: None})
+def create_playthrough(request, payload: PlaythroughIn):
     library = cast(User, request.user).library
     game = owned_or_404(Game.objects.for_library(library), library, id=payload.game_id)
     record_run(
@@ -235,20 +237,22 @@ def create_playevent(request, payload: PlayEventIn):
     return Status(204, None)
 
 
-@playevent_router.get("/{playevent_id}", response=PlayEventOut)
-def get_playevent(request, playevent_id: UUIDv7):
+@playthrough_router.get("/{playthrough_id}", response=PlaythroughOut)
+def get_playthrough(request, playthrough_id: UUIDv7):
     library = cast(User, request.user).library
     playevent = owned_or_404(
-        PlayEvent.objects.for_library(library), library, id=playevent_id
+        PlayEvent.objects.for_library(library), library, id=playthrough_id
     )
     return playevent
 
 
-@playevent_router.patch("/{playevent_id}", response={204: None})
-def partial_update_playevent(request, playevent_id: UUIDv7, payload: UpdatePlayEventIn):
+@playthrough_router.patch("/{playthrough_id}", response={204: None})
+def partial_update_playthrough(
+    request, playthrough_id: UUIDv7, payload: UpdatePlaythroughIn
+):
     library = cast(User, request.user).library
     playevent = owned_or_404(
-        PlayEvent.objects.for_library(library), library, id=playevent_id
+        PlayEvent.objects.for_library(library), library, id=playthrough_id
     )
     run = run_for_row(library, playevent.pk)
     if run is None:
@@ -272,11 +276,11 @@ def partial_update_playevent(request, playevent_id: UUIDv7, payload: UpdatePlayE
 
 
 #: DELETE is the transport's word, not ours.
-@playevent_router.delete("/{playevent_id}", response={204: None})
-def remove_playevent(request, playevent_id: UUIDv7):
+@playthrough_router.delete("/{playthrough_id}", response={204: None})
+def remove_playthrough(request, playthrough_id: UUIDv7):
     library = cast(User, request.user).library
     playevent = owned_or_404(
-        PlayEvent.objects.for_library(library), library, id=playevent_id
+        PlayEvent.objects.for_library(library), library, id=playthrough_id
     )
     run = run_for_row(library, playevent.pk)
     if run is None:
@@ -384,7 +388,7 @@ def search_timezones(request, q: str = "", limit: int = 10):
     ]
 
 
-api.add_router("/playevent", playevent_router)
+api.add_router("/playthrough", playthrough_router)
 api.add_router("/games", game_router)
 api.add_router("/devices", device_router)
 api.add_router("/platforms", platform_router)

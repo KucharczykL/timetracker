@@ -153,7 +153,7 @@ class RenderedPagesTest(TestCase):
 
     def test_page_layout_wrapper(self):
         """A converted page is wrapped in the full Page() document."""
-        html = self.get("games:list_playevents").content.decode()
+        html = self.get("games:list_playthroughs").content.decode()
         for marker in [
             "<!DOCTYPE html>",
             "<nav",
@@ -163,7 +163,7 @@ class RenderedPagesTest(TestCase):
             "</html>",
         ]:
             self.assertIn(marker, html)
-        self.assertIn("Timetracker - Manage play events", html)
+        self.assertIn("Timetracker - Manage playthroughs", html)
         # The page shell carries the horizontal gutter (issue #413) so content
         # stays off the viewport edges below the max-width cap.
         self.assertRegex(html, r'id="main-container"[^>]*class="[^"]*\bpx-4\b')
@@ -172,7 +172,7 @@ class RenderedPagesTest(TestCase):
         """Inline <script> bodies in the head must render as real markup, not
         HTML-escaped text (the f-string→component conversion regressed this:
         <script> is a raw-text element, so its body is emitted verbatim)."""
-        html = self.get("games:list_playevents").content.decode()
+        html = self.get("games:list_playthroughs").content.decode()
         # No script tag should appear escaped anywhere on the page.
         self.assertNotIn("&lt;script", html)
         # Inline JS keeps its quotes (escaping would yield &#x27;).
@@ -192,7 +192,7 @@ class RenderedPagesTest(TestCase):
             "games:list_sessions",
             "games:list_platforms",
             "games:list_devices",
-            "games:list_playevents",
+            "games:list_playthroughs",
         ]:
             with self.subTest(url_name=url_name):
                 html = self.get(url_name).content.decode()
@@ -216,7 +216,7 @@ class RenderedPagesTest(TestCase):
             "games:list_games",
             "games:list_sessions",
             "games:list_purchases",
-            "games:list_playevents",
+            "games:list_playthroughs",
             "games:list_devices",
             "games:list_platforms",
         ):

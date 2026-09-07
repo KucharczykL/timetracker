@@ -24,7 +24,7 @@ def test_adding_a_playthrough_writes_no_legacy_row(client, user, game):
     client.force_login(user)
 
     client.post(
-        reverse("games:add_playevent"),
+        reverse("games:add_playthrough"),
         {
             "game": str(game.pk),
             "started": "2026-01-02",
@@ -47,7 +47,7 @@ def test_marking_finished_states_the_status_under_one_correlation_id(
     client.force_login(user)
 
     client.post(
-        reverse("games:add_playevent"),
+        reverse("games:add_playthrough"),
         {
             "game": str(game.pk),
             "started": "",
@@ -72,7 +72,7 @@ def test_editing_a_converted_row_states_the_difference(client, user, game):
     client.force_login(user)
 
     client.post(
-        reverse("games:edit_playevent", args=[row.pk]),
+        reverse("games:edit_playthrough", args=[row.pk]),
         {"game": str(game.pk), "started": "2026-01-02", "ended": "", "note": "read"},
     )
 
@@ -92,7 +92,7 @@ def test_removing_the_only_run_is_refused_on_the_confirmation(client, user, game
     convert_library(user.library)
     client.force_login(user)
 
-    response = client.post(reverse("games:remove_playevent", args=[row.pk]))
+    response = client.post(reverse("games:remove_playthrough", args=[row.pk]))
 
     assert response.status_code == 409
     assert b"only playthrough of that game" in response.content
@@ -108,7 +108,7 @@ def test_removing_one_of_two_runs_stamps_the_projection_only(client, user, game)
     assert run is not None
     client.force_login(user)
 
-    response = client.post(reverse("games:remove_playevent", args=[second.pk]))
+    response = client.post(reverse("games:remove_playthrough", args=[second.pk]))
 
     assert response.status_code == 302
     run.refresh_from_db()
@@ -125,7 +125,7 @@ def test_a_row_with_no_run_is_refused_on_the_edit_page(client, user, game):
     row = PlayEvent.objects.create(game=game, started=None, ended=None, note="")
     client.force_login(user)
 
-    response = client.get(reverse("games:edit_playevent", args=[row.pk]))
+    response = client.get(reverse("games:edit_playthrough", args=[row.pk]))
 
     assert response.status_code == 302
     sentences = [str(message) for message in get_messages(response.wsgi_request)]

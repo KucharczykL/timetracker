@@ -65,7 +65,7 @@ FILTER_MODE_LIST_URLS: dict[FilterMode, str] = {
     "games": "games:list_games",
     "sessions": "games:list_sessions",
     "purchases": "games:list_purchases",
-    "playevents": "games:list_playevents",
+    "playthroughs": "games:list_playthroughs",
     "devices": "games:list_devices",
     "platforms": "games:list_platforms",
 }
@@ -86,7 +86,8 @@ FILTER_MODE_MODELS: dict[FilterMode, ModelKey] = {
     "games": "game",
     "sessions": "session",
     "purchases": "purchase",
-    "playevents": "playevent",
+    # The singular key is PlayEvent._meta.model_name; #771 renames the model.
+    "playthroughs": "playevent",
     "devices": "device",
     "platforms": "platform",
 }

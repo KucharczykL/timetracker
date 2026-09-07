@@ -19,7 +19,7 @@ from common.date_time_presentation import (
     DateTimePresentation,
 )
 from games.filters import GameFilter, PlayEventFilter
-from games.forms import PlayEventForm
+from games.forms import PlaythroughForm
 from games.models import Game, GameStatusChange, PlayEvent
 
 PRESENTATION = DateTimePresentation(
@@ -213,14 +213,14 @@ def test_gamestatuschange_game_id_reads_back_as_the_games_identity(game):
     assert change.game_id == game.pk
 
 
-def test_playevent_filters_by_game_instance(game, owned_library):
+def test_playthrough_filters_by_game_instance(game, owned_library):
     other_game = Game.objects.create(library=owned_library, name="Other")
     matching = PlayEvent.objects.create(game=game)
     PlayEvent.objects.create(game=other_game)
     assert list(PlayEvent.objects.filter(game=game)) == [matching]
 
 
-def test_playevent_filters_by_game_integer_id(game, owned_library):
+def test_playthrough_filters_by_game_integer_id(game, owned_library):
     other_game = Game.objects.create(library=owned_library, name="Other")
     matching = PlayEvent.objects.create(game=game)
     PlayEvent.objects.create(game=other_game)
@@ -272,7 +272,7 @@ def test_playeventfilter_game_criterion_selects_the_right_rows(game, owned_libra
     assert list(results) == [matching]
 
 
-def test_gamefilter_playevent_filter_any_selects_games_with_a_matching_playevent(
+def test_gamefilter_playthrough_filter_any_selects_games_with_a_matching_playevent(
     game, owned_library
 ):
     other_game = Game.objects.create(library=owned_library, name="Other")
@@ -280,7 +280,7 @@ def test_gamefilter_playevent_filter_any_selects_games_with_a_matching_playevent
     PlayEvent.objects.create(game=other_game, note="Something else")
 
     filter_ = GameFilter(
-        playevent_filter=PlayEventFilter(
+        playthrough_filter=PlayEventFilter(
             note=StringCriterion(value="Marathon", modifier=Modifier.INCLUDES),
         )
     )
@@ -290,14 +290,14 @@ def test_gamefilter_playevent_filter_any_selects_games_with_a_matching_playevent
     assert list(results) == [game]
 
 
-def test_gamefilter_playevent_filter_none_excludes_games_with_a_matching_playevent(
+def test_gamefilter_playthrough_filter_none_excludes_games_with_a_matching_playevent(
     game, owned_library
 ):
     other_game = Game.objects.create(library=owned_library, name="Other")
     PlayEvent.objects.create(game=game, note="Marathon session")
 
     filter_ = GameFilter(
-        playevent_filter=PlayEventFilter(
+        playthrough_filter=PlayEventFilter(
             note=StringCriterion(value="Marathon", modifier=Modifier.INCLUDES),
             match=RelationMatch.NONE,
         )
@@ -308,7 +308,7 @@ def test_gamefilter_playevent_filter_none_excludes_games_with_a_matching_playeve
     assert list(results) == [other_game]
 
 
-def test_gamefilter_playevent_filter_all_requires_every_playevent_to_match(
+def test_gamefilter_playthrough_filter_all_requires_every_playevent_to_match(
     game, owned_library
 ):
     other_game = Game.objects.create(library=owned_library, name="Other")
@@ -317,7 +317,7 @@ def test_gamefilter_playevent_filter_all_requires_every_playevent_to_match(
     PlayEvent.objects.create(game=other_game, note="Something else")
 
     filter_ = GameFilter(
-        playevent_filter=PlayEventFilter(
+        playthrough_filter=PlayEventFilter(
             note=StringCriterion(value="Marathon", modifier=Modifier.INCLUDES),
             match=RelationMatch.ALL,
         )
@@ -345,37 +345,18 @@ def test_playeventfilter_game_filter_selects_playevents_for_matching_games(
 # --- Form initial-value shim -------------------------------------------------
 
 
-def test_playeventform_preselects_the_games_identity_when_editing(game, owned_library):
-    playevent = PlayEvent.objects.create(game=game)
+def test_playthroughform_states_the_games_identity(game, owned_library):
+    """#687 made the form a plain Form, so it states rather than saves.
 
-    form = PlayEventForm(
-        instance=playevent, library=owned_library, presentation=PRESENTATION
-    )
-
-    # No shim any more: `model_to_dict` hands over the foreign key attname, and
-    # that attname *is* the identity the widget's options carry.
-    assert form.initial["game"] == game.pk
-    assert form.fields["game"].prepare_value(form.initial["game"]) == game.pk
-
-
-def test_playeventform_posting_a_game_identity_saves_the_right_game(
-    game, owned_library
-):
-    playevent = PlayEvent.objects.create(game=game)
-    other_game = Game.objects.create(library=owned_library, name="Retarget")
-
-    form = PlayEventForm(
-        data={
-            "game": str(other_game.pk),
-            "started": "",
-            "ended": "",
-            "note": "",
-        },
-        instance=playevent,
+    The value the game field posts is still the game's own identity,
+    which is what #644 promoted and what the widget's options carry.
+    """
+    form = PlaythroughForm(
+        {"game": str(game.pk), "started": "", "ended": "", "note": ""},
         library=owned_library,
         presentation=PRESENTATION,
     )
 
     assert form.is_valid(), form.errors
-    saved = form.save()
-    assert saved.game_id == other_game.pk
+    assert form.cleaned_data["game"].pk == game.pk
+    assert form.fields["game"].prepare_value(game.pk) == game.pk

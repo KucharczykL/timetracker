@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from common.layout import recent_session_resumes
 from common.returns import action_url
+from games.backfill.playthrough import convert_library
 from games.models import (
     Device,
     Game,
@@ -160,6 +161,9 @@ def world(client, django_user_model):
     foreign_playevent = PlayEvent.objects.create(
         game=foreign_game, started=now.date(), note="Foreign event"
     )
+    #: #687 states a run, so the edit page needs the row converted into one.
+    convert_library(owner_library)
+    convert_library(foreign_library)
     return SimpleNamespace(**locals())
 
 
@@ -171,7 +175,7 @@ def world(client, django_user_model):
         ("games:list_purchases", "Owner purchase", "Foreign purchase"),
         ("games:list_devices", "Owner device", "Foreign device"),
         ("games:list_platforms", "Owner private platform", "Foreign private platform"),
-        ("games:list_playevents", "Owner game", "Foreign game"),
+        ("games:list_playthroughs", "Owner game", "Foreign game"),
     ],
 )
 def test_lists_show_owned_rows_and_omit_foreign_rows(
@@ -218,8 +222,8 @@ def _object_url(url_name, obj):
         ("games:remove_platform", "foreign_platform"),
         ("games:edit_platform", "shared_platform"),
         ("games:remove_platform", "shared_platform"),
-        ("games:edit_playevent", "foreign_playevent"),
-        ("games:remove_playevent", "foreign_playevent"),
+        ("games:edit_playthrough", "foreign_playevent"),
+        ("games:remove_playthrough", "foreign_playevent"),
     ],
 )
 def test_foreign_detail_edit_and_delete_reads_return_404(world, url_name, object_name):
@@ -246,8 +250,8 @@ def test_foreign_detail_edit_and_delete_reads_return_404(world, url_name, object
         ("games:remove_device", "own_device"),
         ("games:edit_platform", "own_platform"),
         ("games:remove_platform", "own_platform"),
-        ("games:edit_playevent", "own_playevent"),
-        ("games:remove_playevent", "own_playevent"),
+        ("games:edit_playthrough", "own_playevent"),
+        ("games:remove_playthrough", "own_playevent"),
     ],
 )
 def test_owned_detail_edit_and_remove_reads_work(world, url_name, object_name):
@@ -264,7 +268,7 @@ def test_owned_detail_edit_and_remove_reads_work(world, url_name, object_name):
         ("games:remove_purchase", "foreign_purchase", Purchase),
         ("games:remove_device", "foreign_device", Device),
         ("games:remove_platform", "foreign_platform", Platform),
-        ("games:remove_playevent", "foreign_playevent", PlayEvent),
+        ("games:remove_playthrough", "foreign_playevent", PlayEvent),
     ],
 )
 def test_foreign_removal_posts_return_404_without_mutation(
@@ -285,7 +289,8 @@ def test_foreign_removal_posts_return_404_without_mutation(
         ("games:remove_purchase", "own_purchase", Purchase),
         ("games:remove_device", "own_device", Device),
         ("games:remove_platform", "own_platform", Platform),
-        ("games:remove_playevent", "own_playevent", PlayEvent),
+        #: Removing a playthrough stamps the projection, not the legacy row,
+        #: so tests/test_removal_confirmation.py owns that assertion.
     ],
 )
 @pytest.mark.untracked_games
@@ -315,7 +320,7 @@ def test_owned_game_removal_post_works(world):
     [
         "games:add_session_for_game",
         "games:add_purchase_for_game",
-        "games:add_playevent_for_game",
+        "games:add_playthrough_for_game",
     ],
 )
 def test_foreign_game_chained_add_pages_return_404(world, url_name):

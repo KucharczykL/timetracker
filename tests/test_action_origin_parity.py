@@ -69,7 +69,7 @@ def _missing_origin(body: str, page_path: str) -> list[str]:
         "games:list_games",
         "games:list_sessions",
         "games:list_purchases",
-        "games:list_playevents",
+        "games:list_playthroughs",
         "games:list_platforms",
         "games:list_devices",
     ],

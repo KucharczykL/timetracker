@@ -9,7 +9,7 @@ from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
 )
-from games.forms import PlayEventForm
+from games.forms import PlaythroughForm
 from games.models import Game
 
 PRESENTATION = DateTimePresentation(
@@ -34,7 +34,7 @@ def other_game(owned_library):
 
 @pytest.mark.django_db
 def test_the_form_writes_no_row(user, game):
-    form = PlayEventForm(
+    form = PlaythroughForm(
         {"game": str(game.pk), "started": "2026-01-02", "ended": "", "note": "12h"},
         library=user.library,
         presentation=PRESENTATION,
@@ -49,7 +49,7 @@ def test_the_form_writes_no_row(user, game):
 
 @pytest.mark.django_db
 def test_a_locked_game_refuses_a_different_one(user, game, other_game):
-    form = PlayEventForm(
+    form = PlaythroughForm(
         {"game": str(other_game.pk), "started": "", "ended": "", "note": ""},
         library=user.library,
         presentation=PRESENTATION,
@@ -62,7 +62,7 @@ def test_a_locked_game_refuses_a_different_one(user, game, other_game):
 
 @pytest.mark.django_db
 def test_a_note_longer_than_the_column_is_refused(user, game):
-    form = PlayEventForm(
+    form = PlaythroughForm(
         {"game": str(game.pk), "started": "", "ended": "", "note": "x" * 256},
         library=user.library,
         presentation=PRESENTATION,

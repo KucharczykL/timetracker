@@ -1168,7 +1168,7 @@ def _filter_class_for(
 # A filter widget's canonical filter-JSON key chain: single-segment for a flat
 # field (e.g. ["year_released"]), multi-segment for a cross-entity widget that
 # steps through nested sub-filters (e.g. ["session_filter", "device"] or
-# ["game_filter", "playevent_filter", "ended"]).
+# ["game_filter", "playthrough_filter", "ended"]).
 type FilterWidgetPath = list[str]
 
 # The widget ``data-kind`` tokens for leaf criteria — one token per value shape;
@@ -1764,7 +1764,7 @@ class OperatorFilter:
                     criterion_cls.from_json(raw) if isinstance(raw, dict) else None
                 )
                 continue
-            # Cross-entity sub-filter field (e.g. game_filter, playevent_filter):
+            # Cross-entity sub-filter field (e.g. game_filter, playthrough_filter):
             # resolve the filter class and recurse.
             sub_filter_cls = _filter_class_for(cls, f.name)
             if sub_filter_cls is not None:

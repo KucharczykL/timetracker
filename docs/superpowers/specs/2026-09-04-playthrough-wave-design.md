@@ -238,21 +238,27 @@ what the run should find.
 ### #687 — switch writes
 
 Every path that writes a `PlayEvent` dispatches a command instead: the add and
-edit views, the form, and the inline creation on Game detail. The legacy table
-is still read.
+edit views, the form, and the API. The inline "+1" creation on Game detail goes
+away rather than moving, because a tracked game already holds a run (#1024 owns
+stating a count). The legacy table is still read. The rename of every
+identifier that does not derive from the model's own name travels here too,
+saved presets included.
 
 ### #1012 through #1015 — switch reads
 
 Split by surface, following #946, #947, #951, and #953:
 
 - #1012 — the Game detail Playthrough section and the list page;
-- #1013 — `PlayEventFilter` and its relations, `playevent_count`, the sort
-  keys, the quick facets, and the saved presets that name them;
+- #1013 — `PlayEventFilter` and its relations, `playthrough_count`, the sort
+  keys, the quick facets, and the saved presets that name them. #687 renamed
+  every one of those identifiers and rewrote the stored presets; #1013 moves
+  what they read onto the projection;
 - #1014 — every read of `games__playevents__ended` in
   `games/views/stats_data.py` and `games/views/stats_links.py`, moved onto the
   generated bound columns, with the parity test each stat link already has;
-- #1015 — the `/api/playevent` router and the `play-event-row` custom
-  element with its registered props.
+- #1015 — the GET bodies of the `/api/playthrough` router. #687 moved the
+  router prefix and took the `play-event-row` custom element away, so what is
+  left is the two handlers that still read the legacy row.
 
 ### #683 — the companion status change
 

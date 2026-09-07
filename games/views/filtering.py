@@ -27,7 +27,7 @@ logger = logging.getLogger("games")
 # filterable mode (#336). general.py derives the builder's model->mode table from
 # this set + FILTER_MODE_MODELS.
 BUILDER_MODES = frozenset(
-    {"games", "sessions", "purchases", "playevents", "devices", "platforms"}
+    {"games", "sessions", "purchases", "playthroughs", "devices", "platforms"}
 )
 
 

@@ -127,7 +127,7 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
         QuickFacet("is_refunded", "Refunded"),
         QuickFacet("created_at", "Created"),
     ],
-    "playevents": [
+    "playthroughs": [
         QuickFacet("game"),
         QuickFacet("started"),
         QuickFacet("ended"),

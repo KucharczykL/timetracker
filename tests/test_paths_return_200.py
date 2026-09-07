@@ -102,8 +102,8 @@ class PathWorksTest(TestCase):
         response = self.client.get(reverse("games:list_sessions"))
         self.assertEqual(response.status_code, 200)
 
-    def test_list_playevents_returns_200(self):
-        response = self.client.get(reverse("games:list_playevents"))
+    def test_list_playthroughs_returns_200(self):
+        response = self.client.get(reverse("games:list_playthroughs"))
         self.assertEqual(response.status_code, 200)
 
     def test_list_purchases_returns_200(self):

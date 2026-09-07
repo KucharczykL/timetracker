@@ -155,7 +155,7 @@ def test_changing_datetime_format_updates_add_purchase_segment_order(
     assert updated_order == ["month", "day", "year"]
 
 
-def test_add_playevent_date_fields_follow_iso_profile_and_persist(
+def test_add_playthrough_date_fields_follow_iso_profile_and_persist(
     authenticated_page, live_server
 ):
     from games.models import PlayEvent
@@ -168,7 +168,7 @@ def test_add_playevent_date_fields_follow_iso_profile_and_persist(
         library=user.library, name="Alpha Game", platform=platform
     )
 
-    page.goto(f"{live_server.url}{reverse('games:add_playevent')}")
+    page.goto(f"{live_server.url}{reverse('games:add_playthrough')}")
     started_field = 'date-picker:has(input[name="started"]) [data-date-picker-field]'
     ended_field = 'date-picker:has(input[name="ended"]) [data-date-picker-field]'
 

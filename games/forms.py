@@ -1028,7 +1028,7 @@ class DeviceForm(PrimitiveWidgetsMixin, forms.ModelForm):
         widgets: ClassVar[dict[str, forms.Widget]] = {"name": autofocus_input_widget}
 
 
-class PlayEventForm(PrimitiveWidgetsMixin, forms.Form):
+class PlaythroughForm(PrimitiveWidgetsMixin, forms.Form):
     """One run, as a person states it.
 
     A plain Form: the submit states commands and writes no row, so

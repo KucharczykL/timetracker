@@ -37,7 +37,7 @@ LIST_PAGES = [
     "games:list_sessions",
     "games:list_games",
     "games:list_purchases",
-    "games:list_playevents",
+    "games:list_playthroughs",
     "games:list_devices",
     "games:list_platforms",
 ]
@@ -150,7 +150,7 @@ class DataTableGateTest(TestCase):
     def test_playevents_note_column_may_wrap(self) -> None:
         """Free text has no natural width; on one line a long note would widen
         the table past anything the other columns could reclaim."""
-        html = self._html("games:list_playevents")
+        html = self._html("games:list_playthroughs")
         header_cells = html.split("<thead", 1)[1].split("</thead>", 1)[0].split("<th")
         note_header = next(cell for cell in header_cells if ">Note<" in cell)
         self.assertNotIn("whitespace-nowrap", note_header)

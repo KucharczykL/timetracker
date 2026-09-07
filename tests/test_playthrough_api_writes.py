@@ -25,7 +25,7 @@ def test_post_states_a_run_and_writes_no_row(client, user, game):
     client.force_login(user)
 
     response = client.post(
-        "/api/playevent/",
+        "/api/playthrough/",
         {"game_id": str(game.pk), "started": "2026-01-02", "ended": None, "note": ""},
         content_type="application/json",
     )
@@ -40,7 +40,7 @@ def test_a_reversed_pair_answers_409(client, user, game):
     client.force_login(user)
 
     response = client.post(
-        "/api/playevent/",
+        "/api/playthrough/",
         {
             "game_id": str(game.pk),
             "started": "2026-02-03",
@@ -64,7 +64,7 @@ def test_a_key_the_patch_leaves_out_keeps_the_value_the_row_shows(client, user, 
     client.force_login(user)
 
     response = client.patch(
-        f"/api/playevent/{row.pk}",
+        f"/api/playthrough/{row.pk}",
         {"note": "12h 30m"},
         content_type="application/json",
     )
@@ -84,7 +84,7 @@ def test_patch_states_the_difference_onto_the_run(client, user, game):
     client.force_login(user)
 
     response = client.patch(
-        f"/api/playevent/{row.pk}",
+        f"/api/playthrough/{row.pk}",
         {"started": "2026-01-02", "ended": None, "note": "read"},
         content_type="application/json",
     )
@@ -105,7 +105,7 @@ def test_delete_states_the_removal_and_leaves_the_row(client, user, game):
     assert run is not None
     client.force_login(user)
 
-    response = client.delete(f"/api/playevent/{second.pk}")
+    response = client.delete(f"/api/playthrough/{second.pk}")
 
     assert response.status_code == 204
     run.refresh_from_db()
@@ -119,7 +119,7 @@ def test_a_row_with_no_run_answers_409(client, user, game):
     row = PlayEvent.objects.create(game=game, started=None, ended=None, note="")
     client.force_login(user)
 
-    response = client.delete(f"/api/playevent/{row.pk}")
+    response = client.delete(f"/api/playthrough/{row.pk}")
 
     assert response.status_code == 409
 
@@ -134,4 +134,4 @@ def test_only_two_modules_read_the_bridge():
         if "playthrough_provenance" in path.read_text()
         and path.name != "playthrough_provenance.py"
     )
-    assert readers == ["games/api.py", "games/views/playevent.py"]
+    assert readers == ["games/api.py", "games/views/playthrough.py"]

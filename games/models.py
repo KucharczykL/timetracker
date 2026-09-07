@@ -1438,7 +1438,7 @@ class FilterPreset(models.Model):
         ("games", "Games"),
         ("sessions", "Sessions"),
         ("purchases", "Purchases"),
-        ("playevents", "Play Events"),
+        ("playthroughs", "Playthroughs"),
         ("devices", "Devices"),
         ("platforms", "Platforms"),
     )

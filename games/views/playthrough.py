@@ -43,14 +43,14 @@ from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.returns import OriginUrl, action_url
 from common.utils import paginate
-from games.filters import filter_query_context_for_library, parse_playevent_filter
-from games.forms import PlayEventForm
+from games.filters import filter_query_context_for_library, parse_playthrough_filter
+from games.forms import PlaythroughForm
 from games.models import Game, PlayerGameStatus, PlayEvent, Session
 from games.ownership import owned_or_404
 from games.reads.playthrough_provenance import run_for_row
 from games.sorting import (
-    PLAYEVENT_DEFAULT_SORT,
-    PLAYEVENT_SORTS,
+    PLAYTHROUGH_DEFAULT_SORT,
+    PLAYTHROUGH_SORTS,
     SortTerm,
     apply_sort,
     parse_find_filter,
@@ -75,7 +75,7 @@ from games.writes.playthrough import RunDraft
 logger = logging.getLogger("games")
 
 
-def create_playevent_tabledata(
+def create_playthrough_tabledata(
     playevents: list[PlayEvent] | BaseManager[PlayEvent] | QuerySet[PlayEvent],
     presentation: DateTimePresentation,
     exclude_columns: Sequence[str] = (),
@@ -123,14 +123,14 @@ def create_playevent_tabledata(
                 [
                     {
                         "href": action_url(
-                            "games:edit_playevent", playevent.pk, origin=origin
+                            "games:edit_playthrough", playevent.pk, origin=origin
                         ),
                         "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
                         "color": "gray",
                     },
                     {
                         "href": action_url(
-                            "games:remove_playevent", playevent.pk, origin=origin
+                            "games:remove_playthrough", playevent.pk, origin=origin
                         ),
                         "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
                         "color": "red",
@@ -190,7 +190,7 @@ def _get_formatted_playtime_for_game_sessions_in_range(
 
 @login_required
 @regex_timeout_view
-def list_playevents(request: HttpRequest) -> HttpResponse:
+def list_playthroughs(request: HttpRequest) -> HttpResponse:
     library = cast(User, request.user).library
     presentation = date_time_presentation_for_request(request)
     origin = request.get_full_path()
@@ -198,22 +198,22 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
 
     filter_json = request.GET.get("filter", "")
     if filter_json:
-        playevent_filter = apply_structured_filter(
-            request, parse_playevent_filter, filter_json
+        playthrough_filter = apply_structured_filter(
+            request, parse_playthrough_filter, filter_json
         )
-        if playevent_filter is not None:
+        if playthrough_filter is not None:
             playevents = execute_filter(
-                playevent_filter,
+                playthrough_filter,
                 playevents,
                 filter_query_context_for_library(library),
             )
 
     find = parse_find_filter(request)
-    sort = apply_sort(playevents, find, PLAYEVENT_SORTS, PLAYEVENT_DEFAULT_SORT)
+    sort = apply_sort(playevents, find, PLAYTHROUGH_SORTS, PLAYTHROUGH_DEFAULT_SORT)
     playevents = sort.queryset
-    warn_unknown_sort(request, sort.unknown, entity="playevent")
+    warn_unknown_sort(request, sort.unknown, entity="playthrough")
     playevents, page_obj, elided_page_range = paginate(playevents, find)
-    data = create_playevent_tabledata(
+    data = create_playthrough_tabledata(
         playevents,
         presentation,
         request=request,
@@ -228,12 +228,12 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
         page_size=find.per_page,
     )
     builder_url = builder_url_for(
-        "playevents", filter_json, find.sort, find.per_page_override
+        "playthroughs", filter_json, find.sort, find.per_page_override
     )
     parsed_filter = parse_filter_dict(filter_json)
     quick_bar = QuickFilterBar(
         presentation=presentation,
-        mode="playevents",
+        mode="playthroughs",
         existing=parsed_filter,
         builder_url=builder_url,
         preset_api_url=reverse("api-1.0.0:list_presets"),
@@ -243,16 +243,16 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
     return render_page(
         request,
         content,
-        title="Manage play events",
+        title="Manage playthroughs",
     )
 
 
 @login_required
-def add_playevent(request: HttpRequest, game_id: UUID | None = None) -> HttpResponse:
+def add_playthrough(request: HttpRequest, game_id: UUID | None = None) -> HttpResponse:
     initial: dict[str, Any] = {}
     library = cast(User, request.user).library
     if game_id:
-        # coming from add_playevent_for_game url path
+        # coming from add_playthrough_for_game url path
         game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
         initial["game"] = game
         try:
@@ -296,7 +296,7 @@ def add_playevent(request: HttpRequest, game_id: UUID | None = None) -> HttpResp
             initial["started"] = None
             initial["ended"] = None
             initial["note"] = "0h 00m"
-    form = PlayEventForm(
+    form = PlaythroughForm(
         request.POST or None,
         initial=initial,
         library=library,
@@ -329,7 +329,7 @@ def add_playevent(request: HttpRequest, game_id: UUID | None = None) -> HttpResp
     )
 
 
-def _draft_from(form: PlayEventForm) -> RunDraft:
+def _draft_from(form: PlaythroughForm) -> RunDraft:
     """The run the form states."""
     return RunDraft(
         started=form.cleaned_data["started"],
@@ -358,10 +358,10 @@ def _record_completed(
 
 
 @login_required
-def edit_playevent(request: HttpRequest, playevent_id: UUID) -> HttpResponse:
+def edit_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     playevent = owned_or_404(
-        PlayEvent.objects.for_library(library), library, id=playevent_id
+        PlayEvent.objects.for_library(library), library, id=playthrough_id
     )
     run = run_for_row(library, playevent.pk)
     if run is None:
@@ -381,7 +381,7 @@ def edit_playevent(request: HttpRequest, playevent_id: UUID) -> HttpResponse:
                 fallback_args=[playevent.game.id, playevent.game.url_slug],
             )
         )
-    form = PlayEventForm(
+    form = PlaythroughForm(
         request.POST or None,
         initial={
             "game": playevent.game,
@@ -420,10 +420,10 @@ def edit_playevent(request: HttpRequest, playevent_id: UUID) -> HttpResponse:
 
 
 @login_required
-def remove_playevent(request: HttpRequest, playevent_id: UUID) -> HttpResponse:
+def remove_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     playevent = owned_or_404(
-        PlayEvent.objects.for_library(library), library, id=playevent_id
+        PlayEvent.objects.for_library(library), library, id=playthrough_id
     )
 
     def act() -> None:

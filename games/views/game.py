@@ -107,7 +107,7 @@ from games.views.playergame_writes import (
     remove_game_for_request,
     track_game_for_request,
 )
-from games.views.playevent import create_playevent_tabledata
+from games.views.playthrough import create_playthrough_tabledata
 from games.views.reference_section import references_area
 from games.views.removal import confirm_and_remove
 from games.views.returns import origin_from, return_url
@@ -456,7 +456,7 @@ def _played_row(game: Game, origin: OriginUrl | None) -> Node:
     count_button = ControlButton(
         [("class", "rounded-s-lg")],
         variant="outline",
-        href=action_url("games:add_playevent", origin=origin),
+        href=action_url("games:add_playthrough", origin=origin),
     )[
         # One prose phrase = one flex item: the button is inline-flex, and flex
         # layout drops whitespace-only text between items, so the space must
@@ -469,7 +469,7 @@ def _played_row(game: Game, origin: OriginUrl | None) -> Node:
         aria_label="Playthrough actions",
         items=[
             DropdownLinkItem(
-                action_url("games:add_playevent_for_game", game.id, origin=origin),
+                action_url("games:add_playthrough_for_game", game.id, origin=origin),
                 "Add playthrough...",
             ),
         ],
@@ -944,7 +944,7 @@ def _playevents_section(
     presentation: DateTimePresentation,
     origin: OriginUrl | None,
 ) -> Node:
-    data = create_playevent_tabledata(
+    data = create_playthrough_tabledata(
         playevents, presentation, exclude_columns=["Game"], origin=origin
     )
     # This embedded mini-table isn't a sortable list view (no ?sort= handling on

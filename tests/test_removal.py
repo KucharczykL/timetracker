@@ -5,7 +5,9 @@ from datetime import timedelta
 import pytest
 from django.utils import timezone
 
+from games.backfill.playthrough import convert_library
 from games.models import Game, PlayEvent, Session
+from games.reads.playthrough_provenance import run_for_row
 from games.removal import remove, restore
 
 pytestmark = pytest.mark.django_db
@@ -65,13 +67,26 @@ def test_removing_a_session_drops_the_playtime(owned_library):
     assert game.playtime == timedelta(0)
 
 
-def test_the_api_removes_a_play_event_rather_than_destroying_it(client, owned_user):
-    """DELETE is the transport's word, not ours."""
-    play_event = PlayEvent.objects.create(game=make_game(owned_user.library))
+@pytest.mark.django_db(transaction=True)
+def test_the_api_removes_a_playthrough_rather_than_destroying_it(client, owned_user):
+    """DELETE is the transport's word, not ours.
+
+    #687 states the removal on the run the row became, so the mark
+    lands on the projection and the legacy row keeps its own. A second
+    row, so the game is not left with no run at all.
+    """
+    game = make_game(owned_user.library)
+    play_event = PlayEvent.objects.create(game=game)
+    PlayEvent.objects.create(game=game)
+    convert_library(owned_user.library)
+    run = run_for_row(owned_user.library, play_event.pk)
+    assert run is not None
     client.force_login(owned_user)
 
-    response = client.delete(f"/api/playevent/{play_event.pk}")
+    response = client.delete(f"/api/playthrough/{play_event.pk}")
 
     assert response.status_code == 204
+    run.refresh_from_db()
+    assert run.removed_at is not None
     play_event.refresh_from_db()
-    assert play_event.removed_at is not None
+    assert play_event.removed_at is None

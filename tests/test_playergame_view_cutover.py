@@ -6,6 +6,7 @@ import pytest
 from django.urls import reverse
 from django.utils import timezone
 
+from games.backfill.playthrough import convert_library
 from games.models import (
     Game,
     LibraryEvent,
@@ -283,7 +284,7 @@ def test_a_session_leaves_a_finished_game_alone(
 @pytest.mark.django_db(transaction=True)
 def test_adding_a_play_event_records_completed(logged_in, owned_library, tracked_game):
     logged_in.post(
-        reverse("games:add_playevent"),
+        reverse("games:add_playthrough"),
         {
             "game": str(tracked_game.id),
             "started": "",
@@ -301,9 +302,11 @@ def test_editing_a_play_event_records_completed_too(
     logged_in, owned_library, tracked_game
 ):
     play_event = PlayEvent.objects.create(game=tracked_game)
+    #: The edit page states facts about the run the row became.
+    convert_library(owned_library)
 
     logged_in.post(
-        reverse("games:edit_playevent", args=[play_event.id]),
+        reverse("games:edit_playthrough", args=[play_event.id]),
         {
             "game": str(tracked_game.id),
             "started": "",
