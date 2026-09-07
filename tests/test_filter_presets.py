@@ -246,7 +246,7 @@ def test_save_persists_sort_for_playevents_mode(auth_client):
     # round-trip a sort just like games/sessions/purchases (the MODE_SORTS gate
     # in save_preset admits them). Previously playevents was sort-less and dropped
     # the sort.
-    _save(auth_client, name="PE", mode="playevents", filter=None, sort="-created")
+    _save(auth_client, name="PE", mode="playthroughs", filter=None, sort="-created")
     preset = FilterPreset.objects.get(name="PE")
     assert preset.find_filter == {"sort": "-created"}
 
@@ -335,7 +335,7 @@ def test_save_persists_sort_and_per_page_together(auth_client):
 
 
 def test_save_persists_per_page_for_non_games_mode(auth_client):
-    _save(auth_client, name="PE", mode="playevents", filter=None, per_page="50")
+    _save(auth_client, name="PE", mode="playthroughs", filter=None, per_page="50")
     preset = FilterPreset.objects.get(name="PE")
     assert preset.find_filter == {"per_page": 50}
 

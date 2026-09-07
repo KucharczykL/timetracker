@@ -31,8 +31,8 @@ __all__ = [
     "MODE_SORTS",
     "PLATFORM_DEFAULT_SORT",
     "PLATFORM_SORTS",
-    "PLAYEVENT_DEFAULT_SORT",
-    "PLAYEVENT_SORTS",
+    "PLAYTHROUGH_DEFAULT_SORT",
+    "PLAYTHROUGH_SORTS",
     "PURCHASE_DEFAULT_SORT",
     "PURCHASE_SORTS",
     "SESSION_DEFAULT_SORT",
@@ -119,14 +119,14 @@ PURCHASE_DEFAULT_SORT: SortString = "-purchased,-created"
 
 # Every key here is a direct field path or a persisted column (days_to_finish is
 # a db_persist=True GeneratedField), so no aggregate annotation / row-dup concern.
-PLAYEVENT_SORTS: SortMap = {
+PLAYTHROUGH_SORTS: SortMap = {
     "name": SortSpec("game__sort_name"),
     "started": SortSpec("started"),
     "ended": SortSpec("ended"),
     "days": SortSpec("days_to_finish"),
     "created": SortSpec("created_at"),
 }
-PLAYEVENT_DEFAULT_SORT: SortString = "-created"
+PLAYTHROUGH_DEFAULT_SORT: SortString = "-created"
 
 DEVICE_SORTS: SortMap = {
     "name": SortSpec("name"),
@@ -152,7 +152,7 @@ MODE_SORTS: dict[str, SortMap] = {
     "games": GAME_SORTS,
     "sessions": SESSION_SORTS,
     "purchases": PURCHASE_SORTS,
-    "playevents": PLAYEVENT_SORTS,
+    "playthroughs": PLAYTHROUGH_SORTS,
     "devices": DEVICE_SORTS,
     "platforms": PLATFORM_SORTS,
 }

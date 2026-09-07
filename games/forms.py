@@ -32,7 +32,6 @@ from games.models import (
     Platform,
     PlayerGame,
     PlayerGameStatus,
-    PlayEvent,
     Purchase,
     Session,
     UserLibrary,
@@ -1029,16 +1028,27 @@ class DeviceForm(PrimitiveWidgetsMixin, forms.ModelForm):
         widgets: ClassVar[dict[str, forms.Widget]] = {"name": autofocus_input_widget}
 
 
-class PlayEventForm(PrimitiveWidgetsMixin, forms.ModelForm):
+class PlaythroughForm(PrimitiveWidgetsMixin, forms.Form):
+    """One run, as a person states it.
+
+    A plain Form: the submit states commands and writes no row, so
+    there is nothing for ModelForm to save. The four declarations
+    ModelForm derived are restated here against the same columns.
+    """
+
     def __init__(
         self,
         *args,
         library: UserLibrary,
         presentation: DateTimePresentation,
+        locked_game: Game | None = None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.library = library
+        #: An edit states facts about one run,
+        #: and no command moves a run between games.
+        self.locked_game = locked_game
         cast(
             forms.ModelChoiceField, self.fields["game"]
         ).queryset = Game.objects.for_library(library).order_by("sort_name")
@@ -1060,24 +1070,28 @@ class PlayEventForm(PrimitiveWidgetsMixin, forms.ModelForm):
         ),
     )
 
+    #: started/ended get DatePickerWidget in __init__ (needs the
+    #: per-request presentation, unavailable to a class body).
+    started = forms.DateField(required=False)
+    ended = forms.DateField(required=False)
+    #: No cap: the 255 came from the legacy column, and
+    #: Playthrough.note is a TextField.
+    note = forms.CharField(required=False)
+
     mark_as_finished = forms.BooleanField(
         required=False,
         initial={"mark_as_finished": True},
         label="Set game status to Finished",
     )
 
-    class Meta:
-        # started/ended get DatePickerWidget in __init__ (needs the
-        # per-request presentation, unavailable to a class body).
-        model = PlayEvent
-        fields = ("game", "started", "ended", "note", "mark_as_finished")
-
-    def save(self, commit=True):
-        #: Moved to the views, with its atomic().
-        play_event = super().save(commit=False)
-        if commit:
-            play_event.save()
-        return play_event
+    def clean_game(self) -> Game:
+        game = self.cleaned_data["game"]
+        if self.locked_game is not None and game.pk != self.locked_game.pk:
+            raise forms.ValidationError(
+                "A playthrough stays with its game. Remove this one and add "
+                "it to the other game instead."
+            )
+        return game
 
 
 class LoginForm(PrimitiveWidgetsMixin, AuthenticationForm):

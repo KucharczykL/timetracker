@@ -68,7 +68,7 @@ from games.filters import (
     parse_device_filter,
     parse_game_filter,
     parse_platform_filter,
-    parse_playevent_filter,
+    parse_playthrough_filter,
     parse_purchase_filter,
     parse_session_filter,
 )
@@ -1307,13 +1307,13 @@ class TestExpandedFiltersAgainstDB:
         assert data["game"] in results
         assert data["game2"] not in results
 
-    def test_game_filter_playevent_count(self):
+    def test_game_filter_playthrough_count(self):
         from games.filters import GameFilter
         from games.models import Game
 
         data = self._setup_entities()
         gf = GameFilter.from_json(
-            {"playevent_count": {"value": 1, "modifier": "EQUALS"}}
+            {"playthrough_count": {"value": 1, "modifier": "EQUALS"}}
         )
         results = set(Game.objects.filter(gf.to_q(UNRESTRICTED_FILTER_CONTEXT)))
         assert data["game"] in results
@@ -1634,13 +1634,13 @@ class TestPurchaseFilterDates:
 
     @pytest.mark.django_db
     def test_cross_entity_subfilter_json_round_trip(self):
-        """A PurchaseFilter nesting game_filter → playevent_filter survives the
+        """A PurchaseFilter nesting game_filter → playthrough_filter survives the
         JSON round-trip the stats links / list views perform (issue #120)."""
         from games.filters import GameFilter, PlayEventFilter, PurchaseFilter
 
         original = PurchaseFilter(
             game_filter=GameFilter(
-                playevent_filter=PlayEventFilter(
+                playthrough_filter=PlayEventFilter(
                     ended=DateCriterion(
                         value="2024-01-01",
                         value2="2024-12-31",
@@ -1651,12 +1651,14 @@ class TestPurchaseFilterDates:
         )
         out = original.to_json()
         # The nested structure must actually be serialized, not dropped.
-        assert out["game_filter"]["playevent_filter"]["ended"]["value"] == "2024-01-01"
+        assert (
+            out["game_filter"]["playthrough_filter"]["ended"]["value"] == "2024-01-01"
+        )
 
         restored = PurchaseFilter.from_json(json.loads(json.dumps(out)))
         assert restored.game_filter is not None
-        assert restored.game_filter.playevent_filter is not None
-        ended = restored.game_filter.playevent_filter.ended
+        assert restored.game_filter.playthrough_filter is not None
+        ended = restored.game_filter.playthrough_filter.ended
         assert isinstance(ended, DateCriterion)
         assert ended.value2 == "2024-12-31"
         assert str(restored.to_q(UNRESTRICTED_FILTER_CONTEXT)) == str(
@@ -1745,7 +1747,7 @@ class TestPlayEventFilterDates:
         assert results == {seeded["early"]}
 
     @pytest.mark.django_db
-    def test_playevent_filter_json_round_trip(self):
+    def test_playthrough_filter_json_round_trip(self):
         """PlayEventFilter started/ended survive json → object → json,
         confirming DateCriterion is dispatched by from_json (not
         StringCriterion)."""
@@ -1767,6 +1769,68 @@ class TestPlayEventFilterDates:
         assert out["ended"]["value2"] == "2024-12-31"
         assert out["ended"]["modifier"] == Modifier.BETWEEN
         assert out["started"]["modifier"] == Modifier.GREATER_THAN
+
+
+class TestRenamedFilterKeys:
+    """#687 renamed two GameFilter keys.
+
+    A saved preset was rewritten by migration 0046, but a
+    bookmarked or shared ``?filter=`` was not, so the old
+    word has to keep working. #771 takes both away.
+    """
+
+    def test_the_old_count_key_is_read_as_the_new_one(self, caplog):
+        from games.filters import GameFilter
+
+        #: The `common` logger names no handler of its own,
+        #: so it reaches caplog through the root.
+        with caplog.at_level(logging.WARNING, logger="common"):
+            gf = GameFilter.from_json(
+                {"playevent_count": {"value": 1, "modifier": "EQUALS"}}
+            )
+
+        assert gf is not None
+        assert gf.playthrough_count is not None
+        assert gf.playthrough_count.value == 1
+        assert "playevent_count" in caplog.text
+
+    def test_the_old_relation_key_is_read_as_the_new_one(self):
+        from games.filters import GameFilter
+
+        gf = GameFilter.from_json(
+            {
+                "playevent_filter": {
+                    "ended": {"value": "2024-01-01", "modifier": "EQUALS"}
+                }
+            }
+        )
+
+        assert gf is not None
+        assert gf.playthrough_filter is not None
+
+    def test_the_current_key_wins_where_a_blob_holds_both(self):
+        from games.filters import GameFilter
+
+        gf = GameFilter.from_json(
+            {
+                "playevent_count": {"value": 1, "modifier": "EQUALS"},
+                "playthrough_count": {"value": 2, "modifier": "EQUALS"},
+            }
+        )
+
+        assert gf is not None
+        assert gf.playthrough_count is not None
+        assert gf.playthrough_count.value == 2
+
+    def test_a_nested_operator_renames_too(self):
+        from games.filters import GameFilter
+
+        gf = GameFilter.from_json(
+            {"AND": [{"playevent_count": {"value": 1, "modifier": "EQUALS"}}]}
+        )
+
+        assert gf is not None
+        assert gf.AND[0].playthrough_count is not None
 
 
 @pytest.mark.django_db
@@ -2037,7 +2101,7 @@ class TestFilterErrorLogging:
             (parse_purchase_filter, "purchase"),
             (parse_device_filter, "device"),
             (parse_platform_filter, "platform"),
-            (parse_playevent_filter, "playevent"),
+            (parse_playthrough_filter, "playthrough"),
         ],
     )
     def test_entity_label_derived_for_every_parser(
@@ -5161,7 +5225,7 @@ class TestFieldMetadata:
         by_name = self._by_name(GameFilter)
         assert by_name["session_count"]["scope_model"] == "session"
         assert by_name["purchase_price_total"]["scope_model"] == "purchase"
-        assert by_name["playevent_count"]["scope_model"] == "playevent"
+        assert by_name["playthrough_count"]["scope_model"] == "playevent"
 
     @pytest.mark.parametrize("filter_cls", _ALL_FILTERS)
     def test_scope_model_nonempty_iff_aggregate(self, filter_cls):

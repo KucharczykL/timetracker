@@ -290,25 +290,27 @@ def test_playevent_crud_is_library_scoped(two_libraries):
     client = world["client_a"]
     foreign = world["playevent_b"]
 
-    listed_ids = {row["id"] for row in client.get("/api/playevent/").json()}
+    listed_ids = {row["id"] for row in client.get("/api/playthrough/").json()}
     assert str(foreign.id) not in listed_ids
-    assert client.get(f"/api/playevent/{foreign.id}").status_code == 404
+    assert client.get(f"/api/playthrough/{foreign.id}").status_code == 404
     assert (
-        _patch(client, f"/api/playevent/{foreign.id}", {"note": "changed"}).status_code
+        _patch(
+            client, f"/api/playthrough/{foreign.id}", {"note": "changed"}
+        ).status_code
         == 404
     )
-    assert client.delete(f"/api/playevent/{foreign.id}").status_code == 404
-    playevent_count = PlayEvent.objects.count()
+    assert client.delete(f"/api/playthrough/{foreign.id}").status_code == 404
+    playthrough_count = PlayEvent.objects.count()
     create_responses = [
         client.post(
-            "/api/playevent/",
+            "/api/playthrough/",
             json.dumps({"game_id": str(game.id), "note": "not allowed"}),
             content_type="application/json",
         )
         for game in (world["shared_game"], world["game_b"])
     ]
     assert [response.status_code for response in create_responses] == [404, 404]
-    assert PlayEvent.objects.count() == playevent_count
+    assert PlayEvent.objects.count() == playthrough_count
     foreign.refresh_from_db()
     assert foreign.note == "Library B event"
 

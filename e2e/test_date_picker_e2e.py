@@ -155,10 +155,10 @@ def test_changing_datetime_format_updates_add_purchase_segment_order(
     assert updated_order == ["month", "day", "year"]
 
 
-def test_add_playevent_date_fields_follow_iso_profile_and_persist(
+def test_add_playthrough_date_fields_follow_iso_profile_and_persist(
     authenticated_page, live_server
 ):
-    from games.models import PlayEvent
+    from games.models import Playthrough
 
     page, user = authenticated_page
     platform = Platform.objects.create(
@@ -168,7 +168,7 @@ def test_add_playevent_date_fields_follow_iso_profile_and_persist(
         library=user.library, name="Alpha Game", platform=platform
     )
 
-    page.goto(f"{live_server.url}{reverse('games:add_playevent')}")
+    page.goto(f"{live_server.url}{reverse('games:add_playthrough')}")
     started_field = 'date-picker:has(input[name="started"]) [data-date-picker-field]'
     ended_field = 'date-picker:has(input[name="ended"]) [data-date-picker-field]'
 
@@ -179,9 +179,11 @@ def test_add_playevent_date_fields_follow_iso_profile_and_persist(
     with page.expect_navigation():
         page.get_by_role("button", name="Submit", exact=True).click()
 
-    event = PlayEvent.objects.get(game=game)
-    assert str(event.started) == "2026-01-10"
-    assert str(event.ended) == "2026-01-20"
+    #: #687 states the submit as a run,
+    #: so the days land on the projection.
+    run = Playthrough.objects.get(player_game__game=game)
+    assert str(run.started_lower) == "2026-01-10"
+    assert str(run.completed_lower) == "2026-01-20"
 
 
 def test_calendar_pick_commits_value_and_closes(authenticated_page, live_server):

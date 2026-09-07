@@ -1,0 +1,193 @@
+"""#687: the screens state runs, not rows."""
+
+from datetime import date
+
+import pytest
+from django.contrib.messages import get_messages
+from django.urls import reverse
+
+from games.backfill.playthrough import convert_library
+from games.models import Game, LibraryEvent, PlayEvent, Playthrough
+from games.reads.playthrough_provenance import run_for_row
+from games.writes.playergame import new_correlation_id
+from games.writes.playthrough import remove_run
+from timetracker.temporal import TemporalValue
+
+
+@pytest.fixture
+def user(owned_user):
+    return owned_user
+
+
+@pytest.fixture
+def game(owned_library):
+    return Game.objects.create(library=owned_library, name="Outer Wilds")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_adding_a_playthrough_writes_no_legacy_row(client, user, game):
+    client.force_login(user)
+
+    client.post(
+        reverse("games:add_playthrough"),
+        {
+            "game": str(game.pk),
+            "started": "2026-01-02",
+            "ended": "2026-02-03",
+            "note": "12h",
+        },
+    )
+
+    assert PlayEvent.objects.count() == 0
+    run = Playthrough.objects.get(player_game__game=game)
+    assert run.note == "12h"
+    assert run.start_recorded_at is not None
+    assert run.completion_recorded_at is not None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_marking_finished_states_the_status_under_one_correlation_id(
+    client, user, game
+):
+    client.force_login(user)
+
+    client.post(
+        reverse("games:add_playthrough"),
+        {
+            "game": str(game.pk),
+            "started": "",
+            "ended": "",
+            "note": "",
+            "mark_as_finished": "on",
+        },
+    )
+
+    correlations = set(
+        LibraryEvent.objects.filter(library=user.library)
+        .exclude(event_type__startswith="library.playergame.tracked")
+        .values_list("correlation_id", flat=True)
+    )
+    assert len(correlations) == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_editing_a_converted_row_states_the_difference(client, user, game):
+    row = PlayEvent.objects.create(game=game, started=None, ended=None, note="")
+    convert_library(user.library)
+    client.force_login(user)
+
+    client.post(
+        reverse("games:edit_playthrough", args=[row.pk]),
+        {"game": str(game.pk), "started": "2026-01-02", "ended": "", "note": "read"},
+    )
+
+    run = run_for_row(user.library, row.pk).run
+    assert run is not None
+    run.refresh_from_db()
+    assert run.note == "read"
+    row.refresh_from_db()
+    assert row.note == ""
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_second_edit_does_not_revert_the_first(client, user, game):
+    """The form is seeded off the run, never the row.
+
+    Nothing writes the legacy row any more, so seeding the
+    second edit from it would post the frozen day back over
+    what the first edit stated.
+    """
+    row = PlayEvent.objects.create(
+        game=game, started=date(2026, 1, 2), ended=None, note=""
+    )
+    convert_library(user.library)
+    run = run_for_row(user.library, row.pk).run
+    assert run is not None
+    client.force_login(user)
+
+    client.post(
+        reverse("games:edit_playthrough", args=[row.pk]),
+        {"game": str(game.pk), "started": "2026-03-04", "ended": "", "note": ""},
+    )
+    response = client.get(reverse("games:edit_playthrough", args=[row.pk]))
+
+    assert response.status_code == 200
+    assert b"2026-03-04" in response.content
+    assert b"2026-01-02" not in response.content
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_run_stating_more_than_a_day_leaves_the_edit_page(client, user, game):
+    """#1015 owns the screen that states a month."""
+    row = PlayEvent.objects.create(game=game, started=None, ended=None, note="")
+    convert_library(user.library)
+    run = run_for_row(user.library, row.pk).run
+    assert run is not None
+    Playthrough.objects.filter(pk=run.pk).update(
+        started=TemporalValue.from_month(2026, 3)
+    )
+    client.force_login(user)
+
+    response = client.get(reverse("games:edit_playthrough", args=[row.pk]))
+
+    assert response.status_code == 302
+    assert any(
+        "cannot hold" in str(message) for message in get_messages(response.wsgi_request)
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_removing_the_only_run_is_refused_on_the_confirmation(client, user, game):
+    #: Tracking states a run of its own, so the conversion
+    #: leaves two. That one goes first, and the converted
+    #: row is then the only run the game has left.
+    row = PlayEvent.objects.create(game=game, started=None, ended=None, note="")
+    convert_library(user.library)
+    converted = run_for_row(user.library, row.pk).run
+    assert converted is not None
+    remove_run(
+        user,
+        Playthrough.objects.exclude(pk=converted.pk).get(player_game__game=game),
+        correlation_id=new_correlation_id(),
+    )
+    client.force_login(user)
+
+    response = client.post(reverse("games:remove_playthrough", args=[row.pk]))
+
+    assert response.status_code == 409
+    assert b"only playthrough of that game" in response.content
+    converted.refresh_from_db()
+    assert converted.removed_at is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_removing_one_of_two_runs_stamps_the_projection_only(client, user, game):
+    first = PlayEvent.objects.create(game=game, started=None, ended=None, note="")
+    second = PlayEvent.objects.create(game=game, started=None, ended=None, note="")
+    convert_library(user.library)
+    run = run_for_row(user.library, second.pk).run
+    assert run is not None
+    client.force_login(user)
+
+    response = client.post(reverse("games:remove_playthrough", args=[second.pk]))
+
+    assert response.status_code == 302
+    run.refresh_from_db()
+    assert run.removed_at is not None
+    second.refresh_from_db()
+    assert second.removed_at is None
+    #: The other run stays, so one remains.
+    other = run_for_row(user.library, first.pk).run
+    assert other is not None and other.removed_at is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_row_with_no_run_is_refused_on_the_edit_page(client, user, game):
+    row = PlayEvent.objects.create(game=game, started=None, ended=None, note="")
+    client.force_login(user)
+
+    response = client.get(reverse("games:edit_playthrough", args=[row.pk]))
+
+    assert response.status_code == 302
+    sentences = [str(message) for message in get_messages(response.wsgi_request)]
+    assert any("was never converted" in sentence for sentence in sentences)

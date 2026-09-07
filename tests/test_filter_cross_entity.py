@@ -210,7 +210,7 @@ def test_playevent_note_widget_json_selects_games(db):
         {
             "AND": [
                 {
-                    "playevent_filter": {
+                    "playthrough_filter": {
                         "note": {"value": "Completed", "modifier": "INCLUDES"}
                     }
                 }
@@ -231,7 +231,7 @@ def test_game_finished_widget_json_selects_games(db):
         {
             "AND": [
                 {
-                    "playevent_filter": {
+                    "playthrough_filter": {
                         "ended": {
                             "value": "2024-01-01",
                             "value2": "2024-12-31",
@@ -260,7 +260,7 @@ def test_game_finished_widget_json_min_only_and_max_only(db):
         {
             "AND": [
                 {
-                    "playevent_filter": {
+                    "playthrough_filter": {
                         "ended": {"value": "2024-01-01", "modifier": "GREATER_THAN"}
                     }
                 }
@@ -273,7 +273,7 @@ def test_game_finished_widget_json_min_only_and_max_only(db):
         {
             "AND": [
                 {
-                    "playevent_filter": {
+                    "playthrough_filter": {
                         "ended": {"value": "2024-12-31", "modifier": "LESS_THAN"}
                     }
                 }
@@ -499,7 +499,7 @@ def test_merged_single_node_requires_one_matching_row(two_purchase_world):
     assert _game_ids(merged) == {two_purchase_world["combined"]}
 
 
-# ── purchase bar: finished → game_filter → playevent_filter → ended ──────────
+# ── purchase bar: finished → game_filter → playthrough_filter → ended ──────────
 
 
 def test_purchase_finished_widget_json_selects_purchases(db):
@@ -523,7 +523,7 @@ def test_purchase_finished_widget_json_selects_purchases(db):
             "AND": [
                 {
                     "game_filter": {
-                        "playevent_filter": {
+                        "playthrough_filter": {
                             "ended": {
                                 "value": "2024-01-01",
                                 "value2": "2024-12-31",

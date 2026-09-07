@@ -239,7 +239,7 @@ def test_pages_render_only_the_authenticated_library(parity_world):
             "games:list_sessions",
             "games:list_purchases",
             "games:list_devices",
-            "games:list_playevents",
+            "games:list_playthroughs",
             "games:stats_by_year",
         ):
             args = [YEAR] if url_name == "games:stats_by_year" else None
@@ -283,7 +283,7 @@ def test_apis_filters_and_presets_reconcile_per_library(parity_world):
         assert {row["id"] for row in sessions["items"]} == {
             str(session.pk) for session in getattr(world, f"sessions_{side}")
         }
-        assert {row["id"] for row in client.get("/api/playevent/").json()} == {
+        assert {row["id"] for row in client.get("/api/playthrough/").json()} == {
             str(getattr(world, f"playevent_{side}").pk)
         }
         count = client.get(

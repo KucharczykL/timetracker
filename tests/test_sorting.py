@@ -30,8 +30,8 @@ from games.sorting import (
     GAME_SORTS,
     PLATFORM_DEFAULT_SORT,
     PLATFORM_SORTS,
-    PLAYEVENT_DEFAULT_SORT,
-    PLAYEVENT_SORTS,
+    PLAYTHROUGH_DEFAULT_SORT,
+    PLAYTHROUGH_SORTS,
     PURCHASE_DEFAULT_SORT,
     PURCHASE_SORTS,
     SESSION_DEFAULT_SORT,
@@ -326,7 +326,7 @@ class TestSortMapShapes:
             (GAME_DEFAULT_SORT, GAME_SORTS),
             (SESSION_DEFAULT_SORT, SESSION_SORTS),
             (PURCHASE_DEFAULT_SORT, PURCHASE_SORTS),
-            (PLAYEVENT_DEFAULT_SORT, PLAYEVENT_SORTS),
+            (PLAYTHROUGH_DEFAULT_SORT, PLAYTHROUGH_SORTS),
             (DEVICE_DEFAULT_SORT, DEVICE_SORTS),
             (PLATFORM_DEFAULT_SORT, PLATFORM_SORTS),
         ]:
@@ -547,10 +547,10 @@ class TestEverySortKeyReturns200:
             assert response.status_code == 200, key
 
     def test_all_playevent_keys(self, logged_client, two_playevents):
-        for key in PLAYEVENT_SORTS:
+        for key in PLAYTHROUGH_SORTS:
             for raw in (key, f"-{key}"):
                 response = logged_client.get(
-                    reverse("games:list_playevents"), {"sort": raw}
+                    reverse("games:list_playthroughs"), {"sort": raw}
                 )
                 assert response.status_code == 200, raw
 
@@ -610,7 +610,7 @@ class TestListPlayEventsSort:
         # default -created puts the later-created row first; ended-ascending must
         # flip it so the sort param, not creation order, drives the order.
         response = logged_client.get(
-            reverse("games:list_playevents"), {"sort": "ended"}
+            reverse("games:list_playthroughs"), {"sort": "ended"}
         )
         assert response.status_code == 200
         body = response.content.decode()
@@ -624,12 +624,13 @@ class TestListPlayEventsSort:
     ):
         with capture_games_logger() as caplog:
             response = logged_client.get(
-                reverse("games:list_playevents"), {"sort": "nope"}
+                reverse("games:list_playthroughs"), {"sort": "nope"}
             )
         warnings = [str(message) for message in get_messages(response.wsgi_request)]
         assert any("nope" in warning for warning in warnings)
         assert any(
-            "entity=playevent" in record.getMessage() and "nope" in record.getMessage()
+            "entity=playthrough" in record.getMessage()
+            and "nope" in record.getMessage()
             for record in caplog.records
             if record.name == "games"
         )

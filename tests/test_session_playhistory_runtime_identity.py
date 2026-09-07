@@ -8,6 +8,7 @@ from django.contrib.auth import get_user_model
 from django.test import Client
 from django.urls import NoReverseMatch, Resolver404, resolve, reverse
 
+from games.backfill.playthrough import convert_library
 from games.models import Device, Game, PlayEvent, Session
 
 pytestmark = pytest.mark.django_db
@@ -16,8 +17,8 @@ ROUTE_UUID = UUID("018f5e66-e800-7000-8000-000000000001")
 UUID4 = UUID("018f5e66-e800-4000-8000-000000000001")
 
 HTML_IDENTITY_ROUTES = [
-    ("games:edit_playevent", "playevent_id"),
-    ("games:remove_playevent", "playevent_id"),
+    ("games:edit_playthrough", "playthrough_id"),
+    ("games:remove_playthrough", "playthrough_id"),
     ("games:list_sessions_start_session_from_session", "session_id"),
     ("games:edit_session", "session_id"),
     ("games:finish_session", "session_id"),
@@ -92,28 +93,47 @@ def _api_request(client, method, path, payload=None):
     )
 
 
+@pytest.fixture
+def playthrough_world(transactional_db):
+    """Rows carrying runs the write endpoints reach.
+
+    Its own fixture rather than ``runtime_world``: PATCH and DELETE
+    dispatch commands, and ``run_in_transaction`` refuses to nest
+    inside the wrapping transaction ``db`` opens.
+    """
+    owner = get_user_model().objects.create_user(username="playthrough-owner")
+    client = Client()
+    client.force_login(owner)
+    own_game = Game.objects.create(library=owner.library, name="Owned runtime game")
+    own_playevent = PlayEvent.objects.create(
+        game=own_game, started=date(2026, 8, 20), note="Owned event"
+    )
+    #: A second run, so removing the first
+    #: does not take the game's last one.
+    PlayEvent.objects.create(game=own_game, started=date(2026, 8, 21))
+    convert_library(owner.library)
+    return SimpleNamespace(**locals())
+
+
 @pytest.mark.parametrize(
     ("method", "payload", "expected_status"),
     [
         pytest.param("get", None, 200, id="get"),
-        pytest.param("patch", {"note": "Updated event"}, 200, id="patch"),
+        pytest.param("patch", {"note": "Updated event"}, 204, id="patch"),
         pytest.param("delete", None, 204, id="delete"),
     ],
 )
-def test_playevent_api_uses_uuidv7_paths(
-    runtime_world, method, payload, expected_status
+def test_playthrough_api_uses_uuidv7_paths(
+    playthrough_world, method, payload, expected_status
 ):
-    event = runtime_world.own_playevent
+    event = playthrough_world.own_playevent
 
     response = _api_request(
-        runtime_world.client, method, f"/api/playevent/{event.pk}", payload
+        playthrough_world.client, method, f"/api/playthrough/{event.pk}", payload
     )
 
     assert response.status_code == expected_status
-    if method == "delete":
-        event.refresh_from_db()
-        assert event.removed_at is not None
-    else:
+    if method == "get":
         assert response.json()["id"] == str(event.pk)
 
 
@@ -161,9 +181,9 @@ def test_session_device_patch_uses_uuidv7_session_and_device_ids(
 
 
 API_IDENTITY_PATHS = [
-    ("get", "/api/playevent/{identity}", None),
-    ("patch", "/api/playevent/{identity}", {"note": "Updated"}),
-    ("delete", "/api/playevent/{identity}", None),
+    ("get", "/api/playthrough/{identity}", None),
+    ("patch", "/api/playthrough/{identity}", {"note": "Updated"}),
+    ("delete", "/api/playthrough/{identity}", None),
     ("get", "/api/session/{identity}", None),
     (
         "patch",
@@ -200,7 +220,7 @@ def test_promoted_api_paths_reject_uuid4_ids(
 @pytest.mark.parametrize(
     ("method", "route_name", "object_name"),
     [
-        ("get", "games:edit_playevent", "foreign_playevent"),
+        ("get", "games:edit_playthrough", "foreign_playevent"),
         (
             "post",
             "games:list_sessions_start_session_from_session",
@@ -223,7 +243,7 @@ def test_promoted_html_views_keep_foreign_rows_undisclosed(
 @pytest.mark.parametrize(
     ("method", "path_template", "object_name", "payload"),
     [
-        ("get", "/api/playevent/{identity}", "foreign_playevent", None),
+        ("get", "/api/playthrough/{identity}", "foreign_playevent", None),
         (
             "patch",
             "/api/session/{identity}",

@@ -145,7 +145,7 @@ LIST_PAGES = [
     "games:list_sessions",
     "games:list_games",
     "games:list_purchases",
-    "games:list_playevents",
+    "games:list_playthroughs",
     "games:list_devices",
     "games:list_platforms",
 ]
@@ -191,7 +191,7 @@ def test_the_note_column_still_wraps(authenticated_page: Page, live_server, popu
     must take several lines rather than widening the table without limit."""
     page = authenticated_page
     page.set_viewport_size({"width": 1280, "height": 900})
-    page.goto(f"{live_server.url}{reverse('games:list_playevents')}")
+    page.goto(f"{live_server.url}{reverse('games:list_playthroughs')}")
     settle_layout(page)
 
     lines = page.evaluate(

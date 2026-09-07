@@ -22,7 +22,7 @@ from games.sorting import (
     DEVICE_SORTS,
     GAME_SORTS,
     PLATFORM_SORTS,
-    PLAYEVENT_SORTS,
+    PLAYTHROUGH_SORTS,
     PURCHASE_SORTS,
     SESSION_SORTS,
 )
@@ -82,7 +82,7 @@ class SortHeaderParityTest(TestCase):
 
     def test_playevents_headers_match_map(self):
         PlayEvent.objects.create(game=self.game)
-        self._assert_parity("games:list_playevents", PLAYEVENT_SORTS)
+        self._assert_parity("games:list_playthroughs", PLAYTHROUGH_SORTS)
 
     def test_devices_headers_match_map(self):
         Device.objects.create(library=self.user.library, name="Test Device")

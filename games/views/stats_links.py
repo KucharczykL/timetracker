@@ -147,7 +147,7 @@ def _not_finished_game(year, excluded_statuses: list) -> GameFilter:
     game_filter = GameFilter(
         status=ChoiceCriterion(value=excluded_statuses, modifier=Modifier.EXCLUDES)
     )
-    game_filter.NOT = [GameFilter(playevent_filter=_ended_in_scope(year))]
+    game_filter.NOT = [GameFilter(playthrough_filter=_ended_in_scope(year))]
     return game_filter
 
 
@@ -155,11 +155,11 @@ def purchases_finished(year) -> PurchaseFilter:
     """Purchases whose game is finished (in scope)."""
     if _is_year(year):
         return PurchaseFilter(
-            game_filter=GameFilter(playevent_filter=_ended_in_scope(year))
+            game_filter=GameFilter(playthrough_filter=_ended_in_scope(year))
         )
     # All-time `.finished()`: a done status *or* any ended playevent.
     game_filter = GameFilter(status=ChoiceCriterion(value=list(DONE_STATUSES)))
-    game_filter.OR = [GameFilter(playevent_filter=_ended_in_scope(year))]
+    game_filter.OR = [GameFilter(playthrough_filter=_ended_in_scope(year))]
     return PurchaseFilter(game_filter=game_filter)
 
 
@@ -169,7 +169,7 @@ def purchases_finished_released(year) -> PurchaseFilter:
         return purchases_finished(year)
     game_filter = GameFilter(
         year_released=IntCriterion(value=year, modifier=Modifier.EQUALS),
-        playevent_filter=_ended_in_scope(year),
+        playthrough_filter=_ended_in_scope(year),
     )
     return PurchaseFilter(game_filter=game_filter)
 
@@ -177,7 +177,7 @@ def purchases_finished_released(year) -> PurchaseFilter:
 def purchases_bought_and_finished(year) -> PurchaseFilter:
     """Not-refunded purchases bought in scope whose game finished in scope."""
     purchase_filter = PurchaseFilter.where(is_refunded=False, **_purchase_bounds(year))
-    purchase_filter.game_filter = GameFilter(playevent_filter=_ended_in_scope(year))
+    purchase_filter.game_filter = GameFilter(playthrough_filter=_ended_in_scope(year))
     return purchase_filter
 
 
@@ -225,6 +225,6 @@ def purchases_backlog_decrease(year) -> PurchaseFilter:
     )
     purchase_filter.game_filter = GameFilter(
         status=ChoiceCriterion(value=list(DONE_STATUSES)),
-        playevent_filter=_ended_in_scope(year),
+        playthrough_filter=_ended_in_scope(year),
     )
     return purchase_filter

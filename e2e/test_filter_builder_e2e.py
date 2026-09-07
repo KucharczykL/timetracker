@@ -494,7 +494,7 @@ def test_nested_relation_prefill_renders_full_tree(
     authenticated_page: Page, live_server, e2e_library
 ) -> None:
     """The stats "View all" → Advanced filter URL shape: a purchase filter whose
-    only key is a nested relation chain (game_filter → playevent_filter → ended
+    only key is a nested relation chain (game_filter → playthrough_filter → ended
     BETWEEN) must deserialize into two relation rows with the inner date widget
     hydrated — not one "Incomplete" criterion row whose pruned query matches all
     purchases.  Regression: buildRegistry() leaked relation-kind field names into
@@ -529,7 +529,7 @@ def test_nested_relation_prefill_renders_full_tree(
 
     filter_json = {
         "game_filter": {
-            "playevent_filter": {
+            "playthrough_filter": {
                 "ended": {
                     "value": "2026-01-01",
                     "modifier": "BETWEEN",
@@ -546,7 +546,7 @@ def test_nested_relation_prefill_renders_full_tree(
     group = page.locator("filter-group")
     expect(group).to_be_attached()
 
-    # Two relation rows (outer game_filter, inner playevent_filter), each with its
+    # Two relation rows (outer game_filter, inner playthrough_filter), each with its
     # field reflected in the relation picker.  The rows nest, so "first" is the
     # outer card and its own picker is the first select inside it.
     relation_rows = group.locator('[data-node-slot][data-node-kind="relation"]')
@@ -555,7 +555,7 @@ def test_nested_relation_prefill_renders_full_tree(
         "game_filter"
     )
     expect(relation_rows.nth(1).locator("[data-relation-field]").first).to_have_value(
-        "playevent_filter"
+        "playthrough_filter"
     )
 
     # Nothing is incomplete: the inner date criterion hydrated both bounds.

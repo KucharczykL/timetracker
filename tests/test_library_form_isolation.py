@@ -16,7 +16,7 @@ from games.forms import (
     GameForm,
     LibraryPreferencesForm,
     PlatformForm,
-    PlayEventForm,
+    PlaythroughForm,
     PurchaseForm,
     SessionForm,
 )
@@ -80,7 +80,7 @@ def test_form_relationship_querysets_are_explicitly_library_bound(world):
         presentation=PRESENTATION,
     )
     release = ReleaseRowForm(library=world.owner_library, presentation=PRESENTATION)
-    playevent = PlayEventForm(library=world.owner_library, presentation=PRESENTATION)
+    playevent = PlaythroughForm(library=world.owner_library, presentation=PRESENTATION)
 
     assert _ids(session.fields["game"].queryset) == {world.own_game.pk}
     assert _ids(session.fields["device"].queryset) == {world.own_device.pk}
@@ -228,7 +228,7 @@ def test_purchase_form_rejects_foreign_relationships_without_saving(world):
 
 def test_the_play_event_form_rejects_a_foreign_game(world):
     before = PlayEvent.objects.count()
-    form = PlayEventForm(
+    form = PlaythroughForm(
         data={
             "game": world.foreign_game.pk,
             "started": "2026-08-14",

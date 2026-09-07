@@ -90,7 +90,7 @@ def test_builder_requires_login(client):
         ("list_games", "game"),
         ("list_sessions", "session"),
         ("list_purchases", "purchase"),
-        ("list_playevents", "playevent"),
+        ("list_playthroughs", "playevent"),
         ("list_devices", "device"),
         ("list_platforms", "platform"),
     ],

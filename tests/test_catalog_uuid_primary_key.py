@@ -357,6 +357,7 @@ def test_search_endpoints_report_each_entitys_own_identity_type(library_client):
     assert [row["value"] for row in devices] == [str(device.pk)]
 
 
+@pytest.mark.django_db(transaction=True)
 def test_game_bearing_endpoints_accept_the_new_identity(library_client):
     """The three non-search endpoints that typed a game id as an integer. Each
     fails independently, and none is covered by a search-endpoint test."""
@@ -373,11 +374,11 @@ def test_game_bearing_endpoints_accept_the_new_identity(library_client):
     )
 
     created = client.post(
-        "/api/playevent/",
+        "/api/playthrough/",
         json.dumps({"game_id": str(game.pk), "note": "played"}),
         content_type="application/json",
     )
-    assert created.status_code == 201
+    assert created.status_code == 204
 
     session = Session.objects.create(game=game, timestamp_start=timezone.now())
     detail = client.get(f"/api/session/{session.pk}").json()
@@ -399,7 +400,7 @@ def test_game_bearing_endpoints_reject_a_non_v7_uuid(library_client):
         content_type="application/json",
     )
     playevent_create = client.post(
-        "/api/playevent/",
+        "/api/playthrough/",
         json.dumps({"game_id": str(invalid_id), "note": "played"}),
         content_type="application/json",
     )

@@ -85,7 +85,7 @@ _BAR_CASES = [
     _BarCase("purchases", PurchaseFilter),
     _BarCase("devices", DeviceFilter),
     _BarCase("platforms", PlatformFilter),
-    _BarCase("playevents", PlayEventFilter),
+    _BarCase("playthroughs", PlayEventFilter),
 ]
 _PRESENTATION = DateTimePresentation(
     DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
@@ -126,7 +126,7 @@ def test_resolve_path_kind_resolves_leaf_kinds() -> None:
     GameFilter has no top-level DateCriterion field)."""
     assert resolve_path_kind(GameFilter, ["name"]) == "string"
     assert resolve_path_kind(GameFilter, ["year_released"]) == "number"
-    assert resolve_path_kind(GameFilter, ["playevent_filter", "ended"]) == "date"
+    assert resolve_path_kind(GameFilter, ["playthrough_filter", "ended"]) == "date"
     assert resolve_path_kind(GameFilter, ["mastered"]) == "bool"
     assert resolve_path_kind(GameFilter, ["status"]) == "set"
 

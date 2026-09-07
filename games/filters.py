@@ -9,7 +9,7 @@ Inspired by Stash's filter architecture: each entity has an OperatorFilter
 with AND/OR/NOT composition and typed criterion fields.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, ClassVar
 
@@ -113,7 +113,7 @@ class GameFilter(OperatorFilter):
     session_count: AggregateCriterion | None = None
     session_average: AggregateCriterion | None = None  # average in hours
     purchase_count: AggregateCriterion | None = None  # distinct purchases per game
-    playevent_count: AggregateCriterion | None = None  # playevents per game
+    playthrough_count: AggregateCriterion | None = None  # playevents per game
 
     # Aggregate session durations (hours), summed across the game's sessions
     manual_playtime_hours: AggregateCriterion | None = None
@@ -128,8 +128,16 @@ class GameFilter(OperatorFilter):
     # Cross-entity filters
     session_filter: SessionFilter | None = None
     purchase_filter: PurchaseFilter | None = None
-    playevent_filter: PlayEventFilter | None = None
+    playthrough_filter: PlayEventFilter | None = None
     platform_filter: PlatformFilter | None = None
+
+    # #687 renamed both keys. A saved preset is rewritten by migration 0046,
+    # but a bookmarked or shared ``?filter=`` is not, so read the old word too.
+    # #771 takes this away with the rest of the legacy row.
+    renamed_fields: ClassVar[Mapping[str, str]] = {
+        "playevent_count": "playthrough_count",
+        "playevent_filter": "playthrough_filter",
+    }
 
     # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
     # reviewable diff (AND-composition makes the order semantically irrelevant).
@@ -198,11 +206,11 @@ class GameFilter(OperatorFilter):
                 related_lookup="games__id",
             )
 
-        if self.playevent_filter is not None:
+        if self.playthrough_filter is not None:
             from games.models import PlayEvent
 
             q &= relation_to_q(
-                self.playevent_filter,
+                self.playthrough_filter,
                 context=context,
                 related_model=PlayEvent,
                 related_lookup="game__id",
@@ -724,7 +732,7 @@ GameFilter.aggregates = {
         "avg", "sessions", SessionFilter, source="duration_total", unit="duration_hours"
     ),
     "purchase_count": AggregateSpec("count", "purchases", PurchaseFilter),
-    "playevent_count": AggregateSpec("count", "playevents", PlayEventFilter),
+    "playthrough_count": AggregateSpec("count", "playevents", PlayEventFilter),
     "manual_playtime_hours": AggregateSpec(
         "sum",
         "sessions",
@@ -768,7 +776,7 @@ def parse_platform_filter(json_str: str) -> PlatformFilter | None:
     return filter_from_json(PlatformFilter, json_str)
 
 
-def parse_playevent_filter(json_str: str) -> PlayEventFilter | None:
+def parse_playthrough_filter(json_str: str) -> PlayEventFilter | None:
     return filter_from_json(PlayEventFilter, json_str)
 
 
@@ -782,7 +790,7 @@ MODE_PARSERS: dict[str, FilterParser] = {
     "games": parse_game_filter,
     "sessions": parse_session_filter,
     "purchases": parse_purchase_filter,
-    "playevents": parse_playevent_filter,
+    "playthroughs": parse_playthrough_filter,
     "devices": parse_device_filter,
     "platforms": parse_platform_filter,
 }
@@ -900,7 +908,7 @@ _FILTER_LIST_URL: dict[type[OperatorFilter], str] = {
     GameFilter: "games:list_games",
     SessionFilter: "games:list_sessions",
     PurchaseFilter: "games:list_purchases",
-    PlayEventFilter: "games:list_playevents",
+    PlayEventFilter: "games:list_playthroughs",
     DeviceFilter: "games:list_devices",
     PlatformFilter: "games:list_platforms",
 }

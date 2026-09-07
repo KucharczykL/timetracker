@@ -107,7 +107,7 @@ from games.views.playergame_writes import (
     remove_game_for_request,
     track_game_for_request,
 )
-from games.views.playevent import create_playevent_tabledata
+from games.views.playthrough import create_playthrough_tabledata
 from games.views.reference_section import references_area
 from games.views.removal import confirm_and_remove
 from games.views.returns import origin_from, return_url
@@ -437,28 +437,30 @@ _STAT_SVGS = {
 }
 
 
-def _played_row(game: Game, request: HttpRequest, origin: OriginUrl | None) -> Node:
-    """'Played N times' split button: a generic outlined Dropdown wrapped in
-    <play-event-row>, which owns only the 'Played +1' action."""
+def _played_row(game: Game, origin: OriginUrl | None) -> Node:
+    """'Played N times' split button.
+
+    #687 took the '+1' action and its element away: a
+    click filled in the run a tracked game already holds,
+    which only untracking the game took back. #1024 owns
+    stating a count.
+    """
     from common.components import (
         ControlButton,
-        DropdownActionItem,
         DropdownLinkItem,
         SplitButtonDropdown,
     )
-    from common.components.custom_elements import _PlayEventRow
 
     played = game.playevents.alive().count()
 
     count_button = ControlButton(
         [("class", "rounded-s-lg")],
         variant="outline",
-        href=action_url("games:add_playevent", origin=origin),
+        href=action_url("games:add_playthrough", origin=origin),
     )[
         # One prose phrase = one flex item: the button is inline-flex, and flex
         # layout drops whitespace-only text between items, so the space must
-        # live inside a single inline context. The inner span is a write-only
-        # display slot for play-event-row.ts.
+        # live inside a single inline context.
         Span()[Span(data_count="")[str(played)], " times"]
     ]
     dropdown = SplitButtonDropdown(
@@ -467,21 +469,13 @@ def _played_row(game: Game, request: HttpRequest, origin: OriginUrl | None) -> N
         aria_label="Playthrough actions",
         items=[
             DropdownLinkItem(
-                action_url("games:add_playevent_for_game", game.id, origin=origin),
+                action_url("games:add_playthrough_for_game", game.id, origin=origin),
                 "Add playthrough...",
             ),
-            DropdownActionItem(data_add_play="")["Played times +1"],
         ],
     )
-    return _PlayEventRow(
-        game_id=game.id,
-        count=played,
-        csrf=get_token(request),
-        api_create_url=reverse("api-1.0.0:create_playevent"),
-    )[
-        Div(class_="flex gap-2 items-center")[
-            Span(class_="uppercase")["Played"], dropdown
-        ]
+    return Div(class_="flex gap-2 items-center")[
+        Span(class_="uppercase")["Played"], dropdown
     ]
 
 
@@ -838,7 +832,7 @@ def _game_header(
             ],
             "👑" if game.tracked_mastered else "",
         ),
-        _played_row(game, request, origin),
+        _played_row(game, origin),
         *_plain_release_rows(entries, presentation),
     ]
     return Div(id_="game-info", class_="mb-10")[
@@ -950,7 +944,7 @@ def _playevents_section(
     presentation: DateTimePresentation,
     origin: OriginUrl | None,
 ) -> Node:
-    data = create_playevent_tabledata(
+    data = create_playthrough_tabledata(
         playevents, presentation, exclude_columns=["Game"], origin=origin
     )
     # This embedded mini-table isn't a sortable list view (no ?sort= handling on
@@ -970,16 +964,8 @@ def _playevents_section(
         "No play events yet.",
         view_all_url=filter_url(PlayEventFilter.where(game=[game.id])),
     )
-    # Re-fetch this section (table + count badge) when the played-row "+1"
-    # control records a play, so it updates without a full reload. Mirrors the
-    # history section's status-changed refresh.
-    return Div(
-        id_="playevents-container",
-        hx_get="",
-        hx_trigger="play-added from:body",
-        hx_select="#playevents-container",
-        hx_swap="outerHTML",
-    )[section]
+    #: #1012 replaces this section with the projection.
+    return Div(id_="playevents-container")[section]
 
 
 def _history_section(

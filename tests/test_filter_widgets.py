@@ -297,7 +297,7 @@ class ListUrlForTest(SimpleTestCase):
             ("games", "games:list_games"),
             ("sessions", "games:list_sessions"),
             ("purchases", "games:list_purchases"),
-            ("playevents", "games:list_playevents"),
+            ("playthroughs", "games:list_playthroughs"),
             ("devices", "games:list_devices"),
             ("platforms", "games:list_platforms"),
         ]:

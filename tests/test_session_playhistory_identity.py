@@ -9,7 +9,7 @@ from django.db.migrations.executor import MigrationExecutor
 from django.utils import timezone
 
 from games.api import AutoPlayEventIn
-from games.forms import PlayEventForm, SessionForm
+from games.forms import PlaythroughForm, SessionForm
 from games.models import Game, GameStatusChange, PlayEvent, Session
 from games.views.session import clone_session_by_id
 
@@ -216,7 +216,7 @@ def test_uuid_is_absent_from_session_form_fields():
 
 
 def test_uuid_is_absent_from_playevent_form_fields():
-    assert "uuid" not in PlayEventForm.base_fields
+    assert "uuid" not in PlaythroughForm.base_fields
 
 
 def test_uuid_is_absent_from_the_playevent_model_schema():

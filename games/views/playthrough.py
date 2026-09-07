@@ -1,9 +1,11 @@
 import logging
+import uuid
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import Any, cast
 from uuid import UUID
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.db.models import QuerySet
@@ -41,13 +43,15 @@ from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.returns import OriginUrl, action_url
 from common.utils import paginate
-from games.filters import filter_query_context_for_library, parse_playevent_filter
-from games.forms import PlayEventForm
+from games.filters import filter_query_context_for_library, parse_playthrough_filter
+from games.forms import PlaythroughForm
 from games.models import Game, PlayerGameStatus, PlayEvent, Session
 from games.ownership import owned_or_404
+from games.reads.playthrough_endpoints import restatable_days
+from games.reads.playthrough_provenance import run_for_row
 from games.sorting import (
-    PLAYEVENT_DEFAULT_SORT,
-    PLAYEVENT_SORTS,
+    PLAYTHROUGH_DEFAULT_SORT,
+    PLAYTHROUGH_SORTS,
     SortTerm,
     apply_sort,
     parse_find_filter,
@@ -58,14 +62,21 @@ from games.views.filtering import (
     warn_unknown_sort,
 )
 from games.views.playergame_writes import record_facts_for_request
-from games.views.removal import confirm_and_remove
+from games.views.playthrough_writes import (
+    record_run_for_request,
+    remove_run_for_request,
+    restate_run_for_request,
+)
+from games.views.removal import confirm_and_apply
 from games.views.returns import return_url
+from games.writes.answers import CONFLICT_STATUS, CommandFailed
 from games.writes.playergame import new_correlation_id
+from games.writes.playthrough import RunDraft
 
 logger = logging.getLogger("games")
 
 
-def create_playevent_tabledata(
+def create_playthrough_tabledata(
     playevents: list[PlayEvent] | BaseManager[PlayEvent] | QuerySet[PlayEvent],
     presentation: DateTimePresentation,
     exclude_columns: Sequence[str] = (),
@@ -113,14 +124,14 @@ def create_playevent_tabledata(
                 [
                     {
                         "href": action_url(
-                            "games:edit_playevent", playevent.pk, origin=origin
+                            "games:edit_playthrough", playevent.pk, origin=origin
                         ),
                         "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
                         "color": "gray",
                     },
                     {
                         "href": action_url(
-                            "games:remove_playevent", playevent.pk, origin=origin
+                            "games:remove_playthrough", playevent.pk, origin=origin
                         ),
                         "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
                         "color": "red",
@@ -180,7 +191,7 @@ def _get_formatted_playtime_for_game_sessions_in_range(
 
 @login_required
 @regex_timeout_view
-def list_playevents(request: HttpRequest) -> HttpResponse:
+def list_playthroughs(request: HttpRequest) -> HttpResponse:
     library = cast(User, request.user).library
     presentation = date_time_presentation_for_request(request)
     origin = request.get_full_path()
@@ -188,22 +199,22 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
 
     filter_json = request.GET.get("filter", "")
     if filter_json:
-        playevent_filter = apply_structured_filter(
-            request, parse_playevent_filter, filter_json
+        playthrough_filter = apply_structured_filter(
+            request, parse_playthrough_filter, filter_json
         )
-        if playevent_filter is not None:
+        if playthrough_filter is not None:
             playevents = execute_filter(
-                playevent_filter,
+                playthrough_filter,
                 playevents,
                 filter_query_context_for_library(library),
             )
 
     find = parse_find_filter(request)
-    sort = apply_sort(playevents, find, PLAYEVENT_SORTS, PLAYEVENT_DEFAULT_SORT)
+    sort = apply_sort(playevents, find, PLAYTHROUGH_SORTS, PLAYTHROUGH_DEFAULT_SORT)
     playevents = sort.queryset
-    warn_unknown_sort(request, sort.unknown, entity="playevent")
+    warn_unknown_sort(request, sort.unknown, entity="playthrough")
     playevents, page_obj, elided_page_range = paginate(playevents, find)
-    data = create_playevent_tabledata(
+    data = create_playthrough_tabledata(
         playevents,
         presentation,
         request=request,
@@ -218,12 +229,12 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
         page_size=find.per_page,
     )
     builder_url = builder_url_for(
-        "playevents", filter_json, find.sort, find.per_page_override
+        "playthroughs", filter_json, find.sort, find.per_page_override
     )
     parsed_filter = parse_filter_dict(filter_json)
     quick_bar = QuickFilterBar(
         presentation=presentation,
-        mode="playevents",
+        mode="playthroughs",
         existing=parsed_filter,
         builder_url=builder_url,
         preset_api_url=reverse("api-1.0.0:list_presets"),
@@ -233,16 +244,16 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
     return render_page(
         request,
         content,
-        title="Manage play events",
+        title="Manage playthroughs",
     )
 
 
 @login_required
-def add_playevent(request: HttpRequest, game_id: UUID | None = None) -> HttpResponse:
+def add_playthrough(request: HttpRequest, game_id: UUID | None = None) -> HttpResponse:
     initial: dict[str, Any] = {}
     library = cast(User, request.user).library
     if game_id:
-        # coming from add_playevent_for_game url path
+        # coming from add_playthrough_for_game url path
         game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
         initial["game"] = game
         try:
@@ -286,24 +297,29 @@ def add_playevent(request: HttpRequest, game_id: UUID | None = None) -> HttpResp
             initial["started"] = None
             initial["ended"] = None
             initial["note"] = "0h 00m"
-    form = PlayEventForm(
+    form = PlaythroughForm(
         request.POST or None,
         initial=initial,
         library=library,
         presentation=date_time_presentation_for_request(request),
     )
     if form.is_valid():
-        play_event = form.save()
-        if form.cleaned_data.get("mark_as_finished"):
-            _record_completed(request, play_event)
-        game = play_event.game
-        return redirect(
-            return_url(
-                request,
-                fallback="games:view_game",
-                fallback_args=[game.id, game.url_slug],
+        game = form.cleaned_data["game"]
+        correlation_id = new_correlation_id()
+        if record_run_for_request(
+            request, game, _draft_from(form), correlation_id=correlation_id
+        ):
+            if form.cleaned_data.get("mark_as_finished"):
+                #: Discarded on purpose: a refused status
+                #: toasts, and the run it belongs to stands.
+                _record_completed(request, game, correlation_id)
+            return redirect(
+                return_url(
+                    request,
+                    fallback="games:view_game",
+                    fallback_args=[game.id, game.url_slug],
+                )
             )
-        )
 
     return render_page(
         request,
@@ -316,44 +332,107 @@ def add_playevent(request: HttpRequest, game_id: UUID | None = None) -> HttpResp
     )
 
 
-def _record_completed(request: HttpRequest, play_event: PlayEvent) -> None:
-    """State Completed for the game just finished."""
-    record_facts_for_request(
+def _draft_from(form: PlaythroughForm) -> RunDraft:
+    """The run the form states."""
+    return RunDraft(
+        started=form.cleaned_data["started"],
+        ended=form.cleaned_data["ended"],
+        note=form.cleaned_data["note"],
+    )
+
+
+#: A run this day-shaped form cannot restate.
+RICHER_THAN_A_DAY = (
+    "This playthrough states a date this form cannot hold, so editing it here "
+    "would lose what it says."
+)
+
+
+def _no_run_here(
+    request: HttpRequest, playevent: PlayEvent, sentence: str
+) -> HttpResponse:
+    """Toast the sentence and leave the page."""
+    messages.error(request, sentence)
+    return redirect(
+        return_url(
+            request,
+            fallback="games:view_game",
+            fallback_args=[playevent.game.id, playevent.game.url_slug],
+        )
+    )
+
+
+def _record_completed(
+    request: HttpRequest, game: Game, correlation_id: uuid.UUID
+) -> bool:
+    """State Completed for the game just finished.
+
+    The request's correlation id, not a fresh one: the act
+    and the status it implies belong to one submit. No
+    reader groups events that way yet, so this changes no
+    screen. It is the plumbing #683 needs.
+
+    Answers False on a refusal, which toasted already.
+    """
+    return record_facts_for_request(
         request,
-        play_event.game,
+        game,
         status=PlayerGameStatus.COMPLETED,
-        correlation_id=new_correlation_id(),
+        correlation_id=correlation_id,
     )
 
 
 @login_required
-def edit_playevent(request: HttpRequest, playevent_id: UUID) -> HttpResponse:
+def edit_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     playevent = owned_or_404(
-        PlayEvent.objects.for_library(library), library, id=playevent_id
+        PlayEvent.objects.for_library(library), library, id=playthrough_id
     )
-    form = PlayEventForm(
+    converted = run_for_row(library, playevent.pk)
+    run = converted.run
+    if run is None:
+        #: #684 converted rows of tracked games only.
+        #: A row whose game the library stopped tracking
+        #: has no run. #771 takes row and branch together.
+        return _no_run_here(request, playevent, converted.sentence)
+    #: Seeded from the run, never from the legacy row:
+    #: nothing writes that row any more, so a second edit
+    #: would restate its frozen days over the first one.
+    days = restatable_days(run)
+    if days is None:
+        return _no_run_here(request, playevent, RICHER_THAN_A_DAY)
+    form = PlaythroughForm(
         request.POST or None,
-        instance=playevent,
+        initial={
+            "game": playevent.game,
+            "started": days.started,
+            "ended": days.ended,
+            "note": run.note,
+        },
         library=library,
         presentation=date_time_presentation_for_request(request),
+        locked_game=playevent.game,
     )
     if form.is_valid():
-        play_event = form.save()
-        if form.cleaned_data.get("mark_as_finished"):
-            _record_completed(request, play_event)
-        return redirect(
-            return_url(
-                request,
-                fallback="games:view_game",
-                fallback_args=[playevent.game.id, playevent.game.url_slug],
+        correlation_id = new_correlation_id()
+        if restate_run_for_request(
+            request, run, _draft_from(form), correlation_id=correlation_id
+        ):
+            if form.cleaned_data.get("mark_as_finished"):
+                #: Discarded on purpose, as in add_playthrough.
+                _record_completed(request, playevent.game, correlation_id)
+            return redirect(
+                return_url(
+                    request,
+                    fallback="games:view_game",
+                    fallback_args=[playevent.game.id, playevent.game.url_slug],
+                )
             )
-        )
 
     return render_page(
         request,
         AddForm(form, request=request),
-        title="Edit Play Event",
+        title="Edit playthrough",
         scripts=Fragment(
             ModuleScript("dist/elements/search-select.js"),
             ModuleScript("dist/elements/date-picker.js"),
@@ -362,16 +441,26 @@ def edit_playevent(request: HttpRequest, playevent_id: UUID) -> HttpResponse:
 
 
 @login_required
-def remove_playevent(request: HttpRequest, playevent_id: UUID) -> HttpResponse:
+def remove_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     playevent = owned_or_404(
-        PlayEvent.objects.for_library(library), library, id=playevent_id
+        PlayEvent.objects.for_library(library), library, id=playthrough_id
     )
-    return confirm_and_remove(
+
+    def act() -> None:
+        converted = run_for_row(library, playevent.pk)
+        if converted.run is None:
+            raise CommandFailed(converted.sentence, CONFLICT_STATUS)
+        remove_run_for_request(
+            request, converted.run, correlation_id=new_correlation_id()
+        )
+
+    return confirm_and_apply(
         request,
-        playevent,
+        action=act,
         title="Remove playthrough",
         message=f"Remove this playthrough of {playevent.game}?",
+        confirm_label="Remove",
         fallback="games:view_game",
         fallback_args=[playevent.game.id, playevent.game.url_slug],
     )

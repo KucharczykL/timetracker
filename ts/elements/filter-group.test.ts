@@ -1120,13 +1120,13 @@ const HYDRATION_FIELDS = [
 // filter (the stats "View all" URL shape — purchase → game → playevent in
 // production, transposed onto the harness models) is expressible here.
 const PLAYEVENT_RELATION = {
-  name: "playevent_filter",
+  name: "playthrough_filter",
   label: "PlayEvents",
   kind: "relation",
   nullable: false,
   choices: [],
   modifiers: [],
-  relations: [{ field: "playevent_filter", filter: "PlayEventFilter", model: "PlayEvent" }],
+  relations: [{ field: "playthrough_filter", filter: "PlayEventFilter", model: "PlayEvent" }],
   search_url: "",
   is_m2m: false,
 };
@@ -1544,11 +1544,11 @@ describe("<filter-group> prefill hydrates relation subtrees", () => {
   });
 
   it("nested relation (stats View-all URL shape): full subtree hydrates and round-trips", () => {
-    // Mirrors ?filter={"game_filter":{"playevent_filter":{"ended":{…BETWEEN…}}}}
+    // Mirrors ?filter={"game_filter":{"playthrough_filter":{"ended":{…BETWEEN…}}}}
     // from the bug report, expressed in the harness's game→session→playevent chain.
     const host = loadHydration({
       session_filter: {
-        playevent_filter: {
+        playthrough_filter: {
           ended: { value: "2026-01-01", modifier: "BETWEEN", value2: "2026-12-31" },
         },
       },
@@ -1559,7 +1559,7 @@ describe("<filter-group> prefill hydrates relation subtrees", () => {
     expect(outer.querySelector("[data-incomplete-badge]")).toBeNull();
     const inner = row(host, [0, "child", 0]);
     expect(inner.dataset.nodeKind).toBe("relation");
-    expect(relationSelect(host, [0, "child", 0], "data-relation-field").value).toBe("playevent_filter");
+    expect(relationSelect(host, [0, "child", 0], "data-relation-field").value).toBe("playthrough_filter");
     const dateCell = valueCell(host, [0, "child", 0, "child", 0]);
     expect(dateCell.querySelector<HTMLInputElement>("[data-range-min]")!.value).toBe("2026-01-01");
     expect(dateCell.querySelector<HTMLInputElement>("[data-range-max]")!.value).toBe("2026-12-31");
@@ -1569,7 +1569,7 @@ describe("<filter-group> prefill hydrates relation subtrees", () => {
       AND: [{
         session_filter: {
           AND: [{
-            playevent_filter: {
+            playthrough_filter: {
               AND: [{ ended: { value: "2026-01-01", modifier: "BETWEEN", value2: "2026-12-31" } }],
             },
           }],
