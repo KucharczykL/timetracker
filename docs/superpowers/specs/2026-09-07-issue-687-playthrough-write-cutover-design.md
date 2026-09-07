@@ -87,8 +87,9 @@ exercise the dropdown itself and stay.
 
 The "Played N times" count and the "Add playthrough…" item stay. The count is a
 legacy read until #1012, and the count button keeps its link to the add form.
-`_played_row` returns a plain `Div` where it returned a custom element, and the
-props codegen is re-run.
+`_played_row` returns the `SplitButtonDropdown` alone where it wrapped one in a
+custom element, the section around it loses the htmx trigger that refreshed the
+table after a `+1`, and the props codegen is re-run.
 
 This also settles who reads a refusal on the API create. `fetchWithHtmxTriggers`
 never checks `response.ok`, so the element kept its optimistic count on a 409
@@ -293,7 +294,9 @@ screen:
 The size of the first is a number, not a guess: `make preflight-playthroughs`
 reports it, and the plan reads it against a restored production copy before the
 change merges. A count large enough to matter turns this from a refusal into a
-conversion pass, which #684 owns.
+conversion pass, which #684 owns. Against the 2026-09-06 copy the number is
+zero: `rows_untracked`, `rows_on_removed_game` and `rows_without_projection` are
+all 0 of 209 rows, so no live row on that library meets the refusal.
 
 ## What each surface does
 
