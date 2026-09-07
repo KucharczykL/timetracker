@@ -110,8 +110,9 @@ wave that assigns Sessions is the wave that needs one.
     saved presets
 11. #1014 — read cutover: statistics and the stat links
 12. #1015 — read cutover: the API router and the row element
-13. #683 — the companion status change beside a lifecycle action
-14. #688 — the PlayerGame and Playthrough replay-parity gate
+13. #1026 — read cutover: the purchase Finished column and the `finished` sorts
+14. #683 — the companion status change beside a lifecycle action
+15. #688 — the PlayerGame and Playthrough replay-parity gate
 
 Required orderings and the reason for each:
 
@@ -123,7 +124,7 @@ Required orderings and the reason for each:
 - `#681 → #1010, #1011`. A correction corrects a stated fact.
 - `#684 → #687`. A write cutover leaves the legacy table as the only record of
   facts it no longer writes, so every legacy row must already be an event.
-- `#687 → #1012 … #1015`. A read switched before the write is switched
+- `#687 → #1012 … #1015, #1026`. A read switched before the write is switched
   reads a projection two writers disagree about.
 - `#1012 → #683`. The companion action is an affordance beside a lifecycle
   control, and that control is on the surface #1012 delivers.
@@ -132,15 +133,15 @@ Required orderings and the reason for each:
   the two together — a second row builder and the link translation — and #1013
   removes it. Either order needs a bridge; this one puts it where it is already
   specified.
-- `#1013, #1014, #1015 → #688`. The gate proves parity for surfaces that
+- `#1013, #1014, #1015, #1026 → #688`. The gate proves parity for surfaces that
   have all moved.
 - `#688 → #771`. Legacy storage comes out after the gate is green.
 
 Free to start together: #679 and #686. #686 reads legacy rows only, and has no
 unmet dependency.
 
-Free to run in parallel: #1012, #1014, and #1015 after #687, with #1013 behind
-#1012; #909 any time after #681.
+Free to run in parallel: #1012, #1014, #1015, and #1026 after #687, with #1013
+behind #1012; #909 any time after #681.
 
 ## Issue boundaries
 
@@ -250,7 +251,7 @@ stating a count). The legacy table is still read. The rename of every
 identifier that does not derive from the model's own name travels here too,
 saved presets included.
 
-### #1012 through #1015 — switch reads
+### #1012 through #1015 and #1026 — switch reads
 
 Split by surface, following #946, #947, #951, and #953:
 
@@ -264,16 +265,30 @@ Split by surface, following #946, #947, #951, and #953:
   generated bound columns, with the parity test each stat link already has;
 - #1015 — the GET bodies of the `/api/playthrough` router. #687 moved the
   router prefix and took the `play-event-row` custom element away, so what is
-  left is the two handlers that still read the legacy row.
+  left is the two handlers that still read the legacy row;
+- #1026 — the purchase list's Finished cell, `PURCHASE_SORTS["finished"]` and
+  `GAME_SORTS["finished"]`, all three reading
+  `Max("games__playevents__ended")`.
 
-The list page moved from #1012 to #1013 while #1012 was planned. This document
-gave #1012 the page and #1013 everything that orders and narrows it, and the two
-halves block each other: `list_playthroughs` sorts on every request and filters
-whenever `?filter=` is set, so a page switched to the projection under legacy
-sort keys answers a 500, and a filter switched to the projection under a legacy
-queryset narrows one model by another's fields. Game detail carries no sort, no
-filter and no quick bar, so it is the half that moves alone. Both issues carry
-the verdict.
+Two surfaces left #1012 while it was planned, and both carry the verdict on
+their issues.
+
+The **list page** went to #1013. This document gave #1012 the page and #1013
+everything that orders and narrows it, and the two halves block each other:
+`list_playthroughs` sorts on every request and filters whenever `?filter=` is
+set, so a page switched to the projection under legacy sort keys answers a 500,
+and a filter switched to the projection under a legacy queryset narrows one
+model by another's fields. Game detail carries no sort, no filter and no quick
+bar, so it is the half that moves alone.
+
+The **purchase Finished column** went to #1026, opened for it. It reads as one
+cell and is three reads: the cell, a purchase sort key `apply_sort` runs on
+every request, and a Game sort key reachable through `?sort=` and through a
+saved preset. Moving the cell alone leaves the column's own header ordering the
+page by a number the column no longer shows. It also asks what one aggregate
+over many games reports for a completion stated at less than day precision, a
+question no other surface in this wave asks and that a cell cannot answer on the
+way past.
 
 ### #683 — the companion status change
 
@@ -366,7 +381,7 @@ Three issues closed as merged, each with the reason on the closing comment:
 - #682, into #681
 - #685, into #684
 
-Six opened:
+Seven opened, the last of them while #1012 was planned:
 
 - #1010
 - #1011
@@ -374,6 +389,7 @@ Six opened:
 - #1013
 - #1014
 - #1015
+- #1026
 
 Seven were retitled to the delivery order above, because the new slices would
 otherwise collide with the `PLAY-05`, `PLAY-09` and `PLAY-10` labels the
