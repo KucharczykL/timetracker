@@ -12,6 +12,7 @@ from games.commands import playthrough as playthrough_commands
 from games.commands.playergame import PlayerGameNotTracked, TrackGame
 from games.commands.playthrough import (
     PLAYTHROUGH_NAME_MAX_LENGTH,
+    ActStatement,
     BlockingReferrer,
     CompletePlaythrough,
     CorrectPlaythroughCompletion,
@@ -135,6 +136,124 @@ def test_a_repeat_under_one_key_records_nothing_further(
         )
 
     assert Playthrough.objects.count() == 2
+
+
+@pytest.mark.django_db(transaction=True)
+def test_one_build_states_the_run_its_note_and_both_acts(
+    owned_user, owned_library, game
+):
+    """#687: a whole run arrives in one dispatch."""
+    _track(owned_user, owned_library, game)
+
+    result = dispatch(
+        CreatePlaythrough(
+            game_id=game.pk,
+            started=ActStatement(TemporalValue.from_day(date(2026, 1, 2))),
+            completed=ActStatement(TemporalValue.from_day(date(2026, 2, 3))),
+            note="12h 30m",
+        ),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="whole-run",
+    )
+
+    assert result.outcome is CommandOutcome.APPENDED
+    run = Playthrough.objects.get(note="12h 30m")
+    assert run.started == TemporalValue.from_day(date(2026, 1, 2))
+    assert run.completed == TemporalValue.from_day(date(2026, 2, 3))
+    assert run.start_recorded_at is not None
+    assert run.completion_recorded_at is not None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_act_with_no_day_is_still_an_act(owned_user, owned_library, game):
+    """#687: the act is the marker, never the day."""
+    _track(owned_user, owned_library, game)
+
+    dispatch(
+        CreatePlaythrough(
+            game_id=game.pk,
+            started=ActStatement(None),
+            completed=ActStatement(None),
+        ),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="dayless",
+    )
+
+    run = Playthrough.objects.latest("created_at")
+    assert run.started is None
+    assert run.start_recorded_at is not None
+    assert run.completion_recorded_at is not None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_creation_that_states_no_act_states_no_endpoint(
+    owned_user, owned_library, game
+):
+    """#687: the run TrackGame states keeps its two unstated ends."""
+    _track(owned_user, owned_library, game)
+
+    dispatch(
+        CreatePlaythrough(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="actless",
+    )
+
+    run = Playthrough.objects.latest("created_at")
+    assert run.start_recorded_at is None
+    assert run.completion_recorded_at is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_creation_whose_acts_are_reversed_records_nothing(
+    owned_user, owned_library, game
+):
+    """#687: one build, so a refusal leaves no half-stated run."""
+    _track(owned_user, owned_library, game)
+    before = LibraryEvent.objects.count()
+
+    with pytest.raises(CommandRejected) as refusal:
+        dispatch(
+            CreatePlaythrough(
+                game_id=game.pk,
+                started=ActStatement(TemporalValue.from_day(date(2026, 2, 3))),
+                completed=ActStatement(TemporalValue.from_day(date(2026, 1, 2))),
+            ),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key="reversed",
+        )
+
+    assert refusal.value.sentence == (
+        "This run finished before it started. Check the days."
+    )
+    assert LibraryEvent.objects.count() == before
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_endpoint_notes_of_a_created_run_are_its_own(
+    owned_user, owned_library, game
+):
+    """#687: each act carries the note stated about it."""
+    _track(owned_user, owned_library, game)
+
+    dispatch(
+        CreatePlaythrough(
+            game_id=game.pk,
+            started=ActStatement(None, "  from the box  "),
+            completed=ActStatement(TemporalValue.from_day(date(2026, 2, 3)), "100%"),
+        ),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="endpoint-notes",
+    )
+
+    run = Playthrough.objects.latest("created_at")
+    #: Stripped in __post_init__, so a restatement fingerprints alike.
+    assert run.start_note == "from the box"
+    assert run.completion_note == "100%"
 
 
 @pytest.mark.django_db(transaction=True)

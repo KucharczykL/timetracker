@@ -78,13 +78,48 @@ def endpoints_certainly_reversed(
     return completed.upper_bound < started.lower_bound
 
 
+class ActStatement(NamedTuple):
+    """An act that happened, and what was said about it.
+
+    A NamedTuple, so the idempotency fingerprint encodes it as an array
+    and the TemporalValue inside reaches the encoder that knows it.
+    """
+
+    #: None is "it happened, on a day nobody wrote down".
+    when: TemporalValue | None
+    note: str = ""
+
+
 @dataclass(frozen=True, slots=True)
 class CreatePlaythrough(Command):
-    """State one more run at a game."""
+    """State one more run at a game, and what is known of it.
+
+    One build rather than four dispatches: a creation that commits and
+    a start that then fails would leave a run with no act, and
+    RemovePlaythrough refuses to take the last live ordinary run off a
+    tracked game -- a row a person could not get rid of.
+    """
 
     command_name: ClassVar[CommandName] = CommandName.PLAYTHROUGH_CREATE
     #: A UUID, because Command fingerprints its fields.
     game_id: uuid.UUID
+    #: None is an act that never happened, which is the run TrackGame states.
+    started: ActStatement | None = None
+    completed: ActStatement | None = None
+    note: str = ""
+
+    def __post_init__(self) -> None:
+        for field_name in ("started", "completed"):
+            act = cast(ActStatement | None, getattr(self, field_name))
+            if act is not None:
+                #: One spelling of no day and of a blank note, so a
+                #: restatement fingerprints alike.
+                object.__setattr__(
+                    self,
+                    field_name,
+                    ActStatement(stated_date(act.when), act.note.strip()),
+                )
+        object.__setattr__(self, "note", self.note.strip())
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         tracked = tracked_game(context, self.game_id)
@@ -98,7 +133,35 @@ class CreatePlaythrough(Command):
                     "before adding a playthrough."
                 ),
             )
-        return [playthrough_created(tracked.pk)]
+        if endpoints_certainly_reversed(
+            started=None if self.started is None else self.started.when,
+            completed=None if self.completed is None else self.completed.when,
+        ):
+            raise CommandRejected(
+                f"The run being created at game {self.game_id} would complete "
+                "before it began, and no run ends before it begins.",
+                sentence="This run finished before it started. Check the days.",
+            )
+        #: Minted here, so every event of this build names one run.
+        run_id = uuid.uuid7()
+        events: list[NewEvent] = [
+            playthrough_created(tracked.pk, playthrough_id=run_id)
+        ]
+        if self.note:
+            events.append(playthrough_note_changed(run_id, note=self.note))
+        if self.started is not None:
+            events.append(
+                playthrough_started(
+                    run_id, when=self.started.when, note=self.started.note
+                )
+            )
+        if self.completed is not None:
+            events.append(
+                playthrough_completed(
+                    run_id, when=self.completed.when, note=self.completed.note
+                )
+            )
+        return events
 
 
 def library_playthrough(
