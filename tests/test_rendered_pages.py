@@ -364,7 +364,7 @@ class RenderedPagesTest(TestCase):
             "status-changed from:body",
             "Purchases",
             "Sessions",
-            "Play Events",
+            "Playthroughs",
             "History",
         ]:
             self.assertIn(marker, html)
@@ -438,7 +438,7 @@ class RenderedPagesTest(TestCase):
         self.assertNoEscapedTags(html)
 
     def test_view_game_empty_sections(self):
-        """A game with no sessions/purchases/etc shows the empty messages."""
+        """A game with no sessions or purchases shows the empty messages."""
         lonely = Game.objects.create(
             library=self.user.library, name="Lonely Game", platform=self.platform
         )
@@ -446,9 +446,9 @@ class RenderedPagesTest(TestCase):
         for marker in [
             "No purchases yet.",
             "No sessions yet.",
-            "No play events yet.",
         ]:
             self.assertIn(marker, html)
+        self.assertNotIn("No playthroughs yet.", html)
         self.assertNoEscapedTags(html)
 
     # --- HTMX fragments ------------------------------------------------------

@@ -70,7 +70,6 @@ from games.catalog_form import CatalogGraphForm
 from games.catalog_submit import submitted_game_or_form_error
 from games.external_references import CatalogTarget, external_reference_url_or_none
 from games.filters import (
-    PlayEventFilter,
     PurchaseFilter,
     SessionFilter,
     filter_query_context_for_library,
@@ -83,7 +82,7 @@ from games.models import (
     ExternalReference,
     Game,
     PlayerGameStatus,
-    PlayEvent,
+    Playthrough,
     Purchase,
     Release,
     Session,
@@ -94,6 +93,8 @@ from games.ownership import owned_or_404
 from games.reads.catalog_hierarchy import EditionEntry, game_hierarchy
 from games.reads.external_references import ReferenceMap, held_by, references_for
 from games.reads.playergame_history import StatusEntry, status_history
+from games.reads.playthrough_numbering import numbered_for
+from games.reads.playthrough_runs import live_ordinary_runs, tracked_game
 from games.reference_form import ReferenceSetForm
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
 from games.views.catalog_section import editions_area
@@ -107,7 +108,7 @@ from games.views.playergame_writes import (
     remove_game_for_request,
     track_game_for_request,
 )
-from games.views.playthrough import create_playthrough_tabledata
+from games.views.playthrough_rows import playthrough_tabledata
 from games.views.reference_section import references_area
 from games.views.removal import confirm_and_remove
 from games.views.returns import origin_from, return_url
@@ -351,18 +352,21 @@ def remove_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
         game,
         title="Remove game",
         message=f"Remove {game.name} from your library?",
-        details=_removed_with_game(game),
+        details=_removed_with_game(game, library),
         fallback="games:list_games",
         detail_url=game.get_absolute_url(),
         action=partial(remove_game_for_request, request, game),
     )
 
 
-def _removed_with_game(game: Game) -> Node:
+def _removed_with_game(game: Game, library: UserLibrary) -> Node:
+    tracked = tracked_game(library, game)
+    runs = live_ordinary_runs(library, tracked).count() if tracked else 0
     counts = [
         (game.sessions.alive().count(), "session"),
         (game.purchases.alive().count(), "purchase"),
-        (game.playevents.alive().count(), "play event"),
+        #: Removal stamps the PlayerGame; runs leave too.
+        (runs, "playthrough"),
     ]
     present = [Li()[f"{count} {label}(s)"] for count, label in counts if count]
     return Ul()[*(present or [Li()["No associated data"]])]
@@ -437,8 +441,12 @@ _STAT_SVGS = {
 }
 
 
-def _played_row(game: Game, origin: OriginUrl | None) -> Node:
+def _played_row(game: Game, origin: OriginUrl | None, played: int) -> Node:
     """'Played N times' split button.
+
+    `played` counts runs whose completion is stated.
+
+    The day may be unknown and still count.
 
     #687 took the '+1' action and its element away: a
     click filled in the run a tracked game already holds,
@@ -450,8 +458,6 @@ def _played_row(game: Game, origin: OriginUrl | None) -> Node:
         DropdownLinkItem,
         SplitButtonDropdown,
     )
-
-    played = game.playevents.alive().count()
 
     count_button = ControlButton(
         [("class", "rounded-s-lg")],
@@ -771,6 +777,7 @@ def _game_header(
     origin: OriginUrl | None,
     entries: Sequence[EditionEntry],
     references: Sequence[ExternalReference],
+    played: int,
 ) -> Node:
     playrange_start = metrics["playrange_start"]
     playrange_end = metrics["playrange_end"]
@@ -832,7 +839,7 @@ def _game_header(
             ],
             "👑" if game.tracked_mastered else "",
         ),
-        _played_row(game, origin),
+        _played_row(game, origin, played),
         *_plain_release_rows(entries, presentation),
     ]
     return Div(id_="game-info", class_="mb-10")[
@@ -938,34 +945,34 @@ def _sessions_section(
     )
 
 
-def _playevents_section(
-    game: Game,
-    playevents: QuerySet[PlayEvent],
+def _playthroughs_section(
+    runs: Sequence[Playthrough],
     presentation: DateTimePresentation,
     origin: OriginUrl | None,
 ) -> Node:
-    data = create_playthrough_tabledata(
-        playevents, presentation, exclude_columns=["Game"], origin=origin
+    data = playthrough_tabledata(
+        runs, presentation, exclude_columns=["Game"], origin=origin
     )
     # This embedded mini-table isn't a sortable list view (no ?sort= handling on
-    # the detail page), so render plain headers like the sibling sections do —
-    # drop the sort keys the shared list-view builder now sets (#343).
-    plain_columns = [column._replace(sort_key=None) for column in data["columns"]]
+    # the detail page), and its builder states no sort keys.
     table = StyledTable(
-        columns=plain_columns,
+        columns=data["columns"],
         rows=data["rows"],
         data_table=True,
-        caption="Play events of this game",
+        caption="Playthroughs of this game",
     )
+    #: No link: the list page reads legacy rows
+    #: until #1013, and a run stated after #687 is
+    #: on neither the page nor its count.
     section = _game_section(
-        "Play Events",
-        playevents.count(),
+        "Playthroughs",
+        len(runs),
         table,
-        "No play events yet.",
-        view_all_url=filter_url(PlayEventFilter.where(game=[game.id])),
+        #: Reachable: conversion skipped a tracked game
+        #: whose catalog row was removed.
+        "No playthroughs yet.",
     )
-    #: #1012 replaces this section with the projection.
-    return Div(id_="playevents-container")[section]
+    return Div(id_="playthroughs-container")[section]
 
 
 def _history_section(
@@ -1003,7 +1010,15 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
         SessionQuerySet, Session.objects.for_library(library).filter(game=game)
     )
     purchases = Purchase.objects.for_library(library).filter(games=game)
-    playevents = PlayEvent.objects.for_library(library).filter(game=game)
+    tracked = tracked_game(library, game)
+    #: A run may name another library's PlayerGame.
+    runs = list(
+        numbered_for(library, [tracked.pk] if tracked else []).select_related(
+            "player_game__game"
+        )
+    )
+    #: Counted here, off rows already read.
+    played = sum(1 for run in runs if run.completion_recorded_at is not None)
     hierarchy = game_hierarchy(game, library)
     #: One batch, one query per kind.
     referenced: list[CatalogTarget] = [game]
@@ -1021,13 +1036,14 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
             origin,
             hierarchy,
             held_by(references, game.pk),
+            played,
         ),
         _releases_section(
             hierarchy, presentation, origin, game=game, references=references
         ),
         _purchases_section(game, purchases, presentation, origin),
         _sessions_section(game, sessions, presentation, durations),
-        _playevents_section(game, playevents, presentation, origin),
+        _playthroughs_section(runs, presentation, origin),
         _history_section(game, library, presentation),
     ]
     return render_page(

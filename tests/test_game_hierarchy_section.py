@@ -41,6 +41,17 @@ def editions_table(html: str) -> str:
     return html[start : html.index("</table>", start)]
 
 
+def edition_captions(html: str) -> list[tuple[str, str]]:
+    """The Editions table's captions, id and text."""
+    return [
+        (caption_id, text)
+        for caption_id, text in re.findall(
+            r'<caption[^>]*id="([^"]+)"[^>]*>(.*?)</caption>', html, re.DOTALL
+        )
+        if "Editions of" in text
+    ]
+
+
 def edition_rows(html: str) -> list[str]:
     """One string per body row of that table."""
     body = editions_table(html).split("<tbody", 1)[1]
@@ -169,7 +180,7 @@ def test_game_detail_gives_every_edition_one_table(library, reader):
 
     html = reader(game)
 
-    assert html.count("<caption") == 1
+    assert len(edition_captions(html)) == 1
 
 
 def test_game_detail_names_each_of_two_editions(library, reader):
@@ -246,7 +257,7 @@ def test_game_detail_names_the_editions_table_after_the_game(library, reader):
     Release.objects.create(edition=second)
 
     html = reader(game)
-    ids = re.findall(r'<caption[^>]*id="([^"]+)"', html)
+    ids = [caption_id for caption_id, _ in edition_captions(html)]
 
     assert len(ids) == 1
     assert f'aria-labelledby="{ids[0]}"' in html

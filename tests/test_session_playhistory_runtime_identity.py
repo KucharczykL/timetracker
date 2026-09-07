@@ -9,7 +9,7 @@ from django.test import Client
 from django.urls import NoReverseMatch, Resolver404, resolve, reverse
 
 from games.backfill.playthrough import convert_library
-from games.models import Device, Game, PlayEvent, Session
+from games.models import Device, Game, PlayEvent, Playthrough, Session
 
 pytestmark = pytest.mark.django_db
 
@@ -82,6 +82,8 @@ def runtime_world(db):
     foreign_playevent = PlayEvent.objects.create(
         game=foreign_game, started=date(2026, 8, 20), note="Foreign event"
     )
+    #: #1012 moved the HTML routes onto the run.
+    foreign_run = Playthrough.objects.get(player_game__game=foreign_game)
     return SimpleNamespace(**locals())
 
 
@@ -220,7 +222,7 @@ def test_promoted_api_paths_reject_uuid4_ids(
 @pytest.mark.parametrize(
     ("method", "route_name", "object_name"),
     [
-        ("get", "games:edit_playthrough", "foreign_playevent"),
+        ("get", "games:edit_playthrough", "foreign_run"),
         (
             "post",
             "games:list_sessions_start_session_from_session",

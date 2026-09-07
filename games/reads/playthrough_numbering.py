@@ -1,9 +1,24 @@
 """Playthrough N, derived at read time."""
 
-from django.db.models import F, QuerySet, Window
+import uuid
+from collections.abc import Iterable
+
+from django.db.models import F, OrderBy, QuerySet, Window
 from django.db.models.functions import RowNumber
 
-from games.models import Playthrough, PlaythroughKind
+from games.models import Playthrough, PlaythroughKind, UserLibrary
+
+#: A tracked game's key, as a caller holds it.
+type PlayerGameId = uuid.UUID
+
+#: The window's order, and the screen's.
+#: Another order prints 2 above 1.
+DISPLAY_ORDER: tuple[OrderBy | str, ...] = (
+    F("started_lower").asc(nulls_last=True),
+    F("completed_lower").asc(nulls_last=True),
+    "created_at",
+    "id",
+)
 
 
 class UnnumberedPlaythrough(ValueError):
@@ -28,14 +43,29 @@ def with_display_number(
         display_number=Window(
             RowNumber(),
             partition_by="player_game",
-            order_by=(
-                F("started_lower").asc(nulls_last=True),
-                F("completed_lower").asc(nulls_last=True),
-                "created_at",
-                "id",
-            ),
+            order_by=DISPLAY_ORDER,
         )
     )
+
+
+def numbered_for(
+    library: UserLibrary, player_game_ids: Iterable[PlayerGameId]
+) -> QuerySet[Playthrough]:
+    """Every live ordinary run of these tracked games, numbered.
+
+    Takes games, not a queryset: the partition is whatever
+    the caller selected, so a narrowed one numbers its row 1
+    and nothing marks it. Scoped on the row and its parent
+    alike, so the partition matches `live_ordinary_runs`,
+    which a removal counts across.
+    """
+    return with_display_number(
+        Playthrough.objects.filter(
+            library=library,
+            player_game__library=library,
+            player_game_id__in=list(player_game_ids),
+        )
+    ).order_by(*DISPLAY_ORDER)
 
 
 def is_numbered(playthrough: Playthrough) -> bool:

@@ -5,7 +5,7 @@ from datetime import date
 import pytest
 
 from games.models import Game, Playthrough
-from games.reads.playthrough_endpoints import restatable_days
+from games.reads.playthrough_endpoints import days_to_finish, restatable_days
 from games.writes.playergame import new_correlation_id, track_game
 from timetracker.temporal import TemporalQualifier, TemporalValue
 
@@ -82,3 +82,59 @@ def test_a_value_richer_than_a_day_reads_as_nothing(run, value):
     _state(run, started=value, start_recorded_at=run.created_at)
 
     assert restatable_days(run) is None
+
+
+def _spanning(run: Playthrough, started, completed) -> Playthrough:
+    """State both endpoints and read the row back."""
+    return _state(
+        run,
+        started=started,
+        start_recorded_at=run.created_at,
+        completed=completed,
+        completion_recorded_at=run.created_at,
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_days_to_finish_reads_the_widest_span(run):
+    spanning = _spanning(
+        run,
+        TemporalValue.from_day(date(2026, 1, 1)),
+        TemporalValue.from_month(2026, 3),
+    )
+
+    assert days_to_finish(spanning) == 89
+
+
+@pytest.mark.django_db(transaction=True)
+def test_days_to_finish_reads_one_for_a_run_begun_and_finished_on_a_day(run):
+    day = TemporalValue.from_day(date(2026, 1, 1))
+    spanning = _spanning(run, day, day)
+
+    assert days_to_finish(spanning) == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_days_to_finish_states_nothing_where_a_bound_is_absent(run):
+    """The completion happened; nobody knows the day."""
+    _state(
+        run,
+        started=TemporalValue.from_day(date(2026, 1, 1)),
+        start_recorded_at=run.created_at,
+        completed=None,
+        completion_recorded_at=run.created_at,
+    )
+
+    assert days_to_finish(run) is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_days_to_finish_states_nothing_for_a_completion_before_the_start(run):
+    """A backwards pair is not a length."""
+    spanning = _spanning(
+        run,
+        TemporalValue.from_day(date(2026, 3, 1)),
+        TemporalValue.from_day(date(2026, 1, 1)),
+    )
+
+    assert days_to_finish(spanning) is None

@@ -45,7 +45,7 @@ def e2e_library(e2e_user):
 
 @pytest.fixture(autouse=True)
 def _track_created_games(request):
-    """Give every game a test creates the projection row a read needs.
+    """Give every game a test creates the projection rows a read needs.
 
     games/views/game.py dispatches TrackGame, migration
     0033_playergame_baseline_backfill covers a restored dump, and
@@ -53,16 +53,19 @@ def _track_created_games(request):
     game and leaves no row, so the inner join in ``GameQuerySet.tracked_by()``
     would hide it.
 
+    Both rows, because TrackGame states both: #679 gives every tracked game one
+    run, and #1012 reads those runs on Game detail.
+
     A direct write, not ``backfill_game()``: the backfill needs an actor and a
-    run time, opens its own transaction and appends events. The row is what the
-    join wants, so the row is what this writes. The divergence from production
-    is real and deliberate; tests/test_playergame_write_path.py covers the
-    event path.
+    run time, opens its own transaction and appends events. The rows are what
+    the reads want, so the rows are what this writes. The divergence from
+    production is real and deliberate; tests/test_playergame_write_path.py
+    covers the event path.
 
     Duplicated from tests/conftest.py: the two suites share no conftest, and
     importing across them would make e2e depend on the unit suite's collection.
     """
-    from games.models import Game, PlayerGame
+    from games.models import Game, PlayerGame, Playthrough, PlaythroughKind
     from games.playergame_status import player_status_for
 
     if "untracked_games" in request.keywords:
@@ -73,7 +76,7 @@ def _track_created_games(request):
         #: raw is a loaddata row: the library may not exist yet.
         if raw or not created or instance.library_id is None:
             return
-        PlayerGame.objects.get_or_create(
+        tracked, made = PlayerGame.objects.get_or_create(
             library_id=instance.library_id,
             game=instance,
             defaults={
@@ -82,6 +85,15 @@ def _track_created_games(request):
                 "status": player_status_for(instance.status),
                 "mastered": instance.mastered,
             },
+        )
+        if not made:
+            return
+        Playthrough.objects.create(
+            pk=uuid.uuid7(),
+            library_id=instance.library_id,
+            player_game=tracked,
+            kind=PlaythroughKind.ORDINARY,
+            created_at=timezone.now(),
         )
 
     post_save.connect(track, sender=Game, dispatch_uid="test-track-created-games")
