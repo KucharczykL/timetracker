@@ -43,6 +43,7 @@ def cells_of(owned_library, run, presentation, **options) -> list[str]:
     or a node, so the assertions stringify each.
     """
     tracked = tracked_game(owned_library, run.player_game.game)
+    assert tracked is not None
     runs = list(
         numbered_for(owned_library, [tracked.pk]).select_related("player_game__game")
     )
@@ -110,6 +111,7 @@ def test_the_days_cell_reads_the_span(owned_library, run, presentation):
 
 def test_excluding_the_game_column_drops_its_cell(owned_library, run, presentation):
     tracked = tracked_game(owned_library, run.player_game.game)
+    assert tracked is not None
     runs = list(
         numbered_for(owned_library, [tracked.pk]).select_related("player_game__game")
     )

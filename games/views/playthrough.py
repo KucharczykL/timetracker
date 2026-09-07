@@ -45,10 +45,17 @@ from common.returns import OriginUrl, action_url
 from common.utils import paginate
 from games.filters import filter_query_context_for_library, parse_playthrough_filter
 from games.forms import PlaythroughForm
-from games.models import Game, PlayerGameStatus, PlayEvent, Session
+from games.models import (
+    Game,
+    PlayerGameStatus,
+    PlayEvent,
+    Playthrough,
+    Session,
+    UserLibrary,
+)
 from games.ownership import owned_or_404
 from games.reads.playthrough_endpoints import restatable_days
-from games.reads.playthrough_provenance import run_for_row
+from games.reads.playthrough_provenance import PlaythroughId, runs_for_rows
 from games.sorting import (
     PLAYTHROUGH_DEFAULT_SORT,
     PLAYTHROUGH_SORTS,
@@ -69,11 +76,35 @@ from games.views.playthrough_writes import (
 )
 from games.views.removal import confirm_and_apply
 from games.views.returns import return_url
-from games.writes.answers import CONFLICT_STATUS, CommandFailed
 from games.writes.playergame import new_correlation_id
 from games.writes.playthrough import RunDraft
 
 logger = logging.getLogger("games")
+
+
+def _legacy_actions(run_id: PlaythroughId | None, origin: OriginUrl | None) -> Cell:
+    """No actions for a row that became no run.
+
+    The map is partial: a row whose game the library stopped
+    tracking was never converted. #771 takes the row with its
+    table.
+    """
+    if run_id is None:
+        return ""
+    return ButtonGroup(
+        [
+            {
+                "href": action_url("games:edit_playthrough", run_id, origin=origin),
+                "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
+                "color": "gray",
+            },
+            {
+                "href": action_url("games:remove_playthrough", run_id, origin=origin),
+                "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
+                "color": "red",
+            },
+        ]
+    )
 
 
 def create_playthrough_tabledata(
@@ -83,10 +114,15 @@ def create_playthrough_tabledata(
     request: HttpRequest | None = None,
     sort_terms: Sequence[SortTerm] = (),
     *,
+    library: UserLibrary,
     origin: OriginUrl | None,
 ) -> TableData:
     if isinstance(playevents, BaseManager):
         playevents = playevents.all()
+    rows = list(playevents)
+    #: #1012 moved the routes onto the run, and this page
+    #: still lists rows until #1013. One batch, one query.
+    runs = runs_for_rows(library, [row.pk for row in rows])
     column_list = [
         Column("Game", "name", shrinkable=True),
         Column("Started", "started", priority=3),
@@ -120,26 +156,9 @@ def create_playthrough_tabledata(
             str(playevent.days_to_finish) if playevent.days_to_finish else "-",
             playevent.note,
             presentation.format(playevent.created_at, "date"),
-            ButtonGroup(
-                [
-                    {
-                        "href": action_url(
-                            "games:edit_playthrough", playevent.pk, origin=origin
-                        ),
-                        "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
-                        "color": "gray",
-                    },
-                    {
-                        "href": action_url(
-                            "games:remove_playthrough", playevent.pk, origin=origin
-                        ),
-                        "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
-                        "color": "red",
-                    },
-                ]
-            ),
+            _legacy_actions(runs.get(playevent.pk), origin),
         ]
-        for playevent in playevents
+        for playevent in rows
     ]
     filtered_row_list = [
         [column for idx, column in enumerate(row) if idx not in excluded_column_indexes]
@@ -219,6 +238,7 @@ def list_playthroughs(request: HttpRequest) -> HttpResponse:
         presentation,
         request=request,
         sort_terms=sort.terms,
+        library=library,
         origin=origin,
     )
     content = paginated_table_content(
@@ -348,17 +368,34 @@ RICHER_THAN_A_DAY = (
 )
 
 
-def _no_run_here(
-    request: HttpRequest, playevent: PlayEvent, sentence: str
-) -> HttpResponse:
+def _no_run_here(request: HttpRequest, game: Game, sentence: str) -> HttpResponse:
     """Toast the sentence and leave the page."""
     messages.error(request, sentence)
     return redirect(
         return_url(
             request,
             fallback="games:view_game",
-            fallback_args=[playevent.game.id, playevent.game.url_slug],
+            fallback_args=[game.id, game.url_slug],
         )
+    )
+
+
+def _editable_runs(library: UserLibrary) -> QuerySet[Playthrough]:
+    """This library's live runs, their game read with them.
+
+    Scoped on the row and on its parent alike, as
+    `live_ordinary_runs` is: a run naming another library's
+    tracked game is the drift `audit_library_ownership`
+    reports, and answering it here would render that
+    library's game name and redirect into their page.
+
+    Live only, which is what the legacy routes answered for a
+    removed row.
+    """
+    return Playthrough.objects.select_related("player_game__game").filter(
+        library=library,
+        player_game__library=library,
+        removed_at__isnull=True,
     )
 
 
@@ -385,33 +422,25 @@ def _record_completed(
 @login_required
 def edit_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
-    playevent = owned_or_404(
-        PlayEvent.objects.for_library(library), library, id=playthrough_id
-    )
-    converted = run_for_row(library, playevent.pk)
-    run = converted.run
-    if run is None:
-        #: #684 converted rows of tracked games only.
-        #: A row whose game the library stopped tracking
-        #: has no run. #771 takes row and branch together.
-        return _no_run_here(request, playevent, converted.sentence)
-    #: Seeded from the run, never from the legacy row:
+    run = owned_or_404(_editable_runs(library), library, id=playthrough_id)
+    game = run.player_game.game
+    #: Seeded from the run, never from a legacy row:
     #: nothing writes that row any more, so a second edit
     #: would restate its frozen days over the first one.
     days = restatable_days(run)
     if days is None:
-        return _no_run_here(request, playevent, RICHER_THAN_A_DAY)
+        return _no_run_here(request, game, RICHER_THAN_A_DAY)
     form = PlaythroughForm(
         request.POST or None,
         initial={
-            "game": playevent.game,
+            "game": game,
             "started": days.started,
             "ended": days.ended,
             "note": run.note,
         },
         library=library,
         presentation=date_time_presentation_for_request(request),
-        locked_game=playevent.game,
+        locked_game=game,
     )
     if form.is_valid():
         correlation_id = new_correlation_id()
@@ -420,12 +449,12 @@ def edit_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse
         ):
             if form.cleaned_data.get("mark_as_finished"):
                 #: Discarded on purpose, as in add_playthrough.
-                _record_completed(request, playevent.game, correlation_id)
+                _record_completed(request, game, correlation_id)
             return redirect(
                 return_url(
                     request,
                     fallback="games:view_game",
-                    fallback_args=[playevent.game.id, playevent.game.url_slug],
+                    fallback_args=[game.id, game.url_slug],
                 )
             )
 
@@ -443,24 +472,18 @@ def edit_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse
 @login_required
 def remove_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
-    playevent = owned_or_404(
-        PlayEvent.objects.for_library(library), library, id=playthrough_id
-    )
+    run = owned_or_404(_editable_runs(library), library, id=playthrough_id)
+    game = run.player_game.game
 
     def act() -> None:
-        converted = run_for_row(library, playevent.pk)
-        if converted.run is None:
-            raise CommandFailed(converted.sentence, CONFLICT_STATUS)
-        remove_run_for_request(
-            request, converted.run, correlation_id=new_correlation_id()
-        )
+        remove_run_for_request(request, run, correlation_id=new_correlation_id())
 
     return confirm_and_apply(
         request,
         action=act,
         title="Remove playthrough",
-        message=f"Remove this playthrough of {playevent.game}?",
+        message=f"Remove this playthrough of {game}?",
         confirm_label="Remove",
         fallback="games:view_game",
-        fallback_args=[playevent.game.id, playevent.game.url_slug],
+        fallback_args=[game.id, game.url_slug],
     )

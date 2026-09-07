@@ -132,7 +132,7 @@ def test_removal_confirms_first_with_owning_game_fallback(
     convert_library(owned_library)
     run = run_for_row(owned_library, instance.pk).run
     assert run is not None
-    url = reverse("games:remove_playthrough", args=[instance.pk])
+    url = reverse("games:remove_playthrough", args=[run.pk])
     assert logged_in.get(url).status_code == 200
 
     response = logged_in.post(url)

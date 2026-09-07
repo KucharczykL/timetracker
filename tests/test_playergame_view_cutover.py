@@ -16,6 +16,7 @@ from games.models import (
     Purchase,
     Session,
 )
+from games.reads.playthrough_provenance import run_for_row
 from games.writes.playergame import new_correlation_id, record_facts, track_game
 
 pytestmark = pytest.mark.untracked_games
@@ -304,9 +305,11 @@ def test_editing_a_play_event_records_completed_too(
     play_event = PlayEvent.objects.create(game=tracked_game)
     #: The edit page states facts about it.
     convert_library(owned_library)
+    run = run_for_row(owned_library, play_event.pk).run
+    assert run is not None
 
     logged_in.post(
-        reverse("games:edit_playthrough", args=[play_event.id]),
+        reverse("games:edit_playthrough", args=[run.pk]),
         {
             "game": str(tracked_game.id),
             "started": "",

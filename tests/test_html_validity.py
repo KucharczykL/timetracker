@@ -18,7 +18,15 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from games.models import Device, Game, Platform, PlayEvent, Purchase, Session
+from games.models import (
+    Device,
+    Game,
+    Platform,
+    PlayEvent,
+    Playthrough,
+    Purchase,
+    Session,
+)
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 
@@ -148,6 +156,9 @@ class HtmlValidityTest(TestCase):
             started=date(2022, 9, 1),
             ended=date(2022, 9, 26),
         )
+        #: #1012 moved the route onto the run. Tracking the
+        #: game states one, so the page has a key to reverse.
+        self.playthrough = Playthrough.objects.get(player_game__game=self.long_game)
 
     def _urls(self) -> list[str]:
         urls = [
@@ -163,7 +174,7 @@ class HtmlValidityTest(TestCase):
             reverse("games:remove_game", args=[self.long_game.id]),
             reverse("games:remove_session", args=[self.session.id]),
             reverse("games:remove_purchase", args=[self.bundle.id]),
-            reverse("games:remove_playthrough", args=[self.playevent.id]),
+            reverse("games:remove_playthrough", args=[self.playthrough.id]),
             reverse("games:remove_platform", args=[self.platform.id]),
             reverse("games:remove_device", args=[self.device.id]),
             reverse("games:add_game"),

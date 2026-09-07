@@ -15,9 +15,11 @@ from games.models import (
     Game,
     Platform,
     PlayEvent,
+    Playthrough,
     Purchase,
     Session,
 )
+from games.reads.playthrough_provenance import run_for_row
 from games.views.general import model_counts
 
 pytestmark = pytest.mark.django_db
@@ -165,6 +167,12 @@ def world(client, django_user_model):
     #: needs the row converted into one.
     convert_library(owner_library)
     convert_library(foreign_library)
+    #: #1012 moved the routes onto the run, so the
+    #: isolation cases must name one. A legacy key now
+    #: matches nothing at all, which would answer 404 for
+    #: the wrong reason and test nothing.
+    own_run = run_for_row(owner_library, own_playevent.pk).run
+    foreign_run = run_for_row(foreign_library, foreign_playevent.pk).run
     return SimpleNamespace(**locals())
 
 
@@ -223,8 +231,8 @@ def _object_url(url_name, obj):
         ("games:remove_platform", "foreign_platform"),
         ("games:edit_platform", "shared_platform"),
         ("games:remove_platform", "shared_platform"),
-        ("games:edit_playthrough", "foreign_playevent"),
-        ("games:remove_playthrough", "foreign_playevent"),
+        ("games:edit_playthrough", "foreign_run"),
+        ("games:remove_playthrough", "foreign_run"),
     ],
 )
 def test_foreign_detail_edit_and_delete_reads_return_404(world, url_name, object_name):
@@ -251,8 +259,8 @@ def test_foreign_detail_edit_and_delete_reads_return_404(world, url_name, object
         ("games:remove_device", "own_device"),
         ("games:edit_platform", "own_platform"),
         ("games:remove_platform", "own_platform"),
-        ("games:edit_playthrough", "own_playevent"),
-        ("games:remove_playthrough", "own_playevent"),
+        ("games:edit_playthrough", "own_run"),
+        ("games:remove_playthrough", "own_run"),
     ],
 )
 def test_owned_detail_edit_and_remove_reads_work(world, url_name, object_name):
@@ -269,7 +277,7 @@ def test_owned_detail_edit_and_remove_reads_work(world, url_name, object_name):
         ("games:remove_purchase", "foreign_purchase", Purchase),
         ("games:remove_device", "foreign_device", Device),
         ("games:remove_platform", "foreign_platform", Platform),
-        ("games:remove_playthrough", "foreign_playevent", PlayEvent),
+        ("games:remove_playthrough", "foreign_run", Playthrough),
     ],
 )
 def test_foreign_removal_posts_return_404_without_mutation(

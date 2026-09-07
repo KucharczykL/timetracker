@@ -5,6 +5,7 @@ from datetime import date
 import pytest
 from django.contrib.messages import get_messages
 from django.urls import reverse
+from django.utils import timezone
 
 from games.backfill.playthrough import convert_library
 from games.models import Game, LibraryEvent, PlayEvent, Playthrough
@@ -74,15 +75,15 @@ def test_marking_finished_states_the_status_under_one_correlation_id(
 def test_editing_a_converted_row_states_the_difference(client, user, game):
     row = PlayEvent.objects.create(game=game, started=None, ended=None, note="")
     convert_library(user.library)
+    run = run_for_row(user.library, row.pk).run
+    assert run is not None
     client.force_login(user)
 
     client.post(
-        reverse("games:edit_playthrough", args=[row.pk]),
+        reverse("games:edit_playthrough", args=[run.pk]),
         {"game": str(game.pk), "started": "2026-01-02", "ended": "", "note": "read"},
     )
 
-    run = run_for_row(user.library, row.pk).run
-    assert run is not None
     run.refresh_from_db()
     assert run.note == "read"
     row.refresh_from_db()
@@ -106,10 +107,10 @@ def test_a_second_edit_does_not_revert_the_first(client, user, game):
     client.force_login(user)
 
     client.post(
-        reverse("games:edit_playthrough", args=[row.pk]),
+        reverse("games:edit_playthrough", args=[run.pk]),
         {"game": str(game.pk), "started": "2026-03-04", "ended": "", "note": ""},
     )
-    response = client.get(reverse("games:edit_playthrough", args=[row.pk]))
+    response = client.get(reverse("games:edit_playthrough", args=[run.pk]))
 
     assert response.status_code == 200
     assert b"2026-03-04" in response.content
@@ -128,7 +129,7 @@ def test_a_run_stating_more_than_a_day_leaves_the_edit_page(client, user, game):
     )
     client.force_login(user)
 
-    response = client.get(reverse("games:edit_playthrough", args=[row.pk]))
+    response = client.get(reverse("games:edit_playthrough", args=[run.pk]))
 
     assert response.status_code == 302
     assert any(
@@ -152,7 +153,7 @@ def test_removing_the_only_run_is_refused_on_the_confirmation(client, user, game
     )
     client.force_login(user)
 
-    response = client.post(reverse("games:remove_playthrough", args=[row.pk]))
+    response = client.post(reverse("games:remove_playthrough", args=[converted.pk]))
 
     assert response.status_code == 409
     assert b"only playthrough of that game" in response.content
@@ -169,7 +170,7 @@ def test_removing_one_of_two_runs_stamps_the_projection_only(client, user, game)
     assert run is not None
     client.force_login(user)
 
-    response = client.post(reverse("games:remove_playthrough", args=[second.pk]))
+    response = client.post(reverse("games:remove_playthrough", args=[run.pk]))
 
     assert response.status_code == 302
     run.refresh_from_db()
@@ -182,12 +183,54 @@ def test_removing_one_of_two_runs_stamps_the_projection_only(client, user, game)
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_row_with_no_run_is_refused_on_the_edit_page(client, user, game):
+def test_a_legacy_row_id_reaches_no_page(client, user, game):
+    """#1012 moved the routes onto the run.
+
+    Both keys are UUIDs in one path position, so no route can
+    tell them apart. The run is the key that survives, and a
+    bookmark naming a row answers 404.
+    """
     row = PlayEvent.objects.create(game=game, started=None, ended=None, note="")
+    convert_library(user.library)
     client.force_login(user)
 
     response = client.get(reverse("games:edit_playthrough", args=[row.pk]))
 
-    assert response.status_code == 302
-    sentences = [str(message) for message in get_messages(response.wsgi_request)]
-    assert any("was never converted" in sentence for sentence in sentences)
+    assert response.status_code == 404
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_removed_run_reaches_no_page(client, user, game):
+    run = Playthrough.objects.get(player_game__game=game)
+    Playthrough.objects.filter(pk=run.pk).update(removed_at=timezone.now())
+    client.force_login(user)
+
+    assert (
+        client.get(reverse("games:edit_playthrough", args=[run.pk])).status_code == 404
+    )
+    assert (
+        client.get(reverse("games:remove_playthrough", args=[run.pk])).status_code
+        == 404
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_run_naming_another_librarys_tracked_game_reaches_no_page(
+    client, user, game, django_user_model
+):
+    """Drift must not render another library's game name.
+
+    The row's own library is one scope and its parent's is
+    another. Answering on either alone would put a stranger's
+    game in the heading and redirect into their detail page.
+    """
+    stranger = django_user_model.objects.create_user(
+        username="drift-stranger", password="p"
+    )
+    run = Playthrough.objects.get(player_game__game=game)
+    Playthrough.objects.filter(pk=run.pk).update(library=stranger.library)
+    client.force_login(stranger)
+
+    response = client.get(reverse("games:edit_playthrough", args=[run.pk]))
+
+    assert response.status_code == 404
