@@ -105,8 +105,9 @@ wave that assigns Sessions is the wave that needs one.
 6. #909 — the shared library-scoped reference resolver
 7. #684 — convert legacy `PlayEvent` rows and backfill the missing defaults
 8. #687 — switch lifecycle writes to commands
-9. #1012 — read cutover: Game detail and the list page
-10. #1013 — read cutover: filters, sorts, quick facets, and saved presets
+9. #1012 — read cutover: Game detail
+10. #1013 — read cutover: the list page, its filters, sorts, quick facets, and
+    saved presets
 11. #1014 — read cutover: statistics and the stat links
 12. #1015 — read cutover: the API router and the row element
 13. #683 — the companion status change beside a lifecycle action
@@ -248,17 +249,26 @@ saved presets included.
 
 Split by surface, following #946, #947, #951, and #953:
 
-- #1012 — the Game detail Playthrough section and the list page;
-- #1013 — `PlayEventFilter` and its relations, `playthrough_count`, the sort
-  keys, the quick facets, and the saved presets that name them. #687 renamed
-  every one of those identifiers and rewrote the stored presets; #1013 moves
-  what they read onto the projection;
+- #1012 — the Game detail Playthrough section;
+- #1013 — the paginated list page, `PlayEventFilter` and its relations,
+  `playthrough_count`, the sort keys, the quick facets, and the saved presets
+  that name them. #687 renamed every one of those identifiers and rewrote the
+  stored presets; #1013 moves what they read onto the projection;
 - #1014 — every read of `games__playevents__ended` in
   `games/views/stats_data.py` and `games/views/stats_links.py`, moved onto the
   generated bound columns, with the parity test each stat link already has;
 - #1015 — the GET bodies of the `/api/playthrough` router. #687 moved the
   router prefix and took the `play-event-row` custom element away, so what is
   left is the two handlers that still read the legacy row.
+
+The list page moved from #1012 to #1013 while #1012 was planned. This document
+gave #1012 the page and #1013 everything that orders and narrows it, and the two
+halves block each other: `list_playthroughs` sorts on every request and filters
+whenever `?filter=` is set, so a page switched to the projection under legacy
+sort keys answers a 500, and a filter switched to the projection under a legacy
+queryset narrows one model by another's fields. Game detail carries no sort, no
+filter and no quick bar, so it is the half that moves alone. Both issues carry
+the verdict.
 
 ### #683 — the companion status change
 
