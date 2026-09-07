@@ -1,6 +1,6 @@
 """#687: the screens state runs, not rows."""
 
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 from django.contrib.messages import get_messages
@@ -8,7 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from games.backfill.playthrough import convert_library
-from games.models import Game, LibraryEvent, PlayEvent, Playthrough
+from games.models import Game, LibraryEvent, PlayEvent, Playthrough, Session
 from games.reads.playthrough_provenance import run_for_row
 from games.writes.playergame import new_correlation_id
 from games.writes.playthrough import remove_run
@@ -234,3 +234,55 @@ def test_a_run_naming_another_librarys_tracked_game_reaches_no_page(
     response = client.get(reverse("games:edit_playthrough", args=[run.pk]))
 
     assert response.status_code == 404
+
+
+@pytest.mark.django_db
+def test_the_prefill_seeds_from_the_greatest_stated_completion(
+    client, user, owned_library, game
+):
+    """The day after the last run finished.
+
+    Read off the projection: nothing writes the legacy row
+    any more, so seeding from it would offer a day the person
+    already corrected.
+    """
+    Session.objects.create(
+        game=game,
+        timestamp_start=datetime(2026, 5, 1, 10, tzinfo=UTC),
+        timestamp_end=datetime(2026, 5, 1, 12, tzinfo=UTC),
+    )
+    run = Playthrough.objects.get(player_game__game=game)
+    Playthrough.objects.filter(pk=run.pk).update(
+        completion_recorded_at=timezone.now(),
+        completed=TemporalValue.from_day(date(2026, 1, 10)),
+    )
+    client.force_login(user)
+
+    body = client.get(
+        reverse("games:add_playthrough_for_game", args=[game.pk])
+    ).content.decode()
+
+    assert "2026-01-11" in body
+
+
+@pytest.mark.django_db
+def test_the_prefill_seeds_nothing_from_a_completion_with_no_day(client, user, game):
+    Session.objects.create(
+        game=game,
+        timestamp_start=datetime(2026, 5, 1, 10, tzinfo=UTC),
+        timestamp_end=datetime(2026, 5, 1, 12, tzinfo=UTC),
+    )
+    run = Playthrough.objects.get(player_game__game=game)
+    Playthrough.objects.filter(pk=run.pk).update(
+        completion_recorded_at=timezone.now(), completed=None
+    )
+    client.force_login(user)
+
+    body = client.get(
+        reverse("games:add_playthrough_for_game", args=[game.pk])
+    ).content.decode()
+
+    #: No completion states a day, so the seed falls back to
+    #: the earliest session, as it does for a game with no
+    #: finished run at all.
+    assert "2026-05-01" in body

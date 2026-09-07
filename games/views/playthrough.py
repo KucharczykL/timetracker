@@ -8,7 +8,7 @@ from uuid import UUID
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
-from django.db.models import QuerySet
+from django.db.models import Max, QuerySet
 from django.db.models.manager import BaseManager
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect
@@ -56,6 +56,7 @@ from games.models import (
 from games.ownership import owned_or_404
 from games.reads.playthrough_endpoints import restatable_days
 from games.reads.playthrough_provenance import PlaythroughId, runs_for_rows
+from games.reads.playthrough_runs import live_ordinary_runs, tracked_game
 from games.sorting import (
     PLAYTHROUGH_DEFAULT_SORT,
     PLAYTHROUGH_SORTS,
@@ -281,25 +282,29 @@ def add_playthrough(request: HttpRequest, game_id: UUID | None = None) -> HttpRe
             latest_session = game.sessions.alive().latest("timestamp_start")
             latest_session_ts = latest_session.timestamp_start
 
-            # Now, determine the start date for the new playevent.
-            # This will be either the day after the last playevent ended, or the earliest session.
-            try:
-                latest_playevent = game.playevents.alive().latest("ended")
-            except PlayEvent.DoesNotExist:
-                latest_playevent = None
+            #: The greatest day a run of this game states it
+            #: finished on. A completion whose day nobody
+            #: knows states none, so it seeds nothing and the
+            #: earliest session takes over, as it does for a
+            #: game with no finished run at all.
+            tracked = tracked_game(library, game)
+            last_finish = (
+                live_ordinary_runs(library, tracked).aggregate(
+                    latest=Max("completed_upper")
+                )["latest"]
+                if tracked is not None
+                else None
+            )
 
-            if latest_playevent is not None and latest_playevent.ended is not None:
-                # Start the day after the last playevent ended.
-                new_playevent_form_start_date = latest_playevent.ended + timedelta(
-                    days=1
-                )
-                initial["started"] = new_playevent_form_start_date
+            if last_finish is not None:
+                new_playthrough_start_date = last_finish + timedelta(days=1)
+                initial["started"] = new_playthrough_start_date
                 playtime_calc_start_ts = datetime.combine(
-                    new_playevent_form_start_date, datetime.min.time()
+                    new_playthrough_start_date, datetime.min.time()
                 )
             else:
-                # No previous playevent (or none with an end date), so the new
-                # playevent starts from the earliest session.
+                #: No finished run, so the new one starts from
+                #: the earliest session.
                 earliest_session_ts = (
                     game.sessions.alive().earliest("timestamp_start").timestamp_start
                 )
