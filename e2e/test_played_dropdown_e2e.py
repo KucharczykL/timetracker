@@ -6,11 +6,12 @@ When the played-row control was migrated from Alpine to a custom element
 consistent pointer cursor were lost: the interactive ``<a>``/``<button>``
 shrank to its text and the ``<li>`` rows stopped carrying ``hover:bg-*``.
 The visible result was: no hover highlight, a "hiccuping" hover between the
-two items, a missing hand cursor on part of a row, and "+1" failing to fire
-when the user clicked the row's padding rather than the text itself.
+two items, a missing hand cursor on part of a row, and a click landing on
+the row's padding rather than the text doing nothing.
 
 These tests assert the user-perceived behaviour at every horizontal point of
-a menu row, regardless of which element ends up carrying the styling.
+a menu row, regardless of which element ends up carrying the styling. #687
+took the "+1" action away, so they read the one item the menu still holds.
 """
 
 import pytest
@@ -42,24 +43,26 @@ def game(e2e_library) -> Game:
 
 def open_played_menu(page: Page, live_server, game: Game) -> None:
     page.goto(f"{live_server.url}{game.get_absolute_url()}")
-    page.locator("play-event-row [data-toggle]").click()
-    expect(page.locator("play-event-row [data-menu]")).to_be_visible()
+    page.locator(f'[aria-controls="played-{game.id}"]').click()
+    expect(page.locator(f'[id="played-{game.id}"]')).to_be_visible()
 
 
-def add_play_row(page: Page):
-    """The '<li>' wrapping the 'Played times +1' control."""
-    return page.locator("play-event-row [data-menu] li").filter(has_text="+1")
+def add_playthrough_row(page: Page, game: Game):
+    """The '<li>' wrapping the 'Add playthrough...' link."""
+    return page.locator(f'[id="played-{game.id}"] li').filter(
+        has_text="Add playthrough"
+    )
 
 
 def test_played_menu_row_highlights_on_hover(authenticated_page, live_server, game):
-    """Hovering the '+1' row paints a (non-transparent) background.
+    """Hovering the menu row paints a (non-transparent) background.
 
     Reads the background of whichever element sits under the row's centre, so
     it does not care whether the highlight lives on the <li> or the control.
     """
     page = authenticated_page
     open_played_menu(page, live_server, game)
-    row = add_play_row(page)
+    row = add_playthrough_row(page, game)
 
     def center_bg() -> str:
         return row.evaluate(
@@ -85,14 +88,14 @@ def test_played_menu_row_highlights_on_hover(authenticated_page, live_server, ga
 def test_played_menu_row_has_pointer_cursor_across_full_row(
     authenticated_page, live_server, game
 ):
-    """Every horizontal point of the '+1' row shows a hand cursor.
+    """Every horizontal point of the menu row shows a hand cursor.
 
     The former dead zones (row padding resolving to a handler-less <li> with
     cursor:auto) are what made the cursor flicker and disappear.
     """
     page = authenticated_page
     open_played_menu(page, live_server, game)
-    row = add_play_row(page)
+    row = add_playthrough_row(page, game)
 
     cursors = row.evaluate(
         """(el, fracs) => {
@@ -111,16 +114,16 @@ def test_played_menu_row_has_pointer_cursor_across_full_row(
     )
 
 
-def test_played_plus_one_target_fills_the_row(authenticated_page, live_server, game):
-    """The '+1' click target spans the whole row.
+def test_played_menu_link_target_fills_the_row(authenticated_page, live_server, game):
+    """The menu item's click target spans the whole row.
 
-    Regression: the click handler moved onto an inner <button> that no longer
+    Regression: the click target moved onto an inner control that no longer
     fills the row (16px dead zone left, 30px right), so clicks on the row's
-    padding land on the <li>, which has no handler, and are silently swallowed.
+    padding land on the <li>, which does nothing, and are silently swallowed.
     """
     page = authenticated_page
     open_played_menu(page, live_server, game)
-    row = add_play_row(page)
+    row = add_playthrough_row(page, game)
 
     misses = row.evaluate(
         """(el, fracs) => {
@@ -128,57 +131,9 @@ def test_played_plus_one_target_fills_the_row(authenticated_page, live_server, g
             const y = r.top + r.height / 2;
             return fracs.filter(f => {
                 const node = document.elementFromPoint(r.left + r.width * f, y);
-                return !(node && (node.hasAttribute('data-add-play')
-                                  || node.closest('[data-add-play]')));
+                return !(node && node.closest('a[role="menuitem"]'));
             });
         }""",
         ROW_FRACTIONS,
     )
-    assert misses == [], f"row fractions with no '+1' click target: {misses}"
-
-
-def test_played_plus_one_fires_when_clicking_row_edge(
-    authenticated_page, live_server, game
-):
-    """Clicking the row's right edge (its padding) still records a play."""
-    page = authenticated_page
-    count = page.locator("play-event-row [data-count]")
-
-    open_played_menu(page, live_server, game)
-    expect(count).to_have_text("0")
-
-    row = add_play_row(page)
-    box = row.bounding_box()
-    # Click well inside the right padding — a dead zone before the fix.
-    page.mouse.click(box["x"] + box["width"] - 4, box["y"] + box["height"] / 2)
-
-    expect(count).to_have_text("1")
-    # That bump is optimistic — play-event-row.ts increments the display before
-    # it POSTs — so it says nothing about the server. The Play Events section is
-    # server-rendered and swaps in only after the POST commits, so wait for it
-    # before reading the database.
-    expect(page.locator("#playevents-container table tbody tr")).to_have_count(1)
-    assert game.playevents.count() == 1
-
-
-def test_played_plus_one_refreshes_play_events_table(
-    authenticated_page, live_server, game
-):
-    """Recording a play via '+1' updates the Play Events section in place.
-
-    Regression: the play-event-row dispatched no event after creating the
-    play, so the Play Events table and its count badge stayed stale until a
-    full reload. It now dispatches 'play-added' and #playevents-container
-    re-fetches itself (mirroring the history section's status-changed refresh).
-    """
-    page = authenticated_page
-    section = page.locator("#playevents-container")
-
-    open_played_menu(page, live_server, game)
-    expect(section).to_contain_text("No play events yet.")
-
-    page.locator("play-event-row [data-add-play]").click()
-
-    # The section swaps itself in via htmx — no manual reload.
-    expect(section).not_to_contain_text("No play events yet.")
-    expect(section.locator("table tbody tr")).to_have_count(1)
+    assert misses == [], f"row fractions with no click target: {misses}"

@@ -362,7 +362,6 @@ class RenderedPagesTest(TestCase):
             "Released",
             'id="history-container"',
             "status-changed from:body",
-            "<play-event-row",  # the played-row custom element
             "Purchases",
             "Sessions",
             "Play Events",
@@ -396,16 +395,6 @@ class RenderedPagesTest(TestCase):
 
         self.assertIn('<span class="text-heading">Unknown</span>', html)
 
-    def test_view_game_uses_play_event_row_element(self):
-        game = Game.objects.create(
-            library=self.user.library, name="Played Game", platform=self.platform
-        )
-        html = self.client.get(game.get_absolute_url()).content.decode()
-        self.assertIn("<play-event-row", html)
-        self.assertIn('game-id="', html)
-        self.assertNotIn("@@", html)  # token-replace hack gone
-        self.assertNotIn("createPlayEvent", html)  # the old Alpine fn is gone
-
     def test_played_row_count_link_is_a_single_anchor(self):
         """The 'N times' count control is one styled <a> (ControlButton href
         mode), not a <button> nested inside an <a> (invalid HTML)."""
@@ -413,28 +402,22 @@ class RenderedPagesTest(TestCase):
             library=self.user.library, name="Anchor Game", platform=self.platform
         )
         html = self.client.get(game.get_absolute_url()).content.decode()
-        row = html[html.index("<play-event-row") :]
-        count_at = row.index("data-count")
-        control = row[row.rindex("<a", 0, count_at) : row.index("</a>", count_at)]
+        count_at = html.index("data-count")
+        control = html[html.rindex("<a", 0, count_at) : html.index("</a>", count_at)]
         self.assertNotIn("<button", control)
         # the anchor itself carries the outline-toggle look and its shape class
         self.assertIn("border-default-medium", control)
         self.assertIn("rounded-s-lg", control)
 
-    def test_played_row_label_is_one_flex_item_and_count_is_a_prop(self):
+    def test_played_row_label_is_one_flex_item(self):
         """'N times' is one prose phrase, so it must be a single flex item:
         the count anchor is inline-flex, and flex layout drops whitespace-only
-        text between items — sibling span + " times" rendered as "0times".
-        The initial count also crosses to play-event-row.ts as the count=""
-        prop; the data-count span is a write-only display slot."""
+        text between items — sibling span + " times" rendered as "0times"."""
         game = Game.objects.create(
             library=self.user.library, name="Prose Game", platform=self.platform
         )
         html = self.client.get(game.get_absolute_url()).content.decode()
-        row = html[html.index("<play-event-row") :]
-        host_tag = row[: row.index(">") + 1]
-        self.assertIn('count="0"', host_tag)
-        self.assertIn('<span><span data-count="">0</span> times</span>', row)
+        self.assertIn('<span><span data-count="">0</span> times</span>', html)
 
     def test_view_game_null_platform_and_null_device_fallbacks(self):
         """The two view-level fallback expressions on the game detail page:

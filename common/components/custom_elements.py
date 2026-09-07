@@ -162,17 +162,6 @@ def render_props_module() -> str:
 # ── Element prop schemas (registered at import time) ─────────────────────────
 
 
-class PlayEventRowProps(TypedDict):
-    game_id: str
-    count: int  # initial play count; the client owns it after mount, and the
-    # [data-count] span is a write-only display slot (never parsed back)
-    csrf: str
-    api_create_url: str
-
-
-register_element("play-event-row", "PlayEventRow", PlayEventRowProps)
-
-
 class DateTimeFieldProps(TypedDict):
     field_name: str  # the Django field name, e.g. "timestamp_start" — how a
     # copy control on one datetime field addresses another one on the same page
@@ -206,7 +195,6 @@ register_element("browser-time-zone", "BrowserTimeZone", BrowserTimeZoneProps)
 
 _BrowserTimeZone = custom_element_builder("browser-time-zone")
 _DateTimeField = custom_element_builder("date-time-field")
-_PlayEventRow = custom_element_builder("play-event-row")
 _TimeZoneRow = custom_element_builder("time-zone-row")
 
 
