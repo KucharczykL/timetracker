@@ -38,6 +38,30 @@ def stated_completion(run: Playthrough) -> StatedEndpoint | None:
     )
 
 
+def days_to_finish(run: Playthrough) -> int | None:
+    """How long the run took, or nothing.
+
+    The widest span the two endpoints allow: the completion's
+    last possible day less the start's first. A run that
+    states a month reports the days that month could hold
+    rather than nothing.
+
+    Equal bounds read 1, as the legacy column did for a run
+    begun and finished on one day. Nothing where either bound
+    is absent, which covers an endpoint with no act and an
+    endpoint whose day nobody knows alike, and nothing where
+    the completion precedes the start.
+    """
+    started = run.started_lower
+    completed = run.completed_upper
+    if started is None or completed is None:
+        return None
+    if completed == started:
+        return 1
+    span = (completed - started).days
+    return span if span > 0 else None
+
+
 class StatedDays(NamedTuple):
     """A run's two endpoints, as plain days."""
 
