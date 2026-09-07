@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 from django.urls import reverse
+from django.utils import timezone
 
 import common.layout
 from common import date_time_presentation as presentation_module
@@ -14,10 +15,12 @@ from games.models import (
     Game,
     Platform,
     PlayEvent,
+    Playthrough,
     Purchase,
     Session,
 )
 from timetracker.settings_commands import change_user_setting
+from timetracker.temporal import TemporalValue
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -110,6 +113,13 @@ def test_non_default_presentation_reaches_every_server_display_path(
         game=game,
         started=date(2022, 9, 24),
         ended=date(2022, 9, 25),
+    )
+    #: #1012 renders the run rather than the legacy row on
+    #: Game detail, so the day the section states lives on
+    #: the projection. The list page still reads the row.
+    Playthrough.objects.filter(player_game__game=game).update(
+        start_recorded_at=timezone.now(),
+        started=TemporalValue.from_day(date(2022, 9, 24)),
     )
     created_values = (
         (Game, game.pk, datetime(2022, 10, 1, tzinfo=UTC)),

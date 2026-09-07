@@ -187,8 +187,13 @@ docs/           — Additional documentation
   library. Blank `name` reads as `Playthrough N`, derived at read time by
   `games/reads/playthrough_numbering.py` and stored nowhere, which is why taking
   name away refused on row no number counted across — only taking one away, so
-  save that repeats blank a row was born with still states its note. No screen
-  calls any of it yet: #1011 delivered commands alone, #1012 renders first screen
+  save that repeats blank a row was born with still states its note. #1012
+  renders the first screen: Game detail lists every live ordinary run, numbered
+  by `games/reads/playthrough_numbering.py`, and its edit and remove routes name
+  the run rather than the legacy row. `Played N times` beside it counts only the
+  runs whose completion is stated, which is the number the legacy row meant; the
+  section badge counts every row it renders. The list page reads legacy rows
+  until #1013, and translates its own action ids through `runs_for_rows`
 
 **Nothing user removes is destroyed** (#944). Nine removable models — Game,
 Edition, Release, Platform, Device, Session, PlayEvent, Purchase, FilterPreset —
