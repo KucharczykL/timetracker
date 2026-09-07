@@ -319,9 +319,12 @@ Restated by hand, because `ModelForm` derived them: `started` and `ended` as
 `DateField(required=False)`, and `note` as `CharField(max_length=255,
 required=False)`. `mark_as_finished` and the `DatePickerWidget` assignment are
 unchanged. The edit view stops passing `instance=` and passes `initial=` built
-from the row instead. On an edit the game control is disabled and a posted
-change of game is answered as a field error: a run belongs to its tracked game,
-and no command moves one.
+from the row instead. On an edit a posted change of game is answered as a field
+error on `game`, stated by the form's own `clean_game`: a run belongs to its
+tracked game, and no command moves one. The control itself stays live, because
+disabling a composite widget means disabling the search input inside it, and a
+field error says the same thing with no widget surgery and no way for a
+scripting-off submit to slip past.
 
 ## The rename
 
