@@ -98,41 +98,48 @@ and stays. #765 to #767 own it.
 
 ## Days to finish
 
-`games/reads/playthrough_endpoints.days_to_finish` answers the days between
-`started_lower` and `completed_upper`, and states two rules of its own: equal
-bounds read 1, and so does a one-day span, because the legacy column read that
-way and the number on the screen does not change here. A negative span and a
-missing bound read no answer.
+`games/reads/playthrough_endpoints.days_to_finish` counts the days a run
+touched, both ends included: `completed_upper - started_lower`, plus one. A
+same-day run reads 1, a run finished the next day reads 2, and a run stated as
+one month at both ends reads 31. A negative span and a missing bound read no
+answer, and the count never reads 0.
+
+The read counted differently until now. It answered the plain difference, with
+a floor: a same-day run read 1 and so did a run finished the next day, because
+the legacy column read that way. Two spans on one number is a wrong answer, and
+no arithmetic states it, so it is corrected here rather than filtered around.
+Every run longer than a day now reads one higher than it did. The legacy
+column keeps its own arithmetic, which nothing reads after this issue; #771
+takes it.
 
 The filter states the same rule in SQL, without an annotation: every
 comparison is date arithmetic against `started_lower`.
 
 | the person asks | the filter reads |
 |---|---|
-| equals 1 | `completed_upper - started_lower` is 0 or 1 |
-| equals `N`, `N >= 2` | `completed_upper = started_lower + N days` |
-| greater than `N` | `completed_upper > started_lower + N days` |
-| less than `N` | `completed_upper < started_lower + N days`, and the span is not negative |
-| between `A` and `B` | both bounds of that interval, `A = 1` reaching the 0 span |
+| equals `N` | `completed_upper = started_lower + (N - 1) days` |
+| greater than `N` | `completed_upper > started_lower + (N - 1) days` |
+| less than `N` | `completed_upper < started_lower + (N - 1) days`, and the span is not negative |
+| between `A` and `B` | both bounds of that interval |
 | not equals `N` | the value is known and is not `N` |
 
 Every row states that both bounds are known and the span is not negative, so a
-run with no answer matches no comparison. The field offers no `is null`: it
-names no column, so the widget can state none, and a person asks `is_started`
-or `is_completed` instead.
+run with no answer matches no comparison, and `N` below 1 matches nothing. The
+field offers no `is null`: it names no column, so the widget can state none,
+and a person asks `is_started` or `is_completed` instead.
 
 One test drives the Python read and the filter over the same rows and asserts
 the same set both ways, so the two cannot drift.
 
-Two things change for a person. `days_to_finish = 0` matched every unstarted
-row against the legacy persisted column and now matches nothing, because zero
-is no longer a value the read answers. A sort by days puts the rows with no
-answer at the end, in both directions, where the persisted column put the
-zeros first.
+Three things change for a person. Every run longer than a day reads one day
+more. `days_to_finish = 0` matched every unstarted row against the legacy
+persisted column and now matches nothing, because zero is no answer the read
+gives. A sort by days puts the rows with no answer at the end, in both
+directions, where the persisted column put the zeros first.
 
-Whether the number itself is right — a run that starts and finishes on
-consecutive days reads 1, the same as one that starts and finishes in a day —
-is its own issue. This one keeps the number.
+Migration 0047 rewrites no number a preset asks for. A count means what the
+screen prints, a comparison can ask for a bound or a pair of them, and shifting
+an integer states an intent the preset never carried.
 
 ## Scoping
 
@@ -333,7 +340,9 @@ and the pytest side asserts each case is equivalent to the Python filter's
   answers `is null`.
 - The two markers, against an act with no day.
 - `days_to_finish` parity, the read against the filter, over spans of -1, 0, 1,
-  2 and 30 and over a month-precision endpoint.
+  2 and 30 and over a month-precision endpoint. The read answers 1, 2 and 31
+  for a same-day run, a next-day run and a month-to-month run, and the row on
+  the screen prints what the read answers.
 - Scoping: another library's run, a removed run and an imported one reach
   neither the page nor `playthrough_count`.
 - `playthrough_count` reads 0 for a tracked game nobody finished, and equals
@@ -356,7 +365,6 @@ and the pytest side asserts each case is equivalent to the Python filter's
 |---|---|
 | statistics queries | #1014 |
 | the API bodies and the segmented endpoint screen | #1015 |
-| what `days_to_finish` counts, as against how it is filtered | its own issue |
 | comparing a run against its game's columns | #765 to #767 |
 | the `ALL` quantifier's three-valued hole | #765 to #767 |
 | `removed_at` as a picker operand | #977 |
