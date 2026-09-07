@@ -47,6 +47,7 @@ from games.filters import filter_query_context_for_library, parse_playthrough_fi
 from games.forms import PlaythroughForm
 from games.models import Game, PlayerGameStatus, PlayEvent, Session
 from games.ownership import owned_or_404
+from games.reads.playthrough_endpoints import restatable_days
 from games.reads.playthrough_provenance import run_for_row
 from games.sorting import (
     PLAYTHROUGH_DEFAULT_SORT,
@@ -309,6 +310,8 @@ def add_playthrough(request: HttpRequest, game_id: UUID | None = None) -> HttpRe
             request, game, _draft_from(form), correlation_id=correlation_id
         ):
             if form.cleaned_data.get("mark_as_finished"):
+                #: Discarded on purpose: a refused status
+                #: toasts, and the run it belongs to stands.
                 _record_completed(request, game, correlation_id)
             return redirect(
                 return_url(
@@ -338,17 +341,40 @@ def _draft_from(form: PlaythroughForm) -> RunDraft:
     )
 
 
+#: A run this day-shaped form cannot restate.
+RICHER_THAN_A_DAY = (
+    "This playthrough states a date this form cannot hold, so editing it here "
+    "would lose what it says."
+)
+
+
+def _no_run_here(
+    request: HttpRequest, playevent: PlayEvent, sentence: str
+) -> HttpResponse:
+    """Toast the sentence and leave the page."""
+    messages.error(request, sentence)
+    return redirect(
+        return_url(
+            request,
+            fallback="games:view_game",
+            fallback_args=[playevent.game.id, playevent.game.url_slug],
+        )
+    )
+
+
 def _record_completed(
     request: HttpRequest, game: Game, correlation_id: uuid.UUID
-) -> None:
+) -> bool:
     """State Completed for the game just finished.
 
     The request's correlation id, not a fresh one: the act
     and the status it implies belong to one submit. No
     reader groups events that way yet, so this changes no
     screen. It is the plumbing #683 needs.
+
+    Answers False on a refusal, which toasted already.
     """
-    record_facts_for_request(
+    return record_facts_for_request(
         request,
         game,
         status=PlayerGameStatus.COMPLETED,
@@ -362,31 +388,26 @@ def edit_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse
     playevent = owned_or_404(
         PlayEvent.objects.for_library(library), library, id=playthrough_id
     )
-    run = run_for_row(library, playevent.pk)
+    converted = run_for_row(library, playevent.pk)
+    run = converted.run
     if run is None:
         #: #684 converted rows of tracked games only.
         #: A row whose game the library stopped tracking
         #: has no run. #771 takes row and branch together.
-        messages.error(
-            request,
-            "This play event was never converted into a playthrough, because "
-            "your library no longer tracks its game. Track the game again to "
-            "record runs at it.",
-        )
-        return redirect(
-            return_url(
-                request,
-                fallback="games:view_game",
-                fallback_args=[playevent.game.id, playevent.game.url_slug],
-            )
-        )
+        return _no_run_here(request, playevent, converted.sentence)
+    #: Seeded from the run, never from the legacy row:
+    #: nothing writes that row any more, so a second edit
+    #: would restate its frozen days over the first one.
+    days = restatable_days(run)
+    if days is None:
+        return _no_run_here(request, playevent, RICHER_THAN_A_DAY)
     form = PlaythroughForm(
         request.POST or None,
         initial={
             "game": playevent.game,
-            "started": playevent.started,
-            "ended": playevent.ended,
-            "note": playevent.note,
+            "started": days.started,
+            "ended": days.ended,
+            "note": run.note,
         },
         library=library,
         presentation=date_time_presentation_for_request(request),
@@ -398,6 +419,7 @@ def edit_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse
             request, run, _draft_from(form), correlation_id=correlation_id
         ):
             if form.cleaned_data.get("mark_as_finished"):
+                #: Discarded on purpose, as in add_playthrough.
                 _record_completed(request, playevent.game, correlation_id)
             return redirect(
                 return_url(
@@ -426,14 +448,12 @@ def remove_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpRespon
     )
 
     def act() -> None:
-        run = run_for_row(library, playevent.pk)
-        if run is None:
-            raise CommandFailed(
-                "This play event was never converted into a playthrough, "
-                "because your library no longer tracks its game.",
-                CONFLICT_STATUS,
-            )
-        remove_run_for_request(request, run, correlation_id=new_correlation_id())
+        converted = run_for_row(library, playevent.pk)
+        if converted.run is None:
+            raise CommandFailed(converted.sentence, CONFLICT_STATUS)
+        remove_run_for_request(
+            request, converted.run, correlation_id=new_correlation_id()
+        )
 
     return confirm_and_apply(
         request,

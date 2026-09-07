@@ -61,12 +61,17 @@ def test_a_locked_game_refuses_a_different_one(user, game, other_game):
 
 
 @pytest.mark.django_db
-def test_a_note_longer_than_the_column_is_refused(user, game):
+def test_a_long_note_is_accepted(user, game):
+    """The 255 came from the legacy column.
+
+    `Playthrough.note` is a TextField, so the form that
+    states it caps nothing.
+    """
     form = PlaythroughForm(
-        {"game": str(game.pk), "started": "", "ended": "", "note": "x" * 256},
+        {"game": str(game.pk), "started": "", "ended": "", "note": "x" * 4096},
         library=user.library,
         presentation=PRESENTATION,
     )
 
-    assert not form.is_valid()
-    assert "note" in form.errors
+    assert form.is_valid()
+    assert form.cleaned_data["note"] == "x" * 4096

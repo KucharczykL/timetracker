@@ -86,7 +86,7 @@ class TestRecordRun:
     def test_an_untracked_game_is_tracked_once_and_left_with_one_run(self, user, game):
         #: No track_game: the marker leaves no PlayerGame
         #: row, which is what the retry branch is for.
-        record_run(
+        recorded = record_run(
             user,
             game,
             RunDraft(started=None, ended=None, note=""),
@@ -95,6 +95,20 @@ class TestRecordRun:
 
         tracked = PlayerGame.objects.get(library=user.library, game=game)
         assert Playthrough.objects.filter(player_game=tracked).count() == 1
+        assert recorded.tracked_the_game
+
+    @pytest.mark.django_db(transaction=True)
+    def test_a_tracked_game_is_not_tracked_again(self, user, game):
+        track_game(user, game, correlation_id=new_correlation_id())
+
+        recorded = record_run(
+            user,
+            game,
+            RunDraft(started=None, ended=None, note=""),
+            correlation_id=new_correlation_id(),
+        )
+
+        assert not recorded.tracked_the_game
 
     @pytest.mark.django_db(transaction=True)
     def test_neither_day_still_states_both_acts(self, user, game):
@@ -179,6 +193,63 @@ class TestRestateRun:
         )
         assert "library.playthrough.started" in types
         assert "library.playthrough.start_corrected" not in types
+
+    @pytest.mark.django_db(transaction=True)
+    def test_a_run_moved_wholly_later_states_both_days(self, user, game):
+        """One endpoint at a time, in the order that holds.
+
+        Stating the start first would leave the run holding
+        the new start beside the old completion, which is a
+        reversed pair the command refuses.
+        """
+        run = a_recorded_run(
+            user, game, started=date(2026, 1, 2), ended=date(2026, 1, 5)
+        )
+
+        restate_run(
+            user,
+            run,
+            RunDraft(started=date(2026, 3, 1), ended=date(2026, 3, 4), note=""),
+            correlation_id=new_correlation_id(),
+        )
+
+        run.refresh_from_db()
+        assert run.started == TemporalValue.from_day(date(2026, 3, 1))
+        assert run.completed == TemporalValue.from_day(date(2026, 3, 4))
+
+    @pytest.mark.django_db(transaction=True)
+    def test_a_run_moved_wholly_earlier_states_both_days(self, user, game):
+        run = a_recorded_run(
+            user, game, started=date(2026, 3, 1), ended=date(2026, 3, 4)
+        )
+
+        restate_run(
+            user,
+            run,
+            RunDraft(started=date(2026, 1, 2), ended=date(2026, 1, 5), note=""),
+            correlation_id=new_correlation_id(),
+        )
+
+        run.refresh_from_db()
+        assert run.started == TemporalValue.from_day(date(2026, 1, 2))
+        assert run.completed == TemporalValue.from_day(date(2026, 1, 5))
+
+    @pytest.mark.django_db(transaction=True)
+    def test_a_reversed_draft_is_refused_before_anything_is_appended(self, user, game):
+        run = a_recorded_run(
+            user, game, started=date(2026, 1, 2), ended=date(2026, 1, 5)
+        )
+        before = LibraryEvent.objects.filter(library=user.library).count()
+
+        with pytest.raises(CommandFailed):
+            restate_run(
+                user,
+                run,
+                RunDraft(started=date(2026, 3, 4), ended=date(2026, 3, 1), note=""),
+                correlation_id=new_correlation_id(),
+            )
+
+        assert LibraryEvent.objects.filter(library=user.library).count() == before
 
     @pytest.mark.django_db(transaction=True)
     def test_a_day_only_correction_leaves_the_endpoint_note_alone(self, user, game):

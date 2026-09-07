@@ -50,6 +50,7 @@ from games.models import (
     Session,
 )
 from games.ownership import owned_or_404
+from games.reads.playthrough_endpoints import restatable_days
 from games.reads.playthrough_provenance import run_for_row
 from games.removal import remove
 from games.sorting import (
@@ -100,10 +101,10 @@ def _command_failed(request, failure: CommandFailed):
     )
 
 
-#: One sentence for the two converted-row handlers.
-_NO_RUN_FOR_ROW = (
-    "This play event was never converted into a playthrough, because your "
-    "library no longer tracks its game."
+#: A run whose dates this day-shaped payload cannot state.
+_RICHER_THAN_A_DAY = (
+    "This playthrough states a date this endpoint cannot hold, so patching it "
+    "here would lose what it says."
 )
 
 playthrough_router = Router()
@@ -230,13 +231,16 @@ def list_playthroughs(request):
 def create_playthrough(request, payload: PlaythroughIn):
     library = cast(User, request.user).library
     game = owned_or_404(Game.objects.for_library(library), library, id=payload.game_id)
-    record_run(
+    recorded = record_run(
         cast("User", request.user),
         game,
         RunDraft(started=payload.started, ended=payload.ended, note=payload.note),
         correlation_id=new_correlation_id(),
     )
     messages.success(request, "Playthrough recorded")
+    if recorded.tracked_the_game:
+        #: Tracking is an act of its own, so it is said.
+        messages.info(request, f"{game} is now tracked in your library.")
     return Status(204, None)
 
 
@@ -257,21 +261,25 @@ def partial_update_playthrough(
     playevent = owned_or_404(
         PlayEvent.objects.for_library(library), library, id=playthrough_id
     )
-    run = run_for_row(library, playevent.pk)
+    converted = run_for_row(library, playevent.pk)
+    run = converted.run
     if run is None:
-        raise CommandFailed(_NO_RUN_FOR_ROW, CONFLICT_STATUS)
-    #: PATCH states part; restate_run states the whole.
-    #: A key the payload leaves out keeps the value the
-    #: legacy row shows, which is where this surface read
-    #: it. #1015 restates the handler against the projection.
+        raise CommandFailed(converted.sentence, CONFLICT_STATUS)
+    #: PATCH states part; restate_run states the whole. The
+    #: rest comes off the run, never the legacy row: nothing
+    #: writes that row any more, so merging its frozen days
+    #: in would revert an earlier PATCH without a word.
+    days = restatable_days(run)
+    if days is None:
+        raise CommandFailed(_RICHER_THAN_A_DAY, CONFLICT_STATUS)
     stated = payload.dict(exclude_unset=True)
     restate_run(
         cast("User", request.user),
         run,
         RunDraft(
-            started=stated.get("started", playevent.started),
-            ended=stated.get("ended", playevent.ended),
-            note=stated.get("note", playevent.note),
+            started=stated.get("started", days.started),
+            ended=stated.get("ended", days.ended),
+            note=stated.get("note", run.note),
         ),
         correlation_id=new_correlation_id(),
     )
@@ -285,10 +293,12 @@ def remove_playthrough(request, playthrough_id: UUIDv7):
     playevent = owned_or_404(
         PlayEvent.objects.for_library(library), library, id=playthrough_id
     )
-    run = run_for_row(library, playevent.pk)
-    if run is None:
-        raise CommandFailed(_NO_RUN_FOR_ROW, CONFLICT_STATUS)
-    remove_run(cast("User", request.user), run, correlation_id=new_correlation_id())
+    converted = run_for_row(library, playevent.pk)
+    if converted.run is None:
+        raise CommandFailed(converted.sentence, CONFLICT_STATUS)
+    remove_run(
+        cast("User", request.user), converted.run, correlation_id=new_correlation_id()
+    )
     return Status(204, None)
 
 

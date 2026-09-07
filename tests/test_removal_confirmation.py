@@ -130,7 +130,7 @@ def test_removal_confirms_first_with_owning_game_fallback(
     owning_game = removables["game"]
     PlayEvent.objects.create(game=owning_game)
     convert_library(owned_library)
-    run = run_for_row(owned_library, instance.pk)
+    run = run_for_row(owned_library, instance.pk).run
     assert run is not None
     url = reverse("games:remove_playthrough", args=[instance.pk])
     assert logged_in.get(url).status_code == 200

@@ -9,7 +9,7 @@ Inspired by Stash's filter architecture: each entity has an OperatorFilter
 with AND/OR/NOT composition and typed criterion fields.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, ClassVar
 
@@ -130,6 +130,14 @@ class GameFilter(OperatorFilter):
     purchase_filter: PurchaseFilter | None = None
     playthrough_filter: PlayEventFilter | None = None
     platform_filter: PlatformFilter | None = None
+
+    # #687 renamed both keys. A saved preset is rewritten by migration 0046,
+    # but a bookmarked or shared ``?filter=`` is not, so read the old word too.
+    # #771 takes this away with the rest of the legacy row.
+    renamed_fields: ClassVar[Mapping[str, str]] = {
+        "playevent_count": "playthrough_count",
+        "playevent_filter": "playthrough_filter",
+    }
 
     # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
     # reviewable diff (AND-composition makes the order semantically irrelevant).

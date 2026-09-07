@@ -79,7 +79,7 @@ def test_the_api_removes_a_playthrough_rather_than_destroying_it(client, owned_u
     play_event = PlayEvent.objects.create(game=game)
     PlayEvent.objects.create(game=game)
     convert_library(owned_user.library)
-    run = run_for_row(owned_user.library, play_event.pk)
+    run = run_for_row(owned_user.library, play_event.pk).run
     assert run is not None
     client.force_login(owned_user)
 

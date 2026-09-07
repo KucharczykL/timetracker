@@ -20,14 +20,21 @@ from games.writes.playthrough import RunDraft, record_run, remove_run, restate_r
 def record_run_for_request(
     request: HttpRequest, game: Game, draft: RunDraft, *, correlation_id: uuid.UUID
 ) -> bool:
-    """State one run; False on a refusal."""
+    """State one run; False on a refusal.
+
+    Tracking a game is a library-visible act, so a submit
+    that had to track one says so rather than doing it
+    behind the person's back.
+    """
     try:
-        record_run(
+        recorded = record_run(
             cast("User", request.user), game, draft, correlation_id=correlation_id
         )
     except CommandFailed as failure:
         messages.error(request, failure.message)
         return False
+    if recorded.tracked_the_game:
+        messages.info(request, f"{game} is now tracked in your library.")
     return True
 
 

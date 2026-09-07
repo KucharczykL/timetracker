@@ -1771,6 +1771,68 @@ class TestPlayEventFilterDates:
         assert out["started"]["modifier"] == Modifier.GREATER_THAN
 
 
+class TestRenamedFilterKeys:
+    """#687 renamed two GameFilter keys.
+
+    A saved preset was rewritten by migration 0046, but a
+    bookmarked or shared ``?filter=`` was not, so the old
+    word has to keep working. #771 takes both away.
+    """
+
+    def test_the_old_count_key_is_read_as_the_new_one(self, caplog):
+        from games.filters import GameFilter
+
+        #: The `common` logger names no handler of its own,
+        #: so it reaches caplog through the root.
+        with caplog.at_level(logging.WARNING, logger="common"):
+            gf = GameFilter.from_json(
+                {"playevent_count": {"value": 1, "modifier": "EQUALS"}}
+            )
+
+        assert gf is not None
+        assert gf.playthrough_count is not None
+        assert gf.playthrough_count.value == 1
+        assert "playevent_count" in caplog.text
+
+    def test_the_old_relation_key_is_read_as_the_new_one(self):
+        from games.filters import GameFilter
+
+        gf = GameFilter.from_json(
+            {
+                "playevent_filter": {
+                    "ended": {"value": "2024-01-01", "modifier": "EQUALS"}
+                }
+            }
+        )
+
+        assert gf is not None
+        assert gf.playthrough_filter is not None
+
+    def test_the_current_key_wins_where_a_blob_holds_both(self):
+        from games.filters import GameFilter
+
+        gf = GameFilter.from_json(
+            {
+                "playevent_count": {"value": 1, "modifier": "EQUALS"},
+                "playthrough_count": {"value": 2, "modifier": "EQUALS"},
+            }
+        )
+
+        assert gf is not None
+        assert gf.playthrough_count is not None
+        assert gf.playthrough_count.value == 2
+
+    def test_a_nested_operator_renames_too(self):
+        from games.filters import GameFilter
+
+        gf = GameFilter.from_json(
+            {"AND": [{"playevent_count": {"value": 1, "modifier": "EQUALS"}}]}
+        )
+
+        assert gf is not None
+        assert gf.AND[0].playthrough_count is not None
+
+
 @pytest.mark.django_db
 class TestFilterErrorBoundary:
     """Issue #131: a parseable-but-invalid ``?filter=`` must raise FilterError

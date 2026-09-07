@@ -79,7 +79,11 @@ def endpoints_certainly_reversed(
 
 
 class ActStatement(NamedTuple):
-    """An act, and what was said.
+    """An act that happened, and its note.
+
+    The act is this object's existence, so the day inside
+    never carries it: a run that never reached the endpoint
+    states no ActStatement at all.
 
     A NamedTuple, so the idempotency fingerprint encodes it
     as an array and the TemporalValue inside reaches the

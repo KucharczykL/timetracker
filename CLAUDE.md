@@ -154,7 +154,7 @@ docs/           — Additional documentation
 - **PlayEvent** — marks when game started/finished (separate from Sessions); `days_to_finish` is a `GeneratedField`
 - **ExchangeRate** — cached FX rates per currency pair per year
 - **GameStatusChange** — legacy audit log of status transitions, ordered by `-timestamp`. Nothing writes or reads it since #678 D1: event stream is the record and `games/reads/playergame_history.py` is the one reader. Backfill still reads old rows; #771 takes the table
-- **FilterPreset** — saved filter config; `mode` (games/sessions/purchases/playevents), `find_filter`, `object_filter`, `ui_options` (all JSON). Follows Stash's SavedFilter pattern
+- **FilterPreset** — saved filter config; `mode` (games/sessions/purchases/playthroughs), `find_filter`, `object_filter`, `ui_options` (all JSON). Follows Stash's SavedFilter pattern
 - **PlayerGame** — first projection: one row per catalog game a library tracks, written only by `PlayerGames` projector. Its `removed_at` is projector's, stated by `RemovePlayerGame` command, separate from catalog row's. States library's `status` (six `PlayerGameStatus` words) and `mastered`, and since #678 D2 only place either stated or read. Both `UUIDv7Field` defaults opted out (pk is event's `aggregate_id`); `game` is `RESTRICT`, so projection row never collateral; #1017 registers it, so `audit_library_ownership` reports a `PlayerGame` naming another library's Game
 - **Playthrough** — second projection: one row per run at a tracked game, written
   only by `Playthroughs` projector, which shares `CURRENT_STATE` family with
@@ -298,7 +298,7 @@ Submodules re-exported via `common/components/__init__.py`:
   `games/forms.py` reads back. **Widget renders to text, so element's `Media`
   never bubbles** — hosting view threads
   `scripts=ModuleScript("dist/elements/temporal-field.js")`, as
-  `purchase.py`/`playevent.py` already do for date picker. Both hosting pages in
+  `purchase.py`/`playthrough.py` already do for date picker. Both hosting pages in
   `games/views/game.py`: Add Game and Edit Game, which host same Editions area and
   so draw one field per Release row. Grammar, wire and no-script contract in
   [Temporal](docs/temporal.md)
@@ -349,7 +349,7 @@ structured filtering.
 **Views** (`games/views/`): function-based, decorated with `@login_required`,
 organized by domain entity:
 
-- `session.py`, `game.py`, `purchase.py`, `playevent.py`, `platform.py`,
+- `session.py`, `game.py`, `purchase.py`, `playthrough.py`, `platform.py`,
   `device.py`, `statuschange.py` — CRUD per entity
 - `general.py` — `stats()`, `stats_alltime()`, `index()`, `model_counts` and
   `global_current_year` context processors
@@ -387,7 +387,8 @@ present. Rendering client-side (`games/static/js/toast.js`).
 **REST API** (`games/api.py`): Django Ninja routers mounted at `/api/`:
 - `GET /api/games/search` — search games for autocomplete
 - `PATCH /api/games/{id}/status` — update game status
-- `GET/POST /api/playevent/`, `GET/PATCH/DELETE /api/playevent/{id}`
+- `GET/POST /api/playthrough/`, `GET/PATCH/DELETE /api/playthrough/{id}` — the
+  path id is the legacy `PlayEvent` row's, which #771 replaces with the run's
 - `PATCH /api/session/{id}/device` — update session device
 - `GET /api/presets/` — user's presets for a mode, shaped as combobox options
   (`limit=0` = unbounded)
@@ -537,10 +538,10 @@ sanitizes audit timestamps — all inside rolled-back transaction, so source DB
 untouched. Output **byte-deterministic** per `--seed`. Fixture keeps prod pks, so
 load it into empty dev DB.
 
-**UI assertion is not database assertion.** Several custom elements update DOM
-optimistically before their POST lands (`play-event-row.ts` bumps play count on
-click). Before reading ORM in e2e test, wait on something *server-rendered* — the
-htmx section that swaps in after write commits.
+**UI assertion is not database assertion.** A custom element may update its own
+DOM before the PATCH it sent through `fetchWithHtmxTriggers` lands, so the
+rendered number can be ahead of the row. Before reading ORM in e2e test, wait on
+something *server-rendered* — the htmx section that swaps in after write commits.
 
 **TypeScript unit tests** (vitest) live beside their modules as `ts/**/*.test.ts`,
 run with `make test-ts` and automatically by `make test`/`make check`. pnpm script

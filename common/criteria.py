@@ -7,6 +7,7 @@ filtering from *how* you're comparing, and makes filter serialization trivial.
 """
 
 import json
+import logging
 import types
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -48,6 +49,8 @@ from timetracker.temporal import (
     TemporalUpperBound,
 )
 from timetracker.uuidv7 import UUIDv7ParseError, parse_uuidv7
+
+logger = logging.getLogger("common")
 
 _TEMPORAL_PROJECTION_EXPRESSIONS = (
     TemporalLowerBound,
@@ -1440,6 +1443,14 @@ class OperatorFilter:
     # ``GameFilter.aggregates`` in games/filters.py.
     aggregates: ClassVar[Mapping[AttrName, AggregateSpec]] = {}
 
+    # Old criterion key → the name that replaced it. A ``?filter=`` blob outlives
+    # the rename that broke it: it sits in a bookmark, a chat message, or a link
+    # somebody mailed. ``from_json`` skips a key no field answers to, so without
+    # this table the renamed criterion is dropped and the page answers with more
+    # rows than it was asked for. Populated by the concrete filter that renamed
+    # something — see ``GameFilter.renamed_fields`` in games/filters.py.
+    renamed_fields: ClassVar[Mapping[AttrName, AttrName]] = {}
+
     # Criterion fields deliberately handled imperatively in ``_extra_q`` rather than
     # via ``fields`` (e.g. the M2M ``games``). ``search`` is here for every filter.
     # The drift-guard test (tests/test_filters.py) asserts ``fields`` plus this set
@@ -1672,6 +1683,28 @@ class OperatorFilter:
         return Q()
 
     @classmethod
+    def _rename_legacy_keys(cls, data: dict[str, Any]) -> dict[str, Any]:
+        """Map every renamed key forward, once.
+
+        A blob naming both spellings keeps the current one:
+        it was written by a client that knows the rename,
+        so the old key beside it is somebody's stale copy.
+        """
+        renamed = cls.renamed_fields
+        if not renamed or not renamed.keys() & data.keys():
+            return data
+        forward = dict(data)
+        for old, new in renamed.items():
+            if old not in forward:
+                continue
+            value = forward.pop(old)
+            if new in forward:
+                continue
+            forward[new] = value
+            logger.warning("filter key %r renamed to %r (%s)", old, new, cls.__name__)
+        return forward
+
+    @classmethod
     def from_json(cls, data: dict[str, Any] | None, *, _depth: int = 0) -> Self | None:
         if data is None or not isinstance(data, dict):
             return None
@@ -1681,6 +1714,7 @@ class OperatorFilter:
         # operator list and the cross-entity relation descent (both consume the budget).
         if _depth > MAX_FILTER_DEPTH:
             raise FilterError(f"Filter nesting too deep (max {MAX_FILTER_DEPTH})")
+        data = cls._rename_legacy_keys(data)
         kwargs: dict[str, Any] = {}
         for f in dc_fields(cls):
             if f.name not in data:

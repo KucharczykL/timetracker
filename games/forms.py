@@ -1074,7 +1074,9 @@ class PlaythroughForm(PrimitiveWidgetsMixin, forms.Form):
     #: per-request presentation, unavailable to a class body).
     started = forms.DateField(required=False)
     ended = forms.DateField(required=False)
-    note = forms.CharField(max_length=255, required=False)
+    #: No cap: the 255 came from the legacy column, and
+    #: Playthrough.note is a TextField.
+    note = forms.CharField(required=False)
 
     mark_as_finished = forms.BooleanField(
         required=False,

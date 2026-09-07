@@ -1,7 +1,8 @@
 """What a run states about its two endpoints."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
+from typing import NamedTuple
 
 from games.models import Playthrough
 from timetracker.temporal import TemporalValue
@@ -35,3 +36,35 @@ def stated_completion(run: Playthrough) -> StatedEndpoint | None:
     return StatedEndpoint(
         run.completion_recorded_at, run.completed, run.completion_note
     )
+
+
+class StatedDays(NamedTuple):
+    """A run's two endpoints, as plain days."""
+
+    #: None where the endpoint states no day, or no act.
+    started: date | None
+    ended: date | None
+
+
+def restatable_days(run: Playthrough) -> StatedDays | None:
+    """The run's endpoints as days, or nothing.
+
+    Nothing where either endpoint states a value a day
+    field cannot hold. Both request paths state whole days,
+    so seeding one from such a value and posting it back
+    would flatten what the run states. #1015 owns the
+    screen that reads the richer value.
+    """
+    days: list[date | None] = []
+    for stated in (stated_start(run), stated_completion(run)):
+        if stated is None or stated.when is None:
+            days.append(None)
+            continue
+        day = stated.when.lower_bound
+        #: Equal serializations is the whole test: a month,
+        #: a decade, a range and a qualified day all spell
+        #: themselves differently from the bare day beneath.
+        if day is None or stated.when.serialize() != day.isoformat():
+            return None
+        days.append(day)
+    return StatedDays(days[0], days[1])
