@@ -176,7 +176,11 @@ def test_section_heading_spacing_does_not_depend_on_the_view_all_button(game, re
 
 
 def test_no_view_all_for_empty_section(owned_user, rf):
-    """A game with no sessions/purchases/playevents shows no 'View all' link."""
+    """A game with no sessions and no purchases links out for neither.
+
+    The Playthrough section always has one: a tracked game holds the run #679
+    states, so its link always renders.
+    """
     platform = Platform.objects.create(name="PC")
     empty_game = Game.objects.create(
         library=owned_user.library, name="Empty", platform=platform
@@ -185,4 +189,8 @@ def test_no_view_all_for_empty_section(owned_user, rf):
     request.user = owned_user
     request.session = {}
     html = view_game(request, empty_game.id, empty_game.url_slug).content.decode()
-    assert "View all" not in html
+    #: The link renders its title beside its label, so each
+    #: one that renders is named once here.
+    assert 'title="View all sessions for this game"' not in html
+    assert 'title="View all purchases for this game"' not in html
+    assert html.count('title="View all playthroughs for this game"') == 1

@@ -83,7 +83,7 @@ from games.models import (
     ExternalReference,
     Game,
     PlayerGameStatus,
-    PlayEvent,
+    Playthrough,
     Purchase,
     Release,
     Session,
@@ -94,6 +94,8 @@ from games.ownership import owned_or_404
 from games.reads.catalog_hierarchy import EditionEntry, game_hierarchy
 from games.reads.external_references import ReferenceMap, held_by, references_for
 from games.reads.playergame_history import StatusEntry, status_history
+from games.reads.playthrough_numbering import numbered_for
+from games.reads.playthrough_runs import tracked_game
 from games.reference_form import ReferenceSetForm
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
 from games.views.catalog_section import editions_area
@@ -107,7 +109,7 @@ from games.views.playergame_writes import (
     remove_game_for_request,
     track_game_for_request,
 )
-from games.views.playthrough import create_playthrough_tabledata
+from games.views.playthrough_rows import playthrough_tabledata
 from games.views.reference_section import references_area
 from games.views.removal import confirm_and_remove
 from games.views.returns import origin_from, return_url
@@ -938,34 +940,37 @@ def _sessions_section(
     )
 
 
-def _playevents_section(
+def _playthroughs_section(
     game: Game,
-    playevents: QuerySet[PlayEvent],
+    runs: Sequence[Playthrough],
     presentation: DateTimePresentation,
     origin: OriginUrl | None,
 ) -> Node:
-    data = create_playthrough_tabledata(
-        playevents, presentation, exclude_columns=["Game"], origin=origin
+    data = playthrough_tabledata(
+        runs, presentation, exclude_columns=["Game"], origin=origin
     )
     # This embedded mini-table isn't a sortable list view (no ?sort= handling on
-    # the detail page), so render plain headers like the sibling sections do —
-    # drop the sort keys the shared list-view builder now sets (#343).
-    plain_columns = [column._replace(sort_key=None) for column in data["columns"]]
+    # the detail page), and its builder states no sort keys.
     table = StyledTable(
-        columns=plain_columns,
+        columns=data["columns"],
         rows=data["rows"],
         data_table=True,
-        caption="Play events of this game",
+        caption="Playthroughs of this game",
     )
+    #: The empty branch is unreachable while every tracked
+    #: game holds a run. A badge with no rows beneath it is
+    #: worse than a sentence, so it stays.
     section = _game_section(
-        "Play Events",
-        playevents.count(),
+        "Playthroughs",
+        len(runs),
         table,
-        "No play events yet.",
+        "No playthroughs yet.",
+        #: The list page reads legacy rows until #1013, so a
+        #: run stated after #687 is not on the page this
+        #: reaches. #1013 closes it.
         view_all_url=filter_url(PlayEventFilter.where(game=[game.id])),
     )
-    #: #1012 replaces this section with the projection.
-    return Div(id_="playevents-container")[section]
+    return Div(id_="playthroughs-container")[section]
 
 
 def _history_section(
@@ -1003,7 +1008,15 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
         SessionQuerySet, Session.objects.for_library(library).filter(game=game)
     )
     purchases = Purchase.objects.for_library(library).filter(games=game)
-    playevents = PlayEvent.objects.for_library(library).filter(game=game)
+    tracked = tracked_game(library, game)
+    #: Scoped on the row and its parent alike, as
+    #: `live_ordinary_runs` is: a run may name another
+    #: library's tracked game.
+    runs = list(
+        numbered_for(library, [tracked.pk] if tracked else []).select_related(
+            "player_game__game"
+        )
+    )
     hierarchy = game_hierarchy(game, library)
     #: One batch, one query per kind.
     referenced: list[CatalogTarget] = [game]
@@ -1027,7 +1040,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
         ),
         _purchases_section(game, purchases, presentation, origin),
         _sessions_section(game, sessions, presentation, durations),
-        _playevents_section(game, playevents, presentation, origin),
+        _playthroughs_section(game, runs, presentation, origin),
         _history_section(game, library, presentation),
     ]
     return render_page(
