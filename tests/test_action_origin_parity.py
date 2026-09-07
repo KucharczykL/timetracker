@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 from django.urls import Resolver404, resolve, reverse
 
+from games.backfill.playthrough import convert_library
 from games.models import Device, Game, Platform, PlayEvent, Purchase, Session
 from games.views.returns import CONFIRMATION, ORIGIN_AWARE
 
@@ -40,6 +41,9 @@ def world(owned_library):
         device=Device.objects.create(library=owned_library, name="Desk"),
     )
     PlayEvent.objects.create(game=game)
+    #: Without a run behind it the row renders no actions,
+    #: and the playthrough sweep would check nothing.
+    convert_library(owned_library)
     return game
 
 

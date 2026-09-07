@@ -1,10 +1,13 @@
 """#1012: the Game detail section reads runs."""
 
+import re
+import uuid
+
 import pytest
 from django.urls import reverse
 from django.utils import timezone
 
-from games.models import Game, Playthrough
+from games.models import Game, Playthrough, PlaythroughKind
 
 pytestmark = pytest.mark.django_db
 
@@ -44,11 +47,39 @@ def test_the_section_renders_the_run_a_tracked_game_holds(logged_in, game):
     assert "No playthroughs yet." not in body
 
 
-def test_the_section_badge_counts_every_live_ordinary_run(logged_in, game):
-    body = detail(logged_in, game)
+def badge(logged_in, game) -> str:
+    """The number beside the section heading."""
+    heading = re.search(
+        r"<h1[^>]*>Playthroughs<span[^>]*>(\d*)</span>", section(logged_in, game)
+    )
+    assert heading is not None, "the section heading changed shape"
+    return heading.group(1)
 
-    assert 'id="playthroughs-container"' in body
-    assert "View all" in body
+
+def _run(game, *, kind=PlaythroughKind.ORDINARY, removed_at=None) -> Playthrough:
+    tracked = game.player_games.get()
+    return Playthrough.objects.create(
+        pk=uuid.uuid7(),
+        library=tracked.library,
+        player_game=tracked,
+        kind=kind,
+        created_at=timezone.now(),
+        removed_at=removed_at,
+    )
+
+
+def test_the_section_badge_counts_every_live_ordinary_run(logged_in, game):
+    """A removed run and an imported one count for nothing."""
+    _run(game)
+    _run(game, removed_at=timezone.now())
+    _run(game, kind=PlaythroughKind.IMPORTED_HISTORY)
+
+    assert badge(logged_in, game) == "2"
+
+
+def test_the_section_links_no_view_all(logged_in, game):
+    """#1013 owns the list page. Until then it answers rows."""
+    assert "View all" not in section(logged_in, game)
 
 
 def test_the_section_renders_unknown_for_a_stated_act_with_no_day(logged_in, game):

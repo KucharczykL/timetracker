@@ -17,7 +17,7 @@ from games.views.playthrough_rows import playthrough_tabledata
 from games.writes.playergame import new_correlation_id, track_game
 from timetracker.temporal import TemporalValue
 
-#: Every test wants the run #679 states.
+#: The real TrackGame states the run, not the fixture.
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.untracked_games]
 
 

@@ -86,9 +86,10 @@ logger = logging.getLogger("games")
 def _legacy_actions(run_id: PlaythroughId | None, origin: OriginUrl | None) -> Cell:
     """No run, no actions.
 
-    The map is partial: #684 converted rows of tracked games
-    only, so a row whose game the library stopped tracking
-    became none. #771 takes row and branch together.
+    The map is partial: #684 left alone a row on an
+    untracked game, on a game the catalog marks removed, and
+    on a game with no projection row. #771 takes row and
+    branch together.
     """
     if run_id is None:
         return ""
@@ -305,7 +306,7 @@ def add_playthrough(request: HttpRequest, game_id: UUID | None = None) -> HttpRe
                 initial["started"] = earliest_session_ts.date()
                 playtime_calc_start_ts = earliest_session_ts
 
-            # The end date for the new PlayEvent form and playtime calculation is the latest session's start date.
+            #: The end day, and the playtime span's.
             initial["ended"] = latest_session_ts.date()
             playtime_calc_end_ts = latest_session_ts
 

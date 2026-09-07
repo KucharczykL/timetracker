@@ -69,9 +69,15 @@ def test_purchases_section_links_to_filtered_purchases(game, rendered):
     assert href in rendered
 
 
-def test_playevents_section_links_to_filtered_playevents(game, rendered):
+def test_playthroughs_section_links_nowhere(game, rendered):
+    """No "View all" until #1013 moves the list page onto runs.
+
+    The legacy list would answer with rows, and a run stated
+    after #687 is on neither the page nor its count.
+    """
     href = escape(filter_url(PlayEventFilter.where(game=[game.id])))
-    assert href in rendered
+    assert href not in rendered
+    assert 'title="View all playthroughs for this game"' not in rendered
 
 
 def test_link_filters_scope_to_game(game):
@@ -176,10 +182,7 @@ def test_section_heading_spacing_does_not_depend_on_the_view_all_button(game, re
 
 
 def test_no_view_all_for_empty_section(owned_user, rf):
-    """A game with no sessions and no purchases links out for neither.
-
-    The Playthrough section always has one, so its link renders.
-    """
+    """A game with no sessions and no purchases links out for neither."""
     platform = Platform.objects.create(name="PC")
     empty_game = Game.objects.create(
         library=owned_user.library, name="Empty", platform=platform
@@ -188,7 +191,5 @@ def test_no_view_all_for_empty_section(owned_user, rf):
     request.user = owned_user
     request.session = {}
     html = view_game(request, empty_game.id, empty_game.url_slug).content.decode()
-    #: Each link that renders is named once.
     assert 'title="View all sessions for this game"' not in html
     assert 'title="View all purchases for this game"' not in html
-    assert html.count('title="View all playthroughs for this game"') == 1

@@ -58,7 +58,7 @@ def _track_created_games(request):
 
     A direct write, not ``backfill_game()``: the backfill needs an actor and a
     run time, opens its own transaction and appends events. The rows are what
-    the joins want, so the rows are what this writes. The divergence from
+    the reads want, so the rows are what this writes. The divergence from
     production is real and deliberate; tests/test_playergame_write_path.py
     covers the event path.
 

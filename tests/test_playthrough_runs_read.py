@@ -101,6 +101,17 @@ def test_tracked_game_answers_nothing_for_a_game_no_library_tracks(owned_library
 
 
 @pytest.mark.django_db(transaction=True)
+def test_tracked_game_answers_nothing_for_a_removed_row(
+    owned_user, owned_library, game
+):
+    """A library that stopped tracking the game tracks none."""
+    tracked = a_tracked_game(owned_user, game)
+    PlayerGame.objects.filter(pk=tracked.pk).update(removed_at=timezone.now())
+
+    assert tracked_game(owned_library, game) is None
+
+
+@pytest.mark.django_db(transaction=True)
 def test_completed_run_count_skips_the_run_tracking_states(
     owned_user, owned_library, game
 ):

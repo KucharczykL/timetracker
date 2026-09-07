@@ -183,6 +183,37 @@ def test_removing_one_of_two_runs_stamps_the_projection_only(client, user, game)
 
 
 @pytest.mark.django_db(transaction=True)
+def test_the_list_page_names_the_run_in_a_converted_rows_actions(client, user, game):
+    """The row's own key reaches nothing, so the cell states the run."""
+    row = PlayEvent.objects.create(game=game, started=None, ended=None, note="")
+    convert_library(user.library)
+    run = run_for_row(user.library, row.pk).run
+    assert run is not None
+    client.force_login(user)
+
+    body = client.get(reverse("games:list_playthroughs")).content.decode()
+
+    assert reverse("games:edit_playthrough", args=[run.pk]) in body
+    assert reverse("games:remove_playthrough", args=[run.pk]) in body
+    assert str(row.pk) not in body
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_list_page_renders_an_unconverted_row_without_actions(client, user, game):
+    """No run behind the row, and the page still answers 200."""
+    PlayEvent.objects.create(game=game, started=None, ended=None, note="")
+    client.force_login(user)
+
+    response = client.get(reverse("games:list_playthroughs"))
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert game.name in body
+    assert "/playthrough/edit/" not in body
+    assert "/remove" not in body
+
+
+@pytest.mark.django_db(transaction=True)
 def test_a_legacy_row_id_reaches_no_page(client, user, game):
     """#1012 moved the routes onto the run."""
     row = PlayEvent.objects.create(game=game, started=None, ended=None, note="")

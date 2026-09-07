@@ -70,7 +70,6 @@ from games.catalog_form import CatalogGraphForm
 from games.catalog_submit import submitted_game_or_form_error
 from games.external_references import CatalogTarget, external_reference_url_or_none
 from games.filters import (
-    PlayEventFilter,
     PurchaseFilter,
     SessionFilter,
     filter_query_context_for_library,
@@ -95,11 +94,7 @@ from games.reads.catalog_hierarchy import EditionEntry, game_hierarchy
 from games.reads.external_references import ReferenceMap, held_by, references_for
 from games.reads.playergame_history import StatusEntry, status_history
 from games.reads.playthrough_numbering import numbered_for
-from games.reads.playthrough_runs import (
-    completed_run_count,
-    live_ordinary_runs,
-    tracked_game,
-)
+from games.reads.playthrough_runs import live_ordinary_runs, tracked_game
 from games.reference_form import ReferenceSetForm
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
 from games.views.catalog_section import editions_area
@@ -449,7 +444,7 @@ _STAT_SVGS = {
 def _played_row(game: Game, origin: OriginUrl | None, played: int) -> Node:
     """'Played N times' split button.
 
-    Counts runs whose completion is stated.
+    `played` counts runs whose completion is stated.
 
     The day may be unknown and still count.
 
@@ -951,7 +946,6 @@ def _sessions_section(
 
 
 def _playthroughs_section(
-    game: Game,
     runs: Sequence[Playthrough],
     presentation: DateTimePresentation,
     origin: OriginUrl | None,
@@ -967,14 +961,16 @@ def _playthroughs_section(
         data_table=True,
         caption="Playthroughs of this game",
     )
-    #: Every tracked game holds a run today.
+    #: No link: the list page reads legacy rows
+    #: until #1013, and a run stated after #687 is
+    #: on neither the page nor its count.
     section = _game_section(
         "Playthroughs",
         len(runs),
         table,
+        #: Reachable: conversion skipped a tracked game
+        #: whose catalog row was removed.
         "No playthroughs yet.",
-        #: List page reads legacy rows until #1013.
-        view_all_url=filter_url(PlayEventFilter.where(game=[game.id])),
     )
     return Div(id_="playthroughs-container")[section]
 
@@ -1015,12 +1011,14 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
     )
     purchases = Purchase.objects.for_library(library).filter(games=game)
     tracked = tracked_game(library, game)
-    #: A run may name another library's game.
+    #: A run may name another library's PlayerGame.
     runs = list(
         numbered_for(library, [tracked.pk] if tracked else []).select_related(
             "player_game__game"
         )
     )
+    #: Counted here, off rows already read.
+    played = sum(1 for run in runs if run.completion_recorded_at is not None)
     hierarchy = game_hierarchy(game, library)
     #: One batch, one query per kind.
     referenced: list[CatalogTarget] = [game]
@@ -1038,14 +1036,14 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
             origin,
             hierarchy,
             held_by(references, game.pk),
-            completed_run_count(library, tracked),
+            played,
         ),
         _releases_section(
             hierarchy, presentation, origin, game=game, references=references
         ),
         _purchases_section(game, purchases, presentation, origin),
         _sessions_section(game, sessions, presentation, durations),
-        _playthroughs_section(game, runs, presentation, origin),
+        _playthroughs_section(runs, presentation, origin),
         _history_section(game, library, presentation),
     ]
     return render_page(
