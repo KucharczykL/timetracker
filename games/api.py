@@ -50,6 +50,7 @@ from games.models import (
     Session,
 )
 from games.ownership import owned_or_404
+from games.reads.playthrough_provenance import run_for_row
 from games.removal import remove
 from games.sorting import (
     MODE_SORTS,
@@ -59,8 +60,9 @@ from games.sorting import (
     parse_find_filter,
     parse_per_page_override,
 )
-from games.writes.answers import CommandFailed
+from games.writes.answers import CONFLICT_STATUS, CommandFailed
 from games.writes.playergame import new_correlation_id, record_facts
+from games.writes.playthrough import RunDraft, record_run, remove_run, restate_run
 from timetracker.config import SettingSource
 from timetracker.settings_commands import (
     SettingLockedError,
@@ -97,6 +99,12 @@ def _command_failed(request, failure: CommandFailed):
         request, {"detail": failure.message}, status=failure.status_code
     )
 
+
+#: One sentence for the two handlers that need a converted row.
+_NO_RUN_FOR_ROW = (
+    "This play event was never converted into a playthrough, because your "
+    "library no longer tracks its game."
+)
 
 playevent_router = Router()
 game_router = Router()
@@ -213,14 +221,18 @@ def list_playevents(request):
     return PlayEvent.objects.for_library(library)
 
 
-@playevent_router.post("/", response={201: PlayEventOut})
+@playevent_router.post("/", response={204: None})
 def create_playevent(request, payload: PlayEventIn):
     library = cast(User, request.user).library
     game = owned_or_404(Game.objects.for_library(library), library, id=payload.game_id)
-    values = payload.dict(exclude={"game_id"})
-    playevent = PlayEvent.objects.create(game=game, **values)
-    messages.success(request, "Game played!")
-    return playevent
+    record_run(
+        cast("User", request.user),
+        game,
+        RunDraft(started=payload.started, ended=payload.ended, note=payload.note),
+        correlation_id=new_correlation_id(),
+    )
+    messages.success(request, "Playthrough recorded")
+    return Status(204, None)
 
 
 @playevent_router.get("/{playevent_id}", response=PlayEventOut)
@@ -232,16 +244,31 @@ def get_playevent(request, playevent_id: UUIDv7):
     return playevent
 
 
-@playevent_router.patch("/{playevent_id}", response=PlayEventOut)
+@playevent_router.patch("/{playevent_id}", response={204: None})
 def partial_update_playevent(request, playevent_id: UUIDv7, payload: UpdatePlayEventIn):
     library = cast(User, request.user).library
     playevent = owned_or_404(
         PlayEvent.objects.for_library(library), library, id=playevent_id
     )
-    for attr, value in payload.dict(exclude_unset=True).items():
-        setattr(playevent, attr, value)
-    playevent.save()
-    return playevent
+    run = run_for_row(library, playevent.pk)
+    if run is None:
+        raise CommandFailed(_NO_RUN_FOR_ROW, CONFLICT_STATUS)
+    #: PATCH states some of a run; restate_run states all of one. A key
+    #: the payload leaves out keeps the value the legacy row shows,
+    #: which is the value this surface read it from. #1015 restates the
+    #: whole handler against the projection.
+    stated = payload.dict(exclude_unset=True)
+    restate_run(
+        cast("User", request.user),
+        run,
+        RunDraft(
+            started=stated.get("started", playevent.started),
+            ended=stated.get("ended", playevent.ended),
+            note=stated.get("note", playevent.note),
+        ),
+        correlation_id=new_correlation_id(),
+    )
+    return Status(204, None)
 
 
 #: DELETE is the transport's word, not ours.
@@ -251,7 +278,10 @@ def remove_playevent(request, playevent_id: UUIDv7):
     playevent = owned_or_404(
         PlayEvent.objects.for_library(library), library, id=playevent_id
     )
-    remove(playevent)
+    run = run_for_row(library, playevent.pk)
+    if run is None:
+        raise CommandFailed(_NO_RUN_FOR_ROW, CONFLICT_STATUS)
+    remove_run(cast("User", request.user), run, correlation_id=new_correlation_id())
     return Status(204, None)
 
 
