@@ -6,6 +6,7 @@ from django.core.management import call_command
 from django.db import IntegrityError, connection, transaction
 from django.db.migrations.executor import MigrationExecutor
 from django.utils import timezone
+from model_schema_scan import models_covered
 from ninja import ModelSchema
 
 from games import api as api_module
@@ -149,21 +150,19 @@ def test_no_model_schema_generates_fields_from_device_or_filterpreset():
     adding a `ModelSchema` over either model fails here instead of silently
     publishing the new column.
     """
-    model_schemas = [
-        member
-        for member in vars(api_module).values()
-        if isinstance(member, type)
-        and issubclass(member, ModelSchema)
-        and member is not ModelSchema
-    ]
-    # Guard against the scan passing because it found nothing to look at.
-    assert model_schemas
-    assert [
-        schema
-        for schema in model_schemas
-        if getattr(getattr(schema, "Meta", None), "model", None)
-        in (Device, FilterPreset)
-    ] == []
+
+    class DeviceProbe(ModelSchema):
+        class Meta:
+            model = Device
+            fields = ("name",)
+
+    #: #1015 took the module's last `ModelSchema`, so the
+    #: scan finds none. The probe says it would find one.
+    assert models_covered({"probe": DeviceProbe}) == {Device}
+
+    covered = models_covered(vars(api_module))
+    assert Device not in covered
+    assert FilterPreset not in covered
 
 
 def test_uuid_is_absent_from_device_out_fields():

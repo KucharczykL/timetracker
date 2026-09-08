@@ -6,6 +6,8 @@ from django.core.management import call_command
 from django.db import IntegrityError, connection, transaction
 from django.db.migrations.executor import MigrationExecutor
 from django.utils import timezone
+from model_schema_scan import models_covered
+from ninja import ModelSchema
 
 import games.api
 from games.forms import PlaythroughForm, SessionForm
@@ -227,16 +229,17 @@ def test_no_model_schema_covers_the_promoted_models():
     the related model's primary key. No schema is built from
     either model now, so neither inference runs.
     """
-    from ninja import ModelSchema
 
-    covered = {
-        member.Meta.model
-        for member in vars(games.api).values()
-        if isinstance(member, type)
-        and issubclass(member, ModelSchema)
-        and hasattr(member, "Meta")
-    }
+    class PlayEventProbe(ModelSchema):
+        class Meta:
+            model = PlayEvent
+            fields = ("note",)
 
+    #: The scan finds no schema at all now, so the probe
+    #: says it would still find one that covers the model.
+    assert models_covered({"probe": PlayEventProbe}) == {PlayEvent}
+
+    covered = models_covered(vars(games.api))
     assert PlayEvent not in covered
     assert Session not in covered
 

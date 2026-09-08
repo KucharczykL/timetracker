@@ -113,3 +113,21 @@ def test_limit_zero_is_unbounded_and_a_negative_value_is_refused(
     assert len(client.get("/api/playthrough/?limit=0").json()) == 3
     assert client.get("/api/playthrough/?limit=-1").status_code == 422
     assert client.get("/api/playthrough/?offset=-1").status_code == 422
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_list_reads_a_constant_number_of_queries(
+    client, user, owned_library, django_assert_num_queries
+):
+    """The game rides the run's own query.
+
+    Eight rows cost the same six, so the number is the
+    session and the page, and nothing per run.
+    """
+    for index in range(4):
+        game = Game.objects.create(library=owned_library, name=f"Game {index}")
+        track_game(user, game, correlation_id=new_correlation_id())
+    client.force_login(user)
+
+    with django_assert_num_queries(6):
+        assert len(client.get("/api/playthrough/").json()) == 4
