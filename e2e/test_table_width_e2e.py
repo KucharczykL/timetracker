@@ -20,10 +20,12 @@ from games.models import (
     Platform,
     PlayerGameStatus,
     PlayEvent,
+    Playthrough,
     Purchase,
     Session,
 )
 from games.writes.playergame import new_correlation_id, record_facts, track_game
+from timetracker.temporal import TemporalValue
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 BASE = datetime(2025, 3, 1, 10, 0, tzinfo=ZONEINFO)
@@ -123,6 +125,15 @@ def populated(e2e_user, e2e_library) -> None:
     #: A command, so History has an entry:
     #: it reads events, not this direct write.
     track_game(e2e_user, game, correlation_id=new_correlation_id())
+    #: The run the pages render since #1013, stating the days and
+    #: the note the legacy row above holds.
+    Playthrough.objects.filter(player_game__game=game).update(
+        start_recorded_at=BASE,
+        started=TemporalValue.from_day(BASE.date()),
+        completion_recorded_at=BASE + timedelta(days=3),
+        completed=TemporalValue.from_day((BASE + timedelta(days=3)).date()),
+        note=LONG_NOTE,
+    )
     record_facts(
         e2e_user,
         game,
@@ -200,7 +211,12 @@ def test_the_note_column_still_wraps(authenticated_page: Page, live_server, popu
                 (th) => th.textContent.trim()
             );
             const index = headers.indexOf('Note');
-            const cell = document.querySelectorAll('tbody tr')[0].children[index];
+            // Every tracked game states a run, so the page renders
+            // rows the fixture gave no note. The measured one is the
+            // row that carries it.
+            const cell = [...document.querySelectorAll('tbody tr')]
+                .map((row) => row.children[index])
+                .find((candidate) => candidate.textContent.trim() !== '');
             const range = document.createRange();
             range.selectNodeContents(cell);
             return new Set(
