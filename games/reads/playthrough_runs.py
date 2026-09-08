@@ -6,21 +6,35 @@ from games.models import Game, PlayerGame, Playthrough, PlaythroughKind, UserLib
 from games.reads.playthrough_endpoints import stated_completion, stated_start
 
 
-def live_ordinary_runs(
-    library: UserLibrary, player_game: PlayerGame
-) -> QuerySet[Playthrough]:
-    """This game's live ordinary runs, oldest first.
+def library_runs(library: UserLibrary) -> QuerySet[Playthrough]:
+    """Every live ordinary run this library holds.
 
-    The library is stated beside the parent, never inferred:
-    a run may name another library's PlayerGame, which is
-    the drift `audit_library_ownership` reports.
+    The one scope the page, the filter seams and the numbering
+    share. `display_name` refuses a live ordinary row no number
+    was counted across, so a page reading wider than
+    `numbered_for` reads would raise on its first blank name.
+
+    The library is stated beside the parent, never inferred: a
+    run may name another library's PlayerGame, which is the
+    drift `audit_library_ownership` reports.
     """
     return Playthrough.objects.filter(
         library=library,
-        player_game=player_game,
+        player_game__library=library,
         removed_at__isnull=True,
         kind=PlaythroughKind.ORDINARY,
-    ).order_by("created_at", "id")
+    )
+
+
+def live_ordinary_runs(
+    library: UserLibrary, player_game: PlayerGame
+) -> QuerySet[Playthrough]:
+    """This game's live ordinary runs, oldest first."""
+    return (
+        library_runs(library)
+        .filter(player_game=player_game)
+        .order_by("created_at", "id")
+    )
 
 
 def tracked_game(library: UserLibrary, game: Game) -> PlayerGame | None:
