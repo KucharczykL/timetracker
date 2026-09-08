@@ -7,6 +7,8 @@ import pytest
 from django.urls import reverse
 from django.utils import timezone
 
+from games.commands.playthrough import CompletePlaythrough
+from games.events.dispatch import dispatch
 from games.models import (
     Game,
     PlayerGameStatus,
@@ -17,7 +19,12 @@ from games.models import (
 )
 from games.removal import remove
 from games.views.stats_data import compute_stats
-from games.writes.playergame import new_correlation_id, record_facts, track_game
+from games.writes.playergame import (
+    new_correlation_id,
+    record_facts,
+    track_game,
+    untrack_game,
+)
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.untracked_games
@@ -184,6 +191,110 @@ def test_a_row_that_reports_no_day_renders(client, owned_user, owned_library):
     response = client.get(reverse("games:stats_by_year", args=[YEAR]))
 
     assert response.status_code == 200
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_command_states_the_completion_the_year_counts(owned_user, owned_library):
+    """One test drives the command, not the row."""
+    game = Game.objects.create(library=owned_library, name="Commanded")
+    track_game(owned_user, game, correlation_id=new_correlation_id())
+    purchase = Purchase.objects.create(
+        library=owned_library,
+        price_currency="CZK",
+        type=Purchase.GAME,
+        date_purchased=date(YEAR, 1, 5),
+    )
+    purchase.games.set([game])
+    run = Playthrough.objects.get(player_game__game=game)
+    dispatch(
+        CompletePlaythrough(
+            playthrough_id=run.pk,
+            when=TemporalValue.from_day(date(YEAR, 8, 3)),
+            note="",
+        ),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="done",
+    )
+
+    data = compute_stats(owned_library, YEAR)
+
+    assert data["all_finished_this_year_count"] == 1
+    assert [row.date_finished for row in data["all_finished_this_year"]] == [
+        date(YEAR, 8, 3)
+    ]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_open_upper_bound_answers_every_later_year(owned_user, owned_library):
+    """No end: the completion answers on after it."""
+    run = _bought_and_completed(owned_user, owned_library, "Open end")
+    Playthrough.objects.filter(pk=run.pk).update(
+        completed=TemporalValue.parse(f"{YEAR}-05-01/"),
+        completion_recorded_at=run.created_at,
+    )
+
+    assert compute_stats(owned_library, YEAR)["all_finished_this_year_count"] == 1
+    assert compute_stats(owned_library, YEAR + 5)["all_finished_this_year_count"] == 1
+    assert compute_stats(owned_library, YEAR - 1)["all_finished_this_year_count"] == 0
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_untracked_game_supplies_no_completion(owned_user, owned_library):
+    """A removed PlayerGame takes its runs along."""
+    run = _bought_and_completed(
+        owned_user, owned_library, "Untracked", date(YEAR, 6, 1)
+    )
+    untrack_game(owned_user, run.player_game.game, correlation_id=new_correlation_id())
+
+    assert compute_stats(owned_library, YEAR)["all_finished_this_year_count"] == 0
+    assert compute_stats(owned_library, None)["backlog_decrease_count"] == 0
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_purchase_naming_no_game_finishes_nothing(owned_user, owned_library):
+    """A Purchase with no game reports no finish."""
+    _bought_and_completed(owned_user, owned_library, "Dated", date(YEAR, 6, 1))
+    Purchase.objects.create(
+        library=owned_library,
+        name="Gift card",
+        price_currency="CZK",
+        type=Purchase.GAME,
+        date_purchased=date(YEAR, 2, 1),
+    )
+
+    data = compute_stats(owned_library, YEAR)
+
+    assert data["all_finished_this_year_count"] == 1
+    assert compute_stats(owned_library, None)["backlog_decrease_count"] == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_bundle_released_this_year_reports_one_row(owned_user, owned_library):
+    """Two games of one year, one row."""
+    first = _bought_and_completed(
+        owned_user, owned_library, "Released A", date(YEAR, 3, 1)
+    )
+    first_game = first.player_game.game
+    first_game.year_released = YEAR
+    first_game.save()
+    second_game = Game.objects.create(
+        library=owned_library, name="Released B", year_released=YEAR
+    )
+    track_game(owned_user, second_game, correlation_id=new_correlation_id())
+    second = Playthrough.objects.get(player_game__game=second_game)
+    Playthrough.objects.filter(pk=second.pk).update(
+        completed=TemporalValue.from_day(date(YEAR, 9, 1)),
+        completion_recorded_at=second.created_at,
+    )
+    Purchase.objects.get(games=first_game).games.add(second_game)
+
+    data = compute_stats(owned_library, YEAR)
+
+    assert data["this_year_finished_this_year_count"] == 1
+    assert [row.date_finished for row in data["this_year_finished_this_year"]] == [
+        date(YEAR, 3, 1)
+    ]
 
 
 @pytest.mark.django_db(transaction=True)
