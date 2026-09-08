@@ -70,6 +70,7 @@ from games.catalog_form import CatalogGraphForm
 from games.catalog_submit import submitted_game_or_form_error
 from games.external_references import CatalogTarget, external_reference_url_or_none
 from games.filters import (
+    PlaythroughFilter,
     PurchaseFilter,
     SessionFilter,
     filter_query_context_for_library,
@@ -946,6 +947,7 @@ def _sessions_section(
 
 
 def _playthroughs_section(
+    game: Game,
     runs: Sequence[Playthrough],
     presentation: DateTimePresentation,
     origin: OriginUrl | None,
@@ -961,9 +963,6 @@ def _playthroughs_section(
         data_table=True,
         caption="Playthroughs of this game",
     )
-    #: No link: the list page reads legacy rows
-    #: until #1013, and a run stated after #687 is
-    #: on neither the page nor its count.
     section = _game_section(
         "Playthroughs",
         len(runs),
@@ -971,6 +970,7 @@ def _playthroughs_section(
         #: Reachable: conversion skipped a tracked game
         #: whose catalog row was removed.
         "No playthroughs yet.",
+        view_all_url=filter_url(PlaythroughFilter.where(game=[game.id])),
     )
     return Div(id_="playthroughs-container")[section]
 
@@ -1043,7 +1043,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
         ),
         _purchases_section(game, purchases, presentation, origin),
         _sessions_section(game, sessions, presentation, durations),
-        _playthroughs_section(runs, presentation, origin),
+        _playthroughs_section(game, runs, presentation, origin),
         _history_section(game, library, presentation),
     ]
     return render_page(

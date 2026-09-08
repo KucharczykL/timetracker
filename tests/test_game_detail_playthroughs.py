@@ -6,7 +6,9 @@ import uuid
 import pytest
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.html import escape
 
+from games.filters import PlaythroughFilter, filter_url
 from games.models import Game, Playthrough, PlaythroughKind
 
 pytestmark = pytest.mark.django_db
@@ -77,9 +79,13 @@ def test_the_section_badge_counts_every_live_ordinary_run(logged_in, game):
     assert badge(logged_in, game) == "2"
 
 
-def test_the_section_links_no_view_all(logged_in, game):
-    """#1013 owns the list page. Until then it answers rows."""
-    assert "View all" not in section(logged_in, game)
+def test_the_section_links_view_all(logged_in, game):
+    """#1013 gave the list page the projection, so the section
+    links to it, filtered to this game."""
+    body = section(logged_in, game)
+
+    assert "View all" in body
+    assert escape(filter_url(PlaythroughFilter.where(game=[game.id]))) in body
 
 
 def test_the_section_renders_unknown_for_a_stated_act_with_no_day(logged_in, game):

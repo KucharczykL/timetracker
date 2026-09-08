@@ -184,10 +184,11 @@ def test_a_row_with_no_run_answers_409(client, user, game):
     assert response.status_code == 409
 
 
-def test_only_two_modules_read_the_bridge():
+def test_one_module_reads_the_bridge():
     """#771 takes the bridge away.
 
-    A third reader is a decision, not a drift.
+    #1013 left the API alone with it, and a second reader
+    is a decision, not a drift.
     """
     import pathlib
 
@@ -197,4 +198,4 @@ def test_only_two_modules_read_the_bridge():
         if "playthrough_provenance" in path.read_text()
         and path.name != "playthrough_provenance.py"
     )
-    assert readers == ["games/api.py", "games/views/playthrough.py"]
+    assert readers == ["games/api.py"]

@@ -1,5 +1,6 @@
 """#687: the screens state runs, not rows."""
 
+import uuid
 from datetime import UTC, date, datetime
 
 import pytest
@@ -8,7 +9,14 @@ from django.urls import reverse
 from django.utils import timezone
 
 from games.backfill.playthrough import convert_library
-from games.models import Game, LibraryEvent, PlayEvent, Playthrough, Session
+from games.models import (
+    Game,
+    LibraryEvent,
+    PlayEvent,
+    Playthrough,
+    PlaythroughKind,
+    Session,
+)
 from games.reads.playthrough_provenance import run_for_row
 from games.writes.playergame import new_correlation_id
 from games.writes.playthrough import remove_run
@@ -182,26 +190,56 @@ def test_removing_one_of_two_runs_stamps_the_projection_only(client, user, game)
     assert other is not None and other.removed_at is None
 
 
-@pytest.mark.django_db(transaction=True)
-def test_the_list_page_names_the_run_in_a_converted_rows_actions(client, user, game):
-    """The row's own key reaches nothing, so the cell states the run."""
-    row = PlayEvent.objects.create(game=game, started=None, ended=None, note="")
-    convert_library(user.library)
-    run = run_for_row(user.library, row.pk).run
-    assert run is not None
+def _second_run(run: Playthrough) -> Playthrough:
+    """Another run at the same tracked game."""
+    return Playthrough.objects.create(
+        pk=uuid.uuid7(),
+        library=run.library,
+        player_game=run.player_game,
+        kind=PlaythroughKind.ORDINARY,
+        created_at=timezone.now(),
+    )
+
+
+@pytest.mark.django_db
+def test_the_page_numbers_a_run_as_game_detail_does(client, user, game):
+    """The number is counted across the game's runs.
+
+    Under any filter, sort or page: across every live ordinary
+    run of the game, never across the rows this page renders.
+    """
+    _second_run(Playthrough.objects.get(player_game__game=game))
+    client.force_login(user)
+
+    listed = client.get(
+        reverse("games:list_playthroughs") + "?sort=-created"
+    ).content.decode()
+    detail = client.get(game.get_absolute_url()).content.decode()
+
+    assert "Playthrough 2" in listed
+    assert "Playthrough 2" in detail
+
+
+@pytest.mark.django_db
+def test_the_page_names_the_run_in_its_actions(client, user, game):
+    """The list page reads the projection, so its cells state runs."""
+    run = Playthrough.objects.get(player_game__game=game)
     client.force_login(user)
 
     body = client.get(reverse("games:list_playthroughs")).content.decode()
 
     assert reverse("games:edit_playthrough", args=[run.pk]) in body
     assert reverse("games:remove_playthrough", args=[run.pk]) in body
-    assert str(row.pk) not in body
 
 
 @pytest.mark.django_db(transaction=True)
-def test_the_list_page_renders_an_unconverted_row_without_actions(client, user, game):
-    """No run behind the row, and the page still answers 200."""
-    PlayEvent.objects.create(game=game, started=None, ended=None, note="")
+def test_the_page_renders_no_row_a_conversion_left_behind(client, user, game):
+    """A legacy row nothing converted reaches no page at all."""
+    other = Game.objects.create(library=user.library, name="Tunic")
+    PlayEvent.objects.create(game=other, started=None, ended=None, note="")
+    Playthrough.objects.filter(player_game__game=other).update(
+        removed_at=timezone.now()
+    )
     client.force_login(user)
 
     response = client.get(reverse("games:list_playthroughs"))
@@ -209,8 +247,7 @@ def test_the_list_page_renders_an_unconverted_row_without_actions(client, user, 
     assert response.status_code == 200
     body = response.content.decode()
     assert game.name in body
-    assert "/playthrough/edit/" not in body
-    assert "/remove" not in body
+    assert other.name not in body
 
 
 @pytest.mark.django_db(transaction=True)

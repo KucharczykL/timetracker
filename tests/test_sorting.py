@@ -612,7 +612,7 @@ class TestEverySortKeyReturns200:
             response = logged_client.get(reverse("games:list_purchases"), {"sort": key})
             assert response.status_code == 200, key
 
-    def test_all_playevent_keys(self, logged_client, two_playevents):
+    def test_all_playthrough_keys(self, logged_client, two_runs):
         for key in PLAYTHROUGH_SORTS:
             for raw in (key, f"-{key}"):
                 response = logged_client.get(
@@ -638,11 +638,22 @@ class TestEverySortKeyReturns200:
 
 
 @pytest.fixture
-def two_playevents(db, two_games):
-    alpha, beta = two_games
-    early = PlayEvent.objects.create(game=alpha, ended="2022-01-01")
-    late = PlayEvent.objects.create(game=beta, ended="2022-06-01")
-    return early, late
+def two_runs(db, two_games):
+    """One finished run per game, Alpha's the earlier."""
+    from django.utils import timezone
+
+    from games.models import Playthrough
+    from timetracker.temporal import TemporalValue
+
+    runs = []
+    for game, day in zip(two_games, ("2022-01-01", "2022-06-01"), strict=True):
+        run = Playthrough.objects.get(player_game__game=game)
+        Playthrough.objects.filter(pk=run.pk).update(
+            completion_recorded_at=timezone.now(),
+            completed=TemporalValue.parse(day),
+        )
+        runs.append(Playthrough.objects.get(pk=run.pk))
+    return runs
 
 
 @pytest.fixture
@@ -669,24 +680,24 @@ def two_platforms(owned_library):
     return switch, playstation
 
 
-class TestListPlayEventsSort:
-    def test_sort_by_ended_ascending_overrides_default(
-        self, logged_client, two_playevents
+class TestListPlaythroughsSort:
+    def test_sort_by_completed_ascending_overrides_default(
+        self, logged_client, two_runs
     ):
-        # default -created puts the later-created row first; ended-ascending must
-        # flip it so the sort param, not creation order, drives the order.
+        # default -created puts the later-created run first; completed-ascending
+        # must flip it so the sort param, not creation order, drives the order.
         response = logged_client.get(
-            reverse("games:list_playthroughs"), {"sort": "ended"}
+            reverse("games:list_playthroughs"), {"sort": "completed"}
         )
         assert response.status_code == 200
         body = response.content.decode()
         tbody_match = re.search(r"<tbody[^>]*>(.*?)</tbody>", body, re.DOTALL)
         assert tbody_match
         tbody = tbody_match.group(1)
-        assert tbody.index("Alpha") < tbody.index("Beta")  # earliest ended first
+        assert tbody.index("Alpha") < tbody.index("Beta")  # earliest finish first
 
     def test_unknown_sort_emits_warning(
-        self, logged_client, two_playevents, capture_games_logger
+        self, logged_client, two_runs, capture_games_logger
     ):
         with capture_games_logger() as caplog:
             response = logged_client.get(

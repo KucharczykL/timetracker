@@ -1,6 +1,7 @@
 """One table row per run."""
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 from common.components import (
     ICON_BUTTON_SIZE_CLASS,
@@ -14,6 +15,7 @@ from common.components import (
 )
 from common.date_time_presentation import DateTimePresentation
 from common.returns import OriginUrl, action_url
+from common.sorting import SortKey, SortTerm
 from common.temporal_presentation import TemporalText
 from games.models import Playthrough
 from games.reads.playthrough_endpoints import (
@@ -24,6 +26,17 @@ from games.reads.playthrough_endpoints import (
 )
 from games.reads.playthrough_numbering import display_name
 
+#: The list page's sort keys, by column label. Game detail
+#: states none: it reads no `?sort=`, so a clickable header
+#: there reloads the page and changes nothing.
+_SORT_KEYS: Mapping[str, SortKey] = {
+    "Game": "name",
+    "Started": "started",
+    "Completed": "completed",
+    "Days to finish": "days",
+    "Created": "created",
+}
+
 
 def playthrough_tabledata(
     runs: Sequence[Playthrough],
@@ -31,18 +44,24 @@ def playthrough_tabledata(
     exclude_columns: Sequence[str] = (),
     *,
     origin: OriginUrl | None,
+    sort_terms: Sequence[SortTerm] = (),
+    sortable: bool = False,
 ) -> TableData:
-    """The runs, as rows. No sort keys."""
+    """The runs, as rows. The caller states whether they sort."""
+
+    def column(label: str, **options: Any) -> Column:
+        return Column(label, _SORT_KEYS.get(label) if sortable else None, **options)
+
     column_list = [
-        Column("Playthrough", shrinkable=True),
-        Column("Game", shrinkable=True),
-        Column("Started", priority=3),
-        Column("Completed", priority=2),
-        Column("Days to finish", priority=2),
+        column("Playthrough", shrinkable=True),
+        column("Game", shrinkable=True),
+        column("Started", priority=3),
+        column("Completed", priority=2),
+        column("Days to finish", priority=2),
         # One long note on one line widens everything.
-        Column("Note", wrap=True),
-        Column("Created"),
-        Column("Actions", align="right", priority=4),
+        column("Note", wrap=True),
+        column("Created"),
+        column("Actions", align="right", priority=4),
     ]
     kept_columns = [
         column for column in column_list if column.label not in exclude_columns
@@ -55,7 +74,9 @@ def playthrough_tabledata(
 
     row_list: list[list[Cell]] = [
         [
-            display_name(run),
+            #: A stated name has no natural width, and this is
+            #: the pinned first column, so it clips itself.
+            TruncatedText(display_name(run)),
             TruncatedText(
                 run.player_game.game.name,
                 link=run.player_game.game.get_absolute_url(),
@@ -76,7 +97,7 @@ def playthrough_tabledata(
     return {
         "caption": "Playthroughs",
         "columns": kept_columns,
-        "sort_terms": (),
+        "sort_terms": sort_terms,
         "rows": [make_row(*cells) for cells in kept_rows],
     }
 

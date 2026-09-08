@@ -184,7 +184,14 @@ class HtmlValidityTest(TestCase):
             reverse("games:stats_by_year", args=[2022]),
         ]
         # Every filter-builder page (the "!"-badge / advanced-filter surface).
-        for model in ("game", "session", "purchase", "playevent", "device", "platform"):
+        for model in (
+            "game",
+            "session",
+            "purchase",
+            "playthrough",
+            "device",
+            "platform",
+        ):
             urls.append(reverse("games:filter_builder", args=[model]))
         return urls
 

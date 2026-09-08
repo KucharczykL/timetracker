@@ -70,15 +70,11 @@ def test_purchases_section_links_to_filtered_purchases(game, rendered):
     assert href in rendered
 
 
-def test_playthroughs_section_links_nowhere(game, rendered):
-    """No "View all" until #1013 moves the list page onto runs.
-
-    The legacy list would answer with rows, and a run stated
-    after #687 is on neither the page nor its count.
-    """
+def test_playthroughs_section_links_to_filtered_playthroughs(game, rendered):
+    """#1013 moved the list page onto runs, so the link reaches
+    the same rows the section renders."""
     href = escape(filter_url(PlaythroughFilter.where(game=[game.id])))
-    assert href not in rendered
-    assert 'title="View all playthroughs for this game"' not in rendered
+    assert href in rendered
 
 
 def test_link_filters_scope_to_game(game):

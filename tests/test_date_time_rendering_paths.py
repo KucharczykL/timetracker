@@ -114,10 +114,14 @@ def test_non_default_presentation_reaches_every_server_display_path(
         started=date(2022, 9, 24),
         ended=date(2022, 9, 25),
     )
-    #: #1012: the section reads the run's day.
+    #: #1012 gave the section the run's days, #1013 the list
+    #: page, so both endpoints and the run's own created day.
     Playthrough.objects.filter(player_game__game=game).update(
         start_recorded_at=timezone.now(),
         started=TemporalValue.from_day(date(2022, 9, 24)),
+        completion_recorded_at=timezone.now(),
+        completed=TemporalValue.from_day(date(2022, 9, 25)),
+        created_at=datetime(2022, 10, 6, tzinfo=UTC),
     )
     created_values = (
         (Game, game.pk, datetime(2022, 10, 1, tzinfo=UTC)),

@@ -1,6 +1,5 @@
 import logging
 import uuid
-from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import Any, cast
 from uuid import UUID
@@ -9,58 +8,43 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.db.models import Max, QuerySet
-from django.db.models.manager import BaseManager
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect
 from django.urls import reverse
 
 from common.components import (
-    ICON_BUTTON_SIZE_CLASS,
     AddForm,
-    ButtonGroup,
-    Cell,
-    Column,
     ContentContainer,
     Fragment,
-    Icon,
     ModuleScript,
     QuickFilterBar,
-    TableData,
-    TruncatedText,
-    make_row,
     paginated_table_content,
     parse_filter_dict,
 )
-from common.date_time_presentation import (
-    DateTimePresentation,
-    date_time_presentation_for_request,
-)
+from common.date_time_presentation import date_time_presentation_for_request
 from common.duration_presentation import (
     DurationPresentation,
     duration_format_profile,
 )
 from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
-from common.returns import OriginUrl, action_url
 from common.utils import paginate
 from games.filters import filter_query_context_for_library, parse_playthrough_filter
 from games.forms import PlaythroughForm
 from games.models import (
     Game,
     PlayerGameStatus,
-    PlayEvent,
     Playthrough,
     Session,
     UserLibrary,
 )
 from games.ownership import owned_or_404
 from games.reads.playthrough_endpoints import restatable_days
-from games.reads.playthrough_provenance import PlaythroughId, runs_for_rows
-from games.reads.playthrough_runs import live_ordinary_runs, tracked_game
+from games.reads.playthrough_numbering import numbered_for
+from games.reads.playthrough_runs import library_runs, live_ordinary_runs, tracked_game
 from games.sorting import (
     PLAYTHROUGH_DEFAULT_SORT,
     PLAYTHROUGH_SORTS,
-    SortTerm,
     apply_sort,
     parse_find_filter,
 )
@@ -70,6 +54,7 @@ from games.views.filtering import (
     warn_unknown_sort,
 )
 from games.views.playergame_writes import record_facts_for_request
+from games.views.playthrough_rows import playthrough_tabledata
 from games.views.playthrough_writes import (
     record_run_for_request,
     remove_run_for_request,
@@ -81,96 +66,6 @@ from games.writes.playergame import new_correlation_id
 from games.writes.playthrough import RunDraft
 
 logger = logging.getLogger("games")
-
-
-def _legacy_actions(run_id: PlaythroughId | None, origin: OriginUrl | None) -> Cell:
-    """No run, no actions.
-
-    The map is partial: #684 left alone a row on an
-    untracked game, on a game the catalog marks removed, and
-    on a game with no projection row. #771 takes row and
-    branch together.
-    """
-    if run_id is None:
-        return ""
-    return ButtonGroup(
-        [
-            {
-                "href": action_url("games:edit_playthrough", run_id, origin=origin),
-                "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
-                "color": "gray",
-            },
-            {
-                "href": action_url("games:remove_playthrough", run_id, origin=origin),
-                "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
-                "color": "red",
-            },
-        ]
-    )
-
-
-def create_playthrough_tabledata(
-    playevents: list[PlayEvent] | BaseManager[PlayEvent] | QuerySet[PlayEvent],
-    presentation: DateTimePresentation,
-    exclude_columns: Sequence[str] = (),
-    request: HttpRequest | None = None,
-    sort_terms: Sequence[SortTerm] = (),
-    *,
-    library: UserLibrary,
-    origin: OriginUrl | None,
-) -> TableData:
-    if isinstance(playevents, BaseManager):
-        playevents = playevents.all()
-    rows = list(playevents)
-    #: Rows here, run ids there, until #1013.
-    runs = runs_for_rows(library, [row.pk for row in rows])
-    column_list = [
-        Column("Game", "name", shrinkable=True),
-        Column("Started", "started", priority=3),
-        Column("Ended", "ended", priority=2),
-        Column("Days to finish", "days", priority=2),
-        # Free text with no natural width: on one line a single long note would
-        # widen the table past anything the other columns could reclaim.
-        Column("Note", wrap=True),
-        Column("Created", "created"),
-        Column("Actions", align="right", priority=4),
-    ]
-    filtered_column_list = [
-        column for column in column_list if column.label not in exclude_columns
-    ]
-    excluded_column_indexes = [
-        index
-        for index, column in enumerate(column_list)
-        if column.label in exclude_columns
-    ]
-
-    row_list: list[list[Cell]] = [
-        [
-            TruncatedText(
-                playevent.game.name,
-                link=playevent.game.get_absolute_url(),
-            ),
-            presentation.format(playevent.started, "date")
-            if playevent.started
-            else "-",
-            presentation.format(playevent.ended, "date") if playevent.ended else "-",
-            str(playevent.days_to_finish) if playevent.days_to_finish else "-",
-            playevent.note,
-            presentation.format(playevent.created_at, "date"),
-            _legacy_actions(runs.get(playevent.pk), origin),
-        ]
-        for playevent in rows
-    ]
-    filtered_row_list = [
-        [column for idx, column in enumerate(row) if idx not in excluded_column_indexes]
-        for row in row_list
-    ]
-    return {
-        "caption": "Play events",
-        "columns": filtered_column_list,
-        "sort_terms": sort_terms,
-        "rows": [make_row(*cells) for cells in filtered_row_list],
-    }
 
 
 def _get_formatted_playtime_for_game_sessions_in_range(
@@ -215,7 +110,7 @@ def list_playthroughs(request: HttpRequest) -> HttpResponse:
     library = cast(User, request.user).library
     presentation = date_time_presentation_for_request(request)
     origin = request.get_full_path()
-    playevents = PlayEvent.objects.for_library(library)
+    runs = library_runs(library).select_related("player_game__game")
 
     filter_json = request.GET.get("filter", "")
     if filter_json:
@@ -223,23 +118,32 @@ def list_playthroughs(request: HttpRequest) -> HttpResponse:
             request, parse_playthrough_filter, filter_json
         )
         if playthrough_filter is not None:
-            playevents = execute_filter(
+            runs = execute_filter(
                 playthrough_filter,
-                playevents,
+                runs,
                 filter_query_context_for_library(library),
             )
 
     find = parse_find_filter(request)
-    sort = apply_sort(playevents, find, PLAYTHROUGH_SORTS, PLAYTHROUGH_DEFAULT_SORT)
-    playevents = sort.queryset
+    sort = apply_sort(runs, find, PLAYTHROUGH_SORTS, PLAYTHROUGH_DEFAULT_SORT)
     warn_unknown_sort(request, sort.unknown, entity="playthrough")
-    playevents, page_obj, elided_page_range = paginate(playevents, find)
-    data = create_playthrough_tabledata(
-        playevents,
+    page_rows, page_obj, elided_page_range = paginate(sort.queryset, find)
+    page_runs = list(page_rows)
+    #: One more query for the page: a number is counted across
+    #: every live ordinary run of the games the page names, so
+    #: it reads the same here as on Game detail, under any
+    #: filter, sort or page.
+    numbers = {
+        numbered.pk: getattr(numbered, "display_number", None)
+        for numbered in numbered_for(library, {run.player_game_id for run in page_runs})
+    }
+    for run in page_runs:
+        run.display_number = numbers.get(run.pk)
+    data = playthrough_tabledata(
+        page_runs,
         presentation,
-        request=request,
         sort_terms=sort.terms,
-        library=library,
+        sortable=True,
         origin=origin,
     )
     content = paginated_table_content(
