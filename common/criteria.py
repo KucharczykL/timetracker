@@ -3121,19 +3121,22 @@ def aggregate_to_q(
     from django.db.models import Avg, Count, Sum
 
     scope_condition: Q | None = None
-    if criterion.scope is not None:
-        # A hand-assembled criterion could carry a wrong-typed scope; its Q would
-        # be built in the wrong model's namespace and produce a silently-wrong
-        # (or FieldError-ing) subquery, so guard the type loudly. Never user
-        # input — from_json always builds the scope from the spec's class.
-        if not isinstance(criterion.scope, spec.scope_filter):
-            raise RuntimeError(
-                f"aggregate scope must be a {spec.scope_filter.__name__},"
-                f" got {type(criterion.scope).__name__}"
-            )
+    # A hand-assembled criterion could carry a wrong-typed scope; its Q would
+    # be built in the wrong model's namespace and produce a silently-wrong
+    # (or FieldError-ing) subquery, so guard the type loudly. Never user
+    # input — from_json always builds the scope from the spec's class.
+    if criterion.scope is not None and not isinstance(
+        criterion.scope, spec.scope_filter
+    ):
+        raise RuntimeError(
+            f"aggregate scope must be a {spec.scope_filter.__name__},"
+            f" got {type(criterion.scope).__name__}"
+        )
     # The spec's own scope and the criterion's narrow the same set (#1013),
     # so one subquery carries both.
-    scopes = [scope for scope in (spec.base_scope, criterion.scope) if scope is not None]
+    scopes = [
+        scope for scope in (spec.base_scope, criterion.scope) if scope is not None
+    ]
     if scopes:
         related_model: ModelClass = spec.scope_filter._comparison_model()
         if related_model is None:
