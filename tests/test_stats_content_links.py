@@ -1,10 +1,11 @@
 """Rendering tests: stats page wires rows/counts to filtered-list links (#65)."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from django.utils.html import escape
 
 from common.date_time_presentation import (
@@ -17,10 +18,11 @@ from common.duration_presentation import (
 )
 from common.filter_execution import execute_filter
 from games.filters import filter_query_context_for_library, filter_url
-from games.models import Game, Platform, PlayEvent, Purchase, Session
+from games.models import Game, Platform, Playthrough, Purchase, Session
 from games.views import stats_links
 from games.views.stats_content import stats_content as _stats_content
 from games.views.stats_data import compute_stats
+from timetracker.temporal import TemporalValue
 
 YEAR = 2024
 _PRESENTATION = DateTimePresentation(
@@ -93,7 +95,11 @@ def rendered(db):
     ).games.set([games[2]])  # unfinished
 
     finished_game = games[0]
-    PlayEvent.objects.create(game=finished_game, ended=_dt(8, 1))
+    #: The run a conversion leaves, day-precision.
+    Playthrough.objects.filter(player_game__game=finished_game).update(
+        completion_recorded_at=timezone.now(),
+        completed=TemporalValue.from_day(date(YEAR, 8, 1)),
+    )
 
     ctx = compute_stats(library, YEAR)
     return {

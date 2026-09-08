@@ -20,7 +20,7 @@ from django.utils import timezone
 from common.criteria import Modifier
 from common.filter_execution import execute_filter
 from games.filters import filter_query_context_for_library
-from games.models import Game, Platform, PlayEvent, Playthrough, Purchase, Session
+from games.models import Game, Platform, Playthrough, Purchase, Session
 from games.views import stats_links
 from games.views.stats_data import compute_stats
 from timetracker.temporal import TemporalValue
@@ -61,8 +61,6 @@ def world(db):
     Session.objects.create(game=playing_game, timestamp_start=_dt(YEAR, 6, 3))
     Session.objects.create(game=finished_game, timestamp_start=_dt(YEAR - 1, 6, 1))
 
-    # PlayEvents: finished_game ended in-year.
-    PlayEvent.objects.create(game=finished_game, ended=_dt(YEAR, 8, 1))
     #: The run a conversion leaves, day-precision.
     Playthrough.objects.filter(player_game__game=finished_game).update(
         completion_recorded_at=timezone.now(),
@@ -499,7 +497,6 @@ def a_retired_purchase(world):
     earlier = Game.objects.create(
         library=library, name="Retired earlier", status=Game.Status.RETIRED
     )
-    PlayEvent.objects.create(game=earlier, ended=_dt(YEAR, 8, 2))
     Playthrough.objects.filter(player_game__game=earlier).update(
         completion_recorded_at=timezone.now(),
         completed=TemporalValue.from_day(date(YEAR, 8, 2)),
