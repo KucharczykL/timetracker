@@ -6,7 +6,6 @@ An actor goes in here, not a request.
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date
 from typing import NamedTuple, Protocol
 
 from django.contrib.auth.models import User
@@ -40,18 +39,13 @@ from timetracker.temporal import TemporalValue
 class RunDraft:
     """What a person stated about one run.
 
-    Plain dates: the act rule turns each into an
+    Temporal values: the act rule turns each into an
     act, with no day where none was given.
     """
 
-    started: date | None
-    ended: date | None
+    started: TemporalValue | None
+    completed: TemporalValue | None
     note: str
-
-
-def _stated_day(value: date | None) -> TemporalValue | None:
-    """The day at day precision, or none."""
-    return None if value is None else TemporalValue.from_day(value)
 
 
 def _dispatch(
@@ -189,8 +183,8 @@ def _restate(
     correlation_id: uuid.UUID,
 ) -> None:
     """The statements themselves, inside a caller's answer."""
-    started = _stated_day(draft.started)
-    completed = _stated_day(draft.ended)
+    started = draft.started
+    completed = draft.completed
     #: Refused up front, because no act withdraws:
     #: a start commits, then the completion refuses.
     if endpoints_certainly_reversed(started=started, completed=completed):
@@ -282,8 +276,8 @@ def _record_once(
         CreatePlaythrough(
             game_id=game.pk,
             #: Both acts: a run recorded here happened.
-            started=ActStatement(_stated_day(draft.started)),
-            completed=ActStatement(_stated_day(draft.ended)),
+            started=ActStatement(draft.started),
+            completed=ActStatement(draft.completed),
             note=draft.note,
         ),
         actor=actor,

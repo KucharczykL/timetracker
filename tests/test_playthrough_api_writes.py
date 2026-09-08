@@ -42,7 +42,12 @@ def test_post_states_a_run_and_writes_no_row(client, user, game):
 
     response = client.post(
         "/api/playthrough/",
-        {"game_id": str(game.pk), "started": "2026-01-02", "ended": None, "note": ""},
+        {
+            "game_id": str(game.pk),
+            "started": "2026-01-02",
+            "completed": None,
+            "note": "",
+        },
         content_type="application/json",
     )
 
@@ -60,7 +65,7 @@ def test_a_reversed_pair_answers_409(client, user, game):
         {
             "game_id": str(game.pk),
             "started": "2026-02-03",
-            "ended": "2026-01-02",
+            "completed": "2026-01-02",
             "note": "",
         },
         content_type="application/json",
@@ -99,7 +104,7 @@ def test_patch_states_the_difference_onto_the_run(client, user, game):
 
     response = client.patch(
         f"/api/playthrough/{run.pk}",
-        {"started": "2026-01-02", "ended": None, "note": "read"},
+        {"started": "2026-01-02", "completed": None, "note": "read"},
         content_type="application/json",
     )
 
@@ -143,12 +148,27 @@ def test_a_second_patch_does_not_revert_the_first(client, user, game):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_run_stating_more_than_a_day_answers_409(client, user, game):
-    """#1015 owns the screen that states a month.
+def test_a_patch_states_a_month(client, user, game):
+    """The body states every value a run can hold."""
+    PlayEvent.objects.create(game=game, started=None, ended=None, note="start")
+    convert_library(user.library)
+    run = run_with_note(user, game, "start")
+    client.force_login(user)
 
-    This form holds a day, so it refuses rather than
-    flattening what the run says into one.
-    """
+    response = client.patch(
+        f"/api/playthrough/{run.pk}",
+        {"started": "2026-03"},
+        content_type="application/json",
+    )
+
+    assert response.status_code == 204
+    run.refresh_from_db()
+    assert run.started == TemporalValue.from_month(2026, 3)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_patch_that_names_one_key_keeps_a_richer_value(client, user, game):
+    """A month survives a PATCH that states only the note."""
     PlayEvent.objects.create(game=game, started=None, ended=None, note="start")
     convert_library(user.library)
     run = run_with_note(user, game, "start")
@@ -163,9 +183,27 @@ def test_a_run_stating_more_than_a_day_answers_409(client, user, game):
         content_type="application/json",
     )
 
-    assert response.status_code == 409
+    assert response.status_code == 204
     run.refresh_from_db()
-    assert run.note == "start"
+    assert run.note == "second"
+    assert run.started == TemporalValue.from_month(2026, 3)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_spelling_the_grammar_refuses_answers_422(client, user, game):
+    """A decade is 202X; 2020s names nothing."""
+    PlayEvent.objects.create(game=game, started=None, ended=None, note="start")
+    convert_library(user.library)
+    run = run_with_note(user, game, "start")
+    client.force_login(user)
+
+    response = client.patch(
+        f"/api/playthrough/{run.pk}",
+        {"started": "2020s"},
+        content_type="application/json",
+    )
+
+    assert response.status_code == 422
 
 
 @pytest.mark.django_db(transaction=True)

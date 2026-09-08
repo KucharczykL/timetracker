@@ -1,6 +1,6 @@
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, cast
 from uuid import UUID
 
@@ -68,6 +68,7 @@ from games.views.removal import confirm_and_apply
 from games.views.returns import return_url
 from games.writes.playergame import new_correlation_id
 from games.writes.playthrough import RunDraft
+from timetracker.temporal import TemporalValue
 
 logger = logging.getLogger("games")
 
@@ -257,11 +258,19 @@ def add_playthrough(request: HttpRequest, game_id: UUID | None = None) -> HttpRe
     )
 
 
+def _stated_day(day: date | None) -> TemporalValue | None:
+    """The day at day precision, or none."""
+    return None if day is None else TemporalValue.from_day(day)
+
+
 def _draft_from(form: PlaythroughForm) -> RunDraft:
-    """The run the form states."""
+    """The run the form states, as temporal values.
+
+    The two fields are optional, and from_day refuses None.
+    """
     return RunDraft(
-        started=form.cleaned_data["started"],
-        ended=form.cleaned_data["ended"],
+        started=_stated_day(form.cleaned_data["started"]),
+        completed=_stated_day(form.cleaned_data["ended"]),
         note=form.cleaned_data["note"],
     )
 

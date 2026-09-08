@@ -30,13 +30,18 @@ def game(owned_library):
     return Game.objects.create(library=owned_library, name="Outer Wilds")
 
 
+def _day(day: date | None) -> TemporalValue | None:
+    """The day at day precision, or none."""
+    return None if day is None else TemporalValue.from_day(day)
+
+
 def a_recorded_run(user, game, *, started, ended) -> Playthrough:
     """Track, state one run, and read back."""
     track_game(user, game, correlation_id=new_correlation_id())
     record_run(
         user,
         game,
-        RunDraft(started=started, ended=ended, note=""),
+        RunDraft(started=_day(started), completed=_day(ended), note=""),
         correlation_id=new_correlation_id(),
     )
     #: The run the game was born with,
@@ -58,7 +63,11 @@ class TestRecordRun:
         record_run(
             user,
             game,
-            RunDraft(started=date(2026, 1, 2), ended=date(2026, 2, 3), note="12h"),
+            RunDraft(
+                started=TemporalValue.from_day(date(2026, 1, 2)),
+                completed=TemporalValue.from_day(date(2026, 2, 3)),
+                note="12h",
+            ),
             correlation_id=new_correlation_id(),
         )
 
@@ -75,7 +84,7 @@ class TestRecordRun:
             record_run(
                 user,
                 game,
-                RunDraft(started=day, ended=day, note=""),
+                RunDraft(started=_day(day), completed=_day(day), note=""),
                 correlation_id=new_correlation_id(),
             )
 
@@ -89,7 +98,7 @@ class TestRecordRun:
         recorded = record_run(
             user,
             game,
-            RunDraft(started=None, ended=None, note=""),
+            RunDraft(started=_day(None), completed=None, note=""),
             correlation_id=new_correlation_id(),
         )
 
@@ -104,7 +113,7 @@ class TestRecordRun:
         recorded = record_run(
             user,
             game,
-            RunDraft(started=None, ended=None, note=""),
+            RunDraft(started=_day(None), completed=None, note=""),
             correlation_id=new_correlation_id(),
         )
 
@@ -117,7 +126,7 @@ class TestRecordRun:
         record_run(
             user,
             game,
-            RunDraft(started=None, ended=None, note=""),
+            RunDraft(started=_day(None), completed=None, note=""),
             correlation_id=new_correlation_id(),
         )
 
@@ -135,7 +144,11 @@ class TestRecordRun:
             record_run(
                 user,
                 game,
-                RunDraft(started=date(2026, 2, 3), ended=date(2026, 1, 2), note=""),
+                RunDraft(
+                    started=TemporalValue.from_day(date(2026, 2, 3)),
+                    completed=TemporalValue.from_day(date(2026, 1, 2)),
+                    note="",
+                ),
                 correlation_id=new_correlation_id(),
             )
 
@@ -153,7 +166,11 @@ class TestRestateRun:
         restate_run(
             user,
             run,
-            RunDraft(started=date(2026, 1, 3), ended=None, note=""),
+            RunDraft(
+                started=TemporalValue.from_day(date(2026, 1, 3)),
+                completed=None,
+                note="",
+            ),
             correlation_id=new_correlation_id(),
         )
 
@@ -165,7 +182,9 @@ class TestRestateRun:
     @pytest.mark.django_db(transaction=True)
     def test_a_resubmitted_edit_appends_nothing(self, user, game):
         run = a_recorded_run(user, game, started=date(2026, 1, 2), ended=None)
-        draft = RunDraft(started=date(2026, 1, 2), ended=None, note="")
+        draft = RunDraft(
+            started=TemporalValue.from_day(date(2026, 1, 2)), completed=None, note=""
+        )
         restate_run(user, run, draft, correlation_id=new_correlation_id())
         before = LibraryEvent.objects.filter(library=user.library).count()
 
@@ -182,7 +201,11 @@ class TestRestateRun:
         restate_run(
             user,
             born,
-            RunDraft(started=date(2026, 1, 2), ended=None, note=""),
+            RunDraft(
+                started=TemporalValue.from_day(date(2026, 1, 2)),
+                completed=None,
+                note="",
+            ),
             correlation_id=new_correlation_id(),
         )
 
@@ -209,7 +232,11 @@ class TestRestateRun:
         restate_run(
             user,
             run,
-            RunDraft(started=date(2026, 3, 1), ended=date(2026, 3, 4), note=""),
+            RunDraft(
+                started=TemporalValue.from_day(date(2026, 3, 1)),
+                completed=TemporalValue.from_day(date(2026, 3, 4)),
+                note="",
+            ),
             correlation_id=new_correlation_id(),
         )
 
@@ -226,7 +253,11 @@ class TestRestateRun:
         restate_run(
             user,
             run,
-            RunDraft(started=date(2026, 1, 2), ended=date(2026, 1, 5), note=""),
+            RunDraft(
+                started=TemporalValue.from_day(date(2026, 1, 2)),
+                completed=TemporalValue.from_day(date(2026, 1, 5)),
+                note="",
+            ),
             correlation_id=new_correlation_id(),
         )
 
@@ -245,7 +276,11 @@ class TestRestateRun:
             restate_run(
                 user,
                 run,
-                RunDraft(started=date(2026, 3, 4), ended=date(2026, 3, 1), note=""),
+                RunDraft(
+                    started=TemporalValue.from_day(date(2026, 3, 4)),
+                    completed=TemporalValue.from_day(date(2026, 3, 1)),
+                    note="",
+                ),
                 correlation_id=new_correlation_id(),
             )
 
@@ -260,7 +295,11 @@ class TestRestateRun:
         restate_run(
             user,
             run,
-            RunDraft(started=date(2026, 1, 5), ended=None, note=""),
+            RunDraft(
+                started=TemporalValue.from_day(date(2026, 1, 5)),
+                completed=None,
+                note="",
+            ),
             correlation_id=new_correlation_id(),
         )
 
@@ -288,7 +327,11 @@ class TestRemoveRun:
         record_run(
             user,
             game,
-            RunDraft(started=date(2026, 3, 4), ended=None, note=""),
+            RunDraft(
+                started=TemporalValue.from_day(date(2026, 3, 4)),
+                completed=None,
+                note="",
+            ),
             correlation_id=new_correlation_id(),
         )
         second = Playthrough.objects.filter(player_game__game=game).latest("created_at")

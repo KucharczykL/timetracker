@@ -2,7 +2,7 @@ import json
 import logging
 from collections.abc import Mapping
 from datetime import UTC, date, datetime
-from typing import Any, Final, NoReturn, cast
+from typing import Annotated, Any, Final, NoReturn, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.contrib import messages
@@ -23,6 +23,7 @@ from django.db.models import (
 )
 from django.db.models.functions import Coalesce, Greatest
 from django.utils.timezone import now as django_timezone_now
+from pydantic import BeforeValidator, PlainSerializer
 from ninja import Field, ModelSchema, NinjaAPI, Query, Router, Schema, Status
 from ninja.errors import HttpError
 from ninja.security import django_auth
@@ -53,7 +54,7 @@ from games.models import (
     UserLibrary,
 )
 from games.ownership import owned_or_404
-from games.reads.playthrough_endpoints import days_to_finish, restatable_days
+from games.reads.playthrough_endpoints import days_to_finish
 from games.reads.playthrough_runs import library_runs
 from games.removal import remove
 from games.sorting import (
@@ -64,7 +65,7 @@ from games.sorting import (
     parse_find_filter,
     parse_per_page_override,
 )
-from games.writes.answers import CONFLICT_STATUS, CommandFailed
+from games.writes.answers import CommandFailed
 from games.writes.playergame import new_correlation_id, record_facts
 from games.writes.playthrough import RunDraft, record_run, remove_run, restate_run
 from timetracker.config import SettingSource
@@ -87,6 +88,7 @@ from timetracker.settings_resolver import (
     resolve_for_user_with_origin,
     resolve_with_origin,
 )
+from timetracker.temporal import TemporalValue
 from timetracker.uuidv7 import UUIDv7
 
 logger = logging.getLogger("games")
@@ -104,11 +106,25 @@ def _command_failed(request, failure: CommandFailed):
     )
 
 
-#: A run whose dates this day-shaped payload cannot state.
-_RICHER_THAN_A_DAY = (
-    "This playthrough states a date this endpoint cannot hold, so patching it "
-    "here would lose what it says."
-)
+def _stated_temporal(value: object) -> object:
+    """Build the value a canonical string names.
+
+    TemporalValueParseError is a ValueError, so pydantic
+    answers 422 rather than a traceback.
+    """
+    if value is None or isinstance(value, TemporalValue):
+        return value
+    if isinstance(value, str):
+        return TemporalValue(value)
+    raise ValueError("A date is stated as a string.")
+
+
+#: A canonical temporal value: 2026-03, 202X, 2026-03-04~.
+type StatedTemporal = Annotated[
+    TemporalValue | None,
+    BeforeValidator(_stated_temporal),
+    PlainSerializer(lambda value: None if value is None else value.serialize()),
+]
 
 playthrough_router = Router()
 game_router = Router()
@@ -127,10 +143,9 @@ class GameStatusUpdate(Schema):
 
 class PlaythroughIn(Schema):
     game_id: UUIDv7
-    started: date | None = None
-    ended: date | None = None
+    started: StatedTemporal = None
+    completed: StatedTemporal = None
     note: str = ""
-    days_to_finish: int | None = None
 
 
 class AutoPlayEventIn(ModelSchema):
@@ -140,8 +155,8 @@ class AutoPlayEventIn(ModelSchema):
 
 
 class UpdatePlaythroughIn(Schema):
-    started: date | None = None
-    ended: date | None = None
+    started: StatedTemporal = None
+    completed: StatedTemporal = None
     note: str = ""
 
 
@@ -280,7 +295,9 @@ def create_playthrough(request, payload: PlaythroughIn):
     recorded = record_run(
         cast("User", request.user),
         game,
-        RunDraft(started=payload.started, ended=payload.ended, note=payload.note),
+        RunDraft(
+            started=payload.started, completed=payload.completed, note=payload.note
+        ),
         correlation_id=new_correlation_id(),
     )
     messages.success(request, "Playthrough recorded")
@@ -304,19 +321,19 @@ def partial_update_playthrough(
     run = owned_or_404(_writable_runs(library), library, id=playthrough_id)
     #: PATCH states part; restate_run states the whole. The
     #: rest comes off the run, never the legacy row: nothing
-    #: writes that row any more, so merging its frozen days
+    #: writes that row any more, so merging its frozen values
     #: in would revert an earlier PATCH without a word.
-    days = restatable_days(run)
-    if days is None:
-        raise CommandFailed(_RICHER_THAN_A_DAY, CONFLICT_STATUS)
-    stated = payload.dict(exclude_unset=True)
+    #: The set of stated keys, not a serialized dict:
+    #: dict() would hand back canonical strings, and the
+    #: command layer states temporal values.
+    stated = payload.model_fields_set
     restate_run(
         cast("User", request.user),
         run,
         RunDraft(
-            started=stated.get("started", days.started),
-            ended=stated.get("ended", days.ended),
-            note=stated.get("note", run.note),
+            started=payload.started if "started" in stated else run.started,
+            completed=payload.completed if "completed" in stated else run.completed,
+            note=payload.note if "note" in stated else run.note,
         ),
         correlation_id=new_correlation_id(),
     )
