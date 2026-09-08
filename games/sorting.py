@@ -8,7 +8,18 @@ docs/superpowers/specs/2026-06-21-list-view-sort-param-design.md.
 from dataclasses import dataclass
 from typing import NamedTuple, cast
 
-from django.db.models import Aggregate, F, Max, Min, QuerySet, Sum
+from django.db.models import (
+    Case,
+    DurationField,
+    Expression,
+    ExpressionWrapper,
+    F,
+    Max,
+    Min,
+    QuerySet,
+    Sum,
+    When,
+)
 from django.http import HttpRequest
 
 # The pure sort-string core lives in common.sorting; this module is the ORM
@@ -58,9 +69,10 @@ type OrderField = (
     str  # SortSpec.expression: a real model field path OR an AnnotationName
 )
 
-# alias name -> the ORM aggregate that computes it, applied via queryset.annotate()
+# alias name -> the ORM expression that computes it, applied via
+# queryset.annotate() -- an aggregate (Sum, Max) or a plain expression
 # e.g. {"total_playtime": Sum("sessions__duration_total")}
-type Annotations = dict[AnnotationName, Aggregate]
+type Annotations = dict[AnnotationName, Expression]
 
 
 @dataclass(frozen=True)
@@ -117,13 +129,32 @@ PURCHASE_SORTS: SortMap = {
 }
 PURCHASE_DEFAULT_SORT: SortString = "-purchased,-created"
 
-# Every key here is a direct field path or a persisted column (days_to_finish is
-# a db_persist=True GeneratedField), so no aggregate annotation / row-dup concern.
+#: The span the two bounds state. The read adds one to it and
+#: this does not, which is a constant, so the order is the same.
+#: A negative span reads no answer, and `Case` leaves it null, so
+#: it sorts last in both directions -- where the legacy persisted
+#: column put its zeros first.
+_DAYS_SPAN = Case(
+    When(
+        completed_upper__gte=F("started_lower"),
+        then=ExpressionWrapper(
+            F("completed_upper") - F("started_lower"),
+            output_field=DurationField(),
+        ),
+    ),
+    default=None,
+    output_field=DurationField(),
+)
+
+#: Every key but `days` is a direct field path on the projection
+#: or one hop to the catalog row. The Playthrough column carries
+#: no key: a number is counted across one game's runs, so
+#: ordering every row by it means nothing.
 PLAYTHROUGH_SORTS: SortMap = {
-    "name": SortSpec("game__sort_name"),
-    "started": SortSpec("started"),
-    "ended": SortSpec("ended"),
-    "days": SortSpec("days_to_finish"),
+    "name": SortSpec("player_game__game__sort_name"),
+    "started": SortSpec("started_lower"),
+    "completed": SortSpec("completed_lower"),
+    "days": SortSpec("days_span", {"days_span": _DAYS_SPAN}),
     "created": SortSpec("created_at"),
 }
 PLAYTHROUGH_DEFAULT_SORT: SortString = "-created"

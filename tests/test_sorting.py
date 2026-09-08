@@ -334,6 +334,72 @@ class TestSortMapShapes:
                 assert token.lstrip("-") in sort_map
 
 
+#: One run per span the two endpoints can state, by game name.
+_RUN_SPANS = {
+    "same day": ("2025-03-01", "2025-03-01"),
+    "thirty": ("2025-03-01", "2025-03-30"),
+    "backwards": ("2025-03-02", "2025-03-01"),
+    "unfinished": ("2025-03-01", None),
+}
+
+
+def _seed_run_spans(library):
+    """State each span on the run its game is born with."""
+    from django.utils import timezone
+
+    from games.models import Playthrough
+    from timetracker.temporal import TemporalValue
+
+    now = timezone.now()
+    for name, (started, completed) in _RUN_SPANS.items():
+        game = Game.objects.create(library=library, name=f"Game {name}")
+        run = Playthrough.objects.get(player_game__game=game)
+        stated = {
+            "start_recorded_at": now,
+            "started": TemporalValue.parse(started),
+        }
+        if completed is not None:
+            stated["completion_recorded_at"] = now
+            stated["completed"] = TemporalValue.parse(completed)
+        Playthrough.objects.filter(pk=run.pk).update(**stated)
+
+
+class TestPlaythroughSorts:
+    """#1013: the sorts name the projection's own columns."""
+
+    def test_the_run_sorts_read_the_projection(self):
+        assert set(PLAYTHROUGH_SORTS) == {
+            "name",
+            "started",
+            "completed",
+            "days",
+            "created",
+        }
+
+    @pytest.mark.django_db
+    def test_sorting_by_days_puts_the_runs_with_no_answer_last(self, owned_library):
+        """A missing bound and a span that runs backwards read no
+        answer, and sort last in both directions."""
+        from games.reads.playthrough_endpoints import days_to_finish
+        from games.reads.playthrough_runs import library_runs
+
+        _seed_run_spans(owned_library)
+
+        for descending in (True, False):
+            find = FindFilter(sort="-days" if descending else "days")
+            ordered = apply_sort(
+                library_runs(owned_library),
+                find,
+                PLAYTHROUGH_SORTS,
+                PLAYTHROUGH_DEFAULT_SORT,
+            ).queryset
+            answers = [days_to_finish(run) for run in ordered]
+            counted = [answer for answer in answers if answer is not None]
+
+            assert counted == ([30, 1] if descending else [1, 30])
+            assert answers[: len(counted)] == counted
+
+
 @pytest.fixture
 def logged_client(client, owned_user):
     client.force_login(owned_user)
