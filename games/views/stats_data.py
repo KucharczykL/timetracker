@@ -39,7 +39,11 @@ from games.models import (
     SessionQuerySet,
     UserLibrary,
 )
-from games.reads.playthrough_completions import completion_day, completion_exists
+from games.reads.playthrough_completions import (
+    YearScope,
+    completion_day,
+    completion_exists,
+)
 
 
 class StatsData(TypedDict):
@@ -106,7 +110,7 @@ def _games_at_status(library: UserLibrary, *statuses: PlayerGameStatus):
     return Game.objects.tracked_by(library, tracked__status__in=statuses)
 
 
-def compute_stats(library: UserLibrary, year: int | None = None) -> StatsData:
+def compute_stats(library: UserLibrary, year: YearScope = None) -> StatsData:
     published_currency = (
         PurchaseConversionState.objects.only("published_currency")
         .get(library=library)
@@ -126,7 +130,7 @@ def _compute_stats_from_scoped_querysets(
     library: UserLibrary,
     sessions: SessionQuerySet,
     purchases: PurchaseQueryset,
-    year: int | None,
+    year: YearScope,
     fallback_currency: str,
 ) -> StatsData:
     """Compute metrics without selecting a global Session or Purchase base."""
@@ -153,7 +157,7 @@ def _compute_stats_from_scoped_querysets(
             "sessions", filter=Q(sessions__timestamp_start__year=year)
         )
 
-    completed_q = Q(completion_exists(library, None if is_alltime else year))
+    completed_q = Q(completion_exists(library, year))
     done = _games_at_status(library, *DONE_STATUSES)
     not_finished_q = ~Q(games__in=done) & ~completed_q
 
@@ -247,7 +251,7 @@ def _compute_stats_from_scoped_querysets(
         finished_released = finished.order_by(F("date_finished").desc(nulls_last=True))
         backlog_decrease_count = finished.count()
     else:
-        #: Year completion implies all-time; skip the join.
+        #: A dated completion has its marker stated.
         finished = library_purchases.filter(completed_q).annotate(
             date_finished=completion_day(library, year)
         )
@@ -265,6 +269,8 @@ def _compute_stats_from_scoped_querysets(
             library_purchases.filter(date_purchased__year__lt=year)
             .filter(games__in=done)
             .filter(completed_q)
+            #: The done-status join fans a bundle out.
+            .distinct()
             .count()
         )
 

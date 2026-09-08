@@ -99,10 +99,10 @@ def _card(title: str, body: Node) -> Node:
 
 
 def _purchase_name(purchase) -> Node:
-    """Mirror of the `purchase-name` partial in the old template."""
+    """One name per Purchase, no joined annotation."""
     first_game = purchase.first_game
     if purchase.type != "game":
-        #: A blank name renders an empty link.
+        #: Falls back to the first game's name.
         link = GameLink(first_game, purchase.standardized_name)
         suffix = f" ({first_game.name} {purchase.get_type_display()})"
         return Safe(str(link) + conditional_escape(suffix))
@@ -319,7 +319,11 @@ def _finished_table(
     purchases = list(purchases)
     display = purchases[:_LIST_CAP] if view_all_url else purchases
     rows = [
-        make_row(_purchase_name(p), presentation.format(p.date_finished, "date"))
+        #: An open lower bound reports no day.
+        make_row(
+            _purchase_name(p),
+            presentation.format(p.date_finished, "date") if p.date_finished else "-",
+        )
         for p in display
     ]
     table = StyledTable(

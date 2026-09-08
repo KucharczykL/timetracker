@@ -2,8 +2,8 @@
 
 One object per scope, so a statistic and the link it carries
 compile one predicate. The interval handler states three
-parts, and restating two of them answers differently for an
-open bound.
+parts, and two of them answer differently for an open
+bound.
 """
 
 from django.db.models import Exists, Max, Min, OuterRef, QuerySet, Subquery
@@ -48,9 +48,9 @@ def completion_exists(library: UserLibrary, year: YearScope) -> Exists:
 def completion_day(library: UserLibrary, year: YearScope) -> Subquery:
     """The day a Purchase reports in scope.
 
-    A year reports its earliest completion and all-time its
-    latest, so each table reports the finish its own order
-    leads with.
+    A year reports its earliest completion, so the table
+    leads with the day it prints. All-time reports the
+    latest; no all-time table shows it today.
     """
     reducer = Max("completed_lower") if year is None else Min("completed_lower")
     return Subquery(

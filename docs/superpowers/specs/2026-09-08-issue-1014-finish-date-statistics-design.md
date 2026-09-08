@@ -17,8 +17,8 @@ statistics make, per scope: a year, or `None` for all-time.
 
 `games/views/stats_links.py` reads `completed_in_scope`. A statistic and the
 link beside it therefore compile one predicate over `library_runs(library)`.
-Restating the predicate is refused: the handler states three parts, and two
-answer differently for an open bound.
+Do not write the predicate again: the handler states three parts, and two of
+them answer differently for an open bound.
 
 Both Purchase readers correlate on `player_game__game__purchases`, so a bundle
 answers for every game it names.
@@ -37,9 +37,10 @@ bound is unbounded.
 ## The day a Purchase reports
 
 The day is `completed_lower` of one run in scope: the earliest for a year, the
-latest for all-time. Each table thus leads with the finish its order names. A
-Purchase finished by a done status reports no day, and every table orders
-dateless rows last.
+latest for all-time. A year's table thus leads with the day it prints; no
+all-time table shows a day today. A Purchase finished by a done status, or by a
+completion with an open lower bound, reports no day. Every table orders dateless
+rows last and prints them `-`.
 
 ## What the statistics read
 
@@ -52,9 +53,9 @@ dateless rows last.
 | `purchased_this_year_finished_this_year` | those bought in scope, not refunded |
 | `backlog_decrease_count` | bought before the year, done, completed in it |
 
-Each is one row per Purchase: membership by `Exists`, the day by `Subquery`.
-`finished()` keeps its `distinct()` for the M2M join its done-status half
-opens.
+`Exists` answers membership and `Subquery` the day, so neither adds a row. A
+read that also joins `games` for a done status adds one per game, and keeps its
+`distinct()`: `PurchaseQueryset.finished()` and `backlog_decrease_count`.
 
 ## Three values change
 

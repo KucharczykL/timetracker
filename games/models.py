@@ -927,9 +927,10 @@ class PurchaseQueryset(RemovableLibraryQuerySet):
         return self.filter(type=Purchase.GAME)
 
     def finished(self, library):
-        #: A done status, or a completed run.
+        #: Local: the reads module imports models.
         from games.reads.playthrough_completions import completion_exists
 
+        #: A done status, or a completed run.
         return self.filter(
             Q(
                 games__in=Game.objects.tracked_by(

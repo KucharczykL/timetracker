@@ -208,7 +208,8 @@ docs/           — Additional documentation
   link beside each number, so stat and link compile one predicate. A year reads
   the interval the two generated bound columns state, all-time reads the marker;
   a Purchase reports one row, dated `completed_lower` of its earliest run in a
-  year and its latest all-time, and a row that reports no day sorts last
+  year (its latest all-time, which no table prints today), and a row that
+  reports no day sorts last and prints `-`
 
 **Nothing user removes is destroyed** (#944). Nine removable models — Game,
 Edition, Release, Platform, Device, Session, PlayEvent, Purchase, FilterPreset —

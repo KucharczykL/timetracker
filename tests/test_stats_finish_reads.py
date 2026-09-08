@@ -4,12 +4,20 @@ import uuid
 from datetime import UTC, date, datetime
 
 import pytest
+from django.urls import reverse
 from django.utils import timezone
 
-from games.models import Game, PlayEvent, Playthrough, PlaythroughKind, Purchase
+from games.models import (
+    Game,
+    PlayerGameStatus,
+    PlayEvent,
+    Playthrough,
+    PlaythroughKind,
+    Purchase,
+)
 from games.removal import remove
 from games.views.stats_data import compute_stats
-from games.writes.playergame import new_correlation_id, track_game
+from games.writes.playergame import new_correlation_id, record_facts, track_game
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.untracked_games
@@ -38,6 +46,16 @@ def _bought_and_completed(
     return run
 
 
+def _open_bound_run(user, library, name: str) -> Playthrough:
+    """A completion whose lower bound is absent."""
+    run = _bought_and_completed(user, library, name)
+    Playthrough.objects.filter(pk=run.pk).update(
+        completed=TemporalValue.parse(f"../{YEAR}-05-01"),
+        completion_recorded_at=run.created_at,
+    )
+    return run
+
+
 @pytest.mark.django_db(transaction=True)
 def test_a_completed_run_leaves_the_backlog(owned_user, owned_library):
     _bought_and_completed(owned_user, owned_library, "Done", date(YEAR, 6, 1))
@@ -50,7 +68,7 @@ def test_a_completed_run_leaves_the_backlog(owned_user, owned_library):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_legacy_row_alone_counts_for_nothing(owned_user, owned_library):
-    """The only test writing the legacy table."""
+    """The only test here writing PlayEvent."""
     run = _bought_and_completed(owned_user, owned_library, "Legacy only")
     PlayEvent.objects.create(
         game=run.player_game.game, ended=datetime(YEAR, 6, 1, tzinfo=UTC)
@@ -150,12 +168,47 @@ def test_a_year_ascends_from_its_first_finish(owned_user, owned_library):
 def test_a_row_with_an_open_lower_bound_sorts_last(owned_user, owned_library):
     """A year's row that reports no day."""
     _bought_and_completed(owned_user, owned_library, "Dated", date(YEAR, 6, 1))
-    open_run = _bought_and_completed(owned_user, owned_library, "Open", None)
-    Playthrough.objects.filter(pk=open_run.pk).update(
-        completed=TemporalValue.parse(f"../{YEAR}-05-01"),
-        completion_recorded_at=open_run.created_at,
-    )
+    _open_bound_run(owned_user, owned_library, "Open")
 
     rows = list(compute_stats(owned_library, YEAR)["all_finished_this_year"])
 
     assert [row.date_finished for row in rows] == [date(YEAR, 6, 1), None]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_row_that_reports_no_day_renders(client, owned_user, owned_library):
+    """The year page prints a row with no day."""
+    _open_bound_run(owned_user, owned_library, "Open")
+    client.force_login(owned_user)
+
+    response = client.get(reverse("games:stats_by_year", args=[YEAR]))
+
+    assert response.status_code == 200
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_bundle_leaves_the_backlog_once(owned_user, owned_library):
+    """Two done games of one Purchase, one row."""
+    first = _bought_and_completed(
+        owned_user, owned_library, "Backlog A", date(YEAR, 3, 1)
+    )
+    purchase = Purchase.objects.get(games=first.player_game.game)
+    purchase.date_purchased = date(YEAR - 1, 1, 5)
+    purchase.save()
+    second_game = Game.objects.create(library=owned_library, name="Backlog B")
+    track_game(owned_user, second_game, correlation_id=new_correlation_id())
+    second = Playthrough.objects.get(player_game__game=second_game)
+    Playthrough.objects.filter(pk=second.pk).update(
+        completed=TemporalValue.from_day(date(YEAR, 9, 1)),
+        completion_recorded_at=second.created_at,
+    )
+    purchase.games.add(second_game)
+    for game in (first.player_game.game, second_game):
+        record_facts(
+            owned_user,
+            game,
+            status=PlayerGameStatus.COMPLETED,
+            correlation_id=new_correlation_id(),
+        )
+
+    assert compute_stats(owned_library, YEAR)["backlog_decrease_count"] == 1

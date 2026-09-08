@@ -141,7 +141,7 @@ def _not_finished_game(year, excluded_statuses: list) -> GameFilter:
     """Games that are not finished in scope: status not in `excluded_statuses`
     (always includes `DONE_STATUSES`) and no completed run in scope.
 
-    Mirrors `not_finished_q = ~Q(status in DONE_STATUSES) & ~ended_q` plus the
+    Mirrors `not_finished_q = ~Q(status in DONE_STATUSES) & ~completed_q` plus the
     extra status exclusions some categories add."""
     game_filter = GameFilter(
         status=ChoiceCriterion(value=excluded_statuses, modifier=Modifier.EXCLUDES)
