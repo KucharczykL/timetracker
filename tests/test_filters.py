@@ -4893,7 +4893,11 @@ class TestFilterFieldDescriptors:
         silently wrong results rather than raising (issue #151)."""
         parent_model = filter_cls._comparison_model()
         for name, spec in filter_cls.aggregates.items():
-            related_model = parent_model._meta.get_field(spec.accessor).related_model
+            related_model = parent_model
+            #: An accessor may be a path: a run hangs off the
+            #: tracked game, not off the catalog row (#1013).
+            for hop in spec.accessor.split("__"):
+                related_model = related_model._meta.get_field(hop).related_model
             assert related_model is spec.scope_filter._comparison_model(), name
         declared = self._declared_criterion_fields(filter_cls)
         for key in filter_cls.fields:

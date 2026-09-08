@@ -1316,6 +1316,11 @@ class AggregateSpec:
     scope_filter: type[OperatorFilter]
     source: AttrName | None = None  # summed/averaged related column; None for count
     unit: DurationUnit | None = None
+    # A scope the spec states itself, on top of whatever the criterion states
+    # (#1013). ``playthrough_count`` counts the runs whose completion is stated,
+    # so a count of 0 means a game nobody finished rather than a game nobody
+    # tracks.
+    base_scope: OperatorFilter | None = None
 
     def __post_init__(self) -> None:
         # The reducer/source/unit dependencies are cross-field invariants the
@@ -1329,6 +1334,13 @@ class AggregateSpec:
                 raise TypeError("a count aggregate takes no unit")
         elif self.source is None:
             raise TypeError(f"a {self.reducer} aggregate requires a source field")
+        if self.base_scope is not None and not isinstance(
+            self.base_scope, self.scope_filter
+        ):
+            raise TypeError(
+                f"a base scope must be a {self.scope_filter.__name__},"
+                f" got {type(self.base_scope).__name__}"
+            )
 
 
 QuerysetResolver = Callable[[type[models.Model]], models.QuerySet[Any]]
@@ -3119,15 +3131,19 @@ def aggregate_to_q(
                 f"aggregate scope must be a {spec.scope_filter.__name__},"
                 f" got {type(criterion.scope).__name__}"
             )
+    # The spec's own scope and the criterion's narrow the same set (#1013),
+    # so one subquery carries both.
+    scopes = [scope for scope in (spec.base_scope, criterion.scope) if scope is not None]
+    if scopes:
         related_model: ModelClass = spec.scope_filter._comparison_model()
         if related_model is None:
             raise RuntimeError(
                 f"{spec.scope_filter.__name__} has no comparison model"
                 f" to scope a {spec.accessor!r} aggregate"
             )
-        matching = context.queryset_for(related_model).filter(
-            criterion.scope.to_q(context)
-        )
+        matching = context.queryset_for(related_model)
+        for scope in scopes:
+            matching = matching.filter(scope.to_q(context))
         scope_condition = Q(**{f"{spec.accessor}__in": matching})
 
     # The spec is static config declared on the filter class, never user input —
