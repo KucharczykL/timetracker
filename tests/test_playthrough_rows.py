@@ -101,7 +101,8 @@ def test_the_days_cell_reads_the_span(owned_library, run, presentation):
 
     cells = cells_of(owned_library, run, presentation)
 
-    assert "2" in cells
+    #: The first, the second and the third: three days touched.
+    assert "3" in cells
 
 
 def test_excluding_the_game_column_drops_its_cell(owned_library, run, presentation):
