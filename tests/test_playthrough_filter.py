@@ -134,8 +134,7 @@ def test_a_removed_game_takes_its_runs_off_the_list(owned_library):
 def test_an_untracked_game_takes_its_runs_off_the_list(owned_user, owned_library):
     """Untracking stamps the parent, which reads here.
 
-    The command opens its own transaction, so this test
-    cannot sit in one.
+    The command opens its own transaction.
     """
     game = Game.objects.create(library=owned_library, name="Tunic")
     run = Playthrough.objects.get(player_game__game=game)

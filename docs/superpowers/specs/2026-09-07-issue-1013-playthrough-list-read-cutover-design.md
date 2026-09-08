@@ -45,7 +45,9 @@ touched, both ends included. A same-day run reads 1.
 ## Scoping
 
 `Playthrough` declares no manager. Each read states `library`,
-`player_game__library`, a null `removed_at` and the ordinary kind.
+`player_game__library`, a null `removed_at` and the ordinary kind. The list
+scope states two more: a null `removed_at` on the `PlayerGame` and on the Game.
+No act stamps a run when its game is removed or untracked.
 `playthrough_count` reads `AggregateSpec.base_scope` and counts the runs whose
 completion is stated, the number `Played N times` prints.
 
@@ -70,7 +72,8 @@ quick facets are Game, Started, Completed, Days to finish, Note and Created.
 Migration 0047 rewrites `ended` to `completed`, forward and backward. It walks a
 playthroughs-mode criterion blob, the `playthrough_filter` subtree of a
 games-mode preset, and the stored sort token. It walks nothing else, because
-`ended` is a common word.
+`ended` is a common word. A blob naming both words keeps the current one. The
+quick bar applies the same rename, thus a bookmarked URL stays editable.
 
 ## Operands and widgets
 

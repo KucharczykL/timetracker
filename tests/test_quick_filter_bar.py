@@ -295,13 +295,7 @@ class QuickFacetsContractTest(TestCase):
                 filter_for_model(model)
 
     def test_a_renamed_key_still_reads_as_its_facet(self):
-        """The bar parses a legacy key the way the query does.
-
-        `from_json` renames it on the way to the queryset. A
-        bar left to read the raw blob would print "Advanced
-        filter active" over a bookmarked URL the rename had
-        already answered.
-        """
+        """The bar parses a legacy key as the query does."""
         for mode, model in FILTER_MODE_MODELS.items():
             filter_class = filter_for_model(model)
             facets = {facet.field for facet in QUICK_FACETS[mode]}

@@ -338,13 +338,7 @@ def test_the_prefill_seeds_nothing_from_a_completion_with_no_day(client, user, g
 
 @pytest.mark.django_db
 def test_a_bookmarked_ended_filter_keeps_the_quick_bar(client, user, game):
-    """The old word reaches the bar as the new one.
-
-    A URL saved before the rename still names `ended`.
-    `from_json` renames it for the queryset, so a bar that
-    read the raw blob would call the page's own filter
-    advanced and offer no facet to edit.
-    """
+    """The old word reaches the bar as the new one."""
     client.force_login(user)
     legacy = json.dumps({"ended": {"value": "2020-01-01", "modifier": "GREATER_THAN"}})
 

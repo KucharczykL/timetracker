@@ -141,13 +141,7 @@ def test_the_backward_pass_is_the_inverse(user):
 
 @pytest.mark.django_db
 def test_a_blob_naming_both_words_keeps_the_current_one(user):
-    """The stale key goes, the saved criterion stands.
-
-    A blob holding both spellings was written by a client
-    that knows the rename, so `completed` is what the person
-    last saved and `ended` beside it is somebody's old copy.
-    Renaming over the top would drop the live criterion.
-    """
+    """The stale key goes, the saved criterion stands."""
     preset = FilterPreset.objects.create(
         library=user.library,
         name="Both words",

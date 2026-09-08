@@ -98,10 +98,8 @@ def parse_filter_dict(
     The public face of ``_filter_parse``: list views parse once and hand the
     dict to the quick bar (``existing=``). Consumers treat it as read-only.
 
-    A view states its filter class, so the bar reads the same keys the query
-    does: ``from_json`` renames a legacy key on its way to the queryset, and a
-    bar left to read the raw blob would degrade to "Advanced filter active" on
-    a bookmarked URL the rename had already answered.
+    A stated class renames a legacy key, so the bar reads what the query
+    reads. Without one, a bookmarked URL degrades to "Advanced filter active".
     """
     parsed = _filter_parse(filter_json)
     return filter_class.rename_legacy_keys(parsed) if filter_class else parsed

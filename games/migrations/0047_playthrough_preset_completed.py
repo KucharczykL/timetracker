@@ -17,11 +17,8 @@ _OPERATORS = ("AND", "OR", "NOT")
 def _rename_run_keys(node, mapping):
     """Rewrite a run filter and operator children.
 
-    A blob naming both spellings keeps the current one, as
-    `OperatorFilter.rename_legacy_keys` does: the old key
-    beside it is a stale copy, and renaming over the top of
-    the current one would drop the criterion the person
-    last saved.
+    A blob naming both keeps the current key,
+    as `OperatorFilter.rename_legacy_keys` does.
     """
     if not isinstance(node, dict):
         return node
