@@ -3,9 +3,10 @@
 from datetime import date
 
 import pytest
-from playthrough_conversion import convert_and_take_runs
+from playthrough_conversion import convert_and_take_runs, run_noted
 
 from games.models import Game, PlayEvent, Playthrough
+from games.removal import remove
 from timetracker.temporal import TemporalValue
 
 
@@ -189,7 +190,7 @@ def test_delete_states_the_removal_and_leaves_the_row(client, user, game):
     second = PlayEvent.objects.create(
         game=game, started=None, ended=None, note="second"
     )
-    _first, run = convert_and_take_runs(user.library, game)
+    run = run_noted(convert_and_take_runs(user.library, game), "second")
     client.force_login(user)
 
     response = client.delete(f"/api/playthrough/{run.pk}")
@@ -206,7 +207,7 @@ def test_a_second_delete_answers_204(client, user, game):
     """#906: a repeat refuses nothing."""
     PlayEvent.objects.create(game=game, started=None, ended=None, note="first")
     PlayEvent.objects.create(game=game, started=None, ended=None, note="second")
-    _first, run = convert_and_take_runs(user.library, game)
+    run = run_noted(convert_and_take_runs(user.library, game), "second")
     client.force_login(user)
 
     assert client.delete(f"/api/playthrough/{run.pk}").status_code == 204
@@ -221,3 +222,178 @@ def test_an_unconverted_row_id_answers_404(client, user, game):
 
     assert client.delete(f"/api/playthrough/{row.pk}").status_code == 404
     assert client.get(f"/api/playthrough/{row.pk}").status_code == 404
+
+
+def born_run(game) -> Playthrough:
+    """The run a tracked game was born with."""
+    return Playthrough.objects.get(player_game__game=game)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_note_only_patch_records_no_act(client, user, game):
+    """#679's run states neither act, and keeps it.
+
+    An act is recorded because a person recorded it, so a
+    request that names no endpoint records none.
+    """
+    run = born_run(game)
+    assert run.start_recorded_at is None
+    client.force_login(user)
+
+    response = client.patch(
+        f"/api/playthrough/{run.pk}",
+        {"note": "just a note"},
+        content_type="application/json",
+    )
+
+    assert response.status_code == 204
+    run.refresh_from_db()
+    assert run.note == "just a note"
+    assert run.start_recorded_at is None
+    assert run.completion_recorded_at is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_patch_that_states_a_null_records_the_act(client, user, game):
+    """A named key is the act; its day is unknown."""
+    run = born_run(game)
+    client.force_login(user)
+
+    response = client.patch(
+        f"/api/playthrough/{run.pk}",
+        {"started": None},
+        content_type="application/json",
+    )
+
+    assert response.status_code == 204
+    run.refresh_from_db()
+    assert run.start_recorded_at is not None
+    assert run.started is None
+    assert run.completion_recorded_at is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_body_patches_back_unchanged(client, user, game):
+    """What a read states, a write takes back."""
+    PlayEvent.objects.create(
+        game=game, started=date(2026, 1, 2), ended=date(2026, 3, 4), note="12h"
+    )
+    [run] = convert_and_take_runs(user.library, game)
+    client.force_login(user)
+    body = client.get(f"/api/playthrough/{run.pk}").json()
+
+    response = client.patch(
+        f"/api/playthrough/{run.pk}",
+        {
+            "started": body["started"],
+            "completed": body["completed"],
+            "note": body["note"],
+        },
+        content_type="application/json",
+    )
+
+    assert response.status_code == 204
+    assert client.get(f"/api/playthrough/{run.pk}").json() == body
+
+
+@pytest.mark.parametrize(
+    "spelling", ["2026", "2026-03", "202X", "2026-03-04~", "2024-01/.."]
+)
+@pytest.mark.django_db(transaction=True)
+def test_every_spelling_the_grammar_knows_round_trips(client, user, game, spelling):
+    run = born_run(game)
+    client.force_login(user)
+
+    response = client.patch(
+        f"/api/playthrough/{run.pk}",
+        {"started": spelling},
+        content_type="application/json",
+    )
+
+    assert response.status_code == 204
+    assert client.get(f"/api/playthrough/{run.pk}").json()["started"] == spelling
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_key_the_body_does_not_know_answers_422(client, user, game):
+    """#1015 renamed `ended`; the old name is refused."""
+    run = born_run(game)
+    client.force_login(user)
+
+    response = client.patch(
+        f"/api/playthrough/{run.pk}",
+        {"ended": "2026-01-02"},
+        content_type="application/json",
+    )
+
+    assert response.status_code == 422
+    run.refresh_from_db()
+    assert run.completion_recorded_at is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_post_key_the_body_does_not_know_answers_422(client, user, game):
+    client.force_login(user)
+
+    response = client.post(
+        "/api/playthrough/",
+        {"game_id": str(game.pk), "ended": "2026-01-02"},
+        content_type="application/json",
+    )
+
+    assert response.status_code == 422
+    assert not Playthrough.objects.filter(
+        player_game__game=game, completion_recorded_at__isnull=False
+    ).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_deleting_the_only_run_of_a_tracked_game_answers_409(client, user, game):
+    """A tracked game keeps one run."""
+    run = born_run(game)
+    client.force_login(user)
+
+    response = client.delete(f"/api/playthrough/{run.pk}")
+
+    assert response.status_code == 409
+    run.refresh_from_db()
+    assert run.removed_at is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_patch_of_a_removed_run_answers_409(client, user, game):
+    PlayEvent.objects.create(game=game, started=None, ended=None, note="first")
+    PlayEvent.objects.create(game=game, started=None, ended=None, note="second")
+    run = run_noted(convert_and_take_runs(user.library, game), "second")
+    client.force_login(user)
+    assert client.delete(f"/api/playthrough/{run.pk}").status_code == 204
+
+    response = client.patch(
+        f"/api/playthrough/{run.pk}",
+        {"note": "after"},
+        content_type="application/json",
+    )
+
+    assert response.status_code == 409
+    run.refresh_from_db()
+    assert run.note == "second"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_run_under_a_removed_game_is_neither_read_nor_written(client, user, game):
+    """No route writes a run no route reads."""
+    run = born_run(game)
+    remove(game)
+    client.force_login(user)
+
+    assert client.get(f"/api/playthrough/{run.pk}").status_code == 404
+    assert client.get("/api/playthrough/").json() == []
+    assert (
+        client.patch(
+            f"/api/playthrough/{run.pk}",
+            {"note": "after"},
+            content_type="application/json",
+        ).status_code
+        == 404
+    )
+    assert client.delete(f"/api/playthrough/{run.pk}").status_code == 404

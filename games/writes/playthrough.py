@@ -39,12 +39,13 @@ from timetracker.temporal import TemporalValue
 class RunDraft:
     """What a person stated about one run.
 
-    Temporal values: the act rule turns each into an
-    act, with no day where none was given.
+    None is an endpoint the person said nothing about, and
+    an ActStatement is the act, with no day where none was
+    given. A note-only edit states neither act.
     """
 
-    started: TemporalValue | None
-    completed: TemporalValue | None
+    started: ActStatement | None
+    completed: ActStatement | None
     note: str
 
 
@@ -95,19 +96,28 @@ _COMPLETION = EndpointStatement(
     stated_completion, CompletePlaythrough, CorrectPlaythroughCompletion
 )
 
-#: One endpoint, and the day being stated about it.
-type Statement = tuple[EndpointStatement, TemporalValue | None]
+#: One endpoint, and the act stated about it.
+type Statement = tuple[EndpointStatement, ActStatement | None]
+
+
+def _stated_day(act: ActStatement | None) -> TemporalValue | None:
+    """The day an act states, or none."""
+    return None if act is None else act.when
 
 
 def _state_endpoint(
     actor: User,
     run: Playthrough,
     endpoint: EndpointStatement,
-    when: TemporalValue | None,
+    act: ActStatement | None,
     *,
     correlation_id: uuid.UUID,
 ) -> None:
     """State one endpoint, first time or correction.
+
+    An endpoint nobody stated is left alone: an act is
+    recorded because a person recorded it, and a note-only
+    edit records none.
 
     The choice is read before dispatch takes its lock, so
     a racer who states this endpoint first turns it stale
@@ -119,11 +129,13 @@ def _state_endpoint(
     A correction carries the note the endpoint already
     states, or it states a note nobody wrote.
     """
+    if act is None:
+        return
     stated = endpoint.reads(run)
     command_class = endpoint.first if stated is None else endpoint.correction
     note = "" if stated is None else stated.note
     _dispatch(
-        command_class(playthrough_id=run.pk, when=when, note=note),
+        command_class(playthrough_id=run.pk, when=act.when, note=note),
         actor=actor,
         library=actor.library,
         correlation_id=correlation_id,
@@ -132,8 +144,8 @@ def _state_endpoint(
 
 def _statement_order(
     run: Playthrough,
-    started: TemporalValue | None,
-    completed: TemporalValue | None,
+    started: ActStatement | None,
+    completed: ActStatement | None,
 ) -> tuple[Statement, Statement]:
     """The order that states no reversed pair.
 
@@ -153,7 +165,9 @@ def _statement_order(
         (_COMPLETION, completed),
         (_START, started),
     )
-    if endpoints_certainly_reversed(started=started, completed=run.completed):
+    if endpoints_certainly_reversed(
+        started=_stated_day(started), completed=run.completed
+    ):
         return completion_first
     return start_first
 
@@ -187,7 +201,9 @@ def _restate(
     completed = draft.completed
     #: Refused up front, because no act withdraws:
     #: a start commits, then the completion refuses.
-    if endpoints_certainly_reversed(started=started, completed=completed):
+    if endpoints_certainly_reversed(
+        started=_stated_day(started), completed=_stated_day(completed)
+    ):
         raise CommandRejected(
             f"The statement about playthrough {run.pk} completes it before it "
             "began, and no run ends before it begins.",
@@ -201,8 +217,8 @@ def _restate(
             correlation_id=correlation_id,
         )
         run.refresh_from_db()
-    for endpoint, when in _statement_order(run, started, completed):
-        _state_endpoint(actor, run, endpoint, when, correlation_id=correlation_id)
+    for endpoint, act in _statement_order(run, started, completed):
+        _state_endpoint(actor, run, endpoint, act, correlation_id=correlation_id)
 
 
 class RecordedRun(NamedTuple):
@@ -275,9 +291,9 @@ def _record_once(
     _dispatch(
         CreatePlaythrough(
             game_id=game.pk,
-            #: Both acts: a run recorded here happened.
-            started=ActStatement(draft.started),
-            completed=ActStatement(draft.completed),
+            #: The acts the draft states; recording states both.
+            started=draft.started,
+            completed=draft.completed,
             note=draft.note,
         ),
         actor=actor,

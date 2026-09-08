@@ -172,9 +172,8 @@ def world(client, django_user_model):
     foreign_playevent = PlayEvent.objects.create(
         game=foreign_game, started=now.date(), note="Foreign event"
     )
-    #: #687 states a run, so the edit page
-    #: needs the row converted into one.
-    #: #1012 moved the routes onto the run.
+    #: #1012 keyed the edit route on the run,
+    #: so the row is converted into one here.
     own_run = _converted_run(owner_library, own_game)
     foreign_run = _converted_run(foreign_library, foreign_game)
     return SimpleNamespace(**locals())

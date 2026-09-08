@@ -26,11 +26,12 @@ from django.utils.timezone import now as django_timezone_now
 from ninja import Field, NinjaAPI, Query, Router, Schema, Status
 from ninja.errors import HttpError
 from ninja.security import django_auth
-from pydantic import BeforeValidator, PlainSerializer
+from pydantic import BeforeValidator, ConfigDict, PlainSerializer, WithJsonSchema
 
 from common.criteria import FilterError, filter_from_json
 from common.date_time_presentation import date_time_presentation_for_request
 from common.filter_execution import execute_filter, regex_timeout_api
+from games.commands.playthrough import ActStatement
 from games.filters import (
     MODE_PARSERS,
     filter_for_model,
@@ -47,6 +48,7 @@ from games.models import (
     Platform,
     PlayerGameStatus,
     Playthrough,
+    PlaythroughKind,
     Purchase,
     PurchaseConversionState,
     Session,
@@ -119,10 +121,19 @@ def _stated_temporal(value: object) -> object:
 
 
 #: A canonical temporal value: 2026-03, 202X, 2026-03-04~.
+#:
+#: The schema is stated by hand, because pydantic reads the
+#: dataclass otherwise and asks a request for its fields.
 type StatedTemporal = Annotated[
     TemporalValue | None,
     BeforeValidator(_stated_temporal),
     PlainSerializer(lambda value: None if value is None else value.serialize()),
+    WithJsonSchema(
+        {
+            "anyOf": [{"type": "string"}, {"type": "null"}],
+            "examples": ["2026-03-04", "2026-03", "202X", "2024-01/..", "2026-03-04~"],
+        }
+    ),
 ]
 
 playthrough_router = Router()
@@ -141,6 +152,9 @@ class GameStatusUpdate(Schema):
 
 
 class PlaythroughIn(Schema):
+    #: An unknown key is a mistake, not silence.
+    model_config = ConfigDict(extra="forbid")
+
     game_id: UUIDv7
     started: StatedTemporal = None
     completed: StatedTemporal = None
@@ -148,6 +162,9 @@ class PlaythroughIn(Schema):
 
 
 class UpdatePlaythroughIn(Schema):
+    #: An unknown key is a mistake, not silence.
+    model_config = ConfigDict(extra="forbid")
+
     started: StatedTemporal = None
     completed: StatedTemporal = None
     note: str = ""
@@ -258,11 +275,17 @@ def _readable_runs(library: UserLibrary) -> QuerySet[Playthrough]:
 def _writable_runs(library: UserLibrary) -> QuerySet[Playthrough]:
     """What PATCH and DELETE find.
 
-    Wider than the reads: RemovePlaythrough answers Unchanged
-    for a removed run, and a narrower scope answers 404.
+    The read scope, less the run's own mark: RemovePlaythrough
+    answers Unchanged for a run already removed, and a scope
+    that hides it answers 404 instead. Every other narrowing
+    is kept, so no route writes a run no route reads.
     """
     return Playthrough.objects.select_related("player_game__game").filter(
-        library=library, player_game__library=library
+        library=library,
+        player_game__library=library,
+        player_game__removed_at__isnull=True,
+        player_game__game__removed_at__isnull=True,
+        kind=PlaythroughKind.ORDINARY,
     )
 
 
@@ -288,7 +311,10 @@ def create_playthrough(request, payload: PlaythroughIn):
         cast("User", request.user),
         game,
         RunDraft(
-            started=payload.started, completed=payload.completed, note=payload.note
+            #: Recording states both acts, dated or not.
+            started=ActStatement(payload.started),
+            completed=ActStatement(payload.completed),
+            note=payload.note,
         ),
         correlation_id=new_correlation_id(),
     )
@@ -313,16 +339,19 @@ def partial_update_playthrough(
     run = owned_or_404(_writable_runs(library), library, id=playthrough_id)
     #: The stated keys, not a serialized dict.
     #:
-    #: PATCH states part; restate_run states the whole, so the
-    #: rest comes off the run. dict() would hand back
-    #: canonical strings, and the commands take values.
+    #: An endpoint the request leaves out is stated as
+    #: nothing, so a note-only PATCH records no act. dict()
+    #: would hand back canonical strings and every key, and
+    #: the commands take values.
     stated = payload.model_fields_set
     restate_run(
         cast("User", request.user),
         run,
         RunDraft(
-            started=payload.started if "started" in stated else run.started,
-            completed=payload.completed if "completed" in stated else run.completed,
+            started=ActStatement(payload.started) if "started" in stated else None,
+            completed=ActStatement(payload.completed)
+            if "completed" in stated
+            else None,
             note=payload.note if "note" in stated else run.note,
         ),
         correlation_id=new_correlation_id(),

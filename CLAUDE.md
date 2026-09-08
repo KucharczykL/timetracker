@@ -410,11 +410,15 @@ present. Rendering client-side (`games/static/js/toast.js`).
 - `GET /api/games/search` — search games for autocomplete
 - `PATCH /api/games/{id}/status` — update game status
 - `GET/POST /api/playthrough/`, `GET/PATCH/DELETE /api/playthrough/{id}` — the
-  path id is the run's, and every body is the projection's (#1015). The list
-  takes `limit`/`offset`, `limit=0` unbounded. `started` and `completed` are
-  canonical temporal values in both directions, refused with 422 where the
-  grammar does not know the spelling; each is answered beside its two bound
-  columns and the marker naming the act
+  path id is the run's, and every body the projection's but the creation's,
+  which names the catalog game it records a run at (#1015). The list
+  takes `limit`/`offset`, `limit=0` unbounded, 100 by default. `started` and
+  `completed` are canonical temporal values in both directions, refused with 422
+  where the grammar does not know the spelling; each is answered beside its two
+  bound columns and the marker naming the act. A key a body does not know is
+  refused with 422 as well, so the old `ended` cannot pass unread. PATCH states
+  the endpoints the request names and no others: a note-only PATCH records no
+  act, and a named key is the act, dated or not
 - `PATCH /api/session/{id}/device` — update session device
 - `GET /api/presets/` — user's presets for a mode, shaped as combobox options
   (`limit=0` = unbounded)

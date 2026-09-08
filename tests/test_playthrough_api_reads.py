@@ -1,10 +1,14 @@
 """#1015: the API reads the projection."""
 
+import uuid
 from datetime import date
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
+from django.utils.timezone import now as django_timezone_now
 
-from games.models import Game, Playthrough
+from games.models import Game, Playthrough, PlaythroughKind
 from games.reads.playthrough_runs import live_ordinary_runs, tracked_game
 from games.writes.playergame import new_correlation_id, track_game
 from timetracker.temporal import TemporalValue
@@ -115,18 +119,65 @@ def test_limit_zero_is_unbounded_and_a_negative_value_is_refused(
     assert client.get("/api/playthrough/?offset=-1").status_code == 422
 
 
-@pytest.mark.django_db(transaction=True)
-def test_the_list_reads_a_constant_number_of_queries(
-    client, user, owned_library, django_assert_num_queries
-):
-    """The game rides the run's own query.
-
-    Eight rows cost the same six, so nothing is per run.
-    """
-    for index in range(4):
+def _track_games(user, owned_library, count: int, *, first: int = 0) -> None:
+    """Track that many games, one run each."""
+    for index in range(first, first + count):
         game = Game.objects.create(library=owned_library, name=f"Game {index}")
         track_game(user, game, correlation_id=new_correlation_id())
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_list_reads_the_same_queries_however_many_rows(client, user, owned_library):
+    """The game rides the run's own query.
+
+    Two sizes, one count: nothing is read per run. The
+    number itself is not stated, because a cached setting
+    costs a query on a cold process and none after it.
+    """
+    _track_games(user, owned_library, 2)
+    client.force_login(user)
+    #: Warms what a request caches for the next one.
+    client.get("/api/playthrough/")
+
+    with CaptureQueriesContext(connection) as two_rows:
+        assert len(client.get("/api/playthrough/").json()) == 2
+
+    _track_games(user, owned_library, 6, first=2)
+
+    with CaptureQueriesContext(connection) as eight_rows:
+        assert len(client.get("/api/playthrough/").json()) == 8
+
+    assert len(eight_rows.captured_queries) == len(two_rows.captured_queries)
+
+
+def _extra_runs(user, game, count: int) -> None:
+    """Rows enough to reach the default page.
+
+    Made by hand: a page size wants a count, not a
+    hundred histories of a hundred acts.
+    """
+    player_game = tracked_game(user.library, game)
+    assert player_game is not None
+    Playthrough.objects.bulk_create(
+        Playthrough(
+            id=uuid.uuid7(),
+            library=user.library,
+            player_game=player_game,
+            kind=PlaythroughKind.ORDINARY,
+            created_at=django_timezone_now(),
+        )
+        for _ in range(count)
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_list_answers_a_hundred_rows_where_the_request_states_no_limit(
+    client, user, game
+):
+    """100 by default; the rest is asked for."""
+    track_game(user, game, correlation_id=new_correlation_id())
+    _extra_runs(user, game, 120)
     client.force_login(user)
 
-    with django_assert_num_queries(6):
-        assert len(client.get("/api/playthrough/").json()) == 4
+    assert len(client.get("/api/playthrough/").json()) == 100
+    assert len(client.get("/api/playthrough/?limit=0").json()) == 121

@@ -13,15 +13,18 @@ takes a `game_id`. `GET /` takes no key. A legacy row id answers 404.
 | the routes | read |
 |---|---|
 | `GET /`, `GET /{id}` | `library_runs(library)` |
-| `PATCH /{id}`, `DELETE /{id}` | the library's runs, whatever the mark |
+| `PATCH /{id}`, `DELETE /{id}` | the same, whatever the run's own mark |
 
 `library_runs` in `games/reads/playthrough_runs.py` holds the live ordinary
 runs of a live tracked game. It is the scope every read surface states, so the
 API lists what the list page lists.
 
-A write resolves wider. `RemovePlaythrough` answers `Unchanged` for a run
-already removed, and a scope that hides that run answers 404 instead. The
-commands own every refusal; the route only finds the row.
+A write resolves the read scope less the run's own mark. `RemovePlaythrough`
+answers `Unchanged` for a run already removed, and a scope that hides that run
+answers 404 instead. Every other narrowing is kept, so no route writes a run no
+route reads: a run under a removed game, under a removed `PlayerGame`, or of
+another kind answers 404 to a write as it does to a read. The commands own
+every refusal; the route only finds the row.
 
 `GET /` orders `-created_at, id`, which is the list page's order, and reads
 `select_related("player_game__game")`, because the body names the game.
@@ -66,13 +69,20 @@ counted across, and no body states one.
 field is `Annotated[TemporalValue | None, BeforeValidator(...),
 PlainSerializer(...)]`. The validator builds the value from the string, and
 `TemporalValueParseError` is a `ValueError`, so a refused spelling answers 422.
-A bare `TemporalValue` annotation cannot do this: pydantic reads the dataclass
-and asks for its eight fields.
+A bare `TemporalValue` annotation states the wrong schema: pydantic reads the
+dataclass and asks a request for its eight fields. `WithJsonSchema` states the
+published one by hand -- a string or a null, with an example of each shape.
 
-`RunDraft` carries `TemporalValue | None` for each endpoint. A `PATCH` states
-the whole run, so a key the request leaves out is seeded from the run itself.
-The stated keys are read off `model_fields_set`, because a serialized payload
-holds canonical strings and the commands take values.
+`RunDraft` carries `ActStatement | None` for each endpoint. `None` is an
+endpoint nobody stated, and the write path leaves it alone. An
+`ActStatement` is the act, dated or not, so a stated key records the act even
+where its day is null. A `PATCH` names the keys it states, read off
+`model_fields_set`, because a serialized payload holds canonical strings and
+every key. A note-only `PATCH` therefore records no act, and `POST /` and the
+Add form state both, because a run recorded there happened.
+
+A body that names a key no schema knows is refused with 422. The rename from
+`ended` to `completed` is then read by whoever wrote it.
 
 `name`, `start_note` and `completion_note` are read-only. `DescribePlaythrough`
 and the two corrections state all three, but no screen does, and the API does

@@ -8,7 +8,7 @@ import pytest
 from django.contrib.messages import get_messages
 from django.urls import reverse
 from django.utils import timezone
-from playthrough_conversion import convert_and_take_runs
+from playthrough_conversion import convert_and_take_runs, run_noted
 
 from games.backfill.playthrough import convert_library
 from games.models import (
@@ -98,6 +98,46 @@ def test_editing_a_converted_row_states_the_difference(client, user, game):
 
 
 @pytest.mark.django_db(transaction=True)
+def test_an_edit_with_no_days_records_no_act(client, user, game):
+    """#679's run keeps both acts unrecorded.
+
+    A blank field beside an act clears its day, but beside
+    no act it states nothing: an act is recorded because a
+    person recorded it.
+    """
+    run = Playthrough.objects.get(player_game__game=game)
+    assert run.start_recorded_at is None
+    client.force_login(user)
+
+    client.post(
+        reverse("games:edit_playthrough", args=[run.pk]),
+        {"game": str(game.pk), "started": "", "ended": "", "note": "just a note"},
+    )
+
+    run.refresh_from_db()
+    assert run.note == "just a note"
+    assert run.start_recorded_at is None
+    assert run.completion_recorded_at is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_edit_that_clears_a_day_keeps_the_act(client, user, game):
+    """A stated act stays stated; only its day goes."""
+    PlayEvent.objects.create(game=game, started=date(2026, 1, 2), ended=None, note="")
+    [run] = convert_and_take_runs(user.library, game)
+    client.force_login(user)
+
+    client.post(
+        reverse("games:edit_playthrough", args=[run.pk]),
+        {"game": str(game.pk), "started": "", "ended": "", "note": ""},
+    )
+
+    run.refresh_from_db()
+    assert run.started is None
+    assert run.start_recorded_at is not None
+
+
+@pytest.mark.django_db(transaction=True)
 def test_a_second_edit_does_not_revert_the_first(client, user, game):
     """The form is seeded off the run, never the row.
 
@@ -122,7 +162,7 @@ def test_a_second_edit_does_not_revert_the_first(client, user, game):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_run_stating_more_than_a_day_leaves_the_edit_page(client, user, game):
-    """#1015 owns the screen that states a month."""
+    """A day-shaped form never flattens a month."""
     PlayEvent.objects.create(game=game, started=None, ended=None, note="")
     [run] = convert_and_take_runs(user.library, game)
     Playthrough.objects.filter(pk=run.pk).update(
@@ -162,9 +202,13 @@ def test_removing_the_only_run_is_refused_on_the_confirmation(client, user, game
 
 @pytest.mark.django_db(transaction=True)
 def test_removing_one_of_two_runs_stamps_the_projection_only(client, user, game):
-    PlayEvent.objects.create(game=game, started=None, ended=None, note="")
-    second = PlayEvent.objects.create(game=game, started=None, ended=None, note="")
-    other, run = convert_and_take_runs(user.library, game)
+    PlayEvent.objects.create(game=game, started=None, ended=None, note="first")
+    second = PlayEvent.objects.create(
+        game=game, started=None, ended=None, note="second"
+    )
+    runs = convert_and_take_runs(user.library, game)
+    other = run_noted(runs, "first")
+    run = run_noted(runs, "second")
     client.force_login(user)
 
     response = client.post(reverse("games:remove_playthrough", args=[run.pk]))

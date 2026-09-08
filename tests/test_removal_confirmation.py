@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 from django.urls import reverse
-from playthrough_conversion import convert_and_take_runs
+from playthrough_conversion import convert_and_take_runs, run_noted
 
 from common.returns import action_url
 from games.models import Game, Platform, PlayEvent, Session
@@ -127,9 +127,10 @@ def test_removal_confirms_first_with_owning_game_fallback(
     """
     instance = removables["playevent"]
     owning_game = removables["game"]
-    PlayEvent.objects.create(game=owning_game)
-    #: The row this test names was written first.
-    run, _second = convert_and_take_runs(owned_library, owning_game)
+    instance.note = "the named row"
+    instance.save()
+    PlayEvent.objects.create(game=owning_game, note="a second row")
+    run = run_noted(convert_and_take_runs(owned_library, owning_game), "the named row")
     url = reverse("games:remove_playthrough", args=[run.pk])
     assert logged_in.get(url).status_code == 200
 

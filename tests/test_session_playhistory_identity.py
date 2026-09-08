@@ -223,10 +223,10 @@ def test_uuid_is_absent_from_playevent_form_fields():
 def test_no_model_schema_covers_the_promoted_models():
     """No `ModelSchema` covers either model.
 
-    The two cases above read the fields `AutoPlayEventIn`
-    generated from `PlayEvent`: the absent `uuid`, and the
-    relation type a primary key infers. No schema is built
-    from either model now, so neither inference runs.
+    The forms above hide the key from a person. The API
+    hides it by generating no schema from either model, so
+    no inference over their fields runs at all. The probe
+    states that the scan still finds one where it is.
     """
 
     class PlayEventProbe(ModelSchema):
