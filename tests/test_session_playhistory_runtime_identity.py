@@ -128,15 +128,16 @@ def playthrough_world(transactional_db):
 def test_playthrough_api_uses_uuidv7_paths(
     playthrough_world, method, payload, expected_status
 ):
-    event = playthrough_world.own_playevent
+    #: #1015 keys the path on the run the row became.
+    run = Playthrough.objects.get(note="Owned event")
 
     response = _api_request(
-        playthrough_world.client, method, f"/api/playthrough/{event.pk}", payload
+        playthrough_world.client, method, f"/api/playthrough/{run.pk}", payload
     )
 
     assert response.status_code == expected_status
     if method == "get":
-        assert response.json()["id"] == str(event.pk)
+        assert response.json()["id"] == str(run.pk)
 
 
 def test_session_get_uses_a_uuidv7_path_and_serializes_the_id(runtime_world):
@@ -245,7 +246,7 @@ def test_promoted_html_views_keep_foreign_rows_undisclosed(
 @pytest.mark.parametrize(
     ("method", "path_template", "object_name", "payload"),
     [
-        ("get", "/api/playthrough/{identity}", "foreign_playevent", None),
+        ("get", "/api/playthrough/{identity}", "foreign_run", None),
         (
             "patch",
             "/api/session/{identity}",

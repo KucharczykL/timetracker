@@ -16,13 +16,14 @@ from django.db.models import (
     Max,
     OuterRef,
     Q,
+    QuerySet,
     Subquery,
     Value,
     When,
 )
 from django.db.models.functions import Coalesce, Greatest
 from django.utils.timezone import now as django_timezone_now
-from ninja import Field, ModelSchema, NinjaAPI, Router, Schema, Status
+from ninja import Field, ModelSchema, NinjaAPI, Query, Router, Schema, Status
 from ninja.errors import HttpError
 from ninja.security import django_auth
 
@@ -45,13 +46,15 @@ from games.models import (
     Platform,
     PlayerGameStatus,
     PlayEvent,
+    Playthrough,
     Purchase,
     PurchaseConversionState,
     Session,
+    UserLibrary,
 )
 from games.ownership import owned_or_404
-from games.reads.playthrough_endpoints import restatable_days
-from games.reads.playthrough_provenance import run_for_row
+from games.reads.playthrough_endpoints import days_to_finish, restatable_days
+from games.reads.playthrough_runs import library_runs
 from games.removal import remove
 from games.sorting import (
     MODE_SORTS,
@@ -143,19 +146,37 @@ class UpdatePlaythroughIn(Schema):
 
 
 class PlaythroughOut(Schema):
-    """A run, read off the legacy row.
-
-    #1015 reads the projection instead.
-    """
+    """One run, as the projection states it."""
 
     id: UUIDv7
-    game: str = Field(..., alias="game.name")
-    started: date | None = None
-    ended: date | None = None
-    days_to_finish: int | None = None
-    note: str = ""
-    updated_at: datetime
+    game: str = Field(..., alias="player_game.game.name")
+    game_id: UUIDv7 = Field(..., alias="player_game.game.id")
+    name: str
+    note: str
+    started: str | None
+    started_lower: date | None
+    started_upper: date | None
+    start_recorded_at: datetime | None
+    start_note: str
+    completed: str | None
+    completed_lower: date | None
+    completed_upper: date | None
+    completion_recorded_at: datetime | None
+    completion_note: str
+    days_to_finish: int | None
     created_at: datetime
+
+    @staticmethod
+    def resolve_started(run: Playthrough) -> str | None:
+        return None if run.started is None else run.started.serialize()
+
+    @staticmethod
+    def resolve_completed(run: Playthrough) -> str | None:
+        return None if run.completed is None else run.completed.serialize()
+
+    @staticmethod
+    def resolve_days_to_finish(run: Playthrough) -> int | None:
+        return days_to_finish(run)
 
 
 # One schema per search endpoint rather than one shared by all three: each
@@ -221,10 +242,35 @@ def partial_update_game(request, game_id: UUIDv7, payload: GameStatusUpdate):
     return Status(204, None)
 
 
+def _readable_runs(library: UserLibrary) -> QuerySet[Playthrough]:
+    """What the two GET routes answer about."""
+    return library_runs(library).select_related("player_game__game")
+
+
+def _writable_runs(library: UserLibrary) -> QuerySet[Playthrough]:
+    """What PATCH and DELETE find.
+
+    Wider than the reads on purpose: RemovePlaythrough answers
+    Unchanged for a run already removed, and a scope that hid
+    it would answer 404 to a repeat instead.
+    """
+    return Playthrough.objects.select_related("player_game__game").filter(
+        library=library, player_game__library=library
+    )
+
+
 @playthrough_router.get("/", response=list[PlaythroughOut])
-def list_playthroughs(request):
+def list_playthroughs(
+    request, limit: int = Query(100, ge=0), offset: int = Query(0, ge=0)
+):
+    """The library's live ordinary runs, newest first.
+
+    `limit=0` is unbounded, as on the presets route. The
+    order ends on the key, so an offset reads a stable page.
+    """
     library = cast(User, request.user).library
-    return PlayEvent.objects.for_library(library)
+    runs = _readable_runs(library).order_by("-created_at", "id")[offset:]
+    return runs if limit == 0 else runs[:limit]
 
 
 @playthrough_router.post("/", response={204: None})
@@ -247,10 +293,7 @@ def create_playthrough(request, payload: PlaythroughIn):
 @playthrough_router.get("/{playthrough_id}", response=PlaythroughOut)
 def get_playthrough(request, playthrough_id: UUIDv7):
     library = cast(User, request.user).library
-    playevent = owned_or_404(
-        PlayEvent.objects.for_library(library), library, id=playthrough_id
-    )
-    return playevent
+    return owned_or_404(_readable_runs(library), library, id=playthrough_id)
 
 
 @playthrough_router.patch("/{playthrough_id}", response={204: None})
@@ -258,13 +301,7 @@ def partial_update_playthrough(
     request, playthrough_id: UUIDv7, payload: UpdatePlaythroughIn
 ):
     library = cast(User, request.user).library
-    playevent = owned_or_404(
-        PlayEvent.objects.for_library(library), library, id=playthrough_id
-    )
-    converted = run_for_row(library, playevent.pk)
-    run = converted.run
-    if run is None:
-        raise CommandFailed(converted.sentence, CONFLICT_STATUS)
+    run = owned_or_404(_writable_runs(library), library, id=playthrough_id)
     #: PATCH states part; restate_run states the whole. The
     #: rest comes off the run, never the legacy row: nothing
     #: writes that row any more, so merging its frozen days
@@ -290,15 +327,8 @@ def partial_update_playthrough(
 @playthrough_router.delete("/{playthrough_id}", response={204: None})
 def remove_playthrough(request, playthrough_id: UUIDv7):
     library = cast(User, request.user).library
-    playevent = owned_or_404(
-        PlayEvent.objects.for_library(library), library, id=playthrough_id
-    )
-    converted = run_for_row(library, playevent.pk)
-    if converted.run is None:
-        raise CommandFailed(converted.sentence, CONFLICT_STATUS)
-    remove_run(
-        cast("User", request.user), converted.run, correlation_id=new_correlation_id()
-    )
+    run = owned_or_404(_writable_runs(library), library, id=playthrough_id)
+    remove_run(cast("User", request.user), run, correlation_id=new_correlation_id())
     return Status(204, None)
 
 
