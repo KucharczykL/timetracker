@@ -3349,6 +3349,40 @@ class TestComparableColumnsCrossModel:
                 else:
                     assert column["source"] == model_source
 
+    def test_a_projection_offers_no_column_through_its_library(self):
+        """#1013: `library` is scoping, not data. Every column of
+        every other entity the library owns answers nothing
+        about one run."""
+        from games.models import Playthrough
+
+        values = {column["value"] for column in comparable_columns(Playthrough)}
+
+        assert not any(value.startswith("library__") for value in values)
+
+    def test_a_run_offers_its_four_bound_columns(self):
+        """A column generated from a temporal value is excluded
+        until somebody scopes it in; these four are, and carry
+        their own words."""
+        from games.models import Playthrough
+
+        columns = {
+            column["value"]: column for column in comparable_columns(Playthrough)
+        }
+
+        assert columns["started_lower"]["label"] == "Started (earliest)"
+        assert columns["started_upper"]["label"] == "Started (latest)"
+        assert columns["completed_lower"]["label"] == "Completed (earliest)"
+        assert columns["completed_upper"]["label"] == "Completed (latest)"
+        assert columns["started_lower"]["group"] == "date"
+
+    def test_the_catalog_still_hides_its_temporal_bounds(self):
+        """Nobody scoped Release's bounds in, so they stay out."""
+        from games.models import Release
+
+        values = {column["value"] for column in comparable_columns(Release)}
+
+        assert not any(value.endswith("_lower") for value in values)
+
 
 # ── T3 — OperatorFilter field_comparisons wiring ─────────────────────────────
 

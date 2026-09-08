@@ -2087,8 +2087,16 @@ def _maybe_group_for(model: type[models.Model], column: str) -> ComparisonGroup 
     if model_field.is_relation:
         return None
 
-    if isinstance(model_field, models.GeneratedField) and isinstance(
-        getattr(model_field, "expression", None), _TEMPORAL_PROJECTION_EXPRESSIONS
+    # A column generated from a temporal value is excluded until the model
+    # scopes it in through ``comparable_temporal_bounds``: neither the words
+    # nor the operators of a bound are this walk's to guess (#1013).
+    allowlisted = column in getattr(model, "comparable_temporal_bounds", {})
+    if (
+        not allowlisted
+        and isinstance(model_field, models.GeneratedField)
+        and isinstance(
+            getattr(model_field, "expression", None), _TEMPORAL_PROJECTION_EXPRESSIONS
+        )
     ):
         return None
 
@@ -2270,9 +2278,18 @@ def _comparison_relations(
     (never configured): ``(fk_name, related_model, title-cased verbose name)``
     per concrete ForeignKey/OneToOneField, in ``_meta`` declaration order.
     The same to-one acceptance rule ``_comparison_operand_info`` validates against.
+
+    A relation the model lists in ``comparison_scoping_relations`` is skipped:
+    it scopes the row rather than describing it (a projection's ``library``),
+    so the columns behind it belong to another entity (#1013). Skipping it here
+    also keeps it out of ``_comparison_multivalued_sources``, which enumerates
+    its ``fk__multi`` blocks from this list.
     """
+    scoping = getattr(model, "comparison_scoping_relations", ())
     relations: list[tuple[str, type[models.Model], str]] = []
     for model_field in model._meta.get_fields():
+        if model_field.name in scoping:
+            continue
         if (
             isinstance(model_field, (models.ForeignKey, models.OneToOneField))
             and model_field.concrete
@@ -2312,8 +2329,11 @@ def _own_comparable_columns(
         group = _maybe_group_for(model, column)
         if group is None:
             continue
+        # A scoped-in bound column carries the model's own words: its
+        # verbose_name reads "Started Lower" (#1013).
+        bounds = getattr(model, "comparable_temporal_bounds", {})
         verbose_name = getattr(model_field, "verbose_name", column)
-        raw_label: str = verbose_name.title()
+        raw_label: str = bounds.get(column) or verbose_name.title()
         label = f"{source}: {raw_label}" if prefix else raw_label
         columns.append(
             ComparableColumn(
