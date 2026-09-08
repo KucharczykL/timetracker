@@ -264,7 +264,7 @@ def _stated_day(day: date | None) -> TemporalValue | None:
 
 
 def _draft_from(form: PlaythroughForm) -> RunDraft:
-    """The run the form states, as temporal values.
+    """The run the form states, as values.
 
     The two fields are optional, and from_day refuses None.
     """

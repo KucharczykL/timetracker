@@ -283,7 +283,7 @@ def test_apis_filters_and_presets_reconcile_per_library(parity_world):
         assert {row["id"] for row in sessions["items"]} == {
             str(session.pk) for session in getattr(world, f"sessions_{side}")
         }
-        #: #1015 lists runs, so the games they name is what reconciles.
+        #: The list holds runs; their games reconcile.
         assert {
             row["game_id"] for row in client.get("/api/playthrough/").json()
         } == own_games

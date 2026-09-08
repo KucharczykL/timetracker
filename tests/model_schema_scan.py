@@ -1,11 +1,9 @@
 """What a module's `ModelSchema`s are generated from.
 
-Three modules argue "no API leak" from this scan: a hand
-enumerated `Schema` publishes the fields it names, and a
-`ModelSchema` publishes whatever the model grows. #1015 took
-the last `ModelSchema` out of `games/api.py`, so the scan
-finds nothing there now, and each caller states a probe of
-its own so that a pass is the fact and not a broken scan.
+Three modules argue "no API leak" from this scan. No
+`ModelSchema` is left in `games/api.py`, so each caller
+states a probe of its own: a pass is then the fact, and
+not a broken scan.
 """
 
 from collections.abc import Mapping
@@ -14,7 +12,7 @@ from ninja import ModelSchema
 
 
 def models_covered(namespace: Mapping[str, object]) -> set[type]:
-    """Every model a `ModelSchema` here generates fields from."""
+    """Every model a `ModelSchema` here names."""
     covered: set[type] = set()
     for member in namespace.values():
         if (

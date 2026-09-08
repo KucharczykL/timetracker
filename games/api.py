@@ -109,7 +109,7 @@ def _stated_temporal(value: object) -> object:
     """Build the value a canonical string names.
 
     TemporalValueParseError is a ValueError, so pydantic
-    answers 422 rather than a traceback.
+    answers 422.
     """
     if value is None or isinstance(value, TemporalValue):
         return value
@@ -258,9 +258,8 @@ def _readable_runs(library: UserLibrary) -> QuerySet[Playthrough]:
 def _writable_runs(library: UserLibrary) -> QuerySet[Playthrough]:
     """What PATCH and DELETE find.
 
-    Wider than the reads on purpose: RemovePlaythrough answers
-    Unchanged for a run already removed, and a scope that hid
-    it would answer 404 to a repeat instead.
+    Wider than the reads: RemovePlaythrough answers Unchanged
+    for a removed run, and a narrower scope answers 404.
     """
     return Playthrough.objects.select_related("player_game__game").filter(
         library=library, player_game__library=library
@@ -273,8 +272,8 @@ def list_playthroughs(
 ):
     """The library's live ordinary runs, newest first.
 
-    `limit=0` is unbounded, as on the presets route. The
-    order ends on the key, so an offset reads a stable page.
+    `limit=0` is unbounded, as on presets. The order ends on
+    the key, so an offset reads a stable page.
     """
     library = cast(User, request.user).library
     runs = _readable_runs(library).order_by("-created_at", "id")[offset:]
@@ -312,13 +311,11 @@ def partial_update_playthrough(
 ):
     library = cast(User, request.user).library
     run = owned_or_404(_writable_runs(library), library, id=playthrough_id)
-    #: PATCH states part; restate_run states the whole. The
-    #: rest comes off the run, never the legacy row: nothing
-    #: writes that row any more, so merging its frozen values
-    #: in would revert an earlier PATCH without a word.
-    #: The set of stated keys, not a serialized dict:
-    #: dict() would hand back canonical strings, and the
-    #: command layer states temporal values.
+    #: The stated keys, not a serialized dict.
+    #:
+    #: PATCH states part; restate_run states the whole, so the
+    #: rest comes off the run. dict() would hand back
+    #: canonical strings, and the commands take values.
     stated = payload.model_fields_set
     restate_run(
         cast("User", request.user),

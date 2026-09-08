@@ -21,7 +21,7 @@ def game(owned_library):
 
 
 def only_run(user, game) -> Playthrough:
-    """The run TrackGame states for a tracked game."""
+    """The run TrackGame states for a game."""
     player_game = tracked_game(user.library, game)
     assert player_game is not None
     return live_ordinary_runs(user.library, player_game).get()
@@ -121,8 +121,7 @@ def test_the_list_reads_a_constant_number_of_queries(
 ):
     """The game rides the run's own query.
 
-    Eight rows cost the same six, so the number is the
-    session and the page, and nothing per run.
+    Eight rows cost the same six, so nothing is per run.
     """
     for index in range(4):
         game = Game.objects.create(library=owned_library, name=f"Game {index}")

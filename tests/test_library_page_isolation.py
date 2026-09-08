@@ -85,10 +85,10 @@ def test_library_page_evaluates_each_summary_count_once(
 
 
 def _converted_run(library, game):
-    """The run the conversion added at this game.
+    """The run the conversion added here.
 
-    None where the test tracks no game: the cases that
-    name a run all track theirs.
+    None where the test tracks no game: every case that
+    names a run tracks its own.
     """
     runs = convert_and_take_runs(library, game)
     return runs[0] if runs else None

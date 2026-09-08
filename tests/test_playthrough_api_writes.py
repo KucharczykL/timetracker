@@ -129,7 +129,7 @@ def test_a_second_patch_does_not_revert_the_first(client, user, game):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_patch_states_a_month(client, user, game):
-    """The body states every value a run can hold."""
+    """The body states every value stated."""
     PlayEvent.objects.create(game=game, started=None, ended=None, note="start")
     [run] = convert_and_take_runs(user.library, game)
     client.force_login(user)
@@ -147,7 +147,7 @@ def test_a_patch_states_a_month(client, user, game):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_patch_that_names_one_key_keeps_a_richer_value(client, user, game):
-    """A month survives a PATCH that states only the note."""
+    """A note-only PATCH keeps the month."""
     PlayEvent.objects.create(game=game, started=None, ended=None, note="start")
     [run] = convert_and_take_runs(user.library, game)
     Playthrough.objects.filter(pk=run.pk).update(
@@ -203,7 +203,7 @@ def test_delete_states_the_removal_and_leaves_the_row(client, user, game):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_second_delete_answers_204(client, user, game):
-    """#906: a repeat states nothing and refuses nothing."""
+    """#906: a repeat refuses nothing."""
     PlayEvent.objects.create(game=game, started=None, ended=None, note="first")
     PlayEvent.objects.create(game=game, started=None, ended=None, note="second")
     _first, run = convert_and_take_runs(user.library, game)
@@ -215,7 +215,7 @@ def test_a_second_delete_answers_204(client, user, game):
 
 @pytest.mark.django_db(transaction=True)
 def test_an_unconverted_row_id_answers_404(client, user, game):
-    """The path names a run, so a row id names nothing."""
+    """A row id names no run."""
     row = PlayEvent.objects.create(game=game, started=None, ended=None, note="")
     client.force_login(user)
 

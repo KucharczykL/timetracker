@@ -301,8 +301,7 @@ def test_shared_and_foreign_game_status_ids_are_undisclosed_and_unchanged(
 def test_playthrough_crud_is_library_scoped(two_libraries):
     world = two_libraries
     client = world["client_a"]
-    #: #1015 keys the routes on the run, so the foreign
-    #: subject is a run this library must not reach.
+    #: The routes are keyed on the run.
     foreign = Playthrough.objects.get(player_game__game=world["game_b"])
 
     listed_ids = {row["id"] for row in client.get("/api/playthrough/").json()}

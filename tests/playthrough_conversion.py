@@ -1,9 +1,7 @@
-"""The runs a conversion adds at one game.
+"""The runs a conversion adds here.
 
-#1015 takes the provenance bridge out, so a test that
-converts legacy rows reads the runs it gained instead of
-asking which row each one came from. Tracking states a run
-of its own, so the game holds one before the pass begins.
+No bridge maps a row to its run, so a test reads what the
+pass added. Tracking states a run before it begins.
 """
 
 from django.db.models import QuerySet
@@ -23,10 +21,10 @@ def _live_ordinary_runs(library: UserLibrary, game: Game) -> QuerySet[Playthroug
 
 
 def convert_and_take_runs(library: UserLibrary, game: Game) -> list[Playthrough]:
-    """Convert the library, and answer the runs it added.
+    """Convert the library, answer the runs added.
 
     In the order the rows were written: a converted run is
-    keyed on its row's own instant.
+    keyed on its row's instant.
     """
     before = set(_live_ordinary_runs(library, game).values_list("pk", flat=True))
     convert_library(library)

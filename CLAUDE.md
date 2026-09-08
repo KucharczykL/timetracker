@@ -201,7 +201,8 @@ docs/           — Additional documentation
   `games_playevent` any more, though the table is still read for a finish day
   elsewhere — the Purchase list's Finished column and the `finished` sort on
   Game and Purchase, both #1026's, and #771 takes the table. #1015 keyed the
-  API on the run and took the bridge that mapped a legacy row to it. #1014 gives the stats page the same rows:
+  API on the run and took the bridge that mapped a legacy row to it. #1014
+  gives the stats page the same rows:
   every finish it counts, dates and orders by comes from
   `games/reads/playthrough_completions.py`, whose four readers state one
   `PlaythroughFilter` per scope — the same object `stats_links.py` puts in the

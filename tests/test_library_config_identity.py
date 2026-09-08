@@ -156,8 +156,8 @@ def test_no_model_schema_generates_fields_from_device_or_filterpreset():
             model = Device
             fields = ("name",)
 
-    #: #1015 took the module's last `ModelSchema`, so the
-    #: scan finds none. The probe says it would find one.
+    #: No `ModelSchema` is left to find.
+    #: The probe says the scan would find one.
     assert models_covered({"probe": DeviceProbe}) == {Device}
 
     covered = models_covered(vars(api_module))

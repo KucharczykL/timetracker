@@ -221,13 +221,12 @@ def test_uuid_is_absent_from_playevent_form_fields():
 
 
 def test_no_model_schema_covers_the_promoted_models():
-    """#1015 took the one that did.
+    """No `ModelSchema` covers either model.
 
-    `AutoPlayEventIn` generated its fields from `PlayEvent`, so
-    the two cases here read them: one for the absent `uuid`
-    field, one for the relation type `ModelSchema` infers from
-    the related model's primary key. No schema is built from
-    either model now, so neither inference runs.
+    The two cases above read the fields `AutoPlayEventIn`
+    generated from `PlayEvent`: the absent `uuid`, and the
+    relation type a primary key infers. No schema is built
+    from either model now, so neither inference runs.
     """
 
     class PlayEventProbe(ModelSchema):
@@ -235,8 +234,8 @@ def test_no_model_schema_covers_the_promoted_models():
             model = PlayEvent
             fields = ("note",)
 
-    #: The scan finds no schema at all now, so the probe
-    #: says it would still find one that covers the model.
+    #: No `ModelSchema` is left to find.
+    #: The probe says the scan would find one.
     assert models_covered({"probe": PlayEventProbe}) == {PlayEvent}
 
     covered = models_covered(vars(games.api))

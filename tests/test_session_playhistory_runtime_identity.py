@@ -128,7 +128,7 @@ def playthrough_world(transactional_db):
 def test_playthrough_api_uses_uuidv7_paths(
     playthrough_world, method, payload, expected_status
 ):
-    #: #1015 keys the path on the run the row became.
+    #: The path names the run, not the row.
     run = Playthrough.objects.get(note="Owned event")
 
     response = _api_request(
