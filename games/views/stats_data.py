@@ -20,9 +20,7 @@ from django.db.models import (
     ExpressionWrapper,
     F,
     Max,
-    OuterRef,
     Q,
-    Subquery,
     Sum,
     fields,
 )
@@ -40,6 +38,11 @@ from games.models import (
     Session,
     SessionQuerySet,
     UserLibrary,
+)
+from games.reads.playthrough_completions import (
+    YearScope,
+    completion_day,
+    completion_exists,
 )
 
 
@@ -107,7 +110,7 @@ def _games_at_status(library: UserLibrary, *statuses: PlayerGameStatus):
     return Game.objects.tracked_by(library, tracked__status__in=statuses)
 
 
-def compute_stats(library: UserLibrary, year: int | None = None) -> StatsData:
+def compute_stats(library: UserLibrary, year: YearScope = None) -> StatsData:
     published_currency = (
         PurchaseConversionState.objects.only("published_currency")
         .get(library=library)
@@ -127,7 +130,7 @@ def _compute_stats_from_scoped_querysets(
     library: UserLibrary,
     sessions: SessionQuerySet,
     purchases: PurchaseQueryset,
-    year: int | None,
+    year: YearScope,
     fallback_currency: str,
 ) -> StatsData:
     """Compute metrics without selecting a global Session or Purchase base."""
@@ -140,7 +143,6 @@ def _compute_stats_from_scoped_querysets(
         sessions = sessions.prefetch_related("game")
         without_refunded = library_purchases.filter(date_refunded=None)
         refunded = library_purchases.filter(date_refunded__isnull=False)
-        ended_q = Q(games__playevents__ended__isnull=False)
         session_count = Count("sessions")
     else:
         sessions = sessions.filter(timestamp_start__year=year).prefetch_related("game")
@@ -151,13 +153,13 @@ def _compute_stats_from_scoped_querysets(
         refunded = library_purchases.exclude(date_refunded=None).filter(
             date_purchased__year=year
         )
-        ended_q = Q(games__playevents__ended__year=year)
         session_count = Count(
             "sessions", filter=Q(sessions__timestamp_start__year=year)
         )
 
+    completed_q = Q(completion_exists(library, year))
     done = _games_at_status(library, *DONE_STATUSES)
-    not_finished_q = ~Q(games__in=done) & ~ended_q
+    not_finished_q = ~Q(games__in=done) & ~completed_q
 
     # ── Session superlatives ─────────────────────────────────────────────────
     longest_session = (
@@ -244,36 +246,31 @@ def _compute_stats_from_scoped_querysets(
     # ── Finished purchases (scope-divergent) ─────────────────────────────────
     if is_alltime:
         finished = library_purchases.finished(library).annotate(
-            date_finished=Subquery(
-                library_purchases.filter(pk=OuterRef("pk"))
-                .annotate(max_ended=Max("games__playevents__ended"))
-                .values("max_ended")[:1]
-            )
+            date_finished=completion_day(library, None)
         )
-        finished_released = finished.order_by("-date_finished")
+        finished_released = finished.order_by(F("date_finished").desc(nulls_last=True))
         backlog_decrease_count = finished.count()
     else:
-        finished = (
-            library_purchases.finished(library)
-            .filter(games__playevents__ended__year=year)
-            .annotate(
-                game_name=F("games__name"), date_finished=F("games__playevents__ended")
-            )
+        #: A dated completion has its marker stated.
+        finished = library_purchases.filter(completed_q).annotate(
+            date_finished=completion_day(library, year)
         )
-        finished_released = finished.filter(games__year_released=year).order_by(
-            "games__playevents__ended"
+        finished_released = (
+            finished.filter(games__year_released=year)
+            .distinct()
+            .order_by(F("date_finished").asc(nulls_last=True))
         )
         purchased_finished = (
-            without_refunded.filter(games__playevents__ended__year=year)
-            .annotate(
-                game_name=F("games__name"), date_finished=F("games__playevents__ended")
-            )
-            .order_by("games__playevents__ended")
+            without_refunded.filter(completed_q)
+            .annotate(date_finished=completion_day(library, year))
+            .order_by(F("date_finished").asc(nulls_last=True))
         )
         backlog_decrease_count = (
             library_purchases.filter(date_purchased__year__lt=year)
             .filter(games__in=done)
-            .filter(games__playevents__ended__year=year)
+            .filter(completed_q)
+            #: The done-status join fans a bundle out.
+            .distinct()
             .count()
         )
 
@@ -366,16 +363,14 @@ def _compute_stats_from_scoped_querysets(
             .order_by("month")
         )
         data["all_finished_this_year"] = finished.prefetch_related("games").order_by(
-            "games__playevents__ended"
+            F("date_finished").asc(nulls_last=True)
         )
         data["all_finished_this_year_count"] = finished.count()
         data["this_year_finished_this_year"] = finished_released.prefetch_related(
             "games"
-        ).order_by("games__playevents__ended")
+        )
         data["purchased_this_year_finished_this_year"] = (
-            purchased_finished.prefetch_related("games").order_by(
-                "games__playevents__ended"
-            )
+            purchased_finished.prefetch_related("games")
         )
         data["purchased_unfinished"] = unfinished
         data["all_purchased_this_year"] = purchases.order_by("date_purchased")

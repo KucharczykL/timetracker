@@ -33,6 +33,7 @@ from games.filters import (
     SessionFilter,
 )
 from games.models import DONE_STATUSES, PlayerGameStatus, Purchase
+from games.reads.playthrough_completions import completed_in_scope
 
 
 def _is_year(year) -> bool:
@@ -132,22 +133,15 @@ def purchases_refunded(year) -> PurchaseFilter:
 
 
 def _completed_in_scope(year) -> PlaythroughFilter:
-    """A finish: a run completed in scope.
-
-    All-time reads the act, not the day. The per-year read
-    overlaps, so a run stated as a whole year answers for
-    every year it touches.
-    """
-    if _is_year(year):
-        return PlaythroughFilter.where(completed__between=_year_range(year))
-    return PlaythroughFilter.where(is_completed=True)
+    """A finish: a run completed in scope."""
+    return completed_in_scope(year if _is_year(year) else None)
 
 
 def _not_finished_game(year, excluded_statuses: list) -> GameFilter:
     """Games that are not finished in scope: status not in `excluded_statuses`
     (always includes `DONE_STATUSES`) and no completed run in scope.
 
-    Mirrors `not_finished_q = ~Q(status in DONE_STATUSES) & ~ended_q` plus the
+    Mirrors `not_finished_q = ~Q(status in DONE_STATUSES) & ~completed_q` plus the
     extra status exclusions some categories add."""
     game_filter = GameFilter(
         status=ChoiceCriterion(value=excluded_statuses, modifier=Modifier.EXCLUDES)

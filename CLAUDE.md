@@ -199,9 +199,17 @@ docs/           — Additional documentation
   `ended` to `completed`. `playthrough_count` counts runs whose completion is
   stated, which is number `Played N times` prints. No run is read out of
   `games_playevent` any more, though the table is still read for a finish day
-  elsewhere — the stats page, the Purchase list's Finished column, and the
-  `finished` sort on Game and Purchase; `runs_for_rows` stays for API, which
-  #1015 owns, and #771 takes the table
+  elsewhere — the Purchase list's Finished column and the `finished` sort on
+  Game and Purchase, both #1026's; `runs_for_rows` stays for API, which #1015
+  owns, and #771 takes the table. #1014 gives the stats page the same rows:
+  every finish it counts, dates and orders by comes from
+  `games/reads/playthrough_completions.py`, whose four readers state one
+  `PlaythroughFilter` per scope — the same object `stats_links.py` puts in the
+  link beside each number, so stat and link compile one predicate. A year reads
+  the interval the two generated bound columns state, all-time reads the marker;
+  a Purchase reports one row, dated `completed_lower` of its earliest run in a
+  year (its latest all-time, which no table prints today), and a row that
+  reports no day sorts last and prints `-`
 
 **Nothing user removes is destroyed** (#944). Nine removable models — Game,
 Edition, Release, Platform, Device, Session, PlayEvent, Purchase, FilterPreset —

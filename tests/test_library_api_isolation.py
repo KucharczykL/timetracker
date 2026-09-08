@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime, timedelta
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import Client
+from django.utils import timezone
 
 from common.criteria import (
     AggregateCriterion,
@@ -34,6 +35,7 @@ from games.models import (
     Session,
 )
 from games.views.stats_data import compute_stats
+from timetracker.temporal import TemporalValue
 
 YEAR = 2024
 
@@ -125,9 +127,16 @@ def two_libraries(db):
         ended=date(YEAR, 2, 2),
         note="Library B event",
     )
-    #: Each library's own run holds the note.
-    for game, note in ((game_a, "Library A event"), (game_b, "Library B event")):
-        Playthrough.objects.filter(player_game__game=game).update(note=note)
+    #: The run holds the note and completion.
+    for game, note, day in (
+        (game_a, "Library A event", date(YEAR, 2, 1)),
+        (game_b, "Library B event", date(YEAR, 2, 2)),
+    ):
+        Playthrough.objects.filter(player_game__game=game).update(
+            note=note,
+            completed=TemporalValue.from_day(day),
+            completion_recorded_at=timezone.now(),
+        )
 
     purchase_a = Purchase.objects.create(
         library=library_a,
