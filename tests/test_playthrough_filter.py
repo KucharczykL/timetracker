@@ -1,11 +1,17 @@
 """#1013: the filter reads the projection."""
 
 import uuid
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from django.utils import timezone
 
-from games.filters import PlaythroughFilter, filter_query_context_for_library
+from games.filters import (
+    PlaythroughFilter,
+    filter_query_context_for_library,
+    filter_url,
+    parse_playthrough_filter,
+)
 from games.models import Game, Playthrough, PlaythroughKind
 from games.reads.playthrough_endpoints import days_to_finish
 from games.reads.playthrough_runs import library_runs
@@ -385,3 +391,17 @@ def test_the_count_reads_the_runs_a_person_finished(owned_library):
         )
         == 0
     )
+
+
+def test_a_percent_survives_the_url():
+    """#656 left the encoding to the wave that writes the
+    filter: a value is a plain ISO day and a qualifier is no
+    operand, so the only symbol left is a person's own `%`."""
+    original = PlaythroughFilter.where(note__contains="100% run")
+
+    url = filter_url(original)
+    query = parse_qs(urlparse(url).query)
+    parsed = parse_playthrough_filter(query["filter"][0])
+
+    assert parsed == original
+    assert "100%25" in url
