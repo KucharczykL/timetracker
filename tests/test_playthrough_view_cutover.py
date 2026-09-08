@@ -8,6 +8,7 @@ import pytest
 from django.contrib.messages import get_messages
 from django.urls import reverse
 from django.utils import timezone
+from playthrough_conversion import convert_and_take_runs
 
 from games.backfill.playthrough import convert_library
 from games.models import (
@@ -18,7 +19,6 @@ from games.models import (
     PlaythroughKind,
     Session,
 )
-from games.reads.playthrough_provenance import run_for_row
 from games.writes.playergame import new_correlation_id
 from games.writes.playthrough import remove_run
 from timetracker.temporal import TemporalValue
@@ -83,9 +83,7 @@ def test_marking_finished_states_the_status_under_one_correlation_id(
 @pytest.mark.django_db(transaction=True)
 def test_editing_a_converted_row_states_the_difference(client, user, game):
     row = PlayEvent.objects.create(game=game, started=None, ended=None, note="")
-    convert_library(user.library)
-    run = run_for_row(user.library, row.pk).run
-    assert run is not None
+    [run] = convert_and_take_runs(user.library, game)
     client.force_login(user)
 
     client.post(
@@ -107,12 +105,8 @@ def test_a_second_edit_does_not_revert_the_first(client, user, game):
     second edit from it would post the frozen day back over
     what the first edit stated.
     """
-    row = PlayEvent.objects.create(
-        game=game, started=date(2026, 1, 2), ended=None, note=""
-    )
-    convert_library(user.library)
-    run = run_for_row(user.library, row.pk).run
-    assert run is not None
+    PlayEvent.objects.create(game=game, started=date(2026, 1, 2), ended=None, note="")
+    [run] = convert_and_take_runs(user.library, game)
     client.force_login(user)
 
     client.post(
@@ -129,10 +123,8 @@ def test_a_second_edit_does_not_revert_the_first(client, user, game):
 @pytest.mark.django_db(transaction=True)
 def test_a_run_stating_more_than_a_day_leaves_the_edit_page(client, user, game):
     """#1015 owns the screen that states a month."""
-    row = PlayEvent.objects.create(game=game, started=None, ended=None, note="")
-    convert_library(user.library)
-    run = run_for_row(user.library, row.pk).run
-    assert run is not None
+    PlayEvent.objects.create(game=game, started=None, ended=None, note="")
+    [run] = convert_and_take_runs(user.library, game)
     Playthrough.objects.filter(pk=run.pk).update(
         started=TemporalValue.from_month(2026, 3)
     )
@@ -151,10 +143,8 @@ def test_removing_the_only_run_is_refused_on_the_confirmation(client, user, game
     #: Tracking states a run of its own, so the conversion
     #: leaves two. That one goes first, and the converted
     #: row is then the only run the game has left.
-    row = PlayEvent.objects.create(game=game, started=None, ended=None, note="")
-    convert_library(user.library)
-    converted = run_for_row(user.library, row.pk).run
-    assert converted is not None
+    PlayEvent.objects.create(game=game, started=None, ended=None, note="")
+    [converted] = convert_and_take_runs(user.library, game)
     remove_run(
         user,
         Playthrough.objects.exclude(pk=converted.pk).get(player_game__game=game),
@@ -172,11 +162,9 @@ def test_removing_the_only_run_is_refused_on_the_confirmation(client, user, game
 
 @pytest.mark.django_db(transaction=True)
 def test_removing_one_of_two_runs_stamps_the_projection_only(client, user, game):
-    first = PlayEvent.objects.create(game=game, started=None, ended=None, note="")
+    PlayEvent.objects.create(game=game, started=None, ended=None, note="")
     second = PlayEvent.objects.create(game=game, started=None, ended=None, note="")
-    convert_library(user.library)
-    run = run_for_row(user.library, second.pk).run
-    assert run is not None
+    other, run = convert_and_take_runs(user.library, game)
     client.force_login(user)
 
     response = client.post(reverse("games:remove_playthrough", args=[run.pk]))
@@ -187,8 +175,8 @@ def test_removing_one_of_two_runs_stamps_the_projection_only(client, user, game)
     second.refresh_from_db()
     assert second.removed_at is None
     #: The other run stays, so one remains.
-    other = run_for_row(user.library, first.pk).run
-    assert other is not None and other.removed_at is None
+    other.refresh_from_db()
+    assert other.removed_at is None
 
 
 def _second_run(run: Playthrough) -> Playthrough:

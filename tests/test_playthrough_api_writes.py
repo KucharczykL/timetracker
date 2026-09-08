@@ -3,10 +3,9 @@
 from datetime import date
 
 import pytest
+from playthrough_conversion import convert_and_take_runs
 
-from games.backfill.playthrough import convert_library
 from games.models import Game, PlayEvent, Playthrough
-from games.reads.playthrough_runs import live_ordinary_runs, tracked_game
 from timetracker.temporal import TemporalValue
 
 
@@ -18,22 +17,6 @@ def user(owned_user):
 @pytest.fixture
 def game(owned_library):
     return Game.objects.create(library=owned_library, name="Outer Wilds")
-
-
-def converted_runs(user, game) -> list[Playthrough]:
-    """The runs the conversion left for this game, oldest first."""
-    player_game = tracked_game(user.library, game)
-    assert player_game is not None
-    return list(live_ordinary_runs(user.library, player_game))
-
-
-def run_with_note(user, game, note: str) -> Playthrough:
-    """The run the conversion made of the row with this note.
-
-    Tracking states a run of its own, so a converted
-    library holds one more run than it held rows.
-    """
-    return next(run for run in converted_runs(user, game) if run.note == note)
 
 
 @pytest.mark.django_db(transaction=True)
@@ -79,8 +62,7 @@ def test_a_key_the_patch_leaves_out_keeps_the_value_the_run_states(client, user,
     PlayEvent.objects.create(
         game=game, started=date(2026, 1, 2), ended=None, note="12h"
     )
-    convert_library(user.library)
-    run = run_with_note(user, game, "12h")
+    [run] = convert_and_take_runs(user.library, game)
     client.force_login(user)
 
     response = client.patch(
@@ -98,8 +80,7 @@ def test_a_key_the_patch_leaves_out_keeps_the_value_the_run_states(client, user,
 @pytest.mark.django_db(transaction=True)
 def test_patch_states_the_difference_onto_the_run(client, user, game):
     row = PlayEvent.objects.create(game=game, started=None, ended=None, note="row")
-    convert_library(user.library)
-    run = run_with_note(user, game, "row")
+    [run] = convert_and_take_runs(user.library, game)
     client.force_login(user)
 
     response = client.patch(
@@ -126,8 +107,7 @@ def test_a_second_patch_does_not_revert_the_first(client, user, game):
     PlayEvent.objects.create(
         game=game, started=date(2026, 1, 2), ended=None, note="before"
     )
-    convert_library(user.library)
-    run = run_with_note(user, game, "before")
+    [run] = convert_and_take_runs(user.library, game)
     client.force_login(user)
 
     client.patch(
@@ -151,8 +131,7 @@ def test_a_second_patch_does_not_revert_the_first(client, user, game):
 def test_a_patch_states_a_month(client, user, game):
     """The body states every value a run can hold."""
     PlayEvent.objects.create(game=game, started=None, ended=None, note="start")
-    convert_library(user.library)
-    run = run_with_note(user, game, "start")
+    [run] = convert_and_take_runs(user.library, game)
     client.force_login(user)
 
     response = client.patch(
@@ -170,8 +149,7 @@ def test_a_patch_states_a_month(client, user, game):
 def test_a_patch_that_names_one_key_keeps_a_richer_value(client, user, game):
     """A month survives a PATCH that states only the note."""
     PlayEvent.objects.create(game=game, started=None, ended=None, note="start")
-    convert_library(user.library)
-    run = run_with_note(user, game, "start")
+    [run] = convert_and_take_runs(user.library, game)
     Playthrough.objects.filter(pk=run.pk).update(
         started=TemporalValue.from_month(2026, 3)
     )
@@ -193,8 +171,7 @@ def test_a_patch_that_names_one_key_keeps_a_richer_value(client, user, game):
 def test_a_spelling_the_grammar_refuses_answers_422(client, user, game):
     """A decade is 202X; 2020s names nothing."""
     PlayEvent.objects.create(game=game, started=None, ended=None, note="start")
-    convert_library(user.library)
-    run = run_with_note(user, game, "start")
+    [run] = convert_and_take_runs(user.library, game)
     client.force_login(user)
 
     response = client.patch(
@@ -212,8 +189,7 @@ def test_delete_states_the_removal_and_leaves_the_row(client, user, game):
     second = PlayEvent.objects.create(
         game=game, started=None, ended=None, note="second"
     )
-    convert_library(user.library)
-    run = run_with_note(user, game, "second")
+    _first, run = convert_and_take_runs(user.library, game)
     client.force_login(user)
 
     response = client.delete(f"/api/playthrough/{run.pk}")
@@ -230,8 +206,7 @@ def test_a_second_delete_answers_204(client, user, game):
     """#906: a repeat states nothing and refuses nothing."""
     PlayEvent.objects.create(game=game, started=None, ended=None, note="first")
     PlayEvent.objects.create(game=game, started=None, ended=None, note="second")
-    convert_library(user.library)
-    run = run_with_note(user, game, "second")
+    _first, run = convert_and_take_runs(user.library, game)
     client.force_login(user)
 
     assert client.delete(f"/api/playthrough/{run.pk}").status_code == 204
@@ -246,16 +221,3 @@ def test_an_unconverted_row_id_answers_404(client, user, game):
 
     assert client.delete(f"/api/playthrough/{row.pk}").status_code == 404
     assert client.get(f"/api/playthrough/{row.pk}").status_code == 404
-
-
-def test_no_module_reads_the_bridge():
-    """The API was its one reader; the module goes next."""
-    import pathlib
-
-    readers = sorted(
-        path.as_posix()
-        for path in pathlib.Path("games").rglob("*.py")
-        if "playthrough_provenance" in path.read_text()
-        and path.name != "playthrough_provenance.py"
-    )
-    assert readers == []

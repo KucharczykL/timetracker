@@ -23,10 +23,10 @@ from django.db.models import (
 )
 from django.db.models.functions import Coalesce, Greatest
 from django.utils.timezone import now as django_timezone_now
-from pydantic import BeforeValidator, PlainSerializer
-from ninja import Field, ModelSchema, NinjaAPI, Query, Router, Schema, Status
+from ninja import Field, NinjaAPI, Query, Router, Schema, Status
 from ninja.errors import HttpError
 from ninja.security import django_auth
+from pydantic import BeforeValidator, PlainSerializer
 
 from common.criteria import FilterError, filter_from_json
 from common.date_time_presentation import date_time_presentation_for_request
@@ -46,7 +46,6 @@ from games.models import (
     Game,
     Platform,
     PlayerGameStatus,
-    PlayEvent,
     Playthrough,
     Purchase,
     PurchaseConversionState,
@@ -146,12 +145,6 @@ class PlaythroughIn(Schema):
     started: StatedTemporal = None
     completed: StatedTemporal = None
     note: str = ""
-
-
-class AutoPlayEventIn(ModelSchema):
-    class Meta:
-        model = PlayEvent
-        fields = ("game", "started", "ended", "note")
 
 
 class UpdatePlaythroughIn(Schema):

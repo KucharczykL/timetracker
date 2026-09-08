@@ -4,11 +4,10 @@ from datetime import UTC, datetime
 
 import pytest
 from django.urls import reverse
+from playthrough_conversion import convert_and_take_runs
 
 from common.returns import action_url
-from games.backfill.playthrough import convert_library
 from games.models import Game, Platform, PlayEvent, Session
-from games.reads.playthrough_provenance import run_for_row
 
 
 @pytest.fixture
@@ -129,9 +128,8 @@ def test_removal_confirms_first_with_owning_game_fallback(
     instance = removables["playevent"]
     owning_game = removables["game"]
     PlayEvent.objects.create(game=owning_game)
-    convert_library(owned_library)
-    run = run_for_row(owned_library, instance.pk).run
-    assert run is not None
+    #: The row this test names was written first.
+    run, _second = convert_and_take_runs(owned_library, owning_game)
     url = reverse("games:remove_playthrough", args=[run.pk])
     assert logged_in.get(url).status_code == 200
 
