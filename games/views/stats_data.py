@@ -20,9 +20,7 @@ from django.db.models import (
     ExpressionWrapper,
     F,
     Max,
-    OuterRef,
     Q,
-    Subquery,
     Sum,
     fields,
 )
@@ -41,7 +39,7 @@ from games.models import (
     SessionQuerySet,
     UserLibrary,
 )
-from games.reads.playthrough_completions import completion_exists
+from games.reads.playthrough_completions import completion_day, completion_exists
 
 
 class StatsData(TypedDict):
@@ -244,36 +242,30 @@ def _compute_stats_from_scoped_querysets(
     # ── Finished purchases (scope-divergent) ─────────────────────────────────
     if is_alltime:
         finished = library_purchases.finished(library).annotate(
-            date_finished=Subquery(
-                library_purchases.filter(pk=OuterRef("pk"))
-                .annotate(max_ended=Max("games__playevents__ended"))
-                .values("max_ended")[:1]
-            )
+            date_finished=completion_day(library, None)
         )
-        finished_released = finished.order_by("-date_finished")
+        finished_released = finished.order_by(F("date_finished").desc(nulls_last=True))
         backlog_decrease_count = finished.count()
     else:
-        finished = (
-            library_purchases.finished(library)
-            .filter(games__playevents__ended__year=year)
-            .annotate(
-                game_name=F("games__name"), date_finished=F("games__playevents__ended")
-            )
+        #: A completion in the year is a completion all-time, so
+        #: `.finished()` would only add the M2M join back.
+        finished = library_purchases.filter(completed_q).annotate(
+            date_finished=completion_day(library, year)
         )
-        finished_released = finished.filter(games__year_released=year).order_by(
-            "games__playevents__ended"
+        finished_released = (
+            finished.filter(games__year_released=year)
+            .distinct()
+            .order_by(F("date_finished").asc(nulls_last=True))
         )
         purchased_finished = (
-            without_refunded.filter(games__playevents__ended__year=year)
-            .annotate(
-                game_name=F("games__name"), date_finished=F("games__playevents__ended")
-            )
-            .order_by("games__playevents__ended")
+            without_refunded.filter(completed_q)
+            .annotate(date_finished=completion_day(library, year))
+            .order_by(F("date_finished").asc(nulls_last=True))
         )
         backlog_decrease_count = (
             library_purchases.filter(date_purchased__year__lt=year)
             .filter(games__in=done)
-            .filter(games__playevents__ended__year=year)
+            .filter(completed_q)
             .count()
         )
 
@@ -366,16 +358,14 @@ def _compute_stats_from_scoped_querysets(
             .order_by("month")
         )
         data["all_finished_this_year"] = finished.prefetch_related("games").order_by(
-            "games__playevents__ended"
+            F("date_finished").asc(nulls_last=True)
         )
         data["all_finished_this_year_count"] = finished.count()
         data["this_year_finished_this_year"] = finished_released.prefetch_related(
             "games"
-        ).order_by("games__playevents__ended")
+        )
         data["purchased_this_year_finished_this_year"] = (
-            purchased_finished.prefetch_related("games").order_by(
-                "games__playevents__ended"
-            )
+            purchased_finished.prefetch_related("games")
         )
         data["purchased_unfinished"] = unfinished
         data["all_purchased_this_year"] = purchases.order_by("date_purchased")
