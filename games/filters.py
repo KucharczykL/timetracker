@@ -18,7 +18,7 @@ if TYPE_CHECKING:
         Device,
         Game,
         Platform,
-        PlayEvent,
+        Playthrough,
         Purchase,
         Session,
         UserLibrary,
@@ -50,12 +50,14 @@ from common.criteria import (
     bool_isnull_handler,
     bool_nonzero_duration_handler,
     comparable_columns,
+    days_touched_handler,
     duration_hours_handler,
     field_metadata,
     filter_from_json,
     filter_to_json,
     relation_to_q,
     search_q,
+    temporal_interval_handler,
 )
 from timetracker.settings_registry import DEFAULT_PAGE_SIZE
 
@@ -113,7 +115,7 @@ class GameFilter(OperatorFilter):
     session_count: AggregateCriterion | None = None
     session_average: AggregateCriterion | None = None  # average in hours
     purchase_count: AggregateCriterion | None = None  # distinct purchases per game
-    playthrough_count: AggregateCriterion | None = None  # playevents per game
+    playthrough_count: AggregateCriterion | None = None  # finished runs per game
 
     # Aggregate session durations (hours), summed across the game's sessions
     manual_playtime_hours: AggregateCriterion | None = None
@@ -128,7 +130,7 @@ class GameFilter(OperatorFilter):
     # Cross-entity filters
     session_filter: SessionFilter | None = None
     purchase_filter: PurchaseFilter | None = None
-    playthrough_filter: PlayEventFilter | None = None
+    playthrough_filter: PlaythroughFilter | None = None
     platform_filter: PlatformFilter | None = None
 
     # #687 renamed both keys. A saved preset is rewritten by migration 0046,
@@ -207,13 +209,13 @@ class GameFilter(OperatorFilter):
             )
 
         if self.playthrough_filter is not None:
-            from games.models import PlayEvent
+            from games.models import Playthrough
 
             q &= relation_to_q(
                 self.playthrough_filter,
                 context=context,
-                related_model=PlayEvent,
-                related_lookup="game__id",
+                related_model=Playthrough,
+                related_lookup="player_game__game__id",
             )
 
         if self.platform_filter is not None:
@@ -654,55 +656,95 @@ class PlatformFilter(OperatorFilter):
         return q
 
 
-# ── PlayEventFilter ────────────────────────────────────────────────────────
+# ── PlaythroughFilter ──────────────────────────────────────────────────────
 
 
 @dataclass
-class PlayEventFilter(OperatorFilter):
-    """Filter for the PlayEvent model."""
+class PlaythroughFilter(OperatorFilter):
+    """Filter for the Playthrough projection."""
 
-    AND: list[PlayEventFilter] = field(default_factory=list)
-    OR: list[PlayEventFilter] = field(default_factory=list)
-    NOT: list[PlayEventFilter] = field(default_factory=list)
+    AND: list[PlaythroughFilter] = field(default_factory=list)
+    OR: list[PlaythroughFilter] = field(default_factory=list)
+    NOT: list[PlaythroughFilter] = field(default_factory=list)
 
-    game: UUIDMultiCriterion | None = None  # filters on game__id
-    started: DateCriterion | None = None  # DateField, bare lookup
-    ended: DateCriterion | None = None  # DateField, bare lookup
-    days_to_finish: IntCriterion | None = None
+    game: UUIDMultiCriterion | None = None  # player_game__game__id
+    name: StringCriterion | None = None
+    started: DateCriterion | None = None  # the interval the endpoint states
+    completed: DateCriterion | None = None
+    is_started: BoolCriterion | None = None  # the act, day or no day
+    is_completed: BoolCriterion | None = None
+    days_to_finish: IntCriterion | None = None  # date arithmetic, no column
     note: StringCriterion | None = None
+    start_note: StringCriterion | None = None
+    completion_note: StringCriterion | None = None
     created_at: DateCriterion | None = None  # compared via __date
 
     # Free-text search
     search: StringCriterion | None = None
 
-    # Cross-entity: PlayEvents for games matching these criteria
+    # Cross-entity: runs at games matching these criteria
     game_filter: GameFilter | None = None
 
-    # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
-    # reviewable diff (AND-composition makes the order semantically irrelevant).
+    #: #1013 renamed the endpoint to the word the column, the
+    #: command and the screen use. A saved preset is rewritten by
+    #: migration 0047, but a bookmarked ``?filter=`` is not.
+    renamed_fields: ClassVar[Mapping[str, str]] = {"ended": "completed"}
+
     fields: ClassVar[dict[str, FilterField]] = {
-        "game": FilterField("game__id", search_url="/api/games/search"),
-        "started": FilterField(),
-        "ended": FilterField(),
-        "days_to_finish": FilterField(),
+        "game": FilterField("player_game__game__id", search_url="/api/games/search"),
+        "name": FilterField(),
+        "started": FilterField(
+            handler=temporal_interval_handler(
+                "started", "started_lower", "started_upper"
+            ),
+            metadata_lookup="started_lower",
+        ),
+        "completed": FilterField(
+            handler=temporal_interval_handler(
+                "completed", "completed_lower", "completed_upper"
+            ),
+            metadata_lookup="completed_lower",
+        ),
+        "is_started": FilterField(
+            handler=bool_isnull_handler("start_recorded_at", invert=True),
+            label="Has a start",
+        ),
+        "is_completed": FilterField(
+            handler=bool_isnull_handler("completion_recorded_at", invert=True),
+            label="Has a completion",
+        ),
+        "days_to_finish": FilterField(
+            handler=days_touched_handler("started_lower", "completed_upper"),
+            label="Days to finish",
+        ),
         "note": FilterField(),
+        "start_note": FilterField(),
+        "completion_note": FilterField(),
         "created_at": FilterField("created_at__date"),
     }
 
     @classmethod
-    def _comparison_model(cls) -> type[PlayEvent]:
-        from games.models import PlayEvent
+    def _comparison_model(cls) -> type[Playthrough]:
+        from games.models import Playthrough
 
-        return PlayEvent
+        return Playthrough
 
     def _extra_q(self, context: FilterQueryContext | None = None) -> Q:
         q = Q()
 
-        # Free-text search
+        #: A blank name renders as `Playthrough N`, which is
+        #: counted at read time and stored nowhere, so that text
+        #: answers no search.
         if self.search is not None:
-            q &= search_q(self.search, "game__name", "note")
+            q &= search_q(
+                self.search,
+                "player_game__game__name",
+                "name",
+                "note",
+                "start_note",
+                "completion_note",
+            )
 
-        # Cross-entity sub-filter: playevents for matching games
         if self.game_filter is not None:
             from games.models import Game
 
@@ -711,7 +753,7 @@ class PlayEventFilter(OperatorFilter):
                 context=context,
                 related_model=Game,
                 related_lookup="id",
-                parent_field="game__id",
+                parent_field="player_game__game__id",
             )
 
         return q
@@ -721,7 +763,7 @@ class PlayEventFilter(OperatorFilter):
 
 # Assigned after the class definitions (not in GameFilter's body) because the
 # specs reference filter classes defined below GameFilter — a class-body dict
-# would NameError on SessionFilter/PurchaseFilter/PlayEventFilter. The generic
+# would NameError on SessionFilter/PurchaseFilter/PlaythroughFilter. The generic
 # ``OperatorFilter.to_q`` walks this table; ``from_json`` reads each spec's
 # ``scope_filter`` to deserialize an aggregate's scope. The drift guard in
 # tests/test_filters.py asserts the table covers exactly the
@@ -732,7 +774,16 @@ GameFilter.aggregates = {
         "avg", "sessions", SessionFilter, source="duration_total", unit="duration_hours"
     ),
     "purchase_count": AggregateSpec("count", "purchases", PurchaseFilter),
-    "playthrough_count": AggregateSpec("count", "playevents", PlayEventFilter),
+    "playthrough_count": AggregateSpec(
+        "count",
+        "player_games__playthroughs",
+        PlaythroughFilter,
+        #: Every tracked game holds at least one run, so a plain
+        #: count reads 1 for a game nobody played. This counts the
+        #: runs whose completion is stated, which is the number
+        #: `Played N times` prints.
+        base_scope=PlaythroughFilter(is_completed=BoolCriterion(value=True)),
+    ),
     "manual_playtime_hours": AggregateSpec(
         "sum",
         "sessions",
@@ -776,8 +827,8 @@ def parse_platform_filter(json_str: str) -> PlatformFilter | None:
     return filter_from_json(PlatformFilter, json_str)
 
 
-def parse_playthrough_filter(json_str: str) -> PlayEventFilter | None:
-    return filter_from_json(PlayEventFilter, json_str)
+def parse_playthrough_filter(json_str: str) -> PlaythroughFilter | None:
+    return filter_from_json(PlaythroughFilter, json_str)
 
 
 # Validates a mode's ``?filter=`` JSON, raising FilterError or returning None.
@@ -817,27 +868,33 @@ def filter_for_model(model_name: ModelKey) -> type[OperatorFilter]:
 def filter_queryset_for_library(model_name: ModelKey, library: UserLibrary) -> QuerySet:
     """Return the explicit ownership base for a generic filter model.
 
-    Every model reachable from the filter builder implements ``for_library``;
+    Most models reachable from the filter builder implement ``for_library``;
     notably, Platform uses the private-management scope here rather than
     ``visible_to`` because the destination list manages private Platforms only.
 
-    Game is the exception: its list counts the games this library tracks, so
+    Game is one exception: its list counts the games this library tracks, so
     counting anything else here would answer the builder's live count with a
-    number the destination list cannot show.
+    number the destination list cannot show. Playthrough is the other: the
+    projection declares no manager, so it answers no ``for_library`` and every
+    read states its own scope.
     """
     from django.apps import apps
 
-    from games.models import Game
+    from games.models import Game, Playthrough
+    from games.reads.playthrough_runs import library_runs
 
     model = apps.get_model("games", model_name)
     if model is Game:
         return Game.objects.tracked_by(library)
+    if model is Playthrough:
+        return library_runs(library)
     return model.objects.for_library(library)
 
 
 def filter_query_context_for_library(library: UserLibrary) -> FilterQueryContext:
     """Resolve every compiler subquery from the current library's visibility."""
-    from games.models import Device, Game, Platform, PlayEvent, Purchase, Session
+    from games.models import Device, Game, Platform, Playthrough, Purchase, Session
+    from games.reads.playthrough_runs import library_runs
 
     scoped_querysets: dict[builtins.type, QuerySet] = {
         #: tracked_by, not for_library: a nested game filter resolves
@@ -846,7 +903,7 @@ def filter_query_context_for_library(library: UserLibrary) -> FilterQueryContext
         Game: Game.objects.tracked_by(library),
         Session: Session.objects.for_library(library),
         Purchase: Purchase.objects.for_library(library),
-        PlayEvent: PlayEvent.objects.for_library(library),
+        Playthrough: library_runs(library),
         Device: Device.objects.for_library(library),
         # Related Platform selection supports the shared catalogue plus this
         # library's private rows. Top-level Platform management remains the
@@ -908,7 +965,7 @@ _FILTER_LIST_URL: dict[type[OperatorFilter], str] = {
     GameFilter: "games:list_games",
     SessionFilter: "games:list_sessions",
     PurchaseFilter: "games:list_purchases",
-    PlayEventFilter: "games:list_playthroughs",
+    PlaythroughFilter: "games:list_playthroughs",
     DeviceFilter: "games:list_devices",
     PlatformFilter: "games:list_platforms",
 }

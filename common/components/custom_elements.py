@@ -86,8 +86,7 @@ FILTER_MODE_MODELS: dict[FilterMode, ModelKey] = {
     "games": "game",
     "sessions": "session",
     "purchases": "purchase",
-    # Singular key is PlayEvent._meta.model_name; #771 renames it.
-    "playthroughs": "playevent",
+    "playthroughs": "playthrough",
     "devices": "device",
     "platforms": "platform",
 }

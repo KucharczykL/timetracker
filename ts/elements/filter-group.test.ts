@@ -1116,22 +1116,22 @@ const HYDRATION_FIELDS = [
     modifiers: ["INCLUDES", "EXCLUDES"], relations: [], search_url: "", is_m2m: false,
   },
 ];
-// Relation chain for prefill: game → session → playevent, so a nested-relation
-// filter (the stats "View all" URL shape — purchase → game → playevent in
+// Relation chain for prefill: game → session → playthrough, so a nested-relation
+// filter (the stats "View all" URL shape — purchase → game → playthrough in
 // production, transposed onto the harness models) is expressible here.
-const PLAYEVENT_RELATION = {
+const PLAYTHROUGH_RELATION = {
   name: "playthrough_filter",
-  label: "PlayEvents",
+  label: "Playthroughs",
   kind: "relation",
   nullable: false,
   choices: [],
   modifiers: [],
-  relations: [{ field: "playthrough_filter", filter: "PlayEventFilter", model: "PlayEvent" }],
+  relations: [{ field: "playthrough_filter", filter: "PlaythroughFilter", model: "Playthrough" }],
   search_url: "",
   is_m2m: false,
 };
-const ENDED_META = {
-  name: "ended", label: "Ended", kind: "date", nullable: false, choices: [],
+const COMPLETED_META = {
+  name: "completed", label: "Completed", kind: "date", nullable: false, choices: [],
   modifiers: [], relations: [], search_url: "", is_m2m: false,
 };
 const SESSION_NAME_META = {
@@ -1140,8 +1140,8 @@ const SESSION_NAME_META = {
 };
 const HYDRATION_MODELS = JSON.stringify({
   game: { fields: [...HYDRATION_FIELDS, SESSION_RELATION], columns: COLUMNS },
-  session: { fields: [SESSION_NAME_META, PLAYEVENT_RELATION], columns: [] },
-  playevent: { fields: [ENDED_META], columns: [] },
+  session: { fields: [SESSION_NAME_META, PLAYTHROUGH_RELATION], columns: [] },
+  playthrough: { fields: [COMPLETED_META], columns: [] },
 });
 // The per-kind widget templates. Segment inputs carry the dual hidden-input
 // attributes (data-date-range-hidden + data-range-min/max) exactly like
@@ -1235,10 +1235,10 @@ const HYDRATION_TEMPLATES = `
       <input type="text" />
     </div>
   </template>
-  <template data-model="playevent" data-field-picker-template>
+  <template data-model="playthrough" data-field-picker-template>
     <div data-field-picker><search-select name="field-picker"><input data-search-select-search /></search-select></div>
   </template>
-  <template data-model="playevent" data-field="ended">
+  <template data-model="playthrough" data-field="completed">
     <div>
       <input type="hidden" data-date-range-hidden="min" data-range-min />
       <input type="hidden" data-date-range-hidden="max" data-range-max />
@@ -1544,12 +1544,12 @@ describe("<filter-group> prefill hydrates relation subtrees", () => {
   });
 
   it("nested relation (stats View-all URL shape): full subtree hydrates and round-trips", () => {
-    // Mirrors ?filter={"game_filter":{"playthrough_filter":{"ended":{…BETWEEN…}}}}
-    // from the bug report, expressed in the harness's game→session→playevent chain.
+    // Mirrors ?filter={"game_filter":{"playthrough_filter":{"completed":{…BETWEEN…}}}}
+    // from the bug report, expressed in the harness's game→session→playthrough chain.
     const host = loadHydration({
       session_filter: {
         playthrough_filter: {
-          ended: { value: "2026-01-01", modifier: "BETWEEN", value2: "2026-12-31" },
+          completed: { value: "2026-01-01", modifier: "BETWEEN", value2: "2026-12-31" },
         },
       },
     });
@@ -1570,7 +1570,7 @@ describe("<filter-group> prefill hydrates relation subtrees", () => {
         session_filter: {
           AND: [{
             playthrough_filter: {
-              AND: [{ ended: { value: "2026-01-01", modifier: "BETWEEN", value2: "2026-12-31" } }],
+              AND: [{ completed: { value: "2026-01-01", modifier: "BETWEEN", value2: "2026-12-31" } }],
             },
           }],
         },

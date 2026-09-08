@@ -148,7 +148,7 @@ class ReachableModelsTest(TestCase):
 
         self.assertEqual(
             set(reachable_models("game")),
-            {"game", "session", "purchase", "playevent", "platform", "device"},
+            {"game", "session", "purchase", "playthrough", "platform", "device"},
         )
 
     def test_reachable_models_maps_keys_to_filter_classes(self):
@@ -164,7 +164,7 @@ class ReachableModelsTest(TestCase):
         registry = model_field_registry("game")
         self.assertEqual(
             set(registry),
-            {"game", "session", "purchase", "playevent", "platform", "device"},
+            {"game", "session", "purchase", "playthrough", "platform", "device"},
         )
         session = registry["session"]
         self.assertIn("fields", session)
@@ -186,7 +186,7 @@ class ReachableModelsTest(TestCase):
         model set regardless of which list it is opened from (game/session/…)."""
         from games.filters import reachable_models
 
-        full = {"game", "session", "purchase", "playevent", "platform", "device"}
+        full = {"game", "session", "purchase", "playthrough", "platform", "device"}
         for root in full:
             self.assertEqual(set(reachable_models(root)), full, f"root={root}")
 
@@ -197,7 +197,14 @@ class ReachableModelsTest(TestCase):
         (which the client would otherwise silently paper over with the root bundle)."""
         from games.filters import model_field_registry, reachable_models
 
-        for root in ["game", "session", "purchase", "playevent", "platform", "device"]:
+        for root in [
+            "game",
+            "session",
+            "purchase",
+            "playthrough",
+            "platform",
+            "device",
+        ]:
             registry = model_field_registry(root)
             self.assertEqual(set(registry), set(reachable_models(root)), f"root={root}")
             for key, bundle in registry.items():
@@ -239,7 +246,7 @@ class FilterGroupComparisonTest(TestCase):
         from common.components import FilterGroup
 
         html = str(FilterGroup(presentation=_PRESENTATION, model="game"))
-        for key in ("game", "session", "purchase", "playevent", "platform", "device"):
+        for key in ("game", "session", "purchase", "playthrough", "platform", "device"):
             self.assertIn(f'data-model="{key}"', html)
 
     def test_emits_comparison_row_template_when_model_has_comparable_group(self):

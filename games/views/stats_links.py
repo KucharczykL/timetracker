@@ -28,7 +28,7 @@ from common.criteria import (
 )
 from games.filters import (
     GameFilter,
-    PlayEventFilter,
+    PlaythroughFilter,
     PurchaseFilter,
     SessionFilter,
 )
@@ -131,23 +131,32 @@ def purchases_refunded(year) -> PurchaseFilter:
 # themselves count inconsistently. Parity is verified per category in tests.
 
 
-def _ended_in_scope(year) -> PlayEventFilter:
-    """A game's finish: a playevent whose `ended` falls in scope (any, all-time)."""
+def _completed_in_scope(year) -> PlaythroughFilter:
+    """A game's finish: a run completed in scope (any, all-time).
+
+    All-time reads the act, not the day: a completion recorded
+    with an unknown day is a finish. The per-year read overlaps,
+    so a run stated as a whole year answers for every year it
+    touches. #1014 moves the statistics queries and owns proving
+    both definitions -- the parity fixture states a converted
+    legacy row, which is day-precision at both ends and so sees
+    neither.
+    """
     if _is_year(year):
-        return PlayEventFilter.where(ended__between=_year_range(year))
-    return PlayEventFilter.where(ended__notnull=True)
+        return PlaythroughFilter.where(completed__between=_year_range(year))
+    return PlaythroughFilter.where(is_completed=True)
 
 
 def _not_finished_game(year, excluded_statuses: list) -> GameFilter:
     """Games that are not finished in scope: status not in `excluded_statuses`
-    (always includes `DONE_STATUSES`) and no finishing playevent in scope.
+    (always includes `DONE_STATUSES`) and no completed run in scope.
 
     Mirrors `not_finished_q = ~Q(status in DONE_STATUSES) & ~ended_q` plus the
     extra status exclusions some categories add."""
     game_filter = GameFilter(
         status=ChoiceCriterion(value=excluded_statuses, modifier=Modifier.EXCLUDES)
     )
-    game_filter.NOT = [GameFilter(playthrough_filter=_ended_in_scope(year))]
+    game_filter.NOT = [GameFilter(playthrough_filter=_completed_in_scope(year))]
     return game_filter
 
 
@@ -155,11 +164,11 @@ def purchases_finished(year) -> PurchaseFilter:
     """Purchases whose game is finished (in scope)."""
     if _is_year(year):
         return PurchaseFilter(
-            game_filter=GameFilter(playthrough_filter=_ended_in_scope(year))
+            game_filter=GameFilter(playthrough_filter=_completed_in_scope(year))
         )
-    # All-time `.finished()`: a done status *or* any ended playevent.
+    # All-time `.finished()`: a done status *or* any completed run.
     game_filter = GameFilter(status=ChoiceCriterion(value=list(DONE_STATUSES)))
-    game_filter.OR = [GameFilter(playthrough_filter=_ended_in_scope(year))]
+    game_filter.OR = [GameFilter(playthrough_filter=_completed_in_scope(year))]
     return PurchaseFilter(game_filter=game_filter)
 
 
@@ -169,7 +178,7 @@ def purchases_finished_released(year) -> PurchaseFilter:
         return purchases_finished(year)
     game_filter = GameFilter(
         year_released=IntCriterion(value=year, modifier=Modifier.EQUALS),
-        playthrough_filter=_ended_in_scope(year),
+        playthrough_filter=_completed_in_scope(year),
     )
     return PurchaseFilter(game_filter=game_filter)
 
@@ -177,7 +186,9 @@ def purchases_finished_released(year) -> PurchaseFilter:
 def purchases_bought_and_finished(year) -> PurchaseFilter:
     """Not-refunded purchases bought in scope whose game finished in scope."""
     purchase_filter = PurchaseFilter.where(is_refunded=False, **_purchase_bounds(year))
-    purchase_filter.game_filter = GameFilter(playthrough_filter=_ended_in_scope(year))
+    purchase_filter.game_filter = GameFilter(
+        playthrough_filter=_completed_in_scope(year)
+    )
     return purchase_filter
 
 
@@ -225,6 +236,6 @@ def purchases_backlog_decrease(year) -> PurchaseFilter:
     )
     purchase_filter.game_filter = GameFilter(
         status=ChoiceCriterion(value=list(DONE_STATUSES)),
-        playthrough_filter=_ended_in_scope(year),
+        playthrough_filter=_completed_in_scope(year),
     )
     return purchase_filter

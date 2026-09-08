@@ -130,7 +130,7 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
     "playthroughs": [
         QuickFacet("game"),
         QuickFacet("started"),
-        QuickFacet("ended"),
+        QuickFacet("completed"),
         QuickFacet(
             "days_to_finish",
             "Days to finish",

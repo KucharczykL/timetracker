@@ -62,7 +62,7 @@ from games.filters import (
     DeviceFilter,
     GameFilter,
     PlatformFilter,
-    PlayEventFilter,
+    PlaythroughFilter,
     PurchaseFilter,
     SessionFilter,
     parse_device_filter,
@@ -1307,17 +1307,37 @@ class TestExpandedFiltersAgainstDB:
         assert data["game"] in results
         assert data["game2"] not in results
 
-    def test_game_filter_playthrough_count(self):
-        from games.filters import GameFilter
-        from games.models import Game
+    def test_game_filter_playthrough_count(self, owned_library):
+        """The count reads the runs whose completion is stated.
 
-        data = self._setup_entities()
+        Every tracked game holds a run from the moment the library
+        tracks it, so the game nobody finished must read 0 rather
+        than 1.
+        """
+        from django.utils import timezone
+
+        from games.filters import GameFilter, filter_query_context_for_library
+        from games.models import Game, Playthrough
+        from timetracker.temporal import TemporalValue
+
+        finished = Game.objects.create(library=owned_library, name="Outer Wilds")
+        unfinished = Game.objects.create(library=owned_library, name="Tunic")
+        run = Playthrough.objects.get(player_game__game=finished)
+        Playthrough.objects.filter(pk=run.pk).update(
+            completion_recorded_at=timezone.now(),
+            completed=TemporalValue.parse("2025-03-15"),
+        )
+
         gf = GameFilter.from_json(
             {"playthrough_count": {"value": 1, "modifier": "EQUALS"}}
         )
-        results = set(Game.objects.filter(gf.to_q(UNRESTRICTED_FILTER_CONTEXT)))
-        assert data["game"] in results
-        assert data["game2"] not in results
+        results = set(
+            Game.objects.filter(
+                gf.to_q(filter_query_context_for_library(owned_library))
+            )
+        )
+        assert finished in results
+        assert unfinished not in results
 
     def test_game_filter_platform_group(self):
         from games.filters import GameFilter
@@ -1636,12 +1656,12 @@ class TestPurchaseFilterDates:
     def test_cross_entity_subfilter_json_round_trip(self):
         """A PurchaseFilter nesting game_filter → playthrough_filter survives the
         JSON round-trip the stats links / list views perform (issue #120)."""
-        from games.filters import GameFilter, PlayEventFilter, PurchaseFilter
+        from games.filters import GameFilter, PlaythroughFilter, PurchaseFilter
 
         original = PurchaseFilter(
             game_filter=GameFilter(
-                playthrough_filter=PlayEventFilter(
-                    ended=DateCriterion(
+                playthrough_filter=PlaythroughFilter(
+                    completed=DateCriterion(
                         value="2024-01-01",
                         value2="2024-12-31",
                         modifier=Modifier.BETWEEN,
@@ -1652,15 +1672,16 @@ class TestPurchaseFilterDates:
         out = original.to_json()
         # The nested structure must actually be serialized, not dropped.
         assert (
-            out["game_filter"]["playthrough_filter"]["ended"]["value"] == "2024-01-01"
+            out["game_filter"]["playthrough_filter"]["completed"]["value"]
+            == "2024-01-01"
         )
 
         restored = PurchaseFilter.from_json(json.loads(json.dumps(out)))
         assert restored.game_filter is not None
         assert restored.game_filter.playthrough_filter is not None
-        ended = restored.game_filter.playthrough_filter.ended
-        assert isinstance(ended, DateCriterion)
-        assert ended.value2 == "2024-12-31"
+        completed = restored.game_filter.playthrough_filter.completed
+        assert isinstance(completed, DateCriterion)
+        assert completed.value2 == "2024-12-31"
         assert str(restored.to_q(UNRESTRICTED_FILTER_CONTEXT)) == str(
             original.to_q(UNRESTRICTED_FILTER_CONTEXT)
         )
@@ -1673,101 +1694,109 @@ class TestPurchaseFilterDates:
         assert PurchaseFilter(game_filter=GameFilter()).to_json() == {}
 
 
-class TestPlayEventFilterDates:
-    """End-to-end: a PlayEventFilter built from JSON narrows the queryset
-    correctly across the started/ended DateCriterion fields. PlayEvent.started
-    and ended are DateField columns, so the criteria apply with bare field
-    names (no __date lookup)."""
+class TestPlaythroughFilterDates:
+    """End-to-end: a PlaythroughFilter built from JSON narrows the
+    queryset correctly across the started/completed fields. Both are
+    temporal values, so each criterion reads the pair of generated
+    bound columns beside the endpoint rather than a column of its
+    own."""
 
-    def _seed(self):
-        import datetime
+    def _seed(self, library):
+        from django.utils import timezone
 
-        from games.models import Game, Platform, PlayEvent
+        from games.models import Game, Playthrough
+        from timetracker.temporal import TemporalValue
 
-        platform, _ = Platform.objects.get_or_create(name="Test", icon="test")
-        game = Game.objects.create(name="Test Game", platform=platform)
-        early = PlayEvent.objects.create(
-            game=game,
-            started=datetime.date(2024, 1, 10),
-            ended=datetime.date(2024, 1, 20),
-        )
-        mid = PlayEvent.objects.create(
-            game=game,
-            started=datetime.date(2024, 6, 1),
-            ended=datetime.date(2024, 6, 30),
-        )
-        late = PlayEvent.objects.create(
-            game=game,
-            started=datetime.date(2025, 2, 1),
-            ended=datetime.date(2025, 2, 15),
-        )
-        return {"early": early, "mid": mid, "late": late}
+        stated = {
+            "early": ("2024-01-10", "2024-01-20"),
+            "mid": ("2024-06-01", "2024-06-30"),
+            "late": ("2025-02-01", "2025-02-15"),
+        }
+        runs = {}
+        now = timezone.now()
+        for name, (started, completed) in stated.items():
+            game = Game.objects.create(library=library, name=f"Game {name}")
+            run = Playthrough.objects.get(player_game__game=game)
+            Playthrough.objects.filter(pk=run.pk).update(
+                start_recorded_at=now,
+                started=TemporalValue.parse(started),
+                completion_recorded_at=now,
+                completed=TemporalValue.parse(completed),
+            )
+            runs[name] = Playthrough.objects.get(pk=run.pk)
+        return runs
+
+    def _matching(self, library, filter_object):
+        from games.reads.playthrough_runs import library_runs
+
+        return set(library_runs(library).filter(filter_object.to_q()))
 
     @pytest.mark.django_db
-    def test_ended_between_finds_year(self):
-        """'Finished in 2024' expressed as a BETWEEN range over ended."""
-        from games.filters import PlayEventFilter
-        from games.models import PlayEvent
+    def test_completed_between_finds_year(self, owned_library):
+        """'Finished in 2024' expressed as a BETWEEN range over the
+        completion."""
+        from games.filters import PlaythroughFilter
 
-        seeded = self._seed()
-        pf = PlayEventFilter.from_json(
+        seeded = self._seed(owned_library)
+        parsed = PlaythroughFilter.from_json(
             {
-                "ended": {
+                "completed": {
                     "value": "2024-01-01",
                     "value2": "2024-12-31",
                     "modifier": "BETWEEN",
                 }
             }
         )
-        results = set(PlayEvent.objects.filter(pf.to_q()))
-        assert results == {seeded["early"], seeded["mid"]}
+
+        assert self._matching(owned_library, parsed) == {
+            seeded["early"],
+            seeded["mid"],
+        }
 
     @pytest.mark.django_db
-    def test_started_greater_than(self):
-        from games.filters import PlayEventFilter
-        from games.models import PlayEvent
+    def test_started_greater_than(self, owned_library):
+        from games.filters import PlaythroughFilter
 
-        seeded = self._seed()
-        pf = PlayEventFilter.from_json(
+        seeded = self._seed(owned_library)
+        parsed = PlaythroughFilter.from_json(
             {"started": {"value": "2024-06-01", "modifier": "GREATER_THAN"}}
         )
-        results = set(PlayEvent.objects.filter(pf.to_q()))
-        assert results == {seeded["late"]}
+
+        assert self._matching(owned_library, parsed) == {seeded["late"]}
 
     @pytest.mark.django_db
-    def test_ended_less_than(self):
-        from games.filters import PlayEventFilter
-        from games.models import PlayEvent
+    def test_completed_less_than(self, owned_library):
+        from games.filters import PlaythroughFilter
 
-        seeded = self._seed()
-        pf = PlayEventFilter.from_json(
-            {"ended": {"value": "2024-06-30", "modifier": "LESS_THAN"}}
+        seeded = self._seed(owned_library)
+        parsed = PlaythroughFilter.from_json(
+            {"completed": {"value": "2024-06-30", "modifier": "LESS_THAN"}}
         )
-        results = set(PlayEvent.objects.filter(pf.to_q()))
-        assert results == {seeded["early"]}
+
+        assert self._matching(owned_library, parsed) == {seeded["early"]}
 
     @pytest.mark.django_db
     def test_playthrough_filter_json_round_trip(self):
-        """PlayEventFilter started/ended survive json → object → json,
-        confirming DateCriterion is dispatched by from_json (not
+        """PlaythroughFilter started/completed survive json → object →
+        json, confirming DateCriterion is dispatched by from_json (not
         StringCriterion)."""
-        from games.filters import PlayEventFilter
+        from games.filters import PlaythroughFilter
 
         payload = {
             "started": {"value": "2024-01-01", "modifier": "GREATER_THAN"},
-            "ended": {
+            "completed": {
                 "value": "2024-01-01",
                 "value2": "2024-12-31",
                 "modifier": "BETWEEN",
             },
         }
-        pf = PlayEventFilter.from_json(payload)
-        assert isinstance(pf.started, DateCriterion)
-        assert isinstance(pf.ended, DateCriterion)
-        out = pf.to_json()
-        assert out["ended"]["value"] == "2024-01-01"
-        assert out["ended"]["value2"] == "2024-12-31"
-        assert out["ended"]["modifier"] == Modifier.BETWEEN
+        parsed = PlaythroughFilter.from_json(payload)
+        assert isinstance(parsed.started, DateCriterion)
+        assert isinstance(parsed.completed, DateCriterion)
+        out = parsed.to_json()
+        assert out["completed"]["value"] == "2024-01-01"
+        assert out["completed"]["value2"] == "2024-12-31"
+        assert out["completed"]["modifier"] == Modifier.BETWEEN
         assert out["started"]["modifier"] == Modifier.GREATER_THAN
 
 
@@ -2470,7 +2499,7 @@ _ALL_FILTERS = [
     PurchaseFilter,
     DeviceFilter,
     PlatformFilter,
-    PlayEventFilter,
+    PlaythroughFilter,
 ]
 
 
@@ -3752,18 +3781,25 @@ class TestFilterComparisonModels:
             DeviceFilter,
             GameFilter,
             PlatformFilter,
-            PlayEventFilter,
+            PlaythroughFilter,
             PurchaseFilter,
             SessionFilter,
         )
-        from games.models import Device, Game, Platform, PlayEvent, Purchase, Session
+        from games.models import (
+            Device,
+            Game,
+            Platform,
+            Playthrough,
+            Purchase,
+            Session,
+        )
 
         assert GameFilter()._comparison_model() is Game
         assert SessionFilter()._comparison_model() is Session
         assert PurchaseFilter()._comparison_model() is Purchase
         assert DeviceFilter()._comparison_model() is Device
         assert PlatformFilter()._comparison_model() is Platform
-        assert PlayEventFilter()._comparison_model() is PlayEvent
+        assert PlaythroughFilter()._comparison_model() is Playthrough
 
     @pytest.mark.django_db
     def test_purchase_filter_happy_path_to_q(self):
@@ -3858,11 +3894,11 @@ class TestComparisonSpaces:
         filter_object.to_q()  # must not raise
 
     def test_date_space_accepts_date_vs_datetime(self):
-        # PlayEvent.started is a DateField, created_at a DateTimeField
-        filter_object = PlayEventFilter(
+        # Playthrough.started_lower is a DateField, created_at a DateTimeField
+        filter_object = PlaythroughFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="started",
+                    left="started_lower",
                     right="created_at",
                     modifier=Modifier.EQUALS,
                     granularity="date",
@@ -3872,10 +3908,10 @@ class TestComparisonSpaces:
         filter_object.to_q()
 
     def test_raw_space_keeps_same_group_rule(self):
-        filter_object = PlayEventFilter(
+        filter_object = PlaythroughFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="started",
+                    left="started_lower",
                     right="created_at",
                     modifier=Modifier.EQUALS,
                 )
@@ -4229,47 +4265,46 @@ class TestFieldComparisonEndToEnd:
         )
         assert result == {purchase_a}
 
-    def test_not_equals_strict_null_symmetric(self):
+    def test_not_equals_strict_null_symmetric(self, owned_library):
         """NOT_EQUALS strict two-valued semantics: BOTH operand NULLs are excluded (#169).
 
         The explicit isnull=False guards on both operand paths ensure symmetry —
         a NULL on either side excludes the row, regardless of which side is nullable.
         Previously ~Q included rows with NULL on either nullable side.
         """
-        import datetime
+        from games.filters import PlaythroughFilter
+        from games.models import Game, Playthrough
+        from timetracker.temporal import TemporalValue
 
-        from games.filters import PlayEventFilter
-        from games.models import Game, Platform, PlayEvent
-
-        platform, _ = Platform.objects.get_or_create(name="PESym", icon="pesym")
-        game = Game.objects.create(name="PESymGame", platform=platform)
+        def run(name: str, started: str | None, completed: str | None) -> Playthrough:
+            game = Game.objects.create(library=owned_library, name=name)
+            row = Playthrough.objects.get(player_game__game=game)
+            Playthrough.objects.filter(pk=row.pk).update(
+                started=TemporalValue.parse(started),
+                completed=TemporalValue.parse(completed),
+            )
+            return Playthrough.objects.get(pk=row.pk)
 
         # different (both set) → included
-        differ = PlayEvent.objects.create(
-            game=game,
-            started=datetime.date(2024, 1, 1),
-            ended=datetime.date(2024, 2, 1),
-        )
+        differ = run("PTSym differ", "2024-01-01", "2024-02-01")
         # equal (both set) → excluded
-        PlayEvent.objects.create(
-            game=game,
-            started=datetime.date(2024, 3, 1),
-            ended=datetime.date(2024, 3, 1),
-        )
+        run("PTSym equal", "2024-03-01", "2024-03-01")
         # left NULL → EXCLUDED (strict guard)
-        PlayEvent.objects.create(game=game, ended=datetime.date(2024, 4, 1))
+        run("PTSym no start", None, "2024-04-01")
         # right NULL → EXCLUDED (strict guard, symmetric)
-        PlayEvent.objects.create(game=game, started=datetime.date(2024, 5, 1))
+        run("PTSym no completion", "2024-05-01", None)
 
-        play_filter = PlayEventFilter(
+        play_filter = PlaythroughFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="started", right="ended", modifier=Modifier.NOT_EQUALS
+                    left="started_lower",
+                    right="completed_upper",
+                    modifier=Modifier.NOT_EQUALS,
                 )
             ]
         )
         result = set(
-            PlayEvent.objects.filter(play_filter.to_q(UNRESTRICTED_FILTER_CONTEXT))
+            Playthrough.objects.filter(play_filter.to_q(UNRESTRICTED_FILTER_CONTEXT))
         )
         assert result == {differ}
 
@@ -4832,7 +4867,7 @@ class TestFilterFieldDescriptors:
         PurchaseFilter,
         DeviceFilter,
         PlatformFilter,
-        PlayEventFilter,
+        PlaythroughFilter,
     )
 
     @staticmethod
@@ -5105,7 +5140,13 @@ class TestPerFilterSearchColumns:
         PurchaseFilter: ("name", "games__name", "platform__name"),
         DeviceFilter: ("name", "type"),
         PlatformFilter: ("name", "group"),
-        PlayEventFilter: ("game__name", "note"),
+        PlaythroughFilter: (
+            "player_game__game__name",
+            "name",
+            "note",
+            "start_note",
+            "completion_note",
+        ),
     }
 
     @pytest.mark.parametrize("filter_cls,columns", list(SEARCH_COLUMNS.items()))
@@ -5263,7 +5304,7 @@ class TestFieldMetadata:
         by_name = self._by_name(GameFilter)
         assert by_name["session_count"]["scope_model"] == "session"
         assert by_name["purchase_price_total"]["scope_model"] == "purchase"
-        assert by_name["playthrough_count"]["scope_model"] == "playevent"
+        assert by_name["playthrough_count"]["scope_model"] == "playthrough"
 
     @pytest.mark.parametrize("filter_cls", _ALL_FILTERS)
     def test_scope_model_nonempty_iff_aggregate(self, filter_cls):

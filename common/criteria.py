@@ -2964,6 +2964,124 @@ def bool_nonzero_duration_handler(field_name: str) -> FieldHandler:
     )
 
 
+def _bound_at_most(field_name: str, value: Any) -> Q:
+    """The bound is at or before the day, or is unbounded."""
+    return Q(**{f"{field_name}__lte": value}) | Q(**{f"{field_name}__isnull": True})
+
+
+def _bound_at_least(field_name: str, value: Any) -> Q:
+    """The bound is at or after the day, or is unbounded."""
+    return Q(**{f"{field_name}__gte": value}) | Q(**{f"{field_name}__isnull": True})
+
+
+def temporal_interval_handler(
+    value_field: str, lower_field: str, upper_field: str
+) -> FieldHandler:
+    """Compare a day against an endpoint that states an interval.
+
+    A day, a month, a year, a decade or a range: the two
+    generated bound columns hold the earliest day the value can
+    name and the latest, both inclusive, and an absent bound
+    reads as unbounded. Every comparison first states that the
+    endpoint holds a value, so an act recorded with no day
+    answers neither an equality nor its negation. ``is null``
+    reads the endpoint's own value, not a bound: an open range
+    states a value while leaving one bound null.
+    """
+
+    def handler(criterion: _Criterion) -> Q:
+        modifier = criterion.modifier
+        if modifier == Modifier.IS_NULL:
+            return Q(**{f"{value_field}__isnull": True})
+        if modifier == Modifier.NOT_NULL:
+            return Q(**{f"{value_field}__isnull": False})
+        stated = Q(**{f"{value_field}__isnull": False})
+        value = criterion.value
+        value2 = getattr(criterion, "value2", None)
+        if modifier == Modifier.EQUALS:
+            return (
+                stated
+                & _bound_at_most(lower_field, value)
+                & _bound_at_least(upper_field, value)
+            )
+        if modifier == Modifier.NOT_EQUALS:
+            return stated & (
+                Q(**{f"{lower_field}__gt": value}) | Q(**{f"{upper_field}__lt": value})
+            )
+        if modifier == Modifier.GREATER_THAN:
+            return stated & Q(**{f"{lower_field}__gt": value})
+        if modifier == Modifier.LESS_THAN:
+            return stated & Q(**{f"{upper_field}__lt": value})
+        if modifier in (Modifier.BETWEEN, Modifier.NOT_BETWEEN):
+            if value is None or value2 is None:
+                raise FilterError(f"{modifier} requires two bounds (value and value2)")
+            low, high = min(value, value2), max(value, value2)
+            if modifier == Modifier.BETWEEN:
+                return (
+                    stated
+                    & _bound_at_most(lower_field, high)
+                    & _bound_at_least(upper_field, low)
+                )
+            return stated & (
+                Q(**{f"{lower_field}__gt": high}) | Q(**{f"{upper_field}__lt": low})
+            )
+        raise FilterError(f"Unsupported modifier {modifier} for a temporal endpoint")
+
+    return handler
+
+
+def days_touched_handler(lower_field: str, upper_field: str) -> FieldHandler:
+    """Compare a day count against two bound columns.
+
+    The count is the days the run touched, both ends included,
+    which is what ``games/reads/playthrough_endpoints.py`` reads:
+    ``N`` days means the later bound is ``N - 1`` days after the
+    earlier one. Every comparison states that both bounds are
+    known and the span is not negative, so a run with no answer
+    matches nothing and a count below 1 matches nothing. The
+    field names no column, so it offers no ``is null``.
+    """
+    from datetime import timedelta
+
+    def span_end(count: Any) -> Any:
+        return F(lower_field) + timedelta(days=int(count) - 1)
+
+    def handler(criterion: _Criterion) -> Q:
+        modifier = criterion.modifier
+        known = (
+            Q(**{f"{lower_field}__isnull": False})
+            & Q(**{f"{upper_field}__isnull": False})
+            & Q(**{f"{upper_field}__gte": F(lower_field)})
+        )
+        value = criterion.value
+        value2 = getattr(criterion, "value2", None)
+        if modifier == Modifier.EQUALS:
+            return known & Q(**{upper_field: span_end(value)})
+        if modifier == Modifier.NOT_EQUALS:
+            return known & ~Q(**{upper_field: span_end(value)})
+        if modifier == Modifier.GREATER_THAN:
+            return known & Q(**{f"{upper_field}__gt": span_end(value)})
+        if modifier == Modifier.LESS_THAN:
+            return known & Q(**{f"{upper_field}__lt": span_end(value)})
+        if modifier in (Modifier.BETWEEN, Modifier.NOT_BETWEEN):
+            if value is None or value2 is None:
+                raise FilterError(f"{modifier} requires two bounds (value and value2)")
+            low, high = min(value, value2), max(value, value2)
+            if modifier == Modifier.BETWEEN:
+                return (
+                    known
+                    & Q(**{f"{upper_field}__gte": span_end(low)})
+                    & Q(**{f"{upper_field}__lte": span_end(high)})
+                )
+            return known & (
+                Q(**{f"{upper_field}__lt": span_end(low)})
+                | Q(**{f"{upper_field}__gt": span_end(high)})
+            )
+        raise FilterError(f"Unsupported modifier {modifier} for a day count")
+
+    return handler
+
+
 def search_q(criterion: StringCriterion, *field_names: str) -> Q:
     """Free-text OR across several ``__icontains`` columns, negated on EXCLUDES.
 
