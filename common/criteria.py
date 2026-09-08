@@ -1001,8 +1001,10 @@ class FilterField:
     imperative: bool = False
     # The path ``field_metadata`` walks, when it differs from the path ``to_q``
     # emits. A query may read an annotation alias (``tracked__status``), which
-    # names no model column, while the widget still needs the real column's
-    # choices and nullability (``player_games__status``). Ignored by ``to_q``.
+    # names no model column, or a handler over two bound columns, which names
+    # none either; the widget still needs a real column's choices and
+    # nullability (``player_games__status``, ``started_lower``). Ignored by
+    # ``to_q``.
     metadata_lookup: ORMLookup | None = None
 
     def __post_init__(self) -> None:
@@ -1030,12 +1032,6 @@ class FilterField:
             # set-field widget input) has no consumer.
             raise ValueError(
                 "FilterField search_url has no effect on a handler-mapped field"
-            )
-        if self.metadata_lookup is not None and self.handler is not None:
-            # Handler-mapped fields skip column resolution, so metadata_lookup
-            # has no consumer.
-            raise ValueError(
-                "FilterField metadata_lookup has no effect on a handler-mapped field"
             )
 
     def to_q(self, attr_name: AttrName, criterion: _Criterion) -> Q:
@@ -2728,14 +2724,17 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             # loud-failure contract) instead of silently degrading to an empty
             # picker, while the legitimately-columnless fields never hit the None.
             # ``metadata_lookup`` wins where it is set: the query may read an
-            # annotation alias that resolves to no column, and the widget still
-            # needs the real one.
+            # annotation alias that resolves to no column, or a handler over
+            # two columns that names neither, and the widget still needs a
+            # real one.
             model_field: models.Field | None = None
             resolved_lookup: ORMLookup | None = None
             field_spec = filter_cls.fields.get(name)
             if (
                 field_spec is not None
-                and field_spec.handler is None
+                and (
+                    field_spec.handler is None or field_spec.metadata_lookup is not None
+                )
                 and model is not None
             ):
                 lookup = field_spec.metadata_lookup or field_spec.lookup or name

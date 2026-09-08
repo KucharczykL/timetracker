@@ -3,16 +3,17 @@
 from dataclasses import dataclass, field
 from typing import ClassVar
 
-import pytest
+from django.db.models import Q
 
 from common.criteria import (
     ChoiceCriterion,
+    DateCriterion,
     FilterField,
     Modifier,
     OperatorFilter,
     field_metadata,
 )
-from games.models import PlayerGame
+from games.models import PlayerGame, Playthrough
 
 
 @dataclass
@@ -54,6 +55,61 @@ def test_the_query_still_uses_the_alias():
     assert "tracked__status" in str(q)
 
 
-def test_a_handler_refuses_a_metadata_lookup():
-    with pytest.raises(ValueError, match="metadata_lookup"):
-        FilterField(handler=lambda criterion: None, metadata_lookup="status")
+@dataclass
+class _HandlerFilter(OperatorFilter):
+    """#1013: a handler over two bound columns names none of them."""
+
+    AND: list[_HandlerFilter] = field(default_factory=list)
+    OR: list[_HandlerFilter] = field(default_factory=list)
+    NOT: list[_HandlerFilter] = field(default_factory=list)
+
+    started: DateCriterion | None = None
+
+    fields: ClassVar[dict[str, FilterField]] = {
+        "started": FilterField(
+            handler=lambda criterion: Q(),
+            metadata_lookup="started_lower",
+        ),
+    }
+
+    @classmethod
+    def _comparison_model(cls):
+        return Playthrough
+
+
+def test_a_handler_field_states_its_widgets_column():
+    """The handler resolves no column, so the picker reads the
+    one the field names -- otherwise the widget offers no
+    `is null`."""
+    entry = next(
+        meta for meta in field_metadata(_HandlerFilter) if meta["name"] == "started"
+    )
+
+    assert entry["kind"] == "date"
+    assert entry["nullable"] is True
+
+
+def test_a_handler_field_without_one_still_resolves_nothing():
+    """A handler names no column, and nothing invents one."""
+
+    @dataclass
+    class _BareHandlerFilter(OperatorFilter):
+        AND: list[_BareHandlerFilter] = field(default_factory=list)
+        OR: list[_BareHandlerFilter] = field(default_factory=list)
+        NOT: list[_BareHandlerFilter] = field(default_factory=list)
+
+        started: DateCriterion | None = None
+
+        fields: ClassVar[dict[str, FilterField]] = {
+            "started": FilterField(handler=lambda criterion: Q()),
+        }
+
+        @classmethod
+        def _comparison_model(cls):
+            return Playthrough
+
+    entry = next(
+        meta for meta in field_metadata(_BareHandlerFilter) if meta["name"] == "started"
+    )
+
+    assert entry["nullable"] is False
