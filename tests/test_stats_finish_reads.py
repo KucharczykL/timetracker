@@ -184,7 +184,7 @@ def test_a_row_with_an_open_lower_bound_sorts_last(owned_user, owned_library):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_row_that_reports_no_day_renders(client, owned_user, owned_library):
-    """The year page prints a row with no day."""
+    """The year page prints a dateless row."""
     _open_bound_run(owned_user, owned_library, "Open")
     client.force_login(owned_user)
 
@@ -195,7 +195,7 @@ def test_a_row_that_reports_no_day_renders(client, owned_user, owned_library):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_command_states_the_completion_the_year_counts(owned_user, owned_library):
-    """One test drives the command, not the row."""
+    """Drives the command, not the row."""
     game = Game.objects.create(library=owned_library, name="Commanded")
     track_game(owned_user, game, correlation_id=new_correlation_id())
     purchase = Purchase.objects.create(
@@ -227,7 +227,7 @@ def test_a_command_states_the_completion_the_year_counts(owned_user, owned_libra
 
 @pytest.mark.django_db(transaction=True)
 def test_an_open_upper_bound_answers_every_later_year(owned_user, owned_library):
-    """No end: the completion answers on after it."""
+    """No end: every later year answers."""
     run = _bought_and_completed(owned_user, owned_library, "Open end")
     Playthrough.objects.filter(pk=run.pk).update(
         completed=TemporalValue.parse(f"{YEAR}-05-01/"),
@@ -253,7 +253,7 @@ def test_an_untracked_game_supplies_no_completion(owned_user, owned_library):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_purchase_naming_no_game_finishes_nothing(owned_user, owned_library):
-    """A Purchase with no game reports no finish."""
+    """No game: the Purchase reports no finish."""
     _bought_and_completed(owned_user, owned_library, "Dated", date(YEAR, 6, 1))
     Purchase.objects.create(
         library=owned_library,
@@ -299,7 +299,7 @@ def test_a_bundle_released_this_year_reports_one_row(owned_user, owned_library):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_bundle_leaves_the_backlog_once(owned_user, owned_library):
-    """Two done games of one Purchase, one row."""
+    """Two done games, one Purchase, one row."""
     first = _bought_and_completed(
         owned_user, owned_library, "Backlog A", date(YEAR, 3, 1)
     )

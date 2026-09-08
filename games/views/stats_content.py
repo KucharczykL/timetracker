@@ -102,7 +102,7 @@ def _purchase_name(purchase) -> Node:
     """One name per Purchase, no joined annotation."""
     first_game = purchase.first_game
     if purchase.type != "game":
-        #: Falls back to the first game's name.
+        #: DLC prints its parent game and type.
         link = GameLink(first_game, purchase.standardized_name)
         suffix = f" ({first_game.name} {purchase.get_type_display()})"
         return Safe(str(link) + conditional_escape(suffix))
