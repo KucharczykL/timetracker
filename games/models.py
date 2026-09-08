@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Mapping
 from datetime import timedelta
 from typing import TYPE_CHECKING, ClassVar, Final
 from uuid import UUID
@@ -1533,6 +1534,9 @@ class ProjectionModel(models.Model):
         related_name="+",
     )
 
+    #: Relations the comparison-operand walk never follows.
+    comparison_scoping_relations: ClassVar[tuple[str, ...]] = ("library",)
+
     class Meta:
         abstract = True
 
@@ -1690,6 +1694,14 @@ class Playthrough(ProjectionModel):
     #: The remove event's recorded_at; null means live.
     #: RemovePlaythrough states it, RestorePlaythrough clears it.
     removed_at = models.DateTimeField(null=True, default=None, editable=False)
+
+    #: The bound columns a comparison may name.
+    comparable_temporal_bounds: ClassVar[Mapping[str, str]] = {
+        "started_lower": "Started (earliest)",
+        "started_upper": "Started (latest)",
+        "completed_lower": "Completed (earliest)",
+        "completed_upper": "Completed (latest)",
+    }
 
     class Meta:
         indexes = (

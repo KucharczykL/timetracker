@@ -24,13 +24,14 @@ Prefill behavior note:
 import json
 import re
 import urllib.parse
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 
-from games.models import FilterPreset, Game, Platform, PlayEvent, Purchase
+from games.models import FilterPreset, Game, Platform, Playthrough, Purchase
+from timetracker.temporal import TemporalValue
 
 # ── auth helpers (no shared authenticated_page fixture exists in conftest.py) ──
 
@@ -509,8 +510,10 @@ def test_nested_relation_prefill_renders_full_tree(
     other_game = Game.objects.create(
         library=e2e_library, name="OtherGame", platform=platform, status="p"
     )
-    PlayEvent.objects.create(
-        game=done_game, ended=datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
+    #: The finish is stated on the run.
+    Playthrough.objects.filter(player_game__game=done_game).update(
+        completion_recorded_at=datetime(2026, 3, 1, 12, 0, tzinfo=UTC),
+        completed=TemporalValue.from_day(date(2026, 3, 1)),
     )
     matching_purchase = Purchase.objects.create(
         library=e2e_library,
@@ -530,7 +533,7 @@ def test_nested_relation_prefill_renders_full_tree(
     filter_json = {
         "game_filter": {
             "playthrough_filter": {
-                "ended": {
+                "completed": {
                     "value": "2026-01-01",
                     "modifier": "BETWEEN",
                     "value2": "2026-12-31",
@@ -569,10 +572,10 @@ def test_nested_relation_prefill_renders_full_tree(
     inner_field_search = group.locator(
         "[data-node-kind='criterion'] [data-field-picker] [data-search-select-search]"
     ).first
-    expect(inner_field_search).to_have_value("Ended")
+    expect(inner_field_search).to_have_value("Completed")
 
     # The count reads the live widgets via serializeForQuery(): only the purchase
-    # of the game with a 2026 PlayEvent matches — not all purchases (the bug
+    # of the game whose run completed in 2026 matches — not all purchases (the bug
     # pruned the whole filter and counted everything).
     count_badge = page.locator("filter-count")
     expect(count_badge).not_to_contain_text("Counting…")

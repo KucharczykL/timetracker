@@ -97,13 +97,14 @@ def _spanning(run: Playthrough, started, completed) -> Playthrough:
 
 @pytest.mark.django_db(transaction=True)
 def test_days_to_finish_reads_the_widest_span(run):
+    """January 1 to March 31, inclusive."""
     spanning = _spanning(
         run,
         TemporalValue.from_day(date(2026, 1, 1)),
         TemporalValue.from_month(2026, 3),
     )
 
-    assert days_to_finish(spanning) == 89
+    assert days_to_finish(spanning) == 90
 
 
 @pytest.mark.django_db(transaction=True)
@@ -112,6 +113,36 @@ def test_days_to_finish_reads_one_for_a_run_begun_and_finished_on_a_day(run):
     spanning = _spanning(run, day, day)
 
     assert days_to_finish(spanning) == 1
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    "started,completed,expected",
+    [
+        (date(2026, 3, 1), date(2026, 3, 1), 1),
+        (date(2026, 3, 1), date(2026, 3, 2), 2),
+        (date(2026, 3, 1), date(2026, 3, 30), 30),
+        (date(2026, 3, 2), date(2026, 3, 1), None),
+    ],
+)
+def test_the_count_includes_both_ends(run, started, completed, expected):
+    """A same-day run touched one day."""
+    spanning = _spanning(
+        run,
+        TemporalValue.from_day(started),
+        TemporalValue.from_day(completed),
+    )
+
+    assert days_to_finish(spanning) == expected
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_month_at_both_ends_counts_the_whole_month(run):
+    """The widest span the two values allow."""
+    month = TemporalValue.from_month(2026, 3)
+    spanning = _spanning(run, month, month)
+
+    assert days_to_finish(spanning) == 31
 
 
 @pytest.mark.django_db(transaction=True)

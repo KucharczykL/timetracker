@@ -35,14 +35,19 @@ def presentation() -> DateTimePresentation:
     )
 
 
-def cells_of(owned_library, run, presentation, **options) -> list[str]:
-    """Every cell this run renders, stringified."""
+def tabledata_of(owned_library, run, presentation, **options):
+    """The table this run renders, numbered."""
     tracked = tracked_game(owned_library, run.player_game.game)
     assert tracked is not None
     runs = list(
         numbered_for(owned_library, [tracked.pk]).select_related("player_game__game")
     )
-    data = playthrough_tabledata(runs, presentation, origin=None, **options)
+    return playthrough_tabledata(runs, presentation, origin=None, **options)
+
+
+def cells_of(owned_library, run, presentation, **options) -> list[str]:
+    """Every cell this run renders, stringified."""
+    data = tabledata_of(owned_library, run, presentation, **options)
     return [str(cell) for row in data["rows"] for cell in row["cell_data"]]
 
 
@@ -80,9 +85,32 @@ def test_a_stated_act_renders_its_day_at_its_own_precision(
 
 
 def test_a_blank_name_renders_its_display_number(owned_library, run, presentation):
+    """The pinned first column clips its name."""
     cells = cells_of(owned_library, run, presentation)
 
-    assert cells[0] == "Playthrough 1"
+    assert "<truncated-text" in cells[0]
+    assert "Playthrough 1" in cells[0]
+
+
+def test_the_columns_sort_only_where_the_caller_says_so(
+    owned_library, run, presentation
+):
+    """Game detail reads no `?sort=` at all."""
+    static = tabledata_of(owned_library, run, presentation)
+    sortable = tabledata_of(owned_library, run, presentation, sortable=True)
+
+    assert {column.sort_key for column in static["columns"]} == {None}
+    assert {
+        column.label: column.sort_key
+        for column in sortable["columns"]
+        if column.sort_key is not None
+    } == {
+        "Game": "name",
+        "Started": "started",
+        "Completed": "completed",
+        "Days to finish": "days",
+        "Created": "created",
+    }
 
 
 def test_the_actions_name_the_run(owned_library, run, presentation):
@@ -101,7 +129,8 @@ def test_the_days_cell_reads_the_span(owned_library, run, presentation):
 
     cells = cells_of(owned_library, run, presentation)
 
-    assert "2" in cells
+    #: The first, second and third: three days.
+    assert "3" in cells
 
 
 def test_excluding_the_game_column_drops_its_cell(owned_library, run, presentation):

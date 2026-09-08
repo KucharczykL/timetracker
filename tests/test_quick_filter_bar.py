@@ -13,6 +13,7 @@ from common.components import (
     QUICK_FACET_KINDS,
     QUICK_FACETS,
     is_quick_editable,
+    parse_filter_dict,
 )
 from common.components import (
     QuickFilterBar as _QuickFilterBar,
@@ -292,6 +293,22 @@ class QuickFacetsContractTest(TestCase):
         for mode, model in FILTER_MODE_MODELS.items():
             with self.subTest(mode=mode):
                 filter_for_model(model)
+
+    def test_a_renamed_key_still_reads_as_its_facet(self):
+        """The bar parses a legacy key as the query does."""
+        for mode, model in FILTER_MODE_MODELS.items():
+            filter_class = filter_for_model(model)
+            facets = {facet.field for facet in QUICK_FACETS[mode]}
+            for old, new in filter_class.renamed_fields.items():
+                if new not in facets:
+                    continue
+                with self.subTest(mode=mode, key=old):
+                    parsed = parse_filter_dict(
+                        json.dumps({old: {"value": "2020", "modifier": "EQUALS"}}),
+                        filter_class,
+                    )
+                    self.assertEqual(set(parsed), {new})
+                    self.assertTrue(is_quick_editable(parsed, facets))
 
     def test_every_facet_is_an_own_model_leaf_field(self):
         for mode, facets in QUICK_FACETS.items():

@@ -18,9 +18,16 @@ from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
 )
-from games.filters import GameFilter, PlayEventFilter
+from games.filters import GameFilter, PlaythroughFilter
 from games.forms import PlaythroughForm
-from games.models import Game, GameStatusChange, PlayEvent
+from games.models import (
+    Game,
+    GameStatusChange,
+    PlayEvent,
+    Playthrough,
+    PlaythroughKind,
+)
+from games.reads.playthrough_runs import library_runs
 
 PRESENTATION = DateTimePresentation(
     DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
@@ -262,25 +269,46 @@ def test_database_rejects_a_gamestatuschange_referencing_a_uuid_no_game_owns():
 # --- Filters (integer criterion values, one join deeper) --------------------
 
 
-def test_playeventfilter_game_criterion_selects_the_right_rows(game, owned_library):
-    other_game = Game.objects.create(library=owned_library, name="Other")
-    matching = PlayEvent.objects.create(game=game)
-    PlayEvent.objects.create(game=other_game)
+def born_run(game: Game, note: str = "") -> Playthrough:
+    """The noted run born with the game."""
+    run = Playthrough.objects.get(player_game__game=game)
+    Playthrough.objects.filter(pk=run.pk).update(note=note)
+    return Playthrough.objects.get(pk=run.pk)
 
-    filter_ = PlayEventFilter.where(game=[game.id])
-    results = PlayEvent.objects.filter(filter_.to_q(UNRESTRICTED_FILTER_CONTEXT))
+
+def second_run(run: Playthrough, note: str) -> Playthrough:
+    """Another run at the same tracked game."""
+    return Playthrough.objects.create(
+        pk=uuid.uuid7(),
+        library=run.library,
+        player_game=run.player_game,
+        kind=PlaythroughKind.ORDINARY,
+        created_at=timezone.now(),
+        note=note,
+    )
+
+
+def test_playthroughfilter_game_criterion_selects_the_right_rows(game, owned_library):
+    other_game = Game.objects.create(library=owned_library, name="Other")
+    matching = born_run(game)
+    born_run(other_game)
+
+    filter_ = PlaythroughFilter.where(game=[game.id])
+    results = library_runs(owned_library).filter(
+        filter_.to_q(UNRESTRICTED_FILTER_CONTEXT)
+    )
     assert list(results) == [matching]
 
 
-def test_gamefilter_playthrough_filter_any_selects_games_with_a_matching_playevent(
+def test_gamefilter_playthrough_filter_any_selects_games_with_a_matching_run(
     game, owned_library
 ):
     other_game = Game.objects.create(library=owned_library, name="Other")
-    PlayEvent.objects.create(game=game, note="Marathon session")
-    PlayEvent.objects.create(game=other_game, note="Something else")
+    born_run(game, note="Marathon session")
+    born_run(other_game, note="Something else")
 
     filter_ = GameFilter(
-        playthrough_filter=PlayEventFilter(
+        playthrough_filter=PlaythroughFilter(
             note=StringCriterion(value="Marathon", modifier=Modifier.INCLUDES),
         )
     )
@@ -290,14 +318,15 @@ def test_gamefilter_playthrough_filter_any_selects_games_with_a_matching_playeve
     assert list(results) == [game]
 
 
-def test_gamefilter_playthrough_filter_none_excludes_games_with_a_matching_playevent(
+def test_gamefilter_playthrough_filter_none_excludes_games_with_a_matching_run(
     game, owned_library
 ):
     other_game = Game.objects.create(library=owned_library, name="Other")
-    PlayEvent.objects.create(game=game, note="Marathon session")
+    born_run(game, note="Marathon session")
+    born_run(other_game, note="Something else")
 
     filter_ = GameFilter(
-        playthrough_filter=PlayEventFilter(
+        playthrough_filter=PlaythroughFilter(
             note=StringCriterion(value="Marathon", modifier=Modifier.INCLUDES),
             match=RelationMatch.NONE,
         )
@@ -308,16 +337,15 @@ def test_gamefilter_playthrough_filter_none_excludes_games_with_a_matching_playe
     assert list(results) == [other_game]
 
 
-def test_gamefilter_playthrough_filter_all_requires_every_playevent_to_match(
+def test_gamefilter_playthrough_filter_all_requires_every_run_to_match(
     game, owned_library
 ):
     other_game = Game.objects.create(library=owned_library, name="Other")
-    PlayEvent.objects.create(game=game, note="Marathon session")
-    PlayEvent.objects.create(game=other_game, note="Marathon session")
-    PlayEvent.objects.create(game=other_game, note="Something else")
+    born_run(game, note="Marathon session")
+    second_run(born_run(other_game, note="Marathon session"), note="Something else")
 
     filter_ = GameFilter(
-        playthrough_filter=PlayEventFilter(
+        playthrough_filter=PlaythroughFilter(
             note=StringCriterion(value="Marathon", modifier=Modifier.INCLUDES),
             match=RelationMatch.ALL,
         )
@@ -328,17 +356,19 @@ def test_gamefilter_playthrough_filter_all_requires_every_playevent_to_match(
     assert list(results) == [game]
 
 
-def test_playeventfilter_game_filter_selects_playevents_for_matching_games(
+def test_playthroughfilter_game_filter_selects_runs_for_matching_games(
     game, owned_library
 ):
     other_game = Game.objects.create(library=owned_library, name="Other")
-    matching = PlayEvent.objects.create(game=game)
-    PlayEvent.objects.create(game=other_game)
+    matching = born_run(game)
+    born_run(other_game)
 
-    filter_ = PlayEventFilter(
+    filter_ = PlaythroughFilter(
         game_filter=GameFilter(name=StringCriterion(value=game.name)),
     )
-    results = PlayEvent.objects.filter(filter_.to_q(UNRESTRICTED_FILTER_CONTEXT))
+    results = library_runs(owned_library).filter(
+        filter_.to_q(UNRESTRICTED_FILTER_CONTEXT)
+    )
     assert list(results) == [matching]
 
 

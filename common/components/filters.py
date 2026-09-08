@@ -90,13 +90,19 @@ def _filter_parse(filter_json: str) -> dict:
         return {}
 
 
-def parse_filter_dict(filter_json: str) -> dict:
+def parse_filter_dict(
+    filter_json: str, filter_class: type[OperatorFilter] | None = None
+) -> dict:
     """Lenient ``?filter=`` JSON → dict parse (garbage → ``{}``) for bar prefill.
 
     The public face of ``_filter_parse``: list views parse once and hand the
     dict to the quick bar (``existing=``). Consumers treat it as read-only.
+
+    A stated class renames a legacy key, so the bar reads what the query
+    reads. Without one, a bookmarked URL degrades to "Advanced filter active".
     """
-    return _filter_parse(filter_json)
+    parsed = _filter_parse(filter_json)
+    return filter_class.rename_legacy_keys(parsed) if filter_class else parsed
 
 
 def _extract_labeled(items: list) -> list[LabeledOption]:

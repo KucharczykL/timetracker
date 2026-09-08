@@ -30,7 +30,11 @@ from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.returns import action_url
 from common.utils import paginate
-from games.filters import filter_query_context_for_library, parse_platform_filter
+from games.filters import (
+    PlatformFilter,
+    filter_query_context_for_library,
+    parse_platform_filter,
+)
 from games.forms import PlatformForm
 from games.models import Platform, UserLibrary
 from games.ownership import owned_or_404
@@ -129,7 +133,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
     builder_url = builder_url_for(
         "platforms", filter_json, find.sort, find.per_page_override
     )
-    parsed_filter = parse_filter_dict(filter_json)
+    parsed_filter = parse_filter_dict(filter_json, PlatformFilter)
     quick_bar = QuickFilterBar(
         presentation=presentation,
         mode="platforms",

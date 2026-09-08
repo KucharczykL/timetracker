@@ -15,9 +15,9 @@
       "relations": {},
       "scopes": {}
     },
-    "playevent": {
-      "fields": ["started", "created_at"],
-      "relations": {},
+    "playthrough": {
+      "fields": ["started", "completed", "days_to_finish", "note", "created_at"],
+      "relations": { "game_filter": "game" },
       "scopes": {}
     }
   },
@@ -197,13 +197,32 @@
       }
     },
     {
-      "description": "playevent date-space: started vs created_at (date-vs-datetime)",
-      "model": "playevent",
+      "description": "playthrough date-space: started vs created_at (date-vs-datetime)",
+      "model": "playthrough",
       "filter": {
-        "field_comparisons": [
-          { "left": "started", "right": "created_at", "modifier": "EQUALS", "granularity": "date" }
-        ]
+        "started": { "value": "2025-03-15", "modifier": "EQUALS" },
+        "created_at": { "value": "2025-03-15", "modifier": "EQUALS" }
       }
+    },
+    {
+      "description": "playthrough endpoints: completed between, days greater than",
+      "model": "playthrough",
+      "filter": {
+        "completed": { "value": "2025-01-01", "value2": "2025-12-31", "modifier": "BETWEEN" },
+        "days_to_finish": { "value": 3, "modifier": "GREATER_THAN" }
+      }
+    },
+    {
+      "description": "playthrough relation: runs at games matching a name",
+      "model": "playthrough",
+      "filter": {
+        "game_filter": { "name": { "value": "zelda", "modifier": "INCLUDES" } }
+      }
+    },
+    {
+      "description": "a percent in a text criterion survives the serializer",
+      "model": "playthrough",
+      "filter": { "note": { "value": "100% run", "modifier": "INCLUDES" } }
     },
     {
       "description": "multivalued comparison ANY: session end vs game__playevents__ended (date)",

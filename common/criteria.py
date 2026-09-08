@@ -999,10 +999,7 @@ class FilterField:
     # ``FilterField("lookup")`` calls are unaffected.
     search_url: str | None = None
     imperative: bool = False
-    # The path ``field_metadata`` walks, when it differs from the path ``to_q``
-    # emits. A query may read an annotation alias (``tracked__status``), which
-    # names no model column, while the widget still needs the real column's
-    # choices and nullability (``player_games__status``). Ignored by ``to_q``.
+    # The real column the widget reads; ``to_q`` ignores it.
     metadata_lookup: ORMLookup | None = None
 
     def __post_init__(self) -> None:
@@ -1030,12 +1027,6 @@ class FilterField:
             # set-field widget input) has no consumer.
             raise ValueError(
                 "FilterField search_url has no effect on a handler-mapped field"
-            )
-        if self.metadata_lookup is not None and self.handler is not None:
-            # Handler-mapped fields skip column resolution, so metadata_lookup
-            # has no consumer.
-            raise ValueError(
-                "FilterField metadata_lookup has no effect on a handler-mapped field"
             )
 
     def to_q(self, attr_name: AttrName, criterion: _Criterion) -> Q:
@@ -1320,6 +1311,8 @@ class AggregateSpec:
     scope_filter: type[OperatorFilter]
     source: AttrName | None = None  # summed/averaged related column; None for count
     unit: DurationUnit | None = None
+    # A scope the spec states itself, always applied.
+    base_scope: OperatorFilter | None = None
 
     def __post_init__(self) -> None:
         # The reducer/source/unit dependencies are cross-field invariants the
@@ -1333,6 +1326,13 @@ class AggregateSpec:
                 raise TypeError("a count aggregate takes no unit")
         elif self.source is None:
             raise TypeError(f"a {self.reducer} aggregate requires a source field")
+        if self.base_scope is not None and not isinstance(
+            self.base_scope, self.scope_filter
+        ):
+            raise TypeError(
+                f"a base scope must be a {self.scope_filter.__name__},"
+                f" got {type(self.base_scope).__name__}"
+            )
 
 
 QuerysetResolver = Callable[[type[models.Model]], models.QuerySet[Any]]
@@ -1683,7 +1683,7 @@ class OperatorFilter:
         return Q()
 
     @classmethod
-    def _rename_legacy_keys(cls, data: dict[str, Any]) -> dict[str, Any]:
+    def rename_legacy_keys(cls, data: dict[str, Any]) -> dict[str, Any]:
         """Map every renamed key forward, once.
 
         A blob naming both spellings keeps the current one:
@@ -1714,7 +1714,7 @@ class OperatorFilter:
         # operator list and the cross-entity relation descent (both consume the budget).
         if _depth > MAX_FILTER_DEPTH:
             raise FilterError(f"Filter nesting too deep (max {MAX_FILTER_DEPTH})")
-        data = cls._rename_legacy_keys(data)
+        data = cls.rename_legacy_keys(data)
         kwargs: dict[str, Any] = {}
         for f in dc_fields(cls):
             if f.name not in data:
@@ -2087,8 +2087,14 @@ def _maybe_group_for(model: type[models.Model], column: str) -> ComparisonGroup 
     if model_field.is_relation:
         return None
 
-    if isinstance(model_field, models.GeneratedField) and isinstance(
-        getattr(model_field, "expression", None), _TEMPORAL_PROJECTION_EXPRESSIONS
+    # A generated temporal column is out until scoped in.
+    allowlisted = column in getattr(model, "comparable_temporal_bounds", {})
+    if (
+        not allowlisted
+        and isinstance(model_field, models.GeneratedField)
+        and isinstance(
+            getattr(model_field, "expression", None), _TEMPORAL_PROJECTION_EXPRESSIONS
+        )
     ):
         return None
 
@@ -2270,9 +2276,14 @@ def _comparison_relations(
     (never configured): ``(fk_name, related_model, title-cased verbose name)``
     per concrete ForeignKey/OneToOneField, in ``_meta`` declaration order.
     The same to-one acceptance rule ``_comparison_operand_info`` validates against.
+
+    A ``comparison_scoping_relations`` entry is skipped: it scopes.
     """
+    scoping = getattr(model, "comparison_scoping_relations", ())
     relations: list[tuple[str, type[models.Model], str]] = []
     for model_field in model._meta.get_fields():
+        if model_field.name in scoping:
+            continue
         if (
             isinstance(model_field, (models.ForeignKey, models.OneToOneField))
             and model_field.concrete
@@ -2312,8 +2323,10 @@ def _own_comparable_columns(
         group = _maybe_group_for(model, column)
         if group is None:
             continue
+        # A scoped-in bound carries the model's own words.
+        bounds = getattr(model, "comparable_temporal_bounds", {})
         verbose_name = getattr(model_field, "verbose_name", column)
-        raw_label: str = verbose_name.title()
+        raw_label: str = bounds.get(column) or verbose_name.title()
         label = f"{source}: {raw_label}" if prefix else raw_label
         columns.append(
             ComparableColumn(
@@ -2707,15 +2720,15 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             # lookup raises here (matching ``criterion_kind`` / ``resolve_path_kind``'s
             # loud-failure contract) instead of silently degrading to an empty
             # picker, while the legitimately-columnless fields never hit the None.
-            # ``metadata_lookup`` wins where it is set: the query may read an
-            # annotation alias that resolves to no column, and the widget still
-            # needs the real one.
+            # ``metadata_lookup`` wins, handler or not.
             model_field: models.Field | None = None
             resolved_lookup: ORMLookup | None = None
             field_spec = filter_cls.fields.get(name)
             if (
                 field_spec is not None
-                and field_spec.handler is None
+                and (
+                    field_spec.handler is None or field_spec.metadata_lookup is not None
+                )
                 and model is not None
             ):
                 lookup = field_spec.metadata_lookup or field_spec.lookup or name
@@ -2933,6 +2946,122 @@ def bool_nonzero_duration_handler(field_name: str) -> FieldHandler:
     )
 
 
+def _bound_at_most(field_name: str, value: Any) -> Q:
+    """The bound is at or before the day, or is unbounded."""
+    return Q(**{f"{field_name}__lte": value}) | Q(**{f"{field_name}__isnull": True})
+
+
+def _bound_at_least(field_name: str, value: Any) -> Q:
+    """The bound is at or after the day, or is unbounded."""
+    return Q(**{f"{field_name}__gte": value}) | Q(**{f"{field_name}__isnull": True})
+
+
+def temporal_interval_handler(
+    value_field: str, lower_field: str, upper_field: str
+) -> FieldHandler:
+    """Compare a day against an endpoint's interval.
+
+    The two bound columns hold the earliest day the value can name
+    and the latest, both inclusive, and an absent bound reads as
+    unbounded. Every comparison first states that the endpoint
+    holds a value, so an act recorded with no day answers neither
+    an equality nor its negation. ``is null`` reads the endpoint's
+    own value, not a bound: an open range states a value while
+    leaving one bound null.
+    """
+
+    def handler(criterion: _Criterion) -> Q:
+        modifier = criterion.modifier
+        if modifier == Modifier.IS_NULL:
+            return Q(**{f"{value_field}__isnull": True})
+        if modifier == Modifier.NOT_NULL:
+            return Q(**{f"{value_field}__isnull": False})
+        stated = Q(**{f"{value_field}__isnull": False})
+        value = criterion.value
+        value2 = getattr(criterion, "value2", None)
+        if modifier == Modifier.EQUALS:
+            return (
+                stated
+                & _bound_at_most(lower_field, value)
+                & _bound_at_least(upper_field, value)
+            )
+        if modifier == Modifier.NOT_EQUALS:
+            return stated & (
+                Q(**{f"{lower_field}__gt": value}) | Q(**{f"{upper_field}__lt": value})
+            )
+        if modifier == Modifier.GREATER_THAN:
+            return stated & Q(**{f"{lower_field}__gt": value})
+        if modifier == Modifier.LESS_THAN:
+            return stated & Q(**{f"{upper_field}__lt": value})
+        if modifier in (Modifier.BETWEEN, Modifier.NOT_BETWEEN):
+            if value is None or value2 is None:
+                raise FilterError(f"{modifier} requires two bounds (value and value2)")
+            low, high = min(value, value2), max(value, value2)
+            if modifier == Modifier.BETWEEN:
+                return (
+                    stated
+                    & _bound_at_most(lower_field, high)
+                    & _bound_at_least(upper_field, low)
+                )
+            return stated & (
+                Q(**{f"{lower_field}__gt": high}) | Q(**{f"{upper_field}__lt": low})
+            )
+        raise FilterError(f"Unsupported modifier {modifier} for a temporal endpoint")
+
+    return handler
+
+
+def days_touched_handler(lower_field: str, upper_field: str) -> FieldHandler:
+    """Compare a day count against two bounds.
+
+    The count is the days the run touched, both ends included, as
+    ``games/reads/playthrough_endpoints.py`` reads them: ``N`` days
+    means the later bound is ``N - 1`` days after the earlier one.
+    Every comparison states that both bounds are known and the span
+    is not negative, so a run with no answer matches nothing. The
+    field names no column, so it offers no ``is null``.
+    """
+    from datetime import timedelta
+
+    def span_end(count: Any) -> Any:
+        return F(lower_field) + timedelta(days=int(count) - 1)
+
+    def handler(criterion: _Criterion) -> Q:
+        modifier = criterion.modifier
+        known = (
+            Q(**{f"{lower_field}__isnull": False})
+            & Q(**{f"{upper_field}__isnull": False})
+            & Q(**{f"{upper_field}__gte": F(lower_field)})
+        )
+        value = criterion.value
+        value2 = getattr(criterion, "value2", None)
+        if modifier == Modifier.EQUALS:
+            return known & Q(**{upper_field: span_end(value)})
+        if modifier == Modifier.NOT_EQUALS:
+            return known & ~Q(**{upper_field: span_end(value)})
+        if modifier == Modifier.GREATER_THAN:
+            return known & Q(**{f"{upper_field}__gt": span_end(value)})
+        if modifier == Modifier.LESS_THAN:
+            return known & Q(**{f"{upper_field}__lt": span_end(value)})
+        if modifier in (Modifier.BETWEEN, Modifier.NOT_BETWEEN):
+            if value is None or value2 is None:
+                raise FilterError(f"{modifier} requires two bounds (value and value2)")
+            low, high = min(value, value2), max(value, value2)
+            if modifier == Modifier.BETWEEN:
+                return (
+                    known
+                    & Q(**{f"{upper_field}__gte": span_end(low)})
+                    & Q(**{f"{upper_field}__lte": span_end(high)})
+                )
+            return known & (
+                Q(**{f"{upper_field}__lt": span_end(low)})
+                | Q(**{f"{upper_field}__gt": span_end(high)})
+            )
+        raise FilterError(f"Unsupported modifier {modifier} for a day count")
+
+    return handler
+
+
 def search_q(criterion: StringCriterion, *field_names: str) -> Q:
     """Free-text OR across several ``__icontains`` columns, negated on EXCLUDES.
 
@@ -3090,25 +3219,28 @@ def aggregate_to_q(
     from django.db.models import Avg, Count, Sum
 
     scope_condition: Q | None = None
-    if criterion.scope is not None:
-        # A hand-assembled criterion could carry a wrong-typed scope; its Q would
-        # be built in the wrong model's namespace and produce a silently-wrong
-        # (or FieldError-ing) subquery, so guard the type loudly. Never user
-        # input — from_json always builds the scope from the spec's class.
-        if not isinstance(criterion.scope, spec.scope_filter):
-            raise RuntimeError(
-                f"aggregate scope must be a {spec.scope_filter.__name__},"
-                f" got {type(criterion.scope).__name__}"
-            )
+    # Wrong-typed scope would query another model's namespace.
+    if criterion.scope is not None and not isinstance(
+        criterion.scope, spec.scope_filter
+    ):
+        raise RuntimeError(
+            f"aggregate scope must be a {spec.scope_filter.__name__},"
+            f" got {type(criterion.scope).__name__}"
+        )
+    # Both scopes narrow one subquery.
+    scopes = [
+        scope for scope in (spec.base_scope, criterion.scope) if scope is not None
+    ]
+    if scopes:
         related_model: ModelClass = spec.scope_filter._comparison_model()
         if related_model is None:
             raise RuntimeError(
                 f"{spec.scope_filter.__name__} has no comparison model"
                 f" to scope a {spec.accessor!r} aggregate"
             )
-        matching = context.queryset_for(related_model).filter(
-            criterion.scope.to_q(context)
-        )
+        matching = context.queryset_for(related_model)
+        for scope in scopes:
+            matching = matching.filter(scope.to_q(context))
         scope_condition = Q(**{f"{spec.accessor}__in": matching})
 
     # The spec is static config declared on the filter class, never user input —

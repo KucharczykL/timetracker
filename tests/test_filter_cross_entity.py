@@ -18,6 +18,7 @@ from uuid import UUID
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 from common.criteria import FilterQueryContext, with_filter_aliases
 from games.filters import (
@@ -25,7 +26,8 @@ from games.filters import (
     parse_purchase_filter,
     parse_session_filter,
 )
-from games.models import Device, Game, Platform, PlayEvent, Purchase, Session
+from games.models import Device, Game, Platform, Playthrough, Purchase, Session
+from timetracker.temporal import TemporalValue
 
 UNRESTRICTED_FILTER_CONTEXT = FilterQueryContext(
     lambda model: with_filter_aliases(model._default_manager.all())
@@ -199,12 +201,26 @@ def test_purchase_price_any_widget_json_selects_games(purchase_world):
     assert _game_ids(filter_json) == {purchase_world["dlc_buyer"]}  # 50 > 20
 
 
-def test_playevent_note_widget_json_selects_games(db):
+def _state_run(game: Game, **stated: object) -> None:
+    """State a fact on the game's run."""
+    Playthrough.objects.filter(player_game__game=game).update(**stated)
+
+
+def _finished(game: Game, day: date) -> None:
+    """The run finished on that day."""
+    _state_run(
+        game,
+        completion_recorded_at=timezone.now(),
+        completed=TemporalValue.from_day(day),
+    )
+
+
+def test_playthrough_note_widget_json_selects_games(db):
     pc = Platform.objects.create(name="PC")
     finished = Game.objects.create(name="Finished", platform=pc)
     started = Game.objects.create(name="Started", platform=pc)
-    PlayEvent.objects.create(game=finished, note="Completed the game")
-    PlayEvent.objects.create(game=started, note="Just started")
+    _state_run(finished, note="Completed the game")
+    _state_run(started, note="Just started")
 
     filter_json = json.dumps(
         {
@@ -224,15 +240,15 @@ def test_game_finished_widget_json_selects_games(db):
     pc = Platform.objects.create(name="PC")
     in_range = Game.objects.create(name="InRange", platform=pc)
     out_range = Game.objects.create(name="OutRange", platform=pc)
-    PlayEvent.objects.create(game=in_range, ended=date(2024, 6, 15))
-    PlayEvent.objects.create(game=out_range, ended=date(2023, 1, 1))
+    _finished(in_range, date(2024, 6, 15))
+    _finished(out_range, date(2023, 1, 1))
 
     filter_json = json.dumps(
         {
             "AND": [
                 {
                     "playthrough_filter": {
-                        "ended": {
+                        "completed": {
                             "value": "2024-01-01",
                             "value2": "2024-12-31",
                             "modifier": "BETWEEN",
@@ -246,22 +262,21 @@ def test_game_finished_widget_json_selects_games(db):
 
 
 def test_game_finished_widget_json_min_only_and_max_only(db):
-    """When only one bound is set the widget emits GREATER_THAN (min-only) or
-    LESS_THAN (max-only) instead of BETWEEN; each selects by PlayEvent.ended."""
+    """One bound emits GREATER_THAN or LESS_THAN."""
     pc = Platform.objects.create(name="PC")
     early = Game.objects.create(name="Early", platform=pc)
     middle = Game.objects.create(name="Middle", platform=pc)
     late = Game.objects.create(name="Late", platform=pc)
-    PlayEvent.objects.create(game=early, ended=date(2023, 1, 1))
-    PlayEvent.objects.create(game=middle, ended=date(2024, 6, 15))
-    PlayEvent.objects.create(game=late, ended=date(2025, 12, 31))
+    _finished(early, date(2023, 1, 1))
+    _finished(middle, date(2024, 6, 15))
+    _finished(late, date(2025, 12, 31))
 
     min_only = json.dumps(
         {
             "AND": [
                 {
                     "playthrough_filter": {
-                        "ended": {"value": "2024-01-01", "modifier": "GREATER_THAN"}
+                        "completed": {"value": "2024-01-01", "modifier": "GREATER_THAN"}
                     }
                 }
             ]
@@ -274,7 +289,7 @@ def test_game_finished_widget_json_min_only_and_max_only(db):
             "AND": [
                 {
                     "playthrough_filter": {
-                        "ended": {"value": "2024-12-31", "modifier": "LESS_THAN"}
+                        "completed": {"value": "2024-12-31", "modifier": "LESS_THAN"}
                     }
                 }
             ]
@@ -499,7 +514,7 @@ def test_merged_single_node_requires_one_matching_row(two_purchase_world):
     assert _game_ids(merged) == {two_purchase_world["combined"]}
 
 
-# ── purchase bar: finished → game_filter → playthrough_filter → ended ──────────
+# ── purchase bar: finished → game_filter → playthrough_filter → completed ────
 
 
 def test_purchase_finished_widget_json_selects_purchases(db):
@@ -507,7 +522,7 @@ def test_purchase_finished_widget_json_selects_purchases(db):
     pc = Platform.objects.create(name="PC")
     finished_game = Game.objects.create(name="Finished", platform=pc)
     other_game = Game.objects.create(name="Other", platform=pc)
-    PlayEvent.objects.create(game=finished_game, ended=date(2024, 6, 15))
+    _finished(finished_game, date(2024, 6, 15))
 
     bought_finished = Purchase.objects.create(
         price_currency="CZK", date_purchased=date(2024, 1, 1)
@@ -524,7 +539,7 @@ def test_purchase_finished_widget_json_selects_purchases(db):
                 {
                     "game_filter": {
                         "playthrough_filter": {
-                            "ended": {
+                            "completed": {
                                 "value": "2024-01-01",
                                 "value2": "2024-12-31",
                                 "modifier": "BETWEEN",

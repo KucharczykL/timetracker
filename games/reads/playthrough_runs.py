@@ -6,14 +6,35 @@ from games.models import Game, PlayerGame, Playthrough, PlaythroughKind, UserLib
 from games.reads.playthrough_endpoints import stated_completion, stated_start
 
 
+def library_runs(library: UserLibrary) -> QuerySet[Playthrough]:
+    """Every live ordinary run this library holds.
+
+    The one scope the page, the filter seams and the
+    numbering share. The library is stated beside the
+    parent, never inferred: a run may name another
+    library's PlayerGame, which is the drift
+    `audit_library_ownership` reports.
+
+    Both parents' marks read here as well: nothing
+    stamps a run when its game leaves.
+    """
+    return Playthrough.objects.filter(
+        library=library,
+        player_game__library=library,
+        removed_at__isnull=True,
+        player_game__removed_at__isnull=True,
+        player_game__game__removed_at__isnull=True,
+        kind=PlaythroughKind.ORDINARY,
+    )
+
+
 def live_ordinary_runs(
     library: UserLibrary, player_game: PlayerGame
 ) -> QuerySet[Playthrough]:
     """This game's live ordinary runs, oldest first.
 
-    The library is stated beside the parent, never inferred:
-    a run may name another library's PlayerGame, which is
-    the drift `audit_library_ownership` reports.
+    Its own facts, not `library_runs` narrowed:
+    the caller names the parent already.
     """
     return Playthrough.objects.filter(
         library=library,

@@ -8,7 +8,18 @@ docs/superpowers/specs/2026-06-21-list-view-sort-param-design.md.
 from dataclasses import dataclass
 from typing import NamedTuple, cast
 
-from django.db.models import Aggregate, F, Max, Min, QuerySet, Sum
+from django.db.models import (
+    Case,
+    DurationField,
+    Expression,
+    ExpressionWrapper,
+    F,
+    Max,
+    Min,
+    QuerySet,
+    Sum,
+    When,
+)
 from django.http import HttpRequest
 
 # The pure sort-string core lives in common.sorting; this module is the ORM
@@ -58,9 +69,8 @@ type OrderField = (
     str  # SortSpec.expression: a real model field path OR an AnnotationName
 )
 
-# alias name -> the ORM aggregate that computes it, applied via queryset.annotate()
-# e.g. {"total_playtime": Sum("sessions__duration_total")}
-type Annotations = dict[AnnotationName, Aggregate]
+# alias name -> the ORM expression to annotate
+type Annotations = dict[AnnotationName, Expression]
 
 
 @dataclass(frozen=True)
@@ -117,13 +127,25 @@ PURCHASE_SORTS: SortMap = {
 }
 PURCHASE_DEFAULT_SORT: SortString = "-purchased,-created"
 
-# Every key here is a direct field path or a persisted column (days_to_finish is
-# a db_persist=True GeneratedField), so no aggregate annotation / row-dup concern.
+#: The span the two bounds state; null sorts last.
+_DAYS_SPAN = Case(
+    When(
+        completed_upper__gte=F("started_lower"),
+        then=ExpressionWrapper(
+            F("completed_upper") - F("started_lower"),
+            output_field=DurationField(),
+        ),
+    ),
+    default=None,
+    output_field=DurationField(),
+)
+
+#: The Playthrough column carries no sort key.
 PLAYTHROUGH_SORTS: SortMap = {
-    "name": SortSpec("game__sort_name"),
-    "started": SortSpec("started"),
-    "ended": SortSpec("ended"),
-    "days": SortSpec("days_to_finish"),
+    "name": SortSpec("player_game__game__sort_name"),
+    "started": SortSpec("started_lower"),
+    "completed": SortSpec("completed_lower"),
+    "days": SortSpec("days_span", {"days_span": _DAYS_SPAN}),
     "created": SortSpec("created_at"),
 }
 PLAYTHROUGH_DEFAULT_SORT: SortString = "-created"

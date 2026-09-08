@@ -24,7 +24,8 @@ from games.models import (
     GameStatusChange,
     Platform,
     PlayerGame,
-    PlayEvent,
+    Playthrough,
+    PlaythroughKind,
     Purchase,
     Session,
 )
@@ -77,8 +78,16 @@ class DataTableGateTest(TestCase):
         game = Game.objects.create(library=library, name="A Game", platform=platform)
         # setUpTestData runs at class scope, before the autouse fixture that
         # tracks a created game, so the games list would find nothing to clip.
-        PlayerGame.objects.create(
+        tracked = PlayerGame.objects.create(
             pk=uuid7(), library=library, game=game, tracked_at=timezone.now()
+        )
+        Playthrough.objects.create(
+            pk=uuid7(),
+            library=library,
+            player_game=tracked,
+            kind=PlaythroughKind.ORDINARY,
+            created_at=timezone.now(),
+            note="a note",
         )
         Session.objects.create(
             game=game,
@@ -94,7 +103,6 @@ class DataTableGateTest(TestCase):
             library=library,
         )
         purchase.games.add(game)
-        PlayEvent.objects.create(game=game, started=BASE, note="a note")
         GameStatusChange.objects.create(game=game, new_status="p", timestamp=BASE)
 
     def setUp(self) -> None:

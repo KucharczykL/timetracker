@@ -1,5 +1,7 @@
 """#687: the screens state runs, not rows."""
 
+import json
+import uuid
 from datetime import UTC, date, datetime
 
 import pytest
@@ -8,7 +10,14 @@ from django.urls import reverse
 from django.utils import timezone
 
 from games.backfill.playthrough import convert_library
-from games.models import Game, LibraryEvent, PlayEvent, Playthrough, Session
+from games.models import (
+    Game,
+    LibraryEvent,
+    PlayEvent,
+    Playthrough,
+    PlaythroughKind,
+    Session,
+)
 from games.reads.playthrough_provenance import run_for_row
 from games.writes.playergame import new_correlation_id
 from games.writes.playthrough import remove_run
@@ -182,26 +191,52 @@ def test_removing_one_of_two_runs_stamps_the_projection_only(client, user, game)
     assert other is not None and other.removed_at is None
 
 
-@pytest.mark.django_db(transaction=True)
-def test_the_list_page_names_the_run_in_a_converted_rows_actions(client, user, game):
-    """The row's own key reaches nothing, so the cell states the run."""
-    row = PlayEvent.objects.create(game=game, started=None, ended=None, note="")
-    convert_library(user.library)
-    run = run_for_row(user.library, row.pk).run
-    assert run is not None
+def _second_run(run: Playthrough) -> Playthrough:
+    """Another run at the tracked game."""
+    return Playthrough.objects.create(
+        pk=uuid.uuid7(),
+        library=run.library,
+        player_game=run.player_game,
+        kind=PlaythroughKind.ORDINARY,
+        created_at=timezone.now(),
+    )
+
+
+@pytest.mark.django_db
+def test_the_page_numbers_a_run_as_game_detail_does(client, user, game):
+    """The number counts the game's every run."""
+    _second_run(Playthrough.objects.get(player_game__game=game))
+    client.force_login(user)
+
+    listed = client.get(
+        reverse("games:list_playthroughs") + "?sort=-created"
+    ).content.decode()
+    detail = client.get(game.get_absolute_url()).content.decode()
+
+    assert "Playthrough 2" in listed
+    assert "Playthrough 2" in detail
+
+
+@pytest.mark.django_db
+def test_the_page_names_the_run_in_its_actions(client, user, game):
+    """The list page names runs in actions."""
+    run = Playthrough.objects.get(player_game__game=game)
     client.force_login(user)
 
     body = client.get(reverse("games:list_playthroughs")).content.decode()
 
     assert reverse("games:edit_playthrough", args=[run.pk]) in body
     assert reverse("games:remove_playthrough", args=[run.pk]) in body
-    assert str(row.pk) not in body
 
 
 @pytest.mark.django_db(transaction=True)
-def test_the_list_page_renders_an_unconverted_row_without_actions(client, user, game):
-    """No run behind the row, and the page still answers 200."""
-    PlayEvent.objects.create(game=game, started=None, ended=None, note="")
+def test_the_page_renders_no_row_a_conversion_left_behind(client, user, game):
+    """An unconverted legacy row reaches nothing."""
+    other = Game.objects.create(library=user.library, name="Tunic")
+    PlayEvent.objects.create(game=other, started=None, ended=None, note="")
+    Playthrough.objects.filter(player_game__game=other).update(
+        removed_at=timezone.now()
+    )
     client.force_login(user)
 
     response = client.get(reverse("games:list_playthroughs"))
@@ -209,8 +244,7 @@ def test_the_list_page_renders_an_unconverted_row_without_actions(client, user, 
     assert response.status_code == 200
     body = response.content.decode()
     assert game.name in body
-    assert "/playthrough/edit/" not in body
-    assert "/remove" not in body
+    assert other.name not in body
 
 
 @pytest.mark.django_db(transaction=True)
@@ -300,3 +334,16 @@ def test_the_prefill_seeds_nothing_from_a_completion_with_no_day(client, user, g
 
     #: No finish day, so the earliest session.
     assert "2026-05-01" in body
+
+
+@pytest.mark.django_db
+def test_a_bookmarked_ended_filter_keeps_the_quick_bar(client, user, game):
+    """The old word reaches the bar as the new one."""
+    client.force_login(user)
+    legacy = json.dumps({"ended": {"value": "2020-01-01", "modifier": "GREATER_THAN"}})
+
+    body = client.get(
+        reverse("games:list_playthroughs"), {"filter": legacy}
+    ).content.decode()
+
+    assert "Advanced filter active" not in body

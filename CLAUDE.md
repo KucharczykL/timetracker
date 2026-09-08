@@ -192,8 +192,16 @@ docs/           — Additional documentation
   by `games/reads/playthrough_numbering.py`, and its edit and remove routes name
   the run rather than the legacy row. `Played N times` beside it counts only the
   runs whose completion is stated, which is the number the legacy row meant; the
-  section badge counts every row it renders. The list page reads legacy rows
-  until #1013, and translates its own action ids through `runs_for_rows`
+  section badge counts every row it renders. #1013 gives the list page same
+  rows: it reads projection, and so do filter (`PlaythroughFilter` over eleven
+  fields, each endpoint compared as interval its two bound columns state),
+  sorts, quick facets and saved presets, which migration 0047 rewrites from
+  `ended` to `completed`. `playthrough_count` counts runs whose completion is
+  stated, which is number `Played N times` prints. No run is read out of
+  `games_playevent` any more, though the table is still read for a finish day
+  elsewhere — the stats page, the Purchase list's Finished column, and the
+  `finished` sort on Game and Purchase; `runs_for_rows` stays for API, which
+  #1015 owns, and #771 takes the table
 
 **Nothing user removes is destroyed** (#944). Nine removable models — Game,
 Edition, Release, Platform, Device, Session, PlayEvent, Purchase, FilterPreset —

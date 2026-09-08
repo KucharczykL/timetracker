@@ -29,6 +29,7 @@ from games.models import (
     Platform,
     PlayerGameStatus,
     PlayEvent,
+    Playthrough,
     Purchase,
     Session,
 )
@@ -124,6 +125,9 @@ def two_libraries(db):
         ended=date(YEAR, 2, 2),
         note="Library B event",
     )
+    #: Each library's own run holds the note.
+    for game, note in ((game_a, "Library A event"), (game_b, "Library B event")):
+        Playthrough.objects.filter(player_game__game=game).update(note=note)
 
     purchase_a = Purchase.objects.create(
         library=library_a,
@@ -357,7 +361,7 @@ def test_session_reads_and_mutations_are_library_scoped(two_libraries):
             1,
         ),
         ("purchase", {"converted_price": {"value": 0, "modifier": "GREATER_THAN"}}, 1),
-        ("playevent", {"note": {"value": "event", "modifier": "INCLUDES"}}, 1),
+        ("playthrough", {"note": {"value": "event", "modifier": "INCLUDES"}}, 1),
         ("device", {"name": {"value": "Device", "modifier": "INCLUDES"}}, 1),
         ("platform", {"name": {"value": "Platform", "modifier": "INCLUDES"}}, 1),
     ],

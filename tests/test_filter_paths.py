@@ -16,9 +16,15 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from common.components import QUICK_FACETS, QuickFilterBar
+from common.components import (
+    QUICK_FACETS,
+    QuickFilterBar,
+    is_quick_editable,
+    parse_filter_dict,
+)
 from common.criteria import (
     OperatorFilter,
+    filter_to_json,
     resolve_path_kind,
 )
 from common.date_time_presentation import (
@@ -29,7 +35,7 @@ from games.filters import (
     DeviceFilter,
     GameFilter,
     PlatformFilter,
-    PlayEventFilter,
+    PlaythroughFilter,
     PurchaseFilter,
     SessionFilter,
 )
@@ -85,7 +91,7 @@ _BAR_CASES = [
     _BarCase("purchases", PurchaseFilter),
     _BarCase("devices", DeviceFilter),
     _BarCase("platforms", PlatformFilter),
-    _BarCase("playthroughs", PlayEventFilter),
+    _BarCase("playthroughs", PlaythroughFilter),
 ]
 _PRESENTATION = DateTimePresentation(
     DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
@@ -116,6 +122,18 @@ def test_every_widget_path_resolves_to_its_kind(case: _BarCase) -> None:
         )
 
 
+def test_the_run_bar_round_trips_completed() -> None:
+    """The bar's own output stays editable."""
+    filter_object = PlaythroughFilter.where(
+        completed__between=("2025-01-01", "2025-12-31")
+    )
+    parsed = parse_filter_dict(filter_to_json(filter_object))
+
+    assert is_quick_editable(
+        parsed, {facet.field for facet in QUICK_FACETS["playthroughs"]}
+    )
+
+
 def test_resolve_path_kind_walks_nested_path() -> None:
     """A nested cross-entity path resolves through the sub-filter to its leaf kind."""
     assert resolve_path_kind(GameFilter, ["session_filter", "emulated"]) == "bool"
@@ -126,7 +144,7 @@ def test_resolve_path_kind_resolves_leaf_kinds() -> None:
     GameFilter has no top-level DateCriterion field)."""
     assert resolve_path_kind(GameFilter, ["name"]) == "string"
     assert resolve_path_kind(GameFilter, ["year_released"]) == "number"
-    assert resolve_path_kind(GameFilter, ["playthrough_filter", "ended"]) == "date"
+    assert resolve_path_kind(GameFilter, ["playthrough_filter", "completed"]) == "date"
     assert resolve_path_kind(GameFilter, ["mastered"]) == "bool"
     assert resolve_path_kind(GameFilter, ["status"]) == "set"
 

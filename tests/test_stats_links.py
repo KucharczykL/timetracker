@@ -10,17 +10,20 @@ match the stats queries' M2M traversal exactly.
 """
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from uuid import UUID
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 
+from common.criteria import Modifier
 from common.filter_execution import execute_filter
 from games.filters import filter_query_context_for_library
-from games.models import Game, Platform, PlayEvent, Purchase, Session
+from games.models import Game, Platform, PlayEvent, Playthrough, Purchase, Session
 from games.views import stats_links
 from games.views.stats_data import compute_stats
+from timetracker.temporal import TemporalValue
 
 # Only the link URL is under test here; the id never reaches the database.
 SAMPLE_PLATFORM_ID = UUID("018f5e66-e800-7000-8000-000000000001")
@@ -60,6 +63,11 @@ def world(db):
 
     # PlayEvents: finished_game ended in-year.
     PlayEvent.objects.create(game=finished_game, ended=_dt(YEAR, 8, 1))
+    #: The run a conversion leaves, day-precision.
+    Playthrough.objects.filter(player_game__game=finished_game).update(
+        completion_recorded_at=timezone.now(),
+        completed=TemporalValue.from_day(date(YEAR, 8, 1)),
+    )
 
     # Purchases (single-game).
     Purchase.objects.create(
@@ -320,6 +328,25 @@ def test_unfinished_matches_count(world):
     )
 
 
+def test_the_all_time_link_reads_the_act():
+    """An unknown day is still a finish."""
+    scoped = stats_links._completed_in_scope("Alltime")
+
+    assert scoped.completed is None
+    assert scoped.is_completed is not None
+    assert scoped.is_completed.value is True
+
+
+def test_the_per_year_link_overlaps():
+    """A whole-year run answers for that year."""
+    scoped = stats_links._completed_in_scope(YEAR)
+
+    assert scoped.is_completed is None
+    assert scoped.completed is not None
+    assert scoped.completed.modifier is Modifier.BETWEEN
+    assert scoped.completed.value == f"{YEAR}-01-01"
+
+
 def test_finished_matches_count(world):
     stats = _stats(world, YEAR)
     assert stats["all_finished_this_year_count"] == 2
@@ -473,6 +500,10 @@ def a_retired_purchase(world):
         library=library, name="Retired earlier", status=Game.Status.RETIRED
     )
     PlayEvent.objects.create(game=earlier, ended=_dt(YEAR, 8, 2))
+    Playthrough.objects.filter(player_game__game=earlier).update(
+        completion_recorded_at=timezone.now(),
+        completed=TemporalValue.from_day(date(YEAR, 8, 2)),
+    )
     Purchase.objects.create(
         library=library,
         price_currency="CZK",

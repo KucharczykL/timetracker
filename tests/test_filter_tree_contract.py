@@ -15,7 +15,12 @@ from pathlib import Path
 import pytest
 
 from common.criteria import FilterQueryContext, filter_from_json, with_filter_aliases
-from games.filters import GameFilter, PlayEventFilter, PurchaseFilter, SessionFilter
+from games.filters import (
+    GameFilter,
+    PlaythroughFilter,
+    PurchaseFilter,
+    SessionFilter,
+)
 
 FILTER_TREE_DIR = (
     Path(__file__).resolve().parent.parent / "ts" / "elements" / "filter-tree"
@@ -27,7 +32,7 @@ FILTER_FOR_MODEL = {
     "game": GameFilter,
     "session": SessionFilter,
     "purchase": PurchaseFilter,
-    "playevent": PlayEventFilter,
+    "playthrough": PlaythroughFilter,
 }
 
 # Map each original fixture to its TS-emitted canonical form, by description.

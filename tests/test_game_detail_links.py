@@ -12,14 +12,15 @@ from common.date_time_presentation import (
     DateTimePresentation,
 )
 from games.filters import (
-    PlayEventFilter,
+    PlaythroughFilter,
     PurchaseFilter,
     SessionFilter,
     filter_query_context_for_library,
     filter_url,
 )
 from games.formatting import session_time_range
-from games.models import Game, Platform, PlayEvent, Purchase, Session
+from games.models import Game, Platform, PlayEvent, Playthrough, Purchase, Session
+from games.reads.playthrough_runs import library_runs
 from games.views.game import view_game
 
 _PRESENTATION = DateTimePresentation(
@@ -69,15 +70,10 @@ def test_purchases_section_links_to_filtered_purchases(game, rendered):
     assert href in rendered
 
 
-def test_playthroughs_section_links_nowhere(game, rendered):
-    """No "View all" until #1013 moves the list page onto runs.
-
-    The legacy list would answer with rows, and a run stated
-    after #687 is on neither the page nor its count.
-    """
-    href = escape(filter_url(PlayEventFilter.where(game=[game.id])))
-    assert href not in rendered
-    assert 'title="View all playthroughs for this game"' not in rendered
+def test_playthroughs_section_links_to_filtered_playthroughs(game, rendered):
+    """The link reaches the section's own rows."""
+    href = escape(filter_url(PlaythroughFilter.where(game=[game.id])))
+    assert href in rendered
 
 
 def test_link_filters_scope_to_game(game):
@@ -93,8 +89,6 @@ def test_link_filters_scope_to_game(game):
         date_purchased=_dt(3),
         type=Purchase.GAME,
     ).games.set([other])
-    PlayEvent.objects.create(game=other, ended=_dt(4))
-
     context = filter_query_context_for_library(game.library)
     sessions = Session.objects.filter(SessionFilter.where(game=[game.id]).to_q(context))
     assert list(sessions) == list(game.sessions.all())
@@ -104,10 +98,10 @@ def test_link_filters_scope_to_game(game):
     )
     assert list(purchases) == list(game.purchases.all())
 
-    playevents = PlayEvent.objects.filter(
-        PlayEventFilter.where(game=[game.id]).to_q(context)
+    runs = library_runs(game.library).filter(
+        PlaythroughFilter.where(game=[game.id]).to_q(context)
     )
-    assert list(playevents) == list(game.playevents.all())
+    assert list(runs) == [Playthrough.objects.get(player_game__game=game)]
 
 
 def test_game_header_has_log_this_game_link(game, rendered):
