@@ -33,6 +33,7 @@ from games.filters import (
     SessionFilter,
 )
 from games.models import DONE_STATUSES, PlayerGameStatus, Purchase
+from games.reads.playthrough_completions import completed_in_scope
 
 
 def _is_year(year) -> bool:
@@ -134,13 +135,11 @@ def purchases_refunded(year) -> PurchaseFilter:
 def _completed_in_scope(year) -> PlaythroughFilter:
     """A finish: a run completed in scope.
 
-    All-time reads the act, not the day. The per-year read
-    overlaps, so a run stated as a whole year answers for
-    every year it touches.
+    The scope's own word, read from the seam the statistics
+    read. `year` carries the all-time sentinel here; the seam
+    takes None for it.
     """
-    if _is_year(year):
-        return PlaythroughFilter.where(completed__between=_year_range(year))
-    return PlaythroughFilter.where(is_completed=True)
+    return completed_in_scope(year if _is_year(year) else None)
 
 
 def _not_finished_game(year, excluded_statuses: list) -> GameFilter:
