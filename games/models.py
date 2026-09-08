@@ -1535,10 +1535,6 @@ class ProjectionModel(models.Model):
     )
 
     #: Relations the comparison-operand walk never follows.
-    #: A projection's `library` is scoping, so every column
-    #: behind it belongs to another entity and answers nothing
-    #: about this row. Read by `common/criteria.py` through
-    #: `getattr`, which imports no model.
     comparison_scoping_relations: ClassVar[tuple[str, ...]] = ("library",)
 
     class Meta:
@@ -1699,11 +1695,7 @@ class Playthrough(ProjectionModel):
     #: RemovePlaythrough states it, RestorePlaythrough clears it.
     removed_at = models.DateTimeField(null=True, default=None, editable=False)
 
-    #: The bound columns a comparison may name, and the words for
-    #: each. The operand walk excludes a column generated from a
-    #: temporal value, because neither the words nor the operators
-    #: are its to guess; these four are scoped in, and read
-    #: `Started Lower` without their own words.
+    #: The bound columns a comparison may name.
     comparable_temporal_bounds: ClassVar[Mapping[str, str]] = {
         "started_lower": "Started (earliest)",
         "started_upper": "Started (latest)",

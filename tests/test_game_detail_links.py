@@ -71,8 +71,7 @@ def test_purchases_section_links_to_filtered_purchases(game, rendered):
 
 
 def test_playthroughs_section_links_to_filtered_playthroughs(game, rendered):
-    """#1013 moved the list page onto runs, so the link reaches
-    the same rows the section renders."""
+    """The link reaches the section's own rows."""
     href = escape(filter_url(PlaythroughFilter.where(game=[game.id])))
     assert href in rendered
 

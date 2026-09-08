@@ -80,8 +80,7 @@ def test_the_section_badge_counts_every_live_ordinary_run(logged_in, game):
 
 
 def test_the_section_links_view_all(logged_in, game):
-    """#1013 gave the list page the projection, so the section
-    links to it, filtered to this game."""
+    """View all links to this game's runs."""
     body = section(logged_in, game)
 
     assert "View all" in body

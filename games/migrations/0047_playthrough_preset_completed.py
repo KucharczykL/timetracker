@@ -1,9 +1,8 @@
 """#1013 renamed the endpoint.
 
-A saved preset stores the old word, in a criterion and in a
-sort. `ended` is a common word, so the walk is scoped to the
-two places a run's filter can sit rather than applied at any
-depth, as 0046 could safely be.
+A saved preset stores the old word, in a criterion and in
+a sort. `ended` is a common word, so the walk is scoped to
+the two places a run's filter can sit.
 """
 
 from django.db import migrations
@@ -16,7 +15,7 @@ _OPERATORS = ("AND", "OR", "NOT")
 
 
 def _rename_run_keys(node, mapping):
-    """Rewrite one run filter and every node under its operators."""
+    """Rewrite a run filter and operator children."""
     if not isinstance(node, dict):
         return node
     renamed = {mapping.get(key, key): value for key, value in node.items()}
@@ -28,7 +27,7 @@ def _rename_run_keys(node, mapping):
 
 
 def _rename_in_games(node, mapping):
-    """Reach every run subtree of a games filter, and no other key."""
+    """Reach a games filter's run subtrees only."""
     if not isinstance(node, dict):
         return node
     result = dict(node)
@@ -66,12 +65,9 @@ def _rename_sort(find_filter, mapping):
 def _rename(apps, mapping):
     """Rewrite every preset naming the old word.
 
-    A plain walk, not `.iterator()`: a server-side cursor is
-    refused, and a preset table holds tens of rows.
-
-    The count is printed, so an operator can tell a run that
-    touched nothing from one against the wrong database, which
-    looks the same otherwise.
+    The count is printed, so an operator can tell a run
+    that touched nothing from one against the wrong
+    database.
     """
     preset_model = apps.get_model("games", "FilterPreset")
     presets = list(preset_model.objects.all())
@@ -95,7 +91,7 @@ def _rename(apps, mapping):
 
 
 def rename_forward(apps, schema_editor):
-    """ended -> completed, in the criterion and in the sort."""
+    """ended -> completed, in criterion and sort."""
     _rename(apps, _KEYS)
 
 

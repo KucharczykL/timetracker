@@ -334,7 +334,7 @@ class TestSortMapShapes:
                 assert token.lstrip("-") in sort_map
 
 
-#: One run per span the two endpoints can state, by game name.
+#: One run per span, by game name.
 _RUN_SPANS = {
     "same day": ("2025-03-01", "2025-03-01"),
     "thirty": ("2025-03-01", "2025-03-30"),
@@ -344,7 +344,7 @@ _RUN_SPANS = {
 
 
 def _seed_run_spans(library):
-    """State each span on the run its game is born with."""
+    """State each span on its game's run."""
     from django.utils import timezone
 
     from games.models import Playthrough
@@ -365,7 +365,7 @@ def _seed_run_spans(library):
 
 
 class TestPlaythroughSorts:
-    """#1013: the sorts name the projection's own columns."""
+    """The sorts name the projection's own columns."""
 
     def test_the_run_sorts_read_the_projection(self):
         assert set(PLAYTHROUGH_SORTS) == {
@@ -378,8 +378,7 @@ class TestPlaythroughSorts:
 
     @pytest.mark.django_db
     def test_sorting_by_days_puts_the_runs_with_no_answer_last(self, owned_library):
-        """A missing bound and a span that runs backwards read no
-        answer, and sort last in both directions."""
+        """No answer sorts last both ways."""
         from games.reads.playthrough_endpoints import days_to_finish
         from games.reads.playthrough_runs import library_runs
 
@@ -639,7 +638,7 @@ class TestEverySortKeyReturns200:
 
 @pytest.fixture
 def two_runs(db, two_games):
-    """One finished run per game, Alpha's the earlier."""
+    """One finished run per game, Alpha earlier."""
     from django.utils import timezone
 
     from games.models import Playthrough
@@ -684,8 +683,7 @@ class TestListPlaythroughsSort:
     def test_sort_by_completed_ascending_overrides_default(
         self, logged_client, two_runs
     ):
-        # default -created puts the later-created run first; completed-ascending
-        # must flip it so the sort param, not creation order, drives the order.
+        # The sort param must beat creation order.
         response = logged_client.get(
             reverse("games:list_playthroughs"), {"sort": "completed"}
         )

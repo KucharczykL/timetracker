@@ -129,10 +129,7 @@ def list_playthroughs(request: HttpRequest) -> HttpResponse:
     warn_unknown_sort(request, sort.unknown, entity="playthrough")
     page_rows, page_obj, elided_page_range = paginate(sort.queryset, find)
     page_runs = list(page_rows)
-    #: One more query for the page: a number is counted across
-    #: every live ordinary run of the games the page names, so
-    #: it reads the same here as on Game detail, under any
-    #: filter, sort or page.
+    #: One query numbers runs across these games.
     numbers = {
         numbered.pk: getattr(numbered, "display_number", None)
         for numbered in numbered_for(library, {run.player_game_id for run in page_runs})

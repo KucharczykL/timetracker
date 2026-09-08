@@ -191,7 +191,7 @@ def test_removing_one_of_two_runs_stamps_the_projection_only(client, user, game)
 
 
 def _second_run(run: Playthrough) -> Playthrough:
-    """Another run at the same tracked game."""
+    """Another run at the tracked game."""
     return Playthrough.objects.create(
         pk=uuid.uuid7(),
         library=run.library,
@@ -203,11 +203,7 @@ def _second_run(run: Playthrough) -> Playthrough:
 
 @pytest.mark.django_db
 def test_the_page_numbers_a_run_as_game_detail_does(client, user, game):
-    """The number is counted across the game's runs.
-
-    Under any filter, sort or page: across every live ordinary
-    run of the game, never across the rows this page renders.
-    """
+    """The number counts the game's every run."""
     _second_run(Playthrough.objects.get(player_game__game=game))
     client.force_login(user)
 
@@ -222,7 +218,7 @@ def test_the_page_numbers_a_run_as_game_detail_does(client, user, game):
 
 @pytest.mark.django_db
 def test_the_page_names_the_run_in_its_actions(client, user, game):
-    """The list page reads the projection, so its cells state runs."""
+    """The list page names runs in actions."""
     run = Playthrough.objects.get(player_game__game=game)
     client.force_login(user)
 
@@ -234,7 +230,7 @@ def test_the_page_names_the_run_in_its_actions(client, user, game):
 
 @pytest.mark.django_db(transaction=True)
 def test_the_page_renders_no_row_a_conversion_left_behind(client, user, game):
-    """A legacy row nothing converted reaches no page at all."""
+    """An unconverted legacy row reaches nothing."""
     other = Game.objects.create(library=user.library, name="Tunic")
     PlayEvent.objects.create(game=other, started=None, ended=None, note="")
     Playthrough.objects.filter(player_game__game=other).update(

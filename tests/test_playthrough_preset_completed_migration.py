@@ -1,9 +1,8 @@
-"""A saved preset names the endpoint the run states.
+"""A saved preset names the run's endpoint.
 
-#1013 renamed `ended` to `completed`, and a preset holds the
-old word in a criterion, in a games filter's run subtree, and
-in a sort token. The rewrite is a plain function, so it is
-tested as one.
+#1013 renamed `ended` to `completed`. A preset holds the old
+word in a criterion, in a games filter's run subtree, and in
+a sort token.
 """
 
 import pytest
@@ -39,8 +38,7 @@ def test_the_forward_pass_rewrites_the_criterion_and_the_sort(user):
     assert preset.object_filter == {
         "completed": {"value": "2025-01-01", "modifier": "EQUALS"}
     }
-    #: The sign travels with the token, and a sort naming
-    #: something else is left alone.
+    #: The sign travels with the token.
     assert preset.find_filter == {"sort": "-completed,name"}
 
 
@@ -66,8 +64,7 @@ def test_a_run_filter_under_an_operator_is_rewritten(user):
 
 @pytest.mark.django_db
 def test_a_games_preset_rewrites_the_run_subtree_alone(user):
-    """`ended` is a common word, so the walk reaches the run
-    subtree and no other key."""
+    """The walk reaches the run subtree only."""
     preset = FilterPreset.objects.create(
         library=user.library,
         name="Finished games",
@@ -100,7 +97,7 @@ def test_a_games_preset_rewrites_the_run_subtree_alone(user):
             }
         ],
     }
-    #: A games list sorts games, so its sort names no run.
+    #: A games list sort names no run.
     assert preset.find_filter == {"sort": "-ended"}
 
 

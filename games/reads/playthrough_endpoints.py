@@ -39,13 +39,11 @@ def stated_completion(run: Playthrough) -> StatedEndpoint | None:
 
 
 def days_to_finish(run: Playthrough) -> int | None:
-    """How many days the run touched, or nothing.
+    """Days the run touched, both ends counted.
 
-    The widest span the two endpoints allow, both ends
-    counted: a same-day run reads 1 and a run finished the
-    next day reads 2. An absent bound and a completion
-    before the start read nothing, so the count never
-    reads 0.
+    A same-day run reads 1. An absent bound and a
+    completion before the start read nothing, so the
+    count never reads 0.
     """
     started = run.started_lower
     completed = run.completed_upper

@@ -125,8 +125,7 @@ def two_libraries(db):
         ended=date(YEAR, 2, 2),
         note="Library B event",
     )
-    #: #1013 gave the count the projection, so the note the
-    #: filter reads sits on each library's own run.
+    #: Each library's own run holds the note.
     for game, note in ((game_a, "Library A event"), (game_b, "Library B event")):
         Playthrough.objects.filter(player_game__game=game).update(note=note)
 

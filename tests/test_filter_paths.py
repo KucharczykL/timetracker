@@ -123,8 +123,7 @@ def test_every_widget_path_resolves_to_its_kind(case: _BarCase) -> None:
 
 
 def test_the_run_bar_round_trips_completed() -> None:
-    """Every facet the bar emits parses back into a filter the
-    bar may edit again."""
+    """The bar's own output stays editable."""
     filter_object = PlaythroughFilter.where(
         completed__between=("2025-01-01", "2025-12-31")
     )

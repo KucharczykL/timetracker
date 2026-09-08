@@ -1308,12 +1308,7 @@ class TestExpandedFiltersAgainstDB:
         assert data["game2"] not in results
 
     def test_game_filter_playthrough_count(self, owned_library):
-        """The count reads the runs whose completion is stated.
-
-        Every tracked game holds a run from the moment the library
-        tracks it, so the game nobody finished must read 0 rather
-        than 1.
-        """
+        """The count reads the completed runs only."""
         from django.utils import timezone
 
         from games.filters import GameFilter, filter_query_context_for_library
@@ -1695,11 +1690,7 @@ class TestPurchaseFilterDates:
 
 
 class TestPlaythroughFilterDates:
-    """End-to-end: a PlaythroughFilter built from JSON narrows the
-    queryset correctly across the started/completed fields. Both are
-    temporal values, so each criterion reads the pair of generated
-    bound columns beside the endpoint rather than a column of its
-    own."""
+    """JSON narrows the queryset across both endpoints."""
 
     def _seed(self, library):
         from django.utils import timezone
@@ -1733,8 +1724,7 @@ class TestPlaythroughFilterDates:
 
     @pytest.mark.django_db
     def test_completed_between_finds_year(self, owned_library):
-        """'Finished in 2024' expressed as a BETWEEN range over the
-        completion."""
+        """Finished in 2024, as a BETWEEN range."""
         from games.filters import PlaythroughFilter
 
         seeded = self._seed(owned_library)
@@ -1777,9 +1767,7 @@ class TestPlaythroughFilterDates:
 
     @pytest.mark.django_db
     def test_playthrough_filter_json_round_trip(self):
-        """PlaythroughFilter started/completed survive json → object →
-        json, confirming DateCriterion is dispatched by from_json (not
-        StringCriterion)."""
+        """Both endpoints survive json, object, json."""
         from games.filters import PlaythroughFilter
 
         payload = {
@@ -3379,9 +3367,7 @@ class TestComparableColumnsCrossModel:
                     assert column["source"] == model_source
 
     def test_a_projection_offers_no_column_through_its_library(self):
-        """#1013: `library` is scoping, not data. Every column of
-        every other entity the library owns answers nothing
-        about one run."""
+        """`library` is scoping, not data."""
         from games.models import Playthrough
 
         values = {column["value"] for column in comparable_columns(Playthrough)}
@@ -3389,9 +3375,7 @@ class TestComparableColumnsCrossModel:
         assert not any(value.startswith("library__") for value in values)
 
     def test_a_run_offers_its_four_bound_columns(self):
-        """A column generated from a temporal value is excluded
-        until somebody scopes it in; these four are, and carry
-        their own words."""
+        """These four bounds are scoped in, with words."""
         from games.models import Playthrough
 
         columns = {
@@ -3405,7 +3389,7 @@ class TestComparableColumnsCrossModel:
         assert columns["started_lower"]["group"] == "date"
 
     def test_the_catalog_still_hides_its_temporal_bounds(self):
-        """Nobody scoped Release's bounds in, so they stay out."""
+        """Release scoped no bounds in."""
         from games.models import Release
 
         values = {column["value"] for column in comparable_columns(Release)}
@@ -4929,8 +4913,7 @@ class TestFilterFieldDescriptors:
         parent_model = filter_cls._comparison_model()
         for name, spec in filter_cls.aggregates.items():
             related_model = parent_model
-            #: An accessor may be a path: a run hangs off the
-            #: tracked game, not off the catalog row (#1013).
+            #: An accessor may be a path, not one hop.
             for hop in spec.accessor.split("__"):
                 related_model = related_model._meta.get_field(hop).related_model
             assert related_model is spec.scope_filter._comparison_model(), name

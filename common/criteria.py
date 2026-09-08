@@ -999,12 +999,7 @@ class FilterField:
     # ``FilterField("lookup")`` calls are unaffected.
     search_url: str | None = None
     imperative: bool = False
-    # The path ``field_metadata`` walks, when it differs from the path ``to_q``
-    # emits. A query may read an annotation alias (``tracked__status``), which
-    # names no model column, or a handler over two bound columns, which names
-    # none either; the widget still needs a real column's choices and
-    # nullability (``player_games__status``, ``started_lower``). Ignored by
-    # ``to_q``.
+    # The real column the widget reads; ``to_q`` ignores it.
     metadata_lookup: ORMLookup | None = None
 
     def __post_init__(self) -> None:
@@ -1316,10 +1311,7 @@ class AggregateSpec:
     scope_filter: type[OperatorFilter]
     source: AttrName | None = None  # summed/averaged related column; None for count
     unit: DurationUnit | None = None
-    # A scope the spec states itself, on top of whatever the criterion states
-    # (#1013). ``playthrough_count`` counts the runs whose completion is stated,
-    # so a count of 0 means a game nobody finished rather than a game nobody
-    # tracks.
+    # A scope the spec states itself, always applied.
     base_scope: OperatorFilter | None = None
 
     def __post_init__(self) -> None:
@@ -2095,9 +2087,7 @@ def _maybe_group_for(model: type[models.Model], column: str) -> ComparisonGroup 
     if model_field.is_relation:
         return None
 
-    # A column generated from a temporal value is excluded until the model
-    # scopes it in through ``comparable_temporal_bounds``: neither the words
-    # nor the operators of a bound are this walk's to guess (#1013).
+    # A generated temporal column is out until scoped in.
     allowlisted = column in getattr(model, "comparable_temporal_bounds", {})
     if (
         not allowlisted
@@ -2287,11 +2277,7 @@ def _comparison_relations(
     per concrete ForeignKey/OneToOneField, in ``_meta`` declaration order.
     The same to-one acceptance rule ``_comparison_operand_info`` validates against.
 
-    A relation the model lists in ``comparison_scoping_relations`` is skipped:
-    it scopes the row rather than describing it (a projection's ``library``),
-    so the columns behind it belong to another entity (#1013). Skipping it here
-    also keeps it out of ``_comparison_multivalued_sources``, which enumerates
-    its ``fk__multi`` blocks from this list.
+    A ``comparison_scoping_relations`` entry is skipped: it scopes.
     """
     scoping = getattr(model, "comparison_scoping_relations", ())
     relations: list[tuple[str, type[models.Model], str]] = []
@@ -2337,8 +2323,7 @@ def _own_comparable_columns(
         group = _maybe_group_for(model, column)
         if group is None:
             continue
-        # A scoped-in bound column carries the model's own words: its
-        # verbose_name reads "Started Lower" (#1013).
+        # A scoped-in bound carries the model's own words.
         bounds = getattr(model, "comparable_temporal_bounds", {})
         verbose_name = getattr(model_field, "verbose_name", column)
         raw_label: str = bounds.get(column) or verbose_name.title()
@@ -2735,10 +2720,7 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             # lookup raises here (matching ``criterion_kind`` / ``resolve_path_kind``'s
             # loud-failure contract) instead of silently degrading to an empty
             # picker, while the legitimately-columnless fields never hit the None.
-            # ``metadata_lookup`` wins where it is set: the query may read an
-            # annotation alias that resolves to no column, or a handler over
-            # two columns that names neither, and the widget still needs a
-            # real one.
+            # ``metadata_lookup`` wins, handler or not.
             model_field: models.Field | None = None
             resolved_lookup: ORMLookup | None = None
             field_spec = filter_cls.fields.get(name)
@@ -2977,16 +2959,15 @@ def _bound_at_least(field_name: str, value: Any) -> Q:
 def temporal_interval_handler(
     value_field: str, lower_field: str, upper_field: str
 ) -> FieldHandler:
-    """Compare a day against an endpoint that states an interval.
+    """Compare a day against an endpoint's interval.
 
-    A day, a month, a year, a decade or a range: the two
-    generated bound columns hold the earliest day the value can
-    name and the latest, both inclusive, and an absent bound
-    reads as unbounded. Every comparison first states that the
-    endpoint holds a value, so an act recorded with no day
-    answers neither an equality nor its negation. ``is null``
-    reads the endpoint's own value, not a bound: an open range
-    states a value while leaving one bound null.
+    The two bound columns hold the earliest day the value can name
+    and the latest, both inclusive, and an absent bound reads as
+    unbounded. Every comparison first states that the endpoint
+    holds a value, so an act recorded with no day answers neither
+    an equality nor its negation. ``is null`` reads the endpoint's
+    own value, not a bound: an open range states a value while
+    leaving one bound null.
     """
 
     def handler(criterion: _Criterion) -> Q:
@@ -3031,14 +3012,13 @@ def temporal_interval_handler(
 
 
 def days_touched_handler(lower_field: str, upper_field: str) -> FieldHandler:
-    """Compare a day count against two bound columns.
+    """Compare a day count against two bounds.
 
-    The count is the days the run touched, both ends included,
-    which is what ``games/reads/playthrough_endpoints.py`` reads:
-    ``N`` days means the later bound is ``N - 1`` days after the
-    earlier one. Every comparison states that both bounds are
-    known and the span is not negative, so a run with no answer
-    matches nothing and a count below 1 matches nothing. The
+    The count is the days the run touched, both ends included, as
+    ``games/reads/playthrough_endpoints.py`` reads them: ``N`` days
+    means the later bound is ``N - 1`` days after the earlier one.
+    Every comparison states that both bounds are known and the span
+    is not negative, so a run with no answer matches nothing. The
     field names no column, so it offers no ``is null``.
     """
     from datetime import timedelta
@@ -3239,10 +3219,7 @@ def aggregate_to_q(
     from django.db.models import Avg, Count, Sum
 
     scope_condition: Q | None = None
-    # A hand-assembled criterion could carry a wrong-typed scope; its Q would
-    # be built in the wrong model's namespace and produce a silently-wrong
-    # (or FieldError-ing) subquery, so guard the type loudly. Never user
-    # input — from_json always builds the scope from the spec's class.
+    # Wrong-typed scope would query another model's namespace.
     if criterion.scope is not None and not isinstance(
         criterion.scope, spec.scope_filter
     ):
@@ -3250,8 +3227,7 @@ def aggregate_to_q(
             f"aggregate scope must be a {spec.scope_filter.__name__},"
             f" got {type(criterion.scope).__name__}"
         )
-    # The spec's own scope and the criterion's narrow the same set (#1013),
-    # so one subquery carries both.
+    # Both scopes narrow one subquery.
     scopes = [
         scope for scope in (spec.base_scope, criterion.scope) if scope is not None
     ]

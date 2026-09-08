@@ -63,9 +63,7 @@ def world(db):
 
     # PlayEvents: finished_game ended in-year.
     PlayEvent.objects.create(game=finished_game, ended=_dt(YEAR, 8, 1))
-    #: The run a conversion leaves: a completion stated at day
-    #: precision, the same day the legacy row names. #1014 moves
-    #: the statistics queries themselves onto it.
+    #: The run a conversion leaves, day-precision.
     Playthrough.objects.filter(player_game__game=finished_game).update(
         completion_recorded_at=timezone.now(),
         completed=TemporalValue.from_day(date(YEAR, 8, 1)),
@@ -331,7 +329,7 @@ def test_unfinished_matches_count(world):
 
 
 def test_the_all_time_link_reads_the_act():
-    """A completion recorded with an unknown day is a finish."""
+    """An unknown day is still a finish."""
     scoped = stats_links._completed_in_scope("Alltime")
 
     assert scoped.completed is None
@@ -340,8 +338,7 @@ def test_the_all_time_link_reads_the_act():
 
 
 def test_the_per_year_link_overlaps():
-    """A run stated as a whole year answers for every year it
-    touches, so the link reads the interval rather than a day."""
+    """A whole-year run answers for that year."""
     scoped = stats_links._completed_in_scope(YEAR)
 
     assert scoped.is_completed is None

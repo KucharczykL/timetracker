@@ -510,8 +510,7 @@ def test_nested_relation_prefill_renders_full_tree(
     other_game = Game.objects.create(
         library=e2e_library, name="OtherGame", platform=platform, status="p"
     )
-    #: #1013 gave the filter the projection, so the finish is
-    #: stated on the game's own run.
+    #: The finish is stated on the run.
     Playthrough.objects.filter(player_game__game=done_game).update(
         completion_recorded_at=datetime(2026, 3, 1, 12, 0, tzinfo=UTC),
         completed=TemporalValue.from_day(date(2026, 3, 1)),

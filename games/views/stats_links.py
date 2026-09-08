@@ -132,15 +132,11 @@ def purchases_refunded(year) -> PurchaseFilter:
 
 
 def _completed_in_scope(year) -> PlaythroughFilter:
-    """A game's finish: a run completed in scope (any, all-time).
+    """A finish: a run completed in scope.
 
-    All-time reads the act, not the day: a completion recorded
-    with an unknown day is a finish. The per-year read overlaps,
-    so a run stated as a whole year answers for every year it
-    touches. #1014 moves the statistics queries and owns proving
-    both definitions -- the parity fixture states a converted
-    legacy row, which is day-precision at both ends and so sees
-    neither.
+    All-time reads the act, not the day. The per-year read
+    overlaps, so a run stated as a whole year answers for
+    every year it touches.
     """
     if _is_year(year):
         return PlaythroughFilter.where(completed__between=_year_range(year))

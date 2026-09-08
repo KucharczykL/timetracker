@@ -202,7 +202,7 @@ def test_purchase_price_any_widget_json_selects_games(purchase_world):
 
 
 def _state_run(game: Game, **stated: object) -> None:
-    """State a fact on the run the tracked game is born with."""
+    """State a fact on the game's run."""
     Playthrough.objects.filter(player_game__game=game).update(**stated)
 
 
@@ -262,9 +262,7 @@ def test_game_finished_widget_json_selects_games(db):
 
 
 def test_game_finished_widget_json_min_only_and_max_only(db):
-    """When only one bound is set the widget emits GREATER_THAN (min-only) or
-    LESS_THAN (max-only) instead of BETWEEN; each selects by the run's stated
-    completion."""
+    """One bound emits GREATER_THAN or LESS_THAN."""
     pc = Platform.objects.create(name="PC")
     early = Game.objects.create(name="Early", platform=pc)
     middle = Game.objects.create(name="Middle", platform=pc)

@@ -19,10 +19,10 @@ from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db
 
-#: The marker each endpoint states its act with.
+#: The marker each endpoint states.
 MARKERS = {"started": "start_recorded_at", "completed": "completion_recorded_at"}
 
-#: One run per shape the endpoint can state.
+#: One run per shape.
 SHAPES = {
     "day": "2025-03-15",
     "month": "2025-03",
@@ -37,16 +37,16 @@ ENDPOINTS = ("started", "completed")
 
 
 def state(run: Playthrough, **values: object) -> None:
-    """Write columns a command would state, without one.
+    """Write columns no command would state.
 
-    Both endpoints generate their bound columns, so an UPDATE is
-    the only way to state a shape a command would refuse.
+    Both endpoints generate their bound columns, so an UPDATE
+    is the only way to state a refused shape.
     """
     Playthrough.objects.filter(pk=run.pk).update(**values)
 
 
 def one_run(library, name: str) -> Playthrough:
-    """The run a newly tracked game is born with."""
+    """The run born with the tracked game."""
     game = Game.objects.create(library=library, name=name)
     return Playthrough.objects.get(player_game__game=game)
 
@@ -64,7 +64,7 @@ def matched(library, filter_object) -> set[str]:
 
 @pytest.fixture
 def shaped_runs(owned_library):
-    """One run per shape, each stating the named endpoint."""
+    """One run per shape of the endpoint."""
 
     def make(endpoint: str) -> None:
         for shape, text in SHAPES.items():
@@ -82,14 +82,13 @@ def shaped_runs(owned_library):
 
 @pytest.fixture
 def other_library(django_user_model):
-    """A second library, whose runs this one never reads."""
+    """A second library this one never reads."""
     owner = django_user_model.objects.create_user(username="other-owner", password="p")
     return owner.library
 
 
 def test_the_scope_states_all_four_things(owned_library, other_library):
-    """A removed run, an imported one and another library's
-    reach no page and no count."""
+    """Removed, imported and other-library runs reach nothing."""
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     run = Playthrough.objects.get(player_game__game=game)
     imported = Playthrough.objects.create(
@@ -120,9 +119,7 @@ def test_the_scope_states_all_four_things(owned_library, other_library):
 
 
 def test_the_scope_states_the_library_beside_the_parent(owned_library, other_library):
-    """A run naming another library's tracked game is the drift
-    `audit_library_ownership` reports, and neither library reads
-    it."""
+    """Neither library reads a run naming both."""
     game = Game.objects.create(library=other_library, name="Hollow Knight")
     theirs = Playthrough.objects.get(player_game__game=game)
     crossed = Playthrough.objects.create(
@@ -143,7 +140,7 @@ def test_the_scope_states_the_library_beside_the_parent(owned_library, other_lib
 
 @pytest.mark.parametrize("endpoint", ENDPOINTS)
 def test_equality_overlaps(owned_library, shaped_runs, endpoint):
-    """A run stated as 2025 may well have happened that day."""
+    """A 2025 run may hold that day."""
     shaped_runs(endpoint)
 
     assert matched(
@@ -155,7 +152,7 @@ def test_equality_overlaps(owned_library, shaped_runs, endpoint):
 def test_equality_outside_every_interval_answers_nothing(
     owned_library, shaped_runs, endpoint
 ):
-    """Only the two shapes the day still falls inside answer."""
+    """Only shapes holding that day answer."""
     shaped_runs(endpoint)
 
     assert matched(
@@ -165,8 +162,7 @@ def test_equality_outside_every_interval_answers_nothing(
 
 @pytest.mark.parametrize("endpoint", ENDPOINTS)
 def test_after_is_certain(owned_library, shaped_runs, endpoint):
-    """A run is after March only where the earliest day it can
-    name is after March."""
+    """After March: the earliest day is later."""
     shaped_runs(endpoint)
 
     assert (
@@ -179,8 +175,7 @@ def test_after_is_certain(owned_library, shaped_runs, endpoint):
 
 @pytest.mark.parametrize("endpoint", ENDPOINTS)
 def test_before_is_certain(owned_library, shaped_runs, endpoint):
-    """And before March only where the latest day it can name
-    is before March."""
+    """Before March: the latest day is earlier."""
     shaped_runs(endpoint)
 
     assert (
@@ -193,8 +188,7 @@ def test_before_is_certain(owned_library, shaped_runs, endpoint):
 
 @pytest.mark.parametrize("endpoint", ENDPOINTS)
 def test_negation_is_certain(owned_library, shaped_runs, endpoint):
-    """Not that day means no day the value can name is that
-    day, so an interval holding it answers neither side."""
+    """An interval holding that day answers neither."""
     shaped_runs(endpoint)
 
     assert (
@@ -207,8 +201,7 @@ def test_negation_is_certain(owned_library, shaped_runs, endpoint):
 
 @pytest.mark.parametrize("endpoint", ENDPOINTS)
 def test_between_overlaps(owned_library, shaped_runs, endpoint):
-    """Between March 1 and March 31 answers every shape that
-    can name a day in March."""
+    """Every shape that can name March answers."""
     shaped_runs(endpoint)
 
     assert matched(
@@ -221,7 +214,7 @@ def test_between_overlaps(owned_library, shaped_runs, endpoint):
 
 @pytest.mark.parametrize("endpoint", ENDPOINTS)
 def test_not_between_is_certain(owned_library, shaped_runs, endpoint):
-    """Outside 2024 means no day the value can name is in it."""
+    """Outside 2024: no day it names qualifies."""
     shaped_runs(endpoint)
 
     assert matched(
@@ -234,7 +227,7 @@ def test_not_between_is_certain(owned_library, shaped_runs, endpoint):
 
 @pytest.mark.parametrize("endpoint", ENDPOINTS)
 def test_an_act_with_no_day_answers_neither_side(owned_library, endpoint):
-    """It answers `is null`, and the marker answers the act."""
+    """Only the marker answers the act."""
     state(
         one_run(owned_library, "Game no day"),
         **{MARKERS[endpoint]: timezone.now(), endpoint: None},
@@ -259,8 +252,7 @@ def test_an_act_with_no_day_answers_neither_side(owned_library, endpoint):
 
 @pytest.mark.parametrize("endpoint", ENDPOINTS)
 def test_an_act_nobody_recorded_answers_no_act(owned_library, endpoint):
-    """A tracked game's run states neither act until somebody
-    does, and `is null` on the value is not that question."""
+    """A new run states neither act."""
     one_run(owned_library, "Game untouched")
 
     act = "is_started" if endpoint == "started" else "is_completed"
@@ -270,8 +262,7 @@ def test_an_act_nobody_recorded_answers_no_act(owned_library, endpoint):
     }
 
 
-#: One run per span the two bounds can state, keyed by the word
-#: its game is named after.
+#: One run per span, by game name.
 SPANS = {
     "same day": ("2025-03-01", "2025-03-01"),
     "next day": ("2025-03-01", "2025-03-02"),
@@ -284,7 +275,7 @@ SPANS = {
 
 @pytest.fixture
 def spans(owned_library) -> None:
-    """A run per span, one of them completed before it started."""
+    """One run per span, one backwards."""
     now = timezone.now()
     for name, (started, completed) in SPANS.items():
         run = one_run(owned_library, f"Game {name}")
@@ -300,8 +291,7 @@ def spans(owned_library) -> None:
 
 @pytest.mark.parametrize("count", [1, 2, 30, 31])
 def test_the_filter_answers_what_the_read_counts(owned_library, spans, count):
-    """The read and the filter count the same days, so a run
-    the one answers for is a run the other answers for."""
+    """The read and the filter count alike."""
     by_read = {
         run.player_game.game.name.removeprefix("Game ")
         for run in library_runs(owned_library).select_related("player_game__game")
@@ -314,14 +304,13 @@ def test_the_filter_answers_what_the_read_counts(owned_library, spans, count):
 
 
 def test_a_count_below_one_answers_nothing(owned_library, spans):
-    """The count never reads 0, so nothing answers for it, and a
-    run completed before it started reads no count at all."""
+    """A backwards run reads no count."""
     assert matched(owned_library, PlaythroughFilter.where(days_to_finish=0)) == set()
     assert matched(owned_library, PlaythroughFilter.where(days_to_finish=-1)) == set()
 
 
 def test_a_run_with_one_bound_answers_no_comparison(owned_library, spans):
-    """A started run nobody completed has no count."""
+    """A run with one bound has none."""
     answered = matched(owned_library, PlaythroughFilter.where(days_to_finish__gt=0))
 
     assert "unfinished" not in answered
@@ -329,8 +318,7 @@ def test_a_run_with_one_bound_answers_no_comparison(owned_library, spans):
 
 
 def test_more_than_and_fewer_than_read_the_same_span(owned_library, spans):
-    """Two days or more leaves the same-day run out; fewer than
-    thirty leaves the thirty-day run out."""
+    """Both sides read the same span."""
     assert matched(owned_library, PlaythroughFilter.where(days_to_finish__gt=1)) == {
         "next day",
         "thirty",
@@ -394,9 +382,7 @@ def test_the_count_reads_the_runs_a_person_finished(owned_library):
 
 
 def test_a_percent_survives_the_url():
-    """#656 left the encoding to the wave that writes the
-    filter: a value is a plain ISO day and a qualifier is no
-    operand, so the only symbol left is a person's own `%`."""
+    """A person's own `%` survives the URL."""
     original = PlaythroughFilter.where(note__contains="100% run")
 
     url = filter_url(original)

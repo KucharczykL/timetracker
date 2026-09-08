@@ -270,7 +270,7 @@ def test_database_rejects_a_gamestatuschange_referencing_a_uuid_no_game_owns():
 
 
 def born_run(game: Game, note: str = "") -> Playthrough:
-    """The run a newly tracked game is born with, stating a note."""
+    """The noted run born with the game."""
     run = Playthrough.objects.get(player_game__game=game)
     Playthrough.objects.filter(pk=run.pk).update(note=note)
     return Playthrough.objects.get(pk=run.pk)

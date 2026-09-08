@@ -685,9 +685,7 @@ class PlaythroughFilter(OperatorFilter):
     # Cross-entity: runs at games matching these criteria
     game_filter: GameFilter | None = None
 
-    #: #1013 renamed the endpoint to the word the column, the
-    #: command and the screen use. A saved preset is rewritten by
-    #: migration 0047, but a bookmarked ``?filter=`` is not.
+    #: #1013 renamed `ended`; migration 0047 rewrites presets.
     renamed_fields: ClassVar[Mapping[str, str]] = {"ended": "completed"}
 
     fields: ClassVar[dict[str, FilterField]] = {
@@ -732,9 +730,7 @@ class PlaythroughFilter(OperatorFilter):
     def _extra_q(self, context: FilterQueryContext | None = None) -> Q:
         q = Q()
 
-        #: A blank name renders as `Playthrough N`, which is
-        #: counted at read time and stored nowhere, so that text
-        #: answers no search.
+        #: A blank name is stored nowhere.
         if self.search is not None:
             q &= search_q(
                 self.search,
@@ -778,10 +774,7 @@ GameFilter.aggregates = {
         "count",
         "player_games__playthroughs",
         PlaythroughFilter,
-        #: Every tracked game holds at least one run, so a plain
-        #: count reads 1 for a game nobody played. This counts the
-        #: runs whose completion is stated, which is the number
-        #: `Played N times` prints.
+        #: Counts the runs whose completion is stated.
         base_scope=PlaythroughFilter(is_completed=BoolCriterion(value=True)),
     ),
     "manual_playtime_hours": AggregateSpec(
@@ -875,8 +868,7 @@ def filter_queryset_for_library(model_name: ModelKey, library: UserLibrary) -> Q
     Game is one exception: its list counts the games this library tracks, so
     counting anything else here would answer the builder's live count with a
     number the destination list cannot show. Playthrough is the other: the
-    projection declares no manager, so it answers no ``for_library`` and every
-    read states its own scope.
+    projection declares no manager, so every read states its own scope.
     """
     from django.apps import apps
 

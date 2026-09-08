@@ -26,9 +26,7 @@ from games.reads.playthrough_endpoints import (
 )
 from games.reads.playthrough_numbering import display_name
 
-#: The list page's sort keys, by column label. Game detail
-#: states none: it reads no `?sort=`, so a clickable header
-#: there reloads the page and changes nothing.
+#: The list page's sort keys, by label.
 _SORT_KEYS: Mapping[str, SortKey] = {
     "Game": "name",
     "Started": "started",
@@ -47,7 +45,7 @@ def playthrough_tabledata(
     sort_terms: Sequence[SortTerm] = (),
     sortable: bool = False,
 ) -> TableData:
-    """The runs, as rows. The caller states whether they sort."""
+    """Rows for the runs; caller states sorting."""
 
     def column(label: str, **options: Any) -> Column:
         return Column(label, _SORT_KEYS.get(label) if sortable else None, **options)
@@ -74,8 +72,7 @@ def playthrough_tabledata(
 
     row_list: list[list[Cell]] = [
         [
-            #: A stated name has no natural width, and this is
-            #: the pinned first column, so it clips itself.
+            #: Pinned first column: clip a stated name.
             TruncatedText(display_name(run)),
             TruncatedText(
                 run.player_game.game.name,

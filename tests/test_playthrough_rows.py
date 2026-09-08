@@ -36,7 +36,7 @@ def presentation() -> DateTimePresentation:
 
 
 def tabledata_of(owned_library, run, presentation, **options):
-    """The table this run renders, numbered as a page numbers it."""
+    """The table this run renders, numbered."""
     tracked = tracked_game(owned_library, run.player_game.game)
     assert tracked is not None
     runs = list(
@@ -85,8 +85,7 @@ def test_a_stated_act_renders_its_day_at_its_own_precision(
 
 
 def test_a_blank_name_renders_its_display_number(owned_library, run, presentation):
-    """The pinned first column clips itself, so the name
-    renders inside a `TruncatedText`."""
+    """The pinned first column clips its name."""
     cells = cells_of(owned_library, run, presentation)
 
     assert "<truncated-text" in cells[0]
@@ -96,8 +95,7 @@ def test_a_blank_name_renders_its_display_number(owned_library, run, presentatio
 def test_the_columns_sort_only_where_the_caller_says_so(
     owned_library, run, presentation
 ):
-    """Game detail reads no `?sort=`, so a clickable header
-    there would reload the page and change nothing."""
+    """Game detail reads no `?sort=` at all."""
     static = tabledata_of(owned_library, run, presentation)
     sortable = tabledata_of(owned_library, run, presentation, sortable=True)
 
@@ -131,7 +129,7 @@ def test_the_days_cell_reads_the_span(owned_library, run, presentation):
 
     cells = cells_of(owned_library, run, presentation)
 
-    #: The first, the second and the third: three days touched.
+    #: The first, second and third: three days.
     assert "3" in cells
 
 

@@ -57,7 +57,7 @@ def test_the_query_still_uses_the_alias():
 
 @dataclass
 class _HandlerFilter(OperatorFilter):
-    """#1013: a handler over two bound columns names none of them."""
+    """A handler over two bounds names none."""
 
     AND: list[_HandlerFilter] = field(default_factory=list)
     OR: list[_HandlerFilter] = field(default_factory=list)
@@ -78,9 +78,7 @@ class _HandlerFilter(OperatorFilter):
 
 
 def test_a_handler_field_states_its_widgets_column():
-    """The handler resolves no column, so the picker reads the
-    one the field names -- otherwise the widget offers no
-    `is null`."""
+    """The field names the picker's column."""
     entry = next(
         meta for meta in field_metadata(_HandlerFilter) if meta["name"] == "started"
     )
@@ -90,7 +88,7 @@ def test_a_handler_field_states_its_widgets_column():
 
 
 def test_a_handler_field_without_one_still_resolves_nothing():
-    """A handler names no column, and nothing invents one."""
+    """Nothing invents a column for a handler."""
 
     @dataclass
     class _BareHandlerFilter(OperatorFilter):

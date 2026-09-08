@@ -1,4 +1,4 @@
-"""#1013: an aggregate spec states a scope of its own."""
+"""An aggregate spec states its own scope."""
 
 from datetime import timedelta
 
@@ -23,7 +23,7 @@ pytestmark = pytest.mark.django_db
 
 
 def _session(game, note: str) -> Session:
-    """One session of this game, an hour long."""
+    """One hour-long session of this game."""
     started = timezone.now()
     return Session.objects.create(
         game=game,
@@ -34,8 +34,7 @@ def _session(game, note: str) -> Session:
 
 
 def test_a_base_scope_narrows_every_reduction(owned_library):
-    """The spec's own scope rides along, so a game whose only
-    counted session matches reads exactly one."""
+    """The spec's own scope rides along."""
     counted = Game.objects.create(library=owned_library, name="Counted")
     ignored = Game.objects.create(library=owned_library, name="Ignored")
     _session(counted, "counted")
@@ -62,7 +61,7 @@ def test_a_base_scope_narrows_every_reduction(owned_library):
 
 
 def test_a_base_scope_composes_with_the_criterion_scope(owned_library):
-    """Both narrow: the count reads the sessions matching each."""
+    """Both scopes narrow the same count."""
     game = Game.objects.create(library=owned_library, name="Both")
     _session(game, "counted")
     _session(game, "counted too")
@@ -93,7 +92,6 @@ def test_a_base_scope_composes_with_the_criterion_scope(owned_library):
 
 
 def test_a_base_scope_must_match_the_scope_filter():
-    """A wrong-typed scope would build its Q in another model's
-    namespace, so the table refuses it at import."""
+    """A wrong-typed scope is refused at import."""
     with pytest.raises(TypeError, match="SessionFilter"):
         AggregateSpec("count", "sessions", SessionFilter, base_scope=GameFilter())

@@ -125,8 +125,7 @@ def populated(e2e_user, e2e_library) -> None:
     #: A command, so History has an entry:
     #: it reads events, not this direct write.
     track_game(e2e_user, game, correlation_id=new_correlation_id())
-    #: The run the pages render since #1013, stating the days and
-    #: the note the legacy row above holds.
+    #: The rendered run holds days and note.
     Playthrough.objects.filter(player_game__game=game).update(
         start_recorded_at=BASE,
         started=TemporalValue.from_day(BASE.date()),
@@ -211,9 +210,7 @@ def test_the_note_column_still_wraps(authenticated_page: Page, live_server, popu
                 (th) => th.textContent.trim()
             );
             const index = headers.indexOf('Note');
-            // Every tracked game states a run, so the page renders
-            // rows the fixture gave no note. The measured one is the
-            // row that carries it.
+            // Measure the row that carries a note.
             const cell = [...document.querySelectorAll('tbody tr')]
                 .map((row) => row.children[index])
                 .find((candidate) => candidate.textContent.trim() !== '');

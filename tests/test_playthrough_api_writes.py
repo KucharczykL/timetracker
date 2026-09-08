@@ -185,11 +185,7 @@ def test_a_row_with_no_run_answers_409(client, user, game):
 
 
 def test_one_module_reads_the_bridge():
-    """#771 takes the bridge away.
-
-    #1013 left the API alone with it, and a second reader
-    is a decision, not a drift.
-    """
+    """#771 takes the bridge away."""
     import pathlib
 
     readers = sorted(
