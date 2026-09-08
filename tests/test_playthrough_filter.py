@@ -15,6 +15,8 @@ from games.filters import (
 from games.models import Game, Playthrough, PlaythroughKind
 from games.reads.playthrough_endpoints import days_to_finish
 from games.reads.playthrough_runs import library_runs
+from games.removal import remove
+from games.writes.playergame import new_correlation_id, untrack_game
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db
@@ -116,6 +118,31 @@ def test_the_scope_states_all_four_things(owned_library, other_library):
     assert imported.pk not in scoped
     assert removed.pk not in scoped
     assert theirs.pk not in scoped
+
+
+def test_a_removed_game_takes_its_runs_off_the_list(owned_library):
+    """The catalog row's mark reaches the run under it."""
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    run = Playthrough.objects.get(player_game__game=game)
+
+    remove(game)
+
+    assert run.pk not in set(library_runs(owned_library).values_list("pk", flat=True))
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_untracked_game_takes_its_runs_off_the_list(owned_user, owned_library):
+    """Untracking stamps the parent, which reads here.
+
+    The command opens its own transaction, so this test
+    cannot sit in one.
+    """
+    game = Game.objects.create(library=owned_library, name="Tunic")
+    run = Playthrough.objects.get(player_game__game=game)
+
+    untrack_game(owned_user, game, correlation_id=new_correlation_id())
+
+    assert run.pk not in set(library_runs(owned_library).values_list("pk", flat=True))
 
 
 def test_the_scope_states_the_library_beside_the_parent(owned_library, other_library):

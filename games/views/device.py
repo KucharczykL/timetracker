@@ -28,7 +28,11 @@ from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.returns import action_url
 from common.utils import paginate
-from games.filters import filter_query_context_for_library, parse_device_filter
+from games.filters import (
+    DeviceFilter,
+    filter_query_context_for_library,
+    parse_device_filter,
+)
 from games.forms import DeviceForm
 from games.models import Device
 from games.ownership import owned_or_404
@@ -119,7 +123,7 @@ def list_devices(request: HttpRequest) -> HttpResponse:
     builder_url = builder_url_for(
         "devices", filter_json, find.sort, find.per_page_override
     )
-    parsed_filter = parse_filter_dict(filter_json)
+    parsed_filter = parse_filter_dict(filter_json, DeviceFilter)
     quick_bar = QuickFilterBar(
         presentation=presentation,
         mode="devices",

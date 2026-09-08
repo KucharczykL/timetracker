@@ -137,3 +137,31 @@ def test_the_backward_pass_is_the_inverse(user):
     preset.refresh_from_db()
     assert preset.object_filter == {"ended": {"value": "2025-01-01"}}
     assert preset.find_filter == {"sort": "-ended"}
+
+
+@pytest.mark.django_db
+def test_a_blob_naming_both_words_keeps_the_current_one(user):
+    """The stale key goes, the saved criterion stands.
+
+    A blob holding both spellings was written by a client
+    that knows the rename, so `completed` is what the person
+    last saved and `ended` beside it is somebody's old copy.
+    Renaming over the top would drop the live criterion.
+    """
+    preset = FilterPreset.objects.create(
+        library=user.library,
+        name="Both words",
+        mode="playthroughs",
+        find_filter={},
+        object_filter={
+            "ended": {"value": "1999-01-01"},
+            "completed": {"value": "2025-01-01"},
+        },
+        ui_options={},
+    )
+    rename_forward = import_string(f"{MIGRATION}.rename_forward")
+
+    rename_forward(apps, None)
+
+    preset.refresh_from_db()
+    assert preset.object_filter == {"completed": {"value": "2025-01-01"}}

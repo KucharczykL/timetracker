@@ -233,12 +233,13 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
         QuickFilterBar,
         parse_filter_dict,
     )
+    from games.filters import PurchaseFilter
     from games.views.filtering import builder_url_for
 
     builder_url = builder_url_for(
         "purchases", filter_json, find.sort, find.per_page_override
     )
-    parsed_filter = parse_filter_dict(filter_json)
+    parsed_filter = parse_filter_dict(filter_json, PurchaseFilter)
     quick_bar = QuickFilterBar(
         presentation=presentation,
         mode="purchases",

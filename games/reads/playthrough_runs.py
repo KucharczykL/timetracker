@@ -14,11 +14,20 @@ def library_runs(library: UserLibrary) -> QuerySet[Playthrough]:
     parent, never inferred: a run may name another
     library's PlayerGame, which is the drift
     `audit_library_ownership` reports.
+
+    A run's own mark is not the whole answer. It is not
+    removable by hand, so nothing stamps it when the game
+    it belongs to leaves: untracking stamps the PlayerGame
+    and removing the catalog row stamps the Game. Both
+    marks read here, so a removed game leaves this list the
+    way it leaves every other one.
     """
     return Playthrough.objects.filter(
         library=library,
         player_game__library=library,
         removed_at__isnull=True,
+        player_game__removed_at__isnull=True,
+        player_game__game__removed_at__isnull=True,
         kind=PlaythroughKind.ORDINARY,
     )
 
@@ -26,12 +35,19 @@ def library_runs(library: UserLibrary) -> QuerySet[Playthrough]:
 def live_ordinary_runs(
     library: UserLibrary, player_game: PlayerGame
 ) -> QuerySet[Playthrough]:
-    """This game's live ordinary runs, oldest first."""
-    return (
-        library_runs(library)
-        .filter(player_game=player_game)
-        .order_by("created_at", "id")
-    )
+    """This game's live ordinary runs, oldest first.
+
+    Its own four facts, not `library_runs` narrowed: the
+    caller names the parent, and the write path asks this
+    while stating an act on a game whose marks it already
+    answered for.
+    """
+    return Playthrough.objects.filter(
+        library=library,
+        player_game=player_game,
+        removed_at__isnull=True,
+        kind=PlaythroughKind.ORDINARY,
+    ).order_by("created_at", "id")
 
 
 def tracked_game(library: UserLibrary, game: Game) -> PlayerGame | None:

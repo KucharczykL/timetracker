@@ -1683,7 +1683,7 @@ class OperatorFilter:
         return Q()
 
     @classmethod
-    def _rename_legacy_keys(cls, data: dict[str, Any]) -> dict[str, Any]:
+    def rename_legacy_keys(cls, data: dict[str, Any]) -> dict[str, Any]:
         """Map every renamed key forward, once.
 
         A blob naming both spellings keeps the current one:
@@ -1714,7 +1714,7 @@ class OperatorFilter:
         # operator list and the cross-entity relation descent (both consume the budget).
         if _depth > MAX_FILTER_DEPTH:
             raise FilterError(f"Filter nesting too deep (max {MAX_FILTER_DEPTH})")
-        data = cls._rename_legacy_keys(data)
+        data = cls.rename_legacy_keys(data)
         kwargs: dict[str, Any] = {}
         for f in dc_fields(cls):
             if f.name not in data:

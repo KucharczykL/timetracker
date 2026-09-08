@@ -29,7 +29,11 @@ from common.duration_presentation import (
 from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.utils import paginate
-from games.filters import filter_query_context_for_library, parse_playthrough_filter
+from games.filters import (
+    PlaythroughFilter,
+    filter_query_context_for_library,
+    parse_playthrough_filter,
+)
 from games.forms import PlaythroughForm
 from games.models import (
     Game,
@@ -153,7 +157,7 @@ def list_playthroughs(request: HttpRequest) -> HttpResponse:
     builder_url = builder_url_for(
         "playthroughs", filter_json, find.sort, find.per_page_override
     )
-    parsed_filter = parse_filter_dict(filter_json)
+    parsed_filter = parse_filter_dict(filter_json, PlaythroughFilter)
     quick_bar = QuickFilterBar(
         presentation=presentation,
         mode="playthroughs",

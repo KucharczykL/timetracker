@@ -1,8 +1,10 @@
 # The Playthrough list page
 
 The Playthrough list page reads the `Playthrough` projection. The filter, the
-sorts, the quick facets and the saved presets read it too. No screen reads
-`games_playevent`.
+sorts, the quick facets and the saved presets read it too. No run is read out
+of `games_playevent` any more. Other screens still read that table for a finish
+day: the stats page, the Purchase list, and the `finished` sort on Game and
+Purchase. #771 takes the table.
 
 ## The filter
 

@@ -70,6 +70,7 @@ from games.catalog_form import CatalogGraphForm
 from games.catalog_submit import submitted_game_or_form_error
 from games.external_references import CatalogTarget, external_reference_url_or_none
 from games.filters import (
+    GameFilter,
     PlaythroughFilter,
     PurchaseFilter,
     SessionFilter,
@@ -243,7 +244,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
     builder_url = builder_url_for(
         "games", filter_json, find.sort, find.per_page_override
     )
-    parsed_filter = parse_filter_dict(filter_json)
+    parsed_filter = parse_filter_dict(filter_json, GameFilter)
     quick_bar = QuickFilterBar(
         presentation=presentation,
         mode="games",
