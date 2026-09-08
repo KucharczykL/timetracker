@@ -16,9 +16,15 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from common.components import QUICK_FACETS, QuickFilterBar
+from common.components import (
+    QUICK_FACETS,
+    QuickFilterBar,
+    is_quick_editable,
+    parse_filter_dict,
+)
 from common.criteria import (
     OperatorFilter,
+    filter_to_json,
     resolve_path_kind,
 )
 from common.date_time_presentation import (
@@ -114,6 +120,19 @@ def test_every_widget_path_resolves_to_its_kind(case: _BarCase) -> None:
             f"{case.mode} widget {widget.path} declares kind {widget.kind!r} "
             f"but resolves to {resolved!r}"
         )
+
+
+def test_the_run_bar_round_trips_completed() -> None:
+    """Every facet the bar emits parses back into a filter the
+    bar may edit again."""
+    filter_object = PlaythroughFilter.where(
+        completed__between=("2025-01-01", "2025-12-31")
+    )
+    parsed = parse_filter_dict(filter_to_json(filter_object))
+
+    assert is_quick_editable(
+        parsed, {facet.field for facet in QUICK_FACETS["playthroughs"]}
+    )
 
 
 def test_resolve_path_kind_walks_nested_path() -> None:
