@@ -247,8 +247,7 @@ def _compute_stats_from_scoped_querysets(
         finished_released = finished.order_by(F("date_finished").desc(nulls_last=True))
         backlog_decrease_count = finished.count()
     else:
-        #: A completion in the year is a completion all-time, so
-        #: `.finished()` would only add the M2M join back.
+        #: Year completion implies all-time; skip the join.
         finished = library_purchases.filter(completed_q).annotate(
             date_finished=completion_day(library, year)
         )

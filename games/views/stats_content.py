@@ -102,8 +102,7 @@ def _purchase_name(purchase) -> Node:
     """Mirror of the `purchase-name` partial in the old template."""
     first_game = purchase.first_game
     if purchase.type != "game":
-        #: The Purchase's own name, or its first game's: `name` is
-        #: blank by default and would render an empty link.
+        #: A blank name renders an empty link.
         link = GameLink(first_game, purchase.standardized_name)
         suffix = f" ({first_game.name} {purchase.get_type_display()})"
         return Safe(str(link) + conditional_escape(suffix))

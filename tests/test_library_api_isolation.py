@@ -127,7 +127,7 @@ def two_libraries(db):
         ended=date(YEAR, 2, 2),
         note="Library B event",
     )
-    #: Each library's own run holds the note and the completion.
+    #: The run holds the note and completion.
     for game, note, day in (
         (game_a, "Library A event", date(YEAR, 2, 1)),
         (game_b, "Library B event", date(YEAR, 2, 2)),

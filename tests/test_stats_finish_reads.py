@@ -1,4 +1,4 @@
-"""#1014: the statistics read a run, not a legacy row."""
+"""#1014: the statistics read a run."""
 
 import uuid
 from datetime import UTC, date, datetime
@@ -50,7 +50,7 @@ def test_a_completed_run_leaves_the_backlog(owned_user, owned_library):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_legacy_row_alone_counts_for_nothing(owned_user, owned_library):
-    """The only test that writes the legacy table."""
+    """The only test writing the legacy table."""
     run = _bought_and_completed(owned_user, owned_library, "Legacy only")
     PlayEvent.objects.create(
         game=run.player_game.game, ended=datetime(YEAR, 6, 1, tzinfo=UTC)
@@ -92,7 +92,7 @@ def test_a_removed_game_supplies_no_completion(owned_user, owned_library):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_year_reports_one_row_at_its_earliest_completion(owned_user, owned_library):
-    """Two completions of one game were two rows, and are one."""
+    """Two completions of one game, one row."""
     run = _bought_and_completed(owned_user, owned_library, "Twice", date(YEAR, 2, 1))
     second = Playthrough.objects.create(
         id=uuid.uuid7(),
@@ -148,7 +148,7 @@ def test_a_year_ascends_from_its_first_finish(owned_user, owned_library):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_row_with_an_open_lower_bound_sorts_last(owned_user, owned_library):
-    """The one row a year holds that reports no day."""
+    """A year's row that reports no day."""
     _bought_and_completed(owned_user, owned_library, "Dated", date(YEAR, 6, 1))
     open_run = _bought_and_completed(owned_user, owned_library, "Open", None)
     Playthrough.objects.filter(pk=open_run.pk).update(

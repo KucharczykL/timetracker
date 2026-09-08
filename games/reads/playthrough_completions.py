@@ -2,8 +2,8 @@
 
 One object per scope, so a statistic and the link it carries
 compile one predicate. The interval handler states three
-parts, and restating two of them would answer differently
-for an open bound.
+parts, and restating two of them answers differently for an
+open bound.
 """
 
 from django.db.models import Exists, Max, Min, OuterRef, QuerySet, Subquery
@@ -12,16 +12,12 @@ from games.filters import PlaythroughFilter, filter_query_context_for_library
 from games.models import Playthrough, UserLibrary
 from games.reads.playthrough_runs import library_runs
 
-#: A calendar year, or None for every year at once.
+#: A year, or None for all-time.
 type YearScope = int | None
 
 
 def completed_in_scope(year: YearScope) -> PlaythroughFilter:
-    """The filter a scope states.
-
-    All-time reads the act, not the day. A year reads the
-    interval the endpoint states, which overlaps.
-    """
+    """The filter a scope states."""
     if year is None:
         return PlaythroughFilter.where(is_completed=True)
     return PlaythroughFilter.where(
@@ -30,7 +26,7 @@ def completed_in_scope(year: YearScope) -> PlaythroughFilter:
 
 
 def completed_runs(library: UserLibrary, year: YearScope) -> QuerySet[Playthrough]:
-    """The live ordinary runs a completion in scope names."""
+    """The live ordinary runs a completion names."""
     context = filter_query_context_for_library(library)
     return library_runs(library).filter(completed_in_scope(year).to_q(context))
 
@@ -38,23 +34,23 @@ def completed_runs(library: UserLibrary, year: YearScope) -> QuerySet[Playthroug
 def _runs_of_the_purchase(
     library: UserLibrary, year: YearScope
 ) -> QuerySet[Playthrough]:
-    """Those runs, correlated to the Purchase being read."""
+    """Those runs, correlated to the Purchase."""
     return completed_runs(library, year).filter(
         player_game__game__purchases=OuterRef("pk")
     )
 
 
 def completion_exists(library: UserLibrary, year: YearScope) -> Exists:
-    """Whether a Purchase names a game completed in scope."""
+    """Whether a Purchase names a completed game."""
     return Exists(_runs_of_the_purchase(library, year))
 
 
 def completion_day(library: UserLibrary, year: YearScope) -> Subquery:
-    """The day a Purchase reports for its completion in scope.
+    """The day a Purchase reports in scope.
 
     A year reports its earliest completion and all-time its
     latest, so each table reports the finish its own order
-    leads with. The day is the earliest one the value names.
+    leads with.
     """
     reducer = Max("completed_lower") if year is None else Min("completed_lower")
     return Subquery(

@@ -927,7 +927,7 @@ class PurchaseQueryset(RemovableLibraryQuerySet):
         return self.filter(type=Purchase.GAME)
 
     def finished(self, library):
-        #: The status lives on the library's row, the completion on its run.
+        #: A done status, or a completed run.
         from games.reads.playthrough_completions import completion_exists
 
         return self.filter(

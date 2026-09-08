@@ -1,4 +1,4 @@
-"""#1014: what a completion answers, for the statistics."""
+"""#1014: what a completion answers."""
 
 import uuid
 from datetime import date
@@ -16,7 +16,7 @@ from games.removal import remove
 from games.writes.playergame import new_correlation_id, track_game
 from timetracker.temporal import TemporalValue
 
-#: track_game states the first run, which every test reads.
+#: track_game states the first run.
 pytestmark = pytest.mark.untracked_games
 
 YEAR = 2024
@@ -38,7 +38,7 @@ def _complete(run: Playthrough, value: TemporalValue | None) -> Playthrough:
 
 
 def _second_run(run: Playthrough) -> Playthrough:
-    """A second ordinary run at the same tracked game."""
+    """A second ordinary run at one game."""
     return Playthrough.objects.create(
         id=uuid.uuid7(),
         library=run.library,
@@ -105,7 +105,7 @@ def test_a_completion_with_no_known_day_answers_all_time_only(
 
 @pytest.mark.django_db(transaction=True)
 def test_an_open_bound_is_unbounded_on_its_own_side(owned_user, owned_library):
-    """The interval handler's rule, which the statistics inherit."""
+    """The interval handler's rule, inherited."""
     run = _complete(
         _run_for(owned_user, owned_library, "Open"),
         TemporalValue.parse(f"../{YEAR}-05-01"),

@@ -133,12 +133,7 @@ def purchases_refunded(year) -> PurchaseFilter:
 
 
 def _completed_in_scope(year) -> PlaythroughFilter:
-    """A finish: a run completed in scope.
-
-    The scope's own word, read from the seam the statistics
-    read. `year` carries the all-time sentinel here; the seam
-    takes None for it.
-    """
+    """A finish: a run completed in scope."""
     return completed_in_scope(year if _is_year(year) else None)
 
 
