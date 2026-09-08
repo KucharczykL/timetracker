@@ -41,6 +41,7 @@ from games.models import (
     SessionQuerySet,
     UserLibrary,
 )
+from games.reads.playthrough_completions import completion_exists
 
 
 class StatsData(TypedDict):
@@ -140,7 +141,6 @@ def _compute_stats_from_scoped_querysets(
         sessions = sessions.prefetch_related("game")
         without_refunded = library_purchases.filter(date_refunded=None)
         refunded = library_purchases.filter(date_refunded__isnull=False)
-        ended_q = Q(games__playevents__ended__isnull=False)
         session_count = Count("sessions")
     else:
         sessions = sessions.filter(timestamp_start__year=year).prefetch_related("game")
@@ -151,13 +151,13 @@ def _compute_stats_from_scoped_querysets(
         refunded = library_purchases.exclude(date_refunded=None).filter(
             date_purchased__year=year
         )
-        ended_q = Q(games__playevents__ended__year=year)
         session_count = Count(
             "sessions", filter=Q(sessions__timestamp_start__year=year)
         )
 
+    completed_q = Q(completion_exists(library, None if is_alltime else year))
     done = _games_at_status(library, *DONE_STATUSES)
-    not_finished_q = ~Q(games__in=done) & ~ended_q
+    not_finished_q = ~Q(games__in=done) & ~completed_q
 
     # ── Session superlatives ─────────────────────────────────────────────────
     longest_session = (

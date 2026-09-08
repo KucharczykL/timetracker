@@ -927,14 +927,16 @@ class PurchaseQueryset(RemovableLibraryQuerySet):
         return self.filter(type=Purchase.GAME)
 
     def finished(self, library):
-        #: The status lives on the library's row.
+        #: The status lives on the library's row, the completion on its run.
+        from games.reads.playthrough_completions import completion_exists
+
         return self.filter(
             Q(
                 games__in=Game.objects.tracked_by(
                     library, tracked__status__in=DONE_STATUSES
                 )
             )
-            | Q(games__playevents__ended__isnull=False)
+            | Q(completion_exists(library, None))
         ).distinct()
 
 
