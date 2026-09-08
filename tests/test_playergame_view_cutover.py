@@ -5,8 +5,8 @@ import re
 import pytest
 from django.urls import reverse
 from django.utils import timezone
+from playthrough_conversion import convert_and_take_runs
 
-from games.backfill.playthrough import convert_library
 from games.models import (
     Game,
     LibraryEvent,
@@ -16,7 +16,6 @@ from games.models import (
     Purchase,
     Session,
 )
-from games.reads.playthrough_provenance import run_for_row
 from games.writes.playergame import new_correlation_id, record_facts, track_game
 
 pytestmark = pytest.mark.untracked_games
@@ -302,11 +301,9 @@ def test_adding_a_play_event_records_completed(logged_in, owned_library, tracked
 def test_editing_a_play_event_records_completed_too(
     logged_in, owned_library, tracked_game
 ):
-    play_event = PlayEvent.objects.create(game=tracked_game)
+    PlayEvent.objects.create(game=tracked_game)
     #: The edit page states facts about it.
-    convert_library(owned_library)
-    run = run_for_row(owned_library, play_event.pk).run
-    assert run is not None
+    [run] = convert_and_take_runs(owned_library, tracked_game)
 
     logged_in.post(
         reverse("games:edit_playthrough", args=[run.pk]),

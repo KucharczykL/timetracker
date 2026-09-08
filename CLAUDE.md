@@ -200,8 +200,9 @@ docs/           — Additional documentation
   stated, which is number `Played N times` prints. No run is read out of
   `games_playevent` any more, though the table is still read for a finish day
   elsewhere — the Purchase list's Finished column and the `finished` sort on
-  Game and Purchase, both #1026's; `runs_for_rows` stays for API, which #1015
-  owns, and #771 takes the table. #1014 gives the stats page the same rows:
+  Game and Purchase, both #1026's, and #771 takes the table. #1015 keyed the
+  API on the run and took the bridge that mapped a legacy row to it. #1014
+  gives the stats page the same rows:
   every finish it counts, dates and orders by comes from
   `games/reads/playthrough_completions.py`, whose four readers state one
   `PlaythroughFilter` per scope — the same object `stats_links.py` puts in the
@@ -409,7 +410,15 @@ present. Rendering client-side (`games/static/js/toast.js`).
 - `GET /api/games/search` — search games for autocomplete
 - `PATCH /api/games/{id}/status` — update game status
 - `GET/POST /api/playthrough/`, `GET/PATCH/DELETE /api/playthrough/{id}` — the
-  path id is the legacy `PlayEvent` row's, which #771 replaces with the run's
+  path id is the run's, and every body the projection's but the creation's,
+  which names the catalog game it records a run at (#1015). The list
+  takes `limit`/`offset`, `limit=0` unbounded, 100 by default. `started` and
+  `completed` are canonical temporal values in both directions, refused with 422
+  where the grammar does not know the spelling; each is answered beside its two
+  bound columns and the marker naming the act. A key a body does not know is
+  refused with 422 as well, so the old `ended` cannot pass unread. PATCH states
+  the endpoints the request names and no others: a note-only PATCH records no
+  act, and a named key is the act, dated or not
 - `PATCH /api/session/{id}/device` — update session device
 - `GET /api/presets/` — user's presets for a mode, shaped as combobox options
   (`limit=0` = unbounded)

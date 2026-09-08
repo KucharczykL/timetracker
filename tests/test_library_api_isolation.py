@@ -298,10 +298,11 @@ def test_shared_and_foreign_game_status_ids_are_undisclosed_and_unchanged(
     assert world["game_b"].status == Game.Status.FINISHED
 
 
-def test_playevent_crud_is_library_scoped(two_libraries):
+def test_playthrough_crud_is_library_scoped(two_libraries):
     world = two_libraries
     client = world["client_a"]
-    foreign = world["playevent_b"]
+    #: The routes are keyed on the run.
+    foreign = Playthrough.objects.get(player_game__game=world["game_b"])
 
     listed_ids = {row["id"] for row in client.get("/api/playthrough/").json()}
     assert str(foreign.id) not in listed_ids
@@ -313,7 +314,7 @@ def test_playevent_crud_is_library_scoped(two_libraries):
         == 404
     )
     assert client.delete(f"/api/playthrough/{foreign.id}").status_code == 404
-    playthrough_count = PlayEvent.objects.count()
+    run_count = Playthrough.objects.count()
     create_responses = [
         client.post(
             "/api/playthrough/",
@@ -323,7 +324,7 @@ def test_playevent_crud_is_library_scoped(two_libraries):
         for game in (world["shared_game"], world["game_b"])
     ]
     assert [response.status_code for response in create_responses] == [404, 404]
-    assert PlayEvent.objects.count() == playthrough_count
+    assert Playthrough.objects.count() == run_count
     foreign.refresh_from_db()
     assert foreign.note == "Library B event"
 

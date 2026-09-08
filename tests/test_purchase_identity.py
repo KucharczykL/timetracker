@@ -6,6 +6,7 @@ from django.core.management import call_command
 from django.db import IntegrityError, connection, transaction
 from django.db.migrations.executor import MigrationExecutor
 from django.utils import timezone
+from model_schema_scan import models_covered
 from ninja import ModelSchema
 
 from games import api as api_module
@@ -117,20 +118,17 @@ def test_no_model_schema_generates_fields_from_purchase():
     premise so adding a `ModelSchema` over `Purchase` fails here instead of
     silently publishing the new column.
     """
-    model_schemas = [
-        member
-        for member in vars(api_module).values()
-        if isinstance(member, type)
-        and issubclass(member, ModelSchema)
-        and member is not ModelSchema
-    ]
-    # Guard against the scan passing because it found nothing to look at.
-    assert model_schemas
-    assert [
-        schema
-        for schema in model_schemas
-        if getattr(getattr(schema, "Meta", None), "model", None) is Purchase
-    ] == []
+
+    class PurchaseProbe(ModelSchema):
+        class Meta:
+            model = Purchase
+            fields = ("name",)
+
+    #: No `ModelSchema` is left to find.
+    #: The probe says the scan would find one.
+    assert models_covered({"probe": PurchaseProbe}) == {Purchase}
+
+    assert Purchase not in models_covered(vars(api_module))
 
 
 # --- Migration: forward backfill --------------------------------------------

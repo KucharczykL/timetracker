@@ -65,10 +65,10 @@ def restatable_days(run: Playthrough) -> StatedDays | None:
     """The run's endpoints as days, or nothing.
 
     Nothing where either endpoint states a value a day
-    field cannot hold. Both request paths state whole days,
-    so seeding one from such a value and posting it back
-    would flatten what the run states. #1015 owns the
-    screen that reads the richer value.
+    field cannot hold. The form states whole days, so
+    seeding one from such a value and posting it back
+    would flatten what the run states. The API states every
+    value the grammar knows; no screen does yet.
     """
     days: list[date | None] = []
     for stated in (stated_start(run), stated_completion(run)):

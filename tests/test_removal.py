@@ -6,8 +6,7 @@ import pytest
 from django.utils import timezone
 
 from games.backfill.playthrough import convert_library
-from games.models import Game, PlayEvent, Session
-from games.reads.playthrough_provenance import run_for_row
+from games.models import Game, PlayEvent, Playthrough, Session
 from games.removal import remove, restore
 
 pytestmark = pytest.mark.django_db
@@ -76,14 +75,13 @@ def test_the_api_removes_a_playthrough_rather_than_destroying_it(client, owned_u
     second row, so the game keeps one.
     """
     game = make_game(owned_user.library)
-    play_event = PlayEvent.objects.create(game=game)
-    PlayEvent.objects.create(game=game)
+    play_event = PlayEvent.objects.create(game=game, note="removed")
+    PlayEvent.objects.create(game=game, note="kept")
     convert_library(owned_user.library)
-    run = run_for_row(owned_user.library, play_event.pk).run
-    assert run is not None
+    run = Playthrough.objects.get(player_game__game=game, note="removed")
     client.force_login(owned_user)
 
-    response = client.delete(f"/api/playthrough/{play_event.pk}")
+    response = client.delete(f"/api/playthrough/{run.pk}")
 
     assert response.status_code == 204
     run.refresh_from_db()

@@ -1,6 +1,6 @@
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, cast
 from uuid import UUID
 
@@ -29,6 +29,7 @@ from common.duration_presentation import (
 from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.utils import paginate
+from games.commands.playthrough import ActStatement
 from games.filters import (
     PlaythroughFilter,
     filter_query_context_for_library,
@@ -43,7 +44,12 @@ from games.models import (
     UserLibrary,
 )
 from games.ownership import owned_or_404
-from games.reads.playthrough_endpoints import restatable_days
+from games.reads.playthrough_endpoints import (
+    StatedEndpoint,
+    restatable_days,
+    stated_completion,
+    stated_start,
+)
 from games.reads.playthrough_numbering import numbered_for
 from games.reads.playthrough_runs import library_runs, live_ordinary_runs, tracked_game
 from games.sorting import (
@@ -68,6 +74,7 @@ from games.views.removal import confirm_and_apply
 from games.views.returns import return_url
 from games.writes.playergame import new_correlation_id
 from games.writes.playthrough import RunDraft
+from timetracker.temporal import TemporalValue
 
 logger = logging.getLogger("games")
 
@@ -232,7 +239,7 @@ def add_playthrough(request: HttpRequest, game_id: UUID | None = None) -> HttpRe
         game = form.cleaned_data["game"]
         correlation_id = new_correlation_id()
         if record_run_for_request(
-            request, game, _draft_from(form), correlation_id=correlation_id
+            request, game, _recorded_draft(form), correlation_id=correlation_id
         ):
             if form.cleaned_data.get("mark_as_finished"):
                 #: Discarded on purpose: a refused status
@@ -257,11 +264,42 @@ def add_playthrough(request: HttpRequest, game_id: UUID | None = None) -> HttpRe
     )
 
 
-def _draft_from(form: PlaythroughForm) -> RunDraft:
-    """The run the form states."""
+def _stated_act(day: date | None) -> ActStatement:
+    """The act, dated where a day was given.
+
+    The field is optional, and from_day refuses None.
+    """
+    return ActStatement(None if day is None else TemporalValue.from_day(day))
+
+
+def _recorded_draft(form: PlaythroughForm) -> RunDraft:
+    """The run this form records; both acts happened."""
     return RunDraft(
-        started=form.cleaned_data["started"],
-        ended=form.cleaned_data["ended"],
+        started=_stated_act(form.cleaned_data["started"]),
+        completed=_stated_act(form.cleaned_data["ended"]),
+        note=form.cleaned_data["note"],
+    )
+
+
+def _restated_act(
+    day: date | None, stated: StatedEndpoint | None
+) -> ActStatement | None:
+    """The act this field restates, or nothing.
+
+    A blank field beside a stated act clears its day. A
+    blank field beside no act states nothing at all, so an
+    edit records no act the person never recorded.
+    """
+    if day is None and stated is None:
+        return None
+    return _stated_act(day)
+
+
+def _edited_draft(form: PlaythroughForm, run: Playthrough) -> RunDraft:
+    """The run this form restates onto an existing one."""
+    return RunDraft(
+        started=_restated_act(form.cleaned_data["started"], stated_start(run)),
+        completed=_restated_act(form.cleaned_data["ended"], stated_completion(run)),
         note=form.cleaned_data["note"],
     )
 
@@ -340,7 +378,7 @@ def edit_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse
     if form.is_valid():
         correlation_id = new_correlation_id()
         if restate_run_for_request(
-            request, run, _draft_from(form), correlation_id=correlation_id
+            request, run, _edited_draft(form, run), correlation_id=correlation_id
         ):
             if form.cleaned_data.get("mark_as_finished"):
                 #: Discarded on purpose, as in add_playthrough.

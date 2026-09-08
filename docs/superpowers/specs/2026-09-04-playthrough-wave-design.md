@@ -263,9 +263,11 @@ Split by surface, following #946, #947, #951, and #953:
 - #1014 — every read of `games__playevents__ended` in
   `games/views/stats_data.py` and `games/views/stats_links.py`, moved onto the
   generated bound columns, with the parity test each stat link already has;
-- #1015 — the GET bodies of the `/api/playthrough` router. #687 moved the
-  router prefix and took the `play-event-row` custom element away, so what is
-  left is the two handlers that still read the legacy row;
+- #1015 — the `/api/playthrough` router. #687 moved the router prefix and took
+  the `play-event-row` custom element away, so what was left was the handlers
+  that still read the legacy row. The path id moved onto the run there rather
+  than in #771, because a list of runs can state no row id, and
+  `games/reads/playthrough_provenance.py` went with it; #771 keeps the table;
 - #1026 — the purchase list's Finished cell, `PURCHASE_SORTS["finished"]` and
   `GAME_SORTS["finished"]`, all three reading
   `Max("games__playevents__ended")`.

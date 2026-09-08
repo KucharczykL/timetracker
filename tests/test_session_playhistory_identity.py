@@ -1,14 +1,15 @@
 import uuid
 from datetime import UTC, date, datetime, timedelta
-from uuid import UUID
 
 import pytest
 from django.core.management import call_command
 from django.db import IntegrityError, connection, transaction
 from django.db.migrations.executor import MigrationExecutor
 from django.utils import timezone
+from model_schema_scan import models_covered
+from ninja import ModelSchema
 
-from games.api import AutoPlayEventIn
+import games.api
 from games.forms import PlaythroughForm, SessionForm
 from games.models import Game, GameStatusChange, PlayEvent, Session
 from games.views.session import clone_session_by_id
@@ -219,22 +220,27 @@ def test_uuid_is_absent_from_playevent_form_fields():
     assert "uuid" not in PlaythroughForm.base_fields
 
 
-def test_uuid_is_absent_from_the_playevent_model_schema():
-    """`AutoPlayEventIn` is the one `ModelSchema` over a model this cutover
-    touches, so its generated fields are asserted directly rather than argued
-    from "no ModelSchema covers these models".
-    """
-    assert "uuid" not in AutoPlayEventIn.model_fields
+def test_no_model_schema_covers_the_promoted_models():
+    """No `ModelSchema` covers either model.
 
-
-def test_autoplayeventin_game_field_type_still_follows_games_primary_key():
-    """`django_ninja`'s `ModelSchema` infers a relation field's type from
-    `field.related_model._meta.pk.get_internal_type()` (`ninja/orm/fields.py`),
-    not from the FK's `to_field`. That inference was a trap while the two
-    disagreed; now that `Game`'s primary key *is* the UUID the column stores,
-    it lands on the right type on its own.
+    The forms above hide the key from a person. The API
+    hides it by generating no schema from either model, so
+    no inference over their fields runs at all. The probe
+    states that the scan still finds one where it is.
     """
-    assert AutoPlayEventIn.model_fields["game"].annotation is UUID
+
+    class PlayEventProbe(ModelSchema):
+        class Meta:
+            model = PlayEvent
+            fields = ("note",)
+
+    #: No `ModelSchema` is left to find.
+    #: The probe says the scan would find one.
+    assert models_covered({"probe": PlayEventProbe}) == {PlayEvent}
+
+    covered = models_covered(vars(games.api))
+    assert PlayEvent not in covered
+    assert Session not in covered
 
 
 # --- Migration: forward backfill --------------------------------------------

@@ -2,7 +2,7 @@ import json
 import logging
 from collections.abc import Mapping
 from datetime import UTC, date, datetime
-from typing import Any, Final, NoReturn, cast
+from typing import Annotated, Any, Final, NoReturn, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.contrib import messages
@@ -16,19 +16,22 @@ from django.db.models import (
     Max,
     OuterRef,
     Q,
+    QuerySet,
     Subquery,
     Value,
     When,
 )
 from django.db.models.functions import Coalesce, Greatest
 from django.utils.timezone import now as django_timezone_now
-from ninja import Field, ModelSchema, NinjaAPI, Router, Schema, Status
+from ninja import Field, NinjaAPI, Query, Router, Schema, Status
 from ninja.errors import HttpError
 from ninja.security import django_auth
+from pydantic import BeforeValidator, ConfigDict, PlainSerializer, WithJsonSchema
 
 from common.criteria import FilterError, filter_from_json
 from common.date_time_presentation import date_time_presentation_for_request
 from common.filter_execution import execute_filter, regex_timeout_api
+from games.commands.playthrough import ActStatement
 from games.filters import (
     MODE_PARSERS,
     filter_for_model,
@@ -44,14 +47,16 @@ from games.models import (
     Game,
     Platform,
     PlayerGameStatus,
-    PlayEvent,
+    Playthrough,
+    PlaythroughKind,
     Purchase,
     PurchaseConversionState,
     Session,
+    UserLibrary,
 )
 from games.ownership import owned_or_404
-from games.reads.playthrough_endpoints import restatable_days
-from games.reads.playthrough_provenance import run_for_row
+from games.reads.playthrough_endpoints import days_to_finish
+from games.reads.playthrough_runs import library_runs
 from games.removal import remove
 from games.sorting import (
     MODE_SORTS,
@@ -61,7 +66,7 @@ from games.sorting import (
     parse_find_filter,
     parse_per_page_override,
 )
-from games.writes.answers import CONFLICT_STATUS, CommandFailed
+from games.writes.answers import CommandFailed
 from games.writes.playergame import new_correlation_id, record_facts
 from games.writes.playthrough import RunDraft, record_run, remove_run, restate_run
 from timetracker.config import SettingSource
@@ -84,6 +89,7 @@ from timetracker.settings_resolver import (
     resolve_for_user_with_origin,
     resolve_with_origin,
 )
+from timetracker.temporal import TemporalValue
 from timetracker.uuidv7 import UUIDv7
 
 logger = logging.getLogger("games")
@@ -101,11 +107,34 @@ def _command_failed(request, failure: CommandFailed):
     )
 
 
-#: A run whose dates this day-shaped payload cannot state.
-_RICHER_THAN_A_DAY = (
-    "This playthrough states a date this endpoint cannot hold, so patching it "
-    "here would lose what it says."
-)
+def _stated_temporal(value: object) -> object:
+    """Build the value a canonical string names.
+
+    TemporalValueParseError is a ValueError, so pydantic
+    answers 422.
+    """
+    if value is None or isinstance(value, TemporalValue):
+        return value
+    if isinstance(value, str):
+        return TemporalValue(value)
+    raise ValueError("A date is stated as a string.")
+
+
+#: A canonical temporal value: 2026-03, 202X, 2026-03-04~.
+#:
+#: The schema is stated by hand, because pydantic reads the
+#: dataclass otherwise and asks a request for its fields.
+type StatedTemporal = Annotated[
+    TemporalValue | None,
+    BeforeValidator(_stated_temporal),
+    PlainSerializer(lambda value: None if value is None else value.serialize()),
+    WithJsonSchema(
+        {
+            "anyOf": [{"type": "string"}, {"type": "null"}],
+            "examples": ["2026-03-04", "2026-03", "202X", "2024-01/..", "2026-03-04~"],
+        }
+    ),
+]
 
 playthrough_router = Router()
 game_router = Router()
@@ -123,39 +152,56 @@ class GameStatusUpdate(Schema):
 
 
 class PlaythroughIn(Schema):
+    #: An unknown key is a mistake, not silence.
+    model_config = ConfigDict(extra="forbid")
+
     game_id: UUIDv7
-    started: date | None = None
-    ended: date | None = None
+    started: StatedTemporal = None
+    completed: StatedTemporal = None
     note: str = ""
-    days_to_finish: int | None = None
-
-
-class AutoPlayEventIn(ModelSchema):
-    class Meta:
-        model = PlayEvent
-        fields = ("game", "started", "ended", "note")
 
 
 class UpdatePlaythroughIn(Schema):
-    started: date | None = None
-    ended: date | None = None
+    #: An unknown key is a mistake, not silence.
+    model_config = ConfigDict(extra="forbid")
+
+    started: StatedTemporal = None
+    completed: StatedTemporal = None
     note: str = ""
 
 
 class PlaythroughOut(Schema):
-    """A run, read off the legacy row.
-
-    #1015 reads the projection instead.
-    """
+    """One run, as the projection states it."""
 
     id: UUIDv7
-    game: str = Field(..., alias="game.name")
-    started: date | None = None
-    ended: date | None = None
-    days_to_finish: int | None = None
-    note: str = ""
-    updated_at: datetime
+    game: str = Field(..., alias="player_game.game.name")
+    game_id: UUIDv7 = Field(..., alias="player_game.game.id")
+    name: str
+    note: str
+    started: str | None
+    started_lower: date | None
+    started_upper: date | None
+    start_recorded_at: datetime | None
+    start_note: str
+    completed: str | None
+    completed_lower: date | None
+    completed_upper: date | None
+    completion_recorded_at: datetime | None
+    completion_note: str
+    days_to_finish: int | None
     created_at: datetime
+
+    @staticmethod
+    def resolve_started(run: Playthrough) -> str | None:
+        return None if run.started is None else run.started.serialize()
+
+    @staticmethod
+    def resolve_completed(run: Playthrough) -> str | None:
+        return None if run.completed is None else run.completed.serialize()
+
+    @staticmethod
+    def resolve_days_to_finish(run: Playthrough) -> int | None:
+        return days_to_finish(run)
 
 
 # One schema per search endpoint rather than one shared by all three: each
@@ -221,10 +267,40 @@ def partial_update_game(request, game_id: UUIDv7, payload: GameStatusUpdate):
     return Status(204, None)
 
 
+def _readable_runs(library: UserLibrary) -> QuerySet[Playthrough]:
+    """What the two GET routes answer about."""
+    return library_runs(library).select_related("player_game__game")
+
+
+def _writable_runs(library: UserLibrary) -> QuerySet[Playthrough]:
+    """What PATCH and DELETE find.
+
+    The read scope, less the run's own mark: RemovePlaythrough
+    answers Unchanged for a run already removed, and a scope
+    that hides it answers 404 instead. Every other narrowing
+    is kept, so no route writes a run no route reads.
+    """
+    return Playthrough.objects.select_related("player_game__game").filter(
+        library=library,
+        player_game__library=library,
+        player_game__removed_at__isnull=True,
+        player_game__game__removed_at__isnull=True,
+        kind=PlaythroughKind.ORDINARY,
+    )
+
+
 @playthrough_router.get("/", response=list[PlaythroughOut])
-def list_playthroughs(request):
+def list_playthroughs(
+    request, limit: int = Query(100, ge=0), offset: int = Query(0, ge=0)
+):
+    """The library's live ordinary runs, newest first.
+
+    `limit=0` is unbounded, as on presets. The order ends on
+    the key, so an offset reads a stable page.
+    """
     library = cast(User, request.user).library
-    return PlayEvent.objects.for_library(library)
+    runs = _readable_runs(library).order_by("-created_at", "id")[offset:]
+    return runs if limit == 0 else runs[:limit]
 
 
 @playthrough_router.post("/", response={204: None})
@@ -234,7 +310,12 @@ def create_playthrough(request, payload: PlaythroughIn):
     recorded = record_run(
         cast("User", request.user),
         game,
-        RunDraft(started=payload.started, ended=payload.ended, note=payload.note),
+        RunDraft(
+            #: Recording states both acts, dated or not.
+            started=ActStatement(payload.started),
+            completed=ActStatement(payload.completed),
+            note=payload.note,
+        ),
         correlation_id=new_correlation_id(),
     )
     messages.success(request, "Playthrough recorded")
@@ -247,10 +328,7 @@ def create_playthrough(request, payload: PlaythroughIn):
 @playthrough_router.get("/{playthrough_id}", response=PlaythroughOut)
 def get_playthrough(request, playthrough_id: UUIDv7):
     library = cast(User, request.user).library
-    playevent = owned_or_404(
-        PlayEvent.objects.for_library(library), library, id=playthrough_id
-    )
-    return playevent
+    return owned_or_404(_readable_runs(library), library, id=playthrough_id)
 
 
 @playthrough_router.patch("/{playthrough_id}", response={204: None})
@@ -258,28 +336,23 @@ def partial_update_playthrough(
     request, playthrough_id: UUIDv7, payload: UpdatePlaythroughIn
 ):
     library = cast(User, request.user).library
-    playevent = owned_or_404(
-        PlayEvent.objects.for_library(library), library, id=playthrough_id
-    )
-    converted = run_for_row(library, playevent.pk)
-    run = converted.run
-    if run is None:
-        raise CommandFailed(converted.sentence, CONFLICT_STATUS)
-    #: PATCH states part; restate_run states the whole. The
-    #: rest comes off the run, never the legacy row: nothing
-    #: writes that row any more, so merging its frozen days
-    #: in would revert an earlier PATCH without a word.
-    days = restatable_days(run)
-    if days is None:
-        raise CommandFailed(_RICHER_THAN_A_DAY, CONFLICT_STATUS)
-    stated = payload.dict(exclude_unset=True)
+    run = owned_or_404(_writable_runs(library), library, id=playthrough_id)
+    #: The stated keys, not a serialized dict.
+    #:
+    #: An endpoint the request leaves out is stated as
+    #: nothing, so a note-only PATCH records no act. dict()
+    #: would hand back canonical strings and every key, and
+    #: the commands take values.
+    stated = payload.model_fields_set
     restate_run(
         cast("User", request.user),
         run,
         RunDraft(
-            started=stated.get("started", days.started),
-            ended=stated.get("ended", days.ended),
-            note=stated.get("note", run.note),
+            started=ActStatement(payload.started) if "started" in stated else None,
+            completed=ActStatement(payload.completed)
+            if "completed" in stated
+            else None,
+            note=payload.note if "note" in stated else run.note,
         ),
         correlation_id=new_correlation_id(),
     )
@@ -290,15 +363,8 @@ def partial_update_playthrough(
 @playthrough_router.delete("/{playthrough_id}", response={204: None})
 def remove_playthrough(request, playthrough_id: UUIDv7):
     library = cast(User, request.user).library
-    playevent = owned_or_404(
-        PlayEvent.objects.for_library(library), library, id=playthrough_id
-    )
-    converted = run_for_row(library, playevent.pk)
-    if converted.run is None:
-        raise CommandFailed(converted.sentence, CONFLICT_STATUS)
-    remove_run(
-        cast("User", request.user), converted.run, correlation_id=new_correlation_id()
-    )
+    run = owned_or_404(_writable_runs(library), library, id=playthrough_id)
+    remove_run(cast("User", request.user), run, correlation_id=new_correlation_id())
     return Status(204, None)
 
 

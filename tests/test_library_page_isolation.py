@@ -6,10 +6,10 @@ import pytest
 from django.test import RequestFactory
 from django.urls import reverse
 from django.utils import timezone
+from playthrough_conversion import convert_and_take_runs
 
 from common.layout import recent_session_resumes
 from common.returns import action_url
-from games.backfill.playthrough import convert_library
 from games.models import (
     Device,
     Game,
@@ -19,7 +19,6 @@ from games.models import (
     Purchase,
     Session,
 )
-from games.reads.playthrough_provenance import run_for_row
 from games.views.general import model_counts
 
 pytestmark = pytest.mark.django_db
@@ -83,6 +82,16 @@ def test_library_page_evaluates_each_summary_count_once(
         response = client.get("/tracker/library")
 
     assert response.status_code == 200
+
+
+def _converted_run(library, game):
+    """The run the conversion added here.
+
+    None where the test tracks no game: every case that
+    names a run tracks its own.
+    """
+    runs = convert_and_take_runs(library, game)
+    return runs[0] if runs else None
 
 
 @pytest.fixture
@@ -163,13 +172,10 @@ def world(client, django_user_model):
     foreign_playevent = PlayEvent.objects.create(
         game=foreign_game, started=now.date(), note="Foreign event"
     )
-    #: #687 states a run, so the edit page
-    #: needs the row converted into one.
-    convert_library(owner_library)
-    convert_library(foreign_library)
-    #: #1012 moved the routes onto the run.
-    own_run = run_for_row(owner_library, own_playevent.pk).run
-    foreign_run = run_for_row(foreign_library, foreign_playevent.pk).run
+    #: #1012 keyed the edit route on the run,
+    #: so the row is converted into one here.
+    own_run = _converted_run(owner_library, own_game)
+    foreign_run = _converted_run(foreign_library, foreign_game)
     return SimpleNamespace(**locals())
 
 

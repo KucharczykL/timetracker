@@ -4,6 +4,7 @@ from datetime import date
 
 import pytest
 
+from games.commands.playthrough import ActStatement
 from games.models import Game, LibraryEvent, PlayerGame, Playthrough
 from games.writes.answers import CommandFailed
 from games.writes.playergame import new_correlation_id, track_game
@@ -30,13 +31,18 @@ def game(owned_library):
     return Game.objects.create(library=owned_library, name="Outer Wilds")
 
 
+def _act(day: date | None) -> ActStatement:
+    """The act, dated where a day was given."""
+    return ActStatement(None if day is None else TemporalValue.from_day(day))
+
+
 def a_recorded_run(user, game, *, started, ended) -> Playthrough:
     """Track, state one run, and read back."""
     track_game(user, game, correlation_id=new_correlation_id())
     record_run(
         user,
         game,
-        RunDraft(started=started, ended=ended, note=""),
+        RunDraft(started=_act(started), completed=_act(ended), note=""),
         correlation_id=new_correlation_id(),
     )
     #: The run the game was born with,
@@ -58,7 +64,11 @@ class TestRecordRun:
         record_run(
             user,
             game,
-            RunDraft(started=date(2026, 1, 2), ended=date(2026, 2, 3), note="12h"),
+            RunDraft(
+                started=_act(date(2026, 1, 2)),
+                completed=_act(date(2026, 2, 3)),
+                note="12h",
+            ),
             correlation_id=new_correlation_id(),
         )
 
@@ -75,7 +85,7 @@ class TestRecordRun:
             record_run(
                 user,
                 game,
-                RunDraft(started=day, ended=day, note=""),
+                RunDraft(started=_act(day), completed=_act(day), note=""),
                 correlation_id=new_correlation_id(),
             )
 
@@ -89,7 +99,7 @@ class TestRecordRun:
         recorded = record_run(
             user,
             game,
-            RunDraft(started=None, ended=None, note=""),
+            RunDraft(started=_act(None), completed=_act(None), note=""),
             correlation_id=new_correlation_id(),
         )
 
@@ -104,7 +114,7 @@ class TestRecordRun:
         recorded = record_run(
             user,
             game,
-            RunDraft(started=None, ended=None, note=""),
+            RunDraft(started=_act(None), completed=_act(None), note=""),
             correlation_id=new_correlation_id(),
         )
 
@@ -117,7 +127,7 @@ class TestRecordRun:
         record_run(
             user,
             game,
-            RunDraft(started=None, ended=None, note=""),
+            RunDraft(started=_act(None), completed=_act(None), note=""),
             correlation_id=new_correlation_id(),
         )
 
@@ -135,7 +145,11 @@ class TestRecordRun:
             record_run(
                 user,
                 game,
-                RunDraft(started=date(2026, 2, 3), ended=date(2026, 1, 2), note=""),
+                RunDraft(
+                    started=_act(date(2026, 2, 3)),
+                    completed=_act(date(2026, 1, 2)),
+                    note="",
+                ),
                 correlation_id=new_correlation_id(),
             )
 
@@ -153,7 +167,11 @@ class TestRestateRun:
         restate_run(
             user,
             run,
-            RunDraft(started=date(2026, 1, 3), ended=None, note=""),
+            RunDraft(
+                started=_act(date(2026, 1, 3)),
+                completed=_act(None),
+                note="",
+            ),
             correlation_id=new_correlation_id(),
         )
 
@@ -165,7 +183,7 @@ class TestRestateRun:
     @pytest.mark.django_db(transaction=True)
     def test_a_resubmitted_edit_appends_nothing(self, user, game):
         run = a_recorded_run(user, game, started=date(2026, 1, 2), ended=None)
-        draft = RunDraft(started=date(2026, 1, 2), ended=None, note="")
+        draft = RunDraft(started=_act(date(2026, 1, 2)), completed=_act(None), note="")
         restate_run(user, run, draft, correlation_id=new_correlation_id())
         before = LibraryEvent.objects.filter(library=user.library).count()
 
@@ -182,7 +200,11 @@ class TestRestateRun:
         restate_run(
             user,
             born,
-            RunDraft(started=date(2026, 1, 2), ended=None, note=""),
+            RunDraft(
+                started=_act(date(2026, 1, 2)),
+                completed=_act(None),
+                note="",
+            ),
             correlation_id=new_correlation_id(),
         )
 
@@ -193,6 +215,24 @@ class TestRestateRun:
         )
         assert "library.playthrough.started" in types
         assert "library.playthrough.start_corrected" not in types
+
+    @pytest.mark.django_db(transaction=True)
+    def test_an_endpoint_nobody_states_records_no_act(self, user, game):
+        """A note-only edit records neither act."""
+        track_game(user, game, correlation_id=new_correlation_id())
+        born = Playthrough.objects.get(player_game__game=game)
+
+        restate_run(
+            user,
+            born,
+            RunDraft(started=None, completed=None, note="just a note"),
+            correlation_id=new_correlation_id(),
+        )
+
+        born.refresh_from_db()
+        assert born.note == "just a note"
+        assert born.start_recorded_at is None
+        assert born.completion_recorded_at is None
 
     @pytest.mark.django_db(transaction=True)
     def test_a_run_moved_wholly_later_states_both_days(self, user, game):
@@ -209,7 +249,11 @@ class TestRestateRun:
         restate_run(
             user,
             run,
-            RunDraft(started=date(2026, 3, 1), ended=date(2026, 3, 4), note=""),
+            RunDraft(
+                started=_act(date(2026, 3, 1)),
+                completed=_act(date(2026, 3, 4)),
+                note="",
+            ),
             correlation_id=new_correlation_id(),
         )
 
@@ -226,7 +270,11 @@ class TestRestateRun:
         restate_run(
             user,
             run,
-            RunDraft(started=date(2026, 1, 2), ended=date(2026, 1, 5), note=""),
+            RunDraft(
+                started=_act(date(2026, 1, 2)),
+                completed=_act(date(2026, 1, 5)),
+                note="",
+            ),
             correlation_id=new_correlation_id(),
         )
 
@@ -245,7 +293,11 @@ class TestRestateRun:
             restate_run(
                 user,
                 run,
-                RunDraft(started=date(2026, 3, 4), ended=date(2026, 3, 1), note=""),
+                RunDraft(
+                    started=_act(date(2026, 3, 4)),
+                    completed=_act(date(2026, 3, 1)),
+                    note="",
+                ),
                 correlation_id=new_correlation_id(),
             )
 
@@ -260,7 +312,11 @@ class TestRestateRun:
         restate_run(
             user,
             run,
-            RunDraft(started=date(2026, 1, 5), ended=None, note=""),
+            RunDraft(
+                started=_act(date(2026, 1, 5)),
+                completed=_act(None),
+                note="",
+            ),
             correlation_id=new_correlation_id(),
         )
 
@@ -288,7 +344,11 @@ class TestRemoveRun:
         record_run(
             user,
             game,
-            RunDraft(started=date(2026, 3, 4), ended=None, note=""),
+            RunDraft(
+                started=_act(date(2026, 3, 4)),
+                completed=_act(None),
+                note="",
+            ),
             correlation_id=new_correlation_id(),
         )
         second = Playthrough.objects.filter(player_game__game=game).latest("created_at")
