@@ -142,6 +142,58 @@ def _state_endpoint(
     )
 
 
+def _state_first_act(
+    actor: User,
+    run: Playthrough,
+    command: EndpointCommand,
+    when: TemporalValue | None,
+    *,
+    correlation_id: uuid.UUID,
+) -> None:
+    """State one endpoint, never correcting it.
+
+    A caller that means "this happened today" states a new
+    act, so a run already holding that endpoint is refused
+    rather than overwritten. The command reads the run
+    under dispatch's lock, so a stale page cannot slip a
+    correction past as a first statement.
+
+    No note: the act carries none of its own, and the
+    endpoint's note is the endpoint's to keep.
+    """
+    with answered("playthrough"):
+        _dispatch(
+            command(playthrough_id=run.pk, when=when, note=""),
+            actor=actor,
+            library=actor.library,
+            correlation_id=correlation_id,
+        )
+
+
+def start_run(
+    actor: User,
+    run: Playthrough,
+    when: TemporalValue | None,
+    *,
+    correlation_id: uuid.UUID,
+) -> None:
+    """State that a run began, first time only."""
+    _state_first_act(actor, run, StartPlaythrough, when, correlation_id=correlation_id)
+
+
+def complete_run(
+    actor: User,
+    run: Playthrough,
+    when: TemporalValue | None,
+    *,
+    correlation_id: uuid.UUID,
+) -> None:
+    """State that a run finished, first time only."""
+    _state_first_act(
+        actor, run, CompletePlaythrough, when, correlation_id=correlation_id
+    )
+
+
 def _statement_order(
     run: Playthrough,
     started: ActStatement | None,

@@ -1,5 +1,7 @@
 """#683: the status a lifecycle act offers."""
 
+from datetime import date
+
 import pytest
 from django.urls import reverse
 from django.utils import timezone
@@ -197,6 +199,58 @@ def test_a_start_on_a_completed_game_leaves_the_status(
     run.refresh_from_db()
     assert run.start_recorded_at is not None
     assert status_of(owned_library) == PlayerGameStatus.COMPLETED
+
+
+def test_a_stale_start_press_leaves_the_stated_day(logged_in, owned_library, tracked):
+    """A page rendered before the start was stated presses on it anyway.
+
+    The route means "this began today", so a run that already
+    states a start is refused. Correcting it instead would
+    overwrite a recorded day and answer the person success.
+    """
+    run = Playthrough.objects.get(player_game__game=tracked)
+    logged_in.post(
+        reverse("games:edit_playthrough", args=[run.pk]),
+        {"game": str(tracked.pk), "started": "2024-01-05", "ended": "", "note": ""},
+    )
+
+    logged_in.post(reverse("games:start_playthrough", args=[run.pk]))
+
+    run.refresh_from_db()
+    assert run.started_lower == date(2024, 1, 5)
+
+
+def test_a_stale_completion_press_leaves_the_stated_day(logged_in, tracked):
+    run = Playthrough.objects.get(player_game__game=tracked)
+    logged_in.post(
+        reverse("games:edit_playthrough", args=[run.pk]),
+        {
+            "game": str(tracked.pk),
+            "started": "2024-01-05",
+            "ended": "2024-02-06",
+            "note": "",
+        },
+    )
+
+    logged_in.post(reverse("games:complete_playthrough", args=[run.pk]))
+
+    run.refresh_from_db()
+    assert run.completed_upper == date(2024, 2, 6)
+
+
+def test_a_refused_press_tells_the_person_why(logged_in, tracked):
+    """The refusal reaches the page the redirect lands on."""
+    run = Playthrough.objects.get(player_game__game=tracked)
+    logged_in.post(
+        reverse("games:edit_playthrough", args=[run.pk]),
+        {"game": str(tracked.pk), "started": "2024-01-05", "ended": "", "note": ""},
+    )
+
+    response = logged_in.post(
+        reverse("games:start_playthrough", args=[run.pk]), follow=True
+    )
+
+    assert "This run already has a start." in response.content.decode()
 
 
 def test_neither_act_answers_a_get(logged_in, tracked):
