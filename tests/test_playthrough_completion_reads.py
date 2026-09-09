@@ -1,16 +1,27 @@
 """The completion a Purchase row reports."""
 
+import uuid
 from datetime import date
 
 import pytest
 from completed_runs import add_game, add_run, make_purchase
 from django.db.models import Subquery
+from django.utils import timezone
 
+from games.commands.playergame import RemovePlayerGame
 from games.commands.playthrough import RemovePlaythrough
 from games.events.dispatch import dispatch
-from games.models import Purchase
+from games.models import (
+    PlayerGame,
+    PlayerGameStatus,
+    Playthrough,
+    PlaythroughKind,
+    Purchase,
+)
 from games.reads.playthrough_completions import (
     PURCHASE_RUNS,
+    completion_exists,
+    ranked_completions,
     reported_completion,
     reported_completion_day,
 )
@@ -184,26 +195,66 @@ def test_a_removed_game_leaves_the_live_one_reporting(owned_user, owned_library)
 
 
 @pytest.mark.django_db(transaction=True)
-def test_another_librarys_run_reports_nothing(
+def test_a_run_naming_another_librarys_player_game_reports_nothing(
     owned_user, owned_library, django_user_model
 ):
+    """The drift `audit_library_ownership` reports.
+
+    The run is this library's and its parent is not, so
+    only the parent's own clause leaves it out. A reader
+    that scoped on the run alone would report 2024.
+    """
     stranger = django_user_model.objects.create_user(username="stranger", password="p")
     purchase = make_purchase(owned_library)
-    add_game(
+    game, _ = add_game(
         owned_user,
         owned_library,
         purchase,
         "Mine",
         TemporalValue.from_day(date(2020, 3, 4)),
     )
-
-    row = (
-        Purchase.objects.for_library(owned_library)
-        .annotate(value=reported_completion(stranger.library, PURCHASE_RUNS))
-        .get(pk=purchase.pk)
+    foreign_parent = PlayerGame.objects.create(
+        pk=uuid.uuid7(),
+        library=stranger.library,
+        game=game,
+        tracked_at=timezone.now(),
+        status=PlayerGameStatus.PLAYED,
+    )
+    Playthrough.objects.create(
+        id=uuid.uuid7(),
+        library=owned_library,
+        player_game=foreign_parent,
+        kind=PlaythroughKind.ORDINARY,
+        created_at=timezone.now(),
+        completed=TemporalValue.from_day(date(2024, 7, 1)),
+        completion_recorded_at=timezone.now(),
     )
 
-    assert row.value is None
+    value, day = read(owned_library, purchase)
+
+    assert value == TemporalValue.from_day(date(2020, 3, 4))
+    assert day == date(2020, 3, 4)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_removed_player_game_reports_nothing(owned_user, owned_library):
+    """Its run carries no mark of its own."""
+    purchase = make_purchase(owned_library)
+    game, _ = add_game(
+        owned_user,
+        owned_library,
+        purchase,
+        "Untracked",
+        TemporalValue.from_day(date(2020, 3, 4)),
+    )
+    dispatch(
+        RemovePlayerGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="untrack",
+    )
+
+    assert read(owned_library, purchase) == (None, None)
 
 
 @pytest.mark.django_db(transaction=True)
@@ -225,7 +276,61 @@ def test_a_second_run_at_one_game_reports_the_later(owned_user, owned_library):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_the_readers_are_subqueries(owned_library):
-    """A subquery shares no join to narrow."""
-    assert isinstance(reported_completion(owned_library, PURCHASE_RUNS), Subquery)
-    assert isinstance(reported_completion_day(owned_library, PURCHASE_RUNS), Subquery)
+def test_the_identity_settles_a_full_tie(owned_user, owned_library):
+    """Two runs state one value, so only `-pk` orders.
+
+    Without the third key the row reported is whatever the
+    database hands back first, and the cell and the sort
+    may then name different runs.
+    """
+    purchase = make_purchase(owned_library)
+    same_day = TemporalValue.from_day(date(2020, 3, 4))
+    _, first = add_game(owned_user, owned_library, purchase, "One", same_day)
+    _, second = add_game(owned_user, owned_library, purchase, "Two", same_day)
+
+    row = (
+        Purchase.objects.for_library(owned_library)
+        .annotate(
+            run=Subquery(
+                ranked_completions(owned_library, PURCHASE_RUNS).values("pk")[:1]
+            )
+        )
+        .get(pk=purchase.pk)
+    )
+
+    assert row.run == max(first.pk, second.pk)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_act_and_the_value_read_one_path(owned_user, owned_library):
+    """One path, so the cell cannot state two facts.
+
+    `completion_exists` and `reported_completion` are two
+    subqueries the cell reads together. A path that agreed
+    with neither would print `-` beside a sorted date, or
+    `Unknown` for a purchase with no run at all.
+    """
+    none = make_purchase(owned_library, name="None")
+    add_game(owned_user, owned_library, none, "Playing", False)
+    dayless = make_purchase(owned_library, name="Dayless")
+    add_game(owned_user, owned_library, dayless, "Dayless", None)
+    dated = make_purchase(owned_library, name="Dated")
+    add_game(
+        owned_user,
+        owned_library,
+        dated,
+        "Dated",
+        TemporalValue.from_day(date(2020, 3, 4)),
+    )
+
+    rows = {
+        row.name: (row.act, row.value)
+        for row in Purchase.objects.for_library(owned_library).annotate(
+            act=completion_exists(owned_library, None),
+            value=reported_completion(owned_library, PURCHASE_RUNS),
+        )
+    }
+
+    assert rows["None"] == (False, None)
+    assert rows["Dayless"] == (True, None)
+    assert rows["Dated"] == (True, TemporalValue.from_day(date(2020, 3, 4)))
