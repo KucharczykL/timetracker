@@ -114,15 +114,20 @@ and `library_runs()` would have nothing to chain. The queryset declares no
 
 | alias | is |
 |---|---|
-| `last_played_day` | a correlated `Subquery`: the live sessions at the run's game, newest first, one row, truncated to a day in the clock's zone |
+| `activity_day` | a `Coalesce`: a correlated `Subquery` over the live sessions at the run's game, newest first, one row, truncated to a day in the clock's zone — falling back to `started_lower` |
 | `activity` | a `Case`: null where the completion is stated, else one of the three words |
+
+`activity_day` is the day the word read, so the screen prints its sentence from
+the same alias the badge came from rather than reading the sessions a second
+time.
 
 The subquery states the library itself, as `game__library` against the run's own
 `library` column. It therefore needs no library argument, and one run never
 reads another library's sessions.
 
-`activity` reads `last_played_day` first and `started_lower` second, in the order
-the table above states. The clock states the threshold and the zone alone. A
+`activity` reads `activity_day`, which prefers the session day and falls back to
+the start day, in the order the table above states. The clock states the
+threshold and the zone alone. A
 null clock reads the registry default in UTC, which is what a filter compiled
 for validation gets, and what the several test harnesses get that build a
 context from `with_filter_aliases(model._default_manager.all())`. Neither knows
@@ -141,6 +146,10 @@ no error. The guard makes the second call a statement of the same fact.
 | `library_runs()` | the Playthrough list's rows, the Playthrough API, both filter-context builders | yes |
 | `numbered_for()` | Game detail's rows | yes |
 | `live_ordinary_runs()` | the commands | no |
+
+Neither takes a clock. Each holds a library already, and the clock is the
+library's, so both build it themselves: a parameter would let one call site
+state the viewer's threshold and the next forget it.
 
 `numbered_for()` filters `Playthrough.objects` itself rather than narrowing
 `library_runs()`, so it cannot inherit the alias; the list page reads its numbers
