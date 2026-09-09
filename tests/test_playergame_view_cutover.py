@@ -13,6 +13,7 @@ from games.models import (
     PlayerGame,
     PlayerGameStatus,
     PlayEvent,
+    Playthrough,
     Purchase,
     Session,
 )
@@ -282,13 +283,13 @@ def test_a_session_leaves_a_finished_game_alone(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_adding_a_play_event_records_completed(logged_in, owned_library, tracked_game):
+def test_adding_a_playthrough_records_completed(logged_in, owned_library, tracked_game):
     logged_in.post(
         reverse("games:add_playthrough"),
         {
             "game": str(tracked_game.id),
             "started": "",
-            "ended": "",
+            "ended": "2026-01-02",
             "note": "",
             "also_mark_completed": "on",
         },
@@ -298,12 +299,12 @@ def test_adding_a_play_event_records_completed(logged_in, owned_library, tracked
 
 
 @pytest.mark.django_db(transaction=True)
-def test_editing_a_play_event_records_completed_too(
+def test_editing_a_playthrough_records_completed_too(
     logged_in, owned_library, tracked_game
 ):
-    PlayEvent.objects.create(game=tracked_game)
-    #: The edit page states facts about it.
-    [run] = convert_and_take_runs(owned_library, tracked_game)
+    #: Tracking states the run, which records no endpoint,
+    #: so the day this edit adds is a first completion.
+    run = Playthrough.objects.get(player_game__game=tracked_game)
 
     logged_in.post(
         reverse("games:edit_playthrough", args=[run.pk]),
@@ -317,6 +318,32 @@ def test_editing_a_play_event_records_completed_too(
     )
 
     assert PlayerGame.objects.get().status == PlayerGameStatus.COMPLETED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_correcting_a_converted_completion_records_no_status(
+    logged_in, owned_library, tracked_game
+):
+    """A converted row states its completion, dayless.
+
+    Writing the day down corrects that act rather than
+    recording one, so the ticked box states no status.
+    """
+    PlayEvent.objects.create(game=tracked_game)
+    [run] = convert_and_take_runs(owned_library, tracked_game)
+
+    logged_in.post(
+        reverse("games:edit_playthrough", args=[run.pk]),
+        {
+            "game": str(tracked_game.id),
+            "started": "",
+            "ended": "2026-01-02",
+            "note": "",
+            "also_mark_completed": "on",
+        },
+    )
+
+    assert PlayerGame.objects.get().status == PlayerGameStatus.UNPLAYED
 
 
 @pytest.mark.django_db(transaction=True)
