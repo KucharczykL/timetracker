@@ -2,6 +2,7 @@
 
 import pytest
 from django.urls import reverse
+from django.utils import timezone
 
 from games.models import Game, LibraryEvent, PlayerGame, PlayerGameStatus, Playthrough
 from games.reads.companion_status import played_is_offered
@@ -159,3 +160,60 @@ def test_a_note_only_edit_states_no_status(
     run.refresh_from_db()
     assert run.note == "read the manual"
     assert status_of(owned_library) == PlayerGameStatus.UNPLAYED
+
+
+def test_starting_a_run_states_today_and_played(logged_in, owned_library, tracked):
+    run = Playthrough.objects.get(player_game__game=tracked)
+
+    logged_in.post(reverse("games:start_playthrough", args=[run.pk]))
+
+    run.refresh_from_db()
+    assert run.start_recorded_at is not None
+    assert run.started_lower == timezone.localdate()
+    assert status_of(owned_library) == PlayerGameStatus.PLAYED
+
+
+def test_completing_a_run_states_today_and_completed(logged_in, owned_library, tracked):
+    run = Playthrough.objects.get(player_game__game=tracked)
+    logged_in.post(reverse("games:start_playthrough", args=[run.pk]))
+
+    logged_in.post(reverse("games:complete_playthrough", args=[run.pk]))
+
+    run.refresh_from_db()
+    assert run.completion_recorded_at is not None
+    assert run.completed_upper == timezone.localdate()
+    assert status_of(owned_library) == PlayerGameStatus.COMPLETED
+
+
+def test_a_start_on_a_completed_game_leaves_the_status(
+    owned_user, logged_in, owned_library, tracked
+):
+    state(owned_user, tracked, PlayerGameStatus.COMPLETED)
+    run = Playthrough.objects.get(player_game__game=tracked)
+
+    logged_in.post(reverse("games:start_playthrough", args=[run.pk]))
+
+    run.refresh_from_db()
+    assert run.start_recorded_at is not None
+    assert status_of(owned_library) == PlayerGameStatus.COMPLETED
+
+
+def test_neither_act_answers_a_get(logged_in, tracked):
+    run = Playthrough.objects.get(player_game__game=tracked)
+
+    for name in ("games:start_playthrough", "games:complete_playthrough"):
+        assert logged_in.get(reverse(name, args=[run.pk])).status_code == 405
+
+
+def test_an_act_keeps_the_run_note(logged_in, owned_user, owned_library, tracked):
+    """The restatement carries the note, so no describe fires."""
+    run = Playthrough.objects.get(player_game__game=tracked)
+    logged_in.post(
+        reverse("games:edit_playthrough", args=[run.pk]),
+        {"game": str(tracked.pk), "started": "", "ended": "", "note": "12h"},
+    )
+
+    logged_in.post(reverse("games:start_playthrough", args=[run.pk]))
+
+    run.refresh_from_db()
+    assert run.note == "12h"

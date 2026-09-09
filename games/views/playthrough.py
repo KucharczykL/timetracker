@@ -320,7 +320,7 @@ def _no_run_here(request: HttpRequest, game: Game, sentence: str) -> HttpRespons
     )
 
 
-def _editable_runs(library: UserLibrary) -> QuerySet[Playthrough]:
+def editable_runs(library: UserLibrary) -> QuerySet[Playthrough]:
     """This library's live runs, their game beside them."""
     return Playthrough.objects.select_related("player_game__game").filter(
         library=library,
@@ -329,7 +329,7 @@ def _editable_runs(library: UserLibrary) -> QuerySet[Playthrough]:
     )
 
 
-def _record_completed(
+def record_completed(
     request: HttpRequest, game: Game, correlation_id: uuid.UUID
 ) -> bool:
     """State Completed for the game just finished.
@@ -374,13 +374,13 @@ def _record_companion_status(
             correlation_id=correlation_id,
         )
     if draft.completed is not None and form.cleaned_data["also_mark_completed"]:
-        _record_completed(request, game, correlation_id)
+        record_completed(request, game, correlation_id)
 
 
 @login_required
 def edit_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
-    run = owned_or_404(_editable_runs(library), library, id=playthrough_id)
+    run = owned_or_404(editable_runs(library), library, id=playthrough_id)
     game = run.player_game.game
     #: Seeded from the run, never from a legacy row:
     #: nothing writes that row any more, so a second edit
@@ -428,7 +428,7 @@ def edit_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse
 @login_required
 def remove_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
-    run = owned_or_404(_editable_runs(library), library, id=playthrough_id)
+    run = owned_or_404(editable_runs(library), library, id=playthrough_id)
     game = run.player_game.game
 
     def act() -> None:
