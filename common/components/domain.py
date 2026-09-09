@@ -169,6 +169,10 @@ def LinkedPurchase(purchase: Purchase) -> Node:
     link_content = ""
     games_list: Node | None = None
     game_count = purchase.games.count()
+    if game_count == 0:
+        #: A purchase is live while it names no game, so the
+        #: list renders one. Its own name is all it states.
+        link_content = purchase.name or "No games"
     if game_count == 1:
         first_game = purchase.games.first()
         if first_game is not None:

@@ -9,7 +9,6 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
-from games.views.purchase import _purchases_with_completions
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.untracked_games
@@ -56,20 +55,11 @@ def test_no_completion_prints_a_dash(logged_client, owned_user, owned_library):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_purchase_naming_no_game_reports_no_completion(owned_library):
-    """It names no run, so the cell is a dash.
-
-    Read through the queryset rather than the page: a purchase
-    naming no game answers 500 today, because `LinkedPurchase`
-    states no link content for one. That predates this issue.
-    """
+def test_a_purchase_naming_no_game_prints_a_dash(logged_client, owned_library):
+    """It names no run."""
     purchase = make_purchase(owned_library)
 
-    row = _purchases_with_completions(owned_library).get(pk=purchase.pk)
-
-    assert row.has_completion is False
-    assert row.completed_value is None
-    assert row.completed_day is None
+    assert finished_cell(logged_client, purchase) == "-"
 
 
 @pytest.mark.django_db(transaction=True)
