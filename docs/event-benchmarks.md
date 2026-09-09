@@ -169,7 +169,7 @@ the number stops depending on that race.
 
 | Measurement | Value |
 | --- | --- |
-| Command p50 / p95 / max | 4.3 ms / 4.9 ms / 7.9 ms, against a 100 ms budget |
+| Command p50 / p95 / max | 5.2 ms / 6.0 ms / 6.4 ms, against a 100 ms budget |
 | Statements per command | 10 — 4 to the event store, 2 to the projections, the rest lookups and transaction control |
 | Statements per replayed event | 1.00 |
 | Rows per replayed event | 1 |
@@ -240,12 +240,13 @@ Two conditions bound it, both already visible in the code:
 Neither is a new invariant. Both are reasons a buffering target is a piece of
 work with a design rather than a patch. Issue **#932** carries it, with these
 numbers, for when the budget grows tight again. #679's second projector shares
-the CURRENT_STATE family and cost 1.5 s, so the first family that reads before
-it writes is still the case to watch.
+the CURRENT_STATE family and cost 6.9 s once #688's seed gave both tables their
+50,410 rows, so the first family that reads before it writes is still the case
+to watch.
 
 ## Seeding, which has no budget
 
-`3,602 event/s` is a **bulk append measurement, not a command measurement**. It
+`2,971 event/s` is a **bulk append measurement, not a command measurement**. It
 comes from `LockedStream.append` writing 1,000 events per transaction, which no
 user-facing path does. There is no bulk command to measure yet, so there is no
 budget to compare it against; it is recorded because it sets how long seeding
@@ -322,7 +323,7 @@ and the per-event cost of the second projector is a row, not a statement.
 
 ## Teardown
 
-`23.82s` deletes roughly 400,000 rows — the events, their reference rows, the
+`19.09s` deletes roughly 350,000 rows — the events, their reference rows, the
 catalog, and both projections — through the same `purge_user_library` command an
 operator would use. A raw-SQL cascade would be faster and would be a second
 thing that can drift from `on_delete`, so the benchmark pays the time.

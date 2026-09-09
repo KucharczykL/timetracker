@@ -629,3 +629,25 @@ def test_a_seeded_library_rebuilds_both_tables_with_no_row_differing(owned_libra
         ("games_playergame", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
     ]
+
+
+@pytest.mark.django_db
+def test_a_seed_of_one_is_refused():
+    """A game is two events; one seeds none."""
+    with pytest.raises(CommandError, match="smallest seeded run"):
+        run_command(seed=1, iterations=1, warmup=0)
+
+
+@pytest.mark.django_db
+def test_a_negative_seed_is_refused():
+    with pytest.raises(CommandError, match="smallest seeded run"):
+        run_command(seed=-4, iterations=1, warmup=0)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_notice_counts_the_spare_games_the_scenarios_take():
+    """Half the seed, plus what each scenario consumes."""
+    output = run_command(seed=24, iterations=2, warmup=1)
+
+    #: 12 seeded, 2 scenarios of 2, 1 warmup.
+    assert "17 catalog row(s)" in output

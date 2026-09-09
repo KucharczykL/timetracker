@@ -295,8 +295,12 @@ def rows_of(library) -> tuple[ProjectionRows, ProjectionRows]:
     every caller compares two snapshots and two empty ones agree
     whatever the leg between them did.
     """
-    tracked = list(PlayerGame.objects.filter(library=library).order_by("pk").values())
-    runs = list(Playthrough.objects.filter(library=library).order_by("pk").values())
+    tracked: ProjectionRows = list(
+        PlayerGame.objects.filter(library=library).order_by("pk").values()
+    )
+    runs: ProjectionRows = list(
+        Playthrough.objects.filter(library=library).order_by("pk").values()
+    )
     assert tracked and runs, f"Library {library.pk} holds no rows to compare."
     return (tracked, runs)
 

@@ -3,15 +3,18 @@
 Issue [#688](https://github.com/KucharczykL/timetracker/issues/688). The code is
 in `tests/test_playergame_playthrough_gate.py`.
 
-A projection is a pure function of its events. The gate proves that for both
-`CURRENT_STATE` families at once, because one command writes a row in each. It
-adds no event type, no column and no migration.
+A projection must agree with the events it was written from. The gate replays
+one stream that carries every registered type of both `CURRENT_STATE` families,
+and compares the rows. It adds no event type, no column and no migration.
 
 ## The stream
 
 Commands build the stream. Nothing appends an event by hand, because the gate is
-a claim about the write path. A second library gets a shorter stream, and each
-assertion states that its rows do not move.
+a claim about the write path. Each column gets two different values, thus a
+projector that writes a constant fails. The stream leaves one removed row in
+each table. A second library gets a shorter stream: each assertion states that
+its rows keep their values, and that their `xmin` does not move. A rewrite moves
+`xmin` even when it writes the values the row already had.
 
 ## The three legs
 
@@ -31,28 +34,37 @@ in the comparison on the day it lands. Each clock-derived column comes from
 
 The gate compares the event types its stream appended with the union of
 `PlayerGames.handles` and `Playthroughs.handles`. A registered type that the
-stream does not append fails the test and names itself.
+stream does not append fails the test and names itself. A second guard compares
+the `PlaythroughKind` values the two legs wrote with the members of the
+enumeration, less the members that no command can state.
 
 ## The conversion leg
 
 Legs 1 and 2 run again on a converted stream. The conversion stamps
 `recorded_at` from each legacy row's `created_at`, thus two undated rows made in
-one instant tie on each sort field. The gate reads `numbered_for` before and
-after a rebuild, and demands the same number for each run.
+one instant tie on the first three sort fields. `RowNumber` follows the input
+order of the plan, which a swap changes. The fourth field is the key, and it is
+unique, thus a rebuild cannot give a run a different number. The gate states
+that field.
 
 ## The benchmark
 
 `seed_library` appends `PLAYERGAME_CREATED` and `PLAYTHROUGH_CREATED` for each
 game, under one `correlation_id`. Its parameter counts games. `--seed N`
 continues to count events and gives `N // 2` games to the seed, thus an odd `N`
-seeds one event fewer.
+seeds one event fewer. `--seed 0` seeds nothing and measures the commands alone.
+`--seed 1` is refused, because it seeds no game and does not say so.
 
 ## The operator's run
 
 `rebuild_projections` takes the scope group `--user`, `--library` or
-`--all-libraries`, and one of them is necessary. `--fail-on-drift` exits
-non-zero when a check found a differing row. A check alone exits zero, because a
-rebuild removes drift. `make verify-replay-parity` runs all three flags. It is
+`--all-libraries`, and one of them is necessary. `--all-libraries` refuses a
+database that holds no library. `--fail-on-drift` exits non-zero when a check
+found a differing row, and it needs `--check`: a rebuild removes drift instead
+of reporting it. A check alone exits zero. The command checks every library in
+the scope before it fails, and the failure names each library that drifted. A
+replay through no table is refused, because zero tables compared prints as zero
+rows differing. `make verify-replay-parity` runs all three flags. It is
 read-only, and it is not in `make check`: it needs a stream in the database.
 
 ## Evidence

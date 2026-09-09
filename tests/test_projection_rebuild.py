@@ -1608,3 +1608,61 @@ def test_all_libraries_fails_on_the_one_that_drifted(owned_library, django_user_
 
     with pytest.raises(CommandError, match="row\\(s\\) differ from the replay"):
         run_command("--all-libraries", "--check", "--fail-on-drift")
+
+
+@pytest.mark.django_db
+def test_all_libraries_names_every_library_that_drifted(
+    owned_library, django_user_model
+):
+    """A census, so one drift hides no other."""
+    second = django_user_model.objects.create_user(username="second-drifted")
+    drifted_library(owned_library)
+    drifted_library(second.library)
+
+    with pytest.raises(CommandError) as raised:
+        run_command("--all-libraries", "--check", "--fail-on-drift")
+
+    sentence = str(raised.value)
+    #: Two rows over two libraries, both named.
+    assert "2 row(s) differ" in sentence
+    assert "2 of 2 library(s) checked" in sentence
+    assert str(owned_library.pk) in sentence
+    assert str(second.library.pk) in sentence
+
+
+@pytest.mark.django_db
+def test_fail_on_drift_without_a_check_is_refused(owned_library):
+    """Inert here would rebuild every library instead."""
+    with pytest.raises(CommandError, match="Add --check"):
+        run_command("--all-libraries", "--fail-on-drift")
+
+    assert not LibraryEventStreamHead.objects.exists()
+
+
+@pytest.mark.django_db
+def test_all_libraries_finding_none_is_refused(owned_library):
+    """Nothing replayed reads as nothing wrong."""
+    UserLibrary.objects.all().delete()
+
+    with pytest.raises(CommandError, match="found no library"):
+        run_command("--all-libraries", "--check", "--fail-on-drift")
+
+
+@pytest.mark.django_db
+def test_an_empty_username_is_read_as_a_username(owned_library):
+    """Truthiness would fall through to a UUID."""
+    with pytest.raises(CommandError, match="No user is named ''"):
+        run_command("--user", "", "--check")
+
+
+@pytest.mark.django_db
+def test_a_replay_through_no_table_is_refused(owned_library, monkeypatch):
+    """Zero compared reads as zero differing."""
+    monkeypatch.setattr(
+        rebuild_command,
+        "rebuild_projections",
+        reports(canned_report(tables=())),
+    )
+
+    with pytest.raises(CommandError, match="replayed through no table"):
+        run_command("--library", str(owned_library.pk), "--check", "--fail-on-drift")

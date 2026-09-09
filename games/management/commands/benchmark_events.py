@@ -47,7 +47,8 @@ class Command(BaseCommand):
             default=None,
             help=(
                 f"Events to seed (default {DEFAULT_SEED_EVENTS}). Two events "
-                "are seeded per game, so an odd count seeds one event fewer."
+                "are seeded per game, so an odd count seeds one event fewer. "
+                "0 seeds nothing and measures the commands alone."
             ),
         )
         parser.add_argument("--library", help="Check this library instead; read-only.")
@@ -76,11 +77,12 @@ class Command(BaseCommand):
         #: Here, so --library sees an unset seed.
         seed = DEFAULT_SEED_EVENTS if options["seed"] is None else options["seed"]
         if library is None:
-            if seed < 2:
+            #: Zero is the stated no-seed run; one is a typo.
+            if seed < 0 or seed == 1:
                 raise CommandError(
                     f"--seed {seed} seeds no game, because a game is two "
-                    "events, and a library with no stream measures nothing. "
-                    "The smallest run is --seed 2."
+                    "events, and it does not say so the way --seed 0 does. "
+                    "The smallest seeded run is --seed 2."
                 )
             self._write_estimate(
                 seed=seed,
