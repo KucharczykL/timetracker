@@ -1001,6 +1001,12 @@ class FilterField:
     imperative: bool = False
     # The real column the widget reads; ``to_q`` ignores it.
     metadata_lookup: ORMLookup | None = None
+    # Choices for a field whose lookup names no column — an annotation the
+    # queryset registers. A handler field skips column resolution, so
+    # ``_static_choices`` has nothing to read and the panel FilterSelect would
+    # render with neither options nor a search_url. Declared here, they reach
+    # the widget the same way a column's do.
+    choices: tuple[ChoiceMeta, ...] | None = None
 
     def __post_init__(self) -> None:
         # Same loud-at-import contract as the lookup/handler check: reject the
@@ -2767,6 +2773,14 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             # rows it reduces, resolved from the field's AggregateSpec. Resolving
             # loudly here matches the mis-typed-lookup contract above — a spec
             # gap is a wiring bug, not a degraded picker.
+            # A declared set wins: the field it belongs to may name no column
+            # at all, and where it names one the declaration is the statement.
+            declared_choices = field_spec.choices if field_spec is not None else None
+            choices = (
+                list(declared_choices)
+                if declared_choices is not None
+                else _static_choices(model_field)
+            )
             scope_model: ModelKey = ""
             if is_aggregate:
                 spec = filter_cls.aggregates.get(name)
@@ -2788,7 +2802,7 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
                     label=_field_label(filter_cls, name),
                     kind=kind,
                     nullable=nullable,
-                    choices=_static_choices(model_field),
+                    choices=choices,
                     modifiers=_modifiers_for_field(kind, nullable),
                     relations=[],
                     search_url=search_url or "",

@@ -23,6 +23,7 @@ from common.criteria import (
     AggregateCriterion,
     BoolCriterion,
     ChoiceCriterion,
+    ChoiceMeta,
     ComparisonGranularity,
     DateCriterion,
     FieldComparisonCriterion,
@@ -5525,6 +5526,12 @@ class TestFieldMetadata:
         with pytest.raises(ValueError, match="resolves to no field"):
             field_metadata(_BadLookupStub)
 
+    def test_a_handler_field_may_declare_its_own_choices(self):
+        """A field with no column still fills its picker."""
+        condition = self._by_name(_DeclaredChoicesStub)["condition"]
+
+        assert condition["choices"] == [{"value": "a", "label": "A"}]
+
 
 @dataclass
 class _LabelStub(OperatorFilter):
@@ -5542,6 +5549,34 @@ class _LabelStub(OperatorFilter):
         "name": FilterField(label="Explicit Name")
     }
     labels: ClassVar[dict[str, str]] = {"mastered": "Override Mastered"}
+
+    @classmethod
+    def _comparison_model(cls):
+        from games.models import Game
+
+        return Game
+
+
+@dataclass
+class _DeclaredChoicesStub(OperatorFilter):
+    """A handler field whose options no column states.
+
+    Its Q names an annotation, so column resolution is
+    skipped and the picker has only the declared choices
+    to read.
+    """
+
+    AND: list[_DeclaredChoicesStub] = dc_field(default_factory=list)
+    OR: list[_DeclaredChoicesStub] = dc_field(default_factory=list)
+    NOT: list[_DeclaredChoicesStub] = dc_field(default_factory=list)
+    condition: ChoiceCriterion | None = None
+
+    fields: ClassVar[dict[str, FilterField]] = {
+        "condition": FilterField(
+            handler=lambda criterion: criterion.to_q("condition"),
+            choices=(ChoiceMeta(value="a", label="A"),),
+        ),
+    }
 
     @classmethod
     def _comparison_model(cls):
