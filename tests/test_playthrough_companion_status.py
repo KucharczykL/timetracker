@@ -34,11 +34,6 @@ def test_an_untracked_game_is_offered_played(owned_library, game):
     assert played_is_offered(owned_library, game) is True
 
 
-def test_a_game_with_no_name_yet_is_offered_played(owned_library):
-    """The Add form, before a game."""
-    assert played_is_offered(owned_library, None) is True
-
-
 def test_an_unplayed_game_is_offered_played(owned_library, tracked):
     assert played_is_offered(owned_library, tracked) is True
 

@@ -1062,8 +1062,10 @@ class PlaythroughForm(PrimitiveWidgetsMixin, forms.Form):
                 presentation=presentation,
                 label=str(self.fields[field_name].label or field_name),
             )
-        #: The status decides the render.
-        if not played_is_offered(library, offered_game):
+        #: The status decides the render. No game yet is
+        #: the Add form before one is picked, which offers
+        #: the box and asks again at clean time.
+        if offered_game is not None and not played_is_offered(library, offered_game):
             del self.fields["also_mark_played"]
 
     game = SingleGameChoiceField(

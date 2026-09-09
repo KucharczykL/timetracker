@@ -187,9 +187,12 @@ def list_playthroughs(request: HttpRequest) -> HttpResponse:
 def add_playthrough(request: HttpRequest, game_id: UUID | None = None) -> HttpResponse:
     initial: dict[str, Any] = {}
     library = cast(User, request.user).library
+    #: The game the URL names, where it names one.
+    offered_game: Game | None = None
     if game_id:
         # coming from add_playthrough_for_game url path
         game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
+        offered_game = game
         initial["game"] = game
         try:
             # First, try to get the latest session. If no sessions, then no playtime.
@@ -236,7 +239,7 @@ def add_playthrough(request: HttpRequest, game_id: UUID | None = None) -> HttpRe
         initial=initial,
         library=library,
         presentation=date_time_presentation_for_request(request),
-        offered_game=initial.get("game"),
+        offered_game=offered_game,
     )
     if form.is_valid():
         game = form.cleaned_data["game"]

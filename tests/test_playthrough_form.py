@@ -106,6 +106,20 @@ def test_both_boxes_render_checked_for_an_untracked_game(user, game):
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.untracked_games
+def test_the_add_form_offers_the_played_box_before_a_game(owned_library):
+    """No game states no status, so nothing rules the box out.
+
+    clean() asks again against the game the submit names.
+    """
+    form = PlaythroughForm(
+        library=owned_library, presentation=PRESENTATION, offered_game=None
+    )
+
+    assert "also_mark_played" in form.fields
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.untracked_games
 def test_a_completed_game_renders_no_played_box(owned_user, owned_library):
     game = _completed_game(owned_user, owned_library)
 
