@@ -1,5 +1,6 @@
 from uuid import UUID
 
+from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError, OutputWrapper
 
 from games.events.rebuild import (
@@ -21,13 +22,23 @@ class Command(BaseCommand):
     """Arguments and printing; the decisions are elsewhere."""
 
     help = (
-        "Rebuild one library's projections from its event stream, or -- with "
-        "--check -- report what a rebuild would change without writing anything. "
-        "Exits non-zero when a rebuild did not swap."
+        "Rebuild the projections of one library, or of every library, from "
+        "their event streams -- or, with --check, report what a rebuild would "
+        "change without writing anything. Exits non-zero when a rebuild did "
+        "not swap."
     )
 
     def add_arguments(self, parser):
-        parser.add_argument("library", help="The UUID of the library to rebuild.")
+        scope = parser.add_mutually_exclusive_group(required=True)
+        scope.add_argument("--user", help="Rebuild the library owned by USERNAME.")
+        scope.add_argument(
+            "--library", dest="library_id", help="Rebuild one library UUID."
+        )
+        scope.add_argument(
+            "--all-libraries",
+            action="store_true",
+            help="Explicitly rebuild every library, in key order.",
+        )
         parser.add_argument(
             "--check",
             action="store_true",
@@ -35,8 +46,12 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        library = self._get_library(options["library"])
+        libraries = self._resolve_libraries(options)
         mode = RebuildMode.CHECK if options["check"] else RebuildMode.REBUILD
+        for library in libraries:
+            self._run_one(library, mode)
+
+    def _run_one(self, library: UserLibrary, mode: RebuildMode) -> None:
         try:
             report = rebuild_projections(library, mode=mode)
         except UnresolvedReferences as error:
@@ -47,7 +62,7 @@ class Command(BaseCommand):
                 "no longer exist, so nothing was replayed."
             ) from error
         except SwapRefusedByReference as error:
-            #: handle() has no report to print.
+            #: The refusal carries the diff; no report exists.
             for table in error.tables:
                 self._write_table(table, self.stderr)
             raise CommandError(str(error)) from error
@@ -68,14 +83,35 @@ class Command(BaseCommand):
         #: True by having got this far.
         self.stdout.write(self.style.SUCCESS("References: all resolved."))
 
+    def _resolve_libraries(self, options) -> list[UserLibrary]:
+        libraries = UserLibrary.objects.select_related("user").order_by("pk")
+        if options["all_libraries"]:
+            return list(libraries)
+        if options["user"]:
+            return [self._library_of_user(libraries, options["user"])]
+        return [self._library_by_id(libraries, options["library_id"])]
+
     @staticmethod
-    def _get_library(raw_id: str) -> UserLibrary:
+    def _library_of_user(libraries, username: str) -> UserLibrary:
+        """A missing user is not a user missing a library."""
+        user_model = get_user_model()
+        try:
+            user = user_model.objects.get(username=username)
+        except user_model.DoesNotExist as error:
+            raise CommandError(f"No user is named {username!r}.") from error
+        try:
+            return libraries.get(user=user)
+        except UserLibrary.DoesNotExist as error:
+            raise CommandError(f"User {username!r} owns no library.") from error
+
+    @staticmethod
+    def _library_by_id(libraries, raw_id: str) -> UserLibrary:
         try:
             library_id = UUID(raw_id)
         except ValueError as error:
             raise CommandError(f"{raw_id!r} is not a library id.") from error
         try:
-            return UserLibrary.objects.get(pk=library_id)
+            return libraries.get(pk=library_id)
         except UserLibrary.DoesNotExist as error:
             raise CommandError(f"No library {library_id}.") from error
 

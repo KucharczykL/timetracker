@@ -1187,7 +1187,7 @@ def reports(report):
 
 @pytest.mark.django_db
 def test_the_command_checks_a_library_and_provisions_nothing(owned_library):
-    output = run_command(str(owned_library.pk), "--check")
+    output = run_command("--library", str(owned_library.pk), "--check")
 
     assert str(owned_library.pk) in output
     assert "0 event" in output
@@ -1197,7 +1197,7 @@ def test_the_command_checks_a_library_and_provisions_nothing(owned_library):
 
 @pytest.mark.django_db
 def test_the_command_rebuilds_and_says_it_swapped(owned_library):
-    output = run_command(str(owned_library.pk))
+    output = run_command("--library", str(owned_library.pk))
 
     assert "Swapped" in output
     assert LibraryEventStreamHead.objects.filter(library=owned_library).exists()
@@ -1209,7 +1209,7 @@ def test_the_command_prints_a_line_per_table(owned_library, monkeypatch):
         rebuild_command, "rebuild_projections", reports(canned_report())
     )
 
-    output = run_command(str(owned_library.pk), "--check")
+    output = run_command("--library", str(owned_library.pk), "--check")
 
     assert "12 event" in output
     assert f"{ENTRY_TABLE}: 3 live, 3 rebuilt" in output
@@ -1228,7 +1228,7 @@ def test_the_command_flags_a_check_the_head_moved_under(owned_library, monkeypat
         reports(canned_report(head_at_diff=14)),
     )
 
-    output = run_command(str(owned_library.pk), "--check")
+    output = run_command("--library", str(owned_library.pk), "--check")
 
     assert "advisory" in output
 
@@ -1250,13 +1250,13 @@ def test_a_rebuild_that_never_swapped_fails_the_command(owned_library, monkeypat
     monkeypatch.setattr(rebuild_command, "rebuild_projections", reports(conflicted))
 
     with pytest.raises(CommandError, match="nothing was swapped"):
-        run_command(str(owned_library.pk))
+        run_command("--library", str(owned_library.pk))
 
 
 @pytest.mark.django_db
 def test_an_unknown_library_fails_without_touching_anything(owned_library):
     with pytest.raises(CommandError, match="No library"):
-        run_command(str(uuid7()))
+        run_command("--library", str(uuid7()))
 
     assert not LibraryEventStreamHead.objects.exists()
 
@@ -1264,7 +1264,7 @@ def test_an_unknown_library_fails_without_touching_anything(owned_library):
 @pytest.mark.django_db
 def test_a_library_id_that_is_not_a_uuid_fails(owned_library):
     with pytest.raises(CommandError, match="not a library id"):
-        run_command("the-one-with-the-games")
+        run_command("--library", "the-one-with-the-games")
 
 
 # --- A foreign key that stops the swap ---------------------------------------
@@ -1477,6 +1477,7 @@ def test_the_command_prints_the_diff_and_names_the_pair(owned_library, other_own
     with pytest.raises(CommandError, match="refused at the swap") as refused:
         call_command(
             "rebuild_projections",
+            "--library",
             str(owned_library.pk),
             stdout=output,
             stderr=errors,
@@ -1504,3 +1505,56 @@ def test_this_module_left_the_application_registry_as_it_found_it():
     assert {
         relation.key for relation in relation_columns()
     } == EXPECTED_RELATION_COLUMNS
+
+
+# --- The scope group ---------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_the_command_takes_a_user_instead_of_a_library(owned_library):
+    output = run_command("--user", owned_library.user.username, "--check")
+
+    assert str(owned_library.pk) in output
+
+
+@pytest.mark.django_db
+def test_an_unknown_user_fails_before_anything_is_read(owned_library):
+    with pytest.raises(CommandError, match="No user is named"):
+        run_command("--user", "nobody", "--check")
+
+    assert not LibraryEventStreamHead.objects.exists()
+
+
+@pytest.mark.django_db
+def test_a_user_owning_no_library_fails(django_user_model):
+    """A missing user is not a user missing a library."""
+    user = django_user_model.objects.create_user(username="libraryless")
+    UserLibrary.objects.filter(user=user).delete()
+
+    with pytest.raises(CommandError, match="owns no library"):
+        run_command("--user", "libraryless", "--check")
+
+
+@pytest.mark.django_db
+def test_a_scope_is_required(owned_library):
+    with pytest.raises(CommandError, match="one of the arguments"):
+        run_command("--check")
+
+
+@pytest.mark.django_db
+def test_two_scopes_are_refused(owned_library):
+    with pytest.raises(CommandError, match="not allowed with argument"):
+        run_command("--user", owned_library.user.username, "--all-libraries", "--check")
+
+
+@pytest.mark.django_db
+def test_all_libraries_reports_each_one_in_key_order(owned_library, django_user_model):
+    """Key order, so two runs of the same scope read the same."""
+    second = django_user_model.objects.create_user(username="second-owner")
+    ordered = sorted((str(owned_library.pk), str(second.library.pk)))
+
+    output = run_command("--all-libraries", "--check")
+
+    assert [output.index(key) for key in ordered] == sorted(
+        output.index(key) for key in ordered
+    )

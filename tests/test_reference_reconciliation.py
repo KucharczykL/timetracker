@@ -710,6 +710,7 @@ def test_the_command_fails_and_names_the_stranded_row(owned_library, device, arg
     with pytest.raises(CommandError, match="nothing was replayed"):
         call_command(
             "rebuild_projections",
+            "--library",
             str(owned_library.pk),
             *arguments,
             stdout=StringIO(),
@@ -731,6 +732,7 @@ def test_the_printed_report_counts_what_it_did_not_name(owned_library):
     with pytest.raises(CommandError):
         call_command(
             "rebuild_projections",
+            "--library",
             str(owned_library.pk),
             stdout=StringIO(),
             stderr=stderr,
@@ -744,7 +746,7 @@ def test_the_printed_report_counts_what_it_did_not_name(owned_library):
 
 def test_a_swap_says_the_references_resolved(owned_library):
     """Nothing counts them outward."""
-    stdout, _ = run_command(str(owned_library.pk))
+    stdout, _ = run_command("--library", str(owned_library.pk))
 
     assert "Swapped" in stdout
     assert "References: all resolved." in stdout

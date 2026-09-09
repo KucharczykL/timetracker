@@ -9,8 +9,10 @@ in `games/events/rebuild.py`.
 of one library from its events. The default mode is `CHECK`; `REBUILD` writes.
 The function returns a `RebuildReport`.
 
-`manage.py rebuild_projections <library-uuid> [--check]` prints the report. The
-command exits with an error when a rebuild does not swap.
+`manage.py rebuild_projections (--user USERNAME | --library UUID |
+--all-libraries) [--check]` prints the report. The command exits with an error
+when a rebuild does not swap. #688 replaced the positional library with that
+scope group.
 
 ## The five phases
 
