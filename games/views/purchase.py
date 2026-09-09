@@ -167,8 +167,8 @@ def _render_purchase_row(
     #: A null value is a completion nobody dated, which
     #: TemporalText prints as Unknown. No completion is a dash.
     date_finished = (
-        TemporalText(purchase.completed_value, presentation)  # type: ignore[attr-defined]
-        if purchase.has_completion  # type: ignore[attr-defined]
+        TemporalText(purchase.completed_value, presentation)
+        if purchase.has_completion
         else "-"
     )
     return make_row(
@@ -219,7 +219,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
                 purchases,
                 filter_query_context_for_library(library),
             )
-            #: `game_filter` joins, so a bundle answers twice.
+            #: `game_filter` joins; a bundle answers per match.
             purchases = purchases.distinct()
 
     find = parse_find_filter(request)

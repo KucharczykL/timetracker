@@ -23,14 +23,21 @@ def logged_client(client, owned_user):
     return client
 
 
-def in_scope_purchase(user, library, name, day):
-    """A purchase both builders reach."""
+def in_scope_purchase(user, library, name, *days):
+    """A purchase both builders reach.
+
+    One game per day, so a purchase given two days matches
+    the filter twice and the join hands the list two rows.
+    """
     purchase = make_purchase(library, name=name)
     purchase.date_purchased = datetime(YEAR, 1, 1, tzinfo=UTC)
     purchase.save()
-    game, _ = add_game(user, library, purchase, name, TemporalValue.from_day(day))
-    game.year_released = YEAR
-    game.save()
+    for index, day in enumerate(days):
+        game, _ = add_game(
+            user, library, purchase, f"{name} {index}", TemporalValue.from_day(day)
+        )
+        game.year_released = YEAR
+        game.save()
     return purchase
 
 
@@ -46,7 +53,10 @@ def test_the_link_orders_by_the_reported_completion(
     logged_client, owned_user, owned_library, builder
 ):
     """Each row once, later finish first."""
-    late = in_scope_purchase(owned_user, owned_library, "Late", date(YEAR, 12, 1))
+    #: Two matched games, so the join fans this row out.
+    late = in_scope_purchase(
+        owned_user, owned_library, "Late", date(YEAR, 12, 1), date(YEAR, 6, 1)
+    )
     early = in_scope_purchase(owned_user, owned_library, "Early", date(YEAR, 1, 5))
 
     response = logged_client.get(
@@ -56,7 +66,7 @@ def test_the_link_orders_by_the_reported_completion(
 
     assert response.status_code == 200
     body = response.content.decode()
-    #: The filter joins, so distinct() keeps one row.
+    #: Two matches, one row, because of distinct().
     assert body.count(f'id="purchase-row-{late.pk}"') == 1
     assert row_order(body, (late, early)) == [late.pk, early.pk]
 

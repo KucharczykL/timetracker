@@ -54,21 +54,23 @@ view annotates it, as `list_games` already does for `filtered_playtime`. Nulls
 sort last in both directions. A row that prints `Unknown` sorts with the rows
 that print `-`.
 
-The read is a correlated subquery. `execute_filter` runs before `apply_sort`,
-and a `Max` over the join lets a `game_filter` narrow which run a bundle
-reports. A subquery shares no join with the outer query, so no filter can
-narrow it.
+The read is a correlated subquery. An aggregate over the join is the other way
+to write it, and a `game_filter` narrows one annotated after it, so a bundle
+would report its matched game rather than itself. A subquery shares no join
+with the outer query, so no filter can narrow it, wherever it is annotated.
 
-That aggregate also grouped the fan-out away. `PurchaseFilter` compiles
+An aggregate also groups the fan-out away. `PurchaseFilter` compiles
 `game_filter` to a join, so `list_purchases` calls `.distinct()` where a filter
 ran.
 
 ## Effects
 
 A completion with no known day prints `Unknown`. A coarse completion prints its
-own words. A filtered list reports the whole purchase. The two statistics links
-carry `sort=finished`, so their rows reorder: the cell and the sort now report
-one number.
+own words. A filtered list reports the whole purchase. A bundle reports the run
+the order ranks first, which a shared lower bound gives to the narrower value.
+Three statistics links carry `sort=finished`, so their rows reorder: the cell
+and the sort now report one number. The Game list's `finished` sort orders by
+each game's own runs.
 
 `PurchaseQueryset.finished()` also counts a done status, so a game marked
 finished with no run stated is counted and prints `-`. #684 gives such a game a
