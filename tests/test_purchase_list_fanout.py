@@ -1,4 +1,4 @@
-"""One purchase, one row, whatever the filter joined."""
+"""One purchase, one row, whatever joined."""
 
 import json
 from datetime import UTC, datetime
@@ -31,7 +31,7 @@ def bundle(owned_library):
 
 
 def every_game_filter():
-    """A `game_filter` that matches both games, so both join."""
+    """A `game_filter` matching both games."""
     return json.dumps(
         PurchaseFilter(
             game_filter=GameFilter(

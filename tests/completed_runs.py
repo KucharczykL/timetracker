@@ -21,7 +21,7 @@ def make_purchase(library, name="Bundle"):
 
 
 def add_game(user, library, purchase, name, completed):
-    """Track a game the purchase names, and state its completion.
+    """Track a game and state its completion.
 
     False is a run that reached no completion, and None is one
     completed on a day nobody wrote down.
@@ -46,7 +46,7 @@ def add_game(user, library, purchase, name, completed):
 
 
 def add_run(user, game, completed):
-    """State one more run at a game the library tracks.
+    """State one more run at a game.
 
     The game's first run states a completion already, so
     `run_to_adopt` refuses it and this creates a second.

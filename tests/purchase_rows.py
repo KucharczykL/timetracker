@@ -1,8 +1,8 @@
-"""Read the purchase rows a rendered list prints."""
+"""Read the rows a rendered list prints."""
 
 
 def row_order(body, purchases):
-    """The purchases in the order the body prints them."""
+    """The purchases in the order printed."""
     positions = {
         purchase.pk: body.index(f'id="purchase-row-{purchase.pk}"')
         for purchase in purchases

@@ -13,8 +13,7 @@ from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.untracked_games
 
-#: Measured, not guessed. One number for any number of rows:
-#: nothing the list draws reads a row of its own.
+#: Measured, not guessed. Constant across row counts.
 PURCHASE_LIST_QUERIES = 16
 
 
@@ -25,7 +24,7 @@ def logged_client(client, owned_user):
 
 
 def cell_text(html, index):
-    """The text of one cell of a rendered row.
+    """The text of one rendered cell.
 
     The name cell is a `<th>`, so both tags count.
     """
@@ -106,7 +105,7 @@ def test_an_open_start_range_prints_its_words(logged_client, owned_user, owned_l
 
 @pytest.mark.django_db(transaction=True)
 def test_the_refunded_row_keeps_its_cell(logged_client, owned_user, owned_library):
-    """The swap after a refund reads what the list reads."""
+    """The refund swap reads the list's queryset."""
     purchase = make_purchase(owned_library)
     add_game(
         owned_user,
@@ -151,7 +150,7 @@ def test_the_list_costs_no_query_per_row(
 def test_the_completion_costs_no_query_per_row(
     logged_client, owned_user, owned_library
 ):
-    """The projection is read inside the list query, once."""
+    """One query reads the projection."""
     seed_rows(owned_user, owned_library, 10)
 
     with CaptureQueriesContext(connection) as captured:

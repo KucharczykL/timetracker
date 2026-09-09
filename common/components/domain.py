@@ -168,14 +168,13 @@ def LinkedPurchase(purchase: Purchase) -> Node:
     link = reverse("games:view_purchase", args=[purchase.id])
     link_content = ""
     games_list: Node | None = None
-    #: Read the relation once. A list the caller prefetched is
-    #: already in hand, and `first()` would re-order and re-query
-    #: past it, costing the purchase list a query per row.
+    #: Read the relation once, not per row.
+    #: `first()` re-orders, which drops the prefetch cache
+    #: and costs the purchase list a query per row.
     games = list(purchase.games.all())
     game_count = len(games)
     if game_count == 0:
-        #: A purchase is live while it names no game, so the
-        #: list renders one. Its own name is all it states.
+        #: A purchase naming no game is live.
         link_content = purchase.name or "No games"
     if game_count == 1:
         first_game = games[0]

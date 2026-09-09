@@ -21,7 +21,7 @@ pytestmark = pytest.mark.untracked_games
 
 
 def read(library, purchase):
-    """The value and the day the purchase reports."""
+    """The value and day the purchase reports."""
     row = (
         Purchase.objects.for_library(library)
         .annotate(
@@ -96,7 +96,7 @@ def test_a_run_with_no_completion_reports_nothing(owned_user, owned_library):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_narrower_interval_wins_a_shared_lower_bound(owned_user, owned_library):
-    """`2020-05-01` and `2020-05` both start on 1 May."""
+    """Both values start on 1 May."""
     purchase = make_purchase(owned_library)
     add_game(
         owned_user, owned_library, purchase, "Month", TemporalValue.from_month(2020, 5)
@@ -117,7 +117,7 @@ def test_a_narrower_interval_wins_a_shared_lower_bound(owned_user, owned_library
 
 @pytest.mark.django_db(transaction=True)
 def test_an_open_start_range_reports_no_day(owned_user, owned_library):
-    """A completion with no lower bound still states words."""
+    """No lower bound still states words."""
     purchase = make_purchase(owned_library)
     add_game(
         owned_user,
@@ -135,7 +135,7 @@ def test_an_open_start_range_reports_no_day(owned_user, owned_library):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_removed_run_reports_nothing(owned_user, owned_library):
-    """A tracked game holds one run, so the game gains a second first."""
+    """A tracked game already holds one run."""
     purchase = make_purchase(owned_library)
     game, run = add_game(
         owned_user,
@@ -226,6 +226,6 @@ def test_a_second_run_at_one_game_reports_the_later(owned_user, owned_library):
 
 @pytest.mark.django_db(transaction=True)
 def test_the_readers_are_subqueries(owned_library):
-    """A subquery shares no join, so a filter cannot narrow it."""
+    """A subquery shares no join to narrow."""
     assert isinstance(reported_completion(owned_library, PURCHASE_RUNS), Subquery)
     assert isinstance(reported_completion_day(owned_library, PURCHASE_RUNS), Subquery)

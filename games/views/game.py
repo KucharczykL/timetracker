@@ -175,8 +175,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
     )
     games = games.annotate(
         filtered_playtime=Subquery(windowed_playtime),
-        #: The Game list renders no Finished column; `?sort=finished`
-        #: is the only thing that reads this.
+        #: No column renders it; `?sort=finished` reads it.
         completed_day=reported_completion_day(library, GAME_RUNS),
     )
 

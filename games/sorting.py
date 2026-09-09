@@ -99,8 +99,7 @@ GAME_SORTS: SortMap = {
     # restricted to the active session sub-filter) on the queryset, and this
     # spec just orders by that existing alias.
     "filtered_playtime": SortSpec("filtered_playtime"),
-    # No annotate dict: list_games pre-annotates `completed_day`, the day the
-    # reported run states. Same reason as `filtered_playtime` above.
+    # No annotate dict: list_games annotates `completed_day`.
     "finished": SortSpec("completed_day"),
 }
 GAME_DEFAULT_SORT: SortString = "-created"

@@ -1,4 +1,4 @@
-"""The links the statistics carry order by the runs."""
+"""The statistics links order by the runs."""
 
 import json
 from datetime import UTC, date, datetime
@@ -13,8 +13,7 @@ from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.untracked_games
 
-#: Both builders scope on it: one bounds the purchase, the
-#: other the year the game was released.
+#: Both builders scope on it.
 YEAR = 2024
 
 
@@ -25,7 +24,7 @@ def logged_client(client, owned_user):
 
 
 def in_scope_purchase(user, library, name, day):
-    """A purchase both builders reach, finished on `day`."""
+    """A purchase both builders reach."""
     purchase = make_purchase(library, name=name)
     purchase.date_purchased = datetime(YEAR, 1, 1, tzinfo=UTC)
     purchase.save()
@@ -46,7 +45,7 @@ def in_scope_purchase(user, library, name, day):
 def test_the_link_orders_by_the_reported_completion(
     logged_client, owned_user, owned_library, builder
 ):
-    """The stat's link prints each row once, later finish first."""
+    """Each row once, later finish first."""
     late = in_scope_purchase(owned_user, owned_library, "Late", date(YEAR, 12, 1))
     early = in_scope_purchase(owned_user, owned_library, "Early", date(YEAR, 1, 5))
 
@@ -57,8 +56,7 @@ def test_the_link_orders_by_the_reported_completion(
 
     assert response.status_code == 200
     body = response.content.decode()
-    #: The filter joins the games, so a row the join answers
-    #: twice would print twice without the list's distinct().
+    #: The filter joins, so distinct() keeps one row.
     assert body.count(f'id="purchase-row-{late.pk}"') == 1
     assert row_order(body, (late, early)) == [late.pk, early.pk]
 
@@ -67,7 +65,7 @@ def test_the_link_orders_by_the_reported_completion(
 def test_the_all_time_link_reaches_every_completion(
     logged_client, owned_user, owned_library
 ):
-    """All-time reads the marker, so a dayless finish counts."""
+    """All-time reads the marker, dayless counts."""
     dated = in_scope_purchase(owned_user, owned_library, "Dated", date(YEAR, 12, 1))
     dayless = make_purchase(owned_library, name="Dayless")
     add_game(owned_user, owned_library, dayless, "Dayless", None)
@@ -81,7 +79,7 @@ def test_the_all_time_link_reaches_every_completion(
     )
 
     assert response.status_code == 200
-    #: The dated finish leads; the one nobody dated sorts last.
+    #: The dated finish leads, the dayless last.
     assert row_order(response.content.decode(), (dated, dayless)) == [
         dated.pk,
         dayless.pk,

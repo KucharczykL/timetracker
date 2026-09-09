@@ -69,12 +69,12 @@ GAME_RUNS: RunPath = "player_game__game"
 
 
 def ranked_completions(library: UserLibrary, path: RunPath) -> QuerySet[Playthrough]:
-    """The row's completed runs, the reported one first.
+    """The row's completed runs, reported one first.
 
     The latest finish leads. A tie on the lower bound goes to
     the narrower interval, so the more precise of two values
-    that start on one day is the one reported. The last key is
-    the identity, so the answer never varies.
+    that start on one day is reported. The last key is the
+    identity, so the answer never varies.
     """
     return (
         completed_runs(library, None)

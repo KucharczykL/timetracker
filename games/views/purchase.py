@@ -142,7 +142,7 @@ PURCHASE_COLUMNS: list[Column] = [
 
 
 def _purchases_with_completions(library: UserLibrary) -> QuerySet[Purchase]:
-    """The list's rows, carrying the Finished cell's two facts.
+    """The list's rows, carrying the Finished facts.
 
     Both render paths read through this, so the row a refund
     swaps in answers what the list's row answers.
@@ -163,6 +163,7 @@ def _render_purchase_row(
     purchase: Purchase, presentation: DateTimePresentation, *, origin: OriginUrl | None
 ) -> TableRowData:
     """Return a row for simple-table rendering."""
+    #: Read the act, not the value.
     #: A null value is a completion nobody dated, which
     #: TemporalText prints as Unknown. No completion is a dash.
     date_finished = (
@@ -218,8 +219,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
                 purchases,
                 filter_query_context_for_library(library),
             )
-            #: `game_filter` joins the games, so a bundle
-            #: answers once per game it names.
+            #: `game_filter` joins, so a bundle answers twice.
             purchases = purchases.distinct()
 
     find = parse_find_filter(request)

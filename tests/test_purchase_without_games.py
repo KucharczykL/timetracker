@@ -1,4 +1,4 @@
-"""A purchase can name no game, and the list still renders it."""
+"""A purchase naming no game still renders."""
 
 import pytest
 from completed_runs import make_purchase
@@ -40,7 +40,7 @@ def test_a_nameless_purchase_naming_no_game_says_so(logged_client, owned_library
 
 @pytest.mark.django_db
 def test_removing_the_last_game_hides_the_purchase(logged_client, owned_library):
-    """Not the path here: a purchase naming a removed game is not live.
+    """A purchase naming a removed game hides.
 
     A purchase is live while any of its games is, or while it
     names none. Removing the only game satisfies neither, so the
