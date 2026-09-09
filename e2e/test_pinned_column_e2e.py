@@ -34,7 +34,7 @@ LONG_NAME = (
 # Wide enough that the md-gated scroll padding applies and the no-JS fallback
 # shows every column; narrow enough that purchases still overflows by ~300px.
 WIDE: ViewportSize = {"width": 800, "height": 900}
-# The pin classes are all md:-gated (sticky, z-index, bg-inherit, the seam
+# The pin classes are all md:-gated (sticky, z-index, bg-inherit, the edge
 # shadow) — below md the same cell is max-md:max-w-0 and nothing is pinned, so
 # the panel tests need at least the md breakpoint too, not an actually-narrow
 # viewport. It is wider than WIDE for one more reason: the tooltip panel holds
@@ -183,7 +183,7 @@ def test_the_pinned_column_pins_to_the_right_edge_under_rtl(
         }}"""
     )
     assert offset == 0
-    # The seam's offset is physical while the pin and the query are logical, so
+    # The shadow's offset is physical while the pin and the query are logical, so
     # it has to be mirrored or it paints into the table's edge rather than over
     # the content sliding underneath. Read the x-offset specifically: the
     # computed value is "rgba(…) 4px 0px 6px -4px", whose spread is negative in
@@ -203,14 +203,14 @@ def test_the_pinned_column_pins_to_the_right_edge_under_rtl(
     assert offsets[-1].startswith("-"), box_shadow
 
 
-def test_the_seam_appears_only_once_the_region_is_scrolled(
+def test_the_shadow_appears_only_once_the_region_is_scrolled(
     no_js_page: Page, live_server, populated
 ):
     page = no_js_page
     _open(page, live_server, "games:list_purchases", WIDE)
-    assert page.evaluate(OVERFLOW) > 0, "no overflow; the seam could never appear"
+    assert page.evaluate(OVERFLOW) > 0, "no overflow; the shadow could never appear"
     cell = page.locator("tbody tr th").first
-    # The seam only paints in the separated border model — Chrome draws no
+    # The shadow only paints in the separated border model — Chrome draws no
     # box-shadow on a cell under border-collapse, so the rule would compute and
     # render nothing.
     assert (

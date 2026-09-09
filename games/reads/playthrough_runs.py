@@ -9,7 +9,7 @@ from games.reads.playthrough_endpoints import stated_completion, stated_start
 def library_runs(library: UserLibrary) -> QuerySet[Playthrough]:
     """Every live ordinary run this library holds.
 
-    The one scope the page, the filter seams and the
+    The one scope the page, the filter reads and the
     numbering share. The library is stated beside the
     parent, never inferred: a run may name another
     library's PlayerGame, which is the drift

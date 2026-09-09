@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // The combobox dropdown behavior (issue #297): a <drop-down> whose panel hosts
 // a search-select. On open it refetches + focuses the search input (the #94
-// dropdown:show seam); attachMenu's item navigation is inert (match-nothing
+// dropdown:show event); attachMenu's item navigation is inert (match-nothing
 // itemSelector + the empty-items keydown guard), so caret keys work inside the
 // input while Escape still closes; Enter never implicitly submits a form.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";

@@ -1,0 +1,19 @@
+---
+# One file, not the usual error/warning pair, and an error in every sense: the
+# literal seam is a sewn join, a surgical closure or a stratum of coal, and
+# none of the three ever appeared here. Every use in the tree was a metaphor —
+# a plug point a test reaches through, a boundary between two modules, or a
+# line a table paints down its pinned column — and each one has a plainer word.
+#
+# No neighbouring domain word is needed to tell the senses apart, so there is
+# no second pattern and nothing for scripts/run-vale.mjs to drop.
+extends: existence
+message: "'%s' is a metaphor. Say 'plug point', or name what joins."
+link: docs/vocabulary.md
+level: error
+ignorecase: true
+scope:
+  - ~code
+  - ~heading
+tokens:
+  - 'seams?'

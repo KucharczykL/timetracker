@@ -3,7 +3,7 @@
 The generic `<drop-down>` element (behavior core: [`ts/elements/menu-behavior.ts`](../ts/elements/menu-behavior.ts),
 element shell: [`ts/elements/drop-down.ts`](../ts/elements/drop-down.ts)) emits two
 DOM events on its host element as its panel opens and closes. These events are
-**the supported extension seam** for reacting to dropdown visibility — reach for
+**the supported plug point** for reacting to dropdown visibility — reach for
 them instead of re-implementing open/close detection (MutationObservers,
 `hidden`-attribute polling, or per-widget fetch-on-focus plumbing) in each
 consumer.
@@ -60,7 +60,7 @@ registerBehavior("my-behavior", {
 ### Worked example: fetch-on-open (the `combobox` behavior)
 
 [`ts/elements/behaviors/combobox.ts`](../ts/elements/behaviors/combobox.ts) is
-the seam's canonical consumer (issue #297): a `<drop-down>` whose panel hosts a
+the plug point's canonical consumer (issue #297): a `<drop-down>` whose panel hosts a
 `<search-select>` (the preset picker, `LoadPresetDropdown`). "Fetch fresh
 options on every open" is wired entirely off the lifecycle event — the behavior
 contains **zero fetch code**; it delegates to the widget's own fetch path:

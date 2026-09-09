@@ -4,7 +4,7 @@ Guards two properties the vitest suite cannot see: vitest imports the TS source
 directly and never exercises the real <script>-tag load semantics.
 
 1. dist/global-error-handler.js is an ES module (it imports the client-error
-   seam); it must load as <script type="module"> or the browser throws
+   reporter); it must load as <script type="module"> or the browser throws
    SyntaxError at parse and registers no listeners (feature silently inert).
 2. The handler is actually wired: a synthetic uncaught window error POSTs to
    /api/client-error/.

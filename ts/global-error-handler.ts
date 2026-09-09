@@ -1,7 +1,7 @@
 /**
  * Global uncaught-error net (issue #328). Registers window "error" +
  * "unhandledrejection" listeners that funnel uncaught failures into the shared
- * client-error seam, log-only (no toast). Page-global furniture loaded directly
+ * client-error reporter, log-only (no toast). Page-global furniture loaded
  * by Page(), a sibling of toast.ts — not a custom element.
  *
  * Handlers must never throw: a throw inside a window "error" listener re-fires

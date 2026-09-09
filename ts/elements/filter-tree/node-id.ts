@@ -15,7 +15,7 @@ export function nextNodeId(): string {
   return `n${counter}`;
 }
 
-// Test seam: reset the monotonic counter so id sequences are reproducible.
+// Plug point for tests: reset the counter so id sequences are reproducible.
 export function resetNodeIds(): void {
   counter = 0;
 }
