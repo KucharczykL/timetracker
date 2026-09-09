@@ -49,6 +49,9 @@ from timetracker.temporal import (
 )
 from timetracker.uuidv7 import UUIDv7Field
 
+if TYPE_CHECKING:
+    from games.reads.playthrough_activity import ActivityClock
+
 logger = logging.getLogger("games")
 
 
@@ -1628,8 +1631,57 @@ class PlaythroughKind(models.TextChoices):
     IMPORTED_HISTORY = "imported_history", "Imported history"
 
 
+class PlaythroughQuerySet(models.QuerySet["Playthrough"]):
+    """The alias method, and its clock."""
+
+    #: The clock these aliases read, cloned along.
+    _activity_clock: ActivityClock | None = None
+
+    def _clone(self) -> PlaythroughQuerySet:
+        #: Django's hook; django-stubs declares no `_clone`.
+        clone: PlaythroughQuerySet = super()._clone()  # type: ignore[misc]
+        clone._activity_clock = self._activity_clock
+        return clone
+
+    def annotated_for_filtering(
+        self, clock: ActivityClock | None = None
+    ) -> PlaythroughQuerySet:
+        """Register the two condition aliases.
+
+        `add_annotation` replaces an alias without a word, so
+        annotating twice would swap one clock for another in
+        silence. A second call naming the same clock is the
+        no-op `with_filter_aliases` needs; one naming another
+        clock is a read that cannot state which threshold it
+        answered, and is refused.
+        """
+        from games.reads.playthrough_activity import (
+            activity_day_expression,
+            activity_expression,
+            default_activity_clock,
+        )
+
+        annotated = self.query.annotations.keys() & {"activity", "activity_day"}
+        if annotated:
+            if clock is not None and clock != self._activity_clock:
+                raise ValueError(
+                    "this queryset already carries a condition alias from "
+                    f"{self._activity_clock}; annotate once, at the read "
+                    "that states the scope"
+                )
+            return self
+        resolved = clock if clock is not None else default_activity_clock()
+        queryset = self.annotate(
+            activity_day=activity_day_expression(resolved)
+        ).annotate(activity=activity_expression(resolved))
+        queryset._activity_clock = resolved
+        return queryset
+
+
 class Playthrough(ProjectionModel):
     """One run at a tracked game."""
+
+    objects = PlaythroughQuerySet.as_manager()
 
     id = UUIDv7Field(
         primary_key=True,

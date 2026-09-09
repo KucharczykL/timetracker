@@ -2,11 +2,19 @@
 
 from django.db.models import QuerySet
 
-from games.models import Game, PlayerGame, Playthrough, PlaythroughKind, UserLibrary
+from games.models import (
+    Game,
+    PlayerGame,
+    Playthrough,
+    PlaythroughKind,
+    PlaythroughQuerySet,
+    UserLibrary,
+)
+from games.reads.playthrough_activity import activity_clock
 from games.reads.playthrough_endpoints import stated_completion, stated_start
 
 
-def library_runs(library: UserLibrary) -> QuerySet[Playthrough]:
+def library_runs(library: UserLibrary) -> PlaythroughQuerySet:
     """Every live ordinary run this library holds.
 
     The one scope the page, the filter reads and the
@@ -16,7 +24,8 @@ def library_runs(library: UserLibrary) -> QuerySet[Playthrough]:
     `audit_library_ownership` reports.
 
     Both parents' marks read here as well: nothing
-    stamps a run when its game leaves.
+    stamps a run when its game leaves. Carries no
+    condition alias: `runs_with_condition` states that.
     """
     return Playthrough.objects.filter(
         library=library,
@@ -26,6 +35,11 @@ def library_runs(library: UserLibrary) -> QuerySet[Playthrough]:
         player_game__game__removed_at__isnull=True,
         kind=PlaythroughKind.ORDINARY,
     )
+
+
+def runs_with_condition(library: UserLibrary) -> PlaythroughQuerySet:
+    """The same runs, each carrying its condition."""
+    return library_runs(library).annotated_for_filtering(activity_clock(library))
 
 
 def live_ordinary_runs(

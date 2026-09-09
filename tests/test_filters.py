@@ -23,6 +23,7 @@ from common.criteria import (
     AggregateCriterion,
     BoolCriterion,
     ChoiceCriterion,
+    ChoiceMeta,
     ComparisonGranularity,
     DateCriterion,
     FieldComparisonCriterion,
@@ -5525,6 +5526,30 @@ class TestFieldMetadata:
         with pytest.raises(ValueError, match="resolves to no field"):
             field_metadata(_BadLookupStub)
 
+    def test_a_handler_field_may_declare_its_own_choices(self):
+        """A column-less field still fills its picker."""
+        condition = self._by_name(_DeclaredChoicesStub)["condition"]
+
+        assert condition["choices"] == [{"value": "a", "label": "A"}]
+
+    def test_a_handler_field_may_declare_its_own_nullability(self):
+        """Null where no column could answer."""
+        from common.criteria import Modifier
+
+        condition = self._by_name(_DeclaredChoicesStub)["condition"]
+
+        assert condition["nullable"] is True
+        assert Modifier.IS_NULL.value in condition["modifiers"]
+
+    def test_a_handler_field_that_declares_none_reads_as_not_null(self):
+        """Declared or absent, the declaration answers."""
+        from common.criteria import Modifier
+
+        other = self._by_name(_DeclaredChoicesStub)["other"]
+
+        assert other["nullable"] is False
+        assert Modifier.IS_NULL.value not in other["modifiers"]
+
 
 @dataclass
 class _LabelStub(OperatorFilter):
@@ -5542,6 +5567,32 @@ class _LabelStub(OperatorFilter):
         "name": FilterField(label="Explicit Name")
     }
     labels: ClassVar[dict[str, str]] = {"mastered": "Override Mastered"}
+
+    @classmethod
+    def _comparison_model(cls):
+        from games.models import Game
+
+        return Game
+
+
+@dataclass
+class _DeclaredChoicesStub(OperatorFilter):
+    """A handler field no column can describe."""
+
+    AND: list[_DeclaredChoicesStub] = dc_field(default_factory=list)
+    OR: list[_DeclaredChoicesStub] = dc_field(default_factory=list)
+    NOT: list[_DeclaredChoicesStub] = dc_field(default_factory=list)
+    condition: ChoiceCriterion | None = None
+    other: ChoiceCriterion | None = None
+
+    fields: ClassVar[dict[str, FilterField]] = {
+        "condition": FilterField(
+            handler=lambda criterion: criterion.to_q("condition"),
+            choices=(ChoiceMeta(value="a", label="A"),),
+            nullable=True,
+        ),
+        "other": FilterField(handler=lambda criterion: criterion.to_q("other")),
+    }
 
     @classmethod
     def _comparison_model(cls):

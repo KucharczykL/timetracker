@@ -49,6 +49,11 @@ PAGE_SIZE_CHOICES: Final[tuple[int, ...]] = (10, 25, 50, 100, 500, 1000)
 PAGE_SIZE_OPTIONS: Final[tuple[SettingOption, ...]] = tuple(
     (size, str(size)) for size in PAGE_SIZE_CHOICES
 )
+DEFAULT_DORMANT_AFTER_DAYS: Final[int] = 30
+DORMANT_AFTER_DAYS_CHOICES: Final[tuple[int, ...]] = (7, 14, 30, 60, 90, 180, 365)
+DORMANT_AFTER_DAYS_OPTIONS: Final[tuple[SettingOption, ...]] = tuple(
+    (days, f"{days} days") for days in DORMANT_AFTER_DAYS_CHOICES
+)
 THEME_CHOICES: Final[tuple[tuple[str, str], ...]] = (
     ("system", "System"),
     ("light", "Light"),
@@ -202,6 +207,15 @@ def _validate_page_size(value: object) -> int:
     return value
 
 
+def _validate_dormant_after_days(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValidationError(f"Day count must be an integer (got {value!r}).")
+    if value not in DORMANT_AFTER_DAYS_CHOICES:
+        choices = ", ".join(str(choice) for choice in DORMANT_AFTER_DAYS_CHOICES)
+        raise ValidationError(f"Day count must be one of {choices} (got {value!r}).")
+    return value
+
+
 def _validate_theme(value: object) -> str:
     if not isinstance(value, str) or value not in _THEME_VALUES:
         raise ValidationError(
@@ -309,6 +323,21 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
             validator=_validate_page_size,
             widget=SettingWidget.SELECT,
             choices=PAGE_SIZE_OPTIONS,
+        ),
+        SettingDefinition(
+            "DORMANT_AFTER_DAYS",
+            scope=SettingScope.USER,
+            apply_timing=ApplyTiming.LIVE,
+            label="Dormant after",
+            help_text=(
+                "Days without play before an unfinished playthrough reads "
+                "Dormant rather than Playing."
+            ),
+            cast=int,
+            default_factory=lambda: DEFAULT_DORMANT_AFTER_DAYS,
+            validator=_validate_dormant_after_days,
+            widget=SettingWidget.SELECT,
+            choices=DORMANT_AFTER_DAYS_OPTIONS,
         ),
         SettingDefinition(
             "THEME",

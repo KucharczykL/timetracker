@@ -217,6 +217,23 @@ family holds many projectors: `CURRENT_STATE` holds `PlayerGames` and
   two same-family projectors ever see one event. `ProjectorRegistry` refuses a
   second claim on the same `(family, event type)` pair.
 
+### `Playing`, `Dormant`, `Never played` — conditions, not statuses
+
+A **condition** is a clock's answer about one run. A **status** is a person's
+statement about a game, one of the six `PlayerGameStatus` words. All three
+conditions meet a status that sounds like them, and none of them moves it.
+
+| condition | the status it sounds like | why they differ |
+|---|---|---|
+| Dormant | Abandoned | the clock counts days; Abandoned is stated by a command, and a refund states one |
+| Playing | Played | Played says a verdict is not stated yet, and stays true for years |
+| Never played | Unplayed | Unplayed is stated at track time; the condition means no day is known |
+
+A row may read status Played and condition Dormant, or status Unplayed and
+condition Playing, and both pairs are correct. The third condition is spelled
+`Never played` rather than `Unplayed` because Game detail prints a status
+beside these rows, and one word for two things reads as one thing.
+
 ## Adding a rule
 
 Put the settled meaning in a rule file under `.vale/styles/Timetracker/` as

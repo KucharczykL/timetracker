@@ -1024,9 +1024,9 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
     tracked = tracked_game(library, game)
     #: A run may name another library's PlayerGame.
     runs = list(
-        numbered_for(library, [tracked.pk] if tracked else []).select_related(
-            "player_game__game"
-        )
+        numbered_for(
+            library, [tracked.pk] if tracked else [], with_condition=True
+        ).select_related("player_game__game")
     )
     #: Counted here, off rows already read.
     played = sum(1 for run in runs if run.completion_recorded_at is not None)

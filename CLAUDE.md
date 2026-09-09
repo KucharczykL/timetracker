@@ -193,7 +193,7 @@ docs/           — Additional documentation
   the run rather than the legacy row. `Played N times` beside it counts only the
   runs whose completion is stated, which is the number the legacy row meant; the
   section badge counts every row it renders. #1013 gives the list page same
-  rows: it reads projection, and so do filter (`PlaythroughFilter` over eleven
+  rows: it reads projection, and so do filter (`PlaythroughFilter` over twelve
   fields, each endpoint compared as interval its two bound columns state),
   sorts, quick facets and saved presets, which migration 0047 rewrites from
   `ended` to `completed`. `playthrough_count` counts runs whose completion is
@@ -216,7 +216,24 @@ docs/           — Additional documentation
   the interval the two generated bound columns state, all-time reads the marker;
   a Purchase reports one row, dated `completed_lower` of its earliest run in a
   year (its latest all-time, which no table prints today), and a row that
-  reports no day sorts last and prints `-`
+  reports no day sorts last and prints `-`. #1033 gives the projection a
+  queryset holding `annotated_for_filtering` alone — no `alive()` and no
+  `for_library()`, so every read still states its own scope. It registers two
+  aliases a clock counts rather than a column states: `activity_day`, the last
+  day the game was played, falling back to the run's own start day, and
+  `activity`, one of `Playing`, `Dormant` and `Never played`, null for a run
+  whose completion is stated. The threshold is `DORMANT_AFTER_DAYS`, a live
+  user setting. Second call naming same clock is no-op `with_filter_aliases`
+  needs; one naming another clock refused, because `add_annotation` would
+  swap one for other in silence. Pair costs three correlated subqueries a
+  row, so read opts in: `runs_with_condition()` is `library_runs()` with
+  viewer's clock, read by list page and by filter; Game detail asks
+  `numbered_for(..., with_condition=True)`; every other reader carries no
+  alias, and `playthrough_tabledata` refuses row that reaches it without one.
+  `activity` is only quick facet that names annotation rather than own
+  column, so its `FilterField` states own `choices` and own `nullable`.
+  A condition is counted; a status is stated, and neither moves
+  the other — see [Vocabulary](docs/vocabulary.md)
 
 **Nothing user removes is destroyed** (#944). Nine removable models — Game,
 Edition, Release, Platform, Device, Session, PlayEvent, Purchase, FilterPreset —
@@ -353,7 +370,9 @@ structured filtering.
   remains server-side inside `?filter=` JSON; no `?search_string=` fallback).
   - Facets are own-model leaf fields of any `QUICK_FACET_KINDS` kind
     (set/number/date/string/bool; flat aggregates like `session_count` count as
-    number), rendered via `field_widget(layout="panel")` with `quick-` name prefix
+    number, and `activity` names a queryset alias rather than a column, so its
+    `FilterField` states its own `choices` and `nullable`), rendered via
+    `field_widget(layout="panel")` with `quick-` name prefix
     inside form whose Apply button (or Enter in inline input) serializes them and
     navigates. Clear is plain link to bare list URL. Set → panel `FilterSelect`;
     date → `DateRangePanel`; number/string/bool → stacked widget embedded as-is.

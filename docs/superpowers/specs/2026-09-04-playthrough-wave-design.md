@@ -352,6 +352,13 @@ rejected the last of them:
    drift, and the only matter of taste — how long is too long — is a display
    preference the person owns.
 
+A third word joined the two this section names. #679 gives every tracked game a
+run at track time, so a run at a game nobody has played is the common case, and
+calling it Dormant would say a game tracked this morning went quiet. #1033
+spells it `Never played` rather than `Unplayed`, because
+`PlayerGameStatus.UNPLAYED` already spells that and Game detail prints a status
+beside these rows.
+
 `Session` holds no reference to a run, so the recency #1033 reads is the game's.
 #700 and #701 narrow it to the run, recorded in the Sessions handoff below.
 

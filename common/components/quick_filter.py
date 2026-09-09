@@ -52,7 +52,8 @@ from common.date_time_presentation import DateTimePresentation
 
 
 class QuickFacet(NamedTuple):
-    field: AttrName  # own-model leaf field == the top-level ?filter= key
+    # The ?filter= key: leaf field or alias.
+    field: AttrName
     label: str = ""  # compact display override; "" = the FieldMeta-derived label
     placeholder: str = ""  # value-input hint (number/string kinds)
     placeholder2: str = ""  # second-input hint (BETWEEN)
@@ -66,7 +67,7 @@ class QuickFacet(NamedTuple):
 QUICK_FACET_KINDS = frozenset({"set", "number", "date", "string", "bool"})
 
 
-# One facet row per list mode: a few own-model leaf fields mirroring the
+# One facet row per list mode: a few leaf keys mirroring the
 # list's displayed columns, each rendered via field_widget (set → FilterSelect,
 # number → NumberFilter, date → DateRangePicker, …). Contract-tested in
 # tests/test_quick_filter_bar.py.
@@ -128,6 +129,7 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
         QuickFacet("created_at", "Created"),
     ],
     "playthroughs": [
+        QuickFacet("activity", "Activity"),
         QuickFacet("game"),
         QuickFacet("started"),
         QuickFacet("completed"),

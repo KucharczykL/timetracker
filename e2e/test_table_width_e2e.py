@@ -200,9 +200,9 @@ def test_the_note_column_still_wraps(authenticated_page: Page, live_server, popu
     """The opt-out has to be real, not vacuous: with a realistic note the column
     must take several lines rather than widening the table without limit.
 
-    Measured wider than the list VIEWPORTS: Note holds the default priority, and
-    ties drop rightmost-first, so Created goes before it. At 1280px this table
-    has dropped Note too, leaving nothing to measure."""
+    Measured on the Playthrough list, where Note is under the most pressure:
+    Note survives only because #1033's Activity column ranks below it. Raise
+    Activity's priority and this test reports a column that renders nowhere."""
     page = authenticated_page
     page.set_viewport_size({"width": 1440, "height": 900})
     page.goto(f"{live_server.url}{reverse('games:list_playthroughs')}")
@@ -210,12 +210,13 @@ def test_the_note_column_still_wraps(authenticated_page: Page, live_server, popu
 
     lines = page.evaluate(
         """() => {
-            const headers = [...document.querySelectorAll('thead th')].map(
+            const table = document.querySelector('[role="region"] table');
+            const headers = [...table.querySelectorAll('thead th')].map(
                 (th) => th.textContent.trim()
             );
             const index = headers.indexOf('Note');
             // Measure the row that carries a note.
-            const cell = [...document.querySelectorAll('tbody tr')]
+            const cell = [...table.querySelectorAll('tbody tr')]
                 .map((row) => row.children[index])
                 .find((candidate) => candidate.textContent.trim() !== '');
             const range = document.createRange();

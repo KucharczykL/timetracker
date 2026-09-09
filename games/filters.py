@@ -11,7 +11,7 @@ with AND/OR/NOT composition and typed criterion fields.
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, ClassVar, Final
 
 if TYPE_CHECKING:
     from games.models import (
@@ -35,6 +35,7 @@ from common.criteria import (
     AggregateSpec,
     BoolCriterion,
     ChoiceCriterion,
+    ChoiceMeta,
     DateCriterion,
     FilterField,
     FilterQueryContext,
@@ -59,6 +60,7 @@ from common.criteria import (
     search_q,
     temporal_interval_handler,
 )
+from games.reads.playthrough_activity import RunActivity
 from timetracker.settings_registry import DEFAULT_PAGE_SIZE
 
 # ── FindFilter (sort / pagination) ─────────────────────────────────────────
@@ -658,6 +660,12 @@ class PlatformFilter(OperatorFilter):
 
 # ── PlaythroughFilter ──────────────────────────────────────────────────────
 
+#: Built from RunActivity, so nothing drifts.
+ACTIVITY_CHOICES: Final[tuple[ChoiceMeta, ...]] = tuple(
+    ChoiceMeta(value=str(value), label=str(label))
+    for value, label in RunActivity.choices
+)
+
 
 @dataclass
 class PlaythroughFilter(OperatorFilter):
@@ -678,6 +686,8 @@ class PlaythroughFilter(OperatorFilter):
     start_note: StringCriterion | None = None
     completion_note: StringCriterion | None = None
     created_at: DateCriterion | None = None  # compared via __date
+    #: The clock's word: an alias, not column.
+    activity: ChoiceCriterion | None = None
 
     # Free-text search
     search: StringCriterion | None = None
@@ -719,6 +729,14 @@ class PlaythroughFilter(OperatorFilter):
         "start_note": FilterField(),
         "completion_note": FilterField(),
         "created_at": FilterField("created_at__date"),
+        "activity": FilterField(
+            #: Delegate: a hand-built Q drops the modifier.
+            handler=lambda criterion: criterion.to_q("activity"),
+            label="Activity",
+            choices=ACTIVITY_CHOICES,
+            #: Null for completed runs; the picker asks.
+            nullable=True,
+        ),
     }
 
     @classmethod
@@ -867,26 +885,26 @@ def filter_queryset_for_library(model_name: ModelKey, library: UserLibrary) -> Q
 
     Game is one exception: its list counts the games this library tracks, so
     counting anything else here would answer the builder's live count with a
-    number the destination list cannot show. Playthrough is the other: the
-    projection declares no manager, so every read states its own scope.
+    number the destination list cannot show. Playthrough is the other: its
+    condition alias needs the viewer's clock.
     """
     from django.apps import apps
 
     from games.models import Game, Playthrough
-    from games.reads.playthrough_runs import library_runs
+    from games.reads.playthrough_runs import runs_with_condition
 
     model = apps.get_model("games", model_name)
     if model is Game:
         return Game.objects.tracked_by(library)
     if model is Playthrough:
-        return library_runs(library)
+        return runs_with_condition(library)
     return model.objects.for_library(library)
 
 
 def filter_query_context_for_library(library: UserLibrary) -> FilterQueryContext:
     """Resolve every compiler subquery from the current library's visibility."""
     from games.models import Device, Game, Platform, Playthrough, Purchase, Session
-    from games.reads.playthrough_runs import library_runs
+    from games.reads.playthrough_runs import runs_with_condition
 
     scoped_querysets: dict[builtins.type, QuerySet] = {
         #: tracked_by, not for_library: a nested game filter resolves
@@ -895,7 +913,7 @@ def filter_query_context_for_library(library: UserLibrary) -> FilterQueryContext
         Game: Game.objects.tracked_by(library),
         Session: Session.objects.for_library(library),
         Purchase: Purchase.objects.for_library(library),
-        Playthrough: library_runs(library),
+        Playthrough: runs_with_condition(library),
         Device: Device.objects.for_library(library),
         # Related Platform selection supports the shared catalogue plus this
         # library's private rows. Top-level Platform management remains the

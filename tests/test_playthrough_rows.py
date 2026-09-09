@@ -1,6 +1,6 @@
 """#1012: one table row per run."""
 
-from datetime import date
+from datetime import date, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -11,7 +11,7 @@ from common.date_time_presentation import (
     DateTimePresentation,
 )
 from games.commands.playthrough import ActStatement
-from games.models import Game, Playthrough
+from games.models import Game, Playthrough, Session
 from games.reads.playthrough_numbering import numbered_for
 from games.reads.playthrough_runs import tracked_game
 from games.views.playthrough_rows import playthrough_tabledata
@@ -37,13 +37,20 @@ def presentation() -> DateTimePresentation:
     )
 
 
-def tabledata_of(owned_library, run, presentation, **options):
-    """The table this run renders, numbered."""
+def numbered_runs(owned_library, run):
+    """The runs as the screen reads them."""
     tracked = tracked_game(owned_library, run.player_game.game)
     assert tracked is not None
-    runs = list(
-        numbered_for(owned_library, [tracked.pk]).select_related("player_game__game")
+    return list(
+        numbered_for(owned_library, [tracked.pk], with_condition=True).select_related(
+            "player_game__game"
+        )
     )
+
+
+def tabledata_of(owned_library, run, presentation, **options):
+    """The table this run renders, numbered."""
+    runs = numbered_runs(owned_library, run)
     options.setdefault("csrf_token", "token")
     return playthrough_tabledata(runs, presentation, origin=None, **options)
 
@@ -137,11 +144,7 @@ def test_the_days_cell_reads_the_span(owned_library, run, presentation):
 
 
 def test_excluding_the_game_column_drops_its_cell(owned_library, run, presentation):
-    tracked = tracked_game(owned_library, run.player_game.game)
-    assert tracked is not None
-    runs = list(
-        numbered_for(owned_library, [tracked.pk]).select_related("player_game__game")
-    )
+    runs = numbered_runs(owned_library, run)
 
     data = playthrough_tabledata(
         runs, presentation, exclude_columns=["Game"], origin=None, csrf_token="token"
@@ -243,3 +246,49 @@ def test_a_run_completed_before_today_offers_no_start(
     assert f"/playthrough/{run.pk}/start" not in actions
     assert f"/playthrough/{run.pk}/complete" not in actions
     assert f"/playthrough/edit/{run.pk}" in actions
+
+
+def test_a_playing_run_prints_its_badge_and_its_recency(
+    owned_library, run, presentation
+):
+    Session.objects.create(
+        game=run.player_game.game,
+        timestamp_start=timezone.now() - timedelta(days=4),
+    )
+
+    html = "".join(cells_of(owned_library, run, presentation))
+
+    assert "Playing" in html
+    assert "4 days ago" in html
+
+
+def test_a_never_played_run_prints_no_recency(owned_library, run, presentation):
+    html = "".join(cells_of(owned_library, run, presentation))
+
+    assert "Never played" in html
+    assert "ago" not in html
+
+
+def test_runs_read_without_the_clock_are_refused(owned_library, run, presentation):
+    """A missing alias is a bad read."""
+    tracked = tracked_game(owned_library, run.player_game.game)
+    assert tracked is not None
+    runs = list(
+        numbered_for(owned_library, [tracked.pk]).select_related("player_game__game")
+    )
+
+    with pytest.raises(ValueError, match="carries no condition alias"):
+        playthrough_tabledata(runs, presentation, origin=None, csrf_token="token")
+
+
+def test_a_completed_run_prints_a_dash_for_its_activity(
+    owned_user, owned_library, run, presentation
+):
+    """No clock speaks about a finished run."""
+    _state_completion(owned_user, run)
+
+    data = tabledata_of(owned_library, run, presentation)
+    labels = [column.label for column in data["columns"]]
+    [row] = data["rows"]
+
+    assert str(row["cell_data"][labels.index("Activity")]) == "-"

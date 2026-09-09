@@ -24,6 +24,7 @@ USER_KEYS = {
     "DEFAULT_DISPLAY_CURRENCY",
     "DEFAULT_LANDING_PAGE",
     "DEFAULT_PAGE_SIZE",
+    "DORMANT_AFTER_DAYS",
     "THEME",
     "DISPLAY_TIME_ZONE",
     "DATE_FORMAT_LOCALE",
@@ -357,3 +358,35 @@ def test_currency_preferences_use_distinct_nullable_typed_columns():
     assert UserPreferences._meta.get_field("default_purchase_currency").null is True
     assert UserPreferences._meta.get_field("default_display_currency").null is True
     assert "DEFAULT_DEVICE" not in SETTINGS_REGISTRY
+
+
+def test_dormant_after_days_is_a_live_user_select():
+    definition = get_definition("DORMANT_AFTER_DAYS")
+
+    assert definition.scope is SettingScope.USER
+    assert definition.apply_timing is ApplyTiming.LIVE
+    assert definition.widget is SettingWidget.SELECT
+    assert definition.cast is int
+    assert [value for value, _label in definition.choices] == [
+        7,
+        14,
+        30,
+        60,
+        90,
+        180,
+        365,
+    ]
+    assert definition.default_factory() == 30
+
+
+def test_dormant_after_days_refuses_a_day_count_off_the_list():
+    definition = get_definition("DORMANT_AFTER_DAYS")
+
+    assert definition.validator(90) == 90
+    with pytest.raises(ValidationError):
+        definition.validator(45)
+    with pytest.raises(ValidationError):
+        definition.validator(True)
+    #: A day count; text is refused.
+    with pytest.raises(ValidationError):
+        definition.validator("30")
