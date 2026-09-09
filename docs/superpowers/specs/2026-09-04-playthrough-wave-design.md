@@ -112,7 +112,8 @@ wave that assigns Sessions is the wave that needs one.
 12. #1015 — read cutover: the API router and the row element
 13. #1026 — read cutover: the purchase Finished column and the `finished` sorts
 14. #683 — the companion status change beside a lifecycle action
-15. #688 — the PlayerGame and Playthrough replay-parity gate
+15. #1033 — Playing and Dormant runs
+16. #688 — the PlayerGame and Playthrough replay-parity gate
 
 Required orderings and the reason for each:
 
@@ -133,6 +134,8 @@ Required orderings and the reason for each:
   the two together — a second row builder and the link translation — and #1013
   removes it. Either order needs a bridge; this one puts it where it is already
   specified.
+- `#1013 → #1033`. The badge and the facet render on the list page, which reads
+  legacy rows until #1013.
 - `#1013, #1014, #1015, #1026 → #688`. The gate proves parity for surfaces that
   have all moved.
 - `#688 → #771`. Legacy storage comes out after the gate is green.
@@ -141,7 +144,8 @@ Free to start together: #679 and #686. #686 reads legacy rows only, and has no
 unmet dependency.
 
 Free to run in parallel: #1012, #1014, #1015, and #1026 after #687, with #1013
-behind #1012; #909 any time after #681.
+behind #1012; #909 any time after #681. #1033 appends no event, so it neither
+gates #688 nor waits on it, and it may run beside #683.
 
 ## Issue boundaries
 
@@ -294,13 +298,62 @@ way past.
 
 ### #683 — the companion status change
 
-The checked "Also mark Game Played" beside a first start, the checked "Also
-mark Game Completed" beside a completion, and the optional action beside the
-compact status selector. One command appending a lifecycle event and a status
-event under one `correlation_id`.
+The "Also mark Game Played" box beside a first start, the "Also mark Game
+Completed" box beside a completion, and the act each run row allows: Start on a
+run with no start, Complete on a started one. Each surface appends its
+lifecycle event and its status event under one `correlation_id`.
 
 Moved after #1012. Its affordance sits beside a control that does not exist
 until the read cutover renders one.
+
+Its planning on 2026-09-09 settled three things the charter left open.
+
+**The status is the strongest thing stated.** A game completed once stays
+Completed, and a second run does not walk it back. So "Also mark Game Played"
+renders only where the status is `Unplayed`, rather than rendering checked
+beside every status as the charter's line reads. On any other status a checked
+box would demote the game, which the charter forbids two paragraphs earlier.
+
+**The act sits on the run, not beside the selector.** The charter describes an
+optional action beside the compact status selector, and it was written before a
+run had an editor of its own. #1012 renders every run four sections below that
+metadata row, each with its actions. The lifecycle act belongs there, where the
+row states which run it acts on. The selector is untouched and stays immediate.
+
+**Two dispatches, not one command.** `record_run` is already one to three
+dispatches, because a restatement states each endpoint separately. A single
+command over both aggregates would have to replace that path and could not
+serve the form at all. The pair shares a `correlation_id`, which is what
+`_record_completed` shipped for.
+
+### #1033 — Playing and Dormant runs
+
+An unfinished run reads Playing or Dormant, from how long it has been since the
+game was played, against a user-scoped threshold. Both sides filter. Neither is
+stored, and neither touches a status.
+
+Opened by #683's planning, from the question its status model raises: with the
+high-water rule, a Completed game with a second run in flight reads plain
+Completed, and nothing says a run is live.
+
+Three answers were weighed, and the reasoning is recorded because the charter
+rejected the last of them:
+
+1. **a stated `stopped` endpoint on the run.** Refused. Stopping is not an act
+   and carries no day — a person does not decide they have stopped playing a
+   game, it becomes true quietly some months later. A field filled only when
+   someone remembers is a field that is mostly wrong;
+2. **a stored `playing` flag on `PlayerGame`.** Refused, and the charter's
+   non-goal stands. It copies a fact the runs already state, so the two can
+   disagree, and with several runs it sits one level above the thing it is
+   about;
+3. **a read over session recency, against a setting.** Taken. The app already
+   knows the last day a game was played. Nothing is written, so nothing can
+   drift, and the only matter of taste — how long is too long — is a display
+   preference the person owns.
+
+`Session` holds no reference to a run, so the recency #1033 reads is the game's.
+#700 and #701 narrow it to the run, recorded in the Sessions handoff below.
 
 ### #688 — the gate
 
@@ -324,6 +377,13 @@ that passage by what each half needs:
 The reason is that `Session` has no reference to a Playthrough and is not
 evented yet. Adding the column to the legacy row now means writing it twice:
 once as an ordinary field, and again when #701 makes it a projection.
+
+One more piece of this wave waits on the same reference. #1033 reads how long
+it has been since a game was played, and answers that for the game rather than
+for one of its runs, because no Session names a run. #700 and #701 narrow the
+read to the run, inside the module #1033 adds. A game with one unfinished run
+reads the same either way, so nothing #1033 renders is wrong meanwhile — it is
+less specific than it will be.
 
 ### Catalog follow-ups do not block this wave
 
@@ -383,7 +443,7 @@ Three issues closed as merged, each with the reason on the closing comment:
 - #682, into #681
 - #685, into #684
 
-Seven opened, the last of them while #1012 was planned:
+Eight opened, the last of them while #683 was planned:
 
 - #1010
 - #1011
@@ -392,6 +452,7 @@ Seven opened, the last of them while #1012 was planned:
 - #1014
 - #1015
 - #1026
+- #1033
 
 Seven were retitled to the delivery order above, because the new slices would
 otherwise collide with the `PLAY-05`, `PLAY-09` and `PLAY-10` labels the
