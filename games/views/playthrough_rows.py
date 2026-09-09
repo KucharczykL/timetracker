@@ -125,7 +125,7 @@ def _actions(run: Playthrough, origin: OriginUrl | None, csrf_token: str) -> Cel
     """
     return ButtonGroup(
         [
-            _act_member(run, origin, csrf_token),
+            *_act_members(run, origin, csrf_token),
             {
                 "href": action_url("games:edit_playthrough", run.pk, origin=origin),
                 "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
@@ -140,29 +140,44 @@ def _actions(run: Playthrough, origin: OriginUrl | None, csrf_token: str) -> Cel
     )
 
 
-def _act_member(
+def _act_members(
     run: Playthrough, origin: OriginUrl | None, csrf_token: str
-) -> ButtonGroupMember:
-    """Start, complete, or nothing left to state.
+) -> list[ButtonGroupMember]:
+    """The one act this run can still accept, if any.
 
-    ButtonGroup skips a dict with no slot.
+    A run that states a completion is offered no start,
+    even where it states none: starting today would end
+    the run before it began, and the command refuses
+    that. A button whose whole class of row is refused
+    is a promise the row cannot keep, which is not the
+    race the other gates leave to the command.
+
+    Zero or one, so the caller spreads it.
     """
+    if stated_completion(run) is not None:
+        return []
     if stated_start(run) is None:
-        return {
-            "slot": Icon("play", size=ICON_BUTTON_SIZE_CLASS),
-            "title": "Started today",
-            "color": "green",
-            "method": "post",
-            "action": action_url("games:start_playthrough", run.pk, origin=origin),
-            "csrf_token": csrf_token,
-        }
-    if stated_completion(run) is None:
-        return {
-            "slot": Icon("finish", size=ICON_BUTTON_SIZE_CLASS),
-            "title": "Completed today",
-            "color": "green",
-            "method": "post",
-            "action": action_url("games:complete_playthrough", run.pk, origin=origin),
-            "csrf_token": csrf_token,
-        }
-    return {}
+        return [_act(run, "start", origin, csrf_token)]
+    return [_act(run, "complete", origin, csrf_token)]
+
+
+#: How each act's button reads, by route.
+_ACT_BUTTONS: Mapping[str, tuple[str, str]] = {
+    "start": ("play", "Started today"),
+    "complete": ("finish", "Completed today"),
+}
+
+
+def _act(
+    run: Playthrough, act: str, origin: OriginUrl | None, csrf_token: str
+) -> ButtonGroupMember:
+    """One press, posting to that act's route."""
+    icon, title = _ACT_BUTTONS[act]
+    return {
+        "slot": Icon(icon, size=ICON_BUTTON_SIZE_CLASS),
+        "title": title,
+        "color": "green",
+        "method": "post",
+        "action": action_url(f"games:{act}_playthrough", run.pk, origin=origin),
+        "csrf_token": csrf_token,
+    }

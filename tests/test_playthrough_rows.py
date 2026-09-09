@@ -213,4 +213,21 @@ def test_a_finished_run_offers_neither(owned_user, owned_library, run, presentat
 
     assert f"/playthrough/{run.pk}/start" not in actions
     assert f"/playthrough/{run.pk}/complete" not in actions
+
+
+def test_a_run_completed_before_today_offers_no_start(
+    owned_user, owned_library, run, presentation
+):
+    """The completion alone rules a start out.
+
+    Starting today would finish the run before it
+    began, which the command refuses, so offering
+    the button promises an act it cannot deliver.
+    """
+    _state_completion(owned_user, run)
+
+    actions = actions_of(owned_library, run, presentation, csrf_token="token")
+
+    assert f"/playthrough/{run.pk}/start" not in actions
+    assert f"/playthrough/{run.pk}/complete" not in actions
     assert f"/playthrough/edit/{run.pk}" in actions
