@@ -11,6 +11,10 @@ make bench ARGS="--gate"                     # exit non-zero on a missed budget
 make bench ARGS="--library <uuid>"           # check an existing library, read-only
 ```
 
+`--seed` counts **events**, and the seed writes two a game — the pair
+`TrackGame` appends since #679 — so `--seed 100000` seeds 50,000 games. An odd
+count seeds one event fewer.
+
 `make bench` is deliberately **not** part of `make check`. CI runs on 4 vCPU,
 where a timing gate turns a green machine red, and a command that runs for
 minutes has no business in the gate.
@@ -31,7 +35,10 @@ which costs the run something and is reported rather than tuned away.
 
 ## The recorded run
 
-`make bench`, 2026-09-05, the first recording with two projection tables:
+`make bench`, 2026-09-05, the first recording with two projection tables. The
+seed wrote one event a game then; #688 made it two, so the row counts below
+describe a seed this repository no longer has. The run under **The #688
+recording** replaces it.
 
 ```
 About to create a scratch user, 100000 events and 100410 catalog rows, then remove them. Estimate: 1.6 minute(s).
@@ -63,10 +70,11 @@ rebuild: 18.015s against 60.492s -- passed
 ```
 
 The event count moved because #679 made `TrackGame` two events: the 200
-commands the scenario dispatches now append 400, and each states one
-`PlayerGame` row and one `Playthrough` row. The 100,000 seeded events are
-appended directly and still state one row each, which is why the second table
-holds 410 rows against the first table's 100,410.
+commands the scenario dispatches append 400, and each states one `PlayerGame`
+row and one `Playthrough` row. In the recording above the 100,000 seeded events
+were appended directly and stated one row each, which is why the second table
+holds 410 rows against the first table's 100,410. #688 gave the seed the same
+pair, so both tables now hold half the seeded event count.
 
 ## The rebuild verdict
 
@@ -117,7 +125,9 @@ rows carry a foreign key to the first and four generated columns.
 It holds across both write paths. The 100,000 seeded events were appended in
 batches through `LockedStream.append`; the 820 that follow were written two at a
 time through `dispatch`, with its idempotency record and its own transaction.
-The replay cannot tell them apart, which is the point.
+The replay cannot tell them apart, which is the point. Since #688 the seeded
+batches append the same pair the commands do, so the two paths differ in
+batching alone.
 
 A non-empty diff is a hard failure: `benchmark_events` exits non-zero and prints
 that the timings are real and the claim they support is not. A rebuild that is
@@ -206,8 +216,10 @@ alone. **6.31 s** separates the second from the real replay: reading
 registry dispatch — per-event Python that batching does not touch. So the
 ceiling on a batched replay is roughly 7 s against today's 16.78 s, and no
 arrangement of statements goes below it. The two write-shape rows are the
-`games_playergame` shadow table alone; the 410 `games_playthrough` rows beside
-it are inside the replay figure and too few to move it.
+`games_playergame` shadow table alone. In the recording above the 410
+`games_playthrough` rows beside it were inside the replay figure and too few to
+move it; since #688 that table holds half the seeded rows, so a re-measurement
+of the ceiling has to write both.
 
 **Batching would not change a single handler.** `ProjectionTarget` already owns
 where a family writes — `LIVE_TARGET` returns the model, `ShadowTarget` returns
@@ -239,8 +251,13 @@ user-facing path does. There is no bulk command to measure yet, so there is no
 budget to compare it against; it is recorded because it sets how long seeding
 takes, and seeding is a third of the run.
 
-The seed ends with an `ANALYZE` of the six tables it wrote, so the time above
+The seed ends with an `ANALYZE` of the seven tables it wrote, so the time above
 includes it.
+
+## The #688 recording
+
+Recorded when the gate landed, against the seed that writes both creation
+events. Paste what the tool prints; do not edit a number here.
 
 ## Teardown
 

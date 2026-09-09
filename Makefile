@@ -337,6 +337,10 @@ audit-uuid-identity: ensure-postgres
 preflight-playthroughs: ensure-postgres
 	uv run --frozen python manage.py preflight_playthroughs $(ARGS)
 
+# Read-only: replays every library and fails on a differing row.
+verify-replay-parity: ensure-postgres
+	uv run --frozen python manage.py rebuild_projections --all-libraries --check --fail-on-drift
+
 # Usage: make bench ARGS="--seed 10000 --gate"
 bench: ensure-postgres
 	uv run --frozen python manage.py benchmark_events $(ARGS)
