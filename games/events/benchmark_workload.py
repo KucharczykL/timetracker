@@ -11,7 +11,7 @@ from django.core.management import call_command
 from django.db import connection, transaction
 
 from common.keyset import keyset_pages
-from games.commands.playergame import TrackGame
+from games.commands.playergame import TrackGame, tracking_events
 from games.events.append import lock_stream
 from games.events.benchmark import (
     Seconds,
@@ -22,11 +22,7 @@ from games.events.benchmark import (
     summarize,
 )
 from games.events.dispatch import dispatch
-from games.events.playergame import PLAYERGAME_CREATED
-from games.events.playthrough import playthrough_created
 from games.events.rebuild import RebuildMode, RebuildReport, rebuild_projections
-from games.events.references import capture_reference
-from games.events.vocabulary import NewEvent
 from games.models import (
     Game,
     LibraryEvent,
@@ -83,7 +79,7 @@ def seed_library(
     for batch in batched(_seeded_games(library), APPEND_BATCH):
         with transaction.atomic():
             lock_stream(library).append(
-                [event for game in batch for event in _creation_pair(game)],
+                [event for game in batch for event in tracking_events(game)],
                 actor=actor,
                 correlation_id=correlation_id,
                 idempotency_key=SEED_IDEMPOTENCY_KEY,
@@ -99,17 +95,6 @@ def seed_library(
         events=events,
         append_seconds=append_seconds,
         events_per_second=events / append_seconds if append_seconds else 0.0,
-    )
-
-
-def _creation_pair(game: Game) -> tuple[NewEvent, NewEvent]:
-    """What TrackGame appends: tracked game, then run."""
-    tracked_id = uuid.uuid7()
-    return (
-        PLAYERGAME_CREATED.new(
-            aggregate_id=tracked_id, payload={"game": capture_reference(game)}
-        ),
-        playthrough_created(tracked_id),
     )
 
 

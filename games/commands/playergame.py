@@ -62,6 +62,24 @@ def tracked_game(context: CommandContext, game_id: uuid.UUID) -> PlayerGame:
     )
 
 
+def tracking_events(game: Game) -> list[NewEvent]:
+    """The pair that tracks a game: row, then run.
+
+    One function rather than two alike, because the benchmark seeds this
+    pair directly and a seed that drifted from the command would measure
+    a stream no command can produce.
+    """
+    #: The first act states the default run.
+    tracked_id = uuid.uuid7()
+    return [
+        PLAYERGAME_CREATED.new(
+            aggregate_id=tracked_id,
+            payload={"game": capture_reference(game)},
+        ),
+        playthrough_created(tracked_id),
+    ]
+
+
 @dataclass(frozen=True, slots=True)
 class TrackGame(Command):
     """Track one catalog game in this library."""
@@ -85,15 +103,7 @@ class TrackGame(Command):
                     ),
                 )
             return Unchanged(f"This library already tracks {game.name}.")
-        #: The first act states the default run.
-        tracked_id = uuid.uuid7()
-        return [
-            PLAYERGAME_CREATED.new(
-                aggregate_id=tracked_id,
-                payload={"game": capture_reference(game)},
-            ),
-            playthrough_created(tracked_id),
-        ]
+        return tracking_events(game)
 
     def _visible_game(self, context: CommandContext) -> Game:
         """Its own game, or a shared one."""

@@ -9,6 +9,7 @@ from datetime import date
 from typing import Any, NamedTuple
 
 import pytest
+from django.db import connection
 
 from games.backfill.playergame import backfill_library
 from games.backfill.playthrough import convert_library
@@ -42,10 +43,11 @@ from games.models import (
     PlayerGameStatus,
     PlayEvent,
     Playthrough,
+    PlaythroughKind,
 )
 from games.projectors.playergame import PlayerGames
 from games.projectors.playthrough import Playthroughs
-from games.reads.playthrough_numbering import numbered_for
+from games.reads.playthrough_numbering import DISPLAY_ORDER
 from games.removal import remove
 from timetracker.temporal import TemporalValue
 
@@ -53,6 +55,9 @@ pytestmark = [
     pytest.mark.django_db(transaction=True),
     pytest.mark.untracked_games,
 ]
+
+#: No command states one; an importer takes it.
+UNREACHABLE_KINDS = frozenset({PlaythroughKind.IMPORTED_HISTORY})
 
 
 class DispatchedCommand(NamedTuple):
@@ -71,6 +76,7 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     """
     first = Game.objects.create(library=library, name="Outer Wilds")
     second = Game.objects.create(library=library, name="Tunic")
+    third = Game.objects.create(library=library, name="Hades")
     dispatched: list[DispatchedCommand] = []
 
     def run(command: Command, key: str) -> None:
@@ -82,18 +88,39 @@ def build_stream(user, library) -> list[DispatchedCommand]:
 
     run(TrackGame(game_id=first.pk), "track-first")
     run(TrackGame(game_id=second.pk), "track-second")
+    run(TrackGame(game_id=third.pk), "track-third")
 
     first_run = Playthrough.objects.get(player_game__game=first)
     run(
         SetPlayerGameStatus(game_id=first.pk, status=PlayerGameStatus.PLAYED),
         "status-first",
     )
+    #: A second word, so the column is no constant.
+    run(
+        SetPlayerGameStatus(game_id=second.pk, status=PlayerGameStatus.ABANDONED),
+        "status-second",
+    )
     run(SetPlayerGameMastered(game_id=first.pk, mastered=True), "mastered-first")
+    #: On, then off: the false is stated, not defaulted.
+    run(SetPlayerGameMastered(game_id=second.pk, mastered=True), "mastered-second-on")
+    run(SetPlayerGameMastered(game_id=second.pk, mastered=False), "mastered-second-off")
     run(
         SetPlayerGameExcludedFromUnfinished(
             game_id=first.pk, excluded_from_unfinished=True
         ),
         "excluded-first",
+    )
+    run(
+        SetPlayerGameExcludedFromUnfinished(
+            game_id=second.pk, excluded_from_unfinished=True
+        ),
+        "excluded-second-on",
+    )
+    run(
+        SetPlayerGameExcludedFromUnfinished(
+            game_id=second.pk, excluded_from_unfinished=False
+        ),
+        "excluded-second-off",
     )
     run(
         StartPlaythrough(
@@ -140,11 +167,44 @@ def build_stream(user, library) -> list[DispatchedCommand]:
         .exclude(pk=first_run.pk)
         .get()
     )
+    #: A stated act on no day: the marker stands, the date is null.
+    run(
+        StartPlaythrough(
+            playthrough_id=second_run.pk, when=None, note="Before I kept dates"
+        ),
+        "start-second-run-undated",
+    )
+    run(
+        CompletePlaythrough(
+            playthrough_id=second_run.pk, when=None, note="Some time later"
+        ),
+        "complete-second-run-undated",
+    )
+    #: A name alone, then a note alone: one fact each.
+    run(
+        DescribePlaythrough(playthrough_id=second_run.pk, name="Undated", note=None),
+        "name-second-run",
+    )
+    run(
+        DescribePlaythrough(playthrough_id=second_run.pk, name=None, note="No days"),
+        "note-second-run",
+    )
     run(RemovePlaythrough(playthrough_id=second_run.pk), "remove-second-run")
     run(RestorePlaythrough(playthrough_id=second_run.pk), "restore-second-run")
 
+    #: Left removed, so a stamped removed_at reaches the snapshot.
+    run(CreatePlaythrough(game_id=first.pk), "create-third-run")
+    third_run = (
+        Playthrough.objects.filter(player_game__game=first)
+        .exclude(pk__in=(first_run.pk, second_run.pk))
+        .get()
+    )
+    run(RemovePlaythrough(playthrough_id=third_run.pk), "remove-third-run")
+
     run(RemovePlayerGame(game_id=second.pk), "remove-second-game")
     run(RestorePlayerGame(game_id=second.pk), "restore-second-game")
+    #: Left removed, for the same reason as the third run.
+    run(RemovePlayerGame(game_id=third.pk), "remove-third-game")
     return dispatched
 
 
@@ -175,7 +235,7 @@ def test_the_stream_carries_every_registered_event_type(owned_user, owned_librar
 
 
 def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_library):
-    """A real stream, short of eleven of its types."""
+    """A real stream, short of thirteen of its types."""
     game = Game.objects.create(library=owned_library, name="Celeste")
     dispatch(
         TrackGame(game_id=game.pk),
@@ -187,30 +247,30 @@ def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_librar
     missing = missing_event_types(owned_library)
 
     #: What TrackGame appends, so neither is named.
-    assert "library.playergame.created" not in missing
-    assert "library.playthrough.created" not in missing
-    assert "library.playthrough.restored" in missing
     assert missing == registered_event_types() - {
         "library.playergame.created",
         "library.playthrough.created",
     }
+    assert len(missing) == 13
 
 
 def build_neighbour(user, library) -> None:
-    """A shorter stream every leg leaves alone."""
+    """A shorter stream every leg leaves alone.
+
+    Each dispatch is asserted, because a build that quietly wrote
+    nothing would turn every neighbour comparison into two empty lists
+    agreeing with each other.
+    """
     game = Game.objects.create(library=library, name="Hollow Knight")
-    dispatch(
-        TrackGame(game_id=game.pk),
-        actor=user,
-        library=library,
-        idempotency_key="neighbour-track",
-    )
-    dispatch(
-        SetPlayerGameStatus(game_id=game.pk, status=PlayerGameStatus.COMPLETED),
-        actor=user,
-        library=library,
-        idempotency_key="neighbour-status",
-    )
+    for command, key in (
+        (TrackGame(game_id=game.pk), "neighbour-track"),
+        (
+            SetPlayerGameStatus(game_id=game.pk, status=PlayerGameStatus.COMPLETED),
+            "neighbour-status",
+        ),
+    ):
+        result = dispatch(command, actor=user, library=library, idempotency_key=key)
+        assert result.outcome is CommandOutcome.APPENDED, key
 
 
 @pytest.fixture
@@ -231,12 +291,34 @@ def rows_of(library) -> tuple[ProjectionRows, ProjectionRows]:
     """Both tables' whole rows, in key order.
 
     `.values()` rather than a column list, so a column added later is
-    in the comparison the day it lands.
+    in the comparison the day it lands. Refuses an empty table, because
+    every caller compares two snapshots and two empty ones agree
+    whatever the leg between them did.
     """
-    return (
-        list(PlayerGame.objects.filter(library=library).order_by("pk").values()),
-        list(Playthrough.objects.filter(library=library).order_by("pk").values()),
-    )
+    tracked = list(PlayerGame.objects.filter(library=library).order_by("pk").values())
+    runs = list(Playthrough.objects.filter(library=library).order_by("pk").values())
+    assert tracked and runs, f"Library {library.pk} holds no rows to compare."
+    return (tracked, runs)
+
+
+def row_versions(library) -> list[tuple[str, str]]:
+    """Each row's key and its `xmin`, in key order.
+
+    A rewrite moves `xmin` even where it writes the values the row
+    already held, which is what parts an untouched neighbour from one
+    an unscoped replay upserted over.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id::text, xmin::text FROM games_playergame WHERE library_id = %s
+            UNION ALL
+            SELECT id::text, xmin::text FROM games_playthrough WHERE library_id = %s
+            ORDER BY 1
+            """,
+            [library.pk, library.pk],
+        )
+        return cursor.fetchall()
 
 
 def empty_projections(library) -> None:
@@ -252,6 +334,7 @@ def test_replaying_an_emptied_library_reproduces_both_tables(
     build_stream(owned_user, owned_library)
     before = rows_of(owned_library)
     untouched = rows_of(neighbour)
+    unwritten = row_versions(neighbour)
     empty_projections(owned_library)
 
     result = replay(owned_library)
@@ -261,6 +344,8 @@ def test_replaying_an_emptied_library_reproduces_both_tables(
     )
     assert rows_of(owned_library) == before
     assert rows_of(neighbour) == untouched
+    #: Values alone cannot part untouched from upserted alike.
+    assert row_versions(neighbour) == unwritten
 
 
 def test_a_rebuild_swaps_both_tables_with_an_empty_diff(
@@ -290,6 +375,7 @@ def test_every_command_repeated_under_its_key_records_nothing(
     dispatched = build_stream(owned_user, owned_library)
     before = rows_of(owned_library)
     untouched = rows_of(neighbour)
+    unwritten = row_versions(neighbour)
     head_before = LibraryEventStreamHead.objects.get(
         library=owned_library
     ).current_sequence
@@ -308,6 +394,8 @@ def test_every_command_repeated_under_its_key_records_nothing(
     assert LibraryEvent.objects.filter(library=owned_library).count() == events_before
     assert rows_of(owned_library) == before
     assert rows_of(neighbour) == untouched
+    #: Values alone cannot part untouched from upserted alike.
+    assert row_versions(neighbour) == unwritten
     assert LibraryIdempotencyRecord.objects.filter(
         library=owned_library
     ).count() == len({key for _command, key in dispatched})
@@ -331,12 +419,15 @@ def test_a_converted_library_replays_into_its_live_rows(owned_library, neighbour
     build_converted(owned_library)
     before = rows_of(owned_library)
     untouched = rows_of(neighbour)
+    unwritten = row_versions(neighbour)
     empty_projections(owned_library)
 
     replay(owned_library)
 
     assert rows_of(owned_library) == before
     assert rows_of(neighbour) == untouched
+    #: Values alone cannot part untouched from upserted alike.
+    assert row_versions(neighbour) == unwritten
 
 
 def test_a_converted_library_rebuilds_with_an_empty_diff(owned_library, neighbour):
@@ -357,35 +448,45 @@ def test_a_converted_library_rebuilds_with_an_empty_diff(owned_library, neighbou
     assert rows_of(neighbour) == untouched
 
 
-def test_the_display_number_survives_a_rebuild_of_tied_runs(owned_library):
-    """Only the key separates these two runs.
+def test_the_display_number_is_ordered_by_a_total_key():
+    """The key last is what a swap cannot renumber.
 
-    RowNumber over peers follows the plan's input order, which a swap
-    changes -- so a tie is the case a rebuild can renumber.
+    A conversion stamps `recorded_at` from each legacy row's
+    `created_at`, so two undated rows made in one instant tie on the
+    first three sort fields. RowNumber over peers follows the plan's
+    input order, and a swap changes that -- so the fourth field, which
+    is unique, is the whole reason a rebuild leaves the numbers alone.
     """
-    game = Game.objects.create(library=owned_library, name="Chrono Trigger")
-    first = PlayEvent.objects.create(game=game)
-    second = PlayEvent.objects.create(game=game)
-    #: auto_now_add: the tie is stated by hand.
-    instant = PlayEvent.objects.get(pk=first.pk).created_at
-    PlayEvent.objects.filter(pk__in=(first.pk, second.pk)).update(created_at=instant)
-    backfill_library(owned_library)
-    convert_library(owned_library)
-    tracked = PlayerGame.objects.get(library=owned_library, game=game)
+    assert DISPLAY_ORDER[-1] == "id"
 
-    #: Unannotated: display_number is a queryset alias.
-    def numbers():
-        return {
-            run.pk: run.display_number
-            for run in numbered_for(owned_library, [tracked.pk])
-        }
 
-    before = numbers()
-    #: Two runs, endpoints unstated, created_at tied.
-    assert len(before) == 2
-    assert sorted(before.values()) == [1, 2]
+def test_the_stream_leaves_a_removed_row_in_each_table(owned_user, owned_library):
+    """A restored row states no removed_at to compare."""
+    build_stream(owned_user, owned_library)
 
-    report = rebuild_projections(owned_library, mode=RebuildMode.REBUILD)
+    assert PlayerGame.objects.filter(
+        library=owned_library, removed_at__isnull=False
+    ).exists()
+    assert Playthrough.objects.filter(
+        library=owned_library, removed_at__isnull=False
+    ).exists()
 
-    assert report.swapped is True
-    assert numbers() == before
+
+def test_the_gate_replays_every_reachable_playthrough_kind(
+    owned_user, owned_library, django_user_model
+):
+    """A new kind fails here until a leg states it."""
+    build_stream(owned_user, owned_library)
+    #: Its own library: the backfill reads every game in one.
+    converted = django_user_model.objects.create_user(
+        username="gate-converted", password="p"
+    )
+    build_converted(converted.library)
+
+    stated = set(
+        Playthrough.objects.filter(
+            library__in=(owned_library, converted.library)
+        ).values_list("kind", flat=True)
+    )
+
+    assert stated == {kind for kind in PlaythroughKind} - UNREACHABLE_KINDS

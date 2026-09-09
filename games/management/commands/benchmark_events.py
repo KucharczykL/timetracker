@@ -76,6 +76,12 @@ class Command(BaseCommand):
         #: Here, so --library sees an unset seed.
         seed = DEFAULT_SEED_EVENTS if options["seed"] is None else options["seed"]
         if library is None:
+            if seed < 2:
+                raise CommandError(
+                    f"--seed {seed} seeds no game, because a game is two "
+                    "events, and a library with no stream measures nothing. "
+                    "The smallest run is --seed 2."
+                )
             self._write_estimate(
                 seed=seed,
                 iterations=options["iterations"],

@@ -48,21 +48,38 @@ class Command(BaseCommand):
             "--fail-on-drift",
             action="store_true",
             help=(
-                "Exit non-zero when a check found a differing row. A check "
-                "alone exits zero, because a rebuild removes drift; an "
+                "Exit non-zero when a check found a differing row, after "
+                "checking every library in scope. Needs --check: a check "
+                "alone exits zero, because a rebuild removes drift, and an "
                 "operator rehearsing a deployment wants the opposite."
             ),
         )
 
     def handle(self, *args, **options):
+        if options["fail_on_drift"] and not options["check"]:
+            #: Silently inert here would rebuild every library instead.
+            raise CommandError(
+                "--fail-on-drift reports what a check found, and a rebuild "
+                "removes drift rather than reporting it. Add --check."
+            )
         libraries = self._resolve_libraries(options)
         mode = RebuildMode.CHECK if options["check"] else RebuildMode.REBUILD
+        #: The whole census, so one drift hides no other.
+        drifted: list[tuple[UserLibrary, int]] = []
         for library in libraries:
-            self._run_one(library, mode, fail_on_drift=options["fail_on_drift"])
+            rows = self._run_one(library, mode)
+            if rows:
+                drifted.append((library, rows))
+        if drifted and options["fail_on_drift"]:
+            total = sum(rows for _library, rows in drifted)
+            raise CommandError(
+                f"{total} row(s) differ from the replay, across "
+                f"{len(drifted)} of {len(libraries)} library(s) checked: "
+                + ", ".join(str(library.pk) for library, _rows in drifted)
+            )
 
-    def _run_one(
-        self, library: UserLibrary, mode: RebuildMode, *, fail_on_drift: bool
-    ) -> None:
+    def _run_one(self, library: UserLibrary, mode: RebuildMode) -> int:
+        """Answer the drifted rows a check counted."""
         try:
             report = rebuild_projections(library, mode=mode)
         except UnresolvedReferences as error:
@@ -78,15 +95,16 @@ class Command(BaseCommand):
                 self._write_table(table, self.stderr)
             raise CommandError(str(error)) from error
         self._write_report(report)
+        if not report.tables:
+            #: Zero compared reads as zero differing otherwise.
+            raise CommandError(
+                f"Library {report.library_id} was replayed through no table, so "
+                "nothing was compared. A projection registry naming none is the "
+                "fault here, not a library that agrees with its events."
+            )
 
         if mode is RebuildMode.CHECK:
-            drifted = self._write_check_outcome(report)
-            if drifted and fail_on_drift:
-                raise CommandError(
-                    f"{drifted} row(s) differ from the replay in library "
-                    f"{report.library_id}."
-                )
-            return
+            return self._write_check_outcome(report)
         if not report.swapped:
             raise CommandError(
                 f"The rebuild lost to a concurrent write on all "
@@ -98,12 +116,21 @@ class Command(BaseCommand):
         )
         #: True by having got this far.
         self.stdout.write(self.style.SUCCESS("References: all resolved."))
+        #: A rebuild leaves no drift to report.
+        return 0
 
     def _resolve_libraries(self, options) -> list[UserLibrary]:
         libraries = UserLibrary.objects.select_related("user").order_by("pk")
         if options["all_libraries"]:
-            return list(libraries)
-        if options["user"]:
+            found = list(libraries)
+            if not found:
+                raise CommandError(
+                    "--all-libraries found no library, so nothing was replayed "
+                    "and nothing was compared."
+                )
+            return found
+        #: Not truthiness: --user "" would fall through to a UUID.
+        if options["user"] is not None:
             return [self._library_of_user(libraries, options["user"])]
         return [self._library_by_id(libraries, options["library_id"])]
 
