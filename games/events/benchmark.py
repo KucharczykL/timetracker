@@ -288,7 +288,7 @@ class SeedReport:
 
     catalog_rows: int
     catalog_seconds: Seconds
-    #: Games seeded; the events are two a game.
+    #: Games seeded; events are two a game.
     games: int
     events: int
     append_seconds: Seconds

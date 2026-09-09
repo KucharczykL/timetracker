@@ -140,7 +140,7 @@ class Command(BaseCommand):
             + SECONDS_PER_REBUILT_EVENT
             + SECONDS_PER_PURGED_EVENT
         )
-        #: A game is two events, so half as many catalog rows.
+        #: Two events a game: half the rows.
         catalog_rows = seed // 2 + 2 * iterations + warmup
         notice = (
             f"About to create a scratch user, {seed} events and "

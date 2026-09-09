@@ -337,7 +337,12 @@ audit-uuid-identity: ensure-postgres
 preflight-playthroughs: ensure-postgres
 	uv run --frozen python manage.py preflight_playthroughs $(ARGS)
 
-# Read-only: replays every library and fails on a differing row.
+# Destroys a user's library and its rows.
+# Usage: make purge-library ARGS="--user NAME --confirm NAME"
+purge-library: ensure-postgres
+	uv run --frozen python manage.py purge_user_library $(ARGS)
+
+# Read-only: replays every library, fails on drift.
 verify-replay-parity: ensure-postgres
 	uv run --frozen python manage.py rebuild_projections --all-libraries --check --fail-on-drift
 

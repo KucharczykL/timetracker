@@ -73,7 +73,7 @@ class Command(BaseCommand):
                 "no longer exist, so nothing was replayed."
             ) from error
         except SwapRefusedByReference as error:
-            #: The refusal carries the diff; no report exists.
+            #: The refusal carries the diff; no report.
             for table in error.tables:
                 self._write_table(table, self.stderr)
             raise CommandError(str(error)) from error
@@ -109,7 +109,7 @@ class Command(BaseCommand):
 
     @staticmethod
     def _library_of_user(libraries, username: str) -> UserLibrary:
-        """A missing user is not a user missing a library."""
+        """Two errors: no user, or no library."""
         user_model = get_user_model()
         try:
             user = user_model.objects.get(username=username)
@@ -183,7 +183,7 @@ class Command(BaseCommand):
         self.stderr.write(REMEDY)
 
     def _write_check_outcome(self, report: RebuildReport) -> int:
-        """Print the outcome, and say how many rows drifted."""
+        """Print the outcome; answer the drifted count."""
         if report.head_at_diff != report.replayed_through:
             #: No lock: the drift may be false.
             self.stdout.write(

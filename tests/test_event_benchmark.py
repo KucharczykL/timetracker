@@ -260,7 +260,7 @@ def test_a_rebuild_below_the_gating_floor_is_not_gated():
 
 @pytest.mark.django_db
 def test_seeding_writes_both_creation_events_and_both_projection_rows(owned_library):
-    """A pair per game, as TrackGame appends one since #679."""
+    """A pair per game, as TrackGame appends."""
     report = seed_library(owned_library, actor=owned_library.user, games=25, spares=4)
     assert isinstance(report, SeedReport)
     assert report.games == 25
@@ -391,10 +391,9 @@ def test_one_dispatch_writes_one_row_per_projection_through_one_statement_each(
 def test_replaying_one_event_costs_one_statement(django_user_model):
     """The replay is one upsert.
 
-    A rebuild also pays a fixed cost, so a small one averages more. The
-    slope between two sizes is the per-event number, and it is exact.
-    Two events a game since #688, so twenty more games are forty more
-    events.
+    A rebuild also pays a fixed cost, so a small one averages more.
+    The slope between two sizes is the per-event number, and it is
+    exact. A game is two events, so twenty more games are forty more.
     """
     totals: dict[int, int] = {}
     for games in (10, 30):
@@ -422,7 +421,7 @@ def test_the_replay_counts_the_shadow_table_as_its_projection(owned_library):
     run_shadow = f"{run_live}{SHADOW_SUFFIX}"
     assert replay.statements_per_table[shadow] == 10
     assert replay.statements_per_table[run_shadow] == 10
-    #: Both shadows, and the two swaps beside them.
+    #: Both shadows, and both swaps beside them.
     assert replay.projection_statements == (
         replay.statements_per_table[shadow]
         + replay.statements_per_table[live]
@@ -600,7 +599,7 @@ def test_keep_names_the_scratch_user_it_leaves_behind():
 
 @pytest.mark.django_db(transaction=True)
 def test_an_odd_seed_seeds_one_event_fewer():
-    """A pair is two events, so an odd count cannot be met."""
+    """An odd count cannot be a pair."""
     report = run_benchmark(seed=7, iterations=1, warmup=0, keep=True)
     assert report.seed is not None
     assert report.seed.games == 3
@@ -617,7 +616,7 @@ def test_seeding_no_game_writes_no_head(owned_library):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_seeded_library_rebuilds_both_tables_with_no_row_differing(owned_library):
-    """The seed writes what a replay of it produces."""
+    """The seed writes what a replay produces."""
     seed_library(owned_library, actor=owned_library.user, games=6, spares=0)
 
     report = rebuild_projections(owned_library, mode=RebuildMode.REBUILD)

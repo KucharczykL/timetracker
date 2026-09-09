@@ -1527,7 +1527,7 @@ def test_an_unknown_user_fails_before_anything_is_read(owned_library):
 
 @pytest.mark.django_db
 def test_a_user_owning_no_library_fails(django_user_model):
-    """A missing user is not a user missing a library."""
+    """Two errors: no user, or no library."""
     user = django_user_model.objects.create_user(username="libraryless")
     UserLibrary.objects.filter(user=user).delete()
 
@@ -1549,7 +1549,7 @@ def test_two_scopes_are_refused(owned_library):
 
 @pytest.mark.django_db
 def test_all_libraries_reports_each_one_in_key_order(owned_library, django_user_model):
-    """Key order, so two runs of the same scope read the same."""
+    """Key order, so two runs read alike."""
     second = django_user_model.objects.create_user(username="second-owner")
     ordered = sorted((str(owned_library.pk), str(second.library.pk)))
 
@@ -1575,7 +1575,7 @@ def drifted_library(library) -> None:
 
 @pytest.mark.django_db
 def test_a_check_alone_still_exits_zero_on_drift(owned_library):
-    """A rebuild removes drift, so a check that found some found work."""
+    """A check found work, not a fault."""
     drifted_library(owned_library)
 
     output = run_command("--library", str(owned_library.pk), "--check")

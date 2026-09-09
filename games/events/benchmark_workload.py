@@ -68,11 +68,9 @@ def seed_library(
 ) -> SeedReport:
     """Fill `library`, and leave `spares` untracked games.
 
-    Two events a game, in the order and shape TrackGame writes since
-    #679: the tracked game, then the run it comes with, under one
-    correlation_id. The parameter counts games rather than events
-    because the two numbers differ, and one named for the other reads
-    wrong at every call site.
+    The parameter counts games rather than events, because a game is
+    two events and a parameter named for the other one reads wrong at
+    every call site.
     """
     catalog_started = monotonic()
     _create_catalog(library, prefix=SEEDED_NAME_PREFIX, count=games)
@@ -105,11 +103,7 @@ def seed_library(
 
 
 def _creation_pair(game: Game) -> tuple[NewEvent, NewEvent]:
-    """What TrackGame appends: the tracked game, then its run.
-
-    The run's identity is minted with the event, as the command mints
-    it, and the tracked game's is what the run names.
-    """
+    """What TrackGame appends: tracked game, then run."""
     tracked_id = uuid.uuid7()
     return (
         PLAYERGAME_CREATED.new(

@@ -1,9 +1,4 @@
-"""One stream carrying every event type of both families, replayed.
-
-Issue #688. Each event type already has a projection test of its own;
-this module holds the claim those tests cannot make between them --
-that a whole stream, built the way the write path builds one, replays
-into the rows it produced.
+"""Every event type of both families, replayed.
 
 The dispatches need real transactions, and the conftest tracking
 fixture would otherwise write projection rows no event states.
@@ -61,14 +56,14 @@ pytestmark = [
 
 
 class DispatchedCommand(NamedTuple):
-    """One command of the stream, and the key it was dispatched under."""
+    """One command, and its idempotency key."""
 
     command: Command
     key: str
 
 
 def build_stream(user, library) -> list[DispatchedCommand]:
-    """Every event type of both families, through commands only.
+    """Every type of both families, through commands.
 
     Nothing appends by hand: the gate is a claim about what the write
     path produces, and an event this module wrote itself would prove
@@ -163,12 +158,7 @@ def registered_event_types() -> set[str]:
 
 
 def test_the_stream_carries_every_registered_event_type(owned_user, owned_library):
-    """A type the stream never appends is a leg nobody runs.
-
-    The guard is what keeps this module honest when #700 and #701 give
-    Session its reference to a run, and whenever a family gains a type
-    after that.
-    """
+    """A type the stream misses goes untested."""
     build_stream(owned_user, owned_library)
     appended = set(
         LibraryEvent.objects.filter(library=owned_library).values_list(
@@ -180,11 +170,7 @@ def test_the_stream_carries_every_registered_event_type(owned_user, owned_librar
 
 
 def test_the_guard_names_a_type_the_stream_missed():
-    """The guard fails loudly, so a silent gap cannot pass.
-
-    Subtracting a stream that never restored a run leaves exactly the
-    restore, which is the sentence a reader of the failure needs.
-    """
+    """The guard names the type it missed."""
     complete = registered_event_types()
     missing = "library.playthrough.restored"
     assert missing in complete
@@ -193,12 +179,7 @@ def test_the_guard_names_a_type_the_stream_missed():
 
 
 def build_neighbour(user, library) -> None:
-    """A shorter stream nobody's assertion reads.
-
-    Every leg states that these rows did not move: a replay scoped to
-    one library must leave a neighbour alone, and an unscoped one
-    could not tell the difference.
-    """
+    """A shorter stream every leg leaves alone."""
     game = Game.objects.create(library=library, name="Hollow Knight")
     dispatch(
         TrackGame(game_id=game.pk),
@@ -216,7 +197,7 @@ def build_neighbour(user, library) -> None:
 
 @pytest.fixture
 def neighbour(django_user_model):
-    """A second owner, with a library of their own."""
+    """A second owner with their own library."""
     user = django_user_model.objects.create_user(
         username="gate-neighbour", password="p"
     )
@@ -241,7 +222,7 @@ def rows_of(library) -> tuple[ProjectionRows, ProjectionRows]:
 
 
 def empty_projections(library) -> None:
-    """Scoped by library, the child first: player_game RESTRICTs."""
+    """Scoped by library, child first for RESTRICT."""
     Playthrough.objects.filter(library=library).delete()
     PlayerGame.objects.filter(library=library).delete()
 
@@ -249,13 +230,7 @@ def empty_projections(library) -> None:
 def test_replaying_an_emptied_library_reproduces_both_tables(
     owned_user, owned_library, neighbour
 ):
-    """Every column, including the clock-derived ones.
-
-    tracked_at, created_at, removed_at, start_recorded_at and
-    completion_recorded_at are each written from event.recorded_at,
-    so nothing in either row legitimately differs between the write
-    path and the replay.
-    """
+    """Every column, including the clock-derived ones."""
     build_stream(owned_user, owned_library)
     before = rows_of(owned_library)
     untouched = rows_of(neighbour)
@@ -273,7 +248,7 @@ def test_replaying_an_emptied_library_reproduces_both_tables(
 def test_a_rebuild_swaps_both_tables_with_an_empty_diff(
     owned_user, owned_library, neighbour
 ):
-    """The rebuild's own FULL OUTER JOIN, rather than this module's."""
+    """The rebuild's own diff, not this module's."""
     build_stream(owned_user, owned_library)
     untouched = rows_of(neighbour)
 
@@ -293,11 +268,7 @@ def test_a_rebuild_swaps_both_tables_with_an_empty_diff(
 def test_every_command_repeated_under_its_key_records_nothing(
     owned_user, owned_library, neighbour
 ):
-    """A repeat answers from the record instead of appending.
-
-    The head is the claim: a second append would move it, and a
-    projection written twice would show in the rows beside it.
-    """
+    """A repeat answers from the record."""
     dispatched = build_stream(owned_user, owned_library)
     before = rows_of(owned_library)
     untouched = rows_of(neighbour)
@@ -325,12 +296,7 @@ def test_every_command_repeated_under_its_key_records_nothing(
 
 
 def build_converted(library) -> Game:
-    """A library whose runs came out of the legacy rows.
-
-    backfill_library() writes the #676 PlayerGame baseline;
-    convert_library() is #684, whose events are backdated to each
-    legacy row's own created_at.
-    """
+    """Runs converted out of the legacy rows."""
     game = Game.objects.create(library=library, name="Chrono Trigger")
     PlayEvent.objects.create(
         game=game, started=date(2024, 1, 1), ended=date(2024, 1, 9), note="One"
@@ -374,7 +340,7 @@ def test_a_converted_library_rebuilds_with_an_empty_diff(owned_library, neighbou
 
 
 def test_the_display_number_survives_a_rebuild_of_tied_runs(owned_library):
-    """The key is the fourth sort field, and here it is the only one.
+    """Only the key separates these two runs.
 
     RowNumber over peers follows the plan's input order, which a swap
     changes -- so a tie is the case a rebuild can renumber.
@@ -382,14 +348,14 @@ def test_the_display_number_survives_a_rebuild_of_tied_runs(owned_library):
     game = Game.objects.create(library=owned_library, name="Chrono Trigger")
     first = PlayEvent.objects.create(game=game)
     second = PlayEvent.objects.create(game=game)
-    #: created_at is auto_now_add, so the tie is stated by hand.
+    #: auto_now_add: the tie is stated by hand.
     instant = PlayEvent.objects.get(pk=first.pk).created_at
     PlayEvent.objects.filter(pk__in=(first.pk, second.pk)).update(created_at=instant)
     backfill_library(owned_library)
     convert_library(owned_library)
     tracked = PlayerGame.objects.get(library=owned_library, game=game)
 
-    #: Unannotated: display_number is an annotation, not a field.
+    #: Unannotated: display_number is a queryset alias.
     def numbers():
         return {
             run.pk: run.display_number
@@ -397,7 +363,7 @@ def test_the_display_number_survives_a_rebuild_of_tied_runs(owned_library):
         }
 
     before = numbers()
-    #: Two runs, both endpoints unstated, one created_at between them.
+    #: Two runs, endpoints unstated, created_at tied.
     assert len(before) == 2
     assert sorted(before.values()) == [1, 2]
 
