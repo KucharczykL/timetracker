@@ -1,7 +1,7 @@
 import logging
 import uuid
 from datetime import date, datetime, timedelta
-from typing import Any, cast
+from typing import Any, NamedTuple, cast
 from uuid import UUID
 
 from django.contrib import messages
@@ -242,8 +242,9 @@ def add_playthrough(request: HttpRequest, game_id: UUID | None = None) -> HttpRe
         game = form.cleaned_data["game"]
         correlation_id = new_correlation_id()
         draft = _recorded_draft(form)
+        acts = _new_acts(draft, None)
         if record_run_for_request(request, game, draft, correlation_id=correlation_id):
-            _record_companion_status(request, game, draft, form, correlation_id)
+            _record_companion_status(request, game, acts, form, correlation_id)
             return redirect(
                 return_url(
                     request,
@@ -271,11 +272,22 @@ def _stated_act(day: date | None) -> ActStatement:
     return ActStatement(None if day is None else TemporalValue.from_day(day))
 
 
+def _recorded_act(day: date | None) -> ActStatement | None:
+    """The act this field records, or nothing.
+
+    A blank field on a new run records no act: a run added
+    with no end day is one nobody finished, not one
+    finished on a day nobody wrote down. So RunDraft's None
+    reads the same here as it does on an edit.
+    """
+    return None if day is None else _stated_act(day)
+
+
 def _recorded_draft(form: PlaythroughForm) -> RunDraft:
-    """The run this form records; both acts happened."""
+    """The run this form records."""
     return RunDraft(
-        started=_stated_act(form.cleaned_data["started"]),
-        completed=_stated_act(form.cleaned_data["ended"]),
+        started=_recorded_act(form.cleaned_data["started"]),
+        completed=_recorded_act(form.cleaned_data["ended"]),
         note=form.cleaned_data["note"],
     )
 
@@ -337,9 +349,7 @@ def record_completed(
     """State Completed for the game just finished.
 
     The request's correlation id, not a fresh one: the act
-    and the status it implies belong to one submit. No
-    reader groups events that way yet, so this changes no
-    screen. It is the plumbing #683 needs.
+    and the status it implies belong to one submit.
 
     Answers False on a refusal, which toasted already.
     """
@@ -351,28 +361,55 @@ def record_completed(
     )
 
 
+class NewActs(NamedTuple):
+    """The endpoints a submit records for the first time."""
+
+    started: bool
+    completed: bool
+
+
+def _new_acts(draft: RunDraft, run: Playthrough | None) -> NewActs:
+    """Which acts the person recorded just now.
+
+    A run being created records every act it carries. An
+    edit that restates an endpoint the run already holds
+    records no new act, so its box implies no status --
+    the form prefills both days, so a note edit reposts
+    them, and fixing a typo does not finish a game.
+
+    Read before the restatement commits, or every act
+    already looks like an old one.
+    """
+    return NewActs(
+        started=draft.started is not None
+        and (run is None or stated_start(run) is None),
+        completed=draft.completed is not None
+        and (run is None or stated_completion(run) is None),
+    )
+
+
 def _record_companion_status(
     request: HttpRequest,
     game: Game,
-    draft: RunDraft,
+    acts: NewActs,
     form: PlaythroughForm,
     correlation_id: uuid.UUID,
 ) -> None:
-    """State the status the stated acts imply.
+    """State the status the new acts imply.
 
-    Each box acts only where the draft states
-    its act. Completed goes second and wins.
-    Answers are discarded: a refused status
-    toasts, and its run stands.
+    Each box acts only where this submit
+    recorded its act. Completed goes second
+    and wins. Answers are discarded: a
+    refused status toasts, and its run stands.
     """
-    if draft.started is not None and form.cleaned_data["also_mark_played"]:
+    if acts.started and form.cleaned_data["also_mark_played"]:
         record_facts_for_request(
             request,
             game,
             status=PlayerGameStatus.PLAYED,
             correlation_id=correlation_id,
         )
-    if draft.completed is not None and form.cleaned_data["also_mark_completed"]:
+    if acts.completed and form.cleaned_data["also_mark_completed"]:
         record_completed(request, game, correlation_id)
 
 
@@ -403,8 +440,10 @@ def edit_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse
     if form.is_valid():
         correlation_id = new_correlation_id()
         draft = _edited_draft(form, run)
+        #: Ahead of the write, which refreshes the run.
+        acts = _new_acts(draft, run)
         if restate_run_for_request(request, run, draft, correlation_id=correlation_id):
-            _record_companion_status(request, game, draft, form, correlation_id)
+            _record_companion_status(request, game, acts, form, correlation_id)
             return redirect(
                 return_url(
                     request,

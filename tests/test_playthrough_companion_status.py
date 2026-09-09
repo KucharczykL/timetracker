@@ -165,6 +165,67 @@ def test_a_note_only_edit_states_no_status(
     assert status_of(owned_library) == PlayerGameStatus.UNPLAYED
 
 
+def test_a_note_edit_on_a_finished_run_states_no_status(
+    owned_user, logged_in, owned_library, tracked
+):
+    """The boxes ride a prefilled form, so a note edit reposts both days.
+
+    Restating an endpoint the run already holds records no
+    new act, and only a new act implies a status. Otherwise
+    fixing a typo would drag Abandoned back to Completed.
+    """
+    run = Playthrough.objects.get(player_game__game=tracked)
+    logged_in.post(
+        reverse("games:edit_playthrough", args=[run.pk]),
+        {
+            "game": str(tracked.pk),
+            "started": "2026-01-02",
+            "ended": "2026-02-03",
+            "note": "",
+        },
+    )
+    state(owned_user, tracked, PlayerGameStatus.ABANDONED)
+
+    logged_in.post(
+        reverse("games:edit_playthrough", args=[run.pk]),
+        {
+            "game": str(tracked.pk),
+            "started": "2026-01-02",
+            "ended": "2026-02-03",
+            "note": "gave up in the tower",
+            "also_mark_played": "on",
+            "also_mark_completed": "on",
+        },
+    )
+
+    run.refresh_from_db()
+    assert run.note == "gave up in the tower"
+    assert status_of(owned_library) == PlayerGameStatus.ABANDONED
+
+
+def test_adding_a_run_with_no_end_day_finishes_nothing(logged_in, owned_library, game):
+    """A run added with no end day is one nobody finished.
+
+    Not one finished on a day nobody wrote down, so the
+    ticked box states no completion either.
+    """
+    logged_in.post(
+        reverse("games:add_playthrough"),
+        {
+            "game": str(game.pk),
+            "started": "2026-01-02",
+            "ended": "",
+            "note": "",
+            "also_mark_played": "on",
+            "also_mark_completed": "on",
+        },
+    )
+
+    run = Playthrough.objects.get(player_game__game=game)
+    assert run.completion_recorded_at is None
+    assert status_of(owned_library) == PlayerGameStatus.PLAYED
+
+
 def test_starting_a_run_states_today_and_played(logged_in, owned_library, tracked):
     run = Playthrough.objects.get(player_game__game=tracked)
 

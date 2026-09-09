@@ -65,8 +65,8 @@ def test_marking_finished_states_the_status_under_one_correlation_id(
         reverse("games:add_playthrough"),
         {
             "game": str(game.pk),
-            "started": "",
-            "ended": "",
+            "started": "2026-01-02",
+            "ended": "2026-02-03",
             "note": "",
             "also_mark_completed": "on",
         },
