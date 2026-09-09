@@ -168,22 +168,27 @@ def LinkedPurchase(purchase: Purchase) -> Node:
     link = reverse("games:view_purchase", args=[purchase.id])
     link_content = ""
     games_list: Node | None = None
-    game_count = purchase.games.count()
+    #: Read the relation once. A list the caller prefetched is
+    #: already in hand, and `first()` would re-order and re-query
+    #: past it, costing the purchase list a query per row.
+    games = list(purchase.games.all())
+    game_count = len(games)
     if game_count == 0:
         #: A purchase is live while it names no game, so the
         #: list renders one. Its own name is all it states.
         link_content = purchase.name or "No games"
     if game_count == 1:
-        first_game = purchase.games.first()
-        if first_game is not None:
-            first_game_name = first_game.name
-            if purchase.name:
-                link_content = f"{first_game_name} - {purchase.get_type_display()} ({purchase.name})"
-            else:
-                link_content = first_game.name
+        first_game = games[0]
+        first_game_name = first_game.name
+        if purchase.name:
+            link_content = (
+                f"{first_game_name} - {purchase.get_type_display()} ({purchase.name})"
+            )
+        else:
+            link_content = first_game.name
     if game_count > 1:
         games_list = Ul(class_="list-disc list-inside")[
-            *[Li()[game.name] for game in purchase.games.all()]
+            *[Li()[game.name] for game in games]
         ]
         if purchase.name:
             link_content = purchase.name

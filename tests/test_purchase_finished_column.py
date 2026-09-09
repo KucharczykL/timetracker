@@ -13,11 +13,9 @@ from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.untracked_games
 
-#: Measured, not guessed, per number of rows. One query per
-#: row remains, and it is `LinkedPurchase` reading
-#: `games.first()` past the prefetch, which predates this
-#: issue. The completion adds none: it is annotated.
-PURCHASE_LIST_QUERIES = {3: 19, 10: 26}
+#: Measured, not guessed. One number for any number of rows:
+#: nothing the list draws reads a row of its own.
+PURCHASE_LIST_QUERIES = 16
 
 
 @pytest.fixture
@@ -139,12 +137,13 @@ def seed_rows(user, library, count):
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize("rows", [3, 10])
-def test_the_list_costs_what_it_is_measured_to(
+def test_the_list_costs_no_query_per_row(
     logged_client, owned_user, owned_library, django_assert_num_queries, rows
 ):
+    """Ten purchases cost what three do."""
     seed_rows(owned_user, owned_library, rows)
 
-    with django_assert_num_queries(PURCHASE_LIST_QUERIES[rows]):
+    with django_assert_num_queries(PURCHASE_LIST_QUERIES):
         logged_client.get(reverse("games:list_purchases"))
 
 
