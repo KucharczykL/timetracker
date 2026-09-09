@@ -44,14 +44,25 @@ class Command(BaseCommand):
             action="store_true",
             help="Replay and diff only: take no lock and write nothing.",
         )
+        parser.add_argument(
+            "--fail-on-drift",
+            action="store_true",
+            help=(
+                "Exit non-zero when a check found a differing row. A check "
+                "alone exits zero, because a rebuild removes drift; an "
+                "operator rehearsing a deployment wants the opposite."
+            ),
+        )
 
     def handle(self, *args, **options):
         libraries = self._resolve_libraries(options)
         mode = RebuildMode.CHECK if options["check"] else RebuildMode.REBUILD
         for library in libraries:
-            self._run_one(library, mode)
+            self._run_one(library, mode, fail_on_drift=options["fail_on_drift"])
 
-    def _run_one(self, library: UserLibrary, mode: RebuildMode) -> None:
+    def _run_one(
+        self, library: UserLibrary, mode: RebuildMode, *, fail_on_drift: bool
+    ) -> None:
         try:
             report = rebuild_projections(library, mode=mode)
         except UnresolvedReferences as error:
@@ -69,7 +80,12 @@ class Command(BaseCommand):
         self._write_report(report)
 
         if mode is RebuildMode.CHECK:
-            self._write_check_outcome(report)
+            drifted = self._write_check_outcome(report)
+            if drifted and fail_on_drift:
+                raise CommandError(
+                    f"{drifted} row(s) differ from the replay in library "
+                    f"{report.library_id}."
+                )
             return
         if not report.swapped:
             raise CommandError(
@@ -166,7 +182,8 @@ class Command(BaseCommand):
             self.stderr.write(f"  and {remaining} more.")
         self.stderr.write(REMEDY)
 
-    def _write_check_outcome(self, report: RebuildReport) -> None:
+    def _write_check_outcome(self, report: RebuildReport) -> int:
+        """Print the outcome, and say how many rows drifted."""
         if report.head_at_diff != report.replayed_through:
             #: No lock: the drift may be false.
             self.stdout.write(
@@ -184,7 +201,7 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.SUCCESS("Projections match the replayed events.")
             )
-            return
+            return 0
         tables = sum(
             1
             for table in report.tables
@@ -195,3 +212,4 @@ class Command(BaseCommand):
                 f"{drifted} row(s) differ from the replay across {tables} table(s)."
             )
         )
+        return drifted

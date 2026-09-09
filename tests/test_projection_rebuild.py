@@ -1558,3 +1558,53 @@ def test_all_libraries_reports_each_one_in_key_order(owned_library, django_user_
     assert [output.index(key) for key in ordered] == sorted(
         output.index(key) for key in ordered
     )
+
+
+# --- --fail-on-drift ---------------------------------------------------------
+
+
+def drifted_library(library) -> None:
+    """A projection row no event states."""
+    PlayerGame.objects.create(
+        id=uuid7(),
+        library=library,
+        game=Game.objects.create(library=library, name="Unreplayed"),
+        tracked_at=timezone.now(),
+    )
+
+
+@pytest.mark.django_db
+def test_a_check_alone_still_exits_zero_on_drift(owned_library):
+    """A rebuild removes drift, so a check that found some found work."""
+    drifted_library(owned_library)
+
+    output = run_command("--library", str(owned_library.pk), "--check")
+
+    assert "row(s) differ from the replay" in output
+
+
+@pytest.mark.django_db
+def test_fail_on_drift_fails_the_check(owned_library):
+    drifted_library(owned_library)
+
+    with pytest.raises(CommandError, match="row\\(s\\) differ from the replay"):
+        run_command("--library", str(owned_library.pk), "--check", "--fail-on-drift")
+
+
+@pytest.mark.django_db
+def test_fail_on_drift_is_silent_when_nothing_drifted(owned_library):
+    output = run_command(
+        "--library", str(owned_library.pk), "--check", "--fail-on-drift"
+    )
+
+    assert "Projections match the replayed events." in output
+
+
+@pytest.mark.django_db
+def test_all_libraries_fails_on_the_one_that_drifted(owned_library, django_user_model):
+    """One drifted neighbour fails the whole run."""
+    second = django_user_model.objects.create_user(username="drifted-owner")
+    drifted_library(second.library)
+
+    with pytest.raises(CommandError, match="row\\(s\\) differ from the replay"):
+        run_command("--all-libraries", "--check", "--fail-on-drift")

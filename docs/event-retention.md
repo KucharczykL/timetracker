@@ -142,6 +142,11 @@ and exits with a non-zero status in the two modes. A `--check` exits zero for
 drift, because a rebuild removes drift. A row that no longer exists is not a
 condition that a rebuild repairs.
 
+`--fail-on-drift` reverses that exit for the run that asks for it. The rule
+above holds: a check found work, not a fault. An operator who rehearses a
+deployment wants a non-zero exit for the same finding, and states the flag to
+get one. `make verify-replay-parity` is that run.
+
 The message gives the remedy. Put each row back with the same id, or purge the
 library. A purge takes the events, thus no recorded reference stays to resolve.
 
