@@ -1,7 +1,7 @@
 import datetime
 from collections.abc import Callable, Mapping
 from functools import partial
-from typing import ClassVar, Final, cast
+from typing import Any, ClassVar, Final, cast
 from zoneinfo import ZoneInfo
 
 from django import forms
@@ -36,6 +36,7 @@ from games.models import (
     Session,
     UserLibrary,
 )
+from games.reads.companion_status import played_is_offered
 from timetracker.settings_registry import DISPLAY_TIME_ZONE_CHOICES
 from timetracker.settings_resolver import resolve_str_for_user
 from timetracker.temporal import (
@@ -1042,6 +1043,7 @@ class PlaythroughForm(PrimitiveWidgetsMixin, forms.Form):
         library: UserLibrary,
         presentation: DateTimePresentation,
         locked_game: Game | None = None,
+        offered_game: Game | None = None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -1060,6 +1062,10 @@ class PlaythroughForm(PrimitiveWidgetsMixin, forms.Form):
                 presentation=presentation,
                 label=str(self.fields[field_name].label or field_name),
             )
+        #: The status decides the render, and clean()
+        #: decides again against the game that was posted.
+        if not played_is_offered(library, offered_game):
+            del self.fields["also_mark_played"]
 
     game = SingleGameChoiceField(
         queryset=Game.objects.order_by("sort_name"),
@@ -1078,10 +1084,18 @@ class PlaythroughForm(PrimitiveWidgetsMixin, forms.Form):
     #: Playthrough.note is a TextField.
     note = forms.CharField(required=False)
 
-    mark_as_finished = forms.BooleanField(
+    #: Rendered only on an Unplayed game: a start states
+    #: nothing about one already played or stronger, and a
+    #: checked box there would walk the status back.
+    also_mark_played = forms.BooleanField(
         required=False,
-        initial={"mark_as_finished": True},
-        label="Set game status to Finished",
+        initial=True,
+        label="Also mark this game Played",
+    )
+    also_mark_completed = forms.BooleanField(
+        required=False,
+        initial=True,
+        label="Also mark this game Completed",
     )
 
     def clean_game(self) -> Game:
@@ -1092,6 +1106,22 @@ class PlaythroughForm(PrimitiveWidgetsMixin, forms.Form):
                 "it to the other game instead."
             )
         return game
+
+    def clean(self) -> dict[str, Any]:
+        """Drop a box this game is offered no status by.
+
+        The generic Add form renders the Played box before
+        a game is picked, so a posted one is decided here
+        against the game the submit names. A field the
+        render gate took out cleans to False on its own.
+        """
+        cleaned = super().clean() or {}
+        cleaned.setdefault("also_mark_played", False)
+        cleaned.setdefault("also_mark_completed", False)
+        game = cleaned.get("game")
+        if game is not None and not played_is_offered(self.library, game):
+            cleaned["also_mark_played"] = False
+        return cleaned
 
 
 class LoginForm(PrimitiveWidgetsMixin, AuthenticationForm):
