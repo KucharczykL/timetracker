@@ -44,6 +44,7 @@ def tabledata_of(owned_library, run, presentation, **options):
     runs = list(
         numbered_for(owned_library, [tracked.pk]).select_related("player_game__game")
     )
+    options.setdefault("csrf_token", "token")
     return playthrough_tabledata(runs, presentation, origin=None, **options)
 
 
@@ -143,7 +144,7 @@ def test_excluding_the_game_column_drops_its_cell(owned_library, run, presentati
     )
 
     data = playthrough_tabledata(
-        runs, presentation, exclude_columns=["Game"], origin=None
+        runs, presentation, exclude_columns=["Game"], origin=None, csrf_token="token"
     )
 
     labels = [column.label for column in data["columns"]]

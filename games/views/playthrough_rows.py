@@ -27,6 +27,9 @@ from games.reads.playthrough_endpoints import (
 )
 from games.reads.playthrough_numbering import display_name
 
+#: One request's CSRF token, as the act forms post it.
+type CsrfToken = str
+
 #: The list page's sort keys, by label.
 _SORT_KEYS: Mapping[str, SortKey] = {
     "Game": "name",
@@ -43,11 +46,15 @@ def playthrough_tabledata(
     exclude_columns: Sequence[str] = (),
     *,
     origin: OriginUrl | None,
+    csrf_token: CsrfToken,
     sort_terms: Sequence[SortTerm] = (),
     sortable: bool = False,
-    csrf_token: str = "",
 ) -> TableData:
-    """Rows for the runs; caller states sorting."""
+    """Rows for the runs; caller states sorting.
+
+    The token has no default: an act button posts, and a
+    form with no token renders a button that only 403s.
+    """
 
     def column(label: str, **options: Any) -> Column:
         return Column(label, _SORT_KEYS.get(label) if sortable else None, **options)
@@ -115,7 +122,7 @@ def _days_cell(run: Playthrough) -> Cell:
     return "-" if days is None else str(days)
 
 
-def _actions(run: Playthrough, origin: OriginUrl | None, csrf_token: str) -> Cell:
+def _actions(run: Playthrough, origin: OriginUrl | None, csrf_token: CsrfToken) -> Cell:
     """The act this run allows, then edit and remove.
 
     One press states today; another day belongs
@@ -141,7 +148,7 @@ def _actions(run: Playthrough, origin: OriginUrl | None, csrf_token: str) -> Cel
 
 
 def _act_members(
-    run: Playthrough, origin: OriginUrl | None, csrf_token: str
+    run: Playthrough, origin: OriginUrl | None, csrf_token: CsrfToken
 ) -> list[ButtonGroupMember]:
     """The one act this run can still accept, if any.
 
@@ -169,7 +176,7 @@ _ACT_BUTTONS: Mapping[str, tuple[str, str]] = {
 
 
 def _act(
-    run: Playthrough, act: str, origin: OriginUrl | None, csrf_token: str
+    run: Playthrough, act: str, origin: OriginUrl | None, csrf_token: CsrfToken
 ) -> ButtonGroupMember:
     """One press, posting to that act's route."""
     icon, title = _ACT_BUTTONS[act]
