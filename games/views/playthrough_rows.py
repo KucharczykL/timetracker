@@ -169,9 +169,14 @@ def _act_members(
 
 
 #: How each act's button reads, by route.
+#:
+#: Only the completion names its status. It states one every
+#: time, so the title can promise it; a start states Played
+#: only where nothing stronger is stated already, and a title
+#: naming a status the press may skip reads as a lie.
 _ACT_BUTTONS: Mapping[str, tuple[str, str]] = {
     "start": ("play", "Started today"),
-    "complete": ("finish", "Completed today"),
+    "complete": ("finish", "Completed today, also marks the game Completed"),
 }
 
 

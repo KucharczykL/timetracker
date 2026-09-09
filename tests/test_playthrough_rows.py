@@ -206,6 +206,17 @@ def test_a_started_run_offers_complete(owned_user, owned_library, run, presentat
     assert f"/playthrough/{run.pk}/start" not in actions
 
 
+def test_the_complete_button_names_the_status_it_states(
+    owned_user, owned_library, run, presentation
+):
+    """The press always states Completed, so its title says so."""
+    _state_start(owned_user, run)
+
+    actions = actions_of(owned_library, run, presentation, csrf_token="token")
+
+    assert "also marks the game Completed" in actions
+
+
 def test_a_finished_run_offers_neither(owned_user, owned_library, run, presentation):
     _state_start(owned_user, run)
     _state_completion(owned_user, run)
