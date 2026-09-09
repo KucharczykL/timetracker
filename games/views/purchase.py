@@ -205,6 +205,9 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
                 purchases,
                 filter_query_context_for_library(library),
             )
+            #: `game_filter` joins the games, so a bundle
+            #: answers once per game it names.
+            purchases = purchases.distinct()
 
     find = parse_find_filter(request)
     sort = apply_sort(purchases, find, PURCHASE_SORTS, PURCHASE_DEFAULT_SORT)
