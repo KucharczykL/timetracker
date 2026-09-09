@@ -288,6 +288,8 @@ class SeedReport:
 
     catalog_rows: int
     catalog_seconds: Seconds
+    #: Games seeded; the events are two a game.
+    games: int
     events: int
     append_seconds: Seconds
     #: The bulk-write number; no bulk command exists.
@@ -298,7 +300,8 @@ class RebuildDiffNotEmpty(RuntimeError):
     """The run's parity claim is false."""
 
 
-REPORT_SCHEMA = 1
+#: 2 since #688: SeedReport gained `games`.
+REPORT_SCHEMA = 2
 
 
 @dataclass(frozen=True, slots=True)

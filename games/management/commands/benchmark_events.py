@@ -45,7 +45,10 @@ class Command(BaseCommand):
             "--seed",
             type=int,
             default=None,
-            help=f"Events to seed (default {DEFAULT_SEED_EVENTS}).",
+            help=(
+                f"Events to seed (default {DEFAULT_SEED_EVENTS}). Two events "
+                "are seeded per game, so an odd count seeds one event fewer."
+            ),
         )
         parser.add_argument("--library", help="Check this library instead; read-only.")
         parser.add_argument("--iterations", type=int, default=200)
@@ -137,9 +140,11 @@ class Command(BaseCommand):
             + SECONDS_PER_REBUILT_EVENT
             + SECONDS_PER_PURGED_EVENT
         )
+        #: A game is two events, so half as many catalog rows.
+        catalog_rows = seed // 2 + 2 * iterations + warmup
         notice = (
             f"About to create a scratch user, {seed} events and "
-            f"{seed + 2 * iterations + warmup} catalog rows, then remove them. "
+            f"{catalog_rows} catalog rows, then remove them. "
             f"Estimate: {estimate / 60:.1f} minute(s)."
         )
         if aside:

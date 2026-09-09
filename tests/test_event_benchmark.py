@@ -38,7 +38,12 @@ from games.events.benchmark_workload import (
     spare_games,
 )
 from games.events.dispatch import dispatch
-from games.events.rebuild import RebuildAttempt, RebuildMode, RebuildReport
+from games.events.rebuild import (
+    RebuildAttempt,
+    RebuildMode,
+    RebuildReport,
+    rebuild_projections,
+)
 from games.events.targets import SHADOW_SUFFIX
 from games.models import (
     Game,
@@ -254,21 +259,37 @@ def test_a_rebuild_below_the_gating_floor_is_not_gated():
 
 
 @pytest.mark.django_db
-def test_seeding_writes_the_events_and_the_projection_rows(owned_library):
-    report = seed_library(owned_library, actor=owned_library.user, events=25, spares=4)
+def test_seeding_writes_both_creation_events_and_both_projection_rows(owned_library):
+    """A pair per game, as TrackGame appends one since #679."""
+    report = seed_library(owned_library, actor=owned_library.user, games=25, spares=4)
     assert isinstance(report, SeedReport)
-    assert report.events == 25
+    assert report.games == 25
+    assert report.events == 50
     assert report.catalog_rows == 29
-    assert LibraryEvent.objects.filter(library=owned_library).count() == 25
+    assert LibraryEvent.objects.filter(library=owned_library).count() == 50
     #: append() runs inline; the rows exist already.
     assert PlayerGame.objects.filter(library=owned_library).count() == 25
+    assert Playthrough.objects.filter(library=owned_library).count() == 25
+
+
+@pytest.mark.django_db
+def test_a_seeded_run_names_the_tracked_game_it_belongs_to(owned_library):
+    """Not another library's, and not another game's."""
+    seed_library(owned_library, actor=owned_library.user, games=3, spares=0)
+    pairs = {
+        (run.player_game_id, run.player_game.game_id)
+        for run in Playthrough.objects.select_related("player_game")
+    }
+    assert pairs == {
+        (tracked.pk, tracked.game_id) for tracked in PlayerGame.objects.all()
+    }
 
 
 @pytest.mark.django_db
 def test_seeding_batches_the_stream_rather_than_locking_per_event(owned_library):
     counter = StatementCounter()
     with connection.execute_wrapper(counter):
-        seed_library(owned_library, actor=owned_library.user, events=25, spares=0)
+        seed_library(owned_library, actor=owned_library.user, games=25, spares=0)
     head = LibraryEventStreamHead._meta.db_table
     #: One batch, two writes: the insert, then the advance.
     #: A second batch adds one UPDATE, not two.
@@ -277,7 +298,7 @@ def test_seeding_batches_the_stream_rather_than_locking_per_event(owned_library)
 
 @pytest.mark.django_db
 def test_a_second_batch_only_advances_the_head(owned_library):
-    seed_library(owned_library, actor=owned_library.user, events=1, spares=0)
+    seed_library(owned_library, actor=owned_library.user, games=1, spares=0)
     counter = StatementCounter()
     with connection.execute_wrapper(counter), transaction.atomic():
         lock_stream(owned_library)
@@ -288,7 +309,7 @@ def test_a_second_batch_only_advances_the_head(owned_library):
 
 @pytest.mark.django_db
 def test_seeding_leaves_the_spare_games_untracked(owned_library):
-    seed_library(owned_library, actor=owned_library.user, events=5, spares=3)
+    seed_library(owned_library, actor=owned_library.user, games=5, spares=3)
     spares = list(spare_games(owned_library))
     assert len(spares) == 3
     assert not PlayerGame.objects.filter(game__in=spares).exists()
@@ -297,7 +318,7 @@ def test_seeding_leaves_the_spare_games_untracked(owned_library):
 @pytest.mark.django_db(transaction=True)
 def test_seeding_leaves_statistics_that_know_the_rows_exist(owned_library):
     """Otherwise the command scenario races autovacuum's naptime."""
-    seed_library(owned_library, actor=owned_library.user, events=25, spares=0)
+    seed_library(owned_library, actor=owned_library.user, games=25, spares=0)
 
     with connection.cursor() as cursor:
         cursor.execute(
@@ -311,7 +332,7 @@ def test_seeding_leaves_statistics_that_know_the_rows_exist(owned_library):
 
 @pytest.mark.django_db
 def test_seeding_reports_append_throughput(owned_library):
-    report = seed_library(owned_library, actor=owned_library.user, events=25, spares=0)
+    report = seed_library(owned_library, actor=owned_library.user, games=25, spares=0)
     assert report.events_per_second > 0
     assert report.append_seconds > 0
     #: Setup is timed apart from the measurement.
@@ -329,7 +350,7 @@ def test_the_scratch_user_is_purged_and_the_purge_is_timed(owned_library):
 
 @pytest.mark.django_db(transaction=True)
 def test_warmup_samples_are_additional_and_are_not_recorded(owned_library):
-    seed_library(owned_library, actor=owned_library.user, events=5, spares=7)
+    seed_library(owned_library, actor=owned_library.user, games=5, spares=7)
     timings = run_command_scenario(
         owned_library,
         actor=owned_library.user,
@@ -346,7 +367,7 @@ def test_warmup_samples_are_additional_and_are_not_recorded(owned_library):
 def test_one_dispatch_writes_one_row_per_projection_through_one_statement_each(
     owned_library,
 ):
-    seed_library(owned_library, actor=owned_library.user, events=0, spares=1)
+    seed_library(owned_library, actor=owned_library.user, games=0, spares=1)
     work = run_amplification_scenario(
         owned_library,
         actor=owned_library.user,
@@ -370,37 +391,43 @@ def test_one_dispatch_writes_one_row_per_projection_through_one_statement_each(
 def test_replaying_one_event_costs_one_statement(django_user_model):
     """The replay is one upsert.
 
-    A rebuild also pays 13 fixed statements, so ten events average 2.3. The
+    A rebuild also pays a fixed cost, so a small one averages more. The
     slope between two sizes is the per-event number, and it is exact.
+    Two events a game since #688, so twenty more games are forty more
+    events.
     """
     totals: dict[int, int] = {}
-    for events in (10, 30):
-        user = django_user_model.objects.create_user(username=f"replay-{events}")
-        seed_library(user.library, actor=user, events=events, spares=0)
+    for games in (10, 30):
+        user = django_user_model.objects.create_user(username=f"replay-{games}")
+        seed_library(user.library, actor=user, games=games, spares=0)
         _report, replay = run_rebuild_scenario(
             user.library, mode=RebuildMode.REBUILD, count_replay=True
         )
         assert replay is not None
-        totals[events] = replay.statements
-    assert (totals[30] - totals[10]) / 20 == pytest.approx(1.0, abs=0.01)
+        totals[games] = replay.statements
+    assert (totals[30] - totals[10]) / 40 == pytest.approx(1.0, abs=0.01)
 
 
 @pytest.mark.django_db
 def test_the_replay_counts_the_shadow_table_as_its_projection(owned_library):
     """A replay writes the shadow; the swap writes live."""
-    seed_library(owned_library, actor=owned_library.user, events=10, spares=0)
+    seed_library(owned_library, actor=owned_library.user, games=10, spares=0)
     _report, replay = run_rebuild_scenario(
         owned_library, mode=RebuildMode.REBUILD, count_replay=True
     )
     assert replay is not None
     live = PlayerGame._meta.db_table
     shadow = f"{live}{SHADOW_SUFFIX}"
+    run_live = Playthrough._meta.db_table
+    run_shadow = f"{run_live}{SHADOW_SUFFIX}"
     assert replay.statements_per_table[shadow] == 10
-    #: Empty here, so only its swap counts.
+    assert replay.statements_per_table[run_shadow] == 10
+    #: Both shadows, and the two swaps beside them.
     assert replay.projection_statements == (
         replay.statements_per_table[shadow]
         + replay.statements_per_table[live]
-        + replay.statements_per_table[Playthrough._meta.db_table]
+        + replay.statements_per_table[run_shadow]
+        + replay.statements_per_table[run_live]
     )
 
 
@@ -454,7 +481,7 @@ def test_no_count_replay_leaves_the_replay_unmeasured():
 
 @pytest.mark.django_db
 def test_library_mode_writes_no_persistent_row(owned_library):
-    seed_library(owned_library, actor=owned_library.user, events=6, spares=0)
+    seed_library(owned_library, actor=owned_library.user, games=6, spares=0)
     before = set(
         PlayerGame.objects.filter(library=owned_library).values_list("id", flat=True)
     )
@@ -481,7 +508,7 @@ def test_library_mode_writes_no_persistent_row(owned_library):
 
 @pytest.mark.django_db
 def test_a_non_empty_rebuild_diff_fails_the_run(owned_library):
-    seed_library(owned_library, actor=owned_library.user, events=6, spares=0)
+    seed_library(owned_library, actor=owned_library.user, games=6, spares=0)
     #: A row the replay will not produce.
     PlayerGame.objects.create(
         id=uuid.uuid7(),
@@ -497,14 +524,14 @@ def test_a_non_empty_rebuild_diff_fails_the_run(owned_library):
 def test_the_report_carries_every_scenario_and_a_schema():
     report = run_benchmark(seed=25, iterations=3, warmup=1)
     assert isinstance(report, BenchmarkReport)
-    assert report.schema == 1
+    assert report.schema == 2
     assert report.seed is not None
     assert report.command is not None
     assert report.amplification is not None
     assert report.replay is not None
     assert report.teardown_seconds is not None
     parsed = json.loads(report.as_json())
-    assert parsed["schema"] == 1
+    assert parsed["schema"] == 2
     assert set(parsed) >= {
         "environment",
         "scratch_username",
@@ -561,7 +588,7 @@ def test_gate_is_silent_when_every_budget_passes():
 @pytest.mark.django_db(transaction=True)
 def test_json_output_parses_and_carries_the_schema():
     parsed = json.loads(run_command(seed=25, iterations=2, warmup=1, json=True))
-    assert parsed["schema"] == 1
+    assert parsed["schema"] == 2
 
 
 @pytest.mark.django_db(transaction=True)
@@ -569,3 +596,37 @@ def test_keep_names_the_scratch_user_it_leaves_behind():
     output = run_command(seed=10, iterations=1, warmup=0, keep=True)
     assert "purge_user_library" in output
     assert User.objects.filter(username__startswith="benchmark-").exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_odd_seed_seeds_one_event_fewer():
+    """A pair is two events, so an odd count cannot be met."""
+    report = run_benchmark(seed=7, iterations=1, warmup=0, keep=True)
+    assert report.seed is not None
+    assert report.seed.games == 3
+    assert report.seed.events == 6
+
+
+@pytest.mark.django_db
+def test_seeding_no_game_writes_no_head(owned_library):
+    """Zero stays legal, and provisions nothing."""
+    report = seed_library(owned_library, actor=owned_library.user, games=0, spares=1)
+    assert report.events == 0
+    assert not LibraryEventStreamHead.objects.filter(library=owned_library).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_seeded_library_rebuilds_both_tables_with_no_row_differing(owned_library):
+    """The seed writes what a replay of it produces."""
+    seed_library(owned_library, actor=owned_library.user, games=6, spares=0)
+
+    report = rebuild_projections(owned_library, mode=RebuildMode.REBUILD)
+
+    assert report.swapped is True
+    assert [
+        (table.table, table.only_live, table.only_rebuilt, table.differing)
+        for table in report.tables
+    ] == [
+        ("games_playergame", 0, 0, 0),
+        ("games_playthrough", 0, 0, 0),
+    ]

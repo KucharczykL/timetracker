@@ -9,9 +9,9 @@ The dispatches need real transactions, and the conftest tracking
 fixture would otherwise write projection rows no event states.
 """
 
-import uuid
+from collections.abc import Mapping
 from datetime import date
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import pytest
 
@@ -224,7 +224,11 @@ def neighbour(django_user_model):
     return user.library
 
 
-def rows_of(library) -> tuple[list[dict], list[dict]]:
+#: Both tables' rows, as `.values()` answers them.
+type ProjectionRows = list[Mapping[str, Any]]
+
+
+def rows_of(library) -> tuple[ProjectionRows, ProjectionRows]:
     """Both tables' whole rows, in key order.
 
     `.values()` rather than a column list, so a column added later is
@@ -385,7 +389,8 @@ def test_the_display_number_survives_a_rebuild_of_tied_runs(owned_library):
     convert_library(owned_library)
     tracked = PlayerGame.objects.get(library=owned_library, game=game)
 
-    def numbers() -> dict[uuid.UUID, int]:
+    #: Unannotated: display_number is an annotation, not a field.
+    def numbers():
         return {
             run.pk: run.display_number
             for run in numbered_for(owned_library, [tracked.pk])

@@ -23,8 +23,10 @@ from games.events.benchmark import (
 )
 from games.events.dispatch import dispatch
 from games.events.playergame import PLAYERGAME_CREATED
+from games.events.playthrough import playthrough_created
 from games.events.rebuild import RebuildMode, RebuildReport, rebuild_projections
 from games.events.references import capture_reference
+from games.events.vocabulary import NewEvent
 from games.models import (
     Game,
     LibraryEvent,
@@ -32,6 +34,7 @@ from games.models import (
     LibraryEventStreamHead,
     LibraryIdempotencyRecord,
     PlayerGame,
+    Playthrough,
     UserLibrary,
 )
 
@@ -56,43 +59,63 @@ _SEEDED_TABLES = (
     LibraryEventStreamHead,
     LibraryIdempotencyRecord,
     PlayerGame,
+    Playthrough,
 )
 
 
 def seed_library(
-    library: UserLibrary, *, actor: User, events: int, spares: int
+    library: UserLibrary, *, actor: User, games: int, spares: int
 ) -> SeedReport:
-    """Fill `library`, and leave `spares` untracked games."""
+    """Fill `library`, and leave `spares` untracked games.
+
+    Two events a game, in the order and shape TrackGame writes since
+    #679: the tracked game, then the run it comes with, under one
+    correlation_id. The parameter counts games rather than events
+    because the two numbers differ, and one named for the other reads
+    wrong at every call site.
+    """
     catalog_started = monotonic()
-    _create_catalog(library, prefix=SEEDED_NAME_PREFIX, count=events)
+    _create_catalog(library, prefix=SEEDED_NAME_PREFIX, count=games)
     _create_catalog(library, prefix=SPARE_NAME_PREFIX, count=spares)
     catalog_seconds = monotonic() - catalog_started
 
     append_started = monotonic()
     correlation_id = uuid.uuid7()
+    events = 0
     for batch in batched(_seeded_games(library), APPEND_BATCH):
         with transaction.atomic():
             lock_stream(library).append(
-                [
-                    PLAYERGAME_CREATED.new(
-                        aggregate_id=uuid.uuid7(),
-                        payload={"game": capture_reference(game)},
-                    )
-                    for game in batch
-                ],
+                [event for game in batch for event in _creation_pair(game)],
                 actor=actor,
                 correlation_id=correlation_id,
                 idempotency_key=SEED_IDEMPOTENCY_KEY,
             )
+        events += 2 * len(batch)
     append_seconds = monotonic() - append_started
     _analyze()
 
     return SeedReport(
-        catalog_rows=events + spares,
+        catalog_rows=games + spares,
         catalog_seconds=catalog_seconds,
+        games=games,
         events=events,
         append_seconds=append_seconds,
         events_per_second=events / append_seconds if append_seconds else 0.0,
+    )
+
+
+def _creation_pair(game: Game) -> tuple[NewEvent, NewEvent]:
+    """What TrackGame appends: the tracked game, then its run.
+
+    The run's identity is minted with the event, as the command mints
+    it, and the tracked game's is what the run names.
+    """
+    tracked_id = uuid.uuid7()
+    return (
+        PLAYERGAME_CREATED.new(
+            aggregate_id=tracked_id, payload={"game": capture_reference(game)}
+        ),
+        playthrough_created(tracked_id),
     )
 
 
