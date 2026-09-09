@@ -48,7 +48,7 @@ These concepts determine whether a purchase appears in the "unfinished" or "drop
 A purchase is considered **finished** when:
 
 ```
-PlayerGame.status in DONE_STATUSES OR Purchase.games.* has a PlayEvent with an ended date
+PlayerGame.status in DONE_STATUSES OR Purchase.games.* has a Playthrough that states a completion
 ```
 
 `DONE_STATUSES` is `("completed", "retired")`. It lives in `games/models.py`
@@ -58,7 +58,7 @@ different set than the number it links from.
 
 Either signal indicates the player is done with the game:
 - **Explicit**: The row says `completed` or `retired`
-- **Implicit**: A PlayEvent exists with `ended` date set (data-driven)
+- **Implicit**: A run states a completion, which `completion_exists` reads (data-driven)
 
 This uses **OR** logic during a transition period. Later, these signals should be kept in sync so only one source of truth is needed.
 
@@ -144,13 +144,13 @@ the join, so a second condition does not read the row twice.
 
 The system uses **OR logic** for both finished and dropped to catch any mismatch between explicit user actions and data signals:
 
-- **Finished**: `status in DONE_STATUSES OR PlayEvent.ended`
+- **Finished**: `status in DONE_STATUSES OR completion_exists`
 - **Dropped**: `status == "abandoned" OR date_refunded`
 
-This bridges the gap between the old model (where `date_finished` and `date_dropped` were on the Purchase model) and the new model (where the `PlayerGame` status and `PlayEvent` are the sources of truth).
+This bridges the gap between the old model (where `date_finished` and `date_dropped` were on the Purchase model) and the new model (where the `PlayerGame` status and the `Playthrough` projection are the sources of truth).
 
 **Future:** These signals should be kept in sync. For example:
-- Stating `completed` should create a PlayEvent with `ended` date
+- Stating `completed` should state a completion on the game's run
 - When the sync is reliable, the OR can be simplified to a single check
 
 Note: Refunding a purchase always automatically sets its games' status to Abandoned. This is not optional — there is no way to refund without abandoning.
@@ -169,18 +169,19 @@ Note: Refunding a purchase always automatically sets its games' status to Abando
 - A purchase is finished if ANY of its games is finished
 - A purchase is dropped if ANY of its games is abandoned OR the purchase itself is refunded
 
-### PlayEvents without ended date
-- A PlayEvent with `started` but no `ended` does NOT count as finished
+### Runs that state no completion
+- A run whose completion nobody recorded does NOT count as finished
 - This represents a game that was started but not completed
+- A completion nobody dated DOES count: the act is the marker, not the day
 
 ### Retired games
 
 > **Retired counts as finished.** Retired means done with a game that has no
 > ending, so it belongs with the completed ones and `DONE_STATUSES` holds both.
 > A retired game leaves the backlog, adds to the all-time backlog decrease, and
-> is not dropped. It joins a year's finished list only through a play event,
-> because that list is dated by the play event and a retired game with none has
-> no date to show. Until #678 C it counted for nothing: not finished, not in the
+> is not dropped. It joins a year's finished list only through a
+> completed run, because that list is dated by the run's `completed_lower` and a
+> retired game with none has no date to show. Until #678 C it counted for nothing: not finished, not in the
 > backlog, not dropped.
 
 ### Shelved games

@@ -1,6 +1,6 @@
 import logging
 from collections.abc import Mapping
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import TYPE_CHECKING, ClassVar, Final
 from uuid import UUID
 
@@ -44,6 +44,7 @@ from timetracker.temporal import (
     TemporalStartPrecision,
     TemporalStartQualifier,
     TemporalUpperBound,
+    TemporalValue,
     TemporalValueField,
 )
 from timetracker.uuidv7 import UUIDv7Field
@@ -942,6 +943,14 @@ class PurchaseQueryset(RemovableLibraryQuerySet):
 
 
 class Purchase(models.Model):
+    if TYPE_CHECKING:
+        #: Annotations, not columns: the Finished cell reads
+        #: the act from one and the value from the other, and
+        #: only the list view's queryset carries them.
+        has_completion: bool
+        completed_value: TemporalValue | None
+        completed_day: date | None
+
     PHYSICAL = "ph"
     DIGITAL = "di"
     DIGITALUPGRADE = "du"
