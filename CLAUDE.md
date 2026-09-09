@@ -216,7 +216,15 @@ docs/           — Additional documentation
   the interval the two generated bound columns state, all-time reads the marker;
   a Purchase reports one row, dated `completed_lower` of its earliest run in a
   year (its latest all-time, which no table prints today), and a row that
-  reports no day sorts last and prints `-`
+  reports no day sorts last and prints `-`. #1033 gives the projection a
+  queryset holding `annotated_for_filtering` alone — no `alive()` and no
+  `for_library()`, so every read still states its own scope. It registers two
+  aliases a clock counts rather than a column states: `activity_day`, the last
+  day the game was played, falling back to the run's own start day, and
+  `activity`, one of `Playing`, `Dormant` and `Never played`, null for a run
+  whose completion is stated. The threshold is `DORMANT_AFTER_DAYS`, a live
+  user setting. A condition is counted; a status is stated, and neither moves
+  the other — see [Vocabulary](docs/vocabulary.md)
 
 **Nothing user removes is destroyed** (#944). Nine removable models — Game,
 Edition, Release, Platform, Device, Session, PlayEvent, Purchase, FilterPreset —

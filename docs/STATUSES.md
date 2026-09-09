@@ -18,6 +18,12 @@ they are not done with, whether stopping was final. **Completed** and **Retired*
 are both done — the second is for a game that offers nothing to complete.
 **Shelved** and **Abandoned** are both unfinished — the second is final.
 
+**Abandoned is not Dormant.** Since #1033 an unfinished run also states a
+condition — Playing, Dormant or Never played — which a clock computes from the
+last day the game was played against the viewer's `DORMANT_AFTER_DAYS`. A status
+is stated; a condition is counted. A dormant run leaves the status alone, and an
+abandoned game states no condition. `docs/vocabulary.md` records all three pairs.
+
 The status lives on `PlayerGame`, one row per library per game, so two libraries
 can hold different statuses for one catalog game. It is the only place a status
 is stated or read: since #678 D2 nothing maintains the five-letter `Game.status`

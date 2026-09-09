@@ -890,8 +890,9 @@ def filter_queryset_for_library(model_name: ModelKey, library: UserLibrary) -> Q
 
     Game is one exception: its list counts the games this library tracks, so
     counting anything else here would answer the builder's live count with a
-    number the destination list cannot show. Playthrough is the other: the
-    projection declares no manager, so every read states its own scope.
+    number the destination list cannot show. Playthrough is the other: its
+    manager holds the condition aliases and no scoping verb, so every read
+    still states its own scope.
     """
     from django.apps import apps
 
