@@ -1,79 +1,23 @@
 """The completion a Purchase row reports."""
 
-import uuid
-from datetime import UTC, date, datetime
+from datetime import date
 
 import pytest
+from completed_runs import add_game, add_run, make_purchase
 from django.db.models import Subquery
 
-from games.commands.playergame import TrackGame
-from games.commands.playthrough import (
-    ActStatement,
-    CompletePlaythrough,
-    RemovePlaythrough,
-)
+from games.commands.playthrough import RemovePlaythrough
 from games.events.dispatch import dispatch
-from games.models import Game, Playthrough, Purchase
+from games.models import Purchase
 from games.reads.playthrough_completions import (
     PURCHASE_RUNS,
     reported_completion,
     reported_completion_day,
 )
 from games.removal import remove
-from games.writes.playthrough import RunDraft, record_run
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.untracked_games
-
-
-def make_purchase(library, name="Bundle"):
-    return Purchase.objects.create(
-        library=library,
-        name=name,
-        date_purchased=datetime(2020, 1, 1, tzinfo=UTC),
-        price=0,
-        price_currency="USD",
-    )
-
-
-def add_game(user, library, purchase, name, completed):
-    """Track a game the purchase names, and state its completion."""
-    game = Game.objects.create(library=library, name=name)
-    purchase.games.add(game)
-    dispatch(
-        TrackGame(game_id=game.pk),
-        actor=user,
-        library=library,
-        idempotency_key=f"track-{name}",
-    )
-    run = Playthrough.objects.get(player_game__game=game)
-    if completed is not False:
-        dispatch(
-            CompletePlaythrough(playthrough_id=run.pk, when=completed, note=""),
-            actor=user,
-            library=library,
-            idempotency_key=f"done-{name}",
-        )
-    return game, run
-
-
-def add_run(user, game, completed):
-    """State one more run at a game the library tracks.
-
-    The game's first run states a completion already, so
-    `run_to_adopt` refuses it and this creates a second.
-    False is a run that reached no completion.
-    """
-    record_run(
-        user,
-        game,
-        RunDraft(
-            started=None,
-            completed=None if completed is False else ActStatement(completed),
-            note="",
-        ),
-        correlation_id=uuid.uuid7(),
-    )
 
 
 def read(library, purchase):

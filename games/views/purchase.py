@@ -55,10 +55,17 @@ from common.date_time_presentation import (
 from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.returns import OriginUrl, action_url
+from common.temporal_presentation import TemporalText
 from common.utils import label_with_details, paginate
 from games.forms import PurchaseForm
-from games.models import Game, PlayerGameStatus, PlayEvent, Purchase
+from games.models import Game, PlayerGameStatus, Purchase, UserLibrary
 from games.ownership import owned_or_404
+from games.reads.playthrough_completions import (
+    PURCHASE_RUNS,
+    completion_exists,
+    reported_completion,
+    reported_completion_day,
+)
 from games.removal import remove
 from games.sorting import (
     PURCHASE_DEFAULT_SORT,
@@ -134,25 +141,35 @@ PURCHASE_COLUMNS: list[Column] = [
 ]
 
 
+def _purchases_with_completions(library: UserLibrary) -> QuerySet[Purchase]:
+    """The list's rows, carrying the Finished cell's two facts.
+
+    Both render paths read through this, so the row a refund
+    swaps in answers what the list's row answers.
+    """
+    return (
+        Purchase.objects.for_library(library)
+        .select_related("platform")
+        .prefetch_related("games", "games__platform")
+        .annotate(
+            has_completion=completion_exists(library, None),
+            completed_value=reported_completion(library, PURCHASE_RUNS),
+            completed_day=reported_completion_day(library, PURCHASE_RUNS),
+        )
+    )
+
+
 def _render_purchase_row(
     purchase: Purchase, presentation: DateTimePresentation, *, origin: OriginUrl | None
 ) -> TableRowData:
     """Return a row for simple-table rendering."""
-    # TODO: simplify if multiple purchases are no longer allowed
-    date_finished = "-"
-    try:
-        latest_play_event = (
-            PlayEvent.objects.for_library(purchase.library)
-            .filter(
-                game__in=purchase.games.all(),
-                ended__isnull=False,
-            )
-            .latest("ended")
-        )
-        if latest_play_event and latest_play_event.ended:
-            date_finished = presentation.format(latest_play_event.ended, "date")
-    except PlayEvent.DoesNotExist:
-        pass
+    #: A null value is a completion nobody dated, which
+    #: TemporalText prints as Unknown. No completion is a dash.
+    date_finished = (
+        TemporalText(purchase.completed_value, presentation)  # type: ignore[attr-defined]
+        if purchase.has_completion  # type: ignore[attr-defined]
+        else "-"
+    )
     return make_row(
         LinkedPurchase(purchase),
         purchase.get_type_display(),
@@ -182,11 +199,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
     library = cast(User, request.user).library
     origin = request.get_full_path()
-    purchases: QuerySet[Purchase] = (
-        Purchase.objects.for_library(library)
-        .select_related("platform")
-        .prefetch_related("games", "games__platform")
-    )
+    purchases: QuerySet[Purchase] = _purchases_with_completions(library)
 
     filter_json = request.GET.get("filter", "")
     if filter_json:
@@ -555,7 +568,7 @@ def refund_purchase_confirmation(
 def refund_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     purchase = owned_or_404(
-        Purchase.objects.for_library(library), library, id=purchase_id
+        _purchases_with_completions(library), library, id=purchase_id
     )
 
     correlation_id = new_correlation_id()
