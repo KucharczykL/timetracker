@@ -4,6 +4,7 @@ import pytest
 from django.urls import reverse
 from django.utils import timezone
 
+from games.events.rebuild import RebuildMode, rebuild_projections
 from games.models import Game, LibraryEvent, PlayerGame, PlayerGameStatus, Playthrough
 from games.reads.companion_status import played_is_offered
 from games.writes.playergame import new_correlation_id, record_facts, track_game
@@ -217,3 +218,28 @@ def test_an_act_keeps_the_run_note(logged_in, owned_user, owned_library, tracked
 
     run.refresh_from_db()
     assert run.note == "12h"
+
+
+def test_the_pair_replays_to_the_same_rows(logged_in, owned_library, game):
+    logged_in.post(
+        reverse("games:add_playthrough"),
+        {
+            "game": str(game.pk),
+            "started": "2026-01-02",
+            "ended": "2026-02-03",
+            "note": "12h",
+            "also_mark_completed": "on",
+        },
+    )
+    before = (
+        status_of(owned_library),
+        Playthrough.objects.get(player_game__game=game).completed_upper,
+    )
+
+    rebuild_projections(owned_library, mode=RebuildMode.REBUILD)
+
+    after = (
+        status_of(owned_library),
+        Playthrough.objects.get(player_game__game=game).completed_upper,
+    )
+    assert after == before
