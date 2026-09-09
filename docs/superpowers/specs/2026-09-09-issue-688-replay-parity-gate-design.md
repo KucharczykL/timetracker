@@ -249,11 +249,15 @@ Recorded before the issue closes.
 
 | run | measured | verdict |
 |---|---|---|
-| `bench` command latency | | |
-| `bench` rebuild seconds | | |
-| `bench` work per event | | |
-| restored copy, libraries checked | | |
-| restored copy, rows differing | | |
+| `bench` command latency | p50 5.2 ms, p95 6.0 ms, max 6.4 ms over 200 samples, against 100 ms | passed |
+| `bench` rebuild seconds | 24.91 s instrumented, 24.74 s not, over 100,820 events, against 60.492 s | passed |
+| `bench` work per event | 1.0 statement, 3.0 rows; 50,410 statements into each shadow table | passed, the slope holds |
+| restored copy, libraries checked | 1, over 3,700 events, in 0.96 s | passed |
+| restored copy, rows differing | 0 over 859 `PlayerGame` and 872 `Playthrough` rows | passed |
+
+Measured on 2026-09-09, on the machine `docs/event-benchmarks.md` defines. The
+restored copy is that day's production dump, migrated by `make verify-dump`
+before the parity run read it.
 
 ## Reversibility
 

@@ -259,6 +259,67 @@ includes it.
 Recorded when the gate landed, against the seed that writes both creation
 events. Paste what the tool prints; do not edit a number here.
 
+`make bench ARGS="--gate"`, 2026-09-09:
+
+```
+About to create a scratch user, 100000 events and 50410 catalog rows, then remove them. Estimate: 1.6 minute(s).
+Linux-6.18.49-x86_64-with-glibc2.42, 32 CPU(s), Python 3.14.2, PostgreSQL 18.6.
+  shared_buffers 128MB, work_mem 4MB, DEBUG True.
+  scratch user benchmark-01a08775-8e8b-750e-a5c0-c611df243f5e
+Seed: 100000 event(s) in 33.65s (2,971 event/s), 50410 catalog row(s) in 4.56s.
+  The event/s figure is a bulk append, not a command.
+Command: 200 sample(s), p50 5.2ms, p95 6.0ms, max 6.4ms.
+Per command: 10.0 statement(s), 2.0 to projections (2.0 row(s)), 4.0 to the event store (5.0 row(s)), over 200 event(s).
+    games_libraryevent: 200 statement(s), 400 row(s)
+    games_libraryeventreference: 200 statement(s), 200 row(s)
+    games_libraryeventstreamhead: 200 statement(s), 200 row(s)
+    games_libraryidempotencyrecord: 200 statement(s), 200 row(s)
+    games_playergame: 200 statement(s), 200 row(s)
+    games_playthrough: 200 statement(s), 200 row(s)
+Per replayed event: 1.0 statement(s), 1.0 to projections (3.0 row(s)), 0.0 to the event store (0.0 row(s)), over 100820 event(s).
+    games_playergame: 2 statement(s), 100820 row(s)
+    games_playergame__shadow: 50410 statement(s), 50410 row(s)
+    games_playthrough: 2 statement(s), 100820 row(s)
+    games_playthrough__shadow: 50410 statement(s), 50410 row(s)
+Rebuild: replayed 100820 event(s) through 2 table(s) in 24.91s over 1 attempt(s).
+    attempt 1: replay 23.48s, diff 0.10s, swap 1.32s
+    games_playergame: 50410 live, 50410 rebuilt, no difference
+    games_playthrough: 50410 live, 50410 rebuilt, no difference
+Teardown: 19.09s.
+command p95: 0.006s against 0.100s -- passed
+rebuild: 24.908s against 60.492s -- passed
+```
+
+The same run without the statement counter:
+
+```
+make bench ARGS="--gate --no-count-replay"
+
+Rebuild: replayed 100820 event(s) through 2 table(s) in 24.74s over 1 attempt(s).
+    attempt 1: replay 23.27s, diff 0.10s, swap 1.37s
+    games_playergame: 50410 live, 50410 rebuilt, no difference
+    games_playthrough: 50410 live, 50410 rebuilt, no difference
+rebuild: 24.738s against 60.492s -- passed
+```
+
+**Command p95 is 6.0 ms against the 100 ms budget.** Read it as a new baseline
+rather than beside the 4.9 ms of the one-family seed: that seed left 100,000
+`PlayerGame` rows, this one leaves 50,410, and `TrackGame`'s duplicate check
+reads that table
+([`games/events/benchmark_workload.py`](../games/events/benchmark_workload.py)).
+Half the rows and a slower number is what a second projector costs a command,
+not what a smaller table saves it.
+
+**The rebuild took 24.91 s against the same 60.492 s allowance.** The event
+count did not move — 100,820 either way — so the two recordings' rebuild
+seconds compare directly: 18.03 s against 24.91 s, for a replay that now writes
+two shadow rows an event instead of one. Uninstrumented it takes 24.74 s, which
+is run-to-run noise at this scale.
+
+**One statement an event still, over two tables.** The replay writes 50,410
+statements into each shadow table for 100,820 events, so the slope holds at 1.00
+and the per-event cost of the second projector is a row, not a statement.
+
 ## Teardown
 
 `23.82s` deletes roughly 400,000 rows — the events, their reference rows, the
