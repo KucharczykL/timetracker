@@ -11,7 +11,7 @@ with AND/OR/NOT composition and typed criterion fields.
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, ClassVar, Final
 
 if TYPE_CHECKING:
     from games.models import (
@@ -35,6 +35,7 @@ from common.criteria import (
     AggregateSpec,
     BoolCriterion,
     ChoiceCriterion,
+    ChoiceMeta,
     DateCriterion,
     FilterField,
     FilterQueryContext,
@@ -59,6 +60,7 @@ from common.criteria import (
     search_q,
     temporal_interval_handler,
 )
+from games.reads.playthrough_activity import RunActivity
 from timetracker.settings_registry import DEFAULT_PAGE_SIZE
 
 # ── FindFilter (sort / pagination) ─────────────────────────────────────────
@@ -658,6 +660,13 @@ class PlatformFilter(OperatorFilter):
 
 # ── PlaythroughFilter ──────────────────────────────────────────────────────
 
+#: The picker's three words, in the order a person reads them.
+#: Built from the words themselves, so the two cannot drift.
+ACTIVITY_CHOICES: Final[tuple[ChoiceMeta, ...]] = tuple(
+    ChoiceMeta(value=str(value), label=str(label))
+    for value, label in RunActivity.choices
+)
+
 
 @dataclass
 class PlaythroughFilter(OperatorFilter):
@@ -678,6 +687,9 @@ class PlaythroughFilter(OperatorFilter):
     start_note: StringCriterion | None = None
     completion_note: StringCriterion | None = None
     created_at: DateCriterion | None = None  # compared via __date
+    #: The clock's word, not a column: `activity` is an alias
+    #: `library_runs()` registers.
+    activity: ChoiceCriterion | None = None
 
     # Free-text search
     search: StringCriterion | None = None
@@ -719,6 +731,17 @@ class PlaythroughFilter(OperatorFilter):
         "start_note": FilterField(),
         "completion_note": FilterField(),
         "created_at": FilterField("created_at__date"),
+        "activity": FilterField(
+            #: Delegating, not comparing: ChoiceCriterion is a set
+            #: criterion, so its value is a list and its modifier
+            #: says whether to include it or exclude it. A handler
+            #: that built its own Q would read one word and drop
+            #: the modifier. The handler exists only to keep
+            #: `field_metadata` off a column that does not exist.
+            handler=lambda criterion: criterion.to_q("activity"),
+            label="Activity",
+            choices=ACTIVITY_CHOICES,
+        ),
     }
 
     @classmethod

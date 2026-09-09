@@ -1,18 +1,21 @@
 """#1013: the filter reads the projection."""
 
 import uuid
+from datetime import timedelta
 from urllib.parse import parse_qs, urlparse
 
 import pytest
 from django.utils import timezone
 
+from common.criteria import ChoiceCriterion, Modifier, field_metadata
 from games.filters import (
     PlaythroughFilter,
     filter_query_context_for_library,
     filter_url,
     parse_playthrough_filter,
 )
-from games.models import Game, Playthrough, PlaythroughKind
+from games.models import Game, Playthrough, PlaythroughKind, Session
+from games.reads.playthrough_activity import RunActivity
 from games.reads.playthrough_endpoints import days_to_finish
 from games.reads.playthrough_runs import library_runs
 from games.removal import remove
@@ -417,3 +420,105 @@ def test_a_percent_survives_the_url():
 
     assert parsed == original
     assert "100%25" in url
+
+
+def a_run_played(library, name: str, *, days_ago: int) -> Playthrough:
+    """A run at a game played that many days ago."""
+    run = one_run(library, name)
+    Session.objects.create(
+        game=run.player_game.game,
+        timestamp_start=timezone.now() - timedelta(days=days_ago),
+    )
+    return run
+
+
+def a_completed_run(library, name: str) -> Playthrough:
+    """A run whose completion is stated."""
+    run = one_run(library, name)
+    state(
+        run,
+        completion_recorded_at=timezone.now(),
+        completed=TemporalValue.parse("2025-03-15"),
+    )
+    return run
+
+
+def answered(library, filter_object) -> set[uuid.UUID]:
+    """The runs this filter answers, by key."""
+    return set(
+        library_runs(library)
+        .filter(filter_object.to_q(filter_query_context_for_library(library)))
+        .values_list("pk", flat=True)
+    )
+
+
+def test_the_activity_filter_narrows_to_one_word(owned_library):
+    playing = a_run_played(owned_library, "Recent", days_ago=2)
+    dormant = a_run_played(owned_library, "Old", days_ago=400)
+
+    matches = answered(
+        owned_library,
+        PlaythroughFilter(activity=ChoiceCriterion(value=[RunActivity.PLAYING])),
+    )
+
+    assert matches == {playing.pk}
+    assert dormant.pk not in matches
+
+
+def test_two_words_at_once_narrow_to_their_union(owned_library):
+    playing = a_run_played(owned_library, "Recent", days_ago=2)
+    dormant = a_run_played(owned_library, "Old", days_ago=400)
+    finished = a_completed_run(owned_library, "Done")
+
+    matches = answered(
+        owned_library,
+        PlaythroughFilter(
+            activity=ChoiceCriterion(value=[RunActivity.PLAYING, RunActivity.DORMANT])
+        ),
+    )
+
+    assert matches == {playing.pk, dormant.pk}
+    assert finished.pk not in matches
+
+
+def test_excluding_a_word_keeps_the_completed_runs(owned_library):
+    """The alias is null there, and `_not_in_q` keeps a null row."""
+    playing = a_run_played(owned_library, "Recent", days_ago=2)
+    finished = a_completed_run(owned_library, "Done")
+
+    matches = answered(
+        owned_library,
+        PlaythroughFilter(
+            activity=ChoiceCriterion(
+                value=[RunActivity.PLAYING], modifier=Modifier.EXCLUDES
+            )
+        ),
+    )
+
+    assert finished.pk in matches
+    assert playing.pk not in matches
+
+
+def test_a_blob_naming_the_condition_passes_validation():
+    """The alias must resolve on a validation-only context."""
+    parsed = parse_playthrough_filter(
+        '{"activity": {"value": ["playing"], "modifier": "INCLUDES"}}'
+    )
+
+    assert parsed is not None
+    assert parsed.activity.value == ["playing"]
+
+
+def test_the_condition_offers_its_three_words_to_the_picker():
+    (meta,) = [
+        entry
+        for entry in field_metadata(PlaythroughFilter)
+        if entry["name"] == "activity"
+    ]
+
+    assert meta["kind"] == "set"
+    assert [choice["value"] for choice in meta["choices"]] == [
+        "playing",
+        "dormant",
+        "never_played",
+    ]

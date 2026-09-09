@@ -128,6 +128,7 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
         QuickFacet("created_at", "Created"),
     ],
     "playthroughs": [
+        QuickFacet("activity", "Activity"),
         QuickFacet("game"),
         QuickFacet("started"),
         QuickFacet("completed"),
