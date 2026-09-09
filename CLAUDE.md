@@ -198,9 +198,15 @@ docs/           — Additional documentation
   sorts, quick facets and saved presets, which migration 0047 rewrites from
   `ended` to `completed`. `playthrough_count` counts runs whose completion is
   stated, which is number `Played N times` prints. No run is read out of
-  `games_playevent` any more, though the table is still read for a finish day
-  elsewhere — the Purchase list's Finished column and the `finished` sort on
-  Game and Purchase, both #1026's, and #771 takes the table. #1015 keyed the
+  `games_playevent` any more, and since #1026 no finish is either: the Purchase
+  list's Finished column and the `finished` sort on Game and Purchase read the
+  projection, through three readers `games/reads/playthrough_completions.py`
+  adds beside its four — `ranked_completions` orders a row's completed runs so
+  the latest finish leads, and `reported_completion` and
+  `reported_completion_day` answer what that one run states, each a correlated
+  subquery, which is why a `game_filter` cannot narrow which run a bundle
+  reports. Both list views annotate `completed_day` and the sort names only
+  that alias. #771 takes the table. #1015 keyed the
   API on the run and took the bridge that mapped a legacy row to it. #1014
   gives the stats page the same rows:
   every finish it counts, dates and orders by comes from

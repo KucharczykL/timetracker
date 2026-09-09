@@ -6,6 +6,7 @@ from datetime import date
 import pytest
 from completed_runs import add_game, make_purchase
 from django.urls import reverse
+from purchase_rows import row_order
 
 from common.criteria import Modifier, StringCriterion
 from games.filters import GameFilter, PurchaseFilter
@@ -18,16 +19,6 @@ pytestmark = pytest.mark.untracked_games
 def logged_client(client, owned_user):
     client.force_login(owned_user)
     return client
-
-
-def row_order(body, purchases):
-    """The purchases in the order the body prints them."""
-    positions = {
-        purchase.pk: body.index(f'id="purchase-row-{purchase.pk}"')
-        for purchase in purchases
-        if f'id="purchase-row-{purchase.pk}"' in body
-    }
-    return [pk for pk, _ in sorted(positions.items(), key=lambda pair: pair[1])]
 
 
 @pytest.fixture
