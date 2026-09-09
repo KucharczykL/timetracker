@@ -49,6 +49,9 @@ from timetracker.temporal import (
 )
 from timetracker.uuidv7 import UUIDv7Field
 
+if TYPE_CHECKING:
+    from games.reads.playthrough_activity import ActivityClock
+
 logger = logging.getLogger("games")
 
 
@@ -1628,8 +1631,47 @@ class PlaythroughKind(models.TextChoices):
     IMPORTED_HISTORY = "imported_history", "Imported history"
 
 
+class PlaythroughQuerySet(models.QuerySet["Playthrough"]):
+    """The alias method, and nothing else.
+
+    No `alive()` and no `for_library()`: every read of this
+    projection states its own scope, and a scoping verb here
+    would invite a read that forgets to.
+    """
+
+    def annotated_for_filtering(
+        self, clock: ActivityClock | None = None
+    ) -> PlaythroughQuerySet:
+        """Register the two condition aliases.
+
+        A second call states the same fact: Django's
+        `add_annotation` replaces an alias without a word,
+        so a caller reaching an already-annotated queryset
+        would otherwise swap one clock for another in
+        silence.
+
+        No clock reads the registry default in UTC, which is
+        what a filter compiled only to be validated gets.
+        That context executes nothing.
+        """
+        from games.reads.playthrough_activity import (
+            activity_day_expression,
+            activity_expression,
+            default_activity_clock,
+        )
+
+        if "activity" in self.query.annotations:
+            return self
+        resolved = clock if clock is not None else default_activity_clock()
+        return self.annotate(activity_day=activity_day_expression(resolved)).annotate(
+            activity=activity_expression(resolved)
+        )
+
+
 class Playthrough(ProjectionModel):
     """One run at a tracked game."""
+
+    objects = models.Manager.from_queryset(PlaythroughQuerySet)()
 
     id = UUIDv7Field(
         primary_key=True,

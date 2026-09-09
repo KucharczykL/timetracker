@@ -7,6 +7,7 @@ from django.db.models import F, OrderBy, QuerySet, Window
 from django.db.models.functions import RowNumber
 
 from games.models import Playthrough, PlaythroughKind, UserLibrary
+from games.reads.playthrough_activity import activity_clock
 
 #: A tracked game's key, as a caller holds it.
 type PlayerGameId = uuid.UUID
@@ -58,13 +59,16 @@ def numbered_for(
     and nothing marks it. Scoped on the row and its parent
     alike, so the partition matches `live_ordinary_runs`,
     which a removal counts across.
+
+    Carries the condition aliases, because Game detail reads
+    its rows from here and this read builds on no other.
     """
     return with_display_number(
         Playthrough.objects.filter(
             library=library,
             player_game__library=library,
             player_game_id__in=list(player_game_ids),
-        )
+        ).annotated_for_filtering(activity_clock(library))
     ).order_by(*DISPLAY_ORDER)
 
 

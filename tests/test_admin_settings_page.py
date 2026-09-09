@@ -27,6 +27,7 @@ SITE_SETTING_KEYS = (
     "DEFAULT_DISPLAY_CURRENCY",
     "DEFAULT_LANDING_PAGE",
     "DEFAULT_PAGE_SIZE",
+    "DORMANT_AFTER_DAYS",
     "THEME",
     "DISPLAY_TIME_ZONE",
     "SESSION_TIME_ZONE_DISPLAY",
@@ -311,9 +312,10 @@ def test_admin_page_lists_device_rows_and_select_options(
     html = superuser_client.get(reverse("games:admin_settings")).content.decode()
 
     # One per USER-scope SELECT setting: default_landing_page, default_page_size,
-    # theme, display_time_zone, session_time_zone_display, date_format_locale,
-    # datetime_format, and duration_format. Currency controls are text inputs.
-    assert html.count(">Use configured default</option>") == 8
+    # dormant_after_days, theme, display_time_zone, session_time_zone_display,
+    # date_format_locale, datetime_format, and duration_format. Currency
+    # controls are text inputs.
+    assert html.count(">Use configured default</option>") == 9
     for value, label in (
         *LANDING_PAGE_CHOICES,
         *THEME_CHOICES,

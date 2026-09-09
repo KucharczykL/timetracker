@@ -10,9 +10,12 @@ from typing import NamedTuple, cast
 from zoneinfo import ZoneInfo
 
 from django.db import models
+from django.db.models import Case, F, OuterRef, Subquery, Value, When
+from django.db.models.expressions import Combinable
+from django.db.models.functions import Coalesce, TruncDate
 from django.utils import timezone as django_timezone
 
-from games.models import UserLibrary
+from games.models import Session, UserLibrary
 from timetracker.settings_registry import DEFAULT_DORMANT_AFTER_DAYS
 from timetracker.settings_resolver import resolve_for_user, resolve_str_for_user
 
@@ -68,6 +71,60 @@ def _clock(threshold_days: int, zone: ZoneInfo) -> ActivityClock:
         threshold_days=threshold_days,
         zone=zone,
         boundary_day=today - timedelta(days=threshold_days),
+    )
+
+
+def activity_day_expression(clock: ActivityClock) -> Combinable:
+    """The day the word reads.
+
+    The latest live session at the run's game, as this
+    library sees sessions, else the run's own start day.
+    A preference, not a maximum: a game with sessions
+    never reads its start day.
+
+    The library is stated as the run's own column, so a
+    run at a shared catalog game reads no session and one
+    library's play never moves another's word.
+    """
+    latest_session_day = (
+        Session.objects.alive()
+        .filter(
+            game=OuterRef("player_game__game"),
+            game__library=OuterRef("library"),
+            game__removed_at__isnull=True,
+        )
+        .annotate(played_day=TruncDate("timestamp_start", tzinfo=clock.zone))
+        .order_by("-timestamp_start")
+        .values("played_day")[:1]
+    )
+    return Coalesce(
+        Subquery(latest_session_day, output_field=models.DateField()),
+        F("started_lower"),
+        output_field=models.DateField(),
+    )
+
+
+def activity_expression(clock: ActivityClock) -> Combinable:
+    """One of the three words, or nothing.
+
+    A completed run is not unfinished, so no clock speaks
+    about it and the alias is null. That null is what
+    `_SetCriterion._not_in_q` keeps when a person excludes
+    a word.
+    """
+    word = models.CharField(null=True)
+    return Case(
+        When(completion_recorded_at__isnull=False, then=Value(None, output_field=word)),
+        When(
+            activity_day__isnull=True,
+            then=Value(RunActivity.NEVER_PLAYED, output_field=word),
+        ),
+        When(
+            activity_day__gte=clock.boundary_day,
+            then=Value(RunActivity.PLAYING, output_field=word),
+        ),
+        default=Value(RunActivity.DORMANT, output_field=word),
+        output_field=word,
     )
 
 

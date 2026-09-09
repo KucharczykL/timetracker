@@ -3,6 +3,7 @@
 from django.db.models import QuerySet
 
 from games.models import Game, PlayerGame, Playthrough, PlaythroughKind, UserLibrary
+from games.reads.playthrough_activity import activity_clock
 from games.reads.playthrough_endpoints import stated_completion, stated_start
 
 
@@ -17,6 +18,9 @@ def library_runs(library: UserLibrary) -> QuerySet[Playthrough]:
 
     Both parents' marks read here as well: nothing
     stamps a run when its game leaves.
+
+    Carries the condition aliases, so every filter path
+    reads one clock.
     """
     return Playthrough.objects.filter(
         library=library,
@@ -25,7 +29,7 @@ def library_runs(library: UserLibrary) -> QuerySet[Playthrough]:
         player_game__removed_at__isnull=True,
         player_game__game__removed_at__isnull=True,
         kind=PlaythroughKind.ORDINARY,
-    )
+    ).annotated_for_filtering(activity_clock(library))
 
 
 def live_ordinary_runs(
