@@ -8,7 +8,7 @@ from completed_runs import add_game, make_purchase
 from django.urls import reverse
 from purchase_rows import row_order
 
-from common.criteria import Modifier, StringCriterion
+from common.criteria import Modifier, StringCriterion, UUIDMultiCriterion
 from games.filters import GameFilter, PurchaseFilter
 from timetracker.temporal import TemporalValue
 
@@ -180,3 +180,49 @@ def test_a_sort_of_finished_beside_another_key_runs(logged_client, three_purchas
 
     assert response.status_code == 200
     assert row_order(response.content.decode(), three_purchases)[0] == late.pk
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("path", ["game_filter", "search", "games"])
+def test_every_join_path_prints_one_row(
+    logged_client, owned_user, owned_library, path
+):
+    """Each row prints once, whichever filter matched.
+
+    `game_filter` and `search` reach a purchase through a
+    join, so a bundle naming two matches is two rows before
+    `distinct()`. The `games` set compiles to subqueries
+    instead, and this states that it stays that way.
+    """
+    bundle = make_purchase(owned_library, name="Bundle")
+    first, _ = add_game(
+        owned_user,
+        owned_library,
+        bundle,
+        "Keep One",
+        TemporalValue.from_day(date(2020, 3, 4)),
+    )
+    second, _ = add_game(
+        owned_user,
+        owned_library,
+        bundle,
+        "Keep Two",
+        TemporalValue.from_day(date(2024, 7, 1)),
+    )
+    keep = StringCriterion(modifier=Modifier.INCLUDES, value="Keep")
+    filters = {
+        "game_filter": PurchaseFilter(game_filter=GameFilter(name=keep)),
+        "search": PurchaseFilter(search=keep),
+        "games": PurchaseFilter(
+            games=UUIDMultiCriterion(
+                value=[str(first.pk), str(second.pk)], modifier=Modifier.INCLUDES
+            )
+        ),
+    }
+
+    body = logged_client.get(
+        reverse("games:list_purchases"),
+        {"filter": json.dumps(filters[path].to_json()), "sort": "-finished"},
+    ).content.decode()
+
+    assert body.count(f'id="purchase-row-{bundle.pk}"') == 1
