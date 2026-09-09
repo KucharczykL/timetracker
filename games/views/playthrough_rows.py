@@ -1,6 +1,7 @@
 """One table row per run."""
 
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 from typing import Any
 
 from common.components import (
@@ -9,7 +10,10 @@ from common.components import (
     ButtonGroupMember,
     Cell,
     Column,
+    Fragment,
     Icon,
+    Pill,
+    Span,
     TableData,
     TruncatedText,
     make_row,
@@ -19,6 +23,7 @@ from common.returns import OriginUrl, action_url
 from common.sorting import SortKey, SortTerm
 from common.temporal_presentation import TemporalText
 from games.models import Playthrough
+from games.reads.playthrough_activity import RunActivity, recency_phrase
 from games.reads.playthrough_endpoints import (
     StatedEndpoint,
     days_to_finish,
@@ -64,6 +69,7 @@ def playthrough_tabledata(
         column("Game", shrinkable=True),
         column("Started", priority=3),
         column("Completed", priority=2),
+        column("Activity", priority=3),
         column("Days to finish", priority=2),
         # One long note on one line widens everything.
         column("Note", wrap=True),
@@ -89,6 +95,7 @@ def playthrough_tabledata(
             ),
             _endpoint_cell(stated_start(run), presentation),
             _endpoint_cell(stated_completion(run), presentation),
+            _activity_cell(run, presentation),
             _days_cell(run),
             run.note,
             presentation.format(run.created_at, "date"),
@@ -115,6 +122,27 @@ def _endpoint_cell(
     if stated is None:
         return "-"
     return TemporalText(stated.when, presentation)
+
+
+def _activity_cell(run: Playthrough, presentation: DateTimePresentation) -> Cell:
+    """The clock's word, and how long ago that was.
+
+    A completed run reads a dash: it is not unfinished, so
+    no clock speaks about it. A row from a read that states
+    no alias reads one too, rather than raising.
+    """
+    activity = getattr(run, "activity", None)
+    if activity is None:
+        return "-"
+    badge = Pill(label=RunActivity(activity).label)
+    day = getattr(run, "activity_day", None)
+    if day is None:
+        return badge
+    today = datetime.now(presentation.timezone).date()
+    return Fragment(
+        badge,
+        Span(class_="ml-2 text-sm")[f"last played {recency_phrase(day, today)}"],
+    )
 
 
 def _days_cell(run: Playthrough) -> Cell:

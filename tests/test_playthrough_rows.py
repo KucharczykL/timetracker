@@ -1,6 +1,6 @@
 """#1012: one table row per run."""
 
-from datetime import date
+from datetime import date, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -11,7 +11,7 @@ from common.date_time_presentation import (
     DateTimePresentation,
 )
 from games.commands.playthrough import ActStatement
-from games.models import Game, Playthrough
+from games.models import Game, Playthrough, Session
 from games.reads.playthrough_numbering import numbered_for
 from games.reads.playthrough_runs import tracked_game
 from games.views.playthrough_rows import playthrough_tabledata
@@ -243,3 +243,37 @@ def test_a_run_completed_before_today_offers_no_start(
     assert f"/playthrough/{run.pk}/start" not in actions
     assert f"/playthrough/{run.pk}/complete" not in actions
     assert f"/playthrough/edit/{run.pk}" in actions
+
+
+def test_a_playing_run_prints_its_badge_and_its_recency(
+    owned_library, run, presentation
+):
+    Session.objects.create(
+        game=run.player_game.game,
+        timestamp_start=timezone.now() - timedelta(days=4),
+    )
+
+    html = "".join(cells_of(owned_library, run, presentation))
+
+    assert "Playing" in html
+    assert "last played 4 days ago" in html
+
+
+def test_a_never_played_run_prints_no_recency(owned_library, run, presentation):
+    html = "".join(cells_of(owned_library, run, presentation))
+
+    assert "Never played" in html
+    assert "last played" not in html
+
+
+def test_a_completed_run_prints_a_dash_for_its_activity(
+    owned_user, owned_library, run, presentation
+):
+    """No clock speaks about a run that is finished."""
+    _state_completion(owned_user, run)
+
+    data = tabledata_of(owned_library, run, presentation)
+    labels = [column.label for column in data["columns"]]
+    [row] = data["rows"]
+
+    assert str(row["cell_data"][labels.index("Activity")]) == "-"
