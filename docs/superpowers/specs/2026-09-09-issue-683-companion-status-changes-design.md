@@ -33,10 +33,17 @@ The run form carries two fields.
 | `also_mark_played` | Also mark this game Played | The status is `Unplayed` |
 | `also_mark_completed` | Also mark this game Completed | Always |
 
-Each box is checked when it renders. Each acts only where the draft states the
-matching act. A note-only edit states no status. A box the form did not render
-states nothing, whatever the posted body holds. The form decides twice: once at
-render, and once at clean time against the game the submit names.
+Each box is checked when it renders. Each acts only where this submit records
+the matching act for the first time. The form prefills both days, so a note
+edit reposts them; restating an endpoint the run already holds records no new
+act, and so implies no status. A note-only edit states no status either. A box
+the form did not render states nothing, whatever the posted body holds. The
+form decides twice: once at render, and once at clean time against the game the
+submit names.
+
+A blank day records no act. A run added with no end day is one nobody finished,
+not one finished on a day nobody wrote down, so a ticked Completed box on such
+a submit states nothing.
 
 ## The per-run acts
 
@@ -46,12 +53,20 @@ Each run row offers the act its state allows, ahead of Edit and Remove.
 |---|---|
 | No start | Start |
 | A start, no completion | Complete |
-| Both | None |
+| A completion | None |
 
-Each action states today. A different day belongs in the edit form, which holds
-each precision the grammar knows. Each action is a POST route that redirects to
-its origin, so each is `ORIGIN_AWARE`. Neither confirms: the correction commands
-reverse both.
+A completion rules a start out even where the run states none. Starting today
+would end the run before it began, which the command refuses, so the row offers
+no button its whole class cannot deliver.
+
+Each action states today, and states its endpoint for the first time only. A
+run that already holds the endpoint is refused, and the refusal toasts: the
+route means "this happened today", so correcting a recorded day and answering
+success would lose what the person wrote down. A different day belongs in the
+edit form, which holds each precision the grammar knows.
+
+Each action is a POST route that redirects to its origin, so each is
+`ORIGIN_AWARE`. Neither confirms: the correction commands reverse both.
 
 ## One human act, two dispatches
 

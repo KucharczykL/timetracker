@@ -1083,7 +1083,9 @@ class PlaythroughForm(PrimitiveWidgetsMixin, forms.Form):
     #: Playthrough.note is a TextField.
     note = forms.CharField(required=False)
 
-    #: Rendered only on an Unplayed game.
+    #: Rendered where no stronger status is stated: an
+    #: Unplayed game, one no library tracks yet, and the
+    #: Add form before a game is picked.
     also_mark_played = forms.BooleanField(
         required=False,
         initial=True,
