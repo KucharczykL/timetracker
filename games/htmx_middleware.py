@@ -29,9 +29,11 @@ class HTMXMessagesMiddleware:
     def __call__(self, request):
         response = self.get_response(request)
 
-        # Skip HX-Trigger and don't consume messages if there's an HX-Redirect
-        # so the message persists in the session for the redirect target page
-        if "HX-Redirect" in response:
+        # Leave a navigation's messages in the session for the page it lands
+        # on. Reading them here marks the storage used, so MessageMiddleware
+        # then stores an empty queue -- and the header rides a response the
+        # browser discards, which loses the sentence entirely.
+        if "HX-Redirect" in response or 300 <= response.status_code < 400:
             return response
 
         min_level = (

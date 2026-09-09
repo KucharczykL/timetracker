@@ -2,7 +2,7 @@ import json
 
 from django.contrib.messages import constants as message_constants
 from django.contrib.messages.storage.fallback import FallbackStorage
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.test import TestCase, override_settings
 
 from games.htmx_middleware import HTMXMessagesMiddleware
@@ -105,6 +105,21 @@ class HTMXMessagesMiddlewareTest(TestCase):
 
         data = json.loads(response["HX-Trigger"])
         self.assertEqual(data["show-toast"]["type"], "warning")
+
+    def test_a_redirect_keeps_its_messages_for_the_next_page(self):
+        """A 302 has no body, so the toast belongs to the page it lands on."""
+        request = self._build_request(htmx=False)
+        request._messages.add(message_constants.ERROR, "Refused")
+        middleware = HTMXMessagesMiddleware(
+            lambda request: HttpResponseRedirect("/next/")
+        )
+
+        response = middleware(request)
+
+        self.assertNotIn("HX-Trigger", response)
+        #: Reading them is what loses them:
+        #: MessageMiddleware stores an empty queue after.
+        self.assertFalse(request._messages.used)
 
     @override_settings(DEBUG=True)
     def test_debug_message_maps_to_debug(self):
