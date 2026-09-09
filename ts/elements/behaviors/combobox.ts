@@ -8,7 +8,8 @@ import { registerBehavior } from "../dropdown-behaviors.js";
 //   itemSelector (with zero items the menu keydown handler also stops swallowing
 //   arrow/Home/End, so the caret works inside the search input; Escape and Tab
 //   still close the dropdown from attachMenu),
-// - on every open (the dropdown:show lifecycle event — the #94 seam) refetches
+// - on every open (the dropdown:show lifecycle event — the #94 plug point)
+//   refetches
 //   the widget's options and focuses the search input, so the list is always
 //   server-fresh with zero bespoke fetch code here,
 // - keeps Enter inside the search input from implicitly submitting an ancestor

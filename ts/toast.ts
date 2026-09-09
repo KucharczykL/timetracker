@@ -189,7 +189,7 @@ document.addEventListener("alpine:init", () => {
         }
       } catch (error) {
         // A failed toast-payload parse can't report via the toast (circular):
-        // route through the client-error seam with the toast suppressed.
+        // route through the client-error reporter with the toast suppressed.
         reportClientError(
           "toast[django-messages]",
           String((error as Error)?.message ?? error),

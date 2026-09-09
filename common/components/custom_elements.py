@@ -1147,18 +1147,18 @@ def SplitButtonDropdown(
     the menu. The Dropdown attaches to the caret only — ``primary`` is a plain
     sibling, so the core never needs to know it exists.
 
-    ``caret_color`` defaults to an outline caret (bakes no rounding, so the seam
+    ``caret_color`` defaults to an outline caret (bakes no rounding, so the join
     against an outline ``primary`` is clean). Pass a color to render a filled caret
     matching a filled ``primary``; the filled variant bakes all-corner rounding, so
     the caret zeroes its start corners (``rounded-s-none``) and the caller's primary
-    must zero its end corners for a clean seam. ``menu_width`` overrides the menu
+    must zero its end corners for a clean join. ``menu_width`` overrides the menu
     panel width (default ``w-44``).
 
     Both caret variants take ``focus:ring-inset`` so the focus ring is contained
-    inside the small caret box instead of bleeding across the seam into the
+    inside the small caret box instead of bleeding across the join into the
     primary — the shared split-caret focus look."""
     # The caret sits flush against the primary, so its focus ring is drawn inset
-    # (contained in the caret box) rather than as an outset halo over the seam.
+    # (contained in the caret box) rather than as an outset halo over the join.
     caret_focus = "focus:ring-inset"
     if caret_color is None:
         caret_button = ControlButton(

@@ -2418,7 +2418,7 @@ class DataTableWidthPolicyTest(SimpleTestCase):
     def test_every_pinned_class_is_gated(self):
         """The rendered-markup scan above only knows the three tokens it names.
         An ungated z-[2], elevation or shadow would slip past it — the shadow
-        visibly, as a seam on a phone where nothing is pinned."""
+        visibly, as a stray edge on a phone where nothing is pinned."""
         from common.components.primitives import PINNED_COLUMN_CLASS
 
         ungated = [
@@ -2485,7 +2485,7 @@ class DataTableWidthPolicyTest(SimpleTestCase):
         self.assertIn("md:[container-type:scroll-state]", region)
 
     def test_the_pinned_shadow_is_scoped_to_a_scrolled_region(self):
-        """An unconditional shadow would draw a seam down every table that fits,
+        """An unconditional shadow would draw an edge down every table that fits,
         which after priority-plus is most of them at most widths."""
         from common.components.primitives import PINNED_COLUMN_CLASS
 
@@ -2496,7 +2496,7 @@ class DataTableWidthPolicyTest(SimpleTestCase):
 
     def test_a_data_table_separates_its_borders(self):
         """Chrome paints no box-shadow on a cell in the collapsed model, so the
-        pinned column's seam computes and never renders. The separated model is
+        pinned column's shadow computes and never renders. The separated model is
         what makes the cue real."""
         result = self._data_table(
             [components.Column("Name")], [components.make_row("Game")]

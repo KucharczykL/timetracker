@@ -417,7 +417,7 @@ def test_a_run_replays_the_events_both_write_paths_produced():
 
 @pytest.mark.django_db(transaction=True)
 def test_a_run_purges_its_scratch_user_after_a_scenario_raises(monkeypatch):
-    """No plug point left; a monkeypatch is the seam."""
+    """Nothing to pass in; a monkeypatch is the plug point."""
     from games.events import benchmark_run as run_module
 
     def explode(*args, **kwargs):

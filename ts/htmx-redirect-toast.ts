@@ -5,8 +5,8 @@
  * navigates immediately (the toast shows on the destination page); otherwise it
  * turns the HX-Trigger header into CustomEvents so toasts fire in place.
  *
- * ES module (not classic): importing the client-error seam forces module scope,
- * so Page() must load it as a <script type="module"> or the top-level import
+ * ES module (not classic): importing the client-error reporter forces module
+ * scope, so Page() must load it as a <script type="module"> or the top-level import
  * SyntaxErrors the file inert.
  */
 import { reportClientError } from "./client-errors.js";
@@ -41,7 +41,7 @@ declare const htmx: any;
           triggers = JSON.parse(hxTrigger);
         } catch (error) {
           // A broken toast trigger can't announce itself via a toast (circular):
-          // report through the seam with the toast suppressed, then bail.
+          // report through the reporter with the toast suppressed, then bail.
           reportClientError(
             "hx-redirect-toast[HX-Trigger]",
             String((error as Error)?.message ?? error),

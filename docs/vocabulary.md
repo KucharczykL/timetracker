@@ -10,10 +10,10 @@ fenced block and an inline `code` span are all skipped, so `folder` and
 `--no-count-replay` need no exception. That is also how this page can name the
 words it refuses — each one below is written as code.
 
-Two paths are held to the earlier rules but not the removal ones:
-`CHANGELOG.md` and `docs/superpowers/`. A changelog entry describes a release
-that shipped under the word it used, and a design record has to name the words
-a codebase gave up. Neither can be edited into the present tense.
+Two paths are held to the rules that predate them but not to the ones added
+after: `CHANGELOG.md` and `docs/superpowers/`. A changelog entry describes a
+release that shipped under the word it used, and a design record has to name
+the words a codebase gave up. Neither can be edited into the present tense.
 
 ## Two levels
 
@@ -25,8 +25,9 @@ check answers at two levels.
 - **warning** — every other use. Printed, not fatal. The word may be the right
   one; a pattern cannot tell, and only a reader can.
 
-`fold` is the exception: both levels are errors, because the reading that
-warning level exists for never turned up. See its entry below.
+`fold` and `seam` are the exceptions: each is an error in every sense, because
+the reading that warning level exists for never turned up. See their entries
+below.
 
 Vale matches patterns, not meanings, so the split is an approximation. It is
 measured rather than assumed: over the uses that #676 and #677 introduced, 16
@@ -75,6 +76,35 @@ This word alone is refused at both levels. The second table was a warning until
 every use in the tree was read: each one was a metaphor standing in for a
 plainer word, and the literal sense the warning was protecting never appeared.
 `folder` and any other identifier are still out of scope, as code always is.
+
+### `seam` → plug point, boundary, divider
+
+A **plug point** is where a test or a later consumer reaches in. A **boundary**
+is where one module stops and the next starts. A **divider** is a line a table
+paints.
+
+The literal thing is sewn, sutured or mined. This codebase sews nothing, and
+the word stood in for four unrelated things at once: `client-errors.ts` used it
+for an exported function, `menu-behavior.ts` for an event, `node-id.ts` for a
+counter reset, and the pinned column for a border. A reader who met one of them
+learned the wrong thing about the next.
+
+Error in every sense. The replacement depends on what is joined, so the
+message asks for it and names the commonest one:
+
+| Instead of | Write |
+|---|---|
+| `the client-error seam` | the client-error reporter |
+| `a lifecycle seam for future consumers` | a plug point for future consumers |
+| `test seam: reset the counter` | plug point for tests: reset the counter |
+| `a monkeypatch is the seam` | a monkeypatch is the plug point |
+| `the filter seams` | the filter reads |
+| `the date/time seam` | the date/time boundary |
+| `the pinned column's seam` | the pinned column's divider |
+
+There is no second level. The literal senses — a sewn join, a surgical
+closure, a stratum of coal — describe nothing this repo has, so a use that the
+pattern catches is always a metaphor.
 
 ### `tombstone` → remove
 
@@ -192,9 +222,11 @@ family holds many projectors: `CURRENT_STATE` holds `PlayerGames` and
 Put the settled meaning in a rule file under `.vale/styles/Timetracker/` as
 patterns that need a neighbouring domain word, and the bare word in a second
 file at warning level. One pair of files per word family, because the error
-message names the one replacement and each family has its own. Add a section
-here saying why the word is refused. A rule with no reason written down is a
-rule the next person who wants the word reverts.
+message names the one replacement and each family has its own. A word with no
+surviving second sense needs no pair: read every use in the tree first, and
+only then write the one file, as `Seam.yml` does. Add a section here saying why
+the word is refused. A rule with no reason written down is a rule the next
+person who wants the word reverts.
 
 Go's regular expressions have no lookahead, so the broad pattern cannot exclude
 the narrow one and both report the same words. `scripts/run-vale.mjs` drops a

@@ -218,8 +218,9 @@ export function attachMenu(
     // keeping a stale top.
     resizeObserver?.observe(menu);
     notifyDropdownOpen(host);
-    // Lifecycle seam for future consumers: behaviors or htmx (hx-on:dropdown:show)
-    // can observe visibility here instead of via a JS callback. These bubble, so a
+    // Lifecycle plug point for future consumers: behaviors or htmx
+    // (hx-on:dropdown:show) can observe visibility here instead of via a JS
+    // callback. These bubble, so a
     // submenu open also fires dropdown:show on its ancestor <drop-down>s.
     host.dispatchEvent(new CustomEvent("dropdown:show", { bubbles: true }));
   };

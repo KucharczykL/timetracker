@@ -2,7 +2,7 @@
 
 The date half is the same segmented entry as :mod:`common.components.date_picker`;
 the time half is additional segments in the *same* run, so arrows and
-auto-advance cross the date/time seam without the field knowing there is one.
+auto-advance cross the date/time boundary without the field knowing there is one.
 Which segments exist, in what order, and what punctuation sits between them all
 come from the presentation contract's segment list — including whether there is
 a day-period segment at all.

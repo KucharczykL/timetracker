@@ -429,7 +429,7 @@ Record the reuse boundary, semantic contract, mobile trigger, top-layer
 geometry, scroll-lock ownership, same-DOM rule, and no-JS fallback. Keep the
 quick-filter priority-plus convention intact.
 
-### 2. Add the controller factory seam
+### 2. Add the controller factory plug point
 
 Modify:
 
@@ -470,7 +470,7 @@ including local dismissal listeners, animation state, initial focus, scroll
 locking, single-open notification, link navigation, and reconnect-safe document
 binding.
 
-Export only the smallest existing single-open notification seam needed by the
+Export only the smallest existing single-open notification plug point needed by the
 sheet; do not move anchored positioning or menu keyboard code into a new shared
 module. The sheet emits the already-documented `dropdown:show` and
 `dropdown:hide` events on the host.
@@ -627,7 +627,7 @@ changed:
 - settings-kit Playwright tests affected by the current step;
 - targeted Ruff lint/format checks for changed Python files;
 - TypeScript formatting/type checking scoped through the normal project command
-  when the controller seam changes;
+  when the controller plug point changes;
 - CSS generation/check after the style step; and
 - `git diff --check` before each commit.
 
@@ -640,7 +640,7 @@ before the epic is declared complete.
 1. `docs(settings): specify mobile section bottom sheet`
    - convention and inventory updates only.
 2. `refactor(dropdown): allow behavior-owned controllers`
-   - controller factory seam and default-path regression tests.
+   - controller factory plug point and default-path regression tests.
 3. `feat(ui): add reusable modal bottom sheet`
    - sheet controller, target builder, styling, and focused primitive tests.
 4. `feat(settings): replace mobile priority-plus nav with sheet`

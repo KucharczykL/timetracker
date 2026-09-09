@@ -334,8 +334,8 @@ def test_one_key_issued_concurrently_appends_once(owned_library):
         try:
             with transaction.atomic():
                 #: idempotent_append owns both the lock and the append, leaving
-                #: no seam to signal from. Taking the lock here first is
-                #: re-entrant within this transaction and restores the seam.
+                #: no plug point to signal from. Taking the lock here first
+                #: is re-entrant within this transaction and restores it.
                 lock_stream(owned_library)
                 holder_locked.set()
                 results["holder"] = duplicate_command(owned_library)

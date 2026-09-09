@@ -1,5 +1,5 @@
 /**
- * Client-error reporting seam (issue #232). One home for turning a browser-side
+ * Client-error reporter (issue #232). One home for turning a browser-side
  * failure into (1) a guaranteed server log line, (2) a best-effort toast, and
  * (3) a best-effort inline mark, replacing the old silent console.warn pattern
  * scattered across the filter widgets.

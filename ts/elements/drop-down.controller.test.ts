@@ -14,7 +14,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("<drop-down> behavior-owned controller seam", () => {
+describe("<drop-down> behavior-owned controller plug point", () => {
   it("uses one custom controller across disconnect/reconnect", () => {
     const open = vi.fn();
     const close = vi.fn();

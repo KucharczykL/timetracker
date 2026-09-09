@@ -245,8 +245,8 @@ export class ResponsiveTableElement extends HTMLElement {
     return !this.relayoutQueued && this.fittedWidth === region.clientWidth;
   }
 
-  // Public seam for tests (jsdom has no layout engine, so tests supply the
-  // widths and viewport side directly), mirroring layoutOverflow on the
+  // Public plug point for tests (jsdom has no layout engine, so tests supply
+  // the widths and viewport side directly), mirroring layoutOverflow on the
   // QuickFilterBar element.
   applyDecision(
     naturalWidths: number[],

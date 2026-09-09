@@ -650,7 +650,7 @@ const initWidget = (containerElement: Element) => {
     event.preventDefault();
   });
 
-  // Fire the external row-action seam (form mode only: the preset delete ×).
+  // Fire the external row-action event (form mode only: the preset delete ×).
   const dispatchAction = (action: string, option: SearchSelectOption) => {
     container.dispatchEvent(
       new CustomEvent<SearchSelectActionDetail>("search-select:action", {
@@ -661,7 +661,7 @@ const initWidget = (containerElement: Element) => {
   };
 
   // ── Option click. One action-button lookup: filter +/− add a pill inline; a
-  //    form-mode action button goes out on the event seam. ──
+  //    form-mode action button goes out as an event. ──
   options.addEventListener("click", (event) => {
     const target = event.target as Element;
 

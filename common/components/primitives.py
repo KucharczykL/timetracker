@@ -626,8 +626,8 @@ PINNED_COLUMN_CLASS = (
     # A box-shadow, never a filter: a filtered cell becomes the containing
     # block for the fixed panels it hosts. Scoped to a region that actually
     # has something scrolled behind the column, so a table that fits shows
-    # no seam. The offset is physical where the trigger and the pin are
-    # logical, so the direction is mirrored explicitly — otherwise the seam
+    # no shadow. The offset is physical where the trigger and the pin are
+    # logical, so the direction is mirrored explicitly — otherwise the shadow
     # paints into the table's own edge under rtl instead of over the
     # content sliding beneath it.
     "md:[@container_scroll-state(scrollable:inline-start)]:shadow-[6px_0_8px_-2px_rgb(0_0_0/0.28)] "
@@ -2624,7 +2624,7 @@ def StyledTable(
     )
 
     # Data tables separate their borders: Chrome paints no box-shadow on a cell
-    # in the collapsed model, so the pinned column's seam would compute and
+    # in the collapsed model, so the pinned column's shadow would compute and
     # never render. Separated borders also let the row divider belong to the
     # cells, which is what carries it across the sticky column.
     table_class = "w-full text-type-body text-left rtl:text-right text-body-subtle"
@@ -2647,7 +2647,7 @@ def StyledTable(
         # — because the first column's real width varies per table and per page.
         # Only from md up: 19rem is wider than a phone's scrollport, where the
         # browser would clamp it into a meaningless snap position anyway.
-        # The scroll-state container type lets the pinned column show its seam
+        # The scroll-state container type lets the pinned column show its shadow
         # only while something is scrolled behind it. It is not a containing
         # block, so the fixed panels inside the table are unaffected.
         scroll_class = (
