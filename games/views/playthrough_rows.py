@@ -141,7 +141,7 @@ def _activity_cell(run: Playthrough, presentation: DateTimePresentation) -> Cell
     today = datetime.now(presentation.timezone).date()
     return Fragment(
         badge,
-        Span(class_="ml-2 text-sm")[f"last played {recency_phrase(day, today)}"],
+        Span(class_="ml-2 text-type-body")[f"last played {recency_phrase(day, today)}"],
     )
 
 
