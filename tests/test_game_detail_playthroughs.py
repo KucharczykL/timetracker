@@ -140,7 +140,7 @@ def test_the_section_links_its_actions_at_the_run(logged_in, game):
 
 
 def test_the_section_offers_the_act_the_run_allows(logged_in, game):
-    """A tracked game's run states no act yet."""
+    """A tracked game's run states nothing."""
     run = Playthrough.objects.get(player_game__game=game)
 
     body = section(logged_in, game)

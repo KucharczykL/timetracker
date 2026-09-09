@@ -200,9 +200,8 @@ def test_the_note_column_still_wraps(authenticated_page: Page, live_server, popu
     """The opt-out has to be real, not vacuous: with a realistic note the column
     must take several lines rather than widening the table without limit.
 
-    Measured wider than the list VIEWPORTS: Note carries the default priority,
-    so it is the first column this table drops, and since each row offers a
-    lifecycle act the table no longer fits it at 1280px."""
+    Measured wider than the list VIEWPORTS: Note holds the default priority, so
+    it drops first, and this table no longer fits it at 1280px."""
     page = authenticated_page
     page.set_viewport_size({"width": 1440, "height": 900})
     page.goto(f"{live_server.url}{reverse('games:list_playthroughs')}")

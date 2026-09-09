@@ -181,7 +181,7 @@ def _state_completion(owned_user, run) -> None:
 
 
 def actions_of(owned_library, run, presentation, **options) -> str:
-    """The last cell of the one row, stringified."""
+    """The one row's last cell, stringified."""
     data = tabledata_of(owned_library, run, presentation, **options)
     [row] = data["rows"]
     return str(row["cell_data"][-1])

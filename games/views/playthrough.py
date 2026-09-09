@@ -360,13 +360,10 @@ def _record_companion_status(
 ) -> None:
     """State the status the stated acts imply.
 
-    Each box acts only where the draft states its act, so
-    a note-only edit states nothing. Completed goes second
-    and wins: a submit that states both acts leaves the
-    game Completed, not Played.
-
-    Every answer is discarded on purpose. A refused status
-    toasts, and the run it belongs to stands.
+    Each box acts only where the draft states
+    its act. Completed goes second and wins.
+    Answers are discarded: a refused status
+    toasts, and its run stands.
     """
     if draft.started is not None and form.cleaned_data["also_mark_played"]:
         record_facts_for_request(

@@ -120,7 +120,7 @@ def test_a_completed_game_renders_no_played_box(owned_user, owned_library):
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.untracked_games
 def test_a_posted_played_box_is_dropped_for_a_completed_game(owned_user, owned_library):
-    """The generic Add form renders the box before a game is picked."""
+    """The Add form renders it unbound."""
     game = _completed_game(owned_user, owned_library)
 
     form = PlaythroughForm(

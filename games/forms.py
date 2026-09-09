@@ -1062,8 +1062,7 @@ class PlaythroughForm(PrimitiveWidgetsMixin, forms.Form):
                 presentation=presentation,
                 label=str(self.fields[field_name].label or field_name),
             )
-        #: The status decides the render, and clean()
-        #: decides again against the game that was posted.
+        #: The status decides the render.
         if not played_is_offered(library, offered_game):
             del self.fields["also_mark_played"]
 
@@ -1084,9 +1083,7 @@ class PlaythroughForm(PrimitiveWidgetsMixin, forms.Form):
     #: Playthrough.note is a TextField.
     note = forms.CharField(required=False)
 
-    #: Rendered only on an Unplayed game: a start states
-    #: nothing about one already played or stronger, and a
-    #: checked box there would walk the status back.
+    #: Rendered only on an Unplayed game.
     also_mark_played = forms.BooleanField(
         required=False,
         initial=True,
@@ -1108,12 +1105,12 @@ class PlaythroughForm(PrimitiveWidgetsMixin, forms.Form):
         return game
 
     def clean(self) -> dict[str, Any]:
-        """Drop a box this game is offered no status by.
+        """Drop a box this game offers no status.
 
-        The generic Add form renders the Played box before
-        a game is picked, so a posted one is decided here
-        against the game the submit names. A field the
-        render gate took out cleans to False on its own.
+        The Add form renders the Played box
+        before a game is picked, so a posted
+        one is decided here. A field the render
+        gate took out cleans to False alone.
         """
         cleaned = super().clean() or {}
         cleaned.setdefault("also_mark_played", False)

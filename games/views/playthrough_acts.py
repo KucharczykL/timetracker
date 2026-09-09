@@ -54,13 +54,10 @@ def _state_endpoint(
 ) -> bool:
     """State one endpoint, and nothing else.
 
-    The run's own note rides along, so the restatement
-    describes nothing and the endpoint the caller did not
-    name is left alone.
-
-    A run that states this endpoint already is refused by
-    the command in its own words. No gate here: a second
-    one could disagree with it.
+    The run's own note rides along, so the
+    restatement describes nothing. No gate: the
+    command refuses a second statement itself,
+    and a gate here could disagree.
     """
     return restate_run_for_request(
         request,
@@ -81,8 +78,7 @@ def start_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpRespons
     if _state_endpoint(run, request, correlation_id, started=_today()) and (
         played_is_offered(library, game)
     ):
-        #: Discarded on purpose: a refused status toasts,
-        #: and the act it belongs to stands.
+        #: Discarded: a refused status only toasts.
         record_facts_for_request(
             request,
             game,

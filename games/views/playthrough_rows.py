@@ -118,12 +118,10 @@ def _days_cell(run: Playthrough) -> Cell:
 def _actions(run: Playthrough, origin: OriginUrl | None, csrf_token: str) -> Cell:
     """The act this run allows, then edit and remove.
 
-    One press states today. A day that is not today
-    belongs in the edit form, which holds every precision
-    the grammar knows.
-
-    Remove renders on the last run too: the command owns
-    that refusal, and a second gate can disagree with it.
+    One press states today; another day belongs
+    in the edit form. Remove renders on the last
+    run too: the command owns that refusal, and
+    a second gate can disagree with it.
     """
     return ButtonGroup(
         [
@@ -147,8 +145,7 @@ def _act_member(
 ) -> ButtonGroupMember:
     """Start, complete, or nothing left to state.
 
-    An empty member renders nothing: ButtonGroup skips a
-    dict with no slot.
+    ButtonGroup skips a dict with no slot.
     """
     if stated_start(run) is None:
         return {

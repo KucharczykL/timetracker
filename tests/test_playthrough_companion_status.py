@@ -9,7 +9,7 @@ from games.models import Game, LibraryEvent, PlayerGame, PlayerGameStatus, Playt
 from games.reads.companion_status import played_is_offered
 from games.writes.playergame import new_correlation_id, record_facts, track_game
 
-#: TrackGame states the run, so the real command runs.
+#: TrackGame states the run itself.
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.untracked_games]
 
 
@@ -33,7 +33,7 @@ def test_an_untracked_game_is_offered_played(owned_library, game):
 
 
 def test_a_game_with_no_name_yet_is_offered_played(owned_library):
-    """The generic Add form, before a game is picked."""
+    """The Add form, before a game."""
     assert played_is_offered(owned_library, None) is True
 
 
@@ -54,7 +54,7 @@ def test_an_unplayed_game_is_offered_played(owned_library, tracked):
 def test_every_stronger_status_is_offered_nothing(
     owned_user, owned_library, tracked, status
 ):
-    """A checked box here would walk the status back."""
+    """A checked box would walk it back."""
     state(owned_user, tracked, status)
 
     assert played_is_offered(owned_library, tracked) is False
@@ -108,7 +108,7 @@ def test_the_pair_shares_one_correlation(logged_in, owned_library, game):
 def test_a_start_on_a_completed_game_states_nothing(
     owned_user, logged_in, owned_library, tracked
 ):
-    """The box never rendered, so a posted one is dropped."""
+    """Never rendered, so a posted one drops."""
     state(owned_user, tracked, PlayerGameStatus.COMPLETED)
 
     logged_in.post(
@@ -143,7 +143,7 @@ def test_a_completion_states_completed(logged_in, owned_library, game):
 def test_a_note_only_edit_states_no_status(
     owned_user, logged_in, owned_library, tracked
 ):
-    """Both boxes ticked, and neither act is stated."""
+    """Both boxes ticked, neither act stated."""
     run = Playthrough.objects.get(player_game__game=tracked)
 
     logged_in.post(
@@ -207,7 +207,7 @@ def test_neither_act_answers_a_get(logged_in, tracked):
 
 
 def test_an_act_keeps_the_run_note(logged_in, owned_user, owned_library, tracked):
-    """The restatement carries the note, so no describe fires."""
+    """The restatement carries the note along."""
     run = Playthrough.objects.get(player_game__game=tracked)
     logged_in.post(
         reverse("games:edit_playthrough", args=[run.pk]),
