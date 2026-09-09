@@ -149,9 +149,7 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     dispatched: list[DispatchedCommand] = []
 
     def run(command: Command, key: str) -> None:
-        result = dispatch(
-            command, actor=user, library=library, idempotency_key=key
-        )
+        result = dispatch(command, actor=user, library=library, idempotency_key=key)
         assert result.outcome is CommandOutcome.APPENDED, (
             f"{key} recorded nothing, so the stream misses its event types."
         )
@@ -801,10 +799,12 @@ In `games/events/benchmark_run.py`, replace lines 84-85 with:
 In `games/management/commands/benchmark_events.py`, the `--seed` help:
 
 ```python
-            help=(
-                f"Events to seed (default {DEFAULT_SEED_EVENTS}). Two events "
-                "are seeded per game, so an odd count seeds one event fewer."
-            ),
+help = (
+    (
+        f"Events to seed (default {DEFAULT_SEED_EVENTS}). Two events "
+        "are seeded per game, so an odd count seeds one event fewer."
+    ),
+)
 ```
 
 and the estimate's catalog term:
@@ -1047,9 +1047,7 @@ def test_a_scope_is_required(owned_library):
 @pytest.mark.django_db
 def test_two_scopes_are_refused(owned_library):
     with pytest.raises(CommandError, match="not allowed with argument"):
-        run_command(
-            "--user", owned_library.user.username, "--all-libraries", "--check"
-        )
+        run_command("--user", owned_library.user.username, "--all-libraries", "--check")
 
 
 @pytest.mark.django_db
@@ -1079,58 +1077,58 @@ Replace `add_arguments` and `_get_library` in
 `games/management/commands/rebuild_projections.py`:
 
 ```python
-    def add_arguments(self, parser):
-        scope = parser.add_mutually_exclusive_group(required=True)
-        scope.add_argument("--user", help="Rebuild the library owned by USERNAME.")
-        scope.add_argument(
-            "--library", dest="library_id", help="Rebuild one library UUID."
-        )
-        scope.add_argument(
-            "--all-libraries",
-            action="store_true",
-            help="Explicitly rebuild every library, in key order.",
-        )
-        parser.add_argument(
-            "--check",
-            action="store_true",
-            help="Replay and diff only: take no lock and write nothing.",
-        )
+def add_arguments(self, parser):
+    scope = parser.add_mutually_exclusive_group(required=True)
+    scope.add_argument("--user", help="Rebuild the library owned by USERNAME.")
+    scope.add_argument("--library", dest="library_id", help="Rebuild one library UUID.")
+    scope.add_argument(
+        "--all-libraries",
+        action="store_true",
+        help="Explicitly rebuild every library, in key order.",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Replay and diff only: take no lock and write nothing.",
+    )
 ```
 
 and, beside it:
 
 ```python
-    def _resolve_libraries(self, options) -> list[UserLibrary]:
-        libraries = UserLibrary.objects.select_related("user").order_by("pk")
-        if options["all_libraries"]:
-            return list(libraries)
-        if options["user"]:
-            return [self._library_of_user(libraries, options["user"])]
-        return [self._library_by_id(libraries, options["library_id"])]
+def _resolve_libraries(self, options) -> list[UserLibrary]:
+    libraries = UserLibrary.objects.select_related("user").order_by("pk")
+    if options["all_libraries"]:
+        return list(libraries)
+    if options["user"]:
+        return [self._library_of_user(libraries, options["user"])]
+    return [self._library_by_id(libraries, options["library_id"])]
 
-    @staticmethod
-    def _library_of_user(libraries, username: str) -> UserLibrary:
-        """A missing user is not a user missing a library."""
-        user_model = get_user_model()
-        try:
-            user = user_model.objects.get(username=username)
-        except user_model.DoesNotExist as error:
-            raise CommandError(f"No user is named {username!r}.") from error
-        try:
-            return libraries.get(user=user)
-        except UserLibrary.DoesNotExist as error:
-            raise CommandError(f"User {username!r} owns no library.") from error
 
-    @staticmethod
-    def _library_by_id(libraries, raw_id: str) -> UserLibrary:
-        try:
-            library_id = UUID(raw_id)
-        except ValueError as error:
-            raise CommandError(f"{raw_id!r} is not a library id.") from error
-        try:
-            return libraries.get(pk=library_id)
-        except UserLibrary.DoesNotExist as error:
-            raise CommandError(f"No library {library_id}.") from error
+@staticmethod
+def _library_of_user(libraries, username: str) -> UserLibrary:
+    """A missing user is not a user missing a library."""
+    user_model = get_user_model()
+    try:
+        user = user_model.objects.get(username=username)
+    except user_model.DoesNotExist as error:
+        raise CommandError(f"No user is named {username!r}.") from error
+    try:
+        return libraries.get(user=user)
+    except UserLibrary.DoesNotExist as error:
+        raise CommandError(f"User {username!r} owns no library.") from error
+
+
+@staticmethod
+def _library_by_id(libraries, raw_id: str) -> UserLibrary:
+    try:
+        library_id = UUID(raw_id)
+    except ValueError as error:
+        raise CommandError(f"{raw_id!r} is not a library id.") from error
+    try:
+        return libraries.get(pk=library_id)
+    except UserLibrary.DoesNotExist as error:
+        raise CommandError(f"No library {library_id}.") from error
 ```
 
 Delete the old `_get_library`. Add the import:
@@ -1144,43 +1142,44 @@ from django.contrib.auth import get_user_model
 Replace the body of `handle` down to the last `self.stdout.write` with:
 
 ```python
-    def handle(self, *args, **options):
-        libraries = self._resolve_libraries(options)
-        mode = RebuildMode.CHECK if options["check"] else RebuildMode.REBUILD
-        for library in libraries:
-            self._run_one(library, mode)
+def handle(self, *args, **options):
+    libraries = self._resolve_libraries(options)
+    mode = RebuildMode.CHECK if options["check"] else RebuildMode.REBUILD
+    for library in libraries:
+        self._run_one(library, mode)
 
-    def _run_one(self, library: UserLibrary, mode: RebuildMode) -> None:
-        try:
-            report = rebuild_projections(library, mode=mode)
-        except UnresolvedReferences as error:
-            self._write_reconciliation(error.reconciliation)
-            #: Both modes fail. No rebuild repairs this.
-            raise CommandError(
-                f"The events name {error.reconciliation.unresolved} row(s) that "
-                "no longer exist, so nothing was replayed."
-            ) from error
-        except SwapRefusedByReference as error:
-            #: handle() has no report to print.
-            for table in error.tables:
-                self._write_table(table, self.stderr)
-            raise CommandError(str(error)) from error
-        self._write_report(report)
 
-        if mode is RebuildMode.CHECK:
-            self._write_check_outcome(report)
-            return
-        if not report.swapped:
-            raise CommandError(
-                f"The rebuild lost to a concurrent write on all "
-                f"{len(report.attempts)} attempt(s); nothing was swapped. The "
-                "library is busy enough that a quieter moment is the fix."
-            )
-        self.stdout.write(
-            self.style.SUCCESS(f"Swapped {len(report.tables)} table(s) into place.")
+def _run_one(self, library: UserLibrary, mode: RebuildMode) -> None:
+    try:
+        report = rebuild_projections(library, mode=mode)
+    except UnresolvedReferences as error:
+        self._write_reconciliation(error.reconciliation)
+        #: Both modes fail. No rebuild repairs this.
+        raise CommandError(
+            f"The events name {error.reconciliation.unresolved} row(s) that "
+            "no longer exist, so nothing was replayed."
+        ) from error
+    except SwapRefusedByReference as error:
+        #: handle() has no report to print.
+        for table in error.tables:
+            self._write_table(table, self.stderr)
+        raise CommandError(str(error)) from error
+    self._write_report(report)
+
+    if mode is RebuildMode.CHECK:
+        self._write_check_outcome(report)
+        return
+    if not report.swapped:
+        raise CommandError(
+            f"The rebuild lost to a concurrent write on all "
+            f"{len(report.attempts)} attempt(s); nothing was swapped. The "
+            "library is busy enough that a quieter moment is the fix."
         )
-        #: True by having got this far.
-        self.stdout.write(self.style.SUCCESS("References: all resolved."))
+    self.stdout.write(
+        self.style.SUCCESS(f"Swapped {len(report.tables)} table(s) into place.")
+    )
+    #: True by having got this far.
+    self.stdout.write(self.style.SUCCESS("References: all resolved."))
 ```
 
 Update the `help` string's first sentence:
@@ -1268,9 +1267,7 @@ def test_fail_on_drift_fails_the_check(owned_library):
     drifted_library(owned_library)
 
     with pytest.raises(CommandError, match="row\\(s\\) differ from the replay"):
-        run_command(
-            "--library", str(owned_library.pk), "--check", "--fail-on-drift"
-        )
+        run_command("--library", str(owned_library.pk), "--check", "--fail-on-drift")
 
 
 @pytest.mark.django_db
@@ -1283,9 +1280,7 @@ def test_fail_on_drift_is_silent_when_nothing_drifted(owned_library):
 
 
 @pytest.mark.django_db
-def test_all_libraries_fails_on_the_one_that_drifted(
-    owned_library, django_user_model
-):
+def test_all_libraries_fails_on_the_one_that_drifted(owned_library, django_user_model):
     """One drifted neighbour fails the whole run."""
     second = django_user_model.objects.create_user(username="drifted-owner")
     drifted_library(second.library)
@@ -1337,50 +1332,47 @@ Thread it through `handle` and `_run_one`:
 and, in the `CHECK` branch:
 
 ```python
-        if mode is RebuildMode.CHECK:
-            drifted = self._write_check_outcome(report)
-            if drifted and fail_on_drift:
-                raise CommandError(
-                    f"{drifted} row(s) differ from the replay in library "
-                    f"{report.library_id}."
-                )
-            return
+if mode is RebuildMode.CHECK:
+    drifted = self._write_check_outcome(report)
+    if drifted and fail_on_drift:
+        raise CommandError(
+            f"{drifted} row(s) differ from the replay in library {report.library_id}."
+        )
+    return
 ```
 
 Make `_write_check_outcome` answer the count it already computes:
 
 ```python
-    def _write_check_outcome(self, report: RebuildReport) -> int:
-        """Print the outcome, and say how many rows drifted."""
-        if report.head_at_diff != report.replayed_through:
-            #: No lock: the drift may be false.
-            self.stdout.write(
-                self.style.WARNING(
-                    "The head moved while the check ran, so the diff above is "
-                    "advisory. Re-run it, or rebuild -- a rebuild turns the same "
-                    "race into a redo."
-                )
-            )
-        drifted = sum(
-            table.only_live + table.only_rebuilt + table.differing
-            for table in report.tables
-        )
-        if not drifted:
-            self.stdout.write(
-                self.style.SUCCESS("Projections match the replayed events.")
-            )
-            return 0
-        tables = sum(
-            1
-            for table in report.tables
-            if table.only_live or table.only_rebuilt or table.differing
-        )
+def _write_check_outcome(self, report: RebuildReport) -> int:
+    """Print the outcome, and say how many rows drifted."""
+    if report.head_at_diff != report.replayed_through:
+        #: No lock: the drift may be false.
         self.stdout.write(
             self.style.WARNING(
-                f"{drifted} row(s) differ from the replay across {tables} table(s)."
+                "The head moved while the check ran, so the diff above is "
+                "advisory. Re-run it, or rebuild -- a rebuild turns the same "
+                "race into a redo."
             )
         )
-        return drifted
+    drifted = sum(
+        table.only_live + table.only_rebuilt + table.differing
+        for table in report.tables
+    )
+    if not drifted:
+        self.stdout.write(self.style.SUCCESS("Projections match the replayed events."))
+        return 0
+    tables = sum(
+        1
+        for table in report.tables
+        if table.only_live or table.only_rebuilt or table.differing
+    )
+    self.stdout.write(
+        self.style.WARNING(
+            f"{drifted} row(s) differ from the replay across {tables} table(s)."
+        )
+    )
+    return drifted
 ```
 
 - [ ] **Step 4: Run the drift tests**
