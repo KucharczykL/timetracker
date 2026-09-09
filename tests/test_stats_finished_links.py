@@ -53,7 +53,7 @@ def test_the_link_orders_by_the_reported_completion(
     logged_client, owned_user, owned_library, builder
 ):
     """Each row once, later finish first."""
-    #: Two matched games, so the join fans this row out.
+    #: Two matches, so the join fans out.
     late = in_scope_purchase(
         owned_user, owned_library, "Late", date(YEAR, 12, 1), date(YEAR, 6, 1)
     )

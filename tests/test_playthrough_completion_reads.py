@@ -238,7 +238,7 @@ def test_a_run_naming_another_librarys_player_game_reports_nothing(
 
 @pytest.mark.django_db(transaction=True)
 def test_a_removed_player_game_reports_nothing(owned_user, owned_library):
-    """Its run carries no mark of its own."""
+    """Its run carries no mark."""
     purchase = make_purchase(owned_library)
     game, _ = add_game(
         owned_user,
@@ -277,11 +277,11 @@ def test_a_second_run_at_one_game_reports_the_later(owned_user, owned_library):
 
 @pytest.mark.django_db(transaction=True)
 def test_the_identity_settles_a_full_tie(owned_user, owned_library):
-    """Two runs state one value, so only `-pk` orders.
+    """Two runs state one value.
 
-    Without the third key the row reported is whatever the
-    database hands back first, and the cell and the sort
-    may then name different runs.
+    Only `-pk` orders them. Without that third key the row
+    reported is whatever the database hands back first, and
+    the cell and the sort may name different runs.
     """
     purchase = make_purchase(owned_library)
     same_day = TemporalValue.from_day(date(2020, 3, 4))
@@ -303,7 +303,7 @@ def test_the_identity_settles_a_full_tie(owned_user, owned_library):
 
 @pytest.mark.django_db(transaction=True)
 def test_the_act_and_the_value_read_one_path(owned_user, owned_library):
-    """One path, so the cell cannot state two facts.
+    """One path, so the cell agrees.
 
     `completion_exists` and `reported_completion` are two
     subqueries the cell reads together. A path that agreed

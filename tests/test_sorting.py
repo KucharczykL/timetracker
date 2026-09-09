@@ -175,8 +175,9 @@ class TestApplySortGames:
         late = Game.objects.create(
             library=owned_library, name="Late", platform=platform
         )
-        #: The view annotates the day; this states what list_games
-        #: annotates, so the spec meets the alias it names.
+        #: The view annotates the day.
+        #: This states what list_games annotates, so the
+        #: spec meets the alias it names.
         days = {early.pk: date(2024, 1, 1), late.pk: date(2024, 1, 2)}
         annotated = Game.objects.annotate(
             completed_day=Case(

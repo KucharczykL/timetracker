@@ -82,7 +82,7 @@ def test_a_dayless_completion_sorts_with_the_undated(
 def test_the_game_list_orders_by_its_own_completion(
     logged_client, owned_user, owned_library
 ):
-    """No column renders it; the URL orders by it.
+    """No column renders it; the URL does.
 
     The game reads its own runs, not its purchase's. Were
     the path the purchase's, both games would report the
@@ -184,9 +184,7 @@ def test_a_sort_of_finished_beside_another_key_runs(logged_client, three_purchas
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize("path", ["game_filter", "search", "games"])
-def test_every_join_path_prints_one_row(
-    logged_client, owned_user, owned_library, path
-):
+def test_every_join_path_prints_one_row(logged_client, owned_user, owned_library, path):
     """Each row prints once, whichever filter matched.
 
     `game_filter` and `search` reach a purchase through a

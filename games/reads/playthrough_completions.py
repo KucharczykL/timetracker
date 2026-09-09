@@ -15,7 +15,7 @@ from games.reads.playthrough_runs import library_runs
 #: A year, or None for all-time.
 type YearScope = int | None
 
-#: A row's path to its runs, e.g. "player_game__game".
+#: A row's path to its runs.
 type RunPath = str
 
 PURCHASE_RUNS: RunPath = "player_game__game__purchases"

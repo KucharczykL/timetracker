@@ -165,7 +165,7 @@ def ExternalReferenceLinks(references: Sequence[ExternalReference]) -> Node:
 
 
 def _game_name(game: Game, purchase: Purchase) -> str:
-    """The game's name, or words in its place.
+    """The game's name, or words instead.
 
     `Game.name` is not blank, so an empty one is a row
     nothing here wrote. One cell degrades and says which
