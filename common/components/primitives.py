@@ -1019,17 +1019,23 @@ class ControlButton(BaseComponent):
             # Forced ("type", "submit") comes first so it wins first-wins over
             # any caller-supplied type; the form is chrome (inline-flex keeps
             # its height and alignment right in flex rows and segmented groups).
+            if not self._csrf_token:
+                # A token-free POST form is refused by Django's own middleware,
+                # so it can only ever render a button that 403s. Refuse it here,
+                # where the caller that forgot the token is still on the stack.
+                raise ValueError(
+                    "ControlButton(method='post') needs a csrf_token: "
+                    "a form without one cannot post."
+                )
             submit = Button([("type", "submit"), *self._merged_attributes])[
                 *self._children
             ]
-            form_children: list[Node | str] = []
-            if self._csrf_token:
-                form_children.append(
-                    Safe(
-                        '<input type="hidden" name="csrfmiddlewaretoken" '
-                        f'value="{self._csrf_token}">'
-                    )
+            form_children: list[Node | str] = [
+                Safe(
+                    '<input type="hidden" name="csrfmiddlewaretoken" '
+                    f'value="{self._csrf_token}">'
                 )
+            ]
             form_children.extend(self._hidden_fields)
             form_children.append(submit)
             return Form(

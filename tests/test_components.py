@@ -1094,17 +1094,26 @@ class ControlButtonTest(SimpleTestCase):
 
     def test_post_mode_action_overrides_href(self):
         html = str(
-            components.ControlButton(href="/fallback", method="post", action="/real")[
-                "Save"
-            ]
+            components.ControlButton(
+                href="/fallback", method="post", action="/real", csrf_token="tok"
+            )["Save"]
         )
         self.assertIn('action="/real"', html)
         self.assertNotIn("/fallback", html)
 
     def test_post_mode_forced_submit_wins_over_caller_type(self):
-        html = str(components.ControlButton([("type", "reset")], method="post")["Save"])
+        html = str(
+            components.ControlButton(
+                [("type", "reset")], method="post", csrf_token="tok"
+            )["Save"]
+        )
         self.assertIn('type="submit"', html)
         self.assertNotIn('type="reset"', html)
+
+    def test_post_mode_refuses_a_missing_token(self):
+        """A form with no token can only render a button that 403s."""
+        with self.assertRaises(ValueError):
+            str(components.ControlButton(href="/x/delete", method="post")["Delete"])
 
     def test_getitem_returns_new_instance(self):
         base = components.ControlButton(color="gray")

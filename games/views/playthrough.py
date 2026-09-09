@@ -1,7 +1,7 @@
 import logging
 import uuid
 from datetime import date, datetime, timedelta
-from typing import Any, cast
+from typing import Any, NamedTuple, cast
 from uuid import UUID
 
 from django.contrib import messages
@@ -9,6 +9,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.db.models import Max, QuerySet
 from django.http import HttpRequest, HttpResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import redirect
 from django.urls import reverse
 
@@ -153,6 +154,7 @@ def list_playthroughs(request: HttpRequest) -> HttpResponse:
         sort_terms=sort.terms,
         sortable=True,
         origin=origin,
+        csrf_token=get_token(request),
     )
     content = paginated_table_content(
         data,
@@ -185,9 +187,12 @@ def list_playthroughs(request: HttpRequest) -> HttpResponse:
 def add_playthrough(request: HttpRequest, game_id: UUID | None = None) -> HttpResponse:
     initial: dict[str, Any] = {}
     library = cast(User, request.user).library
+    #: The game the URL names, where it names one.
+    offered_game: Game | None = None
     if game_id:
         # coming from add_playthrough_for_game url path
         game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
+        offered_game = game
         initial["game"] = game
         try:
             # First, try to get the latest session. If no sessions, then no playtime.
@@ -234,17 +239,15 @@ def add_playthrough(request: HttpRequest, game_id: UUID | None = None) -> HttpRe
         initial=initial,
         library=library,
         presentation=date_time_presentation_for_request(request),
+        offered_game=offered_game,
     )
     if form.is_valid():
         game = form.cleaned_data["game"]
         correlation_id = new_correlation_id()
-        if record_run_for_request(
-            request, game, _recorded_draft(form), correlation_id=correlation_id
-        ):
-            if form.cleaned_data.get("mark_as_finished"):
-                #: Discarded on purpose: a refused status
-                #: toasts, and the run it belongs to stands.
-                _record_completed(request, game, correlation_id)
+        draft = _recorded_draft(form)
+        acts = _new_acts(draft, None)
+        if record_run_for_request(request, game, draft, correlation_id=correlation_id):
+            _record_companion_status(request, game, acts, form, correlation_id)
             return redirect(
                 return_url(
                     request,
@@ -272,11 +275,22 @@ def _stated_act(day: date | None) -> ActStatement:
     return ActStatement(None if day is None else TemporalValue.from_day(day))
 
 
+def _recorded_act(day: date | None) -> ActStatement | None:
+    """The act this field records, or nothing.
+
+    A blank field on a new run records no act: a run added
+    with no end day is one nobody finished, not one
+    finished on a day nobody wrote down. So RunDraft's None
+    reads the same here as it does on an edit.
+    """
+    return None if day is None else _stated_act(day)
+
+
 def _recorded_draft(form: PlaythroughForm) -> RunDraft:
-    """The run this form records; both acts happened."""
+    """The run this form records."""
     return RunDraft(
-        started=_stated_act(form.cleaned_data["started"]),
-        completed=_stated_act(form.cleaned_data["ended"]),
+        started=_recorded_act(form.cleaned_data["started"]),
+        completed=_recorded_act(form.cleaned_data["ended"]),
         note=form.cleaned_data["note"],
     )
 
@@ -323,7 +337,7 @@ def _no_run_here(request: HttpRequest, game: Game, sentence: str) -> HttpRespons
     )
 
 
-def _editable_runs(library: UserLibrary) -> QuerySet[Playthrough]:
+def editable_runs(library: UserLibrary) -> QuerySet[Playthrough]:
     """This library's live runs, their game beside them."""
     return Playthrough.objects.select_related("player_game__game").filter(
         library=library,
@@ -332,15 +346,13 @@ def _editable_runs(library: UserLibrary) -> QuerySet[Playthrough]:
     )
 
 
-def _record_completed(
+def record_completed(
     request: HttpRequest, game: Game, correlation_id: uuid.UUID
 ) -> bool:
     """State Completed for the game just finished.
 
     The request's correlation id, not a fresh one: the act
-    and the status it implies belong to one submit. No
-    reader groups events that way yet, so this changes no
-    screen. It is the plumbing #683 needs.
+    and the status it implies belong to one submit.
 
     Answers False on a refusal, which toasted already.
     """
@@ -352,10 +364,62 @@ def _record_completed(
     )
 
 
+class NewActs(NamedTuple):
+    """The endpoints a submit records for the first time."""
+
+    started: bool
+    completed: bool
+
+
+def _new_acts(draft: RunDraft, run: Playthrough | None) -> NewActs:
+    """Which acts the person recorded just now.
+
+    A run being created records every act it carries. An
+    edit that restates an endpoint the run already holds
+    records no new act, so its box implies no status --
+    the form prefills both days, so a note edit reposts
+    them, and fixing a typo does not finish a game.
+
+    Read before the restatement commits, or every act
+    already looks like an old one.
+    """
+    return NewActs(
+        started=draft.started is not None
+        and (run is None or stated_start(run) is None),
+        completed=draft.completed is not None
+        and (run is None or stated_completion(run) is None),
+    )
+
+
+def _record_companion_status(
+    request: HttpRequest,
+    game: Game,
+    acts: NewActs,
+    form: PlaythroughForm,
+    correlation_id: uuid.UUID,
+) -> None:
+    """State the status the new acts imply.
+
+    Each box acts only where this submit
+    recorded its act. Completed goes second
+    and wins. Answers are discarded: a
+    refused status toasts, and its run stands.
+    """
+    if acts.started and form.cleaned_data["also_mark_played"]:
+        record_facts_for_request(
+            request,
+            game,
+            status=PlayerGameStatus.PLAYED,
+            correlation_id=correlation_id,
+        )
+    if acts.completed and form.cleaned_data["also_mark_completed"]:
+        record_completed(request, game, correlation_id)
+
+
 @login_required
 def edit_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
-    run = owned_or_404(_editable_runs(library), library, id=playthrough_id)
+    run = owned_or_404(editable_runs(library), library, id=playthrough_id)
     game = run.player_game.game
     #: Seeded from the run, never from a legacy row:
     #: nothing writes that row any more, so a second edit
@@ -374,15 +438,15 @@ def edit_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse
         library=library,
         presentation=date_time_presentation_for_request(request),
         locked_game=game,
+        offered_game=game,
     )
     if form.is_valid():
         correlation_id = new_correlation_id()
-        if restate_run_for_request(
-            request, run, _edited_draft(form, run), correlation_id=correlation_id
-        ):
-            if form.cleaned_data.get("mark_as_finished"):
-                #: Discarded on purpose, as in add_playthrough.
-                _record_completed(request, game, correlation_id)
+        draft = _edited_draft(form, run)
+        #: Ahead of the write, which refreshes the run.
+        acts = _new_acts(draft, run)
+        if restate_run_for_request(request, run, draft, correlation_id=correlation_id):
+            _record_companion_status(request, game, acts, form, correlation_id)
             return redirect(
                 return_url(
                     request,
@@ -405,7 +469,7 @@ def edit_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse
 @login_required
 def remove_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
-    run = owned_or_404(_editable_runs(library), library, id=playthrough_id)
+    run = owned_or_404(editable_runs(library), library, id=playthrough_id)
     game = run.player_game.game
 
     def act() -> None:

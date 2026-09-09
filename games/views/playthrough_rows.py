@@ -6,6 +6,7 @@ from typing import Any
 from common.components import (
     ICON_BUTTON_SIZE_CLASS,
     ButtonGroup,
+    ButtonGroupMember,
     Cell,
     Column,
     Icon,
@@ -26,6 +27,9 @@ from games.reads.playthrough_endpoints import (
 )
 from games.reads.playthrough_numbering import display_name
 
+#: One request's CSRF token, as the act forms post it.
+type CsrfToken = str
+
 #: The list page's sort keys, by label.
 _SORT_KEYS: Mapping[str, SortKey] = {
     "Game": "name",
@@ -42,10 +46,15 @@ def playthrough_tabledata(
     exclude_columns: Sequence[str] = (),
     *,
     origin: OriginUrl | None,
+    csrf_token: CsrfToken,
     sort_terms: Sequence[SortTerm] = (),
     sortable: bool = False,
 ) -> TableData:
-    """Rows for the runs; caller states sorting."""
+    """Rows for the runs; caller states sorting.
+
+    The token has no default: an act button posts, and a
+    form with no token renders a button that only 403s.
+    """
 
     def column(label: str, **options: Any) -> Column:
         return Column(label, _SORT_KEYS.get(label) if sortable else None, **options)
@@ -83,7 +92,7 @@ def playthrough_tabledata(
             _days_cell(run),
             run.note,
             presentation.format(run.created_at, "date"),
-            _actions(run, origin),
+            _actions(run, origin, csrf_token),
         ]
         for run in runs
     ]
@@ -113,14 +122,17 @@ def _days_cell(run: Playthrough) -> Cell:
     return "-" if days is None else str(days)
 
 
-def _actions(run: Playthrough, origin: OriginUrl | None) -> Cell:
-    """Edit and remove, naming the run.
+def _actions(run: Playthrough, origin: OriginUrl | None, csrf_token: CsrfToken) -> Cell:
+    """The act this run allows, then edit and remove.
 
-    Remove renders on the last run too: the command owns
-    that refusal, and a second gate can disagree with it.
+    One press states today; another day belongs
+    in the edit form. Remove renders on the last
+    run too: the command owns that refusal, and
+    a second gate can disagree with it.
     """
     return ButtonGroup(
         [
+            *_act_members(run, origin, csrf_token),
             {
                 "href": action_url("games:edit_playthrough", run.pk, origin=origin),
                 "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
@@ -133,3 +145,51 @@ def _actions(run: Playthrough, origin: OriginUrl | None) -> Cell:
             },
         ]
     )
+
+
+def _act_members(
+    run: Playthrough, origin: OriginUrl | None, csrf_token: CsrfToken
+) -> list[ButtonGroupMember]:
+    """The one act this run can still accept, if any.
+
+    A run that states a completion is offered no start,
+    even where it states none: starting today would end
+    the run before it began, and the command refuses
+    that. A button whose whole class of row is refused
+    is a promise the row cannot keep, which is not the
+    race the other gates leave to the command.
+
+    Zero or one, so the caller spreads it.
+    """
+    if stated_completion(run) is not None:
+        return []
+    if stated_start(run) is None:
+        return [_act(run, "start", origin, csrf_token)]
+    return [_act(run, "complete", origin, csrf_token)]
+
+
+#: How each act's button reads, by route.
+#:
+#: Only the completion names its status. It states one every
+#: time, so the title can promise it; a start states Played
+#: only where nothing stronger is stated already, and a title
+#: naming a status the press may skip reads as a lie.
+_ACT_BUTTONS: Mapping[str, tuple[str, str]] = {
+    "start": ("play", "Started today"),
+    "complete": ("finish", "Completed today, also marks the game Completed"),
+}
+
+
+def _act(
+    run: Playthrough, act: str, origin: OriginUrl | None, csrf_token: CsrfToken
+) -> ButtonGroupMember:
+    """One press, posting to that act's route."""
+    icon, title = _ACT_BUTTONS[act]
+    return {
+        "slot": Icon(icon, size=ICON_BUTTON_SIZE_CLASS),
+        "title": title,
+        "color": "green",
+        "method": "post",
+        "action": action_url(f"games:{act}_playthrough", run.pk, origin=origin),
+        "csrf_token": csrf_token,
+    }

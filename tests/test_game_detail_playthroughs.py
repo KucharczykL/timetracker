@@ -137,3 +137,13 @@ def test_the_section_links_its_actions_at_the_run(logged_in, game):
 
     assert reverse("games:edit_playthrough", args=[run.pk]) in body
     assert reverse("games:remove_playthrough", args=[run.pk]) in body
+
+
+def test_the_section_offers_the_act_the_run_allows(logged_in, game):
+    """A tracked game's run states nothing."""
+    run = Playthrough.objects.get(player_game__game=game)
+
+    body = section(logged_in, game)
+
+    assert f"/playthrough/{run.pk}/start" in body
+    assert "csrfmiddlewaretoken" in body

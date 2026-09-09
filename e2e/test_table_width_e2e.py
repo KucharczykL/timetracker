@@ -198,9 +198,13 @@ def test_no_game_detail_mini_table_cell_wraps(
 
 def test_the_note_column_still_wraps(authenticated_page: Page, live_server, populated):
     """The opt-out has to be real, not vacuous: with a realistic note the column
-    must take several lines rather than widening the table without limit."""
+    must take several lines rather than widening the table without limit.
+
+    Measured wider than the list VIEWPORTS: Note holds the default priority, and
+    ties drop rightmost-first, so Created goes before it. At 1280px this table
+    has dropped Note too, leaving nothing to measure."""
     page = authenticated_page
-    page.set_viewport_size({"width": 1280, "height": 900})
+    page.set_viewport_size({"width": 1440, "height": 900})
     page.goto(f"{live_server.url}{reverse('games:list_playthroughs')}")
     settle_layout(page)
 
