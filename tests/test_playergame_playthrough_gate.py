@@ -157,25 +157,43 @@ def registered_event_types() -> set[str]:
     }
 
 
-def test_the_stream_carries_every_registered_event_type(owned_user, owned_library):
-    """A type the stream misses goes untested."""
-    build_stream(owned_user, owned_library)
+def missing_event_types(library) -> set[str]:
+    """Every registered type this stream never appended."""
     appended = set(
-        LibraryEvent.objects.filter(library=owned_library).values_list(
+        LibraryEvent.objects.filter(library=library).values_list(
             "event_type", flat=True
         )
     )
+    return registered_event_types() - appended
 
-    assert registered_event_types() - appended == set()
+
+def test_the_stream_carries_every_registered_event_type(owned_user, owned_library):
+    """A type the stream misses goes untested."""
+    build_stream(owned_user, owned_library)
+
+    assert missing_event_types(owned_library) == set()
 
 
-def test_the_guard_names_a_type_the_stream_missed():
-    """The guard names the type it missed."""
-    complete = registered_event_types()
-    missing = "library.playthrough.restored"
-    assert missing in complete
+def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_library):
+    """A real stream, short of eleven of its types."""
+    game = Game.objects.create(library=owned_library, name="Celeste")
+    dispatch(
+        TrackGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="partial-track",
+    )
 
-    assert complete - (complete - {missing}) == {missing}
+    missing = missing_event_types(owned_library)
+
+    #: What TrackGame appends, so neither is named.
+    assert "library.playergame.created" not in missing
+    assert "library.playthrough.created" not in missing
+    assert "library.playthrough.restored" in missing
+    assert missing == registered_event_types() - {
+        "library.playergame.created",
+        "library.playthrough.created",
+    }
 
 
 def build_neighbour(user, library) -> None:
