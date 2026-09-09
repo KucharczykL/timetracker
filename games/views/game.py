@@ -95,6 +95,7 @@ from games.ownership import owned_or_404
 from games.reads.catalog_hierarchy import EditionEntry, game_hierarchy
 from games.reads.external_references import ReferenceMap, held_by, references_for
 from games.reads.playergame_history import StatusEntry, status_history
+from games.reads.playthrough_completions import GAME_RUNS, reported_completion_day
 from games.reads.playthrough_numbering import numbered_for
 from games.reads.playthrough_runs import live_ordinary_runs, tracked_game
 from games.reference_form import ReferenceSetForm
@@ -172,7 +173,12 @@ def list_games(request: HttpRequest) -> HttpResponse:
         .annotate(total=Sum(F("duration_calculated") + F("duration_manual")))
         .values("total")
     )
-    games = games.annotate(filtered_playtime=Subquery(windowed_playtime))
+    games = games.annotate(
+        filtered_playtime=Subquery(windowed_playtime),
+        #: The Game list renders no Finished column; `?sort=finished`
+        #: is the only thing that reads this.
+        completed_day=reported_completion_day(library, GAME_RUNS),
+    )
 
     find = parse_find_filter(request)
     sort = apply_sort(games, find, GAME_SORTS, GAME_DEFAULT_SORT)

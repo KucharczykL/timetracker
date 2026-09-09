@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from django.conf import settings
 from django.contrib.messages import get_messages
+from django.db.models import Case, DateField, Value, When
 from django.test import RequestFactory
 from django.urls import reverse
 
@@ -18,7 +19,6 @@ from games.models import (
     Platform,
     PlayerGame,
     PlayerGameStatus,
-    PlayEvent,
     Purchase,
     Session,
     UserPreferences,
@@ -175,18 +175,24 @@ class TestApplySortGames:
         late = Game.objects.create(
             library=owned_library, name="Late", platform=platform
         )
-        PlayEvent.objects.create(
-            game=early, started=date(2024, 1, 1), ended=date(2024, 1, 1)
-        )
-        PlayEvent.objects.create(
-            game=late, started=date(2024, 1, 1), ended=date(2024, 1, 2)
+        #: The view annotates the day; this states what list_games
+        #: annotates, so the spec meets the alias it names.
+        days = {early.pk: date(2024, 1, 1), late.pk: date(2024, 1, 2)}
+        annotated = Game.objects.annotate(
+            completed_day=Case(
+                *(
+                    When(pk=pk, then=Value(day, output_field=DateField()))
+                    for pk, day in days.items()
+                ),
+                default=Value(None, output_field=DateField()),
+            )
         )
 
         ascending = apply_sort(
-            Game.objects.all(), _find("finished"), GAME_SORTS, GAME_DEFAULT_SORT
+            annotated, _find("finished"), GAME_SORTS, GAME_DEFAULT_SORT
         )
         descending = apply_sort(
-            Game.objects.all(), _find("-finished"), GAME_SORTS, GAME_DEFAULT_SORT
+            annotated, _find("-finished"), GAME_SORTS, GAME_DEFAULT_SORT
         )
 
         assert list(ascending.queryset) == [early, late, unfinished]

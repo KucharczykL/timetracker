@@ -14,7 +14,6 @@ from django.db.models import (
     Expression,
     ExpressionWrapper,
     F,
-    Max,
     Min,
     QuerySet,
     Sum,
@@ -100,7 +99,9 @@ GAME_SORTS: SortMap = {
     # restricted to the active session sub-filter) on the queryset, and this
     # spec just orders by that existing alias.
     "filtered_playtime": SortSpec("filtered_playtime"),
-    "finished": SortSpec("last_finished", {"last_finished": Max("playevents__ended")}),
+    # No annotate dict: list_games pre-annotates `completed_day`, the day the
+    # reported run states. Same reason as `filtered_playtime` above.
+    "finished": SortSpec("completed_day"),
 }
 GAME_DEFAULT_SORT: SortString = "-created"
 
@@ -121,9 +122,8 @@ PURCHASE_SORTS: SortMap = {
     "purchased": SortSpec("date_purchased"),
     "refunded": SortSpec("date_refunded"),
     "created": SortSpec("created_at"),
-    "finished": SortSpec(
-        "last_finished", {"last_finished": Max("games__playevents__ended")}
-    ),
+    # No annotate dict: _purchases_with_completions annotates `completed_day`.
+    "finished": SortSpec("completed_day"),
 }
 PURCHASE_DEFAULT_SORT: SortString = "-purchased,-created"
 
