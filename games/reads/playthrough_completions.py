@@ -1,4 +1,4 @@
-"""What a completion answers, for the statistics.
+"""What a completion answers, for the statistics and the lists.
 
 One object per scope, so a statistic and the link it carries
 compile one predicate. The interval handler states three
@@ -6,7 +6,7 @@ parts, and two of them answer differently for an open
 bound.
 """
 
-from django.db.models import Exists, Max, Min, OuterRef, QuerySet, Subquery
+from django.db.models import Exists, F, Max, Min, OuterRef, QuerySet, Subquery
 
 from games.filters import PlaythroughFilter, filter_query_context_for_library
 from games.models import Playthrough, UserLibrary
@@ -59,3 +59,39 @@ def completion_day(library: UserLibrary, year: YearScope) -> Subquery:
         .annotate(day=reducer)
         .values("day")[:1]
     )
+
+
+#: A lookup path from the outer row to its runs.
+type RunPath = str
+
+PURCHASE_RUNS: RunPath = "player_game__game__purchases"
+GAME_RUNS: RunPath = "player_game__game"
+
+
+def ranked_completions(library: UserLibrary, path: RunPath) -> QuerySet[Playthrough]:
+    """The row's completed runs, the reported one first.
+
+    The latest finish leads. A tie on the lower bound goes to
+    the narrower interval, so the more precise of two values
+    that start on one day is the one reported. The last key is
+    the identity, so the answer never varies.
+    """
+    return (
+        completed_runs(library, None)
+        .filter(**{path: OuterRef("pk")})
+        .order_by(
+            F("completed_lower").desc(nulls_last=True),
+            F("completed_upper").asc(nulls_last=True),
+            "-pk",
+        )
+    )
+
+
+def reported_completion(library: UserLibrary, path: RunPath) -> Subquery:
+    """The value the reported run states."""
+    return Subquery(ranked_completions(library, path).values("completed")[:1])
+
+
+def reported_completion_day(library: UserLibrary, path: RunPath) -> Subquery:
+    """The day the reported run is ordered by."""
+    return Subquery(ranked_completions(library, path).values("completed_lower")[:1])
