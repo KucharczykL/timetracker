@@ -5559,12 +5559,7 @@ class _LabelStub(OperatorFilter):
 
 @dataclass
 class _DeclaredChoicesStub(OperatorFilter):
-    """A handler field whose options no column states.
-
-    Its Q names an annotation, so column resolution is
-    skipped and the picker has only the declared choices
-    to read.
-    """
+    """A handler field whose options no column states."""
 
     AND: list[_DeclaredChoicesStub] = dc_field(default_factory=list)
     OR: list[_DeclaredChoicesStub] = dc_field(default_factory=list)

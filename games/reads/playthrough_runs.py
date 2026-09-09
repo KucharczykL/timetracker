@@ -17,10 +17,8 @@ def library_runs(library: UserLibrary) -> QuerySet[Playthrough]:
     `audit_library_ownership` reports.
 
     Both parents' marks read here as well: nothing
-    stamps a run when its game leaves.
-
-    Carries the condition aliases, so every filter path
-    reads one clock.
+    stamps a run when its game leaves. Carries the
+    condition aliases, so every filter path reads one clock.
     """
     return Playthrough.objects.filter(
         library=library,

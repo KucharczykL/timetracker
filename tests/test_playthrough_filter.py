@@ -482,7 +482,7 @@ def test_two_words_at_once_narrow_to_their_union(owned_library):
 
 
 def test_excluding_a_word_keeps_the_completed_runs(owned_library):
-    """The alias is null there, and `_not_in_q` keeps a null row."""
+    """The alias is null, and `_not_in_q` keeps it."""
     playing = a_run_played(owned_library, "Recent", days_ago=2)
     finished = a_completed_run(owned_library, "Done")
 

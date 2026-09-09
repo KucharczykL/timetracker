@@ -660,8 +660,7 @@ class PlatformFilter(OperatorFilter):
 
 # ── PlaythroughFilter ──────────────────────────────────────────────────────
 
-#: The picker's three words, in the order a person reads them.
-#: Built from the words themselves, so the two cannot drift.
+#: The picker's three words, from the words.
 ACTIVITY_CHOICES: Final[tuple[ChoiceMeta, ...]] = tuple(
     ChoiceMeta(value=str(value), label=str(label))
     for value, label in RunActivity.choices
@@ -687,8 +686,7 @@ class PlaythroughFilter(OperatorFilter):
     start_note: StringCriterion | None = None
     completion_note: StringCriterion | None = None
     created_at: DateCriterion | None = None  # compared via __date
-    #: The clock's word, not a column: `activity` is an alias
-    #: `library_runs()` registers.
+    #: The clock's word, an alias not a column.
     activity: ChoiceCriterion | None = None
 
     # Free-text search
@@ -732,12 +730,10 @@ class PlaythroughFilter(OperatorFilter):
         "completion_note": FilterField(),
         "created_at": FilterField("created_at__date"),
         "activity": FilterField(
-            #: Delegating, not comparing: ChoiceCriterion is a set
-            #: criterion, so its value is a list and its modifier
-            #: says whether to include it or exclude it. A handler
-            #: that built its own Q would read one word and drop
-            #: the modifier. The handler exists only to keep
-            #: `field_metadata` off a column that does not exist.
+            #: Delegating, not comparing: a set criterion holds
+            #: a list and a modifier, and a hand-built Q would
+            #: read one word and drop the modifier. The handler
+            #: keeps `field_metadata` off a missing column.
             handler=lambda criterion: criterion.to_q("activity"),
             label="Activity",
             choices=ACTIVITY_CHOICES,

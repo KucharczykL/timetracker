@@ -1632,27 +1632,17 @@ class PlaythroughKind(models.TextChoices):
 
 
 class PlaythroughQuerySet(models.QuerySet["Playthrough"]):
-    """The alias method, and nothing else.
-
-    No `alive()` and no `for_library()`: every read of this
-    projection states its own scope, and a scoping verb here
-    would invite a read that forgets to.
-    """
+    """The alias method, and nothing else."""
 
     def annotated_for_filtering(
         self, clock: ActivityClock | None = None
     ) -> PlaythroughQuerySet:
         """Register the two condition aliases.
 
-        A second call states the same fact: Django's
+        The guard makes a second call state the same fact:
         `add_annotation` replaces an alias without a word,
-        so a caller reaching an already-annotated queryset
-        would otherwise swap one clock for another in
-        silence.
-
-        No clock reads the registry default in UTC, which is
-        what a filter compiled only to be validated gets.
-        That context executes nothing.
+        so an already-annotated queryset would swap one
+        clock for another in silence.
         """
         from games.reads.playthrough_activity import (
             activity_day_expression,

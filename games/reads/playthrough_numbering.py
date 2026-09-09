@@ -58,10 +58,8 @@ def numbered_for(
     the caller selected, so a narrowed one numbers its row 1
     and nothing marks it. Scoped on the row and its parent
     alike, so the partition matches `live_ordinary_runs`,
-    which a removal counts across.
-
-    Carries the condition aliases, because Game detail reads
-    its rows from here and this read builds on no other.
+    which a removal counts across. Carries the condition
+    aliases, which Game detail reads.
     """
     return with_display_number(
         Playthrough.objects.filter(

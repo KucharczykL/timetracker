@@ -125,12 +125,7 @@ def _endpoint_cell(
 
 
 def _activity_cell(run: Playthrough, presentation: DateTimePresentation) -> Cell:
-    """The clock's word, and how long ago that was.
-
-    A completed run reads a dash: it is not unfinished, so
-    no clock speaks about it. A row from a read that states
-    no alias reads one too, rather than raising.
-    """
+    """The clock's word, and how long ago."""
     activity = getattr(run, "activity", None)
     if activity is None:
         return "-"

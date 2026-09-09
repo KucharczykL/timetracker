@@ -1,9 +1,4 @@
-"""Whether an unfinished run is being played.
-
-A clock answers, not a column. Nothing here is written:
-the words are counted from the last day the game was
-played and the threshold the person owns.
-"""
+"""Whether an unfinished run is being played."""
 
 from datetime import date, timedelta
 from typing import NamedTuple, cast
@@ -21,13 +16,7 @@ from timetracker.settings_resolver import resolve_for_user, resolve_str_for_user
 
 
 class RunActivity(models.TextChoices):
-    """What an unfinished run's clock says.
-
-    Not `PlayerGameStatus`: a status is stated by a person
-    and a condition is counted in days. Never played is
-    spelled apart from the status `Unplayed` on purpose,
-    because Game detail prints both beside one game.
-    """
+    """The three words a clock counts."""
 
     PLAYING = "playing", "Playing"
     DORMANT = "dormant", "Dormant"
@@ -35,7 +24,7 @@ class RunActivity(models.TextChoices):
 
 
 class ActivityClock(NamedTuple):
-    """One request's answer to "how long is too long"."""
+    """How long is too long, today."""
 
     threshold_days: int
     zone: ZoneInfo
@@ -43,12 +32,7 @@ class ActivityClock(NamedTuple):
 
 
 def activity_clock(library: UserLibrary) -> ActivityClock:
-    """The threshold and the zone this library reads by.
-
-    Built from the library, never passed in: a parameter
-    lets one call site state the viewer's threshold and
-    the next forget it.
-    """
+    """The threshold and zone this library reads."""
     user = library.user
     threshold_days = cast(int, resolve_for_user(user, "DORMANT_AFTER_DAYS"))
     zone = ZoneInfo(resolve_str_for_user(user, "DISPLAY_TIME_ZONE"))
@@ -56,12 +40,7 @@ def activity_clock(library: UserLibrary) -> ActivityClock:
 
 
 def default_activity_clock() -> ActivityClock:
-    """What a read with no viewer counts by.
-
-    The registry default in UTC. A filter compiled only to
-    be validated executes nothing, so the numbers it counts
-    with never reach a screen.
-    """
+    """The registry default in UTC, no viewer."""
     return _clock(DEFAULT_DORMANT_AFTER_DAYS, ZoneInfo("UTC"))
 
 
@@ -77,14 +56,9 @@ def _clock(threshold_days: int, zone: ZoneInfo) -> ActivityClock:
 def activity_day_expression(clock: ActivityClock) -> Combinable:
     """The day the word reads.
 
-    The latest live session at the run's game, as this
-    library sees sessions, else the run's own start day.
-    A preference, not a maximum: a game with sessions
-    never reads its start day.
-
-    The library is stated as the run's own column, so a
-    run at a shared catalog game reads no session and one
-    library's play never moves another's word.
+    The subquery states the run's own library column, so
+    a run at a shared catalog game reads no session. Drop
+    it and one library's play moves another's word.
     """
     latest_session_day = (
         Session.objects.alive()
@@ -107,10 +81,10 @@ def activity_day_expression(clock: ActivityClock) -> Combinable:
 def activity_expression(clock: ActivityClock) -> Combinable:
     """One of the three words, or nothing.
 
-    A completed run is not unfinished, so no clock speaks
-    about it and the alias is null. That null is what
-    `_SetCriterion._not_in_q` keeps when a person excludes
-    a word.
+    A completed run's alias is null, and
+    `_SetCriterion._not_in_q` keeps that null when a person
+    excludes a word. A fourth word instead would drop every
+    completed run from an EXCLUDES answer.
     """
     word = models.CharField(null=True)
     return Case(
@@ -129,11 +103,7 @@ def activity_expression(clock: ActivityClock) -> Combinable:
 
 
 def recency_phrase(day: date, today: date) -> str:
-    """How long ago that day was, in plain words.
-
-    A day ahead of today reads `today`: a session may be
-    recorded in a zone ahead of the viewer's.
-    """
+    """How long ago that day was."""
     days = (today - day).days
     if days <= 0:
         return "today"

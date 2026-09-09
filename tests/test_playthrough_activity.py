@@ -250,12 +250,7 @@ def test_another_librarys_sessions_at_a_shared_game_move_no_word(
 def test_a_late_session_and_a_start_on_that_day_read_alike(
     owned_user, owned_library, game
 ):
-    """One comparison space: both sides answer a day.
-
-    A session at 23:30 local on the boundary day and a run
-    started on that same date must give the same word, in a
-    zone whose offset moves that week.
-    """
+    """One comparison space: both sides answer days."""
     set_user_setting(owned_user, "DISPLAY_TIME_ZONE", "America/Santiago")
     set_user_setting(owned_user, "DORMANT_AFTER_DAYS", 7)
     clock = activity_clock(owned_library)
