@@ -290,7 +290,7 @@ def test_adding_a_play_event_records_completed(logged_in, owned_library, tracked
             "started": "",
             "ended": "",
             "note": "",
-            "mark_as_finished": "on",
+            "also_mark_completed": "on",
         },
     )
 
@@ -310,9 +310,9 @@ def test_editing_a_play_event_records_completed_too(
         {
             "game": str(tracked_game.id),
             "started": "",
-            "ended": "",
+            "ended": "2026-01-02",
             "note": "",
-            "mark_as_finished": "on",
+            "also_mark_completed": "on",
         },
     )
 

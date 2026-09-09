@@ -68,7 +68,7 @@ def test_marking_finished_states_the_status_under_one_correlation_id(
             "started": "",
             "ended": "",
             "note": "",
-            "mark_as_finished": "on",
+            "also_mark_completed": "on",
         },
     )
 

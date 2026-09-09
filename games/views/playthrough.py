@@ -234,17 +234,14 @@ def add_playthrough(request: HttpRequest, game_id: UUID | None = None) -> HttpRe
         initial=initial,
         library=library,
         presentation=date_time_presentation_for_request(request),
+        offered_game=initial.get("game"),
     )
     if form.is_valid():
         game = form.cleaned_data["game"]
         correlation_id = new_correlation_id()
-        if record_run_for_request(
-            request, game, _recorded_draft(form), correlation_id=correlation_id
-        ):
-            if form.cleaned_data.get("mark_as_finished"):
-                #: Discarded on purpose: a refused status
-                #: toasts, and the run it belongs to stands.
-                _record_completed(request, game, correlation_id)
+        draft = _recorded_draft(form)
+        if record_run_for_request(request, game, draft, correlation_id=correlation_id):
+            _record_companion_status(request, game, draft, form, correlation_id)
             return redirect(
                 return_url(
                     request,
@@ -352,6 +349,34 @@ def _record_completed(
     )
 
 
+def _record_companion_status(
+    request: HttpRequest,
+    game: Game,
+    draft: RunDraft,
+    form: PlaythroughForm,
+    correlation_id: uuid.UUID,
+) -> None:
+    """State the status the stated acts imply.
+
+    Each box acts only where the draft states its act, so
+    a note-only edit states nothing. Completed goes second
+    and wins: a submit that states both acts leaves the
+    game Completed, not Played.
+
+    Every answer is discarded on purpose. A refused status
+    toasts, and the run it belongs to stands.
+    """
+    if draft.started is not None and form.cleaned_data["also_mark_played"]:
+        record_facts_for_request(
+            request,
+            game,
+            status=PlayerGameStatus.PLAYED,
+            correlation_id=correlation_id,
+        )
+    if draft.completed is not None and form.cleaned_data["also_mark_completed"]:
+        _record_completed(request, game, correlation_id)
+
+
 @login_required
 def edit_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
@@ -374,15 +399,13 @@ def edit_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse
         library=library,
         presentation=date_time_presentation_for_request(request),
         locked_game=game,
+        offered_game=game,
     )
     if form.is_valid():
         correlation_id = new_correlation_id()
-        if restate_run_for_request(
-            request, run, _edited_draft(form, run), correlation_id=correlation_id
-        ):
-            if form.cleaned_data.get("mark_as_finished"):
-                #: Discarded on purpose, as in add_playthrough.
-                _record_completed(request, game, correlation_id)
+        draft = _edited_draft(form, run)
+        if restate_run_for_request(request, run, draft, correlation_id=correlation_id):
+            _record_companion_status(request, game, draft, form, correlation_id)
             return redirect(
                 return_url(
                     request,

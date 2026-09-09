@@ -1,8 +1,9 @@
 """#683: the status a lifecycle act offers."""
 
 import pytest
+from django.urls import reverse
 
-from games.models import Game, PlayerGameStatus
+from games.models import Game, LibraryEvent, PlayerGame, PlayerGameStatus, Playthrough
 from games.reads.companion_status import played_is_offered
 from games.writes.playergame import new_correlation_id, record_facts, track_game
 
@@ -55,3 +56,106 @@ def test_every_stronger_status_is_offered_nothing(
     state(owned_user, tracked, status)
 
     assert played_is_offered(owned_library, tracked) is False
+
+
+@pytest.fixture
+def logged_in(client, owned_user):
+    client.force_login(owned_user)
+    return client
+
+
+def status_of(owned_library) -> str:
+    return PlayerGame.objects.get(library=owned_library).status
+
+
+def test_a_first_start_states_played(logged_in, owned_library, game):
+    logged_in.post(
+        reverse("games:add_playthrough"),
+        {
+            "game": str(game.pk),
+            "started": "2026-01-02",
+            "ended": "",
+            "note": "",
+            "also_mark_played": "on",
+        },
+    )
+
+    assert status_of(owned_library) == PlayerGameStatus.PLAYED
+
+
+def test_the_pair_shares_one_correlation(logged_in, owned_library, game):
+    logged_in.post(
+        reverse("games:add_playthrough"),
+        {
+            "game": str(game.pk),
+            "started": "2026-01-02",
+            "ended": "",
+            "note": "",
+            "also_mark_played": "on",
+        },
+    )
+
+    correlations = set(
+        LibraryEvent.objects.filter(library=owned_library).values_list(
+            "correlation_id", flat=True
+        )
+    )
+    assert len(correlations) == 1
+
+
+def test_a_start_on_a_completed_game_states_nothing(
+    owned_user, logged_in, owned_library, tracked
+):
+    """The box never rendered, so a posted one is dropped."""
+    state(owned_user, tracked, PlayerGameStatus.COMPLETED)
+
+    logged_in.post(
+        reverse("games:add_playthrough"),
+        {
+            "game": str(tracked.pk),
+            "started": "2026-01-02",
+            "ended": "",
+            "note": "",
+            "also_mark_played": "on",
+        },
+    )
+
+    assert status_of(owned_library) == PlayerGameStatus.COMPLETED
+
+
+def test_a_completion_states_completed(logged_in, owned_library, game):
+    logged_in.post(
+        reverse("games:add_playthrough"),
+        {
+            "game": str(game.pk),
+            "started": "2026-01-02",
+            "ended": "2026-02-03",
+            "note": "",
+            "also_mark_completed": "on",
+        },
+    )
+
+    assert status_of(owned_library) == PlayerGameStatus.COMPLETED
+
+
+def test_a_note_only_edit_states_no_status(
+    owned_user, logged_in, owned_library, tracked
+):
+    """Both boxes ticked, and neither act is stated."""
+    run = Playthrough.objects.get(player_game__game=tracked)
+
+    logged_in.post(
+        reverse("games:edit_playthrough", args=[run.pk]),
+        {
+            "game": str(tracked.pk),
+            "started": "",
+            "ended": "",
+            "note": "read the manual",
+            "also_mark_played": "on",
+            "also_mark_completed": "on",
+        },
+    )
+
+    run.refresh_from_db()
+    assert run.note == "read the manual"
+    assert status_of(owned_library) == PlayerGameStatus.UNPLAYED
