@@ -24,7 +24,7 @@ from timetracker.temporal import TemporalValue
 
 @pytest.fixture
 def set_user_setting():
-    """State one personal preference, as the write path stores it."""
+    """State one personal preference, as stored."""
 
     def state(user, key: str, value: object) -> None:
         field = USER_PREFERENCE_FIELD_BY_KEY.get(key)

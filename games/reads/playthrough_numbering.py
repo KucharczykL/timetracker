@@ -63,9 +63,7 @@ def numbered_for(
     alike, so the partition matches `live_ordinary_runs`,
     which a removal counts across.
 
-    The condition is asked for, not assumed: a caller
-    reading numbers alone would otherwise pay three
-    correlated subqueries a row for a word it drops.
+    Asked for: the aliases cost three subqueries.
     """
     runs = Playthrough.objects.filter(
         library=library,

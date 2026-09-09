@@ -660,8 +660,7 @@ class PlatformFilter(OperatorFilter):
 
 # ── PlaythroughFilter ──────────────────────────────────────────────────────
 
-#: The picker's three words, built from the words
-#: themselves, so the two cannot drift.
+#: Built from RunActivity, so nothing drifts.
 ACTIVITY_CHOICES: Final[tuple[ChoiceMeta, ...]] = tuple(
     ChoiceMeta(value=str(value), label=str(label))
     for value, label in RunActivity.choices
@@ -687,7 +686,7 @@ class PlaythroughFilter(OperatorFilter):
     start_note: StringCriterion | None = None
     completion_note: StringCriterion | None = None
     created_at: DateCriterion | None = None  # compared via __date
-    #: The clock's word, an alias not a column.
+    #: The clock's word: an alias, not column.
     activity: ChoiceCriterion | None = None
 
     # Free-text search
@@ -731,16 +730,11 @@ class PlaythroughFilter(OperatorFilter):
         "completion_note": FilterField(),
         "created_at": FilterField("created_at__date"),
         "activity": FilterField(
-            #: Delegating, not comparing: a set criterion holds
-            #: a list and a modifier, and a hand-built Q would
-            #: read one word and drop the modifier. The handler
-            #: keeps `field_metadata` off a missing column.
+            #: Delegate: a hand-built Q drops the modifier.
             handler=lambda criterion: criterion.to_q("activity"),
             label="Activity",
             choices=ACTIVITY_CHOICES,
-            #: Null for every completed run, so the picker
-            #: offers a presence test: it is the one honest
-            #: way to ask for the runs no clock counts.
+            #: Null for completed runs; the picker asks.
             nullable=True,
         ),
     }
@@ -891,9 +885,8 @@ def filter_queryset_for_library(model_name: ModelKey, library: UserLibrary) -> Q
 
     Game is one exception: its list counts the games this library tracks, so
     counting anything else here would answer the builder's live count with a
-    number the destination list cannot show. Playthrough is the other: a filter on its
-    condition reads an alias, so the base states the viewer's clock rather
-    than the default a bare `with_filter_aliases` would substitute.
+    number the destination list cannot show. Playthrough is the other: its
+    condition alias needs the viewer's clock.
     """
     from django.apps import apps
 

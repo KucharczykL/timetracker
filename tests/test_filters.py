@@ -5527,13 +5527,13 @@ class TestFieldMetadata:
             field_metadata(_BadLookupStub)
 
     def test_a_handler_field_may_declare_its_own_choices(self):
-        """A field with no column still fills its picker."""
+        """A column-less field still fills its picker."""
         condition = self._by_name(_DeclaredChoicesStub)["condition"]
 
         assert condition["choices"] == [{"value": "a", "label": "A"}]
 
     def test_a_handler_field_may_declare_its_own_nullability(self):
-        """An alias may answer null where no column can."""
+        """Null where no column could answer."""
         from common.criteria import Modifier
 
         condition = self._by_name(_DeclaredChoicesStub)["condition"]
@@ -5542,7 +5542,7 @@ class TestFieldMetadata:
         assert Modifier.IS_NULL.value in condition["modifiers"]
 
     def test_a_handler_field_that_declares_none_reads_as_not_null(self):
-        """The declaration is the whole answer, and its absence too."""
+        """Declared or absent, the declaration answers."""
         from common.criteria import Modifier
 
         other = self._by_name(_DeclaredChoicesStub)["other"]
@@ -5577,7 +5577,7 @@ class _LabelStub(OperatorFilter):
 
 @dataclass
 class _DeclaredChoicesStub(OperatorFilter):
-    """A handler field whose options no column states."""
+    """A handler field no column can describe."""
 
     AND: list[_DeclaredChoicesStub] = dc_field(default_factory=list)
     OR: list[_DeclaredChoicesStub] = dc_field(default_factory=list)

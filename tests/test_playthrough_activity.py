@@ -1,4 +1,4 @@
-"""The clock that says whether a run is being played."""
+"""The clock behind Playing and Dormant."""
 
 import uuid
 from datetime import date, datetime, time, timedelta
@@ -25,8 +25,7 @@ from games.removal import remove
 from games.writes.playergame import new_correlation_id, track_game
 from timetracker.temporal import TemporalValue
 
-#: Every test wants the run #679 states,
-#: so none starts from the fixture's bare row.
+#: Every test wants the run #679 states.
 pytestmark = pytest.mark.untracked_games
 
 
@@ -179,7 +178,7 @@ def test_a_run_with_no_session_reads_its_own_start_day(owned_user, owned_library
 
 @pytest.mark.django_db(transaction=True)
 def test_a_session_beats_a_later_start_day(owned_user, owned_library, game):
-    """The order is a preference, not a maximum."""
+    """Sessions win over the run's start day."""
     tracked = a_tracked_game(owned_user, game)
     today = _today_in(activity_clock(owned_library).zone)
     start_the_run(owned_user, owned_library, tracked, day=today)
@@ -222,7 +221,7 @@ def test_a_personal_threshold_moves_a_run_from_playing_to_dormant(
 def test_another_librarys_sessions_at_a_shared_game_move_no_word(
     owned_user, owned_library
 ):
-    """A shared catalog game reads no session at all."""
+    """A shared catalog game reads no session."""
     shared = Game.objects.create(library=None, name="Shared")
     tracked = a_tracked_game(owned_user, shared)
     a_session(shared, days_ago=3)
@@ -255,7 +254,7 @@ def test_a_late_session_and_a_start_on_that_day_read_alike(
 
 @pytest.mark.django_db(transaction=True)
 def test_the_plain_scope_carries_no_word(owned_user, owned_library, game):
-    """Three subqueries a row: every reader opts in."""
+    """Three subqueries a row: readers opt in."""
     tracked = a_tracked_game(owned_user, game)
 
     scoped = library_runs(owned_library).filter(player_game=tracked).get()
@@ -297,7 +296,7 @@ def test_a_second_clock_is_refused(owned_user, owned_library, game):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_removed_session_moves_no_word(owned_user, owned_library, game):
-    """The removed row leaves the read, so the day moves back."""
+    """A removed session moves the day back."""
     tracked = a_tracked_game(owned_user, game)
     a_session(game, days_ago=100)
     recent = a_session(game, days_ago=2)
@@ -329,7 +328,7 @@ def test_a_run_whose_only_session_is_removed_was_never_played(
 def test_the_boundary_day_itself_still_reads_playing(
     owned_user, owned_library, game, set_user_setting
 ):
-    """`>=`, so the threshold day is the last one counted."""
+    """`>=`, so the boundary day still counts."""
     set_user_setting(owned_user, "DORMANT_AFTER_DAYS", 30)
     tracked = a_tracked_game(owned_user, game)
     a_session(game, days_ago=30)
@@ -352,17 +351,12 @@ def test_the_day_after_the_boundary_reads_dormant(
 def test_the_viewers_day_is_read_not_the_servers(
     owned_user, owned_library, game, set_user_setting
 ):
-    """One instant, two calendars: the viewer's wins.
-
-    The session lands on the day before the boundary
-    in UTC and on the boundary itself in Kiritimati,
-    which is fourteen hours ahead of it.
-    """
+    """One instant, two calendars: the viewer's wins."""
     set_user_setting(owned_user, "DISPLAY_TIME_ZONE", "Pacific/Kiritimati")
     set_user_setting(owned_user, "DORMANT_AFTER_DAYS", 30)
     clock = activity_clock(owned_library)
     tracked = a_tracked_game(owned_user, game)
-    #: Late enough in Kiritimati that UTC still reads yesterday.
+    #: Late enough that UTC still reads yesterday.
     Session.objects.create(
         game=game,
         timestamp_start=datetime.combine(

@@ -200,10 +200,9 @@ def test_the_note_column_still_wraps(authenticated_page: Page, live_server, popu
     """The opt-out has to be real, not vacuous: with a realistic note the column
     must take several lines rather than widening the table without limit.
 
-    Measured on the Playthrough list, which is also where Note is under the most
-    pressure: #1033 added an Activity column, and Note only survives beside it
-    because Activity ranks below it. Raise Activity's priority and this test
-    reports a Note column that renders nowhere."""
+    Measured on the Playthrough list, where Note is under the most pressure:
+    Note survives only because #1033's Activity column ranks below it. Raise
+    Activity's priority and this test reports a column that renders nowhere."""
     page = authenticated_page
     page.set_viewport_size({"width": 1440, "height": 900})
     page.goto(f"{live_server.url}{reverse('games:list_playthroughs')}")

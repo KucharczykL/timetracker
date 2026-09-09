@@ -423,7 +423,7 @@ def test_a_percent_survives_the_url():
 
 
 def a_run_played(library, name: str, *, days_ago: int) -> Playthrough:
-    """A run at a game played that many days ago."""
+    """A run played that many days ago."""
     run = one_run(library, name)
     Session.objects.create(
         game=run.player_game.game,
@@ -444,11 +444,7 @@ def a_completed_run(library, name: str) -> Playthrough:
 
 
 def answered(library, filter_object) -> set[uuid.UUID]:
-    """The runs this filter answers, by key.
-
-    The list view's own base, so a filter on the
-    condition reads the alias the view compiled.
-    """
+    """The runs this filter answers, by key."""
     return set(
         runs_with_condition(library)
         .filter(filter_object.to_q(filter_query_context_for_library(library)))
@@ -486,11 +482,7 @@ def test_two_words_at_once_narrow_to_their_union(owned_library):
 
 
 def test_excluding_a_word_keeps_every_other_run(owned_library):
-    """The alias is null, and `_not_in_q` keeps it.
-
-    Named by key, so a word that stopped answering
-    fails here rather than passing on a subset.
-    """
+    """The alias is null, and `_not_in_q` keeps it."""
     playing = a_run_played(owned_library, "Recent", days_ago=2)
     dormant = a_run_played(owned_library, "Old", days_ago=400)
     never = one_run(owned_library, "Untouched")
@@ -510,7 +502,7 @@ def test_excluding_a_word_keeps_every_other_run(owned_library):
 
 
 def test_a_blob_naming_the_condition_passes_validation():
-    """The alias must resolve on a validation-only context."""
+    """The alias resolves on a validation-only context."""
     parsed = parse_playthrough_filter(
         '{"activity": {"value": ["playing"], "modifier": "INCLUDES"}}'
     )
@@ -535,7 +527,7 @@ def test_the_condition_offers_its_three_words_to_the_picker():
 
 
 def test_the_condition_offers_a_presence_test():
-    """Null for every completed run, so the picker asks."""
+    """Null for completed runs, so picker asks."""
     (meta,) = [
         entry
         for entry in field_metadata(PlaythroughFilter)

@@ -1001,10 +1001,7 @@ class FilterField:
     imperative: bool = False
     # The real column the widget reads; ``to_q`` ignores it.
     metadata_lookup: ORMLookup | None = None
-    # The two widget inputs a field with no column cannot resolve: its options,
-    # and whether a value may be absent. ``_static_choices`` and
-    # ``_lookup_is_nullable`` both read a column, so a handler field that names
-    # an annotation states them here or the picker offers neither.
+    # Widget inputs a field with no column.
     choices: tuple[ChoiceMeta, ...] | None = None
     nullable: bool | None = None
 
@@ -1036,8 +1033,7 @@ class FilterField:
             )
         for stated, what in ((self.choices, "choices"), (self.nullable, "nullable")):
             if stated is not None and self.handler is None:
-                # A column-backed field resolves both from its column, and a
-                # declaration here would shadow the column's own answer.
+                # The column answers both, so declaring shadows.
                 raise ValueError(
                     f"FilterField {what} is for a field that names no column; "
                     "a column-backed field reads its own"
@@ -2767,7 +2763,7 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             # ``Platform.group`` is not.
             # A metadata_lookup path is not the queried path, so its
             # hops say nothing; read the terminal column.
-            # A field with no column states it, because nothing can read it.
+            # A column-less field states its own nullability.
             if field_spec is not None and field_spec.nullable is not None:
                 nullable = field_spec.nullable
             elif field_spec is not None and field_spec.metadata_lookup is not None:
@@ -2781,7 +2777,7 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             # from the resolved model field, so a future FK set field needs no flag.
             is_m2m = bool(getattr(model_field, "many_to_many", False))
             search_url = field_spec.search_url if field_spec is not None else None
-            # A declared set answers where the column cannot.
+            # Declared choices answer where no column can.
             declared_choices = field_spec.choices if field_spec is not None else None
             choices = (
                 list(declared_choices)

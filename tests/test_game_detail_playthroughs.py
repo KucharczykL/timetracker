@@ -153,11 +153,7 @@ def test_the_section_offers_the_act_the_run_allows(logged_in, game):
 def test_the_section_prints_the_viewers_own_word(
     logged_in, owned_user, game, set_user_setting
 ):
-    """#1033: the personal threshold reaches this screen.
-
-    Thirty days is Playing by default, so a page
-    reading the registry default would print it.
-    """
+    """#1033: the personal threshold reaches this screen."""
     Session.objects.create(
         game=game, timestamp_start=timezone.now() - timedelta(days=20)
     )

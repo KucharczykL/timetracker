@@ -38,15 +38,7 @@ def library_runs(library: UserLibrary) -> PlaythroughQuerySet:
 
 
 def runs_with_condition(library: UserLibrary) -> PlaythroughQuerySet:
-    """The same runs, each carrying its condition.
-
-    The screen that prints a word and the filter that
-    reads one ask here, so both compile the viewer's
-    clock rather than the registry default that a bare
-    `with_filter_aliases` would substitute. Every other
-    reader takes `library_runs`, because the aliases
-    cost three correlated subqueries a row.
-    """
+    """The same runs, each carrying its condition."""
     return library_runs(library).annotated_for_filtering(activity_clock(library))
 
 

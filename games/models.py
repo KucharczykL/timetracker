@@ -1632,14 +1632,13 @@ class PlaythroughKind(models.TextChoices):
 
 
 class PlaythroughQuerySet(models.QuerySet["Playthrough"]):
-    """The alias method, and the clock it read."""
+    """The alias method, and its clock."""
 
-    #: The clock the aliases were built from, carried
-    #: across clones so a later call can be compared.
+    #: The clock these aliases read, cloned along.
     _activity_clock: ActivityClock | None = None
 
     def _clone(self) -> PlaythroughQuerySet:
-        #: Django's own hook; django-stubs declares no `_clone`.
+        #: Django's hook; django-stubs declares no `_clone`.
         clone: PlaythroughQuerySet = super()._clone()  # type: ignore[misc]
         clone._activity_clock = self._activity_clock
         return clone

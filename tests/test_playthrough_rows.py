@@ -38,7 +38,7 @@ def presentation() -> DateTimePresentation:
 
 
 def numbered_runs(owned_library, run):
-    """The runs as the screen reads them: with the word."""
+    """The runs as the screen reads them."""
     tracked = tracked_game(owned_library, run.player_game.game)
     assert tracked is not None
     return list(
@@ -270,7 +270,7 @@ def test_a_never_played_run_prints_no_recency(owned_library, run, presentation):
 
 
 def test_runs_read_without_the_clock_are_refused(owned_library, run, presentation):
-    """A missing alias is a bad read, not a finished run."""
+    """A missing alias is a bad read."""
     tracked = tracked_game(owned_library, run.player_game.game)
     assert tracked is not None
     runs = list(
@@ -284,7 +284,7 @@ def test_runs_read_without_the_clock_are_refused(owned_library, run, presentatio
 def test_a_completed_run_prints_a_dash_for_its_activity(
     owned_user, owned_library, run, presentation
 ):
-    """No clock speaks about a run that is finished."""
+    """No clock speaks about a finished run."""
     _state_completion(owned_user, run)
 
     data = tabledata_of(owned_library, run, presentation)

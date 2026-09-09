@@ -35,7 +35,7 @@ def activity_clock(library: UserLibrary) -> ActivityClock:
     """The threshold and zone this library reads."""
     user = library.user
     threshold_days = resolve_for_user(user, "DORMANT_AFTER_DAYS")
-    #: A float would shift every word half a day.
+    #: A float would shift the boundary day.
     if not isinstance(threshold_days, int) or isinstance(threshold_days, bool):
         raise TypeError(
             f"DORMANT_AFTER_DAYS resolved to {threshold_days!r}, not a day count"
@@ -76,8 +76,7 @@ def activity_day_expression(clock: ActivityClock) -> Combinable:
         .order_by("-timestamp_start")
         .values("played_day")[:1]
     )
-    #: A preference, not a maximum: a game with
-    #: sessions never reads its own start day.
+    #: Sessions first; the start day is fallback.
     return Coalesce(
         Subquery(latest_session_day, output_field=models.DateField()),
         F("started_lower"),
@@ -119,7 +118,7 @@ def recency_phrase(day: date, today: date) -> str:
     if days < 30:
         return f"{days} days ago"
     if days < 365:
-        #: Capped, so 360 days reads months not twelve.
+        #: Capped, so 360 days reads eleven months.
         months = min(days // 30, 11)
         return f"{months} month ago" if months == 1 else f"{months} months ago"
     years = days // 365

@@ -387,6 +387,6 @@ def test_dormant_after_days_refuses_a_day_count_off_the_list():
         definition.validator(45)
     with pytest.raises(ValidationError):
         definition.validator(True)
-    #: A day count the clock subtracts, so text is refused.
+    #: A day count; text is refused.
     with pytest.raises(ValidationError):
         definition.validator("30")

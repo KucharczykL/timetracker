@@ -52,9 +52,7 @@ from common.date_time_presentation import DateTimePresentation
 
 
 class QuickFacet(NamedTuple):
-    # The top-level ?filter= key: an own-model leaf field, or an alias the
-    # queryset registers (``activity``), whose FilterField states its own
-    # choices and nullability because no column answers either.
+    # The ?filter= key: leaf field or alias.
     field: AttrName
     label: str = ""  # compact display override; "" = the FieldMeta-derived label
     placeholder: str = ""  # value-input hint (number/string kinds)

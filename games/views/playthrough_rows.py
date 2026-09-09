@@ -70,8 +70,7 @@ def playthrough_tabledata(
         column("Game", shrinkable=True),
         column("Started", priority=3),
         column("Completed", priority=2),
-        #: Below Note: a word a clock counts every day
-        #: is worth less room than a note a person wrote.
+        #: Below Note: counted word yields to note.
         column("Activity", priority=1),
         column("Days to finish", priority=2),
         # One long note on one line widens everything.
@@ -134,11 +133,6 @@ def _activity_cell(run: Playthrough, presentation: DateTimePresentation) -> Cell
     caller who read the runs off a queryset no clock
     reached, and a dash there prints every unfinished
     run as finished.
-
-    The day is the last one played, or the run's own
-    start where nothing was played, so it states no
-    verb: `last played` would name a session that a
-    start-only run has never had.
     """
     if not hasattr(run, "activity"):
         raise ValueError(
