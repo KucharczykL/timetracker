@@ -164,42 +164,50 @@ def ExternalReferenceLinks(references: Sequence[ExternalReference]) -> Node:
     ]
 
 
+def _game_name(game: Game, purchase: Purchase) -> str:
+    """The game's name, or words in its place.
+
+    `Game.name` is not blank, so an empty one is a row
+    nothing here wrote. One cell degrades and says which
+    row to look at; the whole list does not stop.
+    """
+    if game.name:
+        return game.name
+    logger.error(
+        "[purchases]: game %s of purchase %s states no name", game.pk, purchase.pk
+    )
+    return "Untitled game"
+
+
 def LinkedPurchase(purchase: Purchase) -> Node:
     link = reverse("games:view_purchase", args=[purchase.id])
-    link_content = ""
     games_list: Node | None = None
     #: Read the relation once, not per row.
-    #: `first()` re-orders, which drops the prefetch cache
-    #: and costs the purchase list a query per row.
+    #: `first()` orders, which the prefetch cache cannot
+    #: answer, so the list pays a query per row.
     games = list(purchase.games.all())
     game_count = len(games)
     if game_count == 0:
         #: A purchase naming no game is live.
         link_content = purchase.name or "No games"
-    if game_count == 1:
-        first_game = games[0]
-        first_game_name = first_game.name
+    elif game_count == 1:
+        first_game_name = _game_name(games[0], purchase)
         if purchase.name:
             link_content = (
                 f"{first_game_name} - {purchase.get_type_display()} ({purchase.name})"
             )
         else:
-            link_content = first_game.name
-    if game_count > 1:
+            link_content = first_game_name
+    else:
         games_list = Ul(class_="list-disc list-inside")[
-            *[Li()[game.name] for game in games]
+            *[Li()[_game_name(game, purchase)] for game in games]
         ]
-        if purchase.name:
-            link_content = purchase.name
-        else:
-            link_content = f"{game_count} games"
+        link_content = purchase.name or f"{game_count} games"
     icon = (
         (purchase.platform.icon if purchase.platform else "unspecified")
         if game_count == 1
         else "unspecified"
     )
-    if link_content == "":
-        raise ValueError("link_content is empty!!")
     return TruncatedText(
         link_content,
         link=link,

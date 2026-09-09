@@ -56,3 +56,25 @@ def test_removing_the_last_game_hides_the_purchase(logged_client, owned_library)
 
     assert response.status_code == 200
     assert f'id="purchase-row-{purchase.pk}"' not in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_a_game_with_no_name_prints_words_in_its_place(
+    logged_client, owned_library, capture_games_logger
+):
+    """One cell degrades; the list still renders.
+
+    `Game.name` is not blank, so this row is one nothing
+    here wrote. The cell said nothing at all, and the
+    component raised over it, which stopped the page.
+    """
+    purchase = make_purchase(owned_library, name="")
+    game = Game.objects.create(library=owned_library, name="")
+    purchase.games.add(game)
+
+    with capture_games_logger() as caplog:
+        response = logged_client.get(reverse("games:list_purchases"))
+
+    assert response.status_code == 200
+    assert "Untitled game" in response.content.decode()
+    assert str(purchase.pk) in caplog.text
