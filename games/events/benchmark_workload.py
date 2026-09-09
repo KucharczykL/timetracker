@@ -11,7 +11,7 @@ from django.core.management import call_command
 from django.db import connection, transaction
 
 from common.keyset import keyset_pages
-from games.commands.playergame import TrackGame
+from games.commands.playergame import TrackGame, tracking_events
 from games.events.append import lock_stream
 from games.events.benchmark import (
     Seconds,
@@ -22,9 +22,7 @@ from games.events.benchmark import (
     summarize,
 )
 from games.events.dispatch import dispatch
-from games.events.playergame import PLAYERGAME_CREATED
 from games.events.rebuild import RebuildMode, RebuildReport, rebuild_projections
-from games.events.references import capture_reference
 from games.models import (
     Game,
     LibraryEvent,
@@ -32,6 +30,7 @@ from games.models import (
     LibraryEventStreamHead,
     LibraryIdempotencyRecord,
     PlayerGame,
+    Playthrough,
     UserLibrary,
 )
 
@@ -56,40 +55,43 @@ _SEEDED_TABLES = (
     LibraryEventStreamHead,
     LibraryIdempotencyRecord,
     PlayerGame,
+    Playthrough,
 )
 
 
 def seed_library(
-    library: UserLibrary, *, actor: User, events: int, spares: int
+    library: UserLibrary, *, actor: User, games: int, spares: int
 ) -> SeedReport:
-    """Fill `library`, and leave `spares` untracked games."""
+    """Fill `library`, and leave `spares` untracked games.
+
+    The parameter counts games rather than events, because a game is
+    two events and a parameter named for the other one reads wrong at
+    every call site.
+    """
     catalog_started = monotonic()
-    _create_catalog(library, prefix=SEEDED_NAME_PREFIX, count=events)
+    _create_catalog(library, prefix=SEEDED_NAME_PREFIX, count=games)
     _create_catalog(library, prefix=SPARE_NAME_PREFIX, count=spares)
     catalog_seconds = monotonic() - catalog_started
 
     append_started = monotonic()
     correlation_id = uuid.uuid7()
+    events = 0
     for batch in batched(_seeded_games(library), APPEND_BATCH):
         with transaction.atomic():
             lock_stream(library).append(
-                [
-                    PLAYERGAME_CREATED.new(
-                        aggregate_id=uuid.uuid7(),
-                        payload={"game": capture_reference(game)},
-                    )
-                    for game in batch
-                ],
+                [event for game in batch for event in tracking_events(game)],
                 actor=actor,
                 correlation_id=correlation_id,
                 idempotency_key=SEED_IDEMPOTENCY_KEY,
             )
+        events += 2 * len(batch)
     append_seconds = monotonic() - append_started
     _analyze()
 
     return SeedReport(
-        catalog_rows=events + spares,
+        catalog_rows=games + spares,
         catalog_seconds=catalog_seconds,
+        games=games,
         events=events,
         append_seconds=append_seconds,
         events_per_second=events / append_seconds if append_seconds else 0.0,

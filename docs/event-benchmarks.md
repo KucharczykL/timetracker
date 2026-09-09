@@ -11,6 +11,10 @@ make bench ARGS="--gate"                     # exit non-zero on a missed budget
 make bench ARGS="--library <uuid>"           # check an existing library, read-only
 ```
 
+`--seed` counts **events**, and the seed writes two a game — the pair
+`TrackGame` appends since #679 — so `--seed 100000` seeds 50,000 games. An odd
+count seeds one event fewer.
+
 `make bench` is deliberately **not** part of `make check`. CI runs on 4 vCPU,
 where a timing gate turns a green machine red, and a command that runs for
 minutes has no business in the gate.
@@ -31,7 +35,10 @@ which costs the run something and is reported rather than tuned away.
 
 ## The recorded run
 
-`make bench`, 2026-09-05, the first recording with two projection tables:
+`make bench`, 2026-09-05, the first recording with two projection tables. The
+seed wrote one event a game then; #688 made it two, so the row counts below
+describe a seed this repository no longer has. The run under **The #688
+recording** replaces it.
 
 ```
 About to create a scratch user, 100000 events and 100410 catalog rows, then remove them. Estimate: 1.6 minute(s).
@@ -63,10 +70,11 @@ rebuild: 18.015s against 60.492s -- passed
 ```
 
 The event count moved because #679 made `TrackGame` two events: the 200
-commands the scenario dispatches now append 400, and each states one
-`PlayerGame` row and one `Playthrough` row. The 100,000 seeded events are
-appended directly and still state one row each, which is why the second table
-holds 410 rows against the first table's 100,410.
+commands the scenario dispatches append 400, and each states one `PlayerGame`
+row and one `Playthrough` row. In the recording above the 100,000 seeded events
+were appended directly and stated one row each, which is why the second table
+holds 410 rows against the first table's 100,410. #688 gave the seed the same
+pair, so both tables now hold half the seeded event count.
 
 ## The rebuild verdict
 
@@ -117,7 +125,9 @@ rows carry a foreign key to the first and four generated columns.
 It holds across both write paths. The 100,000 seeded events were appended in
 batches through `LockedStream.append`; the 820 that follow were written two at a
 time through `dispatch`, with its idempotency record and its own transaction.
-The replay cannot tell them apart, which is the point.
+The replay cannot tell them apart, which is the point. Since #688 the seeded
+batches append the same pair the commands do, so the two paths differ in
+batching alone.
 
 A non-empty diff is a hard failure: `benchmark_events` exits non-zero and prints
 that the timings are real and the claim they support is not. A rebuild that is
@@ -159,7 +169,7 @@ the number stops depending on that race.
 
 | Measurement | Value |
 | --- | --- |
-| Command p50 / p95 / max | 4.3 ms / 4.9 ms / 7.9 ms, against a 100 ms budget |
+| Command p50 / p95 / max | 5.2 ms / 6.0 ms / 6.4 ms, against a 100 ms budget |
 | Statements per command | 10 — 4 to the event store, 2 to the projections, the rest lookups and transaction control |
 | Statements per replayed event | 1.00 |
 | Rows per replayed event | 1 |
@@ -206,8 +216,10 @@ alone. **6.31 s** separates the second from the real replay: reading
 registry dispatch — per-event Python that batching does not touch. So the
 ceiling on a batched replay is roughly 7 s against today's 16.78 s, and no
 arrangement of statements goes below it. The two write-shape rows are the
-`games_playergame` shadow table alone; the 410 `games_playthrough` rows beside
-it are inside the replay figure and too few to move it.
+`games_playergame` shadow table alone. In the recording above the 410
+`games_playthrough` rows beside it were inside the replay figure and too few to
+move it; since #688 that table holds half the seeded rows, so a re-measurement
+of the ceiling has to write both.
 
 **Batching would not change a single handler.** `ProjectionTarget` already owns
 where a family writes — `LIVE_TARGET` returns the model, `ShadowTarget` returns
@@ -228,23 +240,90 @@ Two conditions bound it, both already visible in the code:
 Neither is a new invariant. Both are reasons a buffering target is a piece of
 work with a design rather than a patch. Issue **#932** carries it, with these
 numbers, for when the budget grows tight again. #679's second projector shares
-the CURRENT_STATE family and cost 1.5 s, so the first family that reads before
-it writes is still the case to watch.
+the CURRENT_STATE family and cost 6.9 s once #688's seed gave both tables their
+50,410 rows, so the first family that reads before it writes is still the case
+to watch.
 
 ## Seeding, which has no budget
 
-`3,602 event/s` is a **bulk append measurement, not a command measurement**. It
+`2,971 event/s` is a **bulk append measurement, not a command measurement**. It
 comes from `LockedStream.append` writing 1,000 events per transaction, which no
 user-facing path does. There is no bulk command to measure yet, so there is no
 budget to compare it against; it is recorded because it sets how long seeding
 takes, and seeding is a third of the run.
 
-The seed ends with an `ANALYZE` of the six tables it wrote, so the time above
+The seed ends with an `ANALYZE` of the seven tables it wrote, so the time above
 includes it.
+
+## The #688 recording
+
+Recorded when the gate landed, against the seed that writes both creation
+events. Paste what the tool prints; do not edit a number here.
+
+`make bench ARGS="--gate"`, 2026-09-09:
+
+```
+About to create a scratch user, 100000 events and 50410 catalog rows, then remove them. Estimate: 1.6 minute(s).
+Linux-6.18.49-x86_64-with-glibc2.42, 32 CPU(s), Python 3.14.2, PostgreSQL 18.6.
+  shared_buffers 128MB, work_mem 4MB, DEBUG True.
+  scratch user benchmark-01a08775-8e8b-750e-a5c0-c611df243f5e
+Seed: 100000 event(s) in 33.65s (2,971 event/s), 50410 catalog row(s) in 4.56s.
+  The event/s figure is a bulk append, not a command.
+Command: 200 sample(s), p50 5.2ms, p95 6.0ms, max 6.4ms.
+Per command: 10.0 statement(s), 2.0 to projections (2.0 row(s)), 4.0 to the event store (5.0 row(s)), over 200 event(s).
+    games_libraryevent: 200 statement(s), 400 row(s)
+    games_libraryeventreference: 200 statement(s), 200 row(s)
+    games_libraryeventstreamhead: 200 statement(s), 200 row(s)
+    games_libraryidempotencyrecord: 200 statement(s), 200 row(s)
+    games_playergame: 200 statement(s), 200 row(s)
+    games_playthrough: 200 statement(s), 200 row(s)
+Per replayed event: 1.0 statement(s), 1.0 to projections (3.0 row(s)), 0.0 to the event store (0.0 row(s)), over 100820 event(s).
+    games_playergame: 2 statement(s), 100820 row(s)
+    games_playergame__shadow: 50410 statement(s), 50410 row(s)
+    games_playthrough: 2 statement(s), 100820 row(s)
+    games_playthrough__shadow: 50410 statement(s), 50410 row(s)
+Rebuild: replayed 100820 event(s) through 2 table(s) in 24.91s over 1 attempt(s).
+    attempt 1: replay 23.48s, diff 0.10s, swap 1.32s
+    games_playergame: 50410 live, 50410 rebuilt, no difference
+    games_playthrough: 50410 live, 50410 rebuilt, no difference
+Teardown: 19.09s.
+command p95: 0.006s against 0.100s -- passed
+rebuild: 24.908s against 60.492s -- passed
+```
+
+The same run without the statement counter:
+
+```
+make bench ARGS="--gate --no-count-replay"
+
+Rebuild: replayed 100820 event(s) through 2 table(s) in 24.74s over 1 attempt(s).
+    attempt 1: replay 23.27s, diff 0.10s, swap 1.37s
+    games_playergame: 50410 live, 50410 rebuilt, no difference
+    games_playthrough: 50410 live, 50410 rebuilt, no difference
+rebuild: 24.738s against 60.492s -- passed
+```
+
+**Command p95 is 6.0 ms against the 100 ms budget.** Read it as a new baseline
+rather than beside the 4.9 ms of the one-family seed: that seed left 100,000
+`PlayerGame` rows, this one leaves 50,410, and `TrackGame`'s duplicate check
+reads that table
+([`games/events/benchmark_workload.py`](../games/events/benchmark_workload.py)).
+Half the rows and a slower number is what a second projector costs a command,
+not what a smaller table saves it.
+
+**The rebuild took 24.91 s against the same 60.492 s allowance.** The event
+count did not move — 100,820 either way — so the two recordings' rebuild
+seconds compare directly: 18.03 s against 24.91 s, for a replay that now writes
+two shadow rows an event instead of one. Uninstrumented it takes 24.74 s, which
+is run-to-run noise at this scale.
+
+**One statement an event still, over two tables.** The replay writes 50,410
+statements into each shadow table for 100,820 events, so the slope holds at 1.00
+and the per-event cost of the second projector is a row, not a statement.
 
 ## Teardown
 
-`23.82s` deletes roughly 400,000 rows — the events, their reference rows, the
+`19.09s` deletes roughly 350,000 rows — the events, their reference rows, the
 catalog, and both projections — through the same `purge_user_library` command an
 operator would use. A raw-SQL cascade would be faster and would be a second
 thing that can drift from `on_delete`, so the benchmark pays the time.

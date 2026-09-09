@@ -1187,7 +1187,7 @@ def reports(report):
 
 @pytest.mark.django_db
 def test_the_command_checks_a_library_and_provisions_nothing(owned_library):
-    output = run_command(str(owned_library.pk), "--check")
+    output = run_command("--library", str(owned_library.pk), "--check")
 
     assert str(owned_library.pk) in output
     assert "0 event" in output
@@ -1197,7 +1197,7 @@ def test_the_command_checks_a_library_and_provisions_nothing(owned_library):
 
 @pytest.mark.django_db
 def test_the_command_rebuilds_and_says_it_swapped(owned_library):
-    output = run_command(str(owned_library.pk))
+    output = run_command("--library", str(owned_library.pk))
 
     assert "Swapped" in output
     assert LibraryEventStreamHead.objects.filter(library=owned_library).exists()
@@ -1209,7 +1209,7 @@ def test_the_command_prints_a_line_per_table(owned_library, monkeypatch):
         rebuild_command, "rebuild_projections", reports(canned_report())
     )
 
-    output = run_command(str(owned_library.pk), "--check")
+    output = run_command("--library", str(owned_library.pk), "--check")
 
     assert "12 event" in output
     assert f"{ENTRY_TABLE}: 3 live, 3 rebuilt" in output
@@ -1228,7 +1228,7 @@ def test_the_command_flags_a_check_the_head_moved_under(owned_library, monkeypat
         reports(canned_report(head_at_diff=14)),
     )
 
-    output = run_command(str(owned_library.pk), "--check")
+    output = run_command("--library", str(owned_library.pk), "--check")
 
     assert "advisory" in output
 
@@ -1250,13 +1250,13 @@ def test_a_rebuild_that_never_swapped_fails_the_command(owned_library, monkeypat
     monkeypatch.setattr(rebuild_command, "rebuild_projections", reports(conflicted))
 
     with pytest.raises(CommandError, match="nothing was swapped"):
-        run_command(str(owned_library.pk))
+        run_command("--library", str(owned_library.pk))
 
 
 @pytest.mark.django_db
 def test_an_unknown_library_fails_without_touching_anything(owned_library):
     with pytest.raises(CommandError, match="No library"):
-        run_command(str(uuid7()))
+        run_command("--library", str(uuid7()))
 
     assert not LibraryEventStreamHead.objects.exists()
 
@@ -1264,7 +1264,7 @@ def test_an_unknown_library_fails_without_touching_anything(owned_library):
 @pytest.mark.django_db
 def test_a_library_id_that_is_not_a_uuid_fails(owned_library):
     with pytest.raises(CommandError, match="not a library id"):
-        run_command("the-one-with-the-games")
+        run_command("--library", "the-one-with-the-games")
 
 
 # --- A foreign key that stops the swap ---------------------------------------
@@ -1477,6 +1477,7 @@ def test_the_command_prints_the_diff_and_names_the_pair(owned_library, other_own
     with pytest.raises(CommandError, match="refused at the swap") as refused:
         call_command(
             "rebuild_projections",
+            "--library",
             str(owned_library.pk),
             stdout=output,
             stderr=errors,
@@ -1504,3 +1505,164 @@ def test_this_module_left_the_application_registry_as_it_found_it():
     assert {
         relation.key for relation in relation_columns()
     } == EXPECTED_RELATION_COLUMNS
+
+
+# --- The scope group ---------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_the_command_takes_a_user_instead_of_a_library(owned_library):
+    output = run_command("--user", owned_library.user.username, "--check")
+
+    assert str(owned_library.pk) in output
+
+
+@pytest.mark.django_db
+def test_an_unknown_user_fails_before_anything_is_read(owned_library):
+    with pytest.raises(CommandError, match="No user is named"):
+        run_command("--user", "nobody", "--check")
+
+    assert not LibraryEventStreamHead.objects.exists()
+
+
+@pytest.mark.django_db
+def test_a_user_owning_no_library_fails(django_user_model):
+    """Two errors: no user, or no library."""
+    user = django_user_model.objects.create_user(username="libraryless")
+    UserLibrary.objects.filter(user=user).delete()
+
+    with pytest.raises(CommandError, match="owns no library"):
+        run_command("--user", "libraryless", "--check")
+
+
+@pytest.mark.django_db
+def test_a_scope_is_required(owned_library):
+    with pytest.raises(CommandError, match="one of the arguments"):
+        run_command("--check")
+
+
+@pytest.mark.django_db
+def test_two_scopes_are_refused(owned_library):
+    with pytest.raises(CommandError, match="not allowed with argument"):
+        run_command("--user", owned_library.user.username, "--all-libraries", "--check")
+
+
+@pytest.mark.django_db
+def test_all_libraries_reports_each_one_in_key_order(owned_library, django_user_model):
+    """Key order, so two runs read alike."""
+    second = django_user_model.objects.create_user(username="second-owner")
+    ordered = sorted((str(owned_library.pk), str(second.library.pk)))
+
+    output = run_command("--all-libraries", "--check")
+
+    assert [output.index(key) for key in ordered] == sorted(
+        output.index(key) for key in ordered
+    )
+
+
+# --- --fail-on-drift ---------------------------------------------------------
+
+
+def drifted_library(library) -> None:
+    """A projection row no event states."""
+    PlayerGame.objects.create(
+        id=uuid7(),
+        library=library,
+        game=Game.objects.create(library=library, name="Unreplayed"),
+        tracked_at=timezone.now(),
+    )
+
+
+@pytest.mark.django_db
+def test_a_check_alone_still_exits_zero_on_drift(owned_library):
+    """A check found work, not a fault."""
+    drifted_library(owned_library)
+
+    output = run_command("--library", str(owned_library.pk), "--check")
+
+    assert "row(s) differ from the replay" in output
+
+
+@pytest.mark.django_db
+def test_fail_on_drift_fails_the_check(owned_library):
+    drifted_library(owned_library)
+
+    with pytest.raises(CommandError, match="row\\(s\\) differ from the replay"):
+        run_command("--library", str(owned_library.pk), "--check", "--fail-on-drift")
+
+
+@pytest.mark.django_db
+def test_fail_on_drift_is_silent_when_nothing_drifted(owned_library):
+    output = run_command(
+        "--library", str(owned_library.pk), "--check", "--fail-on-drift"
+    )
+
+    assert "Projections match the replayed events." in output
+
+
+@pytest.mark.django_db
+def test_all_libraries_fails_on_the_one_that_drifted(owned_library, django_user_model):
+    """One drifted neighbour fails the whole run."""
+    second = django_user_model.objects.create_user(username="drifted-owner")
+    drifted_library(second.library)
+
+    with pytest.raises(CommandError, match="row\\(s\\) differ from the replay"):
+        run_command("--all-libraries", "--check", "--fail-on-drift")
+
+
+@pytest.mark.django_db
+def test_all_libraries_names_every_library_that_drifted(
+    owned_library, django_user_model
+):
+    """A census, so one drift hides no other."""
+    second = django_user_model.objects.create_user(username="second-drifted")
+    drifted_library(owned_library)
+    drifted_library(second.library)
+
+    with pytest.raises(CommandError) as raised:
+        run_command("--all-libraries", "--check", "--fail-on-drift")
+
+    sentence = str(raised.value)
+    #: Two rows over two libraries, both named.
+    assert "2 row(s) differ" in sentence
+    assert "2 of 2 library(s) checked" in sentence
+    assert str(owned_library.pk) in sentence
+    assert str(second.library.pk) in sentence
+
+
+@pytest.mark.django_db
+def test_fail_on_drift_without_a_check_is_refused(owned_library):
+    """Inert here would rebuild every library instead."""
+    with pytest.raises(CommandError, match="Add --check"):
+        run_command("--all-libraries", "--fail-on-drift")
+
+    assert not LibraryEventStreamHead.objects.exists()
+
+
+@pytest.mark.django_db
+def test_all_libraries_finding_none_is_refused(owned_library):
+    """Nothing replayed reads as nothing wrong."""
+    UserLibrary.objects.all().delete()
+
+    with pytest.raises(CommandError, match="found no library"):
+        run_command("--all-libraries", "--check", "--fail-on-drift")
+
+
+@pytest.mark.django_db
+def test_an_empty_username_is_read_as_a_username(owned_library):
+    """Truthiness would fall through to a UUID."""
+    with pytest.raises(CommandError, match="No user is named ''"):
+        run_command("--user", "", "--check")
+
+
+@pytest.mark.django_db
+def test_a_replay_through_no_table_is_refused(owned_library, monkeypatch):
+    """Zero compared reads as zero differing."""
+    monkeypatch.setattr(
+        rebuild_command,
+        "rebuild_projections",
+        reports(canned_report(tables=())),
+    )
+
+    with pytest.raises(CommandError, match="replayed through no table"):
+        run_command("--library", str(owned_library.pk), "--check", "--fail-on-drift")

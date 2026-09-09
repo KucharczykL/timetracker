@@ -45,7 +45,11 @@ class Command(BaseCommand):
             "--seed",
             type=int,
             default=None,
-            help=f"Events to seed (default {DEFAULT_SEED_EVENTS}).",
+            help=(
+                f"Events to seed (default {DEFAULT_SEED_EVENTS}). Two events "
+                "are seeded per game, so an odd count seeds one event fewer. "
+                "0 seeds nothing and measures the commands alone."
+            ),
         )
         parser.add_argument("--library", help="Check this library instead; read-only.")
         parser.add_argument("--iterations", type=int, default=200)
@@ -73,6 +77,13 @@ class Command(BaseCommand):
         #: Here, so --library sees an unset seed.
         seed = DEFAULT_SEED_EVENTS if options["seed"] is None else options["seed"]
         if library is None:
+            #: Zero is the stated no-seed run; one is a typo.
+            if seed < 0 or seed == 1:
+                raise CommandError(
+                    f"--seed {seed} seeds no game, because a game is two "
+                    "events, and it does not say so the way --seed 0 does. "
+                    "The smallest seeded run is --seed 2."
+                )
             self._write_estimate(
                 seed=seed,
                 iterations=options["iterations"],
@@ -137,9 +148,11 @@ class Command(BaseCommand):
             + SECONDS_PER_REBUILT_EVENT
             + SECONDS_PER_PURGED_EVENT
         )
+        #: Two events a game: half the rows.
+        catalog_rows = seed // 2 + 2 * iterations + warmup
         notice = (
             f"About to create a scratch user, {seed} events and "
-            f"{seed + 2 * iterations + warmup} catalog rows, then remove them. "
+            f"{catalog_rows} catalog rows, then remove them. "
             f"Estimate: {estimate / 60:.1f} minute(s)."
         )
         if aside:

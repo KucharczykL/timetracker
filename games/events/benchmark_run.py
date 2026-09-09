@@ -82,7 +82,8 @@ def _measure_scratch(
 ) -> BenchmarkReport:
     library = user.library
     spares = 2 * iterations + warmup
-    seeded = seed_library(library, actor=user, events=seed, spares=spares)
+    #: `seed` counts events; the seed takes games.
+    seeded = seed_library(library, actor=user, games=seed // 2, spares=spares)
     #: One iterator; islice leaves the next spares.
     games = spare_games(library)
     command = run_command_scenario(
