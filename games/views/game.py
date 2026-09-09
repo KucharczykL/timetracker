@@ -957,9 +957,14 @@ def _playthroughs_section(
     runs: Sequence[Playthrough],
     presentation: DateTimePresentation,
     origin: OriginUrl | None,
+    csrf_token: str,
 ) -> Node:
     data = playthrough_tabledata(
-        runs, presentation, exclude_columns=["Game"], origin=origin
+        runs,
+        presentation,
+        exclude_columns=["Game"],
+        origin=origin,
+        csrf_token=csrf_token,
     )
     # This embedded mini-table isn't a sortable list view (no ?sort= handling on
     # the detail page), and its builder states no sort keys.
@@ -1049,7 +1054,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
         ),
         _purchases_section(game, purchases, presentation, origin),
         _sessions_section(game, sessions, presentation, durations),
-        _playthroughs_section(game, runs, presentation, origin),
+        _playthroughs_section(game, runs, presentation, origin, get_token(request)),
         _history_section(game, library, presentation),
     ]
     return render_page(

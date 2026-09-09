@@ -6,6 +6,7 @@ from typing import Any
 from common.components import (
     ICON_BUTTON_SIZE_CLASS,
     ButtonGroup,
+    ButtonGroupMember,
     Cell,
     Column,
     Icon,
@@ -44,6 +45,7 @@ def playthrough_tabledata(
     origin: OriginUrl | None,
     sort_terms: Sequence[SortTerm] = (),
     sortable: bool = False,
+    csrf_token: str = "",
 ) -> TableData:
     """Rows for the runs; caller states sorting."""
 
@@ -83,7 +85,7 @@ def playthrough_tabledata(
             _days_cell(run),
             run.note,
             presentation.format(run.created_at, "date"),
-            _actions(run, origin),
+            _actions(run, origin, csrf_token),
         ]
         for run in runs
     ]
@@ -113,14 +115,19 @@ def _days_cell(run: Playthrough) -> Cell:
     return "-" if days is None else str(days)
 
 
-def _actions(run: Playthrough, origin: OriginUrl | None) -> Cell:
-    """Edit and remove, naming the run.
+def _actions(run: Playthrough, origin: OriginUrl | None, csrf_token: str) -> Cell:
+    """The act this run allows, then edit and remove.
+
+    One press states today. A day that is not today
+    belongs in the edit form, which holds every precision
+    the grammar knows.
 
     Remove renders on the last run too: the command owns
     that refusal, and a second gate can disagree with it.
     """
     return ButtonGroup(
         [
+            _act_member(run, origin, csrf_token),
             {
                 "href": action_url("games:edit_playthrough", run.pk, origin=origin),
                 "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
@@ -133,3 +140,32 @@ def _actions(run: Playthrough, origin: OriginUrl | None) -> Cell:
             },
         ]
     )
+
+
+def _act_member(
+    run: Playthrough, origin: OriginUrl | None, csrf_token: str
+) -> ButtonGroupMember:
+    """Start, complete, or nothing left to state.
+
+    An empty member renders nothing: ButtonGroup skips a
+    dict with no slot.
+    """
+    if stated_start(run) is None:
+        return {
+            "slot": Icon("play", size=ICON_BUTTON_SIZE_CLASS),
+            "title": "Started today",
+            "color": "green",
+            "method": "post",
+            "action": action_url("games:start_playthrough", run.pk, origin=origin),
+            "csrf_token": csrf_token,
+        }
+    if stated_completion(run) is None:
+        return {
+            "slot": Icon("finish", size=ICON_BUTTON_SIZE_CLASS),
+            "title": "Completed today",
+            "color": "green",
+            "method": "post",
+            "action": action_url("games:complete_playthrough", run.pk, origin=origin),
+            "csrf_token": csrf_token,
+        }
+    return {}

@@ -9,6 +9,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.db.models import Max, QuerySet
 from django.http import HttpRequest, HttpResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import redirect
 from django.urls import reverse
 
@@ -153,6 +154,7 @@ def list_playthroughs(request: HttpRequest) -> HttpResponse:
         sort_terms=sort.terms,
         sortable=True,
         origin=origin,
+        csrf_token=get_token(request),
     )
     content = paginated_table_content(
         data,
