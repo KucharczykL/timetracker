@@ -8,10 +8,36 @@ from django.db.models.signals import post_save
 from django.utils import timezone
 
 from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
-from games.models import Edition, Game, Platform, Release, UserLibrary
+from games.models import (
+    USER_PREFERENCE_FIELD_BY_KEY,
+    Edition,
+    Game,
+    Platform,
+    Release,
+    UserLibrary,
+    UserPreferences,
+)
 from timetracker import config as config_module
 from timetracker import settings_resolver
 from timetracker.temporal import TemporalValue
+
+
+@pytest.fixture
+def set_user_setting():
+    """State one personal preference, as the write path stores it."""
+
+    def state(user, key: str, value: object) -> None:
+        field = USER_PREFERENCE_FIELD_BY_KEY.get(key)
+        if field is not None:
+            UserPreferences.objects.filter(user=user).update(**{field: value})
+        else:
+            row = UserPreferences.objects.get(user=user)
+            UserPreferences.objects.filter(user=user).update(
+                extra_preferences={**(row.extra_preferences or {}), key: value}
+            )
+        settings_resolver.clear_cache()
+
+    return state
 
 
 @pytest.fixture

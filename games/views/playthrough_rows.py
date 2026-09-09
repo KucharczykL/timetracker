@@ -1,8 +1,9 @@
 """One table row per run."""
 
 from collections.abc import Mapping, Sequence
-from datetime import datetime
 from typing import Any
+
+from django.utils import timezone as django_timezone
 
 from common.components import (
     ICON_BUTTON_SIZE_CLASS,
@@ -69,10 +70,12 @@ def playthrough_tabledata(
         column("Game", shrinkable=True),
         column("Started", priority=3),
         column("Completed", priority=2),
-        column("Activity", priority=3),
+        #: Below Note: a word a clock counts every day
+        #: is worth less room than a note a person wrote.
+        column("Activity", priority=1),
         column("Days to finish", priority=2),
         # One long note on one line widens everything.
-        column("Note", wrap=True),
+        column("Note", wrap=True, priority=2),
         column("Created"),
         column("Actions", align="right", priority=4),
     ]
@@ -125,18 +128,33 @@ def _endpoint_cell(
 
 
 def _activity_cell(run: Playthrough, presentation: DateTimePresentation) -> Cell:
-    """The clock's word, and how long ago."""
-    activity = getattr(run, "activity", None)
-    if activity is None:
+    """The clock's word, and how long ago.
+
+    An absent alias is not a missing condition: it is a
+    caller who read the runs off a queryset no clock
+    reached, and a dash there prints every unfinished
+    run as finished.
+
+    The day is the last one played, or the run's own
+    start where nothing was played, so it states no
+    verb: `last played` would name a session that a
+    start-only run has never had.
+    """
+    if not hasattr(run, "activity"):
+        raise ValueError(
+            f"playthrough {run.pk} carries no condition alias; "
+            "read the runs through runs_with_condition()"
+        )
+    if run.activity is None:
         return "-"
-    badge = Pill(label=RunActivity(activity).label)
+    badge = Pill(label=RunActivity(run.activity).label)
     day = getattr(run, "activity_day", None)
     if day is None:
         return badge
-    today = datetime.now(presentation.timezone).date()
+    today = django_timezone.now().astimezone(presentation.timezone).date()
     return Fragment(
         badge,
-        Span(class_="ml-2 text-type-body")[f"last played {recency_phrase(day, today)}"],
+        Span(class_="ml-2 text-type-body")[recency_phrase(day, today)],
     )
 
 

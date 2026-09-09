@@ -1,7 +1,7 @@
 # Playing and Dormant runs
 
-An unfinished run states a condition. A clock counts the condition. No event,
-no column and no migration store it.
+A clock counts a condition for every unfinished run. No event, no column and no
+migration store it.
 
 ## The three words
 
@@ -56,12 +56,17 @@ The method is on the queryset. `with_filter_aliases` reads it off a queryset,
 and `for_validation` hands it `model._default_manager.none()`. The queryset
 states no `alive()` and no `for_library()`, so every read states its own scope.
 
-The method is idempotent. `add_annotation` replaces a duplicate alias without an
-error, which would replace one clock with another.
+A second call that names the same clock is a no-op, because
+`with_filter_aliases` calls the method again. A second call that names another
+clock is refused: `add_annotation` replaces a duplicate alias without an error,
+and the read could not say which threshold it answered. A null clock reads the
+registry default in UTC.
 
-`library_runs()` and `numbered_for()` annotate. `live_ordinary_runs()` does not:
-commands read it, and a write path resolves no display setting. A null clock
-reads the registry default in UTC.
+The aliases cost three correlated subqueries a row, so each read asks for them.
+`runs_with_condition()` is `library_runs()` with the viewer's clock, and the two
+screens that print the word read it. `numbered_for(..., with_condition=True)`
+does the same for Game detail. `library_runs()` and `live_ordinary_runs()` carry
+no alias.
 
 ## The filter
 
@@ -70,11 +75,12 @@ handler, and the handler delegates to `criterion.to_q("activity")`. Delegation
 keeps the modifier and the list. The handler keeps `field_metadata` off a column
 that does not exist.
 
-`FilterField.choices` gives a handler field its own options, because
-`_static_choices` reads a column.
+`FilterField.choices` gives a handler field its own options, and
+`FilterField.nullable` gives it its own presence test, because `_static_choices`
+and `_lookup_is_nullable` both read a column.
 
 `EXCLUDES` keeps a completed run: `_SetCriterion._not_in_q` ORs
-`activity__isnull=True` into the Q.
+`activity__isnull=True` into the Q. `IS_NULL` asks for those runs directly.
 
 `QuickFacet("activity", "Activity")` renders a panel `FilterSelect`.
 
@@ -82,7 +88,10 @@ that does not exist.
 
 `playthrough_tabledata` states an `Activity` column. Game detail and the
 Playthrough list read one renderer. The cell prints a `Pill` and the recency
-beside it, or `-` for a completed run. The column has no sort key.
+beside it, the `Pill` alone where no day is known, or `-` for a completed run. A
+row that carries no alias is refused, because a dash there would print an
+unfinished run as finished. The column has no sort key, and it ranks below Note,
+so it drops first when the table runs out of room.
 
 ## The words beside the statuses
 

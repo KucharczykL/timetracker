@@ -37,13 +37,20 @@ def presentation() -> DateTimePresentation:
     )
 
 
-def tabledata_of(owned_library, run, presentation, **options):
-    """The table this run renders, numbered."""
+def numbered_runs(owned_library, run):
+    """The runs as the screen reads them: with the word."""
     tracked = tracked_game(owned_library, run.player_game.game)
     assert tracked is not None
-    runs = list(
-        numbered_for(owned_library, [tracked.pk]).select_related("player_game__game")
+    return list(
+        numbered_for(owned_library, [tracked.pk], with_condition=True).select_related(
+            "player_game__game"
+        )
     )
+
+
+def tabledata_of(owned_library, run, presentation, **options):
+    """The table this run renders, numbered."""
+    runs = numbered_runs(owned_library, run)
     options.setdefault("csrf_token", "token")
     return playthrough_tabledata(runs, presentation, origin=None, **options)
 
@@ -137,11 +144,7 @@ def test_the_days_cell_reads_the_span(owned_library, run, presentation):
 
 
 def test_excluding_the_game_column_drops_its_cell(owned_library, run, presentation):
-    tracked = tracked_game(owned_library, run.player_game.game)
-    assert tracked is not None
-    runs = list(
-        numbered_for(owned_library, [tracked.pk]).select_related("player_game__game")
-    )
+    runs = numbered_runs(owned_library, run)
 
     data = playthrough_tabledata(
         runs, presentation, exclude_columns=["Game"], origin=None, csrf_token="token"
@@ -256,14 +259,26 @@ def test_a_playing_run_prints_its_badge_and_its_recency(
     html = "".join(cells_of(owned_library, run, presentation))
 
     assert "Playing" in html
-    assert "last played 4 days ago" in html
+    assert "4 days ago" in html
 
 
 def test_a_never_played_run_prints_no_recency(owned_library, run, presentation):
     html = "".join(cells_of(owned_library, run, presentation))
 
     assert "Never played" in html
-    assert "last played" not in html
+    assert "ago" not in html
+
+
+def test_runs_read_without_the_clock_are_refused(owned_library, run, presentation):
+    """A missing alias is a bad read, not a finished run."""
+    tracked = tracked_game(owned_library, run.player_game.game)
+    assert tracked is not None
+    runs = list(
+        numbered_for(owned_library, [tracked.pk]).select_related("player_game__game")
+    )
+
+    with pytest.raises(ValueError, match="carries no condition alias"):
+        playthrough_tabledata(runs, presentation, origin=None, csrf_token="token")
 
 
 def test_a_completed_run_prints_a_dash_for_its_activity(

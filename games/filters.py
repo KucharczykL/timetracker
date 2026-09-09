@@ -660,7 +660,8 @@ class PlatformFilter(OperatorFilter):
 
 # ── PlaythroughFilter ──────────────────────────────────────────────────────
 
-#: The picker's three words, from the words.
+#: The picker's three words, built from the words
+#: themselves, so the two cannot drift.
 ACTIVITY_CHOICES: Final[tuple[ChoiceMeta, ...]] = tuple(
     ChoiceMeta(value=str(value), label=str(label))
     for value, label in RunActivity.choices
@@ -737,6 +738,10 @@ class PlaythroughFilter(OperatorFilter):
             handler=lambda criterion: criterion.to_q("activity"),
             label="Activity",
             choices=ACTIVITY_CHOICES,
+            #: Null for every completed run, so the picker
+            #: offers a presence test: it is the one honest
+            #: way to ask for the runs no clock counts.
+            nullable=True,
         ),
     }
 
@@ -886,27 +891,27 @@ def filter_queryset_for_library(model_name: ModelKey, library: UserLibrary) -> Q
 
     Game is one exception: its list counts the games this library tracks, so
     counting anything else here would answer the builder's live count with a
-    number the destination list cannot show. Playthrough is the other: its
-    manager holds the condition aliases and no scoping verb, so every read
-    still states its own scope.
+    number the destination list cannot show. Playthrough is the other: a filter on its
+    condition reads an alias, so the base states the viewer's clock rather
+    than the default a bare `with_filter_aliases` would substitute.
     """
     from django.apps import apps
 
     from games.models import Game, Playthrough
-    from games.reads.playthrough_runs import library_runs
+    from games.reads.playthrough_runs import runs_with_condition
 
     model = apps.get_model("games", model_name)
     if model is Game:
         return Game.objects.tracked_by(library)
     if model is Playthrough:
-        return library_runs(library)
+        return runs_with_condition(library)
     return model.objects.for_library(library)
 
 
 def filter_query_context_for_library(library: UserLibrary) -> FilterQueryContext:
     """Resolve every compiler subquery from the current library's visibility."""
     from games.models import Device, Game, Platform, Playthrough, Purchase, Session
-    from games.reads.playthrough_runs import library_runs
+    from games.reads.playthrough_runs import runs_with_condition
 
     scoped_querysets: dict[builtins.type, QuerySet] = {
         #: tracked_by, not for_library: a nested game filter resolves
@@ -915,7 +920,7 @@ def filter_query_context_for_library(library: UserLibrary) -> FilterQueryContext
         Game: Game.objects.tracked_by(library),
         Session: Session.objects.for_library(library),
         Purchase: Purchase.objects.for_library(library),
-        Playthrough: library_runs(library),
+        Playthrough: runs_with_condition(library),
         Device: Device.objects.for_library(library),
         # Related Platform selection supports the shared catalogue plus this
         # library's private rows. Top-level Platform management remains the

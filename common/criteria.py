@@ -1001,8 +1001,12 @@ class FilterField:
     imperative: bool = False
     # The real column the widget reads; ``to_q`` ignores it.
     metadata_lookup: ORMLookup | None = None
-    # Options for a field that names no column.
+    # The two widget inputs a field with no column cannot resolve: its options,
+    # and whether a value may be absent. ``_static_choices`` and
+    # ``_lookup_is_nullable`` both read a column, so a handler field that names
+    # an annotation states them here or the picker offers neither.
     choices: tuple[ChoiceMeta, ...] | None = None
+    nullable: bool | None = None
 
     def __post_init__(self) -> None:
         # Same loud-at-import contract as the lookup/handler check: reject the
@@ -1030,6 +1034,14 @@ class FilterField:
             raise ValueError(
                 "FilterField search_url has no effect on a handler-mapped field"
             )
+        for stated, what in ((self.choices, "choices"), (self.nullable, "nullable")):
+            if stated is not None and self.handler is None:
+                # A column-backed field resolves both from its column, and a
+                # declaration here would shadow the column's own answer.
+                raise ValueError(
+                    f"FilterField {what} is for a field that names no column; "
+                    "a column-backed field reads its own"
+                )
 
     def to_q(self, attr_name: AttrName, criterion: _Criterion) -> Q:
         if self.handler is not None:
@@ -2717,7 +2729,8 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             # (``lookup="games"``, ``handler=None``), whose resolved field is what
             # powers its ``is_m2m``/``search_url`` widget config. Aggregates (not in
             # ``fields``) and handler-mapped fields name no single column, so they
-            # skip resolution and carry no choices / aren't nullable. Resolving
+            # skip resolution and state their own choices and nullability, or go
+            # without both — ``FilterField.choices``/``nullable``. Resolving
             # *only* the column-backed fields means a mis-typed ``FilterField``
             # lookup raises here (matching ``criterion_kind`` / ``resolve_path_kind``'s
             # loud-failure contract) instead of silently degrading to an empty
@@ -2754,7 +2767,10 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             # ``Platform.group`` is not.
             # A metadata_lookup path is not the queried path, so its
             # hops say nothing; read the terminal column.
-            if field_spec is not None and field_spec.metadata_lookup is not None:
+            # A field with no column states it, because nothing can read it.
+            if field_spec is not None and field_spec.nullable is not None:
+                nullable = field_spec.nullable
+            elif field_spec is not None and field_spec.metadata_lookup is not None:
                 nullable = bool(getattr(model_field, "null", False))
             elif resolved_lookup is not None:
                 nullable = _lookup_is_nullable(model, resolved_lookup)
@@ -2765,17 +2781,17 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             # from the resolved model field, so a future FK set field needs no flag.
             is_m2m = bool(getattr(model_field, "many_to_many", False))
             search_url = field_spec.search_url if field_spec is not None else None
-            # An aggregate's scope target (issue #151): the model of the related
-            # rows it reduces, resolved from the field's AggregateSpec. Resolving
-            # loudly here matches the mis-typed-lookup contract above — a spec
-            # gap is a wiring bug, not a degraded picker.
-            # A declared set wins over the column's.
+            # A declared set answers where the column cannot.
             declared_choices = field_spec.choices if field_spec is not None else None
             choices = (
                 list(declared_choices)
                 if declared_choices is not None
                 else _static_choices(model_field)
             )
+            # An aggregate's scope target (issue #151): the model of the related
+            # rows it reduces, resolved from the field's AggregateSpec. Resolving
+            # loudly here matches the mis-typed-lookup contract above — a spec
+            # gap is a wiring bug, not a degraded picker.
             scope_model: ModelKey = ""
             if is_aggregate:
                 spec = filter_cls.aggregates.get(name)

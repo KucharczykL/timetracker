@@ -5532,6 +5532,24 @@ class TestFieldMetadata:
 
         assert condition["choices"] == [{"value": "a", "label": "A"}]
 
+    def test_a_handler_field_may_declare_its_own_nullability(self):
+        """An alias may answer null where no column can."""
+        from common.criteria import Modifier
+
+        condition = self._by_name(_DeclaredChoicesStub)["condition"]
+
+        assert condition["nullable"] is True
+        assert Modifier.IS_NULL.value in condition["modifiers"]
+
+    def test_a_handler_field_that_declares_none_reads_as_not_null(self):
+        """The declaration is the whole answer, and its absence too."""
+        from common.criteria import Modifier
+
+        other = self._by_name(_DeclaredChoicesStub)["other"]
+
+        assert other["nullable"] is False
+        assert Modifier.IS_NULL.value not in other["modifiers"]
+
 
 @dataclass
 class _LabelStub(OperatorFilter):
@@ -5565,12 +5583,15 @@ class _DeclaredChoicesStub(OperatorFilter):
     OR: list[_DeclaredChoicesStub] = dc_field(default_factory=list)
     NOT: list[_DeclaredChoicesStub] = dc_field(default_factory=list)
     condition: ChoiceCriterion | None = None
+    other: ChoiceCriterion | None = None
 
     fields: ClassVar[dict[str, FilterField]] = {
         "condition": FilterField(
             handler=lambda criterion: criterion.to_q("condition"),
             choices=(ChoiceMeta(value="a", label="A"),),
+            nullable=True,
         ),
+        "other": FilterField(handler=lambda criterion: criterion.to_q("other")),
     }
 
     @classmethod

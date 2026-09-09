@@ -52,7 +52,11 @@ from games.reads.playthrough_endpoints import (
     stated_start,
 )
 from games.reads.playthrough_numbering import numbered_for
-from games.reads.playthrough_runs import library_runs, live_ordinary_runs, tracked_game
+from games.reads.playthrough_runs import (
+    live_ordinary_runs,
+    runs_with_condition,
+    tracked_game,
+)
 from games.sorting import (
     PLAYTHROUGH_DEFAULT_SORT,
     PLAYTHROUGH_SORTS,
@@ -122,7 +126,9 @@ def list_playthroughs(request: HttpRequest) -> HttpResponse:
     library = cast(User, request.user).library
     presentation = date_time_presentation_for_request(request)
     origin = request.get_full_path()
-    runs = library_runs(library).select_related("player_game__game")
+    runs: QuerySet[Playthrough] = runs_with_condition(library).select_related(
+        "player_game__game"
+    )
 
     filter_json = request.GET.get("filter", "")
     if filter_json:

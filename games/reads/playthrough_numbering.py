@@ -50,7 +50,10 @@ def with_display_number(
 
 
 def numbered_for(
-    library: UserLibrary, player_game_ids: Iterable[PlayerGameId]
+    library: UserLibrary,
+    player_game_ids: Iterable[PlayerGameId],
+    *,
+    with_condition: bool = False,
 ) -> QuerySet[Playthrough]:
     """Every live ordinary run of these tracked games, numbered.
 
@@ -58,16 +61,20 @@ def numbered_for(
     the caller selected, so a narrowed one numbers its row 1
     and nothing marks it. Scoped on the row and its parent
     alike, so the partition matches `live_ordinary_runs`,
-    which a removal counts across. Carries the condition
-    aliases, which Game detail reads.
+    which a removal counts across.
+
+    The condition is asked for, not assumed: a caller
+    reading numbers alone would otherwise pay three
+    correlated subqueries a row for a word it drops.
     """
-    return with_display_number(
-        Playthrough.objects.filter(
-            library=library,
-            player_game__library=library,
-            player_game_id__in=list(player_game_ids),
-        ).annotated_for_filtering(activity_clock(library))
-    ).order_by(*DISPLAY_ORDER)
+    runs = Playthrough.objects.filter(
+        library=library,
+        player_game__library=library,
+        player_game_id__in=list(player_game_ids),
+    )
+    if with_condition:
+        runs = runs.annotated_for_filtering(activity_clock(library))
+    return with_display_number(runs).order_by(*DISPLAY_ORDER)
 
 
 def is_numbered(playthrough: Playthrough) -> bool:

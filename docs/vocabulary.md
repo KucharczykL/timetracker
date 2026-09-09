@@ -225,7 +225,7 @@ conditions meet a status that sounds like them, and none of them moves it.
 
 | condition | the status it sounds like | why they differ |
 |---|---|---|
-| Dormant | Abandoned | the clock counts days; only a person abandons a game |
+| Dormant | Abandoned | the clock counts days; Abandoned is stated by a command, and a refund states one |
 | Playing | Played | Played says a verdict is not stated yet, and stays true for years |
 | Never played | Unplayed | Unplayed is stated at track time; the condition means no day is known |
 

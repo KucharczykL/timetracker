@@ -2,6 +2,7 @@
 
 import re
 import uuid
+from datetime import timedelta
 
 import pytest
 from django.urls import reverse
@@ -9,7 +10,7 @@ from django.utils import timezone
 from django.utils.html import escape
 
 from games.filters import PlaythroughFilter, filter_url
-from games.models import Game, Playthrough, PlaythroughKind
+from games.models import Game, Playthrough, PlaythroughKind, Session
 
 pytestmark = pytest.mark.django_db
 
@@ -147,3 +148,22 @@ def test_the_section_offers_the_act_the_run_allows(logged_in, game):
 
     assert f"/playthrough/{run.pk}/start" in body
     assert "csrfmiddlewaretoken" in body
+
+
+def test_the_section_prints_the_viewers_own_word(
+    logged_in, owned_user, game, set_user_setting
+):
+    """#1033: the personal threshold reaches this screen.
+
+    Thirty days is Playing by default, so a page
+    reading the registry default would print it.
+    """
+    Session.objects.create(
+        game=game, timestamp_start=timezone.now() - timedelta(days=20)
+    )
+    set_user_setting(owned_user, "DORMANT_AFTER_DAYS", 7)
+
+    body = section(logged_in, game)
+
+    assert "Dormant" in body
+    assert "Playing" not in body

@@ -1,7 +1,7 @@
 """Whether an unfinished run is being played."""
 
 from datetime import date, timedelta
-from typing import NamedTuple, cast
+from typing import NamedTuple
 from zoneinfo import ZoneInfo
 
 from django.db import models
@@ -34,7 +34,12 @@ class ActivityClock(NamedTuple):
 def activity_clock(library: UserLibrary) -> ActivityClock:
     """The threshold and zone this library reads."""
     user = library.user
-    threshold_days = cast(int, resolve_for_user(user, "DORMANT_AFTER_DAYS"))
+    threshold_days = resolve_for_user(user, "DORMANT_AFTER_DAYS")
+    #: A float would shift every word half a day.
+    if not isinstance(threshold_days, int) or isinstance(threshold_days, bool):
+        raise TypeError(
+            f"DORMANT_AFTER_DAYS resolved to {threshold_days!r}, not a day count"
+        )
     zone = ZoneInfo(resolve_str_for_user(user, "DISPLAY_TIME_ZONE"))
     return _clock(threshold_days, zone)
 
@@ -71,6 +76,8 @@ def activity_day_expression(clock: ActivityClock) -> Combinable:
         .order_by("-timestamp_start")
         .values("played_day")[:1]
     )
+    #: A preference, not a maximum: a game with
+    #: sessions never reads its own start day.
     return Coalesce(
         Subquery(latest_session_day, output_field=models.DateField()),
         F("started_lower"),
@@ -83,8 +90,8 @@ def activity_expression(clock: ActivityClock) -> Combinable:
 
     A completed run's alias is null, and
     `_SetCriterion._not_in_q` keeps that null when a person
-    excludes a word. A fourth word instead would drop every
-    completed run from an EXCLUDES answer.
+    excludes a word. Give it one of the three instead and
+    `EXCLUDES Dormant` drops runs finished years ago.
     """
     word = models.CharField(null=True)
     return Case(
@@ -112,7 +119,8 @@ def recency_phrase(day: date, today: date) -> str:
     if days < 30:
         return f"{days} days ago"
     if days < 365:
-        months = days // 30
+        #: Capped, so 360 days reads months not twelve.
+        months = min(days // 30, 11)
         return f"{months} month ago" if months == 1 else f"{months} months ago"
     years = days // 365
     return f"{years} year ago" if years == 1 else f"{years} years ago"

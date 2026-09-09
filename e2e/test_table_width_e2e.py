@@ -200,26 +200,18 @@ def test_the_note_column_still_wraps(authenticated_page: Page, live_server, popu
     """The opt-out has to be real, not vacuous: with a realistic note the column
     must take several lines rather than widening the table without limit.
 
-    Measured on Game detail's run table, not the Playthrough list: the page body
-    is capped at `max-w-7xl`, so no viewport widens a table past it, and since
-    #1033 gave the run table an Activity column the list drops Note at every
-    width, leaving nothing to measure. Detail prints the same table without its
-    Game column, so Note survives there."""
+    Measured on the Playthrough list, which is also where Note is under the most
+    pressure: #1033 added an Activity column, and Note only survives beside it
+    because Activity ranks below it. Raise Activity's priority and this test
+    reports a Note column that renders nowhere."""
     page = authenticated_page
-    page.set_viewport_size({"width": 1280, "height": 900})
-    game = Game.objects.get(name=LONG_NAME)
-    page.goto(f"{live_server.url}{game.get_absolute_url()}")
+    page.set_viewport_size({"width": 1440, "height": 900})
+    page.goto(f"{live_server.url}{reverse('games:list_playthroughs')}")
     settle_layout(page)
 
     lines = page.evaluate(
         """() => {
-            // The one table on the page that keeps a Note column.
-            const table = [...document.querySelectorAll('[role="region"] table')]
-                .find((candidate) =>
-                    [...candidate.querySelectorAll('thead th')].some(
-                        (th) => th.textContent.trim() === 'Note'
-                    )
-                );
+            const table = document.querySelector('[role="region"] table');
             const headers = [...table.querySelectorAll('thead th')].map(
                 (th) => th.textContent.trim()
             );

@@ -17,7 +17,7 @@ from games.filters import (
 from games.models import Game, Playthrough, PlaythroughKind, Session
 from games.reads.playthrough_activity import RunActivity
 from games.reads.playthrough_endpoints import days_to_finish
-from games.reads.playthrough_runs import library_runs
+from games.reads.playthrough_runs import library_runs, runs_with_condition
 from games.removal import remove
 from games.writes.playergame import new_correlation_id, untrack_game
 from timetracker.temporal import TemporalValue
@@ -444,9 +444,13 @@ def a_completed_run(library, name: str) -> Playthrough:
 
 
 def answered(library, filter_object) -> set[uuid.UUID]:
-    """The runs this filter answers, by key."""
+    """The runs this filter answers, by key.
+
+    The list view's own base, so a filter on the
+    condition reads the alias the view compiled.
+    """
     return set(
-        library_runs(library)
+        runs_with_condition(library)
         .filter(filter_object.to_q(filter_query_context_for_library(library)))
         .values_list("pk", flat=True)
     )
@@ -481,9 +485,15 @@ def test_two_words_at_once_narrow_to_their_union(owned_library):
     assert finished.pk not in matches
 
 
-def test_excluding_a_word_keeps_the_completed_runs(owned_library):
-    """The alias is null, and `_not_in_q` keeps it."""
+def test_excluding_a_word_keeps_every_other_run(owned_library):
+    """The alias is null, and `_not_in_q` keeps it.
+
+    Named by key, so a word that stopped answering
+    fails here rather than passing on a subset.
+    """
     playing = a_run_played(owned_library, "Recent", days_ago=2)
+    dormant = a_run_played(owned_library, "Old", days_ago=400)
+    never = one_run(owned_library, "Untouched")
     finished = a_completed_run(owned_library, "Done")
 
     matches = answered(
@@ -495,7 +505,7 @@ def test_excluding_a_word_keeps_the_completed_runs(owned_library):
         ),
     )
 
-    assert finished.pk in matches
+    assert matches == {dormant.pk, never.pk, finished.pk}
     assert playing.pk not in matches
 
 
@@ -522,3 +532,15 @@ def test_the_condition_offers_its_three_words_to_the_picker():
         "dormant",
         "never_played",
     ]
+
+
+def test_the_condition_offers_a_presence_test():
+    """Null for every completed run, so the picker asks."""
+    (meta,) = [
+        entry
+        for entry in field_metadata(PlaythroughFilter)
+        if entry["name"] == "activity"
+    ]
+
+    assert meta["nullable"] is True
+    assert Modifier.IS_NULL.value in meta["modifiers"]
