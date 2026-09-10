@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
 > superpowers:subagent-driven-development (recommended) or
 > superpowers:executing-plans to implement this plan task-by-task. Steps use
-> checkbox (`- [ ]`) syntax for tracking.
+> checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** State a `started` endpoint for the 542 Playthrough runs #684 minted
 with no acts, dated by the earlier of the library's own two records of a start.
@@ -73,7 +73,7 @@ behaviour: every existing test must pass unchanged.
   `games/backfill/appending.py`; `Mismatch(code, subject, detail)` with
   `as_dict() -> dict[str, str]` in `games/backfill/mismatch.py`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/test_playthrough_conversion.py`:
 
@@ -89,13 +89,13 @@ def test_the_shared_pieces_are_importable_on_their_own():
     assert callable(append_one)
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `make test ARGS="tests/test_playthrough_conversion.py -k shared_pieces -x"`
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'games.backfill.appending'`
 
-- [ ] **Step 3: Create `games/backfill/appending.py`**
+- [x] **Step 3: Create `games/backfill/appending.py`**
 
 Move the body of `_append` verbatim, renamed. Keep its whole docstring: it is
 the record of why this path does not dispatch.
@@ -164,7 +164,7 @@ def append_one(
     return isinstance(outcome, AppendResult)
 ```
 
-- [ ] **Step 4: Create `games/backfill/mismatch.py`**
+- [x] **Step 4: Create `games/backfill/mismatch.py`**
 
 ```python
 """One reason a gated pass must not commit."""
@@ -194,7 +194,7 @@ class Mismatch:
         }
 ```
 
-- [ ] **Step 5: Rewire `games/backfill/playthrough.py`**
+- [x] **Step 5: Rewire `games/backfill/playthrough.py`**
 
 Take out the `_append` function body and the `Mismatch` class body. Add the two
 imports beside the existing ones, and keep the old names bound so every caller
@@ -210,13 +210,13 @@ imports if nothing else there uses them, and take out the now-unused `Any` and
 `Sequence` imports if nothing else there uses them either. Run `make lint` to
 find out rather than guessing.
 
-- [ ] **Step 6: Run the whole conversion suite**
+- [x] **Step 6: Run the whole conversion suite**
 
 Run: `make test ARGS="tests/test_playthrough_conversion.py -x"`
 
 Expected: PASS, every test, including the new one.
 
-- [ ] **Step 7: Run lint and types**
+- [x] **Step 7: Run lint and types**
 
 Run: `make lint && make typecheck`
 
@@ -224,7 +224,7 @@ Expected: clean. `Mismatch.code` is now `StrEnum` rather than `MismatchCode`;
 if mypy reports a narrowing failure at a `mismatch.code is MismatchCode.X`
 comparison, change that comparison to `==`, which is what `StrEnum` supports.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add games/backfill/appending.py games/backfill/mismatch.py \
@@ -252,7 +252,7 @@ states a blank one at track time, and neither is this pass's debt.
   player_game_id, game_id)`, `default_run_ids(library) -> set[uuid.UUID]`,
   `runs_in_scope(library) -> list[RunInScope]`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_playthrough_start_repair.py`:
 
@@ -355,14 +355,14 @@ endpoints are `ActStatement | None`. The removal above is what forces it to
 create rather than fill the default in: `run_to_adopt` would otherwise hand it
 the blank run #684 minted.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `make test ARGS="tests/test_playthrough_start_repair.py -x"`
 
 Expected: FAIL with
 `ModuleNotFoundError: No module named 'games.backfill.playthrough_start'`
 
-- [ ] **Step 3: Write the module**
+- [x] **Step 3: Write the module**
 
 Create `games/backfill/playthrough_start.py`:
 
@@ -457,13 +457,13 @@ def runs_in_scope(library: UserLibrary) -> list[RunInScope]:
 pass reads, the way `_PLAYEVENT_FIELDS` pins #684's, and a migration replaying
 this code against a later schema cannot select a column that does not exist.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `make test ARGS="tests/test_playthrough_start_repair.py -x"`
 
 Expected: PASS, five tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add games/backfill/playthrough_start.py tests/test_playthrough_start_repair.py
@@ -487,7 +487,7 @@ git commit -m "Read the runs the conversion left empty"
   keyed on `player_game_id`, `session_days(library) -> dict[uuid.UUID, date]`
   keyed on `game_id`, `evidence_for(run, *, status, session) -> Evidence | None`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_playthrough_start_repair.py`:
 
@@ -611,13 +611,13 @@ from games.models import GameStatusChange
 `tests/test_playthrough_activity.py:106` uses to state a viewer's zone. Take
 its two positional arguments as that file does; write no second helper.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `make test ARGS="tests/test_playthrough_start_repair.py -x"`
 
 Expected: FAIL with `ImportError: cannot import name 'Evidence'`
 
-- [ ] **Step 3: Write the readers**
+- [x] **Step 3: Write the readers**
 
 Append to `games/backfill/playthrough_start.py`, and add the imports each needs:
 
@@ -737,13 +737,13 @@ reader will otherwise assume the two days share a zone:
 #: day cannot be read again. The report prints both.
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `make test ARGS="tests/test_playthrough_start_repair.py -x"`
 
 Expected: PASS, twelve tests.
 
-- [ ] **Step 5: Run mypy**
+- [x] **Step 5: Run mypy**
 
 Run: `make typecheck`
 
@@ -751,7 +751,7 @@ Expected: clean. `evidence_for` narrows `session_day` and `status_day` from
 `date | None` to `date` through the three guards above; if mypy disagrees on a
 branch, add the guard it asks for rather than a `cast`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add games/backfill/playthrough_start.py tests/test_playthrough_start_repair.py
@@ -775,7 +775,7 @@ git commit -m "Read the two days that date a start"
   `NO_START_COUNTS`, `RepairResult(counts, stated, left_alone)`,
   `repair_library(library) -> RepairResult`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_playthrough_start_repair.py`:
 
@@ -905,13 +905,13 @@ That last test is
 `tests/test_playthrough_conversion.py:438`, over a repaired library rather than
 a converted one. A row a replay cannot reach states its drift in that list.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `make test ARGS="tests/test_playthrough_start_repair.py -k repair -x"`
 
 Expected: FAIL with `ImportError: cannot import name 'repair_library'`
 
-- [ ] **Step 3: Write the counts and the pass**
+- [x] **Step 3: Write the counts and the pass**
 
 Append to `games/backfill/playthrough_start.py`:
 
@@ -1059,13 +1059,13 @@ from games.events.playthrough import playthrough_started
 from timetracker.temporal import TemporalValue
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `make test ARGS="tests/test_playthrough_start_repair.py -x"`
 
 Expected: PASS, eighteen tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add games/backfill/playthrough_start.py tests/test_playthrough_start_repair.py
@@ -1095,7 +1095,7 @@ live tracked game, so the `rows is None` skip never fires for a game holding no
   `playthrough_start`; `reconcile(library)` in `playthrough` keeps its
   signature and its return type.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_playthrough_start_repair.py`:
 
@@ -1169,7 +1169,7 @@ than make a third. The repaired run states an act as far as `run_to_adopt` is
 concerned, so this call creates the blank; as far as check 7 is concerned it
 states none, so two actless runs stand and "one is allowed" refuses the pair.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `make test ARGS="tests/test_playthrough_start_repair.py -k reconcile -x"`
 
@@ -1177,7 +1177,7 @@ Expected: FAIL on the first two with
 `run_disagreement`, `missing_marker` and `display_order_disagreement` in the
 returned list.
 
-- [ ] **Step 3: Add the reader**
+- [x] **Step 3: Add the reader**
 
 Append to `games/backfill/playthrough_start.py`:
 
@@ -1201,7 +1201,7 @@ def repaired_run_ids(library: UserLibrary) -> set[uuid.UUID]:
 
 with `PLAYTHROUGH_STARTED` added to the `games.events.playthrough` import.
 
-- [ ] **Step 4: Amend `_reconcile_game`**
+- [x] **Step 4: Amend `_reconcile_game`**
 
 In `games/backfill/playthrough.py`, add the parameter and the local reading:
 
@@ -1235,7 +1235,7 @@ same exemption:
 Add `from collections.abc import AbstractSet` to that module's imports, beside
 `Mapping` and `Sequence`.
 
-- [ ] **Step 5: Amend `reconcile`**
+- [x] **Step 5: Amend `reconcile`**
 
 Read the set once per library and pass it down:
 
@@ -1259,13 +1259,13 @@ module head. This import is one-way: `playthrough_start` imports `append_one`
 from `games.backfill.appending`, never from `playthrough`, which is why Task 1
 moved it.
 
-- [ ] **Step 6: Run both suites**
+- [x] **Step 6: Run both suites**
 
 Run: `make test ARGS="tests/test_playthrough_start_repair.py tests/test_playthrough_conversion.py -x"`
 
 Expected: PASS, every test in both.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add games/backfill/playthrough.py games/backfill/playthrough_start.py \
@@ -1289,7 +1289,7 @@ git commit -m "Read a repaired run as owing no legacy row"
   completions, actless)`, `snapshot(library) -> StartSnapshot`,
   `gate(library, before, result) -> list[Mismatch]`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_playthrough_start_repair.py`:
 
@@ -1394,13 +1394,13 @@ from games.backfill.playthrough_start import (
 )
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `make test ARGS="tests/test_playthrough_start_repair.py -k gate -x"`
 
 Expected: FAIL with `ImportError: cannot import name 'StartMismatchCode'`
 
-- [ ] **Step 3: Write the gate**
+- [x] **Step 3: Write the gate**
 
 Append to `games/backfill/playthrough_start.py`:
 
@@ -1549,13 +1549,13 @@ def gate(
 
 and `Mismatch`, `PlaythroughKind` and `Playthrough` added to the imports.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `make test ARGS="tests/test_playthrough_start_repair.py -x"`
 
 Expected: PASS, twenty-six tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add games/backfill/playthrough_start.py tests/test_playthrough_start_repair.py
@@ -1578,7 +1578,7 @@ git commit -m "Gate the start repair on six readings"
 - Produces: `MACHINE_PREFIX`, `HUMAN_PREFIX`, `repair_playthrough_starts(apps,
   schema_editor)`.
 
-- [ ] **Step 1: Confirm the number is still free**
+- [x] **Step 1: Confirm the number is still free**
 
 Run: `ls games/migrations/`
 
@@ -1586,7 +1586,7 @@ Expected: the highest number is `0047_playthrough_preset_completed.py`. If #770
 or #771 landed first, use the next free number and depend on the highest, not
 on `0047`.
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 Append to `tests/test_playthrough_start_repair.py`:
 
@@ -1683,14 +1683,14 @@ inside the migration, so the migration's own function-level import picks the
 patched one up. That is the shape `tests/test_playthrough_conversion.py`
 already uses; copy how it patches `convert_library` if the call does not take.
 
-- [ ] **Step 3: Run the tests to verify they fail**
+- [x] **Step 3: Run the tests to verify they fail**
 
 Run: `make test ARGS="tests/test_playthrough_start_repair.py -k migration -x"`
 
 Expected: FAIL with
 `ModuleNotFoundError: No module named 'games.migrations.0048_playthrough_start_repair'`
 
-- [ ] **Step 4: Write the migration**
+- [x] **Step 4: Write the migration**
 
 Create `games/migrations/0048_playthrough_start_repair.py`:
 
@@ -1830,19 +1830,19 @@ class Migration(migrations.Migration):
 `from games.backfill.mismatch import Mismatch` to `playthrough_start.py` if
 Task 6 did not already, and keep the name bound at that module's top level.
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `make test ARGS="tests/test_playthrough_start_repair.py -x"`
 
 Expected: PASS, twenty-nine tests.
 
-- [ ] **Step 6: Check the migration graph**
+- [x] **Step 6: Check the migration graph**
 
 Run: `make makemigrations ARGS="--check --dry-run"`
 
 Expected: no model change is pending. This migration adds no schema.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add games/migrations/0048_playthrough_start_repair.py \
@@ -1864,7 +1864,7 @@ git commit -m "Gate the start repair behind a migration"
 - Consumes: `repair_library`, `snapshot`, `gate`.
 - Produces: nothing new.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/test_playthrough_start_repair.py`:
 
@@ -1899,13 +1899,13 @@ The second assertion is the point: after the load, every run still in scope is
 one holding no evidence. A run left in scope that holds evidence would mean the
 load ran the pass and the pass skipped it.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `make test ARGS="tests/test_playthrough_start_repair.py -k sample_fixture -x"`
 
 Expected: FAIL on the first assertion, because nothing states a start yet.
 
-- [ ] **Step 3: Wire the command**
+- [x] **Step 3: Wire the command**
 
 In `games/management/commands/load_sample_data.py`, after the existing
 `convert_library` and `reconcile` block, add:
@@ -1942,13 +1942,13 @@ The two aliases are there because `gate` and `snapshot` are general words in a
 command module that already reads a `reconcile`; the aliased names say which
 pass they belong to.
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `make test ARGS="tests/test_playthrough_start_repair.py -k sample_fixture -x"`
 
 Expected: PASS.
 
-- [ ] **Step 5: Run the conversion suite, which loads the same fixture**
+- [x] **Step 5: Run the conversion suite, which loads the same fixture**
 
 Run: `make test ARGS="tests/test_playthrough_conversion.py -x"`
 
@@ -1956,7 +1956,7 @@ Expected: PASS, including
 `test_the_sample_fixture_leaves_every_tracked_game_holding_a_run`, whose
 `reconcile(library) == []` now runs against a library holding repaired runs.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add games/management/commands/load_sample_data.py \
@@ -1983,7 +1983,7 @@ git commit -m "State the sample library's starts as the migration does"
   `LibraryStartReport(library_id, username, zone, counts, gaps, samples)` with
   `as_dict()`, `report_library(library, *, sample_size) -> LibraryStartReport`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_playthrough_start_repair.py`:
 
@@ -2076,13 +2076,13 @@ from django.core.management.base import CommandError
 from games.backfill.playthrough_start import report_library
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `make test ARGS="tests/test_playthrough_start_repair.py -k report -x"`
 
 Expected: FAIL with `ImportError: cannot import name 'report_library'`
 
-- [ ] **Step 3: Write the reader**
+- [x] **Step 3: Write the reader**
 
 Append to `games/backfill/playthrough_start.py`:
 
@@ -2183,7 +2183,7 @@ with `from collections import Counter` and `Game` added to the imports.
 `runs_in_scope` already orders by identity, so the sample is the first few by
 that order and never a random draw.
 
-- [ ] **Step 4: Write the command**
+- [x] **Step 4: Write the command**
 
 Create `games/management/commands/report_playthrough_starts.py`, in the shape
 of `preflight_playthroughs.py`. Copy `_resolve_libraries`, `_library_of_user`
@@ -2296,7 +2296,7 @@ class Command(BaseCommand):
 Copy the three `_resolve_libraries` helpers in from
 `games/management/commands/preflight_playthroughs.py:137-166` unchanged.
 
-- [ ] **Step 5: Add the Makefile target**
+- [x] **Step 5: Add the Makefile target**
 
 After the `preflight-playthroughs` target:
 
@@ -2310,7 +2310,7 @@ report-playthrough-starts: ensure-postgres
 Add it to `.PHONY` if that Makefile lists targets there — grep `.PHONY` and
 follow what the file does.
 
-- [ ] **Step 6: Add the row to the commands table in `CLAUDE.md`**
+- [x] **Step 6: Add the row to the commands table in `CLAUDE.md`**
 
 Under the `preflight-playthroughs` row:
 
@@ -2318,13 +2318,13 @@ Under the `preflight-playthroughs` row:
 | Report the starts #1038 would state before stating them | `make report-playthrough-starts ARGS="--all-libraries"` (read-only; reports, never gates) |
 ```
 
-- [ ] **Step 7: Run the tests to verify they pass**
+- [x] **Step 7: Run the tests to verify they pass**
 
 Run: `make test ARGS="tests/test_playthrough_start_repair.py -x"`
 
 Expected: PASS, thirty-four tests.
 
-- [ ] **Step 8: Run the report against the sample library by hand**
+- [x] **Step 8: Run the report against the sample library by hand**
 
 ```bash
 make loadsample
@@ -2335,7 +2335,7 @@ Expected: a machine line, then a per-library block whose counts are not all
 zero. Read it: the sentences must say what a person would want to know before
 running a migration against their own data.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add games/management/commands/report_playthrough_starts.py \
@@ -2360,7 +2360,7 @@ a person sees or presses, and none has a test today.
 - Consumes: everything above.
 - Produces: nothing.
 
-- [ ] **Step 1: Write the tests**
+- [x] **Step 1: Write the tests**
 
 Append to `tests/test_playthrough_start_repair.py`:
 
@@ -2427,7 +2427,7 @@ answers zero or one `ButtonGroupMember`. `runs_with_condition` at
 library itself, so no `for_library` sits beside it — `PlaythroughQuerySet`
 states none.
 
-- [ ] **Step 2: Run the tests**
+- [x] **Step 2: Run the tests**
 
 Run: `make test ARGS="tests/test_playthrough_start_repair.py -k repaired -x"`
 
@@ -2435,7 +2435,7 @@ Expected: PASS. These pin behaviour that already follows from the event; a
 failure means one of the three consequences is not what the specification says
 it is, and that is a finding to report rather than a test to bend.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/test_playthrough_start_repair.py
@@ -2452,7 +2452,7 @@ git commit -m "Pin the three screens a stated start moves"
 - Modify: `docs/superpowers/plans/2026-09-10-issue-1038-playthrough-start-repair.md`
   (check every box)
 
-- [ ] **Step 1: Run the whole suite**
+- [x] **Step 1: Run the whole suite**
 
 Run: `make check`
 
@@ -2460,7 +2460,7 @@ Expected: green. This is the gate: lint, format check, mypy, vale, ts-check,
 vitest and the entire pytest suite including `e2e/`. A hand-picked subset is
 not the gate.
 
-- [ ] **Step 2: Rehearse the migration against a restored copy**
+- [x] **Step 2: Rehearse the migration against a restored copy**
 
 ```bash
 make fetch-dump
@@ -2477,7 +2477,7 @@ run the remaining two against the newest dump already in `.dumps/`.
 Expected: the migration's machine line reports `mismatches=0`, and
 `events_appended` matches the report's `from_status` plus `from_session`.
 
-- [ ] **Step 3: Update the Playthrough paragraph in `CLAUDE.md`**
+- [x] **Step 3: Update the Playthrough paragraph in `CLAUDE.md`**
 
 The Models section describes what writes a `Playthrough`. Add one sentence
 naming #1038 beside the #684 sentence, in the register the rest of that
@@ -2485,13 +2485,13 @@ paragraph uses: a run #684 minted with no acts takes a `started` from the
 earlier of the library's own two records, and #684's `reconcile()` reads such a
 run as owing no legacy row.
 
-- [ ] **Step 4: Run vale over the changed documents**
+- [x] **Step 4: Run vale over the changed documents**
 
 Run: `make vale`
 
 Expected: no findings.
 
-- [ ] **Step 5: Commit and push**
+- [x] **Step 5: Commit and push**
 
 ```bash
 git add CLAUDE.md docs/superpowers/plans/
@@ -2499,7 +2499,7 @@ git commit -m "Record the start repair beside the conversion"
 git push -u origin issue-1038-playthrough-start-repair
 ```
 
-- [ ] **Step 6: Open the pull request**
+- [x] **Step 6: Open the pull request**
 
 ```bash
 gh pr create --title "State a start for the runs the conversion left empty" \
@@ -2551,3 +2551,13 @@ affordance for both.
 `finished()` split between the statistics page and the Purchase list, and
 naming the right condition word for a dropped run are each named in the
 specification as out, and each belongs to its own issue.
+
+**What the rehearsal changed.** `make verify-dump` refused the restored copy on
+three mismatches `reconcile()` already reported before `0048` ran: the person
+who reported #1038 pressed Started on the very run, with no day, and #684's
+gate reads a run stating one act and no legacy row as a disagreement. That gate
+is #684's to answer, so `0048` now takes `reconcile()` and
+`ordering_violations()` before the pass as well as after, fails only on a
+mismatch the pass adds, and reports the standing count as `preexisting`. The
+rehearsal then read 661 runs in scope, 541 dated (31 by a status, 510 by a
+session), 120 left stating no act, `preexisting=3`, `mismatches=0`.

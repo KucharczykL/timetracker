@@ -163,7 +163,13 @@ docs/           — Additional documentation
   only by `Playthroughs` projector, which shares `CURRENT_STATE` family with
   `PlayerGames`. Game tracked since #679 gets one from moment library tracks it —
   `TrackGame` returns both creation events under one `correlation_id` — but rows
-  #676 backfilled have none, and #684 owns supplying it. Both endpoints
+  #676 backfilled have none, and #684 owns supplying it. #684 reads only legacy
+  `PlayEvent` rows, so a game holding none took an empty default run; #1038
+  dates such a run, stating a `started` from the earlier of the library's own
+  two records — earliest #676 status day and earliest live session day — and
+  never a completion, so `games/backfill/playthrough_start.py` is the second
+  pass and #684's `reconcile()` reads a run it repaired as owing no legacy row.
+  Both endpoints
   `TemporalValueField` with generated lower- and upper-bound columns beside each,
   plus marker naming the act (`start_recorded_at`, `completion_recorded_at`) and
   note of their own: null date is only unknown day, so marker's null is act that

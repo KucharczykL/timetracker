@@ -10,6 +10,7 @@ import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
+from games.backfill.mismatch import Mismatch
 from games.backfill.playergame import backfill_library
 from games.backfill.playthrough import MismatchCode, convert_library, reconcile
 from games.backfill.playthrough_start import (
@@ -27,6 +28,7 @@ from games.backfill.playthrough_start import (
     snapshot,
     status_days,
 )
+from games.commands.playthrough import ActStatement
 from games.events.playthrough import PLAYTHROUGH_STARTED
 from games.events.rebuild import RebuildMode, rebuild_projections
 from games.models import (
@@ -705,3 +707,58 @@ def test_a_repaired_run_dated_long_ago_reads_dormant(owned_library):
     run = runs_with_condition(owned_library).get()
 
     assert run.activity == RunActivity.DORMANT
+
+
+def test_the_migration_leaves_a_standing_mismatch_alone(owned_library, capsys):
+    """A start a person stated is #684's gate to answer, not this."""
+    game = _game(owned_library)
+    _converted(owned_library)
+    #: A day nobody wrote down, which is what the person who
+    #: reported #1038 pressed on the run #684 left empty.
+    record_run(
+        owned_library.user,
+        game,
+        RunDraft(started=ActStatement(when=None), completed=None, note=""),
+        correlation_id=uuid.uuid7(),
+    )
+    standing = reconcile(owned_library)
+    assert standing
+
+    repair_playthrough_starts(None, None)
+
+    machine = [
+        line
+        for line in capsys.readouterr().err.splitlines()
+        if line.startswith(MACHINE_PREFIX)
+    ]
+    payload = json.loads(machine[0][len(MACHINE_PREFIX) :])
+    assert payload["summary"]["mismatches"] == 0
+    assert payload["summary"]["preexisting"] == len(standing)
+
+
+def test_the_migration_still_refuses_a_mismatch_it_adds(owned_library, monkeypatch):
+    game = _game(owned_library)
+    _converted(owned_library)
+    Session.objects.create(
+        game=game,
+        timestamp_start=datetime(2026, 1, 4, 10, 0, tzinfo=UTC),
+        timestamp_end=datetime(2026, 1, 4, 11, 0, tzinfo=UTC),
+    )
+    added = MismatchCode.RUN_DISAGREEMENT
+    calls = []
+
+    def complaining(library):
+        calls.append(1)
+        if len(calls) == 1:
+            return []
+        return [
+            Mismatch(
+                code=added,
+                subject=str(library.pk),
+                detail="a mismatch the pass added",
+            )
+        ]
+
+    monkeypatch.setattr("games.backfill.playthrough.reconcile", complaining)
+    with pytest.raises(RuntimeError, match="a mismatch the pass added"):
+        repair_playthrough_starts(None, None)

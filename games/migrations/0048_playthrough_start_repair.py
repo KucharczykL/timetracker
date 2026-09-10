@@ -16,6 +16,7 @@ SUMMARY_KEYS = (
     "from_status",
     "from_session",
     "events_appended",
+    "preexisting",
     "mismatches",
 )
 
@@ -47,6 +48,12 @@ def _emit(summary, mismatches):
     for entry in entries:
         print(f"  {entry['code']} subject={entry['subject']} {entry['detail']}")
     return entries
+
+
+def _keys(mismatches):
+    return {
+        (mismatch.code, mismatch.subject, mismatch.detail) for mismatch in mismatches
+    }
 
 
 def _fail_if_mismatched(mismatches, entries):
@@ -82,8 +89,18 @@ def repair_playthrough_starts(apps, schema_editor):
 
     counts = repair.NO_START_COUNTS
     mismatches = []
+    #: #684's gate answers on the whole library, and a person
+    #: may have stated an act on a converted run since it ran:
+    #: a start with no day reads to that gate as a run owing a
+    #: legacy row it never had. Such a mismatch is that gate's
+    #: to answer, so only one this pass adds fails the run.
+    preexisting = 0
     try:
+        standing_order = _keys(conversion.ordering_violations())
+        preexisting += len(standing_order)
         for library in UserLibrary.objects.order_by("pk"):
+            standing = _keys(conversion.reconcile(library))
+            preexisting += len(standing)
             before = repair.snapshot(library)
             result = repair.repair_library(library)
             counts = counts + result.counts
@@ -99,19 +116,35 @@ def repair_playthrough_starts(apps, schema_editor):
                         f"{again.counts.events_appended} event(s)",
                     )
                 )
-            #: Check 7: #684's own gate still answers clean.
-            mismatches.extend(conversion.reconcile(library))
-        mismatches.extend(conversion.ordering_violations())
+            #: Check 7: #684's own gate reports nothing new.
+            mismatches.extend(
+                mismatch
+                for mismatch in conversion.reconcile(library)
+                if (mismatch.code, mismatch.subject, mismatch.detail) not in standing
+            )
+        mismatches.extend(
+            mismatch
+            for mismatch in conversion.ordering_violations()
+            if (mismatch.code, mismatch.subject, mismatch.detail) not in standing_order
+        )
     except Exception:
         #: The rollback takes every event. What is counted so far
         #: says how far the run got, which a traceback does not.
         _emit(
-            counts.as_dict() | {"mismatches": len(mismatches), "aborted": 1},
+            counts.as_dict()
+            | {
+                "mismatches": len(mismatches),
+                "preexisting": preexisting,
+                "aborted": 1,
+            },
             mismatches,
         )
         raise
 
-    summary = counts.as_dict() | {"mismatches": len(mismatches)}
+    summary = counts.as_dict() | {
+        "mismatches": len(mismatches),
+        "preexisting": preexisting,
+    }
     entries = _emit(summary, mismatches)
     _fail_if_mismatched(mismatches, entries)
 
