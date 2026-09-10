@@ -1,5 +1,7 @@
 """What the empty runs come to state. Issue #1038."""
 
+import importlib
+import json
 import uuid
 from datetime import UTC, date, datetime
 
@@ -9,7 +11,9 @@ from games.backfill.playergame import backfill_library
 from games.backfill.playthrough import MismatchCode, convert_library, reconcile
 from games.backfill.playthrough_start import (
     Evidence,
+    RepairResult,
     StartMismatchCode,
+    StartRepairCounts,
     StartSource,
     evidence_for,
     gate,
@@ -33,6 +37,10 @@ from games.models import (
 from games.removal import remove
 from games.writes.playthrough import RunDraft, record_run
 from timetracker.temporal import TemporalValue
+
+_migration = importlib.import_module("games.migrations.0048_playthrough_start_repair")
+MACHINE_PREFIX = _migration.MACHINE_PREFIX
+repair_playthrough_starts = _migration.repair_playthrough_starts
 
 #: backfill_library() and the conftest fixture write the
 #: same row, so the two collide on the unique key.
@@ -464,3 +472,77 @@ def test_the_gate_reads_a_run_left_alone_that_gained_an_act(owned_library):
     codes = [mismatch.code for mismatch in gate(owned_library, before, result)]
 
     assert StartMismatchCode.UNEXPECTED_ACT in codes
+
+
+def test_the_migration_states_the_starts_and_reports(owned_library, capsys):
+    game = _game(owned_library)
+    _converted(owned_library)
+    Session.objects.create(
+        game=game,
+        timestamp_start=datetime(2026, 1, 4, 10, 0, tzinfo=UTC),
+        timestamp_end=datetime(2026, 1, 4, 11, 0, tzinfo=UTC),
+    )
+
+    repair_playthrough_starts(None, None)
+
+    run = Playthrough.objects.get(library=owned_library)
+    assert run.started_lower == date(2026, 1, 4)
+    machine = [
+        line
+        for line in capsys.readouterr().err.splitlines()
+        if line.startswith(MACHINE_PREFIX)
+    ]
+    payload = json.loads(machine[0][len(MACHINE_PREFIX) :])
+    assert payload["summary"]["events_appended"] == 1
+    assert payload["summary"]["mismatches"] == 0
+
+
+def test_the_migration_refuses_a_second_pass_that_appends(owned_library, monkeypatch):
+    game = _game(owned_library)
+    _converted(owned_library)
+    Session.objects.create(
+        game=game,
+        timestamp_start=datetime(2026, 1, 4, 10, 0, tzinfo=UTC),
+        timestamp_end=datetime(2026, 1, 4, 11, 0, tzinfo=UTC),
+    )
+    passes = []
+
+    def drifting(library):
+        result = repair_library(library)
+        passes.append(1)
+        if len(passes) % 2 == 0:
+            return RepairResult(
+                counts=result.counts + StartRepairCounts(events_appended=1),
+                stated=result.stated,
+                left_alone=result.left_alone,
+            )
+        return result
+
+    monkeypatch.setattr("games.backfill.playthrough_start.repair_library", drifting)
+    with pytest.raises(RuntimeError, match="count_drift"):
+        repair_playthrough_starts(None, None)
+
+
+def test_the_migration_refuses_a_mismatched_day(owned_library, monkeypatch):
+    game = _game(owned_library)
+    _converted(owned_library)
+    Session.objects.create(
+        game=game,
+        timestamp_start=datetime(2026, 1, 4, 10, 0, tzinfo=UTC),
+        timestamp_end=datetime(2026, 1, 4, 11, 0, tzinfo=UTC),
+    )
+
+    def lying(library):
+        result = repair_library(library)
+        return RepairResult(
+            counts=result.counts,
+            stated={
+                run_id: Evidence(date(1999, 1, 1), evidence.source)
+                for run_id, evidence in result.stated.items()
+            },
+            left_alone=result.left_alone,
+        )
+
+    monkeypatch.setattr("games.backfill.playthrough_start.repair_library", lying)
+    with pytest.raises(RuntimeError, match="start_day_disagreement"):
+        repair_playthrough_starts(None, None)
