@@ -11,19 +11,24 @@ from games.backfill.playthrough_start import (
     Evidence,
     StartSource,
     evidence_for,
+    repair_library,
     runs_in_scope,
     session_days,
     status_days,
 )
+from games.events.playthrough import PLAYTHROUGH_STARTED
+from games.events.rebuild import RebuildMode, rebuild_projections
 from games.models import (
     Game,
     GameStatusChange,
+    LibraryEvent,
     PlayerGame,
     Playthrough,
     Session,
 )
 from games.removal import remove
 from games.writes.playthrough import RunDraft, record_run
+from timetracker.temporal import TemporalValue
 
 #: backfill_library() and the conftest fixture write the
 #: same row, so the two collide on the unique key.
@@ -199,3 +204,114 @@ def test_a_run_holding_neither_reads_nothing(owned_library):
     run = runs_in_scope(owned_library)[0]
 
     assert evidence_for(run, status={}, session={}) is None
+
+
+def test_the_pass_states_the_day_a_session_proves(owned_library):
+    game = _game(owned_library)
+    _converted(owned_library)
+    Session.objects.create(
+        game=game,
+        timestamp_start=datetime(2026, 1, 4, 10, 0, tzinfo=UTC),
+        timestamp_end=datetime(2026, 1, 4, 11, 0, tzinfo=UTC),
+    )
+
+    result = repair_library(owned_library)
+    run = Playthrough.objects.get(library=owned_library)
+
+    assert result.counts.events_appended == 1
+    assert result.counts.from_session == 1
+    assert run.start_recorded_at is not None
+    assert run.started_lower == date(2026, 1, 4)
+    assert run.started == TemporalValue.from_day(date(2026, 1, 4))
+    assert run.start_note == ""
+
+
+def test_the_pass_states_no_completion_for_an_abandoned_game(owned_library):
+    game = _game(owned_library)
+    GameStatusChange.objects.create(
+        game=game,
+        old_status="u",
+        new_status="a",
+        timestamp=datetime(2026, 1, 4, 9, 0, tzinfo=UTC),
+    )
+    _converted(owned_library)
+
+    repair_library(owned_library)
+    run = Playthrough.objects.get(library=owned_library)
+
+    assert run.start_recorded_at is not None
+    assert run.completion_recorded_at is None
+
+
+def test_a_run_holding_no_evidence_still_states_no_act(owned_library):
+    _game(owned_library)
+    _converted(owned_library)
+
+    result = repair_library(owned_library)
+    run = Playthrough.objects.get(library=owned_library)
+
+    assert result.counts.no_evidence == 1
+    assert result.counts.events_appended == 0
+    assert run.start_recorded_at is None
+    assert run.completion_recorded_at is None
+
+
+def test_a_second_pass_appends_nothing(owned_library):
+    game = _game(owned_library)
+    _converted(owned_library)
+    Session.objects.create(
+        game=game,
+        timestamp_start=datetime(2026, 1, 4, 10, 0, tzinfo=UTC),
+        timestamp_end=datetime(2026, 1, 4, 11, 0, tzinfo=UTC),
+    )
+
+    first = repair_library(owned_library)
+    second = repair_library(owned_library)
+
+    assert first.counts.events_appended == 1
+    assert second.counts.events_appended == 0
+    assert second.counts.runs_in_scope == 0
+
+
+def test_the_event_names_the_source_that_won(owned_library):
+    game = _game(owned_library)
+    _converted(owned_library)
+    Session.objects.create(
+        game=game,
+        timestamp_start=datetime(2026, 1, 4, 10, 0, tzinfo=UTC),
+        timestamp_end=datetime(2026, 1, 4, 11, 0, tzinfo=UTC),
+    )
+
+    repair_library(owned_library)
+    event = LibraryEvent.objects.get(
+        library=owned_library,
+        event_type=PLAYTHROUGH_STARTED.event_type,
+    )
+
+    assert event.source_metadata == {
+        "origin": "backfill",
+        "issue": 1038,
+        "source": "session",
+    }
+
+
+def test_the_pass_replays_to_the_same_row(owned_library):
+    game = _game(owned_library)
+    _converted(owned_library)
+    Session.objects.create(
+        game=game,
+        timestamp_start=datetime(2026, 1, 4, 10, 0, tzinfo=UTC),
+        timestamp_end=datetime(2026, 1, 4, 11, 0, tzinfo=UTC),
+    )
+    repair_library(owned_library)
+
+    checked = rebuild_projections(owned_library, mode=RebuildMode.CHECK)
+
+    drift = [
+        (table.table, table.only_live, table.only_rebuilt, table.differing)
+        for table in checked.tables
+    ]
+    assert drift == [
+        ("games_playergame", 0, 0, 0),
+        ("games_playthrough", 0, 0, 0),
+    ]

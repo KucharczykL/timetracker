@@ -9,14 +9,18 @@ states that day, and states no completion.
 
 import uuid
 from collections.abc import Mapping
+from dataclasses import dataclass, fields
 from datetime import date
 from enum import StrEnum
 from typing import NamedTuple
 
+from django.db import transaction
 from django.db.models import Min
 from django.db.models.functions import TruncDate
+from django.utils import timezone
 
-from games.events.playthrough import PLAYTHROUGH_CREATED
+from games.backfill.appending import append_one
+from games.events.playthrough import PLAYTHROUGH_CREATED, playthrough_started
 from games.models import (
     LibraryEvent,
     Playthrough,
@@ -26,6 +30,7 @@ from games.models import (
 )
 from games.preflight.playthrough import candidate_events
 from games.reads.playthrough_activity import activity_clock
+from timetracker.temporal import TemporalValue
 
 #: The two evidence days are read in different zones. A status
 #: day was frozen when #676 ran, by transition_effective_time,
@@ -188,3 +193,133 @@ def evidence_for(
     if session_day <= status_day:
         return Evidence(session_day, StartSource.SESSION)
     return Evidence(status_day, StartSource.STATUS)
+
+
+@dataclass(frozen=True, slots=True)
+class StartRepairCounts:
+    """What one pass did, summable everywhere."""
+
+    libraries: int = 0
+    runs_in_scope: int = 0
+    #: A run in scope holding neither record.
+    no_evidence: int = 0
+    status_only: int = 0
+    session_only: int = 0
+    both: int = 0
+    #: Of the runs holding both, the days that match.
+    both_agree: int = 0
+    from_status: int = 0
+    from_session: int = 0
+    events_appended: int = 0
+
+    def __add__(self, other: StartRepairCounts) -> StartRepairCounts:
+        return StartRepairCounts(
+            **{
+                field.name: getattr(self, field.name) + getattr(other, field.name)
+                for field in fields(self)
+            }
+        )
+
+    def as_dict(self) -> dict[str, int]:
+        return {field.name: getattr(self, field.name) for field in fields(self)}
+
+
+#: The value an accumulation starts from.
+NO_START_COUNTS = StartRepairCounts()
+
+
+@dataclass(frozen=True, slots=True)
+class RepairResult:
+    """What the pass stated, for the gate to read."""
+
+    counts: StartRepairCounts
+    #: The day and source each repaired run took.
+    stated: Mapping[uuid.UUID, Evidence]
+    #: Runs in scope this pass left stating no act.
+    left_alone: tuple[uuid.UUID, ...]
+
+
+def repair_library(library: UserLibrary) -> RepairResult:
+    """State a start for every empty default holding evidence.
+
+    recorded_at is now. Nothing recorded this before, and a past
+    instant would say something did. #684 could use a row's
+    created_at because the row was the record; here the record
+    is being made now.
+    """
+    actor = library.user
+    recorded_at = timezone.now()
+    status = status_days(library)
+    session = session_days(library)
+    counts = StartRepairCounts(libraries=1)
+    stated: dict[uuid.UUID, Evidence] = {}
+    left_alone: list[uuid.UUID] = []
+
+    for run in runs_in_scope(library):
+        counts = counts + StartRepairCounts(runs_in_scope=1)
+        evidence = evidence_for(run, status=status, session=session)
+        counts = counts + _witness_counts(run, evidence, status=status, session=session)
+        if evidence is None:
+            left_alone.append(run.run_id)
+            continue
+        stated[run.run_id] = evidence
+        #: Its own block, as convert_row's is: lock_stream
+        #: refuses the head lock outside a transaction, and
+        #: inside a caller's it is only a savepoint.
+        with transaction.atomic():
+            appended = append_one(
+                library,
+                playthrough_started(
+                    run.run_id,
+                    when=TemporalValue.from_day(evidence.day),
+                    note="",
+                ),
+                actor=actor,
+                idempotency_key=f"{KEY_PREFIX}:{run.run_id}",
+                command_input={
+                    "fact": "started",
+                    #: Stable, and not minted by this pass.
+                    "playthrough_id": str(run.run_id),
+                    #: Named, so a changed day is loud.
+                    "day": evidence.day,
+                },
+                recorded_at=recorded_at,
+                correlation_id=uuid.uuid7(),
+                source_metadata={
+                    "origin": "backfill",
+                    "issue": START_ISSUE,
+                    #: The third key tells an inferred day from
+                    #: a recorded one, and reconcile() reads it.
+                    "source": evidence.source.value,
+                },
+            )
+        if appended:
+            counts = counts + StartRepairCounts(events_appended=1)
+
+    return RepairResult(counts=counts, stated=stated, left_alone=tuple(left_alone))
+
+
+def _witness_counts(
+    run: RunInScope,
+    evidence: Evidence | None,
+    *,
+    status: Mapping[uuid.UUID, date],
+    session: Mapping[uuid.UUID, date],
+) -> StartRepairCounts:
+    """Which records this run held, counted."""
+    status_day = status.get(run.player_game_id)
+    session_day = session.get(run.game_id)
+    if status_day is not None and session_day is not None:
+        held = StartRepairCounts(both=1, both_agree=int(status_day == session_day))
+    elif status_day is not None:
+        held = StartRepairCounts(status_only=1)
+    elif session_day is not None:
+        held = StartRepairCounts(session_only=1)
+    else:
+        return StartRepairCounts(no_evidence=1)
+    won = (
+        StartRepairCounts(from_session=1)
+        if evidence is not None and evidence.source is StartSource.SESSION
+        else StartRepairCounts(from_status=1)
+    )
+    return held + won
