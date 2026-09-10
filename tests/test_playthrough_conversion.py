@@ -756,7 +756,7 @@ def test_the_sample_fixture_leaves_every_tracked_game_holding_a_run(owned_user):
 
 
 def test_the_shared_pieces_are_importable_on_their_own():
-    """#1038 imports both, and importing this module back is a cycle."""
+    """#1038 imports both; importing back is a cycle."""
     from games.backfill.appending import append_one
     from games.backfill.mismatch import Mismatch as SharedMismatch
 

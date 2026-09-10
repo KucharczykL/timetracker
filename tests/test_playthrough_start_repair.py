@@ -1,4 +1,4 @@
-"""What the empty runs come to state. Issue #1038."""
+"""What the empty runs come to state. #1038."""
 
 import importlib
 import io
@@ -56,8 +56,7 @@ _report = importlib.import_module("games.management.commands.report_playthrough_
 REPORT_MACHINE_PREFIX = _report.MACHINE_PREFIX
 GENERATED_PREFIX = _report.GENERATED_PREFIX
 
-#: backfill_library() and the conftest fixture write the
-#: same row, so the two collide on the unique key.
+#: Both write the row, so they collide.
 pytestmark = [
     pytest.mark.django_db(transaction=True),
     pytest.mark.untracked_games,
@@ -69,7 +68,7 @@ def _game(library, name="Chrono Trigger"):
 
 
 def _converted(library):
-    """The state #684 leaves: tracked, and one empty run each."""
+    """What #684 leaves: tracked, one empty run."""
     backfill_library(library)
     convert_library(library)
 
@@ -136,7 +135,7 @@ def test_a_session_states_the_viewers_day_not_the_servers(
     game = _game(owned_library)
     _converted(owned_library)
     set_user_setting(owned_user, "DISPLAY_TIME_ZONE", "Pacific/Kiritimati")
-    #: Late enough in UTC that Kiritimati reads tomorrow.
+    #: Late enough that Kiritimati reads tomorrow.
     Session.objects.create(
         game=game,
         timestamp_start=datetime(2026, 1, 5, 23, 30, tzinfo=UTC),
@@ -384,8 +383,7 @@ def test_reconcile_still_reports_a_second_empty_run(owned_library):
         timestamp_end=datetime(2026, 1, 4, 11, 0, tzinfo=UTC),
     )
     repair_library(owned_library)
-    #: One blank beside the repaired run is one too many:
-    #: a repaired run still counts as stating no act.
+    #: A repaired run still counts as blank.
     record_run(
         owned_library.user,
         game,
@@ -423,7 +421,7 @@ def test_the_gate_reads_a_day_that_moved(owned_library):
     )
     before = snapshot(owned_library)
     result = repair_library(owned_library)
-    #: The projection now says a day the pass never stated.
+    #: The row says a day nothing stated.
     Playthrough.objects.filter(library=owned_library).update(
         started=TemporalValue.from_day(date(1999, 1, 1))
     )
@@ -464,7 +462,7 @@ def test_the_gate_reads_a_start_that_appeared_outside_the_scope(owned_library):
     )
     before = snapshot(owned_library)
     result = repair_library(owned_library)
-    #: A converted run's day moves, which the pass never touches.
+    #: A converted run moves, untouched by this.
     Playthrough.objects.filter(library=owned_library, player_game__game=other).update(
         started=TemporalValue.from_day(date(1999, 1, 1))
     )
@@ -581,11 +579,7 @@ def test_the_sample_fixture_states_a_start_where_it_holds_one(owned_user):
 
 
 def _report_output(username):
-    """The report without the one line and key that move.
-
-    The shape tests/test_playthrough_preflight.py:638 reads,
-    because the two commands print the same two headers.
-    """
+    """The report without the two values that move."""
     buffer = io.StringIO()
     call_command(
         "report_playthrough_starts", "--user", username, stdout=buffer, verbosity=0
@@ -672,7 +666,7 @@ def test_a_repaired_run_is_no_longer_adopted(owned_library):
     repair_library(owned_library)
     tracked = PlayerGame.objects.get(library=owned_library, game=game)
 
-    #: The blank run is filled in, so a statement makes a second.
+    #: Filled in, so a statement makes another.
     assert run_to_adopt(owned_library, tracked) is None
 
 
@@ -710,11 +704,10 @@ def test_a_repaired_run_dated_long_ago_reads_dormant(owned_library):
 
 
 def test_the_migration_leaves_a_standing_mismatch_alone(owned_library, capsys):
-    """A start a person stated is #684's gate to answer, not this."""
+    """A start a person stated is #684's to answer."""
     game = _game(owned_library)
     _converted(owned_library)
-    #: A day nobody wrote down, which is what the person who
-    #: reported #1038 pressed on the run #684 left empty.
+    #: A day nobody wrote down, as pressed.
     record_run(
         owned_library.user,
         game,

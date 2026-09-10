@@ -1,11 +1,4 @@
-"""A start for the runs #684 left empty. #1038.
-
-#684 states one run per legacy PlayEvent row, and one empty
-default for a tracked game holding none. Most tracked games
-held none, so most runs state no day at all while a status
-change and a session both record when play began. This pass
-states that day, and states no completion.
-"""
+"""State a start for #1038's empty runs."""
 
 import uuid
 from collections import Counter
@@ -39,14 +32,13 @@ from games.preflight.playthrough import candidate_events
 from games.reads.playthrough_activity import activity_clock
 from timetracker.temporal import TemporalValue
 
-#: The two evidence days are read in different zones. A status
-#: day was frozen when #676 ran, by transition_effective_time,
-#: which reads the server's TIME_ZONE. A session day is read now
-#: in the viewer's DISPLAY_TIME_ZONE. The legacy timestamp the
-#: status day came from is in a table #771 takes, so the frozen
-#: day cannot be read again. The report prints both.
+#: The two evidence days use different zones.
+#: A status day froze in the server zone when #676
+#: ran; a session day is read now in the viewer's.
+#: The timestamp behind it is in a table #771 takes,
+#: so the frozen day cannot be read again.
 
-#: Named in every key and every metadata value.
+#: Named in every key and metadata value.
 START_ISSUE = 1038
 KEY_PREFIX = f"backfill:{START_ISSUE}:playthrough-start"
 
@@ -62,7 +54,7 @@ class StartSource(StrEnum):
 
 
 class Evidence(NamedTuple):
-    """A day, and the record that states it."""
+    """A day and the record stating it."""
 
     day: date
     source: StartSource
@@ -77,13 +69,7 @@ class RunInScope(NamedTuple):
 
 
 def default_run_ids(library: UserLibrary) -> set[uuid.UUID]:
-    """Every run #684 minted holding no legacy row.
-
-    The creation event names its origin and the projection row
-    names none, so the stream answers this. A creation #684
-    made from a row names that row; a default names none, which
-    is what the excluded key reads.
-    """
+    """Runs #684 minted from no legacy row."""
     return set(
         LibraryEvent.objects.filter(
             library=library,
@@ -99,13 +85,9 @@ def default_run_ids(library: UserLibrary) -> set[uuid.UUID]:
 def runs_in_scope(library: UserLibrary) -> list[RunInScope]:
     """The empty defaults this pass may date.
 
-    Six conditions, and the sixth carries the weight: a person
-    may create a blank run and #679 states one at track time.
-    Neither is this pass's debt.
-
-    values_list rather than rows, so the columns this reads are
-    named: a migration replaying it against a later schema
-    cannot select a column that is not there yet.
+    Condition six carries the weight: a person may
+    create a blank run, and #679 states one at
+    track time. Neither is this pass's debt.
     """
     identifiers = default_run_ids(library)
     if not identifiers:
@@ -131,16 +113,7 @@ def runs_in_scope(library: UserLibrary) -> list[RunInScope]:
 
 
 def status_days(library: UserLibrary) -> dict[uuid.UUID, date]:
-    """The earliest #676 status day, per tracked game.
-
-    candidate_events() reads the whole library in one scan,
-    because LibraryEvent indexes neither the type nor the
-    payload. A query per run would pay that scan 858 times.
-
-    The four statuses are the whole list: legacy Game.Status
-    held u, p, f, r and a, so a #676 event carries no other
-    word and shelved cannot appear.
-    """
+    """The earliest #676 status day, per game."""
     earliest: dict[uuid.UUID, date] = {}
     candidates, _undated = candidate_events(library)
     for candidate in candidates:
@@ -152,20 +125,12 @@ def status_days(library: UserLibrary) -> dict[uuid.UUID, date]:
 
 
 def session_days(library: UserLibrary) -> dict[uuid.UUID, date]:
-    """The earliest live session day, per game.
-
-    Read in the viewer's own zone, through the very clock
-    games/reads/playthrough_activity.py reads a day with, so
-    the day this states and the day the Activity column
-    counts from cannot come from two calendars. A game the
-    library does not own answers nothing, so a run at a
-    shared catalog game reads no session.
-    """
+    """The earliest live session day, per game."""
     zone = activity_clock(library).zone
     rows = (
         Session.objects.alive()
         .filter(game__library=library, game__removed_at__isnull=True)
-        #: Cleared, so the grouping keys on the game alone.
+        #: Cleared, so grouping keys on game.
         .order_by()
         .annotate(played_day=TruncDate("timestamp_start", tzinfo=zone))
         .values("game_id")
@@ -181,17 +146,11 @@ def evidence_for(
     status: Mapping[uuid.UUID, date],
     session: Mapping[uuid.UUID, date],
 ) -> Evidence | None:
-    """The day this run's start takes, and what dated it.
-
-    The earlier wins: a status set years after the play must
-    not outrank a session that proves the play, and a game
-    marked Played with no session still states a day. On an
-    equal day the session is named, because it records play.
-    """
+    """The earlier day, and its record."""
     status_day = status.get(run.player_game_id)
     session_day = session.get(run.game_id)
     if status_day is None:
-        #: Nested, so the day mypy reads here is a date.
+        #: Nested, so mypy narrows the day.
         if session_day is None:
             return None
         return Evidence(session_day, StartSource.SESSION)
@@ -208,12 +167,12 @@ class StartRepairCounts:
 
     libraries: int = 0
     runs_in_scope: int = 0
-    #: A run in scope holding neither record.
+    #: In scope, holding neither record.
     no_evidence: int = 0
     status_only: int = 0
     session_only: int = 0
     both: int = 0
-    #: Of the runs holding both, the days that match.
+    #: Of runs holding both, days matching.
     both_agree: int = 0
     from_status: int = 0
     from_session: int = 0
@@ -237,23 +196,17 @@ NO_START_COUNTS = StartRepairCounts()
 
 @dataclass(frozen=True, slots=True)
 class RepairResult:
-    """What the pass stated, for the gate to read."""
+    """What the pass stated, for the gate."""
 
     counts: StartRepairCounts
-    #: The day and source each repaired run took.
+    #: Day and source per repaired run.
     stated: Mapping[uuid.UUID, Evidence]
-    #: Runs in scope this pass left stating no act.
+    #: Runs in scope left stating nothing.
     left_alone: tuple[uuid.UUID, ...]
 
 
 def repair_library(library: UserLibrary) -> RepairResult:
-    """State a start for every empty default holding evidence.
-
-    recorded_at is now. Nothing recorded this before, and a past
-    instant would say something did. #684 could use a row's
-    created_at because the row was the record; here the record
-    is being made now.
-    """
+    """State a start where evidence dates one."""
     actor = library.user
     recorded_at = timezone.now()
     status = status_days(library)
@@ -270,9 +223,7 @@ def repair_library(library: UserLibrary) -> RepairResult:
             left_alone.append(run.run_id)
             continue
         stated[run.run_id] = evidence
-        #: Its own block, as convert_row's is: lock_stream
-        #: refuses the head lock outside a transaction, and
-        #: inside a caller's it is only a savepoint.
+        #: Own block: lock_stream needs a transaction.
         with transaction.atomic():
             appended = append_one(
                 library,
@@ -285,7 +236,7 @@ def repair_library(library: UserLibrary) -> RepairResult:
                 idempotency_key=f"{KEY_PREFIX}:{run.run_id}",
                 command_input={
                     "fact": "started",
-                    #: Stable, and not minted by this pass.
+                    #: Stable, not minted here.
                     "playthrough_id": str(run.run_id),
                     #: Named, so a changed day is loud.
                     "day": evidence.day,
@@ -295,8 +246,7 @@ def repair_library(library: UserLibrary) -> RepairResult:
                 source_metadata={
                     "origin": "backfill",
                     "issue": START_ISSUE,
-                    #: The third key tells an inferred day from
-                    #: a recorded one, and reconcile() reads it.
+                    #: reconcile() reads which record dated it.
                     "source": evidence.source.value,
                 },
             )
@@ -333,12 +283,7 @@ def _witness_counts(
 
 
 def repaired_run_ids(library: UserLibrary) -> set[uuid.UUID]:
-    """Every run whose only act this pass stated.
-
-    #684's reconcile() compares a run stating an act with the
-    legacy row it came from. A run repaired here came from no
-    row, so it is read as stating none.
-    """
+    """Runs whose only act this pass stated."""
     return set(
         LibraryEvent.objects.filter(
             library=library,
@@ -363,7 +308,7 @@ class StartMismatchCode(StrEnum):
 class StartSnapshot(NamedTuple):
     """What the library stated before the pass."""
 
-    #: Run id to the day its start states, or None.
+    #: Run id to its start day.
     started: Mapping[uuid.UUID, date | None]
     completions: int
     actless: int
@@ -393,12 +338,7 @@ def snapshot(library: UserLibrary) -> StartSnapshot:
 def gate(
     library: UserLibrary, before: StartSnapshot, result: RepairResult
 ) -> list[Mismatch]:
-    """Every reason this pass must roll back.
-
-    Checks 1, 2, 3, 4 and 6 of the specification. Check 5 is
-    the second pass, and check 7 is #684's reconcile and its
-    ordering audit; the migration runs all three.
-    """
+    """Every reason this pass must roll back."""
     mismatches: list[Mismatch] = []
     after = snapshot(library)
     days = dict(
@@ -447,9 +387,10 @@ def gate(
             )
         )
     for run_id, day in sorted(before.started.items(), key=lambda pair: str(pair[0])):
-        #: Membership, not .get(): a run whose start is gone
-        #: and a run whose start states no day both answer
-        #: None, and only the first is this code's subject.
+        #: Membership, not .get(): both answer None.
+        #: A start that is gone and a start stating
+        #: no day read alike, and only the first
+        #: belongs to this code.
         if run_id not in after.started:
             mismatches.append(
                 Mismatch(
@@ -510,10 +451,10 @@ class LibraryStartReport:
 
     library_id: uuid.UUID
     username: str
-    #: The zone the session days were read in.
+    #: Zone the session days used.
     zone: str
     counts: StartRepairCounts
-    #: The gap in days, counted, for the runs holding both.
+    #: Day gaps counted, for runs holding both.
     gaps: Mapping[int, int]
     samples: tuple[StartSample, ...]
 
@@ -539,11 +480,7 @@ class LibraryStartReport:
 def report_library(
     library: UserLibrary, *, sample_size: int = DEFAULT_SAMPLE_SIZE
 ) -> LibraryStartReport:
-    """What the pass would state, stating nothing.
-
-    Sorted by identity and never sampled at random, so two
-    runs over unchanged data print the same bytes.
-    """
+    """What the pass would state, stating nothing."""
     zone = str(activity_clock(library).zone)
     status = status_days(library)
     session = session_days(library)

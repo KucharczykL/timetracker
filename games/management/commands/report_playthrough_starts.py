@@ -1,8 +1,4 @@
-"""Print what #1038 would state, for a log and a person.
-
-A report states nothing and gates nothing, so what it finds never
-fails the run. Only a scope this command cannot resolve is an error.
-"""
+"""Print what #1038 would state, stating nothing."""
 
 import json
 import uuid
@@ -66,7 +62,7 @@ class Command(BaseCommand):
         )
         self.stdout.write(f"{GENERATED_PREFIX}{generated_at}")
         if not reports:
-            #: An empty scope reads as an all-zero report.
+            #: An empty scope reads as zero.
             self.stdout.write(
                 "No library was read, so every count below counts nothing."
             )
@@ -108,7 +104,7 @@ class Command(BaseCommand):
         return [self._library_by_id(libraries, options["library_id"])]
 
     def _library_of_user(self, libraries, username: str) -> UserLibrary:
-        """A missing user is not a user missing a library."""
+        """A missing user differs from a missing library."""
         user_model = get_user_model()
         try:
             user = user_model.objects.get(username=username)
@@ -120,7 +116,7 @@ class Command(BaseCommand):
             raise CommandError(f"User {username!r} owns no library.") from error
 
     def _library_by_id(self, libraries, library_id: str) -> UserLibrary:
-        """The text is read here, so the query catches one error."""
+        """Read here, so the query catches one."""
         try:
             parsed = uuid.UUID(library_id)
         except ValueError as error:

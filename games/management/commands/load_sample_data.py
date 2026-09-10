@@ -179,10 +179,8 @@ class Command(BaseCommand):
                         for mismatch in mismatches[:3]
                     )
                 )
-            #: And the days the library's own records prove:
-            #: #1038 dates the empty defaults #684 minted.
-            #: Gated here as 0048 gates it, so a fixture never
-            #: lands holding runs the migration would refuse.
+            #: #1038 dates the empty defaults, gated as 0048
+            #: gates it, so no fixture lands runs it refuses.
             before = start_snapshot(user.library)
             repaired = repair_library(user.library)
             refusals = start_gate(user.library, before, repaired)

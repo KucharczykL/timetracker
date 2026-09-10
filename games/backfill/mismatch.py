@@ -8,12 +8,11 @@ from enum import StrEnum
 class Mismatch:
     """One reason the run must not commit.
 
-    The code is each pass's own enumeration, so a pass adds a
-    reason without touching another pass's list.
+    Each pass enumerates its own codes.
     """
 
     code: StrEnum
-    #: A game, a library, or a table: whatever the code names.
+    #: Whatever the code names.
     subject: str
     detail: str
 

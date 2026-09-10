@@ -24,22 +24,16 @@ def append_one(
     correlation_id: uuid.UUID,
     source_metadata: SourceMetadata,
 ) -> bool:
-    """Append one event. True only when it appended.
+    """Append one event; true when it appended.
 
-    One event per call, never one call per row, for two reasons:
-    LockedStream.append() stamps one recorded_at across every row
-    of a call, and a removed legacy row carries two instants; and
-    one key per fact lets the note and each endpoint replay on
-    their own.
+    One event per call. A call stamps one recorded_at
+    across its rows, and one key per fact lets each
+    fact replay alone.
 
-    No command_input names an identity a pass mints. Such an
-    identity is fresh per pass, so a fingerprint holding one
-    answers a second pass with IdempotencyKeyMismatch, in place of
-    the drift the gate reads. A PlayerGame id is stable and may be
-    named.
-
-    dispatch() is not used: its refusals guard what a person
-    states next, and this states what the library recorded.
+    No command_input names an identity a pass mints. It
+    is fresh per pass, so a second pass reads
+    IdempotencyKeyMismatch in place of the drift the
+    gate reads.
     """
 
     def build(stream: LockedStream) -> Sequence[NewEvent]:
@@ -57,5 +51,5 @@ def append_one(
         source_metadata=source_metadata,
         recorded_at=recorded_at,
     )
-    #: Positive: an UnchangedAppend appended nothing either.
+    #: An UnchangedAppend appended nothing.
     return isinstance(outcome, AppendResult)
