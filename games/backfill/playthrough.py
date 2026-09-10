@@ -14,20 +14,16 @@ from datetime import date, datetime
 from enum import StrEnum
 from itertools import batched
 from operator import attrgetter
-from typing import Any, NamedTuple
+from typing import NamedTuple
 
 from django.contrib.auth.models import User
 from django.db import transaction
 from django.db.models import QuerySet
 
 from common.keyset import keyset_pages
-from games.events.append import (
-    AppendResult,
-    LockedStream,
-    SourceMetadata,
-    identity_at,
-)
-from games.events.idempotency import idempotent_append
+from games.backfill.appending import append_one as _append
+from games.backfill.mismatch import Mismatch
+from games.events.append import SourceMetadata, identity_at
 from games.events.playthrough import (
     playthrough_completed,
     playthrough_created,
@@ -35,7 +31,6 @@ from games.events.playthrough import (
     playthrough_removed,
     playthrough_started,
 )
-from games.events.vocabulary import NewEvent
 from games.identity_audit import check_ordering, identity_models
 from games.models import (
     Game,
@@ -142,54 +137,6 @@ _VERDICT_FIELD: Mapping[RowVerdict, str] = {
     RowVerdict.NO_KNOWN_ENDPOINT: "no_known_endpoint",
     RowVerdict.REVERSED_ENDPOINTS: "reversed_endpoints",
 }
-
-
-def _append(
-    library: UserLibrary,
-    event: NewEvent,
-    *,
-    actor: User,
-    idempotency_key: str,
-    command_input: dict[str, Any],
-    recorded_at: datetime,
-    correlation_id: uuid.UUID,
-    source_metadata: SourceMetadata,
-) -> bool:
-    """Append one event. True only when it appended.
-
-    One event per call, never one call per row, for two reasons:
-    LockedStream.append() stamps one recorded_at across every row
-    of a call, and a removed legacy row carries two instants; and
-    one key per fact lets the note and each endpoint replay on
-    their own.
-
-    No command_input names an identity this pass mints. Such an
-    identity is fresh per pass, so a fingerprint holding one
-    answers a second pass with IdempotencyKeyMismatch, in place of
-    the drift the gate reads. A PlayerGame id is stable and may be
-    named.
-
-    dispatch() is not used: its refusals guard what a person
-    states next, and this states what the library recorded.
-    """
-
-    def build(stream: LockedStream) -> Sequence[NewEvent]:
-        #: The contract passes it; nothing reads it.
-        del stream
-        return [event]
-
-    outcome = idempotent_append(
-        library,
-        idempotency_key=idempotency_key,
-        command_input=command_input,
-        build=build,
-        actor=actor,
-        correlation_id=correlation_id,
-        source_metadata=source_metadata,
-        recorded_at=recorded_at,
-    )
-    #: Positive: an UnchangedAppend appended nothing either.
-    return isinstance(outcome, AppendResult)
 
 
 def convert_row(
@@ -490,23 +437,6 @@ class MismatchCode(StrEnum):
     COUNT_DRIFT = "count_drift"
     IDENTITY_ORDERING = "identity_ordering"
     IDENTITY_AUDIT_BLIND = "identity_audit_blind"
-
-
-@dataclass(frozen=True, slots=True)
-class Mismatch:
-    """One reason the run must not commit."""
-
-    code: MismatchCode
-    #: A game, a library, or a table: whatever the code names.
-    subject: str
-    detail: str
-
-    def as_dict(self) -> dict[str, str]:
-        return {
-            "code": self.code.value,
-            "detail": self.detail,
-            "subject": self.subject,
-        }
 
 
 class RunShape(NamedTuple):
