@@ -5,13 +5,16 @@ from enum import StrEnum
 
 
 @dataclass(frozen=True, slots=True)
-class Mismatch:
+class Mismatch[CodeT: StrEnum]:
     """One reason the run must not commit.
 
-    Each pass enumerates its own codes.
+    Each pass names its own code type. Two
+    enumerations may spell one value alike, and
+    members of both compare and hash equal, so a
+    set mixing them counts one where it holds two.
     """
 
-    code: StrEnum
+    code: CodeT
     #: Whatever the code names.
     subject: str
     detail: str

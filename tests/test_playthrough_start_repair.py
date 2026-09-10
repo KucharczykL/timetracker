@@ -9,6 +9,7 @@ from datetime import UTC, date, datetime
 import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.db import transaction
 
 from games.backfill.mismatch import Mismatch
 from games.backfill.playergame import backfill_library
@@ -16,9 +17,10 @@ from games.backfill.playthrough import MismatchCode, convert_library, reconcile
 from games.backfill.playthrough_start import (
     Evidence,
     RepairResult,
+    RunInScope,
     StartMismatchCode,
-    StartRepairCounts,
     StartSource,
+    StatusDay,
     evidence_for,
     gate,
     repair_library,
@@ -36,8 +38,10 @@ from games.models import (
     GameStatusChange,
     LibraryEvent,
     PlayerGame,
+    PlayerGameStatus,
     PlayEvent,
     Playthrough,
+    PlaythroughKind,
     Session,
     UserLibrary,
 )
@@ -129,6 +133,26 @@ def test_a_run_at_a_removed_game_is_left_alone(owned_library):
     assert runs_in_scope(owned_library) == []
 
 
+def test_a_run_under_a_removed_player_game_is_left_alone(owned_library):
+    _game(owned_library)
+    _converted(owned_library)
+    PlayerGame.objects.filter(library=owned_library).update(
+        removed_at=datetime(2026, 1, 1, tzinfo=UTC)
+    )
+
+    assert runs_in_scope(owned_library) == []
+
+
+def test_an_imported_history_run_is_left_alone(owned_library):
+    _game(owned_library)
+    _converted(owned_library)
+    Playthrough.objects.filter(library=owned_library).update(
+        kind=PlaythroughKind.IMPORTED_HISTORY
+    )
+
+    assert runs_in_scope(owned_library) == []
+
+
 def test_a_session_states_the_viewers_day_not_the_servers(
     owned_user, owned_library, set_user_setting
 ):
@@ -195,7 +219,9 @@ def test_a_status_change_states_its_day(owned_library):
     _converted(owned_library)
     tracked = PlayerGame.objects.get(library=owned_library, game=game)
 
-    assert status_days(owned_library)[tracked.pk] == date(2026, 1, 4)
+    assert status_days(owned_library)[tracked.pk] == StatusDay(
+        date(2026, 1, 4), PlayerGameStatus.PLAYED
+    )
 
 
 def test_the_earlier_of_the_two_wins_and_names_its_source(owned_library):
@@ -221,6 +247,49 @@ def test_the_earlier_of_the_two_wins_and_names_its_source(owned_library):
     )
 
     assert found == Evidence(date(2026, 1, 4), StartSource.SESSION)
+
+
+def test_the_status_wins_where_it_is_the_earlier(owned_library):
+    game = _game(owned_library)
+    GameStatusChange.objects.create(
+        game=game,
+        old_status="u",
+        new_status="a",
+        timestamp=datetime(2026, 1, 4, 9, 0, tzinfo=UTC),
+    )
+    _converted(owned_library)
+    Session.objects.create(
+        game=game,
+        timestamp_start=datetime(2026, 1, 9, 10, 0, tzinfo=UTC),
+        timestamp_end=datetime(2026, 1, 9, 11, 0, tzinfo=UTC),
+    )
+    run = runs_in_scope(owned_library)[0]
+
+    found = evidence_for(
+        run,
+        status=status_days(owned_library),
+        session=session_days(owned_library),
+    )
+
+    #: An ending status dates a start here.
+    assert found == Evidence(
+        date(2026, 1, 4), StartSource.STATUS, PlayerGameStatus.ABANDONED
+    )
+
+
+def test_the_session_wins_where_the_two_days_agree():
+    run = RunInScope(
+        run_id=uuid.uuid7(), player_game_id=uuid.uuid7(), game_id=uuid.uuid7()
+    )
+    day = date(2026, 1, 4)
+
+    found = evidence_for(
+        run,
+        status={run.player_game_id: StatusDay(day, PlayerGameStatus.PLAYED)},
+        session={run.game_id: day},
+    )
+
+    assert found == Evidence(day, StartSource.SESSION)
 
 
 def test_a_run_holding_neither_reads_nothing(owned_library):
@@ -279,6 +348,73 @@ def test_a_run_holding_no_evidence_still_states_no_act(owned_library):
     assert result.counts.events_appended == 0
     assert run.start_recorded_at is None
     assert run.completion_recorded_at is None
+
+
+def test_the_pass_dates_every_run_it_reads(owned_library):
+    for offset, name in enumerate(("Chrono Trigger", "Terranigma", "Illusion of Gaia")):
+        game = _game(owned_library, name=name)
+        Session.objects.create(
+            game=game,
+            timestamp_start=datetime(2026, 1, 4 + offset, 10, 0, tzinfo=UTC),
+            timestamp_end=datetime(2026, 1, 4 + offset, 11, 0, tzinfo=UTC),
+        )
+    _converted(owned_library)
+
+    result = repair_library(owned_library)
+
+    assert result.counts.runs_in_scope == 3
+    assert result.counts.events_appended == 3
+    assert sorted(
+        Playthrough.objects.filter(library=owned_library).values_list(
+            "started_lower", flat=True
+        )
+    ) == [date(2026, 1, 4), date(2026, 1, 5), date(2026, 1, 6)]
+
+
+def test_the_pass_counts_a_pair_the_two_clocks_may_have_moved(owned_library):
+    game = _game(owned_library)
+    GameStatusChange.objects.create(
+        game=game,
+        old_status="u",
+        new_status="p",
+        timestamp=datetime(2026, 1, 5, 9, 0, tzinfo=UTC),
+    )
+    _converted(owned_library)
+    Session.objects.create(
+        game=game,
+        timestamp_start=datetime(2026, 1, 4, 10, 0, tzinfo=UTC),
+        timestamp_end=datetime(2026, 1, 4, 11, 0, tzinfo=UTC),
+    )
+
+    counts = repair_library(owned_library).counts
+
+    assert counts.both == 1
+    assert counts.both_agree == 0
+    assert counts.both_off_by_one == 1
+
+
+def test_the_event_names_the_status_that_dated_it(owned_library):
+    game = _game(owned_library)
+    GameStatusChange.objects.create(
+        game=game,
+        old_status="u",
+        new_status="a",
+        timestamp=datetime(2026, 1, 4, 9, 0, tzinfo=UTC),
+    )
+    _converted(owned_library)
+
+    repair_library(owned_library)
+    event = LibraryEvent.objects.get(
+        library=owned_library,
+        event_type=PLAYTHROUGH_STARTED.event_type,
+    )
+
+    assert event.source_metadata == {
+        "origin": "backfill",
+        "issue": 1038,
+        "source": "status",
+        "status": "abandoned",
+    }
 
 
 def test_a_second_pass_appends_nothing(owned_library):
@@ -486,6 +622,58 @@ def test_the_gate_reads_a_run_left_alone_that_gained_an_act(owned_library):
     assert StartMismatchCode.UNEXPECTED_ACT in codes
 
 
+def test_the_gate_reads_an_actless_run_that_appeared(owned_library):
+    game = _game(owned_library)
+    _converted(owned_library)
+    Session.objects.create(
+        game=game,
+        timestamp_start=datetime(2026, 1, 4, 10, 0, tzinfo=UTC),
+        timestamp_end=datetime(2026, 1, 4, 11, 0, tzinfo=UTC),
+    )
+    before = snapshot(owned_library)
+    result = repair_library(owned_library)
+    #: One more run states no act than the gate expects.
+    record_run(
+        owned_library.user,
+        game,
+        RunDraft(started=None, completed=None, note=""),
+        correlation_id=uuid.uuid7(),
+    )
+
+    codes = [mismatch.code for mismatch in gate(owned_library, before, result)]
+
+    assert StartMismatchCode.ACTLESS_DRIFT in codes
+
+
+def test_the_gate_reads_a_scope_that_matched_nothing(owned_library):
+    _game(owned_library)
+    _converted(owned_library)
+    before = snapshot(owned_library)
+    result = repair_library(owned_library)
+    #: The metadata moves out from under the filter.
+    for event in LibraryEvent.objects.filter(
+        library=owned_library, source_metadata__issue=684
+    ):
+        LibraryEvent.objects.filter(pk=event.pk).update(
+            source_metadata=event.source_metadata | {"issue": 999}
+        )
+
+    codes = [mismatch.code for mismatch in gate(owned_library, before, result)]
+
+    assert StartMismatchCode.SCOPE_BLIND in codes
+
+
+def test_the_gate_says_nothing_of_a_library_no_pass_converted(owned_library):
+    """A library holding no backfilled run owes none."""
+    _game(owned_library)
+    backfill_library(owned_library)
+    before = snapshot(owned_library)
+
+    result = repair_library(owned_library)
+
+    assert gate(owned_library, before, result) == []
+
+
 def test_the_migration_states_the_starts_and_reports(owned_library, capsys):
     game = _game(owned_library)
     _converted(owned_library)
@@ -509,30 +697,17 @@ def test_the_migration_states_the_starts_and_reports(owned_library, capsys):
     assert payload["summary"]["mismatches"] == 0
 
 
-def test_the_migration_refuses_a_second_pass_that_appends(owned_library, monkeypatch):
-    game = _game(owned_library)
-    _converted(owned_library)
-    Session.objects.create(
-        game=game,
-        timestamp_start=datetime(2026, 1, 4, 10, 0, tzinfo=UTC),
-        timestamp_end=datetime(2026, 1, 4, 11, 0, tzinfo=UTC),
+def _lying(library):
+    """A pass stating a day the row does not hold."""
+    result = repair_library(library)
+    return RepairResult(
+        counts=result.counts,
+        stated={
+            run_id: Evidence(date(1999, 1, 1), evidence.source)
+            for run_id, evidence in result.stated.items()
+        },
+        left_alone=result.left_alone,
     )
-    passes = []
-
-    def drifting(library):
-        result = repair_library(library)
-        passes.append(1)
-        if len(passes) % 2 == 0:
-            return RepairResult(
-                counts=result.counts + StartRepairCounts(events_appended=1),
-                stated=result.stated,
-                left_alone=result.left_alone,
-            )
-        return result
-
-    monkeypatch.setattr("games.backfill.playthrough_start.repair_library", drifting)
-    with pytest.raises(RuntimeError, match="count_drift"):
-        repair_playthrough_starts(None, None)
 
 
 def test_the_migration_refuses_a_mismatched_day(owned_library, monkeypatch):
@@ -544,20 +719,33 @@ def test_the_migration_refuses_a_mismatched_day(owned_library, monkeypatch):
         timestamp_end=datetime(2026, 1, 4, 11, 0, tzinfo=UTC),
     )
 
-    def lying(library):
-        result = repair_library(library)
-        return RepairResult(
-            counts=result.counts,
-            stated={
-                run_id: Evidence(date(1999, 1, 1), evidence.source)
-                for run_id, evidence in result.stated.items()
-            },
-            left_alone=result.left_alone,
-        )
-
-    monkeypatch.setattr("games.backfill.playthrough_start.repair_library", lying)
+    monkeypatch.setattr("games.backfill.playthrough_start.repair_library", _lying)
     with pytest.raises(RuntimeError, match="start_day_disagreement"):
         repair_playthrough_starts(None, None)
+
+
+def test_a_mismatch_leaves_the_repair_rolled_back(owned_library, monkeypatch):
+    game = _game(owned_library)
+    _converted(owned_library)
+    Session.objects.create(
+        game=game,
+        timestamp_start=datetime(2026, 1, 4, 10, 0, tzinfo=UTC),
+        timestamp_end=datetime(2026, 1, 4, 11, 0, tzinfo=UTC),
+    )
+    monkeypatch.setattr("games.backfill.playthrough_start.repair_library", _lying)
+    before = (
+        LibraryEvent.objects.count(),
+        Playthrough.objects.filter(start_recorded_at__isnull=False).count(),
+    )
+
+    #: What the migration framework wraps this in.
+    with pytest.raises(RuntimeError), transaction.atomic():
+        repair_playthrough_starts(None, None)
+
+    assert (
+        LibraryEvent.objects.count(),
+        Playthrough.objects.filter(start_recorded_at__isnull=False).count(),
+    ) == before
 
 
 def test_the_sample_fixture_states_a_start_where_it_holds_one(owned_user):
@@ -618,6 +806,60 @@ def test_the_report_states_what_the_pass_would_do(owned_library):
     assert report.samples[0].game_name == "Chrono Trigger"
     assert report.samples[0].day == date(2026, 1, 4)
     assert report.samples[0].source == "session"
+    assert report.samples[0].status == ""
+    #: The run that keeps printing a dash is named.
+    assert [sample.game_name for sample in report.empty_samples] == ["Terranigma"]
+
+
+def test_the_report_names_the_status_behind_a_day(owned_library):
+    game = _game(owned_library)
+    GameStatusChange.objects.create(
+        game=game,
+        old_status="u",
+        new_status="a",
+        timestamp=datetime(2026, 1, 4, 9, 0, tzinfo=UTC),
+    )
+    _converted(owned_library)
+
+    report = report_library(owned_library, sample_size=20)
+
+    assert report.samples[0].source == "status"
+    assert report.samples[0].status == "abandoned"
+
+
+def test_the_report_reads_every_library(owned_library, capsys):
+    _game(owned_library)
+    _converted(owned_library)
+
+    call_command("report_playthrough_starts", "--all-libraries", verbosity=0)
+
+    printed = capsys.readouterr().out
+    assert str(owned_library.pk) in printed
+
+
+def test_the_report_reads_one_library_by_id(owned_library, capsys):
+    _game(owned_library)
+    _converted(owned_library)
+
+    call_command("report_playthrough_starts", "--library", str(owned_library.pk))
+
+    assert str(owned_library.pk) in capsys.readouterr().out
+
+
+def test_the_report_refuses_a_library_that_is_no_uuid():
+    with pytest.raises(CommandError, match="is no UUID"):
+        call_command("report_playthrough_starts", "--library", "nonsense")
+
+
+def test_the_report_refuses_a_negative_sample_size(owned_library):
+    with pytest.raises(CommandError, match="counts runs"):
+        call_command(
+            "report_playthrough_starts",
+            "--user",
+            owned_library.user.username,
+            "--sample-size",
+            "-1",
+        )
 
 
 def test_the_report_states_nothing(owned_library):

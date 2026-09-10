@@ -81,19 +81,25 @@ class Command(BaseCommand):
         write(f"    holding a session day only: {counts.session_only}")
         write(f"    holding both: {counts.both}")
         write(f"      whose two days agree: {counts.both_agree}")
+        write(f"      whose two days are one day apart: {counts.both_off_by_one}")
         write(f"    holding neither, left stating no act: {counts.no_evidence}")
         write(f"  dated by the status: {counts.from_status}")
         write(f"  dated by a session: {counts.from_session}")
         write(f"  session days read in {report.zone}; status days in the")
-        write("    server zone #676 froze them in")
+        write("    server zone #676 froze them in, so a gap of one day")
+        write("    may be the two clocks and nothing else")
         for gap, times in sorted(report.gaps.items()):
             if gap:
                 write(f"    days apart {gap}: {times}")
         for sample in report.samples:
             write(
                 f"      {sample.run_id} {sample.game_name} "
-                f"{sample.day.isoformat()} {sample.source}"
+                f"{sample.day.isoformat()} {sample.source} {sample.status}".rstrip()
             )
+        if report.empty_samples:
+            write("  runs that keep printing a dash:")
+        for empty in report.empty_samples:
+            write(f"      {empty.run_id} {empty.game_name}")
 
     def _resolve_libraries(self, options):
         libraries = UserLibrary.objects.select_related("user").order_by("pk")

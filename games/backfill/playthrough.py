@@ -509,14 +509,14 @@ def _reconcile_game(
     rows: Sequence[PlayEvent],
     tracked_id: uuid.UUID,
     repaired: AbstractSet[uuid.UUID],
-) -> list[Mismatch]:
+) -> list[Mismatch[MismatchCode]]:
     """The row-to-row checks, one game."""
 
     def states_an_act(run: Playthrough) -> bool:
         #: #1038 stated it, so no legacy row owes it.
         return run.pk not in repaired and _states_an_act(run)
 
-    mismatches: list[Mismatch] = []
+    mismatches: list[Mismatch[MismatchCode]] = []
     runs = list(
         Playthrough.objects.filter(
             player_game_id=tracked_id, kind=PlaythroughKind.ORDINARY
@@ -618,7 +618,7 @@ def _reconcile_game(
     return mismatches
 
 
-def reconcile(library: UserLibrary) -> list[Mismatch]:
+def reconcile(library: UserLibrary) -> list[Mismatch[MismatchCode]]:
     """Compare each row the walk reached with its run.
 
     Scoped to those rows, never PlayEvent.objects whole. A row on
@@ -629,7 +629,7 @@ def reconcile(library: UserLibrary) -> list[Mismatch]:
     No column links a run to its row, so the comparison is per
     game, over what both sides say.
     """
-    mismatches: list[Mismatch] = []
+    mismatches: list[Mismatch[MismatchCode]] = []
     #: One query, because #1038 states a start no row owes.
     repaired = repaired_run_ids(library)
     tracked = PlayerGame.objects.filter(library=library, removed_at__isnull=True).only(
@@ -653,7 +653,7 @@ def reconcile(library: UserLibrary) -> list[Mismatch]:
     return mismatches
 
 
-def ordering_violations() -> list[Mismatch]:
+def ordering_violations() -> list[Mismatch[MismatchCode]]:
     """Check 6: every key sorts by its created_at.
 
     No constraint enforces it, and this run is most able to break

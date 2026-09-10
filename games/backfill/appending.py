@@ -30,10 +30,11 @@ def append_one(
     across its rows, and one key per fact lets each
     fact replay alone.
 
-    No command_input names an identity a pass mints. It
-    is fresh per pass, so a second pass reads
-    IdempotencyKeyMismatch in place of the drift the
-    gate reads.
+    No command_input names an identity the call mints
+    here. Such a value is fresh every pass, so a second
+    pass would read IdempotencyKeyMismatch in place of
+    the no-op the key promises. A stable identity the
+    caller was handed is fine, and both passes name one.
     """
 
     def build(stream: LockedStream) -> Sequence[NewEvent]:
@@ -51,5 +52,8 @@ def append_one(
         source_metadata=source_metadata,
         recorded_at=recorded_at,
     )
-    #: An UnchangedAppend appended nothing.
+    #: False says the key already ran, which is a
+    #: ReplayedAppend. build always answers one event,
+    #: so UnchangedAppend cannot reach this line. Both
+    #: read alike here: no caller counts a replay apart.
     return isinstance(outcome, AppendResult)

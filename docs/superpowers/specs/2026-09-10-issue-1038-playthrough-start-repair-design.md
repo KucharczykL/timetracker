@@ -35,7 +35,14 @@ run ended, but stating one would invent finishes no screen ever showed.
 `games/backfill/playthrough_start.py` appends one `playthrough_started` per
 repaired run. It appends events and dispatches no command, because scope admits
 neither refusal a command would carry. The idempotency key names the run and
-issue 1038, and `source_metadata` names the source that won.
+issue 1038, and `source_metadata` names the source that won, plus the status
+behind a status day. Nothing reads that provenance today. It is what finds these
+rows again: a start an ending status dated, and a start the two zones may have
+moved by a day, are each selectable through it and no other way.
+
+The report and the migration summary both count the pairs whose two days lie one
+day apart. Two clocks alone can state that gap, so the number says how much of
+the evidence a zone artifact could explain.
 
 #684's `reconcile()` reads a repaired run as owing no legacy row. Without that
 amendment it reports three mismatches for each one.
@@ -44,11 +51,18 @@ amendment it reports three mismatches for each one.
 
 Migration `0048_playthrough_start_repair` runs the pass, checks it, then
 commits. Any mismatch the pass adds rolls the whole run back. The checks are:
-each repaired run states the day the reader computed; a run holding no evidence
-states no act; no run outside scope moved; no completion was stated; a second
-pass appends nothing; and #684's own gate reports nothing new. That gate is read
-before the pass as well as after, because a start a person states on a converted
-run reads to it as a run owing a legacy row it never had.
+the scope read something, where the library holds backfilled runs at all; each
+repaired run states the day the reader computed; a run holding no evidence
+states no act; no run outside scope moved; no completion was stated; the count
+of runs stating no act fell by exactly the number repaired; and #684's own gate
+reports nothing new. That gate is read before the pass as well as after, because
+a start a person states on a converted run reads to it as a run owing a legacy
+row it never had.
+
+The first check is the one that reads a pass that did nothing. Every other check
+compares what the pass stated against what the rows say, so a scope matching no
+run passes them all. A library holding creation events that name origin
+`backfill` and no issue 684 says the metadata moved out from under the filter.
 
 `make report-playthrough-starts` prints the same figures, read-only, against a
 restored copy. `make verify-dump` rehearses the migration.

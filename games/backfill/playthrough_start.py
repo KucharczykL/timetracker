@@ -2,10 +2,11 @@
 
 import uuid
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, fields
 from datetime import date
 from enum import StrEnum
+from itertools import batched
 from typing import NamedTuple
 
 from django.db import transaction
@@ -13,6 +14,7 @@ from django.db.models import Min
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 
+from common.keyset import keyset_pages
 from games.backfill.appending import append_one
 from games.backfill.mismatch import Mismatch
 from games.events.playthrough import (
@@ -23,6 +25,7 @@ from games.events.playthrough import (
 from games.models import (
     Game,
     LibraryEvent,
+    PlayerGameStatus,
     Playthrough,
     PlaythroughKind,
     Session,
@@ -36,7 +39,10 @@ from timetracker.temporal import TemporalValue
 #: A status day froze in the server zone when #676
 #: ran; a session day is read now in the viewer's.
 #: The timestamp behind it is in a table #771 takes,
-#: so the frozen day cannot be read again.
+#: so the frozen day cannot be read again. A pair one
+#: day apart may be that artifact and nothing more,
+#: which is why both_off_by_one counts the pair and
+#: the metadata names the record that won.
 
 #: Named in every key and metadata value.
 START_ISSUE = 1038
@@ -44,6 +50,9 @@ KEY_PREFIX = f"backfill:{START_ISSUE}:playthrough-start"
 
 #: The issue whose defaults this repairs.
 CONVERSION_ISSUE = 684
+
+#: Runs per query, as the sibling passes walk.
+WALK_PAGE_SIZE = 200
 
 
 class StartSource(StrEnum):
@@ -53,11 +62,23 @@ class StartSource(StrEnum):
     SESSION = "session"
 
 
+class StatusDay(NamedTuple):
+    """A #676 day and the status stating it."""
+
+    day: date
+    status: PlayerGameStatus
+
+
 class Evidence(NamedTuple):
-    """A day and the record stating it."""
+    """A day, its record, and the status behind it.
+
+    A session states no status, so that field is
+    null for every day a session dated.
+    """
 
     day: date
     source: StartSource
+    status: PlayerGameStatus | None = None
 
 
 class RunInScope(NamedTuple):
@@ -68,33 +89,42 @@ class RunInScope(NamedTuple):
     game_id: uuid.UUID
 
 
-def default_run_ids(library: UserLibrary) -> set[uuid.UUID]:
-    """Runs #684 minted from no legacy row."""
-    return set(
-        LibraryEvent.objects.filter(
-            library=library,
-            event_type=PLAYTHROUGH_CREATED.event_type,
-            source_metadata__origin="backfill",
-            source_metadata__issue=CONVERSION_ISSUE,
-        )
-        .exclude(source_metadata__has_key="play_event_id")
-        .values_list("aggregate_id", flat=True)
-    )
+#: Keyed on the PlayerGame a #676 event named.
+type StatusDaysByTracked = Mapping[uuid.UUID, StatusDay]
+
+#: Keyed on the catalog Game a session named.
+type SessionDaysByGame = Mapping[uuid.UUID, date]
+
+
+def default_run_ids(
+    library: UserLibrary, run_ids: Collection[uuid.UUID] | None = None
+) -> set[uuid.UUID]:
+    """Runs #684 minted from no legacy row.
+
+    A page of run ids narrows the read. Naming none
+    reads the whole library, which the blind-spot
+    guard wants and the walk does not.
+    """
+    rows = LibraryEvent.objects.filter(
+        library=library,
+        event_type=PLAYTHROUGH_CREATED.event_type,
+        source_metadata__origin="backfill",
+        source_metadata__issue=CONVERSION_ISSUE,
+    ).exclude(source_metadata__has_key="play_event_id")
+    if run_ids is not None:
+        rows = rows.filter(aggregate_id__in=run_ids)
+    return set(rows.values_list("aggregate_id", flat=True))
 
 
 def runs_in_scope(library: UserLibrary) -> list[RunInScope]:
     """The empty defaults this pass may date.
 
-    Condition six carries the weight: a person may
-    create a blank run, and #679 states one at
+    The last condition carries the weight: a person
+    may create a blank run, and #679 states one at
     track time. Neither is this pass's debt.
     """
-    identifiers = default_run_ids(library)
-    if not identifiers:
-        return []
     rows = (
         Playthrough.objects.filter(
-            pk__in=identifiers,
             library=library,
             kind=PlaythroughKind.ORDINARY,
             removed_at__isnull=True,
@@ -103,24 +133,42 @@ def runs_in_scope(library: UserLibrary) -> list[RunInScope]:
             player_game__removed_at__isnull=True,
             player_game__game__removed_at__isnull=True,
         )
-        .order_by("pk")
-        .values_list("pk", "player_game_id", "player_game__game_id")
+        .select_related("player_game")
+        .only("id", "player_game_id", "player_game__game_id")
     )
-    return [
-        RunInScope(run_id=run_id, player_game_id=player_game_id, game_id=game_id)
-        for run_id, player_game_id, game_id in rows
-    ]
+    in_scope: list[RunInScope] = []
+    #: Paged, so one page of ids reaches the stream.
+    for page in batched(
+        keyset_pages(rows, key=("id",), page_size=WALK_PAGE_SIZE), WALK_PAGE_SIZE
+    ):
+        defaults = default_run_ids(library, [row.pk for row in page])
+        in_scope.extend(
+            RunInScope(
+                run_id=row.pk,
+                player_game_id=row.player_game_id,
+                game_id=row.player_game.game_id,
+            )
+            for row in page
+            if row.pk in defaults
+        )
+    return in_scope
 
 
-def status_days(library: UserLibrary) -> dict[uuid.UUID, date]:
-    """The earliest #676 status day, per game."""
-    earliest: dict[uuid.UUID, date] = {}
+def status_days(library: UserLibrary) -> dict[uuid.UUID, StatusDay]:
+    """The earliest #676 status day, per PlayerGame.
+
+    Every admitted status dates a start here, and
+    three of the four end a run rather than open
+    one. The status travels into the metadata, so a
+    later pass can find the runs it dated.
+    """
+    earliest: dict[uuid.UUID, StatusDay] = {}
     candidates, _undated = candidate_events(library)
     for candidate in candidates:
         tracked_id = candidate.key.aggregate_id
-        day = candidate.key.day
-        if tracked_id not in earliest or day < earliest[tracked_id]:
-            earliest[tracked_id] = day
+        held = earliest.get(tracked_id)
+        if held is None or candidate.key.day < held.day:
+            earliest[tracked_id] = StatusDay(candidate.key.day, candidate.status)
     return earliest
 
 
@@ -143,22 +191,22 @@ def session_days(library: UserLibrary) -> dict[uuid.UUID, date]:
 def evidence_for(
     run: RunInScope,
     *,
-    status: Mapping[uuid.UUID, date],
-    session: Mapping[uuid.UUID, date],
+    status: StatusDaysByTracked,
+    session: SessionDaysByGame,
 ) -> Evidence | None:
     """The earlier day, and its record."""
-    status_day = status.get(run.player_game_id)
+    held = status.get(run.player_game_id)
     session_day = session.get(run.game_id)
-    if status_day is None:
+    if held is None:
         #: Nested, so mypy narrows the day.
         if session_day is None:
             return None
         return Evidence(session_day, StartSource.SESSION)
     if session_day is None:
-        return Evidence(status_day, StartSource.STATUS)
-    if session_day <= status_day:
+        return Evidence(held.day, StartSource.STATUS, held.status)
+    if session_day <= held.day:
         return Evidence(session_day, StartSource.SESSION)
-    return Evidence(status_day, StartSource.STATUS)
+    return Evidence(held.day, StartSource.STATUS, held.status)
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,6 +222,9 @@ class StartRepairCounts:
     both: int = 0
     #: Of runs holding both, days matching.
     both_agree: int = 0
+    #: Of runs holding both, days one day apart.
+    #: The two clocks alone can state that gap.
+    both_off_by_one: int = 0
     from_status: int = 0
     from_session: int = 0
     events_appended: int = 0
@@ -203,6 +254,18 @@ class RepairResult:
     stated: Mapping[uuid.UUID, Evidence]
     #: Runs in scope left stating nothing.
     left_alone: tuple[uuid.UUID, ...]
+
+
+def _provenance(evidence: Evidence) -> dict[str, str | int]:
+    """What dated this start, for a later pass."""
+    metadata: dict[str, str | int] = {
+        "origin": "backfill",
+        "issue": START_ISSUE,
+        "source": evidence.source.value,
+    }
+    if evidence.status is not None:
+        metadata["status"] = evidence.status.value
+    return metadata
 
 
 def repair_library(library: UserLibrary) -> RepairResult:
@@ -243,31 +306,38 @@ def repair_library(library: UserLibrary) -> RepairResult:
                 },
                 recorded_at=recorded_at,
                 correlation_id=uuid.uuid7(),
-                source_metadata={
-                    "origin": "backfill",
-                    "issue": START_ISSUE,
-                    #: reconcile() reads which record dated it.
-                    "source": evidence.source.value,
-                },
+                #: Nothing reads these two today. A start an
+                #: ending status dated, and a start the two
+                #: clocks may have moved, are both found
+                #: again through them and no other way.
+                source_metadata=_provenance(evidence),
             )
         if appended:
             counts = counts + StartRepairCounts(events_appended=1)
 
-    return RepairResult(counts=counts, stated=stated, left_alone=tuple(left_alone))
+    #: Copied, so the result stops moving.
+    return RepairResult(
+        counts=counts, stated=dict(stated), left_alone=tuple(left_alone)
+    )
 
 
 def _witness_counts(
     run: RunInScope,
     evidence: Evidence | None,
     *,
-    status: Mapping[uuid.UUID, date],
-    session: Mapping[uuid.UUID, date],
+    status: StatusDaysByTracked,
+    session: SessionDaysByGame,
 ) -> StartRepairCounts:
     """Which records this run held, counted."""
-    status_day = status.get(run.player_game_id)
+    held_status = status.get(run.player_game_id)
+    status_day = None if held_status is None else held_status.day
     session_day = session.get(run.game_id)
     if status_day is not None and session_day is not None:
-        held = StartRepairCounts(both=1, both_agree=int(status_day == session_day))
+        held = StartRepairCounts(
+            both=1,
+            both_agree=int(status_day == session_day),
+            both_off_by_one=int(abs((session_day - status_day).days) == 1),
+        )
     elif status_day is not None:
         held = StartRepairCounts(status_only=1)
     elif session_day is not None:
@@ -302,7 +372,37 @@ class StartMismatchCode(StrEnum):
     START_MOVED = "start_moved"
     COMPLETION_DRIFT = "completion_drift"
     ACTLESS_DRIFT = "actless_drift"
-    COUNT_DRIFT = "count_drift"
+    SCOPE_BLIND = "scope_blind"
+
+
+def scope_blindness(library: UserLibrary) -> list[Mismatch[StartMismatchCode]]:
+    """Whether the scope read anything at all.
+
+    Every other check compares what the pass stated
+    with what the rows say, so a scope that matched
+    nothing passes them all. #684 wrote one creation
+    event per run it minted, and each names its own
+    issue. Backfilled creation events that name no
+    issue 684 mean the metadata moved under the
+    filter, not that this library owes nothing.
+    """
+    backfilled = LibraryEvent.objects.filter(
+        library=library,
+        event_type=PLAYTHROUGH_CREATED.event_type,
+        source_metadata__origin="backfill",
+    )
+    if not backfilled.exists():
+        return []
+    if backfilled.filter(source_metadata__issue=CONVERSION_ISSUE).exists():
+        return []
+    return [
+        Mismatch(
+            code=StartMismatchCode.SCOPE_BLIND,
+            subject=str(library.pk),
+            detail="the library holds backfilled runs, and none names "
+            f"issue {CONVERSION_ISSUE}, so the scope read nothing",
+        )
+    ]
 
 
 class StartSnapshot(NamedTuple):
@@ -337,16 +437,16 @@ def snapshot(library: UserLibrary) -> StartSnapshot:
 
 def gate(
     library: UserLibrary, before: StartSnapshot, result: RepairResult
-) -> list[Mismatch]:
+) -> list[Mismatch[StartMismatchCode]]:
     """Every reason this pass must roll back."""
-    mismatches: list[Mismatch] = []
+    mismatches: list[Mismatch[StartMismatchCode]] = scope_blindness(library)
     after = snapshot(library)
     days = dict(
         Playthrough.objects.filter(pk__in=result.stated).values_list(
             "pk", "started_lower"
         )
     )
-    #: Check 1.
+    #: Check 2.
     for run_id, evidence in sorted(
         result.stated.items(), key=lambda pair: str(pair[0])
     ):
@@ -359,7 +459,7 @@ def gate(
                     f"the row says {days.get(run_id)}",
                 )
             )
-    #: Check 2.
+    #: Check 3.
     still_empty = set(
         Playthrough.objects.filter(
             pk__in=result.left_alone,
@@ -376,7 +476,7 @@ def gate(
                     detail="a run holding no evidence states an act",
                 )
             )
-    #: Check 3.
+    #: Check 4.
     expected = set(before.started) | set(result.stated)
     for run_id in sorted(set(after.started) - expected, key=str):
         mismatches.append(
@@ -409,7 +509,7 @@ def gate(
                     f"and now says {after.started[run_id]}",
                 )
             )
-    #: Check 4.
+    #: Check 5.
     if after.completions != before.completions:
         mismatches.append(
             Mismatch(
@@ -443,6 +543,15 @@ class StartSample(NamedTuple):
     game_name: str
     day: date
     source: str
+    #: The status behind a status day, else empty.
+    status: str = ""
+
+
+class EmptySample(NamedTuple):
+    """One run the pass leaves stating nothing."""
+
+    run_id: uuid.UUID
+    game_name: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -457,6 +566,8 @@ class LibraryStartReport:
     #: Day gaps counted, for runs holding both.
     gaps: Mapping[int, int]
     samples: tuple[StartSample, ...]
+    #: Runs that keep printing a dash.
+    empty_samples: tuple[EmptySample, ...] = ()
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -471,8 +582,13 @@ class LibraryStartReport:
                     "game_name": sample.game_name,
                     "day": sample.day.isoformat(),
                     "source": sample.source,
+                    "status": sample.status,
                 }
                 for sample in self.samples
+            ],
+            "empty_samples": [
+                {"run_id": str(sample.run_id), "game_name": sample.game_name}
+                for sample in self.empty_samples
             ],
         }
 
@@ -493,21 +609,28 @@ def report_library(
     counts = StartRepairCounts(libraries=1)
     gaps: Counter[int] = Counter()
     samples: list[StartSample] = []
+    empty_samples: list[EmptySample] = []
     for run in runs:
         counts = counts + StartRepairCounts(runs_in_scope=1)
         evidence = evidence_for(run, status=status, session=session)
         counts = counts + _witness_counts(run, evidence, status=status, session=session)
-        status_day = status.get(run.player_game_id)
+        held = status.get(run.player_game_id)
         session_day = session.get(run.game_id)
-        if status_day is not None and session_day is not None:
-            gaps[abs((session_day - status_day).days)] += 1
-        if evidence is not None and len(samples) < sample_size:
+        if held is not None and session_day is not None:
+            gaps[abs((session_day - held.day).days)] += 1
+        if evidence is None:
+            if len(empty_samples) < sample_size:
+                empty_samples.append(
+                    EmptySample(run_id=run.run_id, game_name=names.get(run.game_id, ""))
+                )
+        elif len(samples) < sample_size:
             samples.append(
                 StartSample(
                     run_id=run.run_id,
                     game_name=names.get(run.game_id, ""),
                     day=evidence.day,
                     source=evidence.source.value,
+                    status="" if evidence.status is None else evidence.status.value,
                 )
             )
     return LibraryStartReport(
@@ -517,4 +640,5 @@ def report_library(
         counts=counts,
         gaps=dict(gaps),
         samples=tuple(samples),
+        empty_samples=tuple(empty_samples),
     )
