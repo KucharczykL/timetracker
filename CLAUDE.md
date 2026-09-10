@@ -169,6 +169,10 @@ docs/           — Additional documentation
   two records — earliest #676 status day and earliest live session day — and
   never a completion, so `games/backfill/playthrough_start.py` is the second
   pass and #684's `reconcile()` reads a run it repaired as owing no legacy row.
+  Nothing reads that pass's `source_metadata`, which names the record and, for a
+  status day, the status: three of the four admitted statuses end a run rather
+  than open one, and a status day froze in the server zone while a session day
+  reads in the viewer's, so those two populations are findable no other way.
   Both endpoints
   `TemporalValueField` with generated lower- and upper-bound columns beside each,
   plus marker naming the act (`start_recorded_at`, `completion_recorded_at`) and

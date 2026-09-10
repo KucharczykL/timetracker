@@ -50,19 +50,26 @@ amendment it reports three mismatches for each one.
 ## The gate
 
 Migration `0048_playthrough_start_repair` runs the pass, checks it, then
-commits. Any mismatch the pass adds rolls the whole run back. The checks are:
-the scope read something, where the library holds backfilled runs at all; each
-repaired run states the day the reader computed; a run holding no evidence
-states no act; no run outside scope moved; no completion was stated; the count
-of runs stating no act fell by exactly the number repaired; and #684's own gate
-reports nothing new. That gate is read before the pass as well as after, because
-a start a person states on a converted run reads to it as a run owing a legacy
-row it never had.
+commits. Any mismatch the pass adds rolls the whole run back. There are seven
+checks:
 
-The first check is the one that reads a pass that did nothing. Every other check
-compares what the pass stated against what the rows say, so a scope matching no
-run passes them all. A library holding creation events that name origin
-`backfill` and no issue 684 says the metadata moved out from under the filter.
+1. The scope read something, in a library that holds backfilled runs.
+2. Each repaired run states the day the reader computed.
+3. A run that holds no evidence states no act.
+4. No run outside the scope moved.
+5. No completion was stated.
+6. The count of runs stating no act fell by the number repaired.
+7. #684's own gate reports nothing new.
+
+Check 7 reads that gate before the pass as well as after, because a start a
+person states on a converted run reads to it as a run owing a legacy row it
+never had.
+
+Check 1 is the only one that reads a pass that did nothing. Every other check
+compares what the pass stated against what the rows say, so a scope that matched
+no run passes them all. A library that holds creation events naming origin
+`backfill`, and none naming issue 684, says the metadata moved out from under
+the filter.
 
 `make report-playthrough-starts` prints the same figures, read-only, against a
 restored copy. `make verify-dump` rehearses the migration.
