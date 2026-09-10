@@ -8,6 +8,7 @@ states that day, and states no completion.
 """
 
 import uuid
+from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass, fields
 from datetime import date
@@ -27,6 +28,7 @@ from games.events.playthrough import (
     playthrough_started,
 )
 from games.models import (
+    Game,
     LibraryEvent,
     Playthrough,
     PlaythroughKind,
@@ -487,3 +489,95 @@ def gate(
             )
         )
     return mismatches
+
+
+#: Runs printed beside each count.
+DEFAULT_SAMPLE_SIZE = 20
+
+
+class StartSample(NamedTuple):
+    """One run the report names."""
+
+    run_id: uuid.UUID
+    game_name: str
+    day: date
+    source: str
+
+
+@dataclass(frozen=True, slots=True)
+class LibraryStartReport:
+    """One library's whole report."""
+
+    library_id: uuid.UUID
+    username: str
+    #: The zone the session days were read in.
+    zone: str
+    counts: StartRepairCounts
+    #: The gap in days, counted, for the runs holding both.
+    gaps: Mapping[int, int]
+    samples: tuple[StartSample, ...]
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "library_id": str(self.library_id),
+            "username": self.username,
+            "zone": self.zone,
+            "counts": self.counts.as_dict(),
+            "gaps": {str(gap): times for gap, times in sorted(self.gaps.items())},
+            "samples": [
+                {
+                    "run_id": str(sample.run_id),
+                    "game_name": sample.game_name,
+                    "day": sample.day.isoformat(),
+                    "source": sample.source,
+                }
+                for sample in self.samples
+            ],
+        }
+
+
+def report_library(
+    library: UserLibrary, *, sample_size: int = DEFAULT_SAMPLE_SIZE
+) -> LibraryStartReport:
+    """What the pass would state, stating nothing.
+
+    Sorted by identity and never sampled at random, so two
+    runs over unchanged data print the same bytes.
+    """
+    zone = str(activity_clock(library).zone)
+    status = status_days(library)
+    session = session_days(library)
+    runs = runs_in_scope(library)
+    names = dict(
+        Game.objects.filter(pk__in=[run.game_id for run in runs]).values_list(
+            "pk", "name"
+        )
+    )
+    counts = StartRepairCounts(libraries=1)
+    gaps: Counter[int] = Counter()
+    samples: list[StartSample] = []
+    for run in runs:
+        counts = counts + StartRepairCounts(runs_in_scope=1)
+        evidence = evidence_for(run, status=status, session=session)
+        counts = counts + _witness_counts(run, evidence, status=status, session=session)
+        status_day = status.get(run.player_game_id)
+        session_day = session.get(run.game_id)
+        if status_day is not None and session_day is not None:
+            gaps[abs((session_day - status_day).days)] += 1
+        if evidence is not None and len(samples) < sample_size:
+            samples.append(
+                StartSample(
+                    run_id=run.run_id,
+                    game_name=names.get(run.game_id, ""),
+                    day=evidence.day,
+                    source=evidence.source.value,
+                )
+            )
+    return LibraryStartReport(
+        library_id=library.pk,
+        username=library.user.username,
+        zone=zone,
+        counts=counts,
+        gaps=dict(gaps),
+        samples=tuple(samples),
+    )

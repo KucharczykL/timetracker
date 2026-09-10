@@ -1,12 +1,14 @@
 """What the empty runs come to state. Issue #1038."""
 
 import importlib
+import io
 import json
 import uuid
 from datetime import UTC, date, datetime
 
 import pytest
 from django.core.management import call_command
+from django.core.management.base import CommandError
 
 from games.backfill.playergame import backfill_library
 from games.backfill.playthrough import MismatchCode, convert_library, reconcile
@@ -19,6 +21,7 @@ from games.backfill.playthrough_start import (
     evidence_for,
     gate,
     repair_library,
+    report_library,
     runs_in_scope,
     session_days,
     snapshot,
@@ -43,6 +46,10 @@ from timetracker.temporal import TemporalValue
 _migration = importlib.import_module("games.migrations.0048_playthrough_start_repair")
 MACHINE_PREFIX = _migration.MACHINE_PREFIX
 repair_playthrough_starts = _migration.repair_playthrough_starts
+
+_report = importlib.import_module("games.management.commands.report_playthrough_starts")
+REPORT_MACHINE_PREFIX = _report.MACHINE_PREFIX
+GENERATED_PREFIX = _report.GENERATED_PREFIX
 
 #: backfill_library() and the conftest fixture write the
 #: same row, so the two collide on the unique key.
@@ -566,3 +573,84 @@ def test_the_sample_fixture_states_a_start_where_it_holds_one(owned_user):
         is None
         for run in runs_in_scope(library)
     )
+
+
+def _report_output(username):
+    """The report without the one line and key that move.
+
+    The shape tests/test_playthrough_preflight.py:638 reads,
+    because the two commands print the same two headers.
+    """
+    buffer = io.StringIO()
+    call_command(
+        "report_playthrough_starts", "--user", username, stdout=buffer, verbosity=0
+    )
+    text = buffer.getvalue()
+    line = next(
+        line for line in text.splitlines() if line.startswith(REPORT_MACHINE_PREFIX)
+    )
+    payload = json.loads(line[len(REPORT_MACHINE_PREFIX) :])
+    del payload["generated_at"]
+    lines = [
+        line
+        for line in text.splitlines()
+        if not line.startswith((REPORT_MACHINE_PREFIX, GENERATED_PREFIX))
+    ]
+    return json.dumps(payload, sort_keys=True), lines
+
+
+def test_the_report_states_what_the_pass_would_do(owned_library):
+    played = _game(owned_library, name="Chrono Trigger")
+    _game(owned_library, name="Terranigma")
+    _converted(owned_library)
+    Session.objects.create(
+        game=played,
+        timestamp_start=datetime(2026, 1, 4, 10, 0, tzinfo=UTC),
+        timestamp_end=datetime(2026, 1, 4, 11, 0, tzinfo=UTC),
+    )
+
+    report = report_library(owned_library, sample_size=20)
+
+    assert report.counts.runs_in_scope == 2
+    assert report.counts.session_only == 1
+    assert report.counts.no_evidence == 1
+    assert report.counts.from_session == 1
+    assert len(report.samples) == 1
+    assert report.samples[0].game_name == "Chrono Trigger"
+    assert report.samples[0].day == date(2026, 1, 4)
+    assert report.samples[0].source == "session"
+
+
+def test_the_report_states_nothing(owned_library):
+    played = _game(owned_library)
+    _converted(owned_library)
+    Session.objects.create(
+        game=played,
+        timestamp_start=datetime(2026, 1, 4, 10, 0, tzinfo=UTC),
+        timestamp_end=datetime(2026, 1, 4, 11, 0, tzinfo=UTC),
+    )
+
+    report_library(owned_library, sample_size=20)
+
+    assert Playthrough.objects.get(library=owned_library).start_recorded_at is None
+
+
+def test_the_report_prints_the_same_bytes_twice(owned_library):
+    for name in ("Chrono Trigger", "Terranigma", "Illusion of Gaia"):
+        game = _game(owned_library, name=name)
+        Session.objects.create(
+            game=game,
+            timestamp_start=datetime(2026, 1, 4, 10, 0, tzinfo=UTC),
+            timestamp_end=datetime(2026, 1, 4, 11, 0, tzinfo=UTC),
+        )
+    _converted(owned_library)
+
+    first = _report_output(owned_library.user.username)
+    second = _report_output(owned_library.user.username)
+
+    assert first == second
+
+
+def test_the_report_refuses_a_scope_it_cannot_resolve():
+    with pytest.raises(CommandError, match="No user is named"):
+        call_command("report_playthrough_starts", "--user", "nobody", verbosity=0)

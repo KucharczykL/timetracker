@@ -117,6 +117,7 @@ path**, so verify against `make check` before pushing when possible.
 | Sync uv.lock | `uv sync` (after editing pyproject.toml) |
 | Verify the UUID identity map | `make audit-uuid-identity` (read-only; fails on any violation) |
 | Report the legacy lifecycle rows before converting them | `make preflight-playthroughs ARGS="--all-libraries"` (read-only; reports, never gates) |
+| Report the starts #1038 would state before stating them | `make report-playthrough-starts ARGS="--all-libraries"` (read-only; reports, never gates) |
 | Benchmark commands, replay, and per-event cost | `make bench` (~1.7 min, seeds and removes a scratch library; **not** in `make check`) |
 | Replay every library and fail on a differing row | `make verify-replay-parity` (read-only; **not** in `make check`) |
 | Destroy one user's library and every row in it | `make purge-library ARGS="--user NAME --confirm NAME"` (names the user twice on purpose) |
