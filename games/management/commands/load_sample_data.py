@@ -20,6 +20,15 @@ from games.backfill.playthrough import (
     ordering_violations,
     reconcile,
 )
+from games.backfill.playthrough_start import (
+    gate as start_gate,
+)
+from games.backfill.playthrough_start import (
+    repair_library,
+)
+from games.backfill.playthrough_start import (
+    snapshot as start_snapshot,
+)
 from games.conversion import _request_conversion_for_locked_state
 from games.external_references import backfill_wikidata_references
 from games.models import (
@@ -168,6 +177,19 @@ class Command(BaseCommand):
                     + "; ".join(
                         f"{mismatch.code} {mismatch.subject}: {mismatch.detail}"
                         for mismatch in mismatches[:3]
+                    )
+                )
+            #: #1038 dates the empty defaults, gated as 0048
+            #: gates it, so no fixture lands runs it refuses.
+            before = start_snapshot(user.library)
+            repaired = repair_library(user.library)
+            refusals = start_gate(user.library, before, repaired)
+            if refusals:
+                raise CommandError(
+                    "Sample playthrough starts could not be stated: "
+                    + "; ".join(
+                        f"{refusal.code} {refusal.subject}: {refusal.detail}"
+                        for refusal in refusals[:3]
                     )
                 )
             #: The fixture predates #896: no reference rows.

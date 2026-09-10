@@ -117,6 +117,7 @@ path**, so verify against `make check` before pushing when possible.
 | Sync uv.lock | `uv sync` (after editing pyproject.toml) |
 | Verify the UUID identity map | `make audit-uuid-identity` (read-only; fails on any violation) |
 | Report the legacy lifecycle rows before converting them | `make preflight-playthroughs ARGS="--all-libraries"` (read-only; reports, never gates) |
+| Report the starts #1038 would state before stating them | `make report-playthrough-starts ARGS="--all-libraries"` (read-only; reports, never gates) |
 | Benchmark commands, replay, and per-event cost | `make bench` (~1.7 min, seeds and removes a scratch library; **not** in `make check`) |
 | Replay every library and fail on a differing row | `make verify-replay-parity` (read-only; **not** in `make check`) |
 | Destroy one user's library and every row in it | `make purge-library ARGS="--user NAME --confirm NAME"` (names the user twice on purpose) |
@@ -162,7 +163,17 @@ docs/           — Additional documentation
   only by `Playthroughs` projector, which shares `CURRENT_STATE` family with
   `PlayerGames`. Game tracked since #679 gets one from moment library tracks it —
   `TrackGame` returns both creation events under one `correlation_id` — but rows
-  #676 backfilled have none, and #684 owns supplying it. Both endpoints
+  #676 backfilled have none, and #684 owns supplying it. #684 reads only legacy
+  `PlayEvent` rows, so a game holding none took an empty default run; #1038
+  dates such a run, stating a `started` from the earlier of the library's own
+  two records — earliest #676 status day and earliest live session day — and
+  never a completion, so `games/backfill/playthrough_start.py` is the second
+  pass and #684's `reconcile()` reads a run it repaired as owing no legacy row.
+  Nothing reads that pass's `source_metadata`, which names the record and, for a
+  status day, the status: three of the four admitted statuses end a run rather
+  than open one, and a status day froze in the server zone while a session day
+  reads in the viewer's, so those two populations are findable no other way.
+  Both endpoints
   `TemporalValueField` with generated lower- and upper-bound columns beside each,
   plus marker naming the act (`start_recorded_at`, `completion_recorded_at`) and
   note of their own: null date is only unknown day, so marker's null is act that

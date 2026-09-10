@@ -9,25 +9,23 @@ marker set beside a null day.
 import uuid
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, fields
 from datetime import date, datetime
 from enum import StrEnum
 from itertools import batched
 from operator import attrgetter
-from typing import Any, NamedTuple
+from typing import NamedTuple
 
 from django.contrib.auth.models import User
 from django.db import transaction
 from django.db.models import QuerySet
 
 from common.keyset import keyset_pages
-from games.events.append import (
-    AppendResult,
-    LockedStream,
-    SourceMetadata,
-    identity_at,
-)
-from games.events.idempotency import idempotent_append
+from games.backfill.appending import append_one as _append
+from games.backfill.mismatch import Mismatch
+from games.backfill.playthrough_start import repaired_run_ids
+from games.events.append import SourceMetadata, identity_at
 from games.events.playthrough import (
     playthrough_completed,
     playthrough_created,
@@ -35,7 +33,6 @@ from games.events.playthrough import (
     playthrough_removed,
     playthrough_started,
 )
-from games.events.vocabulary import NewEvent
 from games.identity_audit import check_ordering, identity_models
 from games.models import (
     Game,
@@ -142,54 +139,6 @@ _VERDICT_FIELD: Mapping[RowVerdict, str] = {
     RowVerdict.NO_KNOWN_ENDPOINT: "no_known_endpoint",
     RowVerdict.REVERSED_ENDPOINTS: "reversed_endpoints",
 }
-
-
-def _append(
-    library: UserLibrary,
-    event: NewEvent,
-    *,
-    actor: User,
-    idempotency_key: str,
-    command_input: dict[str, Any],
-    recorded_at: datetime,
-    correlation_id: uuid.UUID,
-    source_metadata: SourceMetadata,
-) -> bool:
-    """Append one event. True only when it appended.
-
-    One event per call, never one call per row, for two reasons:
-    LockedStream.append() stamps one recorded_at across every row
-    of a call, and a removed legacy row carries two instants; and
-    one key per fact lets the note and each endpoint replay on
-    their own.
-
-    No command_input names an identity this pass mints. Such an
-    identity is fresh per pass, so a fingerprint holding one
-    answers a second pass with IdempotencyKeyMismatch, in place of
-    the drift the gate reads. A PlayerGame id is stable and may be
-    named.
-
-    dispatch() is not used: its refusals guard what a person
-    states next, and this states what the library recorded.
-    """
-
-    def build(stream: LockedStream) -> Sequence[NewEvent]:
-        #: The contract passes it; nothing reads it.
-        del stream
-        return [event]
-
-    outcome = idempotent_append(
-        library,
-        idempotency_key=idempotency_key,
-        command_input=command_input,
-        build=build,
-        actor=actor,
-        correlation_id=correlation_id,
-        source_metadata=source_metadata,
-        recorded_at=recorded_at,
-    )
-    #: Positive: an UnchangedAppend appended nothing either.
-    return isinstance(outcome, AppendResult)
 
 
 def convert_row(
@@ -492,23 +441,6 @@ class MismatchCode(StrEnum):
     IDENTITY_AUDIT_BLIND = "identity_audit_blind"
 
 
-@dataclass(frozen=True, slots=True)
-class Mismatch:
-    """One reason the run must not commit."""
-
-    code: MismatchCode
-    #: A game, a library, or a table: whatever the code names.
-    subject: str
-    detail: str
-
-    def as_dict(self) -> dict[str, str]:
-        return {
-            "code": self.code.value,
-            "detail": self.detail,
-            "subject": self.subject,
-        }
-
-
 class RunShape(NamedTuple):
     """What a row and its run must both say."""
 
@@ -573,10 +505,18 @@ def _display_order_key(row: PlayEvent) -> tuple[bool, date, bool, date, datetime
 
 
 def _reconcile_game(
-    game_id: str, rows: Sequence[PlayEvent], tracked_id: uuid.UUID
-) -> list[Mismatch]:
+    game_id: str,
+    rows: Sequence[PlayEvent],
+    tracked_id: uuid.UUID,
+    repaired: AbstractSet[uuid.UUID],
+) -> list[Mismatch[MismatchCode]]:
     """The row-to-row checks, one game."""
-    mismatches: list[Mismatch] = []
+
+    def states_an_act(run: Playthrough) -> bool:
+        #: #1038 stated it, so no legacy row owes it.
+        return run.pk not in repaired and _states_an_act(run)
+
+    mismatches: list[Mismatch[MismatchCode]] = []
     runs = list(
         Playthrough.objects.filter(
             player_game_id=tracked_id, kind=PlaythroughKind.ORDINARY
@@ -598,7 +538,7 @@ def _reconcile_game(
     ):
         expected = Counter(_row_shape(row) for row in expected_rows)
         converted = Counter(
-            _run_shape(run) for run in converted_runs if _states_an_act(run)
+            _run_shape(run) for run in converted_runs if states_an_act(run)
         )
         if expected != converted:
             mismatches.append(
@@ -610,6 +550,9 @@ def _reconcile_game(
                 )
             )
     for run in live_runs:
+        if run.pk in repaired:
+            #: One act is all #1038 states, on purpose.
+            continue
         markers = (run.start_recorded_at, run.completion_recorded_at)
         if any(marker is None for marker in markers) and not all(
             marker is None for marker in markers
@@ -637,7 +580,7 @@ def _reconcile_game(
     #: One is allowed: this pass states one for a game holding
     #: no live run, and #679 states one when a library tracks a
     #: game. Two says something stated a second.
-    actless = [run for run in live_runs if not _states_an_act(run)]
+    actless = [run for run in live_runs if not states_an_act(run)]
     if len(actless) > 1:
         mismatches.append(
             Mismatch(
@@ -658,7 +601,7 @@ def _reconcile_game(
     by_display = [
         (run.started_lower, run.completed_lower, run.created_at)
         for run in sorted(numbered, key=attrgetter("display_number"))
-        if _states_an_act(run)
+        if states_an_act(run)
     ]
     by_legacy = [
         (row.started, row.ended, row.created_at)
@@ -675,7 +618,7 @@ def _reconcile_game(
     return mismatches
 
 
-def reconcile(library: UserLibrary) -> list[Mismatch]:
+def reconcile(library: UserLibrary) -> list[Mismatch[MismatchCode]]:
     """Compare each row the walk reached with its run.
 
     Scoped to those rows, never PlayEvent.objects whole. A row on
@@ -686,7 +629,9 @@ def reconcile(library: UserLibrary) -> list[Mismatch]:
     No column links a run to its row, so the comparison is per
     game, over what both sides say.
     """
-    mismatches: list[Mismatch] = []
+    mismatches: list[Mismatch[MismatchCode]] = []
+    #: One query, because #1038 states a start no row owes.
+    repaired = repaired_run_ids(library)
     tracked = PlayerGame.objects.filter(library=library, removed_at__isnull=True).only(
         "id", "game_id"
     )
@@ -701,12 +646,14 @@ def reconcile(library: UserLibrary) -> list[Mismatch]:
                 #: The walk skipped it; nothing is owed.
                 continue
             mismatches.extend(
-                _reconcile_game(str(tracked_row.game_id), rows, tracked_row.pk)
+                _reconcile_game(
+                    str(tracked_row.game_id), rows, tracked_row.pk, repaired
+                )
             )
     return mismatches
 
 
-def ordering_violations() -> list[Mismatch]:
+def ordering_violations() -> list[Mismatch[MismatchCode]]:
     """Check 6: every key sorts by its created_at.
 
     No constraint enforces it, and this run is most able to break

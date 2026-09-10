@@ -753,3 +753,15 @@ def test_the_sample_fixture_leaves_every_tracked_game_holding_a_run(owned_user):
     assert reconcile(library) == []
     #: Every key the fixture's past instants minted still sorts.
     assert ordering_violations() == []
+
+
+def test_the_shared_pieces_are_importable_on_their_own():
+    """#1038 imports both; importing back is a cycle."""
+    from games.backfill.appending import append_one
+    from games.backfill.mismatch import Mismatch as SharedMismatch
+
+    #: Re-exported, so every existing import still reads.
+    from games.backfill.playthrough import Mismatch as ConversionMismatch
+
+    assert ConversionMismatch is SharedMismatch
+    assert callable(append_one)
