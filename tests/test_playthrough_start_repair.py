@@ -39,7 +39,10 @@ from games.models import (
     Session,
     UserLibrary,
 )
+from games.reads.playthrough_activity import RunActivity
+from games.reads.playthrough_runs import run_to_adopt, runs_with_condition
 from games.removal import remove
+from games.views.playthrough_rows import _act_members
 from games.writes.playthrough import RunDraft, record_run
 from timetracker.temporal import TemporalValue
 
@@ -654,3 +657,51 @@ def test_the_report_prints_the_same_bytes_twice(owned_library):
 def test_the_report_refuses_a_scope_it_cannot_resolve():
     with pytest.raises(CommandError, match="No user is named"):
         call_command("report_playthrough_starts", "--user", "nobody", verbosity=0)
+
+
+def test_a_repaired_run_is_no_longer_adopted(owned_library):
+    game = _game(owned_library)
+    _converted(owned_library)
+    Session.objects.create(
+        game=game,
+        timestamp_start=datetime(2026, 1, 4, 10, 0, tzinfo=UTC),
+        timestamp_end=datetime(2026, 1, 4, 11, 0, tzinfo=UTC),
+    )
+    repair_library(owned_library)
+    tracked = PlayerGame.objects.get(library=owned_library, game=game)
+
+    #: The blank run is filled in, so a statement makes a second.
+    assert run_to_adopt(owned_library, tracked) is None
+
+
+def test_a_repaired_run_offers_the_completion_press(owned_library):
+    game = _game(owned_library)
+    _converted(owned_library)
+    Session.objects.create(
+        game=game,
+        timestamp_start=datetime(2026, 1, 4, 10, 0, tzinfo=UTC),
+        timestamp_end=datetime(2026, 1, 4, 11, 0, tzinfo=UTC),
+    )
+    repair_library(owned_library)
+    run = Playthrough.objects.get(library=owned_library)
+
+    members = _act_members(run, None, "token")
+
+    assert len(members) == 1
+    assert members[0]["title"].startswith("Completed today")
+
+
+def test_a_repaired_run_dated_long_ago_reads_dormant(owned_library):
+    game = _game(owned_library)
+    GameStatusChange.objects.create(
+        game=game,
+        old_status="u",
+        new_status="p",
+        timestamp=datetime(2023, 5, 1, 9, 0, tzinfo=UTC),
+    )
+    _converted(owned_library)
+
+    repair_library(owned_library)
+    run = runs_with_condition(owned_library).get()
+
+    assert run.activity == RunActivity.DORMANT
