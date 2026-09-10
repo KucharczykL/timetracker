@@ -20,6 +20,7 @@ from django.db.models.functions import TruncDate
 from django.utils import timezone
 
 from games.backfill.appending import append_one
+from games.backfill.mismatch import Mismatch
 from games.events.playthrough import (
     PLAYTHROUGH_CREATED,
     PLAYTHROUGH_STARTED,
@@ -344,3 +345,145 @@ def repaired_run_ids(library: UserLibrary) -> set[uuid.UUID]:
             source_metadata__issue=START_ISSUE,
         ).values_list("aggregate_id", flat=True)
     )
+
+
+class StartMismatchCode(StrEnum):
+    """Every reason this run refuses to commit."""
+
+    START_DAY_DISAGREEMENT = "start_day_disagreement"
+    UNEXPECTED_ACT = "unexpected_act"
+    START_MOVED = "start_moved"
+    COMPLETION_DRIFT = "completion_drift"
+    ACTLESS_DRIFT = "actless_drift"
+    COUNT_DRIFT = "count_drift"
+
+
+class StartSnapshot(NamedTuple):
+    """What the library stated before the pass."""
+
+    #: Run id to the day its start states, or None.
+    started: Mapping[uuid.UUID, date | None]
+    completions: int
+    actless: int
+
+
+def snapshot(library: UserLibrary) -> StartSnapshot:
+    """Read the three numbers the gate compares."""
+    live = Playthrough.objects.filter(
+        library=library,
+        kind=PlaythroughKind.ORDINARY,
+        removed_at__isnull=True,
+    )
+    return StartSnapshot(
+        started=dict(
+            live.filter(start_recorded_at__isnull=False).values_list(
+                "pk", "started_lower"
+            )
+        ),
+        completions=live.filter(completion_recorded_at__isnull=False).count(),
+        actless=live.filter(
+            start_recorded_at__isnull=True,
+            completion_recorded_at__isnull=True,
+        ).count(),
+    )
+
+
+def gate(
+    library: UserLibrary, before: StartSnapshot, result: RepairResult
+) -> list[Mismatch]:
+    """Every reason this pass must roll back.
+
+    Checks 1, 2, 3, 4 and 6 of the specification. Check 5 is
+    the second pass, and check 7 is #684's reconcile and its
+    ordering audit; the migration runs all three.
+    """
+    mismatches: list[Mismatch] = []
+    after = snapshot(library)
+    days = dict(
+        Playthrough.objects.filter(pk__in=result.stated).values_list(
+            "pk", "started_lower"
+        )
+    )
+    #: Check 1.
+    for run_id, evidence in sorted(
+        result.stated.items(), key=lambda pair: str(pair[0])
+    ):
+        if days.get(run_id) != evidence.day:
+            mismatches.append(
+                Mismatch(
+                    code=StartMismatchCode.START_DAY_DISAGREEMENT,
+                    subject=str(run_id),
+                    detail=f"the pass states {evidence.day}, "
+                    f"the row says {days.get(run_id)}",
+                )
+            )
+    #: Check 2.
+    still_empty = set(
+        Playthrough.objects.filter(
+            pk__in=result.left_alone,
+            start_recorded_at__isnull=True,
+            completion_recorded_at__isnull=True,
+        ).values_list("pk", flat=True)
+    )
+    for run_id in sorted(result.left_alone, key=str):
+        if run_id not in still_empty:
+            mismatches.append(
+                Mismatch(
+                    code=StartMismatchCode.UNEXPECTED_ACT,
+                    subject=str(run_id),
+                    detail="a run holding no evidence states an act",
+                )
+            )
+    #: Check 3.
+    expected = set(before.started) | set(result.stated)
+    for run_id in sorted(set(after.started) - expected, key=str):
+        mismatches.append(
+            Mismatch(
+                code=StartMismatchCode.START_MOVED,
+                subject=str(run_id),
+                detail="a run outside the scope states a start",
+            )
+        )
+    for run_id, day in sorted(before.started.items(), key=lambda pair: str(pair[0])):
+        #: Membership, not .get(): a run whose start is gone
+        #: and a run whose start states no day both answer
+        #: None, and only the first is this code's subject.
+        if run_id not in after.started:
+            mismatches.append(
+                Mismatch(
+                    code=StartMismatchCode.START_MOVED,
+                    subject=str(run_id),
+                    detail=f"a start stated before the pass said {day} "
+                    "and now states no act",
+                )
+            )
+        elif after.started[run_id] != day:
+            mismatches.append(
+                Mismatch(
+                    code=StartMismatchCode.START_MOVED,
+                    subject=str(run_id),
+                    detail=f"a start stated before the pass said {day} "
+                    f"and now says {after.started[run_id]}",
+                )
+            )
+    #: Check 4.
+    if after.completions != before.completions:
+        mismatches.append(
+            Mismatch(
+                code=StartMismatchCode.COMPLETION_DRIFT,
+                subject=str(library.pk),
+                detail=f"completions went from {before.completions} "
+                f"to {after.completions}",
+            )
+        )
+    #: Check 6.
+    if after.actless != before.actless - len(result.stated):
+        mismatches.append(
+            Mismatch(
+                code=StartMismatchCode.ACTLESS_DRIFT,
+                subject=str(library.pk),
+                detail=f"{before.actless} runs stated no act, {len(result.stated)} "
+                f"were repaired, and {after.actless} state none now",
+            )
+        )
+    return mismatches

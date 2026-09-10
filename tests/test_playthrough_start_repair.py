@@ -9,11 +9,14 @@ from games.backfill.playergame import backfill_library
 from games.backfill.playthrough import MismatchCode, convert_library, reconcile
 from games.backfill.playthrough_start import (
     Evidence,
+    StartMismatchCode,
     StartSource,
     evidence_for,
+    gate,
     repair_library,
     runs_in_scope,
     session_days,
+    snapshot,
     status_days,
 )
 from games.events.playthrough import PLAYTHROUGH_STARTED
@@ -371,3 +374,93 @@ def test_reconcile_still_reports_a_second_empty_run(owned_library):
     codes = [mismatch.code for mismatch in reconcile(owned_library)]
 
     assert MismatchCode.SURPLUS_ACTLESS_RUN in codes
+
+
+def test_the_gate_is_clean_on_a_good_pass(owned_library):
+    game = _game(owned_library)
+    _converted(owned_library)
+    Session.objects.create(
+        game=game,
+        timestamp_start=datetime(2026, 1, 4, 10, 0, tzinfo=UTC),
+        timestamp_end=datetime(2026, 1, 4, 11, 0, tzinfo=UTC),
+    )
+    before = snapshot(owned_library)
+
+    result = repair_library(owned_library)
+
+    assert gate(owned_library, before, result) == []
+
+
+def test_the_gate_reads_a_day_that_moved(owned_library):
+    game = _game(owned_library)
+    _converted(owned_library)
+    Session.objects.create(
+        game=game,
+        timestamp_start=datetime(2026, 1, 4, 10, 0, tzinfo=UTC),
+        timestamp_end=datetime(2026, 1, 4, 11, 0, tzinfo=UTC),
+    )
+    before = snapshot(owned_library)
+    result = repair_library(owned_library)
+    #: The projection now says a day the pass never stated.
+    Playthrough.objects.filter(library=owned_library).update(
+        started=TemporalValue.from_day(date(1999, 1, 1))
+    )
+
+    codes = [mismatch.code for mismatch in gate(owned_library, before, result)]
+
+    assert StartMismatchCode.START_DAY_DISAGREEMENT in codes
+
+
+def test_the_gate_reads_a_completion_this_pass_must_not_have_stated(owned_library):
+    game = _game(owned_library)
+    _converted(owned_library)
+    Session.objects.create(
+        game=game,
+        timestamp_start=datetime(2026, 1, 4, 10, 0, tzinfo=UTC),
+        timestamp_end=datetime(2026, 1, 4, 11, 0, tzinfo=UTC),
+    )
+    before = snapshot(owned_library)
+    result = repair_library(owned_library)
+    Playthrough.objects.filter(library=owned_library).update(
+        completion_recorded_at=datetime(2026, 2, 1, tzinfo=UTC)
+    )
+
+    codes = [mismatch.code for mismatch in gate(owned_library, before, result)]
+
+    assert StartMismatchCode.COMPLETION_DRIFT in codes
+
+
+def test_the_gate_reads_a_start_that_appeared_outside_the_scope(owned_library):
+    played = _game(owned_library, name="Chrono Trigger")
+    other = _game(owned_library, name="Terranigma")
+    PlayEvent.objects.create(game=other, started=date(2014, 6, 7))
+    _converted(owned_library)
+    Session.objects.create(
+        game=played,
+        timestamp_start=datetime(2026, 1, 4, 10, 0, tzinfo=UTC),
+        timestamp_end=datetime(2026, 1, 4, 11, 0, tzinfo=UTC),
+    )
+    before = snapshot(owned_library)
+    result = repair_library(owned_library)
+    #: A converted run's day moves, which the pass never touches.
+    Playthrough.objects.filter(library=owned_library, player_game__game=other).update(
+        started=TemporalValue.from_day(date(1999, 1, 1))
+    )
+
+    codes = [mismatch.code for mismatch in gate(owned_library, before, result)]
+
+    assert StartMismatchCode.START_MOVED in codes
+
+
+def test_the_gate_reads_a_run_left_alone_that_gained_an_act(owned_library):
+    _game(owned_library)
+    _converted(owned_library)
+    before = snapshot(owned_library)
+    result = repair_library(owned_library)
+    Playthrough.objects.filter(library=owned_library).update(
+        start_recorded_at=datetime(2026, 2, 1, tzinfo=UTC)
+    )
+
+    codes = [mismatch.code for mismatch in gate(owned_library, before, result)]
+
+    assert StartMismatchCode.UNEXPECTED_ACT in codes
