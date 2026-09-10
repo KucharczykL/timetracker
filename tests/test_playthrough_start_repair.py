@@ -6,6 +6,7 @@ import uuid
 from datetime import UTC, date, datetime
 
 import pytest
+from django.core.management import call_command
 
 from games.backfill.playergame import backfill_library
 from games.backfill.playthrough import MismatchCode, convert_library, reconcile
@@ -33,6 +34,7 @@ from games.models import (
     PlayEvent,
     Playthrough,
     Session,
+    UserLibrary,
 )
 from games.removal import remove
 from games.writes.playthrough import RunDraft, record_run
@@ -546,3 +548,21 @@ def test_the_migration_refuses_a_mismatched_day(owned_library, monkeypatch):
     monkeypatch.setattr("games.backfill.playthrough_start.repair_library", lying)
     with pytest.raises(RuntimeError, match="start_day_disagreement"):
         repair_playthrough_starts(None, None)
+
+
+def test_the_sample_fixture_states_a_start_where_it_holds_one(owned_user):
+    call_command("load_sample_data", "--user", owned_user.username, verbosity=0)
+    library = UserLibrary.objects.get(user=owned_user)
+    live = Playthrough.objects.filter(library=library, removed_at__isnull=True)
+
+    assert live.filter(start_recorded_at__isnull=False).exists()
+    assert reconcile(library) == []
+    assert runs_in_scope(library) == [] or all(
+        evidence_for(
+            run,
+            status=status_days(library),
+            session=session_days(library),
+        )
+        is None
+        for run in runs_in_scope(library)
+    )
