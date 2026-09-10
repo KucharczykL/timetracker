@@ -9,6 +9,7 @@ marker set beside a null day.
 import uuid
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, fields
 from datetime import date, datetime
 from enum import StrEnum
@@ -23,6 +24,7 @@ from django.db.models import QuerySet
 from common.keyset import keyset_pages
 from games.backfill.appending import append_one as _append
 from games.backfill.mismatch import Mismatch
+from games.backfill.playthrough_start import repaired_run_ids
 from games.events.append import SourceMetadata, identity_at
 from games.events.playthrough import (
     playthrough_completed,
@@ -503,9 +505,17 @@ def _display_order_key(row: PlayEvent) -> tuple[bool, date, bool, date, datetime
 
 
 def _reconcile_game(
-    game_id: str, rows: Sequence[PlayEvent], tracked_id: uuid.UUID
+    game_id: str,
+    rows: Sequence[PlayEvent],
+    tracked_id: uuid.UUID,
+    repaired: AbstractSet[uuid.UUID],
 ) -> list[Mismatch]:
     """The row-to-row checks, one game."""
+
+    def states_an_act(run: Playthrough) -> bool:
+        #: #1038 stated it, so no legacy row owes it.
+        return run.pk not in repaired and _states_an_act(run)
+
     mismatches: list[Mismatch] = []
     runs = list(
         Playthrough.objects.filter(
@@ -528,7 +538,7 @@ def _reconcile_game(
     ):
         expected = Counter(_row_shape(row) for row in expected_rows)
         converted = Counter(
-            _run_shape(run) for run in converted_runs if _states_an_act(run)
+            _run_shape(run) for run in converted_runs if states_an_act(run)
         )
         if expected != converted:
             mismatches.append(
@@ -540,6 +550,9 @@ def _reconcile_game(
                 )
             )
     for run in live_runs:
+        if run.pk in repaired:
+            #: One act is all #1038 states, on purpose.
+            continue
         markers = (run.start_recorded_at, run.completion_recorded_at)
         if any(marker is None for marker in markers) and not all(
             marker is None for marker in markers
@@ -567,7 +580,7 @@ def _reconcile_game(
     #: One is allowed: this pass states one for a game holding
     #: no live run, and #679 states one when a library tracks a
     #: game. Two says something stated a second.
-    actless = [run for run in live_runs if not _states_an_act(run)]
+    actless = [run for run in live_runs if not states_an_act(run)]
     if len(actless) > 1:
         mismatches.append(
             Mismatch(
@@ -588,7 +601,7 @@ def _reconcile_game(
     by_display = [
         (run.started_lower, run.completed_lower, run.created_at)
         for run in sorted(numbered, key=attrgetter("display_number"))
-        if _states_an_act(run)
+        if states_an_act(run)
     ]
     by_legacy = [
         (row.started, row.ended, row.created_at)
@@ -617,6 +630,8 @@ def reconcile(library: UserLibrary) -> list[Mismatch]:
     game, over what both sides say.
     """
     mismatches: list[Mismatch] = []
+    #: One query, because #1038 states a start no row owes.
+    repaired = repaired_run_ids(library)
     tracked = PlayerGame.objects.filter(library=library, removed_at__isnull=True).only(
         "id", "game_id"
     )
@@ -631,7 +646,9 @@ def reconcile(library: UserLibrary) -> list[Mismatch]:
                 #: The walk skipped it; nothing is owed.
                 continue
             mismatches.extend(
-                _reconcile_game(str(tracked_row.game_id), rows, tracked_row.pk)
+                _reconcile_game(
+                    str(tracked_row.game_id), rows, tracked_row.pk, repaired
+                )
             )
     return mismatches
 

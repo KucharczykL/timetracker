@@ -6,7 +6,7 @@ from datetime import UTC, date, datetime
 import pytest
 
 from games.backfill.playergame import backfill_library
-from games.backfill.playthrough import convert_library
+from games.backfill.playthrough import MismatchCode, convert_library, reconcile
 from games.backfill.playthrough_start import (
     Evidence,
     StartSource,
@@ -23,6 +23,7 @@ from games.models import (
     GameStatusChange,
     LibraryEvent,
     PlayerGame,
+    PlayEvent,
     Playthrough,
     Session,
 )
@@ -315,3 +316,58 @@ def test_the_pass_replays_to_the_same_row(owned_library):
         ("games_playergame", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
     ]
+
+
+def test_reconcile_is_clean_after_a_repair(owned_library):
+    game = _game(owned_library)
+    _converted(owned_library)
+    Session.objects.create(
+        game=game,
+        timestamp_start=datetime(2026, 1, 4, 10, 0, tzinfo=UTC),
+        timestamp_end=datetime(2026, 1, 4, 11, 0, tzinfo=UTC),
+    )
+
+    repair_library(owned_library)
+
+    assert reconcile(owned_library) == []
+
+
+def test_reconcile_still_reads_a_converted_row_beside_a_repaired_run(owned_library):
+    played = _game(owned_library, name="Chrono Trigger")
+    recorded = _game(owned_library, name="Terranigma")
+    PlayEvent.objects.create(
+        game=recorded, started=date(2014, 6, 7), ended=date(2014, 6, 17)
+    )
+    _converted(owned_library)
+    Session.objects.create(
+        game=played,
+        timestamp_start=datetime(2026, 1, 4, 10, 0, tzinfo=UTC),
+        timestamp_end=datetime(2026, 1, 4, 11, 0, tzinfo=UTC),
+    )
+
+    repair_library(owned_library)
+
+    assert reconcile(owned_library) == []
+
+
+def test_reconcile_still_reports_a_second_empty_run(owned_library):
+    game = _game(owned_library)
+    _converted(owned_library)
+    Session.objects.create(
+        game=game,
+        timestamp_start=datetime(2026, 1, 4, 10, 0, tzinfo=UTC),
+        timestamp_end=datetime(2026, 1, 4, 11, 0, tzinfo=UTC),
+    )
+    repair_library(owned_library)
+    #: One blank beside the repaired run is one too many:
+    #: a repaired run still counts as stating no act.
+    record_run(
+        owned_library.user,
+        game,
+        RunDraft(started=None, completed=None, note=""),
+        correlation_id=uuid.uuid7(),
+    )
+
+    codes = [mismatch.code for mismatch in reconcile(owned_library)]
+
+    assert MismatchCode.SURPLUS_ACTLESS_RUN in codes

@@ -20,7 +20,11 @@ from django.db.models.functions import TruncDate
 from django.utils import timezone
 
 from games.backfill.appending import append_one
-from games.events.playthrough import PLAYTHROUGH_CREATED, playthrough_started
+from games.events.playthrough import (
+    PLAYTHROUGH_CREATED,
+    PLAYTHROUGH_STARTED,
+    playthrough_started,
+)
 from games.models import (
     LibraryEvent,
     Playthrough,
@@ -323,3 +327,20 @@ def _witness_counts(
         else StartRepairCounts(from_status=1)
     )
     return held + won
+
+
+def repaired_run_ids(library: UserLibrary) -> set[uuid.UUID]:
+    """Every run whose only act this pass stated.
+
+    #684's reconcile() compares a run stating an act with the
+    legacy row it came from. A run repaired here came from no
+    row, so it is read as stating none.
+    """
+    return set(
+        LibraryEvent.objects.filter(
+            library=library,
+            event_type=PLAYTHROUGH_STARTED.event_type,
+            source_metadata__origin="backfill",
+            source_metadata__issue=START_ISSUE,
+        ).values_list("aggregate_id", flat=True)
+    )
