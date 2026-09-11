@@ -1343,7 +1343,7 @@ This task needs a real production database dump and cannot be completed from a
 bare checkout. Flag this before starting — do not attempt it in an environment
 without `PROD_SSH_HOST`/`PROD_DB_CONTAINER` configured.
 
-- [ ] **Step 1: Restore a production dump and regenerate**
+- [x] **Step 1: Restore a production dump and regenerate**
 
 ```bash
 make fetch-dump
@@ -1358,65 +1358,98 @@ make migrate
 make anonymize-sample ARGS="--user <a real production username>"
 ```
 
-- [ ] **Step 2: Confirm the new fixture's label set**
+- [x] **Step 1.5 (discovered during execution, belongs to `anonymize_sample.py`): `game_offsets` is keyed by the *live* games only, and a removed game's rows still need an offset**
 
-```bash
-python -c "
-import gzip, yaml
-records = yaml.safe_load(gzip.open('games/fixtures/sample.yaml.gz', 'rt'))
-from collections import Counter
-print(Counter(r['model'] for r in records))
-"
+Running Step 1 against the real dump crashed:
+
+```
+File "games/management/commands/anonymize_sample.py", line 398, in _reassign_event_identities
+    offset = game_offsets[game_id_by_aggregate[event.aggregate_id]]
+KeyError: UUID('018bd537-7a59-7094-82ff-548e29aec5b1')
 ```
 
-Expected: `games.libraryeventstreamhead`, `games.libraryevent` and
-`games.libraryeventreference` present; **no** `games.playevent` and **no**
-`games.gamestatuschange`.
+`handle()` builds `all_game_ids` from `Game.objects.for_library(library)`,
+whose `alive()` drops every removed row, and `_anonymize` keys `game_offsets`
+off that list. But removal destroys nothing: this library holds one removed
+game whose `PlayerGame` (and every `LibraryEvent` naming that aggregate) is
+still live, so the new event pass asks for an offset the map does not have.
+The same lookup on `session.game_id` was already latent — it only escaped
+notice because this dataset's removed game has no sessions.
 
-- [ ] **Step 3: Load into an empty database and verify replay parity**
+Fix in `handle()`: build `all_game_ids` from the plain manager
+(`Game.objects.filter(library=library)`), which is exactly the set
+`_prune_other_libraries` leaves behind — `exclude(library=library)` compiles
+to `NOT (library_id = X AND library_id IS NOT NULL)`, so it takes the shared
+(library-is-null) catalog rows with it. Keep the live-only list beside it as
+`reassignable_game_ids` and thread it through `_anonymize` as a second
+argument: `related_game_id` and the `games` M2M sample must keep off removed
+games, because a purchase is live only while one of its games is, and links
+reassigned onto a removed game would drop the purchase out of every list the
+fixture feeds. The early `CommandError("Purchases exist but no games to
+reassign them to.")` guard moves to `reassignable_game_ids` too — it guards
+`random.choice`/`random.sample` on an empty list, which is the reassignment
+list, not the offset map.
 
-```bash
-make migrate  # against a second, empty scratch database
-make loadsample ARGS="--user admin"  # or: manage.py load_sample_data --user admin
-manage.py rebuild_projections --user admin --check --fail-on-drift
+Regression test in `tests/test_anonymize_sample.py`:
+`test_removed_game_is_dumped_but_never_reassigned_a_purchase` tracks a game,
+gives it a session, `remove()`s it, and asserts the dump carries the removed
+row and its session while no purchase names it.
+
+- [x] **Step 2: Confirm the new fixture's label set**
+
+Actual: `Counter({'games.libraryevent': 4244, 'games.session': 2807,
+'games.game': 859, 'games.libraryeventreference': 859, 'games.purchase': 803,
+'games.exchangerate': 75, 'games.platform': 25, 'games.device': 13,
+'games.libraryeventstreamhead': 1})`. The three event models are present;
+`games.playevent` and `games.gamestatuschange` are absent.
+
+- [x] **Step 3: Load into an empty database and verify replay parity**
+
+`make loadsample USER=admin` against an empty scratch database: `Loaded 9586
+sample object(s) for User 'admin' into library …, with 229 external
+reference(s) and 4244 event(s) replayed across 859 games_playergame, 872
+games_playthrough.` Then `manage.py rebuild_projections --user admin --check
+--fail-on-drift`:
+
+```
+games_playergame: 859 live, 859 rebuilt, 0 only live, 0 only rebuilt, 0 differing
+games_playthrough: 872 live, 872 rebuilt, 0 only live, 0 only rebuilt, 0 differing
+Projections match the replayed events.
 ```
 
-Expected: `rebuild_projections --check` exits zero. A second replay of the
-same stream reproducing the projections the load just wrote is what "the
-loader and the replay agree" means — drift here is a bug in Task 3 or 4.
+- [x] **Step 4: Verify the identity audit**
 
-- [ ] **Step 4: Verify the identity audit**
+`manage.py audit_uuid_identity` → `Identity map verified: no violations.`
+(37 relation columns resolved, every identity-column and ordering check
+clean, `games_playevent`/`games_gamestatuschange` both at 0 rows as expected.)
 
-```bash
-manage.py audit_uuid_identity
-```
+- [x] **Step 5: Row-count parity against the pre-change seeding**
 
-Expected: no violation. This is what holds `games_libraryevent.id` to
-`recorded_at` order and `games_playthrough.id` to `created_at` order after
-Task 3's date rewrite.
+Captured actual figures from both sides rather than trusting the spec's
+858/872 estimate, since Step 1.5's fix predicted a one-row difference:
 
-- [ ] **Step 5: Row-count parity against the pre-change seeding**
+- Old fixture (commit `e25c8084`, LFS-smudged, loaded via a worktree checked
+  out at that commit so the *old* `load_sample_data.py` ran against it — the
+  new loader no longer understands the old PlayEvent-based format):
+  `PlayerGame.objects.count(), Playthrough.objects.count()` → **858, 872**.
+- New fixture (this task's regenerated `sample.yaml.gz`, loaded with the
+  current `load_sample_data.py`): **859, 872**.
 
-Before this task, on the commit *before* Task 3's changes (e.g. `git stash` or
-a separate checkout), capture:
+`Playthrough` matches exactly. `PlayerGame` differs by exactly one row, and
+it is the expected one: `PlayerGame.objects.filter(game__removed_at__isnull=
+False)` on the new fixture returns exactly one row (game "Dark Souls 2",
+removed), which Step 1.5's fix is what now carries into the dump — the old
+fixture's generation silently dropped a removed game's `PlayerGame` the same
+way Step 1.5 found `anonymize_sample.py` doing before the fix. Not a
+regression: the new fixture is the more complete one, and it is more
+complete because of a bug this task's own work found and fixed.
 
-```bash
-manage.py shell -c "from games.models import PlayerGame, Playthrough; print(PlayerGame.objects.count(), Playthrough.objects.count())"
-```
+- [x] **Step 6: Verify the double-load refusal**
 
-against a `make loadsample` run on the old fixture. After this task's
-`make loadsample`, capture the same two numbers against the new fixture and
-assert they match. Do not trust the spec's estimate (858/872) — capture the
-actual figures from both runs and compare them directly.
-
-- [ ] **Step 6: Verify the double-load refusal**
-
-```bash
-manage.py load_sample_data --user admin
-```
-
-(Second run, same database.) Expected: `CommandError` naming that the library
-already has an event stream (Task 4 Step 5), not a raw `IntegrityError`.
+Second `manage.py load_sample_data --user admin` against the same
+already-loaded database: `CommandError: Library … already has an event
+stream; the sample fixture cannot be loaded into it twice.` — not a raw
+`IntegrityError`.
 
 - [ ] **Step 7: Commit the regenerated fixture**
 

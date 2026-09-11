@@ -30,6 +30,7 @@ from games.models import (
     Purchase,
     Session,
 )
+from games.removal import remove
 from games.retention import purging_library
 from timetracker.temporal import TemporalValue
 
@@ -376,6 +377,58 @@ class AnonymizeSampleTest(TransactionTestCase):
         # Rename keeps the row (and its pk), it is not dropped.
         secret.refresh_from_db()
         self.assertEqual(secret.name, "Real Secret Title")  # source DB untouched
+
+    def test_removed_game_is_dumped_but_never_reassigned_a_purchase(self):
+        """A removed game owes a date offset like any other.
+
+        Its PlayerGame, its Playthroughs, its events and its sessions all
+        stay live, and each is shifted by *its own game's* offset -- so the
+        offset map is keyed by every game the library holds, not by the live
+        ones. Purchase links go the other way: a purchase is live only while
+        one of its games is, so the reassignment pass must keep off it.
+        """
+        game_purchase, _ = _build_dataset()
+        library = game_purchase.library
+        shelved = Game.objects.create(library=library, name="Shelved Game")
+        dispatch(
+            TrackGame(game_id=shelved.pk),
+            actor=library.user,
+            library=library,
+            idempotency_key="track-shelved",
+        )
+        Session.objects.create(
+            game=shelved,
+            timestamp_start=datetime(2021, 9, 1, 9, 0, tzinfo=UTC),
+            timestamp_end=datetime(2021, 9, 1, 10, 0, tzinfo=UTC),
+        )
+        remove(shelved)
+
+        with TemporaryDirectory() as tempdir:
+            output = Path(tempdir) / "out.yaml.gz"
+            call_command(
+                "anonymize_sample", user="sample-source", seed=13, output=output
+            )
+            objects = _load_output(output)
+
+        removed_rows = [
+            item
+            for item in objects
+            if item["model"] == "games.game"
+            and item["fields"]["removed_at"] is not None
+        ]
+        self.assertEqual(len(removed_rows), 1)
+        self.assertEqual(
+            len([item for item in objects if item["model"] == "games.session"]), 4
+        )
+        removed_identity = str(identity(removed_rows[0]))
+        for purchase in (item for item in objects if item["model"] == "games.purchase"):
+            self.assertNotIn(
+                removed_identity,
+                {str(game) for game in purchase["fields"]["games"]},
+            )
+            self.assertNotEqual(
+                str(purchase["fields"]["related_game"]), removed_identity
+            )
 
     @pytest.mark.untracked_games
     def test_exports_only_the_selected_library_with_portable_owner_markers(self):

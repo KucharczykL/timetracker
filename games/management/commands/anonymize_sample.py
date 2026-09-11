@@ -196,12 +196,29 @@ class Command(BaseCommand):
         except user_model.DoesNotExist as error:
             raise CommandError(f"User {options['user']!r} does not exist.") from error
         library = user.library
+        #: Every game the library holds, removed rows included -- the plain
+        #: manager, not `for_library()`, whose `alive()` drops them. A removed
+        #: game keeps its PlayerGame, its Playthroughs and every LibraryEvent
+        #: naming them, and each of those rows is shifted by *its* game's
+        #: offset, so an offset is owed per game rather than per live game.
+        #: This is also exactly the set `_prune_other_libraries` leaves
+        #: behind: `exclude(library=library)` takes the shared
+        #: (library-is-null) catalog rows with it.
         all_game_ids = list(
+            Game.objects.filter(library=library)
+            .order_by("pk")
+            .values_list("pk", flat=True)
+        )
+        #: The games a purchase may be pointed at, which is the live ones
+        #: only: a purchase is live while any of its games is, so links
+        #: reassigned onto removed games would drop the purchase out of every
+        #: list the fixture feeds.
+        reassignable_game_ids = list(
             Game.objects.for_library(library)
             .order_by("pk")
             .values_list("pk", flat=True)
         )
-        if not all_game_ids and Purchase.objects.for_library(library).exists():
+        if not reassignable_game_ids and Purchase.objects.for_library(library).exists():
             raise CommandError("Purchases exist but no games to reassign them to.")
 
         name_overrides = self._load_overrides(options["name_overrides"])
@@ -211,7 +228,10 @@ class Command(BaseCommand):
             with transaction.atomic():
                 self._prune_other_libraries(library)
                 counts = self._anonymize(
-                    all_game_ids, options["scrub_devices"], name_overrides
+                    all_game_ids,
+                    reassignable_game_ids,
+                    options["scrub_devices"],
+                    name_overrides,
                 )
                 call_command(
                     "dumpdata",
@@ -249,7 +269,9 @@ class Command(BaseCommand):
         Device.objects.exclude(library=library).delete()
         Platform.objects.filter(library__isnull=False).exclude(library=library).delete()
 
-    def _anonymize(self, all_game_ids, scrub_devices, name_overrides):
+    def _anonymize(
+        self, all_game_ids, reassignable_game_ids, scrub_devices, name_overrides
+    ):
         game_offsets = {
             game_id: timedelta(days=random.randint(-JITTER_DAYS, JITTER_DAYS))
             for game_id in all_game_ids
@@ -287,9 +309,11 @@ class Command(BaseCommand):
             purchase.needs_price_update = False
             purchase.name = ""
             if purchase.type != Purchase.GAME:
-                purchase.related_game_id = random.choice(all_game_ids)
-            count = random.randint(1, min(MAX_GAMES_PER_PURCHASE, len(all_game_ids)))
-            chosen = random.sample(all_game_ids, count)
+                purchase.related_game_id = random.choice(reassignable_game_ids)
+            count = random.randint(
+                1, min(MAX_GAMES_PER_PURCHASE, len(reassignable_game_ids))
+            )
+            chosen = random.sample(reassignable_game_ids, count)
             through_rows.extend(
                 Through(purchase_id=purchase.pk, game_id=game_id) for game_id in chosen
             )
