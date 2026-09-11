@@ -3,8 +3,9 @@
 from datetime import date
 
 import pytest
-from playthrough_conversion import convert_and_take_runs, run_noted
+from stated_runs import another_run, state_run
 
+from games.commands.playthrough import ActStatement
 from games.models import Game, PlayEvent, Playthrough
 from games.removal import remove
 from timetracker.temporal import TemporalValue
@@ -18,6 +19,16 @@ def user(owned_user):
 @pytest.fixture
 def game(owned_library):
     return Game.objects.create(library=owned_library, name="Outer Wilds")
+
+
+def born_run(game) -> Playthrough:
+    """The run a tracked game was born with."""
+    return Playthrough.objects.get(player_game__game=game)
+
+
+def day(value: str) -> ActStatement:
+    """One act, stated on a day."""
+    return ActStatement(TemporalValue.from_day(date.fromisoformat(value)))
 
 
 @pytest.mark.django_db(transaction=True)
@@ -60,10 +71,7 @@ def test_a_reversed_pair_answers_409(client, user, game):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_key_the_patch_leaves_out_keeps_the_value_the_run_states(client, user, game):
-    PlayEvent.objects.create(
-        game=game, started=date(2026, 1, 2), ended=None, note="12h"
-    )
-    [run] = convert_and_take_runs(user.library, game)
+    run = state_run(user, game, started=day("2026-01-02"), note="12h")
     client.force_login(user)
 
     response = client.patch(
@@ -80,8 +88,7 @@ def test_a_key_the_patch_leaves_out_keeps_the_value_the_run_states(client, user,
 
 @pytest.mark.django_db(transaction=True)
 def test_patch_states_the_difference_onto_the_run(client, user, game):
-    row = PlayEvent.objects.create(game=game, started=None, ended=None, note="row")
-    [run] = convert_and_take_runs(user.library, game)
+    run = state_run(user, game, note="unread")
     client.force_login(user)
 
     response = client.patch(
@@ -93,8 +100,7 @@ def test_patch_states_the_difference_onto_the_run(client, user, game):
     assert response.status_code == 204
     run.refresh_from_db()
     assert run.note == "read"
-    row.refresh_from_db()
-    assert row.note == "row"
+    assert run.started == TemporalValue.from_day(date(2026, 1, 2))
 
 
 @pytest.mark.django_db(transaction=True)
@@ -105,10 +111,7 @@ def test_a_second_patch_does_not_revert_the_first(client, user, game):
     absent keys off it would put the day back that the
     first PATCH moved.
     """
-    PlayEvent.objects.create(
-        game=game, started=date(2026, 1, 2), ended=None, note="before"
-    )
-    [run] = convert_and_take_runs(user.library, game)
+    run = state_run(user, game, started=day("2026-01-02"), note="before")
     client.force_login(user)
 
     client.patch(
@@ -131,8 +134,7 @@ def test_a_second_patch_does_not_revert_the_first(client, user, game):
 @pytest.mark.django_db(transaction=True)
 def test_a_patch_states_a_month(client, user, game):
     """The body states every value stated."""
-    PlayEvent.objects.create(game=game, started=None, ended=None, note="start")
-    [run] = convert_and_take_runs(user.library, game)
+    run = born_run(game)
     client.force_login(user)
 
     response = client.patch(
@@ -148,9 +150,12 @@ def test_a_patch_states_a_month(client, user, game):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_patch_that_names_one_key_keeps_a_richer_value(client, user, game):
-    """A note-only PATCH keeps the month."""
-    PlayEvent.objects.create(game=game, started=None, ended=None, note="start")
-    [run] = convert_and_take_runs(user.library, game)
+    """A note-only PATCH keeps the month.
+
+    The act is stated through the command, then coarsened
+    in place: no command states a month.
+    """
+    run = state_run(user, game, started=day("2026-01-02"))
     Playthrough.objects.filter(pk=run.pk).update(
         started=TemporalValue.from_month(2026, 3)
     )
@@ -171,8 +176,7 @@ def test_a_patch_that_names_one_key_keeps_a_richer_value(client, user, game):
 @pytest.mark.django_db(transaction=True)
 def test_a_spelling_the_grammar_refuses_answers_422(client, user, game):
     """A decade is 202X; 2020s names nothing."""
-    PlayEvent.objects.create(game=game, started=None, ended=None, note="start")
-    [run] = convert_and_take_runs(user.library, game)
+    run = born_run(game)
     client.force_login(user)
 
     response = client.patch(
@@ -186,11 +190,7 @@ def test_a_spelling_the_grammar_refuses_answers_422(client, user, game):
 
 @pytest.mark.django_db(transaction=True)
 def test_delete_states_the_removal_and_leaves_the_row(client, user, game):
-    PlayEvent.objects.create(game=game, started=None, ended=None, note="first")
-    second = PlayEvent.objects.create(
-        game=game, started=None, ended=None, note="second"
-    )
-    run = run_noted(convert_and_take_runs(user.library, game), "second")
+    run = another_run(user, game, note="second")
     client.force_login(user)
 
     response = client.delete(f"/api/playthrough/{run.pk}")
@@ -198,16 +198,13 @@ def test_delete_states_the_removal_and_leaves_the_row(client, user, game):
     assert response.status_code == 204
     run.refresh_from_db()
     assert run.removed_at is not None
-    second.refresh_from_db()
-    assert second.removed_at is None
+    assert Playthrough.objects.filter(pk=run.pk).exists()
 
 
 @pytest.mark.django_db(transaction=True)
 def test_a_second_delete_answers_204(client, user, game):
     """#906: a repeat refuses nothing."""
-    PlayEvent.objects.create(game=game, started=None, ended=None, note="first")
-    PlayEvent.objects.create(game=game, started=None, ended=None, note="second")
-    run = run_noted(convert_and_take_runs(user.library, game), "second")
+    run = another_run(user, game, note="second")
     client.force_login(user)
 
     assert client.delete(f"/api/playthrough/{run.pk}").status_code == 204
@@ -222,11 +219,6 @@ def test_an_unconverted_row_id_answers_404(client, user, game):
 
     assert client.delete(f"/api/playthrough/{row.pk}").status_code == 404
     assert client.get(f"/api/playthrough/{row.pk}").status_code == 404
-
-
-def born_run(game) -> Playthrough:
-    """The run a tracked game was born with."""
-    return Playthrough.objects.get(player_game__game=game)
 
 
 @pytest.mark.django_db(transaction=True)
@@ -275,10 +267,13 @@ def test_a_patch_that_states_a_null_records_the_act(client, user, game):
 @pytest.mark.django_db(transaction=True)
 def test_the_body_patches_back_unchanged(client, user, game):
     """What a read states, a write takes back."""
-    PlayEvent.objects.create(
-        game=game, started=date(2026, 1, 2), ended=date(2026, 3, 4), note="12h"
+    run = state_run(
+        user,
+        game,
+        started=day("2026-01-02"),
+        completed=day("2026-03-04"),
+        note="12h",
     )
-    [run] = convert_and_take_runs(user.library, game)
     client.force_login(user)
     body = client.get(f"/api/playthrough/{run.pk}").json()
 
@@ -362,9 +357,7 @@ def test_deleting_the_only_run_of_a_tracked_game_answers_409(client, user, game)
 
 @pytest.mark.django_db(transaction=True)
 def test_a_patch_of_a_removed_run_answers_409(client, user, game):
-    PlayEvent.objects.create(game=game, started=None, ended=None, note="first")
-    PlayEvent.objects.create(game=game, started=None, ended=None, note="second")
-    run = run_noted(convert_and_take_runs(user.library, game), "second")
+    run = another_run(user, game, note="second")
     client.force_login(user)
     assert client.delete(f"/api/playthrough/{run.pk}").status_code == 204
 

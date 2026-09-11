@@ -4,10 +4,10 @@ from datetime import UTC, datetime
 
 import pytest
 from django.urls import reverse
-from playthrough_conversion import convert_and_take_runs, run_noted
+from stated_runs import another_run
 
 from common.returns import action_url
-from games.models import Game, Platform, PlayEvent, Session
+from games.models import Game, Platform, Session
 
 
 @pytest.fixture
@@ -87,7 +87,6 @@ def removables(owned_library):
         "purchase": purchase,
         "platform": Platform.objects.create(library=owned_library, name="Doomed"),
         "device": Device.objects.create(library=owned_library, name="Doomed"),
-        "playevent": PlayEvent.objects.create(game=owned),
     }
 
 
@@ -117,20 +116,15 @@ def test_every_removal_confirms_first(
 
 @pytest.mark.django_db(transaction=True)
 def test_removal_confirms_first_with_owning_game_fallback(
-    logged_in, owned_library, removables
+    logged_in, owned_user, removables
 ):
     """This one falls back to the game.
 
-    #687 removes the run the row became, so the legacy row
-    keeps its own mark and the projection carries the
-    removal. A second row, so the game keeps one.
+    A second run, so removal is not taking the game's
+    last one, and the mark lands on the run itself.
     """
-    instance = removables["playevent"]
     owning_game = removables["game"]
-    instance.note = "the named row"
-    instance.save()
-    PlayEvent.objects.create(game=owning_game, note="a second row")
-    run = run_noted(convert_and_take_runs(owned_library, owning_game), "the named row")
+    run = another_run(owned_user, owning_game, note="the named run")
     url = reverse("games:remove_playthrough", args=[run.pk])
     assert logged_in.get(url).status_code == 200
 
@@ -139,5 +133,3 @@ def test_removal_confirms_first_with_owning_game_fallback(
     assert response["Location"] == owning_game.get_absolute_url()
     run.refresh_from_db()
     assert run.removed_at is not None
-    instance.refresh_from_db()
-    assert instance.removed_at is None

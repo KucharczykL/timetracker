@@ -14,8 +14,7 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 from django.urls import Resolver404, resolve, reverse
 
-from games.backfill.playthrough import convert_library
-from games.models import Device, Game, Platform, PlayEvent, Purchase, Session
+from games.models import Device, Game, Platform, Purchase, Session
 from games.views.returns import CONFIRMATION, ORIGIN_AWARE
 
 LINK_ATTRIBUTE = re.compile(r'\b(?:href|hx-get|hx-post|action)="([^"]*)"')
@@ -40,10 +39,8 @@ def world(owned_library):
         timestamp_start=datetime(2024, 6, 1, 12, tzinfo=UTC),
         device=Device.objects.create(library=owned_library, name="Desk"),
     )
-    PlayEvent.objects.create(game=game)
-    #: Without a run behind it the row renders no actions,
-    #: and the playthrough sweep would check nothing.
-    convert_library(owned_library)
+    #: Tracking states a run of its own, so the playthrough
+    #: sweep has a row whose actions carry an origin.
     return game
 
 
