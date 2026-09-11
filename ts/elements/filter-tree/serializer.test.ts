@@ -38,7 +38,7 @@ describe("serialize", () => {
   it("carries a multivalued comparison's quantifier through serialize", () => {
     const comparison = {
       left: "timestamp_end",
-      right: "game__playevents__ended",
+      right: "game__purchases__date_refunded",
       modifier: "GREATER_THAN",
       granularity: "date",
       quantifier: "ALL",
@@ -50,7 +50,7 @@ describe("serialize", () => {
   it("round-trips a quantified comparison through deserialize → serialize", () => {
     const filter = {
       field_comparisons: [
-        { left: "timestamp_end", right: "game__playevents__ended", modifier: "GREATER_THAN", granularity: "date", quantifier: "NONE" },
+        { left: "timestamp_end", right: "game__purchases__date_refunded", modifier: "GREATER_THAN", granularity: "date", quantifier: "NONE" },
       ],
     };
     const tree = deserialize(filter, "session", registry);
