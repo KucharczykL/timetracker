@@ -221,10 +221,16 @@ DATABASE_URL='postgresql://<app-role>@<host>/timetracker' \
   python manage.py migrate --fake games 0001_initial
 ```
 
-Order matters in one direction only: the cutover clears the history rows, so
-nothing is left to make `migrate` think the tables need creating. Run it with
-the application stopped, and take a backup first — this is the one procedure
-here that writes to the live database.
+Run it with the application stopped, and take a backup first — this is the one
+procedure here that writes to the live database.
+
+**A deploy that skips the cutover reports success.** The deployment's history
+holds 84 rows, and the first is named `0001_initial` — the app's original
+initial migration, from before an earlier squash renamed the file. The baseline
+carries that same name, so `migrate` reads it as applied and prints `No
+migrations to apply`. Nothing fails and nothing is repaired: the two legacy
+tables stay, and 84 rows go on naming migrations that no longer exist. Read
+that message as "the cutover has not run yet", never as "it has".
 
 ## UUIDv7
 
