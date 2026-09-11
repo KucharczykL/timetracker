@@ -10,10 +10,8 @@ from django.db import (
     IntegrityError,
     close_old_connections,
     connection,
-    migrations,
     transaction,
 )
-from django.db.migrations.loader import MigrationLoader
 from pydantic import ConfigDict, with_config
 
 from games.events.append import AppendResult, LockedStream, lock_stream
@@ -37,8 +35,6 @@ from games.models import (
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db
-
-IDEMPOTENCY_MIGRATION = ("games", "0024_libraryidempotencyrecord")
 
 
 @pytest.fixture
@@ -587,20 +583,6 @@ def test_a_decimal_and_an_int_of_the_same_value_differ():
     assert fingerprint_command_input(
         {"count": Decimal(1)}
     ) != fingerprint_command_input({"count": 1})
-
-
-def test_the_idempotency_migration_is_reversible():
-    """0023 refuses reversal to protect the only copy of the user's history.
-
-    These records are operational metadata, so the table stays droppable -- and
-    a RunPython here would be the guard copied by analogy.
-    """
-    migration = MigrationLoader(None).disk_migrations[IDEMPOTENCY_MIGRATION]
-
-    assert not any(
-        isinstance(operation, migrations.RunPython)
-        for operation in migration.operations
-    )
 
 
 def test_a_key_mismatch_is_a_command_conflict():

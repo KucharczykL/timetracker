@@ -157,16 +157,39 @@ def tooling():
     return module
 
 
+def _before_0034(domain_sql: str) -> str:
+    """Undo both of the properties 0034 gave these functions.
+
+    The migration that wrote them without either is gone, and no state the
+    history still holds is missing them, so the shape under test is built by
+    taking today's definitions and removing what was added. What each body
+    computes is beside the point; these two properties are the whole report.
+
+    Taking the search_path away is the failure: a body calls its helpers by
+    bare name, and a restore sets no path to find them under. Widening the
+    handler back to OTHERS is what made that failure unreadable -- a helper
+    out of reach was answered for, so the domain called every value in the
+    dump invalid rather than saying what it could not find.
+    """
+    stripped, reaches_removed = re.subn(
+        r"^ *SET search_path TO .*\n", "", domain_sql, flags=re.MULTILINE
+    )
+    assert reaches_removed, "no function in the domain SQL states a search_path"
+    widened, handlers_widened = re.subn(
+        r"EXCEPTION WHEN raise_exception OR data_exception THEN",
+        "EXCEPTION WHEN OTHERS THEN",
+        stripped,
+    )
+    assert handlers_widened == 1, "is_valid no longer names the classes it answers for"
+    return widened
+
+
 @pytest.fixture(scope="module")
 def pre_0034_dump(tooling, tmp_path_factory):
-    """A schema whose functions carry no search_path.
-
-    The domain SQL is read from the frozen migration, not migrated to. The
-    migration is the historical record, and the record is the thing under test.
-    """
-    domain_sql = import_module(
-        "games.migrations.0017_temporal_value_domain"
-    ).CREATE_TEMPORAL_VALUE_DOMAIN
+    """A schema whose functions carry no search_path."""
+    domain_sql = _before_0034(
+        import_module("games.migrations.0001_initial").CREATE_TEMPORAL_VALUE_DOMAIN
+    )
     database_url = tooling.local_database_url()
     maintenance = f"--maintenance-db={tooling.with_database(database_url, 'postgres')}"
     source_url = tooling.with_database(database_url, SOURCE_DATABASE)
