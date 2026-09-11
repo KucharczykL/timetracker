@@ -6,13 +6,14 @@
 **Status:** Draft
 
 **Supersedes:**
-`docs/superpowers/specs/2026-09-10-cleaning-02-remove-playevent-and-gamestatuschange.md`
-and `docs/superpowers/notes/2026-09-10-cleaning-02-lessons-learned.md`, which stay
-on branch `claude/playevent-gamestatuschange-removal-0b2c26` as historical
-evidence. Both are superseded rather than amended: their root-cause diagnosis is
-wrong, and the five-migration sequence they prescribe (`0049`–`0053`) creates the
-failure it was written to avoid. §Why the prior design fails records that, because
-the prior design will look reasonable to anyone who rereads it cold.
+[`2026-09-10-cleaning-02-remove-playevent-and-gamestatuschange.md`](2026-09-10-cleaning-02-remove-playevent-and-gamestatuschange.md)
+and [`../notes/2026-09-10-cleaning-02-lessons-learned.md`](../notes/2026-09-10-cleaning-02-lessons-learned.md).
+Both sit beside this one, each opening with a banner saying what is wrong with it,
+because a reader who finds only the replacement learns nothing about the trap.
+They are superseded rather than amended: their root-cause diagnosis is wrong, and
+the five-migration sequence they prescribe (`0049`–`0053`) creates the failure it
+was written to avoid. §Why the prior design fails records that, because the prior
+design will look reasonable to anyone who rereads it cold.
 
 ## Problem statement
 
