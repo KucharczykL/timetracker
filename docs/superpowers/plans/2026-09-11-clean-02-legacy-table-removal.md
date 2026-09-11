@@ -1771,7 +1771,7 @@ the Makefile/CLAUDE.md rows. Same net result, different split than planned.
 - Consumes: nothing new.
 - Produces: `0049` as the dependency for Task 8's `0050`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_guard_legacy_tables_empty_migration.py
@@ -1821,7 +1821,21 @@ tested — check `tests/` for an existing precedent, e.g. a test file covering
 one of the `raise RuntimeError` migrations already in the tree, such as
 `0033`'s, and mirror its import style if it differs from the above.)
 
-- [ ] **Step 2: Run it to verify it fails**
+**Actual: the example's import is invalid.** `0049_guard_legacy_tables_empty`
+starts with a digit, so `from games.migrations import guard_legacy_tables_empty`
+(the function name, not the module) doesn't name this migration at all, and a
+literal `from games.migrations import 0049_guard_legacy_tables_empty` would be
+a `SyntaxError`. The precedent this step points at —
+`tests/test_purchase_uuid_primary_key.py:319` — uses
+`importlib.import_module("games.migrations.0015_purchase_uuid_primary_key")`
+instead, since `import_module` takes a plain string and doesn't care that the
+segment isn't a valid identifier. Used that form:
+`guard_module = importlib.import_module("games.migrations.0049_guard_legacy_tables_empty")`.
+Also: the example's `GameStatusChange.objects.create(..., new_status=Game.Status.UNKNOWN)`
+doesn't exist — `Game.Status` is `UNPLAYED`/`PLAYED`/`FINISHED`/… ; used
+`Game.Status.UNPLAYED`.
+
+- [x] **Step 2: Run it to verify it fails**
 
 ```bash
 make test ARGS="tests/test_guard_legacy_tables_empty_migration.py -v"
@@ -1830,7 +1844,7 @@ make test ARGS="tests/test_guard_legacy_tables_empty_migration.py -v"
 Expected: `ModuleNotFoundError` or `ImportError` — the migration file does not
 exist yet.
 
-- [ ] **Step 3: Write the migration**
+- [x] **Step 3: Write the migration**
 
 ```python
 # games/migrations/0049_guard_legacy_tables_empty.py
@@ -1869,7 +1883,7 @@ class Migration(migrations.Migration):
     ]
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 ```bash
 make test ARGS="tests/test_guard_legacy_tables_empty_migration.py -v"
@@ -1877,7 +1891,7 @@ make test ARGS="tests/test_guard_legacy_tables_empty_migration.py -v"
 
 Expected: all three tests pass.
 
-- [ ] **Step 5: Verify the migration graph**
+- [x] **Step 5: Verify the migration graph**
 
 ```bash
 manage.py makemigrations --check --dry-run
@@ -1886,7 +1900,7 @@ manage.py makemigrations --check --dry-run
 Expected: no changes detected (this migration doesn't touch `models.py`, so
 the autodetector has nothing new to see).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add games/migrations/0049_guard_legacy_tables_empty.py tests/test_guard_legacy_tables_empty_migration.py
