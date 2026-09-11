@@ -21,7 +21,6 @@ from django.utils import timezone
 from games.models import (
     Device,
     Game,
-    GameStatusChange,
     Platform,
     PlayerGame,
     Playthrough,
@@ -103,7 +102,6 @@ class DataTableGateTest(TestCase):
             library=library,
         )
         purchase.games.add(game)
-        GameStatusChange.objects.create(game=game, new_status="p", timestamp=BASE)
 
     def setUp(self) -> None:
         self.client.force_login(self.user)
@@ -155,7 +153,7 @@ class DataTableGateTest(TestCase):
         self.assertNotIn("<caption", html)
         self.assertNotIn("<responsive-table", html)
 
-    def test_playevents_note_column_may_wrap(self) -> None:
+    def test_the_playthrough_note_column_may_wrap(self) -> None:
         """Free text has no natural width; on one line a long note would widen
         the table past anything the other columns could reclaim."""
         html = self._html("games:list_playthroughs")

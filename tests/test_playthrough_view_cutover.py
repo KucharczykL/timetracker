@@ -14,7 +14,6 @@ from games.commands.playthrough import ActStatement
 from games.models import (
     Game,
     LibraryEvent,
-    PlayEvent,
     Playthrough,
     PlaythroughKind,
     Session,
@@ -40,7 +39,7 @@ def game(owned_library):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_adding_a_playthrough_writes_no_legacy_row(client, user, game):
+def test_adding_a_playthrough_states_both_endpoints_and_the_note(client, user, game):
     client.force_login(user)
 
     client.post(
@@ -53,7 +52,6 @@ def test_adding_a_playthrough_writes_no_legacy_row(client, user, game):
         },
     )
 
-    assert PlayEvent.objects.count() == 0
     run = Playthrough.objects.get(player_game__game=game)
     assert run.note == "12h"
     assert run.start_recorded_at is not None

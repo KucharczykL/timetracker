@@ -1,5 +1,5 @@
 """End-to-end Playwright tests for the DatePicker element (issue #485):
-add/edit Purchase and PlayEvent date fields under different account display
+add/edit Purchase and Playthrough date fields under different account display
 profiles, the calendar popup, live DATETIME_FORMAT changes, and the
 JS-disabled native `<input type="date">` fallback.
 """
@@ -17,7 +17,7 @@ from common.components.primitives import CsrfInput
 from common.date_time_presentation import date_time_presentation_for_request
 from games.models import Game, Platform, Purchase, UserPreferences
 
-# ── Real-app tests: add/edit Purchase and PlayEvent ─────────────────────────
+# ── Real-app tests: add/edit Purchase and Playthrough ───────────────────────
 
 
 @pytest.fixture

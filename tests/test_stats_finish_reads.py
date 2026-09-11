@@ -1,7 +1,7 @@
 """#1014: the statistics read a run."""
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import date
 
 import pytest
 from django.urls import reverse
@@ -12,7 +12,6 @@ from games.events.dispatch import dispatch
 from games.models import (
     Game,
     PlayerGameStatus,
-    PlayEvent,
     Playthrough,
     PlaythroughKind,
     Purchase,
@@ -71,20 +70,6 @@ def test_a_completed_run_leaves_the_backlog(owned_user, owned_library):
 
     assert data["all_finished_this_year_count"] == 1
     assert data["purchased_unfinished_count"] == 0
-
-
-@pytest.mark.django_db(transaction=True)
-def test_a_legacy_row_alone_counts_for_nothing(owned_user, owned_library):
-    """The only test here writing PlayEvent."""
-    run = _bought_and_completed(owned_user, owned_library, "Legacy only")
-    PlayEvent.objects.create(
-        game=run.player_game.game, ended=datetime(YEAR, 6, 1, tzinfo=UTC)
-    )
-
-    data = compute_stats(owned_library, YEAR)
-
-    assert data["all_finished_this_year_count"] == 0
-    assert data["purchased_unfinished_count"] == 1
 
 
 @pytest.mark.django_db(transaction=True)

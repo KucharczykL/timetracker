@@ -16,7 +16,7 @@ from games.models import (
     Edition,
     Game,
     Platform,
-    PlayEvent,
+    Playthrough,
     Purchase,
     Release,
     Session,
@@ -46,7 +46,7 @@ def world(owned_library):
         "session_id": Session.objects.create(
             game=game, timestamp_start=datetime(2024, 6, 1, 12, tzinfo=UTC)
         ).id,
-        "playthrough_id": PlayEvent.objects.create(game=game).id,
+        "playthrough_id": Playthrough.objects.get(player_game__game=game).id,
         "device_id": Device.objects.create(library=owned_library, name="Desk").id,
         "platform_id": Platform.objects.create(
             library=owned_library, name="Private"

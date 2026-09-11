@@ -470,8 +470,8 @@ def check_ordering(models: list[IdentityModel]) -> CheckReport:
     minted at any time other than the row's own creation silently breaks it.
 
     Rows whose ordering source is NULL are excluded rather than required to sort
-    last: migration 0006 stamped those with the migration's own clock, which put
-    them last only until the next row was inserted.
+    last: the backfill stamped those with its own clock, which put them last
+    only until the next row was inserted.
     """
     violations: list[Violation] = []
     notes: list[Note] = []

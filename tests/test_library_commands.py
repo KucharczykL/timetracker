@@ -22,7 +22,6 @@ from games.models import (
     Game,
     Platform,
     PlayerGame,
-    PlayEvent,
     Playthrough,
     PlaythroughKind,
     Purchase,
@@ -67,7 +66,6 @@ def _owned_graph(owner):
         device=device,
         timestamp_start=datetime(2025, 1, 1, tzinfo=UTC),
     )
-    PlayEvent.objects.create(game=game, started=date(2025, 1, 1))
     return platform, device, game, purchase
 
 
@@ -222,8 +220,6 @@ def test_committed_sample_load_owns_private_rows_and_reuses_shared_platform(owne
     assert not Purchase.objects.exclude(library=owner.library).exists()
     assert Session.objects.filter(game__library=owner.library).exists()
     assert not Session.objects.exclude(game__library=owner.library).exists()
-    assert PlayEvent.objects.filter(game__library=owner.library).exists()
-    assert not PlayEvent.objects.exclude(game__library=owner.library).exists()
 
 
 def test_committed_sample_stores_promoted_uuid_identities_as_primary_keys():
@@ -332,9 +328,8 @@ def test_sample_load_rejects_a_private_row_without_portable_owner_marker(
     assert not Device.objects.filter(pk=device_id).exists()
 
 
-# PlayEvent.game, GameStatusChange.game, and both platform foreign keys reference
-# their promoted target's UUIDv7 primary key; these are well-formed UUIDs that
-# no fixture record carries.
+# Session.game and both platform foreign keys reference their promoted target's
+# UUIDv7 primary key; these are well-formed UUIDs that no fixture record carries.
 ABSENT_GAME_UUID = "00000000-0000-7000-8000-000000000000"
 ABSENT_DEVICE_UUID = "00000000-0000-7000-8000-000000000001"
 PRESENT_GAME_UUID = "00000000-0000-7000-8000-000000000002"
@@ -346,8 +341,6 @@ ABSENT_PLATFORM_UUID = "00000000-0000-7000-8000-000000000001"
     ("model", "fields", "target_model"),
     [
         ("games.session", {"game": ABSENT_GAME_UUID}, "Game"),
-        ("games.playevent", {"game": ABSENT_GAME_UUID}, "Game"),
-        ("games.gamestatuschange", {"game": ABSENT_GAME_UUID}, "Game"),
         (
             "games.purchase",
             {"library": "__target_library__", "games": [999]},

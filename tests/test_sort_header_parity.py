@@ -17,7 +17,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from games.models import Device, Game, Platform, PlayEvent, Purchase
+from games.models import Device, Game, Platform, Purchase
 from games.sorting import (
     DEVICE_SORTS,
     GAME_SORTS,
@@ -80,8 +80,7 @@ class SortHeaderParityTest(TestCase):
     def test_purchases_headers_match_map(self):
         self._assert_parity("games:list_purchases", PURCHASE_SORTS)
 
-    def test_playevents_headers_match_map(self):
-        PlayEvent.objects.create(game=self.game)
+    def test_playthroughs_headers_match_map(self):
         self._assert_parity("games:list_playthroughs", PLAYTHROUGH_SORTS)
 
     def test_devices_headers_match_map(self):

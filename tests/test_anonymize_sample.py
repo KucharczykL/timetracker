@@ -81,7 +81,6 @@ GENERATED_KEYS = {
     "price_per_game",
     "duration_calculated",
     "duration_total",
-    "days_to_finish",
 }
 
 

@@ -19,10 +19,11 @@ from games.models import (
     Device,
     Game,
     Platform,
-    PlayEvent,
+    Playthrough,
     Purchase,
     Session,
 )
+from timetracker.temporal import TemporalValue
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 BASE = datetime(2025, 3, 1, 10, 0, tzinfo=ZONEINFO)
@@ -86,8 +87,13 @@ def populated(e2e_library) -> None:
             price_currency="USD",
         )
         purchase.games.add(purchased_game)
-    PlayEvent.objects.create(
-        game=game, started=BASE, ended=BASE + timedelta(days=3), note=LONG_NOTE
+    #: The run the game was born with holds the days and the long note.
+    Playthrough.objects.filter(player_game__game=game).update(
+        start_recorded_at=BASE,
+        started=TemporalValue.from_day(BASE.date()),
+        completion_recorded_at=BASE + timedelta(days=3),
+        completed=TemporalValue.from_day((BASE + timedelta(days=3)).date()),
+        note=LONG_NOTE,
     )
 
 

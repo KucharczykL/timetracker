@@ -5,7 +5,6 @@ from django.apps import apps
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import connection
-from django.utils import timezone
 
 from games.events.targets import SHADOW_SUFFIX, ShadowTarget
 from games.identity_audit import (
@@ -22,7 +21,7 @@ from games.identity_audit import (
     primary_key_types,
     relation_columns,
 )
-from games.models import Game, GameStatusChange, PlayerGame
+from games.models import Game, PlayerGame, Session
 from timetracker.uuidv7 import uuid7_at
 
 pytestmark = [pytest.mark.django_db, pytest.mark.untracked_games]
@@ -39,7 +38,6 @@ EXPECTED_RELATION_COLUMNS = {
     ("games_filterpreset", "library_id"),
     ("games_game", "library_id"),
     ("games_game", "platform_id"),
-    ("games_gamestatuschange", "game_id"),
     ("games_libraryevent", "actor_id"),
     ("games_libraryevent", "library_id"),
     ("games_libraryevent", "stream_id"),
@@ -50,7 +48,6 @@ EXPECTED_RELATION_COLUMNS = {
     ("games_platform", "library_id"),
     ("games_playergame", "game_id"),
     ("games_playergame", "library_id"),
-    ("games_playevent", "game_id"),
     ("games_playthrough", "library_id"),
     ("games_playthrough", "player_game_id"),
     ("games_purchase", "library_id"),
@@ -132,13 +129,13 @@ def test_type_agreement_reports_a_column_postgresql_does_not_have(actual_types):
     doctored = {
         key: value
         for key, value in actual_types.items()
-        if key != ("games_playevent", "game_id")
+        if key != ("games_edition", "game_id")
     }
 
     report = check_type_agreement(relation_columns(), doctored)
 
     assert [violation.subject for violation in report.violations] == [
-        "games_playevent.game_id"
+        "games_edition.game_id"
     ]
 
 
@@ -243,14 +240,12 @@ EXPECTED_IDENTITY_TABLES = {
     "games_externalreference",
     "games_filterpreset",
     "games_game",
-    "games_gamestatuschange",
     "games_libraryevent",
     "games_libraryeventreference",
     "games_libraryeventstreamhead",
     "games_libraryidempotencyrecord",
     "games_platform",
     "games_playergame",
-    "games_playevent",
     "games_playthrough",
     "games_purchase",
     "games_purchaseconversionstate",
@@ -273,7 +268,7 @@ def test_identity_models_cover_every_uuid_carrier():
 
 def test_identity_models_use_the_backfilled_order_source():
     sources = {entry.table: entry.order_source for entry in identity_models()}
-    assert sources["games_gamestatuschange"] == "timestamp"
+    assert sources["games_libraryevent"] == "recorded_at"
     assert sources["games_game"] == "created_at"
     assert sources["games_edition"] is None
     assert sources["games_release"] is None
@@ -305,7 +300,7 @@ def test_identity_columns_report_a_dropped_not_null(cursor):
 
 
 def test_identity_columns_report_a_dropped_unique_index(cursor):
-    """Uses PlayEvent because nothing references its promoted identity.
+    """Uses LibraryEventReference because nothing references its identity.
 
     games_game.id cannot be used here: it is the primary key, and four foreign
     keys depend on its index - the same coupling that makes a RemoveField on a
@@ -315,11 +310,14 @@ def test_identity_columns_report_a_dropped_unique_index(cursor):
         """
         SELECT constraint_.conname FROM pg_constraint AS constraint_
         JOIN pg_class AS class ON class.oid = constraint_.conrelid
-        WHERE class.relname = 'games_playevent' AND constraint_.contype = 'p'
+        WHERE class.relname = 'games_libraryeventreference'
+          AND constraint_.contype = 'p'
         """
     )
     for (name,) in cursor.fetchall():
-        cursor.execute(f'ALTER TABLE games_playevent DROP CONSTRAINT "{name}"')
+        cursor.execute(
+            f'ALTER TABLE games_libraryeventreference DROP CONSTRAINT "{name}"'
+        )
 
     report = check_identity_columns(cursor, identity_models())
 
@@ -364,26 +362,34 @@ def test_ordering_skips_a_model_without_an_order_source():
 
 
 def test_ordering_excludes_null_source_rows(owned_library):
-    """A NULL-timestamp status change is excluded, not required to sort last.
+    """A row whose ordering source is NULL is excluded, not sorted last.
 
-    Migration 0006 stamped those rows with the migration's own clock, which put
-    them last only until the next row was written.
+    No model this app ships orders by a nullable column any more, so the entry
+    is stated here rather than read out of `identity_models()`. The check is
+    what is under test, and it reads one entry at a time.
     """
     game = Game.objects.create(library=owned_library, name="Audited")
-    GameStatusChange.objects.create(
-        game=game, new_status=Game.Status.PLAYED, timestamp=timezone.now()
+    for ended in (
+        datetime(2026, 1, 1, 12, tzinfo=UTC),
+        datetime(2026, 1, 2, 12, tzinfo=UTC),
+        None,
+    ):
+        Session.objects.create(
+            game=game,
+            timestamp_start=datetime(2026, 1, 1, tzinfo=UTC),
+            timestamp_end=ended,
+        )
+    session_entry = next(
+        entry for entry in identity_models() if entry.table == "games_session"
     )
-    GameStatusChange.objects.create(
-        game=game, new_status=Game.Status.FINISHED, timestamp=None
-    )
+    #: The one nullable date column a live model carries.
+    by_a_nullable_source = session_entry._replace(order_source="timestamp_end")
 
-    report = check_ordering(identity_models())
+    report = check_ordering([by_a_nullable_source])
 
     assert report.violations == []
-    note = next(
-        note for note in report.notes if note.subject == "games_gamestatuschange"
-    )
-    assert "1 excluded for a NULL timestamp" in note.detail
+    note = next(note for note in report.notes if note.subject == "games_session")
+    assert "1 excluded for a NULL timestamp_end" in note.detail
 
 
 def test_referential_agreement_is_clean_on_a_migrated_database(cursor):
@@ -424,22 +430,22 @@ def test_referential_agreement_reports_a_not_valid_constraint(cursor):
         JOIN pg_attribute AS attribute
           ON attribute.attrelid = constraint_.conrelid
          AND attribute.attnum = ANY(constraint_.conkey)
-        WHERE class.relname = 'games_playevent'
+        WHERE class.relname = 'games_edition'
           AND attribute.attname = 'game_id'
           AND constraint_.contype = 'f'
         """
     )
     (name,) = cursor.fetchone()
-    cursor.execute(f'ALTER TABLE games_playevent DROP CONSTRAINT "{name}"')
+    cursor.execute(f'ALTER TABLE games_edition DROP CONSTRAINT "{name}"')
     cursor.execute(
-        f'ALTER TABLE games_playevent ADD CONSTRAINT "{name}" '
+        f'ALTER TABLE games_edition ADD CONSTRAINT "{name}" '
         "FOREIGN KEY (game_id) REFERENCES games_game(id) NOT VALID"
     )
 
     report = check_referential_agreement(cursor, relation_columns())
 
     assert [violation.subject for violation in report.violations] == [
-        "games_playevent.game_id"
+        "games_edition.game_id"
     ]
     assert "NOT VALID" in report.violations[0].detail
 

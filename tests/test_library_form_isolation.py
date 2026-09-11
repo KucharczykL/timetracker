@@ -25,7 +25,7 @@ from games.models import (
     Game,
     Platform,
     PlayerGameStatus,
-    PlayEvent,
+    Playthrough,
     Purchase,
     Session,
 )
@@ -80,13 +80,13 @@ def test_form_relationship_querysets_are_explicitly_library_bound(world):
         presentation=PRESENTATION,
     )
     release = ReleaseRowForm(library=world.owner_library, presentation=PRESENTATION)
-    playevent = PlaythroughForm(library=world.owner_library, presentation=PRESENTATION)
+    run_form = PlaythroughForm(library=world.owner_library, presentation=PRESENTATION)
 
     assert _ids(session.fields["game"].queryset) == {world.own_game.pk}
     assert _ids(session.fields["device"].queryset) == {world.own_device.pk}
     assert _ids(purchase.fields["games"].queryset) == {world.own_game.pk}
     assert _ids(purchase.fields["related_game"].queryset) == {world.own_game.pk}
-    assert _ids(playevent.fields["game"].queryset) == {world.own_game.pk}
+    assert _ids(run_form.fields["game"].queryset) == {world.own_game.pk}
     visible_platforms = {world.shared_platform.pk, world.own_platform.pk}
     #: The Game names no Platform now; its first Release does.
     assert _ids(release.fields["platform"].queryset) == visible_platforms
@@ -226,8 +226,8 @@ def test_purchase_form_rejects_foreign_relationships_without_saving(world):
     assert world.foreign_platform.name not in html
 
 
-def test_the_play_event_form_rejects_a_foreign_game(world):
-    before = PlayEvent.objects.count()
+def test_the_playthrough_form_rejects_a_foreign_game(world):
+    before = Playthrough.objects.count()
     form = PlaythroughForm(
         data={
             "game": world.foreign_game.pk,
@@ -241,7 +241,7 @@ def test_the_play_event_form_rejects_a_foreign_game(world):
 
     assert not form.is_valid()
     assert "game" in form.errors
-    assert PlayEvent.objects.count() == before
+    assert Playthrough.objects.count() == before
     assert world.foreign_game.name not in str(form)
 
 

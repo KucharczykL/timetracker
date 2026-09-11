@@ -19,7 +19,6 @@ from games.models import (
     Game,
     Platform,
     PlayerGameStatus,
-    PlayEvent,
     Playthrough,
     Purchase,
     Session,
@@ -119,9 +118,6 @@ def populated(e2e_user, e2e_library) -> None:
             price_currency="USD",
         )
         purchase.games.add(purchased_game)
-    PlayEvent.objects.create(
-        game=game, started=BASE, ended=BASE + timedelta(days=3), note=LONG_NOTE
-    )
     #: A command, so History has an entry:
     #: it reads events, not this direct write.
     track_game(e2e_user, game, correlation_id=new_correlation_id())

@@ -1,12 +1,13 @@
 """#687: the API states runs, not rows."""
 
+import uuid
 from datetime import date
 
 import pytest
 from stated_runs import another_run, state_run
 
 from games.commands.playthrough import ActStatement
-from games.models import Game, PlayEvent, Playthrough
+from games.models import Game, Playthrough
 from games.removal import remove
 from timetracker.temporal import TemporalValue
 
@@ -47,7 +48,6 @@ def test_post_states_a_run_and_writes_no_row(client, user, game):
     )
 
     assert response.status_code == 204
-    assert PlayEvent.objects.count() == 0
     assert Playthrough.objects.filter(player_game__game=game).count() == 1
 
 
@@ -212,13 +212,13 @@ def test_a_second_delete_answers_204(client, user, game):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_an_unconverted_row_id_answers_404(client, user, game):
-    """A row id names no run."""
-    row = PlayEvent.objects.create(game=game, started=None, ended=None, note="")
+def test_an_id_that_names_no_run_answers_404(client, user, game):
+    """Well-formed, and the library has no run under it."""
+    absent = uuid.uuid7()
     client.force_login(user)
 
-    assert client.delete(f"/api/playthrough/{row.pk}").status_code == 404
-    assert client.get(f"/api/playthrough/{row.pk}").status_code == 404
+    assert client.delete(f"/api/playthrough/{absent}").status_code == 404
+    assert client.get(f"/api/playthrough/{absent}").status_code == 404
 
 
 @pytest.mark.django_db(transaction=True)
