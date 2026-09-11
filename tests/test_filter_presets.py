@@ -241,13 +241,13 @@ def test_save_without_sort_stores_empty_find_filter(auth_client):
     assert preset.find_filter == {}
 
 
-def test_save_persists_sort_for_playevents_mode(auth_client):
-    # #335 gave playevents/devices/platforms sort maps, so their presets now
+def test_save_persists_sort_for_playthroughs_mode(auth_client):
+    # #335 gave playthroughs/devices/platforms sort maps, so their presets now
     # round-trip a sort just like games/sessions/purchases (the MODE_SORTS gate
-    # in save_preset admits them). Previously playevents was sort-less and dropped
+    # in save_preset admits them). Previously this mode was sort-less and dropped
     # the sort.
-    _save(auth_client, name="PE", mode="playthroughs", filter=None, sort="-created")
-    preset = FilterPreset.objects.get(name="PE")
+    _save(auth_client, name="Runs", mode="playthroughs", filter=None, sort="-created")
+    preset = FilterPreset.objects.get(name="Runs")
     assert preset.find_filter == {"sort": "-created"}
 
 

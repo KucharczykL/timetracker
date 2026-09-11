@@ -208,8 +208,8 @@ docs/           — Additional documentation
   fields, each endpoint compared as interval its two bound columns state),
   sorts, quick facets and saved presets, whose stored `ended` a one-time pass
   rewrote to `completed`. `playthrough_count` counts runs whose completion is
-  stated, which is number `Played N times` prints. No run is read out of
-  `games_playevent` any more, and since #1026 no finish is either: the Purchase
+  stated, which is number `Played N times` prints. Since #1026 no finish is
+  read out of a legacy row either: the Purchase
   list's Finished column and the `finished` sort on Game and Purchase read the
   projection, through three readers `games/reads/playthrough_completions.py`
   adds beside its four — `ranked_completions` orders a row's completed runs so
@@ -408,7 +408,7 @@ structured filtering.
 organized by domain entity:
 
 - `session.py`, `game.py`, `purchase.py`, `playthrough.py`, `platform.py`,
-  `device.py`, `statuschange.py` — CRUD per entity
+  `device.py`, `settings.py`, `library.py` — CRUD per entity
 - `general.py` — `stats()`, `stats_alltime()`, `index()`, `model_counts` and
   `global_current_year` context processors
 - `returns.py` — route classification (`READ_ONLY` / `ORIGIN_AWARE` /
