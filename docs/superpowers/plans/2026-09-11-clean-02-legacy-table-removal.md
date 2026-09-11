@@ -106,6 +106,22 @@ now-stale comment above the reverse argument (`#: Append-only: no rollback takes
 events back.`) — it explained why only the *reverse* was a no-op; now both are,
 for the same reason, and the asymmetric framing is misleading.
 
+- [ ] **Step 3.5 (discovered during execution): delete `tests/test_playergame_backfill_migration.py`**
+
+`make check-fast` after Steps 1-3 failed 5 tests in this file. It runs
+migration `0033` through `MigrationExecutor` and asserts on its stdout
+reconciliation line and its actual backfill effects — exactly the forward
+behavior this task permanently neutralizes. It names neither `PlayEvent` nor
+`GameStatusChange` literally (it drives `Game.status` letter codes directly),
+so it is invisible to both the spec's research and Task 11's later grep
+sweep. Same category as the four files Commit B already deletes (its subject
+is a migration-only pass, permanently dead once neutralized) — delete it here
+rather than leaving Task 1 red until Task 6:
+
+```bash
+git rm tests/test_playergame_backfill_migration.py
+```
+
 - [ ] **Step 4: Verify on a fresh test database**
 
 ```bash
@@ -777,17 +793,15 @@ At the end of `_anonymize`, replace:
 with:
 
 ```python
-        replacements_by_model = self._reassign_uuids()
-        event_count = self._reassign_event_identities(
-            game_offsets, replacements_by_model[Game]
-        )
+replacements_by_model = self._reassign_uuids()
+event_count = self._reassign_event_identities(game_offsets, replacements_by_model[Game])
 
-        return {
-            "games": len(all_game_ids),
-            "purchases": len(purchases),
-            "sessions": len(sessions),
-            "events": event_count,
-        }
+return {
+    "games": len(all_game_ids),
+    "purchases": len(purchases),
+    "sessions": len(sessions),
+    "events": event_count,
+}
 ```
 
 - [ ] **Step 7: Fix the empty-`effective_time` round-trip in `_write_fixture`**
@@ -798,26 +812,24 @@ reading `""` back raises `ValidationError` (`_normalize_temporal_model_value`
 an empty string. In `_write_fixture`:
 
 ```python
-    def _write_fixture(self, dump_path, output_path):
-        with dump_path.open() as stream:
-            objects = yaml.safe_load(stream) or []
-        for item in objects:
-            fields = item.get("fields", {})
-            for key in GENERATED_FIELDS:
-                fields.pop(key, None)
-            if item.get("model") == "games.libraryevent" and fields.get(
-                "effective_time"
-            ) == "":
-                fields.pop("effective_time", None)
-            if item.get("model") in PORTABLE_LIBRARY_MODELS or (
-                item.get("model") == "games.platform"
-                and fields.get("library") is not None
-            ):
-                fields["library"] = TARGET_LIBRARY_MARKER
-        payload = yaml.safe_dump(
-            objects, sort_keys=True, default_flow_style=False
-        ).encode()
-        output_path.write_bytes(gzip.compress(payload, compresslevel=9, mtime=0))
+def _write_fixture(self, dump_path, output_path):
+    with dump_path.open() as stream:
+        objects = yaml.safe_load(stream) or []
+    for item in objects:
+        fields = item.get("fields", {})
+        for key in GENERATED_FIELDS:
+            fields.pop(key, None)
+        if (
+            item.get("model") == "games.libraryevent"
+            and fields.get("effective_time") == ""
+        ):
+            fields.pop("effective_time", None)
+        if item.get("model") in PORTABLE_LIBRARY_MODELS or (
+            item.get("model") == "games.platform" and fields.get("library") is not None
+        ):
+            fields["library"] = TARGET_LIBRARY_MARKER
+    payload = yaml.safe_dump(objects, sort_keys=True, default_flow_style=False).encode()
+    output_path.write_bytes(gzip.compress(payload, compresslevel=9, mtime=0))
 ```
 
 - [ ] **Step 8: Run the affected tests**
@@ -896,7 +908,11 @@ Add:
 
 ```python
 from games.events.reconcile import UnresolvedReferences
-from games.events.rebuild import RebuildMode, SwapRefusedByReference, rebuild_projections
+from games.events.rebuild import (
+    RebuildMode,
+    SwapRefusedByReference,
+    rebuild_projections,
+)
 from games.events.replay import PayloadVersionUnsupported, StreamNotContiguous
 from games.events.wiring import DEFAULT_WIRING
 ```
@@ -966,9 +982,7 @@ FIXTURE_RELATIONSHIPS: dict[str, tuple[FixtureRelationship, ...]] = {
         FixtureRelationship("device", "games.device", False, False),
     ),
     "games.libraryevent": (
-        FixtureRelationship(
-            "stream", "games.libraryeventstreamhead", False, True
-        ),
+        FixtureRelationship("stream", "games.libraryeventstreamhead", False, True),
     ),
     "games.libraryeventreference": (
         FixtureRelationship("event", "games.libraryevent", False, True),
@@ -985,44 +999,41 @@ reference lives inside its JSON `payload`, which that mechanism cannot reach
 `_validate_records`:
 
 ```python
-        game_ids = {
-            str(record["pk"])
-            for record in records
-            if record.get("model") == "games.game"
-        }
-        for record in records:
-            if record["model"] != "games.libraryevent":
-                continue
-            fields = record["fields"]
-            for found in DEFAULT_WIRING.event_types.references_in(
-                fields["event_type"], fields["payload"]
-            ):
-                if found.value["kind"] == "catalog.platform":
-                    raise CommandError(
-                        f"Sample event {record['pk']} references a Platform. "
-                        "Platform rows are re-created under fresh pks at load "
-                        "time, so a payload reference to one would dangle."
-                    )
-                if found.value["kind"] == "catalog.game" and found.value[
-                    "id"
-                ] not in game_ids:
-                    raise CommandError(
-                        f"Sample event {record['pk']} references Game "
-                        f"{found.value['id']!r}, which is not included in the "
-                        "fixture."
-                    )
-        for record in records:
-            if record["model"] != "games.libraryeventreference":
-                continue
-            fields = record["fields"]
-            if fields["kind"] == "catalog.game" and str(
-                fields["referenced_id"]
-            ) not in game_ids:
-                raise CommandError(
-                    f"Sample reference {record['pk']} names Game "
-                    f"{fields['referenced_id']!r}, which is not included in "
-                    "the fixture."
-                )
+game_ids = {
+    str(record["pk"]) for record in records if record.get("model") == "games.game"
+}
+for record in records:
+    if record["model"] != "games.libraryevent":
+        continue
+    fields = record["fields"]
+    for found in DEFAULT_WIRING.event_types.references_in(
+        fields["event_type"], fields["payload"]
+    ):
+        if found.value["kind"] == "catalog.platform":
+            raise CommandError(
+                f"Sample event {record['pk']} references a Platform. "
+                "Platform rows are re-created under fresh pks at load "
+                "time, so a payload reference to one would dangle."
+            )
+        if found.value["kind"] == "catalog.game" and found.value["id"] not in game_ids:
+            raise CommandError(
+                f"Sample event {record['pk']} references Game "
+                f"{found.value['id']!r}, which is not included in the "
+                "fixture."
+            )
+for record in records:
+    if record["model"] != "games.libraryeventreference":
+        continue
+    fields = record["fields"]
+    if (
+        fields["kind"] == "catalog.game"
+        and str(fields["referenced_id"]) not in game_ids
+    ):
+        raise CommandError(
+            f"Sample reference {record['pk']} names Game "
+            f"{fields['referenced_id']!r}, which is not included in "
+            "the fixture."
+        )
 ```
 
 - [ ] **Step 4: Add the stream-head validation `_validate_records` needs**
@@ -1033,32 +1044,32 @@ that understates the real event count is *silently* under-replayed by
 `replay()` rather than refused. Add, still inside `_validate_records`:
 
 ```python
-        sequences_by_stream: dict[str, list[int]] = {}
-        for record in records:
-            if record["model"] != "games.libraryevent":
-                continue
-            sequences_by_stream.setdefault(
-                str(record["fields"]["stream"]), []
-            ).append(record["fields"]["sequence"])
-        for record in records:
-            if record["model"] != "games.libraryeventstreamhead":
-                continue
-            stream_id = str(record["pk"])
-            sequences = sorted(sequences_by_stream.get(stream_id, []))
-            expected = list(range(1, len(sequences) + 1))
-            if sequences != expected:
-                raise CommandError(
-                    f"Sample stream {stream_id} holds sequences {sequences}, "
-                    f"not the contiguous {expected} its events must form."
-                )
-            current_sequence = record["fields"]["current_sequence"]
-            if current_sequence != len(sequences):
-                raise CommandError(
-                    f"Sample stream {stream_id} states current_sequence "
-                    f"{current_sequence}, but holds {len(sequences)} event(s). "
-                    "A head reading below the true count replays fewer events "
-                    "than the fixture recorded, silently."
-                )
+sequences_by_stream: dict[str, list[int]] = {}
+for record in records:
+    if record["model"] != "games.libraryevent":
+        continue
+    sequences_by_stream.setdefault(str(record["fields"]["stream"]), []).append(
+        record["fields"]["sequence"]
+    )
+for record in records:
+    if record["model"] != "games.libraryeventstreamhead":
+        continue
+    stream_id = str(record["pk"])
+    sequences = sorted(sequences_by_stream.get(stream_id, []))
+    expected = list(range(1, len(sequences) + 1))
+    if sequences != expected:
+        raise CommandError(
+            f"Sample stream {stream_id} holds sequences {sequences}, "
+            f"not the contiguous {expected} its events must form."
+        )
+    current_sequence = record["fields"]["current_sequence"]
+    if current_sequence != len(sequences):
+        raise CommandError(
+            f"Sample stream {stream_id} states current_sequence "
+            f"{current_sequence}, but holds {len(sequences)} event(s). "
+            "A head reading below the true count replays fewer events "
+            "than the fixture recorded, silently."
+        )
 ```
 
 - [ ] **Step 5: Refuse a target library that has already appended anything**
@@ -1117,24 +1128,21 @@ through the `start_gate` refusal check:
 with:
 
 ```python
-            #: The fixture now carries the events themselves; replay them
-            #: into projections the same way make verify-replay-parity does.
-            try:
-                report = rebuild_projections(user.library, mode=RebuildMode.REBUILD)
-            except (
-                UnresolvedReferences,
-                StreamNotContiguous,
-                PayloadVersionUnsupported,
-                SwapRefusedByReference,
-            ) as error:
-                raise CommandError(
-                    f"Sample fixture could not be projected: {error}"
-                ) from error
-            if not report.swapped:
-                raise CommandError(
-                    "Sample fixture could not be projected: "
-                    f"{report.attempts[-1].conflict}"
-                )
+#: The fixture now carries the events themselves; replay them
+#: into projections the same way make verify-replay-parity does.
+try:
+    report = rebuild_projections(user.library, mode=RebuildMode.REBUILD)
+except (
+    UnresolvedReferences,
+    StreamNotContiguous,
+    PayloadVersionUnsupported,
+    SwapRefusedByReference,
+) as error:
+    raise CommandError(f"Sample fixture could not be projected: {error}") from error
+if not report.swapped:
+    raise CommandError(
+        f"Sample fixture could not be projected: {report.attempts[-1].conflict}"
+    )
 ```
 
 - [ ] **Step 7: Update the success message**
@@ -1143,19 +1151,18 @@ Replace the two `converted.runs_converted`/`converted.runs_default` references
 in the closing `self.stdout.write(self.style.SUCCESS(...))` call:
 
 ```python
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"Loaded {len(loadable)} sample object(s) for User {username!r} "
-                f"into library {user.library.pk}, with "
-                f"{backfilled.written} external reference(s) and "
-                f"{report.replayed_through} event(s) replayed across "
-                + ", ".join(
-                    f"{diff.rebuilt_rows} {diff.model.__name__}"
-                    for diff in report.tables
-                )
-                + "."
-            )
+self.stdout.write(
+    self.style.SUCCESS(
+        f"Loaded {len(loadable)} sample object(s) for User {username!r} "
+        f"into library {user.library.pk}, with "
+        f"{backfilled.written} external reference(s) and "
+        f"{report.replayed_through} event(s) replayed across "
+        + ", ".join(
+            f"{diff.rebuilt_rows} {diff.model.__name__}" for diff in report.tables
         )
+        + "."
+    )
+)
 ```
 
 (Confirm `TableDiff` carries `.model` and `.rebuilt_rows` by reading

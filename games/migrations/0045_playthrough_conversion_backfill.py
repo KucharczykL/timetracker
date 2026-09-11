@@ -139,7 +139,7 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.RunPython(
-            convert_legacy_playevents,
+            migrations.RunPython.noop,
             migrations.RunPython.noop,
             elidable=True,
         )

@@ -162,8 +162,7 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.RunPython(
-            repair_playthrough_starts,
-            #: Append-only: no rollback takes events back.
+            migrations.RunPython.noop,
             migrations.RunPython.noop,
             elidable=True,
         )

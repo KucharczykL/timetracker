@@ -129,7 +129,7 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.RunPython(
-            backfill_playergame_baseline,
+            migrations.RunPython.noop,
             migrations.RunPython.noop,
             elidable=True,
         )
