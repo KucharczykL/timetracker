@@ -2033,20 +2033,184 @@ Expected: green. This is the rehearsal the spec's §Dependencies deployment
 precondition calls for — it confirms a real production database (which has
 already applied 0033/0045/0048) migrates cleanly through 0049–0051.
 
-- [ ] **Step 7: Verify the guard actually guards**
+- [ ] **Step 6.5 (discovered during execution, belongs to Task 7's `0049`): the guard can never pass on a converted database — it counts rows, and nothing has ever deleted one**
 
-```bash
-make restore-dump  # or any scratch database seeded with one legacy row
+`make verify-dump` against a current production dump fails at `0049`:
+`RuntimeError: This database still holds PlayEvent rows.` The database
+qualifies under the guard's own stated precondition — `django_migrations`
+records `0033` (applied 2026-09-02), `0045` (2026-09-09) and `0048`
+(2026-09-10), all while their `RunPython` callables were still live — and the
+conversion demonstrably carried every row forward. It fails anyway, because
+the rows are still there.
+
+Counts on the restored dump:
+
+| Table | Rows | Rows with no event naming them |
+|---|---|---|
+| `games_playevent` | 210 | **0** |
+| `games_gamestatuschange` | 1233 | **0** |
+
+and the projections the conversion produced: 859 `games_playergame`,
+872 `games_playthrough`, 4244 `games_libraryevent`.
+
+The guard conflates two facts that were never the same:
+
+1. **Nothing in this system has ever deleted a legacy row.** `remove()` is
+   `_stamp(instance, now())` (`games/removal.py:131-133`) — an `UPDATE` of
+   `removed_at`. `PlayEvent` sat in `REMOVABLE_MODELS`, so it was removable in
+   the soft sense only; `GameStatusChange` was never even listed. Neither the
+   three conversion modules (`git show 5442d168^:games/backfill/playthrough.py`
+   and siblings) nor the preflight contains a single `.delete()`, `remove()` or
+   `TRUNCATE` against either table. The passes *read* legacy rows to append
+   events; they leave the originals untouched, by design (#944). The one thing
+   that destroys anything is a whole-library purge (`purge_user_library.py:47`).
+2. **The conversion migrations ran.** That is what the deployment precondition
+   is about, and it is separately recorded.
+
+So "holds a row" is the permanent steady state of every database with history,
+not the signature of a stale deployment. The guard blocks every real
+deployment, forever, and its docstring's claim to stand "between a stale
+deployment and silent data loss" does not hold.
+
+`django_migrations` is not the alternative it looks like, either. `0049`
+depends on `0048`, so by the time the guard runs the executor has already
+applied and recorded `0045`/`0048` **in the same `migrate` run** — now as
+no-ops (Task 1). A `showmigrations`-style check is therefore a tautology: it is
+true on the stale database too. The spec's rejection of it ("it counts a row
+rather than trusting `showmigrations`") reached the right verdict for the wrong
+reason.
+
+**The real distinguishing signal is per-row provenance in `source_metadata`.**
+The conversion passes stamped it, one key per legacy row:
+
+- `games/backfill/playergame.py:240` — `source_metadata={**metadata,
+  "status_change_id": str(change.pk)}`
+- the #684 pass — `{"issue": 684, "origin": "backfill", "play_event_id": "…"}`
+
+On the dump those keys are exactly 1:1 with the legacy tables: 1233
+`status_change_id` keys against 1233 `GameStatusChange` rows, 210 distinct
+`play_event_id` values against 210 `PlayEvent` rows, and zero legacy rows
+unmatched in either direction. A database that skipped the conversion carries
+none of them, which is precisely the population the guard means to refuse. One
+caveat before writing that check: the conversion deliberately **skipped** rows
+outside its scope — `games/backfill/playthrough.py:354-358` reads only live
+`PlayerGame`s with `game__removed_at__isnull=True`, and
+`playergame.py:300-305` skips a removed `Game` as `skipped_removed` — so a
+provenance guard must mirror that scope or it will refuse a row the conversion
+was right to leave behind. On this dump the skip set is empty (0 `PlayEvent`
+and 0 `GameStatusChange` rows on removed or untracked games), so a naive
+provenance check passes today; that is data, not structure.
+
+Options, for the decision this step is blocked on:
+
+**A. Replace the count with a provenance check.** Refuse only a legacy row
+whose information is *not* in the event store — `NOT EXISTS (SELECT 1 FROM
+games_libraryevent WHERE source_metadata->>'play_event_id' = …)`, scoped the
+way the conversion scoped itself. Keeps the protection the guard was written
+for, and it is the only candidate that actually discriminates. Costs: two
+correlated-subquery counts inside a migration; `source_metadata` becomes a
+compatibility surface; the scope must be restated a second time, in a migration
+that cannot import the modules Task 6 deleted.
+
+**B. Delete `0049` and keep the precondition procedural.** The rehearsal
+(`make verify-dump`, `showmigrations games` naming `0048`) is what the spec's
+§Dependencies already asks an operator to do, and it matches the repo's own
+"reports, never gates" posture for `preflight-playthroughs` and
+`report-playthrough-starts`. Cheapest and honest. Costs: an operator who skips
+the rehearsal loses the unconverted rows silently, which is the exact scenario
+§Commit C exists to prevent.
+
+**C. Drain in a prior release, then keep the count.** Ship a migration on the
+*previous* release that deletes both tables' rows after the conversion has run,
+so "empty" genuinely means "converted" by the time this release lands. Makes
+the existing guard correct as written. Costs: an extra release in the sequence;
+and it destroys the same rows `0050`'s `DROP TABLE` destroys anyway, so it buys
+only guard cleanliness. Adding that delete *inside* this release instead would
+be circular — the guard would pass because the migration one step earlier
+emptied the tables.
+
+**Resolved: the guard is dropped, not repaired.** Every option above
+answers "how should `0049` discriminate", and the answer that survived asking
+is that nothing needs it to. This project has exactly one database. It sits at
+`0048`, and the counts above establish that its conversion ran completely: 210
+of 210 `PlayEvent` rows and 1233 of 1233 `GameStatusChange` rows carry
+provenance, with the skip set empty. A guard against a stale deployment
+defends a database that does not exist, and buying that defence costs a
+migration, a test file, and a permanent dependence on two metadata key names
+whose only remaining record is git history.
+
+That is option **B** of the three, with its stated cost accepted: an operator
+who restores a pre-conversion dump (`.dumps/` holds two, both predating the
+2026-09-09 and 2026-09-10 application of `0045`/`0048`) and migrates it
+forward loses those rows silently. Only ever a scratch copy, and `make
+verify-dump` is the rehearsal that would show it.
+
+So `0049_guard_legacy_tables_empty` and its test file are deleted, and the two
+remaining migrations renumber down: `0049_delete_playevent_gamestatuschange`
+depends on `0048` directly, and `0050_remove_stale_playevent_contenttypes`
+follows it. Verified after renumbering: `makemigrations --check` reports no
+changes, a fresh database migrates through `0050`, and `make verify-dump`
+against the 2026-09-11 production dump applies both and reports a clean
+restore.
+
+Upstream corrections this implies (superseding the list above): the spec's
+§Dependencies closing sentence, §Commit C point 1, and §Verification step 4
+all describe a guard that no longer exists and should be struck rather than
+reworded. Commit A's premise is untouched.
+
+- [x] **Step 7: ~~Verify the guard actually guards~~ — dropped with the guard**
+
+- [ ] **Step 7.5 (discovered during execution): deleting the classes breaks
+      every harness that steps the database backward — the wall v1 hit, reached
+      from the other side**
+
+`make test-fast` on the tree with the classes gone: 48 failed, 4714 passed,
+**456 errors**. The errors concentrate in ~10 files and share one cause:
+
+```
+NotSupportedError: cannot truncate a table referenced in a foreign key constraint
+DETAIL:  Table "games_playevent" references "games_game".
 ```
 
-Seed one `PlayEvent` or `GameStatusChange` row on a database sitting at
-`0048`, then:
+Eighteen test files step the graph back to a state like `0009` to exercise the
+UUID identity migrations, then `call_command("flush", ...)` while sitting
+there. `flush` enumerates tables from the models, so with the classes deleted
+it leaves `games_playevent` and `games_gamestatuschange` out of its single
+`TRUNCATE` — and Postgres refuses the whole statement, because a table it left
+out holds a foreign key into one the statement names.
 
-```bash
-manage.py migrate games 0049
-```
+This is the failure the abandoned v1 attempt died on, and the superseded
+lessons-learned note's own correction banner already names the mechanism: "a
+table that exists in the database but is absent from Django's table list". The
+diagnosis is certain — the undeclared set at `0009` is exactly
+`{games_playevent, games_gamestatuschange}` — but it is not a sweep. Two
+attempted repairs both made things worse:
 
-Expected: `RuntimeError` from Task 7's guard, not a silent pass.
+| attempt | result |
+|---|---|
+| baseline | 48 failed, 456 errors |
+| `allow_cascade=True` on all 21 flush sites | 41 failed, 130 errors; new reverse-guard breakage |
+| drop the two tables before each flush | 109 failed, 155 errors; the forward restore then hits `DROP TABLE` on a table already gone |
+
+**Resolved by taking the problem away rather than repairing it.** These
+harnesses test one-time data migrations that have already run, completely, on
+the only database that will ever exist. The decision is to reset the migration
+history to a single regenerated `0001_initial` — carrying forward only the
+`uuid_v7` and `temporal_value` domains, the 17 `timetracker_temporal_*`
+functions and the `games_libraryevent` CHECK, which is every `RunSQL` in the
+history that a fresh schema actually needs — and to delete these eighteen
+harnesses as obsolete along with the migrations they read.
+
+Django's own `squashmigrations games 0048` was measured and rejected: it
+optimizes 226 operations to 211, because its 20 `RunPython` calls are
+optimizer barriers, needs functions hand-ported out of 18 migrations, and
+leaves both legacy tables present in the squashed state — so it fixes neither
+this blocker nor CLEAN-02's own migrations.
+
+That reset is its own issue, sequenced after this branch commits. Once it
+lands, `0049`/`0050` here are deleted too: `models.py` no longer declares
+either class, so a regenerated initial migration never creates the tables, and
+CLEAN-02 needs no migration at all.
 
 - [ ] **Step 8: Run the full non-e2e suite**
 
