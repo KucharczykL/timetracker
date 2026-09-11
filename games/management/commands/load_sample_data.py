@@ -14,31 +14,25 @@ from django.core.serializers.base import DeserializationError
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 
-from games.backfill.playergame import backfill_library
-from games.backfill.playthrough import (
-    convert_library,
-    ordering_violations,
-    reconcile,
-)
-from games.backfill.playthrough_start import (
-    gate as start_gate,
-)
-from games.backfill.playthrough_start import (
-    repair_library,
-)
-from games.backfill.playthrough_start import (
-    snapshot as start_snapshot,
-)
 from games.conversion import _request_conversion_for_locked_state
+from games.events.rebuild import (
+    RebuildMode,
+    SwapRefusedByReference,
+    rebuild_projections,
+)
+from games.events.reconcile import UnresolvedReferences
+from games.events.replay import PayloadVersionUnsupported, StreamNotContiguous
+from games.events.wiring import DEFAULT_WIRING
 from games.external_references import backfill_wikidata_references
 from games.models import (
     Device,
     ExchangeRate,
     FilterPreset,
     Game,
-    GameStatusChange,
+    LibraryEvent,
+    LibraryEventReference,
+    LibraryEventStreamHead,
     Platform,
-    PlayEvent,
     Purchase,
     PurchaseConversionState,
     Session,
@@ -52,12 +46,13 @@ PRIVATE_MODELS = {
     "games.game": Game,
     "games.purchase": Purchase,
     "games.filterpreset": FilterPreset,
+    "games.libraryeventstreamhead": LibraryEventStreamHead,
+    "games.libraryevent": LibraryEvent,
+    "games.libraryeventreference": LibraryEventReference,
 }
 LOADABLE_MODELS = {
     **PRIVATE_MODELS,
     "games.session": Session,
-    "games.playevent": PlayEvent,
-    "games.gamestatuschange": GameStatusChange,
 }
 
 
@@ -96,11 +91,11 @@ FIXTURE_RELATIONSHIPS: dict[str, tuple[FixtureRelationship, ...]] = {
         FixtureRelationship("game", "games.game", False, True, reference_field="pk"),
         FixtureRelationship("device", "games.device", False, False),
     ),
-    "games.playevent": (
-        FixtureRelationship("game", "games.game", False, True, reference_field="pk"),
+    "games.libraryevent": (
+        FixtureRelationship("stream", "games.libraryeventstreamhead", False, True),
     ),
-    "games.gamestatuschange": (
-        FixtureRelationship("game", "games.game", False, True, reference_field="pk"),
+    "games.libraryeventreference": (
+        FixtureRelationship("event", "games.libraryevent", False, True),
     ),
 }
 
@@ -129,6 +124,11 @@ class Command(BaseCommand):
             state = PurchaseConversionState.objects.select_for_update().get(
                 library=user.library
             )
+            if LibraryEventStreamHead.objects.filter(library=user.library).exists():
+                raise CommandError(
+                    f"Library {user.library.pk} already has an event stream; "
+                    "the sample fixture cannot be loaded into it twice."
+                )
             platform_uuids = self._load_platforms(records, user.library)
             self._load_exchange_rates(records)
             loadable = self._prepare_private_records(
@@ -160,37 +160,23 @@ class Command(BaseCommand):
                     state.requested_currency,
                 )
 
-            #: The same baseline a migrated database gets: every loaded game
-            #: becomes a tracked game, recorded as events and replayed by the
-            #: projector. Inside this block, so a load either lands tracked or
-            #: does not land.
-            backfill_library(user.library)
-            #: And the runs they hold: #684 states one per legacy
-            #: row, and one default per game holding none. Gated
-            #: here as 0045 gates it, so a fixture never lands
-            #: holding runs the migration would have refused.
-            converted = convert_library(user.library)
-            mismatches = reconcile(user.library) + ordering_violations()
-            if mismatches:
+            #: The fixture now carries the events themselves; replay them
+            #: into projections the same way make verify-replay-parity does.
+            try:
+                report = rebuild_projections(user.library, mode=RebuildMode.REBUILD)
+            except (
+                UnresolvedReferences,
+                StreamNotContiguous,
+                PayloadVersionUnsupported,
+                SwapRefusedByReference,
+            ) as error:
                 raise CommandError(
-                    "Sample playthroughs could not be stated: "
-                    + "; ".join(
-                        f"{mismatch.code} {mismatch.subject}: {mismatch.detail}"
-                        for mismatch in mismatches[:3]
-                    )
-                )
-            #: #1038 dates the empty defaults, gated as 0048
-            #: gates it, so no fixture lands runs it refuses.
-            before = start_snapshot(user.library)
-            repaired = repair_library(user.library)
-            refusals = start_gate(user.library, before, repaired)
-            if refusals:
+                    f"Sample fixture could not be projected: {error}"
+                ) from error
+            if not report.swapped:
                 raise CommandError(
-                    "Sample playthrough starts could not be stated: "
-                    + "; ".join(
-                        f"{refusal.code} {refusal.subject}: {refusal.detail}"
-                        for refusal in refusals[:3]
-                    )
+                    "Sample fixture could not be projected: "
+                    f"{report.attempts[-1].conflict}"
                 )
             #: The fixture predates #896: no reference rows.
             try:
@@ -219,9 +205,12 @@ class Command(BaseCommand):
             self.style.SUCCESS(
                 f"Loaded {len(loadable)} sample object(s) for User {username!r} "
                 f"into library {user.library.pk}, with "
-                f"{backfilled.written} external reference(s), "
-                f"{converted.runs_converted} run(s) converted and "
-                f"{converted.runs_default} default run(s)."
+                f"{backfilled.written} external reference(s) and "
+                f"{report.replayed_through} event(s) replayed across "
+                + ", ".join(
+                    f"{diff.rebuilt_rows} {diff.table}" for diff in report.tables
+                )
+                + "."
             )
         )
 
@@ -342,6 +331,80 @@ class Command(BaseCommand):
                             f"Sample {model} {record['pk']} references {target_label} "
                             f"{reference}, which is not included in the fixture."
                         )
+
+        #: FIXTURE_RELATIONSHIPS can only validate a plain FK field. An
+        #: event's game reference lives inside its JSON payload, which that
+        #: mechanism cannot reach.
+        game_ids = {
+            str(record["pk"])
+            for record in records
+            if record.get("model") == "games.game"
+        }
+        for record in records:
+            if record.get("model") != "games.libraryevent":
+                continue
+            fields = record["fields"]
+            for found in DEFAULT_WIRING.event_types.references_in(
+                fields["event_type"], fields["payload"]
+            ):
+                if found.value["kind"] == "catalog.platform":
+                    raise CommandError(
+                        f"Sample event {record['pk']} references a Platform. "
+                        "Platform rows are re-created under fresh pks at load "
+                        "time, so a payload reference to one would dangle."
+                    )
+                if (
+                    found.value["kind"] == "catalog.game"
+                    and found.value["id"] not in game_ids
+                ):
+                    raise CommandError(
+                        f"Sample event {record['pk']} references Game "
+                        f"{found.value['id']!r}, which is not included in the "
+                        "fixture."
+                    )
+        for record in records:
+            if record.get("model") != "games.libraryeventreference":
+                continue
+            fields = record["fields"]
+            if (
+                fields["kind"] == "catalog.game"
+                and str(fields["referenced_id"]) not in game_ids
+            ):
+                raise CommandError(
+                    f"Sample reference {record['pk']} names Game "
+                    f"{fields['referenced_id']!r}, which is not included in "
+                    "the fixture."
+                )
+
+        #: current_sequence must equal the maximum sequence among that
+        #: stream's events, and the sequences must be exactly 1..N: replay()
+        #: bounds its read by head.current_sequence, so a head reading below
+        #: the true count silently replays fewer events than the fixture
+        #: recorded rather than refusing.
+        sequences_by_stream: dict[str, list[int]] = {}
+        for record in records:
+            if record.get("model") != "games.libraryevent":
+                continue
+            sequences_by_stream.setdefault(str(record["fields"]["stream"]), []).append(
+                record["fields"]["sequence"]
+            )
+        for record in records:
+            if record.get("model") != "games.libraryeventstreamhead":
+                continue
+            stream_id = str(record["pk"])
+            sequences = sorted(sequences_by_stream.get(stream_id, []))
+            expected = list(range(1, len(sequences) + 1))
+            if sequences != expected:
+                raise CommandError(
+                    f"Sample stream {stream_id} holds sequences {sequences}, "
+                    f"not the contiguous {expected} its events must form."
+                )
+            current_sequence = record["fields"]["current_sequence"]
+            if current_sequence != len(sequences):
+                raise CommandError(
+                    f"Sample stream {stream_id} states current_sequence "
+                    f"{current_sequence}, but holds {len(sequences)} event(s)."
+                )
 
     @staticmethod
     def _load_platforms(records, library):

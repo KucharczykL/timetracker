@@ -902,6 +902,27 @@ against a fixture that no longer carries `games.playevent`. Confirm the
 failure is in `load_sample_data`, not in this file's own dump logic; if a
 dump-side test still fails, fix it here before moving on.
 
+- [ ] **Step 7.5 (discovered during execution): `library.playthrough.created`'s `payload["player_game"]` is a bare `ReferenceId`, not a `Reference` — the reference-recapture pass never sees it**
+
+Running Task 4 against this surfaced `IntegrityError: ...
+games_playthrough_player_game_id_... violates foreign key constraint ...
+Key (player_game_id)=(...) is not present in table "games_playergame"` at
+transaction commit. `PlaythroughCreatedPayload.player_game` (`games/events/playthrough.py:31`)
+is typed `ReferenceId`, not `Reference` — it is not registered as a
+reference-bearing field, so `DEFAULT_WIRING.event_types.references_in(...)`
+never finds it, and it kept naming the PlayerGame's **old** aggregate_id after
+`aggregate_replacements` remapped the real `library.playergame.created`
+event's `aggregate_id` (which becomes the PlayerGame's actual new pk on
+replay) to a new value.
+
+Fixed inside the loop that already rewrites `aggregate_id`/`correlation_id`/
+`causation_id` from the group-replacement maps: for an event whose
+`event_type == PLAYTHROUGH_CREATED.event_type`, also rewrite
+`payload["player_game"]` through `aggregate_replacements`, and add
+`"payload"` to that loop's `bulk_update` field list (harmless for every other
+event, since their payload is already the corrected in-memory value from the
+first pass). Needs `from games.events.playthrough import PLAYTHROUGH_CREATED`.
+
 - [ ] **Step 8.5 (discovered during execution, belongs to `tests/test_anonymize_sample.py`): `test_output_reloads_via_loaddata`'s `source_user.delete()` needs `purging_library()`**
 
 Real `TrackGame`/`StartPlaythrough` events now reference `games[1]`'s Game
@@ -1251,6 +1272,38 @@ make test ARGS="tests/test_anonymize_sample.py -v"
 
 Expected: every test green, including `test_output_reloads_via_loaddata`.
 Iterate on Steps 1–7 against failures here — this is the TDD loop closing.
+
+- [ ] **Step 8.7 (discovered during execution, belongs to `anonymize_sample.py`): `_remap_referrers`'s hidden-relation walk picks up a rebuild's shadow twin, and its table doesn't exist**
+
+Once Task 4's `rebuild_projections` call actually runs (inside
+`test_output_reloads_via_loaddata`), any *later* test in the same worker that
+calls `_reassign_uuids()`/`_remap_referrers()` starts failing with
+`django.db.utils.ProgrammingError: relation "games_playergame__shadow" does
+not exist`. Root cause (found by an Opus investigation dispatched mid-task,
+since it reproduced only inside the full file/suite, not in isolation):
+`games/events/targets.py`'s `ShadowTarget.model()` manufactures a "twin"
+model per projection (e.g. `PlayerGameShadow`) and registers it into
+**Django's global app registry, where it stays for the life of the process**
+— but its actual database table only exists inside the one rebuild attempt
+that created it (a `pg_temp` table). `_remap_referrers` deliberately walks
+`model._meta.get_fields(include_hidden=True)` (not `related_objects`, so a
+`related_name="+"` referrer like `UserLibraryPreferences.default_device`
+isn't stranded) — and that walk picks up the shadow twin's hidden FK to
+`Game` just as readily as a real one, querying a table that no longer exists.
+
+Fix, in `_remap_referrers`, right after `field` is resolved:
+
+```python
+if not field.model._meta.managed:
+    continue
+```
+
+The manufactured shadow twins are the only unmanaged models under `games/`,
+`common/`, `timetracker/` — confirmed by grep. Left as a known, undocumented
+follow-up (not fixed here): any *other* hidden-relation walk over library
+models — `audit_uuid_identity`, for instance — could trip the same wire; a
+shared helper or making `ShadowTarget` drop its twins after an attempt would
+close the whole class rather than this one call site.
 
 - [ ] **Step 9: Commit**
 

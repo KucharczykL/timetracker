@@ -11,6 +11,7 @@ from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
+from games.events.playthrough import PLAYTHROUGH_CREATED
 from games.events.references import capture_reference
 from games.events.wiring import DEFAULT_WIRING
 from games.management.commands.load_sample_data import TARGET_LIBRARY_MARKER
@@ -497,8 +498,20 @@ class Command(BaseCommand):
                 event.causation_id = correlation_replacements.get(
                     event.causation_id, event.causation_id
                 )
+            #: PlaythroughCreatedPayload.player_game is a bare ReferenceId,
+            #: not a Reference the reference-recapture pass above can see --
+            #: it names the PlayerGame this run belongs to, whose own
+            #: aggregate_id (from its own library.playergame.created event)
+            #: was just remapped above.
+            if event.event_type == PLAYTHROUGH_CREATED.event_type:
+                payload = dict(event.payload)
+                old_player_game_id = UUID(payload["player_game"])
+                payload["player_game"] = str(
+                    aggregate_replacements.get(old_player_game_id, old_player_game_id)
+                )
+                event.payload = payload
         LibraryEvent.objects.bulk_update(
-            events, ["aggregate_id", "correlation_id", "causation_id"]
+            events, ["aggregate_id", "correlation_id", "causation_id", "payload"]
         )
         for old_id, new_id in event_id_replacements.items():
             LibraryEvent.objects.filter(pk=old_id).update(id=new_id)
@@ -583,6 +596,12 @@ class Command(BaseCommand):
         targets, never by its kind: an auto-created through references the
         target's primary key, so `Purchase.games` is inert while the identity is
         a secondary column and live once it is the primary key.
+
+        Unmanaged referrers are skipped. A rebuild's shadow twin
+        (games/events/targets.py) joins the live registry and stays there for
+        the life of the process, hidden relation and all, but its table only
+        exists inside the attempt that made it -- so a walk that reads twins
+        works until something triggers one rebuild, then fails forever.
         """
         identity = cls._identity_field_name(model)
         for relation in model._meta.get_fields(include_hidden=True):
@@ -593,6 +612,8 @@ class Command(BaseCommand):
             else:
                 field = relation.field
             if field.target_field.name != identity:
+                continue
+            if not field.model._meta.managed:
                 continue
             children = list(
                 field.model._base_manager.exclude(**{f"{field.attname}__isnull": True})
