@@ -29,7 +29,6 @@ from games.models import (
     Game,
     Platform,
     PlayerGameStatus,
-    PlayEvent,
     Playthrough,
     Purchase,
     Session,
@@ -115,18 +114,6 @@ def two_libraries(db):
         timestamp_start=datetime(YEAR, 6, 2, 10, tzinfo=UTC),
         timestamp_end=datetime(YEAR, 6, 2, 13, tzinfo=UTC),
     )
-    PlayEvent.objects.create(
-        game=game_a,
-        started=date(YEAR, 1, 1),
-        ended=date(YEAR, 2, 1),
-        note="Library A event",
-    )
-    playevent_b = PlayEvent.objects.create(
-        game=game_b,
-        started=date(YEAR, 1, 2),
-        ended=date(YEAR, 2, 2),
-        note="Library B event",
-    )
     #: The run holds the note and completion.
     for game, note, day in (
         (game_a, "Library A event", date(YEAR, 2, 1)),
@@ -178,7 +165,6 @@ def two_libraries(db):
         "device_b": device_b,
         "session_a": session_a,
         "session_b": session_b,
-        "playevent_b": playevent_b,
         "purchase_a": purchase_a,
         "purchase_b": purchase_b,
     }

@@ -997,7 +997,7 @@ class TestExpandedFiltersAgainstDB:
         import datetime
         from datetime import timedelta
 
-        from games.models import Device, Game, Platform, PlayEvent, Purchase, Session
+        from games.models import Device, Game, Platform, Purchase, Session
 
         # 1. Platform & Game
         plat, _ = Platform.objects.get_or_create(
@@ -1043,14 +1043,6 @@ class TestExpandedFiltersAgainstDB:
         )
         pur.refresh_from_db()
 
-        # 4. PlayEvent
-        pe = PlayEvent.objects.create(
-            game=game,
-            started=datetime.date(2026, 6, 1),
-            ended=datetime.date(2026, 6, 2),
-            note="Completed 100%",
-        )
-
         return {
             "plat": plat,
             "game": game,
@@ -1058,7 +1050,6 @@ class TestExpandedFiltersAgainstDB:
             "dev": dev,
             "s1": s1,
             "pur": pur,
-            "pe": pe,
         }
 
     def test_device_filter_and_cross_entity(self):
@@ -1787,68 +1778,6 @@ class TestPlaythroughFilterDates:
         assert out["completed"]["value2"] == "2024-12-31"
         assert out["completed"]["modifier"] == Modifier.BETWEEN
         assert out["started"]["modifier"] == Modifier.GREATER_THAN
-
-
-class TestRenamedFilterKeys:
-    """#687 renamed two GameFilter keys.
-
-    A saved preset was rewritten by migration 0046, but a
-    bookmarked or shared ``?filter=`` was not, so the old
-    word has to keep working. #771 takes both away.
-    """
-
-    def test_the_old_count_key_is_read_as_the_new_one(self, caplog):
-        from games.filters import GameFilter
-
-        #: The `common` logger names no handler of its own,
-        #: so it reaches caplog through the root.
-        with caplog.at_level(logging.WARNING, logger="common"):
-            gf = GameFilter.from_json(
-                {"playevent_count": {"value": 1, "modifier": "EQUALS"}}
-            )
-
-        assert gf is not None
-        assert gf.playthrough_count is not None
-        assert gf.playthrough_count.value == 1
-        assert "playevent_count" in caplog.text
-
-    def test_the_old_relation_key_is_read_as_the_new_one(self):
-        from games.filters import GameFilter
-
-        gf = GameFilter.from_json(
-            {
-                "playevent_filter": {
-                    "ended": {"value": "2024-01-01", "modifier": "EQUALS"}
-                }
-            }
-        )
-
-        assert gf is not None
-        assert gf.playthrough_filter is not None
-
-    def test_the_current_key_wins_where_a_blob_holds_both(self):
-        from games.filters import GameFilter
-
-        gf = GameFilter.from_json(
-            {
-                "playevent_count": {"value": 1, "modifier": "EQUALS"},
-                "playthrough_count": {"value": 2, "modifier": "EQUALS"},
-            }
-        )
-
-        assert gf is not None
-        assert gf.playthrough_count is not None
-        assert gf.playthrough_count.value == 2
-
-    def test_a_nested_operator_renames_too(self):
-        from games.filters import GameFilter
-
-        gf = GameFilter.from_json(
-            {"AND": [{"playevent_count": {"value": 1, "modifier": "EQUALS"}}]}
-        )
-
-        assert gf is not None
-        assert gf.AND[0].playthrough_count is not None
 
 
 @pytest.mark.django_db
@@ -2975,10 +2904,10 @@ class TestComparisonGroupResolver:
         assert _comparison_group_for(Session, "duration_total") == "duration"
 
     def test_generated_field_number(self):
-        """GeneratedField (days_to_finish) resolves via output_field to 'number'."""
-        from games.models import PlayEvent
+        """GeneratedField (price_per_game) resolves via output_field to 'number'."""
+        from games.models import Purchase
 
-        assert _comparison_group_for(PlayEvent, "days_to_finish") == "number"
+        assert _comparison_group_for(Purchase, "price_per_game") == "number"
 
     def test_float_field(self):
         from games.models import Purchase
@@ -3323,11 +3252,11 @@ class TestComparableColumnsCrossModel:
         # Own + to-one-FK columns stay single-valued.
         assert game_columns["name"]["multivalued"] is False
 
-        # The #282 headline path (Session → game → playevents) is a to-one-prefixed
+        # The #282 headline path (Session → game → purchases) is a to-one-prefixed
         # multi-valued operand.
         session_columns = {c["value"]: c for c in comparable_columns(Session)}
-        assert "game__playevents__ended" in session_columns
-        assert session_columns["game__playevents__ended"]["multivalued"] is True
+        assert "game__purchases__date_refunded" in session_columns
+        assert session_columns["game__purchases__date_refunded"]["multivalued"] is True
 
     def test_self_including_loops_not_enumerated(self):
         # #282 review: a fk__reverse-of-fk path (e.g. Session → game → sessions)
@@ -3348,7 +3277,7 @@ class TestComparableColumnsCrossModel:
             v.startswith("related_game__addon_purchases__") for v in purchase_values
         )
         # But a cross-model path through the same FK prefix is still offered.
-        assert any(v.startswith("game__playevents__") for v in session_values)
+        assert any(v.startswith("game__purchases__") for v in session_values)
         assert any(v.startswith("related_game__purchases__") for v in purchase_values)
 
     def test_platform_and_device_columns_classify_library_owner_relation(self):
@@ -5422,7 +5351,7 @@ class TestFieldMetadata:
         assert _resolve_model_field(Game, "sessions") is None
 
     def test_lookup_is_nullable_ors_over_the_whole_path(self):
-        from games.models import Game, PlayEvent
+        from games.models import Game, Session
 
         # terminal column's own nullability, with no relation hop in the path
         assert _lookup_is_nullable(Game, "year_released") is True
@@ -5433,7 +5362,7 @@ class TestFieldMetadata:
         assert _lookup_is_nullable(Game, "platform__id") is True
         assert _lookup_is_nullable(Game, "platform__group") is True
         # a NOT NULL hop does not
-        assert _lookup_is_nullable(PlayEvent, "game__id") is False
+        assert _lookup_is_nullable(Session, "game__id") is False
 
     def test_lookup_is_nullable_false_for_no_column(self):
         from games.models import Game
@@ -5711,7 +5640,6 @@ class TestStringFieldNullConvention:
 
     Known intentional exceptions (pre-existing nullable string fields not used
     in any filter, listed as "ModelName.field_name"):
-    - GameStatusChange.old_status: NULL means "no previous status" (first-time set)
     - UserPreferences.default_purchase_currency / default_display_currency /
       default_landing_page / theme: NULL means
       "unset" (fall through to the site/default settings layer); never filtered.
@@ -5723,7 +5651,6 @@ class TestStringFieldNullConvention:
     # the null=True IS_NULL/NOT_NULL semantics differ from the "" convention.
     KNOWN_NULLABLE_EXCEPTIONS: frozenset[str] = frozenset(
         {
-            "GameStatusChange.old_status",
             # Per-user settings overrides: NULL is the "unset" sentinel the
             # resolver falls through on, deliberately not the "" convention.
             "UserPreferences.default_purchase_currency",
@@ -6281,15 +6208,15 @@ class TestComparisonOperandPaths:
         assert info.relation_path == "sessions"
 
     def test_to_one_then_multi_hop_is_multivalued(self):
-        # The #282 headline path: Session → game (to-one) → playevents (multi).
+        # The #282 headline path: Session → game (to-one) → purchases (multi).
         from games.models import Session
 
         info = _comparison_operand_info(
-            Session, "game__playevents__ended", side="right"
+            Session, "game__purchases__date_refunded", side="right"
         )
         assert info.group == "date"
         assert info.multivalued is True
-        assert info.relation_path == "game__playevents"
+        assert info.relation_path == "game__purchases"
 
     def test_two_to_one_hops_rejected(self):
         # Two to-one hops (Session → game → platform) stay rejected: no
@@ -6304,7 +6231,7 @@ class TestComparisonOperandPaths:
 
         with pytest.raises(FilterError, match="too many relations"):
             _comparison_operand_info(
-                Session, "game__playevents__game__name", side="left"
+                Session, "game__purchases__games__name", side="left"
             )
 
     def test_unknown_relation_names_path_and_side(self):
@@ -6380,27 +6307,36 @@ class TestMultivaluedComparison:
     def _seed(self):
         import datetime as dt
 
-        from games.models import Game, PlayEvent, Session
+        from games.models import Game, Purchase, Session
 
         def session(game, end):
             return Session.objects.create(
                 game=game, timestamp_start=self._dt(2000), timestamp_end=end
             )
 
+        def refund(game, refunded_on):
+            purchase = Purchase.objects.create(
+                price_currency="CZK",
+                name=f"{game.name} purchase",
+                date_purchased=dt.date(2019, 1, 1),
+                date_refunded=refunded_on,
+            )
+            purchase.games.add(game)
+
         rows = {}
         game_a = Game.objects.create(name="MV-A")
-        PlayEvent.objects.create(game=game_a, ended=dt.date(2020, 1, 1))
-        PlayEvent.objects.create(game=game_a, ended=dt.date(2020, 6, 1))
+        refund(game_a, dt.date(2020, 1, 1))
+        refund(game_a, dt.date(2020, 6, 1))
         rows["after_all"] = session(game_a, self._dt(2021))
         rows["after_some"] = session(game_a, self._dt(2020, 3, 1))
         rows["after_none"] = session(game_a, self._dt(2019))
         rows["null_end"] = session(game_a, None)
 
         game_b = Game.objects.create(name="MV-B")
-        PlayEvent.objects.create(game=game_b, ended=None)  # null terminal column
+        refund(game_b, None)  # null terminal column
         rows["null_terminal"] = session(game_b, self._dt(2021))
 
-        rows["no_events"] = session(Game.objects.create(name="MV-C"), self._dt(2021))
+        rows["no_refunds"] = session(Game.objects.create(name="MV-C"), self._dt(2021))
         return rows
 
     def _matched(self, quantifier, *, left, right):
@@ -6422,7 +6358,9 @@ class TestMultivaluedComparison:
     def test_any_multi_on_right(self, db):
         rows = self._seed()
         matched = self._matched(
-            RelationMatch.ANY, left="timestamp_end", right="game__playevents__ended"
+            RelationMatch.ANY,
+            left="timestamp_end",
+            right="game__purchases__date_refunded",
         )
         expected = {"after_all", "after_some"}
         assert {k for k, s in rows.items() if s.pk in matched} == expected
@@ -6430,23 +6368,27 @@ class TestMultivaluedComparison:
     def test_all_multi_on_right(self, db):
         rows = self._seed()
         matched = self._matched(
-            RelationMatch.ALL, left="timestamp_end", right="game__playevents__ended"
+            RelationMatch.ALL,
+            left="timestamp_end",
+            right="game__purchases__date_refunded",
         )
-        # after_all satisfies both events; no_events is vacuously true.
-        expected = {"after_all", "no_events"}
+        # after_all is after both refunds; no_refunds is vacuously true.
+        expected = {"after_all", "no_refunds"}
         assert {k for k, s in rows.items() if s.pk in matched} == expected
 
     def test_none_multi_on_right(self, db):
         rows = self._seed()
         matched = self._matched(
-            RelationMatch.NONE, left="timestamp_end", right="game__playevents__ended"
+            RelationMatch.NONE,
+            left="timestamp_end",
+            right="game__purchases__date_refunded",
         )
         # Complement of ANY.
         expected = {
             "after_none",
             "null_end",
             "null_terminal",
-            "no_events",
+            "no_refunds",
         }
         assert {k for k, s in rows.items() if s.pk in matched} == expected
 
@@ -6455,16 +6397,18 @@ class TestMultivaluedComparison:
         # GREATER_THAN: ended < timestamp_end ⇔ timestamp_end > ended.
         rows = self._seed()
         matched = self._matched(
-            RelationMatch.ANY, left="game__playevents__ended", right="timestamp_end"
+            RelationMatch.ANY,
+            left="game__purchases__date_refunded",
+            right="timestamp_end",
         )
-        # ANY event with ended < session end (date): after_all + after_some.
+        # ANY refund before the session end (date): after_all + after_some.
         # We use LESS_THAN via a separate query since _matched hardcodes GREATER_THAN.
         from games.models import Session
 
         query = SessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="game__playevents__ended",
+                    left="game__purchases__date_refunded",
                     right="timestamp_end",
                     modifier=Modifier.LESS_THAN,
                     granularity="date",
@@ -6512,24 +6456,32 @@ class TestMultivaluedComparison:
 
     def test_both_multivalued_same_relation_is_same_row(self, db):
         # #282 follow-up: two operands on the SAME multi-valued relation dedupe to
-        # one join and compare same-row — e.g. a playevent whose started > ended.
+        # one join and compare same-row — e.g. a purchase refunded before it was
+        # bought.
         import datetime as dt
 
-        from games.models import Game, PlayEvent
+        from games.models import Game, Purchase
 
-        bad = Game.objects.create(name="bad-playevent")
-        PlayEvent.objects.create(
-            game=bad, started=dt.date(2021, 1, 1), ended=dt.date(2020, 1, 1)
-        )
-        clean = Game.objects.create(name="clean-playevent")
-        PlayEvent.objects.create(
-            game=clean, started=dt.date(2020, 1, 1), ended=dt.date(2021, 1, 1)
+        def purchase(game, *, purchased_on, refunded_on):
+            row = Purchase.objects.create(
+                price_currency="CZK",
+                name=f"{game.name} purchase",
+                date_purchased=purchased_on,
+                date_refunded=refunded_on,
+            )
+            row.games.add(game)
+
+        bad = Game.objects.create(name="bad-purchase")
+        purchase(bad, purchased_on=dt.date(2021, 1, 1), refunded_on=dt.date(2020, 1, 1))
+        clean = Game.objects.create(name="clean-purchase")
+        purchase(
+            clean, purchased_on=dt.date(2020, 1, 1), refunded_on=dt.date(2021, 1, 1)
         )
         query = GameFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="playevents__started",
-                    right="playevents__ended",
+                    left="purchases__date_purchased",
+                    right="purchases__date_refunded",
                     modifier=Modifier.GREATER_THAN,
                     quantifier=RelationMatch.ANY,
                 )
@@ -6541,14 +6493,20 @@ class TestMultivaluedComparison:
 
     def test_both_multivalued_different_relations_cross_product(self, db):
         # #282 follow-up: two DIFFERENT multi-valued relations form a cross product;
-        # ANY = ∃ (session, playevent) pair satisfying the predicate.
+        # ANY = ∃ (session, purchase) pair satisfying the predicate.
         import datetime as dt
 
-        from games.models import Game, PlayEvent, Session
+        from games.models import Game, Purchase, Session
 
-        def game_with(name, ended, session_end):
+        def game_with(name, refunded_on, session_end):
             game = Game.objects.create(name=name)
-            PlayEvent.objects.create(game=game, ended=ended)
+            purchase = Purchase.objects.create(
+                price_currency="CZK",
+                name=f"{name} purchase",
+                date_purchased=dt.date(2019, 1, 1),
+                date_refunded=refunded_on,
+            )
+            purchase.games.add(game)
             Session.objects.create(
                 game=game,
                 timestamp_start=dt.datetime(2000, 1, 1, tzinfo=dt.UTC),
@@ -6570,7 +6528,7 @@ class TestMultivaluedComparison:
             field_comparisons=[
                 FieldComparisonCriterion(
                     left="sessions__timestamp_end",
-                    right="playevents__ended",
+                    right="purchases__date_refunded",
                     modifier=Modifier.GREATER_THAN,
                     granularity="date",
                     quantifier=RelationMatch.ANY,
@@ -6598,7 +6556,7 @@ class TestMultivaluedComparison:
     def test_quantifier_json_roundtrip(self):
         criterion = FieldComparisonCriterion(
             left="timestamp_end",
-            right="game__playevents__ended",
+            right="game__purchases__date_refunded",
             modifier=Modifier.GREATER_THAN,
             granularity="date",
             quantifier=RelationMatch.ALL,

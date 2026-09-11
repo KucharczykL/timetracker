@@ -39,7 +39,6 @@ from games.models import (
     LibraryEventReference,
     Platform,
     PlayerGame,
-    PlayEvent,
     Playthrough,
     Purchase,
     ReferencedRow,
@@ -253,7 +252,6 @@ class LibraryState(TypedDict):
     """What stays after a game goes."""
 
     sessions: int
-    play_events: int
     purchases: int
     editions: int
     releases: int
@@ -284,7 +282,6 @@ def populate(library):
         timestamp_start=datetime(2026, 1, 2, 10, tzinfo=UTC),
         timestamp_end=datetime(2026, 1, 2, 11, tzinfo=UTC),
     )
-    PlayEvent.objects.create(game=doomed, started=date(2026, 1, 1))
     edition = Edition.objects.create(game=doomed, is_default=True)
     Release.objects.create(edition=edition, is_default=True, platform=platform)
 
@@ -309,7 +306,6 @@ def snapshot(library, bundle, bystander) -> LibraryState:
     surviving = Purchase.objects.filter(pk=bundle.pk).first()
     return LibraryState(
         sessions=Session.objects.filter(game__library=library).count(),
-        play_events=PlayEvent.objects.filter(game__library=library).count(),
         purchases=Purchase.objects.filter(library=library).count(),
         editions=Edition.objects.filter(game__library=library).count(),
         releases=Release.objects.filter(edition__game__library=library).count(),
@@ -337,7 +333,6 @@ def test_removing_leaves_every_child_row(owned_library, other_library):
     #: Not vacuous: a delete took all this.
     assert after_plain == LibraryState(
         sessions=2,
-        play_events=1,
         purchases=2,
         editions=1,
         releases=1,

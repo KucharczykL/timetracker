@@ -72,7 +72,7 @@ const COLUMNS: Column[] = [
   { value: "timestamp_end", label: "Timestamp End", group: "datetime", operators: ORDERED_MODIFIERS, source: "Session", multivalued: false },
   { value: "note", label: "Note", group: "string", operators: STRING_MODIFIERS, source: "Session", multivalued: false },
   { value: "game__year_released", label: "Game: Year Released", group: "number", operators: ORDERED_MODIFIERS, source: "Game", multivalued: false },
-  { value: "game__playevents__ended", label: "Game › Play Events: Ended", group: "date", operators: ORDERED_MODIFIERS, source: "Game › Play Events", multivalued: true },
+  { value: "game__purchases__date_refunded", label: "Game › Purchases: Refunded", group: "date", operators: ORDERED_MODIFIERS, source: "Game › Purchases", multivalued: true },
 ];
 
 /** Build the row markup _field_comparison_row emits: left/right are
@@ -179,7 +179,7 @@ describe("right-operand repopulation via setOptions", () => {
     operand(row, "left").setSelected("timestamp_end");
     refreshRow(row, COLUMNS);
     const option = operand(row, "right").lastOptions.find(
-      (candidate) => candidate.value === "game__playevents__ended",
+      (candidate) => candidate.value === "game__purchases__date_refunded",
     )!;
     expect(option.data).toEqual({ group: "date", multivalued: "true" });
   });
@@ -199,7 +199,7 @@ describe("quantifier visibility + read (#282)", () => {
   it("reveals when an operand is multi-valued", () => {
     const row = buildRow("GREATER_THAN:date");
     operand(row, "left").setSelected("timestamp_end");
-    operand(row, "right").setSelected("game__playevents__ended");
+    operand(row, "right").setSelected("game__purchases__date_refunded");
     refreshRow(row, COLUMNS);
     expect(row.querySelector<HTMLSelectElement>("[data-fc-quantifier]")!.classList.contains("hidden")).toBe(false);
   });
@@ -207,7 +207,7 @@ describe("quantifier visibility + read (#282)", () => {
   it("emits a non-default quantifier and omits ANY", () => {
     const row = buildRow("GREATER_THAN:date");
     operand(row, "left").setSelected("timestamp_end");
-    operand(row, "right").setSelected("game__playevents__ended");
+    operand(row, "right").setSelected("game__purchases__date_refunded");
     refreshRow(row, COLUMNS);
     const quantifier = row.querySelector<HTMLSelectElement>("[data-fc-quantifier]")!;
     quantifier.value = "ALL";
@@ -219,7 +219,7 @@ describe("quantifier visibility + read (#282)", () => {
   it("restores a seeded quantifier via data-selected", () => {
     const row = buildRow("GREATER_THAN:date", "NONE");
     operand(row, "left").setSelected("timestamp_end");
-    operand(row, "right").setSelected("game__playevents__ended");
+    operand(row, "right").setSelected("game__purchases__date_refunded");
     refreshRow(row, COLUMNS);
     expect(readComparisonRow(row)?.quantifier).toBe("NONE");
   });

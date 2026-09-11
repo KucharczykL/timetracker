@@ -26,9 +26,7 @@ from games.models import (
     ExchangeRate,
     FilterPreset,
     Game,
-    GameStatusChange,
     Platform,
-    PlayEvent,
     Purchase,
     PurchaseConversionState,
     Session,
@@ -112,30 +110,6 @@ def parity_world(monkeypatch):
         _session(shared_game_b, device_b, 4, 1),
     ]
 
-    playevent_a = PlayEvent.objects.create(
-        game=game_a,
-        started=date(YEAR, 1, 1),
-        ended=date(YEAR, 2, 1),
-        note="Reconcile A Event",
-    )
-    playevent_b = PlayEvent.objects.create(
-        game=game_b,
-        started=date(YEAR, 1, 2),
-        ended=date(YEAR, 2, 2),
-        note="Reconcile B Event",
-    )
-    status_a = GameStatusChange.objects.create(
-        game=game_a,
-        old_status=Game.Status.PLAYED,
-        new_status=Game.Status.FINISHED,
-        timestamp=datetime(YEAR, 2, 1, tzinfo=UTC),
-    )
-    status_b = GameStatusChange.objects.create(
-        game=game_b,
-        old_status=Game.Status.PLAYED,
-        new_status=Game.Status.FINISHED,
-        timestamp=datetime(YEAR, 2, 2, tzinfo=UTC),
-    )
     purchase_a = Purchase.objects.create(
         library=library_a,
         name="Reconcile A Purchase",
@@ -201,8 +175,6 @@ def test_row_link_and_audit_reconciliation_is_independent(parity_world):
         assert Device.objects.for_library(library).count() == 1
         assert Purchase.objects.for_library(library).count() == 1
         assert Session.objects.for_library(library).count() == 2
-        assert PlayEvent.objects.for_library(library).count() == 1
-        assert GameStatusChange.objects.for_library(library).count() == 1
         assert Platform.objects.for_library(library).count() == 1
         assert Platform.objects.visible_to(library).count() == 2
         assert (

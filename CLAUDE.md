@@ -101,7 +101,7 @@ path**, so verify against `make check` before pushing when possible.
 | Run tests | `make test` (pytest; also runs vitest via its `test-ts` prereq) |
 | Run a subset of tests | `make test ARGS="tests/test_filters.py -k relation -x"` (same for `make test-e2e ARGS=…`) |
 | Run TypeScript tests | `make test-ts` (vitest over `ts/**/*.test.ts`) |
-| Make / apply migrations | `make makemigrations` (`ARGS="games --name edition_name"` names the file) / `make migrate` (`ARGS="games 0024_libraryidempotencyrecord"` targets one) |
+| Make / apply migrations | `make makemigrations` (`ARGS="games --name edition_name"` names the file) / `make migrate` (`ARGS="games 0001_initial"` targets one) |
 | CSS (Tailwind) | `make css` |
 | Django shell | `make shell` |
 | Create superuser | `make createsuperuser` |
@@ -125,6 +125,8 @@ path**, so verify against `make check` before pushing when possible.
 | Fetch a dump of the deployed database | `make fetch-dump` (→ `.dumps/`; needs `PROD_SSH_HOST`/`PROD_DB_CONTAINER` in `.env`) |
 | Restore the newest dump into a scratch database | `make restore-dump` (prints its `DATABASE_URL`; `DUMP=<path>` picks another) |
 | Restore, migrate, and drop it on success | `make verify-dump` (`KEEP=1` keeps the copy — the pre-deploy rehearsal) |
+| Compare the deployment's schema against `0001_initial` | `make verify-baseline` (`KEEP=1` keeps both; the gate on editing the baseline) |
+| Print the statements the deployment's cutover needs | `make cutover-sql` |
 
 ## Architecture
 
@@ -152,9 +154,7 @@ docs/           — Additional documentation
 - **Purchase** — ownership type, prices, currency conversion (`converted_price`, `price_per_game` is a `GeneratedField`), M2M to Game. `num_purchases` counts linked games. DLC/SeasonPass/BattlePass must have `related_game` (reverse accessor `game.addon_purchases`)
 - **Session** — `timestamp_start`/`timestamp_end`, `duration_manual`, `device` (FK), `note`, `emulated`. `duration_calculated`/`duration_total` are `GeneratedField`s
 - **Device** — `name`, `type` (PC/Console/Handheld/Mobile/SBC/Unknown)
-- **PlayEvent** — marks when game started/finished (separate from Sessions); `days_to_finish` is a `GeneratedField`
 - **ExchangeRate** — cached FX rates per currency pair per year
-- **GameStatusChange** — legacy audit log of status transitions, ordered by `-timestamp`. Nothing writes or reads it since #678 D1: event stream is the record and `games/reads/playergame_history.py` is the one reader. Backfill still reads old rows; #771 takes the table
 - **FilterPreset** — saved filter config; `mode` (games/sessions/purchases/playthroughs), `find_filter`, `object_filter`, `ui_options` (all JSON). Follows Stash's SavedFilter pattern
 - **PlayerGame** — first projection: one row per catalog game a library tracks, written only by `PlayerGames` projector. Its `removed_at` is projector's, stated by `RemovePlayerGame` command, separate from catalog row's. States library's `status` (six `PlayerGameStatus` words) and `mastered`, and since #678 D2 only place either stated or read. Both `UUIDv7Field` defaults opted out (pk is event's `aggregate_id`); `game` is `RESTRICT`, so projection row never collateral; #1017 registers it, so `audit_library_ownership` reports a `PlayerGame` naming another library's Game
 - **Playthrough** — second projection: one row per run at a tracked game, written
@@ -165,8 +165,8 @@ docs/           — Additional documentation
   `PlayEvent` rows, so a game holding none took an empty default run; #1038
   dates such a run, stating a `started` from the earlier of the library's own
   two records — earliest #676 status day and earliest live session day — and
-  never a completion. Both passes ran once, out of migrations `0045` and `0048`,
-  and CLEAN-02 took their modules out again: what they left behind is the events.
+  never a completion. Both passes ran once, out of migrations the history reset
+  replaced: what they left behind is the events.
   Nothing reads #1038's `source_metadata`, which names the record and, for a
   status day, the status: three of the four admitted statuses end a run rather
   than open one, and a status day froze in the server zone while a session day
@@ -206,10 +206,10 @@ docs/           — Additional documentation
   section badge counts every row it renders. #1013 gives the list page same
   rows: it reads projection, and so do filter (`PlaythroughFilter` over twelve
   fields, each endpoint compared as interval its two bound columns state),
-  sorts, quick facets and saved presets, which migration 0047 rewrites from
-  `ended` to `completed`. `playthrough_count` counts runs whose completion is
-  stated, which is number `Played N times` prints. No run is read out of
-  `games_playevent` any more, and since #1026 no finish is either: the Purchase
+  sorts, quick facets and saved presets, whose stored `ended` a one-time pass
+  rewrote to `completed`. `playthrough_count` counts runs whose completion is
+  stated, which is number `Played N times` prints. Since #1026 no finish is
+  read out of a legacy row either: the Purchase
   list's Finished column and the `finished` sort on Game and Purchase read the
   projection, through three readers `games/reads/playthrough_completions.py`
   adds beside its four — `ranked_completions` orders a row's completed runs so
@@ -246,8 +246,8 @@ docs/           — Additional documentation
   A condition is counted; a status is stated, and neither moves
   the other — see [Vocabulary](docs/vocabulary.md)
 
-**Nothing user removes is destroyed** (#944). Nine removable models — Game,
-Edition, Release, Platform, Device, Session, PlayEvent, Purchase, FilterPreset —
+**Nothing user removes is destroyed** (#944). Eight removable models — Game,
+Edition, Release, Platform, Device, Session, Purchase, FilterPreset —
 each carry nullable `removed_at`, listed in `REMOVABLE_MODELS` in
 `games/removal.py`. `remove(instance)` stamps it, `restore(instance)` clears it,
 both use `UPDATE` rather than `save()`, so stamp revalidates nothing and fires no
@@ -408,7 +408,7 @@ structured filtering.
 organized by domain entity:
 
 - `session.py`, `game.py`, `purchase.py`, `playthrough.py`, `platform.py`,
-  `device.py`, `statuschange.py` — CRUD per entity
+  `device.py`, `settings.py`, `library.py` — CRUD per entity
 - `general.py` — `stats()`, `stats_alltime()`, `index()`, `model_counts` and
   `global_current_year` context processors
 - `returns.py` — route classification (`READ_ONLY` / `ORIGIN_AWARE` /

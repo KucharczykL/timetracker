@@ -4,13 +4,9 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from django.contrib.auth.models import User
-from django.db import IntegrityError, connection, transaction
-from django.db.migrations.executor import MigrationExecutor
+from django.db import IntegrityError, transaction
 
 from games.models import UserLibrary, UserLibraryPreferences, UserPreferences
-
-BEFORE_LIBRARY = ("games", "0002_uuid_v7_domain")
-WITH_LIBRARY = ("games", "0003_userlibrary")
 
 
 def create_user_without_signals(username: str) -> User:
@@ -88,27 +84,3 @@ def test_saving_existing_user_does_not_replace_provisioned_records():
 def test_bulk_created_user_has_no_implicit_library():
     user = User.objects.bulk_create([User(username="bulk")])[0]
     assert not UserLibrary.objects.filter(user=user).exists()
-
-
-@pytest.mark.django_db(transaction=True)
-def test_user_library_migration_does_not_backfill_existing_users():
-    # Migrating down to BEFORE_LIBRARY unapplies every later migration too, so
-    # the restore target is the graph's leaf nodes rather than WITH_LIBRARY,
-    # which would strand this worker's shared database behind head for every
-    # later test that reuses it.
-    leaf_nodes = MigrationExecutor(connection).loader.graph.leaf_nodes()
-    try:
-        executor = MigrationExecutor(connection)
-        executor.migrate([BEFORE_LIBRARY])
-        old_apps = executor.loader.project_state([BEFORE_LIBRARY]).apps
-        LegacyUser = old_apps.get_model("auth", "User")
-        legacy_user = LegacyUser.objects.create(username="legacy")
-        legacy_user_id = legacy_user.pk
-
-        executor = MigrationExecutor(connection)
-        executor.migrate([WITH_LIBRARY])
-        new_apps = executor.loader.project_state([WITH_LIBRARY]).apps
-        HistoricalUserLibrary = new_apps.get_model("games", "UserLibrary")
-        assert not HistoricalUserLibrary.objects.filter(user_id=legacy_user_id).exists()
-    finally:
-        MigrationExecutor(connection).migrate(leaf_nodes)

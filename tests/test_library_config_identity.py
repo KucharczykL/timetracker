@@ -1,32 +1,16 @@
 import uuid
-from datetime import UTC, datetime
 
 import pytest
-from django.core.management import call_command
 from django.db import IntegrityError, connection, transaction
-from django.db.migrations.executor import MigrationExecutor
-from django.utils import timezone
 from model_schema_scan import models_covered
 from ninja import ModelSchema
 
 from games import api as api_module
 from games.forms import DeviceForm
-from games.models import Device, FilterPreset
+from games.models import Device, FilterPreset, Session, UserLibraryPreferences
+from timetracker.uuidv7 import UUIDv7Field
 
 pytestmark = pytest.mark.django_db(transaction=True)
-
-BEFORE_IDENTITY = ("games", "0007_purchase_uuid_identity")
-WITH_IDENTITY = ("games", "0008_library_config_uuid_identity")
-
-
-def floor_ms(moment: datetime) -> int:
-    epoch = datetime(1970, 1, 1, tzinfo=UTC)
-    elapsed = moment - epoch
-    return (
-        elapsed.days * 86_400_000
-        + elapsed.seconds * 1000
-        + elapsed.microseconds // 1000
-    )
 
 
 def raw_insert_without_identity(model, **field_values):
@@ -174,192 +158,25 @@ def test_uuid_is_absent_from_preset_option_and_preset_in_fields():
     assert "uuid" not in api_module.PresetIn.model_fields
 
 
-# --- Migration: forward backfill --------------------------------------------
+def test_both_models_declare_one_uuidv7_primary_key_every_relation_names():
+    for model in (Device, FilterPreset):
+        assert isinstance(model._meta.pk, UUIDv7Field)
+        assert model._meta.pk.name == "id"
+        assert model._meta.pk.primary_key is True
+        assert model._meta.pk.editable is False
+        assert model._meta.pk.serialize is False
+        assert "uuid" not in {field.name for field in model._meta.local_fields}
 
-
-def table_columns(table_name: str) -> set[str]:
-    with connection.cursor() as cursor:
-        description = connection.introspection.get_table_description(cursor, table_name)
-    return {column.name for column in description}
-
-
-def create_row_at(apps, model_name: str, *, created_at: datetime, **field_values):
-    """Create a historical-model row and force its `auto_now_add` `created_at`."""
-    model = apps.get_model("games", model_name)
-    row = model.objects.create(**field_values)
-    model.objects.filter(pk=row.pk).update(created_at=created_at)
-    row.refresh_from_db()
-    return row
-
-
-@pytest.fixture
-def identity_harness():
-    # Migrating down to BEFORE_IDENTITY unapplies every later migration too, so
-    # the restore target is the graph's leaf nodes rather than WITH_IDENTITY,
-    # which would strand this worker's shared database behind head for every
-    # later test that reuses it.
-    leaf_nodes = MigrationExecutor(connection).loader.graph.leaf_nodes()
-    executor = MigrationExecutor(connection)
-    executor.migrate([BEFORE_IDENTITY])
-    call_command("flush", interactive=False, verbosity=0)
-    old_apps = executor.loader.project_state([BEFORE_IDENTITY]).apps
-    yield old_apps
-    MigrationExecutor(connection).migrate(leaf_nodes)
-
-
-def migrate_to_identity():
-    executor = MigrationExecutor(connection)
-    executor.migrate([WITH_IDENTITY])
-    return executor.loader.project_state([WITH_IDENTITY]).apps
-
-
-def seed_library(apps, *, username: str):
-    User = apps.get_model("auth", "User")
-    UserLibrary = apps.get_model("games", "UserLibrary")
-    user = User.objects.create(username=username)
-    return UserLibrary.objects.create(user_id=user.pk, created_at=timezone.now())
-
-
-def test_forward_migration_backfills_every_row_with_a_distinct_ordered_uuid(
-    identity_harness, capsys
-):
-    apps = identity_harness
-    library = seed_library(apps, username="identity-owner")
-
-    tied_ms = datetime(2024, 6, 1, 12, 0, 0, 500_000, tzinfo=UTC)
-    later = datetime(2024, 6, 1, 12, 0, 1, 0, tzinfo=UTC)
-
-    # device_late is created first (lowest pk) but stamped with the latest
-    # created_at, so order_by("created_at", "pk") must disagree with
-    # creation/pk order - the "one row out of primary-key order" case.
-    device_late = create_row_at(
-        apps, "Device", library_id=library.pk, name="Late", created_at=later
-    )
-    device_tied_a = create_row_at(
-        apps, "Device", library_id=library.pk, name="TiedA", created_at=tied_ms
-    )
-    device_tied_b = create_row_at(
-        apps, "Device", library_id=library.pk, name="TiedB", created_at=tied_ms
+    assert Session._meta.get_field("device").remote_field.field_name == "id"
+    assert (
+        UserLibraryPreferences._meta.get_field("default_device").remote_field.field_name
+        == "id"
     )
 
-    preset_tied_a = create_row_at(
-        apps,
-        "FilterPreset",
-        library_id=library.pk,
-        name="TiedA",
-        mode="games",
-        created_at=tied_ms,
-    )
-    preset_tied_b = create_row_at(
-        apps,
-        "FilterPreset",
-        library_id=library.pk,
-        name="TiedB",
-        mode="games",
-        created_at=tied_ms,
-    )
-    preset_late = create_row_at(
-        apps,
-        "FilterPreset",
-        library_id=library.pk,
-        name="Late",
-        mode="games",
-        created_at=later,
-    )
 
-    new_apps = migrate_to_identity()
-    MigratedDevice = new_apps.get_model("games", "Device")
-    MigratedFilterPreset = new_apps.get_model("games", "FilterPreset")
+def test_setting_the_same_default_device_twice_writes_once(owned_library):
+    device = Device.objects.create(library=owned_library, name="Default device")
+    preferences = owned_library.preferences
 
-    devices = list(MigratedDevice.objects.order_by("pk"))
-    presets = list(MigratedFilterPreset.objects.order_by("pk"))
-
-    for rows in (devices, presets):
-        assert all(row.uuid is not None for row in rows)
-        assert len({row.uuid for row in rows}) == len(rows)
-        assert all(row.uuid.version == 7 for row in rows)
-        for row in rows:
-            assert row.uuid.time == floor_ms(row.created_at)
-
-    for model in (MigratedDevice, MigratedFilterPreset):
-        assert list(
-            model.objects.order_by("uuid").values_list("pk", flat=True)
-        ) == list(
-            model.objects.order_by("created_at", "pk").values_list("pk", flat=True)
-        )
-
-    assert list(
-        MigratedDevice.objects.order_by("uuid").values_list("pk", flat=True)
-    ) == [device_tied_a.pk, device_tied_b.pk, device_late.pk]
-    assert list(
-        MigratedFilterPreset.objects.order_by("uuid").values_list("pk", flat=True)
-    ) == [preset_tied_a.pk, preset_tied_b.pk, preset_late.pk]
-
-    output = capsys.readouterr().out
-    assert "LIB identity backfilled" in output
-    assert "device_rows=3 device_distinct=3" in output
-    assert "filterpreset_rows=3 filterpreset_distinct=3" in output
-    assert "max_timestamp_delta_ms=0 order_preserved=true" in output
-
-
-def test_forward_migration_handles_an_empty_filterpreset_table(
-    identity_harness, capsys
-):
-    """Production has zero `FilterPreset` rows today - the backfill and
-    reconciliation must not assume at least one row exists.
-    """
-    apps = identity_harness
-    library = seed_library(apps, username="empty-preset-owner")
-    create_row_at(
-        apps,
-        "Device",
-        library_id=library.pk,
-        name="Only Device",
-        created_at=timezone.now(),
-    )
-
-    new_apps = migrate_to_identity()
-    MigratedFilterPreset = new_apps.get_model("games", "FilterPreset")
-    assert MigratedFilterPreset.objects.count() == 0
-
-    output = capsys.readouterr().out
-    assert "filterpreset_rows=0 filterpreset_distinct=0" in output
-
-
-# --- Migration: reverse -------------------------------------------------------
-
-
-def test_reverse_migration_drops_the_columns_and_keeps_other_data(identity_harness):
-    apps = identity_harness
-    library = seed_library(apps, username="reverse-owner")
-    device = create_row_at(
-        apps,
-        "Device",
-        library_id=library.pk,
-        name="Persistent Device",
-        created_at=timezone.now(),
-    )
-    preset = create_row_at(
-        apps,
-        "FilterPreset",
-        library_id=library.pk,
-        name="Persistent Preset",
-        mode="games",
-        created_at=timezone.now(),
-    )
-
-    new_apps = migrate_to_identity()
-    assert new_apps.get_model("games", "Device").objects.get(pk=device.pk).uuid
-    assert new_apps.get_model("games", "FilterPreset").objects.get(pk=preset.pk).uuid
-
-    executor = MigrationExecutor(connection)
-    executor.migrate([BEFORE_IDENTITY])
-    reverted_apps = executor.loader.project_state([BEFORE_IDENTITY]).apps
-
-    assert "uuid" not in table_columns("games_device")
-    assert "uuid" not in table_columns("games_filterpreset")
-
-    RevertedDevice = reverted_apps.get_model("games", "Device")
-    RevertedFilterPreset = reverted_apps.get_model("games", "FilterPreset")
-    assert RevertedDevice.objects.get(pk=device.pk).name == "Persistent Device"
-    assert RevertedFilterPreset.objects.get(pk=preset.pk).name == "Persistent Preset"
+    assert preferences.set_default_device(device) is True
+    assert preferences.set_default_device(device) is False

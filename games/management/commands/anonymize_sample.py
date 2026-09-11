@@ -34,7 +34,7 @@ from timetracker.uuidv7 import UUIDv7Field, uuid7_at
 # DB-computed columns: the serializer emits them, loaddata discards them.
 # Stripped to keep the fixture clean.
 GENERATED_FIELDS = frozenset(
-    ["price_per_game", "duration_calculated", "duration_total", "days_to_finish"]
+    ["price_per_game", "duration_calculated", "duration_total"]
 )
 PORTABLE_LIBRARY_MODELS = frozenset(
     [
@@ -50,8 +50,7 @@ PORTABLE_LIBRARY_MODELS = frozenset(
 
 # Dumped models, dependencies first (Game before its FK referrers,
 # LibraryEventStreamHead before LibraryEvent before LibraryEventReference).
-# Omitted: GameStatusChange (dropped with PlayEvent -- #771) and FilterPreset
-# (sample data does not ship personal saved searches).
+# Omitted: FilterPreset (sample data does not ship personal saved searches).
 DUMP_LABELS = [
     "games.Platform",
     "games.Device",

@@ -190,7 +190,7 @@ def test_adding_a_session_records_played(logged_in, owned_library, tracked_game)
 @pytest.mark.django_db(transaction=True)
 def test_editing_a_session_records_played_too(logged_in, owned_library, tracked_game):
     #: An edit binds the checkbox too, so it re-applies the
-    #: flip. Session and PlayEvent derive their library.
+    #: flip. A Session derives its library.
     session = Session.objects.create(game=tracked_game, timestamp_start=timezone.now())
 
     logged_in.post(

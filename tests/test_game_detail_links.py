@@ -19,7 +19,7 @@ from games.filters import (
     filter_url,
 )
 from games.formatting import session_time_range
-from games.models import Game, Platform, PlayEvent, Playthrough, Purchase, Session
+from games.models import Game, Platform, Playthrough, Purchase, Session
 from games.reads.playthrough_runs import library_runs
 from games.views.game import view_game
 
@@ -48,7 +48,6 @@ def game(owned_library):
         date_purchased=_dt(1),
         type=Purchase.GAME,
     ).games.set([game])
-    PlayEvent.objects.create(game=game, ended=_dt(2))
     return game
 
 

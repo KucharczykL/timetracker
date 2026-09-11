@@ -327,6 +327,25 @@ verify-dump: ensure-postgres
 		$(if $(strip $(DUMP)),--dump "$(DUMP)") --database "$(DUMP_DB)" \
 		$(if $(strip $(KEEP)),--keep)
 
+# The gate on `games/migrations/0001_initial.py`, which states a schema no
+# migration builds up to any more. It restores the newest dump, carries the copy
+# over to the new history the way an operator would, builds a second database
+# from the initial migration alone, and reads both catalogs. Any differing row
+# is a future migration generated against a baseline the deployment lacks.
+#
+#   make verify-baseline            -> rehearse the cutover, compare, drop both
+#   make verify-baseline KEEP=1     -> ... and keep both to look at
+#   make cutover-sql                -> print the statements the deployment needs
+#
+# Not in `make check`: it needs a dump of the deployment.
+verify-baseline: ensure-postgres
+	uv run --frozen python scripts/verify_baseline.py verify \
+		$(if $(strip $(DUMP)),--dump "$(DUMP)") \
+		$(if $(strip $(KEEP)),--keep)
+
+cutover-sql:
+	uv run --frozen python scripts/verify_baseline.py cutover
+
 loadplatforms: ensure-postgres
 	uv run --frozen python manage.py loadplatforms
 
