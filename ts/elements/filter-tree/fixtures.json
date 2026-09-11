@@ -225,29 +225,29 @@
       "filter": { "note": { "value": "100% run", "modifier": "INCLUDES" } }
     },
     {
-      "description": "multivalued comparison ANY: session end vs game__playevents__ended (date)",
+      "description": "multivalued comparison ANY: session end vs game__purchases__date_purchased (date)",
       "model": "session",
       "filter": {
         "field_comparisons": [
-          { "left": "timestamp_end", "right": "game__playevents__ended", "modifier": "GREATER_THAN", "granularity": "date" }
+          { "left": "timestamp_end", "right": "game__purchases__date_purchased", "modifier": "GREATER_THAN", "granularity": "date" }
         ]
       }
     },
     {
-      "description": "multivalued comparison ALL: session end vs game__playevents__ended (date)",
+      "description": "multivalued comparison ALL: session end vs game__purchases__date_purchased (date)",
       "model": "session",
       "filter": {
         "field_comparisons": [
-          { "left": "timestamp_end", "right": "game__playevents__ended", "modifier": "GREATER_THAN", "granularity": "date", "quantifier": "ALL" }
+          { "left": "timestamp_end", "right": "game__purchases__date_purchased", "modifier": "GREATER_THAN", "granularity": "date", "quantifier": "ALL" }
         ]
       }
     },
     {
-      "description": "multivalued comparison NONE: session end vs game__playevents__ended (date)",
+      "description": "multivalued comparison NONE: session end vs game__purchases__date_purchased (date)",
       "model": "session",
       "filter": {
         "field_comparisons": [
-          { "left": "timestamp_end", "right": "game__playevents__ended", "modifier": "GREATER_THAN", "granularity": "date", "quantifier": "NONE" }
+          { "left": "timestamp_end", "right": "game__purchases__date_purchased", "modifier": "GREATER_THAN", "granularity": "date", "quantifier": "NONE" }
         ]
       }
     },

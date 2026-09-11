@@ -9,9 +9,7 @@ from games.models import (
     Device,
     FilterPreset,
     Game,
-    GameStatusChange,
     Platform,
-    PlayEvent,
     Purchase,
     PurchaseConversionState,
     Session,
@@ -77,16 +75,6 @@ class Command(BaseCommand):
             (
                 "sessions",
                 Session.objects.filter(game__library_id__in=library_ids).count(),
-            ),
-            (
-                "play events",
-                PlayEvent.objects.filter(game__library_id__in=library_ids).count(),
-            ),
-            (
-                "status changes",
-                GameStatusChange.objects.filter(
-                    game__library_id__in=library_ids
-                ).count(),
             ),
         )
         for label, count in derived_counts:

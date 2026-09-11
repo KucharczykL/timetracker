@@ -2,14 +2,11 @@ from datetime import date
 
 import pytest
 from django.db import DatabaseError, connection, transaction
-from django.db.migrations.executor import MigrationExecutor
 
 from timetracker.temporal import TemporalValue, TemporalValueParseError
 
 pytestmark = pytest.mark.django_db
 
-BEFORE_TEMPORAL = ("games", "0016_library_config_uuid_primary_key")
-WITH_TEMPORAL = ("games", "0017_temporal_value_domain")
 
 PUBLIC_FUNCTIONS_AT_0017 = {
     "timetracker_temporal_is_valid": ("boolean", "i"),
@@ -38,7 +35,6 @@ PRIVATE_QUALIFIER_FUNCTIONS = {
     "_timetracker_temporal_atom_unqualified": ("text", "i"),
 }
 QUALIFIER_FUNCTIONS = PUBLIC_QUALIFIER_FUNCTIONS | PRIVATE_QUALIFIER_FUNCTIONS
-PUBLIC_FUNCTIONS = PUBLIC_FUNCTIONS_AT_0017 | PUBLIC_QUALIFIER_FUNCTIONS
 ALL_FUNCTIONS = FUNCTIONS_AT_0017 | QUALIFIER_FUNCTIONS
 SEARCH_PATH = "pg_catalog, public"
 
@@ -438,38 +434,6 @@ def test_a_qualifier_does_not_move_the_bounds_it_is_written_beside(canonical):
     for symbol in ("?", "~", "%"):
         qualified = canonical.replace("/", f"{symbol}/") + symbol
         assert temporal_projection(qualified) == temporal_projection(canonical)
-
-
-@pytest.mark.django_db(transaction=True)
-def test_temporal_domain_migration_reverses_and_reapplies():
-    leaf_nodes = MigrationExecutor(connection).loader.graph.leaf_nodes()
-    try:
-        MigrationExecutor(connection).migrate([BEFORE_TEMPORAL])
-        assert temporal_domain_base_type() is None
-        assert temporal_function_metadata(ALL_FUNCTIONS) == {}
-
-        MigrationExecutor(connection).migrate([WITH_TEMPORAL])
-        assert temporal_domain_base_type() == "varchar"
-        assert temporal_function_metadata(FUNCTIONS_AT_0017) == FUNCTIONS_AT_0017
-        assert temporal_function_metadata(QUALIFIER_FUNCTIONS) == {}
-        assert temporal_projection("1984") == (
-            date(1984, 1, 1),
-            date(1984, 12, 31),
-            "atomic",
-            "year",
-            None,
-            None,
-            None,
-            None,
-        )
-        with (
-            pytest.raises(DatabaseError),
-            transaction.atomic(),
-            connection.cursor() as cursor,
-        ):
-            cursor.execute("SELECT %s::temporal_value", ["1984~"])
-    finally:
-        MigrationExecutor(connection).migrate(leaf_nodes)
 
 
 @pytest.mark.parametrize("canonical", ["1984~", "1984?/1986%"])

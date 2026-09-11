@@ -1609,7 +1609,8 @@ class OperatorFilter:
                 )
                 # The relation paths whose fan-out the quantifier ranges over: one
                 # per multi-valued operand (deduped, so two operands on the SAME
-                # relation — e.g. playevents__started vs playevents__ended — share a
+                # relation — purchases__date_purchased vs purchases__date_refunded,
+                # say — share a
                 # single join and compare same-row, while two DIFFERENT relations
                 # form a cross product). Empty when both operands are single-valued.
                 relation_paths: list[str] = []
@@ -2165,7 +2166,7 @@ class ComparisonOperandInfo(NamedTuple):
     """A resolved comparison operand: its terminal comparison group, whether the
     path crosses a multi-valued relation (#282), and — when it does — the
     ``relation_path`` (the operand minus its terminal column, e.g.
-    ``game__playevents``) that the ALL quantifier's relation-existence guard
+    ``game__purchases``) that the ALL quantifier's relation-existence guard
     filters on."""
 
     group: ComparisonGroup
@@ -3173,7 +3174,7 @@ def _multivalued_comparison_to_q(
     ``predicate_q`` is the row predicate from ``_field_comparison_to_q``: the
     comparison **plus** explicit ``__isnull=False`` guards on both operand paths.
     ``relation_paths`` are the multi operands minus their terminal column (e.g.
-    ``[game__playevents]``, or ``[sessions, playevents]`` when both sides are
+    ``[game__purchases]``, or ``[sessions, purchases]`` when both sides are
     multi-valued). One entry → the quantifier ranges over that relation's rows;
     two entries → over the cross product Django's double join produces (two
     operands on the *same* relation dedupe to one entry, comparing same-row).

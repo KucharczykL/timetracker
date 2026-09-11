@@ -14,7 +14,6 @@ from games.models import (
     Device,
     Game,
     Platform,
-    PlayEvent,
     Playthrough,
     Purchase,
     Session,
@@ -109,11 +108,6 @@ def test_non_default_presentation_reaches_every_server_display_path(
         timestamp_start=datetime(2022, 9, 26, 12, 58, tzinfo=UTC),
         timestamp_end=datetime(2022, 9, 26, 13, 58, tzinfo=UTC),
     )
-    playevent = PlayEvent.objects.create(
-        game=game,
-        started=date(2022, 9, 24),
-        ended=date(2022, 9, 25),
-    )
     #: Both endpoints and the run's created day.
     Playthrough.objects.filter(player_game__game=game).update(
         start_recorded_at=timezone.now(),
@@ -128,7 +122,6 @@ def test_non_default_presentation_reaches_every_server_display_path(
         (Device, device.pk, datetime(2022, 10, 3, tzinfo=UTC)),
         (Purchase, purchase.pk, datetime(2022, 10, 4, tzinfo=UTC)),
         (Session, session.pk, datetime(2022, 10, 5, tzinfo=UTC)),
-        (PlayEvent, playevent.pk, datetime(2022, 10, 6, tzinfo=UTC)),
     )
     for model, pk, value in created_values:
         model.objects.filter(pk=pk).update(created_at=value)

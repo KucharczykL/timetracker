@@ -3,6 +3,7 @@ import random
 import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from uuid import UUID
 
 import yaml
 from django.contrib.auth import get_user_model
@@ -10,37 +11,55 @@ from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
+from games.events.playthrough import PLAYTHROUGH_CREATED
+from games.events.references import capture_reference
+from games.events.wiring import DEFAULT_WIRING
 from games.management.commands.load_sample_data import TARGET_LIBRARY_MARKER
 from games.models import (
     Device,
     FilterPreset,
     Game,
+    LibraryEvent,
+    LibraryEventReference,
+    LibraryEventStreamHead,
     Platform,
-    PlayEvent,
+    PlayerGame,
+    Playthrough,
     Purchase,
     Session,
 )
+from timetracker.temporal import TemporalPrecision, TemporalValue
 from timetracker.uuidv7 import UUIDv7Field, uuid7_at
 
 # DB-computed columns: the serializer emits them, loaddata discards them.
 # Stripped to keep the fixture clean.
 GENERATED_FIELDS = frozenset(
-    ["price_per_game", "duration_calculated", "duration_total", "days_to_finish"]
+    ["price_per_game", "duration_calculated", "duration_total"]
 )
 PORTABLE_LIBRARY_MODELS = frozenset(
-    ["games.device", "games.game", "games.purchase", "games.filterpreset"]
+    [
+        "games.device",
+        "games.game",
+        "games.purchase",
+        "games.filterpreset",
+        "games.libraryeventstreamhead",
+        "games.libraryevent",
+        "games.libraryeventreference",
+    ]
 )
 
-# Dumped models, dependencies first (Game before its FK referrers).
-# Omitted: GameStatusChange (regenerated) and FilterPreset (sample data does not
-# ship personal saved searches).
+# Dumped models, dependencies first (Game before its FK referrers,
+# LibraryEventStreamHead before LibraryEvent before LibraryEventReference).
+# Omitted: FilterPreset (sample data does not ship personal saved searches).
 DUMP_LABELS = [
     "games.Platform",
     "games.Device",
     "games.Game",
     "games.Purchase",
     "games.Session",
-    "games.PlayEvent",
+    "games.LibraryEventStreamHead",
+    "games.LibraryEvent",
+    "games.LibraryEventReference",
     "games.ExchangeRate",
 ]
 
@@ -58,11 +77,12 @@ DEFAULT_NAME_OVERRIDES = (
 )
 
 
-# The dumped models carrying a uuid, parents first. GameStatusChange and
-# FilterPreset are deliberately absent: neither is dumped, so re-deriving their
-# identities buys nothing, and GameStatusChange.timestamp is nullable - the one
-# source column this recipe cannot encode.
-IDENTITY_MODELS = (Platform, Device, Game, Purchase, Session, PlayEvent)
+# The dumped models carrying a uuid, parents first. FilterPreset is absent:
+# never dumped. The three event models are also absent: their identities
+# derive from recorded_at, not created_at, and from each other's grouping
+# (aggregate/correlation/stream), so they get their own dedicated pass in
+# _reassign_event_identities rather than this generic one.
+IDENTITY_MODELS = (Platform, Device, Game, Purchase, Session)
 
 _UUID_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 _RAND_B_BITS = 62
@@ -79,6 +99,24 @@ def _floor_ms(moment):
         + elapsed.seconds * 1000
         + elapsed.microseconds // 1000
     )
+
+
+def _shift_effective_time(value, offset):
+    """Shift a day-precision temporal value; leave an unknown one alone.
+
+    The conversion passes (#684, #1038) only ever wrote a day value or an
+    unknown one, so those are the only two shapes this command needs to
+    handle. Any other precision raises rather than shipping an unjittered
+    date.
+    """
+    if value is None:
+        return None
+    if value.precision is not TemporalPrecision.DAY:
+        raise CommandError(
+            f"Event states a {value.precision} value ({value.canonical!r}); "
+            "the anonymizer only knows how to shift a day value."
+        )
+    return TemporalValue.from_day(value.lower_bound + offset, qualifier=value.qualifier)
 
 
 class Command(BaseCommand):
@@ -157,12 +195,29 @@ class Command(BaseCommand):
         except user_model.DoesNotExist as error:
             raise CommandError(f"User {options['user']!r} does not exist.") from error
         library = user.library
+        #: Every game the library holds, removed rows included -- the plain
+        #: manager, not `for_library()`, whose `alive()` drops them. A removed
+        #: game keeps its PlayerGame, its Playthroughs and every LibraryEvent
+        #: naming them, and each of those rows is shifted by *its* game's
+        #: offset, so an offset is owed per game rather than per live game.
+        #: This is also exactly the set `_prune_other_libraries` leaves
+        #: behind: `exclude(library=library)` takes the shared
+        #: (library-is-null) catalog rows with it.
         all_game_ids = list(
+            Game.objects.filter(library=library)
+            .order_by("pk")
+            .values_list("pk", flat=True)
+        )
+        #: The games a purchase may be pointed at, which is the live ones
+        #: only: a purchase is live while any of its games is, so links
+        #: reassigned onto removed games would drop the purchase out of every
+        #: list the fixture feeds.
+        reassignable_game_ids = list(
             Game.objects.for_library(library)
             .order_by("pk")
             .values_list("pk", flat=True)
         )
-        if not all_game_ids and Purchase.objects.for_library(library).exists():
+        if not reassignable_game_ids and Purchase.objects.for_library(library).exists():
             raise CommandError("Purchases exist but no games to reassign them to.")
 
         name_overrides = self._load_overrides(options["name_overrides"])
@@ -172,7 +227,10 @@ class Command(BaseCommand):
             with transaction.atomic():
                 self._prune_other_libraries(library)
                 counts = self._anonymize(
-                    all_game_ids, options["scrub_devices"], name_overrides
+                    all_game_ids,
+                    reassignable_game_ids,
+                    options["scrub_devices"],
+                    name_overrides,
                 )
                 call_command(
                     "dumpdata",
@@ -194,16 +252,25 @@ class Command(BaseCommand):
 
     @staticmethod
     def _prune_other_libraries(library):
-        """Hide every other library from dumpdata inside the rollback-only copy."""
+        """Hide every other library from dumpdata inside the rollback-only copy.
+
+        The three event-store models go before Game, Platform and Device:
+        while another library's LibraryEventReference rows still name those
+        rows, the pre_delete guard in games/signals.py refuses to delete them.
+        """
         FilterPreset.objects.exclude(library=library).delete()
         Session.objects.exclude(game__library=library).delete()
-        PlayEvent.objects.exclude(game__library=library).delete()
+        LibraryEventReference.objects.exclude(library=library).delete()
+        LibraryEvent.objects.exclude(library=library).delete()
+        LibraryEventStreamHead.objects.exclude(library=library).delete()
         Purchase.objects.exclude(library=library).delete()
         Game.objects.exclude(library=library).delete()
         Device.objects.exclude(library=library).delete()
         Platform.objects.filter(library__isnull=False).exclude(library=library).delete()
 
-    def _anonymize(self, all_game_ids, scrub_devices, name_overrides):
+    def _anonymize(
+        self, all_game_ids, reassignable_game_ids, scrub_devices, name_overrides
+    ):
         game_offsets = {
             game_id: timedelta(days=random.randint(-JITTER_DAYS, JITTER_DAYS))
             for game_id in all_game_ids
@@ -226,22 +293,6 @@ class Command(BaseCommand):
             ["timestamp_start", "timestamp_end", "note", "created_at", "modified_at"],
         )
 
-        playevents = list(PlayEvent.objects.order_by("pk"))
-        for event in playevents:
-            offset = game_offsets[event.game_id]
-            if event.started is not None:
-                event.started += offset
-            if event.ended is not None:
-                event.ended += offset
-            event.note = ""
-            event.created_at = (
-                _midnight(event.started) if event.started is not None else FIXED_EPOCH
-            )
-            event.updated_at = event.created_at
-        PlayEvent.objects.bulk_update(
-            playevents, ["started", "ended", "note", "created_at", "updated_at"]
-        )
-
         purchases = list(Purchase.objects.order_by("pk"))
         through_rows = []
         Through = Purchase.games.through
@@ -257,9 +308,11 @@ class Command(BaseCommand):
             purchase.needs_price_update = False
             purchase.name = ""
             if purchase.type != Purchase.GAME:
-                purchase.related_game_id = random.choice(all_game_ids)
-            count = random.randint(1, min(MAX_GAMES_PER_PURCHASE, len(all_game_ids)))
-            chosen = random.sample(all_game_ids, count)
+                purchase.related_game_id = random.choice(reassignable_game_ids)
+            count = random.randint(
+                1, min(MAX_GAMES_PER_PURCHASE, len(reassignable_game_ids))
+            )
+            chosen = random.sample(reassignable_game_ids, count)
             through_rows.extend(
                 Through(purchase_id=purchase.pk, game_id=game_id) for game_id in chosen
             )
@@ -299,13 +352,24 @@ class Command(BaseCommand):
                 device.name = f"Device {ordinal}"
             Device.objects.bulk_update(devices, ["name"])
 
-        self._reassign_uuids()
+        #: Captured before _reassign_uuids remaps PlayerGame.game_id /
+        #: Playthrough.player_game__game_id to their new uuids -- game_offsets
+        #: is keyed by the original game ids, and this mapping must agree.
+        game_id_by_aggregate = {
+            **dict(PlayerGame.objects.values_list("pk", "game_id")),
+            **dict(Playthrough.objects.values_list("pk", "player_game__game_id")),
+        }
+
+        replacements_by_model = self._reassign_uuids()
+        event_count = self._reassign_event_identities(
+            game_offsets, game_id_by_aggregate, replacements_by_model[Game]
+        )
 
         return {
             "games": len(all_game_ids),
             "purchases": len(purchases),
             "sessions": len(sessions),
-            "playevents": len(playevents),
+            "events": event_count,
         }
 
     def _reassign_uuids(self):
@@ -320,9 +384,175 @@ class Command(BaseCommand):
         transaction. Foreign keys here are DEFERRABLE INITIALLY DEFERRED and the
         transaction never commits, so a parent's uuid can change before its
         children are pointed at the new value.
+
+        Returns the per-model replacement maps, so _reassign_event_identities
+        can re-capture a Game reference inside a payload at its final uuid.
         """
+        replacements_by_model = {}
         for model in IDENTITY_MODELS:
-            self._remap_referrers(model, self._resequence_identity(model))
+            replacements = self._resequence_identity(model)
+            self._remap_referrers(model, replacements)
+            replacements_by_model[model] = replacements
+        return replacements_by_model
+
+    @staticmethod
+    def _reassign_event_identities(
+        game_offsets, game_id_by_aggregate, game_replacements
+    ):
+        """Shift, blank and re-key every event, then re-derive every
+        event-table identity from the recorded_at values this method just
+        wrote. Runs after _reassign_uuids, whose Game replacements this needs
+        to re-capture a payload reference at the game's final uuid.
+
+        game_id_by_aggregate is captured by the caller before _reassign_uuids
+        remaps PlayerGame.game_id / Playthrough.player_game__game_id -- it
+        must agree with game_offsets' original-game-id keys, not the
+        post-remap ones a fresh query here would return.
+        """
+        events = list(LibraryEvent.objects.order_by("pk"))
+        for sequence, event in enumerate(events, start=1):
+            offset = game_offsets[game_id_by_aggregate[event.aggregate_id]]
+            event.effective_time = _shift_effective_time(event.effective_time, offset)
+            event.recorded_at = (
+                _midnight(event.effective_time.lower_bound)
+                if event.effective_time is not None
+                else FIXED_EPOCH
+            )
+            payload = dict(event.payload)
+            if "note" in payload:
+                payload["note"] = ""
+            if "name" in payload:
+                payload["name"] = ""
+            for found in DEFAULT_WIRING.event_types.references_in(
+                event.event_type, payload
+            ):
+                old_game_id = UUID(found.value["id"])
+                new_game = Game.objects.get(
+                    pk=game_replacements.get(old_game_id, old_game_id)
+                )
+                payload[found.key] = capture_reference(new_game)
+            event.payload = payload
+            event.source_metadata = {
+                key: value
+                for key, value in event.source_metadata.items()
+                if key != "play_event_id"
+            }
+            event.idempotency_key = f"sample:{sequence}"
+            event.actor = None
+        LibraryEvent.objects.bulk_update(
+            events,
+            [
+                "effective_time",
+                "recorded_at",
+                "payload",
+                "source_metadata",
+                "idempotency_key",
+                "actor",
+            ],
+        )
+
+        references = list(LibraryEventReference.objects.order_by("pk"))
+        for reference in references:
+            if reference.kind == "catalog.game":
+                reference.referenced_id = game_replacements.get(
+                    reference.referenced_id, reference.referenced_id
+                )
+        LibraryEventReference.objects.bulk_update(references, ["referenced_id"])
+
+        def _mint(moment, state):
+            current_ms = _floor_ms(moment)
+            state["sequence"] = (
+                state["sequence"] + 1 if current_ms == state["ms"] else 0
+            )
+            state["ms"] = current_ms
+            return uuid7_at(
+                moment,
+                sequence=state["sequence"],
+                entropy=random.getrandbits(_RAND_B_BITS),
+            )
+
+        def _group_replacements(rows, key):
+            """One new id per distinct group, minted at that group's earliest
+            recorded_at, in recorded_at order so two groups born in the same
+            millisecond still get distinct sequence numbers."""
+            earliest = {}
+            for row in rows:
+                group = key(row)
+                if group not in earliest or row.recorded_at < earliest[group]:
+                    earliest[group] = row.recorded_at
+            state = {"ms": None, "sequence": -1}
+            return {
+                group: _mint(moment, state)
+                for group, moment in sorted(earliest.items(), key=lambda pair: pair[1])
+            }
+
+        aggregate_replacements = _group_replacements(
+            events, lambda event: event.aggregate_id
+        )
+        correlation_replacements = _group_replacements(
+            events, lambda event: event.correlation_id
+        )
+        #: LibraryEventStreamHead.id is deliberately left alone.
+        #: games_libraryevent's composite FK to it
+        #: (library_event_stream_matches_library, migration 0023) is a plain
+        #: RunSQL constraint with no DEFERRABLE -- unlike every other FK this
+        #: command remaps, Postgres checks it immediately on each UPDATE, so
+        #: LibraryEvent.stream_id and LibraryEventStreamHead.id cannot be
+        #: swapped to new values in separate statements without one side
+        #: transiently naming a row the other doesn't have yet. The residual
+        #: leak (the stream head's own uuid still encodes its real creation
+        #: millisecond) is far smaller than what this command's jitter
+        #: actually targets -- play dates, prices, notes -- so it is accepted
+        #: rather than worked around.
+
+        event_moment_by_old_id = {event.pk: event.recorded_at for event in events}
+        event_id_replacements = {}
+        id_state = {"ms": None, "sequence": -1}
+        for event in sorted(events, key=lambda event: (event.recorded_at, event.pk)):
+            event_id_replacements[event.pk] = _mint(event.recorded_at, id_state)
+        #: bulk_update() refuses primary key fields, so the non-pk fields are
+        #: written first (while .pk still matches the pre-reassignment row),
+        #: and each event's own id is swapped after via a per-row UPDATE --
+        #: the same split _resequence_identity/_remap_referrers already use.
+        for event in events:
+            event.aggregate_id = aggregate_replacements[event.aggregate_id]
+            event.correlation_id = correlation_replacements[event.correlation_id]
+            if event.causation_id is not None:
+                event.causation_id = correlation_replacements.get(
+                    event.causation_id, event.causation_id
+                )
+            #: PlaythroughCreatedPayload.player_game is a bare ReferenceId,
+            #: not a Reference the reference-recapture pass above can see --
+            #: it names the PlayerGame this run belongs to, whose own
+            #: aggregate_id (from its own library.playergame.created event)
+            #: was just remapped above.
+            if event.event_type == PLAYTHROUGH_CREATED.event_type:
+                payload = dict(event.payload)
+                old_player_game_id = UUID(payload["player_game"])
+                payload["player_game"] = str(
+                    aggregate_replacements.get(old_player_game_id, old_player_game_id)
+                )
+                event.payload = payload
+        LibraryEvent.objects.bulk_update(
+            events, ["aggregate_id", "correlation_id", "causation_id", "payload"]
+        )
+        for old_id, new_id in event_id_replacements.items():
+            LibraryEvent.objects.filter(pk=old_id).update(id=new_id)
+
+        reference_id_state = {"ms": None, "sequence": -1}
+        reference_id_replacements = {}
+        for reference in sorted(
+            references, key=lambda reference: event_moment_by_old_id[reference.event_id]
+        ):
+            reference_id_replacements[reference.pk] = _mint(
+                event_moment_by_old_id[reference.event_id], reference_id_state
+            )
+            reference.event_id = event_id_replacements[reference.event_id]
+        LibraryEventReference.objects.bulk_update(references, ["event_id"])
+        for old_id, new_id in reference_id_replacements.items():
+            LibraryEventReference.objects.filter(pk=old_id).update(id=new_id)
+
+        return len(events)
 
     @staticmethod
     def _identity_field_name(model) -> str:
@@ -389,6 +619,12 @@ class Command(BaseCommand):
         targets, never by its kind: an auto-created through references the
         target's primary key, so `Purchase.games` is inert while the identity is
         a secondary column and live once it is the primary key.
+
+        Unmanaged referrers are skipped. A rebuild's shadow twin
+        (games/events/targets.py) joins the live registry and stays there for
+        the life of the process, hidden relation and all, but its table only
+        exists inside the attempt that made it -- so a walk that reads twins
+        works until something triggers one rebuild, then fails forever.
         """
         identity = cls._identity_field_name(model)
         for relation in model._meta.get_fields(include_hidden=True):
@@ -399,6 +635,8 @@ class Command(BaseCommand):
             else:
                 field = relation.field
             if field.target_field.name != identity:
+                continue
+            if not field.model._meta.managed:
                 continue
             children = list(
                 field.model._base_manager.exclude(**{f"{field.attname}__isnull": True})
@@ -425,6 +663,11 @@ class Command(BaseCommand):
             fields = item.get("fields", {})
             for key in GENERATED_FIELDS:
                 fields.pop(key, None)
+            if (
+                item.get("model") == "games.libraryevent"
+                and fields.get("effective_time") == ""
+            ):
+                fields.pop("effective_time", None)
             if item.get("model") in PORTABLE_LIBRARY_MODELS or (
                 item.get("model") == "games.platform"
                 and fields.get("library") is not None

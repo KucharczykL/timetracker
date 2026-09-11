@@ -20,7 +20,6 @@ from games.models import (
     Game,
     Platform,
     PlayerGameStatus,
-    PlayEvent,
     Purchase,
     Release,
     Session,
@@ -385,9 +384,7 @@ def test_qualifier_columns_project_beside_the_bounds_they_do_not_move(owned_libr
     assert release.release_date_end_qualifier == "both"
 
 
-@pytest.mark.parametrize(
-    "model", [Game, Session, Purchase, PlayEvent, Platform, Release]
-)
+@pytest.mark.parametrize("model", [Game, Session, Purchase, Platform, Release])
 def test_temporal_schema_does_not_expand_comparison_choices(model):
     values = {column["value"] for column in comparable_columns(model)}
     assert not any(

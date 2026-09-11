@@ -2,9 +2,9 @@
  * DateTimeField — the segmented datetime input (issue #511).
  *
  * Drives the DateTimePicker component (common/components/date_time_picker.py),
- * which replaces native `<input type="datetime-local">` on the Session and
- * GameStatusChange forms so the account's DATETIME_FORMAT preference controls
- * the visible segment order *and* the hour cycle.
+ * which replaces native `<input type="datetime-local">` on the Session form so
+ * the account's DATETIME_FORMAT preference controls the visible segment order
+ * *and* the hour cycle.
  *
  * Almost everything here is the date field's: the same segment-entry engine
  * (date-field-core.ts), the same month-grid calendar (date-calendar-core.ts),

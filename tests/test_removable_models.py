@@ -16,7 +16,6 @@ from games.models import (
     FilterPreset,
     Game,
     Platform,
-    PlayEvent,
     Purchase,
     Release,
     Session,
@@ -55,10 +54,6 @@ def _session(library: UserLibrary) -> Session:
     )
 
 
-def _play_event(library: UserLibrary) -> PlayEvent:
-    return PlayEvent.objects.create(game=_game(library))
-
-
 def _purchase(library: UserLibrary) -> Purchase:
     purchase = Purchase.objects.create(
         library=library,
@@ -83,7 +78,6 @@ BUILDERS: dict[type[Model], Builder] = {
     Platform: _platform,
     Device: _device,
     Session: _session,
-    PlayEvent: _play_event,
     Purchase: _purchase,
     FilterPreset: _filter_preset,
 }

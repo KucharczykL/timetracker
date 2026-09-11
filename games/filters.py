@@ -135,14 +135,6 @@ class GameFilter(OperatorFilter):
     playthrough_filter: PlaythroughFilter | None = None
     platform_filter: PlatformFilter | None = None
 
-    # #687 renamed both keys. A saved preset is rewritten by migration 0046,
-    # but a bookmarked or shared ``?filter=`` is not, so read the old word too.
-    # #771 takes this away with the rest of the legacy row.
-    renamed_fields: ClassVar[Mapping[str, str]] = {
-        "playevent_count": "playthrough_count",
-        "playevent_filter": "playthrough_filter",
-    }
-
     # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
     # reviewable diff (AND-composition makes the order semantically irrelevant).
     # TODO(py3.15, ~Oct 2026): these read-only ClassVar dict tables (here and in

@@ -55,11 +55,9 @@ INTEGER_TYPES = frozenset(["integer", "bigint", "smallint"])
 UUID_TYPE: ColumnType = "uuid_v7"
 
 # The field each model's UUID was backfilled from, and orders by. Wave B chose
-# these per model rather than uniformly; `GameStatusChange` has no `created_at`
-# at all, so its audit trail's own `timestamp` is the only ordering it has.
+# these per model rather than uniformly.
 DEFAULT_ORDER_SOURCE = "created_at"
 IDENTITY_ORDER_SOURCE: dict[TableName, str] = {
-    "games_gamestatuschange": "timestamp",
     "games_libraryevent": "recorded_at",
 }
 
@@ -472,8 +470,8 @@ def check_ordering(models: list[IdentityModel]) -> CheckReport:
     minted at any time other than the row's own creation silently breaks it.
 
     Rows whose ordering source is NULL are excluded rather than required to sort
-    last: migration 0006 stamped those with the migration's own clock, which put
-    them last only until the next row was inserted.
+    last: the backfill stamped those with its own clock, which put them last
+    only until the next row was inserted.
     """
     violations: list[Violation] = []
     notes: list[Note] = []

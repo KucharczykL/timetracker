@@ -8,13 +8,12 @@ import pytest
 from django.contrib.messages import get_messages
 from django.urls import reverse
 from django.utils import timezone
-from playthrough_conversion import convert_and_take_runs, run_noted
+from stated_runs import another_run, state_run
 
-from games.backfill.playthrough import convert_library
+from games.commands.playthrough import ActStatement
 from games.models import (
     Game,
     LibraryEvent,
-    PlayEvent,
     Playthrough,
     PlaythroughKind,
     Session,
@@ -22,6 +21,11 @@ from games.models import (
 from games.writes.playergame import new_correlation_id
 from games.writes.playthrough import remove_run
 from timetracker.temporal import TemporalValue
+
+
+def day(value: str) -> ActStatement:
+    """One act, stated on a day."""
+    return ActStatement(TemporalValue.from_day(date.fromisoformat(value)))
 
 
 @pytest.fixture
@@ -35,7 +39,7 @@ def game(owned_library):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_adding_a_playthrough_writes_no_legacy_row(client, user, game):
+def test_adding_a_playthrough_states_both_endpoints_and_the_note(client, user, game):
     client.force_login(user)
 
     client.post(
@@ -48,7 +52,6 @@ def test_adding_a_playthrough_writes_no_legacy_row(client, user, game):
         },
     )
 
-    assert PlayEvent.objects.count() == 0
     run = Playthrough.objects.get(player_game__game=game)
     assert run.note == "12h"
     assert run.start_recorded_at is not None
@@ -81,9 +84,8 @@ def test_marking_finished_states_the_status_under_one_correlation_id(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_editing_a_converted_row_states_the_difference(client, user, game):
-    row = PlayEvent.objects.create(game=game, started=None, ended=None, note="")
-    [run] = convert_and_take_runs(user.library, game)
+def test_editing_a_run_states_the_difference(client, user, game):
+    run = Playthrough.objects.get(player_game__game=game)
     client.force_login(user)
 
     client.post(
@@ -93,8 +95,8 @@ def test_editing_a_converted_row_states_the_difference(client, user, game):
 
     run.refresh_from_db()
     assert run.note == "read"
-    row.refresh_from_db()
-    assert row.note == ""
+    assert run.started == TemporalValue.from_day(date(2026, 1, 2))
+    assert run.start_recorded_at is not None
 
 
 @pytest.mark.django_db(transaction=True)
@@ -123,8 +125,7 @@ def test_an_edit_with_no_days_records_no_act(client, user, game):
 @pytest.mark.django_db(transaction=True)
 def test_an_edit_that_clears_a_day_keeps_the_act(client, user, game):
     """A stated act stays stated; only its day goes."""
-    PlayEvent.objects.create(game=game, started=date(2026, 1, 2), ended=None, note="")
-    [run] = convert_and_take_runs(user.library, game)
+    run = state_run(user, game, started=day("2026-01-02"))
     client.force_login(user)
 
     client.post(
@@ -139,14 +140,13 @@ def test_an_edit_that_clears_a_day_keeps_the_act(client, user, game):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_second_edit_does_not_revert_the_first(client, user, game):
-    """The form is seeded off the run, never the row.
+    """The form is seeded off the run as it stands now.
 
-    Nothing writes the legacy row any more, so seeding the
-    second edit from it would post the frozen day back over
-    what the first edit stated.
+    Seeding the second edit off the day the run was born
+    with would post that day back over what the first
+    edit stated.
     """
-    PlayEvent.objects.create(game=game, started=date(2026, 1, 2), ended=None, note="")
-    [run] = convert_and_take_runs(user.library, game)
+    run = state_run(user, game, started=day("2026-01-02"))
     client.force_login(user)
 
     client.post(
@@ -162,9 +162,13 @@ def test_a_second_edit_does_not_revert_the_first(client, user, game):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_run_stating_more_than_a_day_leaves_the_edit_page(client, user, game):
-    """A day-shaped form never flattens a month."""
-    PlayEvent.objects.create(game=game, started=None, ended=None, note="")
-    [run] = convert_and_take_runs(user.library, game)
+    """A day-shaped form never flattens a month.
+
+    The act is stated through the command, then coarsened
+    in place: no command states a month, and the page has
+    to hold one a coarser writer left.
+    """
+    run = state_run(user, game, started=day("2026-01-02"))
     Playthrough.objects.filter(pk=run.pk).update(
         started=TemporalValue.from_month(2026, 3)
     )
@@ -180,35 +184,25 @@ def test_a_run_stating_more_than_a_day_leaves_the_edit_page(client, user, game):
 
 @pytest.mark.django_db(transaction=True)
 def test_removing_the_only_run_is_refused_on_the_confirmation(client, user, game):
-    #: Tracking states a run of its own, so the conversion
-    #: leaves two. That one goes first, and the converted
-    #: row is then the only run the game has left.
-    PlayEvent.objects.create(game=game, started=None, ended=None, note="")
-    [converted] = convert_and_take_runs(user.library, game)
-    remove_run(
-        user,
-        Playthrough.objects.exclude(pk=converted.pk).get(player_game__game=game),
-        correlation_id=new_correlation_id(),
-    )
+    #: Tracking states a run, so a second one is stated
+    #: here. That one goes first, and the run the game was
+    #: born with is then the only one it has left.
+    born = Playthrough.objects.get(player_game__game=game)
+    remove_run(user, another_run(user, game), correlation_id=new_correlation_id())
     client.force_login(user)
 
-    response = client.post(reverse("games:remove_playthrough", args=[converted.pk]))
+    response = client.post(reverse("games:remove_playthrough", args=[born.pk]))
 
     assert response.status_code == 409
     assert b"only playthrough of that game" in response.content
-    converted.refresh_from_db()
-    assert converted.removed_at is None
+    born.refresh_from_db()
+    assert born.removed_at is None
 
 
 @pytest.mark.django_db(transaction=True)
-def test_removing_one_of_two_runs_stamps_the_projection_only(client, user, game):
-    PlayEvent.objects.create(game=game, started=None, ended=None, note="first")
-    second = PlayEvent.objects.create(
-        game=game, started=None, ended=None, note="second"
-    )
-    runs = convert_and_take_runs(user.library, game)
-    other = run_noted(runs, "first")
-    run = run_noted(runs, "second")
+def test_removing_one_of_two_runs_stamps_that_one_alone(client, user, game):
+    other = state_run(user, game, note="first")
+    run = another_run(user, game, note="second")
     client.force_login(user)
 
     response = client.post(reverse("games:remove_playthrough", args=[run.pk]))
@@ -216,8 +210,8 @@ def test_removing_one_of_two_runs_stamps_the_projection_only(client, user, game)
     assert response.status_code == 302
     run.refresh_from_db()
     assert run.removed_at is not None
-    second.refresh_from_db()
-    assert second.removed_at is None
+    #: The row stays; removal destroys nothing.
+    assert Playthrough.objects.filter(pk=run.pk).exists()
     #: The other run stays, so one remains.
     other.refresh_from_db()
     assert other.removed_at is None
@@ -262,10 +256,9 @@ def test_the_page_names_the_run_in_its_actions(client, user, game):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_the_page_renders_no_row_a_conversion_left_behind(client, user, game):
-    """An unconverted legacy row reaches nothing."""
+def test_the_page_renders_no_removed_run(client, user, game):
+    """A removed run reaches no list."""
     other = Game.objects.create(library=user.library, name="Tunic")
-    PlayEvent.objects.create(game=other, started=None, ended=None, note="")
     Playthrough.objects.filter(player_game__game=other).update(
         removed_at=timezone.now()
     )
@@ -280,13 +273,11 @@ def test_the_page_renders_no_row_a_conversion_left_behind(client, user, game):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_legacy_row_id_reaches_no_page(client, user, game):
-    """#1012 moved the routes onto the run."""
-    row = PlayEvent.objects.create(game=game, started=None, ended=None, note="")
-    convert_library(user.library)
+def test_an_id_naming_no_run_reaches_no_page(client, user, game):
+    """#1012 keyed the routes on the run itself."""
     client.force_login(user)
 
-    response = client.get(reverse("games:edit_playthrough", args=[row.pk]))
+    response = client.get(reverse("games:edit_playthrough", args=[uuid.uuid7()]))
 
     assert response.status_code == 404
 

@@ -7,9 +7,11 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.test import Client
 from django.urls import NoReverseMatch, Resolver404, resolve, reverse
+from stated_runs import another_run, state_run
 
-from games.backfill.playthrough import convert_library
-from games.models import Device, Game, PlayEvent, Playthrough, Session
+from games.commands.playthrough import ActStatement
+from games.models import Device, Game, Playthrough, Session
+from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db
 
@@ -76,12 +78,6 @@ def runtime_world(db):
         device=foreign_device,
         timestamp_start=datetime(2026, 8, 20, 9, tzinfo=UTC),
     )
-    own_playevent = PlayEvent.objects.create(
-        game=own_game, started=date(2026, 8, 20), note="Owned event"
-    )
-    foreign_playevent = PlayEvent.objects.create(
-        game=foreign_game, started=date(2026, 8, 20), note="Foreign event"
-    )
     #: #1012 moved the HTML routes onto the run.
     foreign_run = Playthrough.objects.get(player_game__game=foreign_game)
     return SimpleNamespace(**locals())
@@ -107,13 +103,17 @@ def playthrough_world(transactional_db):
     client = Client()
     client.force_login(owner)
     own_game = Game.objects.create(library=owner.library, name="Owned runtime game")
-    own_playevent = PlayEvent.objects.create(
-        game=own_game, started=date(2026, 8, 20), note="Owned event"
+    own_run = state_run(
+        owner,
+        own_game,
+        started=ActStatement(TemporalValue.from_day(date(2026, 8, 20))),
+        note="Owned event",
     )
     #: A second run, so removing the first
     #: does not take the game's last one.
-    PlayEvent.objects.create(game=own_game, started=date(2026, 8, 21))
-    convert_library(owner.library)
+    another_run(
+        owner, own_game, started=ActStatement(TemporalValue.from_day(date(2026, 8, 21)))
+    )
     return SimpleNamespace(**locals())
 
 
@@ -128,8 +128,7 @@ def playthrough_world(transactional_db):
 def test_playthrough_api_uses_uuidv7_paths(
     playthrough_world, method, payload, expected_status
 ):
-    #: The path names the run, not the row.
-    run = Playthrough.objects.get(note="Owned event")
+    run = playthrough_world.own_run
 
     response = _api_request(
         playthrough_world.client, method, f"/api/playthrough/{run.pk}", payload

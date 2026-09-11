@@ -238,7 +238,7 @@ function renderScopeSuffix(
   const body = joinChildren(leaf.scope, scopeModel, context);
   if (!body) return "";
   // Naive plural (+s) is exact for every current model key (session, purchase,
-  // playevent, …); revisit if a model with irregular plural ever gets aggregates.
+  // playthrough, …); revisit if a model with irregular plural ever gets aggregates.
   return `, over ${scopeKey}s matching (${body})`;
 }
 

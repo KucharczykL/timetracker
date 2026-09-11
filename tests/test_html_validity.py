@@ -9,7 +9,7 @@ a per-component guard a caller-supplied wrapper could defeat.
 """
 
 from collections import Counter
-from datetime import date, datetime
+from datetime import datetime
 from html.parser import HTMLParser
 from zoneinfo import ZoneInfo
 
@@ -22,7 +22,6 @@ from games.models import (
     Device,
     Game,
     Platform,
-    PlayEvent,
     Playthrough,
     Purchase,
     Session,
@@ -150,11 +149,6 @@ class HtmlValidityTest(TestCase):
             timestamp_start=datetime(2022, 9, 26, 15, 0, tzinfo=ZONEINFO),
             timestamp_end=datetime(2022, 9, 26, 16, 0, tzinfo=ZONEINFO),
             device=self.device,
-        )
-        self.playevent = PlayEvent.objects.create(
-            game=self.long_game,
-            started=date(2022, 9, 1),
-            ended=date(2022, 9, 26),
         )
         #: #1012 moved the route onto the run.
         self.playthrough = Playthrough.objects.get(player_game__game=self.long_game)

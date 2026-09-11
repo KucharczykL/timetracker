@@ -5,14 +5,14 @@ import re
 import pytest
 from django.urls import reverse
 from django.utils import timezone
-from playthrough_conversion import convert_and_take_runs
+from stated_runs import state_run
 
+from games.commands.playthrough import ActStatement
 from games.models import (
     Game,
     LibraryEvent,
     PlayerGame,
     PlayerGameStatus,
-    PlayEvent,
     Playthrough,
     Purchase,
     Session,
@@ -190,7 +190,7 @@ def test_adding_a_session_records_played(logged_in, owned_library, tracked_game)
 @pytest.mark.django_db(transaction=True)
 def test_editing_a_session_records_played_too(logged_in, owned_library, tracked_game):
     #: An edit binds the checkbox too, so it re-applies the
-    #: flip. Session and PlayEvent derive their library.
+    #: flip. A Session derives its library.
     session = Session.objects.create(game=tracked_game, timestamp_start=timezone.now())
 
     logged_in.post(
@@ -321,16 +321,15 @@ def test_editing_a_playthrough_records_completed_too(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_correcting_a_converted_completion_records_no_status(
-    logged_in, owned_library, tracked_game
+def test_correcting_a_dayless_completion_records_no_status(
+    logged_in, owned_user, tracked_game
 ):
-    """A converted row states its completion, dayless.
+    """The run states its completion on no day.
 
     Writing the day down corrects that act rather than
     recording one, so the ticked box states no status.
     """
-    PlayEvent.objects.create(game=tracked_game)
-    [run] = convert_and_take_runs(owned_library, tracked_game)
+    run = state_run(owned_user, tracked_game, completed=ActStatement(None))
 
     logged_in.post(
         reverse("games:edit_playthrough", args=[run.pk]),

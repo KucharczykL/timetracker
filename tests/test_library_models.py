@@ -10,9 +10,7 @@ from games.models import (
     Device,
     FilterPreset,
     Game,
-    GameStatusChange,
     Platform,
-    PlayEvent,
     Purchase,
     Session,
     UserLibrary,
@@ -57,16 +55,12 @@ def test_direct_and_derived_records_filter_by_library(libraries):
     Session.objects.create(
         game=game_b, timestamp_start=datetime(2025, 1, 1, tzinfo=UTC)
     )
-    event_a = PlayEvent.objects.create(game=game_a)
-    GameStatusChange.objects.create(game=game_a, new_status=Game.Status.PLAYED)
 
     assert Game.objects.for_library(library_a).get() == game_a
     assert Purchase.objects.for_library(library_a).get() == purchase_a
     assert Device.objects.for_library(library_a).get() == device_a
     assert FilterPreset.objects.for_library(library_a).get().name == "A preset"
     assert Session.objects.for_library(library_a).get() == session_a
-    assert PlayEvent.objects.for_library(library_a).get() == event_a
-    assert GameStatusChange.objects.for_library(library_a).count() == 1
 
 
 def test_session_requires_a_game():

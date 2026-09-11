@@ -4,9 +4,10 @@ that a stored zone never feeds back into duration or date-bucket math."""
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from django.apps import apps
 from django.utils import timezone as django_timezone
 
-from games.models import Game, GameStatusChange, Session
+from games.models import Game, Session
 
 pytestmark = pytest.mark.django_db
 
@@ -68,9 +69,16 @@ def test_date_bucketing_ignores_stored_zones(owned_library):
         assert bucketed.count() == 2
 
 
-def test_game_status_change_has_no_zone_fields(db):
-    """Audit records are server-stamped, not attended events; the zone
-    columns are deliberately Session-only."""
-    field_names = {field.name for field in GameStatusChange._meta.get_fields()}
-    assert "timestamp_start_timezone" not in field_names
-    assert "timestamp_timezone" not in field_names
+def test_no_other_model_carries_a_zone_column(db):
+    """A zone is recorded for what a person attended, which is a session.
+
+    Everything else is stamped by the server in one zone, so a column naming
+    another would have nothing to hold.
+    """
+    for model in apps.get_app_config("games").get_models():
+        if model is Session:
+            continue
+        field_names = {field.name for field in model._meta.get_fields()}
+        assert not {name for name in field_names if name.endswith("_timezone")}, (
+            f"{model.__name__} carries a zone column"
+        )

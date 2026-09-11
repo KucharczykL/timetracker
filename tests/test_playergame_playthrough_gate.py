@@ -11,8 +11,6 @@ from typing import Any, NamedTuple
 import pytest
 from django.db import connection
 
-from games.backfill.playergame import backfill_library
-from games.backfill.playthrough import convert_library
 from games.commands.playergame import (
     RemovePlayerGame,
     RestorePlayerGame,
@@ -41,14 +39,12 @@ from games.models import (
     LibraryIdempotencyRecord,
     PlayerGame,
     PlayerGameStatus,
-    PlayEvent,
     Playthrough,
     PlaythroughKind,
 )
 from games.projectors.playergame import PlayerGames
 from games.projectors.playthrough import Playthroughs
 from games.reads.playthrough_numbering import DISPLAY_ORDER
-from games.removal import remove
 from timetracker.temporal import TemporalValue
 
 pytestmark = [
@@ -405,61 +401,13 @@ def test_every_command_repeated_under_its_key_records_nothing(
     ).count() == len({key for _command, key in dispatched})
 
 
-def build_converted(library) -> Game:
-    """Runs converted out of the legacy rows."""
-    game = Game.objects.create(library=library, name="Chrono Trigger")
-    PlayEvent.objects.create(
-        game=game, started=date(2024, 1, 1), ended=date(2024, 1, 9), note="One"
-    )
-    PlayEvent.objects.create(game=game)
-    remove(PlayEvent.objects.create(game=game, started=date(2023, 1, 1)))
-    backfill_library(library)
-    convert_library(library)
-    return game
-
-
-def test_a_converted_library_replays_into_its_live_rows(owned_library, neighbour):
-    """The live tables, not a shadow."""
-    build_converted(owned_library)
-    before = rows_of(owned_library)
-    untouched = rows_of(neighbour)
-    unwritten = row_versions(neighbour)
-    empty_projections(owned_library)
-
-    replay(owned_library)
-
-    assert rows_of(owned_library) == before
-    assert rows_of(neighbour) == untouched
-    #: Values alone cannot part untouched from upserted alike.
-    assert row_versions(neighbour) == unwritten
-
-
-def test_a_converted_library_rebuilds_with_an_empty_diff(owned_library, neighbour):
-    """A real REBUILD, which swaps."""
-    build_converted(owned_library)
-    untouched = rows_of(neighbour)
-
-    report = rebuild_projections(owned_library, mode=RebuildMode.REBUILD)
-
-    assert report.swapped is True
-    assert [
-        (table.table, table.only_live, table.only_rebuilt, table.differing)
-        for table in report.tables
-    ] == [
-        ("games_playergame", 0, 0, 0),
-        ("games_playthrough", 0, 0, 0),
-    ]
-    assert rows_of(neighbour) == untouched
-
-
 def test_the_display_number_is_ordered_by_a_total_key():
     """The key last is what a swap cannot renumber.
 
-    A conversion stamps `recorded_at` from each legacy row's
-    `created_at`, so two undated rows made in one instant tie on the
-    first three sort fields. RowNumber over peers follows the plan's
-    input order, and a swap changes that -- so the fourth field, which
-    is unique, is the whole reason a rebuild leaves the numbers alone.
+    Two runs recorded in one instant tie on the first three sort
+    fields. RowNumber over peers follows the plan's input order, and
+    a swap changes that -- so the fourth field, which is unique, is
+    the whole reason a rebuild leaves the numbers alone.
     """
     assert DISPLAY_ORDER[-1] == "id"
 
@@ -476,21 +424,12 @@ def test_the_stream_leaves_a_removed_row_in_each_table(owned_user, owned_library
     ).exists()
 
 
-def test_the_gate_replays_every_reachable_playthrough_kind(
-    owned_user, owned_library, django_user_model
-):
+def test_the_gate_replays_every_reachable_playthrough_kind(owned_user, owned_library):
     """A new kind fails here until a leg states it."""
     build_stream(owned_user, owned_library)
-    #: Its own library: the backfill reads every game in one.
-    converted = django_user_model.objects.create_user(
-        username="gate-converted", password="p"
-    )
-    build_converted(converted.library)
 
     stated = set(
-        Playthrough.objects.filter(
-            library__in=(owned_library, converted.library)
-        ).values_list("kind", flat=True)
+        Playthrough.objects.filter(library=owned_library).values_list("kind", flat=True)
     )
 
     assert stated == {kind for kind in PlaythroughKind} - UNREACHABLE_KINDS

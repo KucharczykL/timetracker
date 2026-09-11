@@ -6,7 +6,6 @@ import pytest
 from django.test import RequestFactory
 from django.urls import reverse
 from django.utils import timezone
-from playthrough_conversion import convert_and_take_runs
 
 from common.layout import recent_session_resumes
 from common.returns import action_url
@@ -14,7 +13,6 @@ from games.models import (
     Device,
     Game,
     Platform,
-    PlayEvent,
     Playthrough,
     Purchase,
     Session,
@@ -82,16 +80,6 @@ def test_library_page_evaluates_each_summary_count_once(
         response = client.get("/tracker/library")
 
     assert response.status_code == 200
-
-
-def _converted_run(library, game):
-    """The run the conversion added here.
-
-    None where the test tracks no game: every case that
-    names a run tracks its own.
-    """
-    runs = convert_and_take_runs(library, game)
-    return runs[0] if runs else None
 
 
 @pytest.fixture
@@ -166,16 +154,11 @@ def world(client, django_user_model):
         converted_currency="USD",
     )
     foreign_purchase.games.add(foreign_game)
-    own_playevent = PlayEvent.objects.create(
-        game=own_game, started=now.date(), note="Owner event"
-    )
-    foreign_playevent = PlayEvent.objects.create(
-        game=foreign_game, started=now.date(), note="Foreign event"
-    )
-    #: #1012 keyed the edit route on the run,
-    #: so the row is converted into one here.
-    own_run = _converted_run(owner_library, own_game)
-    foreign_run = _converted_run(foreign_library, foreign_game)
+    #: #1012 keyed the edit route on the run, and tracking
+    #: states one, so each library names its own. None where
+    #: the test tracks no game, which names no run either.
+    own_run = Playthrough.objects.filter(library=owner_library).first()
+    foreign_run = Playthrough.objects.filter(library=foreign_library).first()
     return SimpleNamespace(**locals())
 
 

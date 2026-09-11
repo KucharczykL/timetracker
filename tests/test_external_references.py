@@ -775,7 +775,9 @@ def test_every_mirrored_column_equals_its_live_reference(owned_user):
     from django.core.management import call_command
 
     call_command("load_sample_data", "--user", owned_user.username, verbosity=0)
-    for game in Game.objects.all():
+    #: The backfill states a reference for a live game only, so a removed one
+    #: keeps a mirrored key that no live reference stands beside.
+    for game in Game.objects.filter(removed_at__isnull=True):
         live = (
             ExternalReference.objects.filter(
                 provider="wikidata",

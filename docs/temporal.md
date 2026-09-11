@@ -119,9 +119,10 @@ the same Editions area, which draws one field per Release row.
 ## Storage notes
 
 The domain and its helper functions are created by migration, and the functions
-carry their own `search_path` since `0034_temporal_functions_search_path`. A
-dump taken before that migration needs three-part restore; the commands are in
-[Deployment](deployment.md#dumps-taken-before-migration-0034).
+carry their own `search_path`, which they did not for one stretch of this
+schema's history. A dump written in that stretch needs a three-part restore;
+the commands are in
+[Deployment](deployment.md#dumps-whose-functions-carry-no-search_path).
 
 `TemporalLowerBound`, `TemporalUpperBound`, `TemporalKind` and
 `TemporalPrecisionValue` are the database functions a query sorts and filters
