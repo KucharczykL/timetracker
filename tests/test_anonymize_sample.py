@@ -30,7 +30,14 @@ from games.models import (
     Purchase,
     Session,
 )
+from games.retention import purging_library
 from timetracker.temporal import TemporalValue
+
+#: _build_dataset dispatches TrackGame/StartPlaythrough/CompletePlaythrough
+#: itself now, so the autouse _track_created_games fixture's event-less
+#: PlayerGame/Playthrough rows would only get in the way -- every event this
+#: file dumps must trace back to a real LibraryEvent aggregate.
+pytestmark = pytest.mark.untracked_games
 
 # Models whose UUIDv7 identity has been promoted to their primary key carry it
 # in the record's `pk`; the rest still carry it in a `uuid` field.
@@ -283,7 +290,8 @@ class AnonymizeSampleTest(TransactionTestCase):
             call_command(
                 "anonymize_sample", user="sample-source", seed=5, output=output
             )
-            source_user.delete()
+            with purging_library():
+                source_user.delete()
             target = get_user_model().objects.create_user(username="sample-target")
             with patch(
                 "games.management.commands.load_sample_data.FIXTURE_PATH",

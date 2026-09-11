@@ -868,6 +868,27 @@ def _write_fixture(self, dump_path, output_path):
     output_path.write_bytes(gzip.compress(payload, compresslevel=9, mtime=0))
 ```
 
+- [ ] **Step 5.5 (discovered during execution): `LibraryEventStreamHead.id` cannot be reassigned**
+
+`games_libraryevent`'s composite FK to it
+(`library_event_stream_matches_library`, migration `0023`) is a plain
+`ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY` with no `DEFERRABLE` —
+unlike every other FK `_remap_referrers`/`_reassign_uuids` already relies on
+being `DEFERRABLE INITIALLY DEFERRED`. Postgres checks it immediately on each
+`UPDATE`, so `LibraryEvent.stream_id` and `LibraryEventStreamHead.id` cannot
+be swapped to new values in separate statements without one side transiently
+naming a row the other doesn't have yet — confirmed by running it:
+`IntegrityError: ... violates foreign key constraint
+"library_event_stream_matches_library"`.
+
+Drop the `stream_id`/`LibraryEventStreamHead.id` reassignment from
+`_reassign_event_identities` entirely — no `stream_replacements`, no
+`event.stream_id = ...`, no `heads` loop. Accept the residual leak (the
+stream head's own uuid still encodes its real creation millisecond): it is
+far smaller than what this command's jitter actually targets (play dates,
+prices, notes), and matches the class's own documented "Residual (accepted)
+traits" posture.
+
 - [ ] **Step 8: Run the affected tests**
 
 ```bash
@@ -880,6 +901,22 @@ changed yet (Task 4), and it still imports `games.backfill.playergame` etc.
 against a fixture that no longer carries `games.playevent`. Confirm the
 failure is in `load_sample_data`, not in this file's own dump logic; if a
 dump-side test still fails, fix it here before moving on.
+
+- [ ] **Step 8.5 (discovered during execution, belongs to `tests/test_anonymize_sample.py`): `test_output_reloads_via_loaddata`'s `source_user.delete()` needs `purging_library()`**
+
+Real `TrackGame`/`StartPlaythrough` events now reference `games[1]`'s Game
+row, so `games/signals.py`'s `refuse_to_delete_a_row_an_event_references`
+guard refuses `source_user.delete()`'s cascade the moment real events exist
+to protect. This is the retention guard working correctly, not a bug in the
+command under test — the fix belongs in the test, using the escape hatch
+`games/retention.py` already provides for exactly this case:
+
+```python
+from games.retention import purging_library
+...
+            with purging_library():
+                source_user.delete()
+```
 
 - [ ] **Step 9: Commit**
 

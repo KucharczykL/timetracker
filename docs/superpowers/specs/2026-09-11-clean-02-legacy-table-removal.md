@@ -338,8 +338,25 @@ from the `recorded_at` values it just rewrote:
 | `LibraryEvent.id` | its own rewritten `recorded_at`, sequenced as `_resequence_identity` does — the audit holds this column to `recorded_at` order (`games/identity_audit.py:481-518`) |
 | `LibraryEvent.aggregate_id` | one new id per distinct aggregate, minted at the **earliest** rewritten `recorded_at` among that aggregate's events, then written to every event naming it *and* to `payload["player_game"]` of `library.playthrough.created` |
 | `correlation_id` / `causation_id` | one new id per correlation group, from that group's rewritten `recorded_at` |
-| `LibraryEventStreamHead.id` | the stream's earliest rewritten `recorded_at`; `LibraryEvent.stream` is a real FK, so `_remap_referrers` would follow it, but the head has no date column for `_resequence_identity` to read |
 | `LibraryEventReference.id` | its event's rewritten `recorded_at` |
+
+**`LibraryEventStreamHead.id` is left alone — verified impossible to reassign
+safely.** `LibraryEvent.stream` is a real FK, so `_remap_referrers`'s pattern
+would in principle follow it, and the head has no date column for
+`_resequence_identity` to read regardless. But `games_libraryevent`'s
+composite FK to it (`library_event_stream_matches_library`, migration `0023`,
+`ADD CONSTRAINT ... FOREIGN KEY (stream_id, library_id) REFERENCES
+games_libraryeventstreamhead (id, library_id)`) carries no `DEFERRABLE` —
+unlike every other FK this pass relies on being `DEFERRABLE INITIALLY
+DEFERRED`. Postgres checks it immediately per statement, so
+`LibraryEvent.stream_id` and `LibraryEventStreamHead.id` cannot be swapped to
+new values in two separate `UPDATE`s without one side transiently naming a row
+the other doesn't have yet: `IntegrityError: ... violates foreign key
+constraint "library_event_stream_matches_library"`, confirmed by running it.
+The residual leak — the stream head's own uuid still encodes its real
+creation millisecond — is accepted: it is far smaller than what this
+command's jitter actually targets (play dates, prices, notes), and matches
+the class's own documented "Residual (accepted) traits" posture.
 
 `aggregate_id` is the load-bearing one: it becomes the `PlayerGame`/`Playthrough`
 primary key on replay — "the creation event's aggregate_id, evaluated once"
