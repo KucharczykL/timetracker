@@ -116,8 +116,6 @@ path**, so verify against `make check` before pushing when possible.
 | Run every test except `e2e/` | `make test-fast` |
 | Sync uv.lock | `uv sync` (after editing pyproject.toml) |
 | Verify the UUID identity map | `make audit-uuid-identity` (read-only; fails on any violation) |
-| Report the legacy lifecycle rows before converting them | `make preflight-playthroughs ARGS="--all-libraries"` (read-only; reports, never gates) |
-| Report the starts #1038 would state before stating them | `make report-playthrough-starts ARGS="--all-libraries"` (read-only; reports, never gates) |
 | Benchmark commands, replay, and per-event cost | `make bench` (~1.7 min, seeds and removes a scratch library; **not** in `make check`) |
 | Replay every library and fail on a differing row | `make verify-replay-parity` (read-only; **not** in `make check`) |
 | Destroy one user's library and every row in it | `make purge-library ARGS="--user NAME --confirm NAME"` (names the user twice on purpose) |
@@ -167,9 +165,9 @@ docs/           — Additional documentation
   `PlayEvent` rows, so a game holding none took an empty default run; #1038
   dates such a run, stating a `started` from the earlier of the library's own
   two records — earliest #676 status day and earliest live session day — and
-  never a completion, so `games/backfill/playthrough_start.py` is the second
-  pass and #684's `reconcile()` reads a run it repaired as owing no legacy row.
-  Nothing reads that pass's `source_metadata`, which names the record and, for a
+  never a completion. Both passes ran once, out of migrations `0045` and `0048`,
+  and CLEAN-02 took their modules out again: what they left behind is the events.
+  Nothing reads #1038's `source_metadata`, which names the record and, for a
   status day, the status: three of the four admitted statuses end a run rather
   than open one, and a status day froze in the server zone while a session day
   reads in the viewer's, so those two populations are findable no other way.

@@ -333,15 +333,6 @@ loadplatforms: ensure-postgres
 audit-uuid-identity: ensure-postgres
 	uv run --frozen python manage.py audit_uuid_identity
 
-# Usage: make preflight-playthroughs ARGS="--all-libraries"
-preflight-playthroughs: ensure-postgres
-	uv run --frozen python manage.py preflight_playthroughs $(ARGS)
-
-# Read-only: prints what #1038 would state, states nothing.
-# Usage: make report-playthrough-starts ARGS="--all-libraries"
-report-playthrough-starts: ensure-postgres
-	uv run --frozen python manage.py report_playthrough_starts $(ARGS)
-
 # Destroys a user's library and its rows.
 # Usage: make purge-library ARGS="--user NAME --confirm NAME"
 purge-library: ensure-postgres
