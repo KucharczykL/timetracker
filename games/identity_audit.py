@@ -55,11 +55,9 @@ INTEGER_TYPES = frozenset(["integer", "bigint", "smallint"])
 UUID_TYPE: ColumnType = "uuid_v7"
 
 # The field each model's UUID was backfilled from, and orders by. Wave B chose
-# these per model rather than uniformly; `GameStatusChange` has no `created_at`
-# at all, so its audit trail's own `timestamp` is the only ordering it has.
+# these per model rather than uniformly.
 DEFAULT_ORDER_SOURCE = "created_at"
 IDENTITY_ORDER_SOURCE: dict[TableName, str] = {
-    "games_gamestatuschange": "timestamp",
     "games_libraryevent": "recorded_at",
 }
 

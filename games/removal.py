@@ -18,7 +18,6 @@ from games.models import (
     FilterPreset,
     Game,
     Platform,
-    PlayEvent,
     Purchase,
     Release,
     Session,
@@ -35,7 +34,6 @@ REMOVABLE_MODELS: tuple[type[Model], ...] = (
     Platform,
     Device,
     Session,
-    PlayEvent,
     Purchase,
     FilterPreset,
 )

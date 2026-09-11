@@ -9,17 +9,13 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.db.models import (
-    Case,
     Exists,
     ExpressionWrapper,
     F,
     FilteredRelation,
-    Func,
     OuterRef,
     Q,
     Sum,
-    Value,
-    When,
 )
 from django.db.models.fields.generated import GeneratedField
 from django.db.models.functions import Coalesce, Lower, NullIf, Trim
@@ -1345,87 +1341,6 @@ def get_or_create_rate(currency_from: str, currency_to: str, year: int) -> float
                 f"[convert_prices]: Failed to fetch exchange rate for {currency_from}->{currency_to} in {year}: {e}"
             )
     return exchange_rate
-
-
-class PlayEventQuerySet(RemovableMixin, models.QuerySet):
-    def for_library(self, library):
-        """A live event of a live game."""
-        return self.filter(game__library=library, game__removed_at__isnull=True).alive()
-
-
-class PlayEvent(models.Model):
-    objects = PlayEventQuerySet.as_manager()
-
-    id = UUIDv7Field(primary_key=True, editable=False)
-    game = models.ForeignKey(Game, related_name="playevents", on_delete=models.CASCADE)
-    started = models.DateField(null=True, blank=True)
-    ended = models.DateField(null=True, blank=True)
-    days_to_finish = GeneratedField(
-        expression=Coalesce(
-            Case(
-                When(ended=F("started"), then=Value(1)),
-                default=Func(
-                    F("ended"),
-                    F("started"),
-                    function="",
-                    template="(%(expressions)s)",
-                    arg_joiner=" - ",
-                    output_field=models.IntegerField(),
-                ),
-                output_field=models.IntegerField(),
-            ),
-            Value(0),
-        ),
-        output_field=models.IntegerField(),
-        db_persist=True,
-        editable=False,
-        blank=True,
-    )
-    note = models.CharField(max_length=255, blank=True, default="")
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    #: Set instead of destroying the row.
-    removed_at = models.DateTimeField(
-        null=True, blank=True, default=None, editable=False
-    )
-
-
-# class PlayMarker(models.Model):
-#     game = models.ForeignKey(Game, related_name="markers", on_delete=models.CASCADE)
-#     played_since = models.DurationField()
-#     played_total = models.DurationField()
-#     note = models.CharField(max_length=255)
-
-
-class GameStatusChangeQuerySet(models.QuerySet):
-    def for_library(self, library):
-        """No screen removes one. #771 takes it."""
-        return self.filter(game__library=library, game__removed_at__isnull=True)
-
-
-class GameStatusChange(models.Model):
-    """
-    Tracks changes to the status of a Game.
-    """
-
-    objects = GameStatusChangeQuerySet.as_manager()
-
-    id = UUIDv7Field(primary_key=True, editable=False)
-    game = models.ForeignKey(
-        Game, on_delete=models.CASCADE, related_name="status_changes"
-    )
-    old_status = models.CharField(
-        max_length=1, choices=Game.Status.choices, blank=True, null=True
-    )
-    new_status = models.CharField(max_length=1, choices=Game.Status.choices)
-    timestamp = models.DateTimeField(null=True)
-
-    def __str__(self):
-        return f"{self.game.name}: {self.old_status or 'None'} -> {self.new_status} at {self.timestamp}"
-
-    class Meta:
-        ordering: ClassVar[list[str]] = ["-timestamp"]
 
 
 class FilterPreset(models.Model):
