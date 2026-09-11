@@ -1451,7 +1451,7 @@ already-loaded database: `CommandError: Library … already has an event
 stream; the sample fixture cannot be loaded into it twice.` — not a raw
 `IntegrityError`.
 
-- [ ] **Step 7: Commit the regenerated fixture**
+- [x] **Step 7: Commit the regenerated fixture**
 
 ```bash
 git add games/fixtures/sample.yaml.gz
