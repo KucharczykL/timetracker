@@ -42,8 +42,17 @@ point `DATABASE_URL` at an existing server there.
 ## Schema and migrations
 
 Fresh databases are built from the migration files in `games/migrations/`.
-The existing initial migration is the permanent baseline. Future schema
-changes add normal Django migrations; do not rewrite an applied migration.
+`0001_initial` is the permanent baseline: it states the schema the deployment
+reached, rather than building up to it, and it is the one migration file that
+carries raw SQL for what no model declares — the `uuid_v7` and `temporal_value`
+domains, the two generated columns whose NOT NULL a `CREATE TABLE` drops, and
+the composite foreign key holding an event's stream against its library. Future
+schema changes add normal Django migrations; do not rewrite an applied one.
+
+`make verify-baseline` is the gate on editing the baseline itself. It restores
+a dump of the deployment, carries the copy over as an operator would, builds a
+second database from `0001_initial` alone, and compares both catalogs; see
+[Deployment](deployment.md#replacing-the-migration-history).
 
 Run `make makemigrations` when changing models and `make check-migrations` to
 verify that model state and migration state agree. Deployment startup applies
@@ -59,8 +68,9 @@ PostgreSQL stores several values calculated from other columns:
 - `Session.duration_calculated` is the elapsed time between the end and start
   timestamps, or zero for an unfinished session.
 - `Session.duration_total` adds the manual duration to the calculated duration.
-- `PlayEvent.days_to_finish` is the date difference, counts a same-day event as
-  one day, and is zero when the required dates are absent.
+- Each temporal column carries generated lower- and upper-bound columns beside
+  it, plus one per part of the value the domain's functions read. See
+  [Temporal](temporal.md).
 
 These are Django `GeneratedField` values. Application code must not write them
 directly and must refresh an instance from the database when it needs a newly
