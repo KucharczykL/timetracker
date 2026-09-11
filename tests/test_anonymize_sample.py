@@ -10,17 +10,27 @@ import yaml
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.test import TestCase
+from django.db import transaction
+from django.test import TransactionTestCase
 
+from games.commands.playergame import TrackGame
+from games.commands.playthrough import (
+    CompletePlaythrough,
+    DescribePlaythrough,
+    StartPlaythrough,
+)
+from games.events.dispatch import dispatch
 from games.management.commands.anonymize_sample import Command as AnonymizeCommand
 from games.models import (
     Device,
     Game,
+    LibraryEvent,
     Platform,
-    PlayEvent,
+    Playthrough,
     Purchase,
     Session,
 )
+from timetracker.temporal import TemporalValue
 
 # Models whose UUIDv7 identity has been promoted to their primary key carry it
 # in the record's `pk`; the rest still carry it in a `uuid` field.
@@ -32,7 +42,9 @@ PROMOTED_MODELS = frozenset(
         "games.platform",
         "games.purchase",
         "games.session",
-        "games.playevent",
+        "games.libraryevent",
+        "games.libraryeventstreamhead",
+        "games.libraryeventreference",
     ]
 )
 
@@ -122,13 +134,47 @@ def _build_dataset():
         duration_manual=None,
     )
 
-    PlayEvent.objects.create(
-        game=games[1],
-        started=date(2021, 6, 1),
-        ended=date(2021, 6, 20),
-        note="finished on holiday",
+    dispatch(
+        TrackGame(game_id=games[1].pk),
+        actor=owner,
+        library=owner.library,
+        idempotency_key="track-1",
     )
-    PlayEvent.objects.create(game=games[2], started=None, ended=None, note="wishlist")
+    run_one = Playthrough.objects.get(player_game__game=games[1])
+    dispatch(
+        StartPlaythrough(
+            playthrough_id=run_one.pk,
+            when=TemporalValue.from_day(date(2021, 6, 1)),
+            note="",
+        ),
+        actor=owner,
+        library=owner.library,
+        idempotency_key="start-1",
+    )
+    dispatch(
+        CompletePlaythrough(
+            playthrough_id=run_one.pk,
+            when=TemporalValue.from_day(date(2021, 6, 20)),
+            note="finished on holiday",
+        ),
+        actor=owner,
+        library=owner.library,
+        idempotency_key="complete-1",
+    )
+
+    dispatch(
+        TrackGame(game_id=games[2].pk),
+        actor=owner,
+        library=owner.library,
+        idempotency_key="track-2",
+    )
+    run_two = Playthrough.objects.get(player_game__game=games[2])
+    dispatch(
+        DescribePlaythrough(playthrough_id=run_two.pk, name=None, note="wishlist"),
+        actor=owner,
+        library=owner.library,
+        idempotency_key="describe-2",
+    )
 
     return game_purchase, dlc_purchase
 
@@ -138,7 +184,7 @@ def _load_output(path):
         return yaml.safe_load(stream)
 
 
-class AnonymizeSampleTest(TestCase):
+class AnonymizeSampleTest(TransactionTestCase):
     def test_rollback_leaves_source_database_unchanged(self):
         game_purchase, _ = _build_dataset()
         # Sentinels chosen outside the anonymizer's output range.
@@ -220,8 +266,14 @@ class AnonymizeSampleTest(TestCase):
                 session["fields"]["created_at"], session["fields"]["timestamp_start"]
             )
 
-        for event in by_model["games.playevent"]:
-            self.assertEqual(event["fields"]["note"], "")
+        for event in by_model.get("games.libraryevent", []):
+            payload = event["fields"]["payload"]
+            if "note" in payload:
+                self.assertEqual(payload["note"], "")
+            if "name" in payload:
+                self.assertEqual(payload["name"], "")
+        for reference in by_model.get("games.libraryeventreference", []):
+            self.assertNotEqual(reference["fields"]["payload_key"], "")
 
     def test_output_reloads_via_loaddata(self):
         game_purchase, _ = _build_dataset()
@@ -247,8 +299,15 @@ class AnonymizeSampleTest(TestCase):
         self.assertTrue(
             all(session.pk.version == 7 for session in Session.objects.all())
         )
-        self.assertEqual(PlayEvent.objects.count(), 2)
-        self.assertTrue(all(event.pk.version == 7 for event in PlayEvent.objects.all()))
+        self.assertEqual(
+            Playthrough.objects.filter(
+                player_game__game__library=target.library
+            ).count(),
+            2,
+        )
+        events = LibraryEvent.objects.filter(library=target.library)
+        self.assertEqual(events.count(), 7)
+        self.assertTrue(all(event.pk.version == 7 for event in events))
 
     def test_scrub_devices_uses_stable_primary_key_ordinals(self):
         game_purchase, _ = _build_dataset()
@@ -348,7 +407,7 @@ class AnonymizeSampleTest(TestCase):
                 )
 
 
-class ReassignedIdentityTest(TestCase):
+class ReassignedIdentityTest(TransactionTestCase):
     """The anonymizer must derive uuids from the dates it just randomised.
 
     A UUIDv7 embeds its creation millisecond, so leaving the source database's
@@ -410,7 +469,7 @@ class ReassignedIdentityTest(TestCase):
             if related is not None:
                 self.assertIn(str(related), {str(value) for value in emitted})
 
-    def test_session_and_playevent_references_follow_the_new_uuid(self):
+    def test_session_and_event_reference_follow_the_new_uuid(self):
         by_model = self._dump()
 
         games = {str(identity(item)) for item in by_model["games.game"]}
@@ -420,8 +479,9 @@ class ReassignedIdentityTest(TestCase):
             device = session["fields"]["device"]
             if device is not None:
                 self.assertIn(str(device), devices)
-        for event in by_model["games.playevent"]:
-            self.assertIn(str(event["fields"]["game"]), games)
+        for reference in by_model.get("games.libraryeventreference", []):
+            if reference["fields"]["kind"] == "catalog.game":
+                self.assertIn(str(reference["fields"]["referenced_id"]), games)
 
     def test_hidden_device_referrer_follows_the_new_uuid(self):
         """UserLibraryPreferences.default_device is related_name="+".
@@ -438,7 +498,8 @@ class ReassignedIdentityTest(TestCase):
         preferences.default_device = Device.objects.get(library=library)
         preferences.save()
 
-        AnonymizeCommand()._reassign_uuids()
+        with transaction.atomic():
+            AnonymizeCommand()._reassign_uuids()
 
         preferences.refresh_from_db()
         self.assertTrue(

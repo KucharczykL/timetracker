@@ -399,6 +399,42 @@ with:
                 self.assertIn(str(reference["fields"]["referenced_id"]), games)
 ```
 
+- [ ] **Step 5.5 (discovered during execution): switch the test classes to `TransactionTestCase`**
+
+`_build_dataset` now calls `dispatch()`, which opens its own `run_in_transaction`
+(`games/events/retry.py`). `AnonymizeSampleTest` and `ReassignedIdentityTest`
+are `django.test.TestCase` subclasses, which wrap every test in an outer
+transaction — `dispatch()`'s own `run_in_transaction` then raises
+`NestedTransactionNotSupported`. Same rule CLAUDE.md already states for a view
+that dispatches ("needs `@pytest.mark.django_db(transaction=True)`"); the
+unittest-style equivalent is `TransactionTestCase`. Change the import and both
+class declarations:
+
+```python
+from django.test import TransactionTestCase
+...
+class AnonymizeSampleTest(TransactionTestCase):
+...
+class ReassignedIdentityTest(TransactionTestCase):
+```
+
+- [ ] **Step 5.6 (discovered during execution): wrap the bare `_reassign_uuids()` call in `transaction.atomic()`**
+
+`test_hidden_device_referrer_follows_the_new_uuid` calls
+`AnonymizeCommand()._reassign_uuids()` directly, outside any transaction. Its
+docstring already says this is expected to run "inside the command's
+transaction" — under `TestCase` that worked by accident, because the
+outer savepoint never really committed, so the DEFERRABLE FK constraints
+`_remap_referrers` relies on were never actually checked. Under
+`TransactionTestCase` they are, and `Platform.id`'s bulk_update commits before
+`Purchase.platform_id`'s does, raising a real `IntegrityError`. Add
+`from django.db import transaction` and wrap the call:
+
+```python
+        with transaction.atomic():
+            AnonymizeCommand()._reassign_uuids()
+```
+
 - [ ] **Step 6: Run the file and confirm it fails for the right reason**
 
 ```bash
