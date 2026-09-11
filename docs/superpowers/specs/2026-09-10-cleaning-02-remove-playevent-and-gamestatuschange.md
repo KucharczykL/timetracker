@@ -202,6 +202,7 @@ class Migration(migrations.Migration):
         ),
     ]
 
+
 # 0050_remove_gamestatuschange_game_fk.py
 class Migration(migrations.Migration):
     dependencies = [("games", "0049_remove_playevent_game_fk")]
@@ -220,6 +221,7 @@ class Migration(migrations.Migration):
         ),
     ]
 
+
 # 0051_drop_gamestatuschange_table.py
 class Migration(migrations.Migration):
     dependencies = [("games", "0050_remove_gamestatuschange_game_fk")]
@@ -229,6 +231,7 @@ class Migration(migrations.Migration):
             reverse_sql="-- Not reversible",
         ),
     ]
+
 
 # 0052_drop_playevent_table.py
 class Migration(migrations.Migration):
@@ -241,6 +244,7 @@ class Migration(migrations.Migration):
             reverse_sql="-- Not reversible",
         ),
     ]
+
 
 # 0053_clear_content_types.py
 #
@@ -275,7 +279,6 @@ class Migration(migrations.Migration):
             reverse_sql="-- Not reversible: ContentType entries are gone.",
         ),
     ]
-
 ```
 
 **Note on FK constraint names:** The actual constraint names are deterministic
