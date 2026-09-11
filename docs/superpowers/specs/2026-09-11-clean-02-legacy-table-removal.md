@@ -124,7 +124,7 @@ corrections of them.
 
 | Finding | Prior spec | Actual |
 |---|---|---|
-| `games/fixtures/sample.yaml.gz` holds **209 `games.playevent` rows** | not mentioned | `make loadsample` and `LOAD_SAMPLE_DATA=1` break the moment the model is gone |
+| `games/fixtures/sample.yaml.gz` holds **209 `games.playevent` rows** | not mentioned | `make loadsample` and `LOAD_SAMPLE_DATA=1` break the moment the model is gone — and the three backfill modules are not migration-only, because that command calls them. Resolved in §Commit D0 |
 | e2e suite creates `PlayEvent` | not mentioned | `e2e/test_table_width_e2e.py:22,122`, `e2e/test_responsive_table_e2e.py:22,89`; `e2e/test_date_picker_e2e.py:2,20` names it in prose |
 | Test files touching the models | "~25" | **39** under `tests/`, plus 3 under `e2e/` |
 | `PlayEventFilter` | listed as a name this issue releases | **does not exist.** `filter_for_model` (`games/filters.py:864`) resolves by convention; no such class was ever written. The real names released are the `renamed_fields` aliases at `games/filters.py:142-143` and `related_name="playevents"` |
@@ -139,7 +139,7 @@ Unrelated staleness noticed in passing: `CLAUDE.md` §Views lists
 
 ## Design
 
-Four commits, each independently green. The ordering principle is the inverse of
+Five commits, each independently green. The ordering principle is the inverse of
 the prior spec's: **make the migration history stop depending on the application
 first, and every later step becomes ordinary Django.**
 
@@ -181,6 +181,11 @@ Tests deleted whole, because their subject is deleted: `test_playthrough_convers
 are `playthrough.py`, `playthrough_start.py` and the two tests deleted above.
 Re-check the import graph before deleting rather than trusting this line.
 
+**This commit is not reachable until §Commit D0 lands.** Three of the six modules
+have a live non-migration caller — `load_sample_data.py` — so deleting them here
+leaves `handle()` calling undefined names. D0 keeps its letter for continuity with
+the prior draft's file lists, but it is ordered **before** B.
+
 ### Commit C — drop the tables the ordinary way
 
 Two migrations:
@@ -202,6 +207,227 @@ between running it in `entrypoint.sh` with `--no-input` and a small `RunPython`
 that deletes the two rows *after* the classes are gone. Either is fine; the prior
 spec's `0053` is not, because it ran while the classes still existed.
 
+### Commit D0 — the sample fixture stops holding legacy rows
+
+**Ordered before Commit B.** It removes the last non-migration caller of three of
+the six modules B deletes.
+
+#### Why: the "migration-only" premise is false for three modules
+
+§Commit A's argument — those passes only ever act on legacy rows, and a database
+holding legacy rows has already applied them — is sound *for migrations*. It says
+nothing about `games/management/commands/load_sample_data.py`, which is a runtime
+seeding path (`make loadsample`; and `LOAD_SAMPLE_DATA=true` in `entrypoint.sh:25`,
+which reaches it through `bootstrap_container.py:50`) and calls the same modules at
+load time for the same purpose the migrations served at migrate time.
+
+| Site | What it does |
+|---|---|
+| `load_sample_data.py:17-31` | imports `backfill_library`, `convert_library`/`ordering_violations`/`reconcile`, and `gate`/`repair_library`/`snapshot` |
+| `:167` | `backfill_library(user.library)` — "the same baseline a migrated database gets" |
+| `:172-181` | `convert_library` + `reconcile` + `ordering_violations`, `CommandError` on mismatch |
+| `:184-194` | `start_snapshot`/`repair_library`/`start_gate`, `CommandError` on refusal |
+| `:56-61`, `:99-104` | `LOADABLE_MODELS` and `FIXTURE_RELATIONSHIPS` key on `games.playevent` and `games.gamestatuschange` |
+
+`games/fixtures/sample.yaml.gz` is the reason. Its 4 774 records are
+`games.session` 2 792, `games.game` 858, `games.purchase` 802,
+**`games.playevent` 209**, `games.exchangerate` 75, `games.platform` 25,
+`games.device` 13 — and **no `games.gamestatuschange` at all**, because
+`anonymize_sample.py:35-45` omits that label as "regenerated". So the fixture's
+only record of play history is 209 legacy rows, and the only record of a library's
+statuses is the stranded `Game.status`/`Game.mastered` columns the fixture still
+carries (`status: u`, `mastered: false` on every `games.game` record), which
+`backfill_library` reads at `games/backfill/playergame.py:209,252`. There are no
+events and no projections in it. `load_sample_data` manufactures both at load time.
+
+Two consequences the prior draft's Commit D row ("drop both `games.playevent` map
+entries and the backfill imports") does not cover:
+
+1. Those are not unused imports. Take the calls out without a replacement and
+   `make loadsample`, the container seed and `tests/test_anonymize_sample.py`
+   break — the last of which is inside the `make check` gate this spec requires.
+2. The fixture would still be the one place in the repository where a library's
+   statuses live in `Game.status` rather than in events, which is #770's blocker,
+   not just this issue's.
+
+#### The resolved design: the fixture carries the stream
+
+Events are the record everywhere else; the fixture becomes no exception. It dumps
+the event tables and the loader replays them, so seeding uses the same path
+`make verify-replay-parity` already exercises
+(`rebuild_projections` at `games/events/rebuild.py:530`).
+
+**Dump side — `anonymize_sample.py`.** `DUMP_LABELS` (`:37-45`) drops
+`games.PlayEvent` and gains three labels, dependencies first:
+`games.LibraryEventStreamHead`, `games.LibraryEvent`,
+`games.LibraryEventReference`. The index is dumped rather than left empty: it is
+what `games/retention.py:52-60` reads, so the `pre_delete` guard on Game, Platform,
+Device and Release (`games/signals.py:90-99`) is inert in a seeded database without
+it — and an empty index does not refuse a replay, because
+`reconcile_references` (`games/events/reconcile.py:118-124`) derives the kinds it
+checks *from the index*, so zero rows resolves trivially.
+
+`_prune_other_libraries` (`:195-204`) gains the three, and they must go **before**
+`Game`, `Platform` and `Device`: with another library's index rows still present,
+the `.delete()` that prunes that library's Games is refused by the same guard.
+Ordering is the fix; `purging_library()` from `games/retention.py:88` is the
+fallback if ordering cannot be guaranteed.
+
+`games.LibraryIdempotencyRecord` stays out, for the reason `GameStatusChange` did:
+nothing replays from it, and a key that claimed a command in production claims
+nothing in a seeded database.
+
+The `playevents` pass (`:229-243`) and its count (`:308`) are replaced by an event
+pass over the same rows. It runs where the `PlayEvent` pass ran — after the session
+pass, before `_reassign_uuids` — and derives each event's game from its
+`aggregate_id` against the source database's own `PlayerGame`/`Playthrough` rows,
+which exist at dump time.
+
+| Field | Treatment | Why |
+|---|---|---|
+| `effective_time` | shift by the game's `game_offsets` day delta, re-serialized at the value's own precision | it is the day a run started or finished — the datum `PlayEvent.started`/`ended` jitter existed to hide |
+| `recorded_at` | `_midnight` of the shifted day where the event states one, `FIXED_EPOCH` otherwise | same recipe the `PlayEvent` pass used, and `games/projectors/playthrough.py:35` writes it into `Playthrough.created_at` |
+| `payload` `note` / `name` | blanked to `""` | free text, blanked as `Session.note` and `Purchase.name` already are |
+| `payload` references | re-captured with `capture_reference` after anonymization | carries the game's id *and* its name as `label` (`games/events/references.py:166-172`); re-capturing keeps both in step with the renamed, re-identified row |
+| `source_metadata` | drop `play_event_id` | a real `PlayEvent` UUIDv7 is a real millisecond, and nothing reads the key once Commit B deletes the pass that filtered on it (`games/backfill/playthrough_start.py:113`) |
+| `idempotency_key` | rewrite to `sample:<sequence>` | `games/backfill/playthrough.py:183` embeds a legacy row's pk, same leak; only a non-empty check constrains the column (`models.py:1979-1982`) |
+| `actor` | `None` | `DUMP_LABELS` carries no `auth.User`, and the loading user is not the prod actor — the same reason `library` becomes `TARGET_LIBRARY_MARKER` rather than a literal pk. Nullable with `SET_NULL` (`models.py:2004-2010`), and nothing outside the append path reads it |
+
+The one field needing per-value care is `effective_time`: it is a canonical
+temporal value, not a datetime, so shifting is per-precision — adding 200 days to
+a year value means nothing. The pass handles a day value and an unknown one, which
+is what the conversion passes wrote, and raises `CommandError` naming the event and
+its canonical string for any other precision, so a coarser value can never ship
+unjittered without saying so.
+
+Payload rewrites may only touch keys already present: every payload TypedDict is
+`STRICT_SCHEMA` (`games/events/references.py:31`, `extra="forbid"`), so an added
+key is refused on the way back in by `append`'s validator and by replay's
+`_check_readable`. Which keys exist, verified against the 15 registered specs:
+
+| Payload key | Event types carrying it |
+|---|---|
+| `note` | `library.playthrough.started`, `.completed`, `.start_corrected`, `.completion_corrected` (all four share `PlaythroughEndpointPayload`, `games/events/playthrough.py:61-75`), and `.note_changed` (`PlaythroughNotePayload`, `:174-183`) |
+| `name` | `library.playthrough.name_changed` (`PlaythroughNamePayload`, `:167-171`) |
+| a `Reference` | `library.playergame.created`'s `game`, kind `catalog.game` — the **only** reference-bearing payload field today (`games/events/playergame.py:15`) |
+
+So the pass finds both generically — `payload.get("note")`, `payload.get("name")`,
+and `wiring.event_types.references_in(event_type, payload)` for the references,
+which is the same registry call `append` makes at `games/events/append.py:217`
+rather than a second hardcoded key path. A new note-bearing or reference-bearing
+event type is then covered without an edit here.
+
+**Identity.** `IDENTITY_MODELS` (`:65`) drops `PlayEvent` and gains nothing: the
+generic machinery cannot serve the event tables.
+
+- `_remap_referrers` (`:394-412`) walks non-concrete relations whose
+  `target_field.name` is the identity. `LibraryEvent.aggregate_id`,
+  `LibraryEvent.correlation_id`/`causation_id` and
+  `LibraryEventReference.referenced_id` are bare `UUIDv7Field` columns
+  (`models.py:2000,2013-2016,2147`), not relations, and a game id inside `payload`
+  is JSON. None of them is reachable from there.
+- `_resequence_identity` orders by `created_at` (`:346`). `LibraryEvent` has
+  `recorded_at` instead — which is exactly what `IDENTITY_ORDER_SOURCE` already
+  records for it (`games/identity_audit.py:61-64`).
+
+So the event pass owns its own identities, in one place, because all of them derive
+from the `recorded_at` values it just rewrote:
+
+| Identity | Re-derived from |
+|---|---|
+| `LibraryEvent.id` | its own rewritten `recorded_at`, sequenced as `_resequence_identity` does — the audit holds this column to `recorded_at` order (`games/identity_audit.py:481-518`) |
+| `LibraryEvent.aggregate_id` | one new id per distinct aggregate, minted at the **earliest** rewritten `recorded_at` among that aggregate's events, then written to every event naming it *and* to `payload["player_game"]` of `library.playthrough.created` |
+| `correlation_id` / `causation_id` | one new id per correlation group, from that group's rewritten `recorded_at` |
+| `LibraryEventStreamHead.id` | the stream's earliest rewritten `recorded_at`; `LibraryEvent.stream` is a real FK, so `_remap_referrers` would follow it, but the head has no date column for `_resequence_identity` to read |
+| `LibraryEventReference.id` | its event's rewritten `recorded_at` |
+
+`aggregate_id` is the load-bearing one: it becomes the `PlayerGame`/`Playthrough`
+primary key on replay — "the creation event's aggregate_id, evaluated once"
+(`models.py:1587,1689`) — those rows' dates are the creation event's
+`recorded_at` (`PlayerGame.tracked_at` at `models.py:1597`, `Playthrough.created_at`
+at `:1757`), and
+`games_playthrough` is audited against `created_at` — so leaving it literal while
+`recorded_at` moves puts `manage.py audit_uuid_identity` in violation on any
+database seeded from the fixture. `games_playergame` carries `tracked_at` rather
+than `created_at`, so it has no order source and the audit skips it
+(`games/identity_audit.py:375-385`); that is luck, not license.
+
+`_reassign_uuids` (`:311-325`) therefore collects the `replacements` maps its loop
+already builds, keys them by reference kind through
+`DEFAULT_REFERENCE_KINDS.kind_of`, and hands them to the event pass, which is the
+only consumer that needs a Game's new id to reach a JSON payload.
+
+**`_write_fixture` must drop an empty `effective_time`.**
+`TemporalValueField.value_to_string` returns `""` for a null value
+(`timetracker/temporal.py:1043-1045`), and reading that back raises:
+`to_python("")` → `_normalize_temporal_model_value` → `_parse_atom("")` falls
+through to `TemporalValueParseError(code="invalid_syntax")`
+(`timetracker/temporal.py:453-455`), re-raised as `ValidationError` at `:997-998`.
+Most events state no day, so this is the common case, not the edge. `ValidationError`
+is neither `DeserializationError`, `IntegrityError` nor `ValueError`, so
+`load_sample_data.py:146` would not even turn it into a sentence. The key is popped
+in `_write_fixture` (`:424-432`) beside `GENERATED_FIELDS`, leaving the field at its
+`None` default. The three event models also join `PORTABLE_LIBRARY_MODELS`
+(`:30-32`): unlike `Session` and `PlayEvent`, each carries its own `library` FK, so
+each needs the `TARGET_LIBRARY_MARKER`.
+
+**Load side — `load_sample_data.py`.**
+
+| What | Change |
+|---|---|
+| `LOADABLE_MODELS` (`:56-61`) | drop `games.playevent` and `games.gamestatuschange`; add the three event models |
+| `PRIVATE_MODELS` (`:50-55`) | add the three: each carries `library`, so the marker is required and rewritten (`:416-417`, `:284-290`) |
+| `FIXTURE_RELATIONSHIPS` (`:99-104`) | drop both legacy entries; add `FixtureRelationship("stream", "games.libraryeventstreamhead", False, True)` on `games.libraryevent` and `FixtureRelationship("event", "games.libraryevent", False, True)` on `games.libraryeventreference` |
+| the call sequence (`:167-194`) | one `rebuild_projections(user.library, mode=RebuildMode.REBUILD)` |
+
+The relationship check **cannot** cover an event's game: `_validate_records` reads
+`fields.get(relationship.field)` (`:308`) and resolves it against `record_keys` or
+`reference_index`, and an event's game reference lives inside `payload`, a JSON
+blob. `reference_field` does not help — it names a field of the *target* record,
+not a path into the source. So the FK-shaped references above stay in
+`FIXTURE_RELATIONSHIPS`, and the payload-borne ones get their own pass:
+for each `games.libraryevent` record, ask
+`DEFAULT_EVENT_TYPES.references_in(event_type, payload)` for every reference the
+payload carries and require each `(kind, id)` to be a fixture record of that kind's
+model; do the same for each `games.libraryeventreference`'s
+`(kind, referenced_id)`. That pass also refuses any reference of kind
+`catalog.platform`: `_load_platforms` (`:346-392`) reuses or creates platform rows
+under *fresh* pks and translates only the two fields named in
+`FIXTURE_RELATIONSHIPS`, so a platform id inside a payload would dangle after load.
+No such row exists today; the refusal is what keeps that true.
+
+**The stream head needs two checks the pk collision check does not give.**
+
+1. `current_sequence` must equal the maximum `sequence` among that stream's events,
+   and the sequences must be exactly `1..N`. `replay` bounds its read by
+   `head.current_sequence` (`games/events/replay.py:81`) and raises
+   `StreamNotContiguous` when the stream *ends before* the head says it does
+   (`:105-109`) — but a head reading **below** the last event is silent: the events
+   above the bound are never replayed, `swap_in`'s `require_sequence`
+   (`games/events/rebuild.py:377-381`) is satisfied by the same truncated number,
+   and the load succeeds with a projection missing rows. So the loader validates
+   the pair; nothing downstream will.
+2. `LibraryEventStreamHead.library` is a `OneToOneField` (`models.py:1940-1944`).
+   `_reject_primary_key_collisions` (`:430-442`) checks primary keys only, so a
+   target library that has already appended anything — one manually tracked game —
+   fails on that unique constraint with a raw `IntegrityError`. Refuse it up front
+   with a sentence, beside the pk check.
+
+**Reporting.** `rebuild_projections` returns a `RebuildReport`
+(`games/events/rebuild.py:444-459`). `handle()` raises `CommandError` when
+`report.swapped` is false, quoting `report.attempts[-1].conflict`, and turns the
+four refusals the path can raise into sentences the same way the old gates did:
+`UnresolvedReferences` (a fixture whose events name a row the fixture omits),
+`StreamNotContiguous`, `PayloadVersionUnsupported` and `SwapRefusedByReference` —
+each already carries its own message. The success line replaces
+`converted.runs_converted`/`runs_default` with `report.replayed_through` and each
+`TableDiff.rebuilt_rows` from `report.tables`.
+
+The call stays inside `handle()`'s existing `transaction.atomic()`, so the load
+still either lands projected or does not land. Nesting is legal here:
+`rebuild_projections` reaches `transaction.atomic()` and `lock_stream`, not
+`run_in_transaction`, so the no-nesting rule in CLAUDE.md does not apply.
+
 ### Commit D — cross-cutting code, tests and fixtures
 
 Code:
@@ -211,9 +437,9 @@ Code:
 | `games/removal.py` | drop `PlayEvent` from `REMOVABLE_MODELS` + import |
 | `games/identity_audit.py` | drop `"games_gamestatuschange": "timestamp"` from `IDENTITY_ORDER_SOURCE` |
 | `games/filters.py:142-143` | drop `renamed_fields` (its own comment says #771 takes it) |
-| `games/management/commands/load_sample_data.py` | drop both `"games.playevent"` map entries and the backfill imports |
+| `games/management/commands/load_sample_data.py` | **done in §Commit D0** — the map entries and the backfill call sequence are the seeding logic, not dead imports |
 | `games/management/commands/audit_library_ownership.py` | drop both count queries |
-| `games/management/commands/anonymize_sample.py` | drop the `playevents` pass (`:229-242`), the count (`:308`), and `"games.PlayEvent"` from `IDENTITY_MODELS` |
+| `games/management/commands/anonymize_sample.py` | **done in §Commit D0** — the `playevents` pass (`:229-243`) and its count (`:308`) are replaced by the event pass, not dropped; `IDENTITY_MODELS` (`:65`) loses `PlayEvent` there |
 | `CLAUDE.md` | drop both §Models bullets |
 
 `ts/elements/filter-tree/fixtures.json:228-252` — **retarget, do not delete.**
@@ -242,10 +468,14 @@ exercise `renamed_fields`. `test_playthrough_preset_migration.py` is untouched �
 the `"playevents"` → `"playthroughs"` preset mode in `0046` is a saved-filter word,
 not the model.
 
-**Regenerate `games/fixtures/sample.yaml.gz` last**, after
-`anonymize_sample.py` no longer knows `PlayEvent`: `make fetch-dump`,
-`make restore-dump`, `make migrate`, `make anonymize-sample`. Do not hand-edit the
-gz. Then confirm `make loadsample` into an empty database.
+`games/fixtures/sample.yaml.gz` is **regenerated in §Commit D0, not here** — the
+loader rewrite and the fixture format must land in one commit, or neither is green.
+That is also the one commit this repository cannot produce on its own: it needs
+`make fetch-dump`, `make restore-dump`, `make migrate`, `make anonymize-sample`
+against a real production dump. Do not hand-edit the gz.
+`tests/test_anonymize_sample.py` moves with it: it names `"games.playevent"` at
+`:35`, creates `PlayEvent` rows at `:125,131`, and asserts on them at
+`:223,250-251,413-423`.
 
 ## Verification
 
@@ -255,13 +485,37 @@ never names and which creates `PlayEvent` in two files.
 Per-commit, in order:
 
 1. **A:** fresh test database, full suite green, both models still defined.
-2. **B:** `make check-fast` green; `grep -rn "games.backfill\|games.preflight" games/migrations/` empty.
-3. **C:** fresh database `make migrate` green; `make makemigrations ARGS="--check --dry-run"`
+2. **D0:** `make check` green, including the rewritten
+   `tests/test_anonymize_sample.py`. Then, against a restored production dump:
+   `make anonymize-sample`, and confirm the new gz holds
+   `games.libraryeventstreamhead`, `games.libraryevent` and
+   `games.libraryeventreference` records and **no** `games.playevent`. Then, into
+   an empty database, `make loadsample USER=admin` succeeds, followed by four
+   checks:
+   - `manage.py rebuild_projections --user admin --check --fail-on-drift` exits
+     zero. A second replay of the same stream must reproduce the projections the
+     load wrote; drift here means the loader and the replay disagree.
+   - `manage.py audit_uuid_identity` reports no violation — that is what holds
+     `games_libraryevent.id` to `recorded_at` order and `games_playthrough.id` to
+     `created_at` order after the date rewrite.
+   - **Row-count parity against the old seeding.** Capture `PlayerGame.objects.count()`
+     and `Playthrough.objects.count()` from a `make loadsample` on the *pre-change*
+     commit, and require the same two numbers after. The fixture's arithmetic says
+     858 and 872 — 858 games, 209 legacy rows across 195 distinct games, so 209
+     converted runs plus 663 defaults — but capture the actual numbers rather than
+     trusting that line: a game the conversion skipped is a difference nothing else
+     here would report.
+   - `make loadsample` a second time into the same database is refused with a
+     sentence, not an `IntegrityError`, because the library already holds a stream
+     head.
+3. **B:** `make check-fast` green; `grep -rn "games.backfill\|games.preflight" games/migrations/` empty.
+4. **C:** fresh database `make migrate` green; `make makemigrations ARGS="--check --dry-run"`
    reports no changes *with the classes deleted*; `make verify-dump` green against a
    production dump; guard migration raises on a database seeded with one legacy row.
-4. **D:** `make check` green. `make test-ts` regenerates `fixtures.canonical.json`
+5. **D:** `make check` green. `make test-ts` regenerates `fixtures.canonical.json`
    and `tests/test_filter_tree_contract.py` passes. `make loadsample` into an empty
-   database succeeds.
+   database still succeeds — it loads no legacy row by then, so this re-checks the
+   loader against the deleted models rather than the fixture format.
 
 Final greps, all expected empty:
 
