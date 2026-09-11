@@ -1487,7 +1487,19 @@ EOF
   `games/migrations/0045_playthrough_conversion_backfill.py`,
   `games/migrations/0048_playthrough_start_repair.py` (delete the now-dead
   module-level helper functions Task 1 left in place)
-- Modify: `Makefile:336-343`, `CLAUDE.md` (the two command-row table entries)
+- Modify: `Makefile:336-343`, `CLAUDE.md` (the two command-row table entries,
+  plus the §Models Playthrough bullet's reference to
+  `games/backfill/playthrough_start.py` — a path this task removes, discovered
+  during execution)
+- Rename + rewrite: `tests/playthrough_conversion.py` → `tests/stated_runs.py`
+  (discovered during execution — see Step 1.5)
+- Modify (discovered during execution, Step 1.5): `tests/test_removal.py`,
+  `tests/test_action_origin_parity.py`, `tests/test_playthrough_view_cutover.py`,
+  `tests/test_playergame_playthrough_gate.py`,
+  `tests/test_session_playhistory_runtime_identity.py`,
+  `tests/test_playergame_history_read.py`,
+  `tests/test_playergame_view_cutover.py`, `tests/test_removal_confirmation.py`,
+  `tests/test_library_page_isolation.py`, `tests/test_playthrough_api_writes.py`
 
 **Interfaces:**
 - Consumes: Task 5's regenerated fixture (this task's tests must pass against
@@ -1496,7 +1508,7 @@ EOF
   confirmed by Tasks 3–4 already landing first).
 - Produces: nothing — these are leaf modules by construction after D0.
 
-- [ ] **Step 1: Confirm the import graph before deleting**
+- [x] **Step 1: Confirm the import graph before deleting**
 
 ```bash
 grep -rln "games\.backfill\|games\.preflight" games/ tests/ e2e/ --include="*.py" | grep -v games/migrations/
@@ -1508,7 +1520,101 @@ Expected: only the eight files/four test files listed above, plus nothing in
 investigate before deleting — the spec's own caution here ("re-check the
 import graph before deleting rather than trusting this line") still applies.
 
-- [ ] **Step 2: Delete the modules and their tests**
+**Actual: eleven more files, and the caution fired.** The grep found the
+expected twelve *plus* seven direct importers of `convert_library`/
+`backfill_library`/`backfill_game`, one of which is a shared, non-`test_`-prefixed
+helper module (`tests/playthrough_conversion.py`, wrapping `convert_library` in
+`convert_and_take_runs`/`run_noted`) imported in turn by four more files. Both
+the spec's research and this plan missed them because they grep for
+`PlayEvent`/`GameStatusChange` and for the *module* names, and these files reach
+the conversion through a helper whose name says "conversion" but whose callers
+are testing removal semantics, origin-URL parity, view rendering and the
+playthrough API. Step 1.5 records what each one wanted and how it was resolved.
+
+- [x] **Step 1.5 (discovered during execution): rewrite the eleven files that used the conversion as test *setup*, not as subject**
+
+The eleven sort cleanly into two shapes, and only the first is the same
+category as the four test files this task already deletes.
+
+**Shape A — the conversion pass was the subject. Deleted.**
+
+| File / test | Why it goes |
+|---|---|
+| `tests/test_playergame_playthrough_gate.py`: `build_converted` + `test_a_converted_library_replays_into_its_live_rows` + `test_a_converted_library_rebuilds_with_an_empty_diff` | Both assert "a library whose rows the legacy conversion produced replays/rebuilds into the same rows". The events that pass appended are ordinary `library.playthrough.*` events in the ordinary vocabulary — replay reads `event_type` and `payload`, never `source_metadata` — so the claim is already made by the same file's `test_replaying_an_emptied_library_reproduces_both_tables` and `test_a_rebuild_swaps_both_tables_with_an_empty_diff` over `build_stream`. No coverage lost. |
+| `tests/test_playergame_history_read.py`: `test_the_backfills_corrective_transition_shows_no_time` | Asserts `backfill_game` appends exactly one corrective event *and* that the reader shows no time for it. The first half is the deleted pass's own arithmetic; the second half is `effective_time is None → recorded_at None`, which the rewritten `test_a_transition_stating_no_effective_time_shows_no_time` states directly. |
+
+`test_the_gate_replays_every_reachable_playthrough_kind` keeps its assertion but
+loses its converted library: `PlaythroughKind` holds only `ORDINARY` and
+`IMPORTED_HISTORY`, the conversion only ever wrote `ORDINARY`, and `build_stream`
+writes that already — so the second library and the second user it needed were
+contributing nothing. `test_the_display_number_is_ordered_by_a_total_key` keeps
+its assertion too; only its docstring changed, because it explained the tie in
+terms of "a conversion stamps `recorded_at` from each legacy row's `created_at`",
+a sentence that stops being true here.
+
+**Shape B — the conversion was a convenient way to get a run into a state.
+Setup rewritten onto the commands.**
+
+`tests/playthrough_conversion.py` is renamed to `tests/stated_runs.py` and
+rewritten to state runs through the write path instead of reading what a
+conversion added. Three helpers, replacing `convert_and_take_runs`/`run_noted`:
+
+- `_born_run(library, game)` — the run `TrackGame` (or, in tests, the `conftest.py`
+  `_track_created_games` autouse fixture) gives every tracked game.
+- `state_run(user, game, *, started=None, completed=None, note="")` — fills that
+  run in through `games.writes.playthrough.restate_run`, so each endpoint is
+  stated by `StartPlaythrough`/`CompletePlaythrough` and the note by
+  `DescribePlaythrough`. Asserts the run exists rather than silently creating a
+  second one.
+- `another_run(user, game, ...)` — dispatches `CreatePlaythrough`, which is the
+  command whose docstring is literally "State one more run at a game", and
+  answers the row it added.
+
+`started`/`completed` are `ActStatement | None` rather than a bare date, because
+that is the distinction the commands draw and the conversion used to supply:
+`None` is an act that never happened, `ActStatement(None)` an act on a day nobody
+wrote down. `tests/completed_runs.py` (`add_game`/`add_run`) was left alone —
+it seeds *completions for a purchase*, a different need, and already goes through
+dispatch.
+
+| File | What it wanted | How it now gets it |
+|---|---|---|
+| `tests/test_action_origin_parity.py` | "a run behind the row, or the playthrough sweep checks nothing" | Nothing at all: the `conftest.py` autouse fixture already gives the fixture's `Game` a run. The `PlayEvent` row and the `convert_library` call were both dead weight — the comment predated `_track_created_games`. |
+| `tests/test_library_page_isolation.py` | one run per library, `None` under `untracked_games` | `Playthrough.objects.filter(library=…).first()`, inline. No dispatch, because `world` is shared with non-transactional tests. |
+| `tests/test_removal.py` | two runs, so the API's DELETE is not taking a tracked game's last | `another_run(…, note="removed")` |
+| `tests/test_removal_confirmation.py` | same, plus the owning-game fallback URL | `another_run(…, note="the named run")`; the `removables["playevent"]` key goes with it, being its only consumer |
+| `tests/test_session_playhistory_runtime_identity.py` | a named run plus a spare | `state_run(…, started=…, note="Owned event")` + `another_run(…)`; the test now reads `playthrough_world.own_run` instead of looking the run up by note |
+| `tests/test_playergame_view_cutover.py` | a run whose completion is stated on no day | `state_run(…, completed=ActStatement(None))` — which is what the conversion produced for a dateless legacy row, stated directly |
+| `tests/test_playthrough_view_cutover.py` | runs with a stated start day, with a month, and pairs of runs | `state_run`/`another_run` (6 tests) |
+| `tests/test_playthrough_api_writes.py` | the same, 10 tests' worth | `state_run`/`another_run`, plus the file's own pre-existing `born_run` helper where the born run suffices |
+| `tests/test_playergame_history_read.py` | status events carrying an out-of-band `recorded_at`, and one stating no `effective_time` | Dispatch real status changes through `record_facts`, then `LibraryEvent.objects…update(recorded_at=…)` / `update(effective_time=None)`. Both reader rules (`order_by("sequence")`, and `recorded_at` only where `effective_time` is stated) keep their tests; only the writer that produced such events changes. **Note for Task 12:** those two rules are now only reachable in production data, not from any live writer — the tests coarsen a real event on purpose, and say so. |
+
+Two further notes for Tasks 9 and 11:
+
+1. **Shape B shrank Task 11's list.** Rewriting these setups necessarily removed
+   the `PlayEvent` rows they fed, since an unconverted row is inert, and with
+   them the assertions that read those rows back
+   (`play_event.removed_at is None`, `row.note == "row"`, and the like — each one
+   asserting that the legacy row stayed frozen while the projection moved, a
+   claim with nothing left to say once nothing writes rows at all). Where such
+   an assertion carried the test's whole point it was replaced by the modern
+   equivalent — `assert Playthrough.objects.filter(pk=run.pk).exists()`, which
+   states "removal destroys nothing" against the row that now carries the mark.
+   Two tests were renamed rather than dropped:
+   `test_a_legacy_row_id_reaches_no_page` → `test_an_id_naming_no_run_reaches_no_page`
+   (a fresh `uuid7()`, so the 404 claim survives the row's departure) and
+   `test_the_page_renders_no_row_a_conversion_left_behind` →
+   `test_the_page_renders_no_removed_run`. Task 11 must still re-run its own
+   grep — six `PlayEvent` references remain in these files
+   (`assert PlayEvent.objects.count() == 0`, `test_an_unconverted_row_id_answers_404`,
+   one stale comment) and are deliberately left for it.
+2. **Three of the `stated_runs.py` callers dispatch, so they need
+   `transaction=True`.** Every rewritten call site already had it. The two files
+   whose tests do not (`test_action_origin_parity.py`,
+   `test_library_page_isolation.py`) were given dispatch-free replacements for
+   exactly that reason — do not "simplify" them onto `state_run` later.
+
+- [x] **Step 2: Delete the modules and their tests**
 
 ```bash
 git rm games/backfill/playthrough.py games/backfill/playergame.py games/backfill/playthrough_start.py games/backfill/appending.py games/backfill/mismatch.py games/preflight/playthrough.py
@@ -1520,7 +1626,10 @@ If `games/backfill/` or `games/preflight/` becomes empty, remove the directory
 too (check for a stray `__init__.py` first — if one is the only remaining
 file, remove it along with the directory).
 
-- [ ] **Step 3: Delete the dead helper functions Task 1 left in the migrations**
+Actual: both packages held an empty `__init__.py` and nothing else, so both
+directories went.
+
+- [x] **Step 3: Delete the dead helper functions Task 1 left in the migrations**
 
 In `games/migrations/0033_playergame_baseline_backfill.py`, delete every
 module-level definition above `class Migration` that Task 1's `RunPython.noop`
@@ -1553,7 +1662,7 @@ deleted modules were imported *inline* inside these now-dead functions, and
 leaving the imports would break `mypy`/`ruff` against a module that no longer
 exists.
 
-- [ ] **Step 4: Drop the Makefile targets and CLAUDE.md rows**
+- [x] **Step 4: Drop the Makefile targets and CLAUDE.md rows**
 
 In `Makefile`, delete the `preflight-playthroughs` and `report-playthrough-starts`
 target blocks (`Makefile:336-343`, including their `# Usage:` comment lines).
@@ -1565,7 +1674,13 @@ In `CLAUDE.md`, delete the two command-table rows:
 | Report the starts #1038 would state before stating them | `make report-playthrough-starts ARGS="--all-libraries"` (read-only; reports, never gates) |
 ```
 
-- [ ] **Step 5: Verify**
+Also (discovered during execution) the §Models Playthrough bullet names
+`games/backfill/playthrough_start.py` as "the second pass". That path stops
+existing here, so the sentence now says both passes ran once out of migrations
+`0045`/`0048` and that what they left behind is the events. The `source_metadata`
+sentence after it is unchanged and still true — production events carry it.
+
+- [x] **Step 5: Verify**
 
 ```bash
 make check-fast
@@ -1575,10 +1690,58 @@ grep -rn "games.backfill\|games.preflight" games/migrations/
 Expected: `make check-fast` green; the grep empty (the migrations no longer
 name those modules at all, inline import or otherwise).
 
-- [ ] **Step 6: Commit**
+Actual: the grep is empty over the whole tree, migrations included. `make
+check-fast` clears every non-test stage (lint, format-check, mypy over 527
+files, vale over 824 files, ts-check, check-icons, check-migrations, vitest)
+and `test-fast` runs 5397 passed / 5 failed. **None of the five belong to this
+task** — each one asserts against Tasks 4–5's output and is Task 11's to sweep:
+
+| Failing test | Owner |
+|---|---|
+| `test_library_commands.py::test_sample_load_rejects_relationships_outside_the_fixture_graph[games.playevent-…]` and `[games.gamestatuschange-…]` | Task 11 — the parametrize list at `:349-350` names keys Task 4 took out of `FIXTURE_RELATIONSHIPS` |
+| `test_library_commands.py::test_committed_sample_load_owns_private_rows_and_reuses_shared_platform` | Task 11 — asserts `PlayEvent.objects.filter(game__library=…).exists()` against Task 5's fixture, which carries no such rows |
+| `test_session_playhistory_uuid_primary_key.py::test_the_committed_sample_fixture_uses_promoted_playhistory_primary_keys` | Task 11 — its `promoted_models` set names `games.playevent` |
+| `test_external_references.py::test_every_mirrored_column_equals_its_live_reference` | **Not Task 11's, and invisible to its grep** — see below |
+
+That last one is a genuine new red from **Task 5's Step 1.5**, and it names
+neither legacy model, so Task 11's `grep -rln "PlayEvent\|GameStatusChange"`
+will not surface it. Switching `all_game_ids` to the plain manager made the
+anonymizer dump the library's one *removed* game, which the old fixture never
+carried. That game holds `wikidata="Q3702740"`; `backfill_wikidata_references`
+deliberately skips a removed game (`test_the_backfill_skips_a_removed_game`
+asserts exactly that), so `load_sample_data` writes 229 references for the
+fixture's 230 keyed games. The test then walks `Game.objects.all()` — removed
+rows included — and asserts every column equals a live reference. Confirmed by
+reading the fixture: 859 games, 230 non-blank keys, 0 duplicates, 0 malformed,
+and the single game with no reference is the removed one. The fix is a
+one-liner in the test (walk `Game.objects.for_library(...)`, or filter
+`removed_at__isnull=True`, matching what the backfill actually promises) rather
+than anything in the command or the fixture — **Task 11 should adopt it as a
+fourth shape in its Step 2**, since nothing else in the plan owns it.
+
+- [x] **Step 6: Commit**
+
+Both deleted directories are gone, so naming them as paths would error.
+Two commits, because Step 1.5's test rewrite stands on its own and wants to be
+reviewable apart from the deletion:
 
 ```bash
-git add -A games/backfill games/preflight games/management/commands games/migrations Makefile CLAUDE.md tests/
+git add -A tests/
+git commit -m "$(cat <<'EOF'
+test: state runs through commands instead of the conversion pass
+
+tests/playthrough_conversion.py wrapped convert_library so eleven files
+could get a Playthrough into some state and then test something else
+entirely -- removal semantics, origin parity, view rendering, the API.
+It becomes tests/stated_runs.py, stating runs through restate_run and
+CreatePlaythrough, and the tests whose subject really was the legacy
+pass go instead.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+EOF
+)"
+
+git add -A games/ Makefile CLAUDE.md
 git commit -m "$(cat <<'EOF'
 remove migration-only backfill/preflight modules
 
@@ -1590,6 +1753,11 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
 EOF
 )"
 ```
+
+Actual: the module deletions were already staged (from Step 2), so the first
+`git add -A tests/` swept them into the same commit as the test rewrite
+(`5442d168`); the second commit (`d38d6bf8`) carries the migrations trim plus
+the Makefile/CLAUDE.md rows. Same net result, different split than planned.
 
 ---
 
@@ -2180,6 +2348,14 @@ output, not this list.
    around the file's `:1807-1847` range) — delete these four tests outright;
    Task 9 deleted the `renamed_fields` mapping they exercise, so the feature
    they test no longer exists.
+
+**A fourth shape, from Task 6's Step 5:**
+`test_external_references.py::test_every_mirrored_column_equals_its_live_reference`
+fails and names neither legacy model, so the Step 1 grep misses it. Task 5's
+fixture now carries the library's removed game, and
+`backfill_wikidata_references` deliberately skips a removed game, so the walk
+over `Game.objects.all()` finds one column with no live reference. Narrow the
+walk to live games. Task 6's Step 5 has the full diagnosis.
 
 `tests/test_playthrough_preset_migration.py` needs **no** change — the
 `"playevents"` → `"playthroughs"` preset-mode rename in migration `0046` is a
