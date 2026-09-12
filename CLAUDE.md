@@ -126,6 +126,7 @@ path**, so verify against `make check` before pushing when possible.
 | Restore the newest dump into a scratch database | `make restore-dump` (prints its `DATABASE_URL`; `DUMP=<path>` picks another) |
 | Restore, migrate, and drop it on success | `make verify-dump` (`KEEP=1` keeps the copy — the pre-deploy rehearsal) |
 | Compare the deployment's schema against a fresh `migrate` | `make verify-baseline` (`KEEP=1` keeps both; the gate on editing the baseline, and the rehearsal for a squash) |
+| Split one change across dependent PRs | `gh stack init` / `add` / `submit`, then `gh stack merge` (atomic; see below) |
 
 ## Architecture
 
@@ -808,6 +809,17 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   `common/`, `timetracker/`, `contrib/` and `scripts/` and fails on new call.
   `DISABLE_SERVER_SIDE_CURSORS` exists for reads inside Django that cannot be
   rewritten, not for ours.
+- **One change too large for one PR becomes a stack, not a merge order** — use
+  `gh stack` (`github/gh-stack`, installed). `gh stack init`/`add` build the
+  chain, `submit` opens the PRs, `sync`/`rebase` keep it current, and
+  **`gh stack merge` is atomic**: every member up to the one you pick lands in
+  one all-or-nothing operation, so `main` never carries half a change. Pick the
+  merge-commit method, as everywhere else. Never hand-roll a stack by setting
+  one PR's base to another branch and retargeting later — a base branch deleted
+  on merge auto-closes its child, and GitHub refuses to reopen a PR whose base
+  is gone. An issue delivered this way says so in its own body; #702 is the
+  worked example.
+
 - **A reference out of a projection is registered** — foreign key from projection
   table into library-scoped model goes in `AUDITED_PROJECTION_REFERENCES` in
   `games/projections.py`, through `ProjectionReference.on`, or `games.E009` refuses
