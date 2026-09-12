@@ -628,6 +628,31 @@ review, affects seven filter fields and can land at any time. Three of those
 fields die in this wave; it is recorded as one reason they are replaced rather
 than aliased forward.
 
+## The deployment window
+
+**Nothing deploys between #700 and #704.** The wave ships as one release.
+
+This is a constraint, not a preference. #700 converts every legacy row into an
+event and populates the projection, but writes do not switch to commands until
+#702. In that window the legacy write path is still the live one, so a session
+created through it lands in the legacy table and in no event — the projection
+silently stops keeping up, and every read cut over after it would be short a
+row.
+
+On `main` that is harmless, because the intermediate states are only ever built
+and tested, never served. It becomes wrong the moment someone deploys mid-wave.
+
+The issues before #700 carry no such constraint: #689 leaves a table nothing
+writes, #691, #692 and #694 leave commands nothing calls, and #697 changes a
+read whose answer is unchanged. Each is incomplete rather than inconsistent, so
+each merges on its own like any other issue. Only #702's own members are
+mutually broken halfway — writes through commands while reads still read a
+legacy table nothing updates — which is why that issue alone is delivered as an
+atomically merged stack.
+
+#704 is what lifts the constraint: once parity is green, the projection is the
+record and the legacy table is inert.
+
 ## Migration, rollback, and reconciliation
 
 The conversion is one pass over 2,807 rows, appending one event each, at the
