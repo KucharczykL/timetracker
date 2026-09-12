@@ -535,7 +535,9 @@ provides `pnpm_10`, while CI and Docker explicitly install `pnpm@10.33.0` declar
 in `package.json`'s `packageManager` field. To bump pnpm, update that field and
 every explicit install command — `scripts/bootstrap-cloud-env.sh` reads the field,
 so needs no edit. pnpm disables dependency lifecycle scripts by default (opt in via
-`pnpm.onlyBuiltDependencies`). One dependency on that list: `@vvago/vale` ships
+`onlyBuiltDependencies`, which lives in **`pnpm-workspace.yaml`** — pnpm 10 no
+longer reads the `pnpm` field in `package.json` and warns on every invocation
+when it finds one). One dependency on that list: `@vvago/vale` ships
 platform binary its postinstall downloads. pnpm links `bin` before running that
 script, so plain `pnpm install` leaves no `vale` — `make npm` and CI step both
 follow it with `pnpm rebuild @vvago/vale`. Docker stages keep `--ignore-scripts`
