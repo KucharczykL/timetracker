@@ -125,8 +125,7 @@ path**, so verify against `make check` before pushing when possible.
 | Fetch a dump of the deployed database | `make fetch-dump` (→ `.dumps/`; needs `PROD_SSH_HOST`/`PROD_DB_CONTAINER` in `.env`) |
 | Restore the newest dump into a scratch database | `make restore-dump` (prints its `DATABASE_URL`; `DUMP=<path>` picks another) |
 | Restore, migrate, and drop it on success | `make verify-dump` (`KEEP=1` keeps the copy — the pre-deploy rehearsal) |
-| Compare the deployment's schema against `0001_initial` | `make verify-baseline` (`KEEP=1` keeps both; the gate on editing the baseline) |
-| Print the statements the deployment's cutover needs | `make cutover-sql` |
+| Compare the deployment's schema against a fresh `migrate` | `make verify-baseline` (`KEEP=1` keeps both; the gate on editing the baseline, and the rehearsal for a squash) |
 
 ## Architecture
 

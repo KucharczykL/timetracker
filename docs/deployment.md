@@ -190,47 +190,14 @@ before it had run in full on every database that exists, so they were replaced
 by their own result; see [Database contract](database.md#schema-and-migrations)
 for what the file carries that no model declares.
 
-A deployment that applied the old history has to be carried over once. Two
-commands do the whole of it:
+The deployment was carried over to it on 2026-09-12, and nothing needs doing
+again. Doing it a second time -- the steps, the rehearsal, and what went wrong
+the first time -- is [Squashing the migration
+history](migration-squash.md).
 
-```bash
-make verify-baseline
-```
-
-Restores the newest dump, runs the cutover on the copy, builds a second
-database from `0001_initial` alone, and compares the two catalogs — columns,
-constraints, indexes, routines, domains, sequences, recorded history. **A
-differing row is a stop**: it means a migration generated after this point
-would be written against a baseline the deployment does not have. `KEEP=1`
-keeps both databases to look at.
-
-```bash
-make cutover-sql
-```
-
-Prints the statements to run against the deployment, which are the same ones
-the rehearsal above applied to the copy: it drops the two legacy play-history
-tables and the content types and permissions naming them, renames six NOT NULL
-constraints still named after a column called `uuid`, and clears the `games`
-rows out of `django_migrations`. Every statement is safe to run twice.
-
-Then record the new history, which writes one row and touches no schema:
-
-```bash
-DATABASE_URL='postgresql://<app-role>@<host>/timetracker' \
-  python manage.py migrate --fake games 0001_initial
-```
-
-Run it with the application stopped, and take a backup first — this is the one
-procedure here that writes to the live database.
-
-**A deploy that skips the cutover reports success.** The deployment's history
-holds 84 rows, and the first is named `0001_initial` — the app's original
-initial migration, from before an earlier squash renamed the file. The baseline
-carries that same name, so `migrate` reads it as applied and prints `No
-migrations to apply`. Nothing fails and nothing is repaired: the two legacy
-tables stay, and 84 rows go on naming migrations that no longer exist. Read
-that message as "the cutover has not run yet", never as "it has".
+Ordinary deploys need none of this. Startup applies pending migrations, and
+`make verify-baseline` answers whether the deployment still holds the schema a
+fresh `migrate` builds.
 
 ## UUIDv7
 
