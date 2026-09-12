@@ -123,7 +123,9 @@ ensure-node-deps: ensure-node-runtime
 # The rebuild is not redundant. @vvago/vale declares a `bin` that its own
 # postinstall creates, so pnpm tries to link a file that does not exist yet,
 # warns, and leaves no `vale` on PATH — even with the package allowlisted in
-# `pnpm.onlyBuiltDependencies`. Running the script afterwards fixes the order.
+# `onlyBuiltDependencies`. Running the script afterwards fixes the order.
+# The allowlist is still load-bearing: drop it and this rebuild runs no script
+# at all, leaving no vale for `make check` to run.
 # Named explicitly rather than a bare `pnpm rebuild`, so this stays the one
 # dependency permitted to run code at install time.
 npm: ensure-node-runtime

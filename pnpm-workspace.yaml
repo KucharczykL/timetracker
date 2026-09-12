@@ -1,2 +1,5 @@
+onlyBuiltDependencies:
+  - '@vvago/vale'
+
 overrides:
   tar: ^7.5.11
