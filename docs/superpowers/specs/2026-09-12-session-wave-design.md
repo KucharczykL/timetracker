@@ -575,7 +575,7 @@ closed.
 Had the command taken a Game and derived the run, it would have been that
 second caller and #909 would reopen here. The reopen moves to ACCESS.
 
-### #696 folds into #908
+### #696 becomes part of #908
 
 A "temporary operator Session-recovery command" is the capability #664's
 `library.user_id == actor.pk` predicate makes inexpressible, which is #908.
@@ -702,7 +702,7 @@ Merged, because each states one act:
 Moved out:
 
 - #695 — after the wave
-- #696 — folded into #908, closed
+- #696 — closed, its outcome moved into #908
 - Release on a Session — to ACCESS (#719–#724)
 
 Pulled in:
