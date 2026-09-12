@@ -49,10 +49,18 @@ domains, the two generated columns whose NOT NULL a `CREATE TABLE` drops, and
 the composite foreign key holding an event's stream against its library. Future
 schema changes add normal Django migrations; do not rewrite an applied one.
 
-`make verify-baseline` is the gate on editing the baseline itself. It restores
-a dump of the deployment, carries the copy over as an operator would, builds a
-second database from `0001_initial` alone, and compares both catalogs; see
-[Deployment](deployment.md#replacing-the-migration-history).
+`make verify-baseline` answers whether the deployment still holds the schema a
+fresh `migrate` builds. It restores a dump of the deployment, builds a second
+database from the migrations alone, and compares seven catalogs — columns,
+constraints, indexes, routines, domains, sequences, recorded history. It is the
+gate on editing the baseline, and worth running after any migration whose
+result is hard to read off the file; a differing row means a future migration
+would be generated against a baseline the deployment does not have.
+
+Run `make fetch-dump` first. The comparison reads whichever dump is newest, and
+an old one reports drift that has since been deployed. Replacing the history
+again is a larger procedure with its own rehearsal —
+see [Squashing the migration history](migration-squash.md).
 
 Run `make makemigrations` when changing models and `make check-migrations` to
 verify that model state and migration state agree. Deployment startup applies
