@@ -1,22 +1,30 @@
-"""Compare the deployment's schema against one built from `0001_initial`.
+"""Compare the deployment's schema against one a fresh `migrate` builds.
 
-`games/migrations/0001_initial.py` states the end of a history that had already
-run in full, so nothing replays it any more and nothing else checks that the
-end it states is the end that ran. This does: it restores a dump of the
-deployment, carries it over to the new history exactly as an operator would,
-builds a second database from `0001_initial` alone, and reads both catalogs.
+A migration file that states a schema rather than building up to it is never
+replayed again, so nothing else checks that the end it states is the end that
+ran. This does: it restores a dump of the deployment, optionally carries the
+copy over the way an operator would, builds a second database from the
+migrations alone, and reads both catalogs.
 
 Any row only one of them holds is drift, and drift here is a future migration
 generated against a baseline the deployment does not have. Nothing is compared
 by eye: `pg_dump` writes a table's columns in the order they were added, so its
 text differs between two databases that hold the same schema, while the catalog
 queries below sort every answer.
+
+Two options exist for the one case a plain comparison cannot answer, a dump
+taken before a squash was carried over: `--normalize` applies a file of
+statements to the copy first, and `--record` writes the history row the
+operator's `migrate --fake` writes. Both are for rehearsing a squash before it
+reaches the deployment; see `docs/migration-squash.md`. Neither is needed to
+check a deployment that is already current, which is why neither has a default.
 """
 
 from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -29,73 +37,10 @@ REPOSITORY = Path(__file__).parents[1]
 DEPLOYED_DATABASE = "timetracker_baseline_deployed"
 FRESH_DATABASE = "timetracker_baseline_fresh"
 
-#: What an operator runs on the deployment, once, before recording the new
-#: history. Every statement is written to be safe to run twice, so the same
-#: block serves a deployment that has applied the legacy-table removal and one
-#: that has not.
-#:
-#: The DROPs and the DELETEs are the work the deleted `0049` and `0050` did. A
-#: deployment that took them already has neither table nor content type, and a
-#: deployment that did not has both -- `0001_initial` creates neither, so
-#: nothing else would ever take them away. `0050` removed a content type
-#: through the ORM, whose collector reaches the permission rows that name it;
-#: here the same reach is spelled out, because the database refuses the content
-#: type while a permission still references it.
-#:
-#: The renames are cosmetic and still worth doing: PostgreSQL names a NOT NULL
-#: constraint after the column, and these six were named while the column was
-#: called `uuid`. A fresh build names them after `id`, so without this the two
-#: schemas differ by six strings forever. Renaming one that is already renamed
-#: is an error rather than a no-op, which is what the lookup is for.
-CUTOVER = """
-DROP TABLE IF EXISTS games_playevent;
-DROP TABLE IF EXISTS games_gamestatuschange;
+#: The app whose history a squash replaces. One app holds every model here, so
+#: the differ names it as a default rather than asking for it every run.
+DEFAULT_APP = "games"
 
-CREATE TEMPORARY TABLE legacy_content_type AS
-SELECT id FROM django_content_type
-WHERE app_label = 'games' AND model IN ('playevent', 'gamestatuschange');
-
-CREATE TEMPORARY TABLE legacy_permission AS
-SELECT id FROM auth_permission
-WHERE content_type_id IN (SELECT id FROM legacy_content_type);
-
-DELETE FROM auth_user_user_permissions
-WHERE permission_id IN (SELECT id FROM legacy_permission);
-DELETE FROM auth_group_permissions
-WHERE permission_id IN (SELECT id FROM legacy_permission);
-DELETE FROM auth_permission WHERE id IN (SELECT id FROM legacy_permission);
-DELETE FROM django_content_type WHERE id IN (SELECT id FROM legacy_content_type);
-
-DROP TABLE legacy_permission;
-DROP TABLE legacy_content_type;
-
-DO $$
-DECLARE
-    legacy_name text;
-BEGIN
-    FOR legacy_name IN
-        SELECT constraint_entry.conname
-        FROM pg_constraint AS constraint_entry
-        JOIN pg_class AS table_entry
-            ON table_entry.oid = constraint_entry.conrelid
-        JOIN pg_namespace AS schema_entry
-            ON schema_entry.oid = table_entry.relnamespace
-        WHERE schema_entry.nspname = 'public'
-          AND constraint_entry.contype = 'n'
-          AND constraint_entry.conname LIKE 'games\\_%\\_uuid\\_not\\_null'
-    LOOP
-        EXECUTE format(
-            'ALTER TABLE %I RENAME CONSTRAINT %I TO %I',
-            left(legacy_name, -length('_uuid_not_null')),
-            legacy_name,
-            left(legacy_name, -length('_uuid_not_null')) || '_id_not_null'
-        );
-    END LOOP;
-END
-$$;
-
-DELETE FROM django_migrations WHERE app = 'games';
-""".strip()
 
 type CatalogName = str
 type CatalogQuery = str
@@ -181,10 +126,29 @@ CATALOG_QUERIES: dict[CatalogName, CatalogQuery] = {
         WHERE schema_entry.nspname = 'public' AND sequence_entry.relkind = 'S'
         ORDER BY 1
     """,
-    "recorded history": """
-        SELECT app, name FROM django_migrations WHERE app = 'games' ORDER BY 2
-    """,
 }
+
+#: Added by `catalog_queries`, because it is the one query that has to name an
+#: app. It reads last so the report ends on the history rather than a sequence.
+HISTORY_CATALOG: CatalogName = "recorded history"
+
+#: A Django app label, which is a Python identifier. The label reaches the
+#: query below as text rather than as a bound parameter -- `psql --command`
+#: takes one string -- so the shape is checked before it is interpolated.
+APP_LABEL = re.compile(r"\A[A-Za-z_][A-Za-z0-9_]*\Z")
+
+
+def catalog_queries(app: str) -> dict[CatalogName, CatalogQuery]:
+    """Every catalog query, with the history one scoped to `app`."""
+    if not APP_LABEL.match(app):
+        raise DumpError(f"{app!r} is not an app label.")
+    return {
+        **CATALOG_QUERIES,
+        HISTORY_CATALOG: (
+            f"SELECT app, name FROM django_migrations WHERE app = '{app}' ORDER BY 2"
+        ),
+    }
+
 
 #: psql prints one row per line with this between the values, which no value in
 #: a catalog answer contains.
@@ -277,9 +241,9 @@ def read_catalog(database_url: str, query: CatalogQuery) -> list[str]:
     return sorted(line for line in answer.splitlines() if line.strip())
 
 
-def compare(deployed_url: str, fresh_url: str) -> list[Drift]:
+def compare(deployed_url: str, fresh_url: str, *, app: str) -> list[Drift]:
     drift = []
-    for catalog, query in CATALOG_QUERIES.items():
+    for catalog, query in catalog_queries(app).items():
         deployed = read_catalog(deployed_url, query)
         fresh = read_catalog(fresh_url, query)
         only_deployed = tuple(
@@ -295,24 +259,39 @@ def compare(deployed_url: str, fresh_url: str) -> list[Drift]:
     return drift
 
 
-def verify(dump: Path, *, database_url: str, keep: bool = False) -> None:
-    """Rehearse the cutover on a copy of the deployment, and read both schemas."""
+def verify(
+    dump: Path,
+    *,
+    database_url: str,
+    app: str = DEFAULT_APP,
+    normalize: Path | None = None,
+    record: str | None = None,
+    keep: bool = False,
+) -> None:
+    """Read the schema of a copy of the deployment against a fresh build."""
+    #: Ahead of the restore, which takes a minute: a mistyped path is the whole
+    #: run wasted otherwise, and the copy would compare as drift.
+    if normalize is not None and not normalize.is_file():
+        raise DumpError(f"{normalize} is not a file.")
     deployed_url = db_dump.restore(
         dump, database=DEPLOYED_DATABASE, database_url=database_url
     )
-    apply_sql(CUTOVER, database_url=deployed_url)
-    manage("migrate", "--fake", "games", "0001_initial", database_url=deployed_url)
-    #: Every other app's history is untouched, and the copy has already applied
-    #: it. This proves that, rather than assuming it.
+    if normalize is not None:
+        apply_sql(normalize.read_text(), database_url=deployed_url)
+    if record is not None:
+        manage("migrate", "--fake", app, record, database_url=deployed_url)
+    #: Every app's history is the deployment's own, and the copy has already
+    #: applied it. This proves that, rather than assuming it -- and it is what
+    #: fails first when a dump predates a squash that was never carried over.
     manage("migrate", "--check", database_url=deployed_url)
 
     fresh_url = create_database(FRESH_DATABASE, database_url)
     manage("migrate", database_url=fresh_url)
 
-    drift = compare(deployed_url, fresh_url)
+    drift = compare(deployed_url, fresh_url, app=app)
     if drift:
         print(
-            f"\n{dump} does not reach the schema 0001_initial builds.\n",
+            f"\n{dump} does not reach the schema the migrations build.\n",
             file=sys.stderr,
         )
         for finding in drift:
@@ -325,7 +304,7 @@ def verify(dump: Path, *, database_url: str, keep: bool = False) -> None:
         for database in (DEPLOYED_DATABASE, FRESH_DATABASE):
             drop_database(database, database_url)
     print(
-        f"==> {dump} carries over to 0001_initial with no drift.",
+        f"==> {dump} holds the schema the migrations build, with no drift.",
         file=sys.stderr,
     )
     if keep:
@@ -337,22 +316,37 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     operations = parser.add_subparsers(dest="operation", required=True)
     verify_parser = operations.add_parser(
-        "verify", help="rehearse the cutover and compare both schemas"
+        "verify", help="compare a dump's schema against a fresh build"
     )
     verify_parser.add_argument("--dump", type=Path)
     verify_parser.add_argument("--keep", action="store_true")
-    operations.add_parser(
-        "cutover", help="print the statements the deployment needs, and stop"
+    verify_parser.add_argument(
+        "--app",
+        default=DEFAULT_APP,
+        help="the app whose recorded history is compared",
+    )
+    verify_parser.add_argument(
+        "--normalize",
+        type=Path,
+        help="statements to apply to the copy first, for rehearsing a squash",
+    )
+    verify_parser.add_argument(
+        "--record",
+        help="a migration to fake on the copy, for rehearsing a squash",
     )
     arguments = parser.parse_args()
 
     try:
-        if arguments.operation == "cutover":
-            print(CUTOVER)
-            return
         database_url = db_dump.local_database_url()
         dump = arguments.dump or db_dump.newest_dump(db_dump.dump_directory())
-        verify(dump, database_url=database_url, keep=arguments.keep)
+        verify(
+            dump,
+            database_url=database_url,
+            app=arguments.app,
+            normalize=arguments.normalize,
+            record=arguments.record,
+            keep=arguments.keep,
+        )
     except DumpError as error:
         print(f"error: {error}", file=sys.stderr)
         raise SystemExit(1) from error

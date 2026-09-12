@@ -327,24 +327,27 @@ verify-dump: ensure-postgres
 		$(if $(strip $(DUMP)),--dump "$(DUMP)") --database "$(DUMP_DB)" \
 		$(if $(strip $(KEEP)),--keep)
 
-# The gate on `games/migrations/0001_initial.py`, which states a schema no
-# migration builds up to any more. It restores the newest dump, carries the copy
-# over to the new history the way an operator would, builds a second database
-# from the initial migration alone, and reads both catalogs. Any differing row
-# is a future migration generated against a baseline the deployment lacks.
+# Does the deployment still hold the schema a fresh `migrate` builds? It
+# restores the newest dump, builds a second database from the migrations alone,
+# and reads both catalogs. Any differing row is a future migration generated
+# against a baseline the deployment lacks. This is the gate on editing
+# `games/migrations/0001_initial.py`, which states a schema no migration builds
+# up to any more, and the rehearsal for any later squash.
 #
-#   make verify-baseline            -> rehearse the cutover, compare, drop both
+#   make verify-baseline            -> compare, drop both copies
 #   make verify-baseline KEEP=1     -> ... and keep both to look at
-#   make cutover-sql                -> print the statements the deployment needs
+#   make verify-baseline DUMP=path  -> compare that dump instead of the newest
+#
+# ARGS reaches the script, which is how a squash is rehearsed on a dump taken
+# before its cutover ran -- see docs/migration-squash.md:
+#
+#   make verify-baseline ARGS="--normalize cutover.sql --record 0001_squashed"
 #
 # Not in `make check`: it needs a dump of the deployment.
 verify-baseline: ensure-postgres
 	uv run --frozen python scripts/verify_baseline.py verify \
 		$(if $(strip $(DUMP)),--dump "$(DUMP)") \
-		$(if $(strip $(KEEP)),--keep)
-
-cutover-sql:
-	uv run --frozen python scripts/verify_baseline.py cutover
+		$(if $(strip $(KEEP)),--keep) $(ARGS)
 
 loadplatforms: ensure-postgres
 	uv run --frozen python manage.py loadplatforms
