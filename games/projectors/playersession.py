@@ -1,8 +1,8 @@
 """Current-state rows for the sessions a library records."""
 
 import uuid
-from datetime import timedelta
-from typing import Any, ClassVar
+from datetime import date, datetime, timedelta
+from typing import ClassVar, TypedDict
 
 from games.events.envelope import RecordedEvent
 from games.events.playersession import (
@@ -14,7 +14,24 @@ from games.events.playersession import (
 from games.events.projection import HandlerMap, Projector, ProjectorFamily
 from games.models import PlayerSession, PlayerSessionTimingMode
 
-type TimingColumns = dict[str, Any]
+
+class TimingColumns(TypedDict):
+    """The eight columns one timing statement decides.
+
+    A TypedDict rather than a bare mapping: the contract this
+    module exists to keep is that all eight are named every time,
+    and a dropped key would otherwise be found by `project()` at
+    append time rather than by the type checker.
+    """
+
+    timing_mode: PlayerSessionTimingMode
+    started_at: datetime | None
+    started_at_zone: str | None
+    ended_at: datetime | None
+    ended_at_zone: str | None
+    stated_day: date | None
+    stated_duration: timedelta | None
+    day_zone: str | None
 
 
 def columns_for_timing(timing: TimingPayload) -> TimingColumns:

@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import UTC, date, datetime, timedelta
+from functools import lru_cache
 
 import pytest
 from django.utils import timezone
@@ -244,6 +245,26 @@ def test_it_refuses_a_duration_only_statement_of_nothing(
     refused(owned_library, owned_user, run, a_duration_only(duration=timedelta(0)))
 
 
+def test_it_refuses_a_negative_override(owned_user, owned_library, run):
+    """The same rule on the other mode that states a duration.
+
+    Without it the row reaches playersession_duration_not_negative
+    as an IntegrityError, which answers() maps nowhere -- a 500
+    raised after the stream head is locked.
+    """
+    refused(owned_library, owned_user, run, a_corrected(duration=-timedelta(minutes=1)))
+
+
+def test_it_refuses_an_override_finer_than_a_second(owned_user, owned_library, run):
+    """Truncating it would make an honest retry fingerprint anew."""
+    refused(
+        owned_library,
+        owned_user,
+        run,
+        a_corrected(duration=timedelta(seconds=90, microseconds=1)),
+    )
+
+
 def test_it_refuses_an_end_zone_without_an_end(owned_user, owned_library, run):
     refused(owned_library, owned_user, run, a_timed(ended_at_zone="Asia/Tokyo"))
 
@@ -260,8 +281,58 @@ def test_it_refuses_a_zone_neither_tzdata_knows(owned_user, owned_library, run, 
     refused(owned_library, owned_user, run, a_timed(**{field: "Not/AZone"}))
 
 
+def test_it_refuses_a_note_jsonb_cannot_store(owned_user, owned_library, run):
+    """A NUL byte survives strip() and dies inside the append.
+
+    JSON carries it, JSONB refuses it, and the DataError that
+    follows is raised after the stream head is locked and mapped
+    to no answer at all.
+    """
+    refused(owned_library, owned_user, run, a_timed(), note="hi\x00there")
+
+
+def test_it_refuses_a_session_with_no_day_zone(owned_user, owned_library, run):
+    """The one zone that must be there, checked where it is stated."""
+    refused(owned_library, owned_user, run, a_timed(day_zone=None))
+
+
 def test_it_refuses_a_blank_day_zone(owned_user, owned_library, run):
     refused(owned_library, owned_user, run, a_timed(day_zone=""))
+
+
+def test_it_refuses_a_zone_only_python_knows(
+    owned_user, owned_library, run, monkeypatch
+):
+    """Both tzdata sets are read, not just the interpreter's.
+
+    A name PostgreSQL lacks would pass the command and raise a
+    DataError while `effective_day` is generated -- inside the
+    append, and again mid-rebuild. The database's set is stubbed
+    rather than found, because the two agree on this machine.
+    """
+    from games.commands import playersession as commands
+
+    known = commands._database_zones()
+
+    @lru_cache(maxsize=1)
+    def without_prague() -> frozenset[str]:
+        return known - {"Europe/Prague"}
+
+    #: Cached like the real one, because a miss clears and re-reads.
+    monkeypatch.setattr(commands, "_database_zones", without_prague)
+
+    refused(owned_library, owned_user, run, a_timed(day_zone="Europe/Prague"))
+
+
+def test_it_refuses_a_zone_only_the_database_knows(
+    owned_user, owned_library, run, monkeypatch
+):
+    """And the interpreter's half is read too."""
+    from games.commands import playersession as commands
+
+    monkeypatch.setattr(commands, "zone_or_none", lambda name: None)
+
+    refused(owned_library, owned_user, run, a_timed(day_zone="Europe/Prague"))
 
 
 def test_a_retry_of_one_statement_appends_nothing_more(owned_user, owned_library, run):

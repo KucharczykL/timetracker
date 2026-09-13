@@ -550,12 +550,22 @@ on its own like any other issue.
   and decides what `started_at_zone` the 56 end-zone-only rows take.
 - **#702** carries the render contract above, reinterprets the form's "end plus
   manual" combination, and repoints `recent_session_resumes` at
-  `(library, sort_instant, id)`.
+  `(library, sort_instant, id)`. It also inherits an exemption that stops being
+  true under it: the three zone columns sit in `KNOWN_NULLABLE_EXCEPTIONS` in
+  `tests/test_filters.py` because no `StringCriterion` reads them, and nothing
+  re-checks that precondition when a session filter arrives.
 - **#702 and the dormancy clock**: `effective_day` is frozen in the seeded zone,
   so `ActivityClock.zone` no longer changes the day a session lands on. The
   clock's comparison has to be stated against the same zone, and
   `default_activity_clock()`'s UTC is the thing that moves.
 - **The deferred zone-restatement issue** ships an event, not an `UPDATE`.
+- **`answers.py` classifies no database error.** `PayloadInvalid` is raised
+  inside `append`, and `tests/test_command_answers.py` walks only
+  `conflicts`, `dispatch`, `retry`, `idempotency` and `append` — not
+  `games.events.vocabulary` — so it cannot notice. `CreateSession` reaches
+  none of these today, because it emits canonical text itself and refuses the
+  inputs the database would refuse; every later writer of this payload is the
+  reason to close it.
 
 ## Verification
 

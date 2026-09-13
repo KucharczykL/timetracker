@@ -547,13 +547,6 @@ def test_the_tag_words_are_the_wire_form():
     assert _encode_command_value(timedelta(minutes=90)) == ("duration", "5400000000")
 
 
-def test_two_spellings_of_one_duration_fingerprint_alike():
-    """One honest retry is not a conflict."""
-    assert fingerprint_command_input(
-        {"duration": timedelta(hours=1)}
-    ) == fingerprint_command_input({"duration": timedelta(minutes=60)})
-
-
 def test_durations_a_microsecond_apart_fingerprint_differently():
     assert fingerprint_command_input(
         {"duration": timedelta(seconds=1)}
@@ -572,6 +565,9 @@ def test_a_value_and_its_own_text_are_not_the_same_input():
         (Decimal("1.10"), "11E-1"),
         (identifier, str(identifier)),
         (day, day.isoformat()),
+        #: str(timedelta) reads "1:00:00", which the encoder
+        #: deliberately does not use.
+        (timedelta(hours=1), str(timedelta(hours=1))),
     ]
 
     for value, text in pairs:

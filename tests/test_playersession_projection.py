@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from django.apps import apps as global_apps
-from django.db import DataError, IntegrityError, transaction
+from django.db import DataError, IntegrityError, models, transaction
 from django.utils import timezone
 
 from games.checks import check_projection_models
@@ -125,9 +125,16 @@ def a_corrected(run: Playthrough, **columns) -> PlayerSession:
     )
 
 
-def refused(write, *args, **columns) -> None:
-    """The database turns this row away."""
-    with pytest.raises(IntegrityError), transaction.atomic():
+def refused(constraint, write, *args, **columns) -> None:
+    """The named constraint turns this row away.
+
+    The name is stated because several rules overlap: a Timed row
+    with no zone breaks its own mode's rule and leaves no day
+    behind either, and PostgreSQL reports whichever it reaches
+    first. Without the name a test passes while the clause it was
+    written for is gone.
+    """
+    with pytest.raises(IntegrityError, match=constraint), transaction.atomic():
         write(*args, **columns)
 
 
@@ -143,52 +150,84 @@ def refused_as_data(write, *args, **columns) -> None:
 
 @pytest.mark.django_db
 def test_timed_refuses_a_stated_day(run):
-    refused(a_timed, run, stated_day=date(2026, 1, 1))
+    refused("playersession_timed_columns", a_timed, run, stated_day=date(2026, 1, 1))
 
 
 @pytest.mark.django_db
 def test_timed_refuses_a_stated_duration(run):
-    refused(a_timed, run, stated_duration=timedelta(minutes=5))
+    refused(
+        "playersession_timed_columns",
+        a_timed,
+        run,
+        stated_duration=timedelta(minutes=5),
+    )
 
 
 @pytest.mark.django_db
 def test_timed_requires_a_day_zone(run):
-    refused(a_timed, run, day_zone=None)
+    """The backstop answers, not the mode's own rule.
+
+    A timed row with no zone reads no day, so the row breaks two
+    rules and PostgreSQL reports the one it reaches first. This is
+    the only case that exercises the backstop at all, since the
+    three mode rules leave it nothing else to catch.
+    """
+    refused("playersession_effective_day_stated", a_timed, run, day_zone=None)
 
 
 @pytest.mark.django_db
 def test_corrected_refuses_a_stated_day(run):
-    refused(a_corrected, run, stated_day=date(2026, 1, 1))
+    refused(
+        "playersession_corrected_columns", a_corrected, run, stated_day=date(2026, 1, 1)
+    )
 
 
 @pytest.mark.django_db
 def test_corrected_requires_both_instants(run):
-    refused(a_corrected, run, ended_at=None)
+    refused("playersession_corrected_columns", a_corrected, run, ended_at=None)
 
 
 @pytest.mark.django_db
 def test_corrected_requires_an_override(run):
-    refused(a_corrected, run, stated_duration=None)
+    refused("playersession_corrected_columns", a_corrected, run, stated_duration=None)
 
 
 @pytest.mark.django_db
 def test_duration_only_refuses_an_instant(run):
-    refused(a_duration_only, run, started_at=START)
+    refused(
+        "playersession_duration_only_columns", a_duration_only, run, started_at=START
+    )
 
 
 @pytest.mark.django_db
 def test_duration_only_refuses_a_day_zone(run):
-    refused(a_duration_only, run, day_zone="Europe/Prague")
+    refused(
+        "playersession_duration_only_columns",
+        a_duration_only,
+        run,
+        day_zone="Europe/Prague",
+    )
 
 
 @pytest.mark.django_db
 def test_duration_only_requires_a_duration(run):
-    refused(a_duration_only, run, stated_duration=None)
+    refused(
+        "playersession_duration_only_columns",
+        a_duration_only,
+        run,
+        stated_duration=None,
+    )
 
 
 @pytest.mark.django_db
 def test_an_endpoint_zone_needs_its_instant(run):
-    refused(a_timed, run, ended_at=None, ended_at_zone="Asia/Tokyo")
+    refused(
+        "playersession_zone_needs_its_instant",
+        a_timed,
+        run,
+        ended_at=None,
+        ended_at_zone="Asia/Tokyo",
+    )
 
 
 @pytest.mark.django_db
@@ -202,23 +241,44 @@ def test_a_day_zone_no_tzdata_knows_is_refused(run):
 
 
 @pytest.mark.django_db
-def test_a_blank_endpoint_zone_is_refused(run):
-    refused(a_timed, run, started_at_zone="")
+def test_a_blank_start_zone_is_refused(run):
+    refused("playersession_zone_not_blank", a_timed, run, started_at_zone="")
+
+
+@pytest.mark.django_db
+def test_a_blank_end_zone_is_refused(run):
+    refused(
+        "playersession_zone_not_blank",
+        a_timed,
+        run,
+        ended_at=START + timedelta(hours=1),
+        ended_at_zone="",
+    )
 
 
 @pytest.mark.django_db
 def test_an_end_before_its_start_is_refused(run):
-    refused(a_timed, run, ended_at=START - timedelta(hours=1))
+    refused(
+        "playersession_end_after_start",
+        a_timed,
+        run,
+        ended_at=START - timedelta(hours=1),
+    )
 
 
 @pytest.mark.django_db
 def test_a_negative_duration_is_refused(run):
-    refused(a_duration_only, run, stated_duration=timedelta(minutes=-5))
+    refused(
+        "playersession_duration_not_negative",
+        a_duration_only,
+        run,
+        stated_duration=timedelta(minutes=-5),
+    )
 
 
 @pytest.mark.django_db
 def test_an_unknown_mode_is_refused(run):
-    refused(a_timed, run, timing_mode="guessed")
+    refused("playersession_timing_mode_known", a_timed, run, timing_mode="guessed")
 
 
 @pytest.mark.django_db
@@ -290,6 +350,40 @@ def test_a_corrected_row_answers_its_override(run):
     session.refresh_from_db()
     #: One hour elapsed, and the override replaces it.
     assert session.effective_duration == timedelta(minutes=30)
+    #: The other two columns read a corrected row as they read a
+    #: timed one, which is a promise rather than a coincidence.
+    assert session.effective_day == date(2026, 1, 2)
+    assert session.sort_instant == START
+
+
+@pytest.mark.django_db
+def test_the_table_states_the_rules_it_was_built_with(run):
+    """The names, so a migration cannot drop one in silence."""
+    assert {constraint.name for constraint in PlayerSession._meta.constraints} == {
+        "playersession_timing_mode_known",
+        "playersession_timed_columns",
+        "playersession_duration_only_columns",
+        "playersession_corrected_columns",
+        "playersession_end_after_start",
+        "playersession_duration_not_negative",
+        "playersession_zone_needs_its_instant",
+        "playersession_zone_not_blank",
+        "playersession_effective_day_stated",
+    }
+    assert {index.name for index in PlayerSession._meta.indexes} == {
+        "playersession_day_order",
+        "playersession_sort_order",
+        "playersession_run_day",
+    }
+    #: Ordering is not day-grained, so it keys on the instant.
+    assert PlayerSession._meta.get_latest_by == "sort_instant"
+
+
+@pytest.mark.django_db
+def test_no_cascade_may_destroy_a_projection_row():
+    for field_name in ("playthrough", "device"):
+        field = PlayerSession._meta.get_field(field_name)
+        assert field.remote_field.on_delete is models.RESTRICT
 
 
 @pytest.mark.django_db
@@ -538,6 +632,39 @@ def test_the_projection_replays_from_an_empty_stream(owned_user, owned_library, 
     PlayerSession.objects.all().delete()
     replay(owned_library)
 
+    assert list(PlayerSession.objects.order_by("pk").values()) == before
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_rebuild_reproduces_every_mode(owned_user, owned_library, game):
+    """The shadow table generates what the live one holds.
+
+    Duration-only is the row worth rebuilding: its `sort_instant`
+    is the one expression whose cast PostgreSQL refuses when it is
+    written any other way.
+    """
+    dispatch(
+        TrackGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="track",
+    )
+    tracked_run = Playthrough.objects.get(player_game__game=game)
+    for index, timing in enumerate(
+        [a_timed_statement(), A_DURATION_ONLY_STATEMENT, A_CORRECTED_STATEMENT]
+    ):
+        append_session(
+            owned_library, owned_user, tracked_run, timing=timing, key=f"create-{index}"
+        )
+    before = list(PlayerSession.objects.order_by("pk").values())
+
+    report = rebuild_projections(owned_library, mode=RebuildMode.CHECK)
+
+    assert [
+        (table.only_live, table.only_rebuilt, table.differing)
+        for table in report.tables
+        if table.table == "games_playersession"
+    ] == [(0, 0, 0)]
     assert list(PlayerSession.objects.order_by("pk").values()) == before
 
 

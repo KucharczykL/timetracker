@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from functools import lru_cache
-from typing import ClassVar, NamedTuple
+from typing import ClassVar, NamedTuple, assert_never
 
 from django.db import connection
 
@@ -35,6 +35,9 @@ class TimedTiming(NamedTuple):
 
     A NamedTuple, so the idempotency fingerprint encodes it as an
     array: a dataclass reaches the encoder's fallback and raises.
+    The array carries no tag, so the three statements are told
+    apart by their length alone -- a fourth one with five fields
+    would fingerprint as this one and replay as it.
     """
 
     started_at: datetime
@@ -84,8 +87,21 @@ def _database_zones() -> frozenset[str]:
 
 
 def known_zone(name: str) -> bool:
-    """Whether both tzdata sets read this name."""
-    return zone_or_none(name) is not None and name in _database_zones()
+    """Whether both tzdata sets read this name.
+
+    A miss re-reads the database before refusing. The cache holds
+    for the life of the process while the database is a separate
+    image that may be replaced under it, so a zone added there
+    would otherwise be refused until something restarted this one.
+    A zone the database *loses* stays admitted until then, which is
+    the rarer direction and the one the generated day reports.
+    """
+    if zone_or_none(name) is None:
+        return False
+    if name in _database_zones():
+        return True
+    _database_zones.cache_clear()
+    return name in _database_zones()
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,22 +126,26 @@ class CreateSession(Command):
     def __post_init__(self) -> None:
         #: One spelling of a blank note, so a restatement fingerprints alike.
         object.__setattr__(self, "note", self.note.strip())
+        self._check_note(self.note)
         #: Before the fingerprint rather than inside build(): dispatch
         #: fingerprints the input first, and a naive datetime has no
         #: canonical form there, so a build-time refusal would never
-        #: run and the person would see a TypeError instead.
-        for instant in (
-            getattr(self.timing, "started_at", None),
-            getattr(self.timing, "ended_at", None),
-        ):
-            if instant is None:
-                continue
-            if instant.tzinfo is None or instant.utcoffset() is None:
-                raise CommandRejected(
-                    f"{instant!r} states no offset, so it names no instant and "
-                    "would read differently on another host.",
-                    sentence="That time is missing its time zone.",
-                )
+        #: run and the person would meet a TypeError instead.
+        #:
+        #: Through the pattern rather than by attribute name: getattr
+        #: with a default turns a renamed field into a guard that
+        #: silently never runs, and the fingerprint encodes a
+        #: NamedTuple positionally, so nothing else would object.
+        match self.timing:
+            case TimedTiming(started_at=started_at, ended_at=ended_at):
+                self._check_aware(started_at, ended_at)
+            case CorrectedTiming(started_at=started_at, ended_at=ended_at):
+                self._check_aware(started_at, ended_at)
+            case DurationOnlyTiming():
+                #: A written day states no instant to be naive.
+                pass
+            case _:
+                assert_never(self.timing)
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         run = _live_run(context, self.playthrough_id)
@@ -176,9 +196,9 @@ class CreateSession(Command):
                 self._check_duration(duration)
                 if duration == timedelta(0):
                     raise CommandRejected(
-                        "A duration-only session of no duration states nothing: "
-                        "the census reads a legacy row with no end and no "
-                        "duration as a running session, which no mode holds.",
+                        "A duration-only session of no duration states nothing. "
+                        "A session still running is a timed one with no end "
+                        "yet, not a duration of zero.",
                         sentence="Say how long this session lasted.",
                     )
                 return {
@@ -224,6 +244,38 @@ class CreateSession(Command):
                     "day_zone": day_zone,
                     "duration_seconds": int(duration.total_seconds()),
                 }
+            case _:
+                #: A fourth statement type reaches mypy here, rather
+                #: than returning None into a payload nobody can read.
+                assert_never(self.timing)
+
+    @staticmethod
+    def _check_note(note: str) -> None:
+        """Text PostgreSQL can store as JSON.
+
+        `strip()` leaves a NUL byte in place, JSON carries it as
+        `\u0000`, and JSONB refuses it -- a DataError raised while
+        the event is appended, which nothing maps to an answer.
+        """
+        if "\x00" in note:
+            raise CommandRejected(
+                "This note holds a NUL byte, which JSONB cannot store, so the "
+                "event would be refused as it was written.",
+                sentence="That note contains a character we cannot store.",
+            )
+
+    @staticmethod
+    def _check_aware(*instants: datetime | None) -> None:
+        """Instants that name a moment on every host."""
+        for instant in instants:
+            if instant is None:
+                continue
+            if instant.tzinfo is None or instant.utcoffset() is None:
+                raise CommandRejected(
+                    f"{instant!r} states no offset, so it names no instant and "
+                    "would read differently on another host.",
+                    sentence="That time is missing its time zone.",
+                )
 
     @staticmethod
     def _check_instants(started_at: datetime, ended_at: datetime | None) -> None:
@@ -254,7 +306,19 @@ class CreateSession(Command):
 
     @staticmethod
     def _check_zones(day_zone: str, *endpoint_zones: str | None) -> None:
-        """Names both tzdata sets read."""
+        """Names both tzdata sets read.
+
+        The day's zone is checked apart from the endpoints' because
+        it is the one that must be there: checking it in the same
+        loop would let `None` take the optional branch and reach the
+        database, where the generated day is a DataError.
+        """
+        if day_zone is None:
+            raise CommandRejected(
+                "This session states no zone to read its day in, and every "
+                "session with an instant lands on a day.",
+                sentence="Say which time zone this session's day is read in.",
+            )
         for name in (day_zone, *endpoint_zones):
             if name is None:
                 continue
