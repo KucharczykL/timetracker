@@ -112,10 +112,10 @@ The rebuild's diff compares whole rows, so a column changed outside the
 projector is drift forever: `rebuild_projections --check` reports it, and
 `swap_in` reverts it.
 
-This binds the follow-up the wave files — restating a library's days when its
-display zone changes. That restatement **is an act and needs an event**; it is
-not a bulk `UPDATE`. Whether the event is one per session or one library-scoped
-event the projector fans out over the library's rows is the follow-up's
+This binds the follow-up the wave files, #1054 — restating a library's days when
+its display zone changes. That restatement **is an act and needs an event**; it
+is not a bulk `UPDATE`. Whether the event is one per session or one
+library-scoped event the projector fans out over the library's rows is #1054's
 decision; that it is an event is this issue's, because a `day_zone` written by
 2,807 frozen events cannot be moved any other way.
 
@@ -560,7 +560,7 @@ on its own like any other issue.
   so `ActivityClock.zone` no longer changes the day a session lands on. The
   clock's comparison has to be stated against the same zone, and
   `default_activity_clock()`'s UTC is the thing that moves.
-- **The deferred zone-restatement issue** ships an event, not an `UPDATE`.
+- **#1054, the zone-restatement issue**, ships an event, not an `UPDATE`.
 - **`answers.py` classifies no database error.** Closed after this wave:
   `answered()` catches every `django.db.Error` as a defect, logging the
   constraint name and answering `REFUSED_BY_DATABASE` with status 500, and
