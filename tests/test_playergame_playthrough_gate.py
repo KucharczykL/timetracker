@@ -363,6 +363,7 @@ def test_a_rebuild_swaps_both_tables_with_an_empty_diff(
         for table in report.tables
     ] == [
         ("games_playergame", 0, 0, 0),
+        ("games_playersession", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
     ]
     assert rows_of(neighbour) == untouched

@@ -246,6 +246,37 @@ docs/           — Additional documentation
   column, so its `FilterField` states own `choices` and own `nullable`.
   A condition is counted; a status is stated, and neither moves
   the other — see [Vocabulary](docs/vocabulary.md)
+- **PlayerSession** — third projection: one row per session a library records,
+  written only by `PlayerSessions` projector, in `CURRENT_STATE` family beside
+  other two. Names run, non-null, and reaches game only through it, so session
+  and its run can never name different games. `timing_mode` is stated word,
+  never shape read off row, and CHECK per mode binds it to columns it admits:
+  **Timed** states start, optional end while running, no override;
+  **Duration-only** states written calendar day and duration, no instants;
+  **Corrected** states both instants plus duration that *replaces* elapsed
+  time — where legacy `duration_total` *added* `duration_manual`, which is why
+  #700 converts such a row from legacy total rather than its manual part.
+  Three words are three `MODE_VERDICTS` names in `games/preflight/session.py`,
+  pinned by test so census and column cannot drift.
+  Three stored generated columns: `effective_day` coalesces written day with
+  start read in `day_zone`; `effective_duration` takes stated duration over
+  elapsed, zero while running; `sort_instant` gives all three modes one total
+  order, inventing midnight UTC for written day, and is `get_latest_by`.
+  Three zones are three facts: `started_at_zone`/`ended_at_zone` say where
+  clock stood, NULL where nobody stated; `day_zone` is zone *library* counts
+  days in, seeded from viewer's display zone, NULL exactly on Duration-only row
+  whose day no zone converts. No CHECK can reach blank or unknown `day_zone` —
+  generated column computes before any constraint, so it answers `DataError`
+  that `answers.py` maps nowhere, which is why `CreateSession` refuses zone
+  neither Python's nor PostgreSQL's tzdata knows. Database admits **superset**
+  of what command admits, never reverse: CHECK stricter than command turns
+  forgotten refusal into 500 after stream head is locked.
+  `alive()` reads run's mark and tracked game's, **not** catalog game's:
+  `blocking_referrer` reads `alive()` to refuse removing run sessions name, and
+  catalog mark there would hide them from that check. Read layer states that
+  mark itself, as `library_runs()` does. No `for_library()` yet — #702 states
+  it with its readers. Contract is
+  [PlayerSession](docs/superpowers/specs/2026-09-13-issue-689-playersession-aggregate-design.md)
 
 **Nothing user removes is destroyed** (#944). Eight removable models — Game,
 Edition, Release, Platform, Device, Session, Purchase, FilterPreset —

@@ -183,6 +183,13 @@ second table is created, diffed and swapped; two of them are that table's swap,
 which is why a small rebuild's `games_playthrough` line reports 2 statements
 against a shadow table's many.
 
+#689 adds a third table, so this fixed cost grows again. A library with no
+session writes no row into `games_playersession__shadow` and the shadow names
+no statement at all, while the live table still takes its swap: two statements
+more per rebuild, whatever the event count. No recording below was taken again
+for it; `tests/test_event_benchmark.py` measures the shape directly, and the
+per-event slope is unchanged because nothing here replays a session yet.
+
 The command line counts a whole `dispatch`: the append, the reference rows, the
 stream head, the idempotency record, and the synchronous handlers. Since #679 it
 also counts the second event `TrackGame` appends and the second projection row

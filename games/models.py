@@ -13,12 +13,14 @@ from django.db.models import (
     ExpressionWrapper,
     F,
     FilteredRelation,
+    Func,
     OuterRef,
     Q,
     Sum,
+    Value,
 )
 from django.db.models.fields.generated import GeneratedField
-from django.db.models.functions import Coalesce, Lower, NullIf, Trim
+from django.db.models.functions import Cast, Coalesce, Lower, NullIf, Trim
 from django.template.defaultfilters import floatformat, pluralize, slugify
 from django.urls import reverse
 from django.utils import timezone
@@ -1699,6 +1701,238 @@ class Playthrough(ProjectionModel):
 
     def __str__(self) -> str:
         return f"Playthrough {self.pk} of tracked game {self.player_game_id}"
+
+
+class NaiveTimestamp(models.Func):
+    """A date read as a wall-clock timestamp, in no zone at all.
+
+    `Cast(..., DateTimeField())` asks for `timestamptz`, and the cast
+    from a date to one is STABLE -- it reads the session's TimeZone --
+    so PostgreSQL refuses any generated column built on it.
+    """
+
+    template = "(%(expressions)s)::timestamp"
+    output_field = models.DateTimeField()
+
+
+class PlayerSessionTimingMode(models.TextChoices):
+    """What one session states about its time.
+
+    The three words `MODE_VERDICTS` names in `games/preflight/session.py`,
+    so the census and the column cannot drift apart.
+    """
+
+    TIMED = "timed", "Timed"
+    DURATION_ONLY = "duration_only", "Duration only"
+    CORRECTED = "corrected", "Corrected"
+
+
+class PlayerSessionQuerySet(RemovableMixin, models.QuerySet["PlayerSession"]):
+    """The marks that hide a session.
+
+    Not the catalog game's, deliberately. `blocking_referrer` reads
+    `alive()` to refuse removing a run that sessions name; a catalog
+    mark here would hide them from that check, leave the run
+    removable, and restoring the game would leave live sessions
+    naming a removed run. The read layer states that mark itself,
+    where `library_runs()` states its own.
+    """
+
+    ancestor_marks = ("playthrough", "playthrough__player_game")
+
+
+class PlayerSession(ProjectionModel):
+    """One session a library recorded, projected from its events."""
+
+    objects = PlayerSessionQuerySet.as_manager()
+
+    id = UUIDv7Field(
+        primary_key=True,
+        editable=False,
+        #: The creation event's aggregate_id, evaluated once.
+        default=models.NOT_PROVIDED,
+        db_default=models.NOT_PROVIDED,
+    )
+    playthrough = models.ForeignKey(
+        Playthrough,
+        #: No cascade may destroy a projection row.
+        on_delete=models.RESTRICT,
+        related_name="sessions",
+    )
+    #: RESTRICT rather than the legacy SET_NULL: nothing outside the
+    #: projector may change a projection row.
+    device = models.ForeignKey(
+        "Device",
+        on_delete=models.RESTRICT,
+        null=True,
+        related_name="player_sessions",
+    )
+    #: Every column below is stated by the creation event and carries no
+    #: default, so `_required_columns` holds the handler to naming it.
+    timing_mode = models.CharField(max_length=13, choices=PlayerSessionTimingMode)
+    started_at = models.DateTimeField(null=True)
+    #: The zone the clock stood in when the endpoint was committed.
+    #: Null is a zone nobody stated, as on the legacy row.
+    started_at_zone = models.CharField(max_length=64, null=True)
+    ended_at = models.DateTimeField(null=True)
+    ended_at_zone = models.CharField(max_length=64, null=True)
+    #: The written calendar day of a Duration-only session, which no
+    #: zone converts and no restatement moves.
+    stated_day = models.DateField(null=True)
+    #: Duration-only states its whole duration here; Corrected states
+    #: the override that replaces elapsed time.
+    stated_duration = models.DurationField(null=True)
+    #: The zone this library counts days in, not where the player sat.
+    day_zone = models.CharField(max_length=64, null=True)
+    effective_day = models.GeneratedField(
+        expression=Coalesce(
+            F("stated_day"),
+            Cast(
+                Func(F("day_zone"), F("started_at"), function="timezone"),
+                models.DateField(),
+            ),
+        ),
+        output_field=models.DateField(),
+        db_persist=True,
+        editable=False,
+    )
+    effective_duration = models.GeneratedField(
+        expression=Coalesce(
+            F("stated_duration"),
+            F("ended_at") - F("started_at"),
+            Value(timedelta(0)),
+        ),
+        output_field=models.DurationField(),
+        db_persist=True,
+        editable=False,
+    )
+    #: Ordering alone, and never rendered: a Duration-only row has no
+    #: instant, so this invents midnight UTC of its written day to keep
+    #: one total key across all three modes. The cast to a naive
+    #: timestamp is load-bearing -- `date` to `timestamptz` is STABLE,
+    #: and PostgreSQL refuses a generated column built on it.
+    sort_instant = models.GeneratedField(
+        expression=Coalesce(
+            F("started_at"),
+            Func(
+                Value("UTC"),
+                NaiveTimestamp(F("stated_day")),
+                function="timezone",
+            ),
+        ),
+        output_field=models.DateTimeField(),
+        db_persist=True,
+        editable=False,
+    )
+    note = models.TextField()
+    emulated = models.BooleanField()
+    #: The creation event's recorded_at.
+    created_at = models.DateTimeField(editable=False)
+    #: The remove event's recorded_at; null means live.
+    removed_at = models.DateTimeField(null=True, default=None, editable=False)
+
+    class Meta:
+        get_latest_by = "sort_instant"
+        indexes = (
+            #: The day-grained reads: today, the last seven days, the
+            #: stats page's grouping and its year scope.
+            models.Index(
+                fields=("library", "effective_day", "id"),
+                name="playersession_day_order",
+            ),
+            #: The list order, `get_latest_by`, and the navbar's keyset.
+            models.Index(
+                fields=("library", "sort_instant", "id"),
+                name="playersession_sort_order",
+            ),
+            #: When one run was last played.
+            models.Index(
+                fields=("playthrough", "effective_day"),
+                name="playersession_run_day",
+            ),
+        )
+        constraints = (
+            models.CheckConstraint(
+                condition=Q(timing_mode__in=tuple(PlayerSessionTimingMode.values)),
+                name="playersession_timing_mode_known",
+            ),
+            models.CheckConstraint(
+                condition=~Q(timing_mode=PlayerSessionTimingMode.TIMED)
+                | Q(
+                    started_at__isnull=False,
+                    stated_day__isnull=True,
+                    stated_duration__isnull=True,
+                    day_zone__isnull=False,
+                ),
+                name="playersession_timed_columns",
+            ),
+            models.CheckConstraint(
+                condition=~Q(timing_mode=PlayerSessionTimingMode.DURATION_ONLY)
+                | Q(
+                    started_at__isnull=True,
+                    started_at_zone__isnull=True,
+                    ended_at__isnull=True,
+                    ended_at_zone__isnull=True,
+                    day_zone__isnull=True,
+                    stated_day__isnull=False,
+                    stated_duration__isnull=False,
+                ),
+                name="playersession_duration_only_columns",
+            ),
+            models.CheckConstraint(
+                condition=~Q(timing_mode=PlayerSessionTimingMode.CORRECTED)
+                | Q(
+                    started_at__isnull=False,
+                    ended_at__isnull=False,
+                    stated_day__isnull=True,
+                    stated_duration__isnull=False,
+                    day_zone__isnull=False,
+                ),
+                name="playersession_corrected_columns",
+            ),
+            #: Equal is admitted: a zero-length session is a correction
+            #: somebody may state.
+            models.CheckConstraint(
+                condition=Q(ended_at__isnull=True) | Q(ended_at__gte=F("started_at")),
+                name="playersession_end_after_start",
+            ),
+            #: Not negative, rather than the command's stricter rule.
+            #: The database admits a superset of what the command
+            #: admits: a CHECK the command does not know would answer
+            #: an IntegrityError nothing maps, after the lock is taken.
+            models.CheckConstraint(
+                condition=Q(stated_duration__isnull=True)
+                | Q(stated_duration__gte=timedelta(0)),
+                name="playersession_duration_not_negative",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(started_at_zone__isnull=True) | Q(started_at__isnull=False)
+                )
+                & (Q(ended_at_zone__isnull=True) | Q(ended_at__isnull=False)),
+                name="playersession_zone_needs_its_instant",
+            ),
+            #: An empty string is not a zone; null already means unset.
+            #:
+            #: `day_zone` is absent on purpose. `effective_day` is
+            #: generated before any constraint runs, so a blank or
+            #: unknown zone there is already a DataError -- one nothing
+            #: maps to an answer, which is why the command refuses a
+            #: zone neither tzdata knows before the append begins.
+            models.CheckConstraint(
+                condition=~Q(started_at_zone="") & ~Q(ended_at_zone=""),
+                name="playersession_zone_not_blank",
+            ),
+            #: The backstop. Every day-grained read keys on this column,
+            #: and any hole the rules above leave arrives here.
+            models.CheckConstraint(
+                condition=Q(effective_day__isnull=False),
+                name="playersession_effective_day_stated",
+            ),
+        )
+
+    def __str__(self) -> str:
+        return f"Session {self.pk} of run {self.playthrough_id}"
 
 
 class UserLibraryPreferences(models.Model):

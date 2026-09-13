@@ -260,6 +260,10 @@ PINNED_DEFAULTS: dict[str, dict[str, object]] = {
         "completion_note": "",
         "removed_at": None,
     },
+    "games.PlayerSession": {
+        #: The projector's mark; every other column is stated.
+        "removed_at": None,
+    },
 }
 
 

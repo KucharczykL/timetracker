@@ -544,6 +544,17 @@ def test_the_tag_words_are_the_wire_form():
         "2026",
     )
     assert _encode_command_value(TemporalValue.unknown()) == ("temporal", None)
+    assert _encode_command_value(timedelta(minutes=90)) == ("duration", "5400000000")
+
+
+def test_durations_a_microsecond_apart_fingerprint_differently():
+    assert fingerprint_command_input(
+        {"duration": timedelta(seconds=1)}
+    ) != fingerprint_command_input({"duration": timedelta(seconds=1, microseconds=1)})
+
+
+def test_a_negative_duration_keeps_its_sign():
+    assert _encode_command_value(timedelta(seconds=-1)) == ("duration", "-1000000")
 
 
 def test_a_value_and_its_own_text_are_not_the_same_input():
@@ -554,6 +565,9 @@ def test_a_value_and_its_own_text_are_not_the_same_input():
         (Decimal("1.10"), "11E-1"),
         (identifier, str(identifier)),
         (day, day.isoformat()),
+        #: str(timedelta) reads "1:00:00", which the encoder
+        #: deliberately does not use.
+        (timedelta(hours=1), str(timedelta(hours=1))),
     ]
 
     for value, text in pairs:

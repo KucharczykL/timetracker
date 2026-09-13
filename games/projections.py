@@ -10,7 +10,7 @@ from django.core.exceptions import FieldDoesNotExist
 from django.db import models
 from django.db.models import F, Q
 
-from games.models import PlayerGame, Playthrough, ProjectionModel
+from games.models import PlayerGame, PlayerSession, Playthrough, ProjectionModel
 
 type FieldName = str  # e.g. "player_game"
 type ModelLabel = str  # e.g. "games.PlayerGame"
@@ -108,6 +108,8 @@ def projection_references(apps: Apps = global_apps) -> tuple[ProjectionReference
 #: Every reference the ownership audit reads.
 AUDITED_PROJECTION_REFERENCES: tuple[ProjectionReference, ...] = (
     ProjectionReference.on(PlayerGame, "game"),
+    ProjectionReference.on(PlayerSession, "device"),
+    ProjectionReference.on(PlayerSession, "playthrough"),
     ProjectionReference.on(Playthrough, "player_game"),
 )
 

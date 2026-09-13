@@ -5667,6 +5667,13 @@ class TestStringFieldNullConvention:
             # not apply here.
             "Session.timestamp_start_timezone",
             "Session.timestamp_end_timezone",
+            # The projection states the same distinction one level on: NULL
+            # is a zone nobody stated for that endpoint. `day_zone` is NULL
+            # exactly on a Duration-only row, whose written day no zone
+            # converts. No StringCriterion reads any of the three.
+            "PlayerSession.started_at_zone",
+            "PlayerSession.ended_at_zone",
+            "PlayerSession.day_zone",
         }
     )
 

@@ -31,9 +31,11 @@ def named(references):
 
 
 def test_the_walk_finds_every_outward_reference():
-    """Both keys out of a projection, and neither library column."""
+    """Every key out of a projection, and no library column."""
     assert named(projection_references()) == [
         ("PlayerGame", "game"),
+        ("PlayerSession", "device"),
+        ("PlayerSession", "playthrough"),
         ("Playthrough", "player_game"),
     ]
 
@@ -228,7 +230,7 @@ def test_the_check_is_registered_and_reads_the_real_registry(monkeypatch):
 
     reported = [str(message.id) for message in run_checks()]
 
-    assert reported == ["games.E009", "games.E009"]
+    assert reported == ["games.E009"] * len(projection_references())
 
 
 @isolate_apps("games")

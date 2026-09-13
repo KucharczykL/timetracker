@@ -69,11 +69,12 @@ The default registry has four kinds. All four are `REQUIRED`.
 | `catalog.release` | `Release` | the Game's `name` | `platform.name`, or `""` |
 
 `Edition` has no kind. No event names one, and a kind with no event states a
-convention rather than a rule. `Release` has one from #966, before #690 records
-the first, so the retention policy covers a Release from the first day one can be
-named. Neither model has a display field of its own, thus capturing a Release
-reads its Edition's Game and its Platform; a caller capturing many selects them
-first.
+convention rather than a rule. `Release` has one from #966, and no event records
+one yet: #689 reserves the field on a session's creation payload and writes
+`None` there, and ACCESS (#719-#724) records the first real reference. So the
+retention policy covers a Release from the first day one can be named. Neither
+model has a display field of its own, thus capturing a Release reads its
+Edition's Game and its Platform; a caller capturing many selects them first.
 
 To make a reference, call `capture_reference(instance)`. This is the only call
 that a command makes.
