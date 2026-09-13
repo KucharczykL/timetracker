@@ -21,7 +21,7 @@ from games.models import LibraryEvent
 from timetracker.temporal import TemporalValue
 
 type AggregateType = str  # "playthrough"
-type EventType = str  # "library.session.created"
+type EventType = str  # "library.playersession.created"
 
 #: Without both, validation means nothing.
 REQUIRED_SCHEMA_CONFIG: Mapping[str, object] = {"extra": "forbid", "strict": True}
