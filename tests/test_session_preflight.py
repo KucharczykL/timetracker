@@ -2,7 +2,7 @@
 
 import uuid
 from dataclasses import fields
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -10,9 +10,13 @@ import pytest
 from games.models import Session
 from games.preflight.session import (
     NO_COUNTS,
+    AssignmentOutcome,
     PreflightCounts,
+    RunInterval,
     Samples,
     TimingVerdict,
+    assign_run,
+    claims,
     classify_timing,
 )
 
@@ -115,3 +119,87 @@ def test_samples_render_as_strings():
     assert rendered["running"] == [str(identifier)]
     assert rendered["bucket_primary"] == []
     assert set(rendered) == {field.name for field in fields(Samples)}
+
+
+DAY = date(2024, 3, 1)
+
+
+def interval(started: date | None = None, completed: date | None = None) -> RunInterval:
+    """A run bounded by whichever days are known."""
+    return RunInterval(uuid.uuid4(), started, completed)
+
+
+def test_a_sole_run_takes_the_session_however_far_outside_it_falls():
+    only = interval(date(2020, 1, 1), date(2020, 2, 1))
+    assignment = assign_run([only], DAY)
+    assert assignment.outcome is AssignmentOutcome.SOLE_RUN
+    assert assignment.run_id == only.run_id
+    assert assignment.claimers == 0
+
+
+def test_a_sole_run_stating_no_day_still_takes_the_session():
+    assignment = assign_run([interval()], DAY)
+    assert assignment.outcome is AssignmentOutcome.SOLE_RUN
+
+
+def test_a_game_with_no_live_run_buckets():
+    assignment = assign_run([], DAY)
+    assert assignment.outcome is AssignmentOutcome.BUCKET
+    assert assignment.run_id is None
+    assert assignment.claimers == 0
+
+
+def test_one_claimer_among_several_runs_takes_the_session():
+    claimer = interval(date(2024, 2, 1), date(2024, 4, 1))
+    other = interval(date(2023, 1, 1), date(2023, 2, 1))
+    assignment = assign_run([other, claimer], DAY)
+    assert assignment.outcome is AssignmentOutcome.CONTAINED
+    assert assignment.run_id == claimer.run_id
+    assert assignment.claimers == 1
+
+
+def test_a_day_inside_no_run_buckets():
+    runs = [
+        interval(date(2023, 1, 1), date(2023, 2, 1)),
+        interval(date(2025, 1, 1), date(2025, 2, 1)),
+    ]
+    assignment = assign_run(runs, DAY)
+    assert assignment.outcome is AssignmentOutcome.BUCKET
+    assert assignment.claimers == 0
+
+
+def test_a_day_inside_two_runs_buckets_and_counts_both():
+    runs = [
+        interval(date(2024, 1, 1), date(2024, 4, 1)),
+        interval(date(2024, 2, 1), date(2024, 5, 1)),
+    ]
+    assignment = assign_run(runs, DAY)
+    assert assignment.outcome is AssignmentOutcome.BUCKET
+    assert assignment.run_id is None
+    assert assignment.claimers == 2
+
+
+def test_a_start_only_run_claims_its_start_day_and_every_later_one():
+    run = interval(started=DAY)
+    assert claims(run, DAY)
+    assert claims(run, DAY + timedelta(days=3650))
+    assert not claims(run, DAY - timedelta(days=1))
+
+
+def test_a_completion_only_run_claims_its_day_and_every_earlier_one():
+    run = interval(completed=DAY)
+    assert claims(run, DAY)
+    assert claims(run, DAY - timedelta(days=3650))
+    assert not claims(run, DAY + timedelta(days=1))
+
+
+def test_a_dated_run_claims_both_its_endpoints_and_nothing_outside():
+    run = interval(DAY, DAY + timedelta(days=7))
+    assert claims(run, DAY)
+    assert claims(run, DAY + timedelta(days=7))
+    assert not claims(run, DAY - timedelta(days=1))
+    assert not claims(run, DAY + timedelta(days=8))
+
+
+def test_a_run_stating_no_day_claims_nothing():
+    assert not claims(interval(), DAY)

@@ -6,9 +6,11 @@ public for that reason alone.
 """
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass, fields
-from datetime import timedelta
+from datetime import date, timedelta
 from enum import StrEnum
+from typing import NamedTuple
 
 from games.models import Session
 
@@ -141,3 +143,67 @@ class Samples:
             field.name: [str(value) for value in getattr(self, field.name)]
             for field in fields(self)
         }
+
+
+class RunInterval(NamedTuple):
+    """One run, as the two days that bound it.
+
+    Read from the generated bound columns rather than the
+    stated values: a run started in a month bounds the
+    whole month, and the day a session fell on is compared
+    against the bound, not against the spelling.
+    """
+
+    run_id: uuid.UUID
+    started_lower: date | None
+    completed_upper: date | None
+
+
+def claims(interval: RunInterval, day: date) -> bool:
+    """Whether the run's interval holds that day.
+
+    Either bound alone is an open interval on the other
+    side: a run started and never finished claims every
+    day since. A run stating neither claims nothing, so it
+    never draws a session in on emptiness alone.
+    """
+    if interval.started_lower is None and interval.completed_upper is None:
+        return False
+    if interval.started_lower is not None and day < interval.started_lower:
+        return False
+    return interval.completed_upper is None or day <= interval.completed_upper
+
+
+class AssignmentOutcome(StrEnum):
+    """How a session found its run, or failed to."""
+
+    #: The game holds one run, so the day was never read.
+    SOLE_RUN = "sole_run"
+    CONTAINED = "contained"
+    #: No run, or no single one: a person decides.
+    BUCKET = "bucket"
+
+
+class Assignment(NamedTuple):
+    """The outcome, the run when one was found, the claimers."""
+
+    outcome: AssignmentOutcome
+    run_id: uuid.UUID | None
+    #: Zero for a sole run, which consulted no interval.
+    claimers: int
+
+
+def assign_run(runs: Sequence[RunInterval], day: date) -> Assignment:
+    """The run a legacy session lands on.
+
+    One run takes it whatever its day, because a library
+    tracking a game holds a run for it and the session
+    happened at that game. Past one, only containment can
+    choose, and two claimers choose nothing.
+    """
+    if len(runs) == 1:
+        return Assignment(AssignmentOutcome.SOLE_RUN, runs[0].run_id, 0)
+    claimers = [run for run in runs if claims(run, day)]
+    if len(claimers) == 1:
+        return Assignment(AssignmentOutcome.CONTAINED, claimers[0].run_id, 1)
+    return Assignment(AssignmentOutcome.BUCKET, None, len(claimers))
