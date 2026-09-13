@@ -357,6 +357,11 @@ loadplatforms: ensure-postgres
 audit-uuid-identity: ensure-postgres
 	uv run --frozen python manage.py audit_uuid_identity
 
+# Read-only: reports what the legacy Session rows hold.
+# Usage: make preflight-sessions ARGS="--user NAME"
+preflight-sessions: ensure-postgres
+	uv run --frozen python manage.py preflight_sessions $(ARGS)
+
 # Destroys a user's library and its rows.
 # Usage: make purge-library ARGS="--user NAME --confirm NAME"
 purge-library: ensure-postgres
