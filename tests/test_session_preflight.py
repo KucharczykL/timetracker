@@ -1,21 +1,30 @@
 """What the legacy Session census reports."""
 
+import json
 import uuid
 from dataclasses import fields
 from datetime import date, datetime, timedelta
+from io import StringIO
 from zoneinfo import ZoneInfo
 
 import pytest
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.db import connection
 from django.utils import timezone
 
 from games.events.rebuild import write_targets
+from games.management.commands.preflight_sessions import (
+    GENERATED_PREFIX,
+    MACHINE_PREFIX,
+)
 from games.models import (
     Game,
     PlayerGame,
     Playthrough,
     PlaythroughKind,
     Session,
+    UserLibrary,
 )
 from games.preflight.session import (
     NO_COUNTS,
@@ -482,3 +491,107 @@ def test_the_report_names_the_two_zones_it_read(owned_library, settings):
         "counts",
         "samples",
     }
+
+
+# --- The command ------------------------------------------------------------
+
+
+def run_command(*arguments: str) -> str:
+    output = StringIO()
+    call_command("preflight_sessions", *arguments, stdout=output)
+    return output.getvalue()
+
+
+def payload_of(output: str) -> dict:
+    for line in output.splitlines():
+        if line.startswith(MACHINE_PREFIX):
+            return json.loads(line.removeprefix(MACHINE_PREFIX))
+    raise AssertionError("The command printed no machine line.")
+
+
+@pytest.mark.django_db
+def test_a_scope_naming_no_library_reads_nothing_and_exits_zero():
+    output = run_command("--all-libraries")
+    assert "No library was read" in output
+    assert payload_of(output)["libraries"] == []
+
+
+@pytest.mark.django_db
+def test_the_machine_line_carries_the_schema_the_zones_and_the_summary(
+    owned_library, owned_game
+):
+    game = owned_game()
+    play(game, START, end=START + timedelta(hours=1))
+    payload = payload_of(run_command("--user", owned_library.user.username))
+    assert payload["schema_version"] == 1
+    assert payload["summary"]["timed"] == 1
+    assert set(payload["summary"]) == {field.name for field in fields(PreflightCounts)}
+    assert len(payload["libraries"][0]["zones"]) == 2
+    assert payload["shared_catalog"]["shared_games"] == 0
+
+
+@pytest.mark.django_db
+def test_two_runs_print_the_same_bytes_but_for_the_generated_line(
+    owned_library, owned_game
+):
+    game = owned_game()
+    play(game, START, end=START + timedelta(hours=1))
+
+    def without_time(output: str) -> list[str]:
+        return [
+            line
+            for line in output.splitlines()
+            if not line.startswith(GENERATED_PREFIX)
+            and not line.startswith(MACHINE_PREFIX)
+        ]
+
+    first = run_command("--all-libraries")
+    second = run_command("--all-libraries")
+    assert without_time(first) == without_time(second)
+
+
+@pytest.mark.django_db
+def test_a_row_no_mode_holds_does_not_fail_the_run(owned_library, owned_game):
+    game = owned_game()
+    play(game, START, end=START - timedelta(hours=1))
+    output = run_command("--all-libraries")
+    assert payload_of(output)["summary"]["negative_elapsed"] == 1
+    assert "end earlier than start" in output
+
+
+@pytest.mark.django_db
+def test_an_unknown_username_is_refused():
+    with pytest.raises(CommandError, match="No user is named"):
+        run_command("--user", "nobody")
+
+
+@pytest.mark.django_db
+def test_a_user_owning_no_library_is_refused(django_user_model):
+    user = django_user_model.objects.create_user(username="libraryless", password="p")
+    UserLibrary.objects.filter(user=user).delete()
+    with pytest.raises(CommandError, match="owns no library"):
+        run_command("--user", "libraryless")
+
+
+@pytest.mark.django_db
+def test_library_text_that_is_no_uuid_is_refused():
+    with pytest.raises(CommandError, match="is no UUID"):
+        run_command("--library", "not-a-uuid")
+
+
+@pytest.mark.django_db
+def test_an_unknown_library_is_refused():
+    with pytest.raises(CommandError, match="does not exist"):
+        run_command("--library", str(uuid.uuid7()))
+
+
+@pytest.mark.django_db
+def test_a_negative_sample_size_is_refused():
+    with pytest.raises(CommandError, match="not negative"):
+        run_command("--all-libraries", "--sample-size", "-1")
+
+
+@pytest.mark.django_db
+def test_an_unknown_day_zone_is_refused():
+    with pytest.raises(CommandError, match="Mars/Olympus"):
+        run_command("--all-libraries", "--day-zone", "Mars/Olympus")
