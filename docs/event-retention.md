@@ -78,8 +78,8 @@ A removed Game does not stamp its Editions' and Releases' references. Their
 rows carry no mark of their own — a Game's mark hides its children without
 stamping them — so their keys stay claimed while nobody can see the rows that
 claim them. Putting the Game back brings the whole subtree back unchanged.
-#782 and #690, which give an Edition and a Release a reference editor, own
-whether that stays the rule.
+#782, which gives an Edition and a Release a reference editor, owns whether
+that stays the rule.
 
 The conditions have one effect that is easy to miss. Django does not validate a
 conditional constraint in a form when the condition names an excluded field.
@@ -214,6 +214,12 @@ the record column is the act that did not occur.
 
 A fact about the world and a retraction of a record are two acts, thus they take
 two verbs. An end of access and a refund are facts. A void is a retraction.
+
+An instant the record is *about* is not an act record, and the rule does not
+reach it. `PlayerSession.started_at` and `ended_at` hold when a session was
+played, not when anything was recorded: null in `started_at` is a mode that
+states no instant at all, and null in `ended_at` is a session still running.
+The act records beside them are the session's own events.
 
 `Purchase.date_refunded` is older than the rule.
 

@@ -39,7 +39,7 @@
 - `PlayerSession(ProjectionModel)` with the columns in the spec's §"The columns"
 - `Playthrough.sessions` reverse accessor
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/test_playersession_projection.py`, module docstring `"""One row per session a library records."""`. Build rows with `PlayerSession.objects.create(...)` directly in these tests — the projector arrives in Task 4, and these tests are about the schema.
 
@@ -123,11 +123,11 @@ def test_the_modes_are_spelled_as_the_census_spells_them():
     }
 ```
 
-- [ ] **Step 2: Run them and watch them fail**
+- [x] **Step 2: Run them and watch them fail**
 
 `make test ARGS="tests/test_playersession_projection.py -x"` → ImportError, no `PlayerSession`.
 
-- [ ] **Step 3: Add the model**
+- [x] **Step 3: Add the model**
 
 In `games/models.py`, after `Playthrough`. Every column the creation event states carries **no default** — that is what makes `_required_columns` hold the handler to naming it. The three generated columns:
 
@@ -171,13 +171,13 @@ In `games/models.py`, after `Playthrough`. Every column the creation event state
 
 The `Cast` inside `sort_instant` is load-bearing: without casting the date to a naive timestamp first, PostgreSQL binds the STABLE `date → timestamptz` cast and refuses the column with `ERROR: generation expression is not immutable`. If Django's emitted SQL differs from `(stated_day::timestamp) AT TIME ZONE 'UTC'`, read the DDL with `schema_editor().table_sql(PlayerSession)` and adjust until it matches.
 
-`Meta`: `get_latest_by = "sort_instant"`, the eight constraints (spec §"The constraints"), and the three indexes `playersession_day_order` `(library, effective_day, id)`, `playersession_sort_order` `(library, sort_instant, id)`, `playersession_run_day` `(playthrough, effective_day)`. Index names must stay ≤ 30 characters.
+`Meta`: `get_latest_by = "sort_instant"`, the nine constraints (spec §"The constraints"), and the three indexes `playersession_day_order` `(library, effective_day, id)`, `playersession_sort_order` `(library, sort_instant, id)`, `playersession_run_day` `(playthrough, effective_day)`. Index names must stay ≤ 30 characters.
 
-- [ ] **Step 4: Register both references**
+- [x] **Step 4: Register both references**
 
 `games/projections.py`: append `ProjectionReference.on(PlayerSession, "playthrough")` and `ProjectionReference.on(PlayerSession, "device")` to `AUDITED_PROJECTION_REFERENCES`, importing `PlayerSession` beside the other two. Leaving either out fails `manage.py check` with `games.E009`.
 
-- [ ] **Step 5: Make and apply the migration**
+- [x] **Step 5: Make and apply the migration**
 
 ```bash
 make makemigrations ARGS="games --name playersession"
@@ -185,11 +185,11 @@ make makemigrations ARGS="games --name playersession"
 
 Then `make migrate`. Read the generated file before moving on: it must create one table with eight `CheckConstraint`s and three indexes, and no `AlterField` on anything else.
 
-- [ ] **Step 6: Run the tests**
+- [x] **Step 6: Run the tests**
 
 `make test ARGS="tests/test_playersession_projection.py"` → all pass. Then `make check-fast`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add games/models.py games/projections.py games/migrations tests/test_playersession_projection.py
@@ -216,7 +216,7 @@ git commit -m "feat: state what a recorded session holds"
 - `PlayerSessionCreatedPayload`, `PLAYERSESSION_CREATED: EventSpec`
 - `playersession_created(playthrough_id, *, timing, device, release, note, emulated, session_id=None) -> NewEvent`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/test_playersession_events.py`:
 
@@ -231,11 +231,11 @@ git commit -m "feat: state what a recorded session holds"
 - `test_the_payload_carries_the_day_as_its_effective_time` — `playersession_created(...).effective_time.canonical == "2026-01-02"` for a timed statement whose zone puts it there, and equals `stated_day` for a duration-only one.
 - `test_the_identity_may_be_stated` — passing `session_id` uses it; omitting it mints a UUIDv7.
 
-- [ ] **Step 2: Run them and watch them fail**
+- [x] **Step 2: Run them and watch them fail**
 
 `make test ARGS="tests/test_playersession_events.py -x"`.
 
-- [ ] **Step 3: Write the module**
+- [x] **Step 3: Write the module**
 
 Follow `games/events/playthrough.py`'s shape. The canonical-text validators mirror `canonical_uuid_text` in `games/events/references.py:46`: parse, reformat, refuse anything that differs.
 
@@ -260,11 +260,11 @@ Each member gets its own `@with_config(STRICT_SCHEMA)`; `mode` is a `Literal`, n
 
 Fix the stale comment at `games/events/vocabulary.py:31` to read `# "library.playersession.created"`.
 
-- [ ] **Step 4: Run the tests, then the suite**
+- [x] **Step 4: Run the tests, then the suite**
 
 `make test ARGS="tests/test_playersession_events.py"`, then `make check-fast`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add games/events/playersession.py games/events/vocabulary.py tests/test_playersession_events.py
@@ -281,7 +281,7 @@ git commit -m "feat: record what one session states about its time"
 
 **Interfaces produced:** `_encode_command_value` answers `("duration", <total microseconds as text>)` for a `timedelta`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `tests/test_event_idempotency.py`, beside the existing encoder tests:
 
@@ -306,19 +306,19 @@ def test_a_negative_duration_keeps_its_sign():
     assert _encode_command_value(timedelta(seconds=-1)) == ("duration", "-1000000")
 ```
 
-- [ ] **Step 2: Run them and watch them fail**
+- [x] **Step 2: Run them and watch them fail**
 
 `make test ARGS="tests/test_event_idempotency.py -k duration"` → `TypeError: timedelta has no canonical form…`.
 
-- [ ] **Step 3: Add the branch**
+- [x] **Step 3: Add the branch**
 
 Above the `raise`, beside the `Decimal` branch. Use `value // timedelta(microseconds=1)`, which is exact and needs no float. `timedelta` normalises its own fields, so no further canonicalisation is needed — say so in a comment, because every other branch in that function exists to undo a non-canonical spelling.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 `make test ARGS="tests/test_event_idempotency.py"`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add games/events/idempotency.py tests/test_event_idempotency.py
@@ -340,7 +340,7 @@ git commit -m "feat: give a duration one canonical form"
 - `columns_for_timing(timing: TimingPayload) -> dict[str, Any]` — always eight keys: `timing_mode`, `started_at`, `started_at_zone`, `ended_at`, `ended_at_zone`, `stated_day`, `stated_duration`, `day_zone`, with `None` for every column the mode forbids
 - `PlayerSessions(Projector)`, family `ProjectorFamily.CURRENT_STATE`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_playersession_projection.py` (the module already carries `pytestmark = pytest.mark.untracked_games`):
 
@@ -350,11 +350,11 @@ Append to `tests/test_playersession_projection.py` (the module already carries `
 - `test_a_rebuild_reports_no_drift` — `rebuild_projections(..., mode=RebuildMode.CHECK)` reports zero differing rows, generated columns included.
 - `test_a_session_names_the_run_the_event_names` — the row's `playthrough_id` comes off the payload, and `library_id` off the event, never off a command context.
 
-- [ ] **Step 2: Run them and watch them fail**
+- [x] **Step 2: Run them and watch them fail**
 
 `make test ARGS="tests/test_playersession_projection.py -k replay -x"`.
 
-- [ ] **Step 3: Write the projector**
+- [x] **Step 3: Write the projector**
 
 Follow `games/projectors/playthrough.py`. One handler:
 
@@ -380,11 +380,11 @@ Follow `games/projectors/playthrough.py`. One handler:
 
 Add `playersession` to the import in `games/projectors/__init__.py`.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 `make test ARGS="tests/test_playersession_projection.py"`, then `make check-fast`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add games/projectors tests/test_playersession_projection.py
@@ -407,7 +407,7 @@ git commit -m "feat: project the sessions a library records"
 - `CreateSession(Command)` with `command_name = CommandName.PLAYERSESSION_CREATE`
 - `known_zone(name: str) -> bool` — true only when both `zoneinfo` and `pg_timezone_names` know it, cached
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/test_playersession_command.py`. Every test that dispatches needs `@pytest.mark.django_db(transaction=True)` — `run_in_transaction` refuses to nest.
 
@@ -449,11 +449,11 @@ def test_a_retry_of_one_statement_appends_nothing_more(owned_library, run):
 
 and `test_it_never_answers_unchanged` (two dispatches under different keys both append).
 
-- [ ] **Step 2: Run them and watch them fail**
+- [x] **Step 2: Run them and watch them fail**
 
 `make test ARGS="tests/test_playersession_command.py -x"`.
 
-- [ ] **Step 3: Write the command**
+- [x] **Step 3: Write the command**
 
 `CommandName.PLAYERSESSION_CREATE = "library.playersession.create"` in `games/events/dispatch.py`, in declaration order after the playthrough entries.
 
@@ -480,12 +480,12 @@ def _database_zones() -> frozenset[str]:
         return frozenset(name for (name,) in cursor.fetchall())
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 `make test ARGS="tests/test_playersession_command.py"`, then
 `make test ARGS="tests/test_command_scope_guard.py tests/test_command_answers.py"` — the scope guard walks `games/commands/` and the answers test walks the conflict registries.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add games/commands/playersession.py games/events/dispatch.py tests/test_playersession_command.py
@@ -500,23 +500,23 @@ git commit -m "feat: record one session against a stated run"
 - Modify: `CLAUDE.md` (the Models list, after the `Playthrough` entry)
 - Test: the whole suite
 
-- [ ] **Step 1: Document the model**
+- [x] **Step 1: Document the model**
 
 Add a `PlayerSession` entry to `CLAUDE.md`'s Models section in the voice of the entries around it: the third projection, its three modes and what each admits, the two generated day/duration columns and the sort instant, the mandatory run reference, `alive()`'s two ancestor marks and why the catalog game's is not among them, and that the database admits a superset of what the command admits. Name the spec.
 
-- [ ] **Step 2: Run the prose linter**
+- [x] **Step 2: Run the prose linter**
 
 `make vale` — the vocabulary refuses `delete`, `fold` and the projector/projection word confusions in comments and docs alike.
 
-- [ ] **Step 3: Run the full gate**
+- [x] **Step 3: Run the full gate**
 
 `make check` — lint, format check, mypy, vale, ts-check, vitest, and the entire pytest suite including `e2e/`. Never a hand-picked subset. Do not run it while `make dev` is up: the watchers rewrite the served assets and e2e fails en masse.
 
-- [ ] **Step 4: Verify the replay parity target**
+- [x] **Step 4: Verify the replay parity target**
 
 `make verify-replay-parity` — read-only, replays every library and fails on a differing row. It is not part of `make check`, and this is the change that can break it.
 
-- [ ] **Step 5: Commit and open the PR**
+- [x] **Step 5: Commit and open the PR**
 
 ```bash
 git add CLAUDE.md

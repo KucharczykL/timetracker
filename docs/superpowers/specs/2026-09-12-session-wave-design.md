@@ -166,7 +166,9 @@ display-timezone date of exact `timestamp_start`". That is the `COALESCE`
 above, and a CHECK forbids `stated_day` on a Timed or Corrected row so the
 branch is never ambiguous.
 
-**Which zone seeds `day_zone` is open, and #689 decides it.** This review
+**Which zone seeds `day_zone` is open, and #689 decides it.** *(Decided: the
+viewer's display zone, stated by the caller rather than resolved by the command.
+See [the #689 design](2026-09-13-issue-689-playersession-aggregate-design.md).)* This review
 stated that it is seeded from `settings.TIME_ZONE` because "every day-grained
 read today groups in it". [#699's
 census](2026-09-12-issue-699-session-preflight-design.md) checked that premise
@@ -398,6 +400,40 @@ It never infers a run.
 
 Out: every other event type, every screen, the backfill, and any Release
 reference beyond an unused optional field reserved in the payload.
+
+**Delivered.** The design is
+[The PlayerSession aggregate and its three timing modes](2026-09-13-issue-689-playersession-aggregate-design.md);
+what it settled, and what the rest of this wave inherits:
+
+- **`day_zone` seeds from the viewer's display zone**, and the caller states it
+  inside the timing statement. Inside a request that is
+  `timezone.get_current_timezone_name()`, already activated by the middleware,
+  so #702 adds no zone control for it.
+- **Restating a library's days is an act that needs an event.** The rebuild
+  diffs whole rows, so the bulk `UPDATE` this review imagined would be drift
+  `--check` reports and `swap_in` reverts. The deferred issue ships an event.
+- **Corrected replaces; legacy `duration_manual` added.** A converted Corrected
+  row's `stated_duration` is the legacy row's `duration_total`, never its
+  manual component, and #700's test asserts that arithmetic rather than a
+  spelling. #702 owns the form combination that still means "add".
+- **Three zone columns, not one**, and `day_zone` is NULL on a Duration-only
+  row, whose written day no restatement moves. Production holds 56 rows with an
+  end zone and no start zone, which #700 must decide about.
+- **Three generated columns**, not one: `effective_day`, `effective_duration`,
+  and `sort_instant`, which is what #702 keys the navbar's keyset read on —
+  `effective_day` would have demoted intra-day order to conversion order.
+- **The event namespace is `library.playersession.*`**, following the model
+  name as `playergame` and `playthrough` do.
+- **No CHECK can guard `day_zone`.** A generated column is computed before any
+  constraint, so a blank or unknown zone answers `DataError`, which
+  `answers.py` maps nowhere; the command refusing an unknown zone is the only
+  guard. It validates against `pg_timezone_names` as well as `zoneinfo`,
+  because the two tzdata sets arrive in different images.
+- **`alive()` reads two ancestor marks**, not the catalog game's: a catalog
+  mark would hide sessions from `blocking_referrer` and make a run with live
+  sessions removable. #702 states the catalog mark in the read layer.
+- **#700 reuses the legacy `Session.id`** as the aggregate id, so every
+  bookmarked URL keeps working and parity needs no mapping table.
 
 ### #691 — finish a running session
 

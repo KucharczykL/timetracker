@@ -167,8 +167,11 @@ Release come from `ExternalReference`. On 858 real Games the split has never
 once carried a fact — one Game, one Edition, one Release, 858 times.
 
 The section worth having states what a person did with each edition, not what
-the catalog holds. That needs a Session that names a Release, which #690 adds.
-This shape is replaced then, and the notice goes with it.
+the catalog holds. That needs a Session that names a Release, which ACCESS adds
+(#719-#724): #689 reserves the field on the creation payload and records `None`
+in it, because a Session naming a Release means nothing until a `LibraryEntry`
+says the library holds that Release. This shape is replaced then, and the notice
+goes with it.
 
 The Game's own `original_release_date` stays on the Game, because it is a fact
 of the work rather than of one Release. The flattened Platform row and the
