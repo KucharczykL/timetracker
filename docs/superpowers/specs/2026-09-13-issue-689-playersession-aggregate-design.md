@@ -281,9 +281,9 @@ event type.
 
 ```python
 class PlayerSessionCreatedPayload(TypedDict):
-    playthrough: ReferenceId       # bare id, as PlaythroughCreatedPayload does
+    playthrough: ReferenceId  # bare id, as PlaythroughCreatedPayload does
     device: Reference | None
-    release: Reference | None      # reserved; always None until #719-#724
+    release: Reference | None  # reserved; always None until #719-#724
     timing: TimingPayload
     note: str
     emulated: bool

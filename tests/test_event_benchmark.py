@@ -52,6 +52,7 @@ from games.models import (
     LibraryEventStreamHead,
     LibraryIdempotencyRecord,
     PlayerGame,
+    PlayerSession,
     Playthrough,
 )
 
@@ -419,14 +420,20 @@ def test_the_replay_counts_the_shadow_table_as_its_projection(owned_library):
     shadow = f"{live}{SHADOW_SUFFIX}"
     run_live = Playthrough._meta.db_table
     run_shadow = f"{run_live}{SHADOW_SUFFIX}"
+    #: The seed writes no session, so this table's shadow is never
+    #: written and names no statement at all; its swap still runs.
+    session_live = PlayerSession._meta.db_table
+    session_shadow = f"{session_live}{SHADOW_SUFFIX}"
     assert replay.statements_per_table[shadow] == 10
     assert replay.statements_per_table[run_shadow] == 10
-    #: Both shadows, and both swaps beside them.
+    #: Every shadow, and every swap beside it.
     assert replay.projection_statements == (
         replay.statements_per_table[shadow]
         + replay.statements_per_table[live]
         + replay.statements_per_table[run_shadow]
         + replay.statements_per_table[run_live]
+        + replay.statements_per_table.get(session_shadow, 0)
+        + replay.statements_per_table[session_live]
     )
 
 
@@ -627,6 +634,7 @@ def test_a_seeded_library_rebuilds_both_tables_with_no_row_differing(owned_libra
         for table in report.tables
     ] == [
         ("games_playergame", 0, 0, 0),
+        ("games_playersession", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
     ]
 

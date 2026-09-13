@@ -68,16 +68,22 @@ Generated-column tests (`refresh_from_db()` after each write):
 
 ```python
 def test_a_timed_row_takes_its_day_from_its_zone(owned_library, run):
-    session = _timed(run, started_at=datetime(2026, 1, 1, 23, 30, tzinfo=UTC),
-                     day_zone="Europe/Prague")
+    session = _timed(
+        run,
+        started_at=datetime(2026, 1, 1, 23, 30, tzinfo=UTC),
+        day_zone="Europe/Prague",
+    )
     session.refresh_from_db()
     assert session.effective_day == date(2026, 1, 2)
     assert session.sort_instant == datetime(2026, 1, 1, 23, 30, tzinfo=UTC)
 
 
 def test_restating_the_zone_moves_the_day(owned_library, run):
-    session = _timed(run, started_at=datetime(2026, 1, 1, 23, 30, tzinfo=UTC),
-                     day_zone="Europe/Prague")
+    session = _timed(
+        run,
+        started_at=datetime(2026, 1, 1, 23, 30, tzinfo=UTC),
+        day_zone="Europe/Prague",
+    )
     PlayerSession.objects.filter(pk=session.pk).update(day_zone="UTC")
     session.refresh_from_db()
     assert session.effective_day == date(2026, 1, 1)
@@ -431,10 +437,12 @@ Plus:
 ```python
 def test_a_retry_of_one_statement_appends_nothing_more(owned_library, run):
     command = CreateSession(playthrough_id=run.pk, timing=_timed())
-    first = dispatch(command, library=owned_library, actor=owned_library.user,
-                     idempotency_key="k")
-    second = dispatch(command, library=owned_library, actor=owned_library.user,
-                      idempotency_key="k")
+    first = dispatch(
+        command, library=owned_library, actor=owned_library.user, idempotency_key="k"
+    )
+    second = dispatch(
+        command, library=owned_library, actor=owned_library.user, idempotency_key="k"
+    )
     assert second.outcome is CommandOutcome.REPLAYED
     assert LibraryEvent.objects.filter(library=owned_library).count() == 1
 ```
