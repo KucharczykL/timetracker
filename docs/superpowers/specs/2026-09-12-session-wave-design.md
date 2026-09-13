@@ -217,9 +217,10 @@ The conversion is the one place a run is chosen by rule, because there is no
 person to ask. Two rules, and **both amend the charter**:
 
 1. **A sole live ordinary run wins regardless of dates.** The charter buckets a
-   Session "outside the only interval"; 164 production sessions in UTC, and
-   113 in Europe/Prague, are outside their sole run's interval, and bucketing them would put a game's entire
-   history in a sorting tray because #1038 dated its one run from a status day.
+   Session "outside the only interval"; 164 production sessions in UTC, and 113
+   in Europe/Prague, are outside their sole run's interval, and bucketing them
+   would put a game's entire history in a sorting tray because #1038 dated its
+   one run from a status day.
 2. **An undated run does not claim containment.** Read as `(-∞, +∞)`, a run
    with no stated endpoint contains everything and manufactures ambiguity on
    contact — which is the *only* thing that produced ambiguity in production.
@@ -341,11 +342,13 @@ any time after #689.
 
 ### #699 — the preflight census
 
-A read-only management command over legacy `Session` rows, appending no event
-and writing no row. Per library it reports: the count in each timing mode under
-the classification rule, the assignment outcome in three buckets (sole run,
-contained, ambiguous), games whose sessions would need a bucket, and rows no
-mode can hold.
+Delivered as `make preflight-sessions`, over
+`games/preflight/session.py`. A read-only management command over legacy
+`Session` rows, appending no event and writing no row. Per library it reports:
+a timing verdict per row, the assignment outcome in three buckets (sole run,
+contained, bucket), games whose sessions would need a bucket, the rows no mode
+converts, and the day-zone delta. Every count is taken in both candidate zones,
+side by side.
 
 It gates nothing. This review stated a block on that last category — a
 negative elapsed interval — and #699 reports it as a count instead: production
@@ -358,6 +361,12 @@ reason stated above.
 forbids a negative `duration_manual` either, and reports the third assignment
 outcome as the **bucket** — a broader word than "ambiguous", since a game with
 no live ordinary run at all reaches it too.
+
+`classify_timing` and `assign_run` are the deliverable #700 imports, so the
+report and the conversion can never name one row differently. The six verdicts
+it states are `timed`, `duration_only` and `corrected` — the modes #689 admits
+— beside `negative_elapsed`, `negative_manual` and `running`, which no mode
+holds and #700 refuses.
 
 Follows #686's shape.
 
@@ -533,10 +542,16 @@ registry if a later wave wants one.
 Replay parity for the projections, statistics parity against the legacy reads,
 and determinism of replay under a stated zone.
 
-Statistics parity is a **strict equality** gate, which is what seeding
-`day_zone` from `settings.TIME_ZONE` buys: every figure on the stats page, the
-navbar, the Game list and Game detail is equal before and after, on restored
-production data.
+Statistics parity is a **strict equality** gate: every figure on the stats
+page, the navbar, the Game list and Game detail is equal before and after, on
+restored production data.
+
+Which seeding buys that equality is #689's open question, not this gate's
+assumption. Today's reads group days in the viewer's display zone, so seeding
+`day_zone` from it holds every figure still, while seeding from
+`settings.TIME_ZONE` moves 124 sessions to another day, 10 to another month and
+5 to another year — and this gate would fail by exactly that amount. #704
+states the zone each of its figures was measured in.
 
 The performance gate states a **budget** rather than a verdict. It names a
 per-read threshold measured on restored production data for the reads that grow
@@ -631,9 +646,10 @@ longest, or streaks, so no Session-derived statistic changes shape.
 ### The Journal keeps its own day rules
 
 #748 rebuilds Journal day projections when the display zone changes; that
-mechanism stays the Journal's. This wave stores a day computed in
-`settings.TIME_ZONE` and ships no restatement path, because nothing here
-changes zone. The deferred display-zone issue below is where the two meet.
+mechanism stays the Journal's. This wave stores a day computed in one stated
+zone and ships no restatement path, because nothing here changes zone. Which
+zone that is belongs to #689, above. The deferred display-zone issue below is
+where the two meet.
 
 The Journal's stated day rules already match this model's columns exactly — a
 Duration-only Session takes its written calendar day without conversion, a
@@ -746,20 +762,21 @@ Amended in the charter, on the evidence of the production census:
   running sessions
 - the separate mode and provenance vocabularies, collapsed to one word on a
   Session
-- the assignment rule, twice: a sole run wins regardless of dates (113 sessions
-  sit outside their sole run's interval), and an undated run does not claim
-  containment (without which every ambiguous row in production is an artifact
-  and the bucket holds ten instead of two)
+- the assignment rule, twice: a sole run wins regardless of dates (164 sessions
+  in UTC, 113 in Europe/Prague, sit outside their sole run's interval), and an
+  undated run does not claim containment (without which every ambiguous row in
+  production is an artifact and the bucket holds ten instead of two)
 
 ## Follow-up issues to file
 
-- **Group days in the viewer's display zone.** This wave seeds `day_zone` from
-  `settings.TIME_ZONE` so parity stays strict. Moving to the per-user display
-  zone moves 124 sessions to a different day, 10 to a different month and 5 to
-  a different year, and owns the restatement path — an `UPDATE` of `day_zone`
-  per library — alongside #748's Journal rebuild. It also owes a reconciliation
-  with #1033's `ActivityClock`, which makes the zone a read parameter two
-  readers may not disagree about.
+- **Restate a library's days when its display zone changes.** Whichever zone
+  #689 seeds `day_zone` from, a person who changes their display zone
+  afterwards moves their own days: 124 sessions to a different day, 10 to a
+  different month and 5 to a different year, measured on the one production
+  library. This issue owns the restatement path — an `UPDATE` of `day_zone` per
+  library — alongside #748's Journal rebuild, and owes a reconciliation with
+  #1033's `ActivityClock`, which makes the zone a read parameter two readers
+  may not disagree about.
 - **Bulk move before the organizer, or accept the gap.** Between #694 and
   #714 a run with many sessions cannot be removed without moving each session
   by hand.
