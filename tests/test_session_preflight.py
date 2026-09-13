@@ -1,12 +1,20 @@
 """What the legacy Session census reports."""
 
+import uuid
+from dataclasses import fields
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
 
 from games.models import Session
-from games.preflight.session import TimingVerdict, classify_timing
+from games.preflight.session import (
+    NO_COUNTS,
+    PreflightCounts,
+    Samples,
+    TimingVerdict,
+    classify_timing,
+)
 
 UTC = ZoneInfo("UTC")
 START = datetime(2024, 3, 1, 10, 0, tzinfo=UTC)
@@ -74,3 +82,36 @@ def test_a_null_manual_duration_leaves_a_timed_row_timed():
 @pytest.mark.parametrize("verdict", list(TimingVerdict))
 def test_every_verdict_spells_its_own_name(verdict: TimingVerdict):
     assert verdict.value == verdict.name.lower()
+
+
+def test_counts_sum_field_by_field():
+    left = PreflightCounts(sessions_in_scope=3, timed=2, day_differs=1)
+    right = PreflightCounts(sessions_in_scope=4, timed=1, sole_run=5)
+    assert left + right == PreflightCounts(
+        sessions_in_scope=7, timed=3, day_differs=1, sole_run=5
+    )
+
+
+def test_the_empty_counts_are_an_identity():
+    populated = PreflightCounts(sessions_in_scope=9, bucket_primary=2)
+    assert populated + NO_COUNTS == populated
+    assert NO_COUNTS + populated == populated
+
+
+def test_counts_render_every_field():
+    rendered = PreflightCounts(timed=1).as_dict()
+    assert set(rendered) == {field.name for field in fields(PreflightCounts)}
+    assert rendered["timed"] == 1
+
+
+def test_every_verdict_has_a_count_named_after_it():
+    names = {field.name for field in fields(PreflightCounts)}
+    assert {verdict.value for verdict in TimingVerdict} <= names
+
+
+def test_samples_render_as_strings():
+    identifier = uuid.uuid4()
+    rendered = Samples(running=(identifier,)).as_dict()
+    assert rendered["running"] == [str(identifier)]
+    assert rendered["bucket_primary"] == []
+    assert set(rendered) == {field.name for field in fields(Samples)}
