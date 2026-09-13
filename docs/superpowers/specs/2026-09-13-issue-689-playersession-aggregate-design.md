@@ -203,6 +203,9 @@ sort_instant timestamptz GENERATED ALWAYS AS
 
 The explicit `::timestamp` is load-bearing: `date AT TIME ZONE 'UTC'` resolves
 through the STABLE `date → timestamptz` cast and PostgreSQL refuses the column.
+Django's `Cast(..., DateTimeField())` asks for `timestamptz` and hits exactly
+that, so the expression states the naive cast itself, through a one-line `Func`
+subclass beside the model.
 
 It exists because ordering is not day-grained. `recent_session_resumes` keys on
 `(timestamp_start, id)` and the session list sorts on the instant; keying on
@@ -214,7 +217,7 @@ a real instant; it is the total, non-null key `keyset_pages` requires.
 
 ### The constraints
 
-Eight, each named for what it refuses. They exist because the migration is the
+Nine, each named for what it refuses. They exist because the migration is the
 code most likely to write an impossible row, and it runs once over years of
 data.
 
@@ -236,14 +239,19 @@ data.
    `started_at` is stated, and `ended_at_zone` is null unless `ended_at` is. The
    review found the design without this one admits a Timed row carrying an end
    zone and no end.
-8. `playersession_effective_day_stated` — `effective_day` is not null. It reads
+8. `playersession_zone_not_blank` — neither endpoint zone is the empty string.
+   An empty string is not a zone, and NULL already means unset.
+9. `playersession_effective_day_stated` — `effective_day` is not null. It reads
    a generated column, which PostgreSQL permits and refuses on write. It is the
    backstop: any hole the others leave arrives here as a row with no day, and
    every day-grained read keys on this column.
 
-A blank zone is refused in 2, 3, 4 and 7 (`~Q(day_zone="")` and the same for
-both endpoint zones): an empty string is not a zone, and NULL already means
-unset.
+**`day_zone` is deliberately absent from 8, because no constraint can reach it.**
+A generated column is computed before any constraint runs, so a blank or unknown
+`day_zone` answers `DataError: time zone "" not recognized` while `effective_day`
+is being generated — measured, not assumed. That error is in none of
+`answers.py`'s registries, so the command refusing an unknown zone is not belt
+and braces here; it is the only thing standing between a person and a 500.
 
 **The database admits a superset of what the command admits, never the
 reverse.** A CHECK stricter than the command turns a forgotten refusal into an
@@ -427,7 +435,10 @@ Refusals, each with both sentences:
   zero-duration Duration-only row would let the command and the classifier name
   one row two ways
 - an endpoint zone stated without its instant
-- a naive datetime
+- a naive datetime. This one is refused in `__post_init__`, before the
+  fingerprint: dispatch fingerprints a command's input before building it, and a
+  naive datetime has no canonical form there, so a refusal inside `build` would
+  never run and the person would meet a `TypeError` instead
 - a zone name that either tzdata does not know
 
 That last one needs both checks. `zone_or_none` reads Python's `zoneinfo` and
