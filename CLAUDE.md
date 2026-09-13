@@ -266,11 +266,13 @@ docs/           — Additional documentation
   clock stood, NULL where nobody stated; `day_zone` is zone *library* counts
   days in, seeded from viewer's display zone, NULL exactly on Duration-only row
   whose day no zone converts. No CHECK can reach blank or unknown `day_zone` —
-  generated column computes before any constraint, so it answers `DataError`
-  that `answers.py` maps nowhere, which is why `CreateSession` refuses zone
-  neither Python's nor PostgreSQL's tzdata knows. Database admits **superset**
-  of what command admits, never reverse: CHECK stricter than command turns
-  forgotten refusal into 500 after stream head is locked.
+  generated column computes before any constraint, so it answers `DataError`,
+  which is why `CreateSession` refuses zone neither Python's nor PostgreSQL's
+  tzdata knows. Database admits **superset** of what command admits, never
+  reverse: CHECK stricter than command turns forgotten refusal into defect
+  reached after stream head is locked, and `answered()`'s backstop can only
+  say nothing was saved — never sentence naming what person should state
+  instead.
   `alive()` reads run's mark and tracked game's, **not** catalog game's:
   `blocking_referrer` reads `alive()` to refuse removing run sessions name, and
   catalog mark there would hide them from that check. Read layer states that
@@ -813,8 +815,16 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   carrying sentence and status code; `CommandNotPermitted` becomes `Http404`, which
   view lets rise; unmapped conflict re-raised as itself rather than given sentence
   that might be wrong. New conflict type goes in `CONFLICT_ANSWERS`,
-  `ANSWERED_DIRECTLY` or `NOT_ANSWERED`, or `tests/test_command_answers.py` fails.
-  Never translate one at call site.
+  `ANSWERED_DIRECTLY` or `NOT_ANSWERED`, or `tests/test_command_answers.py` fails,
+  which walks every module whose exceptions reach boundary — `vocabulary`,
+  `references`, `envelope` and `projection` beside dispatch's own. Never
+  translate one at call site.
+- **Database refusal is backstop, not path** — `answered()` catches every
+  `django.db.Error`, logs constraint name and failing row, and answers
+  `REFUSED_BY_DATABASE` with status 500, because transaction rolled back and
+  nothing was recorded. It is there so forgotten refusal is sentence rather than
+  traceback; it is not licence to let schema do refusing. Every rule person can
+  act on belongs in command, which alone can say *what to state instead*.
 - **A rejection carries two sentences** — `raise CommandRejected(message,
   sentence=…)`. Argument explains refusal to whoever reads log or traceback and may
   name id or issue; `sentence` is only thing person shown. Boundary never reads

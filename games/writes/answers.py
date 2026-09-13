@@ -9,6 +9,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import NamedTuple
 
+from django.db import Error as DatabaseRefusal
 from django.http import Http404
 
 from games.events.append import (
@@ -18,8 +19,22 @@ from games.events.append import (
 )
 from games.events.conflicts import CommandConflict
 from games.events.dispatch import CommandNotPermitted, CommandRejected
+from games.events.envelope import DeferredRowRefused
 from games.events.idempotency import IdempotencyKeyMismatch
+from games.events.projection import ProjectionRowMissing
+from games.events.references import (
+    ReferenceFieldUnsupported,
+    UnknownReferenceKind,
+    UnmappedReferenceModel,
+)
 from games.events.retry import NestedTransactionNotSupported, RetryBudgetExhausted
+from games.events.vocabulary import (
+    EventNameInvalid,
+    PayloadInvalid,
+    SchemaNotConfigured,
+    UnregisteredEventType,
+    VersionNotUpcastable,
+)
 
 logger = logging.getLogger("games")
 
@@ -27,6 +42,10 @@ logger = logging.getLogger("games")
 type SubjectNoun = str  # e.g. "game"
 
 CONFLICT_STATUS = 409
+
+#: What a defect of ours answers with. Not 409: nothing the person
+#: stated was wrong, and no retry of it can succeed.
+DEFECT_STATUS = 500
 
 
 class CommandFailed(Exception):
@@ -56,6 +75,16 @@ _COLLIDED = (
 #: What a rejection that states no sentence of its own says.
 REFUSED = "This {subject} cannot take that change. Reload the page and try again."
 
+#: What a database refusal says. Every command admits a subset of what
+#: the schema does, so a constraint that fires is a refusal the command
+#: forgot -- a defect, reached after the stream head was locked. The
+#: person is told nothing was recorded; the constraint name and the
+#: failing row go to the log, where they are worth reading.
+REFUSED_BY_DATABASE = (
+    "This {subject} could not be recorded. Nothing was saved, and the "
+    "problem has been reported."
+)
+
 #: Not clauses: a test reads a mapping.
 CONFLICT_ANSWERS: dict[type[CommandConflict], ConflictAnswer] = {
     RetryBudgetExhausted: ConflictAnswer(_COLLIDED, CONFLICT_STATUS),
@@ -72,9 +101,25 @@ ANSWERED_DIRECTLY: frozenset[type[Exception]] = frozenset(
     {CommandNotPermitted, CommandRejected}
 )
 
-#: Defects in the program, not conflicts.
+#: Defects in the program, not conflicts. Each one means a command
+#: built something the boundary cannot carry, so there is no sentence
+#: to write: nothing the person states differently would change it.
 NOT_ANSWERED: frozenset[type[Exception]] = frozenset(
-    {NestedTransactionNotSupported, TransactionRequired, PayloadNotCanonical}
+    {
+        NestedTransactionNotSupported,
+        TransactionRequired,
+        PayloadNotCanonical,
+        DeferredRowRefused,
+        ProjectionRowMissing,
+        ReferenceFieldUnsupported,
+        UnknownReferenceKind,
+        UnmappedReferenceModel,
+        EventNameInvalid,
+        PayloadInvalid,
+        SchemaNotConfigured,
+        UnregisteredEventType,
+        VersionNotUpcastable,
+    }
 )
 
 
@@ -115,3 +160,17 @@ def answered(subject: SubjectNoun) -> Iterator[None]:
             logger.warning("[answers]: a rejection stated no sentence: %s", error)
         sentence = error.sentence or REFUSED.format(subject=subject)
         raise CommandFailed(sentence, CONFLICT_STATUS) from error
+    except DatabaseRefusal as error:
+        #: The backstop, never the path a refusal should take. Caught
+        #: here rather than deeper because dispatch owns the
+        #: transaction and has already rolled it back: nothing was
+        #: recorded, whichever of the errors this was.
+        #:
+        #: The text PostgreSQL wrote names a constraint and prints the
+        #: failing row, so it is logged and never shown.
+        logger.exception(
+            "[answers]: the database refused a %s a command admitted.", subject
+        )
+        raise CommandFailed(
+            REFUSED_BY_DATABASE.format(subject=subject), DEFECT_STATUS
+        ) from error
