@@ -28,6 +28,7 @@ from games.models import (
     PlayerSessionTimingMode,
     Playthrough,
 )
+from games.writes.answers import CommandFailed, answered
 
 pytestmark = [pytest.mark.untracked_games, pytest.mark.django_db(transaction=True)]
 
@@ -381,3 +382,40 @@ def test_it_never_answers_unchanged(owned_user, owned_library, run):
         assert result.outcome is CommandOutcome.APPENDED
 
     assert PlayerSession.objects.count() == 2
+
+
+def test_a_refusal_the_command_forgot_reaches_a_person_as_a_sentence(
+    owned_user, owned_library, run, monkeypatch, capture_games_logger
+):
+    """The backstop, exercised through the real stack.
+
+    Every CHECK here is stricter than nothing and looser than the
+    command, so reaching one means a guard is missing. Removing the
+    duration guard is how that is staged: the database refuses the row
+    inside the append, and `answered` turns the IntegrityError into a
+    sentence instead of letting it rise as a 500.
+    """
+    monkeypatch.setattr(CreateSession, "_check_duration", staticmethod(lambda _: None))
+
+    with (
+        capture_games_logger() as caplog,
+        pytest.raises(CommandFailed) as failure,
+        answered("session"),
+    ):
+        dispatch(
+            CreateSession(
+                playthrough_id=run.pk, timing=a_duration_only(duration=-timedelta(1))
+            ),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key=str(uuid.uuid7()),
+        )
+
+    assert failure.value.status_code == 500
+    assert "playersession_duration_not_negative" not in failure.value.message
+    #: Nothing was recorded: the append rolled back with it.
+    assert not PlayerSession.objects.exists()
+    assert not LibraryEvent.objects.filter(
+        event_type="library.playersession.created"
+    ).exists()
+    assert "playersession_duration_not_negative" in caplog.text

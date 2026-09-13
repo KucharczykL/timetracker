@@ -112,10 +112,10 @@ The rebuild's diff compares whole rows, so a column changed outside the
 projector is drift forever: `rebuild_projections --check` reports it, and
 `swap_in` reverts it.
 
-This binds the follow-up the wave files — restating a library's days when its
-display zone changes. That restatement **is an act and needs an event**; it is
-not a bulk `UPDATE`. Whether the event is one per session or one library-scoped
-event the projector fans out over the library's rows is the follow-up's
+This binds the follow-up the wave files, #1054 — restating a library's days when
+its display zone changes. That restatement **is an act and needs an event**; it
+is not a bulk `UPDATE`. Whether the event is one per session or one
+library-scoped event the projector fans out over the library's rows is #1054's
 decision; that it is an event is this issue's, because a `day_zone` written by
 2,807 frozen events cannot be moved any other way.
 
@@ -249,14 +249,16 @@ data.
 **`day_zone` is deliberately absent from 8, because no constraint can reach it.**
 A generated column is computed before any constraint runs, so a blank or unknown
 `day_zone` answers `DataError: time zone "" not recognized` while `effective_day`
-is being generated — measured, not assumed. That error is in none of
-`answers.py`'s registries, so the command refusing an unknown zone is not belt
-and braces here; it is the only thing standing between a person and a 500.
+is being generated — measured, not assumed. `answered()` now catches that error
+as a defect and says only that nothing was saved, so the command refusing an
+unknown zone is still the only thing that can tell a person *which* zone was
+wrong.
 
 **The database admits a superset of what the command admits, never the
 reverse.** A CHECK stricter than the command turns a forgotten refusal into an
-`IntegrityError` — which `games/writes/answers.py` maps nowhere, so it escapes
-`answered()` as a 500 after the stream head is locked. That is why constraint 6
+`IntegrityError`, raised after the stream head is locked, which
+`games/writes/answers.py` can only answer with "nothing was saved". That is why
+constraint 6
 stops at "not negative" while the command refuses a sub-second duration and a
 zero-duration Duration-only row: those rules can tighten and relax without a
 migration, and their failure mode is a sentence rather than a traceback.
@@ -558,14 +560,14 @@ on its own like any other issue.
   so `ActivityClock.zone` no longer changes the day a session lands on. The
   clock's comparison has to be stated against the same zone, and
   `default_activity_clock()`'s UTC is the thing that moves.
-- **The deferred zone-restatement issue** ships an event, not an `UPDATE`.
-- **`answers.py` classifies no database error.** `PayloadInvalid` is raised
-  inside `append`, and `tests/test_command_answers.py` walks only
-  `conflicts`, `dispatch`, `retry`, `idempotency` and `append` — not
-  `games.events.vocabulary` — so it cannot notice. `CreateSession` reaches
-  none of these today, because it emits canonical text itself and refuses the
-  inputs the database would refuse; every later writer of this payload is the
-  reason to close it.
+- **#1054, the zone-restatement issue**, ships an event, not an `UPDATE`.
+- **`answers.py` classifies no database error.** Closed after this wave:
+  `answered()` catches every `django.db.Error` as a defect, logging the
+  constraint name and answering `REFUSED_BY_DATABASE` with status 500, and
+  the completeness guard now walks `vocabulary`, `references`, `envelope` and
+  `projection` as well. The backstop writes no sentence a person can act on,
+  so the rule above is unchanged: every refusal a person can do something
+  about belongs in the command.
 
 ## Verification
 

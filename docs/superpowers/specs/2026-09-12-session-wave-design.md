@@ -426,8 +426,8 @@ what it settled, and what the rest of this wave inherits:
   name as `playergame` and `playthrough` do.
 - **No CHECK can guard `day_zone`.** A generated column is computed before any
   constraint, so a blank or unknown zone answers `DataError`, which
-  `answers.py` maps nowhere; the command refusing an unknown zone is the only
-  guard. It validates against `pg_timezone_names` as well as `zoneinfo`,
+  `answers.py` can only answer with "nothing was saved"; the command refusing
+  an unknown zone is the only guard that can name the zone. It validates against `pg_timezone_names` as well as `zoneinfo`,
   because the two tzdata sets arrive in different images.
 - **`alive()` reads two ancestor marks**, not the catalog game's: a catalog
   mark would hide sessions from `blocking_referrer` and make a run with live

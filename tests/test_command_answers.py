@@ -4,6 +4,7 @@ import importlib
 import pkgutil
 
 import pytest
+from django.db import DataError, IntegrityError
 from django.http import Http404
 
 from games.events.append import StreamSequenceMismatch
@@ -14,8 +15,10 @@ from games.events.retry import RetryBudgetExhausted
 from games.writes.answers import (
     ANSWERED_DIRECTLY,
     CONFLICT_ANSWERS,
+    DEFECT_STATUS,
     NOT_ANSWERED,
     REFUSED,
+    REFUSED_BY_DATABASE,
     CommandFailed,
     answer_for,
     answered,
@@ -56,7 +59,7 @@ def test_the_subject_noun_reaches_the_sentence():
 def test_every_sentence_interpolates_and_leaves_no_brace():
     #: A mistyped placeholder fails here, not later.
     sentences = [answer.sentence for answer in CONFLICT_ANSWERS.values()]
-    for sentence in [*sentences, REFUSED]:
+    for sentence in [*sentences, REFUSED, REFUSED_BY_DATABASE]:
         rendered = sentence.format(subject="probe")
         assert "{" not in rendered and "}" not in rendered
 
@@ -140,6 +143,58 @@ def test_nothing_raised_is_nothing_answered():
         pass
 
 
+#: What PostgreSQL says, which names a constraint and the row that hit it.
+_FROM_POSTGRESQL = (
+    'new row for relation "games_playersession" violates check constraint '
+    '"playersession_duration_not_negative"\nDETAIL: Failing row contains '
+    "(0192f3d4-0000-7000-8000-000000000000, -3600)."
+)
+
+
+@pytest.mark.parametrize("refusal", [IntegrityError, DataError])
+def test_a_database_refusal_becomes_an_answer(refusal):
+    """The backstop under every command that forgot a refusal."""
+    with pytest.raises(CommandFailed) as failure, answered("session"):
+        raise refusal(_FROM_POSTGRESQL)
+
+    assert failure.value.status_code == DEFECT_STATUS
+    assert failure.value.message == REFUSED_BY_DATABASE.format(subject="session")
+
+
+def test_a_database_refusal_says_nothing_of_the_schema():
+    #: A person is shown no constraint name and no failing row.
+    with pytest.raises(CommandFailed) as failure, answered("session"):
+        raise IntegrityError(_FROM_POSTGRESQL)
+
+    assert "playersession_duration_not_negative" not in failure.value.message
+    assert "0192f3d4" not in failure.value.message
+
+
+def test_a_database_refusal_is_logged_where_it_helps(capture_games_logger):
+    """Answered civilly, recorded as the defect it is."""
+    with (
+        capture_games_logger() as caplog,
+        pytest.raises(CommandFailed),
+        answered("session"),
+    ):
+        raise IntegrityError(_FROM_POSTGRESQL)
+
+    assert "playersession_duration_not_negative" in caplog.text
+    assert caplog.records[-1].levelname == "ERROR"
+    #: The traceback, not just the sentence.
+    assert caplog.records[-1].exc_info is not None
+
+
+def test_a_connection_failure_is_answered_too():
+    """Every django.db.Error rolled the transaction back."""
+    from django.db import InterfaceError
+
+    with pytest.raises(CommandFailed) as failure, answered("session"):
+        raise InterfaceError("connection already closed")
+
+    assert failure.value.status_code == DEFECT_STATUS
+
+
 def _import_every_games_module() -> None:
     """__subclasses__ sees a class only once imported."""
     import games
@@ -188,9 +243,33 @@ def test_every_boundary_exception_is_classified():
 
     CommandNotPermitted and CommandRejected are that shape already.
     """
-    from games.events import append, conflicts, dispatch, idempotency, retry
+    from games.events import (
+        append,
+        conflicts,
+        dispatch,
+        envelope,
+        idempotency,
+        projection,
+        references,
+        retry,
+        vocabulary,
+    )
 
-    boundary = (conflicts, dispatch, retry, idempotency, append)
+    #: Every module whose exceptions can reach `answered()`: dispatch
+    #: validates a payload, resolves references and projects rows before
+    #: it returns. The rebuild path (replay, reconcile, rebuild) is not
+    #: here, because nothing wraps it in an answer.
+    boundary = (
+        conflicts,
+        dispatch,
+        retry,
+        idempotency,
+        append,
+        vocabulary,
+        references,
+        envelope,
+        projection,
+    )
     #: The base is answered through its leaves.
     classified = set(CONFLICT_ANSWERS) | ANSWERED_DIRECTLY | NOT_ANSWERED
     classified.add(CommandConflict)
