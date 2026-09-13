@@ -166,18 +166,28 @@ display-timezone date of exact `timestamp_start`". That is the `COALESCE`
 above, and a CHECK forbids `stated_day` on a Timed or Corrected row so the
 branch is never ambiguous.
 
-**`day_zone` is seeded from `settings.TIME_ZONE`, not from the viewer's display
-zone.** Production runs `TIME_ZONE=UTC`, and every day-grained read today —
-`TruncDate`, `TruncMonth`, `timestamp_start__year`, the navbar's midnight
-range, the `__date` filter lookups — groups in it. The display zone is a
-per-*user* preference (`games_userpreferences.display_time_zone`, resolved as
-`DISPLAY_TIME_ZONE`), and grouping by it instead is a **visible statistics
-change**, not re-plumbing: measured on production, 124 sessions fall on a
-different day, 10 in a different month, and 5 in a different **year**.
+**Which zone seeds `day_zone` is open, and #689 decides it.** This review
+stated that it is seeded from `settings.TIME_ZONE` because "every day-grained
+read today groups in it". [#699's
+census](2026-09-12-issue-699-session-preflight-design.md) checked that premise
+against the code and it is false: `TimezoneActivationMiddleware`
+(`common/middleware.py:37`, installed at `timetracker/settings.py:102`) wraps
+every request in `timezone.override(DISPLAY_TIME_ZONE)`, so `TruncDate`,
+`TruncMonth`, `timestamp_start__year`, the navbar's midnight range and the
+`__date` filter lookups all group in the **viewer's** zone. Production's one
+user holds `display_time_zone = Europe/Prague` while `TIME_ZONE` resolves to
+`UTC`.
 
-Seeding from `TIME_ZONE` keeps #704 a strict equality gate. Moving day
-grouping to the viewer's zone is deferred to its own issue, where the delta is
-the deliverable rather than a surprise, and where it can be reconciled with the
+The delta between those two zones, measured on production, is 124 sessions on
+a different day, 10 in a different month, and 5 in a different **year** — so
+seeding from `TIME_ZONE` *moves* that many rows rather than holding them
+still, and #704's strict-equality gate would fail by exactly that. Seeding
+from the display zone holds today's grouping still and makes the zone a
+per-viewer fact the row cannot carry alone. #689 states the choice and its
+reason; #699 reports both and takes no position. Moving day grouping to the
+viewer's zone as a *change* is deferred to its own issue only if #689 does not
+already seed it there, and there the delta is the deliverable rather than a
+surprise, and where it can be reconciled with the
 precedent #1033 set three issues ago — an `ActivityClock` the read states,
 which `annotated_for_filtering` forbids two readers from disagreeing about.
 That issue also owns the restatement mechanism: an `UPDATE` of `day_zone` over
@@ -207,23 +217,24 @@ The conversion is the one place a run is chosen by rule, because there is no
 person to ask. Two rules, and **both amend the charter**:
 
 1. **A sole live ordinary run wins regardless of dates.** The charter buckets a
-   Session "outside the only interval"; 113 production sessions are outside
-   their sole run's interval, and bucketing them would put a game's entire
+   Session "outside the only interval"; 164 production sessions in UTC, and
+   113 in Europe/Prague, are outside their sole run's interval, and bucketing them would put a game's entire
    history in a sorting tray because #1038 dated its one run from a status day.
 2. **An undated run does not claim containment.** Read as `(-∞, +∞)`, a run
    with no stated endpoint contains everything and manufactures ambiguity on
    contact — which is the *only* thing that produced ambiguity in production.
 
-Measured outcome on the real library, in UTC:
+Measured outcome on the real library. The split moves with the zone the day
+is read in, so both candidates are named:
 
-| population | rows | lands |
-|---|---|---|
-| sessions on games with one live ordinary run | 2,743 | that run |
-| on the 8 multi-run games, exactly one dated run contains the day | 60 | that run |
-| …no dated run contains it | 2 | the bucket |
-| …more than one dated run contains it | 0 | the bucket |
+| population | UTC | Europe/Prague | lands |
+|---|---|---|---|
+| sessions on games with one live ordinary run | 2,743 | 2,743 | that run |
+| on the 8 multi-run games, exactly one dated run contains the day | 60 | 61 | that run |
+| …no dated run contains it | 2 | 1 | the bucket |
+| …more than one dated run contains it | 0 | 0 | the bucket |
 
-The whole migration produces **one bucket holding two sessions**. Without rule
+The whole migration produces **one bucket holding one or two sessions**. Without rule
 2 the bucket holds ten and the containment rule is never genuinely exercised;
 without rule 1 it holds over a hundred. Note the consequence for #704: no
 production row arbitrates between two dated overlapping intervals, so that
@@ -336,9 +347,17 @@ the classification rule, the assignment outcome in three buckets (sole run,
 contained, ambiguous), games whose sessions would need a bucket, and rows no
 mode can hold.
 
-It blocks the cutover only on that last category — a negative elapsed interval,
-of which production has none. It does **not** block on a no-end row with a
-manual duration, for the reason stated above.
+It gates nothing. This review stated a block on that last category — a
+negative elapsed interval — and #699 reports it as a count instead: production
+holds none, it is the only database that will ever be converted, and #700
+refuses such a row at write time, which is where a refusal belongs. It
+certainly does **not** block on a no-end row with a manual duration, for the
+reason stated above.
+
+#699 also names two rows no mode can hold rather than one, because nothing
+forbids a negative `duration_manual` either, and reports the third assignment
+outcome as the **bucket** — a broader word than "ambiguous", since a game with
+no live ordinary run at all reaches it too.
 
 Follows #686's shape.
 
