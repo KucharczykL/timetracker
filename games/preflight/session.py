@@ -12,7 +12,7 @@ from dataclasses import dataclass, fields
 from datetime import date, timedelta
 from enum import StrEnum
 from itertools import batched
-from typing import NamedTuple
+from typing import NamedTuple, assert_never
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
@@ -32,9 +32,11 @@ from games.reads.playthrough_activity import activity_clock
 class TimingVerdict(StrEnum):
     """What one legacy row states about its time.
 
-    The first three are the modes #689 admits. The last
-    three are what no mode holds, named so a count can
-    show they are empty.
+    `timed`, `duration_only` and `corrected` are the modes
+    #689 admits, and `MODE_VERDICTS` names them. The other
+    three are what no mode holds, stated so a count can
+    show they are empty. The order here is the order the
+    rule tests, not the order the words divide in.
     """
 
     #: An end earlier than the start.
@@ -46,6 +48,12 @@ class TimingVerdict(StrEnum):
     CORRECTED = "corrected"
     #: A start alone, which is a session still open.
     RUNNING = "running"
+
+
+#: The three a timing mode can hold. #700 refuses the rest.
+MODE_VERDICTS = frozenset(
+    {TimingVerdict.TIMED, TimingVerdict.DURATION_ONLY, TimingVerdict.CORRECTED}
+)
 
 
 def classify_timing(session: Session) -> TimingVerdict:
@@ -74,7 +82,48 @@ def classify_timing(session: Session) -> TimingVerdict:
     return TimingVerdict.CORRECTED if manual > timedelta(0) else TimingVerdict.TIMED
 
 
-@dataclass(frozen=True, slots=True)
+def _verdict_field(verdict: TimingVerdict) -> str:
+    """The counts field one timing verdict adds to."""
+    match verdict:
+        case TimingVerdict.NEGATIVE_ELAPSED:
+            return "negative_elapsed"
+        case TimingVerdict.NEGATIVE_MANUAL:
+            return "negative_manual"
+        case TimingVerdict.TIMED:
+            return "timed"
+        case TimingVerdict.DURATION_ONLY:
+            return "duration_only"
+        case TimingVerdict.CORRECTED:
+            return "corrected"
+        case TimingVerdict.RUNNING:
+            return "running"
+    assert_never(verdict)
+
+
+class ZoneColumn(StrEnum):
+    """Which zone's column a count lands in."""
+
+    PRIMARY = "primary"
+    SECONDARY = "secondary"
+
+
+def _assignment_field(outcome: AssignmentOutcome, column: ZoneColumn) -> str:
+    """The counts field one assignment outcome adds to.
+
+    A sole run answers the same in both zones, so it names
+    one field rather than one per column.
+    """
+    match outcome:
+        case AssignmentOutcome.SOLE_RUN:
+            return "sole_run"
+        case AssignmentOutcome.CONTAINED:
+            return f"contained_{column.value}"
+        case AssignmentOutcome.BUCKET:
+            return f"bucket_{column.value}"
+    assert_never(outcome)
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
 class PreflightCounts:
     """What one library holds, summable into totals."""
 
@@ -180,6 +229,12 @@ def claims(interval: RunInterval, day: date) -> bool:
     side: a run started and never finished claims every
     day since. A run stating neither claims nothing, so it
     never draws a session in on emptiness alone.
+
+    Bounds that contradict each other claim nothing too,
+    and such a run is reachable: `endpoints_certainly_reversed`
+    admits a qualified endpoint. Its sessions reach the
+    bucket, which is the answer a person wants for a run
+    whose own dates disagree.
     """
     if interval.started_lower is None and interval.completed_upper is None:
         return False
@@ -203,8 +258,15 @@ class Assignment(NamedTuple):
 
     outcome: AssignmentOutcome
     run_id: uuid.UUID | None
-    #: Zero for a sole run, which consulted no interval.
-    claimers: int
+    #: None for a sole run, which consulted no interval.
+    #: Zero already means no run claimed the day, and one
+    #: number cannot state both.
+    claimers: int | None
+
+
+def _contested(assignment: Assignment) -> bool:
+    """Whether more than one run claimed the day."""
+    return assignment.claimers is not None and assignment.claimers > 1
 
 
 def assign_run(runs: Sequence[RunInterval], day: date) -> Assignment:
@@ -216,11 +278,18 @@ def assign_run(runs: Sequence[RunInterval], day: date) -> Assignment:
     choose, and two claimers choose nothing.
     """
     if len(runs) == 1:
-        return Assignment(AssignmentOutcome.SOLE_RUN, runs[0].run_id, 0)
+        return Assignment(AssignmentOutcome.SOLE_RUN, runs[0].run_id, None)
     claimers = [run for run in runs if claims(run, day)]
     if len(claimers) == 1:
         return Assignment(AssignmentOutcome.CONTAINED, claimers[0].run_id, 1)
     return Assignment(AssignmentOutcome.BUCKET, None, len(claimers))
+
+
+class ZoneNames(NamedTuple):
+    """The two zones as written, in the order read."""
+
+    primary: str
+    secondary: str
 
 
 class ZonePair(NamedTuple):
@@ -234,8 +303,8 @@ class ZonePair(NamedTuple):
     primary: ZoneInfo
     secondary: ZoneInfo
 
-    def names(self) -> tuple[str, str]:
-        return (str(self.primary), str(self.secondary))
+    def names(self) -> ZoneNames:
+        return ZoneNames(primary=str(self.primary), secondary=str(self.secondary))
 
 
 def report_zones(library: UserLibrary, override: ZoneInfo | None = None) -> ZonePair:
@@ -250,7 +319,7 @@ class LibraryPreflight:
 
     library_id: uuid.UUID
     username: str
-    zones: tuple[str, str]
+    zones: ZoneNames
     counts: PreflightCounts
     samples: Samples
 
@@ -278,6 +347,8 @@ def preflight_library(
     day_zone: ZoneInfo | None = None,
 ) -> LibraryPreflight:
     """One library's legacy sessions, read and counted."""
+    if sample_size < 0:
+        raise ValueError("A sample size counts identifiers, so it is not negative.")
     zones = report_zones(library, day_zone)
     counts = NO_COUNTS
     negative_elapsed: list[uuid.UUID] = []
@@ -355,7 +426,9 @@ def preflight_library(
                     committed_zone_stated=int(bool(session.timestamp_start_timezone)),
                 )
                 verdict = classify_timing(session)
-                counts = counts + PreflightCounts(**{verdict.value: 1})
+                counts = counts + PreflightCounts(**{_verdict_field(verdict): 1})
+                #: Every verdict is stated, so a seventh is a
+                #: type error here rather than a missing sample.
                 match verdict:
                     case TimingVerdict.NEGATIVE_ELAPSED:
                         negative_elapsed.append(session.pk)
@@ -363,7 +436,11 @@ def preflight_library(
                         negative_manual.append(session.pk)
                     case TimingVerdict.RUNNING:
                         running.append(session.pk)
-                    case _:
+                    case (
+                        TimingVerdict.TIMED
+                        | TimingVerdict.DURATION_ONLY
+                        | TimingVerdict.CORRECTED
+                    ):
                         pass
 
                 primary_day = session.timestamp_start.astimezone(zones.primary).date()
@@ -388,18 +465,18 @@ def preflight_library(
                     continue
                 counts = counts + PreflightCounts(
                     **{
-                        f"{primary.outcome.value}_primary": 1,
-                        f"{secondary.outcome.value}_secondary": 1,
+                        _assignment_field(primary.outcome, ZoneColumn.PRIMARY): 1,
+                        _assignment_field(secondary.outcome, ZoneColumn.SECONDARY): 1,
                     }
                 )
                 counts = counts + PreflightCounts(
-                    many_claimers_primary=int(primary.claimers > 1),
-                    many_claimers_secondary=int(secondary.claimers > 1),
+                    many_claimers_primary=int(_contested(primary)),
+                    many_claimers_secondary=int(_contested(secondary)),
                 )
                 if primary.outcome is AssignmentOutcome.BUCKET:
                     buckets_primary += 1
                     bucketed.append(session.pk)
-                    if primary.claimers > 1:
+                    if _contested(primary):
                         many_claimers.append(session.pk)
                 if secondary.outcome is AssignmentOutcome.BUCKET:
                     buckets_secondary += 1

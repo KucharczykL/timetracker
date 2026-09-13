@@ -26,6 +26,7 @@ from games.models import (
     Session,
     UserLibrary,
 )
+from games.preflight import session as session_module
 from games.preflight.session import (
     NO_COUNTS,
     AssignmentOutcome,
@@ -34,6 +35,8 @@ from games.preflight.session import (
     RunInterval,
     Samples,
     TimingVerdict,
+    ZoneColumn,
+    _assignment_field,
     assign_run,
     claims,
     classify_timing,
@@ -157,7 +160,8 @@ def test_a_sole_run_takes_the_session_however_far_outside_it_falls():
     assignment = assign_run([only], DAY)
     assert assignment.outcome is AssignmentOutcome.SOLE_RUN
     assert assignment.run_id == only.run_id
-    assert assignment.claimers == 0
+    #: Nothing was measured, which is not the same as nothing claiming.
+    assert assignment.claimers is None
 
 
 def test_a_sole_run_stating_no_day_still_takes_the_session():
@@ -595,3 +599,227 @@ def test_a_negative_sample_size_is_refused():
 def test_an_unknown_day_zone_is_refused():
     with pytest.raises(CommandError, match="Mars/Olympus"):
         run_command("--all-libraries", "--day-zone", "Mars/Olympus")
+
+
+# --- What the mutants reached ----------------------------------------------
+
+
+@pytest.mark.django_db
+def test_the_second_zone_defaults_to_the_library_display_zone(
+    owned_library, owned_user, owned_game, set_user_setting, settings
+):
+    """The finding this census carries: today's reads group in the viewer's zone."""
+    settings.TIME_ZONE = "UTC"
+    set_user_setting(owned_user, "DISPLAY_TIME_ZONE", "Europe/Prague")
+    game = owned_game()
+    play(game, datetime(2024, 3, 1, 23, 30, tzinfo=UTC))
+    report = census(owned_library)
+    assert report.zones == ("UTC", "Europe/Prague")
+    assert report.counts.day_differs == 1
+
+
+@pytest.mark.django_db
+def test_two_zones_that_agree_report_the_same_figures(
+    owned_library, owned_game, settings
+):
+    settings.TIME_ZONE = "UTC"
+    game = owned_game()
+    play(game, datetime(2024, 3, 1, 23, 30, tzinfo=UTC))
+    report = census(owned_library, day_zone=ZoneInfo("UTC"))
+    assert report.zones == ("UTC", "UTC")
+    assert report.counts.day_differs == 0
+    assert report.counts.contained_primary == report.counts.contained_secondary
+
+
+@pytest.mark.django_db
+def test_a_zone_behind_the_primary_moves_days_backward(
+    owned_library, owned_game, settings
+):
+    """The delta counts a difference, not a direction."""
+    settings.TIME_ZONE = "UTC"
+    game = owned_game()
+    play(game, datetime(2024, 3, 2, 0, 30, tzinfo=UTC))
+    play(game, datetime(2024, 4, 1, 0, 30, tzinfo=UTC))
+    play(game, datetime(2025, 1, 1, 0, 30, tzinfo=UTC))
+    play(game, datetime(2024, 6, 1, 10, 0, tzinfo=UTC))
+    counts = census(owned_library, day_zone=ZoneInfo("America/New_York")).counts
+    assert counts.day_differs == 3
+    assert counts.month_differs == 2
+    assert counts.year_differs == 1
+
+
+def second_run_for(library, game) -> Playthrough:
+    """One more ordinary run at that game."""
+    return Playthrough.objects.create(
+        pk=uuid.uuid7(),
+        library=library,
+        player_game=PlayerGame.objects.get(game=game),
+        kind=PlaythroughKind.ORDINARY,
+        created_at=timezone.now(),
+    )
+
+
+def date_run(run: Playthrough, started: date, completed: date) -> Playthrough:
+    """State both endpoints of a run."""
+    run.started = TemporalValue.from_day(started)
+    run.completed = TemporalValue.from_day(completed)
+    run.start_recorded_at = START
+    run.completion_recorded_at = START
+    run.save()
+    return run
+
+
+@pytest.mark.django_db
+def test_a_removed_run_leaves_its_game_holding_one(owned_library, owned_game):
+    game = owned_game()
+    stale = second_run_for(owned_library, game)
+    Playthrough.objects.filter(pk=stale.pk).update(removed_at=timezone.now())
+    play(game, START, end=START + timedelta(hours=1))
+    assert census(owned_library).counts.sole_run == 1
+
+
+@pytest.mark.django_db
+def test_a_run_of_another_kind_leaves_its_game_holding_one(owned_library, owned_game):
+    game = owned_game()
+    other = second_run_for(owned_library, game)
+    Playthrough.objects.filter(pk=other.pk).update(
+        kind=next(kind for kind in PlaythroughKind if kind != PlaythroughKind.ORDINARY)
+    )
+    play(game, START, end=START + timedelta(hours=1))
+    assert census(owned_library).counts.sole_run == 1
+
+
+@pytest.mark.django_db
+def test_a_day_inside_no_run_buckets_in_both_zones(owned_library, owned_game):
+    game = owned_game()
+    date_run(sole_run_of(game), date(2023, 1, 1), date(2023, 2, 1))
+    date_run(second_run_for(owned_library, game), date(2025, 1, 1), date(2025, 2, 1))
+    session = play(game, datetime(2024, 6, 1, 10, 0, tzinfo=UTC))
+    report = census(owned_library, day_zone=PRAGUE)
+    assert report.counts.bucket_primary == 1
+    assert report.counts.bucket_secondary == 1
+    assert report.counts.games_needing_bucket_primary == 1
+    assert report.samples.bucket_primary == (session.pk,)
+    assert report.samples.games_needing_bucket_primary == (game.pk,)
+
+
+@pytest.mark.django_db
+def test_two_runs_claiming_one_day_are_counted_as_contested(owned_library, owned_game):
+    game = owned_game()
+    date_run(sole_run_of(game), date(2024, 1, 1), date(2024, 12, 1))
+    date_run(second_run_for(owned_library, game), date(2024, 2, 1), date(2024, 11, 1))
+    session = play(game, datetime(2024, 6, 1, 10, 0, tzinfo=UTC))
+    report = census(owned_library, day_zone=PRAGUE)
+    assert report.counts.bucket_primary == 1
+    assert report.counts.many_claimers_primary == 1
+    assert report.counts.many_claimers_secondary == 1
+    assert report.samples.many_claimers_primary == (session.pk,)
+
+
+@pytest.mark.django_db
+def test_a_null_manual_duration_is_counted_where_it_is_found(owned_library, owned_game):
+    game = owned_game()
+    session = play(game, START)
+    #: Session.save() coerces it, so the column is written directly.
+    Session.objects.filter(pk=session.pk).update(duration_manual=None)
+    counts = census(owned_library).counts
+    assert counts.manual_duration_null == 1
+    assert counts.running == 1
+
+
+@pytest.mark.django_db
+def test_each_sample_holds_the_rows_its_own_verdict_named(owned_library, owned_game):
+    game = owned_game()
+    reversed_row = play(game, START, end=START - timedelta(hours=1))
+    negative = play(game, START)
+    Session.objects.filter(pk=negative.pk).update(duration_manual=timedelta(hours=-1))
+    samples = census(owned_library).samples
+    assert samples.negative_elapsed == (reversed_row.pk,)
+    assert samples.negative_manual == (negative.pk,)
+
+
+@pytest.mark.django_db
+def test_samples_hold_the_first_rows_in_key_order(owned_library, owned_game):
+    game = owned_game()
+    played = [play(game, START + timedelta(hours=hour)) for hour in range(4)]
+    first, second = sorted(session.pk for session in played)[:2]
+    assert census(owned_library, sample_size=2).samples.running == (first, second)
+
+
+@pytest.mark.django_db
+def test_the_walk_reads_every_page(owned_library, owned_game, monkeypatch):
+    monkeypatch.setattr(session_module, "WALK_PAGE_SIZE", 2)
+    for index in range(5):
+        play(owned_game(f"Game {index}"), START, end=START + timedelta(hours=1))
+    counts = census(owned_library).counts
+    assert counts.games_owned == 5
+    assert counts.sessions_in_scope == 5
+    assert counts.timed == 5
+
+
+@pytest.mark.django_db
+def test_a_negative_sample_size_is_refused_by_the_library_call_too(owned_library):
+    with pytest.raises(ValueError, match="not negative"):
+        preflight_library(owned_library, sample_size=-1)
+
+
+@pytest.mark.django_db
+def test_every_assignment_outcome_names_a_count_in_both_columns():
+    names = {field.name for field in fields(PreflightCounts)}
+    for outcome in AssignmentOutcome:
+        for column in ZoneColumn:
+            assert _assignment_field(outcome, column) in names
+
+
+@pytest.mark.django_db
+def test_the_report_prints_the_number_beside_each_label(owned_library, owned_game):
+    """The acceptance run reads these lines, so they are pinned."""
+    game = owned_game()
+    play(game, START, end=START + timedelta(hours=1))
+    play(game, START, end=START + timedelta(hours=2))
+    play(game, START, manual=timedelta(hours=2))
+    reversed_row = play(game, START, end=START - timedelta(hours=1))
+    owned_game("Never played")
+    output = run_command("--all-libraries", "--day-zone", "Europe/Prague")
+    for line in (
+        "  games owned: 2",
+        "    holding no sessions: 1",
+        "  sessions in scope: 4",
+        "  classified: 4",
+        "    timed (end, no manual duration): 2",
+        "    duration only (no end): 1",
+        "    end earlier than start: 1",
+        "    sole run: 4 (both zones)",
+        "Shared catalog games: 0",
+        "  sessions on them: 0",
+    ):
+        assert line in output.splitlines(), line
+    assert str(reversed_row.pk) in output
+    assert "(primary) and Europe/Prague (secondary)" in output
+
+
+@pytest.mark.django_db
+def test_the_whole_command_writes_nothing(owned_library, owned_game):
+    game = owned_game()
+    play(game, START, end=START + timedelta(hours=1))
+
+    def refuse(execute, sql, params, many, context):
+        if write_targets(sql):
+            raise AssertionError(f"The command wrote: {sql[:120]}")
+        return execute(sql, params, many, context)
+
+    with connection.execute_wrapper(refuse):
+        run_command("--all-libraries")
+
+
+@pytest.mark.django_db
+def test_the_machine_line_is_the_same_bytes_but_for_the_time(owned_library, owned_game):
+    game = owned_game()
+    play(game, START, end=START + timedelta(hours=1))
+
+    def payload_without_time() -> dict:
+        payload = payload_of(run_command("--all-libraries"))
+        payload.pop("generated_at")
+        return payload
+
+    assert payload_without_time() == payload_without_time()

@@ -91,7 +91,7 @@ class Command(BaseCommand):
 
     def _write_report(self, report: LibraryPreflight) -> None:
         counts = report.counts
-        primary, secondary = report.zones
+        primary, secondary = report.zones.primary, report.zones.secondary
         write = self.stdout.write
         write(f"Session preflight - library {report.library_id} ({report.username})")
         write(f"  days read in {primary} (primary) and {secondary} (secondary)")

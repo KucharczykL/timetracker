@@ -55,8 +55,10 @@ wave design's own numbers, now with both sides named. Seeding `day_zone` from
 #704's strict-equality gate would fail by that amount.
 
 The census takes no position. Every zone-dependent figure is reported under
-both zones, and `--day-zone` names a third. Which zone #689 seeds is #689's
-decision; this report is the evidence it reads.
+both zones, and `--day-zone` replaces the second with a zone named on the
+command line. Two columns, never three: a count carries one field per zone, and
+a third would have nowhere to land. Which zone #689 seeds is #689's decision;
+this report is the evidence it reads.
 
 ## The scope of a row
 
@@ -257,9 +259,9 @@ Name the scope: `--user`, `--library` or `--all-libraries`. The first line is
 `generated_at`, the zone names it read, the summary, one entry per library, and
 the shared-catalog counts. The time follows on its own readable line, then a
 section per library. `--sample-size` limits the identifiers printed beside a
-count; the default is 20, and `0` prints none. `--day-zone` names a zone to
-report beside the two defaults. Two runs over the same data print the same
-bytes, except for the time they state.
+count; the default is 20, and `0` prints none. `--day-zone` names the zone the
+second column reads, in place of the library's display zone. Two runs over the
+same data print the same bytes, except for the time they state.
 
 Samples are the first identifiers in key order, never random: the
 `negative_elapsed` rows, the `negative_manual` rows, the `running` rows, the
