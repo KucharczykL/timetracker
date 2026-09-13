@@ -12,7 +12,7 @@ import json
 import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -127,6 +127,11 @@ def _encode_command_value(value: Any) -> TaggedValue:
         return ("uuid", str(value))
     if isinstance(value, Decimal):
         return ("decimal", _canonical_decimal(value))
+    if isinstance(value, timedelta):
+        #: timedelta normalises its own days, seconds and microseconds,
+        #: so the count is already the canonical form and only the unit
+        #: needs stating. A float of seconds would not be.
+        return ("duration", str(value // timedelta(microseconds=1)))
     if isinstance(value, TemporalValue):
         #: None for an unknown time.
         return ("temporal", value.canonical)
