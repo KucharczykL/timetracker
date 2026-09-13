@@ -9,6 +9,14 @@ from django.db import DataError, IntegrityError, transaction
 from django.utils import timezone
 
 from games.checks import check_projection_models
+from games.commands.playergame import TrackGame
+from games.events.append import lock_stream
+from games.events.dispatch import dispatch
+from games.events.playersession import instant_text, playersession_created
+from games.events.projection import DEFAULT_REGISTRY
+from games.events.rebuild import RebuildMode, rebuild_projections
+from games.events.references import capture_reference
+from games.events.replay import replay
 from games.models import (
     Device,
     Game,
@@ -23,6 +31,7 @@ from games.projections import (
     AUDITED_PROJECTION_REFERENCES,
     unaudited_projection_references,
 )
+from games.projectors.playersession import columns_for_timing
 
 #: Nothing here wants the row the fixture tracks for a new game.
 pytestmark = pytest.mark.untracked_games
@@ -358,3 +367,205 @@ def test_the_modes_are_spelled_as_the_census_spells_them():
     assert {mode.value for mode in PlayerSessionTimingMode} == {
         verdict.value for verdict in MODE_VERDICTS
     }
+
+
+# --- The projector -----------------------------------------------------------
+
+
+def a_timed_statement(**timing) -> dict:
+    return {
+        "mode": "timed",
+        "started_at": instant_text(START),
+        "started_at_zone": None,
+        "ended_at": None,
+        "ended_at_zone": None,
+        "day_zone": "Europe/Prague",
+    } | timing
+
+
+A_DURATION_ONLY_STATEMENT = {
+    "mode": "duration_only",
+    "stated_day": "2026-03-05",
+    "duration_seconds": 5400,
+}
+
+A_CORRECTED_STATEMENT = {
+    "mode": "corrected",
+    "started_at": instant_text(START),
+    "started_at_zone": "Europe/Prague",
+    "ended_at": instant_text(START + timedelta(hours=1)),
+    "ended_at_zone": "Europe/Prague",
+    "day_zone": "Europe/Prague",
+    "duration_seconds": 1800,
+}
+
+
+def append_session(library, actor, run, *, timing, key, **stated):
+    """Append one creation event, as dispatch would."""
+    with transaction.atomic():
+        stream = lock_stream(library)
+        return stream.append(
+            [
+                playersession_created(
+                    run.pk,
+                    timing=timing,
+                    device=stated.get("device"),
+                    release=None,
+                    note=stated.get("note", ""),
+                    emulated=stated.get("emulated", False),
+                )
+            ],
+            actor=actor,
+            correlation_id=uuid.uuid7(),
+            idempotency_key=key,
+        )
+
+
+def test_the_creation_event_has_a_current_state_handler():
+    handlers = DEFAULT_REGISTRY.handlers_for("library.playersession.created")
+
+    assert len(handlers) == 1
+
+
+@pytest.mark.parametrize(
+    ("timing", "mode"),
+    [
+        (a_timed_statement(), PlayerSessionTimingMode.TIMED),
+        (A_DURATION_ONLY_STATEMENT, PlayerSessionTimingMode.DURATION_ONLY),
+        (A_CORRECTED_STATEMENT, PlayerSessionTimingMode.CORRECTED),
+    ],
+    ids=["timed", "duration-only", "corrected"],
+)
+def test_the_mapper_names_every_timing_column(timing, mode):
+    """A column a mode forbids is named as None, never left out."""
+    columns = columns_for_timing(timing)
+
+    assert set(columns) == {
+        "timing_mode",
+        "started_at",
+        "started_at_zone",
+        "ended_at",
+        "ended_at_zone",
+        "stated_day",
+        "stated_duration",
+        "day_zone",
+    }
+    assert columns["timing_mode"] == mode
+
+
+def test_the_mapper_reads_a_duration_in_seconds():
+    columns = columns_for_timing(A_DURATION_ONLY_STATEMENT)
+
+    assert columns["stated_duration"] == timedelta(minutes=90)
+    assert columns["stated_day"] == date(2026, 3, 5)
+    assert columns["started_at"] is None
+    assert columns["day_zone"] is None
+
+
+def test_the_mapper_reads_both_instants_of_a_corrected_statement():
+    columns = columns_for_timing(A_CORRECTED_STATEMENT)
+
+    assert columns["started_at"] == START
+    assert columns["ended_at"] == START + timedelta(hours=1)
+    assert columns["stated_duration"] == timedelta(minutes=30)
+    assert columns["stated_day"] is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_creation_handler_writes_the_whole_row(owned_user, owned_library, run):
+    device = Device.objects.create(library=owned_library, name="Steam Deck")
+
+    append_session(
+        owned_library,
+        owned_user,
+        run,
+        timing=a_timed_statement(),
+        key="create",
+        device=capture_reference(device),
+        note="A note",
+        emulated=True,
+    )
+
+    session = PlayerSession.objects.get()
+    assert (session.playthrough, session.library, session.device) == (
+        run,
+        owned_library,
+        device,
+    )
+    assert (session.note, session.emulated) == ("A note", True)
+    assert session.timing_mode == PlayerSessionTimingMode.TIMED
+    assert session.effective_day == date(2026, 1, 2)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_session_takes_its_identity_and_its_moment_from_the_event(
+    owned_user, owned_library, run
+):
+    result = append_session(
+        owned_library, owned_user, run, timing=a_timed_statement(), key="create"
+    )
+
+    event = result.events[0]
+    session = PlayerSession.objects.get()
+    assert session.pk == event.aggregate_id
+    assert session.created_at == event.recorded_at
+
+
+@pytest.mark.django_db(transaction=True)
+def test_every_mode_projects(owned_user, owned_library, run):
+    for index, timing in enumerate(
+        [a_timed_statement(), A_DURATION_ONLY_STATEMENT, A_CORRECTED_STATEMENT]
+    ):
+        append_session(
+            owned_library, owned_user, run, timing=timing, key=f"create-{index}"
+        )
+
+    assert set(PlayerSession.objects.values_list("timing_mode", flat=True)) == set(
+        PlayerSessionTimingMode.values
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_projection_replays_from_an_empty_stream(owned_user, owned_library, run):
+    for index, timing in enumerate(
+        [a_timed_statement(), A_DURATION_ONLY_STATEMENT, A_CORRECTED_STATEMENT]
+    ):
+        append_session(
+            owned_library, owned_user, run, timing=timing, key=f"create-{index}"
+        )
+    before = list(PlayerSession.objects.order_by("pk").values())
+
+    PlayerSession.objects.all().delete()
+    replay(owned_library)
+
+    assert list(PlayerSession.objects.order_by("pk").values()) == before
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_rebuild_swaps_the_table_with_an_empty_diff(owned_user, owned_library, game):
+    """The generated columns and the projection foreign key.
+
+    The run comes from a command here, not from the fixture: a
+    rebuild reproduces every projection row from the events, so a
+    run nothing recorded would leave this session naming a key the
+    rebuilt table no longer holds.
+    """
+    dispatch(
+        TrackGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="track",
+    )
+    tracked_run = Playthrough.objects.get(player_game__game=game)
+    append_session(
+        owned_library, owned_user, tracked_run, timing=a_timed_statement(), key="create"
+    )
+
+    report = rebuild_projections(owned_library, mode=RebuildMode.REBUILD)
+
+    assert report.swapped is True
+    assert [
+        (table.table, table.only_live, table.only_rebuilt, table.differing)
+        for table in report.tables
+        if table.table == "games_playersession"
+    ] == [("games_playersession", 0, 0, 0)]
