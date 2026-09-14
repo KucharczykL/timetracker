@@ -108,7 +108,7 @@ type DayInterval = tuple[date, date]  # first and last day, both inclusive
 
 
 class PlatformPlaytime(NamedTuple):
-    platform_id: int | None  # None is the unspecified-platform bucket
+    platform_id: UUID | None  # None is the unspecified-platform bucket
     platform_name: str | None
     playtime: timedelta
 

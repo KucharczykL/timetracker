@@ -142,7 +142,11 @@ def _compute_stats_from_scoped_querysets(
     year: YearScope,
     fallback_currency: str,
 ) -> StatsData:
-    """Compute metrics without selecting a global Session or Purchase base."""
+    """Compute metrics without selecting a global Session or Purchase base.
+
+    Playtime figures read the playtime interface by library and
+    year, not `sessions`; a narrower `sessions` narrows counts only.
+    """
 
     library_purchases = purchases
     is_alltime = year is None

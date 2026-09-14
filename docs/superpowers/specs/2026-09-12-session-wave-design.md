@@ -518,6 +518,29 @@ same query with a year, and the removal of `Game.playtime`, its signal, and the
 figure behind one interface with a legacy and a projection source, moves every
 caller onto it, and leaves #702 one binding to change.
 
+**Delivered.** The design is
+[Read playtime from the Session projection](2026-09-14-issue-697-playtime-reads-design.md);
+what it settled, and what the rest of this wave inherits:
+
+- **One scope.** `library_sessions()` in `games/reads/player_sessions.py` states
+  which `PlayerSession` rows a library counts: four removal marks, the library
+  on both the session and its run, every run kind. #702's readers state it and
+  `PlayerSession` gains no `for_library()`.
+- **One interface.** `games/reads/playtime/` answers every playtime figure from
+  `SOURCE`, bound to the legacy table. #702 binds it to the projection, and mypy
+  refuses that line until the projection source implements
+  `summed_by_game_matching`, which needs `SessionFilter` restated in the
+  projection's fields.
+- **The parity instrument.** `make verify-playtime-parity` compares every figure
+  of both sources through the protocol. #700 reconciles against it and #704
+  gates on it.
+- **Rehearsed on the 2026-09-12 dump.** Of 883 rendered pages, 879 were
+  identical before and after. Portal's detail figure moved from the stored
+  16 h to the 7 h its sessions sum to, the one change made on purpose. Three
+  stats pages reordered rows that share a playtime, which `main` left
+  unordered and which now fall back to name and id. No shared catalog game
+  holds a session.
+
 `ProjectorFamily.STATS` therefore still has no projector behind it after this
 wave, and #913's reopen condition is untouched — it asks for a family that must
 write one aggregate row per action, which this wave no longer has.

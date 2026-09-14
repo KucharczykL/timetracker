@@ -1,8 +1,8 @@
 """Every playtime figure, from one source.
 
 A caller reads these functions and never a source module, so
-the source changes on one line. The NULL policy is stated here
-and nowhere in a source.
+the source changes on one line. Whether a per-game sum reads
+NULL or zero for an unplayed game is decided here.
 """
 
 from datetime import timedelta
@@ -14,7 +14,7 @@ from django.db.models.functions import Coalesce
 from games.filters import SessionFilter
 from games.models import Game, UserLibrary
 from games.reads.playthrough_completions import YearScope
-from games.reads.playtime import legacy, projection
+from games.reads.playtime import legacy
 from games.reads.playtime.source import (
     DayInterval,
     FilteredPlaytimeSource,
@@ -33,14 +33,12 @@ __all__ = [
     "PlatformPlaytime",
     "PlaytimeSource",
     "game_playtime",
-    "legacy",
     "playtime_between",
     "playtime_by_game",
     "playtime_by_month",
     "playtime_by_platform",
     "playtime_matching",
     "playtime_sort_key",
-    "projection",
     "total_playtime",
 ]
 

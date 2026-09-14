@@ -373,18 +373,18 @@ def stats_content(
     if months:
         month_rows = [
             make_row(
-                presentation.format(month.month, "month"),
+                presentation.format(month_playtime.month, "month"),
                 Duration(
-                    month.playtime,
+                    month_playtime.playtime,
                     durations,
-                    id_scope=f"stats-month-{month.month.month}",
+                    id_scope=f"stats-month-{month_playtime.month.month}",
                     link=filter_url(
-                        stats_links.games_in_month(year, month.month.month),
+                        stats_links.games_in_month(year, month_playtime.month.month),
                         sort="-filtered_playtime",
                     ),
                 ),
             )
-            for month in months
+            for month_playtime in months
         ]
         cards.append(_card("Playtime per month", _kv_table(month_rows)))
 

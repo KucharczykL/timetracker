@@ -215,7 +215,9 @@ class TestApplySortGames:
         assert result.unknown == ["bogus"]
         assert result.queryset.count() == 2  # still returns rows (default order)
 
-    def test_playtime_annotation_no_duplicate_rows(self, owned_library, two_games):
+    def test_playtime_sort_orders_by_the_summed_sessions(
+        self, owned_library, two_games
+    ):
         alpha, _ = two_games
         Session.objects.create(
             game=alpha,
@@ -232,7 +234,6 @@ class TestApplySortGames:
             total_playtime=playtime_sort_key(owned_library)
         )
         result = apply_sort(games, _find("-playtime"), GAME_SORTS, GAME_DEFAULT_SORT)
-        # two sessions on alpha must not duplicate the alpha row
         assert result.queryset.count() == 2
         assert next(iter(result.queryset)) == alpha  # most playtime first
 

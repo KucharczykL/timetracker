@@ -92,6 +92,12 @@ def test_every_scalar_figure_is_zero_for_an_empty_library(owned_library, game):
 
 
 @pytest.mark.django_db
+@SOURCES
+def test_each_source_sums_an_unplayed_game_to_null(source, owned_library, game):
+    assert summed(source, owned_library, game) is None
+
+
+@pytest.mark.django_db
 def test_the_sum_is_null_for_an_unplayed_game(owned_library, game):
     figures = (
         Game.objects.tracked_by(owned_library)
@@ -249,7 +255,7 @@ def test_a_day_window_is_inclusive(source, owned_library, game):
 
 @SOURCES
 @pytest.mark.django_db
-def test_playtime_by_game_never_counts_another_library(
+def test_summed_by_game_never_counts_another_library(
     source, owned_library, stranger_library
 ):
     shared = Game.objects.create(library=None, name="Tetris")
