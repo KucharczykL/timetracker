@@ -7,6 +7,8 @@ from zoneinfo import ZoneInfo
 import pytest
 from django.db import transaction
 from django.utils import timezone
+from session_rows import tracked_run
+from test_playergame_playthrough_gate import UNREACHABLE_KINDS
 
 from games.backfill import playersession as conversion
 from games.backfill.playersession import (
@@ -21,8 +23,18 @@ from games.backfill.playersession import (
     convert_library,
     convert_row,
     display_zone_name,
+    ordering_violations,
+    reconcile,
     refuse_shared_game_rows,
 )
+from games.commands.playergame import TrackGame
+from games.commands.playthrough import (
+    CompletePlaythrough,
+    CreatePlaythrough,
+    StartPlaythrough,
+)
+from games.events.dispatch import Command, CommandOutcome, dispatch
+from games.identity_audit import identity_models
 from games.models import (
     Device,
     Game,
@@ -35,10 +47,9 @@ from games.models import (
     Session,
     UserLibrary,
 )
-from games.preflight.session import Assignment, AssignmentOutcome
+from games.preflight.session import Assignment, AssignmentOutcome, report_zones
+from games.reads.playtime_parity import display_zone
 from games.removal import remove
-from tests.session_rows import tracked_run
-from tests.test_playergame_playthrough_gate import UNREACHABLE_KINDS
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -689,3 +700,269 @@ def test_unreachable_kinds_stay_a_commands_claim(owned_library):
     )
     assert stated == set(PlaythroughKind)
     assert set(PlaythroughKind) - UNREACHABLE_KINDS == {PlaythroughKind.ORDINARY}
+
+
+# --- The gate ---------------------------------------------------------------
+
+
+def stated(library: UserLibrary, command: Command, key: str) -> None:
+    """One command through dispatch, so a replay reproduces the row."""
+    result = dispatch(command, actor=library.user, library=library, idempotency_key=key)
+    assert result.outcome is CommandOutcome.APPENDED, key
+
+
+def tracked_game(library: UserLibrary, name: str) -> Game:
+    game = Game.objects.create(library=library, name=name)
+    stated(library, TrackGame(game_id=game.pk), f"track:{name}")
+    return game
+
+
+def stated_run(
+    library: UserLibrary, run: Playthrough, started: date, completed: date | None
+) -> Playthrough:
+    stated(
+        library,
+        StartPlaythrough(
+            playthrough_id=run.pk, when=TemporalValue.from_day(started), note=""
+        ),
+        f"start:{run.pk}",
+    )
+    if completed is not None:
+        stated(
+            library,
+            CompletePlaythrough(
+                playthrough_id=run.pk, when=TemporalValue.from_day(completed), note=""
+            ),
+            f"complete:{run.pk}",
+        )
+    return Playthrough.objects.get(pk=run.pk)
+
+
+def stated_second_run(library: UserLibrary, game: Game) -> Playthrough:
+    before = set(
+        Playthrough.objects.filter(player_game__game=game).values_list("pk", flat=True)
+    )
+    stated(
+        library, CreatePlaythrough(game_id=game.pk), f"create:{game.pk}:{len(before)}"
+    )
+    return (
+        Playthrough.objects.filter(player_game__game=game).exclude(pk__in=before).get()
+    )
+
+
+def seeded(library: UserLibrary) -> tuple[Game, ConversionCounts]:
+    """A library holding every verdict and outcome, converted.
+
+    Every projection row comes from an event, so a replay
+    reproduces it: the gate's last reading diffs every table.
+    """
+    game = tracked_game(library, "Chrono Trigger")
+    stated_run(library, run_of(library, game), date(2024, 2, 1), date(2024, 2, 10))
+    stated_run(library, stated_second_run(library, game), date(2024, 3, 1), None)
+    legacy(game, start=datetime(2024, 2, 5, tzinfo=UTC), timestamp_end=START, note="x")
+    legacy(game, start=datetime(2024, 3, 5, tzinfo=UTC), duration_manual=HOUR)
+    legacy(game, start=datetime(2020, 1, 1, tzinfo=UTC), timestamp_end=START)
+    remove(legacy(game, start=datetime(2024, 3, 6, tzinfo=UTC)))
+    other = tracked_game(library, "Sole")
+    legacy(other, timestamp_end=START + HOUR, duration_manual=HOUR)
+    tracked_game(library, "Untouched")
+    return game, convert_library(library)
+
+
+def codes(mismatches) -> set[str]:
+    return {mismatch.code for mismatch in mismatches}
+
+
+@pytest.mark.untracked_games
+def test_a_converted_library_reconciles_clean(owned_library):
+    _game, counts = seeded(owned_library)
+
+    assert reconcile(owned_library, counts) == []
+    assert ordering_violations() == []
+
+
+@pytest.mark.untracked_games
+def test_a_row_disagreement_is_reported(owned_library):
+    _game, counts = seeded(owned_library)
+    PlayerSession.objects.filter(removed_at__isnull=True, note="x").update(note="y")
+
+    found = [
+        m for m in reconcile(owned_library, counts) if m.code == "row_disagreement"
+    ]
+    assert len(found) == 1
+    assert "note: row says 'x', projection says 'y'" in found[0].detail
+
+
+@pytest.mark.untracked_games
+def test_a_removed_row_without_a_mark_is_reported(owned_library):
+    _game, counts = seeded(owned_library)
+    PlayerSession.objects.filter(removed_at__isnull=False).update(removed_at=None)
+
+    assert "removed_row_disagreement" in codes(reconcile(owned_library, counts))
+
+
+@pytest.mark.untracked_games
+def test_a_row_naming_the_wrong_run_is_reported(owned_library):
+    game, counts = seeded(owned_library)
+    (bucket,) = buckets_of(game)
+    PlayerSession.objects.filter(note="x").update(playthrough=bucket)
+
+    mismatches = reconcile(owned_library, counts)
+    assert "row_disagreement" in codes(mismatches)
+    assert "bucket_membership" in codes(mismatches)
+
+
+@pytest.mark.untracked_games
+def test_a_census_disagreement_is_reported(owned_library):
+    _game, counts = seeded(owned_library)
+
+    drifted = counts + ConversionCounts(timed=1)
+    assert "census_drift" in codes(reconcile(owned_library, drifted))
+
+
+@pytest.mark.untracked_games
+def test_a_row_the_walk_never_saw_is_reported(owned_library):
+    _game, counts = seeded(owned_library)
+
+    short = counts + ConversionCounts(rows_unreached=1)
+    assert "rows_unreached" in codes(reconcile(owned_library, short))
+
+
+@pytest.mark.untracked_games
+def test_a_second_bucket_is_reported(owned_library):
+    game, counts = seeded(owned_library)
+    Playthrough.objects.create(
+        pk=uuid.uuid7(),
+        library=owned_library,
+        player_game=PlayerGame.objects.get(library=owned_library, game=game),
+        kind=PlaythroughKind.IMPORTED_HISTORY,
+        created_at=timezone.now(),
+    )
+
+    assert "bucket_surplus" in codes(reconcile(owned_library, counts))
+
+
+@pytest.mark.untracked_games
+def test_a_bucket_where_none_is_needed_is_reported(owned_library):
+    _game, counts = seeded(owned_library)
+    other = Game.objects.get(name="Sole")
+    Playthrough.objects.create(
+        pk=uuid.uuid7(),
+        library=owned_library,
+        player_game=PlayerGame.objects.get(library=owned_library, game=other),
+        kind=PlaythroughKind.IMPORTED_HISTORY,
+        created_at=timezone.now(),
+    )
+
+    found = [m for m in reconcile(owned_library, counts) if m.code == "bucket_surplus"]
+    assert found[0].subject == str(other.pk)
+
+
+@pytest.mark.untracked_games
+def test_a_bucket_holding_a_contained_row_is_reported(owned_library):
+    game, counts = seeded(owned_library)
+    (bucket,) = buckets_of(game)
+    PlayerSession.objects.filter(timing_mode="duration_only").update(playthrough=bucket)
+
+    assert "bucket_membership" in codes(reconcile(owned_library, counts))
+
+
+@pytest.mark.untracked_games
+def test_a_playtime_difference_is_reported(owned_library):
+    _game, counts = seeded(owned_library)
+    #: The legacy side moves; every projection row still agrees with itself.
+    Session.objects.filter(note="x").update(timestamp_end=START + 2 * HOUR)
+
+    mismatches = reconcile(owned_library, counts)
+    assert "playtime_differs" in codes(mismatches)
+    #: The row check sees it too; the figure names the scope.
+    assert "row_disagreement" in codes(mismatches)
+
+
+@pytest.mark.untracked_games
+def test_a_count_difference_is_reported(owned_library):
+    _game, counts = seeded(owned_library)
+    other = Game.objects.get(name="Sole")
+    #: A legacy row nothing converted.
+    legacy(other, timestamp_end=START + HOUR)
+
+    mismatches = reconcile(owned_library, counts)
+    assert "count_drift" in codes(mismatches)
+    assert "row_disagreement" in codes(mismatches)
+
+
+@pytest.mark.untracked_games
+def test_an_identity_out_of_order_is_reported(owned_library):
+    game, _counts = seeded(owned_library)
+    #: A key minted now, dated a decade back.
+    Playthrough.objects.create(
+        pk=uuid.uuid7(),
+        library=owned_library,
+        player_game=PlayerGame.objects.get(library=owned_library, game=game),
+        kind=PlaythroughKind.ORDINARY,
+        created_at=datetime(2013, 1, 1, tzinfo=UTC),
+    )
+
+    found = [m for m in ordering_violations() if m.code == "identity_ordering"]
+    assert [m.subject for m in found] == ["games_playthrough"]
+
+
+@pytest.mark.untracked_games
+def test_a_session_identity_out_of_order_is_reported(owned_library):
+    seeded(owned_library)
+    #: A key minted later than the row's neighbours, dated before them.
+    PlayerSession.objects.filter(timing_mode="duration_only").update(
+        created_at=datetime(2013, 1, 1, tzinfo=UTC)
+    )
+
+    found = [m for m in ordering_violations() if m.code == "identity_ordering"]
+    assert [m.subject for m in found] == ["games_playersession"]
+
+
+@pytest.mark.untracked_games
+def test_a_blind_identity_audit_is_reported(owned_library, monkeypatch):
+    monkeypatch.setattr(
+        "games.backfill.playersession.identity_models",
+        lambda: [
+            entry for entry in identity_models() if entry.table != "games_playersession"
+        ],
+    )
+
+    found = [m for m in ordering_violations() if m.code == "identity_audit_blind"]
+    assert [m.subject for m in found] == ["games_playersession"]
+
+
+@pytest.mark.untracked_games
+def test_a_replay_difference_is_reported(owned_library):
+    _game, counts = seeded(owned_library)
+    #: Both sides of the row check move together; only a replay sees it.
+    PlayerSession.objects.filter(note="x").update(emulated=True)
+    Session.objects.filter(note="x").update(emulated=True)
+
+    mismatches = reconcile(owned_library, counts)
+    assert "row_disagreement" not in codes(mismatches)
+    found = [m for m in mismatches if m.code == "replay_differs"]
+    assert [m.subject for m in found] == ["games_playersession"]
+
+
+@pytest.mark.untracked_games
+def test_the_display_zone_the_census_reads_is_the_one_the_conversion_seeds(
+    owned_library, owned_user, set_user_setting
+):
+    set_user_setting(owned_user, "DISPLAY_TIME_ZONE", "Asia/Tokyo")
+
+    assert report_zones(owned_library).secondary == ZoneInfo(
+        display_zone_name(owned_library)
+    )
+    assert display_zone(owned_library) == ZoneInfo("Asia/Tokyo")
+
+
+@pytest.mark.untracked_games
+def test_a_conversion_in_another_zone_reconciles_clean(
+    owned_library, owned_user, set_user_setting
+):
+    set_user_setting(owned_user, "DISPLAY_TIME_ZONE", "Asia/Tokyo")
+    _game, counts = seeded(owned_library)
+
+    assert PlayerSession.objects.filter(day_zone="Asia/Tokyo").exists()
+    assert reconcile(owned_library, counts) == []
