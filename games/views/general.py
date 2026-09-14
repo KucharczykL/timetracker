@@ -30,7 +30,7 @@ from common.duration_presentation import duration_presentation_for_request
 from common.layout import render_page
 from games.filters import SessionFilter, filter_url, model_field_registry
 from games.models import Device, Game, Platform, Purchase, Session
-from games.reads.playtime import playtime_between
+from games.reads.playtime import DayInterval, playtime_between
 from games.sorting import parse_per_page_override
 from games.views.filtering import BUILDER_MODES
 from games.views.stats_content import stats_content
@@ -51,11 +51,11 @@ def model_counts(request: HttpRequest) -> dict[str, Any]:
     today = localdate()
     # "Last 7 days" is a calendar-day window (today plus the previous six) so the
     # displayed total matches the list its navbar link points to.
-    first_of_window = today - timedelta(days=6)
+    last_seven_days = DayInterval.ending(today, days=7)
     today_played = last_7_played = timedelta(0)
     if library is not None:
-        today_played = playtime_between(library, (today, today))
-        last_7_played = playtime_between(library, (first_of_window, today))
+        today_played = playtime_between(library, DayInterval.single(today))
+        last_7_played = playtime_between(library, last_seven_days)
 
     durations = duration_presentation_for_request(request)
 
@@ -63,7 +63,7 @@ def model_counts(request: HttpRequest) -> dict[str, Any]:
     today_url = filter_url(SessionFilter.where(timestamp_start=today_iso))
     last_7_url = filter_url(
         SessionFilter.where(
-            timestamp_start__between=(first_of_window.isoformat(), today_iso)
+            timestamp_start__between=(last_seven_days.first.isoformat(), today_iso)
         )
     )
 

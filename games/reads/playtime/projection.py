@@ -3,7 +3,6 @@
 from datetime import timedelta
 
 from django.db.models import DurationField, OuterRef, Subquery, Sum, Value
-from django.db.models.expressions import Combinable
 from django.db.models.functions import Coalesce, TruncMonth
 
 from games.models import Game, PlayerSessionQuerySet, UserLibrary
@@ -11,8 +10,10 @@ from games.reads.player_sessions import library_sessions
 from games.reads.playthrough_completions import YearScope
 from games.reads.playtime.source import (
     DayInterval,
+    DayPlaytime,
     MonthPlaytime,
     PlatformPlaytime,
+    PlaytimeSum,
     UnscopedSum,
 )
 
@@ -41,7 +42,7 @@ def game_playtime(library: UserLibrary, game: Game) -> timedelta:
 
 def summed_by_game(
     library: UserLibrary | None, *, year: YearScope = None
-) -> Combinable:
+) -> PlaytimeSum:
     """No library compiles, then refuses to execute."""
     if library is None:
         return UnscopedSum()
@@ -55,16 +56,18 @@ def summed_by_game(
     )
 
 
-def total_playtime(library: UserLibrary, year: YearScope = None) -> timedelta:
+def total_playtime(library: UserLibrary, *, year: YearScope = None) -> timedelta:
     return _total(_sessions(library, year))
 
 
 def playtime_between(library: UserLibrary, days: DayInterval) -> timedelta:
-    return _total(_sessions(library).filter(effective_day__range=days))
+    return _total(
+        _sessions(library).filter(effective_day__range=(days.first, days.last))
+    )
 
 
 def playtime_by_platform(
-    library: UserLibrary, year: YearScope = None
+    library: UserLibrary, *, year: YearScope = None
 ) -> list[PlatformPlaytime]:
     rows = (
         _sessions(library, year)
@@ -76,7 +79,7 @@ def playtime_by_platform(
     return [PlatformPlaytime(*row) for row in rows]
 
 
-def playtime_by_month(library: UserLibrary, year: int) -> list[MonthPlaytime]:
+def playtime_by_month(library: UserLibrary, *, year: int) -> list[MonthPlaytime]:
     rows = (
         _sessions(library, year)
         .annotate(month=TruncMonth("effective_day"))
@@ -86,6 +89,17 @@ def playtime_by_month(library: UserLibrary, year: int) -> list[MonthPlaytime]:
         .values_list("month", "playtime")
     )
     return [MonthPlaytime(*row) for row in rows]
+
+
+def playtime_by_day(library: UserLibrary, *, year: int) -> list[DayPlaytime]:
+    rows = (
+        _sessions(library, year)
+        .values("effective_day")
+        .annotate(playtime=Coalesce(Sum("effective_duration"), ZERO))
+        .order_by("effective_day")
+        .values_list("effective_day", "playtime")
+    )
+    return [DayPlaytime(*row) for row in rows]
 
 
 def played_years(library: UserLibrary) -> list[int]:

@@ -26,6 +26,7 @@ from django.db.models import (
     fields,
 )
 from django.db.models.functions import TruncDate
+from django_stubs_ext import WithAnnotations
 
 from common.time import available_stats_year_range
 from common.utils import safe_division
@@ -55,6 +56,10 @@ from games.reads.playtime import (
 )
 
 
+class GamePlaytime(TypedDict):
+    total_playtime: timedelta
+
+
 class StatsData(TypedDict):
     # --- always present (both scopes) ---
     year: Any  # int for a year, "Alltime" for all-time
@@ -65,7 +70,7 @@ class StatsData(TypedDict):
     unique_days_percent: int
     total_year_games: int
     this_year_finished_this_year_count: int
-    top_10_games_by_playtime: QuerySet[Game]
+    top_10_games_by_playtime: QuerySet[WithAnnotations[Game, GamePlaytime]]
     total_playtime_per_platform: list[PlatformPlaytime]
     total_spent: Any
     total_spent_currency: str
@@ -307,14 +312,14 @@ def _compute_stats_from_scoped_querysets(
     data: StatsData = {
         "year": year_label,
         "title": f"{year_label} Stats",
-        "total_hours": total_playtime(library, year),
+        "total_hours": total_playtime(library, year=year),
         "total_sessions": sessions.count(),
         "unique_days": unique_days,
         "unique_days_percent": unique_days_percent,
         "total_year_games": total_year_games,
         "this_year_finished_this_year_count": finished_released.count(),
         "top_10_games_by_playtime": top_games,
-        "total_playtime_per_platform": playtime_by_platform(library, year),
+        "total_playtime_per_platform": playtime_by_platform(library, year=year),
         "total_spent": total_spent,
         "total_spent_currency": currency,
         "spent_per_game": int(safe_division(total_spent, without_refunded_count)),
@@ -356,7 +361,7 @@ def _compute_stats_from_scoped_querysets(
 
     if year is not None:
         data["total_games"] = games_in_scope.count()
-        data["month_playtimes"] = playtime_by_month(library, year)
+        data["month_playtimes"] = playtime_by_month(library, year=year)
         data["all_finished_this_year"] = finished.prefetch_related("games").order_by(
             F("date_finished").asc(nulls_last=True)
         )

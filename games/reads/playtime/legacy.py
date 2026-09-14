@@ -3,8 +3,7 @@
 from datetime import datetime, time, timedelta
 
 from django.db.models import DateField, DurationField, OuterRef, Subquery, Sum, Value
-from django.db.models.expressions import Combinable
-from django.db.models.functions import Coalesce, TruncMonth
+from django.db.models.functions import Coalesce, TruncDate, TruncMonth
 from django.utils.timezone import make_aware
 
 from games.filters import SessionFilter, filter_query_context_for_library
@@ -12,8 +11,10 @@ from games.models import Game, Session, SessionQuerySet, UserLibrary
 from games.reads.playthrough_completions import YearScope
 from games.reads.playtime.source import (
     DayInterval,
+    DayPlaytime,
     MonthPlaytime,
     PlatformPlaytime,
+    PlaytimeSum,
     UnscopedSum,
 )
 
@@ -32,7 +33,7 @@ def _total(sessions: SessionQuerySet) -> timedelta:
     return sessions.aggregate(total=Coalesce(Sum("duration_total"), ZERO))["total"]
 
 
-def _summed(sessions: SessionQuerySet) -> Combinable:
+def _summed(sessions: SessionQuerySet) -> PlaytimeSum:
     return Subquery(
         sessions.filter(game=OuterRef("pk"))
         .values("game")
@@ -48,7 +49,7 @@ def game_playtime(library: UserLibrary, game: Game) -> timedelta:
 
 def summed_by_game(
     library: UserLibrary | None, *, year: YearScope = None
-) -> Combinable:
+) -> PlaytimeSum:
     """No library compiles, then refuses to execute.
 
     `for_library(None)` reads the shared catalog's sessions,
@@ -61,30 +62,29 @@ def summed_by_game(
 
 def summed_by_game_matching(
     library: UserLibrary, session_filter: SessionFilter, *, year: YearScope = None
-) -> Combinable:
+) -> PlaytimeSum:
     context = filter_query_context_for_library(library)
     return _summed(_sessions(library, year).filter(session_filter.to_q(context)))
 
 
-def total_playtime(library: UserLibrary, year: YearScope = None) -> timedelta:
+def total_playtime(library: UserLibrary, *, year: YearScope = None) -> timedelta:
     return _total(_sessions(library, year))
 
 
 def playtime_between(library: UserLibrary, days: DayInterval) -> timedelta:
     """Midnight to midnight, in the active zone."""
-    first, last = days
     return _total(
         _sessions(library).filter(
-            timestamp_start__gte=make_aware(datetime.combine(first, time.min)),
+            timestamp_start__gte=make_aware(datetime.combine(days.first, time.min)),
             timestamp_start__lt=make_aware(
-                datetime.combine(last + timedelta(days=1), time.min)
+                datetime.combine(days.last + timedelta(days=1), time.min)
             ),
         )
     )
 
 
 def playtime_by_platform(
-    library: UserLibrary, year: YearScope = None
+    library: UserLibrary, *, year: YearScope = None
 ) -> list[PlatformPlaytime]:
     rows = (
         _sessions(library, year)
@@ -96,7 +96,7 @@ def playtime_by_platform(
     return [PlatformPlaytime(*row) for row in rows]
 
 
-def playtime_by_month(library: UserLibrary, year: int) -> list[MonthPlaytime]:
+def playtime_by_month(library: UserLibrary, *, year: int) -> list[MonthPlaytime]:
     rows = (
         _sessions(library, year)
         .annotate(month=TruncMonth("timestamp_start", output_field=DateField()))
@@ -106,6 +106,18 @@ def playtime_by_month(library: UserLibrary, year: int) -> list[MonthPlaytime]:
         .values_list("month", "playtime")
     )
     return [MonthPlaytime(*row) for row in rows]
+
+
+def playtime_by_day(library: UserLibrary, *, year: int) -> list[DayPlaytime]:
+    rows = (
+        _sessions(library, year)
+        .annotate(day=TruncDate("timestamp_start"))
+        .values("day")
+        .annotate(playtime=Coalesce(Sum("duration_total"), ZERO))
+        .order_by("day")
+        .values_list("day", "playtime")
+    )
+    return [DayPlaytime(*row) for row in rows]
 
 
 def played_years(library: UserLibrary) -> list[int]:

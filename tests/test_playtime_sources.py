@@ -19,6 +19,7 @@ import games.reads.playtime
 from games.filters import SessionFilter
 from games.models import Device, Game, Platform, Session, UserLibrary
 from games.reads.playtime import (
+    DayInterval,
     MonthPlaytime,
     PlatformPlaytime,
     UnscopedPlaytimeRead,
@@ -75,21 +76,21 @@ def prague(hour: int, day: date) -> datetime:
 
 @pytest.mark.django_db
 def test_every_scalar_figure_is_zero_for_an_empty_library(owned_library, game):
-    days = (date(2026, 1, 1), date(2026, 12, 31))
+    days = DayInterval(date(2026, 1, 1), date(2026, 12, 31))
     for source in (legacy, projection):
         assert source.game_playtime(owned_library, game) == ZERO
         assert source.total_playtime(owned_library) == ZERO
-        assert source.total_playtime(owned_library, 2026) == ZERO
+        assert source.total_playtime(owned_library, year=2026) == ZERO
         assert source.playtime_between(owned_library, days) == ZERO
         assert source.playtime_by_platform(owned_library) == []
-        assert source.playtime_by_month(owned_library, 2026) == []
+        assert source.playtime_by_month(owned_library, year=2026) == []
         assert source.played_years(owned_library) == []
     assert game_playtime(owned_library, game) == ZERO
     assert total_playtime(owned_library) == ZERO
-    assert total_playtime(owned_library, 2026) == ZERO
+    assert total_playtime(owned_library, year=2026) == ZERO
     assert playtime_between(owned_library, days) == ZERO
     assert playtime_by_platform(owned_library) == []
-    assert playtime_by_month(owned_library, 2026) == []
+    assert playtime_by_month(owned_library, year=2026) == []
 
 
 @pytest.mark.django_db
@@ -136,11 +137,15 @@ def test_a_twin_of_each_mode_gives_equal_figures(owned_library, game, platform):
                 "summed": summed(source, owned_library, game),
                 "summed in year": summed(source, owned_library, game, year=2026),
                 "total": source.total_playtime(owned_library),
-                "total in year": source.total_playtime(owned_library, 2026),
-                "between": source.playtime_between(owned_library, (day, day)),
+                "total in year": source.total_playtime(owned_library, year=2026),
+                "between": source.playtime_between(
+                    owned_library, DayInterval.single(day)
+                ),
                 "platforms": source.playtime_by_platform(owned_library),
-                "platforms in year": source.playtime_by_platform(owned_library, 2026),
-                "months": source.playtime_by_month(owned_library, 2026),
+                "platforms in year": source.playtime_by_platform(
+                    owned_library, year=2026
+                ),
+                "months": source.playtime_by_month(owned_library, year=2026),
                 "years": source.played_years(owned_library),
             }
 
@@ -171,7 +176,7 @@ def test_a_running_timed_row_counts_zero(source, owned_library, game):
     with timezone.override(TWIN_ZONE):
         assert source.game_playtime(owned_library, game) == ZERO
         assert source.total_playtime(owned_library) == ZERO
-        assert source.total_playtime(owned_library, 2026) == ZERO
+        assert source.total_playtime(owned_library, year=2026) == ZERO
 
 
 @pytest.mark.django_db
@@ -186,10 +191,10 @@ def test_the_projection_reads_the_stored_day(owned_library, game):
 
     for zone in (TWIN_ZONE, ZoneInfo("UTC")):
         with timezone.override(zone):
-            assert projection.total_playtime(owned_library, 2026) == timedelta(
+            assert projection.total_playtime(owned_library, year=2026) == timedelta(
                 minutes=20
             )
-            assert projection.total_playtime(owned_library, 2025) == ZERO
+            assert projection.total_playtime(owned_library, year=2025) == ZERO
             assert projection.played_years(owned_library) == [2026]
 
 
@@ -201,14 +206,16 @@ def test_a_duration_only_row_lands_on_its_written_day(source, owned_library, gam
     duration_only_twin(owned_library, game, day, duration)
 
     with timezone.override(TWIN_ZONE):
-        assert source.total_playtime(owned_library, 2026) == duration
-        assert source.playtime_by_month(owned_library, 2026) == [
+        assert source.total_playtime(owned_library, year=2026) == duration
+        assert source.playtime_by_month(owned_library, year=2026) == [
             MonthPlaytime(date(2026, 3, 1), duration)
         ]
-        assert source.playtime_between(owned_library, (day, day)) == duration
+        assert (
+            source.playtime_between(owned_library, DayInterval.single(day)) == duration
+        )
         assert (
             source.playtime_between(
-                owned_library, (day + timedelta(days=1), day + timedelta(days=1))
+                owned_library, DayInterval.single(day + timedelta(days=1))
             )
             == ZERO
         )
@@ -224,10 +231,10 @@ def test_the_legacy_source_reads_the_active_zone(owned_library, game):
     )
 
     with timezone.override(ZoneInfo("UTC")):
-        assert legacy.total_playtime(owned_library, 2025) == timedelta(minutes=20)
+        assert legacy.total_playtime(owned_library, year=2025) == timedelta(minutes=20)
         assert legacy.played_years(owned_library) == [2025]
     with timezone.override(TWIN_ZONE):
-        assert legacy.total_playtime(owned_library, 2026) == timedelta(minutes=20)
+        assert legacy.total_playtime(owned_library, year=2026) == timedelta(minutes=20)
         assert legacy.played_years(owned_library) == [2026]
 
 
@@ -251,7 +258,10 @@ def test_a_day_window_is_inclusive(source, owned_library, game):
     timed_twin(owned_library, game, after_last, after_last + outside)
 
     with timezone.override(TWIN_ZONE):
-        assert source.playtime_between(owned_library, (first, last)) == 2 * inside
+        assert (
+            source.playtime_between(owned_library, DayInterval(first, last))
+            == 2 * inside
+        )
 
 
 @SOURCES
@@ -328,3 +338,17 @@ def test_summed_by_game_over_no_library_refuses_to_execute(source, stranger_libr
 
 def test_the_package_answers_from_the_legacy_source():
     assert games.reads.playtime.SOURCE is legacy
+
+
+def test_a_day_interval_refuses_to_end_before_it_starts():
+    with pytest.raises(ValueError):
+        DayInterval(date(2026, 3, 2), date(2026, 3, 1))
+
+
+def test_a_day_interval_ending_on_a_day_counts_that_day():
+    assert DayInterval.ending(date(2026, 3, 7), days=7) == DayInterval(
+        date(2026, 3, 1), date(2026, 3, 7)
+    )
+    assert DayInterval.single(date(2026, 3, 7)) == DayInterval(
+        date(2026, 3, 7), date(2026, 3, 7)
+    )
