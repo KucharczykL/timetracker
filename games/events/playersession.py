@@ -199,3 +199,60 @@ def playersession_created(
             "emulated": emulated,
         },
     )
+
+
+@with_config(STRICT_SCHEMA)
+class PlayerSessionEndedPayload(TypedDict):
+    """The end a running session was given.
+
+    A payload of its own rather than `TimingPayload`: that union
+    states a whole mode and serves whole statements, while an end
+    states two columns and leaves the other six as the creation
+    left them.
+
+    `day_zone` is absent on purpose. The row already holds it and
+    the act does not restate it -- under `extra="forbid"` a key is
+    a fact somebody may state, and a second spelling of a zone the
+    row carries is one this event has no use for.
+    """
+
+    ended_at: InstantText
+    ended_at_zone: str | None
+
+
+PLAYERSESSION_ENDED = EventSpec(
+    "library.playersession.ended",
+    aggregate_type="playersession",
+    payload=PlayerSessionEndedPayload,
+)
+
+DEFAULT_EVENT_TYPES.register(PLAYERSESSION_ENDED)
+
+
+def playersession_ended(
+    session_id: uuid.UUID,
+    *,
+    ended_at: datetime,
+    ended_at_zone: str | None,
+    day_zone: str,
+) -> NewEvent:
+    """The library stated when a running session ended.
+
+    `effective_time` carries the *end's* day, read in the zone the
+    library counts days in. That is not the rule `stated_day_of`
+    applies: it reads the start, and so does the `effective_day`
+    column generated from it. For a session crossing midnight the
+    two disagree permanently, which is the point -- the event dates
+    the act, the row dates the session, and neither answers the
+    other's question.
+    """
+    return PLAYERSESSION_ENDED.new(
+        aggregate_id=session_id,
+        effective_time=TemporalValue.parse(
+            day_text(ended_at.astimezone(ZoneInfo(day_zone)).date())
+        ),
+        payload={
+            "ended_at": instant_text(ended_at),
+            "ended_at_zone": ended_at_zone,
+        },
+    )
