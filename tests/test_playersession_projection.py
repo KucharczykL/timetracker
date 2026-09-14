@@ -12,7 +12,11 @@ from games.checks import check_projection_models
 from games.commands.playergame import TrackGame
 from games.events.append import lock_stream
 from games.events.dispatch import dispatch
-from games.events.playersession import instant_text, playersession_created
+from games.events.playersession import (
+    instant_text,
+    playersession_created,
+    playersession_ended,
+)
 from games.events.projection import DEFAULT_REGISTRY
 from games.events.rebuild import RebuildMode, rebuild_projections
 from games.events.references import capture_reference
@@ -696,3 +700,177 @@ def test_a_rebuild_swaps_the_table_with_an_empty_diff(owned_user, owned_library,
         for table in report.tables
         if table.table == "games_playersession"
     ] == [("games_playersession", 0, 0, 0)]
+
+
+# --- The end of a running session --------------------------------------------
+
+
+def append_end(
+    library,
+    actor,
+    session,
+    *,
+    ended_at,
+    key,
+    ended_at_zone=None,
+    day_zone="Europe/Prague",
+):
+    """Append one end event, as dispatch would."""
+    with transaction.atomic():
+        stream = lock_stream(library)
+        return stream.append(
+            [
+                playersession_ended(
+                    session.pk,
+                    ended_at=ended_at,
+                    ended_at_zone=ended_at_zone,
+                    day_zone=day_zone,
+                )
+            ],
+            actor=actor,
+            correlation_id=uuid.uuid7(),
+            idempotency_key=key,
+        )
+
+
+def test_the_end_event_has_a_current_state_handler():
+    handlers = DEFAULT_REGISTRY.handlers_for("library.playersession.ended")
+
+    assert len(handlers) == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_end_handler_writes_two_columns_and_leaves_the_rest(
+    owned_user, owned_library, run
+):
+    append_session(
+        owned_library, owned_user, run, timing=a_timed_statement(), key="create"
+    )
+    session = PlayerSession.objects.get()
+    untouched = (
+        "timing_mode",
+        "started_at",
+        "started_at_zone",
+        "stated_day",
+        "stated_duration",
+        "day_zone",
+        "note",
+        "emulated",
+    )
+    before = {column: getattr(session, column) for column in untouched}
+
+    append_end(
+        owned_library,
+        owned_user,
+        session,
+        ended_at=START + timedelta(hours=2),
+        ended_at_zone="Asia/Tokyo",
+        key="end",
+    )
+
+    session.refresh_from_db()
+    assert (session.ended_at, session.ended_at_zone) == (
+        START + timedelta(hours=2),
+        "Asia/Tokyo",
+    )
+    assert {column: getattr(session, column) for column in untouched} == before
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_ended_row_measures_the_elapsed_time(owned_user, owned_library, run):
+    append_session(
+        owned_library, owned_user, run, timing=a_timed_statement(), key="create"
+    )
+    session = PlayerSession.objects.get()
+
+    append_end(
+        owned_library,
+        owned_user,
+        session,
+        ended_at=START + timedelta(hours=2),
+        key="end",
+    )
+
+    session.refresh_from_db()
+    assert session.effective_duration == timedelta(hours=2)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_end_moves_neither_the_sort_instant_nor_the_day(
+    owned_user, owned_library, run
+):
+    """The row dates the session by its start, whatever day the end lands on.
+
+    The end here is a full day later, so the rule that reads the end
+    would report 2026-01-03.
+    """
+    append_session(
+        owned_library, owned_user, run, timing=a_timed_statement(), key="create"
+    )
+    session = PlayerSession.objects.get()
+    before = (session.sort_instant, session.effective_day)
+
+    append_end(
+        owned_library,
+        owned_user,
+        session,
+        ended_at=START + timedelta(days=1),
+        key="end",
+    )
+
+    session.refresh_from_db()
+    assert (session.sort_instant, session.effective_day) == before
+    assert session.effective_day == date(2026, 1, 2)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_ended_session_replays(owned_user, owned_library, run):
+    append_session(
+        owned_library, owned_user, run, timing=a_timed_statement(), key="create"
+    )
+    session = PlayerSession.objects.get()
+    append_end(
+        owned_library,
+        owned_user,
+        session,
+        ended_at=START + timedelta(hours=2),
+        key="end",
+    )
+    before = list(PlayerSession.objects.order_by("pk").values())
+
+    PlayerSession.objects.all().delete()
+    replay(owned_library)
+
+    assert list(PlayerSession.objects.order_by("pk").values()) == before
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_rebuild_reproduces_an_ended_session(owned_user, owned_library, game):
+    dispatch(
+        TrackGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="track",
+    )
+    tracked_run = Playthrough.objects.get(player_game__game=game)
+    append_session(
+        owned_library, owned_user, tracked_run, timing=a_timed_statement(), key="create"
+    )
+    session = PlayerSession.objects.get()
+    append_end(
+        owned_library,
+        owned_user,
+        session,
+        ended_at=START + timedelta(hours=2),
+        key="end",
+    )
+    before = list(PlayerSession.objects.order_by("pk").values())
+
+    report = rebuild_projections(owned_library, mode=RebuildMode.CHECK)
+
+    assert [
+        (table.only_live, table.only_rebuilt, table.differing)
+        for table in report.tables
+        if table.table == "games_playersession"
+    ] == [(0, 0, 0)]
+    assert list(PlayerSession.objects.order_by("pk").values()) == before

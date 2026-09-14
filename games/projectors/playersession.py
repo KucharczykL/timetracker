@@ -7,6 +7,7 @@ from typing import ClassVar, TypedDict
 from games.events.envelope import RecordedEvent
 from games.events.playersession import (
     PLAYERSESSION_CREATED,
+    PLAYERSESSION_ENDED,
     TimingPayload,
     day_from_text,
     instant_from_text,
@@ -91,6 +92,27 @@ class PlayerSessions(Projector):
             **columns_for_timing(payload["timing"]),
         )
 
+    def _ended(self, event: RecordedEvent) -> None:
+        """Two columns; the other six stay as the creation left them.
+
+        `amend` rather than `project`: an event that changes part of
+        a row knows nothing of the columns the creation wrote, and
+        its refusal of a missing row is what keeps a rebuild honest.
+
+        No mode is re-read here, and none can be: `amend` is a bare
+        UPDATE over the columns it is handed. The mode was checked by
+        the command under dispatch's lock, and the CHECK constraints
+        hold thereafter.
+        """
+        payload = event.payload
+        self.amend(
+            PlayerSession,
+            event.aggregate_id,
+            ended_at=instant_from_text(payload["ended_at"]),
+            ended_at_zone=payload["ended_at_zone"],
+        )
+
     handles: ClassVar[HandlerMap] = {
         PLAYERSESSION_CREATED: _created,
+        PLAYERSESSION_ENDED: _ended,
     }
