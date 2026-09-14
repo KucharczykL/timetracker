@@ -5677,18 +5677,26 @@ class TestStringFieldNullConvention:
         }
     )
 
-    def test_no_nullable_string_fields_in_games_models(self):
+    def unexpected_nullable_fields(self) -> list[str]:
         from django.apps import apps
         from django.db.models import CharField, TextField
 
         games_config = apps.get_app_config("games")
-        unexpected_nullable_fields: list[str] = []
+        unexpected: list[str] = []
         for model in games_config.get_models():
-            for field in model._meta.get_fields():  # get_fields() also returns reverse relations; the isinstance check below filters them out
+            #: `managed` is what excludes the manufactured twins.
+            if not model._meta.managed:
+                continue
+            #: Reverse relations fail the isinstance check.
+            for field in model._meta.get_fields():
                 if isinstance(field, (CharField, TextField)) and field.null:
                     field_key = f"{model.__name__}.{field.name}"
                     if field_key not in self.KNOWN_NULLABLE_EXCEPTIONS:
-                        unexpected_nullable_fields.append(field_key)
+                        unexpected.append(field_key)
+        return unexpected
+
+    def test_no_nullable_string_fields_in_games_models(self):
+        unexpected_nullable_fields = self.unexpected_nullable_fields()
 
         assert unexpected_nullable_fields == [], (
             "Found unexpected nullable string fields in the games app. "
@@ -5699,6 +5707,20 @@ class TestStringFieldNullConvention:
             "whether null=False with default='' would work instead.\n"
             f"Unexpected nullable fields found: {', '.join(unexpected_nullable_fields)}"
         )
+
+    def test_a_manufactured_twin_stays_out_of_the_convention(self):
+        """A twin repeats live fields under another name."""
+        from django.apps import apps
+
+        from games.events.targets import ShadowTarget
+        from games.models import PlayerSession
+
+        twin = ShadowTarget().model(PlayerSession)
+
+        #: The pollution is made, not assumed.
+        assert twin in apps.get_app_config("games").get_models()
+
+        assert self.unexpected_nullable_fields() == []
 
 
 # ── Scoped aggregates (issue #151) ───────────────────────────────────────────
