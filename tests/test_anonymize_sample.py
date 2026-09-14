@@ -1,5 +1,5 @@
 import gzip
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -26,6 +26,7 @@ from games.models import (
     Game,
     LibraryEvent,
     Platform,
+    PlayerSession,
     Playthrough,
     Purchase,
     Session,
@@ -285,6 +286,23 @@ class AnonymizeSampleTest(TransactionTestCase):
     def test_output_reloads_via_loaddata(self):
         game_purchase, _ = _build_dataset()
         source_user = game_purchase.library.user
+        #: The loader converts the fixture's sessions and refuses what
+        #: the migration refuses: a live open row, a NULL manual
+        #: duration, a row at an untracked game. The anonymizer's own
+        #: branches for those shapes are covered by the other tests
+        #: here; the round trip states rows production could hold.
+        Session.objects.filter(timestamp_end__isnull=True).update(
+            timestamp_end=datetime(2021, 7, 1, 11, 0, tzinfo=UTC)
+        )
+        Session.objects.filter(duration_manual__isnull=True).update(
+            duration_manual=timedelta(0)
+        )
+        dispatch(
+            TrackGame(game_id=Game.objects.get(name="Game 0").pk),
+            actor=source_user,
+            library=source_user.library,
+            idempotency_key="track-0",
+        )
         with TemporaryDirectory() as tempdir:
             output = Path(tempdir) / "out.yaml.gz"
             call_command(
@@ -311,10 +329,14 @@ class AnonymizeSampleTest(TransactionTestCase):
             Playthrough.objects.filter(
                 player_game__game__library=target.library
             ).count(),
-            2,
+            3,
         )
         events = LibraryEvent.objects.filter(library=target.library)
-        self.assertEqual(events.count(), 7)
+        #: Nine the fixture carried, three the loader's conversion appended.
+        self.assertEqual(events.count(), 12)
+        self.assertEqual(
+            PlayerSession.objects.filter(library=target.library).count(), 3
+        )
         self.assertTrue(all(event.pk.version == 7 for event in events))
 
     def test_scrub_devices_uses_stable_primary_key_ordinals(self):
