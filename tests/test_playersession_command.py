@@ -1,5 +1,6 @@
 """Recording one session against a stated run."""
 
+import itertools
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from functools import lru_cache
@@ -11,6 +12,7 @@ from games.commands import playersession as playersession_commands
 from games.commands.playergame import TrackGame
 from games.commands.playersession import (
     CorrectedTiming,
+    CorrectSessionTiming,
     CreateSession,
     DurationOnlyTiming,
     EndSession,
@@ -795,3 +797,319 @@ def test_a_dispatched_end_records_the_day_its_own_zone_reads(
     ended = LibraryEvent.objects.get(event_type="library.playersession.ended")
     assert ended.effective_time.canonical == "2026-01-03"
     assert session.effective_day == date(2026, 1, 2)
+
+
+# --- Correcting a session's timing -------------------------------------------
+
+TIMING_STATES = {
+    "timed-running": a_timed(),
+    "timed-finished": a_timed(ended_at=AN_END, ended_at_zone="Asia/Tokyo"),
+    "duration-only": a_duration_only(),
+    "corrected": a_corrected(),
+}
+
+TRANSITIONS = list(itertools.permutations(TIMING_STATES, 2))
+
+
+def corrects(library, actor, session_id, timing, *, key=None):
+    return dispatch(
+        CorrectSessionTiming(session_id=session_id, timing=timing),
+        actor=actor,
+        library=library,
+        idempotency_key=key or str(uuid.uuid7()),
+    )
+
+
+def refused_correction(library, actor, session_id, timing, *, saying):
+    with pytest.raises(CommandRejected) as refusal:
+        corrects(library, actor, session_id, timing)
+    assert refusal.value.sentence == saying
+    return refusal.value
+
+
+def a_session_another_library_holds(library) -> PlayerSession:
+    """Arranged with rows: the other library's stream is not this test's."""
+    game = Game.objects.create(library=library, name="Elsewhere")
+    tracked = PlayerGame.objects.create(
+        id=uuid.uuid7(), library=library, game=game, tracked_at=timezone.now()
+    )
+    other_run = Playthrough.objects.create(
+        id=uuid.uuid7(),
+        library=library,
+        player_game=tracked,
+        kind="ordinary",
+        created_at=timezone.now(),
+    )
+    return PlayerSession.objects.create(
+        id=uuid.uuid7(),
+        library=library,
+        playthrough=other_run,
+        timing_mode=PlayerSessionTimingMode.TIMED,
+        started_at=START,
+        day_zone="Europe/Prague",
+        note="",
+        emulated=False,
+        created_at=timezone.now(),
+    )
+
+
+def correction_events():
+    return LibraryEvent.objects.filter(
+        event_type="library.playersession.timing_corrected"
+    )
+
+
+@pytest.mark.parametrize(
+    ("before", "after"),
+    TRANSITIONS,
+    ids=[f"{before}->{after}" for before, after in TRANSITIONS],
+)
+def test_every_transition_is_recorded(owned_user, owned_library, run, before, after):
+    session = record(owned_library, owned_user, run, TIMING_STATES[before])
+
+    result = corrects(owned_library, owned_user, session.pk, TIMING_STATES[after])
+
+    assert result.outcome is CommandOutcome.APPENDED
+    session.refresh_from_db()
+    assert correction_events().count() == 1
+    assert (
+        session.timing_mode
+        == {
+            "timed-running": PlayerSessionTimingMode.TIMED,
+            "timed-finished": PlayerSessionTimingMode.TIMED,
+            "duration-only": PlayerSessionTimingMode.DURATION_ONLY,
+            "corrected": PlayerSessionTimingMode.CORRECTED,
+        }[after]
+    )
+
+
+def test_a_corrected_session_may_run_again_and_then_end(owned_user, owned_library, run):
+    """A person who stated an end by mistake has a remedy."""
+    session = record(owned_library, owned_user, run, a_corrected())
+
+    corrects(owned_library, owned_user, session.pk, a_timed())
+    ends(owned_library, owned_user, session, ended_at=AN_END)
+
+    assert session.timing_mode == PlayerSessionTimingMode.TIMED
+    assert session.ended_at == AN_END
+
+
+def test_restating_the_row_changes_nothing(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_corrected())
+
+    result = corrects(owned_library, owned_user, session.pk, a_corrected())
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+    assert not correction_events().exists()
+
+
+def test_a_padded_restatement_changes_nothing(owned_user, owned_library, run):
+    session = record(
+        owned_library, owned_user, run, a_timed(started_at_zone="Asia/Tokyo")
+    )
+
+    result = corrects(
+        owned_library,
+        owned_user,
+        session.pk,
+        a_timed(started_at_zone=" Asia/Tokyo ", day_zone=" Europe/Prague"),
+    )
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+
+
+def test_the_same_instants_in_another_zone_are_a_correction(
+    owned_user, owned_library, run
+):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    result = corrects(
+        owned_library, owned_user, session.pk, a_timed(started_at_zone="Asia/Tokyo")
+    )
+
+    assert result.outcome is CommandOutcome.APPENDED
+    session.refresh_from_db()
+    assert session.started_at_zone == "Asia/Tokyo"
+
+
+def test_a_retry_of_one_correction_appends_nothing_more(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    corrects(owned_library, owned_user, session.pk, a_corrected(), key="correct")
+    result = corrects(
+        owned_library, owned_user, session.pk, a_corrected(), key="correct"
+    )
+
+    assert result.outcome is CommandOutcome.REPLAYED
+    assert correction_events().count() == 1
+
+
+def test_a_correction_is_dated_by_the_day_it_now_states(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    corrects(owned_library, owned_user, session.pk, a_duration_only())
+
+    assert correction_events().get().effective_time.canonical == "2026-03-05"
+
+
+@pytest.mark.parametrize(
+    ("timing", "saying"),
+    [
+        (
+            a_timed(ended_at=START - timedelta(hours=1)),
+            "This session ended before it started. Check the times.",
+        ),
+        (
+            a_duration_only(duration=-timedelta(minutes=1)),
+            "A session cannot last a negative amount of time.",
+        ),
+        (
+            a_corrected(duration=timedelta(seconds=1, microseconds=1)),
+            "State this session's length in whole seconds.",
+        ),
+        (a_duration_only(duration=timedelta(0)), "Say how long this session lasted."),
+        (
+            a_timed(started_at_zone="Mars/Olympus_Mons"),
+            "Mars/Olympus_Mons is not a time zone we know.",
+        ),
+        (
+            a_timed(day_zone=""),
+            "Say which time zone this session's day is read in.",
+        ),
+        (
+            a_timed(ended_at_zone="Asia/Tokyo"),
+            "This session has no end time, so it cannot have an end time zone.",
+        ),
+    ],
+    ids=[
+        "end-before-start",
+        "negative",
+        "finer-than-a-second",
+        "zero",
+        "unknown-zone",
+        "blank-day-zone",
+        "end-zone-without-end",
+    ],
+)
+def test_a_correction_meets_every_rule_the_creation_does(
+    owned_user, owned_library, run, timing, saying
+):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    refused_correction(owned_library, owned_user, session.pk, timing, saying=saying)
+
+
+def test_an_invalid_restatement_is_refused_not_unchanged(
+    owned_user, owned_library, run
+):
+    """The rules run ahead of the comparison."""
+    session = record(owned_library, owned_user, run, a_timed())
+    PlayerSession.objects.filter(pk=session.pk).update(started_at_zone="Mars/Base")
+
+    refused_correction(
+        owned_library,
+        owned_user,
+        session.pk,
+        a_timed(started_at_zone="Mars/Base"),
+        saying="Mars/Base is not a time zone we know.",
+    )
+
+
+def test_a_naive_correction_is_refused_at_construction():
+    naive = datetime(2026, 1, 1)  # noqa: DTZ001
+
+    with pytest.raises(CommandRejected):
+        CorrectSessionTiming(session_id=uuid.uuid7(), timing=a_timed(started_at=naive))
+
+
+def test_an_unknown_session_has_no_timing_to_correct(owned_user, owned_library):
+    refused_correction(
+        owned_library,
+        owned_user,
+        uuid.uuid7(),
+        a_timed(),
+        saying="That session is not available.",
+    )
+
+
+def test_another_librarys_session_has_no_timing_to_correct(
+    owned_user, owned_library, second_library
+):
+    elsewhere = a_session_another_library_holds(second_library)
+
+    refused_correction(
+        owned_library,
+        owned_user,
+        elsewhere.pk,
+        a_timed(),
+        saying="That session is not available.",
+    )
+
+
+def test_a_correction_under_a_removed_run_is_refused(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+    Playthrough.objects.filter(pk=run.pk).update(removed_at=timezone.now())
+
+    refused_correction(
+        owned_library,
+        owned_user,
+        session.pk,
+        a_corrected(),
+        saying=(
+            "That playthrough was removed from your library. Restore it "
+            "before recording this."
+        ),
+    )
+
+
+def test_a_correction_under_a_removed_game_is_refused(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+    PlayerGame.objects.filter(pk=run.player_game_id).update(removed_at=timezone.now())
+
+    refused_correction(
+        owned_library,
+        owned_user,
+        session.pk,
+        a_corrected(),
+        saying=(
+            "That game was removed from your library. Restore it before recording this."
+        ),
+    )
+
+
+def test_resetting_a_running_session_restates_its_start(owned_user, owned_library, run):
+    """The statement the reset screen sends."""
+    session = record(owned_library, owned_user, run, a_timed())
+    now = START + timedelta(hours=3)
+
+    corrects(
+        owned_library,
+        owned_user,
+        session.pk,
+        TimedTiming(
+            started_at=now, day_zone=session.day_zone, started_at_zone="Asia/Tokyo"
+        ),
+    )
+
+    session.refresh_from_db()
+    assert (session.started_at, session.started_at_zone, session.ended_at) == (
+        now,
+        "Asia/Tokyo",
+        None,
+    )
+
+
+def test_resetting_a_finished_session_is_refused(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed(ended_at=AN_END))
+
+    refused_correction(
+        owned_library,
+        owned_user,
+        session.pk,
+        TimedTiming(
+            started_at=AN_END + timedelta(hours=1),
+            day_zone="Europe/Prague",
+            ended_at=AN_END,
+        ),
+        saying="This session ended before it started. Check the times.",
+    )

@@ -21,10 +21,12 @@ from games.events.playersession import (
     instant_text,
     playersession_created,
     playersession_ended,
+    playersession_timing_corrected,
 )
 from games.events.references import capture_reference
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import Device, PlayerSession, PlayerSessionTimingMode
+from games.projectors.playersession import TimingColumns, columns_for_timing
 
 #: The finest duration a statement may carry. The payload states whole
 #: seconds while the fingerprint states microseconds, so anything
@@ -550,3 +552,35 @@ class EndSession(Command):
                 day_zone=day_zone,
             )
         ]
+
+
+@dataclass(frozen=True, slots=True)
+class CorrectSessionTiming(Command):
+    """State a session's time again, as one whole statement.
+
+    The statement is the transition law: each is complete by its
+    shape, so every mode may follow every other, in both directions.
+    """
+
+    command_name: ClassVar[CommandName] = CommandName.PLAYERSESSION_CORRECT_TIMING
+    #: A UUID, because Command fingerprints its fields.
+    session_id: uuid.UUID
+    timing: TimingStatement
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "timing", _normalized_timing(self.timing))
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        session = _live_session(context, self.session_id)
+        #: Ahead of the comparison: a row holding a value the rules
+        #: now refuse is not restated as it stands.
+        payload = _timing_payload(self.timing)
+        stated = columns_for_timing(payload)
+        #: The projector's own mapping, so what counts as unchanged
+        #: and what the handler writes cannot drift apart.
+        held = {
+            column: getattr(session, column) for column in TimingColumns.__annotations__
+        }
+        if held == stated:
+            return Unchanged("This session's time already reads so.")
+        return [playersession_timing_corrected(session.pk, timing=payload)]
