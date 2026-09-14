@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.db import connection, migrations, transaction
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
@@ -16,23 +17,26 @@ from test_playergame_playthrough_gate import UNREACHABLE_KINDS
 
 from games.backfill import playersession as conversion
 from games.backfill.playersession import (
-    ASSIGNMENT_FIELD,
     BUCKET_NAME,
+    CENSUS_PAIRS,
     KEY_PREFIX,
-    MODE_FIELD,
-    MODE_VERDICTS,
     NO_COUNTS,
+    SKIPPED_NOTE_PREFIX,
+    BucketRun,
     ConversionCounts,
     ConversionRefused,
     Mismatch,
     MismatchCode,
+    assignment_counts,
     convert_library,
     convert_row,
     display_zone_name,
+    mode_counts,
     ordering_violations,
     reconcile,
     refuse_shared_game_rows,
 )
+from games.backfill.reporting import failure_sentence
 from games.commands.playergame import TrackGame
 from games.commands.playthrough import (
     CompletePlaythrough,
@@ -40,7 +44,8 @@ from games.commands.playthrough import (
     StartPlaythrough,
 )
 from games.events.dispatch import Command, CommandOutcome, dispatch
-from games.identity_audit import identity_models
+from games.events.rebuild import RebuildReport, TableDiff
+from games.identity_audit import IdentityModel, check_ordering, identity_models
 from games.models import (
     Device,
     Game,
@@ -53,7 +58,12 @@ from games.models import (
     Session,
     UserLibrary,
 )
-from games.preflight.session import Assignment, AssignmentOutcome, report_zones
+from games.preflight.session import (
+    Assignment,
+    AssignmentOutcome,
+    TimingVerdict,
+    report_zones,
+)
 from games.reads.playtime_parity import display_zone
 from games.removal import remove
 from timetracker.temporal import TemporalValue
@@ -217,7 +227,7 @@ def test_a_null_manual_duration_refuses(owned_library):
 
 
 def test_an_unknown_display_zone_refuses(owned_library, monkeypatch):
-    #: The check guards the database's tzdata only.
+    #: The resolver admits only Python's zones.
     monkeypatch.setattr(
         "games.backfill.playersession.resolve_str_for_user",
         lambda user, key: "Mars/Olympus",
@@ -316,8 +326,8 @@ def test_the_identity_is_the_legacy_id_and_created_at_is_the_rows(owned_library)
     event = LibraryEvent.objects.get(event_type="library.playersession.created")
     assert event.aggregate_id == row.pk
     assert event.recorded_at == written
-    #: The event key sorts with its instant.
-    assert event.pk < uuid.uuid7()
+    #: The event key carries the instant it records.
+    assert event.pk.time == int(written.timestamp() * 1000)
 
 
 def test_a_removed_row_appends_created_then_removed_at_its_removed_at(owned_library):
@@ -417,12 +427,45 @@ def test_counts_add_field_by_field():
     assert NO_COUNTS.live_rows == 0
 
 
-def test_every_mode_verdict_names_a_counts_field():
-    #: A new verdict or outcome raises KeyError.
-    assert set(MODE_FIELD) == set(MODE_VERDICTS)
-    assert set(MODE_FIELD.values()) <= set(NO_COUNTS.as_dict())
-    assert set(ASSIGNMENT_FIELD) == set(AssignmentOutcome)
-    assert set(ASSIGNMENT_FIELD.values()) <= set(NO_COUNTS.as_dict())
+def test_every_verdict_and_outcome_counts_one_field():
+    for verdict in TimingVerdict:
+        if verdict in (TimingVerdict.NEGATIVE_ELAPSED, TimingVerdict.NEGATIVE_MANUAL):
+            with pytest.raises(ValueError, match=str(verdict)):
+                mode_counts(verdict)
+        else:
+            assert sum(mode_counts(verdict).as_dict().values()) == 1
+    for outcome in AssignmentOutcome:
+        assert sum(assignment_counts(outcome).as_dict().values()) == 1
+
+
+def test_a_negative_count_is_refused():
+    with pytest.raises(ValueError, match="rows_unreached"):
+        ConversionCounts(rows_unreached=-1)
+
+
+def test_a_standing_bucket_costs_nothing():
+    assert BucketRun(uuid.uuid7(), None).counts == NO_COUNTS
+    assert BucketRun(uuid.uuid7(), 2).counts == ConversionCounts(
+        buckets_minted=1, events_appended=2
+    )
+
+
+def test_the_census_pairs_cover_every_mode_and_outcome():
+    covered = {pair.counts_field for pair in CENSUS_PAIRS}
+    for verdict in (
+        TimingVerdict.TIMED,
+        TimingVerdict.DURATION_ONLY,
+        TimingVerdict.CORRECTED,
+        TimingVerdict.RUNNING,
+    ):
+        (field,) = (name for name, n in mode_counts(verdict).as_dict().items() if n)
+        assert field in covered
+    for outcome in AssignmentOutcome:
+        (field,) = (
+            name for name, n in assignment_counts(outcome).as_dict().items() if n
+        )
+        assert field in covered
+    assert covered <= set(NO_COUNTS.as_dict())
 
 
 def test_the_display_zone_is_the_users_setting(
@@ -854,8 +897,8 @@ def test_a_bucket_where_none_is_needed_is_reported(owned_library):
         created_at=timezone.now(),
     )
 
-    found = [m for m in reconcile(owned_library, counts) if m.code == "bucket_surplus"]
-    assert found[0].subject == str(other.pk)
+    found = [m for m in reconcile(owned_library, counts) if m.code == "bucket_unneeded"]
+    assert [m.subject for m in found] == [str(other.pk)]
 
 
 @pytest.mark.untracked_games
@@ -1064,7 +1107,7 @@ def test_the_migration_reports_a_second_pass_that_appends(owned_library, monkeyp
         passes.append(library)
         #: The second call over one library.
         if len(passes) % 2 == 0:
-            return counts + ConversionCounts(events_appended=1)
+            return counts + ConversionCounts(buckets_minted=1)
         return counts
 
     monkeypatch.setattr(conversion, "convert_library", drifting)
@@ -1118,3 +1161,222 @@ def test_reconcile_refreshes_the_planner_statistics_first(owned_library):
     statements = [query["sql"] for query in captured.captured_queries]
     assert statements[0].startswith('ANALYZE "games_playersession"')
     assert '"games_libraryevent"' in statements[0]
+
+
+# --- What the review added ----------------------------------------------------
+
+
+def test_a_corrected_row_with_a_sub_second_total_refuses(owned_library):
+    game = game_at(owned_library)
+    row = legacy(
+        game,
+        timestamp_end=START + timedelta(microseconds=400_000),
+        duration_manual=HOUR,
+    )
+    with pytest.raises(ConversionRefused, match="finer than a second"):
+        convert(owned_library, row, run_of(owned_library, game))
+
+
+def test_an_unknown_stated_zone_refuses(owned_library):
+    game = game_at(owned_library)
+    row = legacy(
+        game, timestamp_end=START + HOUR, timestamp_start_timezone="Mars/Olympus"
+    )
+    with pytest.raises(ConversionRefused, match="Mars/Olympus"):
+        convert(owned_library, row, run_of(owned_library, game))
+
+
+def test_a_removed_running_row_drops_its_end_zone_into_the_evidence(owned_library):
+    game = game_at(owned_library)
+    row = legacy(game, timestamp_end_timezone="Europe/Prague")
+    remove(row)
+    convert(owned_library, row, run_of(owned_library, game))
+
+    assert projection(row).ended_at_zone is None
+    event = LibraryEvent.objects.get(event_type="library.playersession.created")
+    assert event.source_metadata["legacy"]["timestamp_end_timezone"] == "Europe/Prague"
+
+
+@pytest.mark.untracked_games
+def test_a_wrongly_seeded_day_zone_is_reported(owned_library):
+    _game, counts = seeded(owned_library)
+    PlayerSession.objects.filter(note="x").update(day_zone="Asia/Tokyo")
+
+    found = [
+        m for m in reconcile(owned_library, counts) if m.code == "row_disagreement"
+    ]
+    assert len(found) == 1
+    seeded_zone = display_zone_name(owned_library)
+    assert f"day_zone: row says '{seeded_zone}', projection says 'Asia/Tokyo'" in (
+        found[0].detail
+    )
+
+
+@pytest.mark.untracked_games
+def test_a_second_pass_after_the_bucket_is_removed_refuses(owned_library):
+    game, _counts = seeded(owned_library)
+    (bucket,) = buckets_of(game)
+    Playthrough.objects.filter(pk=bucket.pk).update(removed_at=timezone.now())
+    legacy(game, start=datetime(2019, 1, 1, tzinfo=UTC), timestamp_end=START)
+
+    with pytest.raises(ConversionRefused, match="an earlier pass minted one"):
+        convert_library(owned_library)
+
+
+def test_the_walk_defers_no_column(owned_library):
+    """A column read but not named would load once per row."""
+    game = game_at(owned_library)
+    device = Device.objects.create(library=owned_library, name="Deck", type="PC")
+    for day in (1, 2, 3):
+        start = datetime(2024, 3, day, tzinfo=UTC)
+        legacy(game, start=start, timestamp_end=start + HOUR, device=device, note="n")
+    with CaptureQueriesContext(connection) as captured:
+        convert_library(owned_library)
+
+    unnamed = (
+        '"games_session"."modified_at"',
+        '"games_game"."name"',
+        '"games_playergame"."status"',
+        '"games_playthrough"."name"',
+        '"games_device"."created_at"',
+    )
+    for query in captured.captured_queries:
+        for column in unnamed:
+            assert column not in query["sql"], query["sql"][:200]
+
+
+def test_the_skipped_note_prefix_is_the_audits(owned_library):
+    (entry,) = (model for model in identity_models_for("games_playersession"))
+    blind = IdentityModel(
+        model=entry.model,
+        table=entry.table,
+        identity_field=entry.identity_field,
+        identity_column=entry.identity_column,
+        order_source=None,
+    )
+    report = check_ordering([blind])
+    assert report.notes[0].detail.startswith(SKIPPED_NOTE_PREFIX)
+
+
+def identity_models_for(table):
+    return [entry for entry in identity_models() if entry.table == table]
+
+
+@pytest.mark.untracked_games
+def test_a_moved_head_is_reported_as_a_replay_difference(owned_library, monkeypatch):
+    _game, counts = seeded(owned_library)
+    clean = TableDiff(
+        table="games_playersession",
+        live_rows=1,
+        rebuilt_rows=1,
+        only_live=0,
+        only_rebuilt=0,
+        differing=0,
+        sample=(),
+    )
+    monkeypatch.setattr(
+        conversion,
+        "rebuild_projections",
+        lambda library, *, mode: RebuildReport(
+            library_id=library.pk,
+            stream_id=None,
+            mode=mode,
+            swapped=False,
+            replayed_through=10,
+            head_at_diff=11,
+            tables=(clean,),
+            attempts=(),
+            elapsed_seconds=0.0,
+        ),
+    )
+
+    found = [m for m in reconcile(owned_library, counts) if m.code == "replay_differs"]
+    assert [m.detail for m in found] == ["replayed through 10, the head stood at 11"]
+
+
+def test_the_failure_sentence_counts_what_it_does_not_name():
+    entries = [
+        Mismatch(code=MismatchCode.COUNT_DRIFT, subject=str(n), detail="d").as_dict()
+        for n in range(5)
+    ]
+    sentence = failure_sentence(entries, subject="Test")
+    assert sentence.startswith("Test failed with 5 mismatch(es): count_drift 0: d;")
+    assert sentence.endswith("; and 2 more")
+    assert failure_sentence([], subject="Test") is None
+
+
+def test_the_summary_keys_are_the_counts_fields():
+    assert _migration.SUMMARY_KEYS == (*NO_COUNTS.as_dict(), "mismatches")
+
+
+@pytest.mark.untracked_games
+def test_the_migration_reports_every_library(owned_library, django_user_model, capsys):
+    stranger = django_user_model.objects.create_user(username="stranger", password="p")
+    for library, name in ((owned_library, "Mine"), (stranger.library, "Theirs")):
+        legacy(tracked_game(library, name), timestamp_end=START + HOUR)
+    convert_legacy_sessions(None, None)
+
+    payload = _machine_payload(capsys)
+    assert payload["summary"]["libraries"] == 2
+    assert payload["summary"]["timed"] == 2
+    assert payload["mismatches"] == []
+
+
+@pytest.mark.untracked_games
+def test_the_migration_names_a_second_librarys_mismatch(
+    owned_library, django_user_model, monkeypatch
+):
+    stranger = django_user_model.objects.create_user(username="stranger", password="p")
+    for library, name in ((owned_library, "Mine"), (stranger.library, "Theirs")):
+        legacy(tracked_game(library, name), timestamp_end=START + HOUR)
+    original = conversion.reconcile
+    monkeypatch.setattr(
+        conversion,
+        "reconcile",
+        lambda library, counts: (
+            original(library, counts)
+            + (_one_mismatch(library) if library.pk == stranger.library.pk else [])
+        ),
+    )
+    with pytest.raises(RuntimeError, match=f"row_disagreement {stranger.library.pk}"):
+        convert_legacy_sessions(None, None)
+
+
+@pytest.mark.untracked_games
+def test_the_migration_runs_from_the_schema_before_it(owned_library):
+    """The tripwire for a later column: run 0004 at 0003."""
+    from django.db.migrations.executor import MigrationExecutor
+
+    game = tracked_game(owned_library, "Chrono Trigger")
+    legacy(game, timestamp_end=START + HOUR)
+    executor = MigrationExecutor(connection)
+    executor.migrate([("games", "0003_remove_game_playtime")])
+    executor = MigrationExecutor(connection)
+    executor.migrate([("games", "0004_playersession_conversion")])
+
+    assert PlayerSession.objects.filter(library=owned_library).count() == 1
+
+
+@pytest.mark.untracked_games
+def test_load_sample_data_refuses_a_mismatch_and_loads_nothing(owned_user, monkeypatch):
+    monkeypatch.setattr(
+        "games.management.commands.load_sample_data.reconcile",
+        lambda library, counts: _one_mismatch(library),
+    )
+    with pytest.raises(CommandError, match="Sample session conversion failed with 1"):
+        call_command("load_sample_data", "--user", owned_user.username, verbosity=0)
+
+    assert Session.objects.count() == 0
+    assert PlayerSession.objects.count() == 0
+
+
+@pytest.mark.untracked_games
+def test_load_sample_data_refuses_a_refused_row(owned_user, monkeypatch):
+    def refusing(library, **kwargs):
+        raise ConversionRefused("Session x is still running.")
+
+    monkeypatch.setattr(
+        "games.management.commands.load_sample_data.convert_library", refusing
+    )
+    with pytest.raises(CommandError, match="could not be converted: Session x"):
+        call_command("load_sample_data", "--user", owned_user.username, verbosity=0)

@@ -248,8 +248,11 @@ def _counted_games(
     library: UserLibrary, sources: SourcePair, *, year: int | None
 ) -> Iterable[WithAnnotations[Game, GameSums]]:
     """Games either source counts, by sort name."""
+    #: Named columns: the conversion's gate runs this read
+    #: inside migration 0004, against the concrete models.
     return (
         Game.objects.visible_to(library)
+        .only("id", "name", "sort_name")
         .annotate(
             legacy_sum=sources.legacy.summed_by_game(library, year=year),
             projection_sum=sources.projection.summed_by_game(library, year=year),

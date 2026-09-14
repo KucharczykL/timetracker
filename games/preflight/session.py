@@ -336,6 +336,21 @@ class LibraryPreflight:
 #: Games per query.
 WALK_PAGE_SIZE = 200
 
+#: Named columns: a later migration may add more.
+#: The conversion's gate runs this census inside migration 0004,
+#: against the concrete models, so a bare select would name a
+#: column a later migration adds and fail only on the deployment.
+GAME_FIELDS = ("id", "removed_at")
+SESSION_FIELDS = (
+    "id",
+    "game_id",
+    "timestamp_start",
+    "timestamp_end",
+    "timestamp_start_timezone",
+    "duration_manual",
+    "removed_at",
+)
+
 #: Identifiers per sampled list.
 DEFAULT_SAMPLE_SIZE = 20
 
@@ -358,13 +373,17 @@ def preflight_library(
     many_claimers: list[uuid.UUID] = []
     bucket_games: list[uuid.UUID] = []
 
-    owned = Game.objects.filter(library=library)
+    owned = Game.objects.filter(library=library).only(*GAME_FIELDS)
     for batch in batched(
         keyset_pages(owned, key=("id",), page_size=WALK_PAGE_SIZE), WALK_PAGE_SIZE
     ):
         game_ids = [game.pk for game in batch]
         sessions_by_game: dict[uuid.UUID, list[Session]] = defaultdict(list)
-        for session in Session.objects.filter(game_id__in=game_ids).order_by("id"):
+        for session in (
+            Session.objects.filter(game_id__in=game_ids)
+            .only(*SESSION_FIELDS)
+            .order_by("id")
+        ):
             sessions_by_game[session.game_id].append(session)
 
         #: A removed tracking row holds no live run and is

@@ -54,7 +54,6 @@ from games.models import (
     UserLibrary,
 )
 from games.preflight.session import (
-    MODE_VERDICTS,
     Assignment,
     AssignmentOutcome,
     RunInterval,
@@ -74,7 +73,7 @@ BUCKET_NAME = "Imported history — needs sorting"
 #: Games per query.
 CONVERSION_PAGE_SIZE = 200
 
-#: Named columns: a later migration adds more.
+#: Named columns: a later migration may add more.
 #: The migration runs against the concrete models while the
 #: schema stands at 0004, so a bare query would select a column
 #: a later migration adds and fail only on the deployment.
@@ -106,21 +105,7 @@ PLAYTHROUGH_FIELDS = (
 )
 GAME_FIELDS = ("id", "removed_at")
 DEVICE_FIELDS = ("id", "library_id", "name", "type")
-PLAYERSESSION_FIELDS = (
-    "id",
-    "playthrough_id",
-    "device_id",
-    "timing_mode",
-    "started_at",
-    "started_at_zone",
-    "ended_at",
-    "ended_at_zone",
-    "stated_day",
-    "effective_duration",
-    "note",
-    "emulated",
-    "removed_at",
-)
+LIBRARY_FIELDS = ("id", "user_id")
 
 #: The evidence's unit.
 MICROSECOND = timedelta(microseconds=1)
@@ -156,6 +141,11 @@ class ConversionCounts:
     buckets_minted: int = 0
     events_appended: int = 0
 
+    def __post_init__(self) -> None:
+        for field in fields(self):
+            if getattr(self, field.name) < 0:
+                raise ValueError(f"{field.name} counts rows, so it is not negative.")
+
     def __add__(self, other: ConversionCounts) -> ConversionCounts:
         return ConversionCounts(
             **{
@@ -171,19 +161,33 @@ class ConversionCounts:
 #: The value an accumulation starts from.
 NO_COUNTS = ConversionCounts()
 
-#: Counts field per mode verdict.
-MODE_FIELD: Mapping[TimingVerdict, str] = {
-    TimingVerdict.TIMED: "timed",
-    TimingVerdict.DURATION_ONLY: "duration_only",
-    TimingVerdict.CORRECTED: "corrected",
-}
 
-#: Counts field per assignment outcome.
-ASSIGNMENT_FIELD: Mapping[AssignmentOutcome, str] = {
-    AssignmentOutcome.SOLE_RUN: "sole_run",
-    AssignmentOutcome.CONTAINED: "contained",
-    AssignmentOutcome.BUCKET: "bucket",
-}
+def mode_counts(verdict: TimingVerdict) -> ConversionCounts:
+    """The one field a converted row's verdict adds to."""
+    match verdict:
+        case TimingVerdict.TIMED:
+            return ConversionCounts(timed=1)
+        case TimingVerdict.DURATION_ONLY:
+            return ConversionCounts(duration_only=1)
+        case TimingVerdict.CORRECTED:
+            return ConversionCounts(corrected=1)
+        case TimingVerdict.RUNNING:
+            return ConversionCounts(running_removed=1)
+        case TimingVerdict.NEGATIVE_ELAPSED | TimingVerdict.NEGATIVE_MANUAL:
+            raise ValueError(f"No row of verdict {verdict} converts.")
+    assert_never(verdict)
+
+
+def assignment_counts(outcome: AssignmentOutcome) -> ConversionCounts:
+    """The one field a row's assignment adds to."""
+    match outcome:
+        case AssignmentOutcome.SOLE_RUN:
+            return ConversionCounts(sole_run=1)
+        case AssignmentOutcome.CONTAINED:
+            return ConversionCounts(contained=1)
+        case AssignmentOutcome.BUCKET:
+            return ConversionCounts(bucket=1)
+    assert_never(outcome)
 
 
 def display_zone_name(library: UserLibrary) -> ZoneName:
@@ -230,6 +234,7 @@ def statement_for(row: Session, *, day_zone: ZoneName) -> TimingStatement:
                     row,
                     "is still running. Finish or correct it before converting.",
                 )
+            #: No end, so no end zone; the evidence keeps it.
             statement = TimedTiming(row.timestamp_start, day_zone, started_zone)
         case TimingVerdict.TIMED:
             statement = TimedTiming(
@@ -335,7 +340,7 @@ def convert_row(
         raise _refuse(row, f"was refused: {refusal}") from refusal
     device = _device_reference(row, library=library)
 
-    #: No run for a bucket row: minted fresh per pass.
+    #: No run for a bucket row: the pass chooses it.
     command_input: dict[str, object] = {
         "session": str(row.pk),
         "assignment": assignment.outcome.value,
@@ -343,15 +348,15 @@ def convert_row(
     if assignment.outcome is not AssignmentOutcome.BUCKET:
         command_input["playthrough"] = str(run_id)
 
-    mode_field = (
-        "running_removed" if verdict is TimingVerdict.RUNNING else MODE_FIELD[verdict]
-    )
-    counts = ConversionCounts(
-        live_rows=int(row.removed_at is None),
-        rows_removed_converted=int(row.removed_at is not None),
-        notes=int(bool(note)),
-        devices=int(device is not None),
-        **{mode_field: 1, ASSIGNMENT_FIELD[assignment.outcome]: 1},
+    counts = (
+        ConversionCounts(
+            live_rows=int(row.removed_at is None),
+            rows_removed_converted=int(row.removed_at is not None),
+            notes=int(bool(note)),
+            devices=int(device is not None),
+        )
+        + mode_counts(verdict)
+        + assignment_counts(assignment.outcome)
     )
     evidence = legacy_evidence(row, verdict=verdict, assignment=assignment)
     #: One correlation per row.
@@ -427,11 +432,22 @@ def live_bucket(tracked_id: uuid.UUID, *, library: UserLibrary) -> uuid.UUID | N
     return None if bucket is None else bucket.pk
 
 
+#: How many of the bucket's two events one mint appended.
+type MintedEvents = int
+
+
 class BucketRun(NamedTuple):
-    """The bucket's identity and its cost."""
+    """The bucket's identity, and whether this pass minted it."""
 
     run_id: uuid.UUID
-    counts: ConversionCounts
+    #: None where the run already stood.
+    minted: MintedEvents | None
+
+    @property
+    def counts(self) -> ConversionCounts:
+        if self.minted is None:
+            return NO_COUNTS
+        return ConversionCounts(buckets_minted=1, events_appended=self.minted)
 
 
 def bucket_for(
@@ -445,12 +461,12 @@ def bucket_for(
     """
     standing = live_bucket(tracked.pk, library=library)
     if standing is not None:
-        return BucketRun(standing, NO_COUNTS)
+        return BucketRun(standing, None)
 
     #: The importer's act, at the importer's instant.
     run_id = identity_at(minted_at)
     correlation_id = uuid.uuid7()
-    counts = ConversionCounts(buckets_minted=1)
+    appended = 0
     with transaction.atomic():
         for event, key in (
             (
@@ -471,8 +487,15 @@ def bucket_for(
                 correlation_id=correlation_id,
                 source_metadata=_stream_evidence(),
             ):
-                counts = counts + ConversionCounts(events_appended=1)
-    return BucketRun(run_id, counts)
+                appended += 1
+            elif key == "bucket":
+                #: The key ran before and its run is gone.
+                raise ConversionRefused(
+                    f"Game {tracked.game_id} holds no live imported-history run, "
+                    "but an earlier pass minted one under this key. Restore that "
+                    "run before converting again."
+                )
+    return BucketRun(run_id, appended)
 
 
 def day_of(row: Session, zone: ZoneInfo) -> date:
@@ -536,31 +559,27 @@ def refuse_shared_game_rows() -> None:
 
 
 class GameRows(NamedTuple):
-    """One page's rows and tracking, by game."""
+    """One page's rows and tracking rows, by game."""
 
-    sessions: Mapping[uuid.UUID, list[Session]]
-    live_tracking: Mapping[uuid.UUID, PlayerGame]
-    removed_tracking: frozenset[uuid.UUID]
+    sessions: Mapping[uuid.UUID, Sequence[Session]]
+    tracking: Mapping[uuid.UUID, PlayerGame]
 
 
 def _page_rows(game_ids: Sequence[uuid.UUID], *, library: UserLibrary) -> GameRows:
     sessions: dict[uuid.UUID, list[Session]] = defaultdict(list)
     for row in (
-        Session.objects.filter(game_id__in=game_ids)
+        Session.objects.filter(game_id__in=game_ids, game__library=library)
         .only(*SESSION_FIELDS)
         .order_by("id")
     ):
         sessions[row.game_id].append(row)
-    live_tracking: dict[uuid.UUID, PlayerGame] = {}
-    removed_tracking: set[uuid.UUID] = set()
-    for tracking_row in PlayerGame.objects.filter(
-        library=library, game_id__in=game_ids
-    ).only(*PLAYERGAME_FIELDS):
-        if tracking_row.removed_at is None:
-            live_tracking[tracking_row.game_id] = tracking_row
-        else:
-            removed_tracking.add(tracking_row.game_id)
-    return GameRows(sessions, live_tracking, frozenset(removed_tracking))
+    tracking = {
+        tracking_row.game_id: tracking_row
+        for tracking_row in PlayerGame.objects.filter(
+            library=library, game_id__in=game_ids
+        ).only(*PLAYERGAME_FIELDS)
+    }
+    return GameRows(dict(sessions), tracking)
 
 
 def _refuse_game(game: Game, rows: Sequence[Session], category: str) -> NoReturn:
@@ -568,6 +587,18 @@ def _refuse_game(game: Game, rows: Sequence[Session], category: str) -> NoReturn
         f"Session {rows[0].pk} is at game {game.pk}, {category}, so it has no "
         f"run to name ({len(rows)} such rows at this game)."
     )
+
+
+def _live_tracking(game: Game, rows: Sequence[Session], page: GameRows) -> PlayerGame:
+    """The game's live tracking row, or a refusal by name."""
+    if game.removed_at is not None:
+        _refuse_game(game, rows, "which the catalog marks removed")
+    tracked = page.tracking.get(game.pk)
+    if tracked is None:
+        _refuse_game(game, rows, "which the library does not track")
+    if tracked.removed_at is not None:
+        _refuse_game(game, rows, "whose tracking row is removed")
+    return tracked
 
 
 def convert_library(
@@ -587,20 +618,10 @@ def convert_library(
     ):
         page = _page_rows([game.pk for game in batch], library=library)
         for game in batch:
-            rows = page.sessions.get(game.pk, [])
+            rows = page.sessions.get(game.pk, ())
             if not rows:
                 continue
-            if game.removed_at is not None:
-                _refuse_game(game, rows, "which the catalog marks removed")
-            tracked = page.live_tracking.get(game.pk)
-            if tracked is None:
-                _refuse_game(
-                    game,
-                    rows,
-                    "whose tracking row is removed"
-                    if game.pk in page.removed_tracking
-                    else "which the library does not track",
-                )
+            tracked = _live_tracking(game, rows, page)
             counts = counts + ConversionCounts(tracked=1)
             counts = counts + convert_game(
                 rows,
@@ -625,6 +646,7 @@ class MismatchCode(StrEnum):
     CENSUS_DRIFT = "census_drift"
     ROWS_UNREACHED = "rows_unreached"
     BUCKET_SURPLUS = "bucket_surplus"
+    BUCKET_UNNEEDED = "bucket_unneeded"
     BUCKET_MEMBERSHIP = "bucket_membership"
     PLAYTIME_DIFFERS = "playtime_differs"
     COUNT_DRIFT = "count_drift"
@@ -636,22 +658,31 @@ class MismatchCode(StrEnum):
 class RowShape(NamedTuple):
     """What both rows must say."""
 
-    mode: str
+    mode: PlayerSessionTimingMode
     playthrough_id: uuid.UUID | None
     started_at: datetime | None
-    started_at_zone: str | None
+    started_at_zone: ZoneName | None
     ended_at: datetime | None
-    ended_at_zone: str | None
+    ended_at_zone: ZoneName | None
     stated_day: date | None
+    day_zone: ZoneName | None
     effective_duration: timedelta | None
     device_id: uuid.UUID | None
     note: str
     emulated: bool
+    created_at: datetime
     removed_at: datetime | None
 
 
+#: Every projection column the shape reads, so none defers.
+PLAYERSESSION_FIELDS = (
+    "id",
+    *("timing_mode" if name == "mode" else name for name in RowShape._fields),
+)
+
+
 def _legacy_shape(
-    row: Session, *, run_id: uuid.UUID | None, zone: ZoneInfo
+    row: Session, *, run_id: uuid.UUID | None, day_zone: ZoneName
 ) -> RowShape:
     """The row's statement, as the walk read it."""
     verdict = classify_timing(row)
@@ -662,7 +693,7 @@ def _legacy_shape(
     )
     instants = verdict is not TimingVerdict.DURATION_ONLY
     return RowShape(
-        mode=mode.value,
+        mode=mode,
         playthrough_id=run_id,
         started_at=row.timestamp_start if instants else None,
         started_at_zone=_stated_zone(row.timestamp_start_timezone)
@@ -672,28 +703,32 @@ def _legacy_shape(
         ended_at_zone=_stated_zone(row.timestamp_end_timezone)
         if instants and row.timestamp_end is not None
         else None,
-        stated_day=None if instants else day_of(row, zone),
+        stated_day=None if instants else day_of(row, ZoneInfo(day_zone)),
+        day_zone=day_zone if instants else None,
         effective_duration=row.duration_total,
         device_id=row.device_id,
         note=row.note.strip(),
         emulated=row.emulated,
+        created_at=row.created_at,
         removed_at=row.removed_at,
     )
 
 
 def _projection_shape(row: PlayerSession) -> RowShape:
     return RowShape(
-        mode=row.timing_mode,
+        mode=PlayerSessionTimingMode(row.timing_mode),
         playthrough_id=row.playthrough_id,
         started_at=row.started_at,
         started_at_zone=row.started_at_zone,
         ended_at=row.ended_at,
         ended_at_zone=row.ended_at_zone,
         stated_day=row.stated_day,
+        day_zone=row.day_zone,
         effective_duration=row.effective_duration,
         device_id=row.device_id,
         note=row.note,
         emulated=row.emulated,
+        created_at=row.created_at,
         removed_at=row.removed_at,
     )
 
@@ -706,11 +741,15 @@ def _differences(expected: RowShape, found: RowShape) -> str:
     )
 
 
-class ExpectedRuns(NamedTuple):
-    """Each row's run, read again from legacy."""
+class ExpectedRun(NamedTuple):
+    """Where one row lands, read again from legacy."""
 
-    run_by_row: Mapping[uuid.UUID, uuid.UUID | None]
-    bucketed: frozenset[uuid.UUID]
+    #: None where a bucket is owed and none stands.
+    run_id: uuid.UUID | None
+    bucketed: bool
+
+
+type ExpectedRuns = Mapping[uuid.UUID, ExpectedRun]
 
 
 def _expected_runs(
@@ -723,16 +762,14 @@ def _expected_runs(
     """The census's answer per row, bucket resolved."""
     runs = runs_for(tracked.pk, library=library)
     bucket_id = live_bucket(tracked.pk, library=library)
-    run_by_row: dict[uuid.UUID, uuid.UUID | None] = {}
-    bucketed: set[uuid.UUID] = set()
+    expected: dict[uuid.UUID, ExpectedRun] = {}
     for row in rows:
         assignment = assign_run(runs, day_of(row, zone))
         if assignment.outcome is AssignmentOutcome.BUCKET:
-            run_by_row[row.pk] = bucket_id
-            bucketed.add(row.pk)
+            expected[row.pk] = ExpectedRun(bucket_id, bucketed=True)
         else:
-            run_by_row[row.pk] = assignment.run_id
-    return ExpectedRuns(run_by_row, frozenset(bucketed))
+            expected[row.pk] = ExpectedRun(assignment.run_id, bucketed=False)
+    return expected
 
 
 def _reconcile_game(
@@ -741,11 +778,14 @@ def _reconcile_game(
     *,
     tracked: PlayerGame,
     library: UserLibrary,
-    zone: ZoneInfo,
+    day_zone: ZoneName,
 ) -> list[Mismatch[MismatchCode]]:
     """Checks 1 and 3, one game."""
     mismatches: list[Mismatch[MismatchCode]] = []
-    expected = _expected_runs(rows, tracked=tracked, library=library, zone=zone)
+    expected = _expected_runs(
+        rows, tracked=tracked, library=library, zone=ZoneInfo(day_zone)
+    )
+    bucketed = frozenset(pk for pk, run in expected.items() if run.bucketed)
     projected = {
         projection.pk: projection
         for projection in PlayerSession.objects.filter(
@@ -766,7 +806,7 @@ def _reconcile_game(
                 Mismatch(code=code, subject=str(row.pk), detail="no projection row")
             )
             continue
-        legacy = _legacy_shape(row, run_id=expected.run_by_row[row.pk], zone=zone)
+        legacy = _legacy_shape(row, run_id=expected[row.pk].run_id, day_zone=day_zone)
         found = _projection_shape(projection)
         if legacy != found:
             mismatches.append(
@@ -794,10 +834,10 @@ def _reconcile_game(
                 detail=f"{len(buckets)} live imported-history runs; one is the most",
             )
         )
-    if buckets and not expected.bucketed:
+    if buckets and not bucketed:
         mismatches.append(
             Mismatch(
-                code=MismatchCode.BUCKET_SURPLUS,
+                code=MismatchCode.BUCKET_UNNEEDED,
                 subject=str(game_id),
                 detail="a bucket stands where no row needs one",
             )
@@ -808,42 +848,54 @@ def _reconcile_game(
                 library=library, playthrough=bucket
             ).values_list("pk", flat=True)
         )
-        if naming != expected.bucketed:
+        if naming != bucketed:
             mismatches.append(
                 Mismatch(
                     code=MismatchCode.BUCKET_MEMBERSHIP,
                     subject=str(game_id),
                     detail=f"bucket {bucket.pk} holds {sorted(map(str, naming))}, "
-                    f"the census buckets {sorted(map(str, expected.bucketed))}",
+                    f"the census buckets {sorted(map(str, bucketed))}",
                 )
             )
     return mismatches
+
+
+class CensusPair(NamedTuple):
+    """One count the pass and the census must agree on."""
+
+    name: str
+    counts_field: str
+    census_field: str
+
+
+#: The secondary census column is the display zone.
+CENSUS_PAIRS = (
+    CensusPair("timed", "timed", "timed"),
+    CensusPair("duration_only", "duration_only", "duration_only"),
+    CensusPair("corrected", "corrected", "corrected"),
+    CensusPair("running", "running_removed", "running"),
+    CensusPair("removed", "rows_removed_converted", "removed"),
+    CensusPair("sole_run", "sole_run", "sole_run"),
+    CensusPair("contained", "contained", "contained_secondary"),
+    CensusPair("bucket", "bucket", "bucket_secondary"),
+)
 
 
 def _census_mismatches(
     library: UserLibrary, counts: ConversionCounts
 ) -> list[Mismatch[MismatchCode]]:
     """Check 2: pass and census agree."""
-    census = preflight_library(library, sample_size=0).counts
-    #: The secondary column is the display zone.
-    pairs = (
-        ("timed", counts.timed, census.timed),
-        ("duration_only", counts.duration_only, census.duration_only),
-        ("corrected", counts.corrected, census.corrected),
-        ("running", counts.running_removed, census.running),
-        ("removed", counts.rows_removed_converted, census.removed),
-        ("sole_run", counts.sole_run, census.sole_run),
-        ("contained", counts.contained, census.contained_secondary),
-        ("bucket", counts.bucket, census.bucket_secondary),
-    )
+    census = preflight_library(library, sample_size=0).counts.as_dict()
+    converted = counts.as_dict()
     mismatches = [
         Mismatch(
             code=MismatchCode.CENSUS_DRIFT,
             subject=str(library.pk),
-            detail=f"the pass counted {name}={converted}, the census {counted}",
+            detail=f"the pass counted {pair.name}={converted[pair.counts_field]}, "
+            f"the census {census[pair.census_field]}",
         )
-        for name, converted, counted in pairs
-        if converted != counted
+        for pair in CENSUS_PAIRS
+        if converted[pair.counts_field] != census[pair.census_field]
     ]
     if counts.rows_unreached:
         mismatches.append(
@@ -922,9 +974,9 @@ def refresh_statistics() -> None:
     """ANALYZE the filled tables before reading them.
 
     The rows are uncommitted, so the planner still holds the
-    statistics of empty tables, and the parity read then takes
-    minutes rather than seconds. ANALYZE is allowed inside a
-    transaction; VACUUM is not, and none is needed.
+    statistics from before the pass, and the parity read then
+    takes minutes rather than seconds. ANALYZE is allowed inside
+    a transaction; VACUUM is not, and none is needed.
     """
     tables = ", ".join(
         connection.ops.quote_name(model._meta.db_table) for model in FILLED_TABLES
@@ -938,7 +990,7 @@ def reconcile(
 ) -> list[Mismatch[MismatchCode]]:
     """Every reading but the identity audit."""
     refresh_statistics()
-    zone = ZoneInfo(display_zone_name(library))
+    day_zone = display_zone_name(library)
     mismatches: list[Mismatch[MismatchCode]] = []
     owned = Game.objects.filter(library=library).only(*GAME_FIELDS)
     for batch in batched(
@@ -947,14 +999,19 @@ def reconcile(
     ):
         page = _page_rows([game.pk for game in batch], library=library)
         for game in batch:
-            rows = page.sessions.get(game.pk, [])
-            tracked = page.live_tracking.get(game.pk)
-            if not rows or tracked is None or game.removed_at is not None:
+            rows = page.sessions.get(game.pk, ())
+            tracked = page.tracking.get(game.pk)
+            if (
+                not rows
+                or tracked is None
+                or tracked.removed_at is not None
+                or game.removed_at is not None
+            ):
                 #: Refused by the walk; nothing to compare.
                 continue
             mismatches.extend(
                 _reconcile_game(
-                    game.pk, rows, tracked=tracked, library=library, zone=zone
+                    game.pk, rows, tracked=tracked, library=library, day_zone=day_zone
                 )
             )
     mismatches.extend(_census_mismatches(library, counts))
@@ -964,8 +1021,11 @@ def reconcile(
     return mismatches
 
 
-#: Tables whose keys this pass mints.
+#: Tables whose keys this pass writes.
 AUDITED_TABLES = (PlayerSession._meta.db_table, Playthrough._meta.db_table)
+
+#: What check_ordering says of a table it did not examine.
+SKIPPED_NOTE_PREFIX = "skipped:"
 
 
 def ordering_violations() -> list[Mismatch[MismatchCode]]:
@@ -1004,30 +1064,31 @@ def ordering_violations() -> list[Mismatch[MismatchCode]]:
             detail=note.detail,
         )
         for note in report.notes
-        if note.detail.startswith("skipped:")
+        if note.detail.startswith(SKIPPED_NOTE_PREFIX)
     )
     return mismatches
 
 
 __all__ = [
-    "ASSIGNMENT_FIELD",
     "BUCKET_NAME",
+    "CENSUS_PAIRS",
     "KEY_PREFIX",
-    "MODE_FIELD",
-    "MODE_VERDICTS",
     "NO_COUNTS",
     "PLAYERSESSION_ISSUE",
+    "BucketRun",
     "ConversionCounts",
     "ConversionRefused",
     "Mismatch",
     "MismatchCode",
     "RowShape",
+    "assignment_counts",
     "bucket_for",
     "convert_game",
     "convert_library",
     "convert_row",
     "display_zone_name",
     "legacy_evidence",
+    "mode_counts",
     "ordering_violations",
     "reconcile",
     "refuse_shared_game_rows",

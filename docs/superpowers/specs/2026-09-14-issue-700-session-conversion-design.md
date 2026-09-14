@@ -2,7 +2,7 @@
 
 Migration `0004_playersession_conversion` states each legacy `Session` row as
 `PlayerSession` events. Each session names a run. A game gets one
-imported-history bucket when its runs claim none of a session's day. The
+imported-history bucket when no single run claims a session's day. The
 migration gates the result and rolls back on a mismatch. The reverse is
 `noop`. The code is in `games/backfill/playersession.py`. `load_sample_data`
 runs the same pass after it replays the fixture.
@@ -16,7 +16,7 @@ only with `gh stack merge`. Do not merge it alone.
 
 | Verdict | Statement |
 |---|---|
-| `timed` | `TimedTiming(start, day_zone, zones, end)` |
+| `timed` | `TimedTiming(start, day_zone, start_zone, end, end_zone)` |
 | `duration_only` | `DurationOnlyTiming(day, duration_manual)` |
 | `corrected` | `CorrectedTiming(start, end, duration_total, day_zone, zones)` |
 
@@ -43,8 +43,8 @@ the command states, the conversion states.
 
 Keys are `backfill:700:playersession:{created,removed}:<session>` and
 `backfill:700:playthrough:{bucket,bucket_name}:<player_game>`. A `BUCKET`
-row's `command_input` names no run: the pass mints that run, and a second
-pass must replay as a no-op.
+row's `command_input` names no run: the bucket is the pass's choice, not the
+row's statement, so the fingerprint holds whichever bucket stands.
 
 `source_metadata.legacy` keeps the instants, both zones, the three durations
 in microseconds, `created_at`, the verdict, the assignment and the claimer
@@ -61,8 +61,10 @@ only way out.
 
 The walk pages the library's games, as the census does. A row on an untracked
 game, a removed tracking row, a removed game or a shared game refuses the
-migration by name. Each read names its columns with `.only()`, so a later
-migration's new column needs no entry.
+migration by name. The module's reads, the census and the parity read name
+their columns with `.only()`. The replay (check 7) does not: it reads every
+column of the projection tables, so a later migration that adds one to them
+must run after this one has already run.
 
 ## The gate
 
@@ -70,17 +72,23 @@ migration's new column needs no entry.
 know uncommitted rows. Then, per library:
 
 1. Row to row, live and removed apart: mode, run, instants, zones, day,
-   `effective_duration == duration_total`, device, note, emulated, mark.
+   `day_zone`, `effective_duration == duration_total`, device, note,
+   emulated, `created_at`, mark.
 2. Census: the pass's counts equal `preflight_library()`'s secondary column.
-3. Bucket: at most one per game, holding exactly the `BUCKET` rows.
+3. Bucket: at most one per game, holding exactly the `BUCKET` rows, present
+   only where a row needs one.
 4. Playtime: `differing(playtime_figures(library, display_zone(library)))` is
    empty.
 5. Counts: legacy rows in scope equal projection rows, live and removed.
-6. Identity ordering on `games_playersession` and `games_playthrough`.
 7. Replay: `rebuild_projections(mode=CHECK)` shows no difference.
 
+After every library, check 6: identity ordering on `games_playersession` and
+`games_playthrough`, once over both tables.
+
 The migration prints one machine-readable line to stderr and names the first
-three mismatches in the exception. A second pass appends nothing.
+three mismatches in the exception, with the rest counted. A second pass
+appends nothing and mints nothing. `games/backfill/reporting.py` prints the
+same report for the migration and for `load_sample_data`.
 
 ## Out of scope
 

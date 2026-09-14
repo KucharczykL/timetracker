@@ -2,6 +2,18 @@
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import TypedDict
+
+type MismatchSubject = str  # a row id, a library id, a table name
+type MismatchDetail = str
+
+
+class MismatchEntry(TypedDict):
+    """The wire shape of one mismatch."""
+
+    code: str
+    detail: MismatchDetail
+    subject: MismatchSubject
 
 
 @dataclass(frozen=True, slots=True)
@@ -9,11 +21,10 @@ class Mismatch[CodeT: StrEnum]:
     """One reason the run must not commit."""
 
     code: CodeT
-    #: Whatever the code names.
-    subject: str
-    detail: str
+    subject: MismatchSubject
+    detail: MismatchDetail
 
-    def as_dict(self) -> dict[str, str]:
+    def as_dict(self) -> MismatchEntry:
         return {
             "code": self.code.value,
             "detail": self.detail,

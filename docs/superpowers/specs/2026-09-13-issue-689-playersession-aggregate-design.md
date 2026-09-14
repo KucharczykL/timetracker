@@ -386,7 +386,8 @@ a past instant. **#700 reuses the legacy `Session.id` as the aggregate id**:
 every bookmarked session URL and `/api/session/{id}` keeps working, and #704's
 row-to-row parity needs no mapping table. `make audit-uuid-identity` holds
 identity order against `(created_at, pk)`, and the legacy ids already order
-by `created_at` (zero inversions on the 2026-09-12 dump), so reuse passes
+by `created_at` (zero inversions on the 2026-09-12 dump, by
+`make audit-uuid-identity`), so reuse passes
 with each row's own `recorded_at`.
 
 ## The command

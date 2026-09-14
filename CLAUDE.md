@@ -322,7 +322,7 @@ docs/           — Additional documentation
 
   #700's `games/backfill/playersession.py`, run by migration `0004`, converts
   every legacy `Session` row: aggregate id the row's own, `recorded_at` its
-  `created_at`, run from `assign_run`, one imported-history bucket per game
+  `created_at` (the removal's, its `removed_at`), run from `assign_run`, one imported-history bucket per game
   needing one, seven readings gated before commit. Member 1 of the wave stack;
   never merged alone. Contract is
   [Convert legacy Sessions](docs/superpowers/specs/2026-09-14-issue-700-session-conversion-design.md)
