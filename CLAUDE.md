@@ -280,7 +280,7 @@ docs/           — Additional documentation
   it with its readers. Contract is
   [PlayerSession](docs/superpowers/specs/2026-09-13-issue-689-playersession-aggregate-design.md)
 
-  Two acts state one today. `CreateSession` states whole timing through
+  Five commands state one. `CreateSession` states whole timing through
   `TimingPayload`; #691's `EndSession` states end of running Timed row and is
   partial act — own payload of `ended_at` and `ended_at_zone`, no `day_zone`,
   which row holds. Handler `amend`s those two columns and reads no mode, so
@@ -290,6 +290,15 @@ docs/           — Additional documentation
   `effective_time` reads end, `effective_day` reads start. Nothing calls it yet;
   #702 owns surfaces. Contract is
   [End a running Timed session](docs/superpowers/specs/2026-09-13-issue-691-session-end-design.md)
+
+  #692's three corrections, one fact each. `CorrectSessionTiming` restates
+  whole `TimingStatement` — any mode to any — through module functions
+  `CreateSession` shares; `Unchanged` compares `columns_for_timing` with row,
+  event dated by `stated_day_of`. `DescribeSession`: `None` unstated, `StatedDevice(None)`
+  no device, one event per differing fact. `MoveSessionToPlaythrough` may name
+  run at another game. Reset-to-now is `TimedTiming(now)` with row's `day_zone`.
+  Contract is
+  [Correct a session](docs/superpowers/specs/2026-09-14-issue-692-session-corrections-design.md)
 
 **Nothing user removes is destroyed** (#944). Eight removable models — Game,
 Edition, Release, Platform, Device, Session, Purchase, FilterPreset —

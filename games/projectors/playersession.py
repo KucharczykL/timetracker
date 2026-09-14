@@ -7,7 +7,12 @@ from typing import ClassVar, TypedDict
 from games.events.envelope import RecordedEvent
 from games.events.playersession import (
     PLAYERSESSION_CREATED,
+    PLAYERSESSION_DEVICE_CHANGED,
+    PLAYERSESSION_EMULATED_CHANGED,
     PLAYERSESSION_ENDED,
+    PLAYERSESSION_MOVED,
+    PLAYERSESSION_NOTE_CHANGED,
+    PLAYERSESSION_TIMING_CORRECTED,
     TimingPayload,
     day_from_text,
     instant_from_text,
@@ -93,7 +98,7 @@ class PlayerSessions(Projector):
         )
 
     def _ended(self, event: RecordedEvent) -> None:
-        """Two columns; the creation wrote the rest."""
+        """Two columns; earlier statements wrote the rest."""
         payload = event.payload
         self.amend(
             PlayerSession,
@@ -102,7 +107,43 @@ class PlayerSessions(Projector):
             ended_at_zone=payload["ended_at_zone"],
         )
 
+    def _timing_corrected(self, event: RecordedEvent) -> None:
+        """All eight columns; no old mode stays."""
+        self.amend(
+            PlayerSession,
+            event.aggregate_id,
+            **columns_for_timing(event.payload["timing"]),
+        )
+
+    def _note_changed(self, event: RecordedEvent) -> None:
+        self.amend(PlayerSession, event.aggregate_id, note=event.payload["note"])
+
+    def _device_changed(self, event: RecordedEvent) -> None:
+        device = event.payload["device"]
+        self.amend(
+            PlayerSession,
+            event.aggregate_id,
+            device_id=None if device is None else uuid.UUID(device["id"]),
+        )
+
+    def _emulated_changed(self, event: RecordedEvent) -> None:
+        self.amend(
+            PlayerSession, event.aggregate_id, emulated=event.payload["emulated"]
+        )
+
+    def _moved(self, event: RecordedEvent) -> None:
+        self.amend(
+            PlayerSession,
+            event.aggregate_id,
+            playthrough_id=uuid.UUID(event.payload["playthrough"]),
+        )
+
     handles: ClassVar[HandlerMap] = {
         PLAYERSESSION_CREATED: _created,
         PLAYERSESSION_ENDED: _ended,
+        PLAYERSESSION_TIMING_CORRECTED: _timing_corrected,
+        PLAYERSESSION_NOTE_CHANGED: _note_changed,
+        PLAYERSESSION_DEVICE_CHANGED: _device_changed,
+        PLAYERSESSION_EMULATED_CHANGED: _emulated_changed,
+        PLAYERSESSION_MOVED: _moved,
     }

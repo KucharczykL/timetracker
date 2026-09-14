@@ -1,18 +1,25 @@
 """Recording one session against a stated run."""
 
+import itertools
 import uuid
 from datetime import UTC, date, datetime, timedelta
+from datetime import timezone as dt_timezone
 from functools import lru_cache
 
 import pytest
 from django.utils import timezone
 
+from games.commands import playersession as playersession_commands
 from games.commands.playergame import TrackGame
 from games.commands.playersession import (
     CorrectedTiming,
+    CorrectSessionTiming,
     CreateSession,
+    DescribeSession,
     DurationOnlyTiming,
     EndSession,
+    MoveSessionToPlaythrough,
+    StatedDevice,
     TimedTiming,
 )
 from games.events.dispatch import (
@@ -20,6 +27,7 @@ from games.events.dispatch import (
     CommandRejected,
     dispatch,
 )
+from games.events.idempotency import IdempotencyKeyMismatch
 from games.models import (
     Device,
     Game,
@@ -28,6 +36,7 @@ from games.models import (
     PlayerSession,
     PlayerSessionTimingMode,
     Playthrough,
+    PlaythroughKind,
 )
 from games.writes.answers import CommandFailed, answered
 
@@ -299,7 +308,10 @@ def test_it_refuses_a_session_with_no_day_zone(owned_user, owned_library, run):
 
 
 def test_it_refuses_a_blank_day_zone(owned_user, owned_library, run):
-    refused(owned_library, owned_user, run, a_timed(day_zone=""))
+    refusal = refused(owned_library, owned_user, run, a_timed(day_zone=" "))
+
+    #: A blank is unstated, not unknown.
+    assert refusal.sentence == "Say which time zone this session's day is read in."
 
 
 def test_it_refuses_a_zone_only_python_knows(
@@ -396,7 +408,7 @@ def test_a_refusal_the_command_forgot_reaches_a_person_as_a_sentence(
     inside the append, and `answered` turns the IntegrityError into a
     sentence instead of letting it rise as a 500.
     """
-    monkeypatch.setattr(CreateSession, "_check_duration", staticmethod(lambda _: None))
+    monkeypatch.setattr(playersession_commands, "_check_duration", lambda _: None)
 
     with (
         capture_games_logger() as caplog,
@@ -791,3 +803,932 @@ def test_a_dispatched_end_records_the_day_its_own_zone_reads(
     ended = LibraryEvent.objects.get(event_type="library.playersession.ended")
     assert ended.effective_time.canonical == "2026-01-03"
     assert session.effective_day == date(2026, 1, 2)
+
+
+# --- Correcting a session's timing -------------------------------------------
+
+TIMING_STATES = {
+    "timed-running": a_timed(),
+    "timed-finished": a_timed(ended_at=AN_END, ended_at_zone="Asia/Tokyo"),
+    "duration-only": a_duration_only(),
+    "corrected": a_corrected(),
+}
+
+TRANSITIONS = list(itertools.permutations(TIMING_STATES, 2))
+
+
+def corrects(library, actor, session_id, timing, *, key=None):
+    return dispatch(
+        CorrectSessionTiming(session_id=session_id, timing=timing),
+        actor=actor,
+        library=library,
+        idempotency_key=key or str(uuid.uuid7()),
+    )
+
+
+def refused_correction(library, actor, session_id, timing, *, saying):
+    with pytest.raises(CommandRejected) as refusal:
+        corrects(library, actor, session_id, timing)
+    assert refusal.value.sentence == saying
+    return refusal.value
+
+
+def a_session_another_library_holds(library) -> PlayerSession:
+    """Rows, not events: another library's stream."""
+    game = Game.objects.create(library=library, name="Elsewhere")
+    tracked = PlayerGame.objects.create(
+        id=uuid.uuid7(), library=library, game=game, tracked_at=timezone.now()
+    )
+    other_run = Playthrough.objects.create(
+        id=uuid.uuid7(),
+        library=library,
+        player_game=tracked,
+        kind="ordinary",
+        created_at=timezone.now(),
+    )
+    return PlayerSession.objects.create(
+        id=uuid.uuid7(),
+        library=library,
+        playthrough=other_run,
+        timing_mode=PlayerSessionTimingMode.TIMED,
+        started_at=START,
+        day_zone="Europe/Prague",
+        note="",
+        emulated=False,
+        created_at=timezone.now(),
+    )
+
+
+def correction_events():
+    return LibraryEvent.objects.filter(
+        event_type="library.playersession.timing_corrected"
+    )
+
+
+@pytest.mark.parametrize(
+    ("before", "after"),
+    TRANSITIONS,
+    ids=[f"{before}->{after}" for before, after in TRANSITIONS],
+)
+def test_every_transition_is_recorded(owned_user, owned_library, run, before, after):
+    session = record(owned_library, owned_user, run, TIMING_STATES[before])
+
+    result = corrects(owned_library, owned_user, session.pk, TIMING_STATES[after])
+
+    assert result.outcome is CommandOutcome.APPENDED
+    session.refresh_from_db()
+    assert correction_events().count() == 1
+    assert (
+        session.timing_mode
+        == {
+            "timed-running": PlayerSessionTimingMode.TIMED,
+            "timed-finished": PlayerSessionTimingMode.TIMED,
+            "duration-only": PlayerSessionTimingMode.DURATION_ONLY,
+            "corrected": PlayerSessionTimingMode.CORRECTED,
+        }[after]
+    )
+
+
+def test_a_corrected_session_may_run_again_and_then_end(owned_user, owned_library, run):
+    """A mistaken end has a remedy."""
+    session = record(owned_library, owned_user, run, a_corrected())
+
+    corrects(owned_library, owned_user, session.pk, a_timed())
+    ends(owned_library, owned_user, session, ended_at=AN_END)
+
+    assert session.timing_mode == PlayerSessionTimingMode.TIMED
+    assert session.ended_at == AN_END
+
+
+@pytest.mark.parametrize("state", TIMING_STATES)
+def test_restating_the_row_changes_nothing(owned_user, owned_library, run, state):
+    session = record(owned_library, owned_user, run, TIMING_STATES[state])
+
+    result = corrects(owned_library, owned_user, session.pk, TIMING_STATES[state])
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+    assert not correction_events().exists()
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "column", "value"),
+    [
+        (
+            a_corrected(),
+            a_corrected(duration=timedelta(minutes=45)),
+            "stated_duration",
+            timedelta(minutes=45),
+        ),
+        (
+            a_duration_only(),
+            a_duration_only(day=date(2026, 3, 6)),
+            "stated_day",
+            date(2026, 3, 6),
+        ),
+        (a_timed(), a_timed(day_zone="Asia/Tokyo"), "day_zone", "Asia/Tokyo"),
+        (
+            TIMING_STATES["timed-finished"],
+            a_timed(ended_at=AN_END, ended_at_zone="Europe/Prague"),
+            "ended_at_zone",
+            "Europe/Prague",
+        ),
+    ],
+    ids=["override", "written-day", "day-zone", "end-zone"],
+)
+def test_a_correction_within_one_mode_is_recorded(
+    owned_user, owned_library, run, before, after, column, value
+):
+    session = record(owned_library, owned_user, run, before)
+
+    result = corrects(owned_library, owned_user, session.pk, after)
+
+    assert result.outcome is CommandOutcome.APPENDED
+    session.refresh_from_db()
+    assert getattr(session, column) == value
+
+
+def test_a_padded_restatement_changes_nothing(owned_user, owned_library, run):
+    session = record(
+        owned_library, owned_user, run, a_timed(started_at_zone="Asia/Tokyo")
+    )
+
+    result = corrects(
+        owned_library,
+        owned_user,
+        session.pk,
+        a_timed(started_at_zone=" Asia/Tokyo ", day_zone=" Europe/Prague"),
+    )
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+
+
+def test_the_same_instants_in_another_zone_are_a_correction(
+    owned_user, owned_library, run
+):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    result = corrects(
+        owned_library, owned_user, session.pk, a_timed(started_at_zone="Asia/Tokyo")
+    )
+
+    assert result.outcome is CommandOutcome.APPENDED
+    session.refresh_from_db()
+    assert session.started_at_zone == "Asia/Tokyo"
+
+
+def test_a_retry_of_one_correction_appends_nothing_more(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    corrects(owned_library, owned_user, session.pk, a_corrected(), key="correct")
+    result = corrects(
+        owned_library, owned_user, session.pk, a_corrected(), key="correct"
+    )
+
+    assert result.outcome is CommandOutcome.REPLAYED
+    assert correction_events().count() == 1
+
+
+def test_a_correction_is_dated_by_the_day_it_now_states(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    corrects(owned_library, owned_user, session.pk, a_duration_only())
+
+    assert correction_events().get().effective_time.canonical == "2026-03-05"
+
+
+@pytest.mark.parametrize(
+    ("timing", "saying"),
+    [
+        (
+            a_timed(ended_at=START - timedelta(hours=1)),
+            "This session ended before it started. Check the times.",
+        ),
+        (
+            a_duration_only(duration=-timedelta(minutes=1)),
+            "A session cannot last a negative amount of time.",
+        ),
+        (
+            a_corrected(duration=timedelta(seconds=1, microseconds=1)),
+            "State this session's length in whole seconds.",
+        ),
+        (a_duration_only(duration=timedelta(0)), "Say how long this session lasted."),
+        (
+            a_timed(started_at_zone="Mars/Olympus_Mons"),
+            "Mars/Olympus_Mons is not a time zone we know.",
+        ),
+        (
+            a_timed(day_zone=""),
+            "Say which time zone this session's day is read in.",
+        ),
+        (
+            a_timed(ended_at_zone="Asia/Tokyo"),
+            "This session has no end time, so it cannot have an end time zone.",
+        ),
+    ],
+    ids=[
+        "end-before-start",
+        "negative",
+        "finer-than-a-second",
+        "zero",
+        "unknown-zone",
+        "blank-day-zone",
+        "end-zone-without-end",
+    ],
+)
+def test_a_correction_meets_every_rule_the_creation_does(
+    owned_user, owned_library, run, timing, saying
+):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    refused_correction(owned_library, owned_user, session.pk, timing, saying=saying)
+
+
+def test_an_invalid_restatement_is_refused_not_unchanged(
+    owned_user, owned_library, run
+):
+    """Rules run before the comparison."""
+    session = record(owned_library, owned_user, run, a_timed())
+    PlayerSession.objects.filter(pk=session.pk).update(started_at_zone="Mars/Base")
+
+    refused_correction(
+        owned_library,
+        owned_user,
+        session.pk,
+        a_timed(started_at_zone="Mars/Base"),
+        saying="Mars/Base is not a time zone we know.",
+    )
+
+
+def test_a_naive_correction_is_refused_at_construction():
+    naive = datetime(2026, 1, 1)  # noqa: DTZ001
+
+    with pytest.raises(CommandRejected):
+        CorrectSessionTiming(session_id=uuid.uuid7(), timing=a_timed(started_at=naive))
+
+
+def test_a_timestamp_is_not_a_written_day():
+    """`datetime` subclasses `date`, so mypy admits it."""
+    with pytest.raises(TypeError):
+        CorrectSessionTiming(
+            session_id=uuid.uuid7(),
+            timing=a_duration_only(day=datetime(2026, 3, 5, 10, tzinfo=UTC)),
+        )
+
+
+def test_an_unknown_session_has_no_timing_to_correct(owned_user, owned_library):
+    refused_correction(
+        owned_library,
+        owned_user,
+        uuid.uuid7(),
+        a_timed(),
+        saying="That session is not available.",
+    )
+
+
+def test_another_librarys_session_has_no_timing_to_correct(
+    owned_user, owned_library, second_library
+):
+    elsewhere = a_session_another_library_holds(second_library)
+
+    refused_correction(
+        owned_library,
+        owned_user,
+        elsewhere.pk,
+        a_timed(),
+        saying="That session is not available.",
+    )
+
+
+def test_a_correction_under_a_removed_run_is_refused(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+    Playthrough.objects.filter(pk=run.pk).update(removed_at=timezone.now())
+
+    refused_correction(
+        owned_library,
+        owned_user,
+        session.pk,
+        a_corrected(),
+        saying=(
+            "That playthrough was removed from your library. Restore it "
+            "before recording this."
+        ),
+    )
+
+
+def test_a_correction_under_a_removed_game_is_refused(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+    PlayerGame.objects.filter(pk=run.player_game_id).update(removed_at=timezone.now())
+
+    refused_correction(
+        owned_library,
+        owned_user,
+        session.pk,
+        a_corrected(),
+        saying=(
+            "That game was removed from your library. Restore it before recording this."
+        ),
+    )
+
+
+def test_resetting_a_running_session_restates_its_start(owned_user, owned_library, run):
+    """What the reset screen sends."""
+    session = record(owned_library, owned_user, run, a_timed())
+    now = START + timedelta(hours=3)
+
+    corrects(
+        owned_library,
+        owned_user,
+        session.pk,
+        TimedTiming(
+            started_at=now, day_zone=session.day_zone, started_at_zone="Asia/Tokyo"
+        ),
+    )
+
+    session.refresh_from_db()
+    assert (session.started_at, session.started_at_zone, session.ended_at) == (
+        now,
+        "Asia/Tokyo",
+        None,
+    )
+
+
+def test_resetting_a_finished_session_runs_it_again(owned_user, owned_library, run):
+    """The reset statement holds no end."""
+    session = record(owned_library, owned_user, run, a_timed(ended_at=AN_END))
+    now = AN_END + timedelta(hours=1)
+
+    corrects(
+        owned_library,
+        owned_user,
+        session.pk,
+        TimedTiming(started_at=now, day_zone="Europe/Prague"),
+    )
+
+    session.refresh_from_db()
+    assert (session.started_at, session.ended_at) == (now, None)
+
+
+# --- Describing a session ----------------------------------------------------
+
+
+def describes(library, actor, session_id, *, key=None, **stated):
+    return dispatch(
+        DescribeSession(session_id=session_id, **stated),
+        actor=actor,
+        library=library,
+        idempotency_key=key or str(uuid.uuid7()),
+    )
+
+
+def refused_description(library, actor, session_id, *, saying, **stated):
+    with pytest.raises(CommandRejected) as refusal:
+        describes(library, actor, session_id, **stated)
+    assert refusal.value.sentence == saying
+    return refusal.value
+
+
+def description_events() -> list[str]:
+    return list(
+        LibraryEvent.objects.filter(
+            event_type__in=[
+                "library.playersession.note_changed",
+                "library.playersession.device_changed",
+                "library.playersession.emulated_changed",
+            ]
+        )
+        .order_by("sequence")
+        .values_list("event_type", flat=True)
+    )
+
+
+@pytest.fixture
+def steam_deck(owned_library) -> Device:
+    return Device.objects.create(library=owned_library, name="Steam Deck")
+
+
+def test_a_note_alone_is_described(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed(), note="before")
+
+    describes(owned_library, owned_user, session.pk, note="after")
+
+    session.refresh_from_db()
+    assert session.note == "after"
+    assert description_events() == ["library.playersession.note_changed"]
+
+
+def test_a_device_alone_is_described(owned_user, owned_library, run, steam_deck):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    describes(owned_library, owned_user, session.pk, device=StatedDevice(steam_deck.pk))
+
+    session.refresh_from_db()
+    assert session.device == steam_deck
+    assert description_events() == ["library.playersession.device_changed"]
+
+
+def test_the_emulated_flag_alone_is_described(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    describes(owned_library, owned_user, session.pk, emulated=True)
+
+    session.refresh_from_db()
+    assert session.emulated is True
+    assert description_events() == ["library.playersession.emulated_changed"]
+
+
+def test_the_emulated_flag_is_cleared(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed(), emulated=True)
+
+    result = describes(owned_library, owned_user, session.pk, emulated=False)
+
+    assert result.outcome is CommandOutcome.APPENDED
+    session.refresh_from_db()
+    assert session.emulated is False
+
+
+def test_three_facts_are_three_events(owned_user, owned_library, run, steam_deck):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    result = describes(
+        owned_library,
+        owned_user,
+        session.pk,
+        note="played",
+        device=StatedDevice(steam_deck.pk),
+        emulated=True,
+    )
+
+    assert result.outcome is CommandOutcome.APPENDED
+    assert description_events() == [
+        "library.playersession.note_changed",
+        "library.playersession.device_changed",
+        "library.playersession.emulated_changed",
+    ]
+
+
+def test_only_the_facts_that_differ_are_recorded(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed(), note="played")
+
+    describes(owned_library, owned_user, session.pk, note="played", emulated=True)
+
+    assert description_events() == ["library.playersession.emulated_changed"]
+
+
+def test_an_empty_note_clears_the_note(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed(), note="played")
+
+    describes(owned_library, owned_user, session.pk, note="")
+
+    session.refresh_from_db()
+    assert session.note == ""
+
+
+def test_a_padded_note_is_compared_as_the_note_inside_it(
+    owned_user, owned_library, run
+):
+    session = record(owned_library, owned_user, run, a_timed(), note="played")
+
+    result = describes(owned_library, owned_user, session.pk, note="  played ")
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+
+
+def test_a_padded_note_fingerprints_as_the_note_inside_it(
+    owned_user, owned_library, run
+):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    describes(owned_library, owned_user, session.pk, note=" played", key="describe")
+    result = describes(
+        owned_library, owned_user, session.pk, note="played", key="describe"
+    )
+
+    assert result.outcome is CommandOutcome.REPLAYED
+
+
+def test_stating_no_device_clears_the_device(
+    owned_user, owned_library, run, steam_deck
+):
+    session = record(owned_library, owned_user, run, a_timed(), device_id=steam_deck.pk)
+
+    describes(owned_library, owned_user, session.pk, device=StatedDevice(None))
+
+    session.refresh_from_db()
+    assert session.device is None
+
+
+def test_an_unstated_device_is_left_alone(owned_user, owned_library, run, steam_deck):
+    session = record(owned_library, owned_user, run, a_timed(), device_id=steam_deck.pk)
+
+    describes(owned_library, owned_user, session.pk, note="played")
+
+    session.refresh_from_db()
+    assert session.device == steam_deck
+
+
+def test_a_note_jsonb_cannot_store_is_refused(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    refused_description(
+        owned_library,
+        owned_user,
+        session.pk,
+        note="hi\x00there",
+        saying="That note contains a character we cannot store.",
+    )
+
+
+def test_a_note_holding_a_lone_surrogate_is_refused(owned_user, owned_library, run):
+    """A JSON body can carry one; JSONB refuses it."""
+    session = record(owned_library, owned_user, run, a_timed())
+
+    refused_description(
+        owned_library,
+        owned_user,
+        session.pk,
+        note="a\ud800",
+        saying="That note contains a character we cannot store.",
+    )
+
+
+def test_another_librarys_device_is_refused(
+    owned_user, owned_library, run, second_library
+):
+    session = record(owned_library, owned_user, run, a_timed())
+    elsewhere = Device.objects.create(library=second_library, name="Elsewhere")
+
+    refused_description(
+        owned_library,
+        owned_user,
+        session.pk,
+        device=StatedDevice(elsewhere.pk),
+        saying="That device is not available.",
+    )
+
+
+def test_a_removed_device_is_refused(owned_user, owned_library, run, steam_deck):
+    session = record(owned_library, owned_user, run, a_timed())
+    Device.objects.filter(pk=steam_deck.pk).update(removed_at=timezone.now())
+
+    refused_description(
+        owned_library,
+        owned_user,
+        session.pk,
+        device=StatedDevice(steam_deck.pk),
+        saying=(
+            "That device was removed from your library. Restore it before "
+            "choosing it for a session."
+        ),
+    )
+
+
+def test_restating_a_removed_device_the_row_names_changes_nothing(
+    owned_user, owned_library, run, steam_deck
+):
+    """Compared before resolved; removal is irrelevant."""
+    session = record(owned_library, owned_user, run, a_timed(), device_id=steam_deck.pk)
+    Device.objects.filter(pk=steam_deck.pk).update(removed_at=timezone.now())
+
+    result = describes(
+        owned_library, owned_user, session.pk, device=StatedDevice(steam_deck.pk)
+    )
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+
+
+def test_a_description_of_nothing_is_refused():
+    with pytest.raises(CommandRejected) as refusal:
+        DescribeSession(session_id=uuid.uuid7())
+
+    assert refusal.value.sentence == "Say what to change about this session."
+
+
+def test_an_unknown_session_has_nothing_to_describe(owned_user, owned_library):
+    refused_description(
+        owned_library,
+        owned_user,
+        uuid.uuid7(),
+        note="played",
+        saying="That session is not available.",
+    )
+
+
+def test_another_librarys_session_has_nothing_to_describe(
+    owned_user, owned_library, second_library
+):
+    elsewhere = a_session_another_library_holds(second_library)
+
+    refused_description(
+        owned_library,
+        owned_user,
+        elsewhere.pk,
+        note="played",
+        saying="That session is not available.",
+    )
+
+
+def test_a_description_under_a_removed_run_is_refused(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+    Playthrough.objects.filter(pk=run.pk).update(removed_at=timezone.now())
+
+    refused_description(
+        owned_library,
+        owned_user,
+        session.pk,
+        note="played",
+        saying=(
+            "That playthrough was removed from your library. Restore it "
+            "before recording this."
+        ),
+    )
+
+
+def test_stating_no_device_is_a_different_statement(
+    owned_user, owned_library, run, steam_deck
+):
+    """`StatedDevice(None)` is not an unstated fact."""
+    session = record(
+        owned_library,
+        owned_user,
+        run,
+        a_timed(),
+        note="played",
+        device_id=steam_deck.pk,
+    )
+
+    describes(owned_library, owned_user, session.pk, note="other", key="one")
+    with pytest.raises(IdempotencyKeyMismatch):
+        describes(
+            owned_library,
+            owned_user,
+            session.pk,
+            note="other",
+            device=StatedDevice(None),
+            key="one",
+        )
+
+
+# --- Moving a session to another playthrough ---------------------------------
+
+
+def moves(library, actor, session_id, playthrough_id, *, key=None):
+    return dispatch(
+        MoveSessionToPlaythrough(session_id=session_id, playthrough_id=playthrough_id),
+        actor=actor,
+        library=library,
+        idempotency_key=key or str(uuid.uuid7()),
+    )
+
+
+def refused_move(library, actor, session_id, playthrough_id, *, saying):
+    with pytest.raises(CommandRejected) as refusal:
+        moves(library, actor, session_id, playthrough_id)
+    assert refusal.value.sentence == saying
+    return refusal.value
+
+
+def move_events():
+    return LibraryEvent.objects.filter(event_type="library.playersession.moved")
+
+
+@pytest.fixture
+def other_game_run(owned_user, owned_library) -> Playthrough:
+    other_game = Game.objects.create(library=owned_library, name="Tunic")
+    dispatch(
+        TrackGame(game_id=other_game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="track-other",
+    )
+    return Playthrough.objects.get(player_game__game=other_game)
+
+
+def test_a_session_moves_to_another_run_at_its_game(owned_user, owned_library, run):
+    second_run = Playthrough.objects.create(
+        id=uuid.uuid7(),
+        library=owned_library,
+        player_game=run.player_game,
+        kind=PlaythroughKind.ORDINARY,
+        created_at=timezone.now(),
+    )
+    session = record(owned_library, owned_user, run, a_timed())
+
+    moves(owned_library, owned_user, session.pk, second_run.pk)
+
+    session.refresh_from_db()
+    assert session.playthrough == second_run
+
+
+def test_a_session_logged_against_the_wrong_game_moves_to_the_right_one(
+    owned_user, owned_library, run, other_game_run
+):
+    session = record(owned_library, owned_user, run, a_corrected(), note="played")
+    kept = {
+        name: getattr(session, name)
+        for name in ("timing_mode", "started_at", "stated_duration", "note")
+    }
+
+    moves(owned_library, owned_user, session.pk, other_game_run.pk)
+
+    session.refresh_from_db()
+    assert session.playthrough.player_game.game.name == "Tunic"
+    assert {name: getattr(session, name) for name in kept} == kept
+    assert move_events().count() == 1
+
+
+def test_a_session_may_move_to_imported_history(owned_user, owned_library, run):
+    history = Playthrough.objects.create(
+        id=uuid.uuid7(),
+        library=owned_library,
+        player_game=run.player_game,
+        kind=PlaythroughKind.IMPORTED_HISTORY,
+        created_at=timezone.now(),
+    )
+    session = record(owned_library, owned_user, run, a_timed())
+
+    result = moves(owned_library, owned_user, session.pk, history.pk)
+
+    assert result.outcome is CommandOutcome.APPENDED
+
+
+def test_moving_to_the_same_run_changes_nothing(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    result = moves(owned_library, owned_user, session.pk, run.pk)
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+    assert not move_events().exists()
+
+
+def test_a_run_another_library_holds_is_refused(
+    owned_user, owned_library, run, second_library
+):
+    session = record(owned_library, owned_user, run, a_timed())
+    elsewhere = a_session_another_library_holds(second_library)
+
+    refused_move(
+        owned_library,
+        owned_user,
+        session.pk,
+        elsewhere.playthrough_id,
+        saying="That playthrough is not available.",
+    )
+
+
+def test_an_unknown_run_is_refused(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    refused_move(
+        owned_library,
+        owned_user,
+        session.pk,
+        uuid.uuid7(),
+        saying="That playthrough is not available.",
+    )
+
+
+def test_a_removed_target_run_is_refused(
+    owned_user, owned_library, run, other_game_run
+):
+    session = record(owned_library, owned_user, run, a_timed())
+    Playthrough.objects.filter(pk=other_game_run.pk).update(removed_at=timezone.now())
+
+    refused_move(
+        owned_library,
+        owned_user,
+        session.pk,
+        other_game_run.pk,
+        saying=(
+            "That playthrough was removed from your library. Restore it "
+            "before recording this."
+        ),
+    )
+
+
+def test_a_target_under_a_removed_game_is_refused(
+    owned_user, owned_library, run, other_game_run
+):
+    session = record(owned_library, owned_user, run, a_timed())
+    PlayerGame.objects.filter(pk=other_game_run.player_game_id).update(
+        removed_at=timezone.now()
+    )
+
+    refused_move(
+        owned_library,
+        owned_user,
+        session.pk,
+        other_game_run.pk,
+        saying=(
+            "That game was removed from your library. Restore it before recording this."
+        ),
+    )
+
+
+def test_a_session_under_a_removed_game_cannot_be_moved_out(
+    owned_user, owned_library, run, other_game_run
+):
+    """No read finds such a session."""
+    session = record(owned_library, owned_user, run, a_timed())
+    PlayerGame.objects.filter(pk=run.player_game_id).update(removed_at=timezone.now())
+
+    refused_move(
+        owned_library,
+        owned_user,
+        session.pk,
+        other_game_run.pk,
+        saying=(
+            "That game was removed from your library. Restore it before recording this."
+        ),
+    )
+
+
+def test_an_unknown_session_cannot_be_moved(owned_user, owned_library, run):
+    refused_move(
+        owned_library,
+        owned_user,
+        uuid.uuid7(),
+        run.pk,
+        saying="That session is not available.",
+    )
+
+
+# --- Instants a calendar cannot hold ------------------------------------------
+
+#: Ten past the last UTC hour Python can hold, stated five hours west.
+BEYOND_UTC = datetime(9999, 12, 31, 23, tzinfo=dt_timezone(timedelta(hours=-5)))
+#: A UTC instant whose day in Kiritimati is year 10000.
+BEYOND_KIRITIMATI = datetime(9999, 12, 31, 20, tzinfo=UTC)
+OUT_OF_RANGE = "That time is outside the range we can record."
+
+
+@pytest.mark.parametrize(
+    "construct",
+    [
+        lambda: CreateSession(
+            playthrough_id=uuid.uuid7(), timing=a_timed(started_at=BEYOND_UTC)
+        ),
+        lambda: CorrectSessionTiming(
+            session_id=uuid.uuid7(), timing=a_corrected(ended_at=BEYOND_UTC)
+        ),
+        lambda: EndSession(
+            session_id=uuid.uuid7(), ended_at=BEYOND_UTC, ended_at_zone=None
+        ),
+    ],
+    ids=["create", "correct", "end"],
+)
+def test_an_instant_utc_cannot_hold_is_refused_at_construction(construct):
+    with pytest.raises(CommandRejected) as refusal:
+        construct()
+
+    assert refusal.value.sentence == OUT_OF_RANGE
+
+
+def test_a_start_its_day_zone_cannot_hold_is_refused(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    refused_correction(
+        owned_library,
+        owned_user,
+        session.pk,
+        a_timed(started_at=BEYOND_KIRITIMATI, day_zone="Pacific/Kiritimati"),
+        saying=OUT_OF_RANGE,
+    )
+
+
+def test_an_end_its_own_zone_cannot_hold_is_refused(owned_user, owned_library, run):
+    refusal = refused(
+        owned_library,
+        owned_user,
+        run,
+        a_timed(ended_at=BEYOND_KIRITIMATI, ended_at_zone="Pacific/Kiritimati"),
+    )
+
+    assert refusal.sentence == OUT_OF_RANGE
+
+
+def test_an_end_its_day_zone_cannot_hold_is_refused(owned_user, owned_library, run):
+    session = record(
+        owned_library,
+        owned_user,
+        run,
+        a_timed(
+            started_at=datetime(9999, 12, 31, 9, tzinfo=UTC),
+            day_zone="Pacific/Kiritimati",
+        ),
+    )
+
+    refused_end(
+        owned_library,
+        owned_user,
+        session.pk,
+        ended_at=BEYOND_KIRITIMATI,
+        saying=OUT_OF_RANGE,
+    )
+
+
+def test_a_command_with_two_keys_takes_them_by_name():
+    """Swapped positional keys would type-check."""
+    with pytest.raises(TypeError):
+        MoveSessionToPlaythrough(uuid.uuid7(), uuid.uuid7())  # type: ignore[misc]
+    with pytest.raises(TypeError):
+        CreateSession(uuid.uuid7(), a_timed())  # type: ignore[misc]

@@ -459,9 +459,11 @@ the rest of the wave inherits:
 
 ### #692 — the three correction commands
 
-`CorrectSessionTiming` states a new mode and its endpoints or override, and
-owns every refusal — which mode transitions are legal, an end before a start,
-an override on a row with no elapsed time. `DescribeSession` states note,
+`CorrectSessionTiming` states one whole `TimingStatement` again. The statement
+is the transition law: each is complete by its shape, so every mode may follow
+every other, and an override with no end cannot be stated because
+`CorrectedTiming` holds both instants. It shares every value refusal with
+`CreateSession`. `DescribeSession` states note,
 device and the emulated flag, `None` meaning not stated, following
 `DescribePlaythrough`. `MoveSessionToPlaythrough` states the run.
 
@@ -470,8 +472,10 @@ single command rather than a second way to reassign, and so that a bulk
 reassignment is not one field away from a bulk timing rewrite.
 
 `reset_session` — "set the start to now" — is a timing act with no command in
-the placeholder set. It is `CorrectSessionTiming` with a restated start, and
-this issue owns saying so.
+the placeholder set. It is `CorrectSessionTiming` with a `TimedTiming`: start
+`now`, `started_at_zone` the browser's, `day_zone` the row's, no end. Offered
+only on a running session; on a finished one it runs the session again. Contract
+is [Correct a session](2026-09-14-issue-692-session-corrections-design.md).
 
 ### #694 — removal and restoration
 

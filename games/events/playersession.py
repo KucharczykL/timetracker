@@ -79,7 +79,21 @@ def stated_zone_text(value: str) -> str:
     return value
 
 
+def stated_note_text(value: str) -> str:
+    """Refuse padding and text JSONB cannot store."""
+    if value != value.strip():
+        raise ValueError(f"{value!r} is padded; {value.strip()!r} is the note.")
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        raise ValueError(f"{value!r} holds a lone surrogate.") from None
+    if "\x00" in value:
+        raise ValueError(f"{value!r} holds a NUL byte.")
+    return value
+
+
 type InstantText = Annotated[str, AfterValidator(canonical_instant_text)]
+type NoteText = Annotated[str, AfterValidator(stated_note_text)]
 type DayText = Annotated[str, AfterValidator(canonical_day_text)]
 type ZoneText = Annotated[str, AfterValidator(stated_zone_text)]
 
@@ -98,11 +112,11 @@ class TimedTimingPayload(TypedDict):
     mode: Literal["timed"]
     started_at: InstantText
     #: The zone the clock stood in, or None where nobody stated it.
-    started_at_zone: str | None
+    started_at_zone: ZoneText | None
     ended_at: InstantText | None
-    ended_at_zone: str | None
+    ended_at_zone: ZoneText | None
     #: The zone the library counts this session's day in.
-    day_zone: str
+    day_zone: ZoneText
 
 
 @with_config(STRICT_SCHEMA)
@@ -123,10 +137,10 @@ class CorrectedTimingPayload(TypedDict):
 
     mode: Literal["corrected"]
     started_at: InstantText
-    started_at_zone: str | None
+    started_at_zone: ZoneText | None
     ended_at: InstantText
-    ended_at_zone: str | None
-    day_zone: str
+    ended_at_zone: ZoneText | None
+    day_zone: ZoneText
     duration_seconds: int
 
 
@@ -158,7 +172,7 @@ class PlayerSessionCreatedPayload(TypedDict):
     device: Reference | None
     release: Reference | None
     timing: TimingPayload
-    note: str
+    note: NoteText
     emulated: bool
 
 
@@ -265,4 +279,129 @@ def playersession_ended(
             "ended_at": instant_text(ended_at),
             "ended_at_zone": ended_at_zone,
         },
+    )
+
+
+@with_config(STRICT_SCHEMA)
+class PlayerSessionTimingCorrectedPayload(TypedDict):
+    """A whole timing statement."""
+
+    timing: TimingPayload
+
+
+PLAYERSESSION_TIMING_CORRECTED = EventSpec(
+    "library.playersession.timing_corrected",
+    aggregate_type="playersession",
+    payload=PlayerSessionTimingCorrectedPayload,
+)
+
+DEFAULT_EVENT_TYPES.register(PLAYERSESSION_TIMING_CORRECTED)
+
+
+def playersession_timing_corrected(
+    session_id: uuid.UUID, *, timing: TimingPayload
+) -> NewEvent:
+    """Dated by the new statement's day, never the end."""
+    return PLAYERSESSION_TIMING_CORRECTED.new(
+        aggregate_id=session_id,
+        effective_time=TemporalValue.parse(day_text(stated_day_of(timing))),
+        payload={"timing": timing},
+    )
+
+
+@with_config(STRICT_SCHEMA)
+class PlayerSessionNoteChangedPayload(TypedDict):
+    """An empty note clears it."""
+
+    note: NoteText
+
+
+PLAYERSESSION_NOTE_CHANGED = EventSpec(
+    "library.playersession.note_changed",
+    aggregate_type="playersession",
+    payload=PlayerSessionNoteChangedPayload,
+)
+
+DEFAULT_EVENT_TYPES.register(PLAYERSESSION_NOTE_CHANGED)
+
+
+def playersession_note_changed(session_id: uuid.UUID, *, note: str) -> NewEvent:
+    """A session's note; dated on no day."""
+    return PLAYERSESSION_NOTE_CHANGED.new(
+        aggregate_id=session_id, payload={"note": note}
+    )
+
+
+@with_config(STRICT_SCHEMA)
+class PlayerSessionDeviceChangedPayload(TypedDict):
+    """A Reference, so the index reads it."""
+
+    device: Reference | None
+
+
+PLAYERSESSION_DEVICE_CHANGED = EventSpec(
+    "library.playersession.device_changed",
+    aggregate_type="playersession",
+    payload=PlayerSessionDeviceChangedPayload,
+)
+
+DEFAULT_EVENT_TYPES.register(PLAYERSESSION_DEVICE_CHANGED)
+
+
+def playersession_device_changed(
+    session_id: uuid.UUID, *, device: Reference | None
+) -> NewEvent:
+    """A session's device, or none."""
+    return PLAYERSESSION_DEVICE_CHANGED.new(
+        aggregate_id=session_id, payload={"device": device}
+    )
+
+
+@with_config(STRICT_SCHEMA)
+class PlayerSessionEmulatedChangedPayload(TypedDict):
+    """Whether the session was emulated."""
+
+    emulated: bool
+
+
+PLAYERSESSION_EMULATED_CHANGED = EventSpec(
+    "library.playersession.emulated_changed",
+    aggregate_type="playersession",
+    payload=PlayerSessionEmulatedChangedPayload,
+)
+
+DEFAULT_EVENT_TYPES.register(PLAYERSESSION_EMULATED_CHANGED)
+
+
+def playersession_emulated_changed(
+    session_id: uuid.UUID, *, emulated: bool
+) -> NewEvent:
+    """Whether a session was emulated."""
+    return PLAYERSESSION_EMULATED_CHANGED.new(
+        aggregate_id=session_id, payload={"emulated": emulated}
+    )
+
+
+@with_config(STRICT_SCHEMA)
+class PlayerSessionMovedPayload(TypedDict):
+    """A bare key, as the creation's run."""
+
+    playthrough: ReferenceId
+
+
+PLAYERSESSION_MOVED = EventSpec(
+    "library.playersession.moved",
+    aggregate_type="playersession",
+    payload=PlayerSessionMovedPayload,
+)
+
+DEFAULT_EVENT_TYPES.register(PLAYERSESSION_MOVED)
+
+
+def playersession_moved(
+    session_id: uuid.UUID, *, playthrough_id: uuid.UUID
+) -> NewEvent:
+    """The run a session now belongs to."""
+    return PLAYERSESSION_MOVED.new(
+        aggregate_id=session_id, payload={"playthrough": str(playthrough_id)}
     )
