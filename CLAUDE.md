@@ -280,7 +280,7 @@ docs/           — Additional documentation
   it with its readers. Contract is
   [PlayerSession](docs/superpowers/specs/2026-09-13-issue-689-playersession-aggregate-design.md)
 
-  Two acts state one today. `CreateSession` states whole timing through
+  Five commands state one. `CreateSession` states whole timing through
   `TimingPayload`; #691's `EndSession` states end of running Timed row and is
   partial act — own payload of `ended_at` and `ended_at_zone`, no `day_zone`,
   which row holds. Handler `amend`s those two columns and reads no mode, so
@@ -290,6 +290,22 @@ docs/           — Additional documentation
   `effective_time` reads end, `effective_day` reads start. Nothing calls it yet;
   #702 owns surfaces. Contract is
   [End a running Timed session](docs/superpowers/specs/2026-09-13-issue-691-session-end-design.md)
+
+  #692 adds three corrections, one act each, because a bulk move one field
+  away from a bulk timing rewrite is a hazard. `CorrectSessionTiming` states
+  whole `TimingStatement` again, through the module functions `CreateSession`
+  shares, so every mode may follow every other; equality is
+  `columns_for_timing(payload)` against row's eight columns, the projector's
+  own mapping, and event dates by `stated_day_of` — start, even where only end
+  moved. `DescribeSession` states `note`, `device`, `emulated`, `None` unstated,
+  `StatedDevice(None)` for no device; one event per fact that differs, device
+  compared before resolved. `MoveSessionToPlaythrough` may name run at another
+  game — only remedy for session logged against wrong one; same run is
+  `Unchanged` ahead of target read, and `_live_session` refuses session under
+  removed run or game, which no read finds. Reset-to-now is
+  `CorrectSessionTiming` with `TimedTiming(now, day_zone=row's,
+  started_at_zone=browser's)`. Contract is
+  [Correct a session](docs/superpowers/specs/2026-09-14-issue-692-session-corrections-design.md)
 
 **Nothing user removes is destroyed** (#944). Eight removable models — Game,
 Edition, Release, Platform, Device, Session, Purchase, FilterPreset —
