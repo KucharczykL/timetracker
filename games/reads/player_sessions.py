@@ -9,12 +9,13 @@ def library_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
     A copy of `library_runs` breaks this quietly. Its `kind`
     condition drops the sessions of the imported-history bucket.
     `alive()` alone keeps the sessions of a removed catalog game.
-    The run's library is stated too: a session can name the run
-    of another library.
+    The run's and its tracked game's libraries are stated too:
+    either can name another library's row.
     """
     return PlayerSession.objects.filter(
         library=library,
         playthrough__library=library,
+        playthrough__player_game__library=library,
         removed_at__isnull=True,
         playthrough__removed_at__isnull=True,
         playthrough__player_game__removed_at__isnull=True,

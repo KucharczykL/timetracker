@@ -107,3 +107,14 @@ def test_the_scope_reads_one_library(owned_library, run, django_user_model):
 
     assert not library_sessions(owned_library).exists()
     assert not library_sessions(stranger.library).exists()
+
+
+def test_the_scope_reads_the_tracked_games_library(
+    owned_library, run, django_user_model
+):
+    stranger = django_user_model.objects.create_user(username="stranger", password="p")
+    a_session(run)
+    #: Our session and run, the stranger's tracked game.
+    PlayerGame.objects.filter(pk=run.player_game_id).update(library=stranger.library)
+
+    assert not library_sessions(owned_library).exists()
