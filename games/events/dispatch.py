@@ -96,6 +96,7 @@ class CommandName(CommandVocabulary):
     PLAYTHROUGH_REMOVE = "library.playthrough.remove"
     PLAYTHROUGH_RESTORE = "library.playthrough.restore"
     PLAYERSESSION_CREATE = "library.playersession.create"
+    PLAYERSESSION_END = "library.playersession.end"
 
 
 @dataclass(frozen=True, slots=True)

@@ -12,6 +12,7 @@ from games.commands.playersession import (
     CorrectedTiming,
     CreateSession,
     DurationOnlyTiming,
+    EndSession,
     TimedTiming,
 )
 from games.events.dispatch import (
@@ -419,3 +420,225 @@ def test_a_refusal_the_command_forgot_reaches_a_person_as_a_sentence(
         event_type="library.playersession.created"
     ).exists()
     assert "playersession_duration_not_negative" in caplog.text
+
+
+# --- Ending a running session ------------------------------------------------
+
+AN_END = START + timedelta(hours=2)
+
+
+def ends(library, actor, session, *, ended_at, ended_at_zone=None, key=None):
+    result = dispatch(
+        EndSession(
+            session_id=session.pk, ended_at=ended_at, ended_at_zone=ended_at_zone
+        ),
+        actor=actor,
+        library=library,
+        idempotency_key=key or str(uuid.uuid7()),
+    )
+    session.refresh_from_db()
+    return result
+
+
+def refused_end(
+    library, actor, session_id, *, ended_at=AN_END, ended_at_zone=None
+) -> CommandRejected:
+    with pytest.raises(CommandRejected) as refusal:
+        dispatch(
+            EndSession(
+                session_id=session_id, ended_at=ended_at, ended_at_zone=ended_at_zone
+            ),
+            actor=actor,
+            library=library,
+            idempotency_key=str(uuid.uuid7()),
+        )
+    assert refusal.value.sentence
+    return refusal.value
+
+
+def test_it_ends_a_running_session(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    result = ends(
+        owned_library, owned_user, session, ended_at=AN_END, ended_at_zone="Asia/Tokyo"
+    )
+
+    assert result.outcome is CommandOutcome.APPENDED
+    assert (session.ended_at, session.ended_at_zone) == (AN_END, "Asia/Tokyo")
+    assert session.effective_duration == timedelta(hours=2)
+    assert (
+        LibraryEvent.objects.filter(event_type="library.playersession.ended").count()
+        == 1
+    )
+
+
+def test_an_end_equal_to_the_start_is_recorded(owned_user, owned_library, run):
+    """Started by mistake and ended at once; removal is the other remedy."""
+    session = record(owned_library, owned_user, run, a_timed())
+
+    ends(owned_library, owned_user, session, ended_at=START)
+
+    assert session.ended_at == START
+    assert session.effective_duration == timedelta(0)
+
+
+def test_a_blank_zone_is_recorded_as_no_zone(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    ends(owned_library, owned_user, session, ended_at=AN_END, ended_at_zone="   ")
+
+    assert session.ended_at_zone is None
+
+
+def test_an_empty_zone_normalizes_to_no_zone():
+    """One statement, one digest, whichever way the caller spelled it."""
+    blank = EndSession(session_id=uuid.uuid7(), ended_at=AN_END, ended_at_zone="")
+
+    assert blank.ended_at_zone is None
+
+
+def test_a_naive_end_is_refused_at_construction():
+    #: noqa DTZ001: a naive datetime is exactly what is on trial.
+    naive = datetime(2026, 1, 2, 1, 30)  # noqa: DTZ001
+
+    with pytest.raises(CommandRejected) as refusal:
+        EndSession(session_id=uuid.uuid7(), ended_at=naive, ended_at_zone=None)
+
+    assert refusal.value.sentence
+
+
+def test_restating_the_same_end_changes_nothing(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+    ends(
+        owned_library, owned_user, session, ended_at=AN_END, ended_at_zone="Asia/Tokyo"
+    )
+
+    result = ends(
+        owned_library, owned_user, session, ended_at=AN_END, ended_at_zone="Asia/Tokyo"
+    )
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+    assert (
+        LibraryEvent.objects.filter(event_type="library.playersession.ended").count()
+        == 1
+    )
+
+
+def test_the_same_instant_in_another_zone_is_refused(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+    ends(
+        owned_library, owned_user, session, ended_at=AN_END, ended_at_zone="Asia/Tokyo"
+    )
+
+    refused_end(
+        owned_library,
+        owned_user,
+        session.pk,
+        ended_at=AN_END,
+        ended_at_zone="Europe/Prague",
+    )
+
+
+def test_a_second_end_is_refused(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+    ends(owned_library, owned_user, session, ended_at=AN_END)
+
+    refused_end(
+        owned_library, owned_user, session.pk, ended_at=AN_END + timedelta(hours=1)
+    )
+
+
+def test_an_end_before_the_start_is_refused(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    refused_end(
+        owned_library, owned_user, session.pk, ended_at=START - timedelta(seconds=1)
+    )
+
+
+def test_a_duration_only_session_has_no_end_to_state(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_duration_only())
+
+    refused_end(owned_library, owned_user, session.pk, ended_at=AN_END)
+
+
+def test_a_corrected_session_already_has_an_end(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_corrected())
+
+    refused_end(owned_library, owned_user, session.pk, ended_at=AN_END)
+
+
+def test_a_zone_no_tzdata_knows_is_refused(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    refused_end(
+        owned_library,
+        owned_user,
+        session.pk,
+        ended_at=AN_END,
+        ended_at_zone="Mars/Olympus_Mons",
+    )
+
+
+def test_an_unknown_session_is_refused(owned_user, owned_library, run):
+    refused_end(owned_library, owned_user, uuid.uuid7(), ended_at=AN_END)
+
+
+def test_a_removed_session_is_refused(owned_user, owned_library, run):
+    """Arranged with an UPDATE: nothing states a session's mark yet."""
+    session = record(owned_library, owned_user, run, a_timed())
+    PlayerSession.objects.filter(pk=session.pk).update(removed_at=timezone.now())
+
+    refused_end(owned_library, owned_user, session.pk, ended_at=AN_END)
+
+
+def test_ending_under_a_removed_run_is_refused(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+    Playthrough.objects.filter(pk=run.pk).update(removed_at=timezone.now())
+
+    refused_end(owned_library, owned_user, session.pk, ended_at=AN_END)
+
+
+def test_ending_under_a_removed_game_is_refused(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+    PlayerGame.objects.filter(pk=run.player_game_id).update(removed_at=timezone.now())
+
+    refused_end(owned_library, owned_user, session.pk, ended_at=AN_END)
+
+
+def test_a_session_another_library_holds_is_refused(
+    owned_user, owned_library, second_library
+):
+    game = Game.objects.create(library=second_library, name="Elsewhere")
+    tracked = PlayerGame.objects.create(
+        id=uuid.uuid7(),
+        library=second_library,
+        game=game,
+        tracked_at=timezone.now(),
+    )
+    other_run = Playthrough.objects.create(
+        id=uuid.uuid7(),
+        library=second_library,
+        player_game=tracked,
+        kind="ordinary",
+        created_at=timezone.now(),
+    )
+    elsewhere = PlayerSession.objects.create(
+        id=uuid.uuid7(),
+        library=second_library,
+        playthrough=other_run,
+        device=None,
+        timing_mode=PlayerSessionTimingMode.TIMED,
+        started_at=START,
+        started_at_zone=None,
+        ended_at=None,
+        ended_at_zone=None,
+        stated_day=None,
+        stated_duration=None,
+        day_zone="Europe/Prague",
+        note="",
+        emulated=False,
+        created_at=timezone.now(),
+    )
+
+    refused_end(owned_library, owned_user, elsewhere.pk, ended_at=AN_END)

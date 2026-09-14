@@ -355,7 +355,14 @@ file (`uuid`, `date`, `timedelta`, `transaction`, `lock_stream`,
 
 
 def append_end(
-    library, actor, session, *, ended_at, key, ended_at_zone=None, day_zone="Europe/Prague"
+    library,
+    actor,
+    session,
+    *,
+    ended_at,
+    key,
+    ended_at_zone=None,
+    day_zone="Europe/Prague",
 ):
     """Append one end event, as dispatch would."""
     with transaction.atomic():
@@ -426,7 +433,11 @@ def test_an_ended_row_measures_the_elapsed_time(owned_user, owned_library, run):
     session = PlayerSession.objects.get()
 
     append_end(
-        owned_library, owned_user, session, ended_at=START + timedelta(hours=2), key="end"
+        owned_library,
+        owned_user,
+        session,
+        ended_at=START + timedelta(hours=2),
+        key="end",
     )
 
     session.refresh_from_db()
@@ -449,7 +460,11 @@ def test_an_end_moves_neither_the_sort_instant_nor_the_day(
     before = (session.sort_instant, session.effective_day)
 
     append_end(
-        owned_library, owned_user, session, ended_at=START + timedelta(days=1), key="end"
+        owned_library,
+        owned_user,
+        session,
+        ended_at=START + timedelta(days=1),
+        key="end",
     )
 
     session.refresh_from_db()
@@ -464,7 +479,11 @@ def test_an_ended_session_replays(owned_user, owned_library, run):
     )
     session = PlayerSession.objects.get()
     append_end(
-        owned_library, owned_user, session, ended_at=START + timedelta(hours=2), key="end"
+        owned_library,
+        owned_user,
+        session,
+        ended_at=START + timedelta(hours=2),
+        key="end",
     )
     before = list(PlayerSession.objects.order_by("pk").values())
 
@@ -488,7 +507,11 @@ def test_a_rebuild_reproduces_an_ended_session(owned_user, owned_library, game):
     )
     session = PlayerSession.objects.get()
     append_end(
-        owned_library, owned_user, session, ended_at=START + timedelta(hours=2), key="end"
+        owned_library,
+        owned_user,
+        session,
+        ended_at=START + timedelta(hours=2),
+        key="end",
     )
     before = list(PlayerSession.objects.order_by("pk").values())
 
@@ -518,30 +541,31 @@ In `games/projectors/playersession.py`: extend the
 to `PlayerSessions` after `_created`, and add its entry to `handles`.
 
 ```python
-    def _ended(self, event: RecordedEvent) -> None:
-        """Two columns; the other six stay as the creation left them.
+def _ended(self, event: RecordedEvent) -> None:
+    """Two columns; the other six stay as the creation left them.
 
-        `amend` rather than `project`: an event that changes part of
-        a row knows nothing of the columns the creation wrote, and
-        its refusal of a missing row is what keeps a rebuild honest.
+    `amend` rather than `project`: an event that changes part of
+    a row knows nothing of the columns the creation wrote, and
+    its refusal of a missing row is what keeps a rebuild honest.
 
-        No mode is re-read here, and none can be: `amend` is a bare
-        UPDATE over the columns it is handed. The mode was checked by
-        the command under dispatch's lock, and the CHECK constraints
-        hold thereafter.
-        """
-        payload = event.payload
-        self.amend(
-            PlayerSession,
-            event.aggregate_id,
-            ended_at=instant_from_text(payload["ended_at"]),
-            ended_at_zone=payload["ended_at_zone"],
-        )
+    No mode is re-read here, and none can be: `amend` is a bare
+    UPDATE over the columns it is handed. The mode was checked by
+    the command under dispatch's lock, and the CHECK constraints
+    hold thereafter.
+    """
+    payload = event.payload
+    self.amend(
+        PlayerSession,
+        event.aggregate_id,
+        ended_at=instant_from_text(payload["ended_at"]),
+        ended_at_zone=payload["ended_at_zone"],
+    )
 
-    handles: ClassVar[HandlerMap] = {
-        PLAYERSESSION_CREATED: _created,
-        PLAYERSESSION_ENDED: _ended,
-    }
+
+handles: ClassVar[HandlerMap] = {
+    PLAYERSESSION_CREATED: _created,
+    PLAYERSESSION_ENDED: _ended,
+}
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**
@@ -698,7 +722,9 @@ def test_a_naive_end_is_refused_at_construction():
 
 def test_restating_the_same_end_changes_nothing(owned_user, owned_library, run):
     session = record(owned_library, owned_user, run, a_timed())
-    ends(owned_library, owned_user, session, ended_at=AN_END, ended_at_zone="Asia/Tokyo")
+    ends(
+        owned_library, owned_user, session, ended_at=AN_END, ended_at_zone="Asia/Tokyo"
+    )
 
     result = ends(
         owned_library, owned_user, session, ended_at=AN_END, ended_at_zone="Asia/Tokyo"
@@ -713,7 +739,9 @@ def test_restating_the_same_end_changes_nothing(owned_user, owned_library, run):
 
 def test_the_same_instant_in_another_zone_is_refused(owned_user, owned_library, run):
     session = record(owned_library, owned_user, run, a_timed())
-    ends(owned_library, owned_user, session, ended_at=AN_END, ended_at_zone="Asia/Tokyo")
+    ends(
+        owned_library, owned_user, session, ended_at=AN_END, ended_at_zone="Asia/Tokyo"
+    )
 
     refused_end(
         owned_library,
