@@ -405,3 +405,39 @@ def playersession_moved(
     return PLAYERSESSION_MOVED.new(
         aggregate_id=session_id, payload={"playthrough": str(playthrough_id)}
     )
+
+
+@with_config(STRICT_SCHEMA)
+class PlayerSessionRemovedPayload(TypedDict):
+    """The library takes the session out."""
+
+
+@with_config(STRICT_SCHEMA)
+class PlayerSessionRestoredPayload(TypedDict):
+    """The library puts the session back."""
+
+
+PLAYERSESSION_REMOVED = EventSpec(
+    "library.playersession.removed",
+    aggregate_type="playersession",
+    payload=PlayerSessionRemovedPayload,
+)
+
+PLAYERSESSION_RESTORED = EventSpec(
+    "library.playersession.restored",
+    aggregate_type="playersession",
+    payload=PlayerSessionRestoredPayload,
+)
+
+DEFAULT_EVENT_TYPES.register(PLAYERSESSION_REMOVED)
+DEFAULT_EVENT_TYPES.register(PLAYERSESSION_RESTORED)
+
+
+def playersession_removed(session_id: uuid.UUID) -> NewEvent:
+    """The session leaves the lists."""
+    return PLAYERSESSION_REMOVED.new(aggregate_id=session_id, payload={})
+
+
+def playersession_restored(session_id: uuid.UUID) -> NewEvent:
+    """The session returns to the lists."""
+    return PLAYERSESSION_RESTORED.new(aggregate_id=session_id, payload={})

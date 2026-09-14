@@ -12,6 +12,8 @@ from games.events.playersession import (
     PLAYERSESSION_ENDED,
     PLAYERSESSION_MOVED,
     PLAYERSESSION_NOTE_CHANGED,
+    PLAYERSESSION_REMOVED,
+    PLAYERSESSION_RESTORED,
     PLAYERSESSION_TIMING_CORRECTED,
     TimingPayload,
     day_from_text,
@@ -82,6 +84,7 @@ class PlayerSessions(Projector):
     family_name = ProjectorFamily.CURRENT_STATE
 
     def _created(self, event: RecordedEvent) -> None:
+        #: Never names the mark, so a removal survives.
         payload = event.payload
         device = payload["device"]
         self.project(
@@ -138,6 +141,13 @@ class PlayerSessions(Projector):
             playthrough_id=uuid.UUID(event.payload["playthrough"]),
         )
 
+    def _removed(self, event: RecordedEvent) -> None:
+        #: The event's instant, so a replay agrees.
+        self.amend(PlayerSession, event.aggregate_id, removed_at=event.recorded_at)
+
+    def _restored(self, event: RecordedEvent) -> None:
+        self.amend(PlayerSession, event.aggregate_id, removed_at=None)
+
     handles: ClassVar[HandlerMap] = {
         PLAYERSESSION_CREATED: _created,
         PLAYERSESSION_ENDED: _ended,
@@ -146,4 +156,6 @@ class PlayerSessions(Projector):
         PLAYERSESSION_DEVICE_CHANGED: _device_changed,
         PLAYERSESSION_EMULATED_CHANGED: _emulated_changed,
         PLAYERSESSION_MOVED: _moved,
+        PLAYERSESSION_REMOVED: _removed,
+        PLAYERSESSION_RESTORED: _restored,
     }

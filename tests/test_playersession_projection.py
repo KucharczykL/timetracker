@@ -14,6 +14,7 @@ from games.checks import check_projection_models
 from games.commands.playergame import TrackGame
 from games.events.append import lock_stream
 from games.events.dispatch import dispatch
+from games.events.envelope import RecordedEvent
 from games.events.playersession import (
     instant_text,
     playersession_created,
@@ -22,6 +23,8 @@ from games.events.playersession import (
     playersession_ended,
     playersession_moved,
     playersession_note_changed,
+    playersession_removed,
+    playersession_restored,
     playersession_timing_corrected,
 )
 from games.events.projection import DEFAULT_REGISTRY
@@ -31,6 +34,7 @@ from games.events.replay import replay
 from games.models import (
     Device,
     Game,
+    LibraryEvent,
     PlayerGame,
     PlayerSession,
     PlayerSessionTimingMode,
@@ -1165,6 +1169,121 @@ def test_a_rebuild_reproduces_a_corrected_session(owned_user, owned_library, gam
     session = PlayerSession.objects.get()
     correct_everything(owned_library, owned_user, session, device=device, target=target)
     assert_every_correction_landed(session, device=device, target=target)
+    before = list(PlayerSession.objects.order_by("pk").values())
+
+    report = rebuild_projections(owned_library, mode=RebuildMode.CHECK)
+
+    assert [
+        (table.only_live, table.only_rebuilt, table.differing)
+        for table in report.tables
+        if table.table == "games_playersession"
+    ] == [(0, 0, 0)]
+    assert list(PlayerSession.objects.order_by("pk").values()) == before
+
+
+# --- Removing and restoring a session ----------------------------------------
+
+
+def a_recorded_session(library, actor, run) -> PlayerSession:
+    append_session(library, actor, run, timing=a_timed_statement(), key="create")
+    return PlayerSession.objects.get()
+
+
+def reapply_creation(identity):
+    """Apply the recorded creation event again."""
+    event = RecordedEvent.from_row(LibraryEvent.objects.get(aggregate_id=identity))
+    with transaction.atomic():
+        DEFAULT_REGISTRY.apply(event)
+
+
+@pytest.mark.parametrize(
+    "event_type",
+    ["library.playersession.removed", "library.playersession.restored"],
+)
+def test_the_lifecycle_events_have_a_current_state_handler(event_type):
+    assert len(DEFAULT_REGISTRY.handlers_for(event_type)) == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_removal_event_writes_its_own_time(owned_user, owned_library, run):
+    """Off the event, so a replay agrees."""
+    session = a_recorded_session(owned_library, owned_user, run)
+
+    append_events(
+        owned_library, owned_user, [playersession_removed(session.pk)], key="gone"
+    )
+
+    stamped = LibraryEvent.objects.get(
+        event_type="library.playersession.removed"
+    ).recorded_at
+    session.refresh_from_db()
+    assert session.removed_at == stamped
+    assert not PlayerSession.objects.alive().exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_restore_event_states_the_way_back(owned_user, owned_library, run):
+    session = a_recorded_session(owned_library, owned_user, run)
+    append_events(
+        owned_library, owned_user, [playersession_removed(session.pk)], key="gone"
+    )
+
+    append_events(
+        owned_library, owned_user, [playersession_restored(session.pk)], key="back"
+    )
+
+    session.refresh_from_db()
+    assert session.removed_at is None
+    assert PlayerSession.objects.alive().get() == session
+
+
+@pytest.mark.django_db(transaction=True)
+def test_re_applying_the_creation_event_keeps_a_later_removal(
+    owned_user, owned_library, run
+):
+    """The creation handler never names the mark."""
+    session = a_recorded_session(owned_library, owned_user, run)
+    stamped = timezone.now()
+    PlayerSession.objects.filter(pk=session.pk).update(removed_at=stamped)
+
+    reapply_creation(session.pk)
+
+    session.refresh_from_db()
+    assert session.removed_at == stamped
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_replay_reproduces_a_removal_and_its_undoing(owned_user, owned_library, run):
+    """Removed, back, removed again: one state."""
+    session = a_recorded_session(owned_library, owned_user, run)
+    lifecycle = (
+        playersession_removed(session.pk),
+        playersession_restored(session.pk),
+        playersession_removed(session.pk),
+    )
+    for index, event in enumerate(lifecycle):
+        append_events(owned_library, owned_user, [event], key=f"lifecycle-{index}")
+    last = (
+        LibraryEvent.objects.filter(event_type="library.playersession.removed")
+        .order_by("sequence")
+        .last()
+        .recorded_at
+    )
+    before = list(PlayerSession.objects.order_by("pk").values())
+
+    PlayerSession.objects.all().delete()
+    replay(owned_library)
+
+    assert list(PlayerSession.objects.order_by("pk").values()) == before
+    assert PlayerSession.objects.get().removed_at == last
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_rebuild_reproduces_a_removed_session(owned_user, owned_library, run):
+    session = a_recorded_session(owned_library, owned_user, run)
+    append_events(
+        owned_library, owned_user, [playersession_removed(session.pk)], key="gone"
+    )
     before = list(PlayerSession.objects.order_by("pk").values())
 
     report = rebuild_projections(owned_library, mode=RebuildMode.CHECK)

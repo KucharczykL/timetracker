@@ -14,6 +14,8 @@ from games.events.playersession import (
     PLAYERSESSION_ENDED,
     PLAYERSESSION_MOVED,
     PLAYERSESSION_NOTE_CHANGED,
+    PLAYERSESSION_REMOVED,
+    PLAYERSESSION_RESTORED,
     PLAYERSESSION_TIMING_CORRECTED,
     TimedTimingPayload,
     canonical_day_text,
@@ -28,6 +30,8 @@ from games.events.playersession import (
     playersession_ended,
     playersession_moved,
     playersession_note_changed,
+    playersession_removed,
+    playersession_restored,
     playersession_timing_corrected,
 )
 from games.events.references import ReferenceArity
@@ -616,3 +620,50 @@ def test_a_move_carries_the_run_as_a_key():
     event = playersession_moved(SESSION, playthrough_id=RUN)
 
     assert event.payload == {"playthrough": str(RUN)}
+
+
+# --- Removing and restoring a session ----------------------------------------
+
+
+def test_the_lifecycle_events_are_spelled_once_and_forever():
+    assert PLAYERSESSION_REMOVED.event_type == "library.playersession.removed"
+    assert PLAYERSESSION_RESTORED.event_type == "library.playersession.restored"
+    assert PLAYERSESSION_REMOVED.aggregate_type == "playersession"
+    assert PLAYERSESSION_RESTORED.aggregate_type == "playersession"
+
+
+def test_the_lifecycle_events_are_in_the_default_vocabulary():
+    removed = DEFAULT_EVENT_TYPES.spec_for("library.playersession.removed")
+    restored = DEFAULT_EVENT_TYPES.spec_for("library.playersession.restored")
+
+    assert (removed, restored) == (PLAYERSESSION_REMOVED, PLAYERSESSION_RESTORED)
+
+
+def test_a_lifecycle_payload_states_nothing_but_its_type():
+    """The type is the fact."""
+    assert validated_as(PLAYERSESSION_REMOVED, {}) == {}
+    assert validated_as(PLAYERSESSION_RESTORED, {}) == {}
+
+
+def test_a_lifecycle_payload_refuses_a_direction_of_its_own():
+    """A later fact takes a later type."""
+    with pytest.raises(PayloadInvalid):
+        validated_as(PLAYERSESSION_REMOVED, {"removed": True})
+
+
+def test_a_lifecycle_payload_refuses_a_time_of_its_own():
+    """`recorded_at` carries it, so a replay agrees."""
+    with pytest.raises(PayloadInvalid):
+        validated_as(PLAYERSESSION_RESTORED, {"at": "2026-09-14T00:00:00Z"})
+
+
+def test_the_lifecycle_builders_name_the_session_they_are_told_about():
+    """The aggregate exists; nothing mints here."""
+    identity = uuid.uuid7()
+
+    removed = playersession_removed(identity)
+    restored = playersession_restored(identity)
+
+    assert (removed.aggregate_id, restored.aggregate_id) == (identity, identity)
+    assert (removed.payload, restored.payload) == ({}, {})
+    assert (removed.effective_time, restored.effective_time) == (None, None)

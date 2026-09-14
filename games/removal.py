@@ -25,8 +25,7 @@ from games.models import (
 from games.signals import recalculate_playtime
 
 #: Every model a user can remove.
-#: PlayerGame and Playthrough are absent: a projection is
-#: written by its projector, so a command removes it.
+#: Projections absent: a command states their mark.
 REMOVABLE_MODELS: tuple[type[Model], ...] = (
     Game,
     Edition,

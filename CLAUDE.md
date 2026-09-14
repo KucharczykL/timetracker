@@ -191,12 +191,15 @@ docs/           — Additional documentation
   `REMOVABLE_MODELS`: #1011 states it with `RemovePlaythrough`, clears it with
   `RestorePlaythrough`. Both refuse lifecycle act under removed `PlayerGame`, and
   both answer `Unchanged` for state row already holds, ahead of that refusal.
-  Removal alone refuses taking last live ordinary run off tracked game and reads
-  `BLOCKING_REFERRERS`, registry of projections that name a run — empty until
-  #700 and #701 give Session its reference to one, and constructed only through
-  `BlockingReferrer.on`, which refuses field that is not key to a run and model
-  whose manager states no `alive()`. Both that lookup and sibling count scoped on
-  library. Blank `name` reads as `Playthrough N`, derived at read time by
+  Removal alone refuses taking last live ordinary run off tracked game, then
+  reads `BLOCKING_REFERRERS`, registry of projections that name a run — one
+  entry since #694, `PlayerSession.playthrough`, so run with live sibling and
+  live sessions refused with sentence naming move; last-run rule runs first
+  because for sole run only its sentence names remedy that works (#1048).
+  Registry constructed only through `BlockingReferrer.on`, which refuses field
+  that is not key to a run and model whose manager states no `alive()`. Both
+  that lookup and sibling count scoped on library. Blank `name` reads as
+  `Playthrough N`, derived at read time by
   `games/reads/playthrough_numbering.py` and stored nowhere, which is why taking
   name away refused on row no number counted across — only taking one away, so
   save that repeats blank a row was born with still states its note. #1012
@@ -299,6 +302,17 @@ docs/           — Additional documentation
   run at another game. Reset-to-now is `TimedTiming(now)` with row's `day_zone`.
   Contract is
   [Correct a session](docs/superpowers/specs/2026-09-14-issue-692-session-corrections-design.md)
+
+  #694's `RemoveSession`/`RestoreSession` state projector's `removed_at`
+  through `library.playersession.removed`/`.restored`, both payloads empty.
+  Both resolve with `library_session()`, plain-manager resolve `_live_session`
+  builds on, answer `Unchanged` for state row holds ahead of every refusal,
+  then refuse under removed `PlayerGame` and under removed run with own
+  sentences (`_refuse_under_a_removed_parent`). Every other session command
+  resolves through `_live_session`, so removed session refuses end,
+  correction, description and move alike. Nothing calls either yet; #702
+  owns surfaces. Contract is
+  [Remove and restore a session](docs/superpowers/specs/2026-09-14-issue-694-session-removal-design.md)
 
 **Nothing user removes is destroyed** (#944). Eight removable models — Game,
 Edition, Release, Platform, Device, Session, Purchase, FilterPreset —
