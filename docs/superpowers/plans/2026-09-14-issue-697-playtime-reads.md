@@ -84,9 +84,9 @@ owns Tasks 6–7 and `make check`; a task runs `make check-fast` at most.
 
 ### Task 0: Land the documents
 
-- [ ] Commit the spec and this plan on the planning branch, open the PR, and
-      obtain approval before Task 1. Implementation starts on a fresh branch
-      cut from `origin/main` after the merge.
+- [x] The spec and this plan are the first commit on the issue branch,
+      approved before Task 1. Implementation commits land on the same branch,
+      and one pull request, #1065, carries both.
 
 ---
 
@@ -330,7 +330,7 @@ verify-playtime-parity: ensure-postgres
     #697 spec is its to implement, as a `PlaytimeSource` member.
 - [ ] Repair the charter link in #697, #700, #702, #704, #710 and #770 to
       `blob/main/docs/superpowers/specs/2026-08-09-timetracker-overhaul-design.md`.
-- [ ] Commit, open the PR, `gh pr merge --merge`.
+- [ ] Push, mark #1065 ready for review, `gh pr merge --merge`.
 
 ---
 
