@@ -10,27 +10,29 @@ Playtime is a read. No table stores a playtime total.
 ## Scope
 
 `library_sessions(library)` in `games/reads/player_sessions.py` is the one scope
-for `PlayerSession` rows. It states the library on the session and on its run.
-It states four removal marks: the session, the run, the `PlayerGame` and the
-catalog game. It does not filter on run kind, so sessions in the
-imported-history bucket count. Every reader of `PlayerSession` uses it.
+for `PlayerSession` rows. It states the library on the session, the run and
+the `PlayerGame`. It states four removal marks: the session, the run, the
+`PlayerGame` and the catalog game. It does not filter on run kind, so sessions
+in the imported-history bucket count. Every read-layer reader uses it.
 
 ## Interface
 
-Every playtime figure comes from `games/reads/playtime/`. Callers do not sum
-sessions.
+Playtime figures come from `games/reads/playtime/`. Three legacy sums stay
+outside until #702: the averages, the `GameFilter` aggregates and the
+playthrough note's range sum.
 
 - `PlaytimeSource` names the figures: per game, all-time, per year, per day
-  window, per platform, per month, and the played years.
+  window, per platform, per month, per day, and the played years.
 - `FilteredPlaytimeSource` adds the sum narrowed by a `SessionFilter`.
-- `legacy.py` reads `Session`. `projection.py` reads `PlayerSession`.
+- `legacy.py` reads `Session`; `projection.py` reads `PlayerSession`.
 - `SOURCE` selects one source for all callers.
 
 `projection.py` has no filtered sum, because `SessionFilter` names legacy
 fields. `SOURCE` requires both protocols. Thus mypy refuses the projection
 source until the filtered sum exists.
 
-No queryset and no `Q` crosses the interface. A `SessionFilter` crosses.
+No queryset and no `Q` crosses the interface. A `SessionFilter` crosses. A sum
+without a library compiles for validation and refuses to execute.
 
 ## NULL and zero
 
@@ -44,11 +46,11 @@ decides the rest:
 | `playtime_matching` | NULL | list column, `filtered_playtime` sort |
 | scalar figures | zero | detail, stats, navbar |
 
-The sort reads NULL, so an unplayed game sorts last in both directions.
-`IS_NULL` and `EQUALS 0` on `playtime_hours` both mean zero, so the filter
-reads zero.
+`apply_sort` puts NULL last, so an unplayed game sorts last in both
+directions. On `playtime_hours`, `IS_NULL` tests zero and `EQUALS 0` tests the
+first hour, so the filter reads zero.
 
-Rows with equal playtime order by name, then id.
+On the stats page, equal playtimes order by sort name, name, then id.
 
 ## Days
 
@@ -58,15 +60,16 @@ The legacy source reads days in the active zone. The projection source reads
 
 ## Parity
 
-`make verify-playtime-parity` compares every figure of both sources through
-`PlaytimeSource`. It uses the library's display zone or `--day-zone`. A
-different figure makes the command fail.
+`make verify-playtime-parity` compares both sources through `PlaytimeSource`,
+in one snapshot. It reads legacy days in the display zone or `--day-zone`. A
+test holds every member compared, except the filtered sum. A different figure
+or an empty scope makes the command fail.
 
 ## Removed
 
 `Game.playtime`, its `Session` signal and the `Session` entry of
-`_AFTER_STAMP`. The sample fixture has no `playtime` key. The loader refuses
-unknown fields.
+`_AFTER_STAMP`. The sample fixture has no `playtime` key. A comparison naming
+`playtime` is refused with a sentence.
 
 ## Statistics classification
 

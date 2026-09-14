@@ -285,8 +285,8 @@ docs/           — Additional documentation
   `alive()` reads run's mark and tracked game's, **not** catalog game's:
   `blocking_referrer` reads `alive()` to refuse removing run sessions name, and
   catalog mark there would hide them from that check. Read layer states that
-  mark itself, as `library_runs()` does. No `for_library()` yet — #702 states
-  it with its readers. Contract is
+  mark itself, as `library_runs()` does. No `for_library()`:
+  `library_sessions()` states the read scope. Contract is
   [PlayerSession](docs/superpowers/specs/2026-09-13-issue-689-playersession-aggregate-design.md)
 
   Five commands state one. `CreateSession` states whole timing through
@@ -365,19 +365,26 @@ pass `scripts=` for component-owned JS). `scripts=` remains only for page-specif
 glue not owned by reusable component (e.g. `add_*.js`). Navbar shows
 today's/last-7-days playtime from `model_counts` context processor.
 
-**Playtime reads** (`games/reads/playtime/`, #697): every playtime figure — per
-Game, all-time, per year, per day window, per platform, per month — comes from
-this package, never a sum at the call site. `PlaytimeSource` names the figures;
-`legacy.py` answers them from `Session`, `projection.py` from `PlayerSession`
-through `library_sessions()` (`games/reads/player_sessions.py`, the one scope a
-library's sessions are read through: four removal marks, library on session and
-run). `SOURCE: FullPlaytimeSource = legacy`; `projection.py` lacks
+**Playtime reads** (`games/reads/playtime/`, #697): playtime per Game, all-time,
+per year, per day window, per platform, per month and per day comes from this
+package. Three legacy sums remain outside it until #702 restates them: the
+Session-derived averages (Game detail, stats), `GameFilter`'s manual/calculated
+aggregates, and the playthrough note's range sum. `PlaytimeSource` names the
+figures; `legacy.py` answers them from `Session`, `projection.py` from
+`PlayerSession` through `library_sessions()` (`games/reads/player_sessions.py`,
+the read layer's one session scope: four removal marks, library on session, run
+and tracked game). `SOURCE: FullPlaytimeSource = legacy`; `projection.py` lacks
 `summed_by_game_matching`, so binding it fails mypy until a session filter speaks
 the projection's fields. Sources answer sums (NULL when unplayed); the package
-decides NULL or zero: `playtime_by_game` is zero (the `playtime` filter alias
-`GameQuerySet.annotated_for_filtering` registers), `playtime_sort_key` and
-`playtime_matching` stay NULL so unplayed games sort last. No queryset and no
-`Q` crosses the interface. `make verify-playtime-parity` compares both sources.
+decides NULL or zero: `playtime_by_game` is zero (the `playtime` alias
+`GameQuerySet.annotated_for_filtering` registers, which refuses a second
+library), `playtime_sort_key` and `playtime_matching` stay NULL and `apply_sort`
+puts NULL last. A sum with no library compiles for validation and raises
+`UnscopedPlaytimeRead` if executed. No queryset and no `Q` crosses the interface.
+`make verify-playtime-parity` compares every `PlaytimeSource` member but
+`summed_by_game_matching`, in one snapshot; a test holds that list whole. A
+stored comparison naming `playtime` is refused through
+`Game.RETIRED_COMPARISON_COLUMNS`.
 
 **Component system** (`common/components/`): FastHTML-style **lazy node tree**.
 Components are `Node` objects that render to HTML only when asked (`str(node)` /
@@ -681,7 +688,7 @@ under `[tool.pytest.ini_options]`. Tests use PostgreSQL databases created by Dja
 from `DATABASE_URL`; pytest-xdist gives each worker own test database. Most files
 named after what they cover; less obvious ones are `test_paths_return_200.py`
 (smoke-tests every list/view URL), `test_rendered_pages.py` (HTML output of pages),
-`test_signals.py` (status-change audit, raw fixture loads, …), and
+`test_signals.py` (game removal cascade, raw fixture loads, …), and
 `test_anonymize_sample.py` (fixture anonymizer's rollback safety, determinism,
 invariants, round-trip).
 
@@ -796,9 +803,10 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   state is POST-only.
 - **Signals handle side-effects** — do not manually recalculate
   `Purchase.num_purchases`.
-- **Playtime is read, never stored** — read every playtime figure through
-  `games.reads.playtime`, never `Sum("duration_total")` at a call site; a new
-  figure is a `PlaytimeSource` member with both sources implementing it.
+- **Playtime is read, never stored** — read playtime through
+  `games.reads.playtime`, never `Sum("duration_total")` at a new call site; a new
+  figure is a `PlaytimeSource` member both sources implement and the parity
+  command compares.
 - **Buttons are `ControlButton`** — colors: `blue` (primary), `red` (destructive),
   `gray` (secondary), `green` (positive); variants: `filled` (default),
   `segmented` (ButtonGroup members), plus colorless single-look toggles that ignore

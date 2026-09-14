@@ -25,7 +25,7 @@ def resolve_libraries(options: dict[str, object]) -> list[UserLibrary]:
     libraries = UserLibrary.objects.select_related("user").order_by("pk")
     if options["all_libraries"]:
         return list(libraries)
-    if options["user"]:
+    if options["user"] is not None:
         return [_library_of_user(str(options["user"]))]
     return [_library_by_id(str(options["library_id"]))]
 
@@ -41,6 +41,8 @@ def resolve_zone(name: str | None) -> ZoneInfo | None:
 
 def _library_of_user(username: str) -> UserLibrary:
     """Missing user and missing library differ."""
+    if not username:
+        raise CommandError("A username is not empty.")
     user_model = get_user_model()
     try:
         user = user_model.objects.get(username=username)

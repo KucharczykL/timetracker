@@ -13,7 +13,8 @@ from django.test import RequestFactory
 from django.urls import reverse
 from session_rows import tracked_run
 
-from games.filters import FindFilter
+from common.criteria import filter_to_json
+from games.filters import FindFilter, GameFilter, SessionFilter
 from games.models import (
     Device,
     Game,
@@ -467,6 +468,35 @@ class TestListGamesSort:
             "Beta",
             "Shared",
         ]
+
+    def test_the_playtime_column_reads_the_session_filter(
+        self, logged_client, owned_library, two_games
+    ):
+        alpha, beta = two_games
+        handheld = Device.objects.create(library=owned_library, name="Deck")
+        desktop = Device.objects.create(library=owned_library, name="Tower")
+        start = datetime(2022, 1, 1, 10, tzinfo=ZONEINFO)
+        for game, device, hours in (
+            (alpha, handheld, 1),
+            (alpha, desktop, 3),
+            (beta, handheld, 2),
+        ):
+            Session.objects.create(
+                game=game,
+                device=device,
+                timestamp_start=start,
+                timestamp_end=start.replace(hour=10 + hours),
+            )
+        on_the_handheld = GameFilter(
+            session_filter=SessionFilter.where(device=[handheld.pk])
+        )
+
+        response = logged_client.get(
+            reverse("games:list_games"),
+            {"filter": filter_to_json(on_the_handheld), "sort": "-filtered_playtime"},
+        )
+
+        assert _row_order(response, ["Alpha", "Beta"]) == ["Beta", "Alpha"]
 
     @pytest.mark.parametrize("key", ["playtime", "filtered_playtime"])
     @pytest.mark.parametrize("descending", [False, True])

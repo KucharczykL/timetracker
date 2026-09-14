@@ -173,7 +173,7 @@ stated that it is seeded from `settings.TIME_ZONE` because "every day-grained
 read today groups in it". [#699's
 census](2026-09-12-issue-699-session-preflight-design.md) checked that premise
 against the code and it is false: `TimezoneActivationMiddleware`
-(`common/middleware.py:48-54`, installed at `timetracker/settings.py:102`) wraps
+(`TimezoneActivationMiddleware.__call__`, installed at `timetracker/settings.py:102`) wraps
 every request outside `/api/settings/` in
 `timezone.override(DISPLAY_TIME_ZONE)`, so `TruncDate`,
 `TruncMonth`, `timestamp_start__year`, the navbar's midnight range and the
@@ -516,7 +516,7 @@ same query with a year, and the removal of `Game.playtime`, its signal, and the
 `_AFTER_STAMP` recalculation in `games/removal.py`. Its
 [design](2026-09-14-issue-697-playtime-reads-design.md) puts every playtime
 figure behind one interface with a legacy and a projection source, moves every
-caller onto it, and leaves #702 one binding to change.
+playtime caller onto it; #702 binds `SOURCE` once the filtered sum exists.
 
 **Delivered.** The design is
 [Read playtime from the Session projection](2026-09-14-issue-697-playtime-reads-design.md);
@@ -643,10 +643,9 @@ The surfaces, each one a stack member:
     `test_time_zone_row_e2e.py`, `test_datetime_field_e2e.py`,
     `test_duration_format_e2e.py`, `test_quick_filter_e2e.py`.
 
-`for_library` needs a stated rule: a `PlayerSession` sits under four removal
-marks — its own, its run's, the `PlayerGame`'s, and the catalog `Game`'s. This
-issue says which of them hide it, and notes that #1011's refusal may make the
-run's mark unreachable by construction.
+The read scope is settled: `library_sessions()` (#697) hides a `PlayerSession`
+under all four removal marks and states the library on the session, its run and
+its tracked game. Every read-layer reader this issue adds states it.
 
 No temporary compatibility writer is built in either direction, so this wave
 adds nothing for #774 to remove.

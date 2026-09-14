@@ -874,3 +874,29 @@ def test_add_game_submit_and_create_session_redirects(
         response,
         reverse("games:add_session_for_game", kwargs={"game_id": game.id}),
     )
+
+
+@pytest.mark.django_db
+def test_the_navbar_week_counts_six_days_back_and_not_seven(owned_user):
+    from django.test import RequestFactory
+
+    from games.views.general import model_counts
+
+    game = Game.objects.create(library=owned_user.library, name="Tunic")
+    today = timezone.localdate()
+    for days_back, hours in ((6, 1), (7, 2)):
+        start = timezone.make_aware(
+            datetime.combine(today - timedelta(days=days_back), datetime.min.time())
+        ) + timedelta(hours=12)
+        Session.objects.create(
+            game=game,
+            timestamp_start=start,
+            timestamp_end=start + timedelta(hours=hours),
+        )
+    request = RequestFactory().get("/")
+    request.user = owned_user
+
+    last_seven_days = str(model_counts(request)["last_7_played"])
+
+    assert "1 h 00 m" in last_seven_days
+    assert "3 h 00 m" not in last_seven_days

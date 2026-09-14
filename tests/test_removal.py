@@ -3,14 +3,12 @@
 from datetime import timedelta
 
 import pytest
-from django.db import connection
-from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from stated_runs import another_run
 
 from games.models import Game, Playthrough, Session
 from games.reads.playtime import game_playtime
-from games.removal import _AFTER_STAMP, remove, restore
+from games.removal import remove, restore
 
 pytestmark = pytest.mark.django_db
 
@@ -65,23 +63,6 @@ def test_removing_a_session_drops_the_playtime(owned_library):
     remove(Session.objects.get(game=game))
 
     assert game_playtime(owned_library, game) == timedelta(0)
-
-
-def test_removing_a_session_stamps_its_mark_and_nothing_else(owned_library):
-    game = make_game(owned_library)
-    session = Session.objects.create(game=game, timestamp_start=timezone.now())
-
-    with CaptureQueriesContext(connection) as queries:
-        remove(session)
-
-    assert Session not in _AFTER_STAMP
-    writes = [
-        query["sql"]
-        for query in queries.captured_queries
-        if query["sql"].startswith(("UPDATE", "INSERT", "DELETE"))
-    ]
-    assert len(writes) == 1
-    assert writes[0].startswith('UPDATE "games_session"')
 
 
 @pytest.mark.django_db(transaction=True)

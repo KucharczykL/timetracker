@@ -128,7 +128,6 @@ def timed_twin(
     game: Game,
     started_at: datetime,
     ended_at: datetime | None,
-    **columns: object,
 ) -> Twin:
     """Finished with an end, running without one."""
     return Twin(
@@ -140,7 +139,6 @@ def timed_twin(
             started_at,
             ended_at,
             day_zone=TWIN_ZONE.key,
-            **columns,
         ),
     )
 

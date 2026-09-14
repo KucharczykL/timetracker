@@ -3,7 +3,6 @@
 from datetime import timedelta
 
 from django.db.models import DurationField, Value
-from django.db.models.expressions import Combinable
 from django.db.models.functions import Coalesce
 
 from games.filters import SessionFilter
@@ -12,21 +11,19 @@ from games.reads.playthrough_completions import YearScope
 from games.reads.playtime import legacy
 from games.reads.playtime.source import (
     DayInterval,
-    FilteredPlaytimeSource,
     FullPlaytimeSource,
     MonthPlaytime,
     PlatformPlaytime,
-    PlaytimeSource,
+    Playtime,
+    PlaytimeSum,
+    UnscopedPlaytimeRead,
 )
 
 __all__ = [
-    "SOURCE",
     "DayInterval",
-    "FilteredPlaytimeSource",
-    "FullPlaytimeSource",
     "MonthPlaytime",
     "PlatformPlaytime",
-    "PlaytimeSource",
+    "UnscopedPlaytimeRead",
     "game_playtime",
     "playtime_between",
     "playtime_by_game",
@@ -43,7 +40,7 @@ SOURCE: FullPlaytimeSource = legacy
 
 def playtime_by_game(
     library: UserLibrary | None, *, year: YearScope = None
-) -> Combinable:
+) -> Playtime:
     """Each game's playtime, zero when unplayed."""
     return Coalesce(
         SOURCE.summed_by_game(library, year=year),
@@ -52,14 +49,14 @@ def playtime_by_game(
     )
 
 
-def playtime_sort_key(library: UserLibrary) -> Combinable:
-    """The sum, NULL when unplayed: sorts last."""
+def playtime_sort_key(library: UserLibrary) -> PlaytimeSum:
+    """NULL when unplayed; `apply_sort` orders it last."""
     return SOURCE.summed_by_game(library)
 
 
 def playtime_matching(
     library: UserLibrary, session_filter: SessionFilter | None
-) -> Combinable:
+) -> PlaytimeSum:
     """Matching sessions' sum, NULL when none match."""
     if session_filter is None:
         return SOURCE.summed_by_game(library)
@@ -70,8 +67,8 @@ def game_playtime(library: UserLibrary, game: Game) -> timedelta:
     return SOURCE.game_playtime(library, game)
 
 
-def total_playtime(library: UserLibrary, year: YearScope = None) -> timedelta:
-    return SOURCE.total_playtime(library, year)
+def total_playtime(library: UserLibrary, *, year: YearScope = None) -> timedelta:
+    return SOURCE.total_playtime(library, year=year)
 
 
 def playtime_between(library: UserLibrary, days: DayInterval) -> timedelta:
@@ -79,10 +76,10 @@ def playtime_between(library: UserLibrary, days: DayInterval) -> timedelta:
 
 
 def playtime_by_platform(
-    library: UserLibrary, year: YearScope = None
+    library: UserLibrary, *, year: YearScope = None
 ) -> list[PlatformPlaytime]:
-    return SOURCE.playtime_by_platform(library, year)
+    return SOURCE.playtime_by_platform(library, year=year)
 
 
-def playtime_by_month(library: UserLibrary, year: int) -> list[MonthPlaytime]:
-    return SOURCE.playtime_by_month(library, year)
+def playtime_by_month(library: UserLibrary, *, year: int) -> list[MonthPlaytime]:
+    return SOURCE.playtime_by_month(library, year=year)

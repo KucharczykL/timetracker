@@ -34,7 +34,7 @@ class SignalsTest(TestCase):
         self.assertTrue(Game.objects.filter(pk=g.pk).exists())
         self.assertEqual(g.sessions.count(), 1)
 
-        # Destroying the game should not raise (signals run during cascade)
+        # Destroying the game should not raise
         g.delete()
 
         # After deletion, the Game should be gone and no sessions remain
@@ -43,12 +43,7 @@ class SignalsTest(TestCase):
 
 
 class RawFixtureLoadTest(TestCase):
-    """A fixture is authoritative: loading one must not trigger the recomputes.
-
-    Django flags fixture saves with ``raw=True`` for exactly this. Without the
-    guards, seeding a container replays the whole signal stack per row — an
-    extra query and write each — which dominates a cold container's startup.
-    """
+    """A fixture load provisions no library."""
 
     def setUp(self):
         self.fixture_dir = self.enterContext(tempfile.TemporaryDirectory())
