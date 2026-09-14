@@ -12,6 +12,7 @@ from django.utils import timezone
 from games.commands import playersession as playersession_commands
 from games.commands.playergame import TrackGame
 from games.commands.playersession import (
+    INCONSISTENT_SESSION,
     CorrectedTiming,
     CorrectSessionTiming,
     CreateSession,
@@ -1940,6 +1941,63 @@ def test_the_way_back_is_run_then_session(owned_user, owned_library, game, run):
 
     assert result.outcome is CommandOutcome.APPENDED
     assert PlayerSession.objects.alive().get() == session
+
+
+def a_session_naming_a_foreign_run(library, foreign_library) -> PlayerSession:
+    """Rows, not events: the drift the ownership audit reports."""
+    foreign = a_session_another_library_holds(foreign_library)
+    return PlayerSession.objects.create(
+        id=uuid.uuid7(),
+        library=library,
+        playthrough=foreign.playthrough,
+        timing_mode=PlayerSessionTimingMode.TIMED,
+        started_at=START,
+        day_zone="Europe/Prague",
+        note="",
+        emulated=False,
+        created_at=timezone.now(),
+    )
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        lambda session, target: EndSession(
+            session_id=session.pk, ended_at=AN_END, ended_at_zone=None
+        ),
+        lambda session, target: CorrectSessionTiming(
+            session_id=session.pk, timing=a_duration_only()
+        ),
+        lambda session, target: DescribeSession(session_id=session.pk, note="late"),
+        lambda session, target: MoveSessionToPlaythrough(
+            session_id=session.pk, playthrough_id=target.pk
+        ),
+        lambda session, target: RemoveSession(session_id=session.pk),
+        lambda session, target: RestoreSession(session_id=session.pk),
+    ],
+    ids=["end", "correct", "describe", "move", "remove", "restore"],
+)
+def test_a_session_naming_a_foreign_run_is_refused_by_name(
+    owned_user, owned_library, second_library, run, capture_games_logger, statement
+):
+    """The person named the session; the log names the run."""
+    session = a_session_naming_a_foreign_run(owned_library, second_library)
+    if isinstance(statement(session, run), RestoreSession):
+        PlayerSession.objects.filter(pk=session.pk).update(removed_at=timezone.now())
+
+    with capture_games_logger() as caplog, pytest.raises(CommandRejected) as refusal:
+        dispatch(
+            statement(session, run),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key=str(uuid.uuid7()),
+        )
+
+    assert refusal.value.sentence == INCONSISTENT_SESSION
+    (record,) = caplog.records
+    assert record.levelname == "ERROR"
+    assert str(session.pk) in record.getMessage()
+    assert str(session.playthrough_id) in record.getMessage()
 
 
 def test_a_restored_session_records_a_fact_again(owned_user, owned_library, run):
