@@ -124,7 +124,7 @@ class GameQuerySet(RemovableLibraryQuerySet):
         return self.filter(Q(library__isnull=True) | Q(library=library)).alive()
 
     def annotated_for_filtering(self, library=None):
-        """Register the alias only; drop no row.
+        """Register the aliases only; drop no row.
 
         A filter names `tracked__status`, which needs the alias and
         nothing else. The two facts are selected by `tracked_by()`
@@ -1766,8 +1766,7 @@ class PlayerSessionQuerySet(RemovableMixin, models.QuerySet["PlayerSession"]):
     `alive()` to refuse removing a run that sessions name; a catalog
     mark here would hide them from that check, leave the run
     removable, and restoring the game would leave live sessions
-    naming a removed run. The read layer states that mark itself,
-    where `library_runs()` states its own.
+    naming a removed run. `library_sessions()` states that mark itself.
     """
 
     ancestor_marks = ("playthrough", "playthrough__player_game")

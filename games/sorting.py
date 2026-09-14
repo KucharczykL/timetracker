@@ -81,7 +81,7 @@ type SortMap = dict[SortKey, SortSpec]
 
 
 # ── Per-model sort maps ─────────────────────────────────────────────────────
-# Cross-relation sorts use annotated aggregates (group by PK → no row dup).
+# Some sorts read aliases the view registers.
 # To-one relations (game__sort_name, device__name) are ordered directly.
 
 GAME_SORTS: SortMap = {

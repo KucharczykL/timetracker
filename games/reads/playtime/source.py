@@ -73,7 +73,7 @@ class DayPlaytime(NamedTuple):
 
 
 class PlaytimeSource(Protocol):
-    """Sums are NULL when unplayed; figures never."""
+    """Per-game sums NULL when unplayed; totals never."""
 
     def game_playtime(self, library: UserLibrary, game: Game) -> timedelta: ...
 

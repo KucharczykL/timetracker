@@ -50,7 +50,7 @@ def playtime_by_game(
 
 
 def playtime_sort_key(library: UserLibrary) -> PlaytimeSum:
-    """The sum, NULL when unplayed: sorts last."""
+    """NULL when unplayed; `apply_sort` orders it last."""
     return SOURCE.summed_by_game(library)
 
 
