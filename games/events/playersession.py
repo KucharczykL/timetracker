@@ -266,3 +266,140 @@ def playersession_ended(
             "ended_at_zone": ended_at_zone,
         },
     )
+
+
+@with_config(STRICT_SCHEMA)
+class PlayerSessionTimingCorrectedPayload(TypedDict):
+    """A whole statement, replacing the one the row holds."""
+
+    timing: TimingPayload
+
+
+PLAYERSESSION_TIMING_CORRECTED = EventSpec(
+    "library.playersession.timing_corrected",
+    aggregate_type="playersession",
+    payload=PlayerSessionTimingCorrectedPayload,
+)
+
+DEFAULT_EVENT_TYPES.register(PLAYERSESSION_TIMING_CORRECTED)
+
+
+def playersession_timing_corrected(
+    session_id: uuid.UUID, *, timing: TimingPayload
+) -> NewEvent:
+    """The library stated a session's time again.
+
+    Dated by the day the new statement lands on, even where only the
+    end moved: a correction states the whole session, so it dates the
+    session, where an end dates the act.
+    """
+    return PLAYERSESSION_TIMING_CORRECTED.new(
+        aggregate_id=session_id,
+        effective_time=TemporalValue.parse(day_text(stated_day_of(timing))),
+        payload={"timing": timing},
+    )
+
+
+@with_config(STRICT_SCHEMA)
+class PlayerSessionNoteChangedPayload(TypedDict):
+    """The note; an empty one clears it."""
+
+    note: str
+
+
+PLAYERSESSION_NOTE_CHANGED = EventSpec(
+    "library.playersession.note_changed",
+    aggregate_type="playersession",
+    payload=PlayerSessionNoteChangedPayload,
+)
+
+DEFAULT_EVENT_TYPES.register(PLAYERSESSION_NOTE_CHANGED)
+
+
+def playersession_note_changed(session_id: uuid.UUID, *, note: str) -> NewEvent:
+    """The library stated a session's note. It happens on no day."""
+    return PLAYERSESSION_NOTE_CHANGED.new(
+        aggregate_id=session_id, payload={"note": note}
+    )
+
+
+@with_config(STRICT_SCHEMA)
+class PlayerSessionDeviceChangedPayload(TypedDict):
+    """The device, or None where there was none.
+
+    A Reference, as the creation's device is: the reference index
+    reads this annotation, so a bare key would go unindexed.
+    """
+
+    device: Reference | None
+
+
+PLAYERSESSION_DEVICE_CHANGED = EventSpec(
+    "library.playersession.device_changed",
+    aggregate_type="playersession",
+    payload=PlayerSessionDeviceChangedPayload,
+)
+
+DEFAULT_EVENT_TYPES.register(PLAYERSESSION_DEVICE_CHANGED)
+
+
+def playersession_device_changed(
+    session_id: uuid.UUID, *, device: Reference | None
+) -> NewEvent:
+    """The library stated which device a session was played on."""
+    return PLAYERSESSION_DEVICE_CHANGED.new(
+        aggregate_id=session_id, payload={"device": device}
+    )
+
+
+@with_config(STRICT_SCHEMA)
+class PlayerSessionEmulatedChangedPayload(TypedDict):
+    """Whether the session was emulated."""
+
+    emulated: bool
+
+
+PLAYERSESSION_EMULATED_CHANGED = EventSpec(
+    "library.playersession.emulated_changed",
+    aggregate_type="playersession",
+    payload=PlayerSessionEmulatedChangedPayload,
+)
+
+DEFAULT_EVENT_TYPES.register(PLAYERSESSION_EMULATED_CHANGED)
+
+
+def playersession_emulated_changed(
+    session_id: uuid.UUID, *, emulated: bool
+) -> NewEvent:
+    """The library stated whether a session was emulated."""
+    return PLAYERSESSION_EMULATED_CHANGED.new(
+        aggregate_id=session_id, payload={"emulated": emulated}
+    )
+
+
+@with_config(STRICT_SCHEMA)
+class PlayerSessionMovedPayload(TypedDict):
+    """The run the session now belongs to.
+
+    A bare ReferenceId, for the reason the creation's run is one.
+    """
+
+    playthrough: ReferenceId
+
+
+PLAYERSESSION_MOVED = EventSpec(
+    "library.playersession.moved",
+    aggregate_type="playersession",
+    payload=PlayerSessionMovedPayload,
+)
+
+DEFAULT_EVENT_TYPES.register(PLAYERSESSION_MOVED)
+
+
+def playersession_moved(
+    session_id: uuid.UUID, *, playthrough_id: uuid.UUID
+) -> NewEvent:
+    """The library stated which run a session belongs to."""
+    return PLAYERSESSION_MOVED.new(
+        aggregate_id=session_id, payload={"playthrough": str(playthrough_id)}
+    )
