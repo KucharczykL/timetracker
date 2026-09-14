@@ -7,6 +7,7 @@ from functools import lru_cache
 import pytest
 from django.utils import timezone
 
+from games.commands import playersession as playersession_commands
 from games.commands.playergame import TrackGame
 from games.commands.playersession import (
     CorrectedTiming,
@@ -299,7 +300,10 @@ def test_it_refuses_a_session_with_no_day_zone(owned_user, owned_library, run):
 
 
 def test_it_refuses_a_blank_day_zone(owned_user, owned_library, run):
-    refused(owned_library, owned_user, run, a_timed(day_zone=""))
+    refusal = refused(owned_library, owned_user, run, a_timed(day_zone=" "))
+
+    #: A blank is a zone nobody stated, not a zone we do not know.
+    assert refusal.sentence == "Say which time zone this session's day is read in."
 
 
 def test_it_refuses_a_zone_only_python_knows(
@@ -396,7 +400,7 @@ def test_a_refusal_the_command_forgot_reaches_a_person_as_a_sentence(
     inside the append, and `answered` turns the IntegrityError into a
     sentence instead of letting it rise as a 500.
     """
-    monkeypatch.setattr(CreateSession, "_check_duration", staticmethod(lambda _: None))
+    monkeypatch.setattr(playersession_commands, "_check_duration", lambda _: None)
 
     with (
         capture_games_logger() as caplog,

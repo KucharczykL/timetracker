@@ -231,6 +231,223 @@ def _timed_start(session: PlayerSession) -> TimedStart:
     return TimedStart(started_at, zone)
 
 
+def _normalized_timing(timing: TimingStatement) -> TimingStatement:
+    """A statement fit to fingerprint, or a refusal.
+
+    Called before the fingerprint rather than inside build(): dispatch
+    fingerprints the input first, and a naive datetime has no
+    canonical form there, so a build-time refusal would never run and
+    the person would meet a TypeError instead.
+
+    Through the pattern rather than by attribute name: getattr with a
+    default turns a renamed field into a guard that silently never
+    runs, and the fingerprint encodes a NamedTuple positionally, so
+    nothing else would object.
+    """
+    match timing:
+        case TimedTiming(started_at=started_at, ended_at=ended_at):
+            _check_aware(started_at, ended_at)
+            return _stated_zones(timing)
+        case CorrectedTiming(started_at=started_at, ended_at=ended_at):
+            _check_aware(started_at, ended_at)
+            return _stated_zones(timing)
+        case DurationOnlyTiming():
+            #: A written day states no instant to be naive.
+            return timing
+        case _:
+            assert_never(timing)
+
+
+def _stated_zones[Statement: (TimedTiming, CorrectedTiming)](
+    timing: Statement,
+) -> Statement:
+    """The three zones a statement with instants carries.
+
+    The day's zone keeps its blank spelling rather than becoming
+    None, so the one zone a statement must carry is refused as
+    unstated by `_check_zones` rather than read as optional.
+    """
+    return timing._replace(
+        day_zone=(timing.day_zone or "").strip(),
+        started_at_zone=_stated_zone(timing.started_at_zone),
+        ended_at_zone=_stated_zone(timing.ended_at_zone),
+    )
+
+
+def _timing_payload(timing: TimingStatement) -> TimingPayload:
+    """What the statement records, refusing what it cannot."""
+    match timing:
+        case DurationOnlyTiming(day=day, duration=duration):
+            _check_duration(duration)
+            if duration == timedelta(0):
+                raise CommandRejected(
+                    "A duration-only session of no duration states nothing. "
+                    "A session still running is a timed one with no end "
+                    "yet, not a duration of zero.",
+                    sentence="Say how long this session lasted.",
+                )
+            return {
+                "mode": "duration_only",
+                "stated_day": day_text(day),
+                "duration_seconds": int(duration.total_seconds()),
+            }
+        case TimedTiming(
+            started_at=started_at,
+            day_zone=day_zone,
+            started_at_zone=started_at_zone,
+            ended_at=ended_at,
+            ended_at_zone=ended_at_zone,
+        ):
+            _check_instants(started_at, ended_at)
+            _check_zones(day_zone, started_at_zone, ended_at_zone)
+            _check_endpoint_zone(ended_at, ended_at_zone, endpoint="end")
+            return {
+                "mode": "timed",
+                "started_at": instant_text(started_at),
+                "started_at_zone": started_at_zone,
+                "ended_at": None if ended_at is None else instant_text(ended_at),
+                "ended_at_zone": ended_at_zone,
+                "day_zone": day_zone,
+            }
+        case CorrectedTiming(
+            started_at=started_at,
+            ended_at=ended_at,
+            duration=duration,
+            day_zone=day_zone,
+            started_at_zone=started_at_zone,
+            ended_at_zone=ended_at_zone,
+        ):
+            _check_instants(started_at, ended_at)
+            _check_zones(day_zone, started_at_zone, ended_at_zone)
+            _check_duration(duration)
+            return {
+                "mode": "corrected",
+                "started_at": instant_text(started_at),
+                "started_at_zone": started_at_zone,
+                "ended_at": instant_text(ended_at),
+                "ended_at_zone": ended_at_zone,
+                "day_zone": day_zone,
+                "duration_seconds": int(duration.total_seconds()),
+            }
+        case _:
+            #: A fourth statement type reaches mypy here, rather
+            #: than returning None into a payload nobody can read.
+            assert_never(timing)
+
+
+def _library_device(
+    context: CommandContext, device_id: uuid.UUID | None
+) -> Device | None:
+    """This library's device, or a refusal."""
+    if device_id is None:
+        return None
+    device = library_row(
+        context,
+        Device.objects.all(),
+        Refusal(
+            message=(
+                f"This library holds no device {device_id}. A session "
+                "names a device the library records."
+            ),
+            sentence="That device is not available.",
+        ),
+        pk=device_id,
+    )
+    #: Under dispatch's lock: the mark cannot move.
+    if device.removed_at is not None:
+        raise CommandRejected(
+            f"This library removed device {device_id}, so it records "
+            "no further sessions on it.",
+            sentence=(
+                "That device was removed from your library. Restore it "
+                "before recording a session on it."
+            ),
+        )
+    return device
+
+
+def _check_note(note: str) -> None:
+    """Text PostgreSQL can store as JSON.
+
+    `strip()` leaves a NUL byte in place, JSON carries it as
+    `\\u0000`, and JSONB refuses it -- a DataError raised while
+    the event is appended, which nothing maps to an answer.
+    """
+    if "\x00" in note:
+        raise CommandRejected(
+            "This note holds a NUL byte, which JSONB cannot store, so the "
+            "event would be refused as it was written.",
+            sentence="That note contains a character we cannot store.",
+        )
+
+
+def _check_instants(started_at: datetime, ended_at: datetime | None) -> None:
+    """Instants in the order they happened."""
+    if ended_at is not None and ended_at < started_at:
+        raise CommandRejected(
+            "The session being recorded would end before it began, and no "
+            "session does.",
+            sentence="This session ended before it started. Check the times.",
+        )
+
+
+def _check_duration(duration: timedelta) -> None:
+    """A whole number of seconds, and not a negative one."""
+    if duration < timedelta(0):
+        raise CommandRejected(
+            f"A session cannot last {duration}, and no negative duration is "
+            "a length of time.",
+            sentence="A session cannot last a negative amount of time.",
+        )
+    if duration % DURATION_RESOLUTION:
+        raise CommandRejected(
+            f"{duration} is finer than a second, which a recorded payload "
+            "cannot carry. Truncating it here would fingerprint the retry "
+            "of this very statement as a different one.",
+            sentence="State this session's length in whole seconds.",
+        )
+
+
+def _check_zones(day_zone: str | None, *endpoint_zones: str | None) -> None:
+    """Names both tzdata sets read.
+
+    The day's zone is checked apart from the endpoints' because it
+    is the one that must be there: checking it in the same loop would
+    let a blank take the optional branch and reach the database,
+    where the generated day is a DataError.
+    """
+    if not day_zone:
+        raise CommandRejected(
+            "This session states no zone to read its day in, and every "
+            "session with an instant lands on a day.",
+            sentence="Say which time zone this session's day is read in.",
+        )
+    for name in (day_zone, *endpoint_zones):
+        if name is None:
+            continue
+        if not known_zone(name):
+            raise CommandRejected(
+                f"{name!r} is not a time zone this installation can read, "
+                "and the day this session lands on is computed from one.",
+                sentence=f"{name or 'That'} is not a time zone we know.",
+            )
+
+
+def _check_endpoint_zone(
+    instant: datetime | None, zone: str | None, *, endpoint: str
+) -> None:
+    """A zone says where a clock stood, so it needs the clock."""
+    if instant is None and zone is not None:
+        raise CommandRejected(
+            f"This session states the zone of an {endpoint} it does not "
+            "state, and a zone with no instant says nothing.",
+            sentence=(
+                f"This session has no {endpoint} time, so it cannot have "
+                f"an {endpoint} time zone."
+            ),
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class CreateSession(Command):
     """Record one session against a run the caller names.
@@ -253,229 +470,22 @@ class CreateSession(Command):
     def __post_init__(self) -> None:
         #: One spelling of a blank note, so a restatement fingerprints alike.
         object.__setattr__(self, "note", self.note.strip())
-        self._check_note(self.note)
-        #: Before the fingerprint rather than inside build(): dispatch
-        #: fingerprints the input first, and a naive datetime has no
-        #: canonical form there, so a build-time refusal would never
-        #: run and the person would meet a TypeError instead.
-        #:
-        #: Through the pattern rather than by attribute name: getattr
-        #: with a default turns a renamed field into a guard that
-        #: silently never runs, and the fingerprint encodes a
-        #: NamedTuple positionally, so nothing else would object.
-        match self.timing:
-            case TimedTiming(started_at=started_at, ended_at=ended_at):
-                _check_aware(started_at, ended_at)
-                object.__setattr__(self, "timing", self._stated_zones(self.timing))
-            case CorrectedTiming(started_at=started_at, ended_at=ended_at):
-                _check_aware(started_at, ended_at)
-                object.__setattr__(self, "timing", self._stated_zones(self.timing))
-            case DurationOnlyTiming():
-                #: A written day states no instant to be naive.
-                pass
-            case _:
-                assert_never(self.timing)
+        _check_note(self.note)
+        object.__setattr__(self, "timing", _normalized_timing(self.timing))
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         run = _live_run(context, self.playthrough_id)
-        device = self._device(context)
+        device = _library_device(context, self.device_id)
         return [
             playersession_created(
                 run.pk,
-                timing=self._timing_payload(),
+                timing=_timing_payload(self.timing),
                 device=None if device is None else capture_reference(device),
                 release=None,
                 note=self.note,
                 emulated=self.emulated,
             )
         ]
-
-    def _device(self, context: CommandContext) -> Device | None:
-        """This library's device, or a refusal."""
-        if self.device_id is None:
-            return None
-        device = library_row(
-            context,
-            Device.objects.all(),
-            Refusal(
-                message=(
-                    f"This library holds no device {self.device_id}. A session "
-                    "names a device the library records."
-                ),
-                sentence="That device is not available.",
-            ),
-            pk=self.device_id,
-        )
-        #: Under dispatch's lock: the mark cannot move.
-        if device.removed_at is not None:
-            raise CommandRejected(
-                f"This library removed device {self.device_id}, so it records "
-                "no further sessions on it.",
-                sentence=(
-                    "That device was removed from your library. Restore it "
-                    "before recording a session on it."
-                ),
-            )
-        return device
-
-    def _timing_payload(self) -> TimingPayload:
-        """What the statement records, refusing what it cannot."""
-        match self.timing:
-            case DurationOnlyTiming(day=day, duration=duration):
-                self._check_duration(duration)
-                if duration == timedelta(0):
-                    raise CommandRejected(
-                        "A duration-only session of no duration states nothing. "
-                        "A session still running is a timed one with no end "
-                        "yet, not a duration of zero.",
-                        sentence="Say how long this session lasted.",
-                    )
-                return {
-                    "mode": "duration_only",
-                    "stated_day": day_text(day),
-                    "duration_seconds": int(duration.total_seconds()),
-                }
-            case TimedTiming(
-                started_at=started_at,
-                day_zone=day_zone,
-                started_at_zone=started_at_zone,
-                ended_at=ended_at,
-                ended_at_zone=ended_at_zone,
-            ):
-                self._check_instants(started_at, ended_at)
-                self._check_zones(day_zone, started_at_zone, ended_at_zone)
-                self._check_endpoint_zone(ended_at, ended_at_zone, endpoint="end")
-                return {
-                    "mode": "timed",
-                    "started_at": instant_text(started_at),
-                    "started_at_zone": started_at_zone,
-                    "ended_at": None if ended_at is None else instant_text(ended_at),
-                    "ended_at_zone": ended_at_zone,
-                    "day_zone": day_zone,
-                }
-            case CorrectedTiming(
-                started_at=started_at,
-                ended_at=ended_at,
-                duration=duration,
-                day_zone=day_zone,
-                started_at_zone=started_at_zone,
-                ended_at_zone=ended_at_zone,
-            ):
-                self._check_instants(started_at, ended_at)
-                self._check_zones(day_zone, started_at_zone, ended_at_zone)
-                self._check_duration(duration)
-                return {
-                    "mode": "corrected",
-                    "started_at": instant_text(started_at),
-                    "started_at_zone": started_at_zone,
-                    "ended_at": instant_text(ended_at),
-                    "ended_at_zone": ended_at_zone,
-                    "day_zone": day_zone,
-                    "duration_seconds": int(duration.total_seconds()),
-                }
-            case _:
-                #: A fourth statement type reaches mypy here, rather
-                #: than returning None into a payload nobody can read.
-                assert_never(self.timing)
-
-    @staticmethod
-    def _stated_zones(
-        timing: TimedTiming | CorrectedTiming,
-    ) -> TimedTiming | CorrectedTiming:
-        """The three zones a statement with instants carries.
-
-        The day's zone keeps its blank spelling rather than becoming
-        None: `_check_zones` refuses it with a sentence naming the
-        fact it wants, while None there would read as a zone nobody
-        has to state.
-        """
-        return timing._replace(
-            day_zone=(timing.day_zone or "").strip(),
-            started_at_zone=_stated_zone(timing.started_at_zone),
-            ended_at_zone=_stated_zone(timing.ended_at_zone),
-        )
-
-    @staticmethod
-    def _check_note(note: str) -> None:
-        """Text PostgreSQL can store as JSON.
-
-        `strip()` leaves a NUL byte in place, JSON carries it as
-        `\u0000`, and JSONB refuses it -- a DataError raised while
-        the event is appended, which nothing maps to an answer.
-        """
-        if "\x00" in note:
-            raise CommandRejected(
-                "This note holds a NUL byte, which JSONB cannot store, so the "
-                "event would be refused as it was written.",
-                sentence="That note contains a character we cannot store.",
-            )
-
-    @staticmethod
-    def _check_instants(started_at: datetime, ended_at: datetime | None) -> None:
-        """Instants in the order they happened."""
-        if ended_at is not None and ended_at < started_at:
-            raise CommandRejected(
-                "The session being recorded would end before it began, and no "
-                "session does.",
-                sentence="This session ended before it started. Check the times.",
-            )
-
-    @staticmethod
-    def _check_duration(duration: timedelta) -> None:
-        """A whole number of seconds, and not a negative one."""
-        if duration < timedelta(0):
-            raise CommandRejected(
-                f"A session cannot last {duration}, and no negative duration is "
-                "a length of time.",
-                sentence="A session cannot last a negative amount of time.",
-            )
-        if duration % DURATION_RESOLUTION:
-            raise CommandRejected(
-                f"{duration} is finer than a second, which a recorded payload "
-                "cannot carry. Truncating it here would fingerprint the retry "
-                "of this very statement as a different one.",
-                sentence="State this session's length in whole seconds.",
-            )
-
-    @staticmethod
-    def _check_zones(day_zone: str, *endpoint_zones: str | None) -> None:
-        """Names both tzdata sets read.
-
-        The day's zone is checked apart from the endpoints' because
-        it is the one that must be there: checking it in the same
-        loop would let `None` take the optional branch and reach the
-        database, where the generated day is a DataError.
-        """
-        if day_zone is None:
-            raise CommandRejected(
-                "This session states no zone to read its day in, and every "
-                "session with an instant lands on a day.",
-                sentence="Say which time zone this session's day is read in.",
-            )
-        for name in (day_zone, *endpoint_zones):
-            if name is None:
-                continue
-            if not known_zone(name):
-                raise CommandRejected(
-                    f"{name!r} is not a time zone this installation can read, "
-                    "and the day this session lands on is computed from one.",
-                    sentence=f"{name or 'That'} is not a time zone we know.",
-                )
-
-    @staticmethod
-    def _check_endpoint_zone(
-        instant: datetime | None, zone: str | None, *, endpoint: str
-    ) -> None:
-        """A zone says where a clock stood, so it needs the clock."""
-        if instant is None and zone is not None:
-            raise CommandRejected(
-                f"This session states the zone of an {endpoint} it does not "
-                "state, and a zone with no instant says nothing.",
-                sentence=(
-                    f"This session has no {endpoint} time, so it cannot have "
-                    f"an {endpoint} time zone."
-                ),
-            )
 
 
 @dataclass(frozen=True, slots=True)
