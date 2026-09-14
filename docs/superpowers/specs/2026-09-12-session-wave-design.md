@@ -559,6 +559,16 @@ row cannot be written without one.
 
 Converts removed rows too, stating the removal as a fact.
 
+**Delivered.** Design in
+[Convert legacy Sessions](2026-09-14-issue-700-session-conversion-design.md).
+Four decisions the later issues inherit: a running row converts as a Timed
+row with no end only when it is removed, and refuses the migration while
+live; the bucket is one imported-history run per game, minted at the
+migration's instant, and `MoveSessionToPlaythrough` is the only way out of
+it; a row whose game has no live tracking row refuses the migration by name
+rather than being skipped; and the migration is member 1 of the wave's
+`gh stack` (#700 → #1047 → #702 → #704), never merged alone.
+
 ### #1047 — the zone a library counts days in
 
 One statement of the zone every day-grained reader reads — `effective_day`, the

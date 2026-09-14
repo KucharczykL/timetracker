@@ -320,6 +320,15 @@ docs/           — Additional documentation
   owns surfaces. Contract is
   [Remove and restore a session](docs/superpowers/specs/2026-09-14-issue-694-session-removal-design.md)
 
+  #700 converts every legacy `Session` row into these events:
+  `games/backfill/playersession.py`, run by migration `0004`, aggregate id
+  the legacy row's own, `recorded_at` its `created_at`, run named by the
+  census's `assign_run`, imported-history bucket minted per game where no
+  run claims a row, and gated on seven readings (row to row, census, bucket,
+  playtime parity, counts, identity ordering, replay) before commit. Member 1
+  of the wave stack #700 → #1047 → #702 → #704; never merged alone. Contract is
+  [Convert legacy Sessions](docs/superpowers/specs/2026-09-14-issue-700-session-conversion-design.md)
+
 **Nothing user removes is destroyed** (#944). Eight removable models — Game,
 Edition, Release, Platform, Device, Session, Purchase, FilterPreset —
 each carry nullable `removed_at`, listed in `REMOVABLE_MODELS` in

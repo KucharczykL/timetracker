@@ -312,7 +312,7 @@ Tests:
 Then: `make preflight-sessions ARGS="--all-libraries"` against a restored dump
 (`make restore-dump`, `DATABASE_URL=<printed>`), then
 `make migrate DATABASE_URL=<printed>` and read the machine line: expect
-`timed=2663 duration_only=142 corrected=0 running_removed=2 sole_run=2743
+`timed=2663 duration_only=142 corrected=0 running_removed=2 sole_run=2745
 contained=61 bucket=1 buckets_minted=1 mismatches=0` (Europe/Prague). Record
 the line in the PR body.
 
