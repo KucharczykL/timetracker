@@ -352,3 +352,58 @@ def test_a_day_interval_ending_on_a_day_counts_that_day():
     assert DayInterval.single(date(2026, 3, 7)) == DayInterval(
         date(2026, 3, 7), date(2026, 3, 7)
     )
+
+
+@SOURCES
+@pytest.mark.django_db
+def test_a_year_narrows_the_per_game_sum(source, owned_library, game):
+    day = date(2025, 6, 1)
+    timed_twin(owned_library, game, prague(10, day), prague(11, day))
+
+    assert summed(source, owned_library, game, year=2025) == timedelta(hours=1)
+    assert summed(source, owned_library, game, year=2026) is None
+
+
+@SOURCES
+@pytest.mark.django_db
+def test_platforms_order_by_playtime_then_name(source, owned_library):
+    pc = Platform.objects.create(name="PC", icon="pc")
+    switch = Platform.objects.create(name="Switch", icon="switch")
+    day = date(2026, 3, 5)
+    for platform, name, hours in (
+        (switch, "Hades", 1),
+        (pc, "Tunic", 1),
+        (None, "Loose", 2),
+    ):
+        game = Game.objects.create(library=owned_library, name=name, platform=platform)
+        timed_twin(owned_library, game, prague(10, day), prague(10 + hours, day))
+
+    assert source.playtime_by_platform(owned_library) == [
+        PlatformPlaytime(None, None, timedelta(hours=2)),
+        PlatformPlaytime(pc.pk, "PC", timedelta(hours=1)),
+        PlatformPlaytime(switch.pk, "Switch", timedelta(hours=1)),
+    ]
+
+
+@pytest.mark.django_db
+def test_the_sum_is_null_when_no_session_matches(owned_library, game):
+    handheld = Device.objects.create(library=owned_library, name="Deck")
+    started_at = datetime(2026, 3, 5, 10, tzinfo=UTC)
+    Session.objects.create(
+        game=game,
+        timestamp_start=started_at,
+        timestamp_end=started_at + timedelta(hours=1),
+    )
+
+    matching = (
+        Game.objects.filter(pk=game.pk)
+        .annotate(
+            figure=playtime_matching(
+                owned_library, SessionFilter.where(device=[handheld.pk])
+            )
+        )
+        .get()
+        .figure
+    )
+
+    assert matching is None

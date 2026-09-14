@@ -8,6 +8,7 @@ games-by-playtime uses duration_total (so manual sessions count).
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import pytest
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -160,3 +161,17 @@ class ComputeStatsTest(TestCase):
 
         self.assertIsNone(stats["first_play_date"])
         self.assertIsNone(stats["last_play_date"])
+
+
+@pytest.mark.django_db
+@pytest.mark.untracked_games
+def test_an_untracked_library_game_counts_in_top_games(owned_library):
+    game = Game.objects.create(library=owned_library, name="Untracked")
+    start = datetime(2023, 3, 1, 10, tzinfo=TZ)
+    Session.objects.create(
+        game=game, timestamp_start=start, timestamp_end=start + timedelta(hours=2)
+    )
+
+    top = list(compute_stats(owned_library, 2023)["top_10_games_by_playtime"])
+
+    assert [row.id for row in top] == [game.id]
