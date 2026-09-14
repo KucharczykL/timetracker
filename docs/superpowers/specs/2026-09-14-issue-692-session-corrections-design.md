@@ -43,15 +43,14 @@ Each fact that differs from the row is one event: `.note_changed`,
 `.device_changed`, `.emulated_changed`. The device is compared before it is
 resolved, thus a restated removed device answers `Unchanged`. A new device must
 be this library's and live. `.device_changed` holds a `Reference`, because the
-reference index reads the annotation. A note that JSONB cannot store is refused,
-and the note payloads refuse it and a padded note too.
+reference index reads the annotation. The command and the payloads refuse a note
+that JSONB cannot store.
 
 ## The move
 
 `MoveSessionToPlaythrough` holds `session_id` and `playthrough_id`. The target
-can be a run at another game, of any kind. A session reaches its game only
-through its run, thus this is the remedy for a session logged against the wrong
-game. The same run answers `Unchanged` before the target is read. `.moved` holds
+can be a run at another game, of any kind: the remedy for a session logged
+against the wrong game. The same run answers `Unchanged` before the target is read. `.moved` holds
 a bare `ReferenceId`, as the creation does.
 
 `_live_session` refuses a session under a removed run or game. No read finds
