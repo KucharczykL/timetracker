@@ -119,6 +119,7 @@ path**, so verify against `make check` before pushing when possible.
 | Census the legacy Session rows | `make preflight-sessions ARGS="--all-libraries"` (read-only; reports, gates nothing) |
 | Benchmark commands, replay, and per-event cost | `make bench` (~1.7 min, seeds and removes a scratch library; **not** in `make check`) |
 | Replay every library and fail on a differing row | `make verify-replay-parity` (read-only; **not** in `make check`) |
+| Compare every playtime figure across both session tables | `make verify-playtime-parity ARGS="--all-libraries"` (read-only; fails on a differing figure; **not** in `make check`) |
 | Destroy one user's library and every row in it | `make purge-library ARGS="--user NAME --confirm NAME"` (names the user twice on purpose) |
 | Load platform fixtures / sample data | `make loadplatforms` / `make loadsample` |
 | Regenerate sample data (anonymized prod) | `make anonymize-sample` (see Testing) |
@@ -150,7 +151,7 @@ docs/           — Additional documentation
 
 ### Models (in `games/models.py`)
 
-- **Game** — catalog row: `name`, `platform` (FK), `playtime` (DurationField updated via signal), `year_released`, `sort_name`, `wikidata`. `status` (u/p/f/r/a) and `mastered` stranded columns since #678 D2 — nothing writes them, nothing reads them, #770 drops them
+- **Game** — catalog row: `name`, `platform` (FK), `year_released`, `sort_name`, `wikidata`. `status` (u/p/f/r/a) and `mastered` stranded columns since #678 D2 — nothing writes them, nothing reads them, #770 drops them
 - **Platform** — `name`, `group`, `icon` (slug, auto-generated from name)
 - **Purchase** — ownership type, prices, currency conversion (`converted_price`, `price_per_game` is a `GeneratedField`), M2M to Game. `num_purchases` counts linked games. DLC/SeasonPass/BattlePass must have `related_game` (reverse accessor `game.addon_purchases`)
 - **Session** — `timestamp_start`/`timestamp_end`, `duration_manual`, `device` (FK), `note`, `emulated`. `duration_calculated`/`duration_total` are `GeneratedField`s
@@ -325,7 +326,8 @@ each carry nullable `removed_at`, listed in `REMOVABLE_MODELS` in
 `games/removal.py`. `remove(instance)` stamps it, `restore(instance)` clears it,
 both use `UPDATE` rather than `save()`, so stamp revalidates nothing and fires no
 `post_save`. What signal would have done, `_AFTER_STAMP` does by hand: removed
-Game recounts its purchases, removed Session recalculates playtime.
+Game recounts its purchases. Playtime is no stored total, so a removed Session
+needs nothing beyond its mark.
 `for_library()`/`visible_to()` call `.alive()`, so removed row leaves every list,
 form, filter and API response at once; plain manager still sees it. Purchase live
 while any of its games is, or while it names none. Edition and Release read
@@ -362,6 +364,20 @@ container, FOUC-prevention script, and **JS includes** (calls
 pass `scripts=` for component-owned JS). `scripts=` remains only for page-specific
 glue not owned by reusable component (e.g. `add_*.js`). Navbar shows
 today's/last-7-days playtime from `model_counts` context processor.
+
+**Playtime reads** (`games/reads/playtime/`, #697): every playtime figure — per
+Game, all-time, per year, per day window, per platform, per month — comes from
+this package, never a sum at the call site. `PlaytimeSource` names the figures;
+`legacy.py` answers them from `Session`, `projection.py` from `PlayerSession`
+through `library_sessions()` (`games/reads/player_sessions.py`, the one scope a
+library's sessions are read through: four removal marks, library on session and
+run). `SOURCE: FullPlaytimeSource = legacy`; `projection.py` lacks
+`summed_by_game_matching`, so binding it fails mypy until a session filter speaks
+the projection's fields. Sources answer sums (NULL when unplayed); the package
+decides NULL or zero: `playtime_by_game` is zero (the `playtime` filter alias
+`GameQuerySet.annotated_for_filtering` registers), `playtime_sort_key` and
+`playtime_matching` stay NULL so unplayed games sort last. No queryset and no
+`Q` crosses the interface. `make verify-playtime-parity` compares both sources.
 
 **Component system** (`common/components/`): FastHTML-style **lazy node tree**.
 Components are `Node` objects that render to HTML only when asked (`str(node)` /
@@ -504,7 +520,6 @@ combobox dropdown (#297).
 - `post_save` on Purchase: sets `needs_price_update` if price/currency changed
 - `m2m_changed` on Purchase.games: updates `num_purchases` from live games
   (`games.removal` recounts after stamp, which fires no signal)
-- `post_save`/`post_delete` on Session: recalculates `Game.playtime` from aggregate
 
 **Background tasks**: django-q2 cluster (1 worker, 60s timeout, 120s retry, ORM
 broker) runs `games.tasks.convert_prices()` on schedule, fetching rates from
@@ -666,7 +681,7 @@ under `[tool.pytest.ini_options]`. Tests use PostgreSQL databases created by Dja
 from `DATABASE_URL`; pytest-xdist gives each worker own test database. Most files
 named after what they cover; less obvious ones are `test_paths_return_200.py`
 (smoke-tests every list/view URL), `test_rendered_pages.py` (HTML output of pages),
-`test_signals.py` (playtime recalc, status-change audit, …), and
+`test_signals.py` (status-change audit, raw fixture loads, …), and
 `test_anonymize_sample.py` (fixture anonymizer's rollback safety, determinism,
 invariants, round-trip).
 
@@ -779,8 +794,11 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   POST at same URL (which is what lets `?origin=` ride through confirmation for
   free); write them as one `confirm_and_remove()` call. Anything else that changes
   state is POST-only.
-- **Signals handle side-effects** — do not manually recalculate `Game.playtime` or
+- **Signals handle side-effects** — do not manually recalculate
   `Purchase.num_purchases`.
+- **Playtime is read, never stored** — read every playtime figure through
+  `games.reads.playtime`, never `Sum("duration_total")` at a call site; a new
+  figure is a `PlaytimeSource` member with both sources implementing it.
 - **Buttons are `ControlButton`** — colors: `blue` (primary), `red` (destructive),
   `gray` (secondary), `green` (positive); variants: `filled` (default),
   `segmented` (ButtonGroup members), plus colorless single-look toggles that ignore

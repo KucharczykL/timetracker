@@ -1,5 +1,5 @@
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -61,27 +61,6 @@ class RawFixtureLoadTest(TestCase):
         path = Path(self.fixture_dir) / "fixture.json"
         path.write_text(serializers.serialize("json", objects))
         return str(path)
-
-    @pytest.mark.untracked_games
-    def test_playtime_from_the_fixture_survives_the_load(self):
-        game = Game.objects.create(library=self.library, name="Fixture Game")
-        Session.objects.create(
-            game=game,
-            timestamp_start=datetime(2022, 9, 26, 14, 0, tzinfo=ZONEINFO),
-            timestamp_end=datetime(2022, 9, 26, 15, 0, tzinfo=ZONEINFO),
-        )
-        # The dump carries a playtime the sessions do not add up to, which is what
-        # a recompute would silently overwrite.
-        Game.objects.filter(pk=game.pk).update(playtime=timedelta(hours=5))
-        fixture = self._write_fixture(
-            [Game.objects.get(pk=game.pk), *Session.objects.all()]
-        )
-
-        Session.objects.all().delete()
-        Game.objects.all().delete()
-        call_command("loaddata", fixture, verbosity=0)
-
-        self.assertEqual(Game.objects.get(pk=game.pk).playtime, timedelta(hours=5))
 
     def test_user_fixture_does_not_provision_a_library(self):
         user = get_user_model().objects.create_user(username="fixture-user")

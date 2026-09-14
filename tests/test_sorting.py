@@ -11,6 +11,7 @@ from django.contrib.messages import get_messages
 from django.db.models import Case, DateField, Value, When
 from django.test import RequestFactory
 from django.urls import reverse
+from session_rows import tracked_run
 
 from games.filters import FindFilter
 from games.models import (
@@ -23,6 +24,7 @@ from games.models import (
     Session,
     UserPreferences,
 )
+from games.reads.playtime import playtime_sort_key
 from games.sorting import (
     DEVICE_DEFAULT_SORT,
     DEVICE_SORTS,
@@ -213,7 +215,9 @@ class TestApplySortGames:
         assert result.unknown == ["bogus"]
         assert result.queryset.count() == 2  # still returns rows (default order)
 
-    def test_playtime_annotation_no_duplicate_rows(self, two_games):
+    def test_playtime_sort_orders_by_the_summed_sessions(
+        self, owned_library, two_games
+    ):
         alpha, _ = two_games
         Session.objects.create(
             game=alpha,
@@ -225,10 +229,11 @@ class TestApplySortGames:
             timestamp_start=datetime(2022, 1, 2, 10, tzinfo=ZONEINFO),
             timestamp_end=datetime(2022, 1, 2, 11, tzinfo=ZONEINFO),
         )
-        result = apply_sort(
-            Game.objects.all(), _find("-playtime"), GAME_SORTS, GAME_DEFAULT_SORT
+        #: The alias list_games registers.
+        games = Game.objects.tracked_by(owned_library).alias(
+            total_playtime=playtime_sort_key(owned_library)
         )
-        # two sessions on alpha must not duplicate the alpha row
+        result = apply_sort(games, _find("-playtime"), GAME_SORTS, GAME_DEFAULT_SORT)
         assert result.queryset.count() == 2
         assert next(iter(result.queryset)) == alpha  # most playtime first
 
@@ -412,6 +417,15 @@ def logged_client(client, owned_user):
     return client
 
 
+def _row_order(response, names: list[str]) -> list[str]:
+    """The names, in the order the table body prints them."""
+    tbody = re.search(
+        r"<tbody[^>]*>(.*?)</tbody>", response.content.decode(), re.DOTALL
+    )
+    assert tbody
+    return sorted(names, key=tbody.group(1).index)
+
+
 class TestListGamesSort:
     def test_sort_param_orders_rows(self, logged_client, two_games):
         _alpha, _beta = two_games
@@ -423,6 +437,52 @@ class TestListGamesSort:
         ascending = logged_client.get(reverse("games:list_games"), {"sort": "name"})
         ascending_body = ascending.content.decode()
         assert ascending_body.index("Alpha") < ascending_body.index("Beta")
+
+    def test_the_playtime_sort_reads_one_library(
+        self, logged_client, owned_library, two_games, django_user_model
+    ):
+        alpha, beta = two_games
+        stranger = django_user_model.objects.create_user(
+            username="stranger", password="p"
+        )
+        shared = Game.objects.create(library=None, name="Shared", sort_name="Shared")
+        tracked_run(owned_library, shared)
+        tracked_run(stranger.library, shared)
+        start = datetime(2022, 1, 1, 10, tzinfo=ZONEINFO)
+        Session.objects.create(
+            game=alpha, timestamp_start=start, timestamp_end=start.replace(hour=12)
+        )
+        Session.objects.create(
+            game=beta, timestamp_start=start, timestamp_end=start.replace(hour=11)
+        )
+        #: A shared game's legacy sessions count in no library.
+        Session.objects.create(
+            game=shared, timestamp_start=start, timestamp_end=start.replace(hour=20)
+        )
+
+        response = logged_client.get(reverse("games:list_games"), {"sort": "-playtime"})
+
+        assert _row_order(response, ["Alpha", "Beta", "Shared"]) == [
+            "Alpha",
+            "Beta",
+            "Shared",
+        ]
+
+    @pytest.mark.parametrize("key", ["playtime", "filtered_playtime"])
+    @pytest.mark.parametrize("descending", [False, True])
+    def test_an_unplayed_game_sorts_last_both_ways(
+        self, logged_client, two_games, key, descending
+    ):
+        alpha, _beta = two_games
+        start = datetime(2022, 1, 1, 10, tzinfo=ZONEINFO)
+        Session.objects.create(
+            game=alpha, timestamp_start=start, timestamp_end=start.replace(hour=12)
+        )
+        sort = f"-{key}" if descending else key
+
+        response = logged_client.get(reverse("games:list_games"), {"sort": sort})
+
+        assert _row_order(response, ["Alpha", "Beta"]) == ["Alpha", "Beta"]
 
     def test_unknown_sort_emits_warning_message(
         self, logged_client, two_games, capture_games_logger

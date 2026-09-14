@@ -1,10 +1,8 @@
 import logging
-from datetime import timedelta
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import F, Sum
 from django.db.models.signals import (
     m2m_changed,
     post_delete,
@@ -21,7 +19,6 @@ from games.models import (
     Purchase,
     PurchaseConversionState,
     Release,
-    Session,
     SiteSetting,
     UserLibrary,
     UserLibraryPreferences,
@@ -97,31 +94,3 @@ def refuse_to_delete_a_row_an_event_references(sender, instance, **kwargs):
     Here, not in the views, so every call path is held to it.
     """
     refuse_to_delete_a_referenced_row(instance)
-
-
-def recalculate_playtime(game: Game) -> None:
-    """The sum over the live sessions."""
-    total_playtime = game.sessions.alive().aggregate(
-        total_playtime=Sum(F("duration_calculated") + F("duration_manual"))
-    )["total_playtime"]
-    game.playtime = total_playtime if total_playtime else timedelta(0)
-    game.save(update_fields=["playtime"])
-
-
-@receiver([post_save, post_delete], sender=Session)
-def update_game_playtime(sender, instance, **kwargs):
-    # A fixture carries its own playtime; recomputing it per loaded row costs an
-    # aggregate and a write each, which is most of what a container's seed step
-    # spends its time on.
-    if kwargs.get("raw"):
-        return
-    # During cascade deletes the related Game may already have been removed.
-    # Use the FK id to look up the Game safely and bail out if it no longer exists.
-    game_id = getattr(instance, "game_id", None)
-    if not game_id:
-        return
-    game = Game.objects.filter(pk=game_id).first()
-    if not game:
-        return
-
-    recalculate_playtime(game)

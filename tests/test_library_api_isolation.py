@@ -412,7 +412,7 @@ def test_compute_stats_uses_only_the_requested_library(two_libraries):
     assert [game.id for game in stats["top_10_games_by_playtime"]] == [
         world["game_a"].id
     ]
-    assert {row["platform_id"] for row in stats["total_playtime_per_platform"]} == {
+    assert {row.platform_id for row in stats["total_playtime_per_platform"]} == {
         world["platform_a"].id
     }
     assert list(stats["all_purchased_this_year"]) == [world["purchase_a"]]

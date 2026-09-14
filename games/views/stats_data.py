@@ -21,10 +21,11 @@ from django.db.models import (
     F,
     Max,
     Q,
+    QuerySet,
     Sum,
     fields,
 )
-from django.db.models.functions import TruncDate, TruncMonth
+from django.db.models.functions import TruncDate
 
 from common.time import available_stats_year_range
 from common.utils import safe_division
@@ -44,6 +45,14 @@ from games.reads.playthrough_completions import (
     completion_day,
     completion_exists,
 )
+from games.reads.playtime import (
+    MonthPlaytime,
+    PlatformPlaytime,
+    playtime_by_game,
+    playtime_by_month,
+    playtime_by_platform,
+    total_playtime,
+)
 
 
 class StatsData(TypedDict):
@@ -56,8 +65,8 @@ class StatsData(TypedDict):
     unique_days_percent: int
     total_year_games: int
     this_year_finished_this_year_count: int
-    top_10_games_by_playtime: Any
-    total_playtime_per_platform: Any
+    top_10_games_by_playtime: QuerySet[Game]
+    total_playtime_per_platform: list[PlatformPlaytime]
     total_spent: Any
     total_spent_currency: str
     spent_per_game: int
@@ -83,7 +92,7 @@ class StatsData(TypedDict):
     stats_dropdown_year_range: Any
     # --- per-year only (omitted for all-time, which hides these sections) ---
     total_games: NotRequired[int]
-    month_playtimes: NotRequired[Any]
+    month_playtimes: NotRequired[list[MonthPlaytime]]
     all_finished_this_year: NotRequired[Any]
     all_finished_this_year_count: NotRequired[int]
     this_year_finished_this_year: NotRequired[Any]
@@ -133,7 +142,11 @@ def _compute_stats_from_scoped_querysets(
     year: YearScope,
     fallback_currency: str,
 ) -> StatsData:
-    """Compute metrics without selecting a global Session or Purchase base."""
+    """Compute metrics without selecting a global Session or Purchase base.
+
+    Playtime figures read the playtime interface by library and
+    year, not `sessions`; a narrower `sessions` narrows counts only.
+    """
 
     library_purchases = purchases
     is_alltime = year is None
@@ -274,26 +287,16 @@ def _compute_stats_from_scoped_querysets(
             .count()
         )
 
-    # ── Games / platforms by playtime (unified on duration_total) ────────────
-    games_with_playtime = (
-        Game.objects.filter(sessions__in=sessions)
-        .distinct()
-        .annotate(total_playtime=Sum("sessions__duration_total"))
+    # ── Games by playtime ────────────────────────────────────────────────────
+    #: Visible, not tracked: a library game with no live PlayerGame
+    #: still has playtime. A game the source counts nothing for is
+    #: dropped by the positive figure.
+    top_games = (
+        Game.objects.visible_to(library)
+        .annotate(total_playtime=playtime_by_game(library, year=year))
         .filter(total_playtime__gt=timedelta(0))
-    )
-    top_games = games_with_playtime.order_by("-total_playtime")
-
-    # platform_id is carried alongside the name so the stats row can link to a
-    # platform-scoped session list (#65).
-    total_playtime_per_platform = (
-        sessions.values("game__platform__name", "game__platform__id")
-        .annotate(playtime=Sum(F("duration_total")))
-        .annotate(
-            platform_name=F("game__platform__name"),
-            platform_id=F("game__platform__id"),
-        )
-        .values("platform_name", "platform_id", "playtime")
-        .order_by("-playtime")
+        #: Equal playtimes need an order, or the page reshuffles them.
+        .order_by("-total_playtime", "sort_name", "name", "pk")
     )
 
     played_purchases = library_purchases.filter(games__sessions__in=sessions).distinct()
@@ -307,14 +310,14 @@ def _compute_stats_from_scoped_querysets(
     data: StatsData = {
         "year": year_label,
         "title": f"{year_label} Stats",
-        "total_hours": sessions.total_duration_unformatted() or timedelta(0),
+        "total_hours": total_playtime(library, year),
         "total_sessions": sessions.count(),
         "unique_days": unique_days,
         "unique_days_percent": unique_days_percent,
         "total_year_games": total_year_games,
         "this_year_finished_this_year_count": finished_released.count(),
         "top_10_games_by_playtime": top_games,
-        "total_playtime_per_platform": total_playtime_per_platform,
+        "total_playtime_per_platform": playtime_by_platform(library, year),
         "total_spent": total_spent,
         "total_spent_currency": currency,
         "spent_per_game": int(safe_division(total_spent, without_refunded_count)),
@@ -354,14 +357,9 @@ def _compute_stats_from_scoped_querysets(
         "stats_dropdown_year_range": available_stats_year_range(),
     }
 
-    if not is_alltime:
+    if year is not None:
         data["total_games"] = games_in_scope.count()
-        data["month_playtimes"] = (
-            sessions.annotate(month=TruncMonth("timestamp_start"))
-            .values("month")
-            .annotate(playtime=Sum("duration_total"))
-            .order_by("month")
-        )
+        data["month_playtimes"] = playtime_by_month(library, year)
         data["all_finished_this_year"] = finished.prefetch_related("games").order_by(
             F("date_finished").asc(nulls_last=True)
         )

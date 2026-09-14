@@ -7,7 +7,7 @@ importantly — that nothing is double-escaped (the recurring failure mode when 
 """
 
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from html.parser import HTMLParser
 from zoneinfo import ZoneInfo
 
@@ -16,9 +16,11 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 from pytest_django.asserts import assertRedirects
 
 from games.models import Game, Platform, Purchase, Session
+from games.reads.playtime import game_playtime
 from timetracker.temporal import TemporalValue
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
@@ -370,6 +372,26 @@ class RenderedPagesTest(TestCase):
             self.assertIn(marker, html)
         self.assertNoEscapedTags(html)
         self.assertEqual(html.count("<div"), html.count("</div>"))
+
+    def test_view_game_states_the_interface_figure(self):
+        removed = Session.objects.create(
+            game=self.game,
+            timestamp_start=datetime(2022, 9, 27, 15, 0, tzinfo=ZONEINFO),
+            timestamp_end=datetime(2022, 9, 27, 17, 0, tzinfo=ZONEINFO),
+        )
+        #: A bare stamp: nothing recounts a stored total.
+        Session.objects.filter(pk=removed.pk).update(removed_at=timezone.now())
+
+        html = self.client.get(self.game.get_absolute_url()).content.decode()
+        hours = html[
+            html.index('id="popover-hours"') : html.index('id="popover-sessions"')
+        ]
+
+        self.assertEqual(
+            game_playtime(self.user.library, self.game), timedelta(hours=1)
+        )
+        self.assertIn("1 h 00 m", hours)
+        self.assertNotIn("3 h 00 m", hours)
 
     def test_view_game_drops_the_flattened_release_year(self):
         """The title said a year no Release had to agree with."""

@@ -111,6 +111,21 @@ class ComputeStatsTest(TestCase):
         self.assertEqual(top[0].id, self.game_b.id)
         self.assertEqual(top[0].total_playtime, timedelta(hours=3))
 
+    def test_equal_playtimes_order_by_name(self):
+        """A tie reads the same on every load: B (3h) after an earlier name at 3h."""
+        tied = Game.objects.create(
+            library=self.library, name="Aardvark", platform=self.platform
+        )
+        Session.objects.create(
+            game=tied,
+            timestamp_start=datetime(2023, 8, 1, 10, tzinfo=TZ),
+            timestamp_end=datetime(2023, 8, 1, 13, tzinfo=TZ),
+        )
+
+        top = list(self.stats(2023)["top_10_games_by_playtime"])
+
+        self.assertEqual([game.id for game in top[:2]], [tied.id, self.game_b.id])
+
     def test_alltime_playtime_sums_all_years(self):
         """All-time Game A = 2.5h (2023) + 2h (2022) = 4.5h, ahead of B (3h)."""
         top = list(self.stats(None)["top_10_games_by_playtime"])

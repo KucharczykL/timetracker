@@ -22,7 +22,6 @@ from games.models import (
     Release,
     Session,
 )
-from games.signals import recalculate_playtime
 
 #: Every model a user can remove.
 #: Projections absent: a command states their mark.
@@ -44,13 +43,6 @@ def _recount_purchases(game: Game, previous_mark: datetime | None) -> None:
         purchase.num_purchases = purchase.games.alive().count()
         purchase.updated_at = now()
         purchase.save(update_fields=["num_purchases", "updated_at"])
-
-
-def _recalculate_the_games_playtime(
-    session: Session, previous_mark: datetime | None
-) -> None:
-    """A stamp fires no session signal."""
-    recalculate_playtime(session.game)
 
 
 def _mark_the_references_of(instance: Model, previous_mark: datetime | None) -> None:
@@ -102,7 +94,6 @@ _AFTER_STAMP: dict[type[Model], tuple[Callable[[Any, datetime | None], None], ..
     Edition: (_mark_the_references_of,),
     Release: (_mark_the_references_of,),
     Platform: (_mark_the_references_of,),
-    Session: (_recalculate_the_games_playtime,),
 }
 
 

@@ -6,7 +6,7 @@ from uuid import UUID
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
-from django.db.models import F, OuterRef, Q, QuerySet, Subquery, Sum
+from django.db.models import QuerySet
 from django.http import Http404, HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import redirect
@@ -98,6 +98,7 @@ from games.reads.playergame_history import StatusEntry, status_history
 from games.reads.playthrough_completions import GAME_RUNS, reported_completion_day
 from games.reads.playthrough_numbering import numbered_for
 from games.reads.playthrough_runs import live_ordinary_runs, tracked_game
+from games.reads.playtime import game_playtime, playtime_matching, playtime_sort_key
 from games.reference_form import ReferenceSetForm
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
 from games.views.catalog_section import editions_area
@@ -148,10 +149,9 @@ def list_games(request: HttpRequest) -> HttpResponse:
     origin = request.get_full_path()
     games = Game.objects.tracked_by(library).select_related("platform")
 
-    # Playtime column sums only the sessions matching the active session
-    # sub-filter; an empty Q matches every session, so with no session filter the
-    # column shows total playtime.
-    session_q = Q()
+    #: The Playtime column sums only the sessions this matches; no
+    #: session filter is every session.
+    session_filter: SessionFilter | None = None
 
     # ── Structured filter (Stash-style JSON; free-text search lives here too) ──
     filter_json = request.GET.get("filter", "")
@@ -160,21 +160,11 @@ def list_games(request: HttpRequest) -> HttpResponse:
         if game_filter is not None:
             context = filter_query_context_for_library(library)
             games = execute_filter(game_filter, games, context)
-            if game_filter.session_filter is not None:
-                session_q = game_filter.session_filter.to_q(context)
+            session_filter = game_filter.session_filter
 
-    # Per-game playtime restricted to the session sub-filter, summed in the DB.
-    # session_q stays in Session's own field namespace via the correlated
-    # subquery, so no `sessions__` path-prefixing is needed.
-    windowed_playtime = (
-        Session.objects.for_library(library)
-        .filter(session_q, game=OuterRef("pk"))
-        .values("game")
-        .annotate(total=Sum(F("duration_calculated") + F("duration_manual")))
-        .values("total")
-    )
-    games = games.annotate(
-        filtered_playtime=Subquery(windowed_playtime),
+    #: An alias, not an annotation: only `?sort=playtime` reads it.
+    games = games.alias(total_playtime=playtime_sort_key(library)).annotate(
+        filtered_playtime=playtime_matching(library, session_filter),
         #: No column renders it; `?sort=finished` reads it.
         completed_day=reported_completion_day(library, GAME_RUNS),
     )
@@ -779,6 +769,7 @@ def _game_header(
     game: Game,
     request: HttpRequest,
     metrics: dict[str, Any],
+    playtime: timedelta,
     presentation: DateTimePresentation,
     durations: DurationPresentation,
     origin: OriginUrl | None,
@@ -802,8 +793,8 @@ def _game_header(
             "popover-hours",
             "Total hours played",
             "hours",
-            DurationText(game.playtime, durations),
-            DurationAlternates(game.playtime, durations),
+            DurationText(playtime, durations),
+            DurationAlternates(playtime, durations),
         ),
         _stat_popover(
             "popover-sessions",
@@ -1042,6 +1033,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
             game,
             request,
             _game_overview_metrics(sessions),
+            game_playtime(library, game),
             presentation,
             durations,
             origin,

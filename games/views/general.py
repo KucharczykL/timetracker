@@ -5,15 +5,10 @@ from typing import Any, cast
 from django.apps import apps
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
-from django.db.models import (
-    F,
-    Sum,
-)
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect
 from django.urls import reverse
-from django.utils.timezone import localdate, localtime
-from django.utils.timezone import now as timezone_now
+from django.utils.timezone import localdate
 
 from common.components import (
     CsrfInput,
@@ -35,6 +30,7 @@ from common.duration_presentation import duration_presentation_for_request
 from common.layout import render_page
 from games.filters import SessionFilter, filter_url, model_field_registry
 from games.models import Device, Game, Platform, Purchase, Session
+from games.reads.playtime import playtime_between
 from games.sorting import parse_per_page_override
 from games.views.filtering import BUILDER_MODES
 from games.views.stats_content import stats_content
@@ -52,24 +48,14 @@ def model_counts(request: HttpRequest) -> dict[str, Any]:
         if library is not None
         else Session.objects.none()
     )
-    now = timezone_now()
-    # Use a contiguous [midnight, next midnight) range in the active timezone
-    # instead of day/month/year extracts: a range filter can use an index on
-    # timestamp_start, whereas the extracts force a per-row datetime function.
-    today = localtime(now).date()
-    start_of_today = localtime(now).replace(hour=0, minute=0, second=0, microsecond=0)
-    start_of_tomorrow = start_of_today + timedelta(days=1)
+    today = localdate()
     # "Last 7 days" is a calendar-day window (today plus the previous six) so the
     # displayed total matches the list its navbar link points to.
-    start_of_window = start_of_today - timedelta(days=6)
-    today_played = sessions.filter(
-        timestamp_start__gte=start_of_today,
-        timestamp_start__lt=start_of_tomorrow,
-    ).aggregate(time=Sum(F("duration_total")))["time"]
-    last_7_played = sessions.filter(
-        timestamp_start__gte=start_of_window,
-        timestamp_start__lt=start_of_tomorrow,
-    ).aggregate(time=Sum(F("duration_total")))["time"]
+    first_of_window = today - timedelta(days=6)
+    today_played = last_7_played = timedelta(0)
+    if library is not None:
+        today_played = playtime_between(library, (today, today))
+        last_7_played = playtime_between(library, (first_of_window, today))
 
     durations = duration_presentation_for_request(request)
 
@@ -77,10 +63,7 @@ def model_counts(request: HttpRequest) -> dict[str, Any]:
     today_url = filter_url(SessionFilter.where(timestamp_start=today_iso))
     last_7_url = filter_url(
         SessionFilter.where(
-            timestamp_start__between=(
-                (today - timedelta(days=6)).isoformat(),
-                today_iso,
-            )
+            timestamp_start__between=(first_of_window.isoformat(), today_iso)
         )
     )
 

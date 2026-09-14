@@ -58,7 +58,7 @@ from common.criteria import (
     search_q,
     with_filter_aliases,
 )
-from common.filter_execution import contains_regex_modifier
+from common.filter_execution import contains_regex_modifier, execute_filter
 from games.filters import (
     DeviceFilter,
     GameFilter,
@@ -1425,6 +1425,97 @@ class TestExpandedFiltersAgainstDB:
         assert data["game"] in set(
             Game.objects.filter(gf_calc.to_q(UNRESTRICTED_FILTER_CONTEXT))
         )
+
+
+@pytest.mark.django_db
+class TestPlaytimeHoursAgainstDB:
+    """`playtime_hours` reads the `playtime` alias, not a stored column."""
+
+    @pytest.fixture
+    def played_and_unplayed(self, owned_library):
+        from datetime import datetime, timedelta
+
+        from games.models import Game, Session
+
+        played = Game.objects.create(library=owned_library, name="Played")
+        unplayed = Game.objects.create(library=owned_library, name="Unplayed")
+        start = datetime(2026, 3, 1, 10, tzinfo=UTC)
+        Session.objects.create(
+            game=played, timestamp_start=start, timestamp_end=start + timedelta(hours=2)
+        )
+        return played, unplayed
+
+    @staticmethod
+    def _matching(library, criterion):
+        from games.filters import GameFilter, filter_query_context_for_library
+        from games.models import Game
+
+        game_filter = GameFilter.from_json({"playtime_hours": criterion})
+        context = filter_query_context_for_library(library)
+        return set(
+            execute_filter(game_filter, Game.objects.tracked_by(library), context)
+        )
+
+    def test_playtime_hours_reads_the_live_sessions(
+        self, owned_library, played_and_unplayed
+    ):
+        from games.models import Session
+        from games.removal import remove
+
+        played, _unplayed = played_and_unplayed
+        greater_than_one = {"value": 1, "modifier": "GREATER_THAN"}
+
+        assert self._matching(owned_library, greater_than_one) == {played}
+
+        remove(Session.objects.get(game=played))
+
+        assert self._matching(owned_library, greater_than_one) == set()
+
+    def test_playtime_hours_zero_matches_an_unplayed_game(
+        self, owned_library, played_and_unplayed
+    ):
+        _played, unplayed = played_and_unplayed
+
+        assert self._matching(owned_library, {"value": 0, "modifier": "EQUALS"}) == {
+            unplayed
+        }
+
+    def test_playtime_hours_is_null_matches_an_unplayed_game(
+        self, owned_library, played_and_unplayed
+    ):
+        played, unplayed = played_and_unplayed
+
+        assert self._matching(owned_library, {"modifier": "IS_NULL"}) == {unplayed}
+        assert self._matching(owned_library, {"modifier": "NOT_NULL"}) == {played}
+
+    def test_playtime_hours_inside_a_game_filter_relation(
+        self, owned_library, played_and_unplayed
+    ):
+        from games.filters import SessionFilter, filter_query_context_for_library
+        from games.models import Session
+
+        played, _unplayed = played_and_unplayed
+        session_filter = SessionFilter.from_json(
+            {
+                "game_filter": {
+                    "playtime_hours": {"value": 1, "modifier": "GREATER_THAN"}
+                }
+            }
+        )
+        context = filter_query_context_for_library(owned_library)
+
+        matching = execute_filter(
+            session_filter, Session.objects.for_library(owned_library), context
+        )
+
+        assert {session.game for session in matching} == {played}
+
+    def test_the_playtime_alias_is_not_selected(self, owned_library):
+        from games.models import Game
+
+        sql = str(Game.objects.tracked_by(owned_library).query)
+
+        assert "games_session" not in sql
 
 
 class TestDateCriterion:
