@@ -360,7 +360,7 @@ def test_an_end_is_about_the_session_the_caller_names():
         session_id,
         ended_at=datetime(2026, 1, 1, 23, 30, tzinfo=UTC),
         ended_at_zone=None,
-        day_zone="Europe/Prague",
+        day_zone=ZoneInfo("Europe/Prague"),
     )
 
     assert event.aggregate_id == session_id
@@ -371,7 +371,7 @@ def test_an_end_takes_the_day_its_zone_reads():
         uuid.uuid7(),
         ended_at=datetime(2026, 1, 1, 23, 30, tzinfo=UTC),
         ended_at_zone=None,
-        day_zone="Europe/Prague",
+        day_zone=ZoneInfo("Europe/Prague"),
     )
 
     #: Half past midnight in Prague.
@@ -402,7 +402,7 @@ def test_an_end_may_land_on_a_later_day_than_the_creation_did():
         session_id,
         ended_at=datetime(2026, 1, 2, 1, 0, tzinfo=UTC),
         ended_at_zone=None,
-        day_zone="Europe/Prague",
+        day_zone=ZoneInfo("Europe/Prague"),
     )
 
     assert created.effective_time.canonical == "2026-01-01"
@@ -414,7 +414,7 @@ def test_the_built_end_validates():
         uuid.uuid7(),
         ended_at=datetime(2026, 1, 2, 1, 30, tzinfo=UTC),
         ended_at_zone="Europe/Prague",
-        day_zone="Europe/Prague",
+        day_zone=ZoneInfo("Europe/Prague"),
     )
 
     assert validated_end(event.payload) == event.payload

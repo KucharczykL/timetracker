@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 from django.apps import apps as global_apps
@@ -713,9 +714,10 @@ def append_end(
     ended_at,
     key,
     ended_at_zone=None,
-    day_zone="Europe/Prague",
+    day_zone=None,
 ):
     """Append one end event, as dispatch would."""
+    day_zone = day_zone or ZoneInfo("Europe/Prague")
     with transaction.atomic():
         stream = lock_stream(library)
         return stream.append(
@@ -743,8 +745,19 @@ def test_the_end_event_has_a_current_state_handler():
 def test_the_end_handler_writes_two_columns_and_leaves_the_rest(
     owned_user, owned_library, run
 ):
+    device = Device.objects.create(library=owned_library, name="Steam Deck")
     append_session(
-        owned_library, owned_user, run, timing=a_timed_statement(), key="create"
+        owned_library,
+        owned_user,
+        run,
+        #: Every column the end must not touch carries a value it
+        #: could be told apart from: a default would let a handler
+        #: that clobbered one still satisfy the assertion.
+        timing=a_timed_statement(started_at_zone="Asia/Tokyo"),
+        device=capture_reference(device),
+        note="A note the end must not take away",
+        emulated=True,
+        key="create",
     )
     session = PlayerSession.objects.get()
     untouched = (
@@ -754,6 +767,7 @@ def test_the_end_handler_writes_two_columns_and_leaves_the_rest(
         "stated_day",
         "stated_duration",
         "day_zone",
+        "device_id",
         "note",
         "emulated",
     )
