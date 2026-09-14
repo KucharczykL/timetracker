@@ -144,8 +144,7 @@ def _compute_stats_from_scoped_querysets(
 ) -> StatsData:
     """Compute metrics without selecting a global Session or Purchase base.
 
-    Playtime figures read the playtime interface by library and
-    year, not `sessions`; a narrower `sessions` narrows counts only.
+    Playtime reads library and year, not `sessions`.
     """
 
     library_purchases = purchases
@@ -288,14 +287,12 @@ def _compute_stats_from_scoped_querysets(
         )
 
     # ── Games by playtime ────────────────────────────────────────────────────
-    #: Visible, not tracked: a library game with no live PlayerGame
-    #: still has playtime. A game the source counts nothing for is
-    #: dropped by the positive figure.
+    #: Visible games: untracked library games still count.
     top_games = (
         Game.objects.visible_to(library)
         .annotate(total_playtime=playtime_by_game(library, year=year))
         .filter(total_playtime__gt=timedelta(0))
-        #: Equal playtimes need an order, or the page reshuffles them.
+        #: Ties need an order, or rows reshuffle.
         .order_by("-total_playtime", "sort_name", "name", "pk")
     )
 

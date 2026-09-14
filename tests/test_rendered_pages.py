@@ -379,7 +379,7 @@ class RenderedPagesTest(TestCase):
             timestamp_start=datetime(2022, 9, 27, 15, 0, tzinfo=ZONEINFO),
             timestamp_end=datetime(2022, 9, 27, 17, 0, tzinfo=ZONEINFO),
         )
-        #: A bare stamp: nothing recounts a stored total.
+        #: A bare stamp; no stored total recounts.
         Session.objects.filter(pk=removed.pk).update(removed_at=timezone.now())
 
         html = self.client.get(self.game.get_absolute_url()).content.decode()

@@ -1,8 +1,4 @@
-"""Compare every playtime figure across the two session tables.
-
-Read-only. A differing figure fails the run, so a conversion
-and a release gate can both rely on the exit status.
-"""
+"""Compare every playtime figure across both tables."""
 
 from django.core.management.base import BaseCommand, CommandError
 

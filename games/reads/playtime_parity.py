@@ -1,8 +1,4 @@
-"""Every playtime figure from both sources, side by side.
-
-The sources are compared through the protocol, so this reads
-exactly what a caller can be handed.
-"""
+"""Both sources' playtime figures, side by side."""
 
 from collections.abc import Callable, Iterable, Sequence
 from datetime import timedelta
@@ -22,7 +18,7 @@ from games.reads.playtime.source import (
 )
 from timetracker.settings_resolver import resolve_str_for_user
 
-#: What a figure counts, e.g. "year 2025" or "game Hades 0190…".
+#: What a figure counts, e.g. "year 2025".
 type FigureScope = str
 
 LEGACY: PlaytimeSource = legacy
@@ -38,12 +34,12 @@ class PlaytimeFigure(NamedTuple):
 
 
 def display_zone(library: UserLibrary) -> ZoneInfo:
-    """The zone the library's viewer reads days in."""
+    """The zone the viewer reads days in."""
     return ZoneInfo(resolve_str_for_user(library.user, "DISPLAY_TIME_ZONE"))
 
 
 def playtime_figures(library: UserLibrary, zone: ZoneInfo) -> list[PlaytimeFigure]:
-    """Each figure once; a figure one source lacks reads zero."""
+    """Each figure once; missing ones read zero."""
     with timezone.override(zone):
         years = sorted(
             set(LEGACY.played_years(library)) | set(PROJECTION.played_years(library))
@@ -85,7 +81,7 @@ def _between(
 
 
 def _game_figures(library: UserLibrary) -> list[PlaytimeFigure]:
-    """Every game either source counts, by name then id."""
+    """Games either source counts, by name."""
     games = (
         Game.objects.visible_to(library)
         .annotate(

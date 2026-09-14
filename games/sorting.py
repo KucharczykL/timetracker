@@ -91,8 +91,7 @@ GAME_SORTS: SortMap = {
     "status": SortSpec("tracked_status"),
     "wikidata": SortSpec("wikidata"),
     "created": SortSpec("created_at"),
-    # No annotate dict: list_games registers `total_playtime`, which
-    # needs the library.
+    # `list_games` registers `total_playtime` per library.
     "playtime": SortSpec("total_playtime"),
     # No annotate dict: list_games pre-annotates `filtered_playtime` (playtime
     # restricted to the active session sub-filter) on the queryset, and this

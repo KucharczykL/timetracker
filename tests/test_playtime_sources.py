@@ -59,7 +59,7 @@ def stranger_library(django_user_model) -> UserLibrary:
 
 
 def summed(source: ModuleType, library: UserLibrary | None, game: Game, **scope):
-    """The source's sum, annotated on the one game."""
+    """The source's sum on one game."""
     return (
         Game.objects.filter(pk=game.pk)
         .annotate(figure=source.summed_by_game(library, **scope))
@@ -267,7 +267,7 @@ def test_summed_by_game_never_counts_another_library(
         )
         timed_row(tracked_run(library, shared), started_at, ended_at)
 
-    #: Legacy counts a shared catalog game's session in no library.
+    #: Legacy counts shared-catalog sessions in no library.
     expected = {
         legacy: (None, None),
         projection: (timedelta(hours=1), timedelta(hours=2)),
@@ -319,7 +319,7 @@ def test_summed_by_game_over_no_library_is_empty(source, stranger_library):
     )
     timed_row(tracked_run(stranger_library, shared), started_at, ended_at)
 
-    #: The trap a None passed on would fall into.
+    #: The trap a passed-on None hits.
     assert Session.objects.for_library(None).filter(game=shared).exists()
     assert summed(source, None, shared) is None
 

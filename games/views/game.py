@@ -149,8 +149,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
     origin = request.get_full_path()
     games = Game.objects.tracked_by(library).select_related("platform")
 
-    #: The Playtime column sums only the sessions this matches; no
-    #: session filter is every session.
+    #: Narrows the Playtime column; None counts all.
     session_filter: SessionFilter | None = None
 
     # ── Structured filter (Stash-style JSON; free-text search lives here too) ──
@@ -162,7 +161,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
             games = execute_filter(game_filter, games, context)
             session_filter = game_filter.session_filter
 
-    #: An alias, not an annotation: only `?sort=playtime` reads it.
+    #: An alias: only `?sort=playtime` reads it.
     games = games.alias(total_playtime=playtime_sort_key(library)).annotate(
         filtered_playtime=playtime_matching(library, session_filter),
         #: No column renders it; `?sort=finished` reads it.

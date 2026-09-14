@@ -101,7 +101,7 @@ def test_the_scope_counts_a_session_in_the_imported_history_bucket(owned_library
 @pytest.mark.django_db
 def test_the_scope_reads_one_library(owned_library, run, django_user_model):
     stranger = django_user_model.objects.create_user(username="stranger", password="p")
-    #: The session's library is the stranger's; its run is ours.
+    #: Stranger's session library, our run.
     a_session(run)
     PlayerSession.objects.update(library=stranger.library)
 

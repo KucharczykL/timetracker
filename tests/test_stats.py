@@ -112,7 +112,7 @@ class ComputeStatsTest(TestCase):
         self.assertEqual(top[0].total_playtime, timedelta(hours=3))
 
     def test_equal_playtimes_order_by_name(self):
-        """A tie reads the same on every load: B (3h) after an earlier name at 3h."""
+        """Ties order by name on every load."""
         tied = Game.objects.create(
             library=self.library, name="Aardvark", platform=self.platform
         )

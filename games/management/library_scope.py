@@ -1,4 +1,4 @@
-"""The libraries and zone a read-only report reads."""
+"""Libraries and zone a report reads."""
 
 import uuid
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -40,7 +40,7 @@ def resolve_zone(name: str | None) -> ZoneInfo | None:
 
 
 def _library_of_user(username: str) -> UserLibrary:
-    """A missing user is not a user missing a library."""
+    """Missing user and missing library differ."""
     user_model = get_user_model()
     try:
         user = user_model.objects.get(username=username)
@@ -53,7 +53,7 @@ def _library_of_user(username: str) -> UserLibrary:
 
 
 def _library_by_id(library_id: str) -> UserLibrary:
-    """The text is read here, so the query catches one error."""
+    """Parse first, so one query error remains."""
     try:
         parsed = uuid.UUID(library_id)
     except ValueError as error:

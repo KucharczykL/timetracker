@@ -1,11 +1,4 @@
-"""Playtime read from the PlayerSession projection.
-
-A year, a month and a day are read off `effective_day`, frozen
-in the row's own `day_zone`; the active zone moves nothing.
-
-No `summed_by_game_matching`: a session filter names the legacy
-table's fields.
-"""
+"""Projection playtime; days read from `effective_day`."""
 
 from datetime import timedelta
 
@@ -20,7 +13,7 @@ from games.reads.playtime.source import DayInterval, MonthPlaytime, PlatformPlay
 
 ZERO = Value(timedelta(0), output_field=DurationField())
 
-#: A session reaches its game only through its run.
+#: Sessions reach their game through the run.
 GAME = "playthrough__player_game__game"
 PLATFORM = f"{GAME}__platform"
 
@@ -28,7 +21,7 @@ PLATFORM = f"{GAME}__platform"
 def _sessions(
     library: UserLibrary | None, year: YearScope = None
 ) -> PlayerSessionQuerySet:
-    """The library's counted sessions, in the year when one is named."""
+    """Counted sessions, narrowed to a year."""
     if library is None:
         return PlayerSession.objects.none()
     sessions = library_sessions(library)

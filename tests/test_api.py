@@ -410,7 +410,7 @@ def test_session_patch_end_before_start_rejected(auth_client):
 
 
 def test_session_patch_grows_the_games_playtime(auth_client):
-    # Finishing an open session grows duration_total, which the playtime read sums.
+    # Finishing the session grows the summed playtime.
     session = _make_session()
     library = session.game.library
     assert game_playtime(library, session.game) == timedelta(0)
