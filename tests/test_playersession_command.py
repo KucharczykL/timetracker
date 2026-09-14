@@ -3,6 +3,7 @@
 import itertools
 import uuid
 from datetime import UTC, date, datetime, timedelta
+from datetime import timezone as dt_timezone
 from functools import lru_cache
 
 import pytest
@@ -1395,9 +1396,11 @@ def test_restating_a_removed_device_the_row_names_changes_nothing(
     assert result.outcome is CommandOutcome.UNCHANGED
 
 
-def test_a_description_of_nothing_is_a_defect_of_the_caller():
-    with pytest.raises(ValueError):
+def test_a_description_of_nothing_is_refused():
+    with pytest.raises(CommandRejected) as refusal:
         DescribeSession(session_id=uuid.uuid7())
+
+    assert refusal.value.sentence == "Say what to change about this session."
 
 
 def test_an_unknown_session_has_nothing_to_describe(owned_user, owned_library):
@@ -1647,3 +1650,85 @@ def test_an_unknown_session_cannot_be_moved(owned_user, owned_library, run):
         run.pk,
         saying="That session is not available.",
     )
+
+
+# --- Instants a calendar cannot hold ------------------------------------------
+
+#: Ten past the last UTC hour Python can hold, stated five hours west.
+BEYOND_UTC = datetime(9999, 12, 31, 23, tzinfo=dt_timezone(timedelta(hours=-5)))
+#: A UTC instant whose day in Kiritimati is year 10000.
+BEYOND_KIRITIMATI = datetime(9999, 12, 31, 20, tzinfo=UTC)
+OUT_OF_RANGE = "That time is outside the range we can record."
+
+
+@pytest.mark.parametrize(
+    "construct",
+    [
+        lambda: CreateSession(
+            playthrough_id=uuid.uuid7(), timing=a_timed(started_at=BEYOND_UTC)
+        ),
+        lambda: CorrectSessionTiming(
+            session_id=uuid.uuid7(), timing=a_corrected(ended_at=BEYOND_UTC)
+        ),
+        lambda: EndSession(
+            session_id=uuid.uuid7(), ended_at=BEYOND_UTC, ended_at_zone=None
+        ),
+    ],
+    ids=["create", "correct", "end"],
+)
+def test_an_instant_utc_cannot_hold_is_refused_at_construction(construct):
+    with pytest.raises(CommandRejected) as refusal:
+        construct()
+
+    assert refusal.value.sentence == OUT_OF_RANGE
+
+
+def test_a_start_its_day_zone_cannot_hold_is_refused(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    refused_correction(
+        owned_library,
+        owned_user,
+        session.pk,
+        a_timed(started_at=BEYOND_KIRITIMATI, day_zone="Pacific/Kiritimati"),
+        saying=OUT_OF_RANGE,
+    )
+
+
+def test_an_end_its_own_zone_cannot_hold_is_refused(owned_user, owned_library, run):
+    refusal = refused(
+        owned_library,
+        owned_user,
+        run,
+        a_timed(ended_at=BEYOND_KIRITIMATI, ended_at_zone="Pacific/Kiritimati"),
+    )
+
+    assert refusal.sentence == OUT_OF_RANGE
+
+
+def test_an_end_its_day_zone_cannot_hold_is_refused(owned_user, owned_library, run):
+    session = record(
+        owned_library,
+        owned_user,
+        run,
+        a_timed(
+            started_at=datetime(9999, 12, 31, 9, tzinfo=UTC),
+            day_zone="Pacific/Kiritimati",
+        ),
+    )
+
+    refused_end(
+        owned_library,
+        owned_user,
+        session.pk,
+        ended_at=BEYOND_KIRITIMATI,
+        saying=OUT_OF_RANGE,
+    )
+
+
+def test_a_command_with_two_keys_takes_them_by_name():
+    """Swapped positional keys would type-check."""
+    with pytest.raises(TypeError):
+        MoveSessionToPlaythrough(uuid.uuid7(), uuid.uuid7())  # type: ignore[misc]
+    with pytest.raises(TypeError):
+        CreateSession(uuid.uuid7(), a_timed())  # type: ignore[misc]

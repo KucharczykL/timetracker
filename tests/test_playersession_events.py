@@ -519,6 +519,14 @@ def test_an_empty_note_is_a_note():
     assert validated_as(PLAYERSESSION_NOTE_CHANGED, payload) == payload
 
 
+@pytest.mark.parametrize("note", ["  padded ", "a\x00b", "a\ud800"])
+def test_a_note_payload_refuses_a_second_spelling_or_unstorable_text(note):
+    with pytest.raises(PayloadInvalid):
+        validated_as(PLAYERSESSION_NOTE_CHANGED, {"note": note})
+    with pytest.raises(PayloadInvalid):
+        validated(a_timed_payload() | {"note": note})
+
+
 def test_the_emulated_flag_is_strict():
     with pytest.raises(PayloadInvalid):
         validated_as(PLAYERSESSION_EMULATED_CHANGED, {"emulated": "true"})

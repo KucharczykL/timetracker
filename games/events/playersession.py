@@ -79,7 +79,21 @@ def stated_zone_text(value: str) -> str:
     return value
 
 
+def stated_note_text(value: str) -> str:
+    """Refuse padding and text JSONB cannot store."""
+    if value != value.strip():
+        raise ValueError(f"{value!r} is padded; {value.strip()!r} is the note.")
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        raise ValueError(f"{value!r} holds a lone surrogate.") from None
+    if "\x00" in value:
+        raise ValueError(f"{value!r} holds a NUL byte.")
+    return value
+
+
 type InstantText = Annotated[str, AfterValidator(canonical_instant_text)]
+type NoteText = Annotated[str, AfterValidator(stated_note_text)]
 type DayText = Annotated[str, AfterValidator(canonical_day_text)]
 type ZoneText = Annotated[str, AfterValidator(stated_zone_text)]
 
@@ -158,7 +172,7 @@ class PlayerSessionCreatedPayload(TypedDict):
     device: Reference | None
     release: Reference | None
     timing: TimingPayload
-    note: str
+    note: NoteText
     emulated: bool
 
 
@@ -299,7 +313,7 @@ def playersession_timing_corrected(
 class PlayerSessionNoteChangedPayload(TypedDict):
     """An empty note clears it."""
 
-    note: str
+    note: NoteText
 
 
 PLAYERSESSION_NOTE_CHANGED = EventSpec(

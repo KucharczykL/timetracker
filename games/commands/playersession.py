@@ -3,7 +3,7 @@
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta, tzinfo
 from functools import lru_cache
 from typing import ClassVar, NamedTuple, assert_never
 from zoneinfo import ZoneInfo
@@ -31,6 +31,8 @@ from games.events.references import capture_reference
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import Device, PlayerSession, PlayerSessionTimingMode
 from games.projectors.playersession import TimingColumns, columns_for_timing
+
+OUT_OF_RANGE = "That time is outside the range we can record."
 
 #: The finest duration a statement may carry. The payload states whole
 #: seconds while the fingerprint states microseconds, so anything
@@ -136,6 +138,22 @@ def _check_aware(*instants: datetime | None) -> None:
                 "would read differently on another host.",
                 sentence="That time is missing its time zone.",
             )
+        _check_representable(instant, UTC)
+
+
+def _check_representable(instant: datetime, *zones: tzinfo | None) -> None:
+    """Refuse an instant a zone's calendar overflows."""
+    for zone in zones:
+        if zone is None:
+            continue
+        try:
+            instant.astimezone(zone)
+        except OverflowError:
+            raise CommandRejected(
+                f"{instant!r} read in {zone} falls outside the years a "
+                "datetime holds, so no day or row can carry it.",
+                sentence=OUT_OF_RANGE,
+            ) from None
 
 
 def _live_session(context: CommandContext, session_id: uuid.UUID) -> PlayerSession:
@@ -300,6 +318,9 @@ def _timing_payload(timing: TimingStatement) -> TimingPayload:
             _check_instants(started_at, ended_at)
             _check_zones(day_zone, started_at_zone, ended_at_zone)
             _check_endpoint_zone(ended_at, ended_at_zone, endpoint="end")
+            _check_endpoints_representable(
+                day_zone, started_at, started_at_zone, ended_at, ended_at_zone
+            )
             return {
                 "mode": "timed",
                 "started_at": instant_text(started_at),
@@ -319,6 +340,9 @@ def _timing_payload(timing: TimingStatement) -> TimingPayload:
             _check_instants(started_at, ended_at)
             _check_zones(day_zone, started_at_zone, ended_at_zone)
             _check_duration(duration)
+            _check_endpoints_representable(
+                day_zone, started_at, started_at_zone, ended_at, ended_at_zone
+            )
             return {
                 "mode": "corrected",
                 "started_at": instant_text(started_at),
@@ -425,6 +449,23 @@ def _check_zones(day_zone: ZoneName, *endpoint_zones: ZoneName | None) -> None:
             )
 
 
+def _check_endpoints_representable(
+    day_zone: ZoneName,
+    started_at: datetime,
+    started_at_zone: ZoneName | None,
+    ended_at: datetime | None,
+    ended_at_zone: ZoneName | None,
+) -> None:
+    """Each instant in the day zone and its own."""
+    _check_representable(
+        started_at, zone_or_none(day_zone), zone_or_none(started_at_zone)
+    )
+    if ended_at is not None:
+        _check_representable(
+            ended_at, zone_or_none(day_zone), zone_or_none(ended_at_zone)
+        )
+
+
 def _check_endpoint_zone(
     instant: datetime | None, zone: str | None, *, endpoint: str
 ) -> None:
@@ -440,7 +481,7 @@ def _check_endpoint_zone(
         )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class CreateSession(Command):
     """Record one session against a run the caller names.
 
@@ -534,6 +575,7 @@ class EndSession(Command):
                 "can read, and the column would take it silently.",
                 sentence=f"{self.ended_at_zone} is not a time zone we know.",
             )
+        _check_representable(self.ended_at, day_zone, zone_or_none(self.ended_at_zone))
         return [
             playersession_ended(
                 session.pk,
@@ -593,7 +635,10 @@ class DescribeSession(Command):
 
     def __post_init__(self) -> None:
         if self.note is None and self.device is None and self.emulated is None:
-            raise ValueError("DescribeSession states no fact.")
+            raise CommandRejected(
+                "DescribeSession states no fact, so it records nothing.",
+                sentence="Say what to change about this session.",
+            )
         if self.note is not None:
             #: Before the fingerprint, so restatements match.
             object.__setattr__(self, "note", self.note.strip())
@@ -622,7 +667,7 @@ class DescribeSession(Command):
         return events
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class MoveSessionToPlaythrough(Command):
     """State a session's run, at any game."""
 

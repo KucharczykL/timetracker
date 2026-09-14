@@ -22,6 +22,7 @@ session run again.
 The creation and the correction share one set of module functions: the
 normalization, the payload builder, and every value refusal. A naive instant is
 refused before the fingerprint, and so is a timestamp given as a written day.
+An instant that a stated zone's calendar cannot hold is refused.
 
 `build` compares `columns_for_timing(payload)` with the eight columns of the
 row. The projector writes through the same function, thus the comparison and
@@ -36,13 +37,14 @@ dates the act; a correction dates the session.
 
 `DescribeSession` holds `note`, `device`, and `emulated`. `None` is a fact that
 the caller does not state. An empty note clears the note. `StatedDevice(None)`
-states no device. A command that states no fact is a `ValueError`.
+states no device. A command that states no fact is refused.
 
 Each fact that differs from the row is one event: `.note_changed`,
 `.device_changed`, `.emulated_changed`. The device is compared before it is
 resolved, thus a restated removed device answers `Unchanged`. A new device must
 be this library's and live. `.device_changed` holds a `Reference`, because the
-reference index reads the annotation. A note that JSONB cannot store is refused.
+reference index reads the annotation. A note that JSONB cannot store is refused,
+and the note payloads refuse it and a padded note too.
 
 ## The move
 
