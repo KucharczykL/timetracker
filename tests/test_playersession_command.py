@@ -17,6 +17,7 @@ from games.commands.playersession import (
     DescribeSession,
     DurationOnlyTiming,
     EndSession,
+    MoveSessionToPlaythrough,
     StatedDevice,
     TimedTiming,
 )
@@ -34,6 +35,7 @@ from games.models import (
     PlayerSession,
     PlayerSessionTimingMode,
     Playthrough,
+    PlaythroughKind,
 )
 from games.writes.answers import CommandFailed, answered
 
@@ -1386,3 +1388,187 @@ def test_no_device_and_an_empty_note_are_different_statements(
     )
     with pytest.raises(IdempotencyKeyMismatch):
         describes(owned_library, owned_user, session.pk, note="", key="one")
+
+
+# --- Moving a session to another playthrough ---------------------------------
+
+
+def moves(library, actor, session_id, playthrough_id, *, key=None):
+    return dispatch(
+        MoveSessionToPlaythrough(session_id=session_id, playthrough_id=playthrough_id),
+        actor=actor,
+        library=library,
+        idempotency_key=key or str(uuid.uuid7()),
+    )
+
+
+def refused_move(library, actor, session_id, playthrough_id, *, saying):
+    with pytest.raises(CommandRejected) as refusal:
+        moves(library, actor, session_id, playthrough_id)
+    assert refusal.value.sentence == saying
+    return refusal.value
+
+
+def move_events():
+    return LibraryEvent.objects.filter(event_type="library.playersession.moved")
+
+
+@pytest.fixture
+def other_game_run(owned_user, owned_library) -> Playthrough:
+    other_game = Game.objects.create(library=owned_library, name="Tunic")
+    dispatch(
+        TrackGame(game_id=other_game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="track-other",
+    )
+    return Playthrough.objects.get(player_game__game=other_game)
+
+
+def test_a_session_moves_to_another_run_at_its_game(owned_user, owned_library, run):
+    second_run = Playthrough.objects.create(
+        id=uuid.uuid7(),
+        library=owned_library,
+        player_game=run.player_game,
+        kind=PlaythroughKind.ORDINARY,
+        created_at=timezone.now(),
+    )
+    session = record(owned_library, owned_user, run, a_timed())
+
+    moves(owned_library, owned_user, session.pk, second_run.pk)
+
+    session.refresh_from_db()
+    assert session.playthrough == second_run
+
+
+def test_a_session_logged_against_the_wrong_game_moves_to_the_right_one(
+    owned_user, owned_library, run, other_game_run
+):
+    session = record(owned_library, owned_user, run, a_corrected(), note="played")
+    kept = {
+        name: getattr(session, name)
+        for name in ("timing_mode", "started_at", "stated_duration", "note")
+    }
+
+    moves(owned_library, owned_user, session.pk, other_game_run.pk)
+
+    session.refresh_from_db()
+    assert session.playthrough.player_game.game.name == "Tunic"
+    assert {name: getattr(session, name) for name in kept} == kept
+    assert move_events().count() == 1
+
+
+def test_a_session_may_move_to_imported_history(owned_user, owned_library, run):
+    history = Playthrough.objects.create(
+        id=uuid.uuid7(),
+        library=owned_library,
+        player_game=run.player_game,
+        kind=PlaythroughKind.IMPORTED_HISTORY,
+        created_at=timezone.now(),
+    )
+    session = record(owned_library, owned_user, run, a_timed())
+
+    result = moves(owned_library, owned_user, session.pk, history.pk)
+
+    assert result.outcome is CommandOutcome.APPENDED
+
+
+def test_moving_to_the_same_run_changes_nothing(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    result = moves(owned_library, owned_user, session.pk, run.pk)
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+    assert not move_events().exists()
+
+
+def test_a_run_another_library_holds_is_refused(
+    owned_user, owned_library, run, second_library
+):
+    session = record(owned_library, owned_user, run, a_timed())
+    elsewhere = a_session_another_library_holds(second_library)
+
+    refused_move(
+        owned_library,
+        owned_user,
+        session.pk,
+        elsewhere.playthrough_id,
+        saying="That playthrough is not available.",
+    )
+
+
+def test_an_unknown_run_is_refused(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    refused_move(
+        owned_library,
+        owned_user,
+        session.pk,
+        uuid.uuid7(),
+        saying="That playthrough is not available.",
+    )
+
+
+def test_a_removed_target_run_is_refused(
+    owned_user, owned_library, run, other_game_run
+):
+    session = record(owned_library, owned_user, run, a_timed())
+    Playthrough.objects.filter(pk=other_game_run.pk).update(removed_at=timezone.now())
+
+    refused_move(
+        owned_library,
+        owned_user,
+        session.pk,
+        other_game_run.pk,
+        saying=(
+            "That playthrough was removed from your library. Restore it "
+            "before recording this."
+        ),
+    )
+
+
+def test_a_target_under_a_removed_game_is_refused(
+    owned_user, owned_library, run, other_game_run
+):
+    session = record(owned_library, owned_user, run, a_timed())
+    PlayerGame.objects.filter(pk=other_game_run.player_game_id).update(
+        removed_at=timezone.now()
+    )
+
+    refused_move(
+        owned_library,
+        owned_user,
+        session.pk,
+        other_game_run.pk,
+        saying=(
+            "That game was removed from your library. Restore it before recording this."
+        ),
+    )
+
+
+def test_a_session_under_a_removed_game_cannot_be_moved_out(
+    owned_user, owned_library, run, other_game_run
+):
+    """No read finds such a session, so no person could name it."""
+    session = record(owned_library, owned_user, run, a_timed())
+    PlayerGame.objects.filter(pk=run.player_game_id).update(removed_at=timezone.now())
+
+    refused_move(
+        owned_library,
+        owned_user,
+        session.pk,
+        other_game_run.pk,
+        saying=(
+            "That game was removed from your library. Restore it before recording this."
+        ),
+    )
+
+
+def test_an_unknown_session_cannot_be_moved(owned_user, owned_library, run):
+    refused_move(
+        owned_library,
+        owned_user,
+        uuid.uuid7(),
+        run.pk,
+        saying="That session is not available.",
+    )

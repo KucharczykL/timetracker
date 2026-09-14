@@ -23,6 +23,7 @@ from games.events.playersession import (
     playersession_device_changed,
     playersession_emulated_changed,
     playersession_ended,
+    playersession_moved,
     playersession_note_changed,
     playersession_timing_corrected,
 )
@@ -644,3 +645,27 @@ class DescribeSession(Command):
         if not events:
             return Unchanged("This session already reads so.")
         return events
+
+
+@dataclass(frozen=True, slots=True)
+class MoveSessionToPlaythrough(Command):
+    """State which run a session belongs to.
+
+    The run may record another game: a session reaches its game only
+    through its run, so a session logged against the wrong game has
+    this remedy and no other.
+    """
+
+    command_name: ClassVar[CommandName] = CommandName.PLAYERSESSION_MOVE
+    #: UUIDs, because Command fingerprints its fields.
+    session_id: uuid.UUID
+    playthrough_id: uuid.UUID
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        #: Refuses a session under a removed run or game as well:
+        #: no read finds one, so no person could name it to move it.
+        session = _live_session(context, self.session_id)
+        if session.playthrough_id == self.playthrough_id:
+            return Unchanged("This session already belongs to that playthrough.")
+        run = _live_run(context, self.playthrough_id)
+        return [playersession_moved(session.pk, playthrough_id=run.pk)]
