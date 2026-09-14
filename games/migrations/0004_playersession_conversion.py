@@ -27,7 +27,7 @@ SUMMARY_KEYS = (
     "mismatches",
 )
 
-#: Named in the exception, so a lost stdout still says what broke.
+#: Named in the exception too.
 NAMED_IN_FAILURE = 3
 
 
@@ -41,8 +41,7 @@ def _emit(summary, mismatches):
         "summary": summary,
         "mismatches": entries,
     }
-    #: stderr, so the machine line travels with the traceback
-    #: rather than on a stream a quiet migrate may discard.
+    #: stderr: travels with the traceback.
     print(
         MACHINE_PREFIX + json.dumps(payload, sort_keys=True, separators=(",", ":")),
         file=sys.stderr,
@@ -60,8 +59,7 @@ def _emit(summary, mismatches):
 def _fail_if_mismatched(mismatches, entries):
     if not mismatches:
         return
-    #: The count alone would say nothing on the one occasion
-    #: this message is read, and stdout may not have survived.
+    #: The count alone says nothing.
     named = "; ".join(
         f"{entry['code']} {entry['subject']}: {entry['detail']}"
         for entry in entries[:NAMED_IN_FAILURE]
@@ -75,21 +73,14 @@ def _fail_if_mismatched(mismatches, entries):
 
 
 def convert_legacy_sessions(apps, schema_editor):
-    """State every legacy Session row as PlayerSession events.
-
-    The live models and machinery: historical models cannot run
-    a projector or validate a payload, so writing events and
-    rows by hand would be a second event writer. This migration
-    is therefore pinned to the application as it stands, and
-    the gate keeps that loud.
-    """
+    """State every legacy Session as events."""
     del apps, schema_editor
     from games.backfill import playersession as conversion
     from games.models import UserLibrary
 
     counts = conversion.NO_COUNTS
     mismatches = []
-    #: One instant for every bucket this run mints.
+    #: One instant for every bucket.
     minted_at = timezone.now()
     try:
         conversion.refuse_shared_game_rows()
@@ -109,9 +100,7 @@ def convert_legacy_sessions(apps, schema_editor):
             mismatches.extend(conversion.reconcile(library, converted))
         mismatches.extend(conversion.ordering_violations())
     except Exception:
-        #: A refusal names its row, and the rollback takes all of
-        #: it. What is counted so far says how far the run got,
-        #: which the traceback alone does not.
+        #: Emit what was counted before the rollback.
         _emit(
             counts.as_dict() | {"mismatches": len(mismatches), "aborted": 1}, mismatches
         )

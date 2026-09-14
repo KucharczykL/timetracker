@@ -24,18 +24,7 @@ def append_one(
     correlation_id: uuid.UUID,
     source_metadata: SourceMetadata,
 ) -> bool:
-    """Append one event; true when it appended.
-
-    One event per call. A call stamps one recorded_at
-    across its rows, and one key per fact lets each
-    fact replay alone.
-
-    No command_input names an identity the call mints
-    here. Such a value is fresh every pass, so a second
-    pass would read IdempotencyKeyMismatch in place of
-    the no-op the key promises. A stable identity the
-    caller was handed is fine, and both passes name one.
-    """
+    """Append one event; true when it appended."""
 
     def build(stream: LockedStream) -> Sequence[NewEvent]:
         #: The contract passes it; nothing reads it.
@@ -52,8 +41,5 @@ def append_one(
         source_metadata=source_metadata,
         recorded_at=recorded_at,
     )
-    #: False says the key already ran, which is a
-    #: ReplayedAppend. build always answers one event,
-    #: so UnchangedAppend cannot reach this line. Both
-    #: read alike here: no caller counts a replay apart.
+    #: False: the key already ran.
     return isinstance(outcome, AppendResult)

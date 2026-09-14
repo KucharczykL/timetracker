@@ -1,11 +1,4 @@
-"""Session facts for the legacy rows.
-
-Every row in scope becomes one PlayerSession naming a run.
-The census classifies the row and picks the run; the command
-module's payload functions state it, so a value the command
-refuses, this pass refuses too. A game whose runs cannot claim
-a row gets one imported-history bucket, minted here.
-"""
+"""Legacy Session rows as PlayerSession events."""
 
 import uuid
 from collections import defaultdict
@@ -81,12 +74,10 @@ BUCKET_NAME = "Imported history — needs sorting"
 #: Games per query.
 CONVERSION_PAGE_SIZE = 200
 
-#: Every column this module reads, per table.
-#:
-#: The migration runs this code against the concrete models while
-#: the schema stands at 0004, so a bare query would select a column
-#: a later migration adds and fail on the deployment. A column read
-#: here and missing from its tuple is deferred, one query per row.
+#: Named columns: a later migration adds more.
+#: The migration runs against the concrete models while the
+#: schema stands at 0004, so a bare query would select a column
+#: a later migration adds and fail only on the deployment.
 SESSION_FIELDS = (
     "id",
     "game_id",
@@ -131,12 +122,12 @@ PLAYERSESSION_FIELDS = (
     "removed_at",
 )
 
-#: One microsecond, the unit the evidence counts in.
+#: The evidence's unit.
 MICROSECOND = timedelta(microseconds=1)
 
 
 class ConversionRefused(Exception):
-    """A row this pass will not state. The message names it."""
+    """A refused row; the message names it."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,7 +137,7 @@ class ConversionCounts:
     libraries: int = 0
     #: Tracked games holding at least one row.
     tracked: int = 0
-    #: Every row in scope, counted apart from the walk.
+    #: Rows in scope, counted apart.
     rows_total: int = 0
     #: rows_total less the rows the walk converted.
     rows_unreached: int = 0
@@ -180,14 +171,14 @@ class ConversionCounts:
 #: The value an accumulation starts from.
 NO_COUNTS = ConversionCounts()
 
-#: The counts field one mode verdict adds to.
+#: Counts field per mode verdict.
 MODE_FIELD: Mapping[TimingVerdict, str] = {
     TimingVerdict.TIMED: "timed",
     TimingVerdict.DURATION_ONLY: "duration_only",
     TimingVerdict.CORRECTED: "corrected",
 }
 
-#: The counts field one assignment outcome adds to.
+#: Counts field per assignment outcome.
 ASSIGNMENT_FIELD: Mapping[AssignmentOutcome, str] = {
     AssignmentOutcome.SOLE_RUN: "sole_run",
     AssignmentOutcome.CONTAINED: "contained",
@@ -196,7 +187,7 @@ ASSIGNMENT_FIELD: Mapping[AssignmentOutcome, str] = {
 
 
 def display_zone_name(library: UserLibrary) -> ZoneName:
-    """The zone the library counts days in, or a refusal."""
+    """The library's day zone, or a refusal."""
     name = resolve_str_for_user(library.user, "DISPLAY_TIME_ZONE")
     if not known_zone(name):
         raise ConversionRefused(
@@ -207,7 +198,7 @@ def display_zone_name(library: UserLibrary) -> ZoneName:
 
 
 def _stated_zone(value: str | None) -> ZoneName | None:
-    """NULL and blank both read as a zone nobody stated."""
+    """NULL and blank both read as unstated."""
     return value if value else None
 
 
@@ -216,11 +207,11 @@ def _refuse(row: Session, reason: str) -> ConversionRefused:
 
 
 def statement_for(row: Session, *, day_zone: ZoneName) -> TimingStatement:
-    """The statement one legacy row makes, or a refusal.
+    """One row's timing statement, or a refusal.
 
-    A null manual duration is refused ahead of the verdict:
-    classify_timing reads it as zero, and the census counts it
-    beside the verdict, so the two agree on every row converted.
+    A null manual duration is refused before the verdict:
+    classify_timing reads it as zero and would call the row
+    timed or running, and the census counts the null apart.
     """
     if row.duration_manual is None:
         raise _refuse(row, "states no manual duration, not even zero.")
@@ -256,8 +247,7 @@ def statement_for(row: Session, *, day_zone: ZoneName) -> TimingStatement:
         case TimingVerdict.CORRECTED:
             #: `timestamp_end` is set: the verdict says so.
             assert row.timestamp_end is not None
-            #: The total, not the manual part: legacy added the
-            #: manual part to the elapsed time, the mode replaces it.
+            #: The total: the mode replaces elapsed time.
             statement = CorrectedTiming(
                 row.timestamp_start,
                 row.timestamp_end,
@@ -282,11 +272,10 @@ def _instant_or_none(instant: datetime | None) -> str | None:
 def legacy_evidence(
     row: Session, *, verdict: TimingVerdict, assignment: Assignment
 ) -> SourceMetadata:
-    """Every legacy column the projection cannot carry.
+    """Legacy columns the projection cannot carry.
 
-    Microseconds, because an elapsed interval below a second is
-    evidence too, and a payload states whole seconds. Nothing
-    reads it; it is what survives the legacy table.
+    Microseconds: 1,672 rows hold sub-second elapsed intervals,
+    and a payload states whole seconds.
     """
     return {
         "origin": "backfill",
@@ -308,7 +297,7 @@ def legacy_evidence(
 
 
 def _device_reference(row: Session, *, library: UserLibrary) -> Reference | None:
-    """The device as named, removed or not; another library's refused."""
+    """Device as named; another library's refused."""
     if row.device_id is None:
         return None
     device = Device.objects.filter(pk=row.device_id).only(*DEVICE_FIELDS).first()
@@ -336,12 +325,7 @@ def convert_row(
     assignment: Assignment,
     day_zone: ZoneName,
 ) -> ConversionCounts:
-    """State one legacy row as its events.
-
-    The block is this function's own: lock_stream refuses the head
-    lock outside a transaction. Inside a caller's transaction it
-    is a savepoint, so the migration still rolls everything back.
-    """
+    """One legacy row as its events."""
     verdict = classify_timing(row)
     try:
         payload = timing_payload(statement_for(row, day_zone=day_zone))
@@ -351,9 +335,7 @@ def convert_row(
         raise _refuse(row, f"was refused: {refusal}") from refusal
     device = _device_reference(row, library=library)
 
-    #: A bucket row names no run: the run it landed on is the
-    #: identity this pass mints, fresh per pass, and naming it
-    #: would answer a second pass with a key mismatch.
+    #: No run for a bucket row: minted fresh per pass.
     command_input: dict[str, object] = {
         "session": str(row.pk),
         "assignment": assignment.outcome.value,
@@ -372,7 +354,7 @@ def convert_row(
         **{mode_field: 1, ASSIGNMENT_FIELD[assignment.outcome]: 1},
     )
     evidence = legacy_evidence(row, verdict=verdict, assignment=assignment)
-    #: One correlation for the row's acts, created and removed alike.
+    #: One correlation per row.
     correlation_id = uuid.uuid7()
 
     with transaction.atomic():
@@ -385,7 +367,7 @@ def convert_row(
                 release=None,
                 note=note,
                 emulated=row.emulated,
-                #: The legacy key, so every link to it keeps working.
+                #: The legacy key keeps links working.
                 session_id=row.pk,
             ),
             actor=actor,
@@ -403,7 +385,7 @@ def convert_row(
             actor=actor,
             idempotency_key=f"{KEY_PREFIX}:playersession:removed:{row.pk}",
             command_input={"session": str(row.pk), "fact": "removed"},
-            #: The row's own mark, hence a second append.
+            #: The row's own mark; second append.
             recorded_at=row.removed_at,
             correlation_id=correlation_id,
             source_metadata=evidence,
@@ -413,7 +395,7 @@ def convert_row(
 
 
 def runs_for(tracked_id: uuid.UUID, *, library: UserLibrary) -> list[RunInterval]:
-    """The live ordinary runs at one tracked game, as intervals."""
+    """Live ordinary runs at one tracked game."""
     return [
         RunInterval(run_id, started, completed)
         for run_id, started, completed in Playthrough.objects.filter(
@@ -429,7 +411,7 @@ def runs_for(tracked_id: uuid.UUID, *, library: UserLibrary) -> list[RunInterval
 
 
 def live_bucket(tracked_id: uuid.UUID, *, library: UserLibrary) -> uuid.UUID | None:
-    """The game's live imported-history run, if one stands."""
+    """The game's live imported-history run, if any."""
     bucket = (
         Playthrough.objects.filter(
             library=library,
@@ -446,7 +428,7 @@ def live_bucket(tracked_id: uuid.UUID, *, library: UserLibrary) -> uuid.UUID | N
 
 
 class BucketRun(NamedTuple):
-    """The bucket's identity, and what finding it cost."""
+    """The bucket's identity and its cost."""
 
     run_id: uuid.UUID
     counts: ConversionCounts
@@ -455,10 +437,11 @@ class BucketRun(NamedTuple):
 def bucket_for(
     tracked: PlayerGame, *, library: UserLibrary, actor: User, minted_at: datetime
 ) -> BucketRun:
-    """The game's bucket, minted only where none stands.
+    """The game's bucket, minted where none stands.
 
-    Resolved by query first: a second pass finds the run the first
-    minted, and never mints a second under the same key.
+    Resolved by query first: a second pass must find the run
+    the first minted. Its key replays as a no-op, so a fresh
+    identity here would name a run that never exists.
     """
     standing = live_bucket(tracked.pk, library=library)
     if standing is not None:
@@ -506,11 +489,7 @@ def convert_game(
     day_zone: ZoneName,
     minted_at: datetime,
 ) -> ConversionCounts:
-    """State one game's rows, each at the run the census names.
-
-    The bucket is minted on the first row that needs it, so a
-    game whose runs claim every row gets none.
-    """
+    """One game's rows, each at its run."""
     runs = runs_for(tracked.pk, library=library)
     zone = ZoneInfo(day_zone)
     counts = NO_COUNTS
@@ -526,7 +505,7 @@ def convert_game(
                 counts = counts + bucket.counts
             run_id = bucket_id
         else:
-            #: The census names one for both other outcomes.
+            #: The census names one here.
             assert assignment.run_id is not None
             run_id = assignment.run_id
         counts = counts + convert_row(
@@ -541,12 +520,12 @@ def convert_game(
 
 
 def rows_the_walk_reaches(library: UserLibrary) -> QuerySet[Session]:
-    """Every row in the census's scope: on a game the library owns."""
+    """Every row in the census's scope."""
     return Session.objects.filter(game__library=library)
 
 
 def refuse_shared_game_rows() -> None:
-    """A row at a game no library owns is outside every walk."""
+    """A row at a shared game refuses."""
     shared = Session.objects.filter(game__library__isnull=True).order_by("id")
     first = shared.only("id", "game_id").first()
     if first is not None:
@@ -557,7 +536,7 @@ def refuse_shared_game_rows() -> None:
 
 
 class GameRows(NamedTuple):
-    """One page's rows and tracking, keyed on the game."""
+    """One page's rows and tracking, by game."""
 
     sessions: Mapping[uuid.UUID, list[Session]]
     live_tracking: Mapping[uuid.UUID, PlayerGame]
@@ -594,12 +573,7 @@ def _refuse_game(game: Game, rows: Sequence[Session], category: str) -> NoReturn
 def convert_library(
     library: UserLibrary, *, minted_at: datetime | None = None
 ) -> ConversionCounts:
-    """State every row at a game this library owns, removed included.
-
-    Walks games, as the census does, so a row on an untracked,
-    removed-tracking or removed game is visited and refused by
-    name rather than left as an anonymous residual.
-    """
+    """Every row at a game the library owns."""
     refuse_shared_game_rows()
     minted_at = timezone.now() if minted_at is None else minted_at
     actor = library.user
@@ -637,8 +611,7 @@ def convert_library(
                 minted_at=minted_at,
             )
 
-    #: Counted apart from the walk, and by a different query, so
-    #: a row the walk never reached is a number and not a silence.
+    #: Counted apart, by a different query.
     total = rows_the_walk_reaches(library).count()
     converted = counts.live_rows + counts.rows_removed_converted
     return counts + ConversionCounts(rows_total=total, rows_unreached=total - converted)
@@ -661,7 +634,7 @@ class MismatchCode(StrEnum):
 
 
 class RowShape(NamedTuple):
-    """What a legacy row and its projection row must both say."""
+    """What both rows must say."""
 
     mode: str
     playthrough_id: uuid.UUID | None
@@ -680,7 +653,7 @@ class RowShape(NamedTuple):
 def _legacy_shape(
     row: Session, *, run_id: uuid.UUID | None, zone: ZoneInfo
 ) -> RowShape:
-    """The row's statement, read the way the walk read it."""
+    """The row's statement, as the walk read it."""
     verdict = classify_timing(row)
     mode = (
         PlayerSessionTimingMode.TIMED
@@ -734,7 +707,7 @@ def _differences(expected: RowShape, found: RowShape) -> str:
 
 
 class ExpectedRuns(NamedTuple):
-    """Where each row of one game lands, read again from legacy."""
+    """Each row's run, read again from legacy."""
 
     run_by_row: Mapping[uuid.UUID, uuid.UUID | None]
     bucketed: frozenset[uuid.UUID]
@@ -747,7 +720,7 @@ def _expected_runs(
     library: UserLibrary,
     zone: ZoneInfo,
 ) -> ExpectedRuns:
-    """The census's answer per row, with the bucket resolved by query."""
+    """The census's answer per row, bucket resolved."""
     runs = runs_for(tracked.pk, library=library)
     bucket_id = live_bucket(tracked.pk, library=library)
     run_by_row: dict[uuid.UUID, uuid.UUID | None] = {}
@@ -780,8 +753,7 @@ def _reconcile_game(
         ).only(*PLAYERSESSION_FIELDS)
     }
 
-    #: Check 1, both populations apart: a removed row's
-    #: columns are as unrecoverable as a live one's.
+    #: Check 1, both populations apart.
     for row in rows:
         code = (
             MismatchCode.ROW_DISAGREEMENT
@@ -851,10 +823,9 @@ def _reconcile_game(
 def _census_mismatches(
     library: UserLibrary, counts: ConversionCounts
 ) -> list[Mismatch[MismatchCode]]:
-    """Check 2: the pass and the census counted the same rows."""
+    """Check 2: pass and census agree."""
     census = preflight_library(library, sample_size=0).counts
-    #: The secondary column is the display zone, which the
-    #: pass seeds day_zone from; a test pins that.
+    #: The secondary column is the display zone.
     pairs = (
         ("timed", counts.timed, census.timed),
         ("duration_only", counts.duration_only, census.duration_only),
@@ -887,7 +858,7 @@ def _census_mismatches(
 
 
 def _count_mismatches(library: UserLibrary) -> list[Mismatch[MismatchCode]]:
-    """Check 5: as many projection rows as legacy rows, live and removed."""
+    """Check 5: row counts, live and removed."""
     legacy = rows_the_walk_reaches(library)
     projection = PlayerSession.objects.filter(library=library)
     mismatches: list[Mismatch[MismatchCode]] = []
@@ -907,7 +878,7 @@ def _count_mismatches(library: UserLibrary) -> list[Mismatch[MismatchCode]]:
 
 
 def _playtime_mismatches(library: UserLibrary) -> list[Mismatch[MismatchCode]]:
-    """Check 4: every figure agrees, read in the zone the rows were seeded in."""
+    """Check 4: every playtime figure agrees."""
     return [
         Mismatch(
             code=MismatchCode.PLAYTIME_DIFFERS,
@@ -919,7 +890,7 @@ def _playtime_mismatches(library: UserLibrary) -> list[Mismatch[MismatchCode]]:
 
 
 def _replay_mismatches(library: UserLibrary) -> list[Mismatch[MismatchCode]]:
-    """Check 7: a replay from the stream reproduces every row."""
+    """Check 7: replay reproduces every row."""
     report = rebuild_projections(library, mode=RebuildMode.CHECK)
     mismatches = [
         Mismatch(
@@ -943,18 +914,17 @@ def _replay_mismatches(library: UserLibrary) -> list[Mismatch[MismatchCode]]:
     return mismatches
 
 
-#: The tables this pass fills, read again before commit.
+#: Filled here, read again before commit.
 FILLED_TABLES = (PlayerSession, LibraryEvent, LibraryIdempotencyRecord, Playthrough)
 
 
 def refresh_statistics() -> None:
-    """ANALYZE what the pass wrote, so the gate's reads plan well.
+    """ANALYZE the filled tables before reading them.
 
     The rows are uncommitted, so the planner still holds the
-    statistics of the tables as they stood before: empty. The
-    parity read then joins thousands of rows as if they were
-    none, and takes minutes where it takes seconds. ANALYZE is
-    allowed inside a transaction; VACUUM is not, and none is needed.
+    statistics of empty tables, and the parity read then takes
+    minutes rather than seconds. ANALYZE is allowed inside a
+    transaction; VACUUM is not, and none is needed.
     """
     tables = ", ".join(
         connection.ops.quote_name(model._meta.db_table) for model in FILLED_TABLES
@@ -966,12 +936,7 @@ def refresh_statistics() -> None:
 def reconcile(
     library: UserLibrary, counts: ConversionCounts
 ) -> list[Mismatch[MismatchCode]]:
-    """Every reading but the identity audit, per library.
-
-    Row to row, the census, the buckets, playtime parity, the
-    counts, and a replay. Ordered cheap to dear, and all of them
-    run: one mismatch says less than the whole list.
-    """
+    """Every reading but the identity audit."""
     refresh_statistics()
     zone = ZoneInfo(display_zone_name(library))
     mismatches: list[Mismatch[MismatchCode]] = []
@@ -985,7 +950,7 @@ def reconcile(
             rows = page.sessions.get(game.pk, [])
             tracked = page.live_tracking.get(game.pk)
             if not rows or tracked is None or game.removed_at is not None:
-                #: The walk refused it, so nothing stands to compare.
+                #: Refused by the walk; nothing to compare.
                 continue
             mismatches.extend(
                 _reconcile_game(
@@ -999,24 +964,19 @@ def reconcile(
     return mismatches
 
 
-#: The tables whose keys this pass mints or reuses.
+#: Tables whose keys this pass mints.
 AUDITED_TABLES = (PlayerSession._meta.db_table, Playthrough._meta.db_table)
 
 
 def ordering_violations() -> list[Mismatch[MismatchCode]]:
-    """Check 6: every key sorts by its created_at, on both tables.
-
-    No constraint enforces it, and this run is most able to break
-    it: a reused legacy key dated by the row's own instant, and a
-    bucket minted now.
-    """
+    """Check 6: keys sort by created_at."""
     mismatches: list[Mismatch[MismatchCode]] = []
     audited = {entry.table: entry for entry in identity_models()}
     entries = []
     for table in AUDITED_TABLES:
         entry = audited.get(table)
         if entry is None:
-            #: An empty list checks clean, so absence has to speak.
+            #: Absence must speak, not check clean.
             mismatches.append(
                 Mismatch(
                     code=MismatchCode.IDENTITY_AUDIT_BLIND,

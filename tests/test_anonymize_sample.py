@@ -286,11 +286,7 @@ class AnonymizeSampleTest(TransactionTestCase):
     def test_output_reloads_via_loaddata(self):
         game_purchase, _ = _build_dataset()
         source_user = game_purchase.library.user
-        #: The loader converts the fixture's sessions and refuses what
-        #: the migration refuses: a live open row, a NULL manual
-        #: duration, a row at an untracked game. The anonymizer's own
-        #: branches for those shapes are covered by the other tests
-        #: here; the round trip states rows production could hold.
+        #: The loader refuses what the migration refuses.
         Session.objects.filter(timestamp_end__isnull=True).update(
             timestamp_end=datetime(2021, 7, 1, 11, 0, tzinfo=UTC)
         )
@@ -332,7 +328,7 @@ class AnonymizeSampleTest(TransactionTestCase):
             3,
         )
         events = LibraryEvent.objects.filter(library=target.library)
-        #: Nine the fixture carried, three the loader's conversion appended.
+        #: Nine from the fixture, three converted.
         self.assertEqual(events.count(), 12)
         self.assertEqual(
             PlayerSession.objects.filter(library=target.library).count(), 3

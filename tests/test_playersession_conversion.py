@@ -70,7 +70,7 @@ def game_at(library: UserLibrary, name: str = "Chrono Trigger") -> Game:
 
 
 def legacy(game: Game, start: datetime = START, **columns: object) -> Session:
-    """One row, read back so the generated columns are filled."""
+    """One row, read back with generated columns."""
     row = Session.objects.create(game=game, timestamp_start=start, **columns)
     return Session.objects.get(pk=row.pk)
 
@@ -210,15 +210,14 @@ def test_a_negative_manual_duration_refuses(owned_library):
 def test_a_null_manual_duration_refuses(owned_library):
     game = game_at(owned_library)
     row = legacy(game, timestamp_end=START + HOUR)
-    #: The model fills a null on save; the column still admits one.
+    #: save() fills a null; UPDATE stores one.
     Session.objects.filter(pk=row.pk).update(duration_manual=None)
     with pytest.raises(ConversionRefused, match="no manual duration"):
         convert(owned_library, row, run_of(owned_library, game))
 
 
 def test_an_unknown_display_zone_refuses(owned_library, monkeypatch):
-    #: The resolver refuses a spelling Python lacks before it
-    #: is stored, so the check guards the database's tzdata.
+    #: The check guards the database's tzdata only.
     monkeypatch.setattr(
         "games.backfill.playersession.resolve_str_for_user",
         lambda user, key: "Mars/Olympus",
@@ -273,7 +272,7 @@ def test_another_librarys_device_refuses(owned_library, django_user_model):
     game = game_at(owned_library)
     device = Device.objects.create(library=stranger.library, name="Deck", type="PC")
     row = legacy(game, timestamp_end=START + HOUR)
-    #: save() refuses it; the drift the ownership audit reports.
+    #: save() refuses it; UPDATE states the drift.
     Session.objects.filter(pk=row.pk).update(device=device)
     with pytest.raises(ConversionRefused, match=f"device {device.pk} of library"):
         convert(owned_library, row, run_of(owned_library, game))
@@ -291,7 +290,7 @@ def test_a_padded_note_is_stripped(owned_library):
 def test_a_note_holding_a_nul_byte_refuses(owned_library):
     game = game_at(owned_library)
     row = legacy(game, timestamp_end=START + HOUR)
-    #: PostgreSQL text holds no NUL, so the row is amended in memory.
+    #: Text holds no NUL; amended in memory.
     row.note = "bad\x00note"
     with pytest.raises(ConversionRefused, match="NUL byte"):
         convert_row(
@@ -317,7 +316,7 @@ def test_the_identity_is_the_legacy_id_and_created_at_is_the_rows(owned_library)
     event = LibraryEvent.objects.get(event_type="library.playersession.created")
     assert event.aggregate_id == row.pk
     assert event.recorded_at == written
-    #: The event's own key sorts with the instant it records.
+    #: The event key sorts with its instant.
     assert event.pk < uuid.uuid7()
 
 
@@ -419,8 +418,7 @@ def test_counts_add_field_by_field():
 
 
 def test_every_mode_verdict_names_a_counts_field():
-    #: convert_row indexes both maps, so a new verdict or
-    #: outcome would raise KeyError on the row that first held it.
+    #: A new verdict or outcome raises KeyError.
     assert set(MODE_FIELD) == set(MODE_VERDICTS)
     assert set(MODE_FIELD.values()) <= set(NO_COUNTS.as_dict())
     assert set(ASSIGNMENT_FIELD) == set(AssignmentOutcome)
@@ -513,7 +511,7 @@ def test_a_row_no_dated_run_claims_lands_in_the_bucket(owned_library):
 
 def test_two_dated_claimers_land_the_row_in_the_bucket(owned_library):
     game = game_at(owned_library)
-    #: Synthetic overlap: production never holds two runs on one day.
+    #: Synthetic overlap; production holds none.
     dated_run(run_of(owned_library, game), date(2024, 2, 1), date(2024, 2, 20))
     dated_run(second_run(owned_library, game), date(2024, 2, 10), date(2024, 3, 1))
     contested = legacy(
@@ -629,7 +627,7 @@ def test_a_row_on_an_untracked_game_refuses(owned_library):
 def test_a_row_on_a_removed_tracking_row_refuses(owned_library):
     game = game_at(owned_library)
     row = legacy(game, timestamp_end=START + HOUR)
-    #: The projector's mark, so no removal helper states it.
+    #: The projector's mark; no helper states it.
     PlayerGame.objects.filter(library=owned_library, game=game).update(
         removed_at=timezone.now()
     )
@@ -694,7 +692,7 @@ def test_rows_unreached_counts_what_the_walk_left(owned_library, monkeypatch):
 
 
 def test_unreachable_kinds_stay_a_commands_claim(owned_library):
-    """The bucket is an importer's kind: only this walk states it."""
+    """Only this walk states the bucket kind."""
     game = game_at(owned_library)
     dated_run(run_of(owned_library, game), date(2024, 2, 1), date(2024, 2, 10))
     second_run(owned_library, game)
@@ -712,7 +710,7 @@ def test_unreachable_kinds_stay_a_commands_claim(owned_library):
 
 
 def stated(library: UserLibrary, command: Command, key: str) -> None:
-    """One command through dispatch, so a replay reproduces the row."""
+    """Through dispatch, so a replay reproduces it."""
     result = dispatch(command, actor=library.user, library=library, idempotency_key=key)
     assert result.outcome is CommandOutcome.APPENDED, key
 
@@ -757,11 +755,7 @@ def stated_second_run(library: UserLibrary, game: Game) -> Playthrough:
 
 
 def seeded(library: UserLibrary) -> tuple[Game, ConversionCounts]:
-    """A library holding every verdict and outcome, converted.
-
-    Every projection row comes from an event, so a replay
-    reproduces it: the gate's last reading diffs every table.
-    """
+    """Every verdict and outcome, all from events."""
     game = tracked_game(library, "Chrono Trigger")
     stated_run(library, run_of(library, game), date(2024, 2, 1), date(2024, 2, 10))
     stated_run(library, stated_second_run(library, game), date(2024, 3, 1), None)
@@ -876,12 +870,12 @@ def test_a_bucket_holding_a_contained_row_is_reported(owned_library):
 @pytest.mark.untracked_games
 def test_a_playtime_difference_is_reported(owned_library):
     _game, counts = seeded(owned_library)
-    #: The legacy side moves; every projection row still agrees with itself.
+    #: Legacy moves; projection agrees with itself.
     Session.objects.filter(note="x").update(timestamp_end=START + 2 * HOUR)
 
     mismatches = reconcile(owned_library, counts)
     assert "playtime_differs" in codes(mismatches)
-    #: The row check sees it too; the figure names the scope.
+    #: Row check sees it; figure names scope.
     assert "row_disagreement" in codes(mismatches)
 
 
@@ -916,7 +910,7 @@ def test_an_identity_out_of_order_is_reported(owned_library):
 @pytest.mark.untracked_games
 def test_a_session_identity_out_of_order_is_reported(owned_library):
     seeded(owned_library)
-    #: A key minted later than the row's neighbours, dated before them.
+    #: Later key, earlier date.
     PlayerSession.objects.filter(timing_mode="duration_only").update(
         created_at=datetime(2013, 1, 1, tzinfo=UTC)
     )
@@ -941,7 +935,7 @@ def test_a_blind_identity_audit_is_reported(owned_library, monkeypatch):
 @pytest.mark.untracked_games
 def test_a_replay_difference_is_reported(owned_library):
     _game, counts = seeded(owned_library)
-    #: Both sides of the row check move together; only a replay sees it.
+    #: Both sides move; only replay sees it.
     PlayerSession.objects.filter(note="x").update(emulated=True)
     Session.objects.filter(note="x").update(emulated=True)
 
@@ -1036,7 +1030,7 @@ def test_the_migration_names_the_mismatch_it_raises_on(owned_library, monkeypatc
     monkeypatch.setattr(
         conversion, "reconcile", lambda library, counts: _one_mismatch(library)
     )
-    #: The count alone says nothing to whoever reads this.
+    #: The count alone says nothing.
     with pytest.raises(
         RuntimeError, match=f"row_disagreement {owned_library.pk}: stated"
     ):
@@ -1068,7 +1062,7 @@ def test_the_migration_reports_a_second_pass_that_appends(owned_library, monkeyp
     def drifting(library, *, minted_at=None):
         counts = convert_library(library, minted_at=minted_at)
         passes.append(library)
-        #: The migration's second call over one library.
+        #: The second call over one library.
         if len(passes) % 2 == 0:
             return counts + ConversionCounts(events_appended=1)
         return counts
@@ -1116,7 +1110,7 @@ def test_load_sample_data_converts_the_fixture(owned_user):
 
 @pytest.mark.untracked_games
 def test_reconcile_refreshes_the_planner_statistics_first(owned_library):
-    """Uncommitted rows leave the planner blind; ANALYZE is the remedy."""
+    """Uncommitted rows blind the planner."""
     _game, counts = seeded(owned_library)
     with CaptureQueriesContext(connection) as captured:
         reconcile(owned_library, counts)

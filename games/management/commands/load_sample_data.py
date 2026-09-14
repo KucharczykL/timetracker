@@ -184,8 +184,7 @@ class Command(BaseCommand):
                     "Sample fixture could not be projected: "
                     f"{report.attempts[-1].conflict}"
                 )
-            #: The fixture's sessions are legacy rows; the deployment
-            #: holds their projection, so this database holds it too.
+            #: The deployment holds the projection; so here.
             try:
                 converted = convert_library(user.library)
             except ConversionRefused as refusal:
