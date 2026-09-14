@@ -126,9 +126,9 @@ class GameQuerySet(RemovableLibraryQuerySet):
         libraries track comes back once per library. Unscoped is for
         compiling a lookup, not for executing one.
 
-        `playtime` is an alias, selected only when a filter reads it.
+        `playtime` is selected only when filtered.
         """
-        #: The package reads these models, so a module import would cycle.
+        #: Imported here: the package imports models.
         from games.reads.playtime import playtime_by_game
 
         condition = Q() if library is None else Q(player_games__library=library)

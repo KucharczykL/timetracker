@@ -1429,7 +1429,7 @@ class TestExpandedFiltersAgainstDB:
 
 @pytest.mark.django_db
 class TestPlaytimeHoursAgainstDB:
-    """`playtime_hours` reads the `playtime` alias, not a stored column."""
+    """`playtime_hours` reads an alias, not a column."""
 
     @pytest.fixture
     def played_and_unplayed(self, owned_library):

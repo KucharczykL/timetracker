@@ -1,7 +1,4 @@
-"""Playtime read from the legacy Session table.
-
-A year, a month and a day are read in the active zone.
-"""
+"""Legacy playtime; days read in active zone."""
 
 from datetime import datetime, time, timedelta
 
@@ -19,10 +16,10 @@ ZERO = Value(timedelta(0), output_field=DurationField())
 
 
 def _sessions(library: UserLibrary | None, year: YearScope = None) -> SessionQuerySet:
-    """The library's live sessions, in the year when one is named.
+    """Live sessions, narrowed to a year.
 
-    No library is no session: `for_library(None)` would read the
-    shared catalog's.
+    No library returns no session. `for_library(None)` returns the
+    sessions of the shared catalog, and an executed read counts them.
     """
     if library is None:
         return Session.objects.none()
@@ -68,7 +65,7 @@ def total_playtime(library: UserLibrary, year: YearScope = None) -> timedelta:
 
 
 def playtime_between(library: UserLibrary, days: DayInterval) -> timedelta:
-    """Midnight to midnight, so the range reads the start index."""
+    """Midnight to midnight, in the active zone."""
     first, last = days
     return _total(
         _sessions(library).filter(

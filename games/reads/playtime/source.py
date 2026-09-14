@@ -28,11 +28,7 @@ class MonthPlaytime(NamedTuple):
 
 
 class PlaytimeSource(Protocol):
-    """Every playtime figure, read from one session table.
-
-    A sum over no counted session is NULL; every other figure
-    is never NULL.
-    """
+    """Sums are NULL when unplayed; figures never."""
 
     def game_playtime(self, library: UserLibrary, game: Game) -> timedelta: ...
 
@@ -60,10 +56,7 @@ class PlaytimeSource(Protocol):
 
 
 class FilteredPlaytimeSource(Protocol):
-    """The sum narrowed by a session filter.
-
-    A source whose table the filter cannot name lacks it.
-    """
+    """Sums narrowed by a legacy session filter."""
 
     def summed_by_game_matching(
         self,

@@ -418,7 +418,7 @@ def logged_client(client, owned_user):
 
 
 def _row_order(response, names: list[str]) -> list[str]:
-    """The names, in the order the table body prints them."""
+    """Names in table-body order."""
     tbody = re.search(
         r"<tbody[^>]*>(.*?)</tbody>", response.content.decode(), re.DOTALL
     )
@@ -455,7 +455,7 @@ class TestListGamesSort:
         Session.objects.create(
             game=beta, timestamp_start=start, timestamp_end=start.replace(hour=11)
         )
-        #: A shared game's legacy sessions count in no library.
+        #: Shared-game legacy sessions count in no library.
         Session.objects.create(
             game=shared, timestamp_start=start, timestamp_end=start.replace(hour=20)
         )

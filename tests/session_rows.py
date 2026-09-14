@@ -1,9 +1,4 @@
-"""Session rows a playtime read counts, written by hand.
-
-A projection row is written the way the projector writes it, so a
-read test states its columns rather than an event stream. A twin
-is a legacy row beside the projection row it converts to.
-"""
+"""Session rows written by hand for reads."""
 
 import uuid
 from datetime import date, datetime, time, timedelta
@@ -25,11 +20,7 @@ from games.models import (
 
 
 def tracked_run(library: UserLibrary, game: Game) -> Playthrough:
-    """The ordinary run this library tracks the game with.
-
-    Made where missing: a shared catalog game is tracked by no
-    fixture.
-    """
+    """The library's ordinary run, made when missing."""
     player_game, _ = PlayerGame.objects.get_or_create(
         library=library,
         game=game,
@@ -122,13 +113,13 @@ def corrected_row(
 
 
 class Twin(NamedTuple):
-    """A legacy session and the projection row it converts to."""
+    """A legacy session and its projection row."""
 
     legacy: Session
     projection: PlayerSession
 
 
-#: The zone a twin's day is read in on both sides.
+#: The zone both twins read days in.
 TWIN_ZONE = ZoneInfo("Europe/Prague")
 
 
@@ -139,7 +130,7 @@ def timed_twin(
     ended_at: datetime | None,
     **columns: object,
 ) -> Twin:
-    """Finished when it has an end, running when it has none."""
+    """Finished with an end, running without one."""
     return Twin(
         Session.objects.create(
             game=game, timestamp_start=started_at, timestamp_end=ended_at
@@ -157,7 +148,7 @@ def timed_twin(
 def duration_only_twin(
     library: UserLibrary, game: Game, day: date, duration: timedelta
 ) -> Twin:
-    """No end, a manual duration, started at noon of the day."""
+    """No end, a manual duration, noon start."""
     return Twin(
         Session.objects.create(
             game=game,
@@ -175,7 +166,7 @@ def corrected_twin(
     ended_at: datetime,
     manual: timedelta,
 ) -> Twin:
-    """Legacy adds the manual part; the projection states the total."""
+    """Legacy adds manual time; projection states totals."""
     legacy = Session.objects.create(
         game=game,
         timestamp_start=started_at,

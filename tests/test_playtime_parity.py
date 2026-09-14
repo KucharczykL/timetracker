@@ -1,4 +1,4 @@
-"""Every playtime figure, compared across the two session tables."""
+"""Playtime figures compared across both tables."""
 
 from datetime import UTC, date, datetime, time, timedelta
 from io import StringIO

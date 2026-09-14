@@ -1,9 +1,4 @@
-"""Every playtime figure, from one source.
-
-A caller reads these functions and never a source module, so
-the source changes on one line. Whether a per-game sum reads
-NULL or zero for an unplayed game is decided here.
-"""
+"""Every playtime figure, from one source."""
 
 from datetime import timedelta
 
@@ -42,18 +37,14 @@ __all__ = [
     "total_playtime",
 ]
 
-#: The legacy table until every screen writes the projection.
+#: Legacy table until writes reach the projection.
 SOURCE: FullPlaytimeSource = legacy
 
 
 def playtime_by_game(
     library: UserLibrary | None, *, year: YearScope = None
 ) -> Combinable:
-    """Each game's playtime, zero when unplayed.
-
-    Zero rather than NULL, so a filter asking for no playtime
-    matches an unplayed game.
-    """
+    """Each game's playtime, zero when unplayed."""
     return Coalesce(
         SOURCE.summed_by_game(library, year=year),
         Value(timedelta(0)),
@@ -62,14 +53,14 @@ def playtime_by_game(
 
 
 def playtime_sort_key(library: UserLibrary) -> Combinable:
-    """The sum, NULL when unplayed, so a sort puts it last."""
+    """The sum, NULL when unplayed: sorts last."""
     return SOURCE.summed_by_game(library)
 
 
 def playtime_matching(
     library: UserLibrary, session_filter: SessionFilter | None
 ) -> Combinable:
-    """The sum over the matching sessions, NULL when none match."""
+    """Matching sessions' sum, NULL when none match."""
     if session_filter is None:
         return SOURCE.summed_by_game(library)
     return SOURCE.summed_by_game_matching(library, session_filter)
