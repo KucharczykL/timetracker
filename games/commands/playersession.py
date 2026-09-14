@@ -297,7 +297,7 @@ def _timed_start(session: PlayerSession) -> TimedStart:
     return TimedStart(started_at, zone)
 
 
-def _normalized_timing(timing: TimingStatement) -> TimingStatement:
+def normalized_timing(timing: TimingStatement) -> TimingStatement:
     """A statement fit to fingerprint, or a refusal.
 
     Runs before the fingerprint: a naive datetime has no canonical
@@ -333,7 +333,7 @@ def _stated_zones[Statement: (TimedTiming, CorrectedTiming)](
     )
 
 
-def _timing_payload(timing: TimingStatement) -> TimingPayload:
+def timing_payload(timing: TimingStatement) -> TimingPayload:
     """The payload, or a refusal."""
     match timing:
         case DurationOnlyTiming(day=day, duration=duration):
@@ -429,7 +429,7 @@ def _library_device(
     return device
 
 
-def _check_note(note: str) -> None:
+def check_note(note: str) -> None:
     """Refuse text JSONB cannot store."""
     try:
         note.encode("utf-8")
@@ -545,8 +545,8 @@ class CreateSession(Command):
     def __post_init__(self) -> None:
         #: One spelling, so restatements fingerprint alike.
         object.__setattr__(self, "note", self.note.strip())
-        _check_note(self.note)
-        object.__setattr__(self, "timing", _normalized_timing(self.timing))
+        check_note(self.note)
+        object.__setattr__(self, "timing", normalized_timing(self.timing))
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         run = _live_run(context, self.playthrough_id)
@@ -554,7 +554,7 @@ class CreateSession(Command):
         return [
             playersession_created(
                 run.pk,
-                timing=_timing_payload(self.timing),
+                timing=timing_payload(self.timing),
                 device=None if device is None else capture_reference(device),
                 release=None,
                 note=self.note,
@@ -638,12 +638,12 @@ class CorrectSessionTiming(Command):
     timing: TimingStatement
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "timing", _normalized_timing(self.timing))
+        object.__setattr__(self, "timing", normalized_timing(self.timing))
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         session = _live_session(context, self.session_id)
         #: Rules run before the comparison.
-        payload = _timing_payload(self.timing)
+        payload = timing_payload(self.timing)
         stated = columns_for_timing(payload)
         #: The projector's mapping; never copy it here.
         #:
@@ -684,7 +684,7 @@ class DescribeSession(Command):
         if self.note is not None:
             #: Before the fingerprint, so restatements match.
             object.__setattr__(self, "note", self.note.strip())
-            _check_note(self.note)
+            check_note(self.note)
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         session = _live_session(context, self.session_id)
