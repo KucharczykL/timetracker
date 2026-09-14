@@ -103,35 +103,50 @@ gains no `for_library()` of its own.
 ## The interface
 
 ```python
-type DayInterval = tuple[date, date]   # first and last day, both inclusive
+type DayInterval = tuple[date, date]  # first and last day, both inclusive
 # YearScope is imported from games.reads.playthrough_completions
 
+
 class PlatformPlaytime(NamedTuple):
-    platform_id: int | None     # None is the unspecified-platform bucket
+    platform_id: int | None  # None is the unspecified-platform bucket
     platform_name: str | None
     playtime: timedelta
 
+
 class MonthPlaytime(NamedTuple):
-    month: date                 # first day of the month
+    month: date  # first day of the month
     playtime: timedelta
+
 
 class PlaytimeSource(Protocol):
     def game_playtime(self, library: UserLibrary, game: Game) -> timedelta: ...
     def summed_by_game(
         self, library: UserLibrary | None, *, year: YearScope = None
     ) -> Combinable: ...
-    def total_playtime(self, library: UserLibrary, year: YearScope = None) -> timedelta: ...
-    def playtime_between(self, library: UserLibrary, days: DayInterval) -> timedelta: ...
+    def total_playtime(
+        self, library: UserLibrary, year: YearScope = None
+    ) -> timedelta: ...
+    def playtime_between(
+        self, library: UserLibrary, days: DayInterval
+    ) -> timedelta: ...
     def playtime_by_platform(
         self, library: UserLibrary, year: YearScope = None
     ) -> list[PlatformPlaytime]: ...
-    def playtime_by_month(self, library: UserLibrary, year: int) -> list[MonthPlaytime]: ...
+    def playtime_by_month(
+        self, library: UserLibrary, year: int
+    ) -> list[MonthPlaytime]: ...
     def played_years(self, library: UserLibrary) -> list[int]: ...
+
 
 class FilteredPlaytimeSource(Protocol):
     def summed_by_game_matching(
-        self, library: UserLibrary, session_filter: SessionFilter, *, year: YearScope = None
+        self,
+        library: UserLibrary,
+        session_filter: SessionFilter,
+        *,
+        year: YearScope = None,
     ) -> Combinable: ...
+
 
 class FullPlaytimeSource(PlaytimeSource, FilteredPlaytimeSource, Protocol): ...
 ```
