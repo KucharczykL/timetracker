@@ -23,7 +23,12 @@ from games.events.playthrough import (
     playthrough_started,
 )
 from games.events.vocabulary import NewEvent, Unchanged
-from games.models import Playthrough, PlaythroughKind, ProjectionModel
+from games.models import (
+    PlayerSession,
+    Playthrough,
+    PlaythroughKind,
+    ProjectionModel,
+)
 from games.projections import FieldName
 from games.reads.playthrough_endpoints import stated_completion, stated_start
 from timetracker.temporal import TemporalQualifier, TemporalValue, stated_date
@@ -462,7 +467,7 @@ def _skips_removed_rows(model: type[ProjectionModel]) -> bool:
 class BlockingReferrer(NamedTuple):
     """One registered way to name a run."""
 
-    #: A projection, which #701 makes Session one of.
+    #: A projection, so the column is always there.
     model: type[ProjectionModel]
     #: Field name alias from games/projections.py.
     field_name: FieldName
@@ -495,8 +500,18 @@ class BlockingReferrer(NamedTuple):
         return cls(model, field_name, sentence)
 
 
-#: Empty until #700 and #701 land.
-BLOCKING_REFERRERS: tuple[BlockingReferrer, ...] = ()
+#: The sentence names the remedy that exists: one move at a time,
+#: to a run at the same game or any other.
+BLOCKING_REFERRERS: tuple[BlockingReferrer, ...] = (
+    BlockingReferrer.on(
+        PlayerSession,
+        "playthrough",
+        sentence=(
+            "Sessions are recorded on this playthrough. Move them to "
+            "another playthrough before removing it."
+        ),
+    ),
+)
 
 
 def blocking_referrer(run: Playthrough) -> BlockingReferrer | None:
@@ -554,15 +569,11 @@ class RemovePlaythrough(Command):
                 f"This library already removed playthrough {self.playthrough_id}."
             )
         _refuse_under_a_removed_game(run)
-        blocker = blocking_referrer(run)
-        if blocker is not None:
-            raise CommandRejected(
-                f"A live {blocker.model.__name__} names playthrough "
-                f"{self.playthrough_id}, so the run stays where it can "
-                "be found.",
-                sentence=blocker.sentence,
-            )
         #: Ordinary only. A bucket takes none away.
+        #:
+        #: Ahead of the referrers: a sole run with sessions is refused
+        #: either way, and only this sentence names a remedy that
+        #: works. Moving every session elsewhere leaves it the last one.
         if (
             run.kind == PlaythroughKind.ORDINARY
             and not _other_live_ordinary_runs(context, run).exists()
@@ -575,6 +586,14 @@ class RemovePlaythrough(Command):
                     "This is the only playthrough of that game, and a tracked "
                     "game keeps one. Remove the game itself instead."
                 ),
+            )
+        blocker = blocking_referrer(run)
+        if blocker is not None:
+            raise CommandRejected(
+                f"A live {blocker.model.__name__} names playthrough "
+                f"{self.playthrough_id}, so the run stays where it can "
+                "be found.",
+                sentence=blocker.sentence,
             )
         return [playthrough_removed(run.pk)]
 

@@ -485,6 +485,15 @@ stated by `RemoveSession`, so `PlayerSession` is absent from `REMOVABLE_MODELS`.
 This is also what makes #1011's refusal live: a Playthrough with sessions
 naming it cannot be removed, a rule #1011 shipped inert.
 
+Delivered as [Remove and restore a session](2026-09-14-issue-694-session-removal-design.md).
+Two things it decided beyond the commitment above. `RemovePlaythrough` now
+runs the last-ordinary-run rule ahead of the referrer check, so a sole run
+with sessions hears "remove the game itself instead", the one remedy that
+works for it; the referrer's sentence, which names a move, answers only a run
+with a live ordinary sibling. And #1048 closed on its option 2: the gap
+between this issue and #714 is accepted, because after the swap it touches
+only the 62 legacy sessions at games with more than one live ordinary run.
+
 ### #697 — read playtime from the projection
 
 Absorbs #698. Both placeholders asked for a projection; the wave ships read

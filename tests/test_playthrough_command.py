@@ -1,7 +1,7 @@
 """Dispatching the commands that state a run."""
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from django.db import connection, models, transaction
@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from games.commands import playthrough as playthrough_commands
 from games.commands.playergame import PlayerGameNotTracked, TrackGame
+from games.commands.playersession import CreateSession, RemoveSession, TimedTiming
 from games.commands.playthrough import (
     PLAYTHROUGH_NAME_MAX_LENGTH,
     ActStatement,
@@ -32,6 +33,7 @@ from games.models import (
     Game,
     LibraryEvent,
     PlayerGame,
+    PlayerSession,
     Playthrough,
     PlaythroughKind,
     ProjectionModel,
@@ -1905,7 +1907,7 @@ def test_a_foreign_run_at_the_same_game_does_not_keep_the_last_run_removable(
 
 @pytest.fixture
 def referring_models():
-    """Two throwaway projections naming a run, as #701's will."""
+    """Two throwaway projections naming a run, beside the delivered one."""
     with isolate_apps("games"):
 
         class Assignment(ProjectionModel):
@@ -1955,7 +1957,7 @@ ASSIGNED_SENTENCE = (
 def test_a_registered_referrer_keeps_a_run_in_place(
     owned_user, owned_library, game, monkeypatch, referring_models
 ):
-    """Inert on delivery: #700 and #701 supply the first entry."""
+    """The registry is patched whole, so the delivered entry does not answer."""
     assignment_model, _ = referring_models
     _track(owned_user, owned_library, game)
     run = _second_run(owned_user, owned_library)
@@ -2123,6 +2125,81 @@ def test_a_referrer_naming_another_model_is_refused():
             BlockingReferrer.on(Misdirected, "playthrough", sentence="unused")
 
 
-def test_the_delivered_registry_refuses_nothing():
-    """Nothing names a run until #700 and #701."""
-    assert playthrough_commands.BLOCKING_REFERRERS == ()
+def test_the_delivered_registry_names_sessions():
+    """One entry: a session names the run it was recorded at."""
+    (entry,) = playthrough_commands.BLOCKING_REFERRERS
+
+    assert (entry.model, entry.field_name) == (PlayerSession, "playthrough")
+    assert entry.sentence == SESSIONS_SENTENCE
+
+
+SESSIONS_SENTENCE = (
+    "Sessions are recorded on this playthrough. Move them to another "
+    "playthrough before removing it."
+)
+
+
+def _record_session(owned_user, owned_library, run, key="session"):
+    return dispatch(
+        CreateSession(
+            playthrough_id=run.pk,
+            timing=TimedTiming(
+                started_at=timezone.now() - timedelta(hours=1),
+                day_zone="Europe/Prague",
+            ),
+        ),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key=key,
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_live_session_keeps_its_run_in_place(owned_user, owned_library, game):
+    """The sentence names the remedy that exists: a move."""
+    _track(owned_user, owned_library, game)
+    run = _second_run(owned_user, owned_library)
+    _record_session(owned_user, owned_library, run)
+
+    with pytest.raises(CommandRejected) as refusal:
+        _remove(owned_user, owned_library, run, key="blocked")
+
+    assert refusal.value.sentence == SESSIONS_SENTENCE
+    run.refresh_from_db()
+    assert run.removed_at is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_removed_session_keeps_nothing_in_place(owned_user, owned_library, game):
+    _track(owned_user, owned_library, game)
+    run = _second_run(owned_user, owned_library)
+    _record_session(owned_user, owned_library, run)
+    session = PlayerSession.objects.get()
+    dispatch(
+        RemoveSession(session_id=session.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="remove-session",
+    )
+
+    result = _remove(owned_user, owned_library, run)
+
+    assert result.outcome is CommandOutcome.APPENDED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_sole_run_with_a_session_is_refused_as_the_last_run(
+    owned_user, owned_library, game
+):
+    """Moving its sessions would leave it the last run all the same."""
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+    _record_session(owned_user, owned_library, run)
+
+    with pytest.raises(CommandRejected) as refusal:
+        _remove(owned_user, owned_library, run, key="last")
+
+    assert refusal.value.sentence == (
+        "This is the only playthrough of that game, and a tracked game keeps "
+        "one. Remove the game itself instead."
+    )

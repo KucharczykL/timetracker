@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 from django.db import connection
 
 from common.date_time_presentation import zone_or_none
-from games.commands.playthrough import _live_run
+from games.commands.playthrough import _live_run, library_playthrough
 from games.commands.scope import Refusal, library_row
 from games.events.dispatch import Command, CommandContext, CommandName, CommandRejected
 from games.events.playersession import (
@@ -25,6 +25,8 @@ from games.events.playersession import (
     playersession_ended,
     playersession_moved,
     playersession_note_changed,
+    playersession_removed,
+    playersession_restored,
     playersession_timing_corrected,
 )
 from games.events.references import capture_reference
@@ -156,12 +158,12 @@ def _check_representable(instant: datetime, *zones: tzinfo | None) -> None:
             ) from None
 
 
-def _live_session(context: CommandContext, session_id: uuid.UUID) -> PlayerSession:
-    """The session, refused if nothing may be stated about it."""
-    session = library_row(
+def library_session(context: CommandContext, session_id: uuid.UUID) -> PlayerSession:
+    """This library's session, or a refusal."""
+    return library_row(
         context,
-        #: The plain manager: a removed row is refused by name below,
-        #: not hidden into "no such session".
+        #: The plain manager: a removed row is refused by name by
+        #: every caller, not hidden into "no such session".
         PlayerSession.objects.all(),
         Refusal(
             message=(
@@ -172,13 +174,16 @@ def _live_session(context: CommandContext, session_id: uuid.UUID) -> PlayerSessi
         ),
         pk=session_id,
     )
+
+
+def _live_session(context: CommandContext, session_id: uuid.UUID) -> PlayerSession:
+    """The session, refused if nothing may be stated about it."""
+    session = library_session(context, session_id)
     #: For its scope as much as its marks: it proves the
     #: session's run is this library's, which is the
     #: registered reference the ownership audit walks.
     _live_run(context, session.playthrough_id)
-    #: Under dispatch's lock: the mark cannot move. Nothing states one
-    #: yet, so this branch waits for the removal command rather than
-    #: being unreachable.
+    #: Under dispatch's lock: the mark cannot move.
     if session.removed_at is not None:
         raise CommandRejected(
             f"This library removed session {session_id}, so it states no "
@@ -683,3 +688,71 @@ class MoveSessionToPlaythrough(Command):
             return Unchanged("This session already belongs to that playthrough.")
         run = _live_run(context, self.playthrough_id)
         return [playersession_moved(session.pk, playthrough_id=run.pk)]
+
+
+def _refuse_under_a_removed_parent(
+    context: CommandContext, session: PlayerSession
+) -> None:
+    """Refuse a lifecycle act under a removed game or run.
+
+    Its own sentences, not `_live_run`'s: "restore it before
+    recording this" names an act the person is not performing.
+    """
+    #: Scoped resolve, as `_live_session` makes it: the run's
+    #: library is what the ownership audit walks.
+    run = library_playthrough(context, session.playthrough_id)
+    #: Under dispatch's lock neither mark can move.
+    if run.player_game.removed_at is not None:
+        raise CommandRejected(
+            f"This library removed the game behind session {session.pk}, "
+            "so its sessions neither leave the lists nor come back.",
+            sentence=(
+                "That game was removed from your library. Restore it before "
+                "changing its sessions."
+            ),
+        )
+    if run.removed_at is not None:
+        raise CommandRejected(
+            f"This library removed the playthrough behind session {session.pk}, "
+            "so its sessions neither leave the lists nor come back.",
+            sentence=(
+                "That playthrough was removed from your library. Restore it "
+                "before changing its sessions."
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class RemoveSession(Command):
+    """Take a session out of the lists."""
+
+    command_name: ClassVar[CommandName] = CommandName.PLAYERSESSION_REMOVE
+    #: A UUID, because Command fingerprints its fields.
+    session_id: uuid.UUID
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        session = library_session(context, self.session_id)
+        #: The no-op before either parent's mark, the other way round
+        #: from `_live_session`: a repeat still succeeds once the run
+        #: or the game is gone.
+        if session.removed_at is not None:
+            return Unchanged(f"This library already removed session {self.session_id}.")
+        _refuse_under_a_removed_parent(context, session)
+        return [playersession_removed(session.pk)]
+
+
+@dataclass(frozen=True, slots=True)
+class RestoreSession(Command):
+    """Put a removed session back."""
+
+    command_name: ClassVar[CommandName] = CommandName.PLAYERSESSION_RESTORE
+    #: A UUID, because Command fingerprints its fields.
+    session_id: uuid.UUID
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        session = library_session(context, self.session_id)
+        #: The no-op first, as in RemoveSession.
+        if session.removed_at is None:
+            return Unchanged(f"This library did not remove session {self.session_id}.")
+        _refuse_under_a_removed_parent(context, session)
+        return [playersession_restored(session.pk)]

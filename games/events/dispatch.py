@@ -100,6 +100,8 @@ class CommandName(CommandVocabulary):
     PLAYERSESSION_CORRECT_TIMING = "library.playersession.correct_timing"
     PLAYERSESSION_DESCRIBE = "library.playersession.describe"
     PLAYERSESSION_MOVE = "library.playersession.move"
+    PLAYERSESSION_REMOVE = "library.playersession.remove"
+    PLAYERSESSION_RESTORE = "library.playersession.restore"
 
 
 @dataclass(frozen=True, slots=True)
