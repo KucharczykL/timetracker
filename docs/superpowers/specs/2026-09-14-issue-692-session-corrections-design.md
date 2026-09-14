@@ -34,17 +34,25 @@ The refusals are about values: an end before a start, a negative duration, a
 duration finer than a second, a duration of zero on a Duration-only statement, a
 zone that the two tzdata sets do not both read, an unstated day zone, a zone for
 an endpoint that the statement does not hold, and an instant with no offset.
-`CreateSession` states each of these refusals today. This issue moves them to
-module functions, thus one set of rules serves the creation and the correction.
-A refusal of a naive instant runs in `__post_init__`, before the fingerprint.
+`CreateSession` states each of these refusals today, as instance methods over its
+own fields. This issue moves them to module functions that take the statement,
+thus one set of rules serves the creation and the correction. The payload
+builder, the zone normalisation, the note check and the device resolution move
+with them. A refusal of a naive instant runs in `__post_init__`, before the
+fingerprint.
 
 `build` reads the row with `_live_session`. It makes the payload, then compares
 `columns_for_timing(payload)` with the eight columns of the row. The projector
 states that function. The comparison and the write therefore cannot drift. An
 equal statement answers `Unchanged`.
 
-`effective_time` holds the day that the new statement lands on. A correction of
-a playthrough endpoint dates itself by the value now stated, and this follows it.
+`effective_time` holds `stated_day_of(payload)`: the written day, or the start
+read in `day_zone`. A correction of a playthrough endpoint dates itself by the
+value now stated, and this follows it. A correction that changes only the end is
+therefore dated by the start. The end of a running session dates the act; a
+correction states the whole session again, so it dates the session. The zone
+check runs before the payload is made, thus `stated_day_of` never meets a zone
+that tzdata does not know.
 
 ## The description
 
@@ -62,8 +70,16 @@ Each fact has its own event: `.note_changed`, `.device_changed` and
 the row. A statement that the row already holds answers `Unchanged`. A
 description states no timing act, and a timing statement states no description.
 
-The device is resolved with the same function the creation uses. It refuses a
-device of another library and a removed device.
+A note that holds a NUL byte is refused, as the creation refuses it: JSONB cannot
+store the character, and the database refusal comes after the lock, with no
+sentence.
+
+`build` compares each stated fact with the row before it resolves anything. A
+device that the row already names answers `Unchanged`, even when that device is
+now removed. A device that differs is resolved with the function the creation
+uses, which refuses a device of another library and a removed device.
+`.device_changed` holds a `Reference | None` built as the creation builds its
+device, because the reference index reads the payload annotation.
 
 ## The move
 
@@ -71,7 +87,12 @@ device of another library and a removed device.
 reads the session with `_live_session` and the target run with `_live_run`. The
 target may record another game. A session logged against the wrong game has no
 other remedy, and a session reaches its game only through its run, which stays
-true after the move. The same run answers `Unchanged`.
+true after the move. The same run answers `Unchanged`. The target may be a run of
+any kind, as the creation admits.
+
+`_live_session` refuses a session whose run or game is removed. That holds for
+the move too. `alive()` hides such a session from every read, thus no person can
+find it to move it. A person who removed the wrong game restores it first.
 
 The payload holds a bare `ReferenceId`, as the creation payload does. A required
 reference kind for a projection would make the check of a replay read the live
@@ -88,7 +109,8 @@ one value each. `.moved` holds the run. Only the timing correction holds an
 
 Five handlers, each one `amend`. The timing correction names all eight columns
 through `columns_for_timing`, thus no value of the old mode stays in the row.
-The other four name one column each.
+The other four name one column each. No event marks an act with an `<act>_at`
+column: each states a value, and the value is the live state.
 
 ## The surfaces
 
@@ -96,7 +118,10 @@ This issue states the commands. #702 states the screens.
 
 `reset_session` is "set the start to now". It is a timing act, and the
 placeholder set holds no command for it. It is `CorrectSessionTiming` with a
-restated start: the instant is `now`, and the zone is the one the browser
-reports. The edit of a session is two acts, not one. The times go to
+`TimedTiming` statement: the start is `now`, `started_at_zone` is the zone the
+browser reports, `day_zone` is the row's, and there is no end. The screen offers
+it only on a running session. On a session with an end, the new start comes
+after that end, and the command refuses it. The edit of a session is two acts,
+not one. The times go to
 `CorrectSessionTiming`, and the note, the device and the emulated flag go to
 `DescribeSession`.
