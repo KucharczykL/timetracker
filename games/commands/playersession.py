@@ -106,11 +106,7 @@ def known_zone(name: str) -> bool:
 
 
 def _check_aware(*instants: datetime | None) -> None:
-    """Instants that name a moment on every host.
-
-    Module-level rather than a method: two commands check their
-    input's shape before the fingerprint, and neither reads state.
-    """
+    """Instants that name a moment anywhere."""
     for instant in instants:
         if instant is None:
             continue
@@ -126,8 +122,7 @@ def _live_session(context: CommandContext, session_id: uuid.UUID) -> PlayerSessi
     """The session, refused if nothing may be stated about it."""
     session = library_row(
         context,
-        #: The plain manager. `alive()` is a verb every read states
-        #: for itself, and a restore names a removed row.
+        #: The plain manager: a restore names a removed row.
         PlayerSession.objects.all(),
         Refusal(
             message=(
@@ -138,14 +133,11 @@ def _live_session(context: CommandContext, session_id: uuid.UUID) -> PlayerSessi
         ),
         pk=session_id,
     )
-    #: Reused whole, and for its scope as much as its marks: it
-    #: resolves the run through `library_playthrough`, so it proves
-    #: the run this session names is this library's -- the registered
-    #: reference the ownership audit walks, which a `library=` on the
-    #: session alone would miss.
+    #: For its scope as much as its marks: it proves the
+    #: session's run is this library's, which is the
+    #: registered reference the ownership audit walks.
     _live_run(context, session.playthrough_id)
-    #: Under dispatch's lock: the mark cannot move. Nothing states one
-    #: yet; resolving a session is where the rule belongs.
+    #: Nothing states a session's mark yet.
     if session.removed_at is not None:
         raise CommandRejected(
             f"This library removed session {session_id}, so it states no "
@@ -159,9 +151,9 @@ def _live_session(context: CommandContext, session_id: uuid.UUID) -> PlayerSessi
 
 
 def _timed_start(session: PlayerSession) -> tuple[datetime, str]:
-    """A Timed row's start and the zone its day is read in.
+    """A Timed row's start and its day zone.
 
-    The mode is refused before either value is read, so a corrected
+    The mode is refused before either value is read, so a Corrected
     row is told what it is rather than told it already has an end:
     the remedy differs.
     """
@@ -186,9 +178,9 @@ def _timed_start(session: PlayerSession) -> tuple[datetime, str]:
         )
     started_at, day_zone = session.started_at, session.day_zone
     if started_at is None or day_zone is None:
-        #: `playersession_timed_columns` forbids this. Stated rather
-        #: than cast away, so a relaxed constraint is met here with a
-        #: sentence instead of inside the builder as a TypeError.
+        #: `playersession_timed_columns` forbids this. Refused rather
+        #: than cast away, so a relaxed constraint lands here as a
+        #: sentence instead of a TypeError inside the builder.
         raise CommandRejected(
             f"Timed session {session.pk} states no start or no day zone, which "
             "the timed-columns constraint forbids. The row is wrong, not the "
@@ -434,22 +426,18 @@ class EndSession(Command):
     #: A UUID, because Command fingerprints its fields.
     session_id: uuid.UUID
     ended_at: datetime
-    #: No default. Null is a zone nobody stated, which a caller says
-    #: rather than falls into: a forgotten argument is a TypeError at
-    #: the call site, not a session silently recorded as stating none.
+    #: No default: a caller states an unstated zone.
     ended_at_zone: str | None
 
     def __post_init__(self) -> None:
-        #: One spelling of a zone nobody stated, so a restatement
-        #: fingerprints alike. A browser reporting none posts an empty
-        #: string, which `known_zone` would refuse rather than record
-        #: as unset.
+        #: One spelling, so a restatement fingerprints alike. A
+        #: browser reporting no zone posts an empty string, which
+        #: `known_zone` would refuse rather than record as unset.
         stated = (self.ended_at_zone or "").strip()
         object.__setattr__(self, "ended_at_zone", stated or None)
-        #: Before the fingerprint rather than inside build(): dispatch
-        #: fingerprints the input first, and a naive datetime has no
-        #: canonical form there, so a build-time refusal would never
-        #: run and the person would meet a TypeError instead.
+        #: Before the fingerprint: dispatch hashes the input first,
+        #: and a naive datetime has no canonical form there, so a
+        #: build-time refusal would never run.
         _check_aware(self.ended_at)
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
@@ -475,9 +463,9 @@ class EndSession(Command):
                 f"it started at {started_at}, and no session does.",
                 sentence="This session would end before it started. Check the time.",
             )
-        #: The only guard there is. The zone feeds no generated column
-        #: and the one CHECK on it refuses a blank string alone, so an
-        #: unknown name violates nothing and is stored permanently.
+        #: The only guard there is: the zone feeds no generated
+        #: column, and its one CHECK refuses a blank string alone,
+        #: so an unknown name is stored and never noticed.
         if self.ended_at_zone is not None and not known_zone(self.ended_at_zone):
             raise CommandRejected(
                 f"{self.ended_at_zone!r} is not a time zone this installation "

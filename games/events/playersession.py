@@ -203,18 +203,7 @@ def playersession_created(
 
 @with_config(STRICT_SCHEMA)
 class PlayerSessionEndedPayload(TypedDict):
-    """The end a running session was given.
-
-    A payload of its own rather than `TimingPayload`: that union
-    states a whole mode and serves whole statements, while an end
-    states two columns and leaves the other six as the creation
-    left them.
-
-    `day_zone` is absent on purpose. The row already holds it and
-    the act does not restate it -- under `extra="forbid"` a key is
-    a fact somebody may state, and a second spelling of a zone the
-    row carries is one this event has no use for.
-    """
+    """Two columns; the row holds day_zone."""
 
     ended_at: InstantText
     ended_at_zone: str | None
@@ -236,15 +225,12 @@ def playersession_ended(
     ended_at_zone: str | None,
     day_zone: str,
 ) -> NewEvent:
-    """The library stated when a running session ended.
+    """The library stated when a session ended.
 
-    `effective_time` carries the *end's* day, read in the zone the
-    library counts days in. That is not the rule `stated_day_of`
-    applies: it reads the start, and so does the `effective_day`
-    column generated from it. For a session crossing midnight the
-    two disagree permanently, which is the point -- the event dates
-    the act, the row dates the session, and neither answers the
-    other's question.
+    `effective_time` carries the end's day. `stated_day_of` and the
+    generated `effective_day` read the start instead, so a session
+    crossing midnight leaves the two permanently different. The event
+    dates the act; the row dates the session.
     """
     return PLAYERSESSION_ENDED.new(
         aggregate_id=session_id,

@@ -799,7 +799,7 @@ def test_an_ended_row_measures_the_elapsed_time(owned_user, owned_library, run):
 def test_an_end_moves_neither_the_sort_instant_nor_the_day(
     owned_user, owned_library, run
 ):
-    """The row dates the session by its start, whatever day the end lands on.
+    """The row dates the session by its start.
 
     The end here is a full day later, so the rule that reads the end
     would report 2026-01-03.

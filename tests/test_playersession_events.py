@@ -379,11 +379,7 @@ def test_an_end_takes_the_day_its_zone_reads():
 
 
 def test_an_end_may_land_on_a_later_day_than_the_creation_did():
-    """The event dates the act; the row dates the session.
-
-    A reader of the trail may not assume one session's events all
-    carry one day.
-    """
+    """The event dates the act, not the session."""
     session_id = uuid.uuid7()
 
     created = playersession_created(
@@ -425,7 +421,7 @@ def test_the_built_end_validates():
 
 
 def test_the_payload_and_the_fingerprint_spell_an_instant_alike():
-    """An end is safe to fingerprint only because these two agree.
+    """An end fingerprints safely because these agree.
 
     They are independently written expressions. Truncate either and
     every honest retry of one statement answers a conflict, with

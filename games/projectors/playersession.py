@@ -93,17 +93,7 @@ class PlayerSessions(Projector):
         )
 
     def _ended(self, event: RecordedEvent) -> None:
-        """Two columns; the other six stay as the creation left them.
-
-        `amend` rather than `project`: an event that changes part of
-        a row knows nothing of the columns the creation wrote, and
-        its refusal of a missing row is what keeps a rebuild honest.
-
-        No mode is re-read here, and none can be: `amend` is a bare
-        UPDATE over the columns it is handed. The mode was checked by
-        the command under dispatch's lock, and the CHECK constraints
-        hold thereafter.
-        """
+        """Two columns; the creation wrote the rest."""
         payload = event.payload
         self.amend(
             PlayerSession,

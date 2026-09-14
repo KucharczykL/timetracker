@@ -441,30 +441,21 @@ One command, one event: state the end instant of a Timed session that has none.
 Refuses an end before the start, and refuses a session that is not Timed.
 
 **Delivered.** The design is
-[End a running Timed session](2026-09-13-issue-691-session-end-design.md); what
-it settled, and what the rest of this wave inherits:
+[End a running Timed session](2026-09-13-issue-691-session-end-design.md). What
+the rest of the wave inherits:
 
-- **A partial act carries a payload of its own**, and states no `day_zone`. The
-  row holds that zone, so under `extra="forbid"` a key restating it is a second
-  spelling of one fact rather than a fact somebody may state.
-- **The event dates the act; the row dates the session.** An end's
-  `effective_time` is the *end's* day read in `day_zone`, while the row's
-  generated `effective_day` keeps reading the start. For a session crossing
-  midnight the two disagree permanently, so a reader of the trail may not
-  assume one session's events all carry one day.
-- **`_live_session` is the resolution #692 and #694 reuse.** It resolves through
-  `library_row`, then calls `_live_run` — for scope as much as for marks, since
-  the run is the registered reference the ownership audit walks — and then
-  refuses a removed session, a rule that is inert until #694 states the mark.
-- **`_timed_start` refuses the mode before it reads a value**, so a Corrected
-  row is told what it is rather than told it already has an end: the remedy
-  differs, and it is #692's command in both cases.
-- **`_check_aware` is module-level**, shared by every command here that checks
-  its input's shape before the fingerprint.
-- **An end equal to the start is recorded**, as a zero-length session; removal
-  is the other remedy. Restating the identical end answers `Unchanged`, while
-  the same instant carrying a different zone is refused — the zone is a stated
-  fact, not a spelling of the instant.
+- A partial act carries its own payload, and states no `day_zone`. The row
+  holds that zone.
+- The event dates the act; the row dates the session. An end's
+  `effective_time` reads the end, and `effective_day` reads the start.
+- `_live_session` is the resolution that #692 and #694 reuse. It calls
+  `_live_run` for scope as well as marks, then refuses a removed session. That
+  last rule stays inert until #694 states the mark.
+- `_timed_start` refuses the mode before it reads a value. A Corrected row
+  learns what it is, because the remedy differs.
+- `_check_aware` is module-level, shared with `CreateSession`.
+- An end equal to the start is recorded. An identical restatement answers
+  `Unchanged`; the same instant in another zone is refused.
 
 ### #692 — the three correction commands
 

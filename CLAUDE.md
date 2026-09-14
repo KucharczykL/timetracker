@@ -280,20 +280,15 @@ docs/           — Additional documentation
   it with its readers. Contract is
   [PlayerSession](docs/superpowers/specs/2026-09-13-issue-689-playersession-aggregate-design.md)
 
-  Two acts state a session today. `CreateSession` states whole timing through
-  `TimingPayload`, union whose three members are three modes. #691's
-  `EndSession` states end of running Timed row, and is partial act: own payload
-  of `ended_at` and `ended_at_zone`, no `day_zone`, because row holds that zone
-  and second spelling of it is fact nobody may state. Handler `amend`s those two
-  columns and re-reads nothing, so command re-reads mode instead, under
-  dispatch's lock. It refuses end before start, session that is not Timed —
-  Duration-only holds no instants, Corrected already has end, and both point at
-  #692's correction — and end on row that already has one; restating identical
-  end answers `Unchanged`, while same instant carrying different zone is
-  refused, zone being stated fact rather than spelling. **Event's day is not
-  row's day**: end's `effective_time` reads end in `day_zone`, `effective_day`
-  keeps reading start, so session crossing midnight leaves two events carrying
-  two days. Nothing calls `EndSession` yet; #702 owns surfaces. Contract is
+  Two acts state one today. `CreateSession` states whole timing through
+  `TimingPayload`; #691's `EndSession` states end of running Timed row and is
+  partial act — own payload of `ended_at` and `ended_at_zone`, no `day_zone`,
+  which row holds. Handler `amend`s those two columns and reads no mode, so
+  command reads it, under dispatch's lock. Refuses end before start, row that is
+  not Timed, and end on row that states one; identical restatement answers
+  `Unchanged`, same instant in other zone refused. Event's day is not row's:
+  `effective_time` reads end, `effective_day` reads start. Nothing calls it yet;
+  #702 owns surfaces. Contract is
   [End a running Timed session](docs/superpowers/specs/2026-09-13-issue-691-session-end-design.md)
 
 **Nothing user removes is destroyed** (#944). Eight removable models — Game,
