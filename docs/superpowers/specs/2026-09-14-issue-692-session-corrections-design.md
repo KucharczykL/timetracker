@@ -21,7 +21,7 @@ session run again.
 
 The creation and the correction share one set of module functions: the
 normalization, the payload builder, and every value refusal. A naive instant is
-refused before the fingerprint.
+refused before the fingerprint, and so is a timestamp given as a written day.
 
 `build` compares `columns_for_timing(payload)` with the eight columns of the
 row. The projector writes through the same function, thus the comparison and
@@ -42,7 +42,7 @@ Each fact that differs from the row is one event: `.note_changed`,
 `.device_changed`, `.emulated_changed`. The device is compared before it is
 resolved, thus a restated removed device answers `Unchanged`. A new device must
 be this library's and live. `.device_changed` holds a `Reference`, because the
-reference index reads the annotation. A note with a NUL byte is refused.
+reference index reads the annotation. A note that JSONB cannot store is refused.
 
 ## The move
 
@@ -58,12 +58,13 @@ such a session.
 ## The events and the handlers
 
 Each handler is one `amend`. The timing correction names all eight columns,
-thus no value of the old mode stays. Only `.timing_corrected` holds an
-`effective_time`.
+thus no value of the old mode stays. Of the five, only `.timing_corrected` holds
+an `effective_time`.
 
 ## The surfaces
 
 #702 owns the screens. Reset-to-now is `CorrectSessionTiming` with a
 `TimedTiming`: start `now`, `started_at_zone` from the browser, `day_zone` from
-the row, no end. It applies to a running session. The edit of a session is two
+the row, no end. The screen offers it on a running session; on a finished
+session it makes the session run again. The edit of a session is two
 acts: timing, then description.

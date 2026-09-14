@@ -899,13 +899,51 @@ def test_a_corrected_session_may_run_again_and_then_end(owned_user, owned_librar
     assert session.ended_at == AN_END
 
 
-def test_restating_the_row_changes_nothing(owned_user, owned_library, run):
-    session = record(owned_library, owned_user, run, a_corrected())
+@pytest.mark.parametrize("state", TIMING_STATES)
+def test_restating_the_row_changes_nothing(owned_user, owned_library, run, state):
+    session = record(owned_library, owned_user, run, TIMING_STATES[state])
 
-    result = corrects(owned_library, owned_user, session.pk, a_corrected())
+    result = corrects(owned_library, owned_user, session.pk, TIMING_STATES[state])
 
     assert result.outcome is CommandOutcome.UNCHANGED
     assert not correction_events().exists()
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "column", "value"),
+    [
+        (
+            a_corrected(),
+            a_corrected(duration=timedelta(minutes=45)),
+            "stated_duration",
+            timedelta(minutes=45),
+        ),
+        (
+            a_duration_only(),
+            a_duration_only(day=date(2026, 3, 6)),
+            "stated_day",
+            date(2026, 3, 6),
+        ),
+        (a_timed(), a_timed(day_zone="Asia/Tokyo"), "day_zone", "Asia/Tokyo"),
+        (
+            TIMING_STATES["timed-finished"],
+            a_timed(ended_at=AN_END, ended_at_zone="Europe/Prague"),
+            "ended_at_zone",
+            "Europe/Prague",
+        ),
+    ],
+    ids=["override", "written-day", "day-zone", "end-zone"],
+)
+def test_a_correction_within_one_mode_is_recorded(
+    owned_user, owned_library, run, before, after, column, value
+):
+    session = record(owned_library, owned_user, run, before)
+
+    result = corrects(owned_library, owned_user, session.pk, after)
+
+    assert result.outcome is CommandOutcome.APPENDED
+    session.refresh_from_db()
+    assert getattr(session, column) == value
 
 
 def test_a_padded_restatement_changes_nothing(owned_user, owned_library, run):
@@ -1027,6 +1065,15 @@ def test_a_naive_correction_is_refused_at_construction():
         CorrectSessionTiming(session_id=uuid.uuid7(), timing=a_timed(started_at=naive))
 
 
+def test_a_timestamp_is_not_a_written_day():
+    """`datetime` subclasses `date`, so mypy admits it."""
+    with pytest.raises(TypeError):
+        CorrectSessionTiming(
+            session_id=uuid.uuid7(),
+            timing=a_duration_only(day=datetime(2026, 3, 5, 10, tzinfo=UTC)),
+        )
+
+
 def test_an_unknown_session_has_no_timing_to_correct(owned_user, owned_library):
     refused_correction(
         owned_library,
@@ -1104,20 +1151,20 @@ def test_resetting_a_running_session_restates_its_start(owned_user, owned_librar
     )
 
 
-def test_resetting_a_finished_session_is_refused(owned_user, owned_library, run):
+def test_resetting_a_finished_session_runs_it_again(owned_user, owned_library, run):
+    """The reset statement holds no end."""
     session = record(owned_library, owned_user, run, a_timed(ended_at=AN_END))
+    now = AN_END + timedelta(hours=1)
 
-    refused_correction(
+    corrects(
         owned_library,
         owned_user,
         session.pk,
-        TimedTiming(
-            started_at=AN_END + timedelta(hours=1),
-            day_zone="Europe/Prague",
-            ended_at=AN_END,
-        ),
-        saying="This session ended before it started. Check the times.",
+        TimedTiming(started_at=now, day_zone="Europe/Prague"),
     )
+
+    session.refresh_from_db()
+    assert (session.started_at, session.ended_at) == (now, None)
 
 
 # --- Describing a session ----------------------------------------------------
@@ -1186,6 +1233,16 @@ def test_the_emulated_flag_alone_is_described(owned_user, owned_library, run):
     session.refresh_from_db()
     assert session.emulated is True
     assert description_events() == ["library.playersession.emulated_changed"]
+
+
+def test_the_emulated_flag_is_cleared(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed(), emulated=True)
+
+    result = describes(owned_library, owned_user, session.pk, emulated=False)
+
+    assert result.outcome is CommandOutcome.APPENDED
+    session.refresh_from_db()
+    assert session.emulated is False
 
 
 def test_three_facts_are_three_events(owned_user, owned_library, run, steam_deck):
@@ -1280,6 +1337,19 @@ def test_a_note_jsonb_cannot_store_is_refused(owned_user, owned_library, run):
     )
 
 
+def test_a_note_holding_a_lone_surrogate_is_refused(owned_user, owned_library, run):
+    """A JSON body can carry one; JSONB refuses it."""
+    session = record(owned_library, owned_user, run, a_timed())
+
+    refused_description(
+        owned_library,
+        owned_user,
+        session.pk,
+        note="a\ud800",
+        saying="That note contains a character we cannot store.",
+    )
+
+
 def test_another_librarys_device_is_refused(
     owned_user, owned_library, run, second_library
 ):
@@ -1306,7 +1376,7 @@ def test_a_removed_device_is_refused(owned_user, owned_library, run, steam_deck)
         device=StatedDevice(steam_deck.pk),
         saying=(
             "That device was removed from your library. Restore it before "
-            "recording a session on it."
+            "choosing it for a session."
         ),
     )
 
@@ -1370,7 +1440,7 @@ def test_a_description_under_a_removed_run_is_refused(owned_user, owned_library,
     )
 
 
-def test_no_device_and_an_empty_note_are_different_statements(
+def test_stating_no_device_is_a_different_statement(
     owned_user, owned_library, run, steam_deck
 ):
     """`StatedDevice(None)` is not an unstated fact."""
@@ -1383,11 +1453,16 @@ def test_no_device_and_an_empty_note_are_different_statements(
         device_id=steam_deck.pk,
     )
 
-    describes(
-        owned_library, owned_user, session.pk, device=StatedDevice(None), key="one"
-    )
+    describes(owned_library, owned_user, session.pk, note="other", key="one")
     with pytest.raises(IdempotencyKeyMismatch):
-        describes(owned_library, owned_user, session.pk, note="", key="one")
+        describes(
+            owned_library,
+            owned_user,
+            session.pk,
+            note="other",
+            device=StatedDevice(None),
+            key="one",
+        )
 
 
 # --- Moving a session to another playthrough ---------------------------------

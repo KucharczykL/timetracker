@@ -461,7 +461,7 @@ the rest of the wave inherits:
 
 `CorrectSessionTiming` states one whole `TimingStatement` again. The statement
 is the transition law: each is complete by its shape, so every mode may follow
-every other, and an override with no elapsed time cannot be stated because
+every other, and an override with no end cannot be stated because
 `CorrectedTiming` holds both instants. It shares every value refusal with
 `CreateSession`. `DescribeSession` states note,
 device and the emulated flag, `None` meaning not stated, following
@@ -474,7 +474,7 @@ reassignment is not one field away from a bulk timing rewrite.
 `reset_session` — "set the start to now" — is a timing act with no command in
 the placeholder set. It is `CorrectSessionTiming` with a `TimedTiming`: start
 `now`, `started_at_zone` the browser's, `day_zone` the row's, no end. Offered
-only on a running session; on one with an end the command refuses it. Contract
+only on a running session; on a finished one it runs the session again. Contract
 is [Correct a session](2026-09-14-issue-692-session-corrections-design.md).
 
 ### #694 — removal and restoration

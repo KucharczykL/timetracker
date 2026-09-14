@@ -291,10 +291,10 @@ docs/           — Additional documentation
   #702 owns surfaces. Contract is
   [End a running Timed session](docs/superpowers/specs/2026-09-13-issue-691-session-end-design.md)
 
-  #692's three corrections, one act each. `CorrectSessionTiming` restates
+  #692's three corrections, one fact each. `CorrectSessionTiming` restates
   whole `TimingStatement` — any mode to any — through module functions
   `CreateSession` shares; `Unchanged` compares `columns_for_timing` with row,
-  event dated by start. `DescribeSession`: `None` unstated, `StatedDevice(None)`
+  event dated by `stated_day_of`. `DescribeSession`: `None` unstated, `StatedDevice(None)`
   no device, one event per differing fact. `MoveSessionToPlaythrough` may name
   run at another game. Reset-to-now is `TimedTiming(now)` with row's `day_zone`.
   Contract is

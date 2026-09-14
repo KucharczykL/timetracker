@@ -253,8 +253,10 @@ def _normalized_timing(timing: TimingStatement) -> TimingStatement:
         case CorrectedTiming(started_at=started_at, ended_at=ended_at):
             _check_aware(started_at, ended_at)
             return _stated_zones(timing)
-        case DurationOnlyTiming():
-            #: A written day holds no instant.
+        case DurationOnlyTiming(day=day):
+            #: `datetime` subclasses `date`; refuse it anyway.
+            if isinstance(day, datetime):
+                raise TypeError(f"{day!r} is an instant, not a written day.")
             return timing
         case _:
             assert_never(timing)
@@ -352,22 +354,27 @@ def _library_device(
     #: Under dispatch's lock: the mark cannot move.
     if device.removed_at is not None:
         raise CommandRejected(
-            f"This library removed device {device_id}, so it records "
-            "no further sessions on it.",
+            f"This library removed device {device_id}, so no session names it anew.",
             sentence=(
                 "That device was removed from your library. Restore it "
-                "before recording a session on it."
+                "before choosing it for a session."
             ),
         )
     return device
 
 
 def _check_note(note: str) -> None:
-    """Refuse a NUL byte; JSONB cannot store it."""
-    if "\x00" in note:
+    """Refuse text JSONB cannot store."""
+    try:
+        note.encode("utf-8")
+    except UnicodeEncodeError:
+        stored = False
+    else:
+        stored = "\x00" not in note
+    if not stored:
         raise CommandRejected(
-            "This note holds a NUL byte, which JSONB cannot store, so the "
-            "event would be refused as it was written.",
+            "This note holds a NUL byte or a lone surrogate, which JSONB "
+            "cannot store, so the event would be refused as it was written.",
             sentence="That note contains a character we cannot store.",
         )
 
@@ -399,7 +406,7 @@ def _check_duration(duration: timedelta) -> None:
         )
 
 
-def _check_zones(day_zone: str | None, *endpoint_zones: str | None) -> None:
+def _check_zones(day_zone: ZoneName, *endpoint_zones: ZoneName | None) -> None:
     """A stated day zone; names both tzdata sets read."""
     if not day_zone:
         raise CommandRejected(
@@ -559,7 +566,8 @@ class CorrectSessionTiming(Command):
         #: A copy compares one set of columns and the handler writes
         #: another, and the drift answers Unchanged in silence.
         held = {
-            column: getattr(session, column) for column in TimingColumns.__annotations__
+            column: getattr(session, column)
+            for column in TimingColumns.__required_keys__
         }
         if held == stated:
             return Unchanged("This session's time already reads so.")
@@ -567,7 +575,7 @@ class CorrectSessionTiming(Command):
 
 
 class StatedDevice(NamedTuple):
-    """A stated device, or none; None is unstated."""
+    """Device or none; bare None is unstated."""
 
     device_id: uuid.UUID | None
 
@@ -596,7 +604,7 @@ class DescribeSession(Command):
         events: list[NewEvent] = []
         if self.note is not None and self.note != session.note:
             events.append(playersession_note_changed(session.pk, note=self.note))
-        #: Compared before resolved: removed device restates.
+        #: Compared first: restated removed device is Unchanged.
         if self.device is not None and self.device.device_id != session.device_id:
             device = _library_device(context, self.device.device_id)
             events.append(

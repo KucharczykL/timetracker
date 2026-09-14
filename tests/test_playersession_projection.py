@@ -1108,6 +1108,18 @@ def correct_everything(library, actor, session, *, device, target):
         append_events(library, actor, [event], key=f"correction-{index}")
 
 
+def assert_every_correction_landed(session, *, device, target) -> None:
+    """Else a replay comparison passes with no handler."""
+    session.refresh_from_db()
+    assert (
+        session.timing_mode,
+        session.note,
+        session.device_id,
+        session.emulated,
+        session.playthrough_id,
+    ) == (PlayerSessionTimingMode.CORRECTED, "corrected", device.pk, True, target.pk)
+
+
 @pytest.mark.django_db(transaction=True)
 def test_a_corrected_session_replays(owned_user, owned_library, run, game):
     other_game = Game.objects.create(library=owned_library, name="Tunic")
@@ -1124,6 +1136,7 @@ def test_a_corrected_session_replays(owned_user, owned_library, run, game):
     )
     session = PlayerSession.objects.get()
     correct_everything(owned_library, owned_user, session, device=device, target=target)
+    assert_every_correction_landed(session, device=device, target=target)
     before = list(PlayerSession.objects.order_by("pk").values())
 
     PlayerSession.objects.all().delete()
@@ -1151,6 +1164,7 @@ def test_a_rebuild_reproduces_a_corrected_session(owned_user, owned_library, gam
     )
     session = PlayerSession.objects.get()
     correct_everything(owned_library, owned_user, session, device=device, target=target)
+    assert_every_correction_landed(session, device=device, target=target)
     before = list(PlayerSession.objects.order_by("pk").values())
 
     report = rebuild_projections(owned_library, mode=RebuildMode.CHECK)

@@ -98,7 +98,7 @@ class PlayerSessions(Projector):
         )
 
     def _ended(self, event: RecordedEvent) -> None:
-        """Two columns; the creation wrote the rest."""
+        """Two columns; earlier statements wrote the rest."""
         payload = event.payload
         self.amend(
             PlayerSession,

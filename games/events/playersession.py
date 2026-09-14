@@ -98,11 +98,11 @@ class TimedTimingPayload(TypedDict):
     mode: Literal["timed"]
     started_at: InstantText
     #: The zone the clock stood in, or None where nobody stated it.
-    started_at_zone: str | None
+    started_at_zone: ZoneText | None
     ended_at: InstantText | None
-    ended_at_zone: str | None
+    ended_at_zone: ZoneText | None
     #: The zone the library counts this session's day in.
-    day_zone: str
+    day_zone: ZoneText
 
 
 @with_config(STRICT_SCHEMA)
@@ -123,10 +123,10 @@ class CorrectedTimingPayload(TypedDict):
 
     mode: Literal["corrected"]
     started_at: InstantText
-    started_at_zone: str | None
+    started_at_zone: ZoneText | None
     ended_at: InstantText
-    ended_at_zone: str | None
-    day_zone: str
+    ended_at_zone: ZoneText | None
+    day_zone: ZoneText
     duration_seconds: int
 
 
