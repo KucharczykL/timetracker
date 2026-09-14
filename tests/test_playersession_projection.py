@@ -1,5 +1,6 @@
 """One row per session a library records."""
 
+import itertools
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -16,7 +17,12 @@ from games.events.dispatch import dispatch
 from games.events.playersession import (
     instant_text,
     playersession_created,
+    playersession_device_changed,
+    playersession_emulated_changed,
     playersession_ended,
+    playersession_moved,
+    playersession_note_changed,
+    playersession_timing_corrected,
 )
 from games.events.projection import DEFAULT_REGISTRY
 from games.events.rebuild import RebuildMode, rebuild_projections
@@ -878,6 +884,273 @@ def test_a_rebuild_reproduces_an_ended_session(owned_user, owned_library, game):
         ended_at=START + timedelta(hours=2),
         key="end",
     )
+    before = list(PlayerSession.objects.order_by("pk").values())
+
+    report = rebuild_projections(owned_library, mode=RebuildMode.CHECK)
+
+    assert [
+        (table.only_live, table.only_rebuilt, table.differing)
+        for table in report.tables
+        if table.table == "games_playersession"
+    ] == [(0, 0, 0)]
+    assert list(PlayerSession.objects.order_by("pk").values()) == before
+
+
+# --- Corrections -------------------------------------------------------------
+
+
+def append_events(library, actor, events, *, key):
+    """Append events as one dispatch would."""
+    with transaction.atomic():
+        stream = lock_stream(library)
+        return stream.append(
+            events,
+            actor=actor,
+            correlation_id=uuid.uuid7(),
+            idempotency_key=key,
+        )
+
+
+TIMING_STATES = {
+    "timed-running": a_timed_statement(),
+    "timed-finished": a_timed_statement(
+        ended_at=instant_text(START + timedelta(hours=2)), ended_at_zone="Asia/Tokyo"
+    ),
+    "duration-only": A_DURATION_ONLY_STATEMENT,
+    "corrected": A_CORRECTED_STATEMENT,
+}
+
+TRANSITIONS = list(itertools.permutations(TIMING_STATES, 2))
+
+TIMING_COLUMNS = (
+    "timing_mode",
+    "started_at",
+    "started_at_zone",
+    "ended_at",
+    "ended_at_zone",
+    "stated_day",
+    "stated_duration",
+    "day_zone",
+)
+
+DESCRIPTION_COLUMNS = ("note", "device_id", "emulated")
+
+
+def columns_of(session: PlayerSession, names) -> dict:
+    return {name: getattr(session, name) for name in names}
+
+
+@pytest.mark.parametrize(
+    "event_type",
+    [
+        "library.playersession.timing_corrected",
+        "library.playersession.note_changed",
+        "library.playersession.device_changed",
+        "library.playersession.emulated_changed",
+        "library.playersession.moved",
+    ],
+)
+def test_every_correction_has_a_current_state_handler(event_type):
+    assert len(DEFAULT_REGISTRY.handlers_for(event_type)) == 1
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    ("before", "after"),
+    TRANSITIONS,
+    ids=[f"{before}->{after}" for before, after in TRANSITIONS],
+)
+def test_every_transition_projects(owned_user, owned_library, run, before, after):
+    """No value of the old mode stays, and every CHECK admits the result."""
+    append_session(
+        owned_library, owned_user, run, timing=TIMING_STATES[before], key="create"
+    )
+    session = PlayerSession.objects.get()
+
+    append_events(
+        owned_library,
+        owned_user,
+        [playersession_timing_corrected(session.pk, timing=TIMING_STATES[after])],
+        key="correct",
+    )
+
+    session.refresh_from_db()
+    assert columns_of(session, TIMING_COLUMNS) == columns_for_timing(
+        TIMING_STATES[after]
+    )
+    expected = {
+        "timed-running": (date(2026, 1, 2), timedelta(0)),
+        "timed-finished": (date(2026, 1, 2), timedelta(hours=2)),
+        "duration-only": (date(2026, 3, 5), timedelta(minutes=90)),
+        "corrected": (date(2026, 1, 2), timedelta(minutes=30)),
+    }[after]
+    assert (session.effective_day, session.effective_duration) == expected
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_timing_correction_leaves_the_description_and_the_run(
+    owned_user, owned_library, run
+):
+    device = Device.objects.create(library=owned_library, name="Steam Deck")
+    append_session(
+        owned_library,
+        owned_user,
+        run,
+        timing=a_timed_statement(),
+        device=capture_reference(device),
+        note="A note the correction must not take away",
+        emulated=True,
+        key="create",
+    )
+    session = PlayerSession.objects.get()
+    untouched = (*DESCRIPTION_COLUMNS, "playthrough_id", "created_at")
+    before = columns_of(session, untouched)
+
+    append_events(
+        owned_library,
+        owned_user,
+        [playersession_timing_corrected(session.pk, timing=A_CORRECTED_STATEMENT)],
+        key="correct",
+    )
+
+    session.refresh_from_db()
+    assert columns_of(session, untouched) == before
+
+
+@pytest.mark.django_db(transaction=True)
+def test_each_description_event_writes_its_own_column(owned_user, owned_library, run):
+    old_device = Device.objects.create(library=owned_library, name="Steam Deck")
+    new_device = Device.objects.create(library=owned_library, name="Switch")
+    append_session(
+        owned_library,
+        owned_user,
+        run,
+        timing=a_timed_statement(started_at_zone="Asia/Tokyo"),
+        device=capture_reference(old_device),
+        note="before",
+        emulated=False,
+        key="create",
+    )
+    session = PlayerSession.objects.get()
+    timing_before = columns_of(session, TIMING_COLUMNS)
+    steps = [
+        (playersession_note_changed(session.pk, note="after"), "note", "after"),
+        (
+            playersession_device_changed(
+                session.pk, device=capture_reference(new_device)
+            ),
+            "device_id",
+            new_device.pk,
+        ),
+        (playersession_emulated_changed(session.pk, emulated=True), "emulated", True),
+        (playersession_device_changed(session.pk, device=None), "device_id", None),
+    ]
+
+    for index, (event, column, value) in enumerate(steps):
+        others = [name for name in DESCRIPTION_COLUMNS if name != column]
+        session.refresh_from_db()
+        others_before = columns_of(session, others)
+
+        append_events(owned_library, owned_user, [event], key=f"step-{index}")
+
+        session.refresh_from_db()
+        assert getattr(session, column) == value
+        assert columns_of(session, others) == others_before
+        assert columns_of(session, TIMING_COLUMNS) == timing_before
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_move_names_a_run_at_another_game(owned_user, owned_library, run):
+    other_game = Game.objects.create(library=owned_library, name="Tunic")
+    other_tracked = PlayerGame.objects.create(
+        id=uuid.uuid7(),
+        library=owned_library,
+        game=other_game,
+        tracked_at=timezone.now(),
+    )
+    other_run = Playthrough.objects.create(
+        id=uuid.uuid7(),
+        library=owned_library,
+        player_game=other_tracked,
+        kind=PlaythroughKind.ORDINARY,
+        created_at=timezone.now(),
+    )
+    append_session(
+        owned_library, owned_user, run, timing=a_timed_statement(), key="create"
+    )
+    session = PlayerSession.objects.get()
+    timing_before = columns_of(session, TIMING_COLUMNS)
+
+    append_events(
+        owned_library,
+        owned_user,
+        [playersession_moved(session.pk, playthrough_id=other_run.pk)],
+        key="move",
+    )
+
+    session.refresh_from_db()
+    assert session.playthrough_id == other_run.pk
+    assert session.playthrough.player_game.game == other_game
+    assert columns_of(session, TIMING_COLUMNS) == timing_before
+    assert PlayerSession.objects.alive().filter(pk=session.pk).exists()
+
+
+def correct_everything(library, actor, session, *, device, target):
+    """One of every correction, each its own dispatch."""
+    events = [
+        playersession_timing_corrected(session.pk, timing=A_CORRECTED_STATEMENT),
+        playersession_note_changed(session.pk, note="corrected"),
+        playersession_device_changed(session.pk, device=capture_reference(device)),
+        playersession_emulated_changed(session.pk, emulated=True),
+        playersession_moved(session.pk, playthrough_id=target.pk),
+    ]
+    for index, event in enumerate(events):
+        append_events(library, actor, [event], key=f"correction-{index}")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_corrected_session_replays(owned_user, owned_library, run, game):
+    other_game = Game.objects.create(library=owned_library, name="Tunic")
+    dispatch(
+        TrackGame(game_id=other_game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="track-other",
+    )
+    target = Playthrough.objects.get(player_game__game=other_game)
+    device = Device.objects.create(library=owned_library, name="Steam Deck")
+    append_session(
+        owned_library, owned_user, run, timing=a_timed_statement(), key="create"
+    )
+    session = PlayerSession.objects.get()
+    correct_everything(owned_library, owned_user, session, device=device, target=target)
+    before = list(PlayerSession.objects.order_by("pk").values())
+
+    PlayerSession.objects.all().delete()
+    replay(owned_library)
+
+    assert list(PlayerSession.objects.order_by("pk").values()) == before
+    assert before[0]["playthrough_id"] == target.pk
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_rebuild_reproduces_a_corrected_session(owned_user, owned_library, game):
+    other_game = Game.objects.create(library=owned_library, name="Tunic")
+    for tracked_game, key in ((game, "track"), (other_game, "track-other")):
+        dispatch(
+            TrackGame(game_id=tracked_game.pk),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key=key,
+        )
+    source = Playthrough.objects.get(player_game__game=game)
+    target = Playthrough.objects.get(player_game__game=other_game)
+    device = Device.objects.create(library=owned_library, name="Steam Deck")
+    append_session(
+        owned_library, owned_user, source, timing=a_timed_statement(), key="create"
+    )
+    session = PlayerSession.objects.get()
+    correct_everything(owned_library, owned_user, session, device=device, target=target)
     before = list(PlayerSession.objects.order_by("pk").values())
 
     report = rebuild_projections(owned_library, mode=RebuildMode.CHECK)

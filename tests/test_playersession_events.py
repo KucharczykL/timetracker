@@ -15,6 +15,7 @@ from games.events.playersession import (
     PLAYERSESSION_MOVED,
     PLAYERSESSION_NOTE_CHANGED,
     PLAYERSESSION_TIMING_CORRECTED,
+    TimedTimingPayload,
     canonical_day_text,
     canonical_instant_text,
     day_from_text,
@@ -446,7 +447,7 @@ def test_the_payload_and_the_fingerprint_spell_an_instant_alike():
 
 SESSION = uuid.uuid7()
 
-A_TIMED_TIMING = {
+A_TIMED_TIMING: TimedTimingPayload = {
     "mode": "timed",
     "started_at": "2026-01-01T23:30:00+00:00",
     "started_at_zone": None,
