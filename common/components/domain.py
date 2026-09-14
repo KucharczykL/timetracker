@@ -464,8 +464,8 @@ def Duration(
 
     ``id_scope`` is required and must be unique on the page. ``Popover`` derives
     its DOM id by hashing its own content, so two rows showing the same duration
-    would collide — and ``Game.playtime`` defaults to zero, which makes that the
-    common case on a game list rather than an edge case.
+    would collide — and an unplayed game reads zero, which makes that the common
+    case on a game list rather than an edge case.
 
     The visible text is ``aria-hidden`` and a sibling ``sr-only`` span carries
     the value in words: screen readers read "1.2 h" as "one point two h". For

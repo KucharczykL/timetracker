@@ -46,6 +46,7 @@ from games.models import (
     Session,
     UserLibraryPreferences,
 )
+from games.reads.playtime import game_playtime
 from games.removal import remove
 from games.retention import (
     ReferencedRowDeletion,
@@ -310,7 +311,7 @@ def snapshot(library, bundle, bystander) -> LibraryState:
         editions=Edition.objects.filter(game__library=library).count(),
         releases=Release.objects.filter(edition__game__library=library).count(),
         bundle_count=None if surviving is None else surviving.num_purchases,
-        other_game_playtime=Game.objects.get(pk=bystander.pk).playtime,
+        other_game_playtime=game_playtime(library, bystander),
     )
 
 

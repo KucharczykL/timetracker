@@ -691,7 +691,7 @@ def partial_update_session(request, session_id: UUIDv7, payload: SessionUpdate):
         raise HttpError(422, "timestamp_end must be on or after timestamp_start")
     for field, value in data.items():
         setattr(session, field, value)
-    session.save()  # fires post_save Session signal -> Game.playtime recalc
+    session.save()
     session.refresh_from_db()  # reload DB-computed GeneratedFields + modified_at
     messages.success(request, "Session updated.")
     return session

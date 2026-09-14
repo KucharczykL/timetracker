@@ -125,11 +125,16 @@ class GameQuerySet(RemovableLibraryQuerySet):
         No library leaves the join unconditional, so a game two
         libraries track comes back once per library. Unscoped is for
         compiling a lookup, not for executing one.
+
+        `playtime` is an alias, selected only when a filter reads it.
         """
+        #: The package reads these models, so a module import would cycle.
+        from games.reads.playtime import playtime_by_game
+
         condition = Q() if library is None else Q(player_games__library=library)
         return self.annotate(
             tracked=FilteredRelation("player_games", condition=condition)
-        )
+        ).alias(playtime=playtime_by_game(library))
 
     def tracked_by(self, library, **conditions):
         """Every live game this library tracks, facts read.
@@ -323,8 +328,6 @@ class Game(ReferencedRow):
         blank=True,
         default=None,
     )
-
-    playtime = models.DurationField(blank=True, editable=False, default=timedelta(0))
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

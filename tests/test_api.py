@@ -11,6 +11,7 @@ from django.test.utils import CaptureQueriesContext
 
 from games.filters import parse_game_filter
 from games.models import Device, Game, Platform, Purchase, Session
+from games.reads.playtime import game_playtime
 
 pytestmark = pytest.mark.django_db
 
@@ -408,14 +409,13 @@ def test_session_patch_end_before_start_rejected(auth_client):
     assert session.timestamp_end is None  # unchanged
 
 
-def test_session_patch_recalcs_playtime_via_signal(auth_client):
-    # Finishing an open session grows duration_total; the post_save Session
-    # signal must recompute Game.playtime (we never set playtime by hand).
+def test_session_patch_grows_the_games_playtime(auth_client):
+    # Finishing an open session grows duration_total, which the playtime read sums.
     session = _make_session()
-    assert session.game.playtime == timedelta(0)
+    library = session.game.library
+    assert game_playtime(library, session.game) == timedelta(0)
     _patch_session(auth_client, session.id, {"timestamp_end": "2026-06-24T19:00:00Z"})
-    session.game.refresh_from_db()
-    assert session.game.playtime == timedelta(hours=1)
+    assert game_playtime(library, session.game) == timedelta(hours=1)
 
 
 def test_session_patch_does_not_write_generatedfield(auth_client):
