@@ -7,6 +7,7 @@ from typing import ClassVar, TypedDict
 from games.events.envelope import RecordedEvent
 from games.events.playersession import (
     PLAYERSESSION_CREATED,
+    PLAYERSESSION_ENDED,
     TimingPayload,
     day_from_text,
     instant_from_text,
@@ -91,6 +92,17 @@ class PlayerSessions(Projector):
             **columns_for_timing(payload["timing"]),
         )
 
+    def _ended(self, event: RecordedEvent) -> None:
+        """Two columns; the creation wrote the rest."""
+        payload = event.payload
+        self.amend(
+            PlayerSession,
+            event.aggregate_id,
+            ended_at=instant_from_text(payload["ended_at"]),
+            ended_at_zone=payload["ended_at_zone"],
+        )
+
     handles: ClassVar[HandlerMap] = {
         PLAYERSESSION_CREATED: _created,
+        PLAYERSESSION_ENDED: _ended,
     }

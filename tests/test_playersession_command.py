@@ -12,6 +12,7 @@ from games.commands.playersession import (
     CorrectedTiming,
     CreateSession,
     DurationOnlyTiming,
+    EndSession,
     TimedTiming,
 )
 from games.events.dispatch import (
@@ -419,3 +420,374 @@ def test_a_refusal_the_command_forgot_reaches_a_person_as_a_sentence(
         event_type="library.playersession.created"
     ).exists()
     assert "playersession_duration_not_negative" in caplog.text
+
+
+# --- Ending a running session ------------------------------------------------
+
+AN_END = START + timedelta(hours=2)
+
+
+def ends(library, actor, session, *, ended_at, ended_at_zone=None, key=None):
+    result = dispatch(
+        EndSession(
+            session_id=session.pk, ended_at=ended_at, ended_at_zone=ended_at_zone
+        ),
+        actor=actor,
+        library=library,
+        idempotency_key=key or str(uuid.uuid7()),
+    )
+    session.refresh_from_db()
+    return result
+
+
+def refused_end(
+    library, actor, session_id, *, saying, ended_at=AN_END, ended_at_zone=None
+) -> CommandRejected:
+    """Refuse an end, and pin which refusal the person met.
+
+    The sentence, not merely its presence: several of these rules
+    refuse the same statement, so a test that asks only whether one
+    fired stays green when the branch it names is taken away.
+    """
+    with pytest.raises(CommandRejected) as refusal:
+        dispatch(
+            EndSession(
+                session_id=session_id, ended_at=ended_at, ended_at_zone=ended_at_zone
+            ),
+            actor=actor,
+            library=library,
+            idempotency_key=str(uuid.uuid7()),
+        )
+    assert refusal.value.sentence == saying
+    return refusal.value
+
+
+def test_it_ends_a_running_session(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    result = ends(
+        owned_library, owned_user, session, ended_at=AN_END, ended_at_zone="Asia/Tokyo"
+    )
+
+    assert result.outcome is CommandOutcome.APPENDED
+    assert (session.ended_at, session.ended_at_zone) == (AN_END, "Asia/Tokyo")
+    assert session.effective_duration == timedelta(hours=2)
+    assert (
+        LibraryEvent.objects.filter(event_type="library.playersession.ended").count()
+        == 1
+    )
+
+
+def test_an_end_equal_to_the_start_is_recorded(owned_user, owned_library, run):
+    """Started by mistake and ended at once; removal is the other remedy."""
+    session = record(owned_library, owned_user, run, a_timed())
+
+    ends(owned_library, owned_user, session, ended_at=START)
+
+    assert session.ended_at == START
+    assert session.effective_duration == timedelta(0)
+
+
+def test_a_blank_zone_is_recorded_as_no_zone(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    ends(owned_library, owned_user, session, ended_at=AN_END, ended_at_zone="   ")
+
+    assert session.ended_at_zone is None
+
+
+def test_an_empty_zone_normalizes_to_no_zone():
+    """One statement, one digest, whichever way the caller spelled it."""
+    blank = EndSession(session_id=uuid.uuid7(), ended_at=AN_END, ended_at_zone="")
+
+    assert blank.ended_at_zone is None
+
+
+def test_a_naive_end_is_refused_at_construction():
+    #: noqa DTZ001: a naive datetime is exactly what is on trial.
+    naive = datetime(2026, 1, 2, 1, 30)  # noqa: DTZ001
+
+    with pytest.raises(CommandRejected) as refusal:
+        EndSession(session_id=uuid.uuid7(), ended_at=naive, ended_at_zone=None)
+
+    assert refusal.value.sentence
+
+
+def test_restating_the_same_end_changes_nothing(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+    ends(
+        owned_library, owned_user, session, ended_at=AN_END, ended_at_zone="Asia/Tokyo"
+    )
+
+    result = ends(
+        owned_library, owned_user, session, ended_at=AN_END, ended_at_zone="Asia/Tokyo"
+    )
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+    assert (
+        LibraryEvent.objects.filter(event_type="library.playersession.ended").count()
+        == 1
+    )
+
+
+def test_the_same_instant_in_another_zone_is_refused(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+    ends(
+        owned_library, owned_user, session, ended_at=AN_END, ended_at_zone="Asia/Tokyo"
+    )
+
+    refused_end(
+        owned_library,
+        owned_user,
+        session.pk,
+        ended_at=AN_END,
+        ended_at_zone="Europe/Prague",
+        saying=(
+            "This session already has an end. Correct the one it has "
+            "instead of stating another."
+        ),
+    )
+
+
+def test_a_second_end_is_refused(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+    ends(owned_library, owned_user, session, ended_at=AN_END)
+
+    refused_end(
+        owned_library,
+        owned_user,
+        session.pk,
+        ended_at=AN_END + timedelta(hours=1),
+        saying=(
+            "This session already has an end. Correct the one it has "
+            "instead of stating another."
+        ),
+    )
+
+
+def test_an_end_before_the_start_is_refused(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    refused_end(
+        owned_library,
+        owned_user,
+        session.pk,
+        ended_at=START - timedelta(seconds=1),
+        saying="This session would end before it started. Check the time.",
+    )
+
+
+def test_a_duration_only_session_has_no_end_to_state(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_duration_only())
+
+    refused_end(
+        owned_library,
+        owned_user,
+        session.pk,
+        ended_at=AN_END,
+        saying=(
+            "This session records how long it lasted on a day, so it has "
+            "no end to state."
+        ),
+    )
+
+
+def test_a_corrected_session_already_has_an_end(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_corrected())
+
+    refused_end(
+        owned_library,
+        owned_user,
+        session.pk,
+        ended_at=AN_END,
+        saying=(
+            "This session's time was already corrected, so it already has "
+            "an end. Correct it again to change it."
+        ),
+    )
+
+
+def test_a_zone_no_tzdata_knows_is_refused(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    refused_end(
+        owned_library,
+        owned_user,
+        session.pk,
+        ended_at=AN_END,
+        ended_at_zone="Mars/Olympus_Mons",
+        saying="Mars/Olympus_Mons is not a time zone we know.",
+    )
+
+
+def test_an_unknown_session_is_refused(owned_user, owned_library, run):
+    refused_end(
+        owned_library,
+        owned_user,
+        uuid.uuid7(),
+        ended_at=AN_END,
+        saying="That session is not available.",
+    )
+
+
+def test_a_removed_session_is_refused(owned_user, owned_library, run):
+    """Arranged with an UPDATE: nothing states a session's mark yet."""
+    session = record(owned_library, owned_user, run, a_timed())
+    PlayerSession.objects.filter(pk=session.pk).update(removed_at=timezone.now())
+
+    refused_end(
+        owned_library,
+        owned_user,
+        session.pk,
+        ended_at=AN_END,
+        saying=(
+            "That session was removed from your library. Restore it "
+            "before recording this."
+        ),
+    )
+
+
+def test_ending_under_a_removed_run_is_refused(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+    Playthrough.objects.filter(pk=run.pk).update(removed_at=timezone.now())
+
+    refused_end(
+        owned_library,
+        owned_user,
+        session.pk,
+        ended_at=AN_END,
+        saying=(
+            "That playthrough was removed from your library. Restore it "
+            "before recording this."
+        ),
+    )
+
+
+def test_ending_under_a_removed_game_is_refused(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+    PlayerGame.objects.filter(pk=run.player_game_id).update(removed_at=timezone.now())
+
+    refused_end(
+        owned_library,
+        owned_user,
+        session.pk,
+        ended_at=AN_END,
+        saying=(
+            "That game was removed from your library. Restore it before recording this."
+        ),
+    )
+
+
+def test_a_session_another_library_holds_is_refused(
+    owned_user, owned_library, second_library
+):
+    game = Game.objects.create(library=second_library, name="Elsewhere")
+    tracked = PlayerGame.objects.create(
+        id=uuid.uuid7(),
+        library=second_library,
+        game=game,
+        tracked_at=timezone.now(),
+    )
+    other_run = Playthrough.objects.create(
+        id=uuid.uuid7(),
+        library=second_library,
+        player_game=tracked,
+        kind="ordinary",
+        created_at=timezone.now(),
+    )
+    elsewhere = PlayerSession.objects.create(
+        id=uuid.uuid7(),
+        library=second_library,
+        playthrough=other_run,
+        device=None,
+        timing_mode=PlayerSessionTimingMode.TIMED,
+        started_at=START,
+        started_at_zone=None,
+        ended_at=None,
+        ended_at_zone=None,
+        stated_day=None,
+        stated_duration=None,
+        day_zone="Europe/Prague",
+        note="",
+        emulated=False,
+        created_at=timezone.now(),
+    )
+
+    refused_end(
+        owned_library,
+        owned_user,
+        elsewhere.pk,
+        ended_at=AN_END,
+        saying=("That session is not available."),
+    )
+
+
+def test_a_day_zone_this_installation_cannot_read_is_refused(
+    owned_user, owned_library, run, monkeypatch
+):
+    """A zone the row states and Python's tzdata has since lost.
+
+    Arranged by taking the name away from `zone_or_none` rather than
+    by writing a bad one: `effective_day` is generated before any
+    constraint runs, so PostgreSQL refuses to store a zone it cannot
+    read at all. The reachable state is the split one the two tzdata
+    sets make possible -- the database still knows the name, this
+    process no longer does. Unresolved it reaches the builder as a
+    `ZoneInfoNotFoundError`, a `KeyError` the boundary does not
+    answer, so nobody would be told anything.
+    """
+    session = record(owned_library, owned_user, run, a_timed())
+    monkeypatch.setattr("games.commands.playersession.zone_or_none", lambda name: None)
+
+    refused_end(
+        owned_library,
+        owned_user,
+        session.pk,
+        ended_at=AN_END,
+        saying="We cannot read the time zone this session's day is counted in.",
+    )
+
+
+def test_a_timed_row_with_no_start_is_refused():
+    """The state `playersession_timed_columns` forbids.
+
+    Unreachable through the database, so it is stated against an
+    unsaved row: the branch exists for a constraint somebody relaxes.
+    """
+    from games.commands.playersession import _timed_start
+
+    broken = PlayerSession(
+        timing_mode=PlayerSessionTimingMode.TIMED, started_at=None, day_zone=None
+    )
+
+    with pytest.raises(CommandRejected) as refusal:
+        _timed_start(broken)
+
+    assert refusal.value.sentence == "We cannot read that session's start time."
+
+
+def test_a_padded_zone_states_the_name_inside_it(owned_user, owned_library, run):
+    """One rule for a zone, whichever command reads it."""
+    session = record(
+        owned_library, owned_user, run, a_timed(started_at_zone=" Asia/Tokyo ")
+    )
+
+    assert session.started_at_zone == "Asia/Tokyo"
+
+
+def test_a_dispatched_end_records_the_day_its_own_zone_reads(
+    owned_user, owned_library, run
+):
+    """The command hands the row's day zone to the builder.
+
+    The row keeps 2026-01-02; the event that ends it a day later
+    states 2026-01-03, and nothing else in the suite joins those two
+    halves.
+    """
+    session = record(owned_library, owned_user, run, a_timed())
+
+    ends(owned_library, owned_user, session, ended_at=START + timedelta(days=1))
+
+    ended = LibraryEvent.objects.get(event_type="library.playersession.ended")
+    assert ended.effective_time.canonical == "2026-01-03"
+    assert session.effective_day == date(2026, 1, 2)

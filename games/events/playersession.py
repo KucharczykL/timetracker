@@ -65,8 +65,26 @@ def canonical_day_text(value: str) -> str:
     return value
 
 
+def stated_zone_text(value: str) -> str:
+    """Refuse a zone name nobody could have stated.
+
+    Null is how an unstated zone is spelled, so a blank string is a
+    second spelling of it, and a padded one is a second spelling of
+    the name inside it. Both reach the projector unvalidated on a
+    replay, where the blank meets `playersession_zone_not_blank` as
+    an IntegrityError nothing can repair.
+    """
+    if not value or value != value.strip():
+        raise ValueError(f"{value!r} is not a zone name; null is an unstated zone.")
+    return value
+
+
 type InstantText = Annotated[str, AfterValidator(canonical_instant_text)]
 type DayText = Annotated[str, AfterValidator(canonical_day_text)]
+type ZoneText = Annotated[str, AfterValidator(stated_zone_text)]
+
+#: The zone a clock or a calendar is read in, e.g. "Europe/Prague".
+type ZoneName = str
 
 
 @with_config(STRICT_SCHEMA)
@@ -197,5 +215,54 @@ def playersession_created(
             "timing": timing,
             "note": note,
             "emulated": emulated,
+        },
+    )
+
+
+@with_config(STRICT_SCHEMA)
+class PlayerSessionEndedPayload(TypedDict):
+    """Two columns; the row holds day_zone."""
+
+    ended_at: InstantText
+    ended_at_zone: ZoneText | None
+
+
+PLAYERSESSION_ENDED = EventSpec(
+    "library.playersession.ended",
+    aggregate_type="playersession",
+    payload=PlayerSessionEndedPayload,
+)
+
+DEFAULT_EVENT_TYPES.register(PLAYERSESSION_ENDED)
+
+
+def playersession_ended(
+    session_id: uuid.UUID,
+    *,
+    ended_at: datetime,
+    ended_at_zone: ZoneName | None,
+    day_zone: ZoneInfo,
+) -> NewEvent:
+    """The library stated when a session ended.
+
+    `effective_time` carries the end's day. `stated_day_of` and the
+    generated `effective_day` read the start instead, so a session
+    crossing midnight in `day_zone` leaves the two permanently
+    different. The event dates the act; the row dates the session.
+
+    `day_zone` is a resolved zone rather than its name, because the
+    name comes off a row this command did not write. A name tzdata
+    has since lost would raise `ZoneInfoNotFoundError` here -- a
+    `KeyError`, which the boundary does not answer -- so the caller
+    resolves it where a refusal can still carry a sentence.
+    """
+    return PLAYERSESSION_ENDED.new(
+        aggregate_id=session_id,
+        effective_time=TemporalValue.parse(
+            day_text(ended_at.astimezone(day_zone).date())
+        ),
+        payload={
+            "ended_at": instant_text(ended_at),
+            "ended_at_zone": ended_at_zone,
         },
     )

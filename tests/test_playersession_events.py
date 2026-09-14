@@ -6,8 +6,10 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from games.events.idempotency import _canonical_datetime
 from games.events.playersession import (
     PLAYERSESSION_CREATED,
+    PLAYERSESSION_ENDED,
     canonical_day_text,
     canonical_instant_text,
     day_from_text,
@@ -15,6 +17,7 @@ from games.events.playersession import (
     instant_from_text,
     instant_text,
     playersession_created,
+    playersession_ended,
 )
 from games.events.references import ReferenceArity
 from games.events.vocabulary import DEFAULT_EVENT_TYPES, PayloadInvalid
@@ -303,3 +306,127 @@ def test_the_built_event_validates():
     )
 
     assert validated(event.payload) == event.payload
+
+
+# --- The end of a running session --------------------------------------------
+
+AN_END = {"ended_at": "2026-01-02T01:30:00+00:00", "ended_at_zone": "Europe/Prague"}
+
+
+def validated_end(payload: dict) -> dict:
+    return DEFAULT_EVENT_TYPES.validate(PLAYERSESSION_ENDED.event_type, payload)
+
+
+def test_the_end_event_type_is_spelled_once_and_forever():
+    assert PLAYERSESSION_ENDED.event_type == "library.playersession.ended"
+    assert PLAYERSESSION_ENDED.aggregate_type == "playersession"
+
+
+def test_an_end_payload_round_trips():
+    assert validated_end(AN_END) == AN_END
+
+
+def test_an_end_may_state_no_zone():
+    payload = AN_END | {"ended_at_zone": None}
+
+    assert validated_end(payload) == payload
+
+
+def test_an_end_payload_refuses_a_second_spelling_of_the_day_zone():
+    with pytest.raises(PayloadInvalid):
+        validated_end(AN_END | {"day_zone": "Europe/Prague"})
+
+
+def test_an_end_payload_refuses_a_non_canonical_instant():
+    with pytest.raises(PayloadInvalid):
+        validated_end(AN_END | {"ended_at": "2026-01-02T01:30:00Z"})
+
+
+def test_an_end_payload_refuses_a_missing_instant():
+    with pytest.raises(PayloadInvalid):
+        validated_end({"ended_at_zone": None})
+
+
+def test_an_end_names_no_references():
+    fields = DEFAULT_EVENT_TYPES.reference_fields_for(PLAYERSESSION_ENDED.event_type)
+
+    assert fields == {}
+
+
+def test_an_end_is_about_the_session_the_caller_names():
+    session_id = uuid.uuid7()
+
+    event = playersession_ended(
+        session_id,
+        ended_at=datetime(2026, 1, 1, 23, 30, tzinfo=UTC),
+        ended_at_zone=None,
+        day_zone=ZoneInfo("Europe/Prague"),
+    )
+
+    assert event.aggregate_id == session_id
+
+
+def test_an_end_takes_the_day_its_zone_reads():
+    event = playersession_ended(
+        uuid.uuid7(),
+        ended_at=datetime(2026, 1, 1, 23, 30, tzinfo=UTC),
+        ended_at_zone=None,
+        day_zone=ZoneInfo("Europe/Prague"),
+    )
+
+    #: Half past midnight in Prague.
+    assert event.effective_time.canonical == "2026-01-02"
+
+
+def test_an_end_may_land_on_a_later_day_than_the_creation_did():
+    """The event dates the act, not the session."""
+    session_id = uuid.uuid7()
+
+    created = playersession_created(
+        RUN,
+        timing={
+            "mode": "timed",
+            "started_at": "2026-01-01T22:00:00+00:00",
+            "started_at_zone": None,
+            "ended_at": None,
+            "ended_at_zone": None,
+            "day_zone": "Europe/Prague",
+        },
+        device=None,
+        release=None,
+        note="",
+        emulated=False,
+        session_id=session_id,
+    )
+    ended = playersession_ended(
+        session_id,
+        ended_at=datetime(2026, 1, 2, 1, 0, tzinfo=UTC),
+        ended_at_zone=None,
+        day_zone=ZoneInfo("Europe/Prague"),
+    )
+
+    assert created.effective_time.canonical == "2026-01-01"
+    assert ended.effective_time.canonical == "2026-01-02"
+
+
+def test_the_built_end_validates():
+    event = playersession_ended(
+        uuid.uuid7(),
+        ended_at=datetime(2026, 1, 2, 1, 30, tzinfo=UTC),
+        ended_at_zone="Europe/Prague",
+        day_zone=ZoneInfo("Europe/Prague"),
+    )
+
+    assert validated_end(event.payload) == event.payload
+
+
+def test_the_payload_and_the_fingerprint_spell_an_instant_alike():
+    """An end fingerprints safely because these agree.
+
+    They are independently written expressions. Truncate either and
+    every honest retry of one statement answers a conflict, with
+    nothing else failing.
+    """
+    stated = datetime(2026, 1, 1, 23, 30, 15, 123456, tzinfo=ZoneInfo("Asia/Tokyo"))
+
+    assert instant_text(stated) == _canonical_datetime(stated)
