@@ -20,7 +20,10 @@ from games.events.playersession import (
     day_text,
     instant_text,
     playersession_created,
+    playersession_device_changed,
+    playersession_emulated_changed,
     playersession_ended,
+    playersession_note_changed,
     playersession_timing_corrected,
 )
 from games.events.references import capture_reference
@@ -584,3 +587,60 @@ class CorrectSessionTiming(Command):
         if held == stated:
             return Unchanged("This session's time already reads so.")
         return [playersession_timing_corrected(session.pk, timing=payload)]
+
+
+class StatedDevice(NamedTuple):
+    """A device a description states, or no device at all.
+
+    Wrapped because None in `DescribeSession.device` is a fact not
+    stated. A NamedTuple, so the fingerprint writes it as an array.
+    """
+
+    device_id: uuid.UUID | None
+
+
+@dataclass(frozen=True, slots=True)
+class DescribeSession(Command):
+    """State a session's note, device or emulated flag.
+
+    None is a fact the caller does not state. Each stated fact that
+    differs from the row is its own event.
+    """
+
+    command_name: ClassVar[CommandName] = CommandName.PLAYERSESSION_DESCRIBE
+    #: A UUID, because Command fingerprints its fields.
+    session_id: uuid.UUID
+    note: str | None = None
+    device: StatedDevice | None = None
+    emulated: bool | None = None
+
+    def __post_init__(self) -> None:
+        if self.note is None and self.device is None and self.emulated is None:
+            raise ValueError("DescribeSession states no fact.")
+        if self.note is not None:
+            #: Before the fingerprint, so a restatement digests alike.
+            object.__setattr__(self, "note", self.note.strip())
+            _check_note(self.note)
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        session = _live_session(context, self.session_id)
+        events: list[NewEvent] = []
+        if self.note is not None and self.note != session.note:
+            events.append(playersession_note_changed(session.pk, note=self.note))
+        #: Compared before it is resolved: restating the device the
+        #: row names is no act, even once that device is removed.
+        if self.device is not None and self.device.device_id != session.device_id:
+            device = _library_device(context, self.device.device_id)
+            events.append(
+                playersession_device_changed(
+                    session.pk,
+                    device=None if device is None else capture_reference(device),
+                )
+            )
+        if self.emulated is not None and self.emulated != session.emulated:
+            events.append(
+                playersession_emulated_changed(session.pk, emulated=self.emulated)
+            )
+        if not events:
+            return Unchanged("This session already reads so.")
+        return events

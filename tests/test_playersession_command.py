@@ -14,8 +14,10 @@ from games.commands.playersession import (
     CorrectedTiming,
     CorrectSessionTiming,
     CreateSession,
+    DescribeSession,
     DurationOnlyTiming,
     EndSession,
+    StatedDevice,
     TimedTiming,
 )
 from games.events.dispatch import (
@@ -23,6 +25,7 @@ from games.events.dispatch import (
     CommandRejected,
     dispatch,
 )
+from games.events.idempotency import IdempotencyKeyMismatch
 from games.models import (
     Device,
     Game,
@@ -1113,3 +1116,273 @@ def test_resetting_a_finished_session_is_refused(owned_user, owned_library, run)
         ),
         saying="This session ended before it started. Check the times.",
     )
+
+
+# --- Describing a session ----------------------------------------------------
+
+
+def describes(library, actor, session_id, *, key=None, **stated):
+    return dispatch(
+        DescribeSession(session_id=session_id, **stated),
+        actor=actor,
+        library=library,
+        idempotency_key=key or str(uuid.uuid7()),
+    )
+
+
+def refused_description(library, actor, session_id, *, saying, **stated):
+    with pytest.raises(CommandRejected) as refusal:
+        describes(library, actor, session_id, **stated)
+    assert refusal.value.sentence == saying
+    return refusal.value
+
+
+def description_events() -> list[str]:
+    return list(
+        LibraryEvent.objects.filter(
+            event_type__in=[
+                "library.playersession.note_changed",
+                "library.playersession.device_changed",
+                "library.playersession.emulated_changed",
+            ]
+        )
+        .order_by("sequence")
+        .values_list("event_type", flat=True)
+    )
+
+
+@pytest.fixture
+def steam_deck(owned_library) -> Device:
+    return Device.objects.create(library=owned_library, name="Steam Deck")
+
+
+def test_a_note_alone_is_described(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed(), note="before")
+
+    describes(owned_library, owned_user, session.pk, note="after")
+
+    session.refresh_from_db()
+    assert session.note == "after"
+    assert description_events() == ["library.playersession.note_changed"]
+
+
+def test_a_device_alone_is_described(owned_user, owned_library, run, steam_deck):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    describes(owned_library, owned_user, session.pk, device=StatedDevice(steam_deck.pk))
+
+    session.refresh_from_db()
+    assert session.device == steam_deck
+    assert description_events() == ["library.playersession.device_changed"]
+
+
+def test_the_emulated_flag_alone_is_described(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    describes(owned_library, owned_user, session.pk, emulated=True)
+
+    session.refresh_from_db()
+    assert session.emulated is True
+    assert description_events() == ["library.playersession.emulated_changed"]
+
+
+def test_three_facts_are_three_events(owned_user, owned_library, run, steam_deck):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    result = describes(
+        owned_library,
+        owned_user,
+        session.pk,
+        note="played",
+        device=StatedDevice(steam_deck.pk),
+        emulated=True,
+    )
+
+    assert result.outcome is CommandOutcome.APPENDED
+    assert description_events() == [
+        "library.playersession.note_changed",
+        "library.playersession.device_changed",
+        "library.playersession.emulated_changed",
+    ]
+
+
+def test_only_the_facts_that_differ_are_recorded(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed(), note="played")
+
+    describes(owned_library, owned_user, session.pk, note="played", emulated=True)
+
+    assert description_events() == ["library.playersession.emulated_changed"]
+
+
+def test_an_empty_note_clears_the_note(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed(), note="played")
+
+    describes(owned_library, owned_user, session.pk, note="")
+
+    session.refresh_from_db()
+    assert session.note == ""
+
+
+def test_a_padded_note_is_compared_as_the_note_inside_it(
+    owned_user, owned_library, run
+):
+    session = record(owned_library, owned_user, run, a_timed(), note="played")
+
+    result = describes(owned_library, owned_user, session.pk, note="  played ")
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+
+
+def test_a_padded_note_fingerprints_as_the_note_inside_it(
+    owned_user, owned_library, run
+):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    describes(owned_library, owned_user, session.pk, note=" played", key="describe")
+    result = describes(
+        owned_library, owned_user, session.pk, note="played", key="describe"
+    )
+
+    assert result.outcome is CommandOutcome.REPLAYED
+
+
+def test_stating_no_device_clears_the_device(
+    owned_user, owned_library, run, steam_deck
+):
+    session = record(owned_library, owned_user, run, a_timed(), device_id=steam_deck.pk)
+
+    describes(owned_library, owned_user, session.pk, device=StatedDevice(None))
+
+    session.refresh_from_db()
+    assert session.device is None
+
+
+def test_an_unstated_device_is_left_alone(owned_user, owned_library, run, steam_deck):
+    session = record(owned_library, owned_user, run, a_timed(), device_id=steam_deck.pk)
+
+    describes(owned_library, owned_user, session.pk, note="played")
+
+    session.refresh_from_db()
+    assert session.device == steam_deck
+
+
+def test_a_note_jsonb_cannot_store_is_refused(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    refused_description(
+        owned_library,
+        owned_user,
+        session.pk,
+        note="hi\x00there",
+        saying="That note contains a character we cannot store.",
+    )
+
+
+def test_another_librarys_device_is_refused(
+    owned_user, owned_library, run, second_library
+):
+    session = record(owned_library, owned_user, run, a_timed())
+    elsewhere = Device.objects.create(library=second_library, name="Elsewhere")
+
+    refused_description(
+        owned_library,
+        owned_user,
+        session.pk,
+        device=StatedDevice(elsewhere.pk),
+        saying="That device is not available.",
+    )
+
+
+def test_a_removed_device_is_refused(owned_user, owned_library, run, steam_deck):
+    session = record(owned_library, owned_user, run, a_timed())
+    Device.objects.filter(pk=steam_deck.pk).update(removed_at=timezone.now())
+
+    refused_description(
+        owned_library,
+        owned_user,
+        session.pk,
+        device=StatedDevice(steam_deck.pk),
+        saying=(
+            "That device was removed from your library. Restore it before "
+            "recording a session on it."
+        ),
+    )
+
+
+def test_restating_a_removed_device_the_row_names_changes_nothing(
+    owned_user, owned_library, run, steam_deck
+):
+    """Compared before it is resolved, so the removal is not in the way."""
+    session = record(owned_library, owned_user, run, a_timed(), device_id=steam_deck.pk)
+    Device.objects.filter(pk=steam_deck.pk).update(removed_at=timezone.now())
+
+    result = describes(
+        owned_library, owned_user, session.pk, device=StatedDevice(steam_deck.pk)
+    )
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+
+
+def test_a_description_of_nothing_is_a_defect_of_the_caller():
+    with pytest.raises(ValueError):
+        DescribeSession(session_id=uuid.uuid7())
+
+
+def test_an_unknown_session_has_nothing_to_describe(owned_user, owned_library):
+    refused_description(
+        owned_library,
+        owned_user,
+        uuid.uuid7(),
+        note="played",
+        saying="That session is not available.",
+    )
+
+
+def test_another_librarys_session_has_nothing_to_describe(
+    owned_user, owned_library, second_library
+):
+    elsewhere = a_session_another_library_holds(second_library)
+
+    refused_description(
+        owned_library,
+        owned_user,
+        elsewhere.pk,
+        note="played",
+        saying="That session is not available.",
+    )
+
+
+def test_a_description_under_a_removed_run_is_refused(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+    Playthrough.objects.filter(pk=run.pk).update(removed_at=timezone.now())
+
+    refused_description(
+        owned_library,
+        owned_user,
+        session.pk,
+        note="played",
+        saying=(
+            "That playthrough was removed from your library. Restore it "
+            "before recording this."
+        ),
+    )
+
+
+def test_no_device_and_an_empty_note_are_different_statements(
+    owned_user, owned_library, run, steam_deck
+):
+    """`StatedDevice(None)` fingerprints as an array, never as an unstated fact."""
+    session = record(
+        owned_library,
+        owned_user,
+        run,
+        a_timed(),
+        note="played",
+        device_id=steam_deck.pk,
+    )
+
+    describes(
+        owned_library, owned_user, session.pk, device=StatedDevice(None), key="one"
+    )
+    with pytest.raises(IdempotencyKeyMismatch):
+        describes(owned_library, owned_user, session.pk, note="", key="one")
