@@ -18,7 +18,7 @@ from typing import NamedTuple, NoReturn, assert_never
 from zoneinfo import ZoneInfo
 
 from django.contrib.auth.models import User
-from django.db import transaction
+from django.db import connection, transaction
 from django.db.models import QuerySet
 from django.utils import timezone
 
@@ -50,6 +50,8 @@ from games.identity_audit import check_ordering, identity_models
 from games.models import (
     Device,
     Game,
+    LibraryEvent,
+    LibraryIdempotencyRecord,
     PlayerGame,
     PlayerSession,
     PlayerSessionTimingMode,
@@ -941,6 +943,26 @@ def _replay_mismatches(library: UserLibrary) -> list[Mismatch[MismatchCode]]:
     return mismatches
 
 
+#: The tables this pass fills, read again before commit.
+FILLED_TABLES = (PlayerSession, LibraryEvent, LibraryIdempotencyRecord, Playthrough)
+
+
+def refresh_statistics() -> None:
+    """ANALYZE what the pass wrote, so the gate's reads plan well.
+
+    The rows are uncommitted, so the planner still holds the
+    statistics of the tables as they stood before: empty. The
+    parity read then joins thousands of rows as if they were
+    none, and takes minutes where it takes seconds. ANALYZE is
+    allowed inside a transaction; VACUUM is not, and none is needed.
+    """
+    tables = ", ".join(
+        connection.ops.quote_name(model._meta.db_table) for model in FILLED_TABLES
+    )
+    with connection.cursor() as cursor:
+        cursor.execute(f"ANALYZE {tables}")
+
+
 def reconcile(
     library: UserLibrary, counts: ConversionCounts
 ) -> list[Mismatch[MismatchCode]]:
@@ -950,6 +972,7 @@ def reconcile(
     counts, and a replay. Ordered cheap to dear, and all of them
     run: one mismatch says less than the whole list.
     """
+    refresh_statistics()
     zone = ZoneInfo(display_zone_name(library))
     mismatches: list[Mismatch[MismatchCode]] = []
     owned = Game.objects.filter(library=library).only(*GAME_FIELDS)

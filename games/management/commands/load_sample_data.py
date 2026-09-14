@@ -14,6 +14,12 @@ from django.core.serializers.base import DeserializationError
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 
+from games.backfill.playersession import (
+    ConversionRefused,
+    convert_library,
+    ordering_violations,
+    reconcile,
+)
 from games.conversion import _request_conversion_for_locked_state
 from games.events.rebuild import (
     RebuildMode,
@@ -178,6 +184,24 @@ class Command(BaseCommand):
                     "Sample fixture could not be projected: "
                     f"{report.attempts[-1].conflict}"
                 )
+            #: The fixture's sessions are legacy rows; the deployment
+            #: holds their projection, so this database holds it too.
+            try:
+                converted = convert_library(user.library)
+            except ConversionRefused as refusal:
+                raise CommandError(
+                    f"Sample sessions could not be converted: {refusal}"
+                ) from refusal
+            mismatches = [
+                *reconcile(user.library, converted),
+                *ordering_violations(),
+            ]
+            if mismatches:
+                named = "; ".join(
+                    f"{mismatch.code} {mismatch.subject}: {mismatch.detail}"
+                    for mismatch in mismatches[:3]
+                )
+                raise CommandError(f"Sample sessions did not reconcile: {named}")
             #: The fixture predates #896: no reference rows.
             try:
                 backfilled = backfill_wikidata_references(user.library)
@@ -210,7 +234,8 @@ class Command(BaseCommand):
                 + ", ".join(
                     f"{diff.rebuilt_rows} {diff.table}" for diff in report.tables
                 )
-                + "."
+                + f", and {converted.live_rows + converted.rows_removed_converted} "
+                "session(s) converted."
             )
         )
 

@@ -1,11 +1,15 @@
 """What the legacy Session rows become. Issue #700."""
 
+import importlib
+import json
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
-from django.db import transaction
+from django.core.management import call_command
+from django.db import connection, migrations, transaction
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from session_rows import tracked_run
 from test_playergame_playthrough_gate import UNREACHABLE_KINDS
@@ -20,6 +24,8 @@ from games.backfill.playersession import (
     NO_COUNTS,
     ConversionCounts,
     ConversionRefused,
+    Mismatch,
+    MismatchCode,
     convert_library,
     convert_row,
     display_zone_name,
@@ -966,3 +972,155 @@ def test_a_conversion_in_another_zone_reconciles_clean(
 
     assert PlayerSession.objects.filter(day_zone="Asia/Tokyo").exists()
     assert reconcile(owned_library, counts) == []
+
+
+# --- The migration and the sample loader --------------------------------------
+
+#: A digit-first module name needs importlib.
+_migration = importlib.import_module("games.migrations.0004_playersession_conversion")
+MACHINE_PREFIX = _migration.MACHINE_PREFIX
+convert_legacy_sessions = _migration.convert_legacy_sessions
+
+
+def _machine_payload(capsys):
+    """The migration's one machine-readable line, off stderr."""
+    line = next(
+        text
+        for text in capsys.readouterr().err.splitlines()
+        if text.startswith(MACHINE_PREFIX)
+    )
+    return json.loads(line[len(MACHINE_PREFIX) :])
+
+
+@pytest.mark.untracked_games
+def test_the_migration_converts_and_reports(owned_library, capsys):
+    game = tracked_game(owned_library, "Chrono Trigger")
+    legacy(game, timestamp_end=START + HOUR)
+    remove(legacy(game, start=START + HOUR))
+    convert_legacy_sessions(None, None)
+
+    payload = _machine_payload(capsys)
+    assert payload["mismatches"] == []
+    assert payload["summary"]["libraries"] == 1
+    assert payload["summary"]["timed"] == 1
+    assert payload["summary"]["running_removed"] == 1
+    assert payload["summary"]["rows_unreached"] == 0
+    assert payload["summary"]["mismatches"] == 0
+    assert PlayerSession.objects.count() == 2
+
+
+def _one_mismatch(library):
+    return [
+        Mismatch(
+            code=MismatchCode.ROW_DISAGREEMENT, subject=str(library.pk), detail="stated"
+        )
+    ]
+
+
+@pytest.mark.untracked_games
+def test_the_migration_raises_on_a_mismatch(owned_library, monkeypatch):
+    game = tracked_game(owned_library, "Chrono Trigger")
+    legacy(game, timestamp_end=START + HOUR)
+    #: The migration reads it at call time.
+    monkeypatch.setattr(
+        conversion, "reconcile", lambda library, counts: _one_mismatch(library)
+    )
+    with pytest.raises(RuntimeError, match="1 mismatch"):
+        convert_legacy_sessions(None, None)
+
+
+@pytest.mark.untracked_games
+def test_the_migration_names_the_mismatch_it_raises_on(owned_library, monkeypatch):
+    game = tracked_game(owned_library, "Chrono Trigger")
+    legacy(game, timestamp_end=START + HOUR)
+    monkeypatch.setattr(
+        conversion, "reconcile", lambda library, counts: _one_mismatch(library)
+    )
+    #: The count alone says nothing to whoever reads this.
+    with pytest.raises(
+        RuntimeError, match=f"row_disagreement {owned_library.pk}: stated"
+    ):
+        convert_legacy_sessions(None, None)
+
+
+@pytest.mark.untracked_games
+def test_a_mismatch_leaves_the_conversion_rolled_back(owned_library, monkeypatch):
+    game = tracked_game(owned_library, "Chrono Trigger")
+    legacy(game, timestamp_end=START + HOUR)
+    monkeypatch.setattr(
+        conversion, "reconcile", lambda library, counts: _one_mismatch(library)
+    )
+    before = (LibraryEvent.objects.count(), PlayerSession.objects.count())
+
+    #: What the migration framework wraps this in.
+    with pytest.raises(RuntimeError), transaction.atomic():
+        convert_legacy_sessions(None, None)
+
+    assert (LibraryEvent.objects.count(), PlayerSession.objects.count()) == before
+
+
+@pytest.mark.untracked_games
+def test_the_migration_reports_a_second_pass_that_appends(owned_library, monkeypatch):
+    game = tracked_game(owned_library, "Chrono Trigger")
+    legacy(game, timestamp_end=START + HOUR)
+    passes = []
+
+    def drifting(library, *, minted_at=None):
+        counts = convert_library(library, minted_at=minted_at)
+        passes.append(library)
+        #: The migration's second call over one library.
+        if len(passes) % 2 == 0:
+            return counts + ConversionCounts(events_appended=1)
+        return counts
+
+    monkeypatch.setattr(conversion, "convert_library", drifting)
+    with pytest.raises(RuntimeError, match="count_drift"):
+        convert_legacy_sessions(None, None)
+
+
+@pytest.mark.untracked_games
+def test_a_refused_row_aborts_and_still_emits(owned_library, capsys):
+    game = tracked_game(owned_library, "Chrono Trigger")
+    legacy(game, timestamp_end=START + HOUR)
+    running = legacy(game, start=START + HOUR)
+    with pytest.raises(ConversionRefused, match=f"Session {running.pk}"):
+        convert_legacy_sessions(None, None)
+
+    payload = _machine_payload(capsys)
+    assert payload["summary"]["aborted"] == 1
+    assert payload["summary"]["events_appended"] == 0
+
+
+@pytest.mark.untracked_games
+def test_the_migration_is_elidable_and_reversible_by_noop():
+    (operation,) = _migration.Migration.operations
+    assert operation.elidable is True
+    assert operation.reverse_code is migrations.RunPython.noop
+    assert _migration.Migration.dependencies == [("games", "0003_remove_game_playtime")]
+
+
+@pytest.mark.untracked_games
+def test_load_sample_data_converts_the_fixture(owned_user):
+    call_command("load_sample_data", "--user", owned_user.username, verbosity=0)
+    library = UserLibrary.objects.get(user=owned_user)
+
+    assert Session.objects.filter(game__library=library).count() > 0
+    assert PlayerSession.objects.filter(library=library).count() == (
+        Session.objects.filter(game__library=library).count()
+    )
+    counts = convert_library(library)
+    assert counts.events_appended == 0
+    assert reconcile(library, counts) == []
+    assert ordering_violations() == []
+
+
+@pytest.mark.untracked_games
+def test_reconcile_refreshes_the_planner_statistics_first(owned_library):
+    """Uncommitted rows leave the planner blind; ANALYZE is the remedy."""
+    _game, counts = seeded(owned_library)
+    with CaptureQueriesContext(connection) as captured:
+        reconcile(owned_library, counts)
+
+    statements = [query["sql"] for query in captured.captured_queries]
+    assert statements[0].startswith('ANALYZE "games_playersession"')
+    assert '"games_libraryevent"' in statements[0]
