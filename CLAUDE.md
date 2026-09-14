@@ -196,6 +196,11 @@ docs/           — Additional documentation
   entry since #694, `PlayerSession.playthrough`, so run with live sibling and
   live sessions refused with sentence naming move; last-run rule runs first
   because for sole run only its sentence names remedy that works (#1048).
+  Row of *another* library naming run (drift `audit_library_ownership`
+  reports) refused after own-library rows, with neutral
+  `INCONSISTENT_PLAYTHROUGH` sentence and `games` logger error naming both
+  libraries (#1062); session naming foreign run refused by every session
+  command alike, through `_session_run`, with `INCONSISTENT_SESSION`.
   Registry constructed only through `BlockingReferrer.on`, which refuses field
   that is not key to a run and model whose manager states no `alive()`. Both
   that lookup and sibling count scoped on library. Blank `name` reads as

@@ -17,6 +17,7 @@ from games.commands.playersession import (
     TimedTiming,
 )
 from games.commands.playthrough import (
+    INCONSISTENT_PLAYTHROUGH,
     PLAYTHROUGH_NAME_MAX_LENGTH,
     ActStatement,
     BlockingReferrer,
@@ -39,6 +40,7 @@ from games.models import (
     LibraryEvent,
     PlayerGame,
     PlayerSession,
+    PlayerSessionTimingMode,
     Playthrough,
     PlaythroughKind,
     ProjectionModel,
@@ -2053,15 +2055,16 @@ def test_the_first_naming_entry_is_the_one_a_person_hears(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_foreign_referring_row_keeps_nothing_in_place(
-    owned_user, owned_library, game, monkeypatch, referring_models, django_user_model
+def test_a_foreign_referring_row_is_refused_and_reported(
+    owned_user,
+    owned_library,
+    game,
+    monkeypatch,
+    referring_models,
+    django_user_model,
+    capture_games_logger,
 ):
-    """The lookup is scoped, as the sibling count is.
-
-    A row of another library naming this run is the drift
-    `audit_library_ownership` reports, and "move your sessions"
-    is advice about rows this person cannot reach.
-    """
+    """Neither sentence fits, so the log carries the rest."""
     assignment_model, _ = referring_models
     _track(owned_user, owned_library, game)
     run = _second_run(owned_user, owned_library)
@@ -2074,9 +2077,40 @@ def test_a_foreign_referring_row_keeps_nothing_in_place(
         ),
     )
 
-    result = _remove(owned_user, owned_library, run, key="foreign-referrer")
+    with capture_games_logger() as caplog, pytest.raises(CommandRejected) as refusal:
+        _remove(owned_user, owned_library, run, key="foreign-referrer")
 
-    assert result.outcome is CommandOutcome.APPENDED
+    assert refusal.value.sentence == INCONSISTENT_PLAYTHROUGH
+    (record,) = caplog.records
+    assert record.levelname == "ERROR"
+    assert str(run.pk) in record.getMessage()
+    assert str(stranger.library.pk) in record.getMessage()
+    run.refresh_from_db()
+    assert run.removed_at is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_own_session_answers_before_a_foreign_one(
+    owned_user, owned_library, game, monkeypatch, referring_models, django_user_model
+):
+    """A remedy the person can act on comes first."""
+    assignment_model, _ = referring_models
+    _track(owned_user, owned_library, game)
+    run = _second_run(owned_user, owned_library)
+    stranger = django_user_model.objects.create_user(username="stranger", password="p")
+    assignment_model.objects.create(playthrough=run, library=stranger.library)
+    assignment_model.objects.create(playthrough=run, library=owned_library)
+    _register(
+        monkeypatch,
+        BlockingReferrer.on(
+            assignment_model, "playthrough", sentence=ASSIGNED_SENTENCE
+        ),
+    )
+
+    with pytest.raises(CommandRejected) as refusal:
+        _remove(owned_user, owned_library, run, key="both")
+
+    assert refusal.value.sentence == ASSIGNED_SENTENCE
 
 
 def test_a_referrer_whose_reads_keep_removed_rows_is_refused():
@@ -2215,6 +2249,32 @@ def test_a_moved_session_frees_its_run(owned_user, owned_library, game, target):
     result = _remove(owned_user, owned_library, run)
 
     assert result.outcome is CommandOutcome.APPENDED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_foreign_session_is_refused_and_reported(
+    owned_user, owned_library, game, django_user_model, capture_games_logger
+):
+    _track(owned_user, owned_library, game)
+    run = _second_run(owned_user, owned_library)
+    stranger = django_user_model.objects.create_user(username="stranger", password="p")
+    PlayerSession.objects.create(
+        id=uuid.uuid7(),
+        library=stranger.library,
+        playthrough=run,
+        timing_mode=PlayerSessionTimingMode.TIMED,
+        started_at=timezone.now() - timedelta(hours=1),
+        day_zone="Europe/Prague",
+        note="",
+        emulated=False,
+        created_at=timezone.now(),
+    )
+
+    with capture_games_logger() as caplog, pytest.raises(CommandRejected) as refusal:
+        _remove(owned_user, owned_library, run, key="foreign-session")
+
+    assert refusal.value.sentence == INCONSISTENT_PLAYTHROUGH
+    assert [record.levelname for record in caplog.records] == ["ERROR"]
 
 
 @pytest.mark.django_db(transaction=True)

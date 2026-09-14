@@ -1,5 +1,6 @@
 """Commands about the sessions a library records."""
 
+import logging
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -11,7 +12,11 @@ from zoneinfo import ZoneInfo
 from django.db import connection
 
 from common.date_time_presentation import zone_or_none
-from games.commands.playthrough import _live_run, library_playthrough
+from games.commands.playthrough import (
+    _live_run,
+    library_playthrough,
+    refuse_unless_live,
+)
 from games.commands.scope import Refusal, library_row
 from games.events.dispatch import Command, CommandContext, CommandName, CommandRejected
 from games.events.playersession import (
@@ -31,10 +36,18 @@ from games.events.playersession import (
 )
 from games.events.references import capture_reference
 from games.events.vocabulary import NewEvent, Unchanged
-from games.models import Device, PlayerSession, PlayerSessionTimingMode
+from games.models import Device, PlayerSession, PlayerSessionTimingMode, Playthrough
 from games.projectors.playersession import TimingColumns, columns_for_timing
 
+logger = logging.getLogger("games")
+
 OUT_OF_RANGE = "That time is outside the range we can record."
+
+#: For a row the ownership audit reports, not the person.
+INCONSISTENT_SESSION = (
+    "That session's record is inconsistent, so nothing was changed. "
+    "The problem has been reported."
+)
 
 #: The finest duration a statement may carry. The payload states whole
 #: seconds while the fingerprint states microseconds, so anything
@@ -175,13 +188,38 @@ def library_session(context: CommandContext, session_id: uuid.UUID) -> PlayerSes
     )
 
 
+def _session_run(context: CommandContext, session: PlayerSession) -> Playthrough:
+    """The session's run, resolved in this library.
+
+    A miss is a session naming another library's run, the drift
+    `audit_library_ownership` reports. The person named the
+    session, so the sentence names it, and the log names the rest.
+    """
+    try:
+        return library_playthrough(context, session.playthrough_id)
+    except CommandRejected as refusal:
+        logger.error(
+            "[playersession]: session %s of library %s names playthrough %s, "
+            "which this library does not hold; the command was refused.",
+            session.pk,
+            session.library_id,
+            session.playthrough_id,
+        )
+        raise CommandRejected(
+            f"Session {session.pk} names playthrough {session.playthrough_id}, "
+            "which is not this library's; the ownership audit reports it, and "
+            "no command states a fact about it.",
+            sentence=INCONSISTENT_SESSION,
+        ) from refusal
+
+
 def _live_session(context: CommandContext, session_id: uuid.UUID) -> PlayerSession:
     """The session, refused if nothing may be stated about it."""
     session = library_session(context, session_id)
     #: For its scope as much as its marks: it proves the
     #: session's run is this library's, which is the
     #: registered reference the ownership audit walks.
-    _live_run(context, session.playthrough_id)
+    refuse_unless_live(_session_run(context, session))
     #: Under dispatch's lock: the mark cannot move.
     if session.removed_at is not None:
         raise CommandRejected(
@@ -694,7 +732,7 @@ def _refuse_under_a_removed_parent(
 ) -> None:
     """Refuse an act under a removed parent."""
     #: Resolved, not followed: the FK drops the scope.
-    run = library_playthrough(context, session.playthrough_id)
+    run = _session_run(context, session)
     #: Under dispatch's lock neither mark can move.
     if run.player_game.removed_at is not None:
         raise CommandRejected(

@@ -1,5 +1,6 @@
 """Commands about the runs a library records."""
 
+import logging
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -32,6 +33,14 @@ from games.models import (
 from games.projections import FieldName
 from games.reads.playthrough_endpoints import stated_completion, stated_start
 from timetracker.temporal import TemporalQualifier, TemporalValue, stated_date
+
+logger = logging.getLogger("games")
+
+#: For a row the ownership audit reports, not the person.
+INCONSISTENT_PLAYTHROUGH = (
+    "That playthrough's record is inconsistent, so nothing was changed. "
+    "The problem has been reported."
+)
 
 #: Read off the column, so the refusal and the constraint cannot drift.
 PLAYTHROUGH_NAME_MAX_LENGTH: int = cast(
@@ -195,7 +204,12 @@ def library_playthrough(
 
 def _live_run(context: CommandContext, playthrough_id: uuid.UUID) -> Playthrough:
     """The run, refused if nothing may be stated about it."""
-    run = library_playthrough(context, playthrough_id)
+    return refuse_unless_live(library_playthrough(context, playthrough_id))
+
+
+def refuse_unless_live(run: Playthrough) -> Playthrough:
+    """Refuse a run under either mark."""
+    playthrough_id = run.pk
     #: Under dispatch's lock: neither mark can move.
     if run.player_game.removed_at is not None:
         raise CommandRejected(
@@ -513,24 +527,74 @@ BLOCKING_REFERRERS: tuple[BlockingReferrer, ...] = (
 )
 
 
+def _live_rows_naming(referrer: BlockingReferrer, run: Playthrough) -> QuerySet[Any]:
+    """Every live row of the referrer naming the run."""
+    #: `on()` refuses a manager without it. The annotation on
+    #: `_default_manager` names the base, which cannot say so.
+    reads = cast(RemovableReads, referrer.model._default_manager)
+    return reads.alive().filter(**{referrer.field_name: run})
+
+
 def blocking_referrer(run: Playthrough) -> BlockingReferrer | None:
-    """The first registered entry a live row answers.
+    """The first registered entry a live row of this library answers.
 
     Scoped on the library, as `_other_live_ordinary_runs` is: a
-    row of another library naming this run is the drift
-    `audit_library_ownership` reports, and a person cannot act on
-    advice about rows their library does not hold. `model` is a
-    projection, so the column is always there, and `on()` states
-    the manager's `alive()`, which reads a parent's mark too.
+    person cannot act on advice about rows their library does not
+    hold, so a foreign row is `foreign_referrer`'s to refuse.
     """
     for referrer in BLOCKING_REFERRERS:
-        #: `on()` refuses a manager without it. The annotation on
-        #: `_default_manager` names the base, which cannot say so.
-        reads = cast(RemovableReads, referrer.model._default_manager)
-        named = reads.alive().filter(**{referrer.field_name: run}, library=run.library)
-        if named.exists():
+        if _live_rows_naming(referrer, run).filter(library=run.library).exists():
             return referrer
     return None
+
+
+class ForeignReferrer(NamedTuple):
+    """Rows of other libraries naming a run."""
+
+    referrer: BlockingReferrer
+    library_ids: tuple[uuid.UUID, ...]
+
+
+def foreign_referrer(run: Playthrough) -> ForeignReferrer | None:
+    """The first registered entry a row of another library answers.
+
+    Such a row is the drift `audit_library_ownership` reports.
+    Removing the run would leave it live under a removed run,
+    where no read finds it and no restore reaches it.
+    """
+    for referrer in BLOCKING_REFERRERS:
+        library_ids = tuple(
+            _live_rows_naming(referrer, run)
+            .exclude(library=run.library)
+            .order_by("library_id")
+            .values_list("library_id", flat=True)
+            .distinct()
+        )
+        if library_ids:
+            return ForeignReferrer(referrer, library_ids)
+    return None
+
+
+def _refuse_a_foreign_referrer(run: Playthrough) -> None:
+    """Refuse and report a foreign row naming the run."""
+    foreign = foreign_referrer(run)
+    if foreign is None:
+        return
+    logger.error(
+        "[playthrough]: %s.%s of library %s names playthrough %s of library %s; "
+        "the removal was refused.",
+        foreign.referrer.model.__name__,
+        foreign.referrer.field_name,
+        ", ".join(str(library_id) for library_id in foreign.library_ids),
+        run.pk,
+        run.library_id,
+    )
+    raise CommandRejected(
+        f"A live {foreign.referrer.model.__name__} of another library names "
+        f"playthrough {run.pk}, which the ownership audit reports; removing "
+        "the run would strand it.",
+        sentence=INCONSISTENT_PLAYTHROUGH,
+    )
 
 
 def _other_live_ordinary_runs(
@@ -591,6 +655,7 @@ class RemovePlaythrough(Command):
                 "be found.",
                 sentence=blocker.sentence,
             )
+        _refuse_a_foreign_referrer(run)
         return [playthrough_removed(run.pk)]
 
 
