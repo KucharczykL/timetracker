@@ -545,7 +545,7 @@ def test_a_move_refuses_a_run_that_is_not_a_key():
 
 
 def test_a_move_names_no_reference_kind():
-    """A bare key, as the creation's run is."""
+    """A bare key, as the creation's run."""
     assert (
         DEFAULT_EVENT_TYPES.reference_fields_for(PLAYERSESSION_MOVED.event_type) == {}
     )
@@ -565,7 +565,7 @@ def test_a_duration_only_correction_takes_its_written_day():
 
 
 def test_a_correction_is_dated_by_its_start_not_its_end():
-    """A correction states the whole session again, so it dates the session."""
+    """A correction dates the session, not the act."""
     timing = A_CORRECTED_TIMING | {
         "started_at": "2026-01-01T22:00:00+00:00",
         "ended_at": "2026-01-02T01:00:00+00:00",

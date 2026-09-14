@@ -108,7 +108,7 @@ class PlayerSessions(Projector):
         )
 
     def _timing_corrected(self, event: RecordedEvent) -> None:
-        """All eight columns, so nothing of the old mode stays."""
+        """All eight columns; no old mode stays."""
         self.amend(
             PlayerSession,
             event.aggregate_id,

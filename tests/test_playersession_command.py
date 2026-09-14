@@ -309,7 +309,7 @@ def test_it_refuses_a_session_with_no_day_zone(owned_user, owned_library, run):
 def test_it_refuses_a_blank_day_zone(owned_user, owned_library, run):
     refusal = refused(owned_library, owned_user, run, a_timed(day_zone=" "))
 
-    #: A blank is a zone nobody stated, not a zone we do not know.
+    #: A blank is unstated, not unknown.
     assert refusal.sentence == "Say which time zone this session's day is read in."
 
 
@@ -833,7 +833,7 @@ def refused_correction(library, actor, session_id, timing, *, saying):
 
 
 def a_session_another_library_holds(library) -> PlayerSession:
-    """Arranged with rows: the other library's stream is not this test's."""
+    """Rows, not events: another library's stream."""
     game = Game.objects.create(library=library, name="Elsewhere")
     tracked = PlayerGame.objects.create(
         id=uuid.uuid7(), library=library, game=game, tracked_at=timezone.now()
@@ -889,7 +889,7 @@ def test_every_transition_is_recorded(owned_user, owned_library, run, before, af
 
 
 def test_a_corrected_session_may_run_again_and_then_end(owned_user, owned_library, run):
-    """A person who stated an end by mistake has a remedy."""
+    """A mistaken end has a remedy."""
     session = record(owned_library, owned_user, run, a_corrected())
 
     corrects(owned_library, owned_user, session.pk, a_timed())
@@ -1007,7 +1007,7 @@ def test_a_correction_meets_every_rule_the_creation_does(
 def test_an_invalid_restatement_is_refused_not_unchanged(
     owned_user, owned_library, run
 ):
-    """The rules run ahead of the comparison."""
+    """Rules run before the comparison."""
     session = record(owned_library, owned_user, run, a_timed())
     PlayerSession.objects.filter(pk=session.pk).update(started_at_zone="Mars/Base")
 
@@ -1083,7 +1083,7 @@ def test_a_correction_under_a_removed_game_is_refused(owned_user, owned_library,
 
 
 def test_resetting_a_running_session_restates_its_start(owned_user, owned_library, run):
-    """The statement the reset screen sends."""
+    """What the reset screen sends."""
     session = record(owned_library, owned_user, run, a_timed())
     now = START + timedelta(hours=3)
 
@@ -1314,7 +1314,7 @@ def test_a_removed_device_is_refused(owned_user, owned_library, run, steam_deck)
 def test_restating_a_removed_device_the_row_names_changes_nothing(
     owned_user, owned_library, run, steam_deck
 ):
-    """Compared before it is resolved, so the removal is not in the way."""
+    """Compared before resolved; removal is irrelevant."""
     session = record(owned_library, owned_user, run, a_timed(), device_id=steam_deck.pk)
     Device.objects.filter(pk=steam_deck.pk).update(removed_at=timezone.now())
 
@@ -1373,7 +1373,7 @@ def test_a_description_under_a_removed_run_is_refused(owned_user, owned_library,
 def test_no_device_and_an_empty_note_are_different_statements(
     owned_user, owned_library, run, steam_deck
 ):
-    """`StatedDevice(None)` fingerprints as an array, never as an unstated fact."""
+    """`StatedDevice(None)` is not an unstated fact."""
     session = record(
         owned_library,
         owned_user,
@@ -1549,7 +1549,7 @@ def test_a_target_under_a_removed_game_is_refused(
 def test_a_session_under_a_removed_game_cannot_be_moved_out(
     owned_user, owned_library, run, other_game_run
 ):
-    """No read finds such a session, so no person could name it."""
+    """No read finds such a session."""
     session = record(owned_library, owned_user, run, a_timed())
     PlayerGame.objects.filter(pk=run.player_game_id).update(removed_at=timezone.now())
 

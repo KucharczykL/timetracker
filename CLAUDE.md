@@ -291,20 +291,13 @@ docs/           — Additional documentation
   #702 owns surfaces. Contract is
   [End a running Timed session](docs/superpowers/specs/2026-09-13-issue-691-session-end-design.md)
 
-  #692 adds three corrections, one act each, because a bulk move one field
-  away from a bulk timing rewrite is a hazard. `CorrectSessionTiming` states
-  whole `TimingStatement` again, through the module functions `CreateSession`
-  shares, so every mode may follow every other; equality is
-  `columns_for_timing(payload)` against row's eight columns, the projector's
-  own mapping, and event dates by `stated_day_of` — start, even where only end
-  moved. `DescribeSession` states `note`, `device`, `emulated`, `None` unstated,
-  `StatedDevice(None)` for no device; one event per fact that differs, device
-  compared before resolved. `MoveSessionToPlaythrough` may name run at another
-  game — only remedy for session logged against wrong one; same run is
-  `Unchanged` ahead of target read, and `_live_session` refuses session under
-  removed run or game, which no read finds. Reset-to-now is
-  `CorrectSessionTiming` with `TimedTiming(now, day_zone=row's,
-  started_at_zone=browser's)`. Contract is
+  #692's three corrections, one act each. `CorrectSessionTiming` restates
+  whole `TimingStatement` — any mode to any — through module functions
+  `CreateSession` shares; `Unchanged` compares `columns_for_timing` with row,
+  event dated by start. `DescribeSession`: `None` unstated, `StatedDevice(None)`
+  no device, one event per differing fact. `MoveSessionToPlaythrough` may name
+  run at another game. Reset-to-now is `TimedTiming(now)` with row's `day_zone`.
+  Contract is
   [Correct a session](docs/superpowers/specs/2026-09-14-issue-692-session-corrections-design.md)
 
 **Nothing user removes is destroyed** (#944). Eight removable models — Game,

@@ -240,15 +240,11 @@ def _timed_start(session: PlayerSession) -> TimedStart:
 def _normalized_timing(timing: TimingStatement) -> TimingStatement:
     """A statement fit to fingerprint, or a refusal.
 
-    Called before the fingerprint rather than inside build(): dispatch
-    fingerprints the input first, and a naive datetime has no
-    canonical form there, so a build-time refusal would never run and
-    the person would meet a TypeError instead.
+    Runs before the fingerprint: a naive datetime has no canonical
+    form there, so a build-time refusal never runs.
 
-    Through the pattern rather than by attribute name: getattr with a
-    default turns a renamed field into a guard that silently never
-    runs, and the fingerprint encodes a NamedTuple positionally, so
-    nothing else would object.
+    Matched by pattern, not attribute name: a renamed field would
+    turn a getattr guard off in silence.
     """
     match timing:
         case TimedTiming(started_at=started_at, ended_at=ended_at):
@@ -258,7 +254,7 @@ def _normalized_timing(timing: TimingStatement) -> TimingStatement:
             _check_aware(started_at, ended_at)
             return _stated_zones(timing)
         case DurationOnlyTiming():
-            #: A written day states no instant to be naive.
+            #: A written day holds no instant.
             return timing
         case _:
             assert_never(timing)
@@ -267,12 +263,7 @@ def _normalized_timing(timing: TimingStatement) -> TimingStatement:
 def _stated_zones[Statement: (TimedTiming, CorrectedTiming)](
     timing: Statement,
 ) -> Statement:
-    """The three zones a statement with instants carries.
-
-    The day's zone keeps its blank spelling rather than becoming
-    None, so the one zone a statement must carry is refused as
-    unstated by `_check_zones` rather than read as optional.
-    """
+    """One spelling per zone; blank day zone stays blank."""
     return timing._replace(
         day_zone=(timing.day_zone or "").strip(),
         started_at_zone=_stated_zone(timing.started_at_zone),
@@ -281,7 +272,7 @@ def _stated_zones[Statement: (TimedTiming, CorrectedTiming)](
 
 
 def _timing_payload(timing: TimingStatement) -> TimingPayload:
-    """What the statement records, refusing what it cannot."""
+    """The payload, or a refusal."""
     match timing:
         case DurationOnlyTiming(day=day, duration=duration):
             _check_duration(duration)
@@ -336,8 +327,7 @@ def _timing_payload(timing: TimingStatement) -> TimingPayload:
                 "duration_seconds": int(duration.total_seconds()),
             }
         case _:
-            #: A fourth statement type reaches mypy here, rather
-            #: than returning None into a payload nobody can read.
+            #: A fourth statement type fails mypy here.
             assert_never(timing)
 
 
@@ -373,12 +363,7 @@ def _library_device(
 
 
 def _check_note(note: str) -> None:
-    """Text PostgreSQL can store as JSON.
-
-    `strip()` leaves a NUL byte in place, JSON carries it as
-    `\\u0000`, and JSONB refuses it -- a DataError raised while
-    the event is appended, which nothing maps to an answer.
-    """
+    """Refuse a NUL byte; JSONB cannot store it."""
     if "\x00" in note:
         raise CommandRejected(
             "This note holds a NUL byte, which JSONB cannot store, so the "
@@ -398,7 +383,7 @@ def _check_instants(started_at: datetime, ended_at: datetime | None) -> None:
 
 
 def _check_duration(duration: timedelta) -> None:
-    """A whole number of seconds, and not a negative one."""
+    """Whole seconds, not negative."""
     if duration < timedelta(0):
         raise CommandRejected(
             f"A session cannot last {duration}, and no negative duration is "
@@ -415,13 +400,7 @@ def _check_duration(duration: timedelta) -> None:
 
 
 def _check_zones(day_zone: str | None, *endpoint_zones: str | None) -> None:
-    """Names both tzdata sets read.
-
-    The day's zone is checked apart from the endpoints' because it
-    is the one that must be there: checking it in the same loop would
-    let a blank take the optional branch and reach the database,
-    where the generated day is a DataError.
-    """
+    """A stated day zone; names both tzdata sets read."""
     if not day_zone:
         raise CommandRejected(
             "This session states no zone to read its day in, and every "
@@ -442,7 +421,7 @@ def _check_zones(day_zone: str | None, *endpoint_zones: str | None) -> None:
 def _check_endpoint_zone(
     instant: datetime | None, zone: str | None, *, endpoint: str
 ) -> None:
-    """A zone says where a clock stood, so it needs the clock."""
+    """No zone for an unstated instant."""
     if instant is None and zone is not None:
         raise CommandRejected(
             f"This session states the zone of an {endpoint} it does not "
@@ -474,7 +453,7 @@ class CreateSession(Command):
     emulated: bool = False
 
     def __post_init__(self) -> None:
-        #: One spelling of a blank note, so a restatement fingerprints alike.
+        #: One spelling, so restatements fingerprint alike.
         object.__setattr__(self, "note", self.note.strip())
         _check_note(self.note)
         object.__setattr__(self, "timing", _normalized_timing(self.timing))
@@ -560,11 +539,7 @@ class EndSession(Command):
 
 @dataclass(frozen=True, slots=True)
 class CorrectSessionTiming(Command):
-    """State a session's time again, as one whole statement.
-
-    The statement is the transition law: each is complete by its
-    shape, so every mode may follow every other, in both directions.
-    """
+    """State a session's whole timing again."""
 
     command_name: ClassVar[CommandName] = CommandName.PLAYERSESSION_CORRECT_TIMING
     #: A UUID, because Command fingerprints its fields.
@@ -576,12 +551,13 @@ class CorrectSessionTiming(Command):
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         session = _live_session(context, self.session_id)
-        #: Ahead of the comparison: a row holding a value the rules
-        #: now refuse is not restated as it stands.
+        #: Rules run before the comparison.
         payload = _timing_payload(self.timing)
         stated = columns_for_timing(payload)
-        #: The projector's own mapping, so what counts as unchanged
-        #: and what the handler writes cannot drift apart.
+        #: The projector's mapping; never copy it here.
+        #:
+        #: A copy compares one set of columns and the handler writes
+        #: another, and the drift answers Unchanged in silence.
         held = {
             column: getattr(session, column) for column in TimingColumns.__annotations__
         }
@@ -591,22 +567,14 @@ class CorrectSessionTiming(Command):
 
 
 class StatedDevice(NamedTuple):
-    """A device a description states, or no device at all.
-
-    Wrapped because None in `DescribeSession.device` is a fact not
-    stated. A NamedTuple, so the fingerprint writes it as an array.
-    """
+    """A stated device, or none; None is unstated."""
 
     device_id: uuid.UUID | None
 
 
 @dataclass(frozen=True, slots=True)
 class DescribeSession(Command):
-    """State a session's note, device or emulated flag.
-
-    None is a fact the caller does not state. Each stated fact that
-    differs from the row is its own event.
-    """
+    """State note, device or emulated; None is unstated."""
 
     command_name: ClassVar[CommandName] = CommandName.PLAYERSESSION_DESCRIBE
     #: A UUID, because Command fingerprints its fields.
@@ -619,7 +587,7 @@ class DescribeSession(Command):
         if self.note is None and self.device is None and self.emulated is None:
             raise ValueError("DescribeSession states no fact.")
         if self.note is not None:
-            #: Before the fingerprint, so a restatement digests alike.
+            #: Before the fingerprint, so restatements match.
             object.__setattr__(self, "note", self.note.strip())
             _check_note(self.note)
 
@@ -628,8 +596,7 @@ class DescribeSession(Command):
         events: list[NewEvent] = []
         if self.note is not None and self.note != session.note:
             events.append(playersession_note_changed(session.pk, note=self.note))
-        #: Compared before it is resolved: restating the device the
-        #: row names is no act, even once that device is removed.
+        #: Compared before resolved: removed device restates.
         if self.device is not None and self.device.device_id != session.device_id:
             device = _library_device(context, self.device.device_id)
             events.append(
@@ -649,12 +616,7 @@ class DescribeSession(Command):
 
 @dataclass(frozen=True, slots=True)
 class MoveSessionToPlaythrough(Command):
-    """State which run a session belongs to.
-
-    The run may record another game: a session reaches its game only
-    through its run, so a session logged against the wrong game has
-    this remedy and no other.
-    """
+    """State a session's run, at any game."""
 
     command_name: ClassVar[CommandName] = CommandName.PLAYERSESSION_MOVE
     #: UUIDs, because Command fingerprints its fields.
@@ -662,8 +624,7 @@ class MoveSessionToPlaythrough(Command):
     playthrough_id: uuid.UUID
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
-        #: Refuses a session under a removed run or game as well:
-        #: no read finds one, so no person could name it to move it.
+        #: Removed run or game refused: no read finds it.
         session = _live_session(context, self.session_id)
         if session.playthrough_id == self.playthrough_id:
             return Unchanged("This session already belongs to that playthrough.")

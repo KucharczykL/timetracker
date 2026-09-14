@@ -961,7 +961,7 @@ def test_every_correction_has_a_current_state_handler(event_type):
     ids=[f"{before}->{after}" for before, after in TRANSITIONS],
 )
 def test_every_transition_projects(owned_user, owned_library, run, before, after):
-    """No value of the old mode stays, and every CHECK admits the result."""
+    """No old mode stays; every CHECK admits it."""
     append_session(
         owned_library, owned_user, run, timing=TIMING_STATES[before], key="create"
     )
