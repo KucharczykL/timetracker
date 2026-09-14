@@ -369,22 +369,22 @@ def stats_content(
         _card("Playtime", _playtime_table(ctx, presentation, durations)),
     ]
 
-    months = list(ctx.get("month_playtimes") or [])
+    months = ctx.get("month_playtimes") or []
     if months:
         month_rows = [
             make_row(
-                presentation.format(m["month"], "month"),
+                presentation.format(month.month, "month"),
                 Duration(
-                    m["playtime"],
+                    month.playtime,
                     durations,
-                    id_scope=f"stats-month-{m['month'].month}",
+                    id_scope=f"stats-month-{month.month.month}",
                     link=filter_url(
-                        stats_links.games_in_month(year, m["month"].month),
+                        stats_links.games_in_month(year, month.month.month),
                         sort="-filtered_playtime",
                     ),
                 ),
             )
-            for m in months
+            for month in months
         ]
         cards.append(_card("Playtime per month", _kv_table(month_rows)))
 
@@ -413,14 +413,14 @@ def stats_content(
             _two_col_table(
                 "Platform",
                 ctx.get("total_playtime_per_platform") or [],
-                lambda item: item["platform_name"] or "Unspecified",
-                lambda item: Duration(
-                    item["playtime"],
+                lambda platform: platform.platform_name or "Unspecified",
+                lambda platform: Duration(
+                    platform.playtime,
                     durations,
-                    id_scope=f"stats-platform-{item['platform_id'] or 'none'}",
+                    id_scope=f"stats-platform-{platform.platform_id or 'none'}",
                     link=filter_url(
                         stats_links.sessions_for_platform(
-                            item["platform_id"], year, item["platform_name"] or ""
+                            platform.platform_id, year, platform.platform_name or ""
                         )
                     ),
                 ),

@@ -1,12 +1,15 @@
 import re
 from datetime import timedelta
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
+from django.contrib.auth.models import AnonymousUser
 from django.test import RequestFactory
 from django.urls import reverse
 from django.utils import timezone
 
+from common.duration_presentation import duration_presentation_for_request
 from common.layout import recent_session_resumes
 from common.returns import action_url
 from games.models import (
@@ -393,6 +396,22 @@ def test_navbar_playtime_is_scoped_to_the_authenticated_library(world):
     assert "1 h 00 m" in last_7_html
     assert "7 h 00 m" not in today_html
     assert "7 h 00 m" not in last_7_html
+
+
+def test_the_navbar_without_a_library_is_zero(client):
+    with patch(
+        "games.views.general.playtime_between",
+        side_effect=AssertionError("no library reads no playtime"),
+    ):
+        request = RequestFactory().get("/")
+        request.user = AnonymousUser()
+        counts = model_counts(request)
+        response = client.get(reverse("login"))
+
+    zero = duration_presentation_for_request(request).format(timedelta(0))
+    assert response.status_code == 200
+    assert zero in str(counts["today_played"])
+    assert zero in str(counts["last_7_played"])
 
 
 def test_library_add_actions_preserve_the_library_as_the_return_origin(world):
