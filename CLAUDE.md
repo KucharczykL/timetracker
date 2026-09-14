@@ -198,7 +198,8 @@ docs/           — Additional documentation
   because for sole run only its sentence names remedy that works (#1048).
   Registry constructed only through `BlockingReferrer.on`, which refuses field
   that is not key to a run and model whose manager states no `alive()`. Both
-  that lookup and sibling count scoped on library. Blank `name` reads as `Playthrough N`, derived at read time by
+  that lookup and sibling count scoped on library. Blank `name` reads as
+  `Playthrough N`, derived at read time by
   `games/reads/playthrough_numbering.py` and stored nowhere, which is why taking
   name away refused on row no number counted across — only taking one away, so
   save that repeats blank a row was born with still states its note. #1012
@@ -309,7 +310,8 @@ docs/           — Additional documentation
   then refuse under removed `PlayerGame` and under removed run with own
   sentences (`_refuse_under_a_removed_parent`). Every other session command
   resolves through `_live_session`, so removed session refuses end,
-  correction, description and move alike. Contract is
+  correction, description and move alike. Nothing calls either yet; #702
+  owns surfaces. Contract is
   [Remove and restore a session](docs/superpowers/specs/2026-09-14-issue-694-session-removal-design.md)
 
 **Nothing user removes is destroyed** (#944). Eight removable models — Game,

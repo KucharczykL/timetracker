@@ -24,6 +24,11 @@ from games.commands.playersession import (
     StatedDevice,
     TimedTiming,
 )
+from games.commands.playthrough import (
+    CreatePlaythrough,
+    RemovePlaythrough,
+    RestorePlaythrough,
+)
 from games.events.dispatch import (
     CommandOutcome,
     CommandRejected,
@@ -1675,13 +1680,14 @@ def refused_lifecycle(command, library, actor, session_id, *, saying):
     return refusal.value
 
 
-def lifecycle_events() -> list[str]:
+def lifecycle_events(library) -> list[str]:
     return list(
         LibraryEvent.objects.filter(
+            library=library,
             event_type__in=[
                 "library.playersession.removed",
                 "library.playersession.restored",
-            ]
+            ],
         )
         .order_by("sequence")
         .values_list("event_type", flat=True)
@@ -1713,7 +1719,7 @@ def test_a_restore_states_the_way_back(owned_user, owned_library, run):
     session.refresh_from_db()
     assert session.removed_at is None
     assert PlayerSession.objects.alive().get() == session
-    assert lifecycle_events() == [
+    assert lifecycle_events(owned_library) == [
         "library.playersession.removed",
         "library.playersession.restored",
     ]
@@ -1726,7 +1732,7 @@ def test_removing_a_removed_session_changes_nothing(owned_user, owned_library, r
     result = removes(owned_library, owned_user, session.pk)
 
     assert result.outcome is CommandOutcome.UNCHANGED
-    assert lifecycle_events() == ["library.playersession.removed"]
+    assert lifecycle_events(owned_library) == ["library.playersession.removed"]
 
 
 def test_restoring_a_live_session_changes_nothing(owned_user, owned_library, run):
@@ -1735,7 +1741,7 @@ def test_restoring_a_live_session_changes_nothing(owned_user, owned_library, run
     result = restores(owned_library, owned_user, session.pk)
 
     assert result.outcome is CommandOutcome.UNCHANGED
-    assert lifecycle_events() == []
+    assert lifecycle_events(owned_library) == []
 
 
 def test_one_key_covers_a_repeated_removal(owned_user, owned_library, run):
@@ -1744,7 +1750,20 @@ def test_one_key_covers_a_repeated_removal(owned_user, owned_library, run):
     removes(owned_library, owned_user, session.pk, key="remove")
     removes(owned_library, owned_user, session.pk, key="remove")
 
-    assert lifecycle_events() == ["library.playersession.removed"]
+    assert lifecycle_events(owned_library) == ["library.playersession.removed"]
+
+
+def test_one_key_covers_a_repeated_restore(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+    removes(owned_library, owned_user, session.pk)
+
+    restores(owned_library, owned_user, session.pk, key="restore")
+    restores(owned_library, owned_user, session.pk, key="restore")
+
+    assert lifecycle_events(owned_library) == [
+        "library.playersession.removed",
+        "library.playersession.restored",
+    ]
 
 
 @pytest.mark.parametrize("command", [RemoveSession, RestoreSession])
@@ -1802,13 +1821,15 @@ def test_a_lifecycle_act_under_a_removed_run_is_refused(
 
 
 @pytest.mark.parametrize("command", [RemoveSession, RestoreSession])
+@pytest.mark.parametrize("run_removed", [False, True], ids=["game-alone", "both"])
 def test_a_lifecycle_act_under_a_removed_game_is_refused(
-    owned_user, owned_library, run, command
+    owned_user, owned_library, run, command, run_removed
 ):
     """The game's mark answers first."""
     session = record(owned_library, owned_user, run, a_timed())
     _arranged_for(command, owned_library, owned_user, session)
-    Playthrough.objects.filter(pk=run.pk).update(removed_at=timezone.now())
+    if run_removed:
+        Playthrough.objects.filter(pk=run.pk).update(removed_at=timezone.now())
     PlayerGame.objects.filter(pk=run.player_game_id).update(removed_at=timezone.now())
 
     refused_lifecycle(
@@ -1878,6 +1899,47 @@ def test_a_removed_session_refuses_every_statement(
         )
 
     assert refusal.value.sentence == REMOVED_SESSION_SENTENCE
+
+
+def test_the_way_back_is_run_then_session(owned_user, owned_library, game, run):
+    """Each refusal names a step, and each step works."""
+    dispatch(
+        CreatePlaythrough(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="second-run",
+    )
+    second = Playthrough.objects.exclude(pk=run.pk).get()
+    session = record(owned_library, owned_user, second, a_timed())
+    removes(owned_library, owned_user, session.pk)
+    removed_run = dispatch(
+        RemovePlaythrough(playthrough_id=second.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="remove-run",
+    )
+    assert removed_run.outcome is CommandOutcome.APPENDED
+    refused_lifecycle(
+        RestoreSession,
+        owned_library,
+        owned_user,
+        session.pk,
+        saying=(
+            "That playthrough was removed from your library. Restore it "
+            "before changing its sessions."
+        ),
+    )
+
+    dispatch(
+        RestorePlaythrough(playthrough_id=second.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="restore-run",
+    )
+    result = restores(owned_library, owned_user, session.pk)
+
+    assert result.outcome is CommandOutcome.APPENDED
+    assert PlayerSession.objects.alive().get() == session
 
 
 def test_a_restored_session_records_a_fact_again(owned_user, owned_library, run):

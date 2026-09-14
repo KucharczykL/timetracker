@@ -467,7 +467,7 @@ def _skips_removed_rows(model: type[ProjectionModel]) -> bool:
 class BlockingReferrer(NamedTuple):
     """One registered way to name a run."""
 
-    #: A projection: the column is always there.
+    #: A projection: ProjectionModel gives it library.
     model: type[ProjectionModel]
     #: Field name alias from games/projections.py.
     field_name: FieldName
@@ -562,14 +562,14 @@ class RemovePlaythrough(Command):
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         run = library_playthrough(context, self.playthrough_id)
         #: The no-op before the game's mark.
-        #: #906: a repeat still succeeds once the game is gone.
+        #: A repeat still succeeds once the game is gone.
         if run.removed_at is not None:
             return Unchanged(
                 f"This library already removed playthrough {self.playthrough_id}."
             )
         _refuse_under_a_removed_game(run)
         #: Ordinary only. A bucket takes none away.
-        #: Before the referrers: only this remedy works.
+        #: First: a move leaves a sole run still last.
         if (
             run.kind == PlaythroughKind.ORDINARY
             and not _other_live_ordinary_runs(context, run).exists()

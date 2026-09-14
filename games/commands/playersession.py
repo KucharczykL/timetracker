@@ -162,7 +162,7 @@ def library_session(context: CommandContext, session_id: uuid.UUID) -> PlayerSes
     """This library's session, or a refusal."""
     return library_row(
         context,
-        #: Plain manager: callers refuse a removed row.
+        #: Plain manager: a removed row still resolves.
         PlayerSession.objects.all(),
         Refusal(
             message=(
@@ -693,7 +693,7 @@ def _refuse_under_a_removed_parent(
     context: CommandContext, session: PlayerSession
 ) -> None:
     """Refuse an act under a removed parent."""
-    #: Library-scoped, as the ownership audit walks.
+    #: Resolved, not followed: the FK drops the scope.
     run = library_playthrough(context, session.playthrough_id)
     #: Under dispatch's lock neither mark can move.
     if run.player_game.removed_at is not None:

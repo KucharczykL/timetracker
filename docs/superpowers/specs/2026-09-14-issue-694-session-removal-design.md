@@ -22,8 +22,8 @@ later removal.
 `RemoveSession(session_id)` and `RestoreSession(session_id)`.
 
 Both resolve the row with `library_session()`, a library-scoped resolve over
-the plain manager. `_live_session` is `library_session()` followed by the mark
-checks. Neither command uses `_live_session`: a repeated removal must answer
+the plain manager. `_live_session` is `library_session()`, then `_live_run()`, then the
+session's own mark check. Neither command uses `_live_session`: a repeated removal must answer
 `Unchanged`, and a restore names a removed row.
 
 The order in `build`, under the lock:
@@ -63,8 +63,9 @@ refused either way, and only "remove the game itself" is a remedy that works
 for it. Moving every session elsewhere leaves it the last run. The referrer
 sentence answers only a run with a live ordinary sibling.
 
-This accepts a gap: until a bulk move exists, such a run needs its sessions
-moved one at a time. In the legacy data, 62 of 2,807 sessions sit at a game
+This accepts a gap: until #714's bulk move exists, such a run needs its
+sessions moved one at a time. `make preflight-sessions` counts the legacy
+data: 62 of 2,807 sessions sit at a game
 with more than one live ordinary run.
 
 ## What does not change

@@ -84,6 +84,7 @@ class PlayerSessions(Projector):
     family_name = ProjectorFamily.CURRENT_STATE
 
     def _created(self, event: RecordedEvent) -> None:
+        #: Never names the mark, so a removal survives.
         payload = event.payload
         device = payload["device"]
         self.project(
@@ -147,7 +148,6 @@ class PlayerSessions(Projector):
     def _restored(self, event: RecordedEvent) -> None:
         self.amend(PlayerSession, event.aggregate_id, removed_at=None)
 
-    #: Creation never names the mark; amendments survive.
     handles: ClassVar[HandlerMap] = {
         PLAYERSESSION_CREATED: _created,
         PLAYERSESSION_ENDED: _ended,
