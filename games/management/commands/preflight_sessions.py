@@ -6,14 +6,15 @@ resolve is an error.
 """
 
 import json
-import uuid
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
-from games.models import UserLibrary
+from games.management.library_scope import (
+    add_library_scope,
+    resolve_libraries,
+    resolve_zone,
+)
 from games.preflight.session import (
     DEFAULT_SAMPLE_SIZE,
     NO_COUNTS,
@@ -30,16 +31,7 @@ class Command(BaseCommand):
     help = "Report what #700 will meet in the legacy Session rows."
 
     def add_arguments(self, parser):
-        scope = parser.add_mutually_exclusive_group(required=True)
-        scope.add_argument("--user", help="Report the library owned by USERNAME.")
-        scope.add_argument(
-            "--library", dest="library_id", help="Report one library UUID."
-        )
-        scope.add_argument(
-            "--all-libraries",
-            action="store_true",
-            help="Explicitly report every library.",
-        )
+        add_library_scope(parser)
         parser.add_argument(
             "--sample-size",
             type=int,
@@ -52,13 +44,13 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        libraries = self._resolve_libraries(options)
+        libraries = resolve_libraries(options)
         sample_size = options["sample_size"]
         if sample_size < 0:
             raise CommandError(
                 "A sample size counts identifiers, so it is not negative."
             )
-        day_zone = self._resolve_zone(options["day_zone"])
+        day_zone = resolve_zone(options["day_zone"])
 
         reports = [
             preflight_library(library, sample_size=sample_size, day_zone=day_zone)
@@ -143,42 +135,3 @@ class Command(BaseCommand):
     def _write_sample(self, values) -> None:
         if values:
             self.stdout.write("      " + " ".join(str(value) for value in values))
-
-    def _resolve_zone(self, name: str | None) -> ZoneInfo | None:
-        if name is None:
-            return None
-        try:
-            return ZoneInfo(name)
-        except (ZoneInfoNotFoundError, ValueError) as error:
-            raise CommandError(f"{name!r} names no time zone.") from error
-
-    def _resolve_libraries(self, options):
-        libraries = UserLibrary.objects.select_related("user").order_by("pk")
-        if options["all_libraries"]:
-            return list(libraries)
-        if options["user"]:
-            return [self._library_of_user(libraries, options["user"])]
-        return [self._library_by_id(libraries, options["library_id"])]
-
-    def _library_of_user(self, libraries, username: str) -> UserLibrary:
-        """A missing user is not a user missing a library."""
-        user_model = get_user_model()
-        try:
-            user = user_model.objects.get(username=username)
-        except user_model.DoesNotExist as error:
-            raise CommandError(f"No user is named {username!r}.") from error
-        try:
-            return libraries.get(user=user)
-        except UserLibrary.DoesNotExist as error:
-            raise CommandError(f"User {username!r} owns no library.") from error
-
-    def _library_by_id(self, libraries, library_id: str) -> UserLibrary:
-        """The text is read here, so the query catches one error."""
-        try:
-            parsed = uuid.UUID(library_id)
-        except ValueError as error:
-            raise CommandError(f"Library {library_id!r} is no UUID.") from error
-        try:
-            return libraries.get(pk=parsed)
-        except UserLibrary.DoesNotExist as error:
-            raise CommandError(f"Library {parsed} does not exist.") from error
