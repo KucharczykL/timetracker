@@ -4,11 +4,28 @@ from datetime import date, timedelta
 from typing import NamedTuple, Protocol
 from uuid import UUID
 
-from django.db.models.expressions import Combinable
+from django.db.models import DurationField
+from django.db.models.expressions import Combinable, Expression
 
 from games.filters import SessionFilter
 from games.models import Game, UserLibrary
 from games.reads.playthrough_completions import YearScope
+
+
+class UnscopedPlaytimeRead(RuntimeError):
+    """A playtime sum executed without a library."""
+
+
+class UnscopedSum(Expression):
+    """Compiles for validation; refuses to execute."""
+
+    output_field = DurationField()
+
+    def as_sql(self, compiler, connection):
+        raise UnscopedPlaytimeRead(
+            "A playtime sum was executed without a library; state one."
+        )
+
 
 #: First and last day, both inclusive.
 type DayInterval = tuple[date, date]

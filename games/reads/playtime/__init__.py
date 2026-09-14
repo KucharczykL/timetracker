@@ -17,6 +17,7 @@ from games.reads.playtime.source import (
     MonthPlaytime,
     PlatformPlaytime,
     PlaytimeSource,
+    UnscopedPlaytimeRead,
 )
 
 __all__ = [
@@ -27,6 +28,7 @@ __all__ = [
     "MonthPlaytime",
     "PlatformPlaytime",
     "PlaytimeSource",
+    "UnscopedPlaytimeRead",
     "game_playtime",
     "playtime_between",
     "playtime_by_game",

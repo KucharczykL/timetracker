@@ -6,10 +6,15 @@ from django.db.models import DurationField, OuterRef, Subquery, Sum, Value
 from django.db.models.expressions import Combinable
 from django.db.models.functions import Coalesce, TruncMonth
 
-from games.models import Game, PlayerSession, PlayerSessionQuerySet, UserLibrary
+from games.models import Game, PlayerSessionQuerySet, UserLibrary
 from games.reads.player_sessions import library_sessions
 from games.reads.playthrough_completions import YearScope
-from games.reads.playtime.source import DayInterval, MonthPlaytime, PlatformPlaytime
+from games.reads.playtime.source import (
+    DayInterval,
+    MonthPlaytime,
+    PlatformPlaytime,
+    UnscopedSum,
+)
 
 ZERO = Value(timedelta(0), output_field=DurationField())
 
@@ -18,12 +23,8 @@ GAME = "playthrough__player_game__game"
 PLATFORM = f"{GAME}__platform"
 
 
-def _sessions(
-    library: UserLibrary | None, year: YearScope = None
-) -> PlayerSessionQuerySet:
+def _sessions(library: UserLibrary, year: YearScope = None) -> PlayerSessionQuerySet:
     """Counted sessions, narrowed to a year."""
-    if library is None:
-        return PlayerSession.objects.none()
     sessions = library_sessions(library)
     if year is None:
         return sessions
@@ -41,6 +42,9 @@ def game_playtime(library: UserLibrary, game: Game) -> timedelta:
 def summed_by_game(
     library: UserLibrary | None, *, year: YearScope = None
 ) -> Combinable:
+    """No library compiles, then refuses to execute."""
+    if library is None:
+        return UnscopedSum()
     return Subquery(
         _sessions(library, year)
         .filter(**{GAME: OuterRef("pk")})

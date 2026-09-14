@@ -10,19 +10,18 @@ from django.utils.timezone import make_aware
 from games.filters import SessionFilter, filter_query_context_for_library
 from games.models import Game, Session, SessionQuerySet, UserLibrary
 from games.reads.playthrough_completions import YearScope
-from games.reads.playtime.source import DayInterval, MonthPlaytime, PlatformPlaytime
+from games.reads.playtime.source import (
+    DayInterval,
+    MonthPlaytime,
+    PlatformPlaytime,
+    UnscopedSum,
+)
 
 ZERO = Value(timedelta(0), output_field=DurationField())
 
 
-def _sessions(library: UserLibrary | None, year: YearScope = None) -> SessionQuerySet:
-    """Live sessions, narrowed to a year.
-
-    No library returns no session. `for_library(None)` returns the
-    sessions of the shared catalog, and an executed read counts them.
-    """
-    if library is None:
-        return Session.objects.none()
+def _sessions(library: UserLibrary, year: YearScope = None) -> SessionQuerySet:
+    """Live sessions, narrowed to a year."""
     sessions = Session.objects.for_library(library)
     if year is None:
         return sessions
@@ -50,6 +49,13 @@ def game_playtime(library: UserLibrary, game: Game) -> timedelta:
 def summed_by_game(
     library: UserLibrary | None, *, year: YearScope = None
 ) -> Combinable:
+    """No library compiles, then refuses to execute.
+
+    `for_library(None)` reads the shared catalog's sessions,
+    so an unscoped sum must never reach SQL.
+    """
+    if library is None:
+        return UnscopedSum()
     return _summed(_sessions(library, year))
 
 

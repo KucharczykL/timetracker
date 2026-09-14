@@ -21,6 +21,7 @@ from games.models import Device, Game, Platform, Session, UserLibrary
 from games.reads.playtime import (
     MonthPlaytime,
     PlatformPlaytime,
+    UnscopedPlaytimeRead,
     game_playtime,
     legacy,
     playtime_between,
@@ -310,7 +311,7 @@ def test_the_legacy_source_honours_a_session_filter(owned_library, game):
 
 @SOURCES
 @pytest.mark.django_db
-def test_summed_by_game_over_no_library_is_empty(source, stranger_library):
+def test_summed_by_game_over_no_library_refuses_to_execute(source, stranger_library):
     shared = Game.objects.create(library=None, name="Tetris")
     started_at = datetime(2026, 3, 5, 10, tzinfo=UTC)
     ended_at = started_at + timedelta(hours=1)
@@ -321,7 +322,8 @@ def test_summed_by_game_over_no_library_is_empty(source, stranger_library):
 
     #: The trap a passed-on None hits.
     assert Session.objects.for_library(None).filter(game=shared).exists()
-    assert summed(source, None, shared) is None
+    with pytest.raises(UnscopedPlaytimeRead):
+        summed(source, None, shared)
 
 
 def test_the_package_answers_from_the_legacy_source():

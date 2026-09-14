@@ -111,6 +111,15 @@ class ReferencedRow(models.Model):
 
 
 class GameQuerySet(RemovableLibraryQuerySet):
+    #: The library `playtime` reads, cloned along.
+    _playtime_library: UserLibrary | None = None
+
+    def _clone(self) -> GameQuerySet:
+        #: Django's hook; django-stubs declares no `_clone`.
+        clone: GameQuerySet = super()._clone()  # type: ignore[misc]
+        clone._playtime_library = self._playtime_library
+        return clone
+
     def visible_to(self, library):
         return self.filter(Q(library__isnull=True) | Q(library=library)).alive()
 
@@ -126,15 +135,27 @@ class GameQuerySet(RemovableLibraryQuerySet):
         libraries track comes back once per library. Unscoped is for
         compiling a lookup, not for executing one.
 
-        `playtime` is selected only when filtered.
+        Only a filter naming `playtime` compiles it. A second call
+        without a library keeps the scope; one naming another library
+        is refused, because `add_annotation` would swap it in silence.
         """
         #: Imported here: the package imports models.
         from games.reads.playtime import playtime_by_game
 
+        if "playtime" in self.query.annotations:
+            if library is not None and library != self._playtime_library:
+                raise ValueError(
+                    "this queryset already reads playtime for library "
+                    f"{getattr(self._playtime_library, 'pk', None)}; "
+                    "annotate once, at the read that states the scope"
+                )
+            return self
         condition = Q() if library is None else Q(player_games__library=library)
-        return self.annotate(
+        queryset = self.annotate(
             tracked=FilteredRelation("player_games", condition=condition)
         ).alias(playtime=playtime_by_game(library))
+        queryset._playtime_library = library
+        return queryset
 
     def tracked_by(self, library, **conditions):
         """Every live game this library tracks, facts read.

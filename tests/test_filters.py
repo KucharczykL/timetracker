@@ -1513,9 +1513,60 @@ class TestPlaytimeHoursAgainstDB:
     def test_the_playtime_alias_is_not_selected(self, owned_library):
         from games.models import Game
 
-        sql = str(Game.objects.tracked_by(owned_library).query)
+        query = Game.objects.tracked_by(owned_library).query
 
-        assert "games_session" not in sql
+        assert "playtime" in query.annotations
+        assert "playtime" not in query.annotation_select
+
+    def test_an_unscoped_playtime_alias_refuses_to_execute(self, played_and_unplayed):
+        from datetime import timedelta
+
+        from games.models import Game
+        from games.reads.playtime import UnscopedPlaytimeRead
+
+        unscoped = Game.objects.annotated_for_filtering().filter(
+            playtime__gt=timedelta(0)
+        )
+
+        with pytest.raises(UnscopedPlaytimeRead):
+            list(unscoped)
+
+    def test_validation_compiles_playtime_hours_without_a_library(self):
+        from common.criteria import FilterQueryContext
+        from games.filters import GameFilter, SessionFilter
+
+        criterion = {"playtime_hours": {"value": 1, "modifier": "GREATER_THAN"}}
+
+        GameFilter.from_json(criterion).to_q(FilterQueryContext.for_validation())
+        SessionFilter.from_json({"game_filter": criterion}).to_q(
+            FilterQueryContext.for_validation()
+        )
+
+    def test_a_second_scope_on_the_alias_is_refused(
+        self, owned_library, django_user_model
+    ):
+        from games.models import Game
+
+        stranger = django_user_model.objects.create_user(
+            username="stranger", password="p"
+        )
+
+        with pytest.raises(ValueError, match="playtime"):
+            Game.objects.tracked_by(owned_library).annotated_for_filtering(
+                stranger.library
+            )
+
+    def test_an_unscoped_second_call_keeps_the_scoped_alias(
+        self, owned_library, played_and_unplayed
+    ):
+        from datetime import timedelta
+
+        from games.models import Game
+
+        played, _unplayed = played_and_unplayed
+        games = Game.objects.tracked_by(owned_library).annotated_for_filtering()
+
+        assert set(games.filter(playtime__gt=timedelta(hours=1))) == {played}
 
 
 class TestDateCriterion:
