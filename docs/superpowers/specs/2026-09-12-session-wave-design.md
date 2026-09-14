@@ -173,8 +173,9 @@ stated that it is seeded from `settings.TIME_ZONE` because "every day-grained
 read today groups in it". [#699's
 census](2026-09-12-issue-699-session-preflight-design.md) checked that premise
 against the code and it is false: `TimezoneActivationMiddleware`
-(`common/middleware.py:37`, installed at `timetracker/settings.py:102`) wraps
-every request in `timezone.override(DISPLAY_TIME_ZONE)`, so `TruncDate`,
+(`common/middleware.py:48-54`, installed at `timetracker/settings.py:102`) wraps
+every request outside `/api/settings/` in
+`timezone.override(DISPLAY_TIME_ZONE)`, so `TruncDate`,
 `TruncMonth`, `timestamp_start__year`, the navbar's midnight range and the
 `__date` filter lookups all group in the **viewer's** zone. Production's one
 user holds `display_time_zone = Europe/Prague` while `TIME_ZONE` resolves to
@@ -186,15 +187,20 @@ seeding from `TIME_ZONE` *moves* that many rows rather than holding them
 still, and #704's strict-equality gate would fail by exactly that. Seeding
 from the display zone holds today's grouping still and makes the zone a
 per-viewer fact the row cannot carry alone. #689 states the choice and its
-reason; #699 reports both and takes no position. Moving day grouping to the
-viewer's zone as a *change* is deferred to its own issue only if #689 does not
-already seed it there, and there the delta is the deliverable rather than a
-surprise, and where it can be reconciled with the
-precedent #1033 set three issues ago — an `ActivityClock` the read states,
-which `annotated_for_filtering` forbids two readers from disagreeing about.
-That issue also owns the restatement mechanism: an `UPDATE` of `day_zone` over
-a library's rows regenerates every day, and #748's Journal rebuild is its
-sibling.
+reason; #699 reports both and takes no position.
+
+Seeding from the display zone leaves two answers to one question. The stored
+`day_zone` freezes a session's day when it is recorded; #1033's
+`ActivityClock` resolves the viewer's zone on every read, and
+`default_activity_clock()` reads UTC with no viewer. They agree until a viewer
+changes zone, and then disagree about the same session's day. #1047 decides
+the one zone a library counts days in, whose fact it is, and the one act that
+changes it; it lands before #702, whose dormancy-clock member reads its answer.
+#1054 restates recorded session days on that act and #748 rebuilds the
+Journal's day projections on it — one trigger, two registrants. The
+restatement is an event, never an `UPDATE` of `day_zone`: `PlayerSession` is a
+projection, so a bulk `UPDATE` is drift that `rebuild_projections` reports and
+reverts.
 
 One limit worth stating: `timezone(text, timestamptz)` is marked immutable but
 its answer depends on the interpreter's tzdata, so a tzdata update that changes
@@ -316,9 +322,10 @@ a condition with a trigger rather than a refusal, which is the shape #909 and
 5. #694 — removal and restoration
 6. #697 — read playtime from the projection
 7. #700 — convert legacy Sessions, assign runs, mint the bucket
-8. #702 — the cutover: writes, the run pickers, and every read surface
-9. #704 — replay, statistics, and performance gates
-10. #772 — remove legacy Session storage
+8. #1047 — the one zone a library counts days in, and the act that changes it
+9. #702 — the cutover: writes, the run pickers, and every read surface
+10. #704 — replay, statistics, and performance gates
+11. #772 — remove legacy Session storage
 
 Required orderings and the reason for each:
 
@@ -334,11 +341,17 @@ Required orderings and the reason for each:
   ships a refusal with no remedy.
 - `#700 → #702`. A write cutover leaves the legacy table as the sole record of
   facts nothing writes any more, so every legacy row must already be an event.
+- `#1047 → #702`. The dormancy clock and `effective_day` are two answers to
+  which zone counts a day; #702's clock member reads the one #1047 states
+  rather than choosing a zone inside a cutover.
 - `#702 → #704`. The gate proves parity for surfaces that have all moved.
 - `#704 → #772`. Legacy storage comes out after the gate is green.
 
 Free to run in parallel: #691 and #692 after #689, with #694 behind #692; #697
-any time after #689.
+and #1047 any time after #689.
+
+Outside the delivery order, #1047 also blocks #1054 and #748, the two
+registrants of its trigger.
 
 ## Issue boundaries
 
@@ -500,7 +513,10 @@ Absorbs #698. Both placeholders asked for a projection; the wave ships read
 modules instead, for the reasons stated above. It delivers the per-Game and
 all-time reads over `PlayerSession`, the yearly read that #698 asked for as the
 same query with a year, and the removal of `Game.playtime`, its signal, and the
-`_AFTER_STAMP` recalculation in `games/removal.py`.
+`_AFTER_STAMP` recalculation in `games/removal.py`. Its
+[design](2026-09-14-issue-697-playtime-reads-design.md) puts every playtime
+figure behind one interface with a legacy and a projection source, moves every
+caller onto it, and leaves #702 one binding to change.
 
 `ProjectorFamily.STATS` therefore still has no projector behind it after this
 wave, and #913's reopen condition is untouched — it asks for a family that must
@@ -519,6 +535,19 @@ The mandatory run reference forces the assignment into the same pass, since a
 row cannot be written without one.
 
 Converts removed rows too, stating the removal as a fact.
+
+### #1047 — the zone a library counts days in
+
+One statement of the zone every day-grained reader reads — `effective_day`, the
+dormancy clock, the Journal's day projections, and the statistics built on
+them — replacing today's two: the `day_zone` stored per session and the zone
+`ActivityClock` resolves per read. It decides whether that zone is a library's
+fact or a viewer's preference, and names the one act that changes it, including
+whether changing the display-zone setting offers that act or it stays separate
+and explicit. #1054 (the restatement event's shape) and #748 (the Journal
+rebuild) register on that act and do not choose their own trigger. Where a
+figure moves under the decision, the delta is enumerated against restored
+production data rather than asserted equal.
 
 ### #702 — the cutover
 
@@ -578,10 +607,11 @@ The surfaces, each one a stack member:
 9. **The dormancy clock** in `games/reads/playthrough_activity.py`, which reads
    `Session` directly. This member also owns the narrowing the Playthrough wave
    deferred here: the clock currently asks when the *game* was last played and
-   must ask when the *run* was. Note its zone: the clock computes its day with
-   `TruncDate(..., tzinfo=clock.zone)` from the viewer's preference while
-   `default_activity_clock()` uses UTC, so the comparison against a
-   `TIME_ZONE`-based `effective_day` must be stated rather than assumed.
+   must ask when the *run* was. Its zone is #1047's to decide, not this
+   member's: the clock computes its day with `TruncDate(..., tzinfo=clock.zone)`
+   from the viewer's preference while `default_activity_clock()` uses UTC, and
+   `effective_day` is frozen in the `day_zone` #689 seeds from the viewer's
+   display zone. This member reads the answer #1047 states.
 10. **`audit_library_ownership`**, whose session count and hand-written
     `Session.device` cross-library check both read the `game` foreign key the
     new table does not have. The registry-driven `cross_library_violations`
@@ -612,12 +642,13 @@ Statistics parity is a **strict equality** gate: every figure on the stats
 page, the navbar, the Game list and Game detail is equal before and after, on
 restored production data.
 
-Which seeding buys that equality is #689's open question, not this gate's
-assumption. Today's reads group days in the viewer's display zone, so seeding
-`day_zone` from it holds every figure still, while seeding from
-`settings.TIME_ZONE` moves 124 sessions to another day, 10 to another month and
-5 to another year — and this gate would fail by exactly that amount. #704
-states the zone each of its figures was measured in.
+#689 seeds `day_zone` from the viewer's display zone, the zone today's reads
+group days in, which is what makes strict equality reachable; seeding from
+`settings.TIME_ZONE` would have moved 124 sessions to another day, 10 to another
+month and 5 to another year, and this gate would have failed by exactly that
+amount. Equality holds while the viewer's zone is the one the rows were seeded
+in, and #704 states the zone each of its figures was measured in. #697 ships
+the gate's instrument, `make verify-playtime-parity`.
 
 The performance gate states a **budget** rather than a verdict. It names a
 per-read threshold measured on restored production data for the reads that grow
@@ -711,11 +742,10 @@ longest, or streaks, so no Session-derived statistic changes shape.
 
 ### The Journal keeps its own day rules
 
-#748 rebuilds Journal day projections when the display zone changes; that
-mechanism stays the Journal's. This wave stores a day computed in one stated
-zone and ships no restatement path, because nothing here changes zone. Which
-zone that is belongs to #689, above. The deferred display-zone issue below is
-where the two meet.
+#748 rebuilds Journal day projections when a library's day zone changes; that
+rebuild stays the Journal's, but its trigger is #1047's, shared with #1054's
+restatement of session days. This wave stores a day computed in one stated
+zone — the viewer's display zone, per #689 — and ships no restatement path.
 
 The Journal's stated day rules already match this model's columns exactly — a
 Duration-only Session takes its written calendar day without conversion, a
@@ -833,16 +863,21 @@ Amended in the charter, on the evidence of the production census:
   undated run does not claim containment (without which every ambiguous row in
   production is an artifact and the bucket holds ten instead of two)
 
-## Follow-up issues to file
+## Follow-up issues
 
-- **Restate a library's days when its display zone changes.** Whichever zone
-  #689 seeds `day_zone` from, a person who changes their display zone
-  afterwards moves their own days: 124 sessions to a different day, 10 to a
-  different month and 5 to a different year, measured on the one production
-  library. This issue owns the restatement path — an `UPDATE` of `day_zone` per
-  library — alongside #748's Journal rebuild, and owes a reconciliation with
-  #1033's `ActivityClock`, which makes the zone a read parameter two readers
-  may not disagree about.
-- **Bulk move before the organizer, or accept the gap.** Between #694 and
+Filed from this review, and restated on 2026-09-14 once #699 and #689 had
+overturned the zone premise the first version carried:
+
+- #1047 — the one zone a library counts days in, reconciling the stored
+  `day_zone` with #1033's `ActivityClock`, and the one act that changes it.
+  Joins the delivery order before #702. A change of zone moves 124 production
+  sessions to a different day, 10 to a different month and 5 to a different
+  year; that delta is evidence for the decision, not a parity failure
+- #1054 — the restatement of recorded session days on #1047's act, as an event
+  whose shape (per session or per library) it decides. Never an `UPDATE` of
+  `day_zone`
+- #748 — the Journal's day-projection rebuild, the second registrant of the
+  same act
+- #1048 — bulk move before the organizer, or accept the gap: between #694 and
   #714 a run with many sessions cannot be removed without moving each session
-  by hand.
+  by hand
