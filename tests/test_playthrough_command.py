@@ -1907,7 +1907,7 @@ def test_a_foreign_run_at_the_same_game_does_not_keep_the_last_run_removable(
 
 @pytest.fixture
 def referring_models():
-    """Two throwaway projections naming a run, beside the delivered one."""
+    """Two throwaway projections naming a run."""
     with isolate_apps("games"):
 
         class Assignment(ProjectionModel):
@@ -1957,7 +1957,7 @@ ASSIGNED_SENTENCE = (
 def test_a_registered_referrer_keeps_a_run_in_place(
     owned_user, owned_library, game, monkeypatch, referring_models
 ):
-    """The registry is patched whole, so the delivered entry does not answer."""
+    """The registry is patched whole."""
     assignment_model, _ = referring_models
     _track(owned_user, owned_library, game)
     run = _second_run(owned_user, owned_library)
@@ -2126,7 +2126,7 @@ def test_a_referrer_naming_another_model_is_refused():
 
 
 def test_the_delivered_registry_names_sessions():
-    """One entry: a session names the run it was recorded at."""
+    """One entry: a session names its run."""
     (entry,) = playthrough_commands.BLOCKING_REFERRERS
 
     assert (entry.model, entry.field_name) == (PlayerSession, "playthrough")
@@ -2156,7 +2156,7 @@ def _record_session(owned_user, owned_library, run, key="session"):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_live_session_keeps_its_run_in_place(owned_user, owned_library, game):
-    """The sentence names the remedy that exists: a move."""
+    """The sentence names a remedy: a move."""
     _track(owned_user, owned_library, game)
     run = _second_run(owned_user, owned_library)
     _record_session(owned_user, owned_library, run)
@@ -2191,7 +2191,7 @@ def test_a_removed_session_keeps_nothing_in_place(owned_user, owned_library, gam
 def test_a_sole_run_with_a_session_is_refused_as_the_last_run(
     owned_user, owned_library, game
 ):
-    """Moving its sessions would leave it the last run all the same."""
+    """Moved sessions still leave it last."""
     _track(owned_user, owned_library, game)
     run = Playthrough.objects.get()
     _record_session(owned_user, owned_library, run)

@@ -1776,7 +1776,7 @@ def test_another_librarys_session_is_refused_alike(
 
 
 def _arranged_for(command, library, actor, session) -> None:
-    """A restore can only ever name a removed row."""
+    """A restore names a removed row."""
     if command is RestoreSession:
         removes(library, actor, session.pk)
 
@@ -1805,7 +1805,7 @@ def test_a_lifecycle_act_under_a_removed_run_is_refused(
 def test_a_lifecycle_act_under_a_removed_game_is_refused(
     owned_user, owned_library, run, command
 ):
-    """The game's mark answers first: it is the first to restore."""
+    """The game's mark answers first."""
     session = record(owned_library, owned_user, run, a_timed())
     _arranged_for(command, owned_library, owned_user, session)
     Playthrough.objects.filter(pk=run.pk).update(removed_at=timezone.now())

@@ -467,7 +467,7 @@ def _skips_removed_rows(model: type[ProjectionModel]) -> bool:
 class BlockingReferrer(NamedTuple):
     """One registered way to name a run."""
 
-    #: A projection, so the column is always there.
+    #: A projection: the column is always there.
     model: type[ProjectionModel]
     #: Field name alias from games/projections.py.
     field_name: FieldName
@@ -500,8 +500,7 @@ class BlockingReferrer(NamedTuple):
         return cls(model, field_name, sentence)
 
 
-#: The sentence names the remedy that exists: one move at a time,
-#: to a run at the same game or any other.
+#: The sentence names a remedy that exists.
 BLOCKING_REFERRERS: tuple[BlockingReferrer, ...] = (
     BlockingReferrer.on(
         PlayerSession,
@@ -570,10 +569,7 @@ class RemovePlaythrough(Command):
             )
         _refuse_under_a_removed_game(run)
         #: Ordinary only. A bucket takes none away.
-        #:
-        #: Ahead of the referrers: a sole run with sessions is refused
-        #: either way, and only this sentence names a remedy that
-        #: works. Moving every session elsewhere leaves it the last one.
+        #: Before the referrers: only this remedy works.
         if (
             run.kind == PlaythroughKind.ORDINARY
             and not _other_live_ordinary_runs(context, run).exists()

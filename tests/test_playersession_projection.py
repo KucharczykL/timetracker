@@ -1190,7 +1190,7 @@ def a_recorded_session(library, actor, run) -> PlayerSession:
 
 
 def reapply_creation(identity):
-    """Hand the recorded creation event to the projectors a second time."""
+    """Apply the recorded creation event again."""
     event = RecordedEvent.from_row(LibraryEvent.objects.get(aggregate_id=identity))
     with transaction.atomic():
         DEFAULT_REGISTRY.apply(event)
@@ -1241,7 +1241,7 @@ def test_the_restore_event_states_the_way_back(owned_user, owned_library, run):
 def test_re_applying_the_creation_event_keeps_a_later_removal(
     owned_user, owned_library, run
 ):
-    """The creation handler names its columns, and the mark is not one."""
+    """The creation handler never names the mark."""
     session = a_recorded_session(owned_library, owned_user, run)
     stamped = timezone.now()
     PlayerSession.objects.filter(pk=session.pk).update(removed_at=stamped)
@@ -1254,7 +1254,7 @@ def test_re_applying_the_creation_event_keeps_a_later_removal(
 
 @pytest.mark.django_db(transaction=True)
 def test_a_replay_reproduces_a_removal_and_its_undoing(owned_user, owned_library, run):
-    """Removed, back, and removed again reach one state."""
+    """Removed, back, removed again: one state."""
     session = a_recorded_session(owned_library, owned_user, run)
     lifecycle = (
         playersession_removed(session.pk),

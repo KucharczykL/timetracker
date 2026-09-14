@@ -640,7 +640,7 @@ def test_the_lifecycle_events_are_in_the_default_vocabulary():
 
 
 def test_a_lifecycle_payload_states_nothing_but_its_type():
-    """The type is the fact; no key disagrees."""
+    """The type is the fact."""
     assert validated_as(PLAYERSESSION_REMOVED, {}) == {}
     assert validated_as(PLAYERSESSION_RESTORED, {}) == {}
 
@@ -658,7 +658,7 @@ def test_a_lifecycle_payload_refuses_a_time_of_its_own():
 
 
 def test_the_lifecycle_builders_name_the_session_they_are_told_about():
-    """The aggregate exists, so nothing mints an identity here."""
+    """The aggregate exists; nothing mints here."""
     identity = uuid.uuid7()
 
     removed = playersession_removed(identity)

@@ -147,8 +147,7 @@ class PlayerSessions(Projector):
     def _restored(self, event: RecordedEvent) -> None:
         self.amend(PlayerSession, event.aggregate_id, removed_at=None)
 
-    #: The creation handler names its own columns and not the mark,
-    #: so a re-applied creation cannot take a later removal back out.
+    #: Creation never names the mark; amendments survive.
     handles: ClassVar[HandlerMap] = {
         PLAYERSESSION_CREATED: _created,
         PLAYERSESSION_ENDED: _ended,

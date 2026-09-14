@@ -162,8 +162,7 @@ def library_session(context: CommandContext, session_id: uuid.UUID) -> PlayerSes
     """This library's session, or a refusal."""
     return library_row(
         context,
-        #: The plain manager: a removed row is refused by name by
-        #: every caller, not hidden into "no such session".
+        #: Plain manager: callers refuse a removed row.
         PlayerSession.objects.all(),
         Refusal(
             message=(
@@ -693,13 +692,8 @@ class MoveSessionToPlaythrough(Command):
 def _refuse_under_a_removed_parent(
     context: CommandContext, session: PlayerSession
 ) -> None:
-    """Refuse a lifecycle act under a removed game or run.
-
-    Its own sentences, not `_live_run`'s: "restore it before
-    recording this" names an act the person is not performing.
-    """
-    #: Scoped resolve, as `_live_session` makes it: the run's
-    #: library is what the ownership audit walks.
+    """Refuse an act under a removed parent."""
+    #: Library-scoped, as the ownership audit walks.
     run = library_playthrough(context, session.playthrough_id)
     #: Under dispatch's lock neither mark can move.
     if run.player_game.removed_at is not None:
@@ -732,9 +726,7 @@ class RemoveSession(Command):
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         session = library_session(context, self.session_id)
-        #: The no-op before either parent's mark, the other way round
-        #: from `_live_session`: a repeat still succeeds once the run
-        #: or the game is gone.
+        #: No-op first: a repeat succeeds regardless.
         if session.removed_at is not None:
             return Unchanged(f"This library already removed session {self.session_id}.")
         _refuse_under_a_removed_parent(context, session)
