@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "kaneo": {
+      "type": "http",
+      "url": "https://kaneo.home.arpa/api/mcp"
+    }
+  }
+}
