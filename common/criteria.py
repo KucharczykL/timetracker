@@ -2129,6 +2129,9 @@ def _comparison_group_for(model: type[models.Model], column: str) -> ComparisonG
     temporal projection, or is of a type with no comparison group such as
     AutoField pk / JSONField).
     """
+    retired = getattr(model, "RETIRED_COMPARISON_COLUMNS", {})
+    if column in retired:
+        raise FilterError(retired[column])
     try:
         model_field = model._meta.get_field(column)
     except FieldDoesNotExist as exc:

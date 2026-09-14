@@ -1569,6 +1569,37 @@ class TestPlaytimeHoursAgainstDB:
         assert set(games.filter(playtime__gt=timedelta(hours=1))) == {played}
 
 
+class TestRetiredPlaytimeComparison:
+    """A stored `playtime` comparison refuses by name."""
+
+    @pytest.mark.parametrize(
+        ("parse", "operand"),
+        [
+            (parse_game_filter, "playtime"),
+            (parse_session_filter, "game__playtime"),
+            (parse_purchase_filter, "games__playtime"),
+        ],
+    )
+    def test_a_playtime_operand_names_why_it_is_refused(self, parse, operand):
+        stored = json.dumps(
+            {
+                "field_comparisons": [
+                    {"left": operand, "right": "created_at", "modifier": "LESS_THAN"}
+                ]
+            }
+        )
+
+        with pytest.raises(FilterError, match="Playtime is read from sessions"):
+            parse(stored)
+
+    def test_playtime_is_not_offered_as_an_operand(self):
+        from games.models import Game
+
+        assert "playtime" not in {
+            column["value"] for column in comparable_columns(Game)
+        }
+
+
 class TestDateCriterion:
     def test_equals(self):
         c = DateCriterion(value="2025-06-01", modifier=Modifier.EQUALS)

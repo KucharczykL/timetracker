@@ -221,6 +221,14 @@ class Game(ReferencedRow):
         tracked_status: str
         tracked_mastered: bool
 
+    #: Columns gone, refused by name in comparisons.
+    RETIRED_COMPARISON_COLUMNS: ClassVar[dict[str, str]] = {
+        "playtime": (
+            "Playtime is read from sessions now and cannot be compared "
+            "with another column; filter on playtime hours instead."
+        ),
+    }
+
     class Meta:
         #: Both partial on `removed_at`.
         #: A removed name is free again.
