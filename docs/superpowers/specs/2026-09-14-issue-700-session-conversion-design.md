@@ -24,7 +24,9 @@ load on a mismatch, so a development database holds the projection the
 deployment holds.
 
 The migration imports the concrete models, as `0045` did, because the
-conversion appends through the live vocabulary and projectors. #772 replaces
+conversion appends through the live vocabulary and projectors, and is
+`elidable=True` for the same reason `0045` was: a squash may drop it once it
+has run. #772 replaces
 the callable with `RunPython.noop` when it drops `Session`, and takes
 `games/backfill/` out with it. Both are recorded in #772 now.
 
@@ -57,9 +59,24 @@ restatement, #748 a rebuild, HIST its own aggregate, #714 the bulk form of a
 move. Widening `dispatch()` to take a past `recorded_at` would let a command
 backdate what a person stated, for one caller that #772 takes away.
 
-The walk pages one library's live `PlayerGame` rows through `keyset_pages`,
-200 per page, and takes each game's `Session` rows live and removed alike,
-ordered by id.
+The walk pages the games the library owns — `Game.objects.filter(library=library)`,
+as the census does — through `keyset_pages`, 200 per page, and takes each
+game's `Session` rows live and removed alike, ordered by id. It walks games,
+not tracking rows, so a row on an untracked, removed-tracking, removed or
+shared game is *visited* and refused by name rather than left as an anonymous
+residual. The residual it does count, by a separate query, is
+`Session.objects.filter(game__library=library).count()` against the rows
+converted, and it must be zero.
+
+Every read names its columns with `.only()` — `SESSION_FIELDS`,
+`PLAYERGAME_FIELDS`, `PLAYTHROUGH_FIELDS` — as `0045` did with
+`_PLAYEVENT_FIELDS`: the migration runs against the concrete models while the
+schema stands at `0004`, so a column a later stack member adds to any of these
+tables would make a bare query fail with "column does not exist" on the
+deployment and in `make verify-dump`. #1047, #702 and #704 are told: a column
+added to `Session`, `PlayerGame`, `Playthrough` or `PlayerSession` needs no
+entry here, because the lists name only what `0004` reads, and a renamed or
+dropped column named here fails `0004` loudly.
 
 ## One row, one statement
 
@@ -77,12 +94,22 @@ holds no such row, so a test states the arithmetic on a synthetic one —
 `Session.duration_total == PlayerSession.effective_duration` for every verdict.
 
 `running` — no end, zero manual — is a Timed statement with no end **when the
-row is removed**, and a refusal when it is live. A person finishes or corrects
+row is removed**, and a refusal when it is live. The order is: refuse a NULL
+`duration_manual` first, then `normalized_timing`, then `timing_payload`. A person finishes or corrects
 a live one before the cutover; a removed one is nobody's to act on, and refusing
 it would have #772 destroy the record. Production holds two, both removed.
 `negative_elapsed` and `negative_manual` refuse; production holds none.
-`duration_manual IS NULL` refuses rather than reads as zero; production holds
-none.
+`duration_manual IS NULL` refuses ahead of the verdict: `classify_timing` reads
+NULL as zero, and the census counts the row under `manual_duration_null`
+beside the verdict, so the two still agree on every row that converts.
+Production holds none. The two removed rows in production are exactly the two
+running rows, so check 1's removal branch is exercised on them and nothing
+else.
+
+A stated duration must be whole seconds and, for Duration-only, above zero;
+`timing_payload` refuses the rest. Production's 142 manual durations are whole
+seconds; the 1,672 sub-second intervals are elapsed Timed time, which no
+payload states.
 
 `day_zone` is the library's display zone, `DISPLAY_TIME_ZONE` resolved for the
 library's user, which is the zone every legacy day-grained read groups in. A
@@ -120,14 +147,17 @@ against the other.
 {"origin": "backfill", "issue": 700,
  "legacy": {"timestamp_start": "...", "timestamp_end": null,
             "timestamp_start_timezone": null, "timestamp_end_timezone": "Europe/Prague",
-            "duration_manual_seconds": 0, "duration_calculated_seconds": 5400,
-            "duration_total_seconds": 5400, "created_at": "...",
+            "duration_manual_microseconds": 0,
+            "duration_calculated_microseconds": 5400000000,
+            "duration_total_microseconds": 5400000000, "created_at": "...",
             "verdict": "timed", "assignment": "sole_run", "claimers": null}}
 ```
 
-Nothing reads it. It is the only place the dropped time-of-day of a
-Duration-only row, the elapsed part of a Corrected row, and the reason a row
-landed where it did survive #772.
+Durations are microseconds, because 1,672 Timed rows hold sub-second elapsed
+intervals and evidence truncated to seconds is not evidence. Nothing reads it.
+It is the only place the dropped time-of-day of a Duration-only row, the
+elapsed part of a Corrected row, and the reason a row landed where it did
+survive #772.
 
 ## Assignment and the bucket
 
@@ -139,9 +169,10 @@ display zone. `assign_run` answers:
 - `CONTAINED` — the one dated run that claims the day.
 - `BUCKET` — the game's imported-history run.
 
-The bucket is one run per game, not per library, minted only when a row
-reaches `BUCKET`, at the migration's instant, because minting it is the
-importer's act: `playthrough_created(player_game, kind="imported_history",
+The bucket is one run per game, not per library. Before minting, the pass
+resolves a live `imported_history` run of the game by query; only where none
+stands is one minted, when the first row reaches `BUCKET`, at the migration's
+instant, because minting it is the importer's act: `playthrough_created(player_game, kind="imported_history",
 playthrough_id=identity_at(now))`, then
 `playthrough_name_changed(name="Imported history — needs sorting")`, under one
 correlation id. Numbering and Game detail already skip the kind; ORG
@@ -161,11 +192,13 @@ all four.
 - `backfill:700:playthrough:bucket:<player_game>`
 - `backfill:700:playthrough:bucket_name:<player_game>`
 
-`command_input` names only identities that are stable across passes — the
-session, the run it landed on, the tracked game — never the bucket identity
-this pass mints, which is fresh per pass and would answer a second pass with
+`command_input` names only identities that are stable across passes. A
+session's input is `{"session": id, "assignment": outcome}` plus the run for a
+`SOLE_RUN` or `CONTAINED` row; a `BUCKET` row's input names the outcome word
+and no run, because the run it landed on is the identity this pass mints,
+fresh per pass, and naming it would answer a second pass with
 `IdempotencyKeyMismatch` in place of the no-op the key promises. The bucket's
-key carries the tracked game alone.
+own input is `{"player_game": id}`.
 
 ## The gate
 
@@ -175,19 +208,28 @@ three in the exception.
 
 1. **Row to row.** Every converted row's columns equal the legacy row's
    statement: mode, instants, zones, day, `effective_duration == duration_total`,
-   device, note, emulated, and the removal mark.
-2. **Counts.** Converted per verdict and per assignment outcome equal
-   `preflight_library(library)`'s counts read in the display zone, and
-   `rows_unreached == 0`, counted by a separate query.
-3. **Bucket.** At most one `imported_history` run per game, holding exactly the
-   `BUCKET` rows, present only where one was needed.
-4. **Playtime.** `differing(playtime_figures(library))` is empty: every figure
-   #697 compares agrees between the legacy source and the projection.
-5. **Session counts** before and after, live and removed, equal.
-6. **Identity ordering** for `games_playersession`, and the audit holds an entry
-   for the table.
-7. **Replay.** `rebuild_projections(library, mode=CHECK)` reports no differing
-   table.
+   device, note, emulated, and the removal mark. Live and removed populations
+   are compared apart.
+2. **Census.** The pass's `timed`, `duration_only`, `corrected`,
+   `running_removed`, `removed`, `sole_run`, `contained` and `bucket` equal
+   `preflight_library(library)`'s `timed`, `duration_only`, `corrected`,
+   `running`, `removed`, `sole_run`, `contained_secondary` and
+   `bucket_secondary`. The secondary column is `activity_clock(library).zone`,
+   which resolves the same `DISPLAY_TIME_ZONE` the pass seeds `day_zone` from;
+   a test pins that rather than assuming it. `rows_unreached == 0`.
+3. **Bucket.** At most one live `imported_history` run per game, holding
+   exactly the `BUCKET` rows, present only where one was needed.
+4. **Playtime.** `differing(playtime_figures(library, display_zone(library)))`
+   is empty: every figure #697 compares agrees between the legacy source and
+   the projection, read in the zone the rows were seeded in.
+5. **Counts.** Legacy `Session` rows in scope, live and removed, equal
+   `PlayerSession` rows of the library, live and removed.
+6. **Identity ordering** for `games_playersession` and `games_playthrough`
+   (the bucket is a key this pass mints), and the audit holds an entry for
+   both.
+7. **Replay.** `rebuild_projections(library, mode=CHECK)`: on every
+   `TableDiff`, `only_live`, `only_rebuilt` and `differing` are zero, and
+   `head_at_diff == replayed_through`.
 
 Two passes over unchanged data print the same bytes and the second appends
 nothing.
@@ -224,4 +266,10 @@ them into events), and any read of the projection.
 - #772: noop the callable, take `games/backfill/` out.
 - #601: the four-issue stack, and why "harmless on `main`" holds.
 - #702: the bucket exists; the move command is the only way out of it.
+- #1047, #702, #704: `0004` reads named columns of four tables; a column they
+  rename or drop fails it.
+- #689's design: its identity note said reuse passes because every converted
+  row shares one `created_at`; the rows carry their own, and reuse passes
+  because the legacy ids already order by `created_at` (zero inversions on
+  the dump). The sentence is corrected there.
 - The wave review: the delivery note on #700.

@@ -97,8 +97,12 @@ class ConversionCounts:                  # summable, as_dict(); fields:
     running_removed, notes, devices, sole_run, contained, bucket,
     buckets_minted, events_appended
 
-class LegacyRow(NamedTuple):             # every Session column the pass reads
-    ...                                  # named like _PLAYEVENT_FIELDS was, for the migration's sake
+SESSION_FIELDS = ("id", "game_id", "timestamp_start", "timestamp_end",
+    "timestamp_start_timezone", "timestamp_end_timezone", "duration_manual",
+    "duration_calculated", "duration_total", "device_id", "note", "emulated",
+    "created_at", "removed_at")            # every .only() on Session; 0045's _PLAYEVENT_FIELDS shape
+PLAYERGAME_FIELDS = ("id", "game_id", "library_id", "removed_at")
+PLAYTHROUGH_FIELDS = ("id", "player_game_id", "kind", "removed_at", "created_at", "started_lower", "completed_upper")
 
 def display_zone_name(library: UserLibrary) -> ZoneName
 def statement_for(row: Session, *, day_zone: ZoneName) -> TimingStatement
@@ -106,11 +110,15 @@ def statement_for(row: Session, *, day_zone: ZoneName) -> TimingStatement
     # duration_only → DurationOnlyTiming(start.astimezone(day_zone).date(), duration_manual)
     # corrected → CorrectedTiming(start, end, duration_total, day_zone, zones)
     # running and removed → TimedTiming(start, day_zone, start_zone)  (no end)
-    # running and live, negative_*, duration_manual is None → ConversionRefused
+    # duration_manual is None → ConversionRefused, checked BEFORE classify_timing (which reads NULL as zero)
+    # running and live, negative_* → ConversionRefused
+    # then normalized_timing(statement) — the caller runs timing_payload
 def legacy_evidence(row: Session, *, verdict: TimingVerdict, assignment: Assignment) -> SourceMetadata
 def convert_row(row: Session, *, library, actor, run_id: uuid.UUID, assignment: Assignment, day_zone: ZoneName) -> ConversionCounts
     # keys f"{KEY_PREFIX}:playersession:created:{row.pk}", ":removed:"
-    # command_input = {"session": row.pk, "playthrough": run_id}
+    # command_input = {"session": row.pk, "assignment": assignment.outcome.value}
+    #   plus "playthrough": run_id for SOLE_RUN / CONTAINED only — a BUCKET row's run is
+    #   the identity this pass mints, fresh per pass, so naming it breaks the second pass
     # device: capture_reference(row.device) as recorded; another library's device → ConversionRefused
     # note: row.note.strip(), then check_note
     # one correlation_id per row, shared by created and removed
@@ -133,7 +141,8 @@ gives it):
 - `a_padded_note_is_stripped`, `a_note_holding_a_nul_byte_refuses`
 - `the_identity_is_the_legacy_id_and_created_at_is_the_rows`
 - `a_removed_row_appends_created_then_removed_at_its_removed_at`
-- `the_evidence_names_every_legacy_column` (compare `LibraryEvent.source_metadata`)
+- `the_evidence_names_every_legacy_column` (compare `LibraryEvent.source_metadata`; durations in **microseconds**, `duration // timedelta(microseconds=1)`, so a sub-second elapsed interval survives)
+- `a_sub_second_elapsed_interval_converts_and_its_evidence_keeps_it`
 - `a_second_pass_over_one_row_appends_nothing`
 - `counts_add_field_by_field`, `every_mode_verdict_names_a_counts_field`
 
@@ -157,16 +166,22 @@ def runs_for(tracked_id, *, library) -> list[RunInterval]
     # live ordinary runs, library on the run and on player_game, order created_at, id;
     # bounds from started_lower / completed_upper
 def bucket_for(tracked: PlayerGame, *, library, actor, minted_at: datetime) -> uuid.UUID
-    # existing imported_history run of this game, else mint:
+    # FIRST resolve: Playthrough.objects.filter(library=library, player_game=tracked,
+    #   kind=IMPORTED_HISTORY, removed_at__isnull=True).only(*PLAYTHROUGH_FIELDS) — else mint:
     #   playthrough_created(tracked.pk, kind="imported_history", playthrough_id=identity_at(minted_at))
     #   playthrough_name_changed(run_id, name=BUCKET_NAME)
     # keys f"{KEY_PREFIX}:playthrough:bucket:{tracked.pk}", ":bucket_name:"
     # command_input = {"player_game": tracked.pk}; recorded_at=minted_at; one correlation id
 def convert_game(rows: Sequence[Session], *, library, actor, tracked: PlayerGame, day_zone, minted_at) -> ConversionCounts
-def rows_the_walk_reaches(library) -> QuerySet[Session]   # every row on a game the library owns
+def rows_the_walk_reaches(library) -> QuerySet[Session]
+    # Session.objects.filter(game__library=library) — the census's sessions_in_scope
 def convert_library(library: UserLibrary, *, minted_at: datetime | None = None) -> ConversionCounts
-    # pages live PlayerGame rows 200 at a time; a row whose game has no live PlayerGame,
-    # whose catalog game is removed, or whose game is shared → ConversionRefused naming the category
+    # pages Game.objects.filter(library=library) 200 at a time, AS THE CENSUS DOES (preflight/session.py:326),
+    # never PlayerGame rows: a row on an untracked game, a removed tracking row, or a removed catalog
+    # game is then VISITED and refused by name (ConversionRefused names row id and category).
+    # A shared game (library NULL) is outside every library's walk: refuse if
+    # Session.objects.filter(game__library__isnull=True).exists(), once, before any library.
+    # Tracking rows and runs read with library=library AND player_game__library=library.
 ```
 
 The day for `assign_run` is `row.timestamp_start.astimezone(ZoneInfo(day_zone)).date()`.
@@ -182,7 +197,8 @@ Tests:
 - `an_undated_run_claims_nothing`
 - `one_bucket_per_game_however_many_rows_reach_it`, `the_bucket_is_named_and_of_the_imported_kind`
 - `a_game_needing_no_bucket_gets_none`
-- `a_second_pass_mints_no_second_bucket`
+- `a_second_pass_mints_no_second_bucket` (a second `convert_library` in the **same transaction** resolves the bucket by query; `append_one` returns False for the replayed key and hands back no id)
+- `a_bucket_rows_input_names_no_run` (fingerprint of the created key equals across two passes)
 - `a_row_on_an_untracked_game_refuses`, `…on_a_removed_tracking_row_refuses`, `…on_a_removed_catalog_game_refuses`, `…on_a_shared_game_refuses`
 - `a_second_pass_over_a_library_appends_nothing`
 - `rows_unreached_counts_what_the_walk_left` (monkeypatch the walk to skip one)
@@ -215,14 +231,19 @@ class RowShape(NamedTuple):   # what a legacy row and its projection row must bo
 
 def reconcile(library: UserLibrary, counts: ConversionCounts) -> list[Mismatch[MismatchCode]]
     # 1 row-to-row per session id (live and removed populations separately)
-    # 2 counts vs preflight_library(library) read in the display zone:
-    #     timed, duration_only, corrected, running(removed) ; sole_run, contained_secondary, bucket_secondary
-    #     and rows_unreached == 0
+    # 2 counts vs preflight_library(library).counts (secondary column = display zone):
+    #     pass.timed == timed, duration_only, corrected, running_removed == running,
+    #     removed == removed, sole_run == sole_run, contained == contained_secondary,
+    #     bucket == bucket_secondary ; and rows_unreached == 0
     # 3 buckets: ≤1 imported_history run per game; its sessions == the BUCKET rows; none where no BUCKET row
-    # 4 differing(playtime_figures(library, ZoneInfo(day_zone))) == []
-    # 5 live/removed session counts, legacy vs projection
-    # 7 rebuild_projections(library, mode=RebuildMode.CHECK): every TableDiff shows no difference
-def ordering_violations() -> list[Mismatch[MismatchCode]]   # check 6, games_playersession, blind → mismatch
+    # 4 differing(playtime_figures(library, display_zone(library))) == []   (zone is positional, required)
+    # 5 Session rows in scope live/removed == PlayerSession rows of the library live/removed
+    # 7 report = rebuild_projections(library, mode=RebuildMode.CHECK):
+    #     every TableDiff has only_live == only_rebuilt == differing == 0, and
+    #     report.head_at_diff == report.replayed_through
+def ordering_violations() -> list[Mismatch[MismatchCode]]
+    # check 6 over BOTH games_playersession and games_playthrough (the bucket is a key this pass mints);
+    # a table identity_models() lacks → IDENTITY_AUDIT_BLIND
 ```
 
 Gotchas: `_one_snapshot()` yields straight through inside an atomic block, so
@@ -243,7 +264,7 @@ census) and asserting the code and subject:
 - `a_count_difference_is_reported`
 - `an_identity_out_of_order_is_reported`, `a_blind_identity_audit_is_reported`
 - `a_replay_difference_is_reported`
-- `the_display_zone_the_census_reads_is_the_one_the_conversion_seeds`
+- `the_display_zone_the_census_reads_is_the_one_the_conversion_seeds` (`report_zones(library).secondary` vs `ZoneInfo(display_zone_name(library))`, with a non-default `DISPLAY_TIME_ZONE` set)
 
 Commit: `feat: gate the session conversion on seven readings`.
 
@@ -263,7 +284,8 @@ Migration: the `0045` shape — `MACHINE_PREFIX = "PLAYERSESSION_CONVERSION_RECO
 `minted_at = timezone.now()` for the run, a second pass per library counted as
 `COUNT_DRIFT` if it appended, `reconcile` then `ordering_violations`, emit on
 `except Exception` with `"aborted": 1`, `RunPython(convert_legacy_sessions, RunPython.noop, elidable=True)`,
-`dependencies = [("games", "0003_remove_game_playtime")]`.
+`dependencies = [("games", "0003_remove_game_playtime")]`. A shared-game
+refusal runs once before the library loop.
 
 Sample loader:
 
@@ -310,6 +332,8 @@ Commit: `feat: convert every legacy session in migration 0004`.
   - #601: the stack is #700 → #1047 → #702 → #704; "harmless on main" rests on the quadlet holding no `AutoUpdate`.
   - #702: the bucket exists at ≤1 game; `MoveSessionToPlaythrough` is the only way out; every bucketed session is a `BUCKET` outcome the evidence names.
   - #1047: the conversion seeds `day_zone` from the display zone per #689; its counts were read in Europe/Prague.
+  - #1047, #702, #704 (one comment each): `0004` reads named columns of `Session`, `PlayerGame`, `Playthrough`, `PlayerSession` with `.only()`; adding a column is free, renaming or dropping one named in `SESSION_FIELDS`/`PLAYERGAME_FIELDS`/`PLAYTHROUGH_FIELDS` fails `0004` on `make verify-dump`.
+- [ ] #689's design, "identity" paragraph: replace "with every converted row sharing one `created_at` the tiebreak is the key itself" with "the legacy ids already order by `created_at` (zero inversions on the 2026-09-12 dump), so reuse passes with each row's own `recorded_at`".
 - [ ] `gh stack submit` — PR body: the spec link, the dump's machine line, and
       "member 1 of the wave stack; do not merge alone".
 - [ ] Kaneo TIM-8: comment with spec + plan + PR links, status → in progress.
