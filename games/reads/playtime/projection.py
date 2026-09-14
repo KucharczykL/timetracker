@@ -73,7 +73,7 @@ def playtime_by_platform(
         _sessions(library, year)
         .values(PLATFORM, f"{PLATFORM}__name")
         .annotate(playtime=Coalesce(Sum("effective_duration"), ZERO))
-        .order_by("-playtime", f"{PLATFORM}__name")
+        .order_by("-playtime", f"{PLATFORM}__name", f"{PLATFORM}__id")
         .values_list(PLATFORM, f"{PLATFORM}__name", "playtime")
     )
     return [PlatformPlaytime(*row) for row in rows]

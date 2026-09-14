@@ -291,7 +291,8 @@ def _compute_stats_from_scoped_querysets(
         Game.objects.visible_to(library)
         .annotate(total_playtime=playtime_by_game(library, year=year))
         .filter(total_playtime__gt=timedelta(0))
-        .order_by("-total_playtime")
+        #: Equal playtimes need an order, or the page reshuffles them.
+        .order_by("-total_playtime", "sort_name", "name", "pk")
     )
 
     played_purchases = library_purchases.filter(games__sessions__in=sessions).distinct()
