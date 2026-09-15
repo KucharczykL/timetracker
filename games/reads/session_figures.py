@@ -8,12 +8,16 @@ the game's key, then the session's.
 from datetime import date, timedelta
 from typing import NamedTuple
 
-from django.db.models import Avg, Count, Q
+from django.db.models import Avg, Count
 
 from games.filters import GAME_SESSIONS
 from games.models import Game, PlayerSession, PlayerSessionQuerySet, UserLibrary
 from games.reads.player_sessions import GAME, library_sessions
 from games.reads.playthrough_completions import YearScope
+
+#: The tie-break's two game columns, spelled from a session.
+SORT_NAME = f"{GAME}__sort_name"
+GAME_KEY = f"{GAME}_id"
 
 
 class LongestSession(NamedTuple):
@@ -38,27 +42,10 @@ class PlayDay(NamedTuple):
 
 def scoped_sessions(library: UserLibrary, year: YearScope) -> PlayerSessionQuerySet:
     """Counted sessions, narrowed to a year; None is all-time."""
-    sessions = library_sessions(library).select_related(GAME)
+    sessions = library_sessions(library)
     if year is None:
         return sessions
     return sessions.filter(effective_day__year=year)
-
-
-def counted_sessions_q(library: UserLibrary, year: YearScope) -> Q:
-    """`library_sessions`' marks and the year, spelled from a Game."""
-    counted = Q(
-        player_games__library=library,
-        player_games__removed_at__isnull=True,
-        player_games__playthroughs__library=library,
-        player_games__playthroughs__removed_at__isnull=True,
-        **{
-            f"{GAME_SESSIONS}__library": library,
-            f"{GAME_SESSIONS}__removed_at__isnull": True,
-        },
-    )
-    if year is None:
-        return counted
-    return counted & Q(**{f"{GAME_SESSIONS}__effective_day__year": year})
 
 
 def games_in_scope(library: UserLibrary, year: YearScope):
@@ -81,46 +68,52 @@ def distinct_days(library: UserLibrary, year: YearScope) -> int:
 
 
 def longest_session(library: UserLibrary, year: YearScope) -> LongestSession | None:
-    """`effective_duration`: an override or a stated time counts whole."""
-    session = (
+    """`effective_duration`: an override or a stated time counts whole.
+
+    The order is taken over keys and the row fetched after: sorting
+    the joined rows whole costs twice as much on production shape.
+    """
+    key = (
         scoped_sessions(library, year)
-        .order_by("-effective_duration", f"{GAME}__sort_name", f"{GAME}_id", "id")
+        .order_by("-effective_duration", SORT_NAME, GAME_KEY, "id")
+        .values_list("id", flat=True)
         .first()
     )
-    if session is None:
+    if key is None:
         return None
+    session = PlayerSession.objects.select_related(GAME).get(pk=key)
     return LongestSession(session, session.playthrough.player_game.game)
 
 
 def most_sessions_game(library: UserLibrary, year: YearScope) -> GameCount | None:
-    game = (
-        games_in_scope(library, year)
-        .annotate(
-            session_count=Count(GAME_SESSIONS, filter=counted_sessions_q(library, year))
-        )
-        .order_by("-session_count", "sort_name", "pk")
+    """Grouped on the session table, not walked from the Game."""
+    row = (
+        scoped_sessions(library, year)
+        .values(GAME_KEY, SORT_NAME)
+        .annotate(sessions=Count("id"))
+        .order_by("-sessions", SORT_NAME, GAME_KEY)
+        .values_list(GAME_KEY, "sessions")
         .first()
     )
-    if game is None:
+    if row is None:
         return None
-    return GameCount(game, game.session_count)
+    game_id, sessions = row
+    return GameCount(Game.objects.get(pk=game_id), sessions)
 
 
 def highest_average_game(library: UserLibrary, year: YearScope) -> GameAverage | None:
-    game = (
-        games_in_scope(library, year)
-        .annotate(
-            session_average=Avg(
-                f"{GAME_SESSIONS}__effective_duration",
-                filter=counted_sessions_q(library, year),
-            )
-        )
-        .order_by("-session_average", "sort_name", "pk")
+    row = (
+        scoped_sessions(library, year)
+        .values(GAME_KEY, SORT_NAME)
+        .annotate(average=Avg("effective_duration"))
+        .order_by("-average", SORT_NAME, GAME_KEY)
+        .values_list(GAME_KEY, "average")
         .first()
     )
-    if game is None:
+    if row is None:
         return None
-    return GameAverage(game, game.session_average)
+    game_id, average = row
+    return GameAverage(Game.objects.get(pk=game_id), average)
 
 
 def _play_day(session: PlayerSession | None) -> PlayDay | None:
@@ -132,13 +125,19 @@ def _play_day(session: PlayerSession | None) -> PlayDay | None:
 def first_play(library: UserLibrary, year: YearScope) -> PlayDay | None:
     """The earliest day; within it, the lower key."""
     return _play_day(
-        scoped_sessions(library, year).order_by("effective_day", "id").first()
+        scoped_sessions(library, year)
+        .select_related(GAME)
+        .order_by("effective_day", "id")
+        .first()
     )
 
 
 def last_play(library: UserLibrary, year: YearScope) -> PlayDay | None:
     return _play_day(
-        scoped_sessions(library, year).order_by("-effective_day", "-id").first()
+        scoped_sessions(library, year)
+        .select_related(GAME)
+        .order_by("-effective_day", "-id")
+        .first()
     )
 
 
