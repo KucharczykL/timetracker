@@ -46,8 +46,7 @@ class CalendarMismatchCode(StrEnum):
 def seed_library(library: UserLibrary, *, minted_at: datetime) -> bool:
     """State the owner's display zone as the calendar; true when appended.
 
-    The zone #700 seeded every session row with, so the projector's
-    rewrite changes no day. The key replays as a no-op on a second pass.
+    The zone 0004 seeded every row with; a second pass replays as a no-op.
     """
     zone = display_zone_name(library)
     with transaction.atomic():

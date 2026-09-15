@@ -115,9 +115,8 @@ def change_site_setting(
     invalidation). Effective-after-write is computed without a resolver read-back of
     the just-written layer.
 
-    The display zone is also every inheriting library's calendar, so its
-    change appends one command per such library as `actor`, in the same
-    transaction as the row."""
+    The display zone is also the calendar: one command per inheriting
+    library appends beside the row, as `actor`."""
     definition = get_definition(key)
     if definition.scope is SettingScope.INFRA:
         raise ValueError(f"{key} is infra-scoped (boot-only); cannot store in DB.")
@@ -208,8 +207,8 @@ def change_user_setting(
     so there is no lock branch. No-op writes touch nothing. User effective is always
     reported ``locked=False``, matching the read endpoint's contract.
 
-    The display zone is also the library's calendar, so its change appends
-    the calendar command in the same transaction as the preference row."""
+    The display zone is also the calendar: the command appends beside the
+    row."""
     definition = get_definition(key)
     if definition.scope is not SettingScope.USER:
         raise ValueError(f"{key} is not a user-scoped setting; cannot store per user.")
@@ -314,8 +313,7 @@ def _restate_calendar(
 ) -> CalendarDelta | None:
     """Append the calendar command when the effective zone moved.
 
-    The delta is read first: it compares the new zone's day with the
-    stored one, which the projector rewrites.
+    The delta is read first; the projector rewrites the stored day.
     """
     from games.commands.calendar import SetCalendarDayZone
     from games.events.dispatch import append_command

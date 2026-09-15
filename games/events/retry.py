@@ -166,12 +166,7 @@ def retried_transaction[**P, T](
     *,
     policy: RetryPolicy = DEFAULT_RETRY_POLICY,
 ) -> Callable[P, T] | Callable[[Callable[P, T]], Callable[P, T]]:
-    """Mark a function as re-runnable and run it under `run_in_transaction`.
-
-    The decorator states on the definition what `run_in_transaction` asks of
-    its operation: database only, and re-runnable from scratch. Usable bare or
-    with a `policy`.
-    """
+    """Run the function under `run_in_transaction`: database only, re-runnable."""
 
     def decorate(inner: Callable[P, T]) -> Callable[P, T]:
         @wraps(inner)

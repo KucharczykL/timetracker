@@ -1604,10 +1604,8 @@ class PlaythroughQuerySet(models.QuerySet["Playthrough"]):
         clock is a read that cannot state which threshold it
         answered, and is refused.
 
-        Without a clock the two names compile and refuse to
-        execute: filter validation resolves them, and a read
-        that names one without a clock raises rather than
-        counting days in a zone nobody stated.
+        Without a clock both names compile and refuse to execute:
+        validation resolves them, a read raises.
         """
         from games.reads.playthrough_activity import (
             UnscopedActivity,

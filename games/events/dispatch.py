@@ -324,10 +324,9 @@ def append_command(
 ) -> CommandResult:
     """Build and append `command` inside a transaction the caller holds.
 
-    It does not authorize: the caller vouches for `actor`, which is how a
-    site-level act appends as the operator into libraries the operator does
-    not own. It opens no transaction, because `lock_stream` needs the caller's
-    to hold the head lock until the caller's other writes commit beside it.
+    No `authorize`: the caller vouches for `actor`, so a site-level act
+    appends as the operator. No transaction of its own: the caller's holds
+    the head lock until its other writes commit beside the events.
     """
     alias = router.db_for_write(LibraryEvent)
     if not transaction.get_connection(alias).in_atomic_block:

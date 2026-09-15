@@ -495,9 +495,7 @@ def _check_zones(day_zone: ZoneName, *endpoint_zones: ZoneName | None) -> None:
 def _check_calendar(context: CommandContext, payload: TimingPayload) -> None:
     """A stated day zone is the library's calendar.
 
-    The statement carries the zone because the event does, and the
-    calendar is what every row's zone equals; a statement off it
-    would put one session on a day the library does not count.
+    The event carries the zone; every row's zone equals the calendar.
     """
     if payload["mode"] == "duration_only":
         return

@@ -14,7 +14,7 @@ SUMMARY_KEYS = ("libraries", "seeded", "mismatches")
 
 
 def seed_calendars(apps, schema_editor):
-    """State every library's calendar: the zone #700 seeded its rows with."""
+    """State every library's calendar: the zone 0004 seeded its rows with."""
     del apps, schema_editor
     from games.backfill import calendar as seeding
     from games.backfill.mismatch import Mismatch

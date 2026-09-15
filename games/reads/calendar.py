@@ -46,8 +46,7 @@ class CalendarDelta(NamedTuple):
 def calendar_delta(library: UserLibrary, day_zone: ZoneName) -> CalendarDelta:
     """Count the rows whose day, month or year moves under `day_zone`.
 
-    Read before the projector rewrites the rows: it compares the day
-    the new zone reads with the stored `effective_day`.
+    Read before the projector rewrites `effective_day`.
     """
     rows = library_sessions(library).filter(
         timing_mode__in=(

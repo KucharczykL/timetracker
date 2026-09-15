@@ -896,9 +896,7 @@ def filter_queryset_for_library(model_name: ModelKey, library: UserLibrary) -> Q
 def filter_query_context_for_library(library: UserLibrary) -> FilterQueryContext:
     """Resolve every compiler subquery from the current library's visibility.
 
-    Each scope is built when a filter names it: the runs' scope reads
-    the library's clock, and a list that never descends into runs
-    should not pay for it.
+    Scopes build lazily: the runs' scope reads the clock.
     """
     from games.models import Device, Game, Platform, Playthrough, Purchase, Session
     from games.reads.playthrough_runs import runs_with_condition

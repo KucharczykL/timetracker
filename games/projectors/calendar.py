@@ -11,11 +11,9 @@ from games.models import LibraryCalendar, PlayerSession, PlayerSessionTimingMode
 class LibraryCalendars(Projector):
     """One row per library, and every session day beside it.
 
-    The first projector that writes rows its event does not name.
-    A session's `day_zone` is the library's calendar, so one change
-    rewrites every row holding an instant, removed rows included; the
-    database regenerates `effective_day`. A Duration-only row holds no
-    zone and stays.
+    Writes rows its event does not name: a session's `day_zone` is
+    the calendar, so one change rewrites every row holding an instant,
+    removed rows included, and `effective_day` regenerates.
     """
 
     family_name = ProjectorFamily.CURRENT_STATE
