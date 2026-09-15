@@ -48,6 +48,8 @@ from games.models import (
     Game,
     Platform,
     PlayerGameStatus,
+    PlayerSession,
+    PlayerSessionQuerySet,
     Playthrough,
     PlaythroughKind,
     Purchase,
@@ -57,6 +59,7 @@ from games.models import (
 )
 from games.ownership import owned_or_404
 from games.reads.calendar import calendar_sentence
+from games.reads.player_sessions import library_sessions
 from games.reads.playthrough_endpoints import days_to_finish
 from games.reads.playthrough_numbering import display_name, with_display_number
 from games.reads.playthrough_runs import library_runs
@@ -542,41 +545,55 @@ def _endpoint_zone_label(
 
 
 class SessionOut(Schema):
+    """The projection row, the game reached through its run."""
+
     id: UUIDv7
-    game: GameOut | None = None
+    playthrough_id: UUIDv7
+    game: GameOut | None = Field(None, alias="playthrough.player_game.game")
     device: DeviceOut | None = None
-    timestamp_start: datetime
-    timestamp_end: datetime | None = None
-    timestamp_start_timezone: str | None = None
-    timestamp_end_timezone: str | None = None
-    timestamp_start_timezone_label: str | None = None
-    timestamp_end_timezone_label: str | None = None
-    duration_manual_seconds: int
-    is_manual: bool
+    timing_mode: str
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+    started_at_zone: str | None = None
+    ended_at_zone: str | None = None
+    started_at_zone_label: str | None = None
+    ended_at_zone_label: str | None = None
+    #: The written day of a Duration-only row; null otherwise.
+    stated_day: date | None = None
+    #: The hand-stated duration: whole for Duration-only, an override for
+    #: Corrected; null on a Timed row.
+    stated_duration_seconds: int | None = None
+    #: The day in the library's calendar, and the counted duration.
+    day: date = Field(..., alias="effective_day")
+    duration_seconds: int
     note: str
     emulated: bool
     created_at: datetime
-    modified_at: datetime
 
     @staticmethod
-    def resolve_duration_manual_seconds(obj: Session) -> int:
-        return int(obj.duration_manual.total_seconds()) if obj.duration_manual else 0
+    def resolve_stated_duration_seconds(obj: PlayerSession) -> int | None:
+        if obj.stated_duration is None:
+            return None
+        return int(obj.stated_duration.total_seconds())
 
     @staticmethod
-    def resolve_is_manual(obj: Session) -> bool:
-        return obj.is_manual()
+    def resolve_duration_seconds(obj: PlayerSession) -> int:
+        return int(obj.effective_duration.total_seconds())
 
     @staticmethod
-    def resolve_timestamp_start_timezone_label(obj: Session, context) -> str | None:
-        return _endpoint_zone_label(
-            obj.timestamp_start, obj.timestamp_start_timezone, context
-        )
+    def resolve_started_at_zone_label(obj: PlayerSession, context) -> str | None:
+        return _endpoint_zone_label(obj.started_at, obj.started_at_zone, context)
 
     @staticmethod
-    def resolve_timestamp_end_timezone_label(obj: Session, context) -> str | None:
-        return _endpoint_zone_label(
-            obj.timestamp_end, obj.timestamp_end_timezone, context
-        )
+    def resolve_ended_at_zone_label(obj: PlayerSession, context) -> str | None:
+        return _endpoint_zone_label(obj.ended_at, obj.ended_at_zone, context)
+
+
+def _readable_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
+    """What the two GET routes answer about."""
+    return library_sessions(library).select_related(
+        "playthrough__player_game__game__platform", "device"
+    )
 
 
 class SessionListOut(Schema):
@@ -591,9 +608,7 @@ class SessionListOut(Schema):
 @regex_timeout_api
 def list_sessions_api(request, filter: str = "", sort: str = "", page: int = 1):
     library = cast(User, request.user).library
-    sessions = Session.objects.for_library(library).select_related(
-        "game", "game__platform", "device"
-    )
+    sessions: QuerySet[PlayerSession] = _readable_sessions(library)
     if filter:
         try:
             session_filter = parse_session_filter(filter)
@@ -642,13 +657,7 @@ def list_sessions_api(request, filter: str = "", sort: str = "", page: int = 1):
 @session_router.get("/{session_id}", response=SessionOut)
 def get_session(request, session_id: UUIDv7):
     library = cast(User, request.user).library
-    return owned_or_404(
-        Session.objects.for_library(library).select_related(
-            "game", "game__platform", "device"
-        ),
-        library,
-        id=session_id,
-    )
+    return owned_or_404(_readable_sessions(library), library, id=session_id)
 
 
 class SessionDeviceUpdate(Schema):
