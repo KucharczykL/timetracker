@@ -127,6 +127,7 @@ path**, so verify against `make check` before pushing when possible.
 | Fetch a dump of the deployed database | `make fetch-dump` (→ `.dumps/`; needs `PROD_SSH_HOST`/`PROD_DB_CONTAINER` in `.env`) |
 | Restore the newest dump into a scratch database | `make restore-dump` (prints its `DATABASE_URL`; `DUMP=<path>` picks another) |
 | Restore, migrate, and drop it on success | `make verify-dump` (`KEEP=1` keeps the copy — the pre-deploy rehearsal) |
+| Drop a scratch database a restore left | `make drop-dump` (`DUMP_DB=<name>` names it) |
 | Compare the deployment's schema against a fresh `migrate` | `make verify-baseline` (`KEEP=1` keeps both; the gate on editing the baseline, and the rehearsal for a squash) |
 | Split one change across dependent PRs | `gh stack init` / `add` / `submit`, then `gh stack merge` (atomic; see below) |
 
@@ -326,6 +327,22 @@ docs/           — Additional documentation
   needing one, seven readings gated before commit. Member 1 of the wave stack;
   never merged alone. Contract is
   [Convert legacy Sessions](docs/superpowers/specs/2026-09-14-issue-700-session-conversion-design.md)
+
+  #1047's calendar: one zone per library, stated by
+  `library.calendar.day_zone_changed` and projected to `LibraryCalendar`, a
+  row keyed on the library. Its projector rewrites `day_zone` on every Timed
+  and Corrected session, so `effective_day` regenerates; Duration-only rows
+  and the endpoint zones do not move. Changing `DISPLAY_TIME_ZONE` is the act:
+  `change_user_setting` and `change_site_setting` append
+  `SetCalendarDayZone` beside the preference row under one
+  `retried_transaction`, and answer a `CalendarDelta`. Every reader asks
+  `calendar_day_zone(library)`: the dormancy clock, the parity command, and
+  `CreateSession`/`CorrectSessionTiming`, which refuse a day zone the
+  calendar does not state. Without a clock the two condition aliases compile
+  and refuse to execute. Migration 0005 seeds one calendar per library; 0004's
+  gates keep reading the setting, because the table comes after them. Member
+  2 of the wave stack. Contract is
+  [The zone a library counts days in](docs/superpowers/specs/2026-09-15-issue-1047-library-calendar-design.md)
 
 **Nothing user removes is destroyed** (#944). Eight removable models — Game,
 Edition, Release, Platform, Device, Session, Purchase, FilterPreset —

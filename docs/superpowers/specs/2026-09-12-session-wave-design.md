@@ -582,6 +582,24 @@ rebuild) register on that act and do not choose their own trigger. Where a
 figure moves under the decision, the delta is enumerated against restored
 production data rather than asserted equal.
 
+**Delivered.** The design is
+[The zone a library counts days in](2026-09-15-issue-1047-library-calendar-design.md);
+what it settled, and what the rest of this wave inherits:
+
+- **The stored row zone is the library's answer.** `effective_day` is the day;
+  no reader computes one from a zone of its own. `default_activity_clock()` is
+  gone, and `activity_clock` reads `calendar_day_zone(library)`.
+- **The setting is the act, and it is automatic.** Changing `DISPLAY_TIME_ZONE`
+  appends `library.calendar.day_zone_changed` in the same transaction as the
+  preference row and reports the delta after. The projector rewrites every
+  Timed and Corrected row: one library-wide event, which answers #1054's open
+  question. #748 registers as a Journal projector handling the same event.
+- **The delta on the 2026-09-12 dump** is 9 of 2,663 Timed sessions to another
+  day under Prague→UTC, none to another month or year; the round trip is
+  exact and the replay check clean.
+- **#702's surfaces seed `day_zone` from `calendar_day_zone(library)`**, and a
+  statement off the calendar is refused, so a wrong seed is loud.
+
 ### #702 — the cutover
 
 Absorbs #703. One issue, delivered as a stack, one pull request per surface
