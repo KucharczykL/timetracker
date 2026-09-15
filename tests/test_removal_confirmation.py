@@ -4,10 +4,12 @@ from datetime import UTC, datetime
 
 import pytest
 from django.urls import reverse
+from session_rows import session_row
 from stated_runs import another_run
 
 from common.returns import action_url
-from games.models import Game, Platform, Session
+from games.models import Game, Platform, PlayerSession
+from games.reads.player_sessions import library_sessions
 
 
 @pytest.fixture
@@ -23,9 +25,7 @@ def game(owned_library):
         name="Test Game",
         platform=Platform.objects.create(name="PC"),
     )
-    Session.objects.create(
-        game=game, timestamp_start=datetime(2024, 6, 1, 12, tzinfo=UTC)
-    )
+    session_row(game, started_at=datetime(2024, 6, 1, 12, tzinfo=UTC))
     return game
 
 
@@ -81,9 +81,7 @@ def removables(owned_library):
     purchase.games.set([owned])
     return {
         "game": owned,
-        "session": Session.objects.create(
-            game=owned, timestamp_start=datetime(2024, 6, 1, 12, tzinfo=UTC)
-        ),
+        "session": session_row(owned, started_at=datetime(2024, 6, 1, 12, tzinfo=UTC)),
         "purchase": purchase,
         "platform": Platform.objects.create(library=owned_library, name="Doomed"),
         "device": Device.objects.create(library=owned_library, name="Doomed"),
@@ -99,6 +97,7 @@ def removables(owned_library):
         ("games:remove_device", "device", "games:list_devices"),
     ],
 )
+@pytest.mark.django_db(transaction=True)
 def test_every_removal_confirms_first(
     logged_in, owned_library, removables, url_name, key, fallback
 ):
@@ -107,11 +106,18 @@ def test_every_removal_confirms_first(
     manager = type(instance).objects
     url = reverse(url_name, args=[instance.pk])
     assert logged_in.get(url).status_code == 200
-    assert manager.for_library(owned_library).filter(pk=instance.pk).exists()
+    assert _visible(owned_library, instance).exists()
     response = logged_in.post(url)
     assert response["Location"] == reverse(fallback)
     assert manager.filter(pk=instance.pk).exists()
-    assert not manager.for_library(owned_library).filter(pk=instance.pk).exists()
+    assert not _visible(owned_library, instance).exists()
+
+
+def _visible(library, instance):
+    """The library's own scope for the row's model."""
+    if isinstance(instance, PlayerSession):
+        return library_sessions(library).filter(pk=instance.pk)
+    return type(instance).objects.for_library(library).filter(pk=instance.pk)
 
 
 @pytest.mark.django_db(transaction=True)

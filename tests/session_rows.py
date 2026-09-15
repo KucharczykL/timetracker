@@ -122,6 +122,7 @@ def session_row(
     ended_at: datetime | None = None,
     duration_manual: timedelta | None = None,
     library: UserLibrary | None = None,
+    day_zone: str = TWIN_ZONE.key,
     **columns: object,
 ) -> PlayerSession:
     """A projection row shaped like a legacy create.
@@ -143,10 +144,10 @@ def session_row(
             started_at,
             ended_at,
             (ended_at - started_at) + manual,
-            day_zone=TWIN_ZONE.key,
+            day_zone=day_zone,
             **columns,
         )
-    return timed_row(run, started_at, ended_at, day_zone=TWIN_ZONE.key, **columns)
+    return timed_row(run, started_at, ended_at, day_zone=day_zone, **columns)
 
 
 class Twin(NamedTuple):
@@ -214,3 +215,10 @@ def corrected_twin(
             day_zone=TWIN_ZONE.key,
         ),
     )
+
+
+def run_id(library: UserLibrary | None, game: Game) -> str:
+    """The game's ordinary run, as a form posts it."""
+    if library is None:
+        raise ValueError("a shared catalog game needs the library stated")
+    return str(tracked_run(library, game).pk)

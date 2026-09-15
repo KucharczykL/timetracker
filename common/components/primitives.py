@@ -1643,7 +1643,8 @@ def _form_field_row(
     children.append(control)
     if presentation.after_control:
         children.append(presentation.after_control)
-    return Div()[*children]
+    #: Named, so an element inside can hide the whole row.
+    return Div(data_field_row=field.name)[*children]
 
 
 def _grouped_form_fields(

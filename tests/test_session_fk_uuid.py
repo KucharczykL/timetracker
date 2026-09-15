@@ -7,7 +7,7 @@ from django.db import IntegrityError, transaction
 from django.test import Client
 from django.urls import reverse
 from django.utils import timezone
-from session_rows import session_row
+from session_rows import run_id, session_row
 
 from common.criteria import (
     FilterQueryContext,
@@ -268,14 +268,14 @@ def test_filtered_playtime_annotation_survives_the_uuid_relation(
 
 
 def test_sessionform_preselects_both_relations_by_identity(game, device, owned_library):
-    session = _session(game, device=device)
+    session = _row(game, device=device)
 
     form = SessionForm(
         instance=session, library=owned_library, presentation=PRESENTATION
     )
 
     # Both attnames are the identities their widgets carry.
-    assert form.initial["game"] == game.pk
+    assert form.initial["game"] == game
     assert form.initial["device"] == device.pk
     assert form.fields["game"].prepare_value(form.initial["game"]) == game.pk
     assert form.fields["device"].prepare_value(form.initial["device"]) == device.pk
@@ -285,7 +285,7 @@ def test_sessionform_keeps_a_caller_supplied_device_initial(
     game, device, owned_library
 ):
     """edit_session offers the library's default device to a deviceless session."""
-    session = _session(game)
+    session = _row(game)
 
     form = SessionForm(
         instance=session,
@@ -297,20 +297,21 @@ def test_sessionform_keeps_a_caller_supplied_device_initial(
     assert form.initial["device"] == device
 
 
-def test_sessionform_posting_identities_saves_the_right_relations(
+def test_sessionform_posting_identities_binds_the_right_relations(
     game, device, owned_library
 ):
-    session = _session(game)
+    session = _row(game)
     other_game = Game.objects.create(library=owned_library, name="Retarget")
 
     form = SessionForm(
         data={
             "game": str(other_game.pk),
-            "timestamp_start": "2026-08-14T12:00:00+00:00",
-            "timestamp_start_timezone": "UTC",
-            "timestamp_end": "",
-            "timestamp_end_timezone": "",
-            "duration_manual": "",
+            "playthrough": run_id(owned_library, other_game),
+            "started_at": "2026-08-14T12:00:00+00:00",
+            "started_at_zone": "UTC",
+            "ended_at": "",
+            "ended_at_zone": "",
+            "duration": "",
             "device": str(device.pk),
             "note": "",
         },
@@ -320,9 +321,9 @@ def test_sessionform_posting_identities_saves_the_right_relations(
     )
 
     assert form.is_valid(), form.errors
-    saved = form.save()
-    assert saved.game_id == other_game.pk
-    assert saved.device_id == device.pk
+    assert form.cleaned_data["game"] == other_game
+    assert form.cleaned_data["playthrough"].player_game.game_id == other_game.pk
+    assert form.cleaned_data["device"] == device
 
 
 # --- Device PATCH endpoint ----------------------------------------------------

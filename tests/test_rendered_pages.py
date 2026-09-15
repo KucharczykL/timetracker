@@ -333,12 +333,12 @@ class RenderedPagesTest(TestCase):
     def test_add_session_form_has_segmented_timestamp_fields(self):
         html = self.get("games:add_session").content.decode()
         for marker in [
-            'field-name="timestamp_start"',
+            'field-name="started_at"',
             # The group takes its name from the row label rather than repeating
             # the string, so the label is not announced as its own object.
-            'id="id_timestamp_start-label"',
-            'aria-labelledby="id_timestamp_start-label"',
-            'field-name="timestamp_end"',
+            'id="id_started_at-label"',
+            'aria-labelledby="id_started_at-label"',
+            'field-name="ended_at"',
             'data-date-time-hidden=""',
             'data-date-part="hour"',
             'data-date-part="minute"',
@@ -346,8 +346,8 @@ class RenderedPagesTest(TestCase):
             # inside the widget: Now is a calendar footer button, copy is an
             # arrow addressing the other field.
             "Now",
-            'data-date-time-copy="timestamp_end"',
-            'data-date-time-copy="timestamp_start"',
+            'data-date-time-copy="ended_at"',
+            'data-date-time-copy="started_at"',
             "Copy start value to end",
             "Copy end value to start",
         ]:

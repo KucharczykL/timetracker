@@ -244,8 +244,8 @@ def NavbarLogButton(
         items: list[Node] = [
             DropdownPostItem(
                 action_url(
-                    "games:list_sessions_start_session_from_session",
-                    session.pk,
+                    "games:resume_session",
+                    session.playthrough.player_game.game_id,
                     origin=origin,
                 ),
                 # tap=False: DropdownPostItem wraps this in its own <button role=

@@ -2,7 +2,6 @@
 
 import gzip
 import uuid
-from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -12,7 +11,6 @@ from django.utils import timezone
 
 from games.forms import SessionForm
 from games.models import Game, Session
-from games.views.session import clone_session_by_id
 from timetracker.uuidv7 import UUIDv7Field
 
 SAMPLE_FIXTURE = Path(__file__).parents[1] / "games" / "fixtures" / "sample.yaml.gz"
@@ -68,61 +66,6 @@ def test_raw_session_insert_omitting_id_gets_the_database_default(game):
     )
     assert session_uuid.version == 7
     assert Session.objects.get(pk=session_uuid).note == "Raw Session"
-
-
-def test_cloning_a_session_assigns_a_fresh_uuid_to_the_promoted_pk(
-    game, owned_library, monkeypatch
-):
-    source = Session.objects.create(game=game, timestamp_start=timezone.now())
-    source_pk = source.pk
-    expected_clone_pk = uuid.UUID("018f5e66-e800-7000-8000-000000000002")
-    monkeypatch.setattr("games.views.session.uuid7", lambda: expected_clone_pk)
-
-    clone = clone_session_by_id(source.pk, owned_library)
-
-    assert clone.pk == expected_clone_pk
-    assert clone.pk != source_pk
-    assert clone.pk.version == 7
-    assert Session.objects.filter(pk=source_pk).exists()
-    assert set(Session.objects.values_list("pk", flat=True)) == {source_pk, clone.pk}
-
-
-def test_cloning_rejects_a_generated_uuid_owned_by_another_library(
-    game, owned_library, django_user_model, monkeypatch
-):
-    source = Session.objects.create(
-        game=game,
-        timestamp_start=datetime(2024, 1, 1, tzinfo=UTC),
-        timestamp_end=datetime(2024, 1, 2, tzinfo=UTC),
-        timestamp_start_timezone="Europe/Prague",
-        timestamp_end_timezone="Europe/Prague",
-        note="source",
-        emulated=True,
-    )
-    other_owner = django_user_model.objects.create_user(username="clone-collision")
-    other_game = Game.objects.create(
-        library=other_owner.library, name="Collision Victim"
-    )
-    victim = Session.objects.create(
-        game=other_game,
-        timestamp_start=datetime(2023, 2, 1, tzinfo=UTC),
-        timestamp_end=datetime(2023, 2, 2, tzinfo=UTC),
-        note="victim",
-    )
-    source_before = Session.objects.filter(pk=source.pk).values().get()
-    victim_before = Session.objects.filter(pk=victim.pk).values().get()
-    monkeypatch.setattr("games.views.session.uuid7", lambda: victim.pk)
-
-    collision_error: IntegrityError | None = None
-    try:
-        with transaction.atomic():
-            clone_session_by_id(source.pk, owned_library)
-    except IntegrityError as error:
-        collision_error = error
-
-    assert Session.objects.filter(pk=source.pk).values().get() == source_before
-    assert Session.objects.filter(pk=victim.pk).values().get() == victim_before
-    assert collision_error is not None
 
 
 def test_database_rejects_a_duplicate_session_uuid(game):

@@ -1,11 +1,13 @@
 from collections.abc import Sequence
+from functools import partial
 from typing import Any, cast
-from uuid import UUID, uuid7
+from uuid import UUID
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.db.models import QuerySet
-from django.http import HttpRequest, HttpResponse
+from django.http import Http404, HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import redirect
 from django.urls import reverse
@@ -51,11 +53,11 @@ from games.models import (
     PlayerSession,
     PlayerSessionTimingMode,
     PlaythroughKind,
-    Session,
     UserLibrary,
 )
 from games.ownership import owned_or_404
-from games.reads.player_sessions import library_sessions
+from games.reads.calendar import calendar_day_zone
+from games.reads.player_sessions import game_sessions, library_sessions
 from games.reads.playthrough_numbering import display_name, numbered_for
 from games.sorting import (
     SESSION_DEFAULT_SORT,
@@ -65,9 +67,25 @@ from games.sorting import (
 )
 from games.views.filtering import warn_unknown_sort
 from games.views.playergame_writes import record_facts_for_request
-from games.views.removal import confirm_and_apply, confirm_and_remove
+from games.views.removal import confirm_and_apply
 from games.views.returns import return_url
+from games.writes.answers import CommandFailed
 from games.writes.playergame import new_correlation_id
+from games.writes.playersession import (
+    SessionDraft,
+    clone_session,
+    end_session,
+    is_running,
+    latest_ordinary_run,
+    record_session,
+    restate_session,
+)
+from games.writes.playersession import (
+    remove_session as remove_session_row,
+)
+from games.writes.playersession import (
+    reset_session as reset_session_start,
+)
 
 #: What the name cell calls a session in the bucket.
 IMPORTED_HISTORY_LABEL = "Imported history"
@@ -229,10 +247,10 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
     )
 
 
-def _record_played(request: HttpRequest, session: Session) -> None:
+def _record_played(request: HttpRequest, game: Game) -> None:
     """State Played for a game the projection calls unplayed."""
     tracked = PlayerGame.objects.filter(
-        library=cast(User, request.user).library, game=session.game
+        library=cast(User, request.user).library, game=game
     ).first()
     #: No row states nothing. record_facts() tracks it
     #: first, as it does for both sibling paths.
@@ -240,9 +258,45 @@ def _record_played(request: HttpRequest, session: Session) -> None:
         return
     record_facts_for_request(
         request,
-        session.game,
+        game,
         status=PlayerGameStatus.PLAYED,
         correlation_id=new_correlation_id(),
+    )
+
+
+#: The scripts the form's widgets need; they render to text, so no Media bubbles.
+SESSION_FORM_SCRIPTS = (
+    "dist/elements/search-select.js",
+    "dist/elements/date-time-field.js",
+    "dist/elements/time-zone-row.js",
+    "dist/elements/date-picker.js",
+    "dist/elements/playthrough-select.js",
+)
+
+
+def _session_draft(form: SessionForm, library: UserLibrary) -> SessionDraft:
+    """What the valid form states, in the library's calendar."""
+    device = form.cleaned_data.get("device")
+    return SessionDraft(
+        playthrough_id=form.cleaned_data["playthrough"].pk,
+        timing=form.timing_statement(calendar_day_zone(library).key),
+        device_id=None if device is None else device.pk,
+        note=form.cleaned_data["note"],
+        emulated=form.cleaned_data["emulated"],
+    )
+
+
+def _render_session_form(request: HttpRequest, form: SessionForm, title: str):
+    return render_page(
+        request,
+        AddForm(
+            form,
+            request=request,
+            submit_class="",
+            fields=FormFields(form, embedded=SESSION_TIMEZONE_EMBEDS),
+        ),
+        title=title,
+        scripts=Fragment(*(ModuleScript(path) for path in SESSION_FORM_SCRIPTS)),
     )
 
 
@@ -256,68 +310,61 @@ def add_session(request: HttpRequest, game_id: UUID | None = None) -> HttpRespon
         # rendered with through to submission — that is what stops an edit from
         # shifting a stored session's duration — so seeding the raw instant
         # would attach this page load's microseconds to a hand-typed time.
-        "timestamp_start": timezone.now().replace(second=0, microsecond=0),
-        "device": cast(User, request.user).library.preferences.default_device,
+        "started_at": timezone.now().replace(second=0, microsecond=0),
+        "device": library.preferences.default_device,
     }
+    if game_id:
+        game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
+        initial["game"] = game
+        run = latest_ordinary_run(library, game)
+        if run is not None:
+            initial["playthrough"] = run.pk
 
     if request.method == "POST":
         form = SessionForm(
-            request.POST or None,
-            initial=initial,
-            library=library,
-            presentation=presentation,
+            request.POST, initial=initial, library=library, presentation=presentation
         )
         if form.is_valid():
-            session = form.save()
-            if form.cleaned_data.get("mark_as_played"):
-                _record_played(request, session)
-            return redirect(return_url(request, fallback="games:list_sessions"))
+            game = form.cleaned_data["game"]
+            try:
+                record_session(
+                    cast(User, request.user),
+                    _session_draft(form, library),
+                    correlation_id=new_correlation_id(),
+                )
+            except CommandFailed as failure:
+                messages.error(request, failure.message)
+            else:
+                if form.cleaned_data.get("mark_as_played"):
+                    _record_played(request, game)
+                return redirect(return_url(request, fallback="games:list_sessions"))
     else:
+        form = SessionForm(initial=initial, library=library, presentation=presentation)
         if game_id:
-            game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
-            form = SessionForm(
-                initial={
-                    **initial,
-                    "game": game,
-                },
-                library=library,
-                presentation=presentation,
-            )
             # Chained with a pre-filled game: focus the device field instead of
             # the already-selected game.
             form.fields["game"].widget.autofocus = False
             form.fields["device"].widget.autofocus = True
-        else:
-            form = SessionForm(
-                initial=initial,
-                library=library,
-                presentation=presentation,
-            )
 
     # TODO: re-add custom buttons #91
-    return render_page(
-        request,
-        AddForm(
-            form,
-            request=request,
-            submit_class="",
-            fields=FormFields(form, embedded=SESSION_TIMEZONE_EMBEDS),
-        ),
-        title="Add New Session",
-        scripts=Fragment(
-            ModuleScript("dist/elements/search-select.js"),
-            ModuleScript("dist/elements/date-time-field.js"),
-            ModuleScript("dist/elements/time-zone-row.js"),
-        ),
+    return _render_session_form(request, form, "Add New Session")
+
+
+def _library_session(request: HttpRequest, session_id: UUID) -> PlayerSession:
+    library = cast(User, request.user).library
+    return owned_or_404(
+        library_sessions(library).select_related("playthrough__player_game__game"),
+        library,
+        id=session_id,
     )
 
 
 @login_required
 def edit_session(request: HttpRequest, session_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
-    session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
+    session = _library_session(request, session_id)
     initial = (
-        {"device": cast(User, request.user).library.preferences.default_device}
+        {"device": library.preferences.default_device}
         if session.device_id is None
         else None
     )
@@ -329,78 +376,73 @@ def edit_session(request: HttpRequest, session_id: UUID) -> HttpResponse:
         presentation=date_time_presentation_for_request(request),
     )
     if form.is_valid():
-        session = form.save()
-        if form.cleaned_data.get("mark_as_played"):
-            _record_played(request, session)
-        return redirect(return_url(request, fallback="games:list_sessions"))
-    return render_page(
-        request,
-        AddForm(
-            form,
-            request=request,
-            submit_class="",
-            fields=FormFields(form, embedded=SESSION_TIMEZONE_EMBEDS),
-        ),
-        title="Edit Session",
-        scripts=Fragment(
-            ModuleScript("dist/elements/search-select.js"),
-            ModuleScript("dist/elements/date-time-field.js"),
-            ModuleScript("dist/elements/time-zone-row.js"),
-        ),
-    )
-
-
-def clone_session_by_id(session_id: UUID, library: UserLibrary) -> Session:
-    session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
-    clone = session
-    # A loaded instance keeps its identity. Assign the promoted primary key
-    # explicitly, then force an insert so a generated-key collision cannot
-    # update an existing session.
-    clone.id = uuid7()
-    clone.timestamp_start = timezone.now()
-    clone.timestamp_end = None
-    # The clone's start is server-stamped now; a browser zone does not exist
-    # here, and NULL already means "assume the display zone".
-    clone.timestamp_start_timezone = None
-    clone.timestamp_end_timezone = None
-    clone.note = ""
-    clone.save(force_insert=True)
-    return clone
+        game = form.cleaned_data["game"]
+        try:
+            restate_session(
+                cast(User, request.user),
+                session,
+                _session_draft(form, library),
+                correlation_id=new_correlation_id(),
+            )
+        except CommandFailed as failure:
+            messages.error(request, failure.message)
+        else:
+            if form.cleaned_data.get("mark_as_played"):
+                _record_played(request, game)
+            return redirect(return_url(request, fallback="games:list_sessions"))
+    return _render_session_form(request, form, "Edit Session")
 
 
 @login_required
 @require_POST
-def new_session_from_existing_session(
-    request: HttpRequest, session_id: UUID
-) -> HttpResponse:
+def resume_session(request: HttpRequest, game_id: UUID) -> HttpResponse:
+    """Start a session now at the game, as its last session was played."""
     library = cast(User, request.user).library
-    clone_session_by_id(session_id, library)
+    game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
+    last = game_sessions(library, game).order_by("-sort_instant", "-id").first()
+    try:
+        clone_session(
+            cast(User, request.user),
+            game,
+            device_id=None if last is None else last.device_id,
+            emulated=False if last is None else last.emulated,
+            correlation_id=new_correlation_id(),
+        )
+    except CommandFailed as failure:
+        messages.error(request, failure.message)
     return redirect(return_url(request, fallback="games:list_sessions"))
 
 
-def _posted_browser_zone(request: HttpRequest) -> str:
-    """The browser's IANA zone as submitted, or "" when it is missing or
+def _posted_browser_zone(request: HttpRequest) -> str | None:
+    """The browser's IANA zone as submitted, or None when it is missing or
     unusable. A zone this runtime cannot resolve is not worth failing a save
     over — the endpoint simply stays unlabelled."""
     zone = zone_or_none(request.POST.get("browser_time_zone", ""))
-    return zone.key if zone else ""
+    return zone.key if zone else None
+
+
+def _game_name(session: PlayerSession) -> str:
+    return session.playthrough.player_game.game.name
 
 
 @login_required
 def finish_session(request: HttpRequest, session_id: UUID) -> HttpResponse:
-    library = cast(User, request.user).library
-    session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
+    session = _library_session(request, session_id)
 
     def finish() -> None:
-        session.timestamp_end = timezone.now()
-        session.timestamp_end_timezone = _posted_browser_zone(request)
-        session.save()
+        end_session(
+            cast(User, request.user),
+            session,
+            ended_at=timezone.now(),
+            ended_at_zone=_posted_browser_zone(request),
+            correlation_id=new_correlation_id(),
+        )
 
     return confirm_and_apply(
         request,
         action=finish,
         title="Finish session",
-        message=f"Finish this running session of {session.game}?",
+        message=f"Finish this running session of {_game_name(session)}?",
         confirm_label="Finish session",
         details=BrowserTimeZoneInput(),
         fallback="games:list_sessions",
@@ -409,20 +451,26 @@ def finish_session(request: HttpRequest, session_id: UUID) -> HttpResponse:
 
 @login_required
 def reset_session(request: HttpRequest, session_id: UUID) -> HttpResponse:
-    library = cast(User, request.user).library
-    session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
+    session = _library_session(request, session_id)
+    #: Offered on a running Timed row alone: a finished one is corrected.
+    if not is_running(session):
+        raise Http404("No such session.")
 
     def reset_start_to_now() -> None:
-        session.timestamp_start = timezone.now()
-        session.timestamp_start_timezone = _posted_browser_zone(request)
-        session.save()
+        reset_session_start(
+            cast(User, request.user),
+            session,
+            started_at=timezone.now(),
+            started_at_zone=_posted_browser_zone(request),
+            correlation_id=new_correlation_id(),
+        )
 
     return confirm_and_apply(
         request,
         action=reset_start_to_now,
         title="Reset start time",
         message=(
-            f"Reset the start time of this session of {session.game} to now? "
+            f"Reset the start time of this session of {_game_name(session)} to now? "
             "The original start time is only recoverable by editing the session."
         ),
         confirm_label="Reset to now",
@@ -433,12 +481,17 @@ def reset_session(request: HttpRequest, session_id: UUID) -> HttpResponse:
 
 @login_required
 def remove_session(request: HttpRequest, session_id: UUID) -> HttpResponse:
-    library = cast(User, request.user).library
-    session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
-    return confirm_and_remove(
+    session = _library_session(request, session_id)
+    return confirm_and_apply(
         request,
-        session,
+        action=partial(
+            remove_session_row,
+            cast(User, request.user),
+            session,
+            correlation_id=new_correlation_id(),
+        ),
         title="Remove session",
-        message=f"Remove this session of {session.game}?",
+        message=f"Remove this session of {_game_name(session)}?",
+        confirm_label="Remove",
         fallback="games:list_sessions",
     )

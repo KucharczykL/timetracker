@@ -1,0 +1,187 @@
+"""The session form derives one timing statement from what is filled."""
+
+from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
+
+import pytest
+from session_rows import run_id, session_row
+
+from common.date_time_presentation import (
+    DEFAULT_DATE_TIME_FORMAT_PROFILE,
+    DateTimePresentation,
+)
+from games.commands.playersession import (
+    CorrectedTiming,
+    DurationOnlyTiming,
+    TimedTiming,
+)
+from games.forms import (
+    DAY_BESIDE_AN_INSTANT,
+    DAY_WITHOUT_DURATION,
+    END_BEFORE_START,
+    END_WITHOUT_START,
+    NEITHER_START_NOR_DAY,
+    START_WITH_DURATION_ALONE,
+    SessionForm,
+)
+from games.models import Game
+
+pytestmark = pytest.mark.django_db
+
+PRESENTATION = DateTimePresentation(
+    DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("Europe/Prague")
+)
+START = "2026-07-01T21:00:00+09:00"
+END = "2026-07-01T22:30:00+09:00"
+START_INSTANT = datetime(2026, 7, 1, 12, 0, tzinfo=UTC)
+END_INSTANT = datetime(2026, 7, 1, 13, 30, tzinfo=UTC)
+
+
+@pytest.fixture
+def game(owned_library):
+    return Game.objects.create(library=owned_library, name="Hades")
+
+
+def _form(library, game, **fields) -> SessionForm:
+    data = {
+        "game": str(game.pk),
+        "playthrough": run_id(library, game),
+        "started_at": "",
+        "started_at_zone": "",
+        "ended_at": "",
+        "ended_at_zone": "",
+        "day": "",
+        "duration": "",
+        "device": "",
+        "note": "",
+    }
+    data.update(fields)
+    return SessionForm(data=data, library=library, presentation=PRESENTATION)
+
+
+def test_a_start_alone_is_a_running_timed_session(owned_library, game):
+    form = _form(owned_library, game, started_at=START, started_at_zone="Asia/Tokyo")
+
+    assert form.is_valid(), form.errors
+    assert form.timing_statement("Europe/Prague") == TimedTiming(
+        started_at=START_INSTANT, day_zone="Europe/Prague", started_at_zone="Asia/Tokyo"
+    )
+
+
+def test_a_start_and_an_end_are_a_finished_timed_session(owned_library, game):
+    form = _form(owned_library, game, started_at=START, ended_at=END)
+
+    assert form.is_valid(), form.errors
+    assert form.timing_statement("UTC") == TimedTiming(
+        started_at=START_INSTANT, day_zone="UTC", ended_at=END_INSTANT
+    )
+
+
+def test_both_instants_and_a_duration_are_a_corrected_session(owned_library, game):
+    form = _form(
+        owned_library, game, started_at=START, ended_at=END, duration="02:00:00"
+    )
+
+    assert form.is_valid(), form.errors
+    assert form.timing_statement("UTC") == CorrectedTiming(
+        started_at=START_INSTANT,
+        ended_at=END_INSTANT,
+        duration=timedelta(hours=2),
+        day_zone="UTC",
+    )
+
+
+def test_a_day_and_a_duration_alone_are_a_duration_only_session(owned_library, game):
+    form = _form(owned_library, game, day="2026-07-01", duration="01:30:00")
+
+    assert form.is_valid(), form.errors
+    assert form.timing_statement("UTC") == DurationOnlyTiming(
+        day=date(2026, 7, 1), duration=timedelta(hours=1, minutes=30)
+    )
+
+
+def test_a_start_with_a_duration_and_no_end_is_refused_on_the_duration(
+    owned_library, game
+):
+    form = _form(owned_library, game, started_at=START, duration="01:00:00")
+
+    assert not form.is_valid()
+    assert form.errors["duration"] == [START_WITH_DURATION_ALONE]
+
+
+def test_a_day_beside_a_start_is_refused_on_the_day(owned_library, game):
+    form = _form(owned_library, game, started_at=START, day="2026-07-01")
+
+    assert not form.is_valid()
+    assert form.errors["day"] == [DAY_BESIDE_AN_INSTANT]
+
+
+def test_nothing_filled_is_refused_on_the_start(owned_library, game):
+    form = _form(owned_library, game)
+
+    assert not form.is_valid()
+    assert form.errors["started_at"] == [NEITHER_START_NOR_DAY]
+
+
+def test_a_day_without_a_duration_is_refused_on_the_duration(owned_library, game):
+    form = _form(owned_library, game, day="2026-07-01")
+
+    assert not form.is_valid()
+    assert form.errors["duration"] == [DAY_WITHOUT_DURATION]
+
+
+def test_an_end_without_a_start_is_refused_on_the_start(owned_library, game):
+    form = _form(owned_library, game, ended_at=END)
+
+    assert not form.is_valid()
+    assert form.errors["started_at"] == [END_WITHOUT_START]
+
+
+def test_an_end_before_the_start_is_refused_on_the_end(owned_library, game):
+    form = _form(owned_library, game, started_at=END, ended_at=START)
+
+    assert not form.is_valid()
+    assert form.errors["ended_at"] == [END_BEFORE_START]
+
+
+def test_a_run_of_another_game_is_refused_on_the_run(owned_library, game):
+    other = Game.objects.create(library=owned_library, name="Celeste")
+    form = _form(
+        owned_library, game, started_at=START, playthrough=run_id(owned_library, other)
+    )
+
+    assert not form.is_valid()
+    assert "playthrough" in form.errors
+
+
+def test_the_edit_form_seeds_a_duration_only_row_by_its_mode(owned_library, game):
+    row = session_row(
+        game,
+        started_at=datetime(2026, 7, 1, 12, tzinfo=UTC),
+        duration_manual=timedelta(minutes=45),
+    )
+
+    form = SessionForm(instance=row, library=owned_library, presentation=PRESENTATION)
+
+    assert form.initial["day"] == date(2026, 7, 1)
+    assert form.initial["duration"] == timedelta(minutes=45)
+    assert form.initial["started_at"] is None
+    assert form.initial["playthrough"] == row.playthrough_id
+    assert form.initial["game"] == game
+
+
+def test_the_picker_lists_the_known_games_runs_by_display_name(owned_library, game):
+    form = SessionForm(
+        initial={"game": game}, library=owned_library, presentation=PRESENTATION
+    )
+
+    assert form.fields["playthrough"].choices == [
+        (run_id(owned_library, game), "Playthrough 1")
+    ]
+    assert "<playthrough-select" in str(form["playthrough"])
+
+
+def test_the_picker_is_empty_before_a_game_is_known(owned_library):
+    form = SessionForm(library=owned_library, presentation=PRESENTATION)
+
+    assert form.fields["playthrough"].choices == []

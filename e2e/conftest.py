@@ -8,6 +8,10 @@ import pytest
 from django.db.models.signals import post_save
 from django.utils import timezone
 
+#: The row helpers the unit tests seed the projection with, for the
+#: browser tests too. pytest puts each suite's own directory on the path.
+sys.path.append(str(Path(__file__).resolve().parents[1] / "tests"))
+
 from timetracker import config as config_module
 from timetracker import settings_resolver
 

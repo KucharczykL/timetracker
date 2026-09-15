@@ -21,7 +21,7 @@ UUID4 = UUID("018f5e66-e800-4000-8000-000000000001")
 HTML_IDENTITY_ROUTES = [
     ("games:edit_playthrough", "playthrough_id"),
     ("games:remove_playthrough", "playthrough_id"),
-    ("games:list_sessions_start_session_from_session", "session_id"),
+    ("games:resume_session", "game_id"),
     ("games:edit_session", "session_id"),
     ("games:finish_session", "session_id"),
     ("games:reset_session", "session_id"),
@@ -223,11 +223,7 @@ def test_promoted_api_paths_reject_uuid4_ids(
     ("method", "route_name", "object_name"),
     [
         ("get", "games:edit_playthrough", "foreign_run"),
-        (
-            "post",
-            "games:list_sessions_start_session_from_session",
-            "foreign_session",
-        ),
+        ("post", "games:resume_session", "foreign_game"),
     ],
 )
 def test_promoted_html_views_keep_foreign_rows_undisclosed(

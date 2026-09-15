@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from django import forms
 from django.urls import reverse
+from session_rows import run_id
 
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
@@ -25,9 +26,9 @@ from games.models import (
     Game,
     Platform,
     PlayerGameStatus,
+    PlayerSession,
     Playthrough,
     Purchase,
-    Session,
 )
 
 pytestmark = pytest.mark.django_db
@@ -174,15 +175,16 @@ def test_library_bound_forms_validate_constraints_with_implicit_owner(world):
 
 
 def test_session_form_rejects_foreign_game_and_device_without_saving(world):
-    before = Session.objects.count()
+    before = PlayerSession.objects.count()
     form = SessionForm(
         data={
             "game": world.foreign_game.pk,
-            "timestamp_start": "2026-08-14T12:00:00+00:00",
-            "timestamp_start_timezone": "UTC",
-            "timestamp_end": "",
-            "timestamp_end_timezone": "",
-            "duration_manual": "",
+            "playthrough": run_id(world.foreign_library, world.foreign_game),
+            "started_at": "2026-08-14T12:00:00+00:00",
+            "started_at_zone": "UTC",
+            "ended_at": "",
+            "ended_at_zone": "",
+            "duration": "",
             "device": world.foreign_device.pk,
             "note": "",
         },
@@ -191,8 +193,8 @@ def test_session_form_rejects_foreign_game_and_device_without_saving(world):
     )
 
     assert not form.is_valid()
-    assert {"game", "device"} <= set(form.errors)
-    assert Session.objects.count() == before
+    assert {"game", "playthrough", "device"} <= set(form.errors)
+    assert PlayerSession.objects.count() == before
     html = str(form)
     assert world.foreign_game.name not in html
     assert world.foreign_device.name not in html
@@ -261,22 +263,23 @@ def test_add_game_post_with_foreign_platform_is_rejected_without_mutation(world)
 
 
 def test_add_session_post_with_foreign_device_is_rejected_without_mutation(world):
-    before = Session.objects.count()
+    before = PlayerSession.objects.count()
     response = world.client.post(
         reverse("games:add_session"),
         {
             "game": world.own_game.pk,
-            "timestamp_start": "2026-08-14T12:00:00+00:00",
-            "timestamp_start_timezone": "UTC",
-            "timestamp_end": "",
-            "timestamp_end_timezone": "",
-            "duration_manual": "",
+            "playthrough": run_id(world.owner_library, world.own_game),
+            "started_at": "2026-08-14T12:00:00+00:00",
+            "started_at_zone": "UTC",
+            "ended_at": "",
+            "ended_at_zone": "",
+            "duration": "",
             "device": world.foreign_device.pk,
             "note": "",
         },
     )
     assert response.status_code == 200
-    assert Session.objects.count() == before
+    assert PlayerSession.objects.count() == before
     body = response.content.decode()
     assert world.foreign_device.name not in body
 

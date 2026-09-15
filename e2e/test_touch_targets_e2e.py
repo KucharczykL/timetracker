@@ -108,7 +108,7 @@ def test_datetime_field_controls_meet_min_touch_target(touch_page: Page, live_se
     page = touch_page
     page.goto(f"{live_server.url}{reverse('games:add_session')}")
 
-    for field_name in ("timestamp_start", "timestamp_end"):
+    for field_name in ("started_at", "ended_at"):
         field = f'date-time-field[field-name="{field_name}"]'
         for hook in ("[data-date-picker-calendar-toggle]", "[data-date-time-copy]"):
             button = page.locator(f"{field} {hook}")

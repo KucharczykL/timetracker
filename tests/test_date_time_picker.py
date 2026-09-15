@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 
 from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
+from session_rows import session_row
 
 from common.components import (
     DateTimeCalendar,
@@ -29,7 +30,7 @@ from common.date_time_presentation import (
     DateTimePresentation,
 )
 from games.forms import SessionForm
-from games.models import Game, Session
+from games.models import Game
 
 _ESCAPED_TAG_MARKERS = ["&lt;div", "&lt;span", "&lt;button", "&lt;input"]
 
@@ -101,14 +102,14 @@ class DateTimeFieldTest(SimpleTestCase):
         defaults = {
             "presentation": _ISO_PRESENTATION,
             "label": "Start",
-            "name": "timestamp_start",
+            "name": "started_at",
         }
         defaults.update(kwargs)
         return str(DateTimeField(**defaults))
 
     def test_renders_the_hidden_input_django_binds_under_the_field_name(self):
         html = self.render(value="2026-07-27T14:30:00+00:00")
-        self.assertIn('name="timestamp_start"', html)
+        self.assertIn('name="started_at"', html)
         self.assertIn('data-date-time-hidden=""', html)
         self.assertIn('value="2026-07-27T14:30:00+00:00"', html)
 
@@ -149,11 +150,9 @@ class DateTimeFieldTest(SimpleTestCase):
 
     def test_the_copy_control_names_its_target_and_its_direction(self):
         html = self.render(
-            copy_target=DateTimeCopyTarget(
-                "timestamp_end", "Copy start value to end", "↓"
-            )
+            copy_target=DateTimeCopyTarget("ended_at", "Copy start value to end", "↓")
         )
-        self.assertIn('data-date-time-copy="timestamp_end"', html)
+        self.assertIn('data-date-time-copy="ended_at"', html)
         self.assertIn('aria-label="Copy start value to end"', html)
         self.assertIn("↓", html)
 
@@ -185,7 +184,7 @@ class DateTimeFieldTest(SimpleTestCase):
 
 class DateTimeCalendarTest(SimpleTestCase):
     def test_footer_offers_now_and_clear_but_no_presets(self):
-        html = str(DateTimeCalendar(input_name_prefix="timestamp_start"))
+        html = str(DateTimeCalendar(input_name_prefix="started_at"))
         self.assertIn("data-date-range-now", html)
         self.assertIn("data-date-range-clear", html)
         self.assertNotIn("data-date-range-presets", html)
@@ -197,16 +196,16 @@ class DateTimePickerTest(SimpleTestCase):
             DateTimePicker(
                 presentation=_ISO_PRESENTATION,
                 label="Start",
-                name="timestamp_start",
+                name="started_at",
             )
         )
         self.assertIn("<date-time-field", html)
-        self.assertIn('field-name="timestamp_start"', html)
+        self.assertIn('field-name="started_at"', html)
 
     def test_hosted_in_the_shared_date_calendar_dropdown(self):
         html = str(
             DateTimePicker(
-                presentation=_ISO_PRESENTATION, label="Start", name="timestamp_start"
+                presentation=_ISO_PRESENTATION, label="Start", name="started_at"
             )
         )
         self.assertIn('behavior="date-calendar"', html)
@@ -227,7 +226,7 @@ class DateTimeFieldWidgetTest(TestCase):
         )
 
     def test_blank_optional_value_renders_empty_segments(self):
-        html = str(self._session_form()["timestamp_end"])
+        html = str(self._session_form()["ended_at"])
         self.assertIn('data-date-time-hidden=""', html)
         self.assertNotIn("data-typed-digits", html)
 
@@ -240,9 +239,9 @@ class DateTimeFieldWidgetTest(TestCase):
             form = SessionForm(
                 library=self.library,
                 presentation=_presentation_in("Pacific/Kiritimati"),
-                initial={"timestamp_start": datetime(2026, 7, 27, 14, 30, tzinfo=UTC)},
+                initial={"started_at": datetime(2026, 7, 27, 14, 30, tzinfo=UTC)},
             )
-            html = str(form["timestamp_start"])
+            html = str(form["started_at"])
         # UTC+14: the same instant, as the account's own wall clock — and the
         # offset rides along, so the value names an instant rather than a wall
         # clock a DST fall-back could make ambiguous.
@@ -255,33 +254,32 @@ class DateTimeFieldWidgetTest(TestCase):
         form = self._session_form(
             data={
                 "game": "",
-                "timestamp_start": "2026-03-08T02:30",
-                "timestamp_end": "",
-                "duration_manual": "",
+                "started_at": "2026-03-08T02:30",
+                "ended_at": "",
+                "duration": "",
                 "device": "",
                 "note": "",
             }
         )
         self.assertFalse(form.is_valid())
-        html = str(form["timestamp_start"])
+        html = str(form["started_at"])
         self.assertIn('value="2026-03-08T02:30"', html)
         self.assertIn('value="02"', html)
 
     def test_both_session_timestamps_point_their_copy_arrow_at_each_other(self):
         form = self._session_form()
-        start = str(form["timestamp_start"])
-        end = str(form["timestamp_end"])
-        self.assertIn('data-date-time-copy="timestamp_end"', start)
-        self.assertIn('data-date-time-copy="timestamp_start"', end)
+        start = str(form["started_at"])
+        end = str(form["ended_at"])
+        self.assertIn('data-date-time-copy="ended_at"', start)
+        self.assertIn('data-date-time-copy="started_at"', end)
 
     def test_a_stored_null_timestamp_renders_an_empty_field(self):
         # A stored None renders empty.
         # Distinct from the unbound blank above.
-        session = Session.objects.create(
-            game=Game.objects.create(library=self.library, name="Hades"),
-            timestamp_start=datetime(2026, 7, 27, 14, 30, tzinfo=UTC),
-            timestamp_end=None,
+        session = session_row(
+            Game.objects.create(library=self.library, name="Hades"),
+            started_at=datetime(2026, 7, 27, 14, 30, tzinfo=UTC),
         )
-        html = str(self._session_form(instance=session)["timestamp_end"])
+        html = str(self._session_form(instance=session)["ended_at"])
         self.assertIn('data-date-time-hidden=""', html)
         self.assertNotIn("None", html)

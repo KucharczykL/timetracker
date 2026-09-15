@@ -11,9 +11,17 @@ import pytest
 from django.urls import reverse
 from django.utils import timezone
 from playwright.sync_api import Browser, Page, expect
+from session_rows import session_row
 
-from games.models import Device, Game, Platform, Session, UserPreferences
+from games.models import Device, Game, Platform, UserPreferences
+from games.reads.calendar import calendar_day_zone
 from timetracker.settings_resolver import resolve_for_user
+
+
+def _row(game, **columns):
+    """A projection row whose day is counted in the library's calendar."""
+    library = game.library
+    return session_row(game, day_zone=calendar_day_zone(library).key, **columns)
 
 
 @pytest.fixture
@@ -39,9 +47,7 @@ def test_finish_session_reloads_the_list_with_the_session_closed(
     )
     game = Game.objects.create(library=e2e_library, name="Tunic", platform=platform)
     device = Device.objects.create(library=e2e_library, name="Desktop")
-    session = Session.objects.create(
-        game=game, device=device, timestamp_start=timezone.now()
-    )
+    session = _row(game, device=device, started_at=timezone.now())
 
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
     row = page.locator(f"#session-row-{session.pk}")
@@ -57,7 +63,7 @@ def test_finish_session_reloads_the_list_with_the_session_closed(
     expect(row.locator('a[href*="/reset"]')).to_have_count(0)
 
     session.refresh_from_db()
-    assert session.timestamp_end is not None
+    assert session.ended_at is not None
 
 
 def test_finish_stamps_the_browser_zone_not_the_account_zone(
@@ -75,10 +81,7 @@ def test_finish_stamps_the_browser_zone_not_the_account_zone(
     game = Game.objects.create(
         library=e2e_user.library, name="Tunic", platform=platform
     )
-    session = Session.objects.create(
-        game=game,
-        timestamp_start=dt.datetime(2026, 1, 1, 0, 30, tzinfo=dt.UTC),
-    )
+    session = _row(game, started_at=dt.datetime(2026, 1, 1, 0, 30, tzinfo=dt.UTC))
 
     context = browser.new_context(timezone_id="Pacific/Honolulu")
     try:
@@ -96,6 +99,6 @@ def test_finish_stamps_the_browser_zone_not_the_account_zone(
         expect(page.locator(f"#session-row-{session.pk}")).to_contain_text("—")
 
         session.refresh_from_db()
-        assert session.timestamp_end_timezone == "Pacific/Honolulu"
+        assert session.ended_at_zone == "Pacific/Honolulu"
     finally:
         context.close()

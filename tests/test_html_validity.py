@@ -17,6 +17,7 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
+from session_rows import session_row
 
 from games.models import (
     Device,
@@ -24,7 +25,6 @@ from games.models import (
     Platform,
     Playthrough,
     Purchase,
-    Session,
 )
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
@@ -144,10 +144,10 @@ class HtmlValidityTest(TestCase):
         )
         self.other_bundle.games.add(self.long_game, self.other_game)
 
-        self.session = Session.objects.create(
-            game=self.long_game,
-            timestamp_start=datetime(2022, 9, 26, 15, 0, tzinfo=ZONEINFO),
-            timestamp_end=datetime(2022, 9, 26, 16, 0, tzinfo=ZONEINFO),
+        self.session = session_row(
+            self.long_game,
+            started_at=datetime(2022, 9, 26, 15, 0, tzinfo=ZONEINFO),
+            ended_at=datetime(2022, 9, 26, 16, 0, tzinfo=ZONEINFO),
             device=self.device,
         )
         #: #1012 moved the route onto the run.

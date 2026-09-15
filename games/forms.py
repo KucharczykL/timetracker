@@ -1,5 +1,6 @@
 import datetime
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from functools import partial
 from typing import Any, ClassVar, Final, cast
 from zoneinfo import ZoneInfo
@@ -25,6 +26,12 @@ from common.components import (
 )
 from common.components.primitives import Checkbox
 from common.date_time_presentation import DateTimePresentation, zone_or_none
+from games.commands.playersession import (
+    CorrectedTiming,
+    DurationOnlyTiming,
+    TimedTiming,
+    TimingStatement,
+)
 from games.dev_login import prefill_credentials
 from games.models import (
     Device,
@@ -32,11 +39,14 @@ from games.models import (
     Platform,
     PlayerGame,
     PlayerGameStatus,
+    PlayerSession,
+    Playthrough,
     Purchase,
-    Session,
     UserLibrary,
 )
 from games.reads.companion_status import played_is_offered
+from games.reads.playthrough_numbering import display_name, numbered_for
+from games.reads.playthrough_runs import library_runs, tracked_game
 from timetracker.settings_registry import DISPLAY_TIME_ZONE_CHOICES
 from timetracker.settings_resolver import resolve_str_for_user
 from timetracker.temporal import (
@@ -609,52 +619,154 @@ class TimeZoneRowWidget(forms.Widget):
         return data.get(name)
 
 
-# Each session timestamp can copy itself into the other one. The arrow points
+# Each session instant can copy itself into the other one. The arrow points
 # the way the target sits in the form, so the control reads as a direction.
-_TIMESTAMP_COPY_TARGETS = {
-    "timestamp_start": DateTimeCopyTarget(
-        "timestamp_end", "Copy start value to end", "↓"
-    ),
-    "timestamp_end": DateTimeCopyTarget(
-        "timestamp_start", "Copy end value to start", "↑"
-    ),
+_INSTANT_COPY_TARGETS = {
+    "started_at": DateTimeCopyTarget("ended_at", "Copy start value to end", "↓"),
+    "ended_at": DateTimeCopyTarget("started_at", "Copy end value to start", "↑"),
 }
 _TIME_ZONE_FORM_CHOICES: Final[tuple[tuple[str, str], ...]] = (
     ("", "Account display zone"),
     *DISPLAY_TIME_ZONE_CHOICES,
 )
-_TIMESTAMP_TIMEZONE_LABELS: Final[dict[str, str]] = {
-    "timestamp_start_timezone": "Start time zone",
-    "timestamp_end_timezone": "End time zone",
+_INSTANT_ZONE_LABELS: Final[dict[str, str]] = {
+    "started_at_zone": "Start time zone",
+    "ended_at_zone": "End time zone",
 }
 # The FormFields `embedded` mapping: each zone picker renders inside its
-# timestamp's row, not as a labelled row of its own.
+# instant's row, not as a labelled row of its own.
 SESSION_TIMEZONE_EMBEDS: Final[dict[str, str]] = {
-    "timestamp_start_timezone": "timestamp_start",
-    "timestamp_end_timezone": "timestamp_end",
+    "started_at_zone": "started_at",
+    "ended_at_zone": "ended_at",
 }
-# Host timestamp → its zone field: the inverse view the datetime widgets need.
-_TIMESTAMP_ZONE_FIELDS: Final[dict[str, str]] = {
+# Host instant → its zone field: the inverse view the datetime widgets need.
+_INSTANT_ZONE_FIELDS: Final[dict[str, str]] = {
     host_name: zone_name for zone_name, host_name in SESSION_TIMEZONE_EMBEDS.items()
 }
 
+#: The picker's route: `?game=` narrows it to one game's runs.
+PLAYTHROUGH_API_URL: Final = "/api/playthrough/"
 
-class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
+#: The two refusals the derivation states, on the field that caused each.
+START_WITH_DURATION_ALONE = (
+    "Give an end as well, or leave the start empty and state the day."
+)
+DAY_BESIDE_AN_INSTANT = "State either a day or a start time, not both."
+NEITHER_START_NOR_DAY = "Give a start time, or a day and how long it lasted."
+DAY_WITHOUT_DURATION = "State how long it lasted on that day."
+END_WITHOUT_START = "An end needs a start."
+END_BEFORE_START = "The end is before the start."
+
+
+@dataclass(frozen=True, slots=True)
+class TimingDraft:
+    """The parts one submit stated; the zone the library counts days in
+    arrives later, from the calendar, so the statement is built on demand."""
+
+    started_at: datetime.datetime | None
+    started_at_zone: str | None
+    ended_at: datetime.datetime | None
+    ended_at_zone: str | None
+    day: datetime.date | None
+    duration: datetime.timedelta | None
+
+    def statement(self, day_zone: str) -> TimingStatement:
+        """The one statement these parts derive to; `clean()` refused the rest."""
+
+        if self.started_at is None:
+            assert self.day is not None and self.duration is not None
+            return DurationOnlyTiming(day=self.day, duration=self.duration)
+        if self.ended_at is not None and self.duration is not None:
+            return CorrectedTiming(
+                started_at=self.started_at,
+                ended_at=self.ended_at,
+                duration=self.duration,
+                day_zone=day_zone,
+                started_at_zone=self.started_at_zone,
+                ended_at_zone=self.ended_at_zone,
+            )
+        return TimedTiming(
+            started_at=self.started_at,
+            day_zone=day_zone,
+            started_at_zone=self.started_at_zone,
+            ended_at=self.ended_at,
+            ended_at_zone=self.ended_at_zone,
+        )
+
+
+class PlaythroughSelectWidget(forms.Select):
+    """A native ``<select>`` inside ``<playthrough-select>``.
+
+    The options the server renders are the runs of the game the form
+    already knows; the element refills them when the game changes and
+    hides itself while the game holds one run.
+    """
+
+    def __init__(self, *, game_field: str, api_url: str, attrs=None):
+        super().__init__(attrs)
+        self.game_field = game_field
+        self.api_url = api_url
+
+    def render(self, name, value, attrs=None, renderer=None):
+        from common.components import Safe
+        from common.components.custom_elements import _PlaythroughSelect
+
+        select = super().render(name, value, attrs=attrs, renderer=renderer)
+        return render(
+            _PlaythroughSelect(
+                game_field=self.game_field,
+                api_url=self.api_url,
+                selected="" if value in (None, "") else str(value),
+                class_="block",
+            )[Safe(select)]
+        )
+
+
+def _run_choices(library: UserLibrary, game: Game | None) -> list[tuple[str, str]]:
+    """The game's live ordinary runs, each by its display name."""
+    if game is None:
+        return []
+    tracked = tracked_game(library, game)
+    if tracked is None:
+        return []
+    return [
+        (str(run.pk), display_name(run)) for run in numbered_for(library, [tracked.pk])
+    ]
+
+
+class SessionForm(PrimitiveWidgetsMixin, forms.Form):
+    """One session, in the projection's words.
+
+    No mode control: the statement is derived from which fields are
+    filled. A start alone is a running Timed session; a start and an end
+    a finished one; both with a duration a Corrected one; a day and a
+    duration alone a Duration-only one. Anything else is refused on the
+    field that caused it.
+    """
+
     def __init__(
         self,
         *args,
         library: UserLibrary,
         presentation: DateTimePresentation,
+        instance: PlayerSession | None = None,
         **kwargs,
     ):
-        super().__init__(*args, **kwargs)
+        initial = dict(kwargs.pop("initial", None) or {})
+        if instance is not None:
+            initial = {**_session_initial(instance), **initial}
+        super().__init__(*args, initial=initial, **kwargs)
         self.library = library
+        self.instance = instance
         cast(
             forms.ModelChoiceField, self.fields["game"]
         ).queryset = Game.objects.for_library(library).order_by("sort_name")
         self.fields["game"].widget.options_resolver = partial(
             _game_options, library=library
         )
+        runs = cast(forms.ModelChoiceField, self.fields["playthrough"])
+        runs.queryset = library_runs(library)
+        runs.choices = _run_choices(library, self._known_game())
         cast(
             forms.ModelChoiceField, self.fields["device"]
         ).queryset = Device.objects.for_library(library).order_by("name")
@@ -662,8 +774,8 @@ class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
             _device_options, library=library
         )
         self._presentation = presentation
-        for field_name, copy_target in _TIMESTAMP_COPY_TARGETS.items():
-            zone_field_name = _TIMESTAMP_ZONE_FIELDS[field_name]
+        for field_name, copy_target in _INSTANT_COPY_TARGETS.items():
+            zone_field_name = _INSTANT_ZONE_FIELDS[field_name]
             zone_resolver = partial(self._resolved_field_zone, zone_field_name)
             self.fields[field_name].widget = DateTimeFieldWidget(
                 presentation=presentation,
@@ -672,31 +784,43 @@ class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
                 zone_field_name=zone_field_name,
                 zone_resolver=zone_resolver,
             )
-            timestamp_field = self.fields[field_name]
-            assert isinstance(timestamp_field, AwareDateTimeField)
-            timestamp_field.zone_resolver = zone_resolver
-        is_new_record = self.instance._state.adding
-        # The end zone is only meaningful once an end timestamp exists: an open
-        # session stamped at creation would carry that zone into a finish that
-        # happens elsewhere, hours later. The start is always about to be
-        # committed on a new record, so it captures unconditionally.
-        end_timestamp_supplied = bool(
-            self.initial.get("timestamp_end")
-            or (self.is_bound and self.data.get("timestamp_end"))
+            instant_field = self.fields[field_name]
+            assert isinstance(instant_field, AwareDateTimeField)
+            instant_field.zone_resolver = zone_resolver
+        self.fields["day"].widget = DatePickerWidget(
+            presentation=presentation, label="Day"
+        )
+        is_new_record = instance is None
+        # The end zone is only meaningful once an end exists: an open session
+        # stamped at creation would carry that zone into a finish that happens
+        # elsewhere, hours later. The start is always about to be committed
+        # on a new record, so it captures unconditionally.
+        end_supplied = bool(
+            self.initial.get("ended_at")
+            or (self.is_bound and self.data.get("ended_at"))
         )
         captures_by_field = {
-            "timestamp_start_timezone": is_new_record,
-            "timestamp_end_timezone": is_new_record and end_timestamp_supplied,
+            "started_at_zone": is_new_record,
+            "ended_at_zone": is_new_record and end_supplied,
         }
-        for field_name, zone_label in _TIMESTAMP_TIMEZONE_LABELS.items():
+        for field_name, zone_label in _INSTANT_ZONE_LABELS.items():
             self.fields[field_name].widget = TimeZoneRowWidget(
                 label=zone_label,
                 display_zone=presentation.timezone.key,
                 capture_default=captures_by_field[field_name],
             )
 
+    def _known_game(self) -> Game | None:
+        """The game the picker lists runs of: the bound one, else the initial."""
+        raw = self.data.get("game") if self.is_bound else self.initial.get("game")
+        if isinstance(raw, Game):
+            return raw
+        if raw in (None, ""):
+            return None
+        return Game.objects.for_library(self.library).filter(pk=raw).first()
+
     def _resolved_field_zone(self, zone_field_name: str) -> ZoneInfo:
-        """The zone this timestamp's digits are meant in: the paired zone
+        """The zone this instant's digits are meant in: the paired zone
         picker's current value when usable, else the account display zone."""
         if self.is_bound:
             raw_zone = self.data.get(zone_field_name)
@@ -713,13 +837,27 @@ class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
             autofocus=True,
         ),
     )
-
-    duration_manual = forms.DurationField(
+    playthrough = forms.ModelChoiceField(
+        queryset=Playthrough.objects.none(),
+        widget=PlaythroughSelectWidget(game_field="game", api_url=PLAYTHROUGH_API_URL),
+        label="Playthrough",
+    )
+    # started_at/ended_at get DateTimeFieldWidget in __init__ (needs the
+    # per-request presentation, unavailable to a class body).
+    started_at = AwareDateTimeField(required=False, label="Start")
+    started_at_zone = forms.TypedChoiceField(
+        required=False, choices=_TIME_ZONE_FORM_CHOICES, empty_value=None
+    )
+    ended_at = AwareDateTimeField(required=False, label="End")
+    ended_at_zone = forms.TypedChoiceField(
+        required=False, choices=_TIME_ZONE_FORM_CHOICES, empty_value=None
+    )
+    day = forms.DateField(required=False)
+    duration = forms.DurationField(
         required=False,
         widget=forms.TextInput(
             attrs={"x-mask": "99:99:99", "placeholder": "HH:MM:SS", "x-data": ""}
         ),
-        label="Manual duration",
     )
     device = forms.ModelChoiceField(
         queryset=Device.objects.order_by("name"),
@@ -728,51 +866,72 @@ class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
             search_url="/api/devices/search", options_resolver=_device_options
         ),
     )
-
+    note = forms.CharField(required=False, widget=forms.Textarea)
+    emulated = forms.BooleanField(required=False)
     mark_as_played = forms.BooleanField(
         required=False,
         initial=True,
         label="Set game status to Played if Unplayed",
     )
 
-    timestamp_start_timezone = forms.TypedChoiceField(
-        required=False, choices=_TIME_ZONE_FORM_CHOICES, empty_value=None
-    )
-    timestamp_end_timezone = forms.TypedChoiceField(
-        required=False, choices=_TIME_ZONE_FORM_CHOICES, empty_value=None
-    )
+    def clean(self):
+        cleaned = super().clean()
+        game = cleaned.get("game")
+        run = cleaned.get("playthrough")
+        if game is not None and run is not None and run.player_game.game_id != game.pk:
+            self.add_error("playthrough", "That playthrough is another game's.")
+        started_at = cleaned.get("started_at")
+        ended_at = cleaned.get("ended_at")
+        day = cleaned.get("day")
+        duration = cleaned.get("duration")
+        if started_at is None:
+            if ended_at is not None:
+                self.add_error("started_at", END_WITHOUT_START)
+            elif day is None and duration is None:
+                self.add_error("started_at", NEITHER_START_NOR_DAY)
+            elif day is None:
+                self.add_error("day", NEITHER_START_NOR_DAY)
+            elif duration is None:
+                self.add_error("duration", DAY_WITHOUT_DURATION)
+        else:
+            if day is not None:
+                self.add_error("day", DAY_BESIDE_AN_INSTANT)
+            if ended_at is None and duration is not None:
+                self.add_error("duration", START_WITH_DURATION_ALONE)
+            if ended_at is not None and ended_at < started_at:
+                self.add_error("ended_at", END_BEFORE_START)
+        if not self.errors:
+            self.timing_draft = TimingDraft(
+                started_at=started_at,
+                started_at_zone=cleaned.get("started_at_zone") or None,
+                ended_at=ended_at,
+                ended_at_zone=cleaned.get("ended_at_zone") or None,
+                day=day,
+                duration=duration,
+            )
+        return cleaned
 
-    class Meta:
-        # timestamp_start/timestamp_end get DateTimeFieldWidget in __init__
-        # (needs the per-request presentation, unavailable to a class body);
-        # the field class is declarative because it depends on nothing.
-        # TODO(py3.15, ~Oct 2026): the ClassVar dict annotations on these Meta
-        # tables satisfy RUF012 — candidates for the builtin ``frozendict``
-        # (PEP 814) on 3.15; see the note on GameFilter.fields in filters.py.
-        field_classes: ClassVar[dict[str, type[forms.Field]]] = {
-            "timestamp_start": AwareDateTimeField,
-            "timestamp_end": AwareDateTimeField,
-        }
-        model = Session
-        fields = (
-            "game",
-            "timestamp_start",
-            "timestamp_start_timezone",
-            "timestamp_end",
-            "timestamp_end_timezone",
-            "duration_manual",
-            "emulated",
-            "device",
-            "note",
-            "mark_as_played",
-        )
+    def timing_statement(self, day_zone: str) -> TimingStatement:
+        """The statement this submit derives to, in the library's calendar."""
+        return self.timing_draft.statement(day_zone)
 
-    def save(self, commit=True):
-        #: Moved to the views: no actor here.
-        session = super().save(commit=False)
-        if commit:
-            session.save()
-        return session
+
+def _session_initial(session: PlayerSession) -> dict[str, Any]:
+    """What the edit form seeds from the row, by its mode."""
+    run = session.playthrough
+    return {
+        "game": run.player_game.game,
+        "playthrough": run.pk,
+        "started_at": session.started_at,
+        "started_at_zone": session.started_at_zone,
+        "ended_at": session.ended_at,
+        "ended_at_zone": session.ended_at_zone,
+        "day": session.stated_day,
+        "duration": session.stated_duration,
+        "device": session.device_id,
+        "note": session.note,
+        "emulated": session.emulated,
+    }
 
 
 class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):

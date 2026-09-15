@@ -11,8 +11,17 @@ import datetime as dt
 import pytest
 from django.urls import reverse
 from playwright.sync_api import Browser, Page, expect
+from session_rows import session_row
 
-from games.models import Game, Platform, Session
+from games.models import Game, Platform, PlayerSession
+from games.reads.calendar import calendar_day_zone
+
+
+def _row(game, **columns):
+    """A projection row whose day is counted in the library's calendar."""
+    library = game.library
+    return session_row(game, day_zone=calendar_day_zone(library).key, **columns)
+
 
 STARTED_AT = dt.datetime(2020, 1, 1, 10, 0, tzinfo=dt.UTC)
 
@@ -27,12 +36,12 @@ def authenticated_page(live_server, page: Page, e2e_user) -> Page:
     return page
 
 
-def _make_running_session(library) -> Session:
+def _make_running_session(library) -> PlayerSession:
     platform = Platform.objects.create(
         library=library, name="PC", icon="pc", group="PC"
     )
     game = Game.objects.create(library=library, name="Reset Game", platform=platform)
-    return Session.objects.create(game=game, timestamp_start=STARTED_AT)
+    return _row(game, started_at=STARTED_AT)
 
 
 def test_reset_confirms_on_its_own_page_then_returns_to_the_list(
@@ -54,7 +63,8 @@ def test_reset_confirms_on_its_own_page_then_returns_to_the_list(
     expect(page.locator(f"#session-row-{session.id}")).not_to_contain_text("2020")
 
     session.refresh_from_db()
-    assert session.timestamp_start > STARTED_AT
+    assert session.started_at is not None
+    assert session.started_at > STARTED_AT
 
 
 def test_reset_cancel_leaves_start_unchanged(
@@ -73,7 +83,7 @@ def test_reset_cancel_leaves_start_unchanged(
     page.wait_for_url(f"{live_server.url}{reverse('games:list_sessions')}*")
     expect(page.locator(f"#session-row-{session.id}")).to_contain_text("2020")
     session.refresh_from_db()
-    assert session.timestamp_start == STARTED_AT
+    assert session.started_at == STARTED_AT
 
 
 def test_reset_stamps_the_browser_zone(
@@ -97,6 +107,6 @@ def test_reset_stamps_the_browser_zone(
         page.wait_for_url(f"{live_server.url}{reverse('games:list_sessions')}*")
 
         session.refresh_from_db()
-        assert session.timestamp_start_timezone == "Pacific/Honolulu"
+        assert session.started_at_zone == "Pacific/Honolulu"
     finally:
         context.close()
