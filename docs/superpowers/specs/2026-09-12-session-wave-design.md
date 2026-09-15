@@ -739,6 +739,48 @@ Two branches have no production data and are covered synthetically: Corrected
 mode, which no legacy row converts into, and arbitration between two dated
 overlapping run intervals, which no production session encounters.
 
+**Delivered.** The design is
+[Pass the Session replay, statistics and budget gates](2026-09-15-issue-704-session-gates-design.md);
+member 4 of the stack, with `render_pages` ahead of it on `main` (#1078).
+The gates ran on the 2026-09-12 dump, one library, migrated through the
+conversion: 2,807 legacy rows became 2,807 projection rows, 2,745 on a sole
+live run, 61 contained by one dated run, 1 in the bucket, 142 Duration-only,
+0 mismatches.
+
+- **Replay.** 7,057 events through four tables, no row only live, only
+  rebuilt or differing. The in-suite gate replays every session event type
+  through commands, including a Corrected row, and the two-dated-claimers
+  conversion case reconciles clean.
+- **Statistics.** 0 of 4,649 figures differ: 4,501 playtime figures and 148
+  session figures, legacy days read in `Europe/Prague`, the zone every
+  projection row fixes its day in.
+- **Pages.** 1,700 read-only pages rendered at `main` and at the stack head
+  on one database. 1,697 differ raw; with #702's two navbar changes
+  normalised -- the resume route keyed on the game rather than the source
+  session, and the navbar links spelling `day` -- and the filter builder's
+  `playersession` key, 153 remain, every one attributed: 124 game pages
+  where a Duration-only row prints its day with no clock, because the
+  projection holds no instant for a manual entry and the legacy row carried a
+  stamped midnight; 18 stats pages where the longest session and the highest
+  average moved to `effective_duration` -- the legacy page counted a manual
+  entry as zero and, its NULL elapsed time sorting first, printed 0 h as the
+  longest session on every one of them; the session list's facets and the
+  filter builders, which speak the projection's words; and the settings
+  pages, whose field rows #1047 named. No first or last play moved, and no
+  tie printed the other way. No defect.
+- **Budget.** Six reads on production shape, each judged at 20 ms p95:
+  `session_page` 3.6 ms, `game_playtime_sort` 8.1 ms, `stats_totals` 6.4 ms,
+  `stats_by_platform` 3.0 ms, `stats_by_month` 4.2 ms, `stats_superlatives`
+  12.6 ms. The last first measured 20.4 ms; its three aggregating readers
+  were regrouped on the session table, which halved each, before any cell
+  was materialised. On the scratch seed -- 33,543 sessions on as many games,
+  a shape no library has -- the reads are recorded and not gated; the
+  numbers are in `docs/event-benchmarks.md`.
+
+**The deployment constraint is lifted.** With the three gates green on the
+dump, the projection is the record and the legacy table is inert; #772 takes
+it.
+
 ### #772 — remove legacy Session storage
 
 Rewritten from "remove legacy Session generated fields and signals". The table

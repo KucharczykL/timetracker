@@ -275,13 +275,13 @@ def run_read_scenario(library, *, iterations, warmup) -> tuple[ReadTimings, ...]
 
 No code. The operator's run, recorded.
 
-- [ ] **Step 1:** `make restore-dump DUMP=.dumps/timetracker-2026-09-12.dump`; note the printed `DATABASE_URL`.
-- [ ] **Step 2 (before):** in a worktree at `origin/main` with Task 1's file copied in (or merged), `DATABASE_URL=<scratch> make render-pages ARGS="--user <each user> --out /tmp/.../before/<user>"`. Users: `psql` the scratch for `auth_user.username`.
-- [ ] **Step 3 (after):** in this worktree, `DATABASE_URL=<scratch> make migrate`, then `render-pages` into `after/<user>`, `make verify-session-parity ARGS="--all-libraries"`, `make verify-replay-parity`, `make bench ARGS="--library <id> --gate"` per library with sessions.
-- [ ] **Step 4:** `diff -r before after > diff.txt`; attribute every differing page: #702's superlative (a manual row wins), #689's `sort_instant` on first/last, a tie printed the other way, or a defect. A defect is fixed in a task above before this task closes.
-- [ ] **Step 5: Record.** Wave document `### #704 — the gates` gains a **Delivered.** block: page counts identical/differing with the attribution, parity figure counts per library, replay result, the `--library` bench lines pasted, and "the deployment constraint is lifted". `docs/event-benchmarks.md` gets the `--library` run under the #704 recording. Comment on #704 with the same numbers; comment on #772 (allow list gains `games/reads/session_parity.py`; `verify_session_parity` and `render_pages`' legacy-free).
-- [ ] **Step 6:** `make drop-dump`.
-- [ ] **Step 7: Commit:** `docs: record the gates' run on the 2026-09-12 dump (#704)`.
+- [x] **Step 1:** `make restore-dump DUMP=.dumps/timetracker-2026-09-12.dump`; note the printed `DATABASE_URL`.
+- [x] **Step 2 (before):** in a worktree at `origin/main` with Task 1's file copied in (or merged), `DATABASE_URL=<scratch> make render-pages ARGS="--user <each user> --out /tmp/.../before/<user>"`. Users: `psql` the scratch for `auth_user.username`.
+- [x] **Step 3 (after):** in this worktree, `DATABASE_URL=<scratch> make migrate`, then `render-pages` into `after/<user>`, `make verify-session-parity ARGS="--all-libraries"`, `make verify-replay-parity`, `make bench ARGS="--library <id> --gate"` per library with sessions.
+- [x] **Step 4:** `diff -r before after > diff.txt`; (the after render needed the command file copied into this worktree, since `render_pages` lives on #1078; `stats_superlatives` missed by 0.4 ms and its three aggregating readers were regrouped on the session table, a fix in Task 3's file) attribute every differing page: #702's superlative (a manual row wins), #689's `sort_instant` on first/last, a tie printed the other way, or a defect. A defect is fixed in a task above before this task closes.
+- [x] **Step 5: Record.** Wave document `### #704 — the gates` gains a **Delivered.** block: page counts identical/differing with the attribution, parity figure counts per library, replay result, the `--library` bench lines pasted, and "the deployment constraint is lifted". `docs/event-benchmarks.md` gets the `--library` run under the #704 recording. Comment on #704 with the same numbers; comment on #772 (allow list gains `games/reads/session_parity.py`; `verify_session_parity` and `render_pages`' legacy-free).
+- [x] **Step 6:** `make drop-dump`.
+- [x] **Step 7: Commit:** `docs: record the gates' run on the 2026-09-12 dump (#704)`.
 
 ---
 

@@ -401,6 +401,49 @@ runs at 2.6 ms here; the five aggregates run between 23 ms and 287 ms over
 and 101,029 events. The replay writes one statement an event still, into three
 shadow tables, so the third projector costs a row, not a statement.
 
+### The production-shape recording
+
+The same tool against the 2026-09-12 production dump, restored with
+`make restore-dump` and migrated through the conversion: one library, 2,807
+sessions on 718 tracked games. This is the run the read budget is judged on.
+
+`make bench ARGS="--library 01a009fd-5800-7642-900d-1384c2b99ee7 --gate"`,
+2026-09-15:
+
+```
+Linux-6.18.49-x86_64-with-glibc2.42, 32 CPU(s), Python 3.14.2, PostgreSQL 18.6.
+  shared_buffers 128MB, work_mem 4MB, DEBUG True.
+Read session_page: 200 sample(s), p50 3.2ms, p95 3.6ms, max 4.5ms.
+Read game_playtime_sort: 200 sample(s), p50 6.6ms, p95 8.1ms, max 9.0ms.
+Read stats_totals: 200 sample(s), p50 4.8ms, p95 6.4ms, max 10.1ms.
+Read stats_by_platform: 200 sample(s), p50 2.3ms, p95 3.0ms, max 3.6ms.
+Read stats_by_month: 200 sample(s), p50 3.5ms, p95 4.2ms, max 5.2ms.
+Read stats_superlatives: 200 sample(s), p50 10.1ms, p95 12.6ms, max 14.4ms.
+Per replayed event: 1.0 statement(s), 1.0 to projections (1.4 row(s)), 0.0 to the event store (0.0 row(s)), over 7057 event(s).
+    games_librarycalendar__shadow: 1 statement(s), 1 row(s)
+    games_playergame__shadow: 2359 statement(s), 2359 row(s)
+    games_playersession__shadow: 2810 statement(s), 5474 row(s)
+    games_playthrough__shadow: 1888 statement(s), 1888 row(s)
+Rebuild: replayed 7057 event(s) through 4 table(s) in 2.18s over 1 attempt(s).
+    attempt 1: replay 2.15s, diff 0.01s, swap -
+    games_librarycalendar: 1 live, 1 rebuilt, no difference
+    games_playergame: 859 live, 859 rebuilt, no difference
+    games_playersession: 2807 live, 2807 rebuilt, no difference
+    games_playthrough: 873 live, 873 rebuilt, no difference
+read session_page p95: 0.004s against 0.020s -- passed
+read game_playtime_sort p95: 0.008s against 0.020s -- passed
+read stats_totals p95: 0.006s against 0.020s -- passed
+read stats_by_platform p95: 0.003s against 0.020s -- passed
+read stats_by_month p95: 0.004s against 0.020s -- passed
+read stats_superlatives p95: 0.013s against 0.020s -- passed
+rebuild: 2.157s against 4.234s -- passed
+```
+
+**Every read passes at 20 ms.** `stats_superlatives` first measured 20.4 ms at
+p95, over by 0.4 ms; its three aggregating readers walked from the Game
+through four joins and were rewritten to group on the session table and fetch
+the one game after, which halved each. The other five never came near.
+
 ## Teardown
 
 `19.09s` deletes roughly 350,000 rows — the events, their reference rows, the
