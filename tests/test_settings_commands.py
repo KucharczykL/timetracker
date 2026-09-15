@@ -39,13 +39,6 @@ SITE_SETTING_CASES = (
     ),
     SiteSettingCase("DEFAULT_PAGE_SIZE", "50", 50, 100, 20),
     SiteSettingCase("THEME", "dark", "dark", "light", "sepia"),
-    SiteSettingCase(
-        "DISPLAY_TIME_ZONE",
-        "Pacific/Kiritimati",
-        "Pacific/Kiritimati",
-        "UTC",
-        "Mars/Olympus",
-    ),
     SiteSettingCase("DATE_FORMAT_LOCALE", "CS", "cs", "en-us", "de"),
     SiteSettingCase(
         "DATETIME_FORMAT",
@@ -56,7 +49,18 @@ SITE_SETTING_CASES = (
     ),
 )
 
-SITE_SETTING_KEYS = tuple(case.key for case in SITE_SETTING_CASES)
+#: The display zone commits a calendar event of its own, so its contract
+#: test runs under a real transaction, where on-commit callbacks cannot be
+#: counted, and it stays out of the matrix.
+ZONE_CASE = SiteSettingCase(
+    "DISPLAY_TIME_ZONE",
+    "Pacific/Kiritimati",
+    "Pacific/Kiritimati",
+    "UTC",
+    "Mars/Olympus",
+)
+
+SITE_SETTING_KEYS = (*(case.key for case in SITE_SETTING_CASES), ZONE_CASE.key)
 
 
 @pytest.fixture
@@ -133,6 +137,7 @@ def test_site_setting_backend_contract_matrix(
         "source": "database",
         "locked": False,
         "namespace": "site",
+        "calendar": None,
     }
     assert SiteSetting.objects.get(key=case.key).value == canonical_value
     assert resolve_with_origin(case.key) == ResolvedSetting(
@@ -169,6 +174,7 @@ def test_site_setting_backend_contract_matrix(
         "source": "default",
         "locked": False,
         "namespace": "site",
+        "calendar": None,
     }
     assert not SiteSetting.objects.filter(key=case.key).exists()
     assert resolve_with_origin(case.key) == ResolvedSetting(
@@ -176,6 +182,50 @@ def test_site_setting_backend_contract_matrix(
         SettingSource.DEFAULT,
         False,
     )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_display_zone_keeps_the_site_contract(
+    overlayless_user, superuser_client, clean_site_setting_sources
+):
+    """The matrix's contract, minus the callback counts a real commit hides."""
+    from games.models import SiteSetting
+    from timetracker.settings_registry import get_definition
+    from timetracker.settings_resolver import (
+        resolve_for_user_with_origin,
+        resolve_with_origin,
+    )
+
+    case = ZONE_CASE
+    saved_response = _patch_site(superuser_client, case.key, case.valid_input)
+
+    assert saved_response.status_code == 200
+    assert saved_response.json()["value"] == case.canonical_value
+    assert saved_response.json()["source"] == "database"
+    assert SiteSetting.objects.get(key=case.key).value == case.canonical_value
+    assert resolve_with_origin(case.key) == ResolvedSetting(
+        case.canonical_value, SettingSource.DATABASE, False
+    )
+    assert resolve_for_user_with_origin(overlayless_user, case.key) == ResolvedSetting(
+        case.canonical_value, SettingSource.DATABASE, False
+    )
+
+    change_user_setting(overlayless_user, case.key, case.alternate_value)
+    assert resolve_for_user_with_origin(overlayless_user, case.key) == ResolvedSetting(
+        case.alternate_value, SettingSource.USER, False
+    )
+
+    invalid_response = _patch_site(superuser_client, case.key, case.invalid_input)
+    assert invalid_response.status_code == 400
+    assert SiteSetting.objects.get(key=case.key).value == case.canonical_value
+
+    cleared_response = _patch_site(superuser_client, case.key, None)
+    assert cleared_response.status_code == 200
+    assert (
+        cleared_response.json()["value"] == get_definition(case.key).default_factory()
+    )
+    assert cleared_response.json()["source"] == "default"
+    assert not SiteSetting.objects.filter(key=case.key).exists()
 
 
 def _configure_locked_source(monkeypatch, tmp_path, source: SettingSource) -> None:
@@ -386,7 +436,7 @@ def test_site_endpoint_returns_command_result_without_resolver_readback(
 
     command_calls: list[tuple[str, object]] = []
 
-    def fake_change_site_setting(key, value):
+    def fake_change_site_setting(key, value, *, actor=None):
         command_calls.append((key, value))
         return SettingMutation(
             ResolvedSetting("EUR", SettingSource.DATABASE, False),
@@ -411,6 +461,7 @@ def test_site_endpoint_returns_command_result_without_resolver_readback(
         "source": "database",
         "locked": False,
         "namespace": "site",
+        "calendar": None,
     }
     assert command_calls == [("DEFAULT_PURCHASE_CURRENCY", "eur")]
 
@@ -579,3 +630,162 @@ def test_setting_namespace_values():
 
     assert SettingNamespace.USER == "user"
     assert SettingNamespace.SITE == "site"
+
+
+# ---------------------------------------------------------------------------
+# DISPLAY_TIME_ZONE changes the library's calendar
+# ---------------------------------------------------------------------------
+
+
+def _calendar_events(library):
+    from games.models import LibraryEvent
+
+    return list(
+        LibraryEvent.objects.filter(
+            library=library, event_type="library.calendar.day_zone_changed"
+        ).order_by("sequence")
+    )
+
+
+@pytest.fixture
+def prague_session(user, set_user_setting):
+    """One Timed session at 00:30 Prague on 2 January, day counted in Prague."""
+    import uuid
+    from datetime import UTC, datetime
+
+    from games.commands.playergame import TrackGame
+    from games.commands.playersession import CreateSession, TimedTiming
+    from games.events.dispatch import dispatch
+    from games.models import Game, PlayerSession, Playthrough
+
+    set_user_setting(user, "DISPLAY_TIME_ZONE", "Europe/Prague")
+    library = user.library
+    game = Game.objects.create(library=library, name="Outer Wilds")
+    dispatch(
+        TrackGame(game_id=game.pk), actor=user, library=library, idempotency_key="track"
+    )
+    run = Playthrough.objects.get(player_game__game=game)
+    dispatch(
+        CreateSession(
+            playthrough_id=run.pk,
+            timing=TimedTiming(
+                started_at=datetime(2026, 1, 1, 23, 30, tzinfo=UTC),
+                day_zone="Europe/Prague",
+            ),
+        ),
+        actor=user,
+        library=library,
+        idempotency_key=str(uuid.uuid7()),
+    )
+    return PlayerSession.objects.get()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_new_display_zone_restates_the_calendar(user, prague_session):
+    from datetime import date
+
+    from games.models import LibraryCalendar
+
+    mutation = change_user_setting(user, "DISPLAY_TIME_ZONE", "UTC")
+
+    assert mutation.changed is True
+    assert mutation.calendar is not None
+    assert mutation.calendar.day_zone == "UTC"
+    assert (mutation.calendar.sessions, mutation.calendar.day_moved) == (1, 1)
+    assert LibraryCalendar.objects.get(library=user.library).day_zone == "UTC"
+    prague_session.refresh_from_db()
+    assert prague_session.day_zone == "UTC"
+    assert prague_session.effective_day == date(2026, 1, 1)
+    events = _calendar_events(user.library)
+    assert [event.payload for event in events] == [{"day_zone": "UTC"}]
+    assert events[0].actor_id == user.pk
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_same_zone_appends_nothing(user, prague_session):
+    mutation = change_user_setting(user, "DISPLAY_TIME_ZONE", "Europe/Prague")
+
+    assert mutation.changed is False
+    assert mutation.calendar is None
+    assert _calendar_events(user.library) == []
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_refused_zone_saves_nothing(user, prague_session):
+    from django.core.exceptions import ValidationError
+
+    from games.models import UserPreferences
+
+    with pytest.raises(ValidationError):
+        change_user_setting(user, "DISPLAY_TIME_ZONE", "Not/AZone")
+
+    assert UserPreferences.objects.get(user=user).display_time_zone == "Europe/Prague"
+    assert _calendar_events(user.library) == []
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_clear_that_lands_on_another_zone_restates(
+    user, prague_session, clean_site_setting_sources
+):
+    mutation = change_user_setting(user, "DISPLAY_TIME_ZONE", None)
+
+    assert mutation.effective.value == "UTC"
+    assert mutation.calendar is not None
+    assert mutation.calendar.day_zone == "UTC"
+    assert [event.payload for event in _calendar_events(user.library)] == [
+        {"day_zone": "UTC"}
+    ]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_clear_that_lands_on_the_same_zone_appends_nothing(
+    user, prague_session, superuser_client, clean_site_setting_sources
+):
+    _patch_site(superuser_client, "DISPLAY_TIME_ZONE", "Europe/Prague")
+
+    mutation = change_user_setting(user, "DISPLAY_TIME_ZONE", None)
+
+    assert mutation.effective.value == "Europe/Prague"
+    assert mutation.calendar is None
+    assert _calendar_events(user.library) == []
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_site_zone_reaches_only_inheriting_libraries(
+    user, overlayless_user, clean_site_setting_sources
+):
+    from games.models import LibraryCalendar
+
+    operator = get_user_model().objects.create_superuser("operator", password="x")
+    change_user_setting(user, "DISPLAY_TIME_ZONE", "Europe/Prague")
+
+    mutation = change_site_setting("DISPLAY_TIME_ZONE", "Asia/Tokyo", actor=operator)
+
+    assert mutation.calendar is not None
+    assert mutation.calendar.day_zone == "Asia/Tokyo"
+    inherited = _calendar_events(overlayless_user.library)
+    assert [event.payload for event in inherited] == [{"day_zone": "Asia/Tokyo"}]
+    assert inherited[0].actor_id == operator.pk
+    assert LibraryCalendar.objects.get(library=overlayless_user.library).day_zone == (
+        "Asia/Tokyo"
+    )
+    assert LibraryCalendar.objects.get(library=user.library).day_zone == "Europe/Prague"
+    assert not _calendar_events(operator.library) or (
+        LibraryCalendar.objects.get(library=operator.library).day_zone == "Asia/Tokyo"
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_site_zone_change_records_who_changed_it(clean_site_setting_sources):
+    with pytest.raises(ValueError, match="who changed it"):
+        change_site_setting("DISPLAY_TIME_ZONE", "Asia/Tokyo")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_zone_change_refuses_to_nest(user):
+    from django.db import transaction
+
+    from games.events.retry import NestedTransactionNotSupported
+
+    with transaction.atomic(), pytest.raises(NestedTransactionNotSupported):
+        change_user_setting(user, "DISPLAY_TIME_ZONE", "Asia/Tokyo")

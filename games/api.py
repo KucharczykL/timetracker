@@ -55,6 +55,7 @@ from games.models import (
     UserLibrary,
 )
 from games.ownership import owned_or_404
+from games.reads.calendar import calendar_sentence
 from games.reads.playthrough_endpoints import days_to_finish
 from games.reads.playthrough_runs import library_runs
 from games.removal import remove
@@ -72,6 +73,7 @@ from games.writes.playthrough import RunDraft, record_run, remove_run, restate_r
 from timetracker.config import SettingSource
 from timetracker.settings_commands import (
     SettingLockedError,
+    SettingMutation,
     SettingNamespace,
     change_library_default_device,
     change_site_setting,
@@ -947,6 +949,22 @@ class SettingOut(Schema):
     namespace: SettingNamespace
 
 
+class CalendarDeltaOut(Schema):
+    """What a display-zone change moved, over the live sessions."""
+
+    day_zone: str
+    sessions: int
+    day_moved: int
+    month_moved: int
+    year_moved: int
+
+
+class SettingChangeOut(SettingOut):
+    """A change's answer: the resolved setting, and the calendar it moved."""
+
+    calendar: CalendarDeltaOut | None = None
+
+
 class SettingValueIn(Schema):
     # ``None`` means "clear this setting" (unset → falls through to lower layers).
     value: Any = None
@@ -1016,7 +1034,30 @@ def list_user_settings(request):
     ]
 
 
-@settings_router.patch("/user/{key}", response=SettingOut)
+def _setting_change_out(
+    key: SettingKey,
+    mutation: SettingMutation,
+    *,
+    locked: bool | None = None,
+    namespace: SettingNamespace,
+) -> dict:
+    return {
+        **_setting_out(key, mutation.effective, locked=locked, namespace=namespace),
+        "calendar": (
+            None if mutation.calendar is None else mutation.calendar._asdict()
+        ),
+    }
+
+
+def _report_saved(request, key: SettingKey, mutation: SettingMutation) -> None:
+    """One toast: the calendar's sentence when days moved, else "saved"."""
+    if mutation.calendar is not None:
+        messages.success(request, calendar_sentence(mutation.calendar))
+        return
+    messages.success(request, f"{get_definition(key).label} saved")
+
+
+@settings_router.patch("/user/{key}", response=SettingChangeOut)
 def update_user_setting(request, key: str, payload: SettingValueIn):
     """Set (or clear, with ``value: null``) one of the user's prefs.
 
@@ -1033,9 +1074,9 @@ def update_user_setting(request, key: str, payload: SettingValueIn):
         mutation = change_user_setting(request.user, key, payload.value)
     except (ValidationError, ValueError, TypeError) as error:
         _raise_400(error)
-    messages.success(request, f"{definition.label} saved")
-    return _setting_out(
-        key, mutation.effective, locked=False, namespace=SettingNamespace.USER
+    _report_saved(request, key, mutation)
+    return _setting_change_out(
+        key, mutation, locked=False, namespace=SettingNamespace.USER
     )
 
 
@@ -1076,14 +1117,14 @@ def list_site_settings(request):
     ]
 
 
-@settings_router.patch("/site/{key}", response=SettingOut)
+@settings_router.patch("/site/{key}", response=SettingChangeOut)
 def update_site_setting(request, key: str, payload: SettingValueIn):
     """Set (or clear, with ``value: null``) a site setting's DB value.
     Superuser-only."""
     if not request.user.is_superuser:
         raise HttpError(403, "Superuser required.")
     try:
-        mutation = change_site_setting(key, payload.value)
+        mutation = change_site_setting(key, payload.value, actor=request.user)
     except SettingLockedError as error:
         raise HttpError(
             409,
@@ -1093,9 +1134,8 @@ def update_site_setting(request, key: str, payload: SettingValueIn):
         raise HttpError(400, f"Unknown setting {key!r}.")
     except (ValidationError, ValueError, TypeError) as error:
         _raise_400(error)
-    definition = get_definition(key)
-    messages.success(request, f"{definition.label} saved")
-    return _setting_out(key, mutation.effective, namespace=SettingNamespace.SITE)
+    _report_saved(request, key, mutation)
+    return _setting_change_out(key, mutation, namespace=SettingNamespace.SITE)
 
 
 api.add_router("/settings", settings_router)

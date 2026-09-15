@@ -68,7 +68,7 @@ ALTERNATE_PROFILE = build_format_profile(
 )
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 def test_non_default_presentation_reaches_every_server_display_path(
     client, django_user_model, monkeypatch, django_capture_on_commit_callbacks
 ) -> None:

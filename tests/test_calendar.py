@@ -25,6 +25,7 @@ from games.models import (
     PlayerSession,
     Playthrough,
 )
+from games.reads.calendar import CalendarDelta, calendar_delta, calendar_sentence
 
 #: 00:30 on 2 January in Prague; 23:30 on 1 January in UTC.
 START = datetime(2026, 1, 1, 23, 30, tzinfo=UTC)
@@ -243,3 +244,76 @@ def test_the_read_answers_the_owners_zone_without_a_row(
     set_user_setting(owned_user, "DISPLAY_TIME_ZONE", "Europe/Prague")
 
     assert calendar_day_zone(owned_library) == ZoneInfo("Europe/Prague")
+
+
+# --- the delta ---------------------------------------------------------------
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_delta_counts_the_days_months_and_years_that_move(
+    prague_owner, owned_library, run
+):
+    def timed(started_at):
+        return TimedTiming(started_at=started_at, day_zone="Europe/Prague")
+
+    #: Prague 2 January; UTC 1 January. Day only.
+    record(owned_library, prague_owner, run, timed(START))
+    #: Prague 1 February; UTC 31 January. Month too.
+    record(
+        owned_library,
+        prague_owner,
+        run,
+        timed(datetime(2026, 1, 31, 23, 30, tzinfo=UTC)),
+    )
+    #: Prague 1 January 2026; UTC 31 December 2025. Year too.
+    record(
+        owned_library,
+        prague_owner,
+        run,
+        timed(datetime(2025, 12, 31, 23, 30, tzinfo=UTC)),
+    )
+    #: Noon: no move.
+    record(
+        owned_library,
+        prague_owner,
+        run,
+        timed(datetime(2026, 1, 15, 12, 0, tzinfo=UTC)),
+    )
+    removed = record(owned_library, prague_owner, run, timed(START))
+    dispatch(
+        RemoveSession(session_id=removed.pk),
+        actor=prague_owner,
+        library=owned_library,
+        idempotency_key="remove",
+    )
+    record(
+        owned_library,
+        prague_owner,
+        run,
+        DurationOnlyTiming(day=date(2026, 3, 5), duration=timedelta(minutes=90)),
+    )
+
+    delta = calendar_delta(owned_library, "UTC")
+
+    assert delta == CalendarDelta(
+        day_zone="UTC", sessions=4, day_moved=3, month_moved=2, year_moved=1
+    )
+    assert calendar_delta(owned_library, "Europe/Prague") == CalendarDelta(
+        day_zone="Europe/Prague", sessions=4, day_moved=0, month_moved=0, year_moved=0
+    )
+
+
+def test_deltas_add_up():
+    first = CalendarDelta("UTC", 2807, 124, 10, 5)
+    second = CalendarDelta("UTC", 3, 2, 1, 0)
+
+    assert first + second == CalendarDelta("UTC", 2810, 126, 11, 5)
+
+
+def test_the_sentence_reads_the_delta():
+    delta = CalendarDelta("UTC", 2807, 124, 10, 5)
+
+    assert calendar_sentence(delta) == (
+        "Days now counted in UTC: 2,807 sessions, 124 moved to another day, "
+        "10 to another month, 5 to another year."
+    )
