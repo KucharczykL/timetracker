@@ -7,10 +7,10 @@ from zoneinfo import ZoneInfo
 from django.db import models
 from django.db.models import Case, F, OuterRef, Subquery, Value, When
 from django.db.models.expressions import Combinable, Expression
-from django.db.models.functions import Coalesce, TruncDate
+from django.db.models.functions import Coalesce
 from django.utils import timezone as django_timezone
 
-from games.models import Session, UserLibrary
+from games.models import PlayerSession, UserLibrary
 from games.reads.calendar import calendar_day_zone
 from timetracker.settings_resolver import resolve_for_user
 
@@ -65,23 +65,25 @@ def _clock(threshold_days: int, zone: ZoneInfo) -> ActivityClock:
     )
 
 
-def activity_day_expression(clock: ActivityClock) -> Combinable:
+def activity_day_expression() -> Combinable:
     """The day the word reads.
 
-    The subquery states the run's own library column, so
-    a run at a shared catalog game reads no session. Drop
-    it and one library's play moves another's word.
+    The run's own sessions, not the game's: a sibling run
+    or the imported-history bucket moves no word. The day
+    is the row's `effective_day`, already counted in the
+    library's calendar, so the clock's zone plays no part
+    here. The library is stated beside the run so a row
+    another library holds at it, the drift
+    `audit_library_ownership` reports, reads nothing.
     """
     latest_session_day = (
-        Session.objects.alive()
-        .filter(
-            game=OuterRef("player_game__game"),
-            game__library=OuterRef("library"),
-            game__removed_at__isnull=True,
+        PlayerSession.objects.filter(
+            playthrough=OuterRef("pk"),
+            library=OuterRef("library"),
+            removed_at__isnull=True,
         )
-        .annotate(played_day=TruncDate("timestamp_start", tzinfo=clock.zone))
-        .order_by("-timestamp_start")
-        .values("played_day")[:1]
+        .order_by("-effective_day")
+        .values("effective_day")[:1]
     )
     #: Sessions first; the start day is fallback.
     return Coalesce(

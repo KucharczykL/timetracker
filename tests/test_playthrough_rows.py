@@ -5,13 +5,14 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from django.utils import timezone
+from session_rows import timed_row
 
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
 )
 from games.commands.playthrough import ActStatement
-from games.models import Game, Playthrough, Session
+from games.models import Game, Playthrough
 from games.reads.playthrough_numbering import numbered_for
 from games.reads.playthrough_runs import tracked_game
 from games.views.playthrough_rows import playthrough_tabledata
@@ -251,10 +252,8 @@ def test_a_run_completed_before_today_offers_no_start(
 def test_a_playing_run_prints_its_badge_and_its_recency(
     owned_library, run, presentation
 ):
-    Session.objects.create(
-        game=run.player_game.game,
-        timestamp_start=timezone.now() - timedelta(days=4),
-    )
+    started_at = timezone.now() - timedelta(days=4)
+    timed_row(run, started_at, started_at + timedelta(hours=1))
 
     html = "".join(cells_of(owned_library, run, presentation))
 

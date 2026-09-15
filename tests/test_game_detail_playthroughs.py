@@ -8,9 +8,10 @@ import pytest
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import escape
+from session_rows import timed_row, tracked_run
 
 from games.filters import PlaythroughFilter, filter_url
-from games.models import Game, Playthrough, PlaythroughKind, Session
+from games.models import Game, Playthrough, PlaythroughKind
 
 pytestmark = pytest.mark.django_db
 
@@ -154,9 +155,8 @@ def test_the_section_prints_the_viewers_own_word(
     logged_in, owned_user, game, set_user_setting
 ):
     """#1033: the personal threshold reaches this screen."""
-    Session.objects.create(
-        game=game, timestamp_start=timezone.now() - timedelta(days=20)
-    )
+    started_at = timezone.now() - timedelta(days=20)
+    timed_row(tracked_run(owned_user.library, game), started_at, started_at)
     set_user_setting(owned_user, "DORMANT_AFTER_DAYS", 7)
 
     body = section(logged_in, game)

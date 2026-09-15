@@ -1630,7 +1630,7 @@ class PlaythroughQuerySet(models.QuerySet["Playthrough"]):
                     output_field=models.CharField(null=True)
                 ),
             )
-        queryset = self.annotate(activity_day=activity_day_expression(clock)).annotate(
+        queryset = self.annotate(activity_day=activity_day_expression()).annotate(
             activity=activity_expression(clock)
         )
         queryset._activity_clock = clock
