@@ -612,8 +612,8 @@ intermediate state ever runs anywhere real.
 The surfaces, each one a stack member:
 
 1. **The run pickers and the write path.** The four creation surfaces — the add
-   form, add-for-game, the purchase form's Submit & Create Session, Game
-   detail's link — each name a run. `clone_session_by_id` and
+   form, add-for-game, the Add Game and Add Purchase forms' Submit & Create
+   Session, Game detail's link — each name a run. `clone_session_by_id` and
    `new_session_from_existing_session` copy the source's run. `mark_as_played`
    stays a companion dispatch beside creation under its own `correlation_id`,
    the shape #683 settled for Playthrough. `returns.py` classifies every route
@@ -682,6 +682,33 @@ Saved presets are not migrated. Production holds three, all `mode='playthroughs'
 none naming a session field — so the conclusion holds, but the reason is "none
 names a dying field", not "the table is empty". #767 keeps the versioned
 registry if a later wave wants one.
+
+**Delivered.** The design is
+[Switch Session writes and every read surface](2026-09-15-issue-702-session-cutover-design.md);
+three members (#1075, #1076, #1077), what they settled, and what
+#704 inherits:
+
+- **The form derives the mode from what is filled.** No mode control; two
+  shapes are refused naming the shapes that work. A duration beside two
+  instants replaces elapsed time, which is what Corrected means.
+- **The filter is `PlayerSessionFilter`, in projection words**, under model
+  key `playersession`; the four dying fields are replaced, not aliased, and a
+  key no field answers is refused rather than dropped.
+- **The bucket takes no new session.** Clone and resume name the game's
+  latest live ordinary run, keyed on the game, never the source's run. A
+  session on a game nothing tracks is refused on the run.
+- **Aggregates always take the context scope**, so a shared catalog game
+  counts one library's rows whether or not a scope filter is stated.
+- **Superlatives read `effective_duration`**, so a Corrected row enters at its
+  override and a Duration-only row at its stated duration. #704's equality
+  gate measures against that, not against elapsed time alone.
+- **The dormancy clock asks when the run was last played**, so a run whose
+  play sits in the bucket reads Never played until the sessions are moved.
+- **A foreign device on the API answers 404**, ahead of the command's 409.
+- **The legacy table has one guard**: `tests/test_session_import_guard.py`
+  fails on an import outside the conversion, the census, the legacy playtime
+  source, the removal registry and the fixture commands. #772 empties its
+  list.
 
 ### #704 — the gates
 

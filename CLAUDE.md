@@ -155,7 +155,7 @@ docs/           — Additional documentation
 - **Game** — catalog row: `name`, `platform` (FK), `year_released`, `sort_name`, `wikidata`. `status` (u/p/f/r/a) and `mastered` stranded columns since #678 D2 — nothing writes them, nothing reads them, #770 drops them
 - **Platform** — `name`, `group`, `icon` (slug, auto-generated from name)
 - **Purchase** — ownership type, prices, currency conversion (`converted_price`, `price_per_game` is a `GeneratedField`), M2M to Game. `num_purchases` counts linked games. DLC/SeasonPass/BattlePass must have `related_game` (reverse accessor `game.addon_purchases`)
-- **Session** — `timestamp_start`/`timestamp_end`, `duration_manual`, `device` (FK), `note`, `emulated`. `duration_calculated`/`duration_total` are `GeneratedField`s
+- **Session** — legacy table: `timestamp_start`/`timestamp_end`, `duration_manual`, `device` (FK), `note`, `emulated`; `duration_calculated`/`duration_total` are `GeneratedField`s. Nothing writes it and no surface reads it since #702; `tests/test_session_import_guard.py` refuses import outside conversion, census, legacy playtime source, removal registry and fixture commands. #772 drops it
 - **Device** — `name`, `type` (PC/Console/Handheld/Mobile/SBC/Unknown)
 - **ExchangeRate** — cached FX rates per currency pair per year
 - **FilterPreset** — saved filter config; `mode` (games/sessions/purchases/playthroughs), `find_filter`, `object_filter`, `ui_options` (all JSON). Follows Stash's SavedFilter pattern
@@ -297,8 +297,8 @@ docs/           — Additional documentation
   command reads it, under dispatch's lock. Refuses end before start, row that is
   not Timed, and end on row that states one; identical restatement answers
   `Unchanged`, same instant in other zone refused. Event's day is not row's:
-  `effective_time` reads end, `effective_day` reads start. Nothing calls it yet;
-  #702 owns surfaces. Contract is
+  `effective_time` reads end, `effective_day` reads start. Finish button and
+  API call it through `end_session`. Contract is
   [End a running Timed session](docs/superpowers/specs/2026-09-13-issue-691-session-end-design.md)
 
   #692's three corrections, one fact each. `CorrectSessionTiming` restates
@@ -317,8 +317,8 @@ docs/           — Additional documentation
   then refuse under removed `PlayerGame` and under removed run with own
   sentences (`_refuse_under_a_removed_parent`). Every other session command
   resolves through `_live_session`, so removed session refuses end,
-  correction, description and move alike. Nothing calls either yet; #702
-  owns surfaces. Contract is
+  correction, description and move alike. Remove route calls first; restore
+  has no route until #695. Contract is
   [Remove and restore a session](docs/superpowers/specs/2026-09-14-issue-694-session-removal-design.md)
 
   #700's `games/backfill/playersession.py`, run by migration `0004`, converts
@@ -327,6 +327,28 @@ docs/           — Additional documentation
   needing one, seven readings gated before commit. Member 1 of the wave stack;
   never merged alone. Contract is
   [Convert legacy Sessions](docs/superpowers/specs/2026-09-14-issue-700-session-conversion-design.md)
+
+  #702's cutover: every session write is a command and every read the
+  projection. `games/writes/playersession.py` is request-free half —
+  `record_session`, `restate_session` (timing, then description of differing
+  facts, then move, one `correlation_id`), `end_session`, `reset_session`
+  (refuses row not running), `remove_session`, `clone_session` (game's latest
+  live ordinary run, calendar zone) — each under `answered("session")`.
+  `SessionForm` is plain `Form` that derives mode from what is filled: start
+  alone Timed, day and duration Duration-only, start, end and duration
+  Corrected; start beside duration with no end, and day beside instant, refused
+  naming shapes that work. Run picked after game through
+  `<playthrough-select>`, which refills from `GET /api/playthrough/?game=` and
+  hides when game holds one run; session on game nothing tracks refused on
+  run. Bucket takes no new session; `MoveSessionToPlaythrough` is only way in
+  or out. Resume keyed on game (`games:resume_session`). Read surfaces:
+  `library_sessions` and `game_sessions` in `games/reads/player_sessions.py`;
+  `PlayerSessionFilter` (below); stats scope year on `effective_day`, order
+  first and last play by `sort_instant`, superlatives read
+  `effective_duration`; `stats_links` emit `day__between`; navbar resumes page
+  `(sort_instant, id)`; dormancy clock asks when *run* was last played, so run
+  whose play sits in bucket reads Never played until moved. Contract is
+  [Switch Session writes and every read surface](docs/superpowers/specs/2026-09-15-issue-702-session-cutover-design.md)
 
   #1047's calendar: one zone per library, stated by
   `library.calendar.day_zone_changed` and projected to `LibraryCalendar`, a
@@ -390,16 +412,16 @@ glue not owned by reusable component (e.g. `add_*.js`). Navbar shows
 today's/last-7-days playtime from `model_counts` context processor.
 
 **Playtime reads** (`games/reads/playtime/`, #697): playtime per Game, all-time,
-per year, per day window, per platform, per month and per day comes from this
-package. Three legacy sums remain outside it until #702 restates them: the
-Session-derived averages (Game detail, stats), `GameFilter`'s manual/calculated
-aggregates, and the playthrough note's range sum. `PlaytimeSource` names the
-figures; `legacy.py` answers them from `Session`, `projection.py` from
+per year, per day window, per platform, per month, per day and per game in a
+day window (`game_playtime_between`, the playthrough page's range sum) comes
+from this package. Averages (Game detail, stats) and `GameFilter`'s
+`session_playtime_hours` read `effective_duration` outside it. `PlaytimeSource`
+names the figures; `legacy.py` answers them from `Session`, `projection.py` from
 `PlayerSession` through `library_sessions()` (`games/reads/player_sessions.py`,
 the read layer's one session scope: four removal marks, library on session, run
-and tracked game). `SOURCE: FullPlaytimeSource = legacy`; `projection.py` lacks
-`summed_by_game_matching`, so binding it fails mypy until a session filter speaks
-the projection's fields. Sources answer sums (NULL when unplayed); the package
+and tracked game). `SOURCE: FullPlaytimeSource = projection`; `legacy.py` lacks
+`summed_by_game_matching`, because `PlayerSessionFilter` speaks projection words
+no legacy column answers. Sources answer sums (NULL when unplayed); the package
 decides NULL or zero: `playtime_by_game` is zero (the `playtime` alias
 `GameQuerySet.annotated_for_filtering` registers, which refuses a second
 library), `playtime_sort_key` and `playtime_matching` stay NULL and `apply_sort`
@@ -488,12 +510,25 @@ structured filtering.
   EQUALS, NOT_EQUALS, INCLUDES, EXCLUDES, GREATER_THAN, LESS_THAN, BETWEEN,
   IS_NULL, …) and `to_q(field_name)` method. `OperatorFilter` provides AND/OR/NOT
   sub-filter composition and JSON serialization.
-- `games/filters.py` defines `GameFilter`, `SessionFilter`, `PurchaseFilter` (all
-  `@dataclass` subclasses of `OperatorFilter`) and `FindFilter`
-  (sort/pagination). Filters serialize to/from JSON and travel in `?filter=`
-  query parameter; `parse_game_filter()` / `parse_session_filter()` /
-  `parse_purchase_filter()` deserialize. `FilterPreset` stores named
+- `games/filters.py` defines `GameFilter`, `PlayerSessionFilter`,
+  `PurchaseFilter` (all `@dataclass` subclasses of `OperatorFilter`) and
+  `FindFilter` (sort/pagination). Filters serialize to/from JSON and travel in
+  `?filter=` query parameter; `parse_game_filter()` / `parse_session_filter()`
+  / `parse_purchase_filter()` deserialize. Key `from_json` does not know is
+  refused as `FilterError`, never dropped. `FilterPreset` stores named
   configurations.
+- `PlayerSessionFilter` speaks projection words: `timing_mode`, `is_running`
+  (Timed with no end, through `bool_running_handler`), `day` (`effective_day`),
+  `started`/`ended` (instants' dates, null on Duration-only row),
+  `duration_hours` (`effective_duration`), `created_at`, `game` (through run),
+  `device`, `emulated`, `note`, `search`, `game_filter`, `device_filter`. Mode
+  key stays `sessions`; model key is `playersession` wherever one is spelled
+  (`FILTER_MODE_MODELS`, builder URL, fixtures' `"model"`). `GameFilter`'s
+  session aggregates cross `player_games__playthroughs__sessions`;
+  `aggregate_to_q` always scopes subquery through `context.queryset_for`, so
+  shared catalog game counts one library's rows. Comparison operand reaches
+  game through `ProjectionModel.comparison_through`, declared to-one path walk
+  follows as one named hop; `games.E011` refuses path that resolves nowhere.
 - **Quick filter bar** (#197/#315, `common/components/quick_filter.py` +
   `ts/elements/quick-filter-bar.ts`) is **THE one filter tier** above every list
   view — GitHub-style row of ghost "Label ▾" dropdown facets directly above table.
@@ -574,7 +609,15 @@ present. Rendering client-side (`games/static/js/toast.js`).
   refused with 422 as well, so the old `ended` cannot pass unread. PATCH states
   the endpoints the request names and no others: a note-only PATCH records no
   act, and a named key is the act, dated or not
-- `PATCH /api/session/{id}/device` — update session device
+- `GET /api/session/`, `GET /{id}` — projection rows through
+  `library_sessions`: `playthrough_id`, `game` through run, `timing_mode`,
+  instants with zones, `stated_day`, `stated_duration_seconds`, `day`,
+  `duration_seconds`
+- `PATCH /api/session/{id}` — body `extra="forbid"`: `timing` (one whole
+  statement told apart by shape) is a correction, `note`/`device_id`/`emulated`
+  a description, `playthrough_id` a move; named key is the act, omitted key
+  states nothing. Device outside library answers 404. No POST: #1074
+- `PATCH /api/session/{id}/device` — `DescribeSession(StatedDevice(...))`
 - `GET /api/presets/` — user's presets for a mode, shaped as combobox options
   (`limit=0` = unbounded)
 - `POST /api/presets/` — upsert on (user, mode, name); 201 create / 200 update
