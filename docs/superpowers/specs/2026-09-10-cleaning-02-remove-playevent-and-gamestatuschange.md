@@ -351,7 +351,7 @@ corresponding `game__playevents__ended` canonical entries.
      fixture creation; convert remaining tests to use Playthrough
    - `tests/test_playthrough_api_writes.py` — remove PlayEvent import and all
      fixture creation; convert remaining tests to use Playthrough
-   - `tests/test_playergame_playthrough_gate.py` — remove backfill imports and
+   - `tests/test_projection_replay_gate.py` — remove backfill imports and
      PlayEvent fixture creation
    - `tests/test_session_playhistory_runtime_identity.py` — remove conversion
      fixture and PlayEvent fixture creation; convert to use Playthrough

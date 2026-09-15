@@ -1495,7 +1495,7 @@ EOF
   (discovered during execution — see Step 1.5)
 - Modify (discovered during execution, Step 1.5): `tests/test_removal.py`,
   `tests/test_action_origin_parity.py`, `tests/test_playthrough_view_cutover.py`,
-  `tests/test_playergame_playthrough_gate.py`,
+  `tests/test_projection_replay_gate.py`,
   `tests/test_session_playhistory_runtime_identity.py`,
   `tests/test_playergame_history_read.py`,
   `tests/test_playergame_view_cutover.py`, `tests/test_removal_confirmation.py`,
@@ -1540,7 +1540,7 @@ category as the four test files this task already deletes.
 
 | File / test | Why it goes |
 |---|---|
-| `tests/test_playergame_playthrough_gate.py`: `build_converted` + `test_a_converted_library_replays_into_its_live_rows` + `test_a_converted_library_rebuilds_with_an_empty_diff` | Both assert "a library whose rows the legacy conversion produced replays/rebuilds into the same rows". The events that pass appended are ordinary `library.playthrough.*` events in the ordinary vocabulary — replay reads `event_type` and `payload`, never `source_metadata` — so the claim is already made by the same file's `test_replaying_an_emptied_library_reproduces_both_tables` and `test_a_rebuild_swaps_both_tables_with_an_empty_diff` over `build_stream`. No coverage lost. |
+| `tests/test_projection_replay_gate.py`: `build_converted` + `test_a_converted_library_replays_into_its_live_rows` + `test_a_converted_library_rebuilds_with_an_empty_diff` | Both assert "a library whose rows the legacy conversion produced replays/rebuilds into the same rows". The events that pass appended are ordinary `library.playthrough.*` events in the ordinary vocabulary — replay reads `event_type` and `payload`, never `source_metadata` — so the claim is already made by the same file's `test_replaying_an_emptied_library_reproduces_both_tables` and `test_a_rebuild_swaps_both_tables_with_an_empty_diff` over `build_stream`. No coverage lost. |
 | `tests/test_playergame_history_read.py`: `test_the_backfills_corrective_transition_shows_no_time` | Asserts `backfill_game` appends exactly one corrective event *and* that the reader shows no time for it. The first half is the deleted pass's own arithmetic; the second half is `effective_time is None → recorded_at None`, which the rewritten `test_a_transition_stating_no_effective_time_shows_no_time` states directly. |
 
 `test_the_gate_replays_every_reachable_playthrough_kind` keeps its assertion but

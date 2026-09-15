@@ -13,7 +13,7 @@ from django.db import connection, migrations, transaction
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from session_rows import tracked_run
-from test_playergame_playthrough_gate import UNREACHABLE_KINDS
+from test_projection_replay_gate import UNREACHABLE_KINDS
 
 from games.backfill import playersession as conversion
 from games.backfill.playersession import (
@@ -552,11 +552,20 @@ def test_a_row_no_dated_run_claims_lands_in_the_bucket(owned_library):
     assert counts.buckets_minted == 1
 
 
+@pytest.mark.untracked_games
 def test_two_dated_claimers_land_the_row_in_the_bucket(owned_library):
-    game = game_at(owned_library)
+    """All from events, so the replay leg can run on it."""
+    game = tracked_game(owned_library, "Chrono Trigger")
     #: Synthetic overlap; production holds none.
-    dated_run(run_of(owned_library, game), date(2024, 2, 1), date(2024, 2, 20))
-    dated_run(second_run(owned_library, game), date(2024, 2, 10), date(2024, 3, 1))
+    stated_run(
+        owned_library, run_of(owned_library, game), date(2024, 2, 1), date(2024, 2, 20)
+    )
+    stated_run(
+        owned_library,
+        stated_second_run(owned_library, game),
+        date(2024, 2, 10),
+        date(2024, 3, 1),
+    )
     contested = legacy(
         game, start=datetime(2024, 2, 15, tzinfo=UTC), timestamp_end=START
     )
@@ -567,6 +576,8 @@ def test_two_dated_claimers_land_the_row_in_the_bucket(owned_library):
     assert counts.bucket == 1
     event = LibraryEvent.objects.get(event_type="library.playersession.created")
     assert event.source_metadata["legacy"]["claimers"] == 2
+    #: The synthetic branch replays as it converted.
+    assert reconcile(owned_library, counts) == []
 
 
 def test_an_undated_run_claims_nothing(owned_library):

@@ -87,12 +87,12 @@
 - The rebuild leg's expected table list already names `games_playersession`; it stays four entries.
 - The two-claimers test: add `assert reconcile(owned_library, counts) == []` after the existing assertions; `reconcile` and `codes` are already imported/defined in that module.
 
-- [ ] **Step 1: `git mv`; fix the conversion test's import; run `make test ARGS="tests/test_projection_replay_gate.py tests/test_playersession_conversion.py -x"`** — green before any change.
-- [ ] **Step 2: Failing first:** extend `registered_event_types` to three families and run the coverage test; it fails naming nine session types.
-- [ ] **Step 3: Extend `build_stream`, `rows_of`, `empty_projections`, `row_versions`, the removed-row test, the partial-stream count.** Run the file; every leg green.
-- [ ] **Step 4: Two-claimers `reconcile`.** Run the conversion file.
-- [ ] **Step 5: Update the five documents' file name; `make vale`.**
-- [ ] **Step 6: `make check-fast`. Commit:** `test: replay every session event type through the gate (#704)`.
+- [x] **Step 1: `git mv`; fix the conversion test's import; run `make test ARGS="tests/test_projection_replay_gate.py tests/test_playersession_conversion.py -x"`** — green before any change.
+- [x] **Step 2: Failing first:** extend `registered_event_types` to three families and run the coverage test; it fails naming nine session types.
+- [x] **Step 3: Extend `build_stream`, `rows_of`, `empty_projections`, `row_versions`, the removed-row test, the partial-stream count.** Run the file; every leg green.
+- [x] **Step 4: Two-claimers `reconcile`.** Run the conversion file. The case now builds its runs from events (`tracked_game`, `stated_run`, `stated_second_run`, `untracked_games`), because the replay leg cannot reproduce rows the fixture wrote directly. The neighbour library gained one session, so the third table's `xmin` is watched.
+- [x] **Step 5: Update the five documents' file name; `make vale`.**
+- [x] **Step 6: `make check-fast`. Commit:** `test: replay every session event type through the gate (#704)`.
 
 ---
 
