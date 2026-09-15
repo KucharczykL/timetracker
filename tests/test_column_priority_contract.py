@@ -20,6 +20,7 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
+from session_rows import session_row
 
 from games.models import Device, Game, Platform, Purchase, Session
 
@@ -86,6 +87,9 @@ class ActionsColumnPriorityTest(TestCase):
             device=device,
             timestamp_start=BASE,
             timestamp_end=BASE.replace(hour=14),
+        )
+        session_row(
+            self.game, device=device, started_at=BASE, ended_at=BASE.replace(hour=14)
         )
         purchase = Purchase.objects.create(
             library=library,

@@ -5,6 +5,7 @@ import pytest
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from session_rows import duration_only_row, session_row, tracked_run
 
 from common.date_time_presentation import (
     DateTimePresentation,
@@ -16,7 +17,7 @@ from common.duration_presentation import (
     duration_format_profile,
 )
 from games.formatting import session_time_range
-from games.models import Game, Purchase, Session
+from games.models import Game, Purchase
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 
@@ -36,25 +37,24 @@ class FormatDurationTest(TestCase):
         p.save()
         p.games.add(g)
         p.save()
-        s = Session(
-            game=g,
-            timestamp_start=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO),
-            timestamp_end=datetime(2022, 9, 26, 17, 38, tzinfo=ZONEINFO),
+        s = session_row(
+            g,
+            started_at=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO),
+            ended_at=datetime(2022, 9, 26, 17, 38, tzinfo=ZONEINFO),
         )
-        s.save()
         self.assertEqual(
             DurationPresentation(
                 duration_format_profile("decimal_hours"), "en-us"
-            ).format(s.duration_total),
+            ).format(s.effective_duration),
             "2.7 h",
         )
 
     def test_session_range_uses_explicit_presentation(self):
         game = Game.objects.create(library=self.library, name="Range game")
-        session = Session.objects.create(
-            game=game,
-            timestamp_start=datetime(2026, 7, 2, 17, 5, tzinfo=ZoneInfo("UTC")),
-            timestamp_end=datetime(2026, 7, 2, 19, 15, tzinfo=ZoneInfo("UTC")),
+        session = session_row(
+            game,
+            started_at=datetime(2026, 7, 2, 17, 5, tzinfo=ZoneInfo("UTC")),
+            ended_at=datetime(2026, 7, 2, 19, 15, tzinfo=ZoneInfo("UTC")),
         )
         presentation = DateTimePresentation(
             build_format_profile(
@@ -88,10 +88,10 @@ def test_registered_profiles_match_browser_session_range_literals(
     profile_id: str, expected: str, owned_library
 ) -> None:
     game = Game.objects.create(library=owned_library, name=f"Range {profile_id}")
-    session = Session.objects.create(
-        game=game,
-        timestamp_start=datetime(2026, 7, 2, 19, 5, tzinfo=ZoneInfo("UTC")),
-        timestamp_end=datetime(2026, 7, 2, 21, 15, tzinfo=ZoneInfo("UTC")),
+    session = session_row(
+        game,
+        started_at=datetime(2026, 7, 2, 19, 5, tzinfo=ZoneInfo("UTC")),
+        ended_at=datetime(2026, 7, 2, 21, 15, tzinfo=ZoneInfo("UTC")),
     )
     presentation = DateTimePresentation(
         date_time_format_profile(profile_id),
@@ -107,10 +107,10 @@ def test_mdy_12h_session_range_uses_localized_client_contract_day_periods(
     owned_library,
 ) -> None:
     game = Game.objects.create(library=owned_library, name="Localized range")
-    session = Session.objects.create(
-        game=game,
-        timestamp_start=datetime(2026, 7, 2, 0, 5, tzinfo=ZoneInfo("UTC")),
-        timestamp_end=datetime(2026, 7, 2, 12, 15, tzinfo=ZoneInfo("UTC")),
+    session = session_row(
+        game,
+        started_at=datetime(2026, 7, 2, 0, 5, tzinfo=ZoneInfo("UTC")),
+        ended_at=datetime(2026, 7, 2, 12, 15, tzinfo=ZoneInfo("UTC")),
     )
     presentation = DateTimePresentation(
         date_time_format_profile("mdy_12h"),
@@ -123,3 +123,19 @@ def test_mdy_12h_session_range_uses_localized_client_contract_day_periods(
     assert session_time_range(session, presentation) == (
         f"07/02/2026 12:05 {day_periods['am']} — 12:15 {day_periods['pm']}"
     )
+
+
+@pytest.mark.django_db
+def test_a_duration_only_row_renders_its_day_alone(owned_library) -> None:
+    """No instant, so no time and no zone: the written day, as a date."""
+    from datetime import date, timedelta
+
+    game = Game.objects.create(library=owned_library, name="Day only")
+    session = duration_only_row(
+        tracked_run(owned_library, game), date(2026, 7, 2), timedelta(hours=1)
+    )
+    presentation = DateTimePresentation(
+        date_time_format_profile("dmy_24h"), "en-us", ZoneInfo("Pacific/Kiritimati")
+    )
+
+    assert session_time_range(session, presentation) == "02/07/2026"

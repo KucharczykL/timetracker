@@ -14,7 +14,7 @@ def logged_in_client(client, django_user_model):
 
 
 @pytest.mark.parametrize(
-    "model", ["game", "session", "purchase", "playthrough", "device", "platform"]
+    "model", ["game", "playersession", "purchase", "playthrough", "device", "platform"]
 )
 def test_builder_page_renders(logged_in_client, model):
     response = logged_in_client.get(reverse("games:filter_builder", args=[model]))
@@ -29,7 +29,7 @@ def test_builder_page_renders(logged_in_client, model):
 
 
 @pytest.mark.parametrize(
-    "model", ["game", "session", "purchase", "playthrough", "device", "platform"]
+    "model", ["game", "playersession", "purchase", "playthrough", "device", "platform"]
 )
 def test_builder_page_renders_under_debug(
     logged_in_client, model, debug_page_rendering
@@ -88,7 +88,7 @@ def test_builder_requires_login(client):
     "list_name, model",
     [
         ("list_games", "game"),
-        ("list_sessions", "session"),
+        ("list_sessions", "playersession"),
         ("list_purchases", "purchase"),
         ("list_playthroughs", "playthrough"),
         ("list_devices", "device"),

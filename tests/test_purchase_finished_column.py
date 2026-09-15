@@ -156,10 +156,12 @@ def test_the_completion_costs_no_query_per_row(
     with CaptureQueriesContext(connection) as captured:
         logged_client.get(reverse("games:list_purchases"))
 
+    #: The navbar's playtime read joins the run too; it is not this read.
     reads = [
         query
         for query in captured.captured_queries
         if "games_playthrough" in query["sql"]
+        and "games_playersession" not in query["sql"]
     ]
 
     assert len(reads) == 1

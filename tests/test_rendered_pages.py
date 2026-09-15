@@ -18,9 +18,9 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from pytest_django.asserts import assertRedirects
-from session_rows import timed_row, tracked_run
+from session_rows import session_row, timed_row, tracked_run
 
-from games.models import Game, Platform, Purchase, Session
+from games.models import Game, Platform, PlayerSession, Purchase, Session
 from games.reads.playtime import game_playtime
 from timetracker.temporal import TemporalValue
 
@@ -122,16 +122,16 @@ class RenderedPagesTest(TestCase):
             platform=self.platform,
         )
         self.purchase.games.add(self.game)
-        self.session = Session.objects.create(
+        #: The legacy row still feeds the session form and API.
+        self.legacy_session = Session.objects.create(
             game=self.game,
             timestamp_start=datetime(2022, 9, 26, 15, 0, tzinfo=ZONEINFO),
             timestamp_end=datetime(2022, 9, 26, 16, 0, tzinfo=ZONEINFO),
         )
-        #: The removal confirmation counts the projection's rows.
-        timed_row(
+        self.session = timed_row(
             tracked_run(self.user.library, self.game),
-            self.session.timestamp_start,
-            self.session.timestamp_end,
+            self.legacy_session.timestamp_start,
+            self.legacy_session.timestamp_end,
         )
 
     def get(self, url_name, *args):
@@ -381,13 +381,13 @@ class RenderedPagesTest(TestCase):
         self.assertEqual(html.count("<div"), html.count("</div>"))
 
     def test_view_game_states_the_interface_figure(self):
-        removed = Session.objects.create(
-            game=self.game,
-            timestamp_start=datetime(2022, 9, 27, 15, 0, tzinfo=ZONEINFO),
-            timestamp_end=datetime(2022, 9, 27, 17, 0, tzinfo=ZONEINFO),
+        removed = session_row(
+            self.game,
+            started_at=datetime(2022, 9, 27, 15, 0, tzinfo=ZONEINFO),
+            ended_at=datetime(2022, 9, 27, 17, 0, tzinfo=ZONEINFO),
         )
         #: A bare stamp; no stored total recounts.
-        Session.objects.filter(pk=removed.pk).update(removed_at=timezone.now())
+        PlayerSession.objects.filter(pk=removed.pk).update(removed_at=timezone.now())
 
         html = self.client.get(self.game.get_absolute_url()).content.decode()
         hours = html[
@@ -455,11 +455,10 @@ class RenderedPagesTest(TestCase):
         platformless = Game.objects.create(
             library=self.user.library, name="Platformless Game"
         )
-        Session.objects.create(
-            game=platformless,
-            device=None,
-            timestamp_start=datetime(2022, 9, 26, 15, 0, tzinfo=ZONEINFO),
-            timestamp_end=datetime(2022, 9, 26, 16, 0, tzinfo=ZONEINFO),
+        session_row(
+            platformless,
+            started_at=datetime(2022, 9, 26, 15, 0, tzinfo=ZONEINFO),
+            ended_at=datetime(2022, 9, 26, 16, 0, tzinfo=ZONEINFO),
         )
         html = self.client.get(platformless.get_absolute_url()).content.decode()
         self.assertIn("Unspecified", html)
@@ -509,9 +508,10 @@ class RenderedPagesTest(TestCase):
         self.assertNoEscapedTags(html)
 
     def test_finish_reset_buttons_only_shown_for_running_sessions(self):
-        running = Session.objects.create(
-            game=self.game,
-            timestamp_start=datetime(2020, 1, 1, 10, 0, tzinfo=ZONEINFO),
+        running = timed_row(
+            tracked_run(self.user.library, self.game),
+            datetime(2020, 1, 1, 10, 0, tzinfo=ZONEINFO),
+            None,
         )
         html = self.get("games:list_sessions").content.decode()
         self.assertIn(f"/session/{running.id}/finish", html)
@@ -567,7 +567,7 @@ class RenderedPagesTest(TestCase):
         self.assertEqual(html.count("<table"), html.count("</table>"))
 
     def test_stats_by_year(self):
-        year = self.session.timestamp_start.year
+        year = self.session.started_at.year
         html = self.get("games:stats_by_year", year).content.decode()
         # The seeded game/session/purchase should surface in the year view.
         self.assertIn("Playtime per month", html)
@@ -811,10 +811,10 @@ class GameListSessionFilterBoundaryTest(TestCase):
             library=self.user.library, name="UNPLAYED-MARKER", platform=self.platform
         )
         start = timezone.now()
-        Session.objects.create(
-            game=self.played,
-            timestamp_start=start,
-            timestamp_end=start + timedelta(hours=2),
+        session_row(
+            self.played,
+            started_at=start,
+            ended_at=start + timedelta(hours=2),
             note="BOSS fight",
         )
 
@@ -846,7 +846,7 @@ class GameListSessionFilterBoundaryTest(TestCase):
             json.dumps(
                 {
                     "session_filter": {
-                        "duration_total_hours": {"modifier": "BETWEEN", "value": 1}
+                        "duration_hours": {"modifier": "BETWEEN", "value": 1}
                     }
                 }
             )
@@ -895,11 +895,7 @@ def test_the_navbar_week_counts_six_days_back_and_not_seven(owned_user):
         start = timezone.make_aware(
             datetime.combine(today - timedelta(days=days_back), datetime.min.time())
         ) + timedelta(hours=12)
-        Session.objects.create(
-            game=game,
-            timestamp_start=start,
-            timestamp_end=start + timedelta(hours=hours),
-        )
+        session_row(game, started_at=start, ended_at=start + timedelta(hours=hours))
     request = RequestFactory().get("/")
     request.user = owned_user
 

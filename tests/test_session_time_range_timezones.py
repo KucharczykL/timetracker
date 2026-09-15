@@ -6,13 +6,14 @@ from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 import pytest
+from session_rows import session_row
 
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
 )
 from games.formatting import session_time_range
-from games.models import Game, Session
+from games.models import Game, PlayerSession
 
 pytestmark = pytest.mark.django_db
 
@@ -26,14 +27,11 @@ _START = datetime(2026, 7, 1, 12, 0, tzinfo=UTC)
 _END = datetime(2026, 7, 1, 13, 0, tzinfo=UTC)
 
 
-def _session(library, **overrides) -> Session:
-    defaults = {
-        "game": Game.objects.create(library=library, name="Hades"),
-        "timestamp_start": _START,
-        "timestamp_end": _END,
-    }
+def _session(library, **overrides: object) -> PlayerSession:
+    defaults: dict[str, object] = {"started_at": _START, "ended_at": _END}
     defaults.update(overrides)
-    return Session.objects.create(**defaults)
+    game = Game.objects.create(library=library, name="Hades")
+    return session_row(game, **defaults)  # type: ignore[arg-type]
 
 
 def test_null_zones_render_exactly_as_before(owned_library):
@@ -47,8 +45,8 @@ def test_null_zones_render_exactly_as_before(owned_library):
 def test_account_preference_ignores_stored_zones(owned_library):
     session = _session(
         owned_library,
-        timestamp_start_timezone="Asia/Tokyo",
-        timestamp_end_timezone="Asia/Tokyo",
+        started_at_zone="Asia/Tokyo",
+        ended_at_zone="Asia/Tokyo",
     )
     rendered = session_time_range(session, _ACCOUNT_PRESENTATION)
     assert "21:00" not in rendered
@@ -58,8 +56,8 @@ def test_account_preference_ignores_stored_zones(owned_library):
 def test_own_preference_renders_zone_and_label(owned_library):
     session = _session(
         owned_library,
-        timestamp_start_timezone="Asia/Tokyo",
-        timestamp_end_timezone="Asia/Tokyo",
+        started_at_zone="Asia/Tokyo",
+        ended_at_zone="Asia/Tokyo",
     )
     rendered = session_time_range(session, _OWN_PRESENTATION)
     assert "22:00 JST" in rendered
@@ -73,8 +71,8 @@ def test_same_zone_same_day_gets_one_label_on_the_end_no_repeated_date(owned_lib
     question. One label, on the end, reads the way '9am – 5pm PST' does."""
     session = _session(
         owned_library,
-        timestamp_start_timezone="Asia/Tokyo",
-        timestamp_end_timezone="Asia/Tokyo",
+        started_at_zone="Asia/Tokyo",
+        ended_at_zone="Asia/Tokyo",
     )
     rendered = session_time_range(session, _OWN_PRESENTATION)
     assert rendered == "2026-07-01 21:00 — 22:00 JST"
@@ -86,8 +84,8 @@ def test_a_labelled_end_carries_its_own_date_across_the_date_line(owned_library)
     the same evening unless the date is there."""
     session = _session(
         owned_library,
-        timestamp_end=datetime(2026, 7, 1, 21, 0, tzinfo=UTC),
-        timestamp_end_timezone="Asia/Tokyo",
+        ended_at=datetime(2026, 7, 1, 21, 0, tzinfo=UTC),
+        ended_at_zone="Asia/Tokyo",
     )
     rendered = session_time_range(session, _OWN_PRESENTATION)
     assert rendered == "2026-07-01 14:00 — 2026-07-02 06:00 JST"
@@ -98,8 +96,8 @@ def test_own_preference_matching_zone_gets_no_label(owned_library):
     the account's own zone reads exactly as before."""
     session = _session(
         owned_library,
-        timestamp_start_timezone="Europe/Prague",
-        timestamp_end_timezone="Europe/Prague",
+        started_at_zone="Europe/Prague",
+        ended_at_zone="Europe/Prague",
     )
     rendered = session_time_range(session, _OWN_PRESENTATION)
     assert rendered == session_time_range(
@@ -110,8 +108,8 @@ def test_own_preference_matching_zone_gets_no_label(owned_library):
 def test_flight_renders_each_endpoint_in_its_own_zone(owned_library):
     session = _session(
         owned_library,
-        timestamp_start_timezone="Europe/Prague",
-        timestamp_end_timezone="Asia/Tokyo",
+        started_at_zone="Europe/Prague",
+        ended_at_zone="Asia/Tokyo",
     )
     rendered = session_time_range(session, _OWN_PRESENTATION)
     assert "14:00" in rendered  # start: CEST wall clock, no label (matches account)
@@ -119,15 +117,13 @@ def test_flight_renders_each_endpoint_in_its_own_zone(owned_library):
 
 
 def test_unusable_stored_zone_falls_back_to_the_display_zone(owned_library):
-    session = _session(owned_library, timestamp_start_timezone="Not/AZone")
+    session = _session(owned_library, started_at_zone="Not/AZone")
     assert session_time_range(session, _OWN_PRESENTATION) == session_time_range(
         _session(owned_library), _ACCOUNT_PRESENTATION
     )
 
 
 def test_open_session_labels_its_start(owned_library):
-    session = _session(
-        owned_library, timestamp_end=None, timestamp_start_timezone="Asia/Tokyo"
-    )
+    session = _session(owned_library, ended_at=None, started_at_zone="Asia/Tokyo")
     rendered = session_time_range(session, _OWN_PRESENTATION)
     assert rendered.endswith("21:00 JST")

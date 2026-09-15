@@ -18,6 +18,7 @@ from django.db.models import Model
 from django.db.models.deletion import RestrictedError
 from django.db.models.signals import pre_delete
 from pydantic import ConfigDict, with_config
+from session_rows import session_row
 
 from games.commands.playergame import TrackGame
 from games.events.append import lock_stream
@@ -282,6 +283,12 @@ def populate(library):
         game=bystander,
         timestamp_start=datetime(2026, 1, 2, 10, tzinfo=UTC),
         timestamp_end=datetime(2026, 1, 2, 11, tzinfo=UTC),
+    )
+    #: Playtime reads the projection.
+    session_row(
+        bystander,
+        started_at=datetime(2026, 1, 2, 10, tzinfo=UTC),
+        ended_at=datetime(2026, 1, 2, 11, tzinfo=UTC),
     )
     edition = Edition.objects.create(game=doomed, is_default=True)
     Release.objects.create(edition=edition, is_default=True, platform=platform)

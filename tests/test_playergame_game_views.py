@@ -7,6 +7,7 @@ from html.parser import HTMLParser
 import pytest
 from django.urls import reverse
 from django.utils import timezone
+from session_rows import session_row
 
 from games.models import Game, PlayerGame, PlayerGameStatus, Session
 from games.writes.answers import CommandFailed
@@ -223,7 +224,7 @@ def test_a_shared_games_page_shows_no_librarys_history(
 def test_an_owned_games_page_still_shows_its_own_rows(logged_in, owned_library):
     #: The scoping above must cost an owned game nothing.
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
-    Session.objects.create(game=game, timestamp_start=timezone.now())
+    session_row(game, started_at=timezone.now())
 
     response = logged_in.get(game.get_absolute_url())
 

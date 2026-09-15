@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from django.urls import reverse
 from django.utils import timezone
+from session_rows import session_row
 
 import common.layout
 from common import date_time_presentation as presentation_module
@@ -14,6 +15,7 @@ from games.models import (
     Device,
     Game,
     Platform,
+    PlayerSession,
     Playthrough,
     Purchase,
     Session,
@@ -108,6 +110,13 @@ def test_non_default_presentation_reaches_every_server_display_path(
         timestamp_start=datetime(2022, 9, 26, 12, 58, tzinfo=UTC),
         timestamp_end=datetime(2022, 9, 26, 13, 58, tzinfo=UTC),
     )
+    row = session_row(
+        game,
+        device=device,
+        started_at=session.timestamp_start,
+        ended_at=session.timestamp_end,
+        created_at=datetime(2022, 10, 5, tzinfo=UTC),
+    )
     #: Both endpoints and the run's created day.
     Playthrough.objects.filter(player_game__game=game).update(
         start_recorded_at=timezone.now(),
@@ -122,6 +131,7 @@ def test_non_default_presentation_reaches_every_server_display_path(
         (Device, device.pk, datetime(2022, 10, 3, tzinfo=UTC)),
         (Purchase, purchase.pk, datetime(2022, 10, 4, tzinfo=UTC)),
         (Session, session.pk, datetime(2022, 10, 5, tzinfo=UTC)),
+        (PlayerSession, row.pk, datetime(2022, 10, 5, tzinfo=UTC)),
     )
     for model, pk, value in created_values:
         model.objects.filter(pk=pk).update(created_at=value)

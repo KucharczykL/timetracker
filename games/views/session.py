@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from typing import Any, cast
 from uuid import UUID, uuid7
 
@@ -47,10 +48,15 @@ from games.models import (
     Game,
     PlayerGame,
     PlayerGameStatus,
+    PlayerSession,
+    PlayerSessionTimingMode,
+    PlaythroughKind,
     Session,
     UserLibrary,
 )
 from games.ownership import owned_or_404
+from games.reads.player_sessions import library_sessions
+from games.reads.playthrough_numbering import display_name, numbered_for
 from games.sorting import (
     SESSION_DEFAULT_SORT,
     SESSION_SORTS,
@@ -63,26 +69,60 @@ from games.views.removal import confirm_and_apply, confirm_and_remove
 from games.views.returns import return_url
 from games.writes.playergame import new_correlation_id
 
+#: What the name cell calls a session in the bucket.
+IMPORTED_HISTORY_LABEL = "Imported history"
+
+#: A run's key to the label the name cell shows beside the game.
+type RunLabels = dict[UUID, str]
+
+
+def run_labels_for(
+    library: UserLibrary, sessions: Sequence[PlayerSession]
+) -> RunLabels:
+    """The run label each session shows, keyed on the run.
+
+    Only a game holding more than one live run needs one: the ordinary
+    runs counted by `numbered_for`, plus the bucket when a page row sits
+    in it. One query for the page, none per row.
+    """
+    by_game: dict[UUID, list[UUID]] = {}
+    labels: RunLabels = {}
+    player_game_ids = {session.playthrough.player_game_id for session in sessions}
+    for run in numbered_for(library, player_game_ids):
+        by_game.setdefault(run.player_game_id, []).append(run.pk)
+        labels[run.pk] = display_name(run)
+    for session in sessions:
+        run = session.playthrough
+        if run.kind == PlaythroughKind.IMPORTED_HISTORY:
+            by_game.setdefault(run.player_game_id, []).append(run.pk)
+            labels[run.pk] = IMPORTED_HISTORY_LABEL
+    return {
+        run_id: label
+        for run_id, label in labels.items()
+        if any(len(runs) > 1 and run_id in runs for runs in by_game.values())
+    }
+
 
 def session_row_data(
-    session: Session,
+    session: PlayerSession,
     device_list,
     csrf_token: str,
     presentation: DateTimePresentation,
     durations: DurationPresentation,
     *,
     origin: OriginUrl | None,
+    run_label: str | None = None,
 ) -> TableRowData:
     """Canonical session-list row, the single source of truth for the list
     table."""
     return make_row(
-        NameWithIcon(session=session),
+        NameWithIcon(session=session, run_label=run_label),
         session_time_range(session, presentation),
         Duration(
-            session.duration_total,
+            session.effective_duration,
             durations,
             id_scope=f"session-{session.pk}",
-            manual=session.is_manual(),
+            manual=session.timing_mode != PlayerSessionTimingMode.TIMED,
         ),
         SessionDeviceSelector(session, device_list, csrf_token),
         presentation.format(session.created_at, "date"),
@@ -98,8 +138,8 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
     durations = duration_presentation_for_request(request)
     origin = request.get_full_path()
-    sessions: QuerySet[Session] = Session.objects.for_library(library).select_related(
-        "game", "game__platform", "device"
+    sessions: QuerySet[PlayerSession] = library_sessions(library).select_related(
+        "playthrough__player_game__game__platform", "device"
     )
     device_list = Device.objects.for_library(library).order_by("name")
 
@@ -124,6 +164,8 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
     warn_unknown_sort(request, sort.unknown, entity="session")
     sessions, page_obj, elided_page_range = paginate(sessions, find)
     csrf_token = get_token(request)
+    page_sessions = list(sessions)
+    run_labels = run_labels_for(library, page_sessions)
 
     data: TableData = {
         "caption": "Sessions",
@@ -144,8 +186,9 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
                 presentation,
                 durations,
                 origin=origin,
+                run_label=run_labels.get(session.playthrough_id),
             )
-            for session in sessions
+            for session in page_sessions
         ],
     }
     content = paginated_table_content(

@@ -180,7 +180,7 @@ class HtmlValidityTest(TestCase):
         # Every filter-builder page (the "!"-badge / advanced-filter surface).
         for model in (
             "game",
-            "session",
+            "playersession",
             "purchase",
             "playthrough",
             "device",

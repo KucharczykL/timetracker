@@ -142,9 +142,7 @@ def test_sessions_section_shows_last_five(owned_user, rf):
         library=owned_user.library, name="Many", platform=platform
     )
     sessions = [
-        Session.objects.create(
-            game=many, timestamp_start=_dt(day), timestamp_end=_dt(day, 13)
-        )
+        session_row(many, started_at=_dt(day), ended_at=_dt(day, 13))
         for day in range(1, 7)  # six sessions, days 1..6
     ]
     request = rf.get(f"/game/{many.id}/")

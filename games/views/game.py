@@ -6,7 +6,7 @@ from uuid import UUID
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
-from django.db.models import QuerySet
+from django.db.models import Count, F, Max, Min, QuerySet, Sum
 from django.http import Http404, HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import redirect
@@ -84,11 +84,11 @@ from games.models import (
     ExternalReference,
     Game,
     PlayerGameStatus,
+    PlayerSessionQuerySet,
+    PlayerSessionTimingMode,
     Playthrough,
     Purchase,
     Release,
-    Session,
-    SessionQuerySet,
     UserLibrary,
 )
 from games.ownership import owned_or_404
@@ -595,24 +595,25 @@ def _game_section(
     ]
 
 
-def _game_overview_metrics(sessions: SessionQuerySet) -> dict[str, Any]:
+def _game_overview_metrics(sessions: PlayerSessionQuerySet) -> dict[str, Any]:
     """Request-free header metrics: total session count, play range, and the
-    per-session average (excluding manually-logged sessions)."""
+    per-session average of elapsed time over the rows that state an end."""
     session_count = sessions.count()
-    session_count_without_manual = sessions.without_manual().count()
+    days = sessions.aggregate(first=Min("effective_day"), last=Max("effective_day"))
 
-    playrange_start = sessions.earliest().timestamp_start if sessions.exists() else None
-    playrange_end = sessions.latest().timestamp_start if sessions.exists() else None
-
-    calculated_total = sessions.calculated_duration_unformatted() or timedelta(0)
-    total_hours_without_manual = calculated_total.total_seconds() / 3600
+    #: Elapsed time, not the stated duration: a Corrected row's override
+    #: and a Duration-only row's stated time are hand-written figures.
+    timed = sessions.filter(ended_at__gt=F("started_at")).aggregate(
+        total=Sum(F("ended_at") - F("started_at")), rows=Count("id")
+    )
+    elapsed_total = timed["total"] or timedelta(0)
     session_average_without_manual = round(
-        safe_division(total_hours_without_manual, int(session_count_without_manual)), 1
+        safe_division(elapsed_total.total_seconds() / 3600, int(timed["rows"])), 1
     )
     return {
         "session_count": session_count,
-        "playrange_start": playrange_start,
-        "playrange_end": playrange_end,
+        "playrange_start": days["first"],
+        "playrange_end": days["last"],
         "session_average_without_manual": session_average_without_manual,
     }
 
@@ -905,20 +906,20 @@ def _purchases_section(
 
 def _sessions_section(
     game: Game,
-    sessions: SessionQuerySet,
+    sessions: PlayerSessionQuerySet,
     presentation: DateTimePresentation,
     durations: DurationPresentation,
 ) -> Node:
-    sessions = sessions.select_related("device").order_by("-timestamp_start")
+    sessions = sessions.select_related("device").order_by("-sort_instant", "-id")
     session_count = sessions.count()
     rows = [
         make_row(
             session_time_range(session, presentation),
             Duration(
-                session.duration_total,
+                session.effective_duration,
                 durations,
                 id_scope=f"game-session-{session.pk}",
-                manual=session.is_manual(),
+                manual=session.timing_mode != PlayerSessionTimingMode.TIMED,
             ),
             session.device.name if session.device else "No device",
         )
@@ -1008,9 +1009,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
     #: Scoped, not `game.sessions` and friends: tracked_by() admits a
     #: shared catalog game, and a shared game's reverse accessors reach
     #: every library that ever wrote against it.
-    sessions = cast(
-        SessionQuerySet, Session.objects.for_library(library).filter(game=game)
-    )
+    sessions = game_sessions(library, game)
     purchases = Purchase.objects.for_library(library).filter(games=game)
     tracked = tracked_game(library, game)
     #: A run may name another library's PlayerGame.
