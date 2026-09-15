@@ -64,26 +64,36 @@ signal and no reactor registry. Replay reproduces every reaction in order.
 rule stays. The settings write and the event append are two writes that must
 land together, so they become one operation:
 
-- `dispatch` exposes its inner operation as `append_command`, which does
-  everything `dispatch` does except open the transaction. `dispatch` is
-  `append_command` under `run_in_transaction`.
+- `dispatch` exposes its inner operation as `append_command`, which builds
+  and appends inside a transaction a caller already holds. It does not
+  authorize. `dispatch` authorizes, validates the key, and runs
+  `append_command` under `run_in_transaction`, as it does today.
 - `retried_transaction` is a decorator over `run_in_transaction`. It states on
   the function that the function is re-runnable and touches only the database.
 - `change_user_setting` and `change_site_setting` stop opening their own
   `transaction.atomic()` for `DISPLAY_TIME_ZONE`. The decorated function
   appends the command and writes the preference row.
 
-Every path that changes the effective zone runs it: a personal set, a personal
-clear that falls back to a different site default, and a site-level change for
-every library whose owner inherits the site value. A change that leaves the
-effective zone equal appends nothing. A refused zone refuses the setting, and
-nothing is saved.
+Every path that changes the effective zone runs it. A personal set or clear
+acts as the owner, authorized before the transaction as `dispatch` does. A
+site-level change acts as the operator, for every library whose owner inherits
+the site value, without `authorize`: a site setting is already an operator's
+act, and the operator is the actor the event records, as the backfill's
+`append_one` records its own. A change that leaves the effective zone equal
+appends nothing. A refused zone refuses the setting, and nothing is saved.
+
+The settings snapshot is not cleared on write; it expires after five seconds.
+The calendar row is the truth. The request's activated zone lags it by at most
+that window.
 
 ## The delta report
 
 Before the rewrite, in the same transaction, one query per scope counts the
 Timed and Corrected rows whose `timezone(new_zone, started_at)::date` differs
-from `effective_day` in day, month and year. The decorated settings function
+from `effective_day` in day, month and year. This is a new read over the
+projection. The 124, 10 and 5 above came from the census, which compares the
+process zone with the display zone over legacy rows in Python; the rehearsal
+measures the projection figure and this document records it. The decorated settings function
 answers them as `CalendarDelta`. The settings API returns them beside the
 resolved setting, and the toast reads:
 
@@ -98,22 +108,35 @@ A site-level change logs one line per library and returns the totals.
 
 - `calendar_day_zone(library)` in `games/reads/` is the one read of the zone.
 - `activity_clock(library)` takes its zone from it. `default_activity_clock()`
-  goes; `annotated_for_filtering` refuses a missing clock rather than invent
-  UTC. The clock's move onto `effective_day` and the game-to-run narrowing stay
-  with #702's surface 9.
+  goes. Without a clock, `annotated_for_filtering` states the two aliases
+  through `.alias()` with expressions that compile and refuse to execute, as
+  `UnscopedSum` does for playtime: filter validation compiles, and a read that
+  names `activity` without a clock raises `UnscopedActivityRead`. Tests that
+  read the alias state a clock. The clock's move onto `effective_day` and the
+  game-to-run narrowing stay with #702's surface 9.
 - The preflight census's secondary column reads it.
-- New sessions seed `day_zone` from it, never from the request's activated
-  zone. A second reader of a library records in the owner's calendar.
+- `CreateSession` and `CorrectSessionTiming` refuse a `day_zone` that differs
+  from the calendar, with a sentence naming the calendar's zone. Reset-to-now
+  uses the calendar's zone. The statement keeps its `day_zone` because the
+  event carries it and the conversion states it. A statement with no
+  `day_zone` at all, filled by the command, was considered and set aside: it
+  changes every caller and test of #691 and #692 for a guard the refusal gives.
+- No live write path dispatches `CreateSession` today. #702's surfaces seed
+  `day_zone` from `calendar_day_zone(library)`, never from the request's
+  activated zone, and the refusal above is what makes a wrong seed loud. A
+  second reader of a library records in the owner's calendar.
 - Until #702, the legacy reads group in the request's activated zone. That is
   the owner's display zone, which the trigger keeps equal to the calendar.
 
 ## Migration
 
-Migration `0005` appends one `day_zone_changed` per library, naming the
-owner's effective `DISPLAY_TIME_ZONE`, the zone #700 seeded every row with.
-Its gate refuses when any Timed or Corrected row's `day_zone` differs from its
-library's calendar, and when `rebuild_projections(mode=CHECK)` reports a
-difference.
+Migration `0005` appends one `day_zone_changed` per library through
+`append_one`, which projects it, naming the owner's effective
+`DISPLAY_TIME_ZONE`, the zone #700 seeded every row with. Its gate refuses
+when any Timed or Corrected row's `day_zone` differs from its library's
+calendar, and when `rebuild_projections(mode=CHECK)` reports a difference. It
+reads real models, as `0004` does, and names its columns with `.only()` for
+the same reason.
 
 ## Proof
 
