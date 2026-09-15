@@ -45,17 +45,17 @@
 - `admin_settings` and `export_admin_settings_ini` answer 403 for a non-superuser; recorded, not skipped.
 - `READ_ONLY` is guarded complete against the route table, so a new route lands here on its own; the command must not hold a second list of names. Iterate `READ_ONLY` and branch on the name for argument routes only.
 
-- [ ] **Step 1: Cut `feat/render-pages` from `origin/main`** in a fresh worktree (`git worktree add ../render-pages origin/main -b feat/render-pages`).
-- [ ] **Step 2: Failing tests** in `tests/test_render_pages.py` (`transaction=True` not needed; the command reads):
+- [x] **Step 1: Cut `feat/render-pages` from `origin/main`** in a fresh worktree (`git worktree add ../render-pages origin/main -b feat/render-pages`).
+- [x] **Step 2: Failing tests** in `tests/test_render_pages.py` (`transaction=True` not needed; the command reads):
   - `test_every_read_only_route_is_rendered_once_or_per_row`: a user with two games, one purchase, one session in 2024 and one in 2025; `read_only_urls` names every `READ_ONLY` entry at least once, `view_game` twice, `stats_by_year` for 2024 and 2025, `filter_builder` once per `FILTER_MODE_MODELS` key.
   - `test_a_list_is_rendered_at_every_page`: 26 games at page size 25 gives two `list_games` URLs.
   - `test_the_csrf_token_and_the_version_footer_are_normalised`: two renders of one page with different tokens compare equal after `normalise`.
   - `test_the_command_writes_one_file_per_url_with_its_status_first`: run into `tmp_path`, count files, first line of `admin_settings`'s file is `403`.
   - `test_the_command_refuses_a_non_empty_directory`.
-- [ ] **Step 3: Implement** the command and the Make target. Under `DEBUG`, statics are unhashed; normalise only the two things the spec names.
-- [ ] **Step 4: `make check-fast`, then full `make check`.**
-- [ ] **Step 5: CLAUDE.md** commands row: "Render every read-only page as a user to files | `make render-pages ARGS="--user NAME --out DIR"` (the before/after rehearsal's instrument)".
-- [ ] **Step 6: Commit and open the PR** against `main`: `feat: render every read-only page to files`. Do not merge; the user merges. Record the PR number for Task 7.
+- [x] **Step 3: Implement** the command and the Make target. Under `DEBUG`, statics are unhashed; normalise only the two things the spec names.
+- [x] **Step 4: `make check-fast`, then full `make check`.**
+- [x] **Step 5: CLAUDE.md** commands row: "Render every read-only page as a user to files | `make render-pages ARGS="--user NAME --out DIR"` (the before/after rehearsal's instrument)".
+- [x] **Step 6: Commit and open the PR** against `main`: `feat: render every read-only page to files`. Do not merge; the user merges. Record the PR number for Task 7. **Opened as #1078.** Lists render whole through `?per_page=0` rather than page by page, and a route mounted only under `DEBUG` is reported as unmounted rather than failing.
 
 ---
 
