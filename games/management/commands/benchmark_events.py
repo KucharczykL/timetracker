@@ -10,6 +10,7 @@ from games.events.benchmark import (
     Budget,
     BudgetVerdict,
     RebuildDiffNotEmpty,
+    Timings,
     WorkPerEvent,
 )
 from games.events.benchmark_run import run_benchmark
@@ -35,7 +36,8 @@ class Command(BaseCommand):
     help = (
         "Measure command latency, rebuild time, and per-event write cost "
         "against the real TrackGame workload. Seeds a scratch library and "
-        "removes it again, unless --library names one to check read-only. "
+        "removes it again, unless --library names one to time its reads and "
+        "check its replay without writing. "
         "Exits non-zero on a rebuild diff, and -- with --gate -- on a missed "
         "budget."
     )
@@ -175,12 +177,11 @@ class Command(BaseCommand):
             #: An append, not a command; no budget.
             self.stdout.write("  The event/s figure is a bulk append, not a command.")
         if report.command is not None:
-            self.stdout.write(
-                f"Command: {report.command.samples} sample(s), p50 "
-                f"{report.command.p50 * 1000:.1f}ms, p95 "
-                f"{report.command.p95 * 1000:.1f}ms, max "
-                f"{report.command.maximum * 1000:.1f}ms."
-            )
+            self._write_timings("Command", report.command)
+        if report.session_command is not None:
+            self._write_timings("Session command", report.session_command)
+        for read in report.reads:
+            self._write_timings(f"Read {read.name}", read.timings)
         if report.amplification is not None:
             self._write_work("Per command", report.amplification)
         if report.replay is not None:
@@ -191,6 +192,13 @@ class Command(BaseCommand):
             self.stdout.write(f"Teardown: {report.teardown_seconds:.2f}s.")
         for budget in report.budgets:
             self._write_budget(budget)
+
+    def _write_timings(self, label: str, timings: Timings) -> None:
+        self.stdout.write(
+            f"{label}: {timings.samples} sample(s), p50 "
+            f"{timings.p50 * 1000:.1f}ms, p95 {timings.p95 * 1000:.1f}ms, max "
+            f"{timings.maximum * 1000:.1f}ms."
+        )
 
     def _write_environment(self, report: BenchmarkReport) -> None:
         captured = report.environment

@@ -264,10 +264,10 @@ def run_read_scenario(library, *, iterations, warmup) -> tuple[ReadTimings, ...]
 - `test_too_few_samples_is_not_gated_but_is_still_measured` gains a read case.
 - `stats_by_month` on the scratch library: the seed spans two years, so `played_years` is non-empty.
 
-- [ ] **Step 1: Failing tests**: `test_a_read_inside_the_budget_passes` / `..._over_the_budget_misses` (pure `read_budget`); `test_the_session_command_budget_is_the_charters` ; `test_the_read_scenario_times_every_named_read` (scratch seed 30, iterations 2 → six `ReadTimings`, each `samples == 2`); `test_library_mode_reads_without_dispatching` (event count unchanged after `run_benchmark(library=...)`); the schema and JSON tests at 3.
-- [ ] **Step 2: Implement; run the file.**
-- [ ] **Step 3: Full `make bench ARGS="--gate"`** on this machine; paste under "The #704 recording" in `docs/event-benchmarks.md` with the machine block. Every budget must print `passed`.
-- [ ] **Step 4: `make check-fast`, `make vale`. Commit:** `feat: state a read budget and time the session command in the benchmark (#704)`.
+- [x] **Step 1: Failing tests**: `test_a_read_inside_the_budget_passes` / `..._over_the_budget_misses` (pure `read_budget`); `test_the_session_command_budget_is_the_charters` ; `test_the_read_scenario_times_every_named_read` (scratch seed 30, iterations 2 → six `ReadTimings`, each `samples == 2`); `test_library_mode_reads_without_dispatching` (event count unchanged after `run_benchmark(library=...)`); the schema and JSON tests at 3.
+- [x] **Step 2: Implement; run the file.**
+- [x] **Step 3: Full `make bench ARGS="--gate"`** on this machine; paste under "The #704 recording" in `docs/event-benchmarks.md` with the machine block. Every budget must print `passed`. **Decision on the run:** five reads missed 20 ms on the scratch library, which holds 33,543 sessions on 33,743 games, twelve times production and one session a game. The user chose: reads are measured and recorded on the scratch library as `not_gated`, and the 20 ms verdict is given under `--library` only (`read_budget(..., on_real_library=)`). The spec's Gate 3 wording is updated in the sweep.
+- [x] **Step 4: `make check-fast`, `make vale`. Commit:** `feat: state a read budget and time the session command in the benchmark (#704)`.
 
 ---
 

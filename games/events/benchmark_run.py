@@ -13,14 +13,19 @@ from games.events.benchmark import (
     RebuildDiffNotEmpty,
     command_budget,
     environment,
+    read_budget,
     rebuild_budget,
+    session_command_budget,
 )
 from games.events.benchmark_workload import (
     purge_scratch_user,
     run_amplification_scenario,
     run_command_scenario,
+    run_read_scenario,
     run_rebuild_scenario,
+    run_session_command_scenario,
     seed_library,
+    seeded_runs,
     spare_games,
 )
 from games.events.rebuild import RebuildMode, RebuildReport
@@ -43,15 +48,17 @@ def run_benchmark(
 ) -> BenchmarkReport:
     """Seed a library, measure it, remove it.
 
-    With `library`, run the read-only rebuild scenario against one that
-    exists and ignore `seed`.
+    With `library`, run the read scenario and the read-only rebuild
+    against one that exists, dispatch nothing, and ignore `seed`.
 
     `announce_scratch_user` takes the username as soon as the user exists,
     before any scenario can fail. --keep needs it: a run that raises leaves
     the library behind, and the operator has to be told its name.
     """
     if library is not None:
-        return _measure_existing(library, count_replay=count_replay)
+        return _measure_existing(
+            library, iterations=iterations, warmup=warmup, count_replay=count_replay
+        )
     username = f"{SCRATCH_USERNAME_PREFIX}{uuid.uuid7()}"
     user = User.objects.create_user(username=username)
     if announce_scratch_user is not None:
@@ -92,6 +99,14 @@ def _measure_scratch(
     amplification = run_amplification_scenario(
         library, actor=user, games=games, iterations=iterations
     )
+    session_command = run_session_command_scenario(
+        library,
+        actor=user,
+        runs=seeded_runs(library),
+        iterations=iterations,
+        warmup=warmup,
+    )
+    reads = run_read_scenario(library, iterations=iterations, warmup=warmup)
     rebuild, replay = run_rebuild_scenario(
         library, mode=RebuildMode.REBUILD, count_replay=count_replay
     )
@@ -102,15 +117,25 @@ def _measure_scratch(
         scratch_username=user.username,
         seed=seeded,
         command=command,
+        session_command=session_command,
+        reads=reads,
         amplification=amplification,
         replay=replay,
         rebuild=rebuild,
         teardown_seconds=None,
-        budgets=(command_budget(command), rebuild_budget(rebuild)),
+        budgets=(
+            command_budget(command),
+            session_command_budget(session_command),
+            *(read_budget(read, on_real_library=False) for read in reads),
+            rebuild_budget(rebuild),
+        ),
     )
 
 
-def _measure_existing(library: UserLibrary, *, count_replay: bool) -> BenchmarkReport:
+def _measure_existing(
+    library: UserLibrary, *, iterations: int, warmup: int, count_replay: bool
+) -> BenchmarkReport:
+    reads = run_read_scenario(library, iterations=iterations, warmup=warmup)
     rebuild, replay = run_rebuild_scenario(
         library, mode=RebuildMode.CHECK, count_replay=count_replay
     )
@@ -121,11 +146,16 @@ def _measure_existing(library: UserLibrary, *, count_replay: bool) -> BenchmarkR
         scratch_username=None,
         seed=None,
         command=None,
+        session_command=None,
+        reads=reads,
         amplification=None,
         replay=replay,
         rebuild=rebuild,
         teardown_seconds=None,
-        budgets=(rebuild_budget(rebuild),),
+        budgets=(
+            *(read_budget(read, on_real_library=True) for read in reads),
+            rebuild_budget(rebuild),
+        ),
     )
 
 

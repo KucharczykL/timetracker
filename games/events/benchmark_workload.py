@@ -14,9 +14,14 @@ from django.db import connection, transaction
 
 from common.keyset import keyset_pages
 from games.commands.playergame import TrackGame, tracking_events
-from games.commands.playersession import session_events
+from games.commands.playersession import (
+    CreateSession,
+    DurationOnlyTiming,
+    session_events,
+)
 from games.events.append import NewEvent, lock_stream
 from games.events.benchmark import (
+    ReadTimings,
     Seconds,
     SeedReport,
     StatementCounter,
@@ -24,6 +29,7 @@ from games.events.benchmark import (
     WorkPerEvent,
     summarize,
 )
+from games.events.benchmark_reads import READS
 from games.events.dispatch import dispatch
 from games.events.rebuild import RebuildMode, RebuildReport, rebuild_projections
 from games.models import (
@@ -212,6 +218,75 @@ def run_command_scenario(
         _track(library, actor=actor, game=game)
         samples.append(monotonic() - started)
     return summarize(samples)
+
+
+def seeded_runs(library: UserLibrary) -> Iterator[Playthrough]:
+    """The runs the seed stated, for the session command."""
+    return keyset_pages(
+        Playthrough.objects.filter(library=library).only("id"),
+        key=("id",),
+        page_size=CATALOG_BATCH,
+    )
+
+
+def _record(library: UserLibrary, *, actor: User, run: Playthrough) -> None:
+    dispatch(
+        CreateSession(
+            playthrough_id=run.pk,
+            timing=DurationOnlyTiming(
+                day=date(2024, 6, 1), duration=timedelta(minutes=30)
+            ),
+        ),
+        actor=actor,
+        library=library,
+        idempotency_key=str(uuid.uuid7()),
+    )
+
+
+def run_session_command_scenario(
+    library: UserLibrary,
+    *,
+    actor: User,
+    runs: Iterator[Playthrough],
+    iterations: int,
+    warmup: int,
+) -> Timings:
+    """Dispatch CreateSession against the seeded runs.
+
+    A Duration-only statement: the cheapest shape, so the number is the
+    dispatch's own cost -- the run resolve, the calendar check, the
+    projector -- and not the zone arithmetic.
+    """
+    for run in islice(runs, warmup):
+        _record(library, actor=actor, run=run)
+    samples: list[Seconds] = []
+    for run in islice(runs, iterations):
+        started = monotonic()
+        _record(library, actor=actor, run=run)
+        samples.append(monotonic() - started)
+    return summarize(samples)
+
+
+def run_read_scenario(
+    library: UserLibrary, *, iterations: int, warmup: int
+) -> tuple[ReadTimings, ...]:
+    """Execute every named read to a list, `iterations` times each.
+
+    Zero iterations runs no read: a distribution needs an observation.
+    """
+    if iterations == 0:
+        return ()
+    timings: list[ReadTimings] = []
+    for read in READS:
+        for _ in range(warmup):
+            read.execute(library)
+        samples: list[Seconds] = []
+        for _ in range(iterations):
+            started = monotonic()
+            read.execute(library)
+            samples.append(monotonic() - started)
+        timings.append(ReadTimings(read.name, summarize(samples)))
+    return tuple(timings)
 
 
 def run_amplification_scenario(

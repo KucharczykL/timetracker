@@ -7,7 +7,7 @@ import platform as platform_module
 from collections.abc import Container, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from enum import StrEnum
-from typing import Any
+from typing import Any, NamedTuple
 
 from django.conf import settings
 from django.db import connection
@@ -205,6 +205,8 @@ def _total_memory() -> int | None:
 COMMAND_BUDGET_SECONDS: Seconds = 0.100
 REBUILD_BUDGET_SECONDS: Seconds = 60.0
 REBUILD_BUDGET_EVENTS = 100_000
+#: One order of magnitude over every read the wave recorded.
+READ_BUDGET_SECONDS: Seconds = 0.020
 
 #: Scaling is verified linear from here up.
 MINIMUM_GATED_EVENTS = 2_000
@@ -236,18 +238,55 @@ def _verdict(*, measured: float, limit: float, gated: bool) -> BudgetVerdict:
     return BudgetVerdict.PASSED if measured <= limit else BudgetVerdict.MISSED
 
 
-def command_budget(timings: Timings) -> Budget:
-    """The charter's 100 ms at p95."""
+def _p95_budget(
+    name: str, timings: Timings, limit: Seconds, *, gated: bool = True
+) -> Budget:
     return Budget(
-        name="command p95",
-        limit=COMMAND_BUDGET_SECONDS,
+        name=name,
+        limit=limit,
         unit="s",
         measured=timings.p95,
         verdict=_verdict(
             measured=timings.p95,
-            limit=COMMAND_BUDGET_SECONDS,
-            gated=timings.samples >= MINIMUM_GATED_SAMPLES,
+            limit=limit,
+            gated=gated and timings.samples >= MINIMUM_GATED_SAMPLES,
         ),
+    )
+
+
+def command_budget(timings: Timings) -> Budget:
+    """The charter's 100 ms at p95."""
+    return _p95_budget("command p95", timings, COMMAND_BUDGET_SECONDS)
+
+
+def session_command_budget(timings: Timings) -> Budget:
+    """The same 100 ms, for the family attached after it."""
+    return _p95_budget("session command p95", timings, COMMAND_BUDGET_SECONDS)
+
+
+type ReadName = str
+
+
+class ReadTimings(NamedTuple):
+    """One named read's latency distribution."""
+
+    name: ReadName
+    timings: Timings
+
+
+def read_budget(read: ReadTimings, *, on_real_library: bool) -> Budget:
+    """20 ms at p95 for each read that grows with the session table.
+
+    Judged on a real library only. The scratch seed is a shape no
+    library has -- one session on every one of tens of thousands of
+    games, twelve times the production row count -- so its reads are
+    measured and recorded, never gated.
+    """
+    return _p95_budget(
+        f"read {read.name} p95",
+        read.timings,
+        READ_BUDGET_SECONDS,
+        gated=on_real_library,
     )
 
 
@@ -300,8 +339,8 @@ class RebuildDiffNotEmpty(RuntimeError):
     """The run's parity claim is false."""
 
 
-#: 2 since #688: SeedReport gained `games`.
-REPORT_SCHEMA = 2
+#: 3 since the session gates: `session_command` and `reads`.
+REPORT_SCHEMA = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -313,6 +352,10 @@ class BenchmarkReport:
     #: None in --library mode.
     seed: SeedReport | None
     command: Timings | None
+    #: None in --library mode: a command on a real library writes to it.
+    session_command: Timings | None
+    #: Empty only where no read ran.
+    reads: tuple[ReadTimings, ...]
     #: Per command: the whole write path.
     amplification: WorkPerEvent | None
     #: Per event: the replay alone.

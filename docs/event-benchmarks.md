@@ -329,6 +329,78 @@ is run-to-run noise at this scale.
 statements into each shadow table for 100,820 events, so the slope holds at 1.00
 and the per-event cost of the second projector is a row, not a statement.
 
+## The #704 recording
+
+Recorded when the session gates landed, against the seed that writes three
+events a game: the tracking pair, then one finished hour on the run. Paste
+what the tool prints; do not edit a number here.
+
+`make bench ARGS="--gate"`, 2026-09-15:
+
+```
+About to create a scratch user, 100000 events and 33743 catalog rows, then remove them. Estimate: 1.3 minute(s).
+Linux-6.18.49-x86_64-with-glibc2.42, 32 CPU(s), Python 3.14.2, PostgreSQL 18.6.
+  shared_buffers 128MB, work_mem 4MB, DEBUG True.
+  scratch user benchmark-01a0a61a-5c56-75f6-986c-4607093d7e6d
+Seed: 99999 event(s) in 35.11s (2,848 event/s), 33743 catalog row(s) in 2.46s.
+  The event/s figure is a bulk append, not a command.
+Command: 200 sample(s), p50 4.5ms, p95 4.9ms, max 5.0ms.
+Session command: 200 sample(s), p50 3.9ms, p95 4.2ms, max 8.9ms.
+Read session_page: 200 sample(s), p50 2.4ms, p95 2.8ms, max 3.3ms.
+Read game_playtime_sort: 200 sample(s), p50 126.8ms, p95 129.0ms, max 133.1ms.
+Read stats_totals: 200 sample(s), p50 62.3ms, p95 64.9ms, max 76.0ms.
+Read stats_by_platform: 200 sample(s), p50 23.6ms, p95 27.8ms, max 30.5ms.
+Read stats_by_month: 200 sample(s), p50 41.5ms, p95 45.8ms, max 51.7ms.
+Read stats_superlatives: 200 sample(s), p50 273.4ms, p95 286.7ms, max 355.1ms.
+Per command: 10.0 statement(s), 2.0 to projections (2.0 row(s)), 4.0 to the event store (5.0 row(s)), over 200 event(s).
+    games_libraryevent: 200 statement(s), 400 row(s)
+    games_libraryeventreference: 200 statement(s), 200 row(s)
+    games_libraryeventstreamhead: 200 statement(s), 200 row(s)
+    games_libraryidempotencyrecord: 200 statement(s), 200 row(s)
+    games_playergame: 200 statement(s), 200 row(s)
+    games_playthrough: 200 statement(s), 200 row(s)
+Per replayed event: 1.0 statement(s), 1.0 to projections (3.0 row(s)), 0.0 to the event store (0.0 row(s)), over 101029 event(s).
+    games_librarycalendar: 2 statement(s), 0 row(s)
+    games_playergame: 2 statement(s), 67486 row(s)
+    games_playergame__shadow: 33743 statement(s), 33743 row(s)
+    games_playersession: 2 statement(s), 67086 row(s)
+    games_playersession__shadow: 33543 statement(s), 33543 row(s)
+    games_playthrough: 2 statement(s), 67486 row(s)
+    games_playthrough__shadow: 33743 statement(s), 33743 row(s)
+Rebuild: replayed 101029 event(s) through 4 table(s) in 28.69s over 1 attempt(s).
+    attempt 1: replay 27.35s, diff 0.09s, swap 1.23s
+    games_librarycalendar: 0 live, 0 rebuilt, no difference
+    games_playergame: 33743 live, 33743 rebuilt, no difference
+    games_playersession: 33543 live, 33543 rebuilt, no difference
+    games_playthrough: 33743 live, 33743 rebuilt, no difference
+Teardown: 14.15s.
+command p95: 0.005s against 0.100s -- passed
+session command p95: 0.004s against 0.100s -- passed
+read session_page p95: 0.003s against 0.020s -- not_gated
+read game_playtime_sort p95: 0.129s against 0.020s -- not_gated
+read stats_totals p95: 0.065s against 0.020s -- not_gated
+read stats_by_platform p95: 0.028s against 0.020s -- not_gated
+read stats_by_month p95: 0.046s against 0.020s -- not_gated
+read stats_superlatives p95: 0.287s against 0.020s -- not_gated
+rebuild: 28.671s against 60.617s -- passed
+```
+
+**A second command, at the same budget.** `CreateSession` with a Duration-only
+statement runs at 4.2 ms p95, under `TrackGame`'s 5.0 ms: one projection row
+instead of two, and a run resolve in place of a duplicate check.
+
+**Six reads, measured on the scratch library and judged on a real one.** The
+scratch seed is a shape no library has -- one session on every one of 33,543
+games, twelve times the production row count -- so its read numbers are
+recorded here as `not_gated` and the 20 ms verdict is given under `--library`,
+against a restored dump, which is where the budget was set. `session_page`
+runs at 2.6 ms here; the five aggregates run between 23 ms and 287 ms over
+33,543 rows, and are what the budget watches on production shape.
+
+**The rebuild took 28.67 s against the 60.6 s allowance**, over three tables
+and 101,029 events. The replay writes one statement an event still, into three
+shadow tables, so the third projector costs a row, not a statement.
+
 ## Teardown
 
 `19.09s` deletes roughly 350,000 rows — the events, their reference rows, the

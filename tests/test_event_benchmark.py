@@ -19,6 +19,7 @@ from games.events.benchmark import (
     BenchmarkReport,
     BudgetVerdict,
     Environment,
+    ReadTimings,
     RebuildDiffNotEmpty,
     SeedReport,
     StatementCounter,
@@ -26,7 +27,9 @@ from games.events.benchmark import (
     command_budget,
     environment,
     nearest_rank,
+    read_budget,
     rebuild_budget,
+    session_command_budget,
     summarize,
 )
 from games.events.benchmark_run import run_benchmark
@@ -34,8 +37,11 @@ from games.events.benchmark_workload import (
     purge_scratch_user,
     run_amplification_scenario,
     run_command_scenario,
+    run_read_scenario,
     run_rebuild_scenario,
+    run_session_command_scenario,
     seed_library,
+    seeded_runs,
     spare_games,
 )
 from games.events.dispatch import dispatch
@@ -218,6 +224,41 @@ def test_too_few_samples_is_not_gated_but_is_still_measured():
     budget = command_budget(timings(0.15, samples=19))
     assert budget.verdict is BudgetVerdict.NOT_GATED
     assert budget.measured == 0.15
+    read = read_budget(
+        ReadTimings("stats_totals", timings(0.05, samples=19)), on_real_library=True
+    )
+    assert read.verdict is BudgetVerdict.NOT_GATED
+
+
+def test_the_session_command_budget_is_the_charters():
+    budget = session_command_budget(timings(0.05))
+    assert (budget.name, budget.limit) == ("session command p95", 0.100)
+    assert budget.verdict is BudgetVerdict.PASSED
+    assert session_command_budget(timings(0.15)).verdict is BudgetVerdict.MISSED
+
+
+def test_a_read_inside_the_budget_passes():
+    budget = read_budget(
+        ReadTimings("session_page", timings(0.019)), on_real_library=True
+    )
+    assert (budget.name, budget.limit) == ("read session_page p95", 0.020)
+    assert budget.verdict is BudgetVerdict.PASSED
+
+
+def test_a_read_over_the_budget_misses():
+    budget = read_budget(
+        ReadTimings("session_page", timings(0.021)), on_real_library=True
+    )
+    assert budget.verdict is BudgetVerdict.MISSED
+
+
+def test_a_scratch_read_is_measured_and_never_gated():
+    """The seed is no library's shape; the number is recorded, not judged."""
+    budget = read_budget(
+        ReadTimings("session_page", timings(0.5)), on_real_library=False
+    )
+    assert budget.verdict is BudgetVerdict.NOT_GATED
+    assert budget.measured == 0.5
 
 
 def test_the_rebuild_budget_scales_to_the_events_actually_replayed():
@@ -467,8 +508,8 @@ def test_the_replay_counts_the_shadow_table_as_its_projection(owned_library):
 @pytest.mark.django_db(transaction=True)
 def test_a_run_replays_the_events_both_write_paths_produced():
     report = run_benchmark(seed=30, iterations=3, warmup=1, keep=True)
-    #: 30 seeded, 8 dispatched, 6 amplified.
-    assert report.rebuild.replayed_through == 44
+    #: 30 seeded, 8 tracked, 6 amplified, 4 sessions recorded.
+    assert report.rebuild.replayed_through == 48
     assert all(
         table.only_live == table.only_rebuilt == table.differing == 0
         for table in report.rebuild.tables
@@ -553,18 +594,79 @@ def test_a_non_empty_rebuild_diff_fails_the_run(owned_library):
         run_benchmark(seed=0, iterations=0, warmup=0, library=owned_library)
 
 
+@pytest.mark.django_db
+def test_the_read_scenario_times_every_named_read(owned_library):
+    seed_library(owned_library, actor=owned_library.user, games=10, spares=0)
+
+    reads = run_read_scenario(owned_library, iterations=2, warmup=1)
+
+    assert [read.name for read in reads] == [
+        "session_page",
+        "game_playtime_sort",
+        "stats_totals",
+        "stats_by_platform",
+        "stats_by_month",
+        "stats_superlatives",
+    ]
+    assert all(read.timings.samples == 2 for read in reads)
+
+
+@pytest.mark.django_db
+def test_the_read_scenario_runs_on_an_empty_library(owned_library):
+    reads = run_read_scenario(owned_library, iterations=1, warmup=0)
+
+    assert len(reads) == 6
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_session_command_scenario_records_on_the_seeded_runs(owned_library):
+    seed_library(owned_library, actor=owned_library.user, games=5, spares=0)
+    before = PlayerSession.objects.filter(library=owned_library).count()
+
+    timings = run_session_command_scenario(
+        owned_library,
+        actor=owned_library.user,
+        runs=seeded_runs(owned_library),
+        iterations=3,
+        warmup=1,
+    )
+
+    assert timings.samples == 3
+    assert PlayerSession.objects.filter(library=owned_library).count() == before + 4
+
+
+@pytest.mark.django_db(transaction=True)
+def test_library_mode_reads_without_dispatching(owned_library):
+    seed_library(owned_library, actor=owned_library.user, games=6, spares=0)
+    events_before = LibraryEvent.objects.filter(library=owned_library).count()
+
+    report = run_benchmark(seed=0, iterations=2, warmup=0, library=owned_library)
+
+    assert report.command is None
+    assert report.session_command is None
+    assert len(report.reads) == 6
+    assert LibraryEvent.objects.filter(library=owned_library).count() == events_before
+    assert [budget.name for budget in report.budgets][-1] == "rebuild"
+    assert len(report.budgets) == 7
+
+
 @pytest.mark.django_db(transaction=True)
 def test_the_report_carries_every_scenario_and_a_schema():
     report = run_benchmark(seed=25, iterations=3, warmup=1)
     assert isinstance(report, BenchmarkReport)
-    assert report.schema == 2
+    assert report.schema == 3
     assert report.seed is not None
     assert report.command is not None
+    assert report.session_command is not None
+    assert len(report.reads) == 6
+    assert {
+        budget.verdict for budget in report.budgets if budget.name.startswith("read ")
+    } == {BudgetVerdict.NOT_GATED}
     assert report.amplification is not None
     assert report.replay is not None
     assert report.teardown_seconds is not None
     parsed = json.loads(report.as_json())
-    assert parsed["schema"] == 2
+    assert parsed["schema"] == 3
     assert set(parsed) >= {
         "environment",
         "scratch_username",
@@ -621,7 +723,7 @@ def test_gate_is_silent_when_every_budget_passes():
 @pytest.mark.django_db(transaction=True)
 def test_json_output_parses_and_carries_the_schema():
     parsed = json.loads(run_command(seed=25, iterations=2, warmup=1, json=True))
-    assert parsed["schema"] == 2
+    assert parsed["schema"] == 3
 
 
 @pytest.mark.django_db(transaction=True)
