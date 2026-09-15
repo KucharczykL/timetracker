@@ -366,6 +366,11 @@ audit-uuid-identity: ensure-postgres
 preflight-sessions: ensure-postgres
 	uv run --frozen python manage.py preflight_sessions $(ARGS)
 
+# Read-only: every read-only page as one user, one file each, for a diff.
+# Usage: make render-pages ARGS="--user NAME --out DIR"
+render-pages: ensure-postgres
+	uv run --frozen python manage.py render_pages $(ARGS)
+
 # Destroys a user's library and its rows.
 # Usage: make purge-library ARGS="--user NAME --confirm NAME"
 purge-library: ensure-postgres
