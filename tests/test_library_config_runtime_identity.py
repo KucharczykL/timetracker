@@ -66,25 +66,26 @@ def _patch(client, path, payload):
 def test_device_api_values_are_uuid_strings(runtime_world):
     world = runtime_world
     search = world["client"].get("/api/devices/search").json()
-    detail = world["client"].get(f"/api/session/{world['session'].pk}").json()
+    detail = world["client"].get(f"/api/session/{world['row'].pk}").json()
 
     assert [option["value"] for option in search] == [str(world["own_device"].pk)]
     assert detail["device"]["id"] == str(world["own_device"].pk)
 
 
+@pytest.mark.django_db(transaction=True)
 def test_session_device_patch_is_strict_nullable_and_library_scoped(runtime_world):
     world = runtime_world
     replacement = Device.objects.create(
         library=world["owner"].library, name="Replacement"
     )
-    url = f"/api/session/{world['session'].pk}/device"
+    url = f"/api/session/{world['row'].pk}/device"
 
     assert (
         _patch(world["client"], url, {"device_id": str(replacement.pk)}).status_code
         == 204
     )
-    world["session"].refresh_from_db()
-    assert world["session"].device == replacement
+    world["row"].refresh_from_db()
+    assert world["row"].device == replacement
 
     for invalid in (1, "malformed", str(UUID4)):
         assert _patch(world["client"], url, {"device_id": invalid}).status_code == 422
@@ -99,8 +100,8 @@ def test_session_device_patch_is_strict_nullable_and_library_scoped(runtime_worl
         == 404
     )
     assert _patch(world["client"], url, {"device_id": None}).status_code == 204
-    world["session"].refresh_from_db()
-    assert world["session"].device is None
+    world["row"].refresh_from_db()
+    assert world["row"].device is None
 
 
 def test_default_device_setting_is_strict_nullable_and_library_scoped(runtime_world):

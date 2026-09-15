@@ -144,6 +144,63 @@ def restate_session(
             )
 
 
+def correct_session(
+    actor: User,
+    session: PlayerSession,
+    timing: TimingStatement,
+    *,
+    correlation_id: uuid.UUID,
+) -> None:
+    """State a session's whole timing again."""
+    with answered("session"):
+        _dispatch(
+            CorrectSessionTiming(session_id=session.pk, timing=timing),
+            actor=actor,
+            library=actor.library,
+            correlation_id=correlation_id,
+        )
+
+
+def describe_session(
+    actor: User,
+    session: PlayerSession,
+    *,
+    note: str | None = None,
+    device: StatedDevice | None = None,
+    emulated: bool | None = None,
+    correlation_id: uuid.UUID,
+) -> None:
+    """State note, device or emulated; None is unstated."""
+    with answered("session"):
+        _dispatch(
+            DescribeSession(
+                session_id=session.pk, note=note, device=device, emulated=emulated
+            ),
+            actor=actor,
+            library=actor.library,
+            correlation_id=correlation_id,
+        )
+
+
+def move_session(
+    actor: User,
+    session: PlayerSession,
+    playthrough_id: uuid.UUID,
+    *,
+    correlation_id: uuid.UUID,
+) -> None:
+    """State the session's run, at any game."""
+    with answered("session"):
+        _dispatch(
+            MoveSessionToPlaythrough(
+                session_id=session.pk, playthrough_id=playthrough_id
+            ),
+            actor=actor,
+            library=actor.library,
+            correlation_id=correlation_id,
+        )
+
+
 def end_session(
     actor: User,
     session: PlayerSession,

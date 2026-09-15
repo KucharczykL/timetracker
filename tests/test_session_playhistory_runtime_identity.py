@@ -7,10 +7,11 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.test import Client
 from django.urls import NoReverseMatch, Resolver404, resolve, reverse
+from session_rows import session_row
 from stated_runs import another_run, state_run
 
 from games.commands.playthrough import ActStatement
-from games.models import Device, Game, Playthrough, Session
+from games.models import Device, Game, Playthrough
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db
@@ -54,7 +55,7 @@ def test_promoted_html_routes_reject_non_uuidv7_ids(route_name, parameter, inval
 
 
 @pytest.fixture
-def runtime_world(db):
+def runtime_world(transactional_db):
     owner = get_user_model().objects.create_user(username="runtime-owner")
     foreign_user = get_user_model().objects.create_user(username="runtime-foreign")
     client = Client()
@@ -68,15 +69,15 @@ def runtime_world(db):
     foreign_device = Device.objects.create(
         library=foreign_user.library, name="Foreign device"
     )
-    own_session = Session.objects.create(
-        game=own_game,
+    own_session = session_row(
+        own_game,
         device=own_device,
-        timestamp_start=datetime(2026, 8, 20, 8, tzinfo=UTC),
+        started_at=datetime(2026, 8, 20, 8, tzinfo=UTC),
     )
-    foreign_session = Session.objects.create(
-        game=foreign_game,
+    foreign_session = session_row(
+        foreign_game,
         device=foreign_device,
-        timestamp_start=datetime(2026, 8, 20, 9, tzinfo=UTC),
+        started_at=datetime(2026, 8, 20, 9, tzinfo=UTC),
     )
     #: #1012 moved the HTML routes onto the run.
     foreign_run = Playthrough.objects.get(player_game__game=foreign_game)
@@ -155,7 +156,7 @@ def test_session_detail_patch_uses_a_uuidv7_path(runtime_world):
         runtime_world.client,
         "patch",
         f"/api/session/{session.pk}",
-        {"timestamp_end": "2026-08-20T11:00:00Z"},
+        {"note": "Updated event"},
     )
 
     assert response.status_code == 200
@@ -187,11 +188,7 @@ API_IDENTITY_PATHS = [
     ("patch", "/api/playthrough/{identity}", {"note": "Updated"}),
     ("delete", "/api/playthrough/{identity}", None),
     ("get", "/api/session/{identity}", None),
-    (
-        "patch",
-        "/api/session/{identity}",
-        {"timestamp_end": "2026-08-20T11:00:00Z"},
-    ),
+    ("patch", "/api/session/{identity}", {"note": "Updated"}),
     ("patch", "/api/session/{identity}/device", {"device_id": None}),
 ]
 
@@ -242,12 +239,7 @@ def test_promoted_html_views_keep_foreign_rows_undisclosed(
     ("method", "path_template", "object_name", "payload"),
     [
         ("get", "/api/playthrough/{identity}", "foreign_run", None),
-        (
-            "patch",
-            "/api/session/{identity}",
-            "foreign_session",
-            {"timestamp_end": "2026-08-20T11:00:00Z"},
-        ),
+        ("patch", "/api/session/{identity}", "foreign_session", {"note": "x"}),
     ],
 )
 def test_promoted_api_views_keep_foreign_rows_undisclosed(

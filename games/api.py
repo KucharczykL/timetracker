@@ -1,8 +1,8 @@
 import json
 import logging
 from collections.abc import Mapping
-from datetime import UTC, date, datetime
-from typing import Annotated, Any, Final, NoReturn, cast
+from datetime import UTC, date, datetime, timedelta
+from typing import Annotated, Any, Final, NoReturn, assert_never, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.contrib import messages
@@ -32,6 +32,13 @@ from pydantic import BeforeValidator, ConfigDict, PlainSerializer, WithJsonSchem
 from common.criteria import FilterError, filter_from_json
 from common.date_time_presentation import date_time_presentation_for_request
 from common.filter_execution import execute_filter, regex_timeout_api
+from games.commands.playersession import (
+    CorrectedTiming,
+    DurationOnlyTiming,
+    StatedDevice,
+    TimedTiming,
+    TimingStatement,
+)
 from games.commands.playthrough import ActStatement
 from games.filters import (
     MODE_PARSERS,
@@ -54,11 +61,10 @@ from games.models import (
     PlaythroughKind,
     Purchase,
     PurchaseConversionState,
-    Session,
     UserLibrary,
 )
 from games.ownership import owned_or_404
-from games.reads.calendar import calendar_sentence
+from games.reads.calendar import calendar_day_zone, calendar_sentence
 from games.reads.player_sessions import library_sessions
 from games.reads.playthrough_endpoints import days_to_finish
 from games.reads.playthrough_numbering import display_name, with_display_number
@@ -74,6 +80,7 @@ from games.sorting import (
 )
 from games.writes.answers import CommandFailed, answered
 from games.writes.playergame import new_correlation_id, record_facts
+from games.writes.playersession import correct_session, describe_session, move_session
 from games.writes.playthrough import RunDraft, record_run, remove_run, restate_run
 from timetracker.config import SettingSource
 from timetracker.settings_commands import (
@@ -666,67 +673,161 @@ class SessionDeviceUpdate(Schema):
     device_id: UUIDv7 | None
 
 
+def _answered_or_http(failure: CommandFailed) -> NoReturn:
+    """A refused command, as the API says it."""
+    raise HttpError(failure.status_code, failure.message)
+
+
+def _library_device_or_404(library: UserLibrary, device_id: UUIDv7 | None) -> None:
+    """A stale id, or another library's, is absent: it discloses nothing.
+
+    The command would refuse it with a sentence; the API answers 404 as
+    it did before, and a stale id (a device removed in another tab) never
+    surfaces as a refusal the client's retry toast cannot resolve.
+    """
+    if device_id is not None:
+        owned_or_404(Device.objects.for_library(library), library, id=device_id)
+
+
 @session_router.patch("/{session_id}/device", response={204: None})
 def partial_update_session_device(
     request, session_id: UUIDv7, payload: SessionDeviceUpdate
 ):
     library = cast(User, request.user).library
-    session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
-    device = None
-    if payload.device_id is not None:
-        # A stale id (device deleted in another tab) must 404, not surface as
-        # an IntegrityError 500 the client's retry toast can never resolve.
-        device = owned_or_404(
-            Device.objects.for_library(library), library, id=payload.device_id
+    session = owned_or_404(_readable_sessions(library), library, id=session_id)
+    _library_device_or_404(library, payload.device_id)
+    try:
+        describe_session(
+            cast(User, request.user),
+            session,
+            device=StatedDevice(payload.device_id),
+            correlation_id=new_correlation_id(),
         )
-    session.device = device
-    session.save()
+    except CommandFailed as failure:
+        _answered_or_http(failure)
     messages.success(request, "Device updated")
     return Status(204, None)
 
 
+class TimedIn(Schema):
+    """A start, an optional end, each with an optional zone."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    started_at: datetime
+    started_at_zone: str | None = None
+    ended_at: datetime | None = None
+    ended_at_zone: str | None = None
+
+
+class DurationOnlyIn(Schema):
+    """A written day and how long it lasted."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    day: date
+    duration_seconds: int
+
+
+class CorrectedIn(Schema):
+    """Both instants and a duration that replaces the elapsed time."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    started_at: datetime
+    ended_at: datetime
+    duration_seconds: int
+    started_at_zone: str | None = None
+    ended_at_zone: str | None = None
+
+
+#: Told apart by shape: each refuses the others' keys.
+type TimingIn = CorrectedIn | TimedIn | DurationOnlyIn
+
+
 class SessionUpdate(Schema):
-    # All optional: a partial update only touches the fields the client sends.
-    # The client supplies its own ISO-UTC "now" for finish/reset. GeneratedFields
-    # (duration_calculated/duration_total) are intentionally absent and thus
-    # unwriteable.
-    timestamp_start: datetime | None = None
-    timestamp_end: datetime | None = None
-    # IANA zone each timestamp was committed in; present-null clears to NULL
-    # ("assume the display zone").
-    timestamp_start_timezone: str | None = None
-    timestamp_end_timezone: str | None = None
+    """Each named key is one act; an omitted key states nothing.
+
+    `timing` is a correction of the whole statement; `note`, `device_id`
+    and `emulated` a description; `playthrough_id` a move. A key the
+    body does not know is refused, so the old `timestamp_end` cannot
+    pass unread.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    timing: TimingIn | None = None
+    note: str | None = None
+    #: Present-null clears the device.
+    device_id: UUIDv7 | None = None
+    emulated: bool | None = None
+    playthrough_id: UUIDv7 | None = None
+
+
+def _timing_statement(timing: TimingIn, day_zone: str) -> TimingStatement:
+    match timing:
+        case CorrectedIn():
+            return CorrectedTiming(
+                started_at=timing.started_at,
+                ended_at=timing.ended_at,
+                duration=timedelta(seconds=timing.duration_seconds),
+                day_zone=day_zone,
+                started_at_zone=timing.started_at_zone,
+                ended_at_zone=timing.ended_at_zone,
+            )
+        case TimedIn():
+            return TimedTiming(
+                started_at=timing.started_at,
+                day_zone=day_zone,
+                started_at_zone=timing.started_at_zone,
+                ended_at=timing.ended_at,
+                ended_at_zone=timing.ended_at_zone,
+            )
+        case DurationOnlyIn():
+            return DurationOnlyTiming(
+                day=timing.day, duration=timedelta(seconds=timing.duration_seconds)
+            )
+        case _:
+            assert_never(timing)
 
 
 @session_router.patch("/{session_id}", response={200: SessionOut})
 def partial_update_session(request, session_id: UUIDv7, payload: SessionUpdate):
     library = cast(User, request.user).library
-    session = owned_or_404(
-        Session.objects.for_library(library).select_related(
-            "game", "game__platform", "device"
-        ),
-        library,
-        id=session_id,
-    )
-    data = payload.dict(exclude_unset=True)  # omitted fields are left untouched
-    for zone_field in ("timestamp_start_timezone", "timestamp_end_timezone"):
-        if zone_field in data and data[zone_field] is not None:
-            try:
-                data[zone_field] = ZoneInfo(data[zone_field]).key
-            except (ZoneInfoNotFoundError, ValueError) as exc:
-                raise HttpError(
-                    422, f"{zone_field} must be an IANA time zone name"
-                ) from exc
-    new_start = data.get("timestamp_start", session.timestamp_start)
-    new_end = data.get("timestamp_end", session.timestamp_end)
-    if new_start is not None and new_end is not None and new_end < new_start:
-        raise HttpError(422, "timestamp_end must be on or after timestamp_start")
-    for field, value in data.items():
-        setattr(session, field, value)
-    session.save()
-    session.refresh_from_db()  # reload DB-computed GeneratedFields + modified_at
+    actor = cast(User, request.user)
+    session = owned_or_404(_readable_sessions(library), library, id=session_id)
+    stated = payload.dict(exclude_unset=True)
+    if "device_id" in stated:
+        _library_device_or_404(library, payload.device_id)
+    correlation_id = new_correlation_id()
+    try:
+        if payload.timing is not None:
+            correct_session(
+                actor,
+                session,
+                _timing_statement(payload.timing, calendar_day_zone(library).key),
+                correlation_id=correlation_id,
+            )
+        described = {key for key in ("note", "device_id", "emulated") if key in stated}
+        if described:
+            describe_session(
+                actor,
+                session,
+                note=payload.note,
+                device=StatedDevice(payload.device_id)
+                if "device_id" in stated
+                else None,
+                emulated=payload.emulated,
+                correlation_id=correlation_id,
+            )
+        if payload.playthrough_id is not None:
+            move_session(
+                actor, session, payload.playthrough_id, correlation_id=correlation_id
+            )
+    except CommandFailed as failure:
+        _answered_or_http(failure)
     messages.success(request, "Session updated.")
-    return session
+    return _readable_sessions(library).get(pk=session.pk)
 
 
 api.add_router("/session", session_router)

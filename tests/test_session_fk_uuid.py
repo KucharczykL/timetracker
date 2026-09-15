@@ -337,11 +337,12 @@ def _patch_device(client, session_id, payload: dict):
     )
 
 
+@pytest.mark.django_db(transaction=True)
 def test_patch_session_device_binds_and_clears_by_uuidv7(
     auth_client, owned_user, device
 ):
     game = Game.objects.create(library=owned_user.library, name="Patched")
-    session = _session(game)
+    session = _row(game)
 
     assert (
         _patch_device(
@@ -359,9 +360,10 @@ def test_patch_session_device_binds_and_clears_by_uuidv7(
     assert session.device_id is None
 
 
+@pytest.mark.django_db(transaction=True)
 def test_patch_session_device_rejects_a_stale_device_id(auth_client, owned_user):
     game = Game.objects.create(library=owned_user.library, name="Patched")
-    session = _session(game)
+    session = _row(game)
 
     response = _patch_device(auth_client, session.pk, {"device_id": str(uuid.uuid7())})
 

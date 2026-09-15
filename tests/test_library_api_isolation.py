@@ -116,13 +116,15 @@ def two_libraries(db):
         timestamp_end=datetime(YEAR, 6, 2, 13, tzinfo=UTC),
     )
     #: The projection's twins, which every read scope reads.
-    for legacy in (session_a, session_b):
+    row_a, row_b = (
         session_row(
             legacy.game,
             device=legacy.device,
             started_at=legacy.timestamp_start,
             ended_at=legacy.timestamp_end,
         )
+        for legacy in (session_a, session_b)
+    )
     #: The run holds the note and completion.
     for game, note, day in (
         (game_a, "Library A event", date(YEAR, 2, 1)),
@@ -174,6 +176,8 @@ def two_libraries(db):
         "device_b": device_b,
         "session_a": session_a,
         "session_b": session_b,
+        "row_a": row_a,
+        "row_b": row_b,
         "purchase_a": purchase_a,
         "purchase_b": purchase_b,
     }
@@ -324,22 +328,19 @@ def test_playthrough_crud_is_library_scoped(two_libraries):
     assert foreign.note == "Library B event"
 
 
+@pytest.mark.django_db(transaction=True)
 def test_session_reads_and_mutations_are_library_scoped(two_libraries):
     world = two_libraries
     client = world["client_a"]
-    foreign = world["session_b"]
-    own = world["session_a"]
+    foreign = world["row_b"]
+    own = world["row_a"]
 
     payload = client.get("/api/session/").json()
     assert payload["count"] == 1
     assert [row["id"] for row in payload["items"]] == [str(own.id)]
     assert client.get(f"/api/session/{foreign.id}").status_code == 404
     assert (
-        _patch(
-            client,
-            f"/api/session/{foreign.id}",
-            {"timestamp_end": f"{YEAR}-06-02T14:00:00Z"},
-        ).status_code
+        _patch(client, f"/api/session/{foreign.id}", {"note": "theirs"}).status_code
         == 404
     )
     assert (
@@ -353,7 +354,7 @@ def test_session_reads_and_mutations_are_library_scoped(two_libraries):
     own.refresh_from_db()
     foreign.refresh_from_db()
     assert own.device_id == world["device_a"].pk
-    assert foreign.timestamp_end == datetime(YEAR, 6, 2, 13, tzinfo=UTC)
+    assert foreign.note == ""
 
 
 @pytest.mark.parametrize(

@@ -11,8 +11,17 @@ from django.test.utils import CaptureQueriesContext
 from session_rows import duration_only_row, session_row, timed_row, tracked_run
 
 from games.filters import parse_game_filter
-from games.models import Device, Game, Platform, PlayerSession, Purchase, Session
+from games.models import (
+    Device,
+    Game,
+    Platform,
+    PlayerSession,
+    Purchase,
+    Session,
+    UserPreferences,
+)
 from games.reads.playtime import game_playtime
+from timetracker import settings_resolver
 
 pytestmark = pytest.mark.django_db
 
@@ -432,58 +441,157 @@ def _patch_session(client, session_id, body):
     )
 
 
-def test_session_patch_finish_sets_end(auth_client):
-    # Open session finished by sending the client's "now" as timestamp_end.
-    session = _make_session()  # start 2026-06-24 18:00, end None
+#: Every PATCH dispatches, which opens its own transaction.
+@pytest.mark.django_db(transaction=True)
+def test_session_patch_timing_restates_the_whole_statement(auth_client, user):
+    _prague_calendar(user)
+    session = _row()
     response = _patch_session(
-        auth_client, session.id, {"timestamp_end": "2026-06-24T19:00:00Z"}
+        auth_client,
+        session.id,
+        {
+            "timing": {
+                "started_at": "2026-06-24T18:00:00Z",
+                "ended_at": "2026-06-24T19:00:00Z",
+            }
+        },
     )
-    assert response.status_code == 200
-    assert response.json()["timestamp_end"] == "2026-06-24T19:00:00Z"
+    assert response.status_code == 200, response.content
+    assert response.json()["ended_at"] == "2026-06-24T19:00:00Z"
     session.refresh_from_db()
-    assert session.timestamp_end == datetime(2026, 6, 24, 19, 0, tzinfo=UTC)
+    assert session.timing_mode == "timed"
+    assert session.ended_at == datetime(2026, 6, 24, 19, 0, tzinfo=UTC)
 
 
-def test_session_patch_reset_start_keeps_end_null(auth_client):
-    # Reset overwrites timestamp_start; an omitted timestamp_end is untouched.
-    session = _make_session()
+@pytest.mark.django_db(transaction=True)
+def test_session_patch_timing_is_told_apart_by_shape(auth_client, user):
+    _prague_calendar(user)
+    session = _row()
     response = _patch_session(
-        auth_client, session.id, {"timestamp_start": "2026-06-24T20:00:00Z"}
+        auth_client,
+        session.id,
+        {"timing": {"day": "2026-06-25", "duration_seconds": 2700}},
     )
-    assert response.status_code == 200
+    assert response.status_code == 200, response.content
     body = response.json()
-    assert body["timestamp_start"] == "2026-06-24T20:00:00Z"
-    assert body["timestamp_end"] is None
-    session.refresh_from_db()
-    assert session.timestamp_start == datetime(2026, 6, 24, 20, 0, tzinfo=UTC)
+    assert body["timing_mode"] == "duration_only"
+    assert body["stated_day"] == "2026-06-25"
+    assert body["duration_seconds"] == 2700
 
-
-def test_session_patch_end_before_start_rejected(auth_client):
-    session = _make_session()  # start 18:00
     response = _patch_session(
-        auth_client, session.id, {"timestamp_end": "2026-06-24T17:00:00Z"}
+        auth_client,
+        session.id,
+        {
+            "timing": {
+                "started_at": "2026-06-24T18:00:00Z",
+                "ended_at": "2026-06-24T19:00:00Z",
+                "duration_seconds": 5400,
+            }
+        },
     )
-    assert response.status_code == 422
+    assert response.status_code == 200, response.content
+    assert response.json()["timing_mode"] == "corrected"
+    assert response.json()["duration_seconds"] == 5400
+
+
+@pytest.mark.django_db(transaction=True)
+def test_session_patch_end_before_start_rejected(auth_client, user):
+    _prague_calendar(user)
+    session = _row()  # start 18:00
+    response = _patch_session(
+        auth_client,
+        session.id,
+        {
+            "timing": {
+                "started_at": "2026-06-24T18:00:00Z",
+                "ended_at": "2026-06-24T17:00:00Z",
+            }
+        },
+    )
+    assert response.status_code == 409
     session.refresh_from_db()
-    assert session.timestamp_end is None  # unchanged
+    assert session.ended_at is None  # unchanged
 
 
-def test_session_patch_grows_the_games_playtime(auth_client):
-    # Finishing the session grows the summed playtime.
-    session = _make_session()
-    library = session.game.library
-    assert game_playtime(library, session.game) == timedelta(0)
-    _patch_session(auth_client, session.id, {"timestamp_end": "2026-06-24T19:00:00Z"})
-    assert game_playtime(library, session.game) == timedelta(hours=1)
+@pytest.mark.django_db(transaction=True)
+def test_session_patch_grows_the_games_playtime(auth_client, user):
+    _prague_calendar(user)
+    session = _row()
+    game = session.playthrough.player_game.game
+    library = _test_library()
+    assert game_playtime(library, game) == timedelta(0)
+    _patch_session(
+        auth_client,
+        session.id,
+        {
+            "timing": {
+                "started_at": "2026-06-24T18:00:00Z",
+                "ended_at": "2026-06-24T19:00:00Z",
+            }
+        },
+    )
+    assert game_playtime(library, game) == timedelta(hours=1)
 
 
-def test_session_patch_does_not_write_generatedfield(auth_client):
-    # duration_total is a DB-computed GeneratedField; after a finish PATCH it must
-    # reflect the new end without the handler ever writing it.
-    session = _make_session()
-    _patch_session(auth_client, session.id, {"timestamp_end": "2026-06-24T19:00:00Z"})
+@pytest.mark.django_db(transaction=True)
+def test_session_patch_describes_one_fact_per_key(auth_client, user):
+    _prague_calendar(user)
+    session = _row()
+    other = _owned_device(name="Desktop", type="p")
+    response = _patch_session(
+        auth_client,
+        session.id,
+        {"note": "boss fight", "device_id": str(other.id), "emulated": True},
+    )
+    assert response.status_code == 200, response.content
     session.refresh_from_db()
-    assert session.duration_total == timedelta(hours=1)
+    assert (session.note, session.device_id, session.emulated) == (
+        "boss fight",
+        other.id,
+        True,
+    )
+    assert (
+        _patch_session(auth_client, session.id, {"device_id": None}).status_code == 200
+    )
+    session.refresh_from_db()
+    assert session.device_id is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_session_patch_moves_the_run(auth_client, user):
+    _prague_calendar(user)
+    session = _row()
+    other_run = tracked_run(_test_library(), _owned_game(name="Celeste"))
+    response = _patch_session(
+        auth_client, session.id, {"playthrough_id": str(other_run.pk)}
+    )
+    assert response.status_code == 200, response.content
+    assert response.json()["playthrough_id"] == str(other_run.pk)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_session_patch_refuses_a_key_it_does_not_know(auth_client, user):
+    session = _row()
+    for stale in ({"timestamp_end": "2026-06-24T19:00:00Z"}, {"timing": {"end": "x"}}):
+        assert _patch_session(auth_client, session.id, stale).status_code == 422
+
+
+@pytest.mark.django_db(transaction=True)
+def test_session_patch_refuses_a_device_another_library_holds(auth_client, user):
+    _prague_calendar(user)
+    session = _row()
+    stranger = get_user_model().objects.create_user(username="stranger", password="p")
+    theirs = Device.objects.create(library=stranger.library, name="Theirs")
+    response = _patch_session(auth_client, session.id, {"device_id": str(theirs.id)})
+    assert response.status_code == 404
+    session.refresh_from_db()
+    assert session.device_id != theirs.id
+
+
+def _prague_calendar(user):
+    """The rows `session_rows` seeds count their days in Prague."""
+    UserPreferences.objects.filter(user=user).update(display_time_zone="Europe/Prague")
+    settings_resolver.clear_cache()
 
 
 def test_session_patch_404(auth_client):
@@ -491,10 +599,8 @@ def test_session_patch_404(auth_client):
 
 
 def test_session_patch_requires_auth():
-    session = _make_session()
-    response = _patch_session(
-        Client(), session.id, {"timestamp_end": "2026-06-24T19:00:00Z"}
-    )
+    session = _row()
+    response = _patch_session(Client(), session.id, {"note": "x"})
     assert response.status_code == 401
 
 
@@ -509,8 +615,9 @@ def _patch_device(client, session_id, body):
     )
 
 
+@pytest.mark.django_db(transaction=True)
 def test_device_patch_assigns_device(auth_client):
-    session = _make_session()
+    session = _row()
     other_device = _owned_device(name="Desktop", type="PC")
     response = _patch_device(
         auth_client, session.id, {"device_id": str(other_device.id)}
@@ -520,9 +627,10 @@ def test_device_patch_assigns_device(auth_client):
     assert session.device == other_device
 
 
+@pytest.mark.django_db(transaction=True)
 def test_device_patch_unknown_device_404(auth_client):
     # A stale id (device deleted elsewhere) must 404 cleanly, not IntegrityError.
-    session = _make_session()
+    session = _row()
     original_device = session.device
     response = _patch_device(auth_client, session.id, {"device_id": str(uuid.uuid7())})
     assert response.status_code == 404
@@ -530,8 +638,9 @@ def test_device_patch_unknown_device_404(auth_client):
     assert session.device == original_device
 
 
+@pytest.mark.django_db(transaction=True)
 def test_device_patch_null_clears_device(auth_client):
-    session = _make_session()
+    session = _row()
     assert session.device is not None
     response = _patch_device(auth_client, session.id, {"device_id": None})
     assert response.status_code == 204
@@ -682,45 +791,55 @@ def test_an_unusable_stored_zone_gets_no_label(auth_client):
     assert payload["started_at_zone_label"] is None
 
 
-def test_patch_finish_stores_the_end_zone(auth_client):
-    session = _make_session(timestamp_end=None)
-    response = auth_client.patch(
-        f"/api/session/{session.pk}",
-        json.dumps(
-            {
-                "timestamp_end": "2026-07-01T13:00:00Z",
-                "timestamp_end_timezone": "Asia/Tokyo",
+@pytest.mark.django_db(transaction=True)
+def test_patch_finish_stores_the_end_zone(auth_client, user):
+    _prague_calendar(user)
+    session = _row()
+    response = _patch_session(
+        auth_client,
+        session.pk,
+        {
+            "timing": {
+                "started_at": "2026-06-24T18:00:00Z",
+                "ended_at": "2026-07-01T13:00:00Z",
+                "ended_at_zone": "Asia/Tokyo",
             }
-        ),
-        content_type="application/json",
+        },
     )
-    assert response.status_code == 200
+    assert response.status_code == 200, response.content
     session.refresh_from_db()
-    assert session.timestamp_end_timezone == "Asia/Tokyo"
-    assert session.timestamp_start_timezone is None  # untouched
+    assert session.ended_at_zone == "Asia/Tokyo"
+    assert session.started_at_zone is None  # untouched
 
 
-def test_patch_rejects_a_non_iana_zone(auth_client):
-    session = _make_session(timestamp_end=None)
-    response = auth_client.patch(
-        f"/api/session/{session.pk}",
-        json.dumps({"timestamp_end_timezone": "Not/AZone"}),
-        content_type="application/json",
+@pytest.mark.django_db(transaction=True)
+def test_patch_rejects_a_non_iana_zone(auth_client, user):
+    _prague_calendar(user)
+    session = _row()
+    response = _patch_session(
+        auth_client,
+        session.pk,
+        {
+            "timing": {
+                "started_at": "2026-06-24T18:00:00Z",
+                "started_at_zone": "Not/AZone",
+            }
+        },
     )
-    assert response.status_code == 422
+    assert response.status_code == 409
     session.refresh_from_db()
-    assert session.timestamp_end_timezone is None
+    assert session.started_at_zone is None
 
 
-def test_patch_null_clears_a_stored_zone(auth_client):
-    session = _make_session(timestamp_end=None)
-    session.timestamp_start_timezone = "Asia/Tokyo"
-    session.save()
-    response = auth_client.patch(
-        f"/api/session/{session.pk}",
-        json.dumps({"timestamp_start_timezone": None}),
-        content_type="application/json",
+@pytest.mark.django_db(transaction=True)
+def test_patch_null_clears_a_stored_zone(auth_client, user):
+    _prague_calendar(user)
+    session = _row(started_at_zone="Asia/Tokyo")
+    response = _patch_session(
+        auth_client,
+        session.pk,
+        {"timing": {"started_at": "2026-06-24T18:00:00Z", "started_at_zone": None}},
     )
-    assert response.status_code == 200
+    assert response.status_code == 200, response.content
     session.refresh_from_db()
-    assert session.timestamp_start_timezone is None
+    assert session.started_at_zone is None

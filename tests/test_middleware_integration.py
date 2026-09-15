@@ -3,11 +3,11 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pytest
-from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import Client, TestCase
+from session_rows import session_row
 
-from games.models import Device, Game, Platform, Purchase, Session
+from games.models import Device, Game, Platform, Purchase
 
 
 class MiddlewareIntegrationTest(TestCase):
@@ -31,32 +31,6 @@ class MiddlewareIntegrationTest(TestCase):
             library=self.user.library, name="Test Game", platform=self.platform
         )
         self.game.save()
-
-    def test_session_device_api_endpoint_sends_hx_trigger(self):
-        """
-        Verify the session device API endpoint also produces HX-Trigger.
-        This is the exact endpoint used by sessiondevice_selector.html.
-        """
-        device = Device(library=self.user.library, name="Test Device")
-        device.save()
-        zt = ZoneInfo(settings.TIME_ZONE)
-        session = Session(
-            game=self.game,
-            device=device,
-            timestamp_start=datetime(2022, 9, 26, 14, 58, tzinfo=zt),
-        )
-        session.save()
-
-        response = self.client.patch(
-            f"/api/session/{session.id}/device",
-            data=json.dumps({"device_id": str(device.id)}),
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 204)
-        self.assertIn("HX-Trigger", response)
-        data = json.loads(response["HX-Trigger"])
-        self.assertIn("show-toast", data)
-        self.assertEqual(data["show-toast"]["message"], "Device updated")
 
 
 @pytest.mark.django_db(transaction=True)
@@ -117,3 +91,28 @@ def test_refund_purchase_returns_updated_row_with_hx_trigger(client, owned_user)
     assert "refund-confirmation-modal" in body
     purchase.refresh_from_db()
     assert purchase.date_refunded is not None
+
+
+#: Out of the TestCase: the device PATCH dispatches, and a dispatch
+#: opens the transaction it retries.
+@pytest.mark.django_db(transaction=True)
+def test_session_device_api_endpoint_sends_hx_trigger(client, owned_user):
+    """The session device API endpoint produces HX-Trigger too."""
+    library = owned_user.library
+    game = Game.objects.create(library=library, name="Test Game")
+    device = Device.objects.create(library=library, name="Test Device")
+    session = session_row(
+        game, started_at=datetime(2022, 9, 26, 14, 58, tzinfo=ZoneInfo("UTC"))
+    )
+    client.force_login(owned_user)
+
+    response = client.patch(
+        f"/api/session/{session.id}/device",
+        data=json.dumps({"device_id": str(device.id)}),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 204
+    assert "HX-Trigger" in response
+    data = json.loads(response["HX-Trigger"])
+    assert data["show-toast"]["message"] == "Device updated"

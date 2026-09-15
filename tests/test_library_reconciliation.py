@@ -46,20 +46,20 @@ def _client_for(user) -> Client:
     return client
 
 
-def _session(game, device, day: int, hours: int) -> Session:
+def _session(game, device, day: int, hours: int) -> PlayerSession:
     started = datetime(YEAR, 6, day, 10, tzinfo=UTC)
-    #: The projection's twin, which every read scope reads.
-    session_row(
-        game,
-        device=device,
-        started_at=started,
-        ended_at=started + timedelta(hours=hours),
-    )
-    return Session.objects.create(
+    #: The legacy twin stays until #772 takes the table.
+    Session.objects.create(
         game=game,
         device=device,
         timestamp_start=started,
         timestamp_end=started + timedelta(hours=hours),
+    )
+    return session_row(
+        game,
+        device=device,
+        started_at=started,
+        ended_at=started + timedelta(hours=hours),
     )
 
 
