@@ -14,7 +14,7 @@ from django.utils import timezone
 from django_stubs_ext import WithAnnotations
 
 from games.models import Game, UserLibrary
-from games.reads.player_sessions import library_sessions
+from games.reads.player_sessions import game_session_days, library_sessions
 from games.reads.playtime import legacy, projection
 from games.reads.playtime.source import (
     DayInterval,
@@ -31,6 +31,7 @@ UNSPECIFIED_PLATFORM = "Unspecified"
 COMPARED_MEMBERS: Final = frozenset(
     {
         "game_playtime",
+        "game_playtime_between",
         "summed_by_game",
         "total_playtime",
         "playtime_between",
@@ -52,6 +53,7 @@ class FigureKind(StrEnum):
     GAME = "game"
     GAME_IN_YEAR = "game in year"
     GAME_DETAIL = "game detail"
+    GAME_IN_WINDOW = "game in window"
     PLATFORM = "platform"
     PLATFORM_IN_YEAR = "platform in year"
     MONTH = "month"
@@ -200,10 +202,14 @@ def _game_detail(library: UserLibrary, game: Game) -> FigureRead:
     return lambda source: source.game_playtime(library, game)
 
 
+def _game_between(library: UserLibrary, game: Game, days: DayInterval) -> FigureRead:
+    return lambda source: source.game_playtime_between(library, game, days)
+
+
 def _game_figures(
     library: UserLibrary, sources: SourcePair, years: Sequence[int]
 ) -> list[PlaytimeFigure]:
-    """Per game: all-time, detail, each year."""
+    """Per game: all-time, detail, its window, each year."""
     figures: list[PlaytimeFigure] = []
     for game in _counted_games(library, sources, year=None):
         key = (str(game.pk),)
@@ -222,6 +228,22 @@ def _game_figures(
                 _game_detail(library, game),
             )
         )
+        #: The projection's own span: legacy time outside it
+        #: shows here, and in the per-game figure above.
+        span = game_session_days(library, game)
+        if span is not None:
+            days = DayInterval(span.first, span.last)
+            figures.append(
+                _figure(
+                    sources,
+                    FigureScope(
+                        FigureKind.GAME_IN_WINDOW,
+                        key,
+                        f"game {label} between {days.first} and {days.last}",
+                    ),
+                    _game_between(library, game, days),
+                )
+            )
     for year in years:
         for game in _counted_games(library, sources, year=year):
             figures.append(

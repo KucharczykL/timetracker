@@ -43,8 +43,24 @@ def _summed(sessions: SessionQuerySet) -> PlaytimeSum:
     )
 
 
+def _within(sessions: SessionQuerySet, days: DayInterval) -> SessionQuerySet:
+    """Midnight to midnight, in the active zone."""
+    return sessions.filter(
+        timestamp_start__gte=make_aware(datetime.combine(days.first, time.min)),
+        timestamp_start__lt=make_aware(
+            datetime.combine(days.last + timedelta(days=1), time.min)
+        ),
+    )
+
+
 def game_playtime(library: UserLibrary, game: Game) -> timedelta:
     return _total(_sessions(library).filter(game=game))
+
+
+def game_playtime_between(
+    library: UserLibrary, game: Game, days: DayInterval
+) -> timedelta:
+    return _total(_within(_sessions(library).filter(game=game), days))
 
 
 def summed_by_game(
@@ -72,15 +88,7 @@ def total_playtime(library: UserLibrary, *, year: YearScope = None) -> timedelta
 
 
 def playtime_between(library: UserLibrary, days: DayInterval) -> timedelta:
-    """Midnight to midnight, in the active zone."""
-    return _total(
-        _sessions(library).filter(
-            timestamp_start__gte=make_aware(datetime.combine(days.first, time.min)),
-            timestamp_start__lt=make_aware(
-                datetime.combine(days.last + timedelta(days=1), time.min)
-            ),
-        )
-    )
+    return _total(_within(_sessions(library), days))
 
 
 def playtime_by_platform(

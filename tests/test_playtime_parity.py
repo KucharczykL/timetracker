@@ -181,7 +181,47 @@ def test_a_session_on_another_game_is_named(owned_library, game):
         for figure in differing(playtime_figures(owned_library, TWIN_ZONE))
     }
 
-    assert kinds == {FigureKind.GAME, FigureKind.GAME_DETAIL, FigureKind.GAME_IN_YEAR}
+    assert kinds == {
+        FigureKind.GAME,
+        FigureKind.GAME_DETAIL,
+        FigureKind.GAME_IN_WINDOW,
+        FigureKind.GAME_IN_YEAR,
+    }
+
+
+def test_a_games_window_is_its_days_in_the_projection(owned_library, game):
+    """Legacy time outside the projection's own span is named."""
+    day = date(2026, 3, 5)
+    timed_twin(owned_library, game, prague(10, day), prague(11, day))
+    Session.objects.create(
+        game=game,
+        timestamp_start=prague(10, date(2026, 3, 1)),
+        timestamp_end=prague(11, date(2026, 3, 1)),
+    )
+
+    figures = playtime_figures(owned_library, TWIN_ZONE)
+
+    windows = [
+        figure for figure in figures if figure.scope.kind == FigureKind.GAME_IN_WINDOW
+    ]
+    assert [str(figure.scope) for figure in windows] == [
+        f"game Outer Wilds {game.pk} between 2026-03-05 and 2026-03-05"
+    ]
+    assert windows[0].legacy == windows[0].projection == timedelta(hours=1)
+    assert FigureKind.GAME in {figure.scope.kind for figure in differing(figures)}
+
+
+def test_a_game_the_projection_holds_no_session_for_has_no_window(owned_library, game):
+    Session.objects.create(
+        game=game,
+        timestamp_start=prague(10, date(2026, 3, 1)),
+        timestamp_end=prague(11, date(2026, 3, 1)),
+    )
+
+    kinds = {figure.scope.kind for figure in playtime_figures(owned_library, TWIN_ZONE)}
+
+    assert FigureKind.GAME in kinds
+    assert FigureKind.GAME_IN_WINDOW not in kinds
 
 
 def test_a_day_moved_within_its_month_is_named(owned_library, game):
@@ -195,7 +235,11 @@ def test_a_day_moved_within_its_month_is_named(owned_library, game):
         for figure in differing(playtime_figures(owned_library, TWIN_ZONE))
     }
 
-    assert scopes == {"day 2026-03-05", "day 2026-03-06"}
+    assert scopes == {
+        "day 2026-03-05",
+        "day 2026-03-06",
+        f"game Outer Wilds {game.pk} between 2026-03-06 and 2026-03-06",
+    }
 
 
 def test_every_protocol_member_is_compared_or_exempt():

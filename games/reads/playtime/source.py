@@ -77,6 +77,10 @@ class PlaytimeSource(Protocol):
 
     def game_playtime(self, library: UserLibrary, game: Game) -> timedelta: ...
 
+    def game_playtime_between(
+        self, library: UserLibrary, game: Game, days: DayInterval
+    ) -> timedelta: ...
+
     def summed_by_game(
         self, library: UserLibrary | None, *, year: YearScope = None
     ) -> PlaytimeSum: ...

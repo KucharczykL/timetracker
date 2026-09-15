@@ -6,7 +6,7 @@ from django.db.models import DurationField, OuterRef, Subquery, Sum, Value
 from django.db.models.functions import Coalesce, TruncMonth
 
 from games.models import Game, PlayerSessionQuerySet, UserLibrary
-from games.reads.player_sessions import library_sessions
+from games.reads.player_sessions import GAME, library_sessions
 from games.reads.playthrough_completions import YearScope
 from games.reads.playtime.source import (
     DayInterval,
@@ -19,8 +19,6 @@ from games.reads.playtime.source import (
 
 ZERO = Value(timedelta(0), output_field=DurationField())
 
-#: Sessions reach their game through the run.
-GAME = "playthrough__player_game__game"
 PLATFORM = f"{GAME}__platform"
 
 
@@ -36,8 +34,20 @@ def _total(sessions: PlayerSessionQuerySet) -> timedelta:
     return sessions.aggregate(total=Coalesce(Sum("effective_duration"), ZERO))["total"]
 
 
+def _within(
+    sessions: PlayerSessionQuerySet, days: DayInterval
+) -> PlayerSessionQuerySet:
+    return sessions.filter(effective_day__range=(days.first, days.last))
+
+
 def game_playtime(library: UserLibrary, game: Game) -> timedelta:
     return _total(_sessions(library).filter(**{GAME: game}))
+
+
+def game_playtime_between(
+    library: UserLibrary, game: Game, days: DayInterval
+) -> timedelta:
+    return _total(_within(_sessions(library).filter(**{GAME: game}), days))
 
 
 def summed_by_game(
@@ -61,9 +71,7 @@ def total_playtime(library: UserLibrary, *, year: YearScope = None) -> timedelta
 
 
 def playtime_between(library: UserLibrary, days: DayInterval) -> timedelta:
-    return _total(
-        _sessions(library).filter(effective_day__range=(days.first, days.last))
-    )
+    return _total(_within(_sessions(library), days))
 
 
 def playtime_by_platform(

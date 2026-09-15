@@ -25,6 +25,7 @@ __all__ = [
     "PlatformPlaytime",
     "UnscopedPlaytimeRead",
     "game_playtime",
+    "game_playtime_between",
     "playtime_between",
     "playtime_by_game",
     "playtime_by_month",
@@ -65,6 +66,13 @@ def playtime_matching(
 
 def game_playtime(library: UserLibrary, game: Game) -> timedelta:
     return SOURCE.game_playtime(library, game)
+
+
+def game_playtime_between(
+    library: UserLibrary, game: Game, days: DayInterval
+) -> timedelta:
+    """One game's playtime over inclusive days."""
+    return SOURCE.game_playtime_between(library, game, days)
 
 
 def total_playtime(library: UserLibrary, *, year: YearScope = None) -> timedelta:
