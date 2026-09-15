@@ -7,6 +7,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.utils.html import escape
+from session_rows import session_row
 
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
@@ -18,7 +19,8 @@ from common.duration_presentation import (
 )
 from common.filter_execution import execute_filter
 from games.filters import filter_query_context_for_library, filter_url
-from games.models import Game, Platform, Playthrough, Purchase, Session
+from games.models import Game, Platform, Playthrough, Purchase
+from games.reads.player_sessions import library_sessions
 from games.views import stats_links
 from games.views.stats_content import stats_content as _stats_content
 from games.views.stats_data import compute_stats
@@ -55,10 +57,10 @@ def rendered(db):
             status=Game.Status.PLAYED,
         )
         start = _dt(6, index + 1)
-        Session.objects.create(
-            game=game,
-            timestamp_start=start,
-            timestamp_end=start + timedelta(hours=index + 1),
+        session_row(
+            game,
+            started_at=start,
+            ended_at=start + timedelta(hours=index + 1),
         )
         games.append(game)
 
@@ -146,10 +148,10 @@ def test_unspecified_platform_row_links_to_null_bucket_sessions(
     user = django_user_model.objects.create_user(username="u2", password="p")
     platformless_game = Game.objects.create(library=user.library, name="Homebrew")
     start = _dt(6, 1)
-    Session.objects.create(
-        game=platformless_game,
-        timestamp_start=start,
-        timestamp_end=start + timedelta(hours=1),
+    session_row(
+        platformless_game,
+        started_at=start,
+        ended_at=start + timedelta(hours=1),
     )
     ctx = compute_stats(user.library, YEAR)
     html = str(stats_content(ctx))
@@ -158,8 +160,10 @@ def test_unspecified_platform_row_links_to_null_bucket_sessions(
     link_filter = stats_links.sessions_for_platform(None, YEAR)
     assert _href(link_filter) in html
 
-    scoped_sessions = Session.objects.for_library(user.library)
-    expected = scoped_sessions.filter(game__platform__isnull=True).count()
+    scoped_sessions = library_sessions(user.library)
+    expected = scoped_sessions.filter(
+        playthrough__player_game__game__platform__isnull=True
+    ).count()
     actual = (
         execute_filter(
             link_filter,

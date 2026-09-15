@@ -8,7 +8,7 @@ from django.contrib.auth.models import AnonymousUser
 from django.test import RequestFactory
 from django.urls import reverse
 from django.utils import timezone
-from session_rows import timed_row, tracked_run
+from session_rows import session_row, timed_row, tracked_run
 
 from common.duration_presentation import duration_presentation_for_request
 from common.layout import recent_session_resumes
@@ -145,6 +145,19 @@ def world(client, django_user_model):
         device=foreign_device,
         timestamp_start=foreign_start,
         timestamp_end=foreign_start + timedelta(hours=6),
+    )
+    #: The projection's twins, which the navbar and the counts read.
+    own_row = session_row(
+        own_game,
+        device=own_device,
+        started_at=own_start,
+        ended_at=own_start + timedelta(hours=1),
+    )
+    session_row(
+        foreign_game,
+        device=foreign_device,
+        started_at=foreign_start,
+        ended_at=foreign_start + timedelta(hours=6),
     )
     own_purchase = Purchase.objects.create(
         library=owner_library,
@@ -392,7 +405,7 @@ def test_navbar_recent_resumes_are_scoped_to_the_authenticated_library(world):
 
     resumes = recent_session_resumes(request)
 
-    assert [session.pk for session in resumes] == [world.own_session.pk]
+    assert [session.pk for session in resumes] == [world.own_row.pk]
 
 
 def test_navbar_playtime_is_scoped_to_the_authenticated_library(world):

@@ -12,6 +12,7 @@ from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import Client
 from django.urls import reverse
+from session_rows import session_row
 
 from common.filter_execution import execute_filter
 from games import tasks
@@ -27,6 +28,7 @@ from games.models import (
     FilterPreset,
     Game,
     Platform,
+    PlayerSession,
     Purchase,
     PurchaseConversionState,
     Session,
@@ -46,6 +48,13 @@ def _client_for(user) -> Client:
 
 def _session(game, device, day: int, hours: int) -> Session:
     started = datetime(YEAR, 6, day, 10, tzinfo=UTC)
+    #: The projection's twin, which every read scope reads.
+    session_row(
+        game,
+        device=device,
+        started_at=started,
+        ended_at=started + timedelta(hours=hours),
+    )
     return Session.objects.create(
         game=game,
         device=device,
@@ -306,19 +315,23 @@ def test_statistics_and_exact_links_reconcile_per_library(parity_world):
         assert stats["total_spent"] == spending
         assert stats["total_spent_currency"] == "CZK"
         exact_links = (
-            (stats_links.all_sessions(YEAR), Session, stats["total_sessions"]),
+            (stats_links.all_sessions(YEAR), PlayerSession, stats["total_sessions"]),
             (stats_links.games_played(YEAR), Game, stats["total_games"]),
             (
                 stats_links.purchases_total(YEAR),
                 Purchase,
                 stats["all_purchased_this_year_count"],
             ),
-            (stats_links.sessions_for_game(game.pk, YEAR, game.name), Session, 1),
+            (
+                stats_links.sessions_for_game(game.pk, YEAR, game.name),
+                PlayerSession,
+                1,
+            ),
             (
                 stats_links.sessions_for_platform(
                     world.shared_platform.pk, YEAR, world.shared_platform.name
                 ),
-                Session,
+                PlayerSession,
                 1,
             ),
             (stats_links.games_in_month(YEAR, 6), Game, 2),

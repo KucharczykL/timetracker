@@ -14,9 +14,10 @@ from django.db import connection
 from django.test import RequestFactory, TestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
+from session_rows import session_row
 
 from common.layout import Navbar, NavbarViewer, recent_session_resumes
-from games.models import Game, Platform, Session
+from games.models import Game, Platform, PlayerSession
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 BASE = datetime(2025, 1, 1, 12, 0, tzinfo=ZONEINFO)
@@ -40,8 +41,8 @@ class RecentSessionResumesTest(TestCase):
             library=self.user.library, name=name, platform=self.platform
         )
 
-    def _session(self, game, when) -> Session:
-        return Session.objects.create(game=game, timestamp_start=when)
+    def _session(self, game, when) -> PlayerSession:
+        return session_row(game, started_at=when)
 
     def test_anonymous_gets_empty_list(self) -> None:
         self._session(self._game("A"), BASE)
@@ -62,7 +63,7 @@ class RecentSessionResumesTest(TestCase):
         resumes = recent_session_resumes(self._request(authenticated=True))
         self.assertEqual(len(resumes), 5)
         # Newest first: G5, G4, G3, G2, G1 (G0 falls off the limit).
-        names = [s.game.name for s in resumes]
+        names = [s.playthrough.player_game.game.name for s in resumes]
         self.assertEqual(names, ["G5", "G4", "G3", "G2", "G1"])
 
     def test_pages_past_a_boundary_with_a_tie_across_it(self) -> None:
@@ -81,7 +82,8 @@ class RecentSessionResumesTest(TestCase):
             self._session(third, BASE + timedelta(hours=5))
             resumes = recent_session_resumes(self._request(authenticated=True))
         self.assertEqual(
-            [session.game.name for session in resumes], ["third", "second", "first"]
+            [session.playthrough.player_game.game.name for session in resumes],
+            ["third", "second", "first"],
         )
 
     def test_query_has_no_obsolete_nullable_game_guard(self) -> None:
@@ -91,9 +93,14 @@ class RecentSessionResumesTest(TestCase):
             recent_session_resumes(self._request(authenticated=True))
 
         session_query = next(
-            query["sql"] for query in queries if "games_session" in query["sql"]
+            query["sql"] for query in queries if "games_playersession" in query["sql"]
         )
-        self.assertNotIn('"games_session"."game_id" IS NOT NULL', session_query)
+        self.assertNotIn(
+            "IS NOT NULL",
+            session_query.split("WHERE", 1)[-1]
+            .split("ORDER", 1)[0]
+            .replace('"removed_at" IS NULL', ""),
+        )
 
 
 class NavbarLogButtonRenderTest(TestCase):
@@ -107,7 +114,7 @@ class NavbarLogButtonRenderTest(TestCase):
         self.game = Game.objects.create(
             library=self.user.library, name="Zzq Unique Title", platform=self.platform
         )
-        Session.objects.create(game=self.game, timestamp_start=BASE)
+        session_row(self.game, started_at=BASE)
 
     def test_authenticated_navbar_has_log_button_and_recent_game(self) -> None:
         self.client.force_login(self.user)

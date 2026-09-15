@@ -5,15 +5,16 @@ pins the two intentional fixes: all-time "days played %" is span-based, and
 games-by-playtime uses duration_total (so manual sessions count).
 """
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from session_rows import duration_only_row, session_row, tracked_run
 
-from games.models import Game, Platform, Session
+from games.models import Game, Platform, PlayerSession
 from games.views.stats_data import _days_played_percent, compute_stats
 
 TZ = ZoneInfo(settings.TIME_ZONE)
@@ -55,32 +56,32 @@ class ComputeStatsTest(TestCase):
             return datetime(y, mo, d, h, mi, tzinfo=TZ)
 
         # Game A in 2023: 1h + 1.5h on the same day = 2.5h
-        Session.objects.create(
-            game=self.game_a,
-            timestamp_start=dt(2023, 6, 10, 10),
-            timestamp_end=dt(2023, 6, 10, 11),
+        session_row(
+            self.game_a,
+            started_at=dt(2023, 6, 10, 10),
+            ended_at=dt(2023, 6, 10, 11),
         )
-        Session.objects.create(
-            game=self.game_a,
-            timestamp_start=dt(2023, 6, 10, 14),
-            timestamp_end=dt(2023, 6, 10, 15, 30),
+        session_row(
+            self.game_a,
+            started_at=dt(2023, 6, 10, 14),
+            ended_at=dt(2023, 6, 10, 15, 30),
         )
         # Game B in 2023: 1h tracked + 2h manual (no end) = 3h total
-        Session.objects.create(
-            game=self.game_b,
-            timestamp_start=dt(2023, 7, 1, 20),
-            timestamp_end=dt(2023, 7, 1, 21),
+        session_row(
+            self.game_b,
+            started_at=dt(2023, 7, 1, 20),
+            ended_at=dt(2023, 7, 1, 21),
         )
-        Session.objects.create(
-            game=self.game_b,
-            timestamp_start=dt(2023, 7, 2, 12),
+        session_row(
+            self.game_b,
+            started_at=dt(2023, 7, 2, 12),
             duration_manual=timedelta(hours=2),
         )
         # Game A in 2022 (only counts toward all-time): 2h
-        Session.objects.create(
-            game=self.game_a,
-            timestamp_start=dt(2022, 5, 1, 10),
-            timestamp_end=dt(2022, 5, 1, 12),
+        session_row(
+            self.game_a,
+            started_at=dt(2022, 5, 1, 10),
+            ended_at=dt(2022, 5, 1, 12),
         )
 
     def stats(self, year=None):
@@ -117,10 +118,10 @@ class ComputeStatsTest(TestCase):
         tied = Game.objects.create(
             library=self.library, name="Aardvark", platform=self.platform
         )
-        Session.objects.create(
-            game=tied,
-            timestamp_start=datetime(2023, 8, 1, 10, tzinfo=TZ),
-            timestamp_end=datetime(2023, 8, 1, 13, tzinfo=TZ),
+        session_row(
+            tied,
+            started_at=datetime(2023, 8, 1, 10, tzinfo=TZ),
+            ended_at=datetime(2023, 8, 1, 13, tzinfo=TZ),
         )
 
         top = list(self.stats(2023)["top_10_games_by_playtime"])
@@ -146,16 +147,37 @@ class ComputeStatsTest(TestCase):
         self.assertEqual(self.stats(None)["year"], "Alltime")
         self.assertEqual(self.stats(2023)["year"], 2023)
 
-    def test_first_and_last_play_values_stay_native_for_rendering(self):
+    def test_first_and_last_play_values_are_the_rows_days(self):
+        """The library's calendar day, which no zone moves at render time."""
         stats = self.stats(2023)
 
-        self.assertEqual(stats["first_play_date"], datetime(2023, 6, 10, 10, tzinfo=TZ))
-        self.assertEqual(stats["last_play_date"], datetime(2023, 7, 2, 12, tzinfo=TZ))
-        self.assertIsNotNone(stats["first_play_date"].utcoffset())
-        self.assertIsNotNone(stats["last_play_date"].utcoffset())
+        self.assertEqual(stats["first_play_date"], date(2023, 6, 10))
+        self.assertEqual(stats["last_play_date"], date(2023, 7, 2))
+
+    def test_a_duration_only_first_play_prints_its_written_day(self):
+        """West of UTC or east, the written day is the day."""
+        duration_only_row(
+            tracked_run(self.library, self.game_a), date(2023, 1, 5), timedelta(hours=1)
+        )
+
+        stats = self.stats(2023)
+
+        self.assertEqual(stats["first_play_date"], date(2023, 1, 5))
+        self.assertEqual(stats["first_play_game"], self.game_a)
+
+    def test_the_longest_session_reads_the_effective_duration(self):
+        """A Duration-only row enters at its stated time."""
+        duration_only_row(
+            tracked_run(self.library, self.game_a), date(2023, 9, 1), timedelta(hours=9)
+        )
+
+        stats = self.stats(2023)
+
+        self.assertEqual(stats["longest_session_time"], timedelta(hours=9))
+        self.assertEqual(stats["longest_session_game"], self.game_a)
 
     def test_first_and_last_play_values_are_none_without_sessions(self):
-        Session.objects.for_library(self.library).delete()
+        PlayerSession.objects.filter(library=self.library).delete()
 
         stats = self.stats(2023)
 
@@ -168,9 +190,7 @@ class ComputeStatsTest(TestCase):
 def test_an_untracked_library_game_counts_in_top_games(owned_library):
     game = Game.objects.create(library=owned_library, name="Untracked")
     start = datetime(2023, 3, 1, 10, tzinfo=TZ)
-    Session.objects.create(
-        game=game, timestamp_start=start, timestamp_end=start + timedelta(hours=2)
-    )
+    session_row(game, started_at=start, ended_at=start + timedelta(hours=2))
 
     top = list(compute_stats(owned_library, 2023)["top_10_games_by_playtime"])
 
