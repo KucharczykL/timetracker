@@ -4,7 +4,7 @@ import logging
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta, tzinfo
+from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from functools import lru_cache
 from typing import ClassVar, NamedTuple, assert_never
 from zoneinfo import ZoneInfo
@@ -549,6 +549,34 @@ def _check_endpoint_zone(
                 f"an {endpoint} time zone."
             ),
         )
+
+
+def session_events(
+    playthrough_id: uuid.UUID, *, day: date, day_zone: ZoneName
+) -> list[NewEvent]:
+    """One finished Timed hour at noon, as the benchmark seeds it.
+
+    Beside the command for the reason `tracking_events` states: a seed
+    that drifted from the command would measure a stream no command
+    produces.
+    """
+    noon = datetime.combine(day, time(12), tzinfo=ZoneInfo(day_zone))
+    return [
+        playersession_created(
+            playthrough_id,
+            timing=timing_payload(
+                TimedTiming(
+                    started_at=noon,
+                    day_zone=day_zone,
+                    ended_at=noon + timedelta(hours=1),
+                )
+            ),
+            device=None,
+            release=None,
+            note="",
+            emulated=False,
+        )
+    ]
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

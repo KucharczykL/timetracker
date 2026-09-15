@@ -2,6 +2,7 @@
 
 import json
 import uuid
+from datetime import timedelta
 from io import StringIO
 
 import pytest
@@ -56,6 +57,7 @@ from games.models import (
     PlayerSession,
     Playthrough,
 )
+from games.reads.calendar import calendar_day_zone
 
 pytestmark = pytest.mark.untracked_games
 
@@ -262,16 +264,35 @@ def test_a_rebuild_below_the_gating_floor_is_not_gated():
 
 @pytest.mark.django_db
 def test_seeding_writes_both_creation_events_and_both_projection_rows(owned_library):
-    """A pair per game, as TrackGame appends."""
+    """A pair per game, as TrackGame appends, then a session."""
     report = seed_library(owned_library, actor=owned_library.user, games=25, spares=4)
     assert isinstance(report, SeedReport)
     assert report.games == 25
-    assert report.events == 50
+    assert report.events == 75
     assert report.catalog_rows == 29
-    assert LibraryEvent.objects.filter(library=owned_library).count() == 50
+    assert LibraryEvent.objects.filter(library=owned_library).count() == 75
     #: append() runs inline; the rows exist already.
     assert PlayerGame.objects.filter(library=owned_library).count() == 25
     assert Playthrough.objects.filter(library=owned_library).count() == 25
+
+
+@pytest.mark.django_db
+def test_seeding_writes_a_session_on_each_seeded_run(owned_library):
+    """One finished hour a run, on a day of its own."""
+    seed_library(owned_library, actor=owned_library.user, games=25, spares=0)
+    sessions = PlayerSession.objects.filter(library=owned_library)
+    assert sessions.count() == 25
+    assert set(sessions.values_list("playthrough_id", flat=True)) == set(
+        Playthrough.objects.filter(library=owned_library).values_list("pk", flat=True)
+    )
+    assert set(sessions.values_list("timing_mode", flat=True)) == {"timed"}
+    assert set(sessions.values_list("effective_duration", flat=True)) == {
+        timedelta(hours=1)
+    }
+    assert set(sessions.values_list("day_zone", flat=True)) == {
+        calendar_day_zone(owned_library).key
+    }
+    assert sessions.values("effective_day").distinct().count() == 25
 
 
 @pytest.mark.django_db
@@ -395,7 +416,7 @@ def test_replaying_one_event_costs_one_statement(django_user_model):
 
     A rebuild also pays a fixed cost, so a small one averages more.
     The slope between two sizes is the per-event number, and it is
-    exact. A game is two events, so twenty more games are forty more.
+    exact. A game is three events, so twenty more games are sixty more.
     """
     totals: dict[int, int] = {}
     for games in (10, 30):
@@ -406,7 +427,7 @@ def test_replaying_one_event_costs_one_statement(django_user_model):
         )
         assert replay is not None
         totals[games] = replay.statements
-    assert (totals[30] - totals[10]) / 40 == pytest.approx(1.0, abs=0.01)
+    assert (totals[30] - totals[10]) / 60 == pytest.approx(1.0, abs=0.01)
 
 
 @pytest.mark.django_db
@@ -611,11 +632,11 @@ def test_keep_names_the_scratch_user_it_leaves_behind():
 
 
 @pytest.mark.django_db(transaction=True)
-def test_an_odd_seed_seeds_one_event_fewer():
-    """An odd count cannot be a pair."""
+def test_a_seed_not_divisible_by_three_seeds_fewer_events():
+    """Seven is two games and a remainder."""
     report = run_benchmark(seed=7, iterations=1, warmup=0, keep=True)
     assert report.seed is not None
-    assert report.seed.games == 3
+    assert report.seed.games == 2
     assert report.seed.events == 6
 
 
@@ -647,10 +668,11 @@ def test_a_seeded_library_rebuilds_both_tables_with_no_row_differing(owned_libra
 
 
 @pytest.mark.django_db
-def test_a_seed_of_one_is_refused():
-    """A game is two events; one seeds none."""
+@pytest.mark.parametrize("seed", [1, 2])
+def test_a_seed_under_three_is_refused(seed):
+    """A game is three events; one or two seeds none."""
     with pytest.raises(CommandError, match="smallest seeded run"):
-        run_command(seed=1, iterations=1, warmup=0)
+        run_command(seed=seed, iterations=1, warmup=0)
 
 
 @pytest.mark.django_db
@@ -661,8 +683,8 @@ def test_a_negative_seed_is_refused():
 
 @pytest.mark.django_db(transaction=True)
 def test_the_notice_counts_the_spare_games_the_scenarios_take():
-    """Half the seed, plus what each scenario consumes."""
+    """A third of the seed, plus what each scenario consumes."""
     output = run_command(seed=24, iterations=2, warmup=1)
 
-    #: 12 seeded, 2 scenarios of 2, 1 warmup.
-    assert "17 catalog row(s)" in output
+    #: 8 seeded, 2 scenarios of 2, 1 warmup.
+    assert "13 catalog row(s)" in output

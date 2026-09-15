@@ -2,9 +2,11 @@
 
 import uuid
 from collections.abc import Iterator
+from datetime import date, datetime, timedelta
 from io import StringIO
 from itertools import batched, islice
 from time import monotonic
+from zoneinfo import ZoneInfo
 
 from django.contrib.auth.models import User
 from django.core.management import call_command
@@ -12,7 +14,8 @@ from django.db import connection, transaction
 
 from common.keyset import keyset_pages
 from games.commands.playergame import TrackGame, tracking_events
-from games.events.append import lock_stream
+from games.commands.playersession import session_events
+from games.events.append import NewEvent, lock_stream
 from games.events.benchmark import (
     Seconds,
     SeedReport,
@@ -30,9 +33,11 @@ from games.models import (
     LibraryEventStreamHead,
     LibraryIdempotencyRecord,
     PlayerGame,
+    PlayerSession,
     Playthrough,
     UserLibrary,
 )
+from games.reads.calendar import calendar_day_zone
 
 #: The seeded rows, and the untracked spares.
 SEEDED_NAME_PREFIX = "Benchmark game "
@@ -55,8 +60,13 @@ _SEEDED_TABLES = (
     LibraryEventStreamHead,
     LibraryIdempotencyRecord,
     PlayerGame,
+    PlayerSession,
     Playthrough,
 )
+
+#: Days cycle over two years, so per-day and per-month
+#: reads aggregate many rows a cell and played_years stays small.
+SEEDED_DAY_CYCLE = 730
 
 
 def seed_library(
@@ -65,7 +75,8 @@ def seed_library(
     """Fill `library`, and leave `spares` untracked games.
 
     The parameter counts games rather than events, because a game is
-    two events and a parameter named for the other one reads wrong at
+    three events -- the tracking pair, then one finished session on
+    the run -- and a parameter named for the other one reads wrong at
     every call site.
     """
     catalog_started = monotonic()
@@ -75,16 +86,23 @@ def seed_library(
 
     append_started = monotonic()
     correlation_id = uuid.uuid7()
+    #: Read, never a literal: a direct append runs no command check.
+    day_zone = calendar_day_zone(library).key
+    today = datetime.now(tz=ZoneInfo(day_zone)).date()
     events = 0
-    for batch in batched(_seeded_games(library), APPEND_BATCH):
+    for batch in batched(enumerate(_seeded_games(library)), APPEND_BATCH):
         with transaction.atomic():
             lock_stream(library).append(
-                [event for game in batch for event in tracking_events(game)],
+                [
+                    event
+                    for index, game in batch
+                    for event in _seeded_events(game, index, today, day_zone)
+                ],
                 actor=actor,
                 correlation_id=correlation_id,
                 idempotency_key=SEED_IDEMPOTENCY_KEY,
             )
-        events += 2 * len(batch)
+        events += 3 * len(batch)
     append_seconds = monotonic() - append_started
     _analyze()
 
@@ -96,6 +114,16 @@ def seed_library(
         append_seconds=append_seconds,
         events_per_second=events / append_seconds if append_seconds else 0.0,
     )
+
+
+def _seeded_events(
+    game: Game, index: int, today: date, day_zone: str
+) -> list[NewEvent]:
+    """The tracking pair, then a session on the run it stated."""
+    pair = tracking_events(game)
+    run_id = pair[1].aggregate_id
+    day = today - timedelta(days=index % SEEDED_DAY_CYCLE)
+    return [*pair, *session_events(run_id, day=day, day_zone=day_zone)]
 
 
 def _analyze() -> None:

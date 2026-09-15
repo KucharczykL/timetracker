@@ -11,9 +11,10 @@ make bench ARGS="--gate"                     # exit non-zero on a missed budget
 make bench ARGS="--library <uuid>"           # check an existing library, read-only
 ```
 
-`--seed` counts **events**, and the seed writes two a game — the pair
-`TrackGame` appends since #679 — so `--seed 100000` seeds 50,000 games. An odd
-count seeds one event fewer.
+`--seed` counts **events**, and the seed writes three a game — the pair
+`TrackGame` appends since #679, then one finished session on the run — so
+`--seed 100000` seeds 33,333 games. A count not divisible by three seeds one
+or two events fewer.
 
 `make bench` is deliberately **not** part of `make check`. CI runs on 4 vCPU,
 where a timing gate turns a green machine red, and a command that runs for

@@ -221,10 +221,10 @@ def session_events(playthrough_id: uuid.UUID, *, day: date, day_zone: ZoneName) 
 - `append` applies projectors in event order inside one batch; the run's row exists before the session's insert. Assert it in the test below.
 - Tests to update: `test_seeding_writes_both_creation_events_and_both_projection_rows` (75 events, 25 sessions), `test_replaying_one_event_costs_one_statement` (slope over 60), `test_an_odd_seed_seeds_one_event_fewer` (seed 7 → 2 games, 6 events), `test_a_seed_of_one_is_refused` (seed 2 too), the `catalog_rows` arithmetic.
 
-- [ ] **Step 1: Failing test** `test_seeding_writes_a_session_on_each_seeded_run`: 25 games → 25 `PlayerSession` rows, each `playthrough_id` among the seeded runs, `timing_mode == "timed"`, `effective_duration == 1h`, `day_zone == calendar_day_zone(library).key`; distinct `effective_day` count is 25.
-- [ ] **Step 2: Implement; update the counts in the existing tests; `make test ARGS="tests/test_event_benchmark.py -x"`.**
-- [ ] **Step 3: Re-measure `SECONDS_PER_*`** with `make bench ARGS="--seed 20000 --iterations 50"` and paste; update `docs/event-benchmarks.md` lines 15-17.
-- [ ] **Step 4: `make check-fast`. Commit:** `feat: seed a session per game in the benchmark (#704)`.
+- [x] **Step 1: Failing test** `test_seeding_writes_a_session_on_each_seeded_run`: 25 games → 25 `PlayerSession` rows, each `playthrough_id` among the seeded runs, `timing_mode == "timed"`, `effective_duration == 1h`, `day_zone == calendar_day_zone(library).key`; distinct `effective_day` count is 25.
+- [x] **Step 2: Implement; update the counts in the existing tests; `make test ARGS="tests/test_event_benchmark.py -x"`.**
+- [x] **Step 3: Re-measure `SECONDS_PER_*`** (35, 29 and 12 per 100,000 on a 20,000-event run; the dev database had to be migrated to the stack's schema first, and the first run leaked a scratch user that `make purge-library` took) with `make bench ARGS="--seed 20000 --iterations 50"` and paste; update `docs/event-benchmarks.md` lines 15-17.
+- [x] **Step 4: `make check-fast`. Commit:** `feat: seed a session per game in the benchmark (#704)`.
 
 ---
 

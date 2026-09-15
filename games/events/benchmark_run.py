@@ -83,7 +83,7 @@ def _measure_scratch(
     library = user.library
     spares = 2 * iterations + warmup
     #: `seed` counts events; the seed takes games.
-    seeded = seed_library(library, actor=user, games=seed // 2, spares=spares)
+    seeded = seed_library(library, actor=user, games=seed // 3, spares=spares)
     #: One iterator; islice leaves the next spares.
     games = spare_games(library)
     command = run_command_scenario(
