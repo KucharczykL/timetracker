@@ -21,6 +21,7 @@ from games.events.retry import (
     RetryBudgetExhausted,
     RetryPolicy,
     is_retryable,
+    retried_transaction,
     run_in_transaction,
 )
 from games.events.vocabulary import EventSpec, EventTypeRegistry, NewEvent
@@ -174,6 +175,44 @@ def test_it_refuses_to_retry_beneath_another_transaction():
         pytest.raises(NestedTransactionNotSupported),
     ):
         run_in_transaction(lambda: "never reached")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_retried_transaction_reruns_on_a_retryable_failure():
+    policy, sleeper = recording_policy()
+    attempts = []
+
+    @retried_transaction(policy=policy)
+    def operation(label: str, *, count: int) -> str:
+        attempts.append(len(attempts))
+        if len(attempts) < 3:
+            raise wrapped(OperationalError, "40P01")
+        return f"{label}:{count}"
+
+    assert operation("recorded", count=2) == "recorded:2"
+    assert len(attempts) == 3
+    assert len(sleeper.delays) == 2
+    assert operation.__name__ == "operation"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_retried_transaction_is_usable_bare():
+    @retried_transaction
+    def operation() -> str:
+        assert transaction.get_connection().in_atomic_block
+        return "recorded"
+
+    assert operation() == "recorded"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_retried_transaction_refuses_nesting():
+    @retried_transaction
+    def operation() -> str:
+        return "never reached"
+
+    with transaction.atomic(), pytest.raises(NestedTransactionNotSupported):
+        operation()
 
 
 @pytest.mark.django_db(transaction=True)

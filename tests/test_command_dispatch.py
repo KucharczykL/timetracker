@@ -16,7 +16,9 @@ from games.events.dispatch import (
     CommandNotPermitted,
     CommandOutcome,
     CommandRejected,
+    CommandResult,
     CommandVocabulary,
+    append_command,
     authorize,
     canonical_command_input,
     dispatch,
@@ -24,7 +26,7 @@ from games.events.dispatch import (
     validate_idempotency_key,
 )
 from games.events.idempotency import IdempotencyKeyMismatch, fingerprint_command_input
-from games.events.retry import NestedTransactionNotSupported
+from games.events.retry import NestedTransactionNotSupported, run_in_transaction
 from games.events.vocabulary import EventSpec, EventTypeRegistry, NewEvent, Unchanged
 from games.events.wiring import EventWiring
 from games.models import LibraryEvent
@@ -568,6 +570,52 @@ def test_dispatch_refuses_to_nest(owned_user, owned_library):
             idempotency_key="first",
             wiring=WIRING,
         )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_append_command_inside_a_held_transaction_appends(owned_user, owned_library):
+    def held() -> CommandResult:
+        return append_command(
+            BasicCommand(label="x", count=1),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key="first",
+            wiring=WIRING,
+        )
+
+    result = run_in_transaction(held)
+
+    assert result.outcome is CommandOutcome.APPENDED
+    assert LibraryEvent.objects.filter(library=owned_library).count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_append_command_refuses_without_a_transaction(owned_user, owned_library):
+    with pytest.raises(RuntimeError, match="transaction"):
+        append_command(
+            BasicCommand(label="x", count=1),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key="first",
+            wiring=WIRING,
+        )
+    assert not LibraryEvent.objects.filter(library=owned_library).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_append_command_does_not_authorize(owned_user, other_library):
+    #: The caller vouches for the actor; a site-level act appends as the
+    #: operator into libraries the operator does not own.
+    def held() -> CommandResult:
+        return append_command(
+            BasicCommand(label="x", count=1),
+            actor=owned_user,
+            library=other_library,
+            idempotency_key="first",
+            wiring=WIRING,
+        )
+
+    assert run_in_transaction(held).outcome is CommandOutcome.APPENDED
 
 
 @pytest.mark.django_db(transaction=True)
