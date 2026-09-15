@@ -17,7 +17,6 @@ from games.models import (
     Platform,
     PlayerSession,
     Purchase,
-    Session,
     UserPreferences,
 )
 from games.reads.playtime import game_playtime
@@ -158,26 +157,6 @@ def test_platform_search_typed_query_remains_alphabetical(auth_client):
     rows = auth_client.get("/api/platforms/search", {"q": "Al", "limit": 10}).json()
 
     assert [row["value"] for row in rows] == [str(alpha.id), str(alpine.id)]
-
-
-def _make_session(**overrides):
-    # Only build the default game/device when the caller didn't supply one, so a
-    # call like _make_session(game=other) doesn't leave a throwaway Game/Platform
-    # in the DB that could skew count-based assertions.
-    if "game" not in overrides:
-        platform, _ = Platform.objects.get_or_create(name="PC")
-        overrides["game"] = _owned_game(name="Hades", platform=platform)
-    if "device" not in overrides:
-        overrides["device"] = _owned_device(name="Deck", type="h")
-    fields = {
-        "timestamp_start": datetime(2026, 6, 24, 18, 0, tzinfo=UTC),
-        "timestamp_end": None,
-        "duration_manual": timedelta(0),
-        "note": "",
-        "emulated": False,
-    }
-    fields.update(overrides)
-    return Session.objects.create(**fields)
 
 
 def _row(**overrides):
@@ -400,7 +379,7 @@ def test_session_list_malformed_filter_logged(auth_client, capture_games_logger)
 def test_session_list_unknown_sort_rejected(auth_client):
     # Issue #207: an unknown ?sort= key must 400 (parity with the filter rejection
     # in the same handler) instead of silently returning default-sorted data.
-    _make_session()
+    _row()
     response = auth_client.get("/api/session/?sort=bogusfield")
     assert response.status_code == 400
     assert "Invalid sort" in response.json()["detail"]
@@ -409,7 +388,7 @@ def test_session_list_unknown_sort_rejected(auth_client):
 def test_session_list_unknown_sort_logged(auth_client, capture_games_logger):
     # Issue #207: the rejection must also leave a server-side warning, mirroring
     # the filter path, so ?sort=<garbage> probing is visible to operators.
-    _make_session()
+    _row()
     with capture_games_logger() as caplog:
         response = auth_client.get("/api/session/?sort=bogusfield")
 
@@ -428,7 +407,7 @@ def test_session_list_unknown_sort_logged(auth_client, capture_games_logger):
 
 def test_session_list_valid_sort_still_ok(auth_client):
     # Regression: a valid ?sort= key is unaffected by the unknown-sort rejection.
-    _make_session()
+    _row()
     response = auth_client.get("/api/session/?sort=-date")
     assert response.status_code == 200
 

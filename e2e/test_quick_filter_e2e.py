@@ -10,8 +10,10 @@ from datetime import UTC
 import pytest
 from django.urls import reverse
 from playwright.sync_api import Page, expect
+from session_rows import session_row
 
 from games.models import Game, Platform
+from games.reads.calendar import calendar_day_zone
 
 
 def _login(page: Page, live_server) -> None:
@@ -96,42 +98,40 @@ def test_quick_scalar_facet_filters_sessions(
     numeric criterion on Apply and the list is filtered by it."""
     from datetime import datetime, timedelta
 
-    from games.models import Session
-
     platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
     game = Game.objects.create(
         library=e2e_library, name="Timed Game", platform=platform
     )
     start = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
-    long_session = Session.objects.create(
-        game=game, timestamp_start=start, timestamp_end=start + timedelta(hours=3)
+    long_session = session_row(
+        game, started_at=start, ended_at=start + timedelta(hours=3)
     )
-    short_session = Session.objects.create(
-        game=game, timestamp_start=start, timestamp_end=start + timedelta(hours=1)
+    short_session = session_row(
+        game, started_at=start, ended_at=start + timedelta(hours=1)
     )
 
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
 
     # The Duration facet is a dropdown: open its panel first.
-    page.locator("#quick-duration_total_hours-dropdownLink").click()
+    page.locator("#quick-duration_hours-dropdownLink").click()
     duration = page.locator('quick-filter-bar [data-filter-widget][data-kind="number"]')
     duration.locator("select[data-number-modifier-select]").select_option(
         "GREATER_THAN"
     )
-    duration.locator('input[name="quick-duration_total_hours"]').fill("2")
+    duration.locator('input[name="quick-duration_hours"]').fill("2")
     _quick_apply(page)
 
     page.wait_for_url("**filter=**")
     assert _filter_from_url(page.url) == {
-        "duration_total_hours": {"value": 2, "modifier": "GREATER_THAN"}
+        "duration_hours": {"value": 2, "modifier": "GREATER_THAN"}
     }
     expect(page.locator(f"#session-row-{long_session.pk}")).to_be_visible()
     expect(page.locator(f"#session-row-{short_session.pk}")).to_have_count(0)
 
     # Round trip: the applied scalar criterion prefills an editable quick bar.
     expect(
-        page.locator('quick-filter-bar input[name="quick-duration_total_hours"]')
+        page.locator('quick-filter-bar input[name="quick-duration_hours"]')
     ).to_have_value("2")
 
 
@@ -168,8 +168,6 @@ def test_dropdown_facet_full_flow(authenticated_page: Page, live_server, e2e_lib
     pill inside the reopened panel."""
     from datetime import datetime, timedelta
 
-    from games.models import Session
-
     platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
     picked = Game.objects.create(
         library=e2e_library, name="Picked Game", platform=platform
@@ -178,11 +176,11 @@ def test_dropdown_facet_full_flow(authenticated_page: Page, live_server, e2e_lib
         library=e2e_library, name="Other Game", platform=platform
     )
     start = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
-    picked_session = Session.objects.create(
-        game=picked, timestamp_start=start, timestamp_end=start + timedelta(hours=1)
+    picked_session = session_row(
+        picked, started_at=start, ended_at=start + timedelta(hours=1)
     )
-    other_session = Session.objects.create(
-        game=other, timestamp_start=start, timestamp_end=start + timedelta(hours=1)
+    other_session = session_row(
+        other, started_at=start, ended_at=start + timedelta(hours=1)
     )
 
     page = authenticated_page
@@ -245,8 +243,6 @@ def test_date_dropdown_facet_preset_flow(
     picking the Today preset and applying serializes a BETWEEN criterion."""
     from datetime import datetime, timedelta
 
-    from games.models import Session
-
     platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
     game = Game.objects.create(library=e2e_library, name="Doom", platform=platform)
     #: Noon UTC: near-UTC zones read one day.
@@ -256,21 +252,24 @@ def test_date_dropdown_facet_preset_flow(
     #: in UTC. Noon is what keeps them agreeing if that default moves.
     now = datetime.now(UTC)
     noon = now.replace(hour=12, minute=0, second=0, microsecond=0)
-    today_session = Session.objects.create(
-        game=game, timestamp_start=noon, timestamp_end=noon + timedelta(hours=1)
+    today_session = session_row(
+        game,
+        started_at=noon,
+        ended_at=noon + timedelta(hours=1),
+        day_zone=calendar_day_zone(e2e_library).key,
     )
     old_start = datetime(2020, 1, 1, 12, 0, tzinfo=UTC)
-    old_session = Session.objects.create(
-        game=game,
-        timestamp_start=old_start,
-        timestamp_end=old_start + timedelta(hours=1),
+    old_session = session_row(
+        game,
+        started_at=old_start,
+        ended_at=old_start + timedelta(hours=1),
     )
 
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
 
-    trigger = page.locator("#quick-timestamp_start-dropdownLink")
-    panel = page.locator("#quick-timestamp_start-dropdown")
+    trigger = page.locator("#quick-day-dropdownLink")
+    panel = page.locator("#quick-day-dropdown")
     expect(trigger).to_be_visible()
     expect(panel).to_be_hidden()
 
@@ -288,7 +287,7 @@ def test_date_dropdown_facet_preset_flow(
     page.wait_for_url("**filter=**")
     today_iso = now.date().isoformat()
     assert _filter_from_url(page.url) == {
-        "timestamp_start": {
+        "day": {
             "value": today_iso,
             "value2": today_iso,
             "modifier": "BETWEEN",
@@ -298,8 +297,8 @@ def test_date_dropdown_facet_preset_flow(
     expect(page.locator(f"#session-row-{old_session.pk}")).to_have_count(0)
 
     # Round trip: reopened panel shows the committed range in the segments.
-    page.locator("#quick-timestamp_start-dropdownLink").click()
-    min_hidden = page.locator("#quick-timestamp_start-dropdown [data-range-min]")
+    page.locator("#quick-day-dropdownLink").click()
+    min_hidden = page.locator("#quick-day-dropdown [data-range-min]")
     expect(min_hidden).to_have_value(today_iso)
 
 
@@ -311,16 +310,14 @@ def test_priority_plus_overflow_collapses_and_restores(
     working from inside it; widening moves them back and hides the menu."""
     from datetime import datetime, timedelta
 
-    from games.models import Session
-
     platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
     game = Game.objects.create(library=e2e_library, name="Doom", platform=platform)
     start = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
-    long_session = Session.objects.create(
-        game=game, timestamp_start=start, timestamp_end=start + timedelta(hours=3)
+    long_session = session_row(
+        game, started_at=start, ended_at=start + timedelta(hours=3)
     )
-    short_session = Session.objects.create(
-        game=game, timestamp_start=start, timestamp_end=start + timedelta(hours=1)
+    short_session = session_row(
+        game, started_at=start, ended_at=start + timedelta(hours=1)
     )
 
     page = authenticated_page
@@ -330,7 +327,7 @@ def test_priority_plus_overflow_collapses_and_restores(
     overflow = page.locator("[data-quick-overflow]")
     overflow_items = page.locator("[data-quick-overflow-items]")
     duration_facet = page.locator(
-        "drop-down[data-quick-facet]:has(#quick-duration_total_hours-dropdown)"
+        "drop-down[data-quick-facet]:has(#quick-duration_hours-dropdown)"
     )
 
     # Wide: everything inline, no ⋯.
@@ -341,24 +338,22 @@ def test_priority_plus_overflow_collapses_and_restores(
     page.set_viewport_size({"width": 520, "height": 900})
     expect(overflow).to_be_visible()
     expect(
-        overflow_items.locator(
-            ":scope > drop-down:has(#quick-duration_total_hours-dropdown)"
-        )
+        overflow_items.locator(":scope > drop-down:has(#quick-duration_hours-dropdown)")
     ).to_have_count(1)
 
     # The spilled facet still works: open ⋯ → open Duration → edit → Apply.
     page.locator("#quick-sessions-overflowLink").click()
-    duration_facet.locator("#quick-duration_total_hours-dropdownLink").click()
-    duration_panel = page.locator("#quick-duration_total_hours-dropdown")
+    duration_facet.locator("#quick-duration_hours-dropdownLink").click()
+    duration_panel = page.locator("#quick-duration_hours-dropdown")
     expect(duration_panel).to_be_visible()
     duration_panel.locator("select[data-number-modifier-select]").select_option(
         "GREATER_THAN"
     )
-    duration_panel.locator('input[name="quick-duration_total_hours"]').fill("2")
+    duration_panel.locator('input[name="quick-duration_hours"]').fill("2")
     _quick_apply(page)
     page.wait_for_url("**filter=**")
     assert _filter_from_url(page.url) == {
-        "duration_total_hours": {"value": 2, "modifier": "GREATER_THAN"}
+        "duration_hours": {"value": 2, "modifier": "GREATER_THAN"}
     }
     expect(page.locator(f"#session-row-{long_session.pk}")).to_be_visible()
     expect(page.locator(f"#session-row-{short_session.pk}")).to_have_count(0)

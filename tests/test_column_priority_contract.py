@@ -22,7 +22,7 @@ from django.test import TestCase
 from django.urls import reverse
 from session_rows import session_row
 
-from games.models import Device, Game, Platform, Purchase, Session
+from games.models import Device, Game, Platform, Purchase
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 BASE = datetime(2024, 5, 1, 12, 0, tzinfo=ZONEINFO)
@@ -82,12 +82,6 @@ class ActionsColumnPriorityTest(TestCase):
             library=library, name="A Game", platform=platform
         )
         device = Device.objects.create(library=library, name="Desktop", type="p")
-        Session.objects.create(
-            game=self.game,
-            device=device,
-            timestamp_start=BASE,
-            timestamp_end=BASE.replace(hour=14),
-        )
         session_row(
             self.game, device=device, started_at=BASE, ended_at=BASE.replace(hour=14)
         )

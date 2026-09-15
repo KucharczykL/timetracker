@@ -12,6 +12,7 @@ import pytest
 from django.conf import settings
 from django.urls import reverse
 from playwright.sync_api import Page, expect
+from session_rows import session_row
 
 from e2e.helpers import settle_layout
 from games.models import (
@@ -21,7 +22,6 @@ from games.models import (
     PlayerGameStatus,
     Playthrough,
     Purchase,
-    Session,
 )
 from games.writes.playergame import new_correlation_id, record_facts, track_game
 from timetracker.temporal import TemporalValue
@@ -94,18 +94,18 @@ def populated(e2e_user, e2e_library) -> None:
     short = Game.objects.create(
         library=e2e_library, name="Short", platform=platform, year_released=2023
     )
-    Session.objects.create(
-        game=game,
+    session_row(
+        game,
         device=device,
-        timestamp_start=BASE,
-        timestamp_end=BASE + timedelta(hours=2),
+        started_at=BASE,
+        ended_at=BASE + timedelta(hours=2),
         note="a session note",
     )
-    Session.objects.create(
-        game=short,
+    session_row(
+        short,
         device=device,
-        timestamp_start=BASE + timedelta(days=1),
-        timestamp_end=BASE + timedelta(days=1, hours=1),
+        started_at=BASE + timedelta(days=1),
+        ended_at=BASE + timedelta(days=1, hours=1),
     )
     # One refunded, one not, so both renderings of the Refunded column appear.
     for index, purchased_game in enumerate((game, short)):

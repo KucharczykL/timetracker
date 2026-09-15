@@ -18,7 +18,6 @@ from games.models import (
     PlayerSession,
     Playthrough,
     Purchase,
-    Session,
 )
 from timetracker.settings_commands import change_user_setting
 from timetracker.temporal import TemporalValue
@@ -104,17 +103,11 @@ def test_non_default_presentation_reaches_every_server_display_path(
         num_purchases=1,
     )
     purchase.games.add(game)
-    session = Session.objects.create(
-        game=game,
-        device=device,
-        timestamp_start=datetime(2022, 9, 26, 12, 58, tzinfo=UTC),
-        timestamp_end=datetime(2022, 9, 26, 13, 58, tzinfo=UTC),
-    )
     row = session_row(
         game,
         device=device,
-        started_at=session.timestamp_start,
-        ended_at=session.timestamp_end,
+        started_at=datetime(2022, 9, 26, 12, 58, tzinfo=UTC),
+        ended_at=datetime(2022, 9, 26, 13, 58, tzinfo=UTC),
         created_at=datetime(2022, 10, 5, tzinfo=UTC),
     )
     #: Both endpoints and the run's created day.
@@ -130,7 +123,6 @@ def test_non_default_presentation_reaches_every_server_display_path(
         (Platform, platform.pk, datetime(2022, 10, 2, tzinfo=UTC)),
         (Device, device.pk, datetime(2022, 10, 3, tzinfo=UTC)),
         (Purchase, purchase.pk, datetime(2022, 10, 4, tzinfo=UTC)),
-        (Session, session.pk, datetime(2022, 10, 5, tzinfo=UTC)),
         (PlayerSession, row.pk, datetime(2022, 10, 5, tzinfo=UTC)),
     )
     for model, pk, value in created_values:

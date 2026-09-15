@@ -11,7 +11,7 @@ from session_rows import session_row
 from common.criteria import FilterError, Modifier, UUIDMultiCriterion
 from games.api import api
 from games.filters import PlayerSessionFilter, parse_session_filter
-from games.models import Device, FilterPreset, Game, PlayerSession, Session
+from games.models import Device, FilterPreset, Game, PlayerSession
 
 pytestmark = pytest.mark.django_db
 
@@ -29,11 +29,6 @@ def runtime_world():
         library=foreign_user.library, name="Foreign deck"
     )
     game = Game.objects.create(library=owner.library, name="Runtime game")
-    session = Session.objects.create(
-        game=game,
-        device=own_device,
-        timestamp_start=datetime(2026, 8, 20, 8, tzinfo=UTC),
-    )
     row = session_row(
         game, device=own_device, started_at=datetime(2026, 8, 20, 8, tzinfo=UTC)
     )

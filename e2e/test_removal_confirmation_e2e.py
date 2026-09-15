@@ -8,8 +8,9 @@ import pytest
 from django.urls import reverse
 from django.utils import timezone
 from playwright.sync_api import Page, expect
+from session_rows import session_row
 
-from games.models import Game, Session
+from games.models import Game, PlayerSession
 
 
 @pytest.fixture
@@ -46,7 +47,7 @@ def test_removing_a_game_empties_it_from_the_session_list(
 ):
     """Its sessions leave sight, and stay."""
     game = Game.objects.create(library=e2e_library, name="Sessioned")
-    Session.objects.create(game=game, timestamp_start=timezone.now())
+    session_row(game, started_at=timezone.now())
 
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:remove_game', args=[game.pk])}")
@@ -55,4 +56,4 @@ def test_removing_a_game_empties_it_from_the_session_list(
 
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
     expect(page.get_by_text("Sessioned")).to_have_count(0)
-    assert Session.objects.filter(game=game).exists()
+    assert PlayerSession.objects.filter(playthrough__player_game__game=game).exists()

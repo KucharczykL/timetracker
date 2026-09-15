@@ -20,7 +20,7 @@ from games.filters import (
     filter_url,
 )
 from games.formatting import session_time_range
-from games.models import Game, Platform, PlayerSession, Playthrough, Purchase, Session
+from games.models import Game, Platform, PlayerSession, Playthrough, Purchase
 from games.reads.playthrough_runs import library_runs
 from games.views.game import view_game
 
@@ -42,7 +42,6 @@ def game(owned_library):
         platform=platform,
         status=Game.Status.PLAYED,
     )
-    Session.objects.create(game=game, timestamp_start=_dt(1), timestamp_end=_dt(1, 13))
     session_row(game, started_at=_dt(1), ended_at=_dt(1, 13))
     Purchase.objects.create(
         library=owned_library,
@@ -119,7 +118,7 @@ def test_game_header_has_log_this_game_link(game, rendered):
 def test_sessions_section_is_read_only(game, rendered):
     """Game-detail sessions table is plain data: no interactive row swap, no
     per-row action buttons, no section-header add/resume buttons (#55)."""
-    session = game.sessions.first()
+    session = PlayerSession.objects.get(playthrough__player_game__game=game)
     # No canonical interactive list row (id + htmx device-changed swap)
     assert "session-row-" not in rendered
     assert "device-changed" not in rendered
@@ -130,7 +129,7 @@ def test_sessions_section_is_read_only(game, rendered):
     # dropdown legitimately carries per-game resume links (#419), which are
     # chrome, not part of this read-only section.
     body = rendered.split("</nav>", 1)[-1]
-    assert "/session/add/from-list/" not in body
+    assert "/session/add/resume/" not in body
     # Device shown as a plain column (the column header, not an incidental match)
     assert ">Device<" in rendered
 

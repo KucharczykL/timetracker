@@ -32,7 +32,6 @@ from games.models import (
     PlayerGameStatus,
     Playthrough,
     Purchase,
-    Session,
 )
 from games.views.stats_data import compute_stats
 from timetracker.temporal import TemporalValue
@@ -103,27 +102,17 @@ def two_libraries(db):
     device_a = Device.objects.create(library=library_a, name="Library A Device")
     device_b = Device.objects.create(library=library_b, name="Library B Device")
 
-    session_a = Session.objects.create(
-        game=game_a,
+    row_a = session_row(
+        game_a,
         device=device_a,
-        timestamp_start=datetime(YEAR, 6, 1, 10, tzinfo=UTC),
-        timestamp_end=datetime(YEAR, 6, 1, 12, tzinfo=UTC),
+        started_at=datetime(YEAR, 6, 1, 10, tzinfo=UTC),
+        ended_at=datetime(YEAR, 6, 1, 12, tzinfo=UTC),
     )
-    session_b = Session.objects.create(
-        game=game_b,
+    row_b = session_row(
+        game_b,
         device=device_b,
-        timestamp_start=datetime(YEAR, 6, 2, 10, tzinfo=UTC),
-        timestamp_end=datetime(YEAR, 6, 2, 13, tzinfo=UTC),
-    )
-    #: The projection's twins, which every read scope reads.
-    row_a, row_b = (
-        session_row(
-            legacy.game,
-            device=legacy.device,
-            started_at=legacy.timestamp_start,
-            ended_at=legacy.timestamp_end,
-        )
-        for legacy in (session_a, session_b)
+        started_at=datetime(YEAR, 6, 2, 10, tzinfo=UTC),
+        ended_at=datetime(YEAR, 6, 2, 13, tzinfo=UTC),
     )
     #: The run holds the note and completion.
     for game, note, day in (
@@ -174,8 +163,6 @@ def two_libraries(db):
         "shared_game_b": shared_game_b,
         "device_a": device_a,
         "device_b": device_b,
-        "session_a": session_a,
-        "session_b": session_b,
         "row_a": row_a,
         "row_b": row_b,
         "purchase_a": purchase_a,

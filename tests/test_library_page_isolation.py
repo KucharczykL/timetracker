@@ -20,7 +20,6 @@ from games.models import (
     PlayerSession,
     Playthrough,
     Purchase,
-    Session,
 )
 from games.views.general import model_counts
 
@@ -134,19 +133,7 @@ def world(client, django_user_model):
         hour=0, minute=0, second=0, microsecond=0
     )
     own_start = max(now - timedelta(hours=1), start_of_today)
-    own_session = Session.objects.create(
-        game=own_game,
-        device=own_device,
-        timestamp_start=own_start,
-        timestamp_end=own_start + timedelta(hours=1),
-    )
     foreign_start = max(now - timedelta(hours=6), start_of_today)
-    foreign_session = Session.objects.create(
-        game=foreign_game,
-        device=foreign_device,
-        timestamp_start=foreign_start,
-        timestamp_end=foreign_start + timedelta(hours=6),
-    )
     #: The projection's twins, which the navbar and the counts read.
     own_row = session_row(
         own_game,

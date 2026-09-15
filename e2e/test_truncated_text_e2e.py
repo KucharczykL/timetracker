@@ -6,9 +6,10 @@ import pytest
 from django.urls import reverse
 from django.utils import timezone
 from playwright.sync_api import Locator, Page, Route, expect
+from session_rows import session_row
 
 from e2e.helpers import settle_layout
-from games.models import Game, Platform, Purchase, Session
+from games.models import Game, Platform, Purchase
 
 LONG_NAME = (
     "A Deliberately Extraordinary Game Name That Is Much Wider Than Any Practical "
@@ -454,7 +455,7 @@ def test_navbar_menu_name_is_hover_only_and_has_no_nested_button(
         name="PC", icon="pc", group="PC", library=e2e_library
     )
     game = Game.objects.create(name=LONG_NAME, platform=platform, library=e2e_library)
-    Session.objects.create(game=game, timestamp_start=timezone.now())
+    session_row(game, started_at=timezone.now())
 
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
     page.locator("#navbar-logLink").click()

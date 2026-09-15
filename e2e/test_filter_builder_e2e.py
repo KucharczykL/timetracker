@@ -29,6 +29,7 @@ from datetime import UTC, date, datetime
 import pytest
 from django.urls import reverse
 from playwright.sync_api import Page, expect
+from session_rows import session_row
 
 from games.models import FilterPreset, Game, Platform, Playthrough, Purchase
 from timetracker.temporal import TemporalValue
@@ -356,7 +357,9 @@ def test_load_set_field_preset_reflects_field_without_crash(
     console_messages: list[str] = []
     page.on("console", lambda message: console_messages.append(message.text))
 
-    page.goto(f"{live_server.url}{reverse('games:filter_builder', args=['session'])}")
+    page.goto(
+        f"{live_server.url}{reverse('games:filter_builder', args=['playersession'])}"
+    )
 
     # Wait for the builder page to finish initializing (count badge settles).
     expect(page.locator("filter-count")).not_to_contain_text(
@@ -592,7 +595,7 @@ def test_scoped_aggregate_prefill_hydrates_scope_and_counts(
     add/remove wiring works against real server templates."""
     from datetime import timedelta
 
-    from games.models import Device, Session
+    from games.models import Device
 
     page = authenticated_page
 
@@ -617,11 +620,11 @@ def test_scoped_aggregate_prefill_hydrates_scope_and_counts(
         ]
     ):
         begin = first_start + timedelta(days=index)
-        Session.objects.create(
-            game=game,
+        session_row(
+            game,
             device=device,
-            timestamp_start=begin,
-            timestamp_end=begin + timedelta(hours=1),
+            started_at=begin,
+            ended_at=begin + timedelta(hours=1),
         )
 
     # Both games have 2 sessions; only DeckGame has >1 *on the deck*.
@@ -670,7 +673,7 @@ def test_scoped_aggregate_narrows_game_list(
     (scope resolved via the aggregates spec) → filtered aggregate queryset."""
     from datetime import timedelta
 
-    from games.models import Device, Session
+    from games.models import Device
 
     page = authenticated_page
 
@@ -695,11 +698,11 @@ def test_scoped_aggregate_narrows_game_list(
         ]
     ):
         begin = first_start + timedelta(days=index)
-        Session.objects.create(
-            game=game,
+        session_row(
+            game,
             device=device,
-            timestamp_start=begin,
-            timestamp_end=begin + timedelta(hours=1),
+            started_at=begin,
+            ended_at=begin + timedelta(hours=1),
         )
 
     filter_json = {
@@ -727,19 +730,17 @@ def test_cross_model_year_comparison_filters_sessions(
     """Cross-model year-space field comparison round-trip (#169).
 
     Drives the sessions filter BUILDER UI (the builder is the comparison UI
-    for sessions, #315): adds a comparison leaf with left='timestamp_start',
-    operator='EQUALS:year' (year comparison space), right='game__year_released',
+    for sessions, #315): adds a comparison leaf with left='started_at',
+    operator='EQUALS:year' (year comparison space), right=the game's year_released,
     applies, and asserts that only the session whose play year matches
     the game's release year remains visible on the list.
 
     Data:
     - One game released in 2020.
-    - MatchSession: started in 2020 — timestamp_start year == game.year_released.
-    - MissSession: started in 2021 — timestamp_start year != game.year_released.
+    - MatchSession: started in 2020 — started_at year == game.year_released.
+    - MissSession: started in 2021 — started_at year != game.year_released.
     """
     from datetime import timedelta
-
-    from games.models import Session
 
     page = authenticated_page
 
@@ -752,29 +753,31 @@ def test_cross_model_year_comparison_filters_sessions(
     )
 
     match_start = datetime(2020, 6, 15, 10, 0, tzinfo=UTC)
-    Session.objects.create(
-        game=match_game,
-        timestamp_start=match_start,
-        timestamp_end=match_start + timedelta(hours=2),
+    session_row(
+        match_game,
+        started_at=match_start,
+        ended_at=match_start + timedelta(hours=2),
     )
 
     miss_start = datetime(2021, 3, 10, 14, 0, tzinfo=UTC)
-    Session.objects.create(
-        game=miss_game,
-        timestamp_start=miss_start,
-        timestamp_end=miss_start + timedelta(hours=2),
+    session_row(
+        miss_game,
+        started_at=miss_start,
+        ended_at=miss_start + timedelta(hours=2),
     )
 
     # Build the comparison in the sessions filter builder.
-    page.goto(f"{live_server.url}{reverse('games:filter_builder', args=['session'])}")
+    page.goto(
+        f"{live_server.url}{reverse('games:filter_builder', args=['playersession'])}"
+    )
     page.locator('filter-group button[data-action="add-comparison"]').first.click()
     row = page.locator('filter-group [data-node-kind="comparison"]').first
 
     # Select left operand (searchable combobox), year-space operator (native
     # select), and cross-model right operand (searchable combobox).
-    _pick_operand(row, "left", "timestamp_start")
+    _pick_operand(row, "left", "started_at")
     row.locator("[data-fc-op]").select_option("EQUALS:year")
-    _pick_operand(row, "right", "game__year_released")
+    _pick_operand(row, "right", "playthrough__player_game__game__year_released")
 
     # Apply navigates to the sessions list carrying the ?filter=.
     with page.expect_navigation():

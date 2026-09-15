@@ -5,8 +5,9 @@ import datetime as dt
 import pytest
 from django.urls import reverse
 from playwright.sync_api import Locator, Page, expect
+from session_rows import session_row
 
-from games.models import Game, Platform, Session
+from games.models import Game, Platform, PlayerSession
 from timetracker.settings_commands import change_user_setting
 
 
@@ -21,20 +22,20 @@ def authenticated_page(live_server, page: Page, e2e_user) -> Page:
 
 
 @pytest.fixture
-def session(e2e_library) -> Session:
+def session(e2e_library) -> PlayerSession:
     game = Game.objects.create(
         library=e2e_library,
         name="Duration Game",
         platform=Platform.objects.create(library=e2e_library, name="PC"),
     )
-    return Session.objects.create(
-        game=game,
-        timestamp_start=dt.datetime(2024, 6, 1, 12, 0, tzinfo=dt.UTC),
-        timestamp_end=dt.datetime(2024, 6, 1, 13, 12, tzinfo=dt.UTC),
+    return session_row(
+        game,
+        started_at=dt.datetime(2024, 6, 1, 12, 0, tzinfo=dt.UTC),
+        ended_at=dt.datetime(2024, 6, 1, 13, 12, tzinfo=dt.UTC),
     )
 
 
-def _duration_cell(page: Page, session: Session):
+def _duration_cell(page: Page, session: PlayerSession):
     return page.locator(f"#session-row-{session.pk} td").nth(1)
 
 

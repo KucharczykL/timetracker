@@ -1,6 +1,9 @@
+from datetime import UTC, datetime
+
 import pytest
 from django.urls import reverse
 from playwright.sync_api import Page, expect
+from session_rows import session_row
 
 
 @pytest.fixture
@@ -72,14 +75,14 @@ def test_game_status_selector_opens_and_patches(
 def test_session_device_selector_patches(
     authenticated_page: Page, live_server, e2e_library
 ):
-    from games.models import Device, Game, Platform, Session
+    from games.models import Device, Game, Platform
 
     platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
     game = Game.objects.create(library=e2e_library, name="Test Game", platform=platform)
     desktop = Device.objects.create(library=e2e_library, name="Desktop")
     deck = Device.objects.create(library=e2e_library, name="Deck")
-    session = Session.objects.create(
-        game=game, device=desktop, timestamp_start="2025-01-01 00:00:00+00:00"
+    session = session_row(
+        game, device=desktop, started_at=datetime(2025, 1, 1, tzinfo=UTC)
     )
 
     page = authenticated_page

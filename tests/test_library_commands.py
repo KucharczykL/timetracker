@@ -64,7 +64,6 @@ def _owned_graph(owner):
     )
     purchase.games.add(game)
     started_at = datetime(2025, 1, 1, tzinfo=UTC)
-    Session.objects.create(game=game, device=device, timestamp_start=started_at)
     timed_row(tracked_run(owner.library, game), started_at, None, device=device)
     return platform, device, game, purchase
 
@@ -114,13 +113,6 @@ def test_audit_reports_direct_derived_cross_link_and_preference_sections(owner):
     assert "games: 1" in report
     assert "Derived relationships" in report
     assert "sessions: 1" in report
-    #: The projection's count, not the legacy table's.
-    Session.objects.all().delete()
-    output = StringIO()
-    call_command(
-        "audit_library_ownership", "--library", str(owner.library.pk), stdout=output
-    )
-    assert "sessions: 1" in output.getvalue()
     assert "Cross-library links: 0" in report
     assert "Preference structure: valid" in report
 

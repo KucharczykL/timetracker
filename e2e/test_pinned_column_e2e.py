@@ -19,9 +19,10 @@ import pytest
 from django.conf import settings
 from django.urls import reverse
 from playwright.sync_api import Browser, Page, ViewportSize
+from session_rows import session_row
 
 from e2e.helpers import settle_layout
-from games.models import Device, Game, Platform, Purchase, Session
+from games.models import Device, Game, Platform, Purchase
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 BASE = datetime(2025, 3, 1, 10, 0, tzinfo=ZONEINFO)
@@ -70,11 +71,11 @@ def populated(e2e_library) -> None:
     # name's purchase must be the later one to land in the first row — the
     # row the panel/occlusion tests hover.
     for index, subject in enumerate((short, game)):
-        Session.objects.create(
-            game=subject,
+        session_row(
+            subject,
             device=device,
-            timestamp_start=BASE + timedelta(days=index),
-            timestamp_end=BASE + timedelta(days=index, hours=2),
+            started_at=BASE + timedelta(days=index),
+            ended_at=BASE + timedelta(days=index, hours=2),
         )
         purchase = Purchase.objects.create(
             library=e2e_library,

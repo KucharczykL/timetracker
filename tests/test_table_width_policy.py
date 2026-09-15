@@ -27,7 +27,6 @@ from games.models import (
     Playthrough,
     PlaythroughKind,
     Purchase,
-    Session,
 )
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
@@ -88,12 +87,6 @@ class DataTableGateTest(TestCase):
             kind=PlaythroughKind.ORDINARY,
             created_at=timezone.now(),
             note="a note",
-        )
-        Session.objects.create(
-            game=game,
-            device=device,
-            timestamp_start=BASE,
-            timestamp_end=BASE + timedelta(hours=2),
         )
         session_row(
             game, device=device, started_at=BASE, ended_at=BASE + timedelta(hours=2)

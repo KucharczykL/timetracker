@@ -31,8 +31,8 @@ from games.models import (
     PlayerSession,
     Purchase,
     PurchaseConversionState,
-    Session,
 )
+from games.reads.player_sessions import library_sessions
 from games.views import stats_links
 from games.views.stats_data import compute_stats
 
@@ -48,13 +48,6 @@ def _client_for(user) -> Client:
 
 def _session(game, device, day: int, hours: int) -> PlayerSession:
     started = datetime(YEAR, 6, day, 10, tzinfo=UTC)
-    #: The legacy twin stays until #772 takes the table.
-    Session.objects.create(
-        game=game,
-        device=device,
-        timestamp_start=started,
-        timestamp_end=started + timedelta(hours=hours),
-    )
     return session_row(
         game,
         device=device,
@@ -183,7 +176,7 @@ def test_row_link_and_audit_reconciliation_is_independent(parity_world):
         assert Game.objects.for_library(library).count() == 2
         assert Device.objects.for_library(library).count() == 1
         assert Purchase.objects.for_library(library).count() == 1
-        assert Session.objects.for_library(library).count() == 2
+        assert library_sessions(library).count() == 2
         assert Platform.objects.for_library(library).count() == 1
         assert Platform.objects.visible_to(library).count() == 2
         assert (

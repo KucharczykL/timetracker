@@ -20,7 +20,7 @@ from django.utils import timezone
 from pytest_django.asserts import assertRedirects
 from session_rows import session_row, timed_row, tracked_run
 
-from games.models import Game, Platform, PlayerSession, Purchase, Session
+from games.models import Game, Platform, PlayerSession, Purchase
 from games.reads.playtime import game_playtime
 from timetracker.temporal import TemporalValue
 
@@ -122,16 +122,10 @@ class RenderedPagesTest(TestCase):
             platform=self.platform,
         )
         self.purchase.games.add(self.game)
-        #: The legacy row still feeds the session form and API.
-        self.legacy_session = Session.objects.create(
-            game=self.game,
-            timestamp_start=datetime(2022, 9, 26, 15, 0, tzinfo=ZONEINFO),
-            timestamp_end=datetime(2022, 9, 26, 16, 0, tzinfo=ZONEINFO),
-        )
         self.session = timed_row(
             tracked_run(self.user.library, self.game),
-            self.legacy_session.timestamp_start,
-            self.legacy_session.timestamp_end,
+            datetime(2022, 9, 26, 15, 0, tzinfo=ZONEINFO),
+            datetime(2022, 9, 26, 16, 0, tzinfo=ZONEINFO),
         )
 
     def get(self, url_name, *args):
