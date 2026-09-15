@@ -13,6 +13,7 @@ from games.commands import playersession as playersession_commands
 from games.commands.playergame import TrackGame
 from games.commands.playersession import (
     INCONSISTENT_SESSION,
+    INTO_THE_BUCKET,
     CorrectedTiming,
     CorrectSessionTiming,
     CreateSession,
@@ -2132,3 +2133,18 @@ def test_a_command_with_two_keys_takes_them_by_name():
         MoveSessionToPlaythrough(uuid.uuid7(), uuid.uuid7())  # type: ignore[misc]
     with pytest.raises(TypeError):
         CreateSession(uuid.uuid7(), a_timed())  # type: ignore[misc]
+
+
+def test_it_refuses_recording_a_session_on_the_bucket(owned_user, owned_library, run):
+    history = Playthrough.objects.create(
+        id=uuid.uuid7(),
+        library=owned_library,
+        player_game=run.player_game,
+        kind=PlaythroughKind.IMPORTED_HISTORY,
+        created_at=timezone.now(),
+    )
+
+    refusal = refused(owned_library, owned_user, history, a_timed())
+
+    assert refusal.sentence == INTO_THE_BUCKET
+    assert not PlayerSession.objects.exists()

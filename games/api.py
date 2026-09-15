@@ -58,6 +58,7 @@ from games.models import (
 from games.ownership import owned_or_404
 from games.reads.calendar import calendar_sentence
 from games.reads.playthrough_endpoints import days_to_finish
+from games.reads.playthrough_numbering import display_name, with_display_number
 from games.reads.playthrough_runs import library_runs
 from games.removal import remove
 from games.sorting import (
@@ -180,6 +181,8 @@ class PlaythroughOut(Schema):
     game: str = Field(..., alias="player_game.game.name")
     game_id: UUIDv7 = Field(..., alias="player_game.game.id")
     name: str
+    #: What a screen calls the run: its name, else "Playthrough N".
+    display_name: str
     note: str
     started: str | None
     started_lower: date | None
@@ -193,6 +196,10 @@ class PlaythroughOut(Schema):
     completion_note: str
     days_to_finish: int | None
     created_at: datetime
+
+    @staticmethod
+    def resolve_display_name(run: Playthrough) -> str:
+        return display_name(run)
 
     @staticmethod
     def resolve_started(run: Playthrough) -> str | None:
@@ -271,8 +278,10 @@ def partial_update_game(request, game_id: UUIDv7, payload: GameStatusUpdate):
 
 
 def _readable_runs(library: UserLibrary) -> QuerySet[Playthrough]:
-    """What the two GET routes answer about."""
-    return library_runs(library).select_related("player_game__game")
+    """What the two GET routes answer about, each row numbered."""
+    return with_display_number(library_runs(library)).select_related(
+        "player_game__game"
+    )
 
 
 def _writable_runs(library: UserLibrary) -> QuerySet[Playthrough]:
@@ -294,15 +303,22 @@ def _writable_runs(library: UserLibrary) -> QuerySet[Playthrough]:
 
 @playthrough_router.get("/", response=list[PlaythroughOut])
 def list_playthroughs(
-    request, limit: int = Query(100, ge=0), offset: int = Query(0, ge=0)
+    request,
+    game: UUIDv7 | None = None,
+    limit: int = Query(100, ge=0),
+    offset: int = Query(0, ge=0),
 ):
     """The library's live ordinary runs, newest first.
 
-    `limit=0` is unbounded, as on presets. The order ends on
-    the key, so an offset reads a stable page.
+    `game` narrows to one game's runs. `limit=0` is unbounded,
+    as on presets. The order ends on the key, so an offset
+    reads a stable page.
     """
     library = cast(User, request.user).library
-    runs = _readable_runs(library).order_by("-created_at", "id")[offset:]
+    runs = _readable_runs(library)
+    if game is not None:
+        runs = runs.filter(player_game__game_id=game)
+    runs = runs.order_by("-created_at", "id")[offset:]
     return runs if limit == 0 else runs[:limit]
 
 

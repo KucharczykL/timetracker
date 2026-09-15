@@ -36,7 +36,13 @@ from games.events.playersession import (
 )
 from games.events.references import capture_reference
 from games.events.vocabulary import NewEvent, Unchanged
-from games.models import Device, PlayerSession, PlayerSessionTimingMode, Playthrough
+from games.models import (
+    Device,
+    PlayerSession,
+    PlayerSessionTimingMode,
+    Playthrough,
+    PlaythroughKind,
+)
 from games.projectors.playersession import TimingColumns, columns_for_timing
 from games.reads.calendar import calendar_day_zone
 
@@ -50,6 +56,11 @@ INCONSISTENT_SESSION = (
     "The problem has been reported."
 )
 
+#: The bucket is the importer's; a person records on a run.
+INTO_THE_BUCKET = (
+    "That is the imported-history bucket. Record the session on one of "
+    "the game's playthroughs instead."
+)
 #: The finest duration a statement may carry. The payload states whole
 #: seconds while the fingerprint states microseconds, so anything
 #: finer would fingerprint differently from the event it recorded and
@@ -567,6 +578,12 @@ class CreateSession(Command):
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         run = _live_run(context, self.playthrough_id)
+        if run.kind == PlaythroughKind.IMPORTED_HISTORY:
+            raise CommandRejected(
+                f"Playthrough {run.pk} is the imported-history bucket, which "
+                "takes no recorded session; only a move reaches it.",
+                sentence=INTO_THE_BUCKET,
+            )
         device = _library_device(context, self.device_id)
         payload = timing_payload(self.timing)
         _check_calendar(context, payload)
