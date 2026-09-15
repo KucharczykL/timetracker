@@ -63,6 +63,15 @@ class FigureKind(StrEnum):
     DAY = "day"
     TODAY = "today"
     LAST_SEVEN_DAYS = "last 7 days"
+    #: The session figures, in games/reads/session_parity.py.
+    SESSION_COUNT = "session count"
+    DISTINCT_DAYS = "distinct days"
+    LONGEST_SESSION = "longest session"
+    MOST_SESSIONS = "most sessions"
+    HIGHEST_AVERAGE = "highest average"
+    FIRST_PLAY = "first play"
+    LAST_PLAY = "last play"
+    HAS_SESSIONS = "has sessions"
 
 
 #: A figure's identity within its kind.
@@ -121,7 +130,7 @@ def playtime_figures(
     library: UserLibrary, zone: ZoneInfo, *, sources: SourcePair = SOURCES
 ) -> list[PlaytimeFigure]:
     """Each figure once; missing ones read zero."""
-    with _one_snapshot(), timezone.override(zone):
+    with one_snapshot(), timezone.override(zone):
         years = sorted(
             set(sources.legacy.played_years(library))
             | set(sources.projection.played_years(library))
@@ -176,7 +185,7 @@ def differing(figures: Sequence[PlaytimeFigure]) -> list[PlaytimeFigure]:
 
 
 @contextmanager
-def _one_snapshot() -> Iterator[None]:
+def one_snapshot() -> Iterator[None]:
     """Both sources read one committed state."""
     if connection.in_atomic_block:
         yield

@@ -20,6 +20,7 @@ ALLOWED_FILES: dict[str, str] = {
     "games/backfill/playersession.py": "Converts every legacy row.",
     "games/preflight/session.py": "The census of legacy rows.",
     "games/reads/playtime/legacy.py": "The parity command's other source.",
+    "games/reads/session_parity.py": "The statistics gate's legacy side.",
     "games/removal.py": "REMOVABLE_MODELS lists it until the table goes.",
     "games/management/commands/load_sample_data.py": "Loads the fixture.",
     "games/management/commands/anonymize_sample.py": "Writes the fixture.",

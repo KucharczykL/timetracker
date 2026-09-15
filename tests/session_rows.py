@@ -163,16 +163,21 @@ def timed_twin(
     started_at: datetime,
     ended_at: datetime | None,
 ) -> Twin:
-    """Finished with an end, running without one."""
+    """Finished with an end, running without one.
+
+    One id for both rows, as the conversion keeps the legacy one.
+    """
+    legacy = Session.objects.create(
+        game=game, timestamp_start=started_at, timestamp_end=ended_at
+    )
     return Twin(
-        Session.objects.create(
-            game=game, timestamp_start=started_at, timestamp_end=ended_at
-        ),
+        legacy,
         timed_row(
             tracked_run(library, game),
             started_at,
             ended_at,
             day_zone=TWIN_ZONE.key,
+            id=legacy.pk,
         ),
     )
 
@@ -181,13 +186,14 @@ def duration_only_twin(
     library: UserLibrary, game: Game, day: date, duration: timedelta
 ) -> Twin:
     """No end, a manual duration, noon start."""
+    legacy = Session.objects.create(
+        game=game,
+        timestamp_start=datetime.combine(day, time(12), tzinfo=TWIN_ZONE),
+        duration_manual=duration,
+    )
     return Twin(
-        Session.objects.create(
-            game=game,
-            timestamp_start=datetime.combine(day, time(12), tzinfo=TWIN_ZONE),
-            duration_manual=duration,
-        ),
-        duration_only_row(tracked_run(library, game), day, duration),
+        legacy,
+        duration_only_row(tracked_run(library, game), day, duration, id=legacy.pk),
     )
 
 
@@ -213,6 +219,7 @@ def corrected_twin(
             ended_at,
             (ended_at - started_at) + manual,
             day_zone=TWIN_ZONE.key,
+            id=legacy.pk,
         ),
     )
 

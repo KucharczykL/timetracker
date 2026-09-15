@@ -375,10 +375,10 @@ purge-library: ensure-postgres
 verify-replay-parity: ensure-postgres
 	uv run --frozen python manage.py rebuild_projections --all-libraries --check --fail-on-drift
 
-# Read-only: every playtime figure from both sources.
-# Usage: make verify-playtime-parity ARGS="--all-libraries"
-verify-playtime-parity: ensure-postgres
-	uv run --frozen python manage.py verify_playtime_parity $(ARGS)
+# Read-only: every playtime and session figure from both sources.
+# Usage: make verify-session-parity ARGS="--all-libraries"
+verify-session-parity: ensure-postgres
+	uv run --frozen python manage.py verify_session_parity $(ARGS)
 
 # Usage: make bench ARGS="--seed 10000 --gate"
 bench: ensure-postgres

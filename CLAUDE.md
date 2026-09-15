@@ -119,7 +119,7 @@ path**, so verify against `make check` before pushing when possible.
 | Census the legacy Session rows | `make preflight-sessions ARGS="--all-libraries"` (read-only; reports, gates nothing) |
 | Benchmark commands, replay, and per-event cost | `make bench` (~1.7 min, seeds and removes a scratch library; **not** in `make check`) |
 | Replay every library and fail on a differing row | `make verify-replay-parity` (read-only; **not** in `make check`) |
-| Compare every playtime figure across both session tables | `make verify-playtime-parity ARGS="--all-libraries"` (read-only; fails on a differing figure; **not** in `make check`) |
+| Compare every playtime and session figure across both session tables | `make verify-session-parity ARGS="--all-libraries"` (read-only; fails on a differing figure; **not** in `make check`) |
 | Destroy one user's library and every row in it | `make purge-library ARGS="--user NAME --confirm NAME"` (names the user twice on purpose) |
 | Load platform fixtures / sample data | `make loadplatforms` / `make loadsample` |
 | Regenerate sample data (anonymized prod) | `make anonymize-sample` (see Testing) |
@@ -427,7 +427,7 @@ decides NULL or zero: `playtime_by_game` is zero (the `playtime` alias
 library), `playtime_sort_key` and `playtime_matching` stay NULL and `apply_sort`
 puts NULL last. A sum with no library compiles for validation and raises
 `UnscopedPlaytimeRead` if executed. No queryset and no `Q` crosses the interface.
-`make verify-playtime-parity` compares every `PlaytimeSource` member but
+`make verify-session-parity` compares every `PlaytimeSource` member but
 `summed_by_game_matching`, in one snapshot; a test holds that list whole. A
 stored comparison naming `playtime` is refused through
 `Game.RETIRED_COMPARISON_COLUMNS`.

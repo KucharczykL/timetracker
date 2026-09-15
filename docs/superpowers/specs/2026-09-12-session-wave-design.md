@@ -531,7 +531,7 @@ what it settled, and what the rest of this wave inherits:
   refuses that line until the projection source implements
   `summed_by_game_matching`, which needs `SessionFilter` restated in the
   projection's fields.
-- **The parity instrument.** `make verify-playtime-parity` compares every figure
+- **The parity instrument.** `make verify-session-parity` compares every figure
   of both sources through the protocol. #700 reconciles against it and #704
   gates on it.
 - **Rehearsed on the 2026-09-12 dump.** Of 883 rendered pages, 879 were
@@ -725,7 +725,7 @@ group days in, which is what makes strict equality reachable; seeding from
 month and 5 to another year, and this gate would have failed by exactly that
 amount. Equality holds while the viewer's zone is the one the rows were seeded
 in, and #704 states the zone each of its figures was measured in. #697 ships
-the gate's instrument, `make verify-playtime-parity`.
+the gate's instrument, `make verify-session-parity`.
 
 The performance gate states a **budget** rather than a verdict. It names a
 per-read threshold measured on restored production data for the reads that grow

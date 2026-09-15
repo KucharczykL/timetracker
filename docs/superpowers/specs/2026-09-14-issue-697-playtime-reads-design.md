@@ -60,7 +60,7 @@ The legacy source reads days in the active zone. The projection source reads
 
 ## Parity
 
-`make verify-playtime-parity` compares both sources through `PlaytimeSource`,
+`make verify-session-parity` compares both sources through `PlaytimeSource`,
 in one snapshot. It reads legacy days in the display zone or `--day-zone`. A
 test holds every member compared, except the filtered sum. A different figure
 or an empty scope makes the command fail.

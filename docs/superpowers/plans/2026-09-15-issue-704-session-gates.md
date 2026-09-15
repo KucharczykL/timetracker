@@ -194,10 +194,10 @@ def differing_session_figures(figures) -> list[SessionFigure]
 - `test_every_protocol_member_is_compared_or_exempt` uses `get_protocol_members`; add a second assertion over `SessionFigureSource`.
 - Migration `0004` imports `playtime_parity`; do not rename it.
 
-- [ ] **Step 1: `git mv` both files; grep and replace the old names in Makefile, CLAUDE.md, docs, tests. `make test ARGS="tests/test_session_parity.py -x"` green.**
-- [ ] **Step 2: Failing tests** added to `tests/test_session_parity.py`: `test_every_session_figure_agrees_for_a_twin_of_each_mode`; `test_the_empty_projection_differs_on_every_non_empty_session_figure`; `test_a_tie_is_broken_the_same_way_on_both_sides` (two games, equal counts); `test_a_manual_row_counts_its_stated_time_on_both_sides` (a Duration-only twin is the longest on both); `test_every_session_protocol_member_is_compared_or_exempt`; the command tests assert the new lines print and a session difference exits non-zero.
-- [ ] **Step 3: Implement the module, the command, the guard entry.** Run `tests/test_session_parity.py tests/test_session_import_guard.py`.
-- [ ] **Step 4: `make check-fast`, `make vale`. Commit:** `feat: compare every session figure across both tables (#704)`.
+- [x] **Step 1: `git mv` both files; grep and replace the old names in Makefile, CLAUDE.md, docs, tests. `make test ARGS="tests/test_session_parity.py -x"` green.**
+- [x] **Step 2: Failing tests** added to `tests/test_session_parity.py`: `test_every_session_figure_agrees_for_a_twin_of_each_mode`; `test_the_empty_projection_differs_on_every_non_empty_session_figure`; `test_a_tie_is_broken_the_same_way_on_both_sides` (two games, equal counts); `test_a_manual_row_counts_its_stated_time_on_both_sides` (a Duration-only twin is the longest on both); `test_every_session_protocol_member_is_compared_or_exempt`; the command tests assert the new lines print and a session difference exits non-zero.
+- [x] **Step 3: Implement the module, the command, the guard entry.** Run `tests/test_session_parity.py tests/test_session_import_guard.py`.
+- [x] **Step 4: `make check-fast`, `make vale`. Commit:** `feat: compare every session figure across both tables (#704)`. The tie test had to state the fixture game's `sort_name`: a blank one sorts first on both sides, which is the page's own rule.
 
 ---
 
